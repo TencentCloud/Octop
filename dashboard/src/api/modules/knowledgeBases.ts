@@ -292,9 +292,13 @@ export const knowledgeBasesApi = {
     id: string,
     documentId: string,
     disposition: "attachment" | "inline" = "attachment",
+    onProgress?: (loaded: number, total: number) => void,
+    signal?: AbortSignal,
   ) =>
     requestBlob(
       `/knowledge-bases/${id}/documents/${documentId}/file?disposition=${disposition}`,
+      { signal },
+      onProgress,
     ),
 
   reindex: (id: string) =>

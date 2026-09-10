@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -30,10 +31,12 @@ import {
   Typography,
 } from "antd";
 import type { MenuProps } from "antd";
+import type { InputRef } from "antd/es/input";
 import { ResizableTable } from "@/components/ResizableTable";
 import {
   Check,
   ChevronLeft,
+  ChevronRight,
   Download,
   Eye,
   FilePlus,
@@ -42,7 +45,10 @@ import {
   FolderPlus,
   LayoutGrid,
   List as ListIcon,
+  ListTree,
+  Maximize2,
   MessageSquarePlus,
+  Minimize2,
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
@@ -50,6 +56,7 @@ import {
   PencilLine,
   Plus,
   RefreshCw,
+  Search,
   Settings,
   Trash2,
   X,
@@ -70,6 +77,7 @@ import {
 } from "../../api/modules/knowledgeBases";
 import { OctopEmptyMascot } from "../../components/EmptyState";
 import DocumentPreviewCore from "../../components/DocumentPreviewCore";
+import DocumentPreviewLoading from "../../components/DocumentPreviewLoading";
 import Markdown from "../../components/Markdown";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
 import { CopyableResourceId } from "../../components/CopyableResourceId";
@@ -86,6 +94,11 @@ import { formatBytes, formatSizeGb } from "../../utils/embeddingDownload";
 import { fileTreeIconSpec } from "../../utils/fileTreeIcon";
 import { formatServerDateTime } from "../../utils/formatMessageTime";
 import { stripFrontmatter } from "../../utils/markdown";
+import {
+  extractMarkdownOutline,
+  stripMdInlineMarks,
+  type MdOutlineItem,
+} from "./mdOutline";
 import { setPendingAttachKnowledgeBaseId } from "../Chat/utils/pendingAttachKnowledgeBase";
 import skillStyles from "../Agent/Skills/index.module.less";
 import { KNOWLEDGE_ICON_NAMES, knowledgeIconForName } from "./knowledgeIcons";
@@ -343,6 +356,19 @@ export default function KnowledgeBasesPage() {
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [previewHasOriginal, setPreviewHasOriginal] = useState(false);
   const [previewAsMarkdown, setPreviewAsMarkdown] = useState(false);
+  const [previewMaximized, setPreviewMaximized] = useState(false);
+  const [mdOutlineOpen, setMdOutlineOpen] = useState(true);
+  const [mdActiveOutlineIndex, setMdActiveOutlineIndex] = useState(0);
+  const [mdFindOpen, setMdFindOpen] = useState(false);
+  const [mdFindQuery, setMdFindQuery] = useState("");
+  const [mdFindIndex, setMdFindIndex] = useState(0);
+  const [mdFindHitCount, setMdFindHitCount] = useState(0);
+  const mdBodyRef = useRef<HTMLDivElement | null>(null);
+  const mdFindInputRef = useRef<InputRef | null>(null);
+  const mdFindHitsRef = useRef<{ node: Text; start: number }[]>([]);
+  const previewTextAbortRef = useRef<AbortController | null>(null);
+  const isRichPreview = Boolean(previewKind || previewAsMarkdown);
+
   const [textEditorOpen, setTextEditorOpen] = useState(false);
   const [textEditorMode, setTextEditorMode] = useState<"create" | "edit">(
     "create",
@@ -354,6 +380,275 @@ export default function KnowledgeBasesPage() {
   const [textEditorFormat, setTextEditorFormat] =
     useState<TextDocumentFormat>("md");
   const [textEditorContent, setTextEditorContent] = useState("");
+
+  const previewableDocs = useMemo(
+    () =>
+      documents.filter(
+        (document) => !document.is_dir && canPreviewKnowledgeDocument(document),
+      ),
+    [documents],
+  );
+  const previewNavIndex = useMemo(
+    () =>
+      previewDocId
+        ? previewableDocs.findIndex((document) => document.id === previewDocId)
+        : -1,
+    [previewDocId, previewableDocs],
+  );
+
+  const mdOutlineItems = useMemo(
+    () =>
+      previewAsMarkdown && previewText.trim()
+        ? extractMarkdownOutline(stripFrontmatter(previewText))
+        : [],
+    [previewAsMarkdown, previewText],
+  );
+
+  type MdFindHit = { node: Text; start: number };
+
+  const collectMdFindHits = useCallback((host: HTMLElement, q: string) => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return [] as MdFindHit[];
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    const hits: MdFindHit[] = [];
+    let node = walker.nextNode();
+    while (node) {
+      const text = node.textContent ?? "";
+      const lower = text.toLowerCase();
+      let from = 0;
+      while (from < lower.length) {
+        const at = lower.indexOf(needle, from);
+        if (at < 0) break;
+        hits.push({ node: node as Text, start: at });
+        from = at + Math.max(1, needle.length);
+      }
+      node = walker.nextNode();
+    }
+    return hits;
+  }, []);
+
+  // Count + jump both use the rendered DOM so the counter stays honest.
+  useEffect(() => {
+    if (!mdFindOpen || !previewAsMarkdown || previewLoading) {
+      mdFindHitsRef.current = [];
+      setMdFindHitCount(0);
+      return;
+    }
+    const q = mdFindQuery.trim();
+    if (!q) {
+      mdFindHitsRef.current = [];
+      setMdFindHitCount(0);
+      setMdFindIndex(0);
+      return;
+    }
+    let cancelled = false;
+    const sync = () => {
+      if (cancelled) return;
+      const host = mdBodyRef.current;
+      if (!host) {
+        mdFindHitsRef.current = [];
+        setMdFindHitCount(0);
+        return;
+      }
+      const hits = collectMdFindHits(host, q);
+      mdFindHitsRef.current = hits;
+      setMdFindHitCount(hits.length);
+      setMdFindIndex((prev) =>
+        hits.length === 0 ? 0 : Math.min(prev, hits.length - 1),
+      );
+    };
+    const raf = window.requestAnimationFrame(sync);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(raf);
+    };
+  }, [
+    mdFindOpen,
+    mdFindQuery,
+    previewAsMarkdown,
+    previewText,
+    previewLoading,
+    collectMdFindHits,
+  ]);
+
+  const scrollToMdHeading = useCallback((item: MdOutlineItem) => {
+    const host = mdBodyRef.current;
+    if (!host) return;
+    const headings = Array.from(host.querySelectorAll("h1,h2,h3,h4,h5,h6")).map(
+      (heading) => ({
+        el: heading,
+        text: stripMdInlineMarks(heading.textContent ?? ""),
+      }),
+    );
+    const byOccurrence = headings.filter((h) => h.text === item.title);
+    const target =
+      byOccurrence[item.occurrence] ??
+      byOccurrence[0] ??
+      // Titles containing escaped code spans can differ from the rendered
+      // heading text — fall back to a prefix match.
+      headings.find((h) => h.text.startsWith(item.title.slice(0, 8)));
+    target?.el.scrollIntoView({ behavior: "auto", block: "start" });
+  }, []);
+
+  // Markdown outline scroll-spy: highlight the last heading above the fold.
+  useEffect(() => {
+    if (!previewAsMarkdown || mdOutlineItems.length === 0) {
+      setMdActiveOutlineIndex(0);
+      return;
+    }
+    const host = mdBodyRef.current;
+    if (!host) return;
+    const update = () => {
+      const headings = Array.from(
+        host.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6"),
+      );
+      if (headings.length === 0) return;
+      const top = host.scrollTop + 12;
+      let active = 0;
+      for (let i = 0; i < headings.length; i += 1) {
+        if (headings[i].offsetTop <= top) active = i;
+        else break;
+      }
+      setMdActiveOutlineIndex(Math.min(active, mdOutlineItems.length - 1));
+    };
+    update();
+    host.addEventListener("scroll", update, { passive: true });
+    return () => host.removeEventListener("scroll", update);
+  }, [previewAsMarkdown, previewText, mdOutlineItems.length]);
+
+  const jumpMdFind = useCallback(
+    (direction: 1 | -1) => {
+      const host = mdBodyRef.current;
+      const q = mdFindQuery.trim();
+      if (!host || !q) return;
+      const hits = collectMdFindHits(host, q);
+      mdFindHitsRef.current = hits;
+      setMdFindHitCount(hits.length);
+      if (hits.length === 0) {
+        setMdFindIndex(0);
+        return;
+      }
+      const next =
+        (((mdFindIndex + direction) % hits.length) + hits.length) % hits.length;
+      setMdFindIndex(next);
+      const hit = hits[next];
+      const el = hit.node.parentElement;
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      try {
+        const range = document.createRange();
+        const end = Math.min(
+          hit.start + q.length,
+          hit.node.textContent?.length ?? hit.start,
+        );
+        range.setStart(hit.node, hit.start);
+        range.setEnd(hit.node, end);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      } catch {
+        /* ignore selection failures in odd text nodes */
+      }
+      el.classList.add(styles.mdFindFlash);
+      window.setTimeout(() => el.classList.remove(styles.mdFindFlash), 900);
+    },
+    [mdFindIndex, mdFindQuery, collectMdFindHits],
+  );
+
+  const closePreview = useCallback(() => {
+    previewTextAbortRef.current?.abort();
+    previewTextAbortRef.current = null;
+    setPreviewOpen(false);
+    setPreviewKind(null);
+    setPreviewDocId(null);
+    setPreviewHasOriginal(false);
+    setPreviewAsMarkdown(false);
+    setPreviewMaximized(false);
+    setMdOutlineOpen(true);
+    setMdFindOpen(false);
+    setMdFindQuery("");
+    setMdFindIndex(0);
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+    }
+  }, []);
+
+  const requestClosePreview = useCallback(() => {
+    // Esc / mask: exit CSS maximized first, then close (native FS Esc is
+    // handled by the browser before the dialog sees it).
+    if (previewMaximized && !document.fullscreenElement) {
+      setPreviewMaximized(false);
+      return;
+    }
+    closePreview();
+  }, [closePreview, previewMaximized]);
+
+  /**
+   * Native fullscreen on the document content area (viewer toolbar + PDF /
+   * bookmarks) — no dialog chrome around it; the browser's own "press Esc to
+   * exit" hint covers leaving. Falls back to the CSS maximized dialog when
+   * the Fullscreen API is unavailable or rejected (e.g. embedded contexts).
+   */
+  const togglePreviewFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+      return;
+    }
+    if (previewMaximized) {
+      // CSS-fallback maximized — restore the regular dialog.
+      setPreviewMaximized(false);
+      return;
+    }
+    const fsEl = (document.querySelector<HTMLElement>(
+      "[data-preview-fullscreen-root]",
+    ) ?? document.querySelector<HTMLElement>(".octop-modal-content")) as
+      | (HTMLElement & {
+          webkitRequestFullscreen?: () => Promise<void> | void;
+        })
+      | null;
+    const request =
+      fsEl?.requestFullscreen?.bind(fsEl) ?? fsEl?.webkitRequestFullscreen;
+    if (!fsEl || !request) {
+      setPreviewMaximized(true);
+      return;
+    }
+    void Promise.resolve(request.call(fsEl)).then(
+      () => {
+        // fullscreenchange flips previewMaximized on success.
+      },
+      () => setPreviewMaximized(true),
+    );
+  }, [previewMaximized]);
+
+  // Keep the button state in sync when the browser exits fullscreen (Esc).
+  useEffect(() => {
+    if (!previewOpen) return;
+    const sync = () => setPreviewMaximized(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", sync);
+    document.addEventListener("webkitfullscreenchange", sync);
+    return () => {
+      document.removeEventListener("fullscreenchange", sync);
+      document.removeEventListener("webkitfullscreenchange", sync);
+    };
+  }, [previewOpen]);
+
+  // Cmd/Ctrl+F opens the markdown find bar while the preview is open.
+  useEffect(() => {
+    if (!previewOpen || !previewAsMarkdown) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        event.key.toLowerCase() !== "f"
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setMdFindOpen(true);
+      window.setTimeout(() => mdFindInputRef.current?.focus(), 0);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewOpen, previewAsMarkdown]);
   const [baseForm] = Form.useForm<BaseFormValues>();
   const [defaultOpenChecked, setDefaultOpenChecked] = useState(false);
   const [sharedChecked, setSharedChecked] = useState(false);
@@ -1184,6 +1479,9 @@ export default function KnowledgeBasesPage() {
     const rich = canRichPreviewKnowledgeDocument(document);
     const kind = rich ? getDocKind(document.filename) : null;
     const asMarkdown = isKnowledgeMarkdownDocument(document);
+    previewTextAbortRef.current?.abort();
+    const abort = new AbortController();
+    previewTextAbortRef.current = abort;
     setPreviewOpen(true);
     setPreviewFilename(document.filename);
     setPreviewKind(kind);
@@ -1191,6 +1489,12 @@ export default function KnowledgeBasesPage() {
     setPreviewHasOriginal(canDownloadKnowledgeOriginal(document));
     setPreviewAsMarkdown(asMarkdown);
     setPreviewText("");
+    setMdOutlineOpen(true);
+    setMdActiveOutlineIndex(0);
+    setMdFindOpen(false);
+    setMdFindQuery("");
+    setMdFindIndex(0);
+    setMdFindHitCount(0);
     if (kind) {
       setPreviewLoading(false);
       return;
@@ -1203,6 +1507,7 @@ export default function KnowledgeBasesPage() {
           selected.id,
           document.id,
         );
+        if (abort.signal.aborted) return;
         setPreviewFilename(payload.filename);
         setPreviewText(
           payload.text.trim() ? payload.text : t("knowledgeBases.previewEmpty"),
@@ -1212,18 +1517,20 @@ export default function KnowledgeBasesPage() {
           selected.id,
           document.id,
         );
+        if (abort.signal.aborted) return;
         setPreviewFilename(preview.filename);
         setPreviewText(
           preview.text.trim() ? preview.text : t("knowledgeBases.previewEmpty"),
         );
       }
     } catch (error) {
+      if (abort.signal.aborted) return;
       setPreviewOpen(false);
       message.error(
         apiErrorMessage(error, t("knowledgeBases.previewFailed"), t),
       );
     } finally {
-      setPreviewLoading(false);
+      if (!abort.signal.aborted) setPreviewLoading(false);
     }
   };
 
@@ -1251,16 +1558,24 @@ export default function KnowledgeBasesPage() {
     }
   };
 
-  const fetchPreviewBlob = useCallback(async () => {
-    if (!selected || !previewDocId) {
-      throw new Error("missing knowledge document preview target");
-    }
-    return knowledgeBasesApi.fetchDocumentFile(
-      selected.id,
-      previewDocId,
-      "inline",
-    );
-  }, [selected, previewDocId]);
+  const fetchPreviewBlob = useCallback(
+    async (
+      onProgress?: (loaded: number, total: number) => void,
+      signal?: AbortSignal,
+    ) => {
+      if (!selected || !previewDocId) {
+        throw new Error("missing knowledge document preview target");
+      }
+      return knowledgeBasesApi.fetchDocumentFile(
+        selected.id,
+        previewDocId,
+        "inline",
+        onProgress,
+        signal,
+      );
+    },
+    [selected, previewDocId],
+  );
 
   const openCreateTextDocument = () => {
     setTextEditorMode("create");
@@ -2221,15 +2536,88 @@ export default function KnowledgeBasesPage() {
       )}
 
       <Modal
-        title={previewFilename || t("knowledgeBases.previewDocument")}
+        title={
+          <div className={styles.previewModalTitleRow}>
+            <span
+              className={styles.previewModalTitleText}
+              title={previewFilename || undefined}
+            >
+              {previewFilename || t("knowledgeBases.previewDocument")}
+            </span>
+            {previewNavIndex >= 0 ? (
+              <span className={styles.previewModalNav}>
+                <Tooltip title={t("knowledgeBases.previewPrev")}>
+                  <button
+                    type="button"
+                    className={styles.previewModalExpandBtn}
+                    aria-label={t("knowledgeBases.previewPrev")}
+                    disabled={previewNavIndex <= 0}
+                    onClick={() => {
+                      const prev = previewableDocs[previewNavIndex - 1];
+                      if (prev) void openDocumentPreview(prev);
+                    }}
+                  >
+                    <ChevronLeft size={14} strokeWidth={2} aria-hidden />
+                  </button>
+                </Tooltip>
+                <span className={styles.previewModalNavMeta}>
+                  {previewNavIndex + 1} / {previewableDocs.length}
+                </span>
+                <Tooltip title={t("knowledgeBases.previewNext")}>
+                  <button
+                    type="button"
+                    className={styles.previewModalExpandBtn}
+                    aria-label={t("knowledgeBases.previewNext")}
+                    disabled={previewNavIndex >= previewableDocs.length - 1}
+                    onClick={() => {
+                      const next = previewableDocs[previewNavIndex + 1];
+                      if (next) void openDocumentPreview(next);
+                    }}
+                  >
+                    <ChevronRight size={14} strokeWidth={2} aria-hidden />
+                  </button>
+                </Tooltip>
+              </span>
+            ) : null}
+            <Tooltip
+              title={
+                previewMaximized
+                  ? t("knowledgeBases.exitFullscreen")
+                  : t("knowledgeBases.enterFullscreen")
+              }
+            >
+              <button
+                type="button"
+                className={styles.previewModalExpandBtn}
+                aria-label={
+                  previewMaximized
+                    ? t("knowledgeBases.exitFullscreen")
+                    : t("knowledgeBases.enterFullscreen")
+                }
+                onClick={togglePreviewFullscreen}
+              >
+                {previewMaximized ? (
+                  <Minimize2 size={14} strokeWidth={2} aria-hidden />
+                ) : (
+                  <Maximize2 size={14} strokeWidth={2} aria-hidden />
+                )}
+              </button>
+            </Tooltip>
+            <Tooltip title={t("common.close", "关闭")}>
+              <button
+                type="button"
+                className={styles.previewModalExpandBtn}
+                aria-label={t("common.close", "关闭")}
+                onClick={requestClosePreview}
+              >
+                <X size={14} strokeWidth={2} aria-hidden />
+              </button>
+            </Tooltip>
+          </div>
+        }
         open={previewOpen}
-        onCancel={() => {
-          setPreviewOpen(false);
-          setPreviewKind(null);
-          setPreviewDocId(null);
-          setPreviewHasOriginal(false);
-          setPreviewAsMarkdown(false);
-        }}
+        onCancel={requestClosePreview}
+        closable={false}
         footer={
           previewDocId && previewHasOriginal ? (
             <Button
@@ -2242,25 +2630,47 @@ export default function KnowledgeBasesPage() {
             </Button>
           ) : null
         }
-        width={previewKind || previewAsMarkdown ? "min(1200px, 92vw)" : 720}
-        destroyOnClose
+        width={
+          previewMaximized ? "100vw" : isRichPreview ? "min(1200px, 92vw)" : 720
+        }
+        centered={!previewMaximized}
+        destroyOnHidden
+        className={previewMaximized ? styles.previewModalMaximized : undefined}
+        wrapClassName={styles.previewModalWrap}
+        style={
+          previewMaximized
+            ? { top: 0, maxWidth: "100vw" }
+            : // Cap the dialog itself (antd paddings + responsive margins from
+              // styles/layout.css stack on top of the content max-height).
+              { maxHeight: "calc(100vh - 48px)" }
+        }
+        classNames={{
+          content: previewMaximized
+            ? styles.previewModalContentMaximized
+            : styles.previewModalContent,
+        }}
         styles={{
-          body:
-            previewKind || previewAsMarkdown
-              ? {
-                  height: "min(85vh, 900px)",
-                  maxHeight: "85vh",
-                  padding: 12,
-                  overflow: "hidden",
-                  display: "flex",
-                  flexDirection: "column",
-                }
-              : undefined,
+          body: {
+            // Desired height only — the content flex column + max-height
+            // (see .previewModalContent) shrinks this when the viewport
+            // cannot fit it, so the wrap never grows a scrollbar.
+            height: previewMaximized ? undefined : "78vh",
+            flex: previewMaximized ? "1 1 auto" : "0 1 auto",
+            minHeight: 0,
+            padding: 12,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          },
         }}
       >
         {previewKind && previewDocId ? (
-          <div className={styles.richPreviewBody}>
+          <div
+            className={styles.richPreviewBody}
+            data-preview-fullscreen-root=""
+          >
             <DocumentPreviewCore
+              key={previewDocId}
               kind={previewKind}
               filename={previewFilename}
               fetchBlob={fetchPreviewBlob}
@@ -2276,25 +2686,181 @@ export default function KnowledgeBasesPage() {
             />
           </div>
         ) : previewAsMarkdown ? (
-          <div className={styles.mdPreviewBody}>
-            <Spin
-              spinning={previewLoading}
-              wrapperClassName={styles.mdPreviewSpin}
-            >
-              {previewText.trim() &&
-              previewText !== t("knowledgeBases.previewEmpty") ? (
-                <Markdown content={stripFrontmatter(previewText)} />
-              ) : (
-                <span className={styles.mdPreviewEmpty}>
-                  {previewLoading ? "" : t("knowledgeBases.previewEmpty")}
+          <div className={styles.mdPreviewWrap} data-preview-fullscreen-root="">
+            <div className={styles.mdPreviewToolbar}>
+              <Tooltip
+                title={
+                  mdOutlineItems.length === 0
+                    ? t("knowledgeBases.mdOutlineEmpty")
+                    : t("knowledgeBases.mdOutline")
+                }
+              >
+                <span className={styles.mdOutlineToggleHost}>
+                  <button
+                    type="button"
+                    className={styles.previewModalExpandBtn}
+                    aria-label={t("knowledgeBases.mdOutline")}
+                    disabled={mdOutlineItems.length === 0}
+                    onClick={() => setMdOutlineOpen((v) => !v)}
+                  >
+                    <ListTree size={14} strokeWidth={2} aria-hidden />
+                  </button>
                 </span>
+              </Tooltip>
+              {mdOutlineItems.length > 0 ? (
+                <span className={styles.mdPreviewMeta}>
+                  {t("knowledgeBases.mdOutlineCount", {
+                    count: mdOutlineItems.length,
+                  })}
+                </span>
+              ) : null}
+              <span className={styles.mdPreviewToolbarSpacer} />
+              {mdFindOpen ? (
+                <span className={styles.mdFindBar}>
+                  <Input
+                    ref={mdFindInputRef}
+                    size="small"
+                    allowClear
+                    value={mdFindQuery}
+                    placeholder={t("knowledgeBases.mdFindPlaceholder")}
+                    onChange={(event) => {
+                      setMdFindQuery(event.target.value);
+                      setMdFindIndex(0);
+                    }}
+                    onPressEnter={() => jumpMdFind(1)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.stopPropagation();
+                        setMdFindOpen(false);
+                        setMdFindQuery("");
+                      }
+                    }}
+                    className={styles.mdFindInput}
+                  />
+                  <span className={styles.mdPreviewMeta}>
+                    {mdFindHitCount === 0
+                      ? "0"
+                      : `${Math.min(
+                          mdFindIndex + 1,
+                          mdFindHitCount,
+                        )} / ${mdFindHitCount}`}
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.previewModalExpandBtn}
+                    aria-label={t("knowledgeBases.mdFindPrev")}
+                    disabled={mdFindHitCount === 0}
+                    onClick={() => jumpMdFind(-1)}
+                  >
+                    <ChevronLeft size={14} strokeWidth={2} aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.previewModalExpandBtn}
+                    aria-label={t("knowledgeBases.mdFindNext")}
+                    disabled={mdFindHitCount === 0}
+                    onClick={() => jumpMdFind(1)}
+                  >
+                    <ChevronRight size={14} strokeWidth={2} aria-hidden />
+                  </button>
+                </span>
+              ) : (
+                <Tooltip title={t("knowledgeBases.mdFind")}>
+                  <button
+                    type="button"
+                    className={styles.previewModalExpandBtn}
+                    aria-label={t("knowledgeBases.mdFind")}
+                    onClick={() => {
+                      setMdFindOpen(true);
+                      window.setTimeout(
+                        () => mdFindInputRef.current?.focus(),
+                        0,
+                      );
+                    }}
+                  >
+                    <Search size={14} strokeWidth={2} aria-hidden />
+                  </button>
+                </Tooltip>
               )}
-            </Spin>
+            </div>
+            <div className={styles.mdPreviewRow}>
+              {mdOutlineOpen && mdOutlineItems.length > 0 && !isMobile ? (
+                <nav
+                  className={styles.mdOutlinePanel}
+                  aria-label={t("knowledgeBases.mdOutline")}
+                >
+                  {mdOutlineItems.map((item, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      className={[
+                        styles.mdOutlineItem,
+                        index === mdActiveOutlineIndex
+                          ? styles.mdOutlineItemActive
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      style={{ paddingLeft: 10 + (item.level - 1) * 14 }}
+                      title={item.title}
+                      onClick={() => scrollToMdHeading(item)}
+                    >
+                      {item.title}
+                    </button>
+                  ))}
+                </nav>
+              ) : null}
+              {isMobile ? (
+                <Drawer
+                  title={t("knowledgeBases.mdOutline")}
+                  placement="left"
+                  open={mdOutlineOpen && mdOutlineItems.length > 0}
+                  onClose={() => setMdOutlineOpen(false)}
+                  width={280}
+                  destroyOnHidden
+                >
+                  {mdOutlineItems.map((item, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      className={[
+                        styles.mdOutlineItem,
+                        index === mdActiveOutlineIndex
+                          ? styles.mdOutlineItemActive
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      style={{ paddingLeft: 10 + (item.level - 1) * 14 }}
+                      title={item.title}
+                      onClick={() => {
+                        scrollToMdHeading(item);
+                        setMdOutlineOpen(false);
+                      }}
+                    >
+                      {item.title}
+                    </button>
+                  ))}
+                </Drawer>
+              ) : null}
+              <div className={styles.mdPreviewBody} ref={mdBodyRef}>
+                {previewLoading ? (
+                  <DocumentPreviewLoading phase="file" />
+                ) : previewText.trim() &&
+                  previewText !== t("knowledgeBases.previewEmpty") ? (
+                  <Markdown content={stripFrontmatter(previewText)} />
+                ) : (
+                  <span className={styles.mdPreviewEmpty}>
+                    {t("knowledgeBases.previewEmpty")}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
+        ) : previewLoading ? (
+          <DocumentPreviewLoading phase="file" />
         ) : (
-          <Spin spinning={previewLoading}>
-            <pre className={styles.previewBody}>{previewText}</pre>
-          </Spin>
+          <pre className={styles.previewBody}>{previewText}</pre>
         )}
       </Modal>
 

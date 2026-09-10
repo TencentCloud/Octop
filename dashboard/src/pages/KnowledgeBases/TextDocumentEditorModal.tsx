@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Button, Drawer, Form, Input, Segmented, Select, Spin } from "antd";
+import { Button, Drawer, Form, Input, Segmented, Select } from "antd";
 import { Eye, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import DocumentPreviewLoading from "../../components/DocumentPreviewLoading";
 import Markdown from "../../components/Markdown";
 import styles from "./index.module.less";
 
@@ -43,7 +44,7 @@ export function isEditableKnowledgeDocument(doc: {
 }
 
 /**
- * Show ``下载原文`` when the on-disk file is still available (upload or
+ * Show download when the on-disk file is still available (upload or
  * in-app note). Missing originals (deleted from disk) stay hidden.
  */
 export function canDownloadKnowledgeOriginal(doc: {
@@ -256,7 +257,7 @@ export default function TextDocumentEditorModal({
     >
       {loading ? (
         <div className={styles.textEditorLoading}>
-          <Spin />
+          <DocumentPreviewLoading phase="file" />
         </div>
       ) : (
         <Form

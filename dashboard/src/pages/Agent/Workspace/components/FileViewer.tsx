@@ -17,11 +17,11 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { Spin } from "antd";
 import FilePreview, { getPreviewKind } from "./FilePreview";
 import MediaPreview from "./MediaPreview";
 import CodeEditor from "./CodeEditor";
 import DocumentPreview from "./DocumentPreview";
+import DocumentPreviewLoading from "../../../../components/DocumentPreviewLoading";
 import { getMediaKind } from "../utils/mediaKind";
 import {
   getDocKind,
@@ -94,11 +94,7 @@ export default function FileViewer({
   }
 
   if (fileLoading) {
-    return (
-      <div className={styles.viewerLoading}>
-        <Spin />
-      </div>
-    );
+    return <DocumentPreviewLoading phase="file" />;
   }
 
   if (!showEditButton) {
