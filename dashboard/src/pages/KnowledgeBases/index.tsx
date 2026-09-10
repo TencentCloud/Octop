@@ -62,7 +62,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { userCan } from "../../utils/permissions";
@@ -109,12 +109,15 @@ import {
   knowledgeBreadcrumb,
   shouldOpenKnowledgeFolder,
 } from "./knowledgeFolder";
-import TextDocumentEditorModal, {
+import { resolveKnowledgeDeepLink } from "./knowledgeDeepLink";
+import {
   canDownloadKnowledgeOriginal,
   canPreviewKnowledgeDocument,
   canRichPreviewKnowledgeDocument,
   isEditableKnowledgeDocument,
   isKnowledgeMarkdownDocument,
+} from "../../utils/knowledgeDocPreview";
+import TextDocumentEditorModal, {
   type TextDocumentFormat,
 } from "./TextDocumentEditorModal";
 import styles from "./index.module.less";
@@ -277,6 +280,8 @@ export default function KnowledgeBasesPage() {
   const { t } = useTranslation();
   const { modal, message } = App.useApp();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkConsumedRef = useRef<string | null>(null);
   const isMobile = useIsMobile();
   const timeZone = useServerTimezone();
   const user = useCurrentUser();
@@ -1576,6 +1581,70 @@ export default function KnowledgeBasesPage() {
     },
     [selected, previewDocId],
   );
+
+  useEffect(() => {
+    const kb = searchParams.get("kb");
+    const doc = searchParams.get("doc");
+    if (!kb || !doc) return;
+    const key = `${kb}:${doc}`;
+    if (deepLinkConsumedRef.current === key) return;
+    if (bases.length === 0) return;
+
+    const clearDeepLinkParams = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete("kb");
+      next.delete("doc");
+      setSearchParams(next, { replace: true });
+    };
+
+    const base = bases.find((row) => row.id === kb);
+    if (!base) {
+      deepLinkConsumedRef.current = key;
+      message.error(t("chat.citationDeepLinkFailed"));
+      clearDeepLinkParams();
+      return;
+    }
+
+    if (selected?.id !== kb) {
+      selectBase(base);
+      return;
+    }
+
+    if (detailLoading) return;
+
+    const resolved = resolveKnowledgeDeepLink({
+      kb,
+      doc,
+      bases,
+      documents,
+    });
+    if (!resolved) {
+      deepLinkConsumedRef.current = key;
+      message.error(t("chat.citationDeepLinkFailed"));
+      clearDeepLinkParams();
+      return;
+    }
+
+    deepLinkConsumedRef.current = key;
+    setCurrentFolder(resolved.folder);
+    const full = documents.find((row) => row.id === resolved.document.id);
+    if (full) {
+      void openDocumentPreview(full);
+    }
+    clearDeepLinkParams();
+    // selectBase / openDocumentPreview are stable-enough for this one-shot deep link;
+    // including them would re-fire while loadDetail is in flight.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deep-link one-shot
+  }, [
+    bases,
+    detailLoading,
+    documents,
+    message,
+    searchParams,
+    selected?.id,
+    setSearchParams,
+    t,
+  ]);
 
   const openCreateTextDocument = () => {
     setTextEditorMode("create");
