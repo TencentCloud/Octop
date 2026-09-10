@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from harness_agent import HarnessAgent, HarnessAgentConfig, HarnessAgentManager
+from harness_agent.registry import AgentEntry
 from harness_agent.security.models import SecurityPolicy
 
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
@@ -421,8 +422,16 @@ class AgentManager:
             providers=providers,
             langfuse=self._langfuse.harness_config(),
             team_processor=self._team_processor,
+            log_dir=str(self.paths.logs_dir),
         )
         if self._harness_manager is not None:
+            self._harness_manager.team.bind_peer_enrich(self._refresh_peer_entry)
+            proc = self._team_processor
+            if proc is not None:
+                prepare = getattr(proc, "prepare_peer_session", None)
+                after = getattr(proc, "record_peer_turn", None)
+                if prepare is not None or after is not None:
+                    self._harness_manager.team.bind_peer_session(prepare=prepare, after=after)
             self._harness_manager.set_security_policy(self._security.harness_policy())
 
         rows = self._repos.agent_repo.list_all(include_disabled=False)
@@ -2397,10 +2406,66 @@ class AgentManager:
             "icon": row.icon,
             "template_name": row.template_name,
         }
+        self._apply_peer_profile_metadata(metadata, row.agent_id, row.description)
         tags: list[str] = []
         if row.template_name:
             tags.append(row.template_name)
         return cfg, metadata, tags, user_display
+
+    def _refresh_peer_entry(self, entry: AgentEntry) -> None:
+        """Re-read description / guidance cards into a running registry entry."""
+        row = self._repos.agent_repo.get(entry.agent_id)
+        row_desc = row.description if row is not None else None
+        self._apply_peer_profile_metadata(entry.metadata, entry.agent_id, row_desc)
+
+    def _apply_peer_profile_metadata(
+        self,
+        metadata: dict[str, Any],
+        agent_id: str,
+        row_description: str | None,
+    ) -> None:
+        extra = self._peer_manifest_metadata(agent_id, row_description)
+        if row_description and str(row_description).strip():
+            metadata["description"] = row_description
+        elif extra.get("description"):
+            metadata["description"] = extra["description"]
+        if "quick_prompts" not in extra:
+            return
+        prompts = extra["quick_prompts"]
+        if isinstance(prompts, list) and prompts:
+            metadata["quick_prompts"] = prompts
+        else:
+            metadata.pop("quick_prompts", None)
+
+    def _peer_manifest_metadata(
+        self,
+        agent_id: str,
+        row_description: str | None,
+    ) -> dict[str, Any]:
+        """Guidance cards (and fallback description) from workspace ``manifest.json``."""
+        extra: dict[str, Any] = {}
+        try:
+            host = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
+        except Exception:
+            return extra
+        for rel in (Path(".octop") / "manifest.json", Path("manifest.json")):
+            path = host / rel
+            if not path.is_file():
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                break
+            if not isinstance(data, dict):
+                break
+            prompts = data.get("quick_prompts")
+            extra["quick_prompts"] = prompts if isinstance(prompts, list) else []
+            if not (row_description or "").strip():
+                desc = data.get("description")
+                if isinstance(desc, (str, dict)) and desc:
+                    extra["description"] = desc
+            break
+        return extra
 
     def _connector_uid_for(
         self,
@@ -2583,8 +2648,7 @@ class AgentManager:
         merged_tools.extend(knowledge_tools)
         merged_tools.extend(mobile_tools)
         merged_tools.extend(plugin_tools)
-        if self._harness_manager is not None:
-            merged_tools.extend(self._harness_manager.team.team_tools())
+        # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.
 
         acp_section = cfg.get("acp")
         acp_raw: dict[str, Any] = acp_section if isinstance(acp_section, dict) else {}

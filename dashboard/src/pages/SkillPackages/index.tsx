@@ -1064,7 +1064,7 @@ export default function SkillPackagesPage() {
         open={hubOpen}
         onClose={() => setHubOpen(false)}
         width={860}
-        destroyOnClose
+        destroyOnHidden
       >
         {selected ? (
           <SkillHubTab

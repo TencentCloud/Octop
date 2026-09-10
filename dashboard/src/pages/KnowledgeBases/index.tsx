@@ -2871,7 +2871,7 @@ export default function KnowledgeBasesPage() {
         onOk={() => void createFolder()}
         okText={t("common.create")}
         cancelText={t("common.cancel")}
-        destroyOnClose
+        destroyOnHidden
       >
         <Input
           value={folderName}
@@ -2888,7 +2888,7 @@ export default function KnowledgeBasesPage() {
         onOk={() => void renameFolder()}
         okText={t("common.save")}
         cancelText={t("common.cancel")}
-        destroyOnClose
+        destroyOnHidden
       >
         <Input
           value={renameName}

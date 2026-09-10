@@ -1,37 +1,27 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Plug, Sparkles } from "lucide-react";
-import type { SkillSpec } from "../../Agent/Skills/useSkills";
+import { Plug } from "lucide-react";
 import type { ChatConnectorOption } from "./ConnectorPickerPopover";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
+import type { AgentSubagentSummary } from "../../../api/modules/subagents";
 import ExpertAgentAvatar from "./ExpertAgentAvatar";
 import styles from "../index.module.less";
 
 export type MentionAgentOption = ChatAgentOption;
 
 export type MentionPick =
-  | { kind: "skill"; slug: string; label: string }
   | { kind: "connector"; name: string; label: string }
-  | { kind: "agent"; agent_id: string; label: string };
+  | { kind: "agent"; agent_id: string; label: string }
+  | { kind: "subagent"; slug: string; label: string };
 
 export function buildMentionItems(
   query: string,
-  skills: SkillSpec[],
   connectors: ChatConnectorOption[],
   agents: MentionAgentOption[] = [],
+  subagents: AgentSubagentSummary[] = [],
 ): MentionPick[] {
   const q = query.trim().toLowerCase();
   const out: MentionPick[] = [];
-  for (const s of skills.filter((x) => x.enabled)) {
-    const label = s.name || s.slug;
-    if (
-      q &&
-      !label.toLowerCase().includes(q) &&
-      !s.slug.toLowerCase().includes(q)
-    )
-      continue;
-    out.push({ kind: "skill", slug: s.slug, label });
-  }
   for (const c of connectors) {
     if (
       q &&
@@ -51,14 +41,25 @@ export function buildMentionItems(
       continue;
     out.push({ kind: "agent", agent_id: a.agent_id, label: a.name });
   }
+  for (const s of subagents) {
+    const label = s.name || s.slug;
+    if (
+      q &&
+      !label.toLowerCase().includes(q) &&
+      !s.slug.toLowerCase().includes(q)
+    ) {
+      continue;
+    }
+    out.push({ kind: "subagent", slug: s.slug, label });
+  }
   return out;
 }
 
 interface MentionPickerMenuProps {
   query: string;
-  skills: SkillSpec[];
   connectors: ChatConnectorOption[];
   agents?: MentionAgentOption[];
+  subagents?: AgentSubagentSummary[];
   activeIndex: number;
   onSelect: (pick: MentionPick) => void;
   onHover: (index: number) => void;
@@ -66,9 +67,9 @@ interface MentionPickerMenuProps {
 
 export default function MentionPickerMenu({
   query,
-  skills,
   connectors,
   agents = [],
+  subagents = [],
   activeIndex,
   onSelect,
   onHover,
@@ -76,17 +77,19 @@ export default function MentionPickerMenu({
   const { t, i18n } = useTranslation();
 
   const items = useMemo(
-    () => buildMentionItems(query, skills, connectors, agents),
-    [query, skills, connectors, agents],
+    () => buildMentionItems(query, connectors, agents, subagents),
+    [query, connectors, agents, subagents],
   );
 
-  const skillSection = i18n.language.startsWith("zh") ? "技能" : "Skills";
   const connSection = i18n.language.startsWith("zh") ? "连接器" : "Connectors";
-  const agentSection = i18n.language.startsWith("zh") ? "Agent" : "Agents";
+  const agentSection = i18n.language.startsWith("zh") ? "专家" : "Experts";
+  const subagentSection = i18n.language.startsWith("zh")
+    ? "子智能体"
+    : "Subagents";
 
   const sectionFor = (item: MentionPick) => {
-    if (item.kind === "skill") return skillSection;
     if (item.kind === "connector") return connSection;
+    if (item.kind === "subagent") return subagentSection;
     return agentSection;
   };
 
@@ -113,10 +116,11 @@ export default function MentionPickerMenu({
         const idx = flatIndex;
         const active = idx === activeIndex;
         let icon;
-        if (item.kind === "skill") {
-          icon = <Sparkles size={14} />;
-        } else if (item.kind === "connector") {
+        if (item.kind === "connector") {
           icon = <Plug size={14} />;
+        } else if (item.kind === "subagent") {
+          const sub = subagents.find((s) => s.slug === item.slug);
+          icon = <span aria-hidden>{sub?.emoji || "🤖"}</span>;
         } else {
           const agent = agents.find((a) => a.agent_id === item.agent_id);
           icon = (
@@ -132,7 +136,7 @@ export default function MentionPickerMenu({
         return (
           <div
             key={`${item.kind}-${
-              item.kind === "skill"
+              item.kind === "subagent"
                 ? item.slug
                 : item.kind === "connector"
                 ? item.name

@@ -51,7 +51,7 @@ export default function PaletteSwitcher() {
           role="button"
         >
           <ColorPicker
-            value={isCustom ? customColor : undefined}
+            value={customColor}
             onChangeComplete={(color: AggregationColor) => {
               setCustomColor(color.toHexString());
             }}

@@ -129,6 +129,15 @@ Commands:
 `status` probes the HTTP health endpoint and prints journal/log hints
 on failure.
 
+On Linux, `start` and `restart` install a systemd drop-in
+(`octop.service.d/10-nofile.conf`) with `LimitNOFILE=65535` (user
+units are capped to the process hard rlimit so systemd cannot fail to
+spawn). The main unit file is not rewritten unless it is missing or
+you pass `--force-install`. `restart` always runs `systemctl restart`
+even if writing the drop-in fails, so an upgrade that only restarts
+still comes back. To undo: delete the drop-in, then
+`systemctl daemon-reload && systemctl restart octop`.
+
 ## `octop user`
 
 Local-DB user management. `login` requires a running server; the

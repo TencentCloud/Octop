@@ -22,8 +22,7 @@ interface UseChatSendParams {
   selectedModel: string | null;
   selectedConnectors: string[];
   selectedKnowledgeBaseIds: string[];
-  selectedSkills: string[];
-  selectedTargetAgents: string[];
+  selectedTargetAgents?: string[];
   reasoningMode: "auto" | "enabled" | "disabled";
   reasoningEffort: string | null;
   defaultModel?: string | null;
@@ -36,7 +35,6 @@ interface UseChatSendParams {
     modelRef?: string | null,
     mcpServers?: string[] | null,
     knowledgeBaseIds?: string[] | null,
-    skills?: string[] | null,
     targetAgentIds?: string[] | null,
     composerContext?: UserComposerContext,
     reasoningMode?: "auto" | "enabled" | "disabled",
@@ -58,7 +56,6 @@ export type ChatSendOverrides = {
   selectedModel?: string | null;
   selectedConnectors?: string[];
   selectedKnowledgeBaseIds?: string[];
-  selectedSkills?: string[];
   selectedTargetAgents?: string[];
   composerContext?: UserComposerContext;
   modelRef?: string | null;
@@ -76,8 +73,7 @@ export function useChatSend({
   selectedModel,
   selectedConnectors,
   selectedKnowledgeBaseIds,
-  selectedSkills,
-  selectedTargetAgents,
+  selectedTargetAgents = [],
   reasoningMode,
   reasoningEffort,
   defaultModel,
@@ -112,7 +108,6 @@ export function useChatSend({
         }
       };
 
-      const skills = overrides?.selectedSkills ?? selectedSkills;
       const connectors = overrides?.selectedConnectors ?? selectedConnectors;
       const knowledgeBaseIds =
         overrides?.selectedKnowledgeBaseIds ?? selectedKnowledgeBaseIds;
@@ -126,7 +121,6 @@ export function useChatSend({
       const composerContext =
         overrides?.composerContext ??
         buildComposerContext({
-          skills,
           connectors,
           knowledgeBaseIds,
           targetAgents,
@@ -153,7 +147,6 @@ export function useChatSend({
           modelOverride,
           connectors,
           knowledgeBaseIds,
-          skills,
           targetAgents,
           composerContext,
           composerContext?.reasoningMode ?? reasoningMode,
@@ -199,7 +192,10 @@ export function useChatSend({
         const currentSnap = chatStore.getSnapshot(PENDING_THREAD_ID);
         const hadMessages = currentSnap.messages.length > 1;
         chatStore.renameSessionKey(PENDING_THREAD_ID, tid);
-        maybeRenameNewThread(tid, hadMessages);
+        // ``sessions`` in this closure predates the thread just created, so the
+        // name lookup in maybeRenameNewThread always misses here. A freshly
+        // created thread has no title yet — rename it straight away.
+        if (!hadMessages) renameSession(tid, deriveThreadTitle(trimmed));
         chatStore.sendTurn(
           tid,
           trimmed,
@@ -211,7 +207,6 @@ export function useChatSend({
           tid,
           connectors,
           knowledgeBaseIds,
-          skills,
           targetAgents,
           composerContext?.reasoningMode ?? reasoningMode,
           composerContext?.reasoningEffort ?? reasoningEffort,
@@ -232,7 +227,6 @@ export function useChatSend({
       selectedModel,
       selectedConnectors,
       selectedKnowledgeBaseIds,
-      selectedSkills,
       selectedTargetAgents,
       reasoningMode,
       reasoningEffort,

@@ -232,7 +232,7 @@ export default function TextDocumentEditorModal({
         </div>
       }
       onClose={onCancel}
-      destroyOnClose
+      destroyOnHidden
       width={drawerWidth}
       className={styles.textEditorDrawer}
       styles={{

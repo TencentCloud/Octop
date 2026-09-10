@@ -68,6 +68,11 @@ function useNavGroupCollapse(navSections: NavSection[], selectedKey: string) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
     loadCollapsedGroups(),
   );
+  const activeGroupKey = navSections.find(
+    (section) =>
+      section.groupKey &&
+      section.items.some((item) => item.key === selectedKey),
+  )?.groupKey;
 
   const toggleGroup = useCallback((groupKey: string) => {
     setCollapsedGroups((prev) => {
@@ -85,20 +90,15 @@ function useNavGroupCollapse(navSections: NavSection[], selectedKey: string) {
   );
 
   useEffect(() => {
-    const activeSection = navSections.find(
-      (section) =>
-        section.groupKey &&
-        section.items.some((item) => item.key === selectedKey),
-    );
-    if (!activeSection?.groupKey) return;
+    if (!activeGroupKey) return;
     setCollapsedGroups((prev) => {
-      if (!prev.has(activeSection.groupKey!)) return prev;
+      if (!prev.has(activeGroupKey)) return prev;
       const next = new Set(prev);
-      next.delete(activeSection.groupKey!);
+      next.delete(activeGroupKey);
       saveCollapsedGroups(next);
       return next;
     });
-  }, [selectedKey, navSections]);
+  }, [activeGroupKey, selectedKey]);
 
   return { toggleGroup, isGroupCollapsed };
 }

@@ -202,7 +202,7 @@ export default function ModelsPage() {
                 {
                   key: "chat",
                   label: (
-                    <Space size={6}>
+                    <Space className={styles.modelTabLabel} size={6}>
                       <MessageSquareText size={15} />
                       {t("models.chatModelsTab")}
                     </Space>
@@ -215,7 +215,7 @@ export default function ModelsPage() {
                 {
                   key: "generation",
                   label: (
-                    <Space size={6}>
+                    <Space className={styles.modelTabLabel} size={6}>
                       <Images size={15} />
                       {t("models.generationModelsTab")}
                     </Space>
@@ -228,7 +228,7 @@ export default function ModelsPage() {
                 {
                   key: "voice",
                   label: (
-                    <Space size={6}>
+                    <Space className={styles.modelTabLabel} size={6}>
                       <Mic2 size={15} />
                       {t("models.voiceModelsTab")}
                     </Space>
@@ -241,7 +241,7 @@ export default function ModelsPage() {
                 {
                   key: "search",
                   label: (
-                    <Space size={6}>
+                    <Space className={styles.modelTabLabel} size={6}>
                       <Search size={15} />
                       {t("models.searchModelsTab")}
                     </Space>

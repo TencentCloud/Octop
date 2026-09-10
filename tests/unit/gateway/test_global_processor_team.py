@@ -114,6 +114,34 @@ async def test_on_reply_increments_unread_on_dashboard(processor_env: dict) -> N
     assert session.unread_count == 1
 
 
+@pytest.mark.asyncio
+async def test_prepare_peer_session_creates_callee_thread_without_rebind(
+    processor_env: dict,
+) -> None:
+    from harness_agent.teams.util import PeerCall
+
+    processor = processor_env["processor"]
+    parent_sk = processor_env["parent_sk"]
+    prepared = await processor.prepare_peer_session(
+        PeerCall(
+            from_agent_id="parent",
+            to_agent_id="child",
+            user_id=1,
+            message="hello",
+            source_thread_id="thr_parent",
+            source_session_key=str(parent_sk),
+        )
+    )
+    assert prepared is not None
+    assert prepared.thread_id == "thr_parent~child"
+    assert prepared.session_key == "child:dashboard:1:dm"
+    registry = processor_env["gateway"].thread_registry
+    row = registry.get_thread("thr_parent~child")
+    assert row is not None
+    assert row.agent_id == "child"
+    assert registry.get_bound_thread_id(str(parent_sk)) == "thr_parent"
+
+
 def test_resolve_harness_model_auto_expert_omits_model() -> None:
     processor = GlobalProcessor(
         agent_manager=MagicMock(),

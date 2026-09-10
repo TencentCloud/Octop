@@ -20,6 +20,9 @@
 
 ### 修复
 
+- OpenCode Go：发往 `opencode.ai/zen/go` 的聊天请求通过 harness `session_header` 携带当前对话 `thread_id` 作为 `x-opencode-session`，修复模型调用报 `400 MissingSessionID`。连接测试与模型列表使用一次性 UUID。用户手动配置的同名请求头优先。需要 `orcakit-harness-agent>=1.0.7`。
+- harness 进程日志目录改为传给 `HarnessAgentManager(log_dir=…)`（`HarnessAgentConfig.log_dir` 在 1.0.7 已是丢弃的 InitVar），避免诊断日志落到 `~/.harness-agent/logs`。
+- `octop service start` / `restart` 通过 systemd drop-in 设置 `LimitNOFILE`（系统服务 65535；用户服务不超过当前 hard rlimit），不改写已有 unit。`restart` 在 drop-in 失败时仍会 `systemctl restart`，保证升级后能起来。
 - 记忆树详情接入 `user_edit` lineage，人工修正后显示“人工修正的记忆”、修正前内容和原始来源上下文。
 - 共享专家的技能列表现在会在聊天输入框中加载，非所有者可查看并选择专家已配置的技能
 - 知识库文本文档编辑抽屉在「编辑」模式下点「保存」无响应（`name`/`format` 字段未挂载时 `validateFields` 缺值导致抛错被吞掉；#592）
@@ -31,6 +34,9 @@
 
 ### 变更
 
+- 聊天输入框点 skill 改为插入行首 ``/slug``（与斜杠菜单同一套），不再通过 ``skills`` 白名单过滤本轮技能。``@`` 菜单不再列出 skill。
+- 启动专家时把 workspace ``manifest.json`` 的指引卡片写入 harness metadata；之后每次 ``list_peers`` / ``agent_list`` / ``@`` 注入会再读一遍，编辑页面改卡片后无需重启。
+- ``ask_agent`` 在对方专家留下正常对话：用调用方 ``session_key`` 换 agent 前缀、用调用方 ``thread_id~对方id`` 作为稳定 thread，写入 ``threads`` / 历史投影，不走 gateway 进线、不抢对方当前绑定会话。
 - 新格式历史改为事件内容提交成功后才转发，移除 200ms 写入限频；只更新变化的消息并复用长文本块，写入失败停止转发该内容。
 - 聊天运行轨迹采用宽抽屉时间线，并从 harness 实况汇聚回合上下文。
 - 依赖 `harness-gateway>=0.9.6`（飞书话题回复落在原话题，并以 `thread_id` 作为会话标识）

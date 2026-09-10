@@ -393,11 +393,10 @@ export default function RootDirSelect({
   return (
     <TreeSelect
       className={styles.rootDirSelect}
-      popupClassName={styles.rootDirDropdown}
       classNames={{ popup: { root: styles.rootDirDropdown } }}
       disabled={disabled}
       open={disabled ? false : open}
-      onDropdownVisibleChange={(next) => {
+      onOpenChange={(next) => {
         if (disabled) return;
         if (!next && editingPathRef.current) return;
         setOpen(next);
@@ -422,7 +421,7 @@ export default function RootDirSelect({
       notFoundContent={<Spin size="small" />}
       style={{ width: "100%" }}
       popupMatchSelectWidth
-      dropdownStyle={{ maxHeight: 360 }}
+      styles={{ popup: { root: { maxHeight: 360 } } }}
       filterTreeNode={(input, node) => {
         const q = input.trim().toLowerCase();
         const path = String(node.value ?? "").toLowerCase();
