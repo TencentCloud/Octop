@@ -108,3 +108,45 @@ async def test_package_only_skill_rejects_workspace_writes(env_with_agent: Any) 
         response = await request
         assert response.status_code == 403, response.text
         assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
+async def test_package_only_skill_rejects_push_until_copied(env_with_agent: Any) -> None:
+    client, _server, auth, agent_id = env_with_agent
+    package_id = await _create_package_with_skill(client, auth)
+    target = await client.post(
+        "/api/skill-packages",
+        headers=auth,
+        json={"name": "Push target"},
+    )
+    assert target.status_code == 200, target.text
+    target_id = target.json()["id"]
+
+    mounted = await client.put(
+        f"/api/agents/{agent_id}/skill-packages",
+        headers=auth,
+        json={"package_ids": [package_id]},
+    )
+    assert mounted.status_code == 200, mounted.text
+
+    forbidden = await client.post(
+        f"/api/agents/{agent_id}/skills/pdf-reader/push-to-package",
+        headers=auth,
+        json={"package_id": target_id},
+    )
+    assert forbidden.status_code == 403, forbidden.text
+    assert forbidden.json()["error"]["code"] == "FORBIDDEN"
+
+    copied = await client.post(
+        f"/api/agents/{agent_id}/skill-packages/{package_id}/copy",
+        headers=auth,
+        json={"skill_slugs": ["pdf-reader"]},
+    )
+    assert copied.status_code == 200, copied.text
+
+    pushed = await client.post(
+        f"/api/agents/{agent_id}/skills/pdf-reader/push-to-package",
+        headers=auth,
+        json={"package_id": target_id},
+    )
+    assert pushed.status_code == 200, pushed.text
+    assert pushed.json() == {"package_id": target_id, "slug": "pdf-reader"}

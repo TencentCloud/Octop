@@ -75,6 +75,7 @@ import {
   type PathMapping,
 } from "./agentBackendForm";
 import AgentBackendFields from "./AgentBackendFields";
+import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
 import styles from "../index.module.less";
 
@@ -91,6 +92,8 @@ interface AgentDetail {
   top_p?: number | null;
   max_tokens?: number | null;
   welcome_message?: string | null;
+  knowledge_base_ids?: string[];
+  mcp_servers?: string[];
   config?: Record<string, unknown>;
 }
 
@@ -135,6 +138,8 @@ interface EditFormValues {
   top_p?: number;
   max_tokens?: number;
   enable_trajectory?: boolean;
+  knowledge_base_ids?: string[];
+  mcp_servers?: string[];
 }
 
 interface EditAgentDrawerProps {
@@ -303,6 +308,10 @@ function EditAgentDrawerBody({
           root_dir: parsedBackend.rootDir,
           ...readAgentRuntimeFormValues(ag),
           enable_trajectory: cfg.enable_trajectory !== false,
+          knowledge_base_ids: Array.isArray(ag.knowledge_base_ids)
+            ? ag.knowledge_base_ids
+            : [],
+          mcp_servers: Array.isArray(ag.mcp_servers) ? ag.mcp_servers : [],
         });
         setLoading(false);
 
@@ -407,6 +416,8 @@ function EditAgentDrawerBody({
       delete nextConfig.skill_package_ids;
       delete nextConfig.published_expert_id;
       delete nextConfig.welcome_message;
+      delete nextConfig.knowledge_base_ids;
+      delete nextConfig.mcp_servers;
 
       // Persist page config before PATCH. Workspace I/O survives the
       // background harness reload; skip when the editor is still loading
@@ -444,6 +455,8 @@ function EditAgentDrawerBody({
           color: nextColor,
           config: nextConfig,
           welcome_message: stored.welcome_message ?? "",
+          knowledge_base_ids: stored.knowledge_base_ids ?? [],
+          mcp_servers: stored.mcp_servers ?? [],
           ...buildAgentRuntimeRequest(values, { clearMissing: true }),
         }),
       });
@@ -799,6 +812,7 @@ function EditAgentDrawerBody({
                 onUpdatePathMapping={updatePathMapping}
               />
               <AgentTrajectoryField />
+              <ExpertComposerDefaultsFields />
               {!skillPackagesSupported ? (
                 <Alert
                   type="info"

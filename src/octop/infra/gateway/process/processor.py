@@ -59,8 +59,7 @@ from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_u
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.parser import parse_slash
 from octop.infra.gateway.slash.runner import try_handle_slash
-from octop.infra.knowledge.default_open import merge_knowledge_base_ids
-from octop.infra.knowledge.hint import catalog_for_selected_bases
+from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.trajectory.settings import agent_trajectory_enabled
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
@@ -850,6 +849,7 @@ class GlobalProcessor:
             is_admin=False,
             explicit_ids=None,
             locale=locale,
+            agent_id=agent_id,
         )
         if mcp_servers:
             request["mcp_servers"] = mcp_servers
@@ -1252,6 +1252,7 @@ class GlobalProcessor:
             if isinstance(meta.get("knowledge_base_ids"), list)
             else None,
             locale=locale,
+            agent_id=agent_id,
         )
 
         if mcp_servers:
@@ -1268,6 +1269,7 @@ class GlobalProcessor:
         is_admin: bool,
         explicit_ids: list[str] | None,
         locale: str,
+        agent_id: str | None = None,
     ) -> None:
         """Expose selected knowledge-base ids for the search_knowledge tool."""
         if self._knowledge_services is None:
@@ -1277,13 +1279,16 @@ class GlobalProcessor:
             if is_admin
             else self._knowledge_services.knowledge_repo.list_visible(user_id)
         )
-        selected_ids = merge_knowledge_base_ids(bases, explicit_ids, owner_user_id=user_id)
-        configurable = dict(request.get("configurable") or {})
-        configurable["knowledge_base_ids"] = selected_ids
-        configurable["knowledge_base_catalog"] = catalog_for_selected_bases(bases, selected_ids)
-        configurable["user_is_admin"] = is_admin
-        configurable["locale"] = locale
-        request["configurable"] = configurable
+        extra_ids = self._agent_manager.default_knowledge_base_ids(agent_id) if agent_id else None
+        stamp_turn_knowledge_config(
+            request,
+            visible_bases=bases,
+            explicit_ids=explicit_ids,
+            owner_user_id=user_id,
+            extra_ids=extra_ids,
+            is_admin=is_admin,
+            locale=locale,
+        )
 
     async def _resolve_turn_mcp_servers(
         self,
@@ -1303,7 +1308,10 @@ class GlobalProcessor:
         from octop.infra.errors import ErrorCode, OctopError  # noqa: PLC0415
 
         merged = self._agent_manager.merge_turn_mcp_servers(
-            user_id, explicit, apply_defaults=apply_defaults
+            user_id,
+            explicit,
+            apply_defaults=apply_defaults,
+            extra_defaults=self._agent_manager.default_mcp_servers(agent_id),
         )
         if not merged:
             return None

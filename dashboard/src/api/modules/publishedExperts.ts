@@ -32,6 +32,8 @@ export interface InstallPublishedExpertBody {
   default_model?: string;
   backend?: Record<string, unknown>;
   skill_package_ids?: string[];
+  knowledge_base_ids?: string[];
+  mcp_servers?: string[];
   color?: string;
   welcome_message?: string;
   max_iters?: number | null;

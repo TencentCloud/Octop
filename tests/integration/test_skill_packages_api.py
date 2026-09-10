@@ -134,6 +134,53 @@ async def test_other_user_cannot_mutate_skill_package(env_boundary: Any) -> None
     assert response.json()["error"]["code"] == "FORBIDDEN"
 
 
+async def test_other_user_cannot_mutate_package_skills(env_boundary: Any) -> None:
+    client, _server, _admin_auth, alice_auth, bob_auth, _ctx = env_boundary
+    package_id = (
+        await client.post(
+            "/api/skill-packages",
+            headers=alice_auth,
+            json={"name": "Alice's skill contents"},
+        )
+    ).json()["id"]
+    created = await client.post(
+        f"/api/skill-packages/{package_id}/skills",
+        headers=alice_auth,
+        json={"name": "pdf-reader", "content": SAMPLE_SKILL},
+    )
+    assert created.status_code == 200, created.text
+
+    alice_detail = await client.get(f"/api/skill-packages/{package_id}", headers=alice_auth)
+    bob_detail = await client.get(f"/api/skill-packages/{package_id}", headers=bob_auth)
+    assert alice_detail.status_code == 200, alice_detail.text
+    assert bob_detail.status_code == 200, bob_detail.text
+    assert alice_detail.json()["can_write"] is True
+    assert bob_detail.json()["can_write"] is False
+
+    create_skill = await client.post(
+        f"/api/skill-packages/{package_id}/skills",
+        headers=bob_auth,
+        json={"name": "bob-skill", "content": SAMPLE_SKILL},
+    )
+    update_skill = await client.put(
+        f"/api/skill-packages/{package_id}/skills/pdf-reader",
+        headers=bob_auth,
+        json={"content": "# hijack"},
+    )
+    delete_skill = await client.delete(
+        f"/api/skill-packages/{package_id}/skills/pdf-reader",
+        headers=bob_auth,
+    )
+    import_skill = await client.post(
+        f"/api/skill-packages/{package_id}/skills/import",
+        headers=bob_auth,
+        json={"bundle_url": "https://skills.sh/demo/url-skill"},
+    )
+    for response in (create_skill, update_skill, delete_skill, import_skill):
+        assert response.status_code == 403, response.text
+        assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
 async def test_writable_package_list_respects_creator_permissions(
     env_boundary: Any,
 ) -> None:

@@ -15,6 +15,7 @@ from octop.infra.gateway.process.history_projection import TurnHistoryTracker, m
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.threads import ThreadRegistry
+from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.utils.llm_text import strip_thinking
 from octop.infra.utils.locale import resolve_user_locale
 from octop.infra.utils.ulid import new_ulid
@@ -174,12 +175,14 @@ class CronDeliveryService:
         session: SessionRow,
     ) -> dict[str, Any]:
         servers = [name.strip() for name in command.mcp_servers if name.strip()]
+        extra_defaults = self._agent_manager.default_mcp_servers(command.agent_id)
         if servers:
             servers = (
                 self._agent_manager.merge_turn_mcp_servers(
                     session.user_id,
                     servers,
                     apply_defaults=False,
+                    extra_defaults=extra_defaults,
                 )
                 or []
             )
@@ -189,6 +192,7 @@ class CronDeliveryService:
                     session.user_id,
                     None,
                     apply_defaults=True,
+                    extra_defaults=extra_defaults,
                 )
                 or []
             )
@@ -223,7 +227,35 @@ class CronDeliveryService:
         )
         if servers:
             request["mcp_servers"] = servers
+        self._attach_turn_knowledge_config(request, command, session)
         return request
+
+    def _attach_turn_knowledge_config(
+        self,
+        request: dict[str, Any],
+        command: CronDeliveryCommand,
+        session: SessionRow,
+    ) -> None:
+        user_row = self._repos.user_repo.get(session.user_id)
+        is_admin = str(getattr(user_row, "role", "") or "") == "admin"
+        knowledge_repo = self._repos.knowledge_repo
+        bases = (
+            knowledge_repo.list_all() if is_admin else knowledge_repo.list_visible(session.user_id)
+        )
+        locale = resolve_user_locale(
+            user_repo=self._repos.user_repo,
+            user_id=session.user_id,
+            channel_type=session.channel_type,
+        )
+        stamp_turn_knowledge_config(
+            request,
+            visible_bases=bases,
+            explicit_ids=None,
+            owner_user_id=session.user_id,
+            extra_ids=self._agent_manager.default_knowledge_base_ids(command.agent_id),
+            is_admin=is_admin,
+            locale=locale,
+        )
 
     def _project_best_effort(
         self,

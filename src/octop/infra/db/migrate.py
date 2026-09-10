@@ -124,6 +124,8 @@ _AGENT_PROFILE_COLUMNS = (
     "skill_package_ids",
     "published_expert_id",
     "welcome_message",
+    "knowledge_base_ids",
+    "mcp_servers",
 )
 
 
@@ -215,12 +217,21 @@ def _backfill_agent_profile_from_config(db: DatabasePool) -> None:
         strip_profile_config,
     )
 
+    profile_columns = (
+        "color",
+        "icon_name",
+        "icon_url",
+        "skill_package_ids",
+        "published_expert_id",
+        "welcome_message",
+        "knowledge_base_ids",
+        "mcp_servers",
+    )
+    present = [column for column in profile_columns if column in cols]
+    select_cols = ["agent_id", "template_name", *present, "config_json"]
+
     with db.transaction() as conn:
-        rows = conn.execute(
-            "SELECT agent_id, template_name, color, icon_name, icon_url, "
-            "skill_package_ids, published_expert_id, welcome_message, "
-            "config_json FROM agents"
-        ).fetchall()
+        rows = conn.execute(f"SELECT {', '.join(select_cols)} FROM agents").fetchall()
         for row in rows:
             cfg = parse_config_json(row["config_json"])
             if not cfg:
@@ -228,14 +239,7 @@ def _backfill_agent_profile_from_config(db: DatabasePool) -> None:
             profile = extract_profile_from_config(cfg)
             needs_strip = any(key in cfg for key in PROFILE_CONFIG_KEYS)
             updates: dict[str, object] = {}
-            for column in (
-                "color",
-                "icon_name",
-                "icon_url",
-                "skill_package_ids",
-                "published_expert_id",
-                "welcome_message",
-            ):
+            for column in present:
                 if column not in profile:
                     continue
                 current = row[column]
@@ -1584,6 +1588,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
     if version == 14:
+        _ensure_agent_profile_columns(db)
         _ensure_user_policy_schema(db)
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
@@ -1626,3 +1631,4 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_trajectory_events_schema(db)
     _ensure_connectors_v13_schema(db)
     _ensure_user_policy_schema(db)
+    _ensure_agent_profile_columns(db)
