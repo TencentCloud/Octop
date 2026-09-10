@@ -30,9 +30,9 @@ function PushToastIcon({
   return (
     <span className={styles.icon}>
       {iconUrl || iconName ? (
-        <ExpertIcon iconUrl={iconUrl} iconName={iconName} size={18} />
+        <ExpertIcon iconUrl={iconUrl} iconName={iconName} size={16} />
       ) : (
-        <Bell size={18} />
+        <Bell size={16} />
       )}
     </span>
   );
@@ -137,8 +137,9 @@ export function useDashboardPushToast(): void {
         const title = parsed.agent_name
           ? tRef.current("chat.pushToast.title", { name: parsed.agent_name })
           : tRef.current("chat.pushToast.titleFallback");
+        const noticeKey = `dash-push-${parsed.thread_id}-${Date.now()}`;
         notificationRef.current.open({
-          key: `dash-push-${parsed.thread_id}-${Date.now()}`,
+          key: noticeKey,
           placement: "bottomRight",
           className: styles.notice,
           style: {
@@ -159,6 +160,7 @@ export function useDashboardPushToast(): void {
           duration: null,
           closable: true,
           onClick: () => {
+            notificationRef.current.destroy(noticeKey);
             navigateRef.current(`/chat/${parsed.agent_id}/${parsed.thread_id}`);
           },
         });
