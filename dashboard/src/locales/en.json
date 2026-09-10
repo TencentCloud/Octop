@@ -1761,7 +1761,7 @@
     "pushSkillFailed": "Failed to push skill",
     "packageConflictHint": "The workspace skill “{{slug}}” shadows this package skill.",
     "mountBackendHint": "Skill packages need local storage with root /.",
-    "skillPackagesUnsupportedHint": "Skill packages unavailable: when the storage root is not /, the sandbox cannot reach skill-package directories, so packages cannot be used.",
+    "skillPackagesUnsupportedHint": "Skill packages cannot be used directly: when the storage root is not /, the sandbox cannot reach skill-package directories, but you can use Copy skills to copy them to the agent workspace.",
     "installedSkillsDesc": "Manage installed built-in and customized skills.",
     "tencentSkillHubDesc": "Browse and install community skills from Tencent SkillHub.",
     "install": "Install",
