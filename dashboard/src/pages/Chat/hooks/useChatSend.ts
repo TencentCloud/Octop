@@ -199,7 +199,10 @@ export function useChatSend({
         const currentSnap = chatStore.getSnapshot(PENDING_THREAD_ID);
         const hadMessages = currentSnap.messages.length > 1;
         chatStore.renameSessionKey(PENDING_THREAD_ID, tid);
-        maybeRenameNewThread(tid, hadMessages);
+        // ``sessions`` in this closure predates the thread just created, so the
+        // name lookup in maybeRenameNewThread always misses here. A freshly
+        // created thread has no title yet — rename it straight away.
+        if (!hadMessages) renameSession(tid, deriveThreadTitle(trimmed));
         chatStore.sendTurn(
           tid,
           trimmed,
