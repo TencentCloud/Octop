@@ -510,6 +510,8 @@ def _user_nofile_cap() -> int | None:
     ``SERVICE_NOFILE_LIMIT``.  User units cannot exceed this process's hard
     rlimit; requesting more makes ``systemctl restart`` fail to start.
     """
+    if sys.platform == "win32":
+        return None
     try:
         import resource
 
