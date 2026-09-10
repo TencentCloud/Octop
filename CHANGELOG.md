@@ -32,6 +32,8 @@
 - SQLite 历史回填为 checkpoint 内容引用创建绑定只读连接的独立解码器和缓存，并在同一读事务内读取，避免访问运行中的 saver 连接；兼容原有 inline 格式。新格式需要配套安装提供 `CheckpointSerializer.with_connection` 的 harness-memory。PostgreSQL 保持原生 graph 历史读取路径。
 - 共享连接器卡片标题被「来自 X」标签挤压截断看不清：标签移至标题下方独立一行；连接器实例与内置目录卡片的长标题截断后悬停均可显示完整标题（#626）
 - 暗色模式下 Tooltip 背景近乎透明、文字与页面内容叠印无法阅读（#626）
+- 下载 Agent 工作区 zip（`GET /agents/{id}/workspace/archive`）时，backend `root_dir` 下的同名文件（如用户主目录的 `AGENTS.md`）会顶替 workspace 自身的同名文件：条目名与包结构都正确、只有内容错误，zip 校验和无法察觉。现在按 workspace 目录读取，并把越出 workspace 的条目跳过不入包（含仍保留 legacy 根 `skills/` 的工作区）。
+- 工作区 zip 的 `replace` 导入会删除隐藏的系统状态（`.octop` 下的会话 / 技能 / 认证），而导出不包含隐藏项、导入无法恢复，造成静默数据丢失；现在清空本地工作区时保留隐藏项。
 
 ### 变更
 
