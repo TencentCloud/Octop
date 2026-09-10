@@ -36,28 +36,87 @@ export function getCanvasCoords(
   };
 }
 
-/** Paint a JPEG base64 frame onto a canvas (WebSocket stream). */
+/** Per-canvas coalescing state (WeakMap so a disposed viewer leaks nothing). */
+type FramePaintState = {
+  decoding: boolean;
+  pending: string | null;
+  dropped: number;
+};
+
+const paintStates = new WeakMap<HTMLCanvasElement, FramePaintState>();
+
+function framePaintState(canvas: HTMLCanvasElement): FramePaintState {
+  let state = paintStates.get(canvas);
+  if (!state) {
+    state = { decoding: false, pending: null, dropped: 0 };
+    paintStates.set(canvas, state);
+  }
+  return state;
+}
+
+/**
+ * Paint a JPEG base64 frame onto a canvas (WebSocket stream).
+ *
+ * Frames can arrive faster than the browser can decode + blit them (screencast over a
+ * public link: 30fps x 50-200KB/frame). Starting one decode per arriving frame queues
+ * work, so the picture lags further behind reality every second and the backlog keeps
+ * growing after a hiccup. Therefore: at most one decode in flight per canvas, and the
+ * waiting slot holds only the newest frame - a stale intermediate frame is dropped
+ * rather than decoded, because nobody asks to see last second's screen twice.
+ */
 export function paintBase64JpegToCanvas(
   canvas: HTMLCanvasElement | null,
   base64Data: string,
 ): void {
   if (!canvas) return;
+  const state = framePaintState(canvas);
+  if (state.decoding) {
+    if (state.pending !== null) state.dropped += 1;
+    state.pending = base64Data;
+    return;
+  }
+  state.decoding = true;
+  const settle = () => {
+    state.decoding = false;
+    const next = state.pending;
+    state.pending = null;
+    if (next !== null) paintBase64JpegToCanvas(canvas, next);
+  };
   const img = new Image();
   img.onload = () => {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    if (canvas.width !== img.width || canvas.height !== img.height) {
-      canvas.width = img.width;
-      canvas.height = img.height;
+    try {
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      if (canvas.width !== img.width || canvas.height !== img.height) {
+        canvas.width = img.width;
+        canvas.height = img.height;
+      }
+      ctx.imageSmoothingEnabled = true;
+      if ("imageSmoothingQuality" in ctx) {
+        ctx.imageSmoothingQuality = "high";
+      }
+      ctx.drawImage(img, 0, 0);
+    } finally {
+      settle();
     }
-    ctx.imageSmoothingEnabled = true;
-    if ("imageSmoothingQuality" in ctx) {
-      ctx.imageSmoothingQuality = "high";
-    }
-    ctx.drawImage(img, 0, 0);
   };
+  // A corrupt/truncated frame must not wedge the pipeline: without this the canvas would
+  // stay "decoding" forever and every later frame would pile into the pending slot.
+  img.onerror = () => settle();
   img.src = `data:image/jpeg;base64,${base64Data}`;
 }
+
+/** How many waiting frames this canvas has dropped so far (diagnostics/tests). */
+export function readFramePaintDrops(canvas: HTMLCanvasElement | null): number {
+  return canvas ? framePaintState(canvas).dropped : 0;
+}
+
+/** Reset coalescing state (tests / reattaching a stream to an existing canvas). */
+export function resetFramePaintState(canvas: HTMLCanvasElement | null): void {
+  if (!canvas) return;
+  paintStates.set(canvas, { decoding: false, pending: null, dropped: 0 });
+}
+
 
 /** Paint a screenshot blob onto a canvas (HTTP polling). */
 export async function paintBlobToCanvas(

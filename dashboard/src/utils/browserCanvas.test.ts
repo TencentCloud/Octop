@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { getCanvasCoords } from "./browserCanvas";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  getCanvasCoords,
+  paintBase64JpegToCanvas,
+  readFramePaintDrops,
+  resetFramePaintState,
+} from "./browserCanvas";
 
 function fakeCanvas(
   pixelW: number,
@@ -94,5 +99,108 @@ describe("getCanvasCoords", () => {
     expect(getCanvasCoords(canvas, { clientX: 10, clientY: 10 })).toEqual({ x: 0, y: 0 });
     const canvas2 = fakeCanvas(0, 100, { left: 0, top: 0, width: 200, height: 100 });
     expect(getCanvasCoords(canvas2, { clientX: 10, clientY: 10 })).toEqual({ x: 0, y: 0 });
+  });
+});
+
+/** Controllable Image stand-in: we decide when a frame finishes decoding. */
+class FakeImage {
+  static instances: FakeImage[] = [];
+  src = "";
+  width = 8;
+  height = 8;
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  constructor() {
+    FakeImage.instances.push(this);
+  }
+
+  succeed(): void {
+    this.onload?.();
+  }
+
+  fail(): void {
+    this.onerror?.();
+  }
+}
+
+let canvas: HTMLCanvasElement;
+
+beforeEach(() => {
+  FakeImage.instances = [];
+  vi.stubGlobal("Image", FakeImage as unknown as typeof Image);
+  canvas = document.createElement("canvas");
+  // jsdom has no 2d context; painting is not what these tests assert on.
+  vi.spyOn(canvas, "getContext").mockReturnValue(null as never);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe("paintBase64JpegToCanvas frame coalescing", () => {
+  it("keeps at most one decode in flight per canvas", () => {
+    paintBase64JpegToCanvas(canvas, "AAA");
+    paintBase64JpegToCanvas(canvas, "BBB");
+
+    expect(FakeImage.instances).toHaveLength(1);
+    expect(FakeImage.instances[0].src).toContain("AAA");
+  });
+
+  it("draws the newest waiting frame once the running decode settles", () => {
+    paintBase64JpegToCanvas(canvas, "AAA");
+    paintBase64JpegToCanvas(canvas, "BBB");
+    FakeImage.instances[0].succeed();
+
+    expect(FakeImage.instances).toHaveLength(2);
+    expect(FakeImage.instances[1].src).toContain("BBB");
+    expect(readFramePaintDrops(canvas)).toBe(0); // BBB waited, nothing was thrown away
+  });
+
+  it("drops the stale intermediate frame instead of decoding it", () => {
+    paintBase64JpegToCanvas(canvas, "AAA");
+    paintBase64JpegToCanvas(canvas, "BBB");
+    paintBase64JpegToCanvas(canvas, "CCC"); // BBB is now pointless: CCC is newer
+
+    FakeImage.instances[0].succeed();
+    expect(FakeImage.instances).toHaveLength(2);
+    expect(FakeImage.instances[1].src).toContain("CCC");
+    expect(readFramePaintDrops(canvas)).toBe(1);
+  });
+
+  it("a failing frame must not wedge the canvas forever", () => {
+    paintBase64JpegToCanvas(canvas, "BAD");
+    paintBase64JpegToCanvas(canvas, "GOOD");
+    FakeImage.instances[0].fail(); // corrupt/truncated frame
+
+    expect(FakeImage.instances).toHaveLength(2);
+    expect(FakeImage.instances[1].src).toContain("GOOD");
+
+    paintBase64JpegToCanvas(canvas, "NEXT");
+    FakeImage.instances[1].succeed();
+    expect(FakeImage.instances).toHaveLength(3);
+    expect(FakeImage.instances[2].src).toContain("NEXT");
+  });
+
+  it("resetFramePaintState clears counters and the in-flight flag", () => {
+    paintBase64JpegToCanvas(canvas, "AAA");
+    paintBase64JpegToCanvas(canvas, "BBB");
+    paintBase64JpegToCanvas(canvas, "CCC");
+    expect(readFramePaintDrops(canvas)).toBe(1);
+
+    resetFramePaintState(canvas);
+    expect(readFramePaintDrops(canvas)).toBe(0);
+
+    paintBase64JpegToCanvas(canvas, "DDD");
+    // state was reset, so DDD starts a decode straight away instead of queueing behind AAA
+    expect(FakeImage.instances).toHaveLength(2);
+    expect(FakeImage.instances[1].src).toContain("DDD");
+  });
+
+  it("ignores a null canvas without throwing", () => {
+    expect(() => paintBase64JpegToCanvas(null, "AAA")).not.toThrow();
+    expect(readFramePaintDrops(null)).toBe(0);
+    expect(() => resetFramePaintState(null)).not.toThrow();
   });
 });
