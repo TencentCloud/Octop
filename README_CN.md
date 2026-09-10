@@ -355,7 +355,6 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 | `octop channel` | 安装与管理 IM 通道 |
 | `octop chats` | REPL 与会话管理 |
 | `octop acp` | 为 IDE 提供 stdio ACP 服务 |
-| `octop mcp` | 提供管理自定义 MCP 连接器的 stdio MCP 服务 |
 | `octop cron` | 管理定时任务 |
 | `octop models` | 供应商预设与模型解析 |
 | `octop skills` | 按 Agent 启用/禁用 Skill |

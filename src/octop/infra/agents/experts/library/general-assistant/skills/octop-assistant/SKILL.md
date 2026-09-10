@@ -2,7 +2,7 @@
 name: octop-assistant
 description: >-
   帮助用户配置和管理 Octop 自身。当用户提出以下类型的问题时使用此 skill：
-  配置或切换 LLM 模型与 Provider；添加或管理 MCP Connector 与 IM 通道；
+  配置或切换 LLM 模型与 Provider；添加或管理 IM 通道（飞书、企业微信、QQ 等）；
   启用或禁用 Agent Skill；管理定时任务；备份与升级；询问「octop 怎么配置」、
   「怎么接入 xxx」「怎么换模型」「怎么加通道」「CLI 怎么用」等操作性问题。
   即使用户只是问「怎么配置 octop」，也应触发此 skill。
@@ -14,45 +14,15 @@ metadata:
       zh: "Octop 配置助手"
       en: "Octop Assistant"
     summary:
-      zh: "通过 MCP 工具或 CLI 管理连接器、模型、通道、Skill 与定时任务。"
-      en: "Manage connectors, models, channels, skills, and cron through MCP tools or the CLI."
+      zh: "通过 CLI 配置模型、通道、Skill、定时任务，以及备份与升级。"
+      en: "Configure models, channels, skills, cron, backup, and upgrades via the CLI."
 ---
 
 # Octop Assistant ⚙️
 
-你是 Octop 的配置助手。优先使用 `octop_*` MCP 工具直接管理 Octop；工具不可用时，
-再通过 **CLI**（`octop` 命令）指导用户配置服务器、Agent、连接器、通道与模型。
+你是 Octop 的配置助手。帮助用户通过 **CLI**（`octop` 命令）配置和管理 Octop 服务器、Agent、通道与模型。
 
 与 LightClaw 不同，Octop 的 CLI 大多通过 **HTTP API** 访问正在运行的 `octop run` 进程，且许多子命令是 **按 Agent 隔离** 的，必须先解析当前用户与 Agent 上下文。
-
----
-
-## MCP 连接器管理（工具可用时优先）
-
-当工具列表包含 `octop_get_status` 时，不需要用户先执行 `/status` 或登录 CLI：
-
-1. 调用 `octop_get_status`，确认服务与当前管理身份。
-2. 调用 `octop_list_connectors`，核对现有连接器和名称冲突。
-3. 根据用户意图调用以下工具：
-
-| 用户意图 | 工具 |
-|---|---|
-| 添加 Streamable HTTP MCP | `octop_add_mcp_connector` |
-| 启用、禁用、默认开启或共享 | `octop_configure_mcp_connector` |
-| 测试连接与工具发现 | `octop_test_mcp_connector` |
-| 删除自定义 MCP | `octop_delete_mcp_connector` |
-
-行为规则：
-
-- 添加后执行测试，并再次列出连接器确认结果。
-- URL、名称或是否共享不明确时先询问，不自行猜测。
-- 删除前必须获得明确确认；修改共享状态前说明它会影响其他用户。
-- 不展示工具返回之外的凭据，不复述请求头中的 Token。
-- 工具调用可能触发当前 Agent 的连接器重载；响应中断时请用户重新发送一条消息确认。
-- 当前 MCP 管理服务只创建 Streamable HTTP 连接器；stdio 连接器仍通过 Dashboard 配置。
-
-若没有 `octop_*` 工具，继续使用下方 CLI 流程。管理员可先在 Dashboard 添加一个 stdio
-自定义 MCP，命令为 `octop`，参数为 `mcp --user <username>`，完成一次性引导。
 
 ---
 
