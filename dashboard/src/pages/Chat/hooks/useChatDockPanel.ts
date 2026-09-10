@@ -6,6 +6,8 @@ import {
   isHostAbsolutePath,
   normalizeDockFilePath,
 } from "../utils/dockFilePath";
+import type { KnowledgeCitation } from "../../../utils/parseKnowledgeCitations";
+import { dockKnowledgeTabId } from "../utils/dockKnowledgeTabId";
 import { dockToolUiTabId } from "../utils/dockToolUiTabId";
 import { usePanelResize, type PanelSizes } from "./usePanelResize";
 
@@ -22,6 +24,11 @@ export type DockTab =
   | { id: "browser"; kind: "browser" }
   | { id: "terminal"; kind: "terminal" }
   | { id: string; kind: "file"; path: string }
+  | {
+      id: string;
+      kind: "knowledge";
+      citation: KnowledgeCitation;
+    }
   | {
       id: string;
       kind: "toolUi";
@@ -199,6 +206,26 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     openDock();
   }, [openDock]);
 
+  const openKnowledgeCitation = useCallback(
+    (citation: KnowledgeCitation) => {
+      const kbId = citation.kbId?.trim();
+      const docId = citation.docId?.trim();
+      if (!kbId || !docId) return;
+      const id = dockKnowledgeTabId(kbId, docId);
+      setOpenTabs((prev) => {
+        const existing = prev.find((t) => t.id === id);
+        if (existing?.kind === "knowledge") {
+          return prev.map((t) => (t.id === id ? { ...t, citation } : t));
+        }
+        if (existing) return prev;
+        return [...prev, { id, kind: "knowledge" as const, citation }];
+      });
+      setActiveTabId(id);
+      openDock();
+    },
+    [openDock],
+  );
+
   const openToolUiTab = useCallback(
     (opts: { callId: string; title?: string; toolName?: string }) => {
       const callId = opts.callId?.trim();
@@ -317,6 +344,7 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     handleModeChange,
     openFileAt,
     openFileList,
+    openKnowledgeCitation,
     openBrowserTab,
     toggleBrowserPanel,
     openTerminalTab,

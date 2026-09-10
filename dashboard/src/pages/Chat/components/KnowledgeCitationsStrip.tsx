@@ -7,8 +7,8 @@ import {
   knowledgeCitationHasNestedPath,
   knowledgeCitationTooltip,
 } from "../../../utils/knowledgeCitationDisplay";
-import { KnowledgeCitationPreviewModal } from "./KnowledgeCitationPreviewModal";
-import modalStyles from "./KnowledgeCitationPreviewModal.module.less";
+import { useChatFilePreview } from "../ChatFilePreviewContext";
+import panelStyles from "./KnowledgeCitationPanelContent.module.less";
 import styles from "../index.module.less";
 
 function isOverflowing(el: HTMLElement | null): boolean {
@@ -43,7 +43,7 @@ function KnowledgeCitationChip({
 
   // Span wrapper keeps Tooltip + keyboard focus on the real <button>.
   const button = (
-    <span className={modalStyles.chipHit}>
+    <span className={panelStyles.chipHit}>
       <button
         type="button"
         className={styles.knowledgeCitationChip}
@@ -77,37 +77,24 @@ export function KnowledgeCitationsStrip({
   citations: KnowledgeCitation[];
 }) {
   const { t } = useTranslation();
-  const [previewCitation, setPreviewCitation] =
-    useState<KnowledgeCitation | null>(null);
+  const filePreview = useChatFilePreview();
 
   if (citations.length === 0) return null;
 
   return (
-    <>
-      <div
-        className={styles.knowledgeCitations}
-        aria-label={t("chat.citations")}
-      >
-        <div className={styles.knowledgeCitationsLabel}>
-          {t("chat.citations")}
-        </div>
-        <div className={styles.knowledgeCitationsList}>
-          {citations.map((citation) => (
-            <KnowledgeCitationChip
-              key={citation.docId}
-              citation={citation}
-              onOpen={() => setPreviewCitation(citation)}
-            />
-          ))}
-        </div>
+    <div className={styles.knowledgeCitations} aria-label={t("chat.citations")}>
+      <div className={styles.knowledgeCitationsLabel}>
+        {t("chat.citations")}
       </div>
-      <KnowledgeCitationPreviewModal
-        citation={previewCitation}
-        citations={citations}
-        open={previewCitation != null}
-        onClose={() => setPreviewCitation(null)}
-        onCitationChange={setPreviewCitation}
-      />
-    </>
+      <div className={styles.knowledgeCitationsList}>
+        {citations.map((citation) => (
+          <KnowledgeCitationChip
+            key={citation.docId}
+            citation={citation}
+            onOpen={() => filePreview?.openKnowledgeCitation(citation)}
+          />
+        ))}
+      </div>
+    </div>
   );
 }

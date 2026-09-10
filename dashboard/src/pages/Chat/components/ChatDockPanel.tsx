@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { Spin, Tooltip } from "antd";
 import {
+  BookOpen,
   FilePen,
   FolderOpen,
   Globe,
@@ -31,6 +32,7 @@ import { dockFileBasename } from "../utils/dockFilePath";
 import styles from "../index.module.less";
 import ChatDockFileList from "./ChatDockFileList";
 import FilePanelContent from "./FilePanelContent";
+import KnowledgeCitationPanelContent from "./KnowledgeCitationPanelContent";
 import ChatDockToolUiContent from "./ChatDockToolUiContent";
 
 const TerminalPage = lazy(() => import("../../Control/Terminal"));
@@ -90,6 +92,9 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   const [mountedFilePaths, setMountedFilePaths] = useState<string[]>(() =>
     openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
   );
+  const [mountedKnowledgeTabs, setMountedKnowledgeTabs] = useState<
+    Extract<DockTab, { kind: "knowledge" }>[]
+  >(() => openTabs.filter((tab) => tab.kind === "knowledge"));
   const [mountedToolUiCallIds, setMountedToolUiCallIds] = useState<string[]>(
     () =>
       openTabs.filter((tab) => tab.kind === "toolUi").map((tab) => tab.callId),
@@ -97,8 +102,14 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   const [fileActionsByPath, setFileActionsByPath] = useState<
     Record<string, ReactNode>
   >({});
+  const [knowledgeActionsById, setKnowledgeActionsById] = useState<
+    Record<string, ReactNode>
+  >({});
   const browserRefreshRef = useRef<(() => void) | null>(null);
   const fileActionsHandlersRef = useRef<
+    Record<string, (actions: ReactNode | null) => void>
+  >({});
+  const knowledgeActionsHandlersRef = useRef<
     Record<string, (actions: ReactNode | null) => void>
   >({});
 
@@ -110,6 +121,14 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     const openFilePaths = new Set(
       openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
     );
+    const openKnowledgeById = new Map(
+      openTabs
+        .filter(
+          (tab): tab is Extract<DockTab, { kind: "knowledge" }> =>
+            tab.kind === "knowledge",
+        )
+        .map((tab) => [tab.id, tab]),
+    );
     const openToolUiCallIds = new Set(
       openTabs.filter((tab) => tab.kind === "toolUi").map((tab) => tab.callId),
     );
@@ -119,6 +138,20 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
       for (const path of openFilePaths) {
         if (!next.includes(path)) {
           next.push(path);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setMountedKnowledgeTabs((prev) => {
+      const next = prev
+        .filter((tab) => openKnowledgeById.has(tab.id))
+        .map((tab) => openKnowledgeById.get(tab.id) ?? tab);
+      let changed =
+        next.length !== prev.length || next.some((tab, i) => tab !== prev[i]);
+      for (const tab of openKnowledgeById.values()) {
+        if (!next.some((row) => row.id === tab.id)) {
+          next.push(tab);
           changed = true;
         }
       }
@@ -148,6 +181,19 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
       }
       return changed ? next : prev;
     });
+    setKnowledgeActionsById((prev) => {
+      let changed = false;
+      const next: Record<string, ReactNode> = {};
+      for (const id of Object.keys(prev)) {
+        if (openKnowledgeById.has(id)) {
+          next[id] = prev[id];
+        } else {
+          changed = true;
+          delete knowledgeActionsHandlersRef.current[id];
+        }
+      }
+      return changed ? next : prev;
+    });
   }, [openTabs]);
 
   const handleBrowserRefreshReady = useCallback((refresh: () => void) => {
@@ -170,6 +216,25 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
       });
     };
     fileActionsHandlersRef.current[path] = handler;
+    return handler;
+  }, []);
+
+  const getKnowledgeActionsHandler = useCallback((tabId: string) => {
+    const existing = knowledgeActionsHandlersRef.current[tabId];
+    if (existing) return existing;
+    const handler = (actions: ReactNode | null) => {
+      setKnowledgeActionsById((prev) => {
+        if (actions == null) {
+          if (!(tabId in prev)) return prev;
+          const next = { ...prev };
+          delete next[tabId];
+          return next;
+        }
+        if (prev[tabId] === actions) return prev;
+        return { ...prev, [tabId]: actions };
+      });
+    };
+    knowledgeActionsHandlersRef.current[tabId] = handler;
     return handler;
   }, []);
 
@@ -205,6 +270,13 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
                 {tab.title ??
                   tab.toolName ??
                   t("chat.dockToolUiTitle", "Plugin tool")}
+              </span>
+            </>
+          ) : tab.kind === "knowledge" ? (
+            <>
+              <BookOpen size={16} strokeWidth={2} aria-hidden />
+              <span title={tab.citation.filename}>
+                {tab.citation.filename || t("chat.citationPreview")}
               </span>
             </>
           ) : (
@@ -264,8 +336,11 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     if (activeTab?.kind === "file") {
       return fileActionsByPath[activeTab.path] ?? null;
     }
+    if (activeTab?.kind === "knowledge") {
+      return knowledgeActionsById[activeTab.id] ?? null;
+    }
     return null;
-  }, [activeTab, fileActionsByPath, t]);
+  }, [activeTab, fileActionsByPath, knowledgeActionsById, t]);
 
   return (
     <ChatDockPanelShell
@@ -307,6 +382,24 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
                 agentId={agentId}
                 filePath={path}
                 onActionsChange={getFileActionsHandler(path)}
+              />
+            </div>
+          );
+        })}
+
+        {mountedKnowledgeTabs.map((tab) => {
+          const isActive =
+            activeTab?.kind === "knowledge" && activeTab.id === tab.id;
+          return (
+            <div
+              key={tab.id}
+              className={styles.dockTabBody}
+              hidden={!isActive}
+              style={{ display: isActive ? "flex" : "none" }}
+            >
+              <KnowledgeCitationPanelContent
+                citation={tab.citation}
+                onActionsChange={getKnowledgeActionsHandler(tab.id)}
               />
             </div>
           );

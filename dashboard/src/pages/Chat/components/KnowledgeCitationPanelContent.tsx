@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, Drawer, Tooltip, Typography } from "antd";
 import {
-  ArrowUpToLine,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  ExternalLink,
-} from "lucide-react";
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { App, Tooltip } from "antd";
+import { ArrowDownToLine, ArrowUpToLine, ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
@@ -19,10 +20,7 @@ import DocumentPreviewLoading from "../../../components/DocumentPreviewLoading";
 import Markdown from "../../../components/Markdown";
 import { apiErrorMessage, isNotFoundApiError } from "../../../utils/apiError";
 import { getDocKind, type DocKind } from "../../../utils/docKind";
-import {
-  knowledgeCitationDirectory,
-  knowledgeCitationHref,
-} from "../../../utils/knowledgeCitationDisplay";
+import { knowledgeCitationHref } from "../../../utils/knowledgeCitationDisplay";
 import {
   isEditableKnowledgeDocument,
   isKnowledgeMarkdownDocument,
@@ -30,7 +28,8 @@ import {
 } from "../../../utils/knowledgeDocPreview";
 import { stripFrontmatter } from "../../../utils/markdown";
 import type { KnowledgeCitation } from "../../../utils/parseKnowledgeCitations";
-import styles from "./KnowledgeCitationPreviewModal.module.less";
+import chatStyles from "../index.module.less";
+import styles from "./KnowledgeCitationPanelContent.module.less";
 
 type PreviewMode = "rich" | "markdown" | "text";
 
@@ -39,11 +38,6 @@ const docListCache = new Map<
   string,
   { at: number; docs: KnowledgeDocument[] }
 >();
-
-function citationDrawerWidth(): number {
-  if (typeof window === "undefined") return 880;
-  return Math.min(880, window.innerWidth - 16);
-}
 
 async function resolveCitationDocument(
   kbId: string,
@@ -60,20 +54,20 @@ async function resolveCitationDocument(
   return docs.find((row) => row.id === docId && !row.is_dir) ?? null;
 }
 
-export function KnowledgeCitationPreviewModal({
+interface KnowledgeCitationPanelContentProps {
+  citation: KnowledgeCitation;
+  /** Lift toolbar actions into the shared dock shell (active tab only). */
+  onActionsChange?: (actions: ReactNode | null) => void;
+}
+
+/**
+ * Knowledge citation preview body for a chat dock tab (same shell as workspace
+ * file tabs opened from “编辑了 N 个文件”).
+ */
+export default function KnowledgeCitationPanelContent({
   citation,
-  citations,
-  open,
-  onClose,
-  onCitationChange,
-}: {
-  citation: KnowledgeCitation | null;
-  /** Full strip list — enables prev/next when length > 1. */
-  citations: KnowledgeCitation[];
-  open: boolean;
-  onClose: () => void;
-  onCitationChange?: (next: KnowledgeCitation) => void;
-}) {
+  onActionsChange,
+}: KnowledgeCitationPanelContentProps) {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const navigate = useNavigate();
@@ -83,41 +77,15 @@ export function KnowledgeCitationPreviewModal({
   const [kind, setKind] = useState<DocKind | null>(null);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
-  const [filename, setFilename] = useState("");
-  const [resolvedPath, setResolvedPath] = useState<string | undefined>();
+  const [filename, setFilename] = useState(citation.filename);
+  const [resolvedPath, setResolvedPath] = useState<string | undefined>(
+    citation.path,
+  );
   const [canDownload, setCanDownload] = useState(false);
-  /** Set when rich blob fetch 404s — switch to extracted text. */
   const [richMissing, setRichMissing] = useState(false);
-
-  const citationIndex = useMemo(() => {
-    if (!citation) return -1;
-    return citations.findIndex((row) => row.docId === citation.docId);
-  }, [citation, citations]);
-  const hasPrev = citationIndex > 0;
-  const hasNext = citationIndex >= 0 && citationIndex < citations.length - 1;
-
-  const titleFilename =
-    filename || citation?.filename || t("chat.citationPreview");
-  const titleKbName = citation?.kbName?.trim() || "";
-  const titleFull = titleKbName
-    ? `${titleFilename} · ${titleKbName}`
-    : titleFilename;
-  const subtitle = useMemo(() => {
-    if (!citation) return "";
-    const path = resolvedPath || citation.path;
-    return knowledgeCitationDirectory(path);
-  }, [citation, resolvedPath]);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const isRich = mode === "rich" && kind != null && !richMissing;
-
-  const goRelative = useCallback(
-    (delta: number) => {
-      if (!onCitationChange || citationIndex < 0) return;
-      const next = citations[citationIndex + delta];
-      if (next) onCitationChange(next);
-    },
-    [citationIndex, citations, onCitationChange],
-  );
 
   const loadTextPreview = useCallback(
     async (c: KnowledgeCitation) => {
@@ -158,14 +126,14 @@ export function KnowledgeCitationPreviewModal({
   );
 
   useEffect(() => {
-    if (!open || !citation) return;
     if (!citation.kbId || !citation.docId) {
       message.error(t("chat.citationPreviewFailed"));
-      onClose();
+      setLoadFailed(true);
       return;
     }
 
     let cancelled = false;
+    setLoadFailed(false);
     setText("");
     setFilename(citation.filename);
     setResolvedPath(citation.path);
@@ -203,7 +171,6 @@ export function KnowledgeCitationPreviewModal({
       setKind(richKind);
       setMode("rich");
       setLoading(false);
-      // Optimistic until blob proves otherwise (or meta says no original).
       setCanDownload(true);
       return () => {
         cancelled = true;
@@ -215,52 +182,33 @@ export function KnowledgeCitationPreviewModal({
     void loadTextPreview(citation).catch((error: unknown) => {
       if (cancelled) return;
       message.error(apiErrorMessage(error, t("chat.citationPreviewFailed"), t));
-      onClose();
+      setLoadFailed(true);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [citation, loadTextPreview, message, onClose, open, t]);
+  }, [citation, loadTextPreview, message, t]);
 
   useEffect(() => {
-    if (!open || !citation || !richMissing) return;
+    if (!richMissing) return;
     setCanDownload(false);
     let cancelled = false;
     void loadTextPreview(citation).catch((error: unknown) => {
       if (cancelled) return;
       message.error(apiErrorMessage(error, t("chat.citationPreviewFailed"), t));
-      onClose();
+      setLoadFailed(true);
     });
     return () => {
       cancelled = true;
     };
-  }, [citation, loadTextPreview, message, onClose, open, richMissing, t]);
-
-  // Esc is handled by Drawer; also support ←/→ when multiple citations.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "ArrowLeft" && hasPrev) {
-        event.preventDefault();
-        goRelative(-1);
-      } else if (event.key === "ArrowRight" && hasNext) {
-        event.preventDefault();
-        goRelative(1);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [goRelative, hasNext, hasPrev, open]);
+  }, [citation, loadTextPreview, message, richMissing, t]);
 
   const fetchBlob = useCallback(
     async (
       onProgress?: (loaded: number, total: number) => void,
       signal?: AbortSignal,
     ) => {
-      if (!citation) {
-        throw new Error("missing citation");
-      }
       try {
         const blob = await knowledgeBasesApi.fetchDocumentFile(
           citation.kbId,
@@ -279,11 +227,11 @@ export function KnowledgeCitationPreviewModal({
         throw error;
       }
     },
-    [citation],
+    [citation.docId, citation.kbId],
   );
 
-  const downloadOriginal = async () => {
-    if (!citation || !canDownload) return;
+  const downloadOriginal = useCallback(async () => {
+    if (!canDownload) return;
     try {
       const blob = await knowledgeBasesApi.fetchDocumentFile(
         citation.kbId,
@@ -304,133 +252,123 @@ export function KnowledgeCitationPreviewModal({
         apiErrorMessage(error, t("knowledgeBases.downloadOriginalFailed"), t),
       );
     }
-  };
+  }, [
+    canDownload,
+    citation.docId,
+    citation.filename,
+    citation.kbId,
+    filename,
+    message,
+    t,
+  ]);
 
-  const openInKnowledgeBase = () => {
-    if (!citation) return;
+  const openInKnowledgeBase = useCallback(() => {
     const hrefCitation =
       resolvedPath && resolvedPath !== citation.path
         ? { ...citation, path: resolvedPath }
         : citation;
     navigate(knowledgeCitationHref(hrefCitation));
-    onClose();
-  };
+  }, [citation, navigate, resolvedPath]);
 
   const scrollMarkdownTop = () => {
     textBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  return (
-    <Drawer
-      open={open}
-      placement="right"
-      title={
-        <div className={styles.titleBlock}>
-          <div className={styles.titleMain} title={titleFull}>
-            <span className={styles.titleFilename}>{titleFilename}</span>
-            {titleKbName ? (
-              <span className={styles.titleKb}> · {titleKbName}</span>
-            ) : null}
-          </div>
-          {subtitle ? (
-            <Typography.Text type="secondary" className={styles.titleSub}>
-              {subtitle}
-            </Typography.Text>
-          ) : null}
-        </div>
-      }
-      onClose={onClose}
-      destroyOnHidden
-      width={citationDrawerWidth()}
-      className={styles.drawer}
-      styles={{
-        body: {
-          padding: 12,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        },
-        footer: { padding: "12px 20px" },
-      }}
-      footer={
-        <div className={styles.footer}>
-          {citations.length > 1 ? (
-            <div className={styles.navGroup}>
-              <Button
-                icon={<ChevronLeft size={14} />}
-                disabled={!hasPrev}
-                onClick={() => goRelative(-1)}
-                aria-label={t("knowledgeBases.previewPrev")}
-              />
-              <span className={styles.navIndex}>
-                {citationIndex + 1}/{citations.length}
-              </span>
-              <Button
-                icon={<ChevronRight size={14} />}
-                disabled={!hasNext}
-                onClick={() => goRelative(1)}
-                aria-label={t("knowledgeBases.previewNext")}
-              />
-            </div>
-          ) : null}
-          <div className={styles.footerActions}>
-            {canDownload ? (
-              <Button
-                icon={<Download size={14} />}
-                onClick={() => void downloadOriginal()}
-              >
-                {t("knowledgeBases.downloadOriginal")}
-              </Button>
-            ) : null}
-            <Button
-              icon={<ExternalLink size={14} />}
-              onClick={openInKnowledgeBase}
+  useLayoutEffect(() => {
+    if (!onActionsChange) return;
+    const actions = (
+      <>
+        {canDownload ? (
+          <Tooltip title={t("knowledgeBases.downloadOriginal")}>
+            <button
+              type="button"
+              className={chatStyles.fileModalIconBtn}
+              onClick={() => void downloadOriginal()}
+              aria-label={t("knowledgeBases.downloadOriginal")}
             >
-              {t("chat.citationViewInKnowledgeBase")}
-            </Button>
-            <Button type="primary" onClick={onClose}>
-              {t("common.close")}
-            </Button>
-          </div>
-        </div>
-      }
-    >
-      {loading ? (
-        <div className={styles.centered}>
-          <DocumentPreviewLoading phase="file" />
-        </div>
-      ) : isRich && kind ? (
+              <ArrowDownToLine size={16} strokeWidth={2} />
+            </button>
+          </Tooltip>
+        ) : null}
+        <Tooltip title={t("chat.citationViewInKnowledgeBase")}>
+          <button
+            type="button"
+            className={chatStyles.fileModalIconBtn}
+            onClick={openInKnowledgeBase}
+            aria-label={t("chat.citationViewInKnowledgeBase")}
+          >
+            <ExternalLink size={16} strokeWidth={2} />
+          </button>
+        </Tooltip>
+      </>
+    );
+    onActionsChange(actions);
+    return () => onActionsChange(null);
+  }, [canDownload, downloadOriginal, onActionsChange, openInKnowledgeBase, t]);
+
+  if (loadFailed) {
+    return (
+      <div className={styles.centered}>
+        <span className={styles.failedText}>
+          {t("chat.citationPreviewFailed")}
+        </span>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className={styles.centered}>
+        <DocumentPreviewLoading phase="file" />
+      </div>
+    );
+  }
+
+  if (isRich && kind) {
+    return (
+      <div className={styles.panel}>
         <div className={styles.richBody}>
           <DocumentPreviewCore
-            key={`${citation?.kbId}:${citation?.docId}`}
+            key={`${citation.kbId}:${citation.docId}`}
             kind={kind}
-            filename={filename || citation?.filename || ""}
+            filename={filename || citation.filename || ""}
             fetchBlob={fetchBlob}
             onDownload={canDownload ? () => void downloadOriginal() : undefined}
           />
         </div>
-      ) : mode === "markdown" ? (
+      </div>
+    );
+  }
+
+  if (mode === "markdown") {
+    return (
+      <div className={styles.panel}>
         <div className={styles.mdWrap}>
           <div className={styles.mdToolbar}>
             <Tooltip title={t("chat.citationScrollTop")}>
-              <Button
-                type="text"
-                size="small"
-                icon={<ArrowUpToLine size={14} />}
+              <button
+                type="button"
+                className={chatStyles.fileModalIconBtn}
                 onClick={scrollMarkdownTop}
                 aria-label={t("chat.citationScrollTop")}
-              />
+              >
+                <ArrowUpToLine size={14} strokeWidth={2} />
+              </button>
             </Tooltip>
           </div>
           <div ref={textBodyRef} className={styles.textBody}>
             <Markdown content={stripFrontmatter(text)} />
           </div>
         </div>
-      ) : (
-        <div ref={textBodyRef} className={styles.textBody}>
-          <pre className={styles.pre}>{text}</pre>
-        </div>
-      )}
-    </Drawer>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.panel}>
+      <div ref={textBodyRef} className={styles.textBody}>
+        <pre className={styles.pre}>{text}</pre>
+      </div>
+    </div>
   );
 }

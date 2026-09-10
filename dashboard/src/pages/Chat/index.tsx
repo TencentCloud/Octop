@@ -353,6 +353,7 @@ function ChatPageInner() {
     handleModeChange: handleDockModeChange,
     openFileList,
     openFileAt,
+    openKnowledgeCitation,
     openBrowserTab,
     toggleBrowserPanel,
     toggleTerminalPanel,
@@ -965,7 +966,10 @@ function ChatPageInner() {
   );
 
   return (
-    <ChatFilePreviewProvider openFilePreview={openFileAt}>
+    <ChatFilePreviewProvider
+      openFilePreview={openFileAt}
+      openKnowledgeCitation={openKnowledgeCitation}
+    >
       <ChatToolDockProvider
         dockOpen={dockOpen}
         openTabs={openTabs}
