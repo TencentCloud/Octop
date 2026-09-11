@@ -111,7 +111,14 @@ function permFullLabel(item: PermissionCatalogItem): string {
   return item.label;
 }
 
-interface CreateValues {
+interface PolicyFormValues {
+  limit_workspace_root?: boolean;
+  workspace_root_dir?: string;
+  limit_token_quota?: boolean;
+  token_quota?: number | null;
+}
+
+interface CreateValues extends PolicyFormValues {
   username: string;
   display_name?: string;
   email?: string;
@@ -121,15 +128,11 @@ interface CreateValues {
   permissions?: string[];
 }
 
-interface EditValues {
+interface EditValues extends PolicyFormValues {
   display_name?: string;
   email?: string;
   role: "admin" | "user";
   permissions?: string[];
-  limit_workspace_root?: boolean;
-  workspace_root_dir?: string;
-  limit_token_quota?: boolean;
-  token_quota?: number | null;
 }
 
 interface ResetValues {
@@ -196,6 +199,92 @@ const FIELD_ICON_PROPS = {
   size: 16 as const,
   style: { color: "var(--fn-text-tertiary)" },
 };
+
+function policyPayload(values: PolicyFormValues): {
+  workspace_root_dir: string | null;
+  token_quota: number | null;
+} {
+  return {
+    workspace_root_dir: values.limit_workspace_root
+      ? values.workspace_root_dir?.trim() || null
+      : null,
+    token_quota: values.limit_token_quota ? values.token_quota ?? null : null,
+  };
+}
+
+function ResourcePolicyFields({ fsTreeRoot }: { fsTreeRoot: string }) {
+  const { t } = useTranslation();
+  return (
+    <div className={`${styles.createSection} ${styles.policySection}`}>
+      <div className={styles.createSectionTitle}>
+        {t("adminUsers.createSectionPolicy")}
+      </div>
+      <Form.Item
+        label={t("adminUsers.policyWorkspaceRoot")}
+        extra={t("adminUsers.policyWorkspaceRootHint", {
+          localShell: t("experts.backendModes.localShell"),
+          filesystem: t("experts.backendModes.filesystem"),
+        })}
+      >
+        <Form.Item name="limit_workspace_root" valuePropName="checked" noStyle>
+          <Switch />
+        </Form.Item>
+      </Form.Item>
+      <Form.Item
+        noStyle
+        shouldUpdate={(prev, cur) =>
+          prev.limit_workspace_root !== cur.limit_workspace_root
+        }
+      >
+        {({ getFieldValue }) =>
+          getFieldValue("limit_workspace_root") ? (
+            <Form.Item
+              name="workspace_root_dir"
+              rules={[
+                {
+                  required: true,
+                  message: t("adminUsers.policyWorkspaceRootRequired"),
+                },
+              ]}
+            >
+              <RootDirSelect treeRoot={fsTreeRoot} />
+            </Form.Item>
+          ) : null
+        }
+      </Form.Item>
+      <Form.Item
+        label={t("adminUsers.policyTokenQuota")}
+        extra={t("adminUsers.policyTokenQuotaHint")}
+      >
+        <Form.Item name="limit_token_quota" valuePropName="checked" noStyle>
+          <Switch />
+        </Form.Item>
+      </Form.Item>
+      <Form.Item
+        noStyle
+        shouldUpdate={(prev, cur) =>
+          prev.limit_token_quota !== cur.limit_token_quota
+        }
+      >
+        {({ getFieldValue }) =>
+          getFieldValue("limit_token_quota") ? (
+            <Form.Item
+              name="token_quota"
+              rules={[
+                {
+                  required: true,
+                  message: t("adminUsers.policyTokenQuotaRequired"),
+                },
+              ]}
+            >
+              <InputNumber min={0} step={1000} style={{ width: "100%" }} />
+            </Form.Item>
+          ) : null
+        }
+      </Form.Item>
+    </div>
+  );
+}
 
 interface RolePickerProps {
   value?: "admin" | "user";
@@ -980,6 +1069,7 @@ export default function UsersListPanel() {
           password: values.password,
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
+          ...policyPayload(values),
         }),
       });
       message.success(
@@ -1006,6 +1096,10 @@ export default function UsersListPanel() {
       email: undefined,
       password: undefined,
       confirm: undefined,
+      limit_workspace_root: false,
+      workspace_root_dir: undefined,
+      limit_token_quota: false,
+      token_quota: undefined,
     });
     setCreateOpen(true);
   };
@@ -1062,12 +1156,7 @@ export default function UsersListPanel() {
           email: values.email?.trim() || null,
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
-          workspace_root_dir: values.limit_workspace_root
-            ? values.workspace_root_dir?.trim() || null
-            : null,
-          token_quota: values.limit_token_quota
-            ? values.token_quota ?? null
-            : null,
+          ...policyPayload(values),
         }),
       });
       setEditTarget(null);
@@ -1511,7 +1600,12 @@ export default function UsersListPanel() {
           layout="vertical"
           requiredMark={false}
           onFinish={onCreate}
-          initialValues={{ role: "user", permissions: [] }}
+          initialValues={{
+            role: "user",
+            permissions: [],
+            limit_workspace_root: false,
+            limit_token_quota: false,
+          }}
           className={styles.createUserForm}
         >
           <div className={styles.createSection}>
@@ -1637,6 +1731,8 @@ export default function UsersListPanel() {
               }}
             </Form.Item>
           </div>
+
+          <ResourcePolicyFields fsTreeRoot={fsTreeRoot} />
         </Form>
       </Drawer>
 
@@ -1769,86 +1865,7 @@ export default function UsersListPanel() {
             </Form.Item>
           </div>
 
-          <div className={`${styles.createSection} ${styles.policySection}`}>
-            <div className={styles.createSectionTitle}>
-              {t("adminUsers.createSectionPolicy")}
-            </div>
-            <Form.Item
-              label={t("adminUsers.policyWorkspaceRoot")}
-              extra={t("adminUsers.policyWorkspaceRootHint", {
-                localShell: t("experts.backendModes.localShell"),
-                filesystem: t("experts.backendModes.filesystem"),
-              })}
-            >
-              <Form.Item
-                name="limit_workspace_root"
-                valuePropName="checked"
-                noStyle
-              >
-                <Switch />
-              </Form.Item>
-            </Form.Item>
-            <Form.Item
-              noStyle
-              shouldUpdate={(prev, cur) =>
-                prev.limit_workspace_root !== cur.limit_workspace_root
-              }
-            >
-              {({ getFieldValue }) =>
-                getFieldValue("limit_workspace_root") ? (
-                  <Form.Item
-                    name="workspace_root_dir"
-                    rules={[
-                      {
-                        required: true,
-                        message: t("adminUsers.policyWorkspaceRootRequired"),
-                      },
-                    ]}
-                  >
-                    <RootDirSelect treeRoot={fsTreeRoot} />
-                  </Form.Item>
-                ) : null
-              }
-            </Form.Item>
-            <Form.Item
-              label={t("adminUsers.policyTokenQuota")}
-              extra={t("adminUsers.policyTokenQuotaHint")}
-            >
-              <Form.Item
-                name="limit_token_quota"
-                valuePropName="checked"
-                noStyle
-              >
-                <Switch />
-              </Form.Item>
-            </Form.Item>
-            <Form.Item
-              noStyle
-              shouldUpdate={(prev, cur) =>
-                prev.limit_token_quota !== cur.limit_token_quota
-              }
-            >
-              {({ getFieldValue }) =>
-                getFieldValue("limit_token_quota") ? (
-                  <Form.Item
-                    name="token_quota"
-                    rules={[
-                      {
-                        required: true,
-                        message: t("adminUsers.policyTokenQuotaRequired"),
-                      },
-                    ]}
-                  >
-                    <InputNumber
-                      min={0}
-                      step={1000}
-                      style={{ width: "100%" }}
-                    />
-                  </Form.Item>
-                ) : null
-              }
-            </Form.Item>
-          </div>
+          <ResourcePolicyFields fsTreeRoot={fsTreeRoot} />
         </Form>
       </Drawer>
 

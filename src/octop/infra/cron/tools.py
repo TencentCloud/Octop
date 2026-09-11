@@ -11,6 +11,7 @@ from pydantic import Field
 
 from octop.infra.cron.manager import CronCreateSpec
 from octop.infra.cron.task_type import (
+    CRON_NAME_MAX_LEN,
     require_cron_name,
     require_cron_prompt,
     require_cron_task_type,
@@ -37,9 +38,11 @@ _TASK_TYPE_HELP = (
 _CRONJOB_CREATE_DESC = (
     "Create a scheduled cron job bound to the current conversation session. "
     "Results are delivered to the same channel (QQ/WeChat/dashboard/…). "
+    "name is required: a short label for the job list. "
     f"task_type: {_TASK_TYPE_HELP} "
-    "Examples: 'remind me to drink water at 14:00 daily' → task_type=text, prompt='该喝水了💧'; "
-    "'summarize my inbox every morning' → task_type=agent. "
+    "Examples: 'remind me to drink water at 14:00 daily' → "
+    "name='Daily water reminder', task_type=text, prompt='Time to drink water'; "
+    "'summarize my inbox every morning' → name='Morning inbox summary', task_type=agent. "
     f"trigger: {_TRIGGER_HELP}"
 )
 
@@ -128,9 +131,15 @@ def build_cronjob_tools(cron_manager: CronManager) -> list[StructuredTool]:
             ),
         ],
         name: Annotated[
-            str | None,
-            Field(description="Optional display name for this cron job."),
-        ] = None,
+            str,
+            Field(
+                description=(
+                    "Required short display name shown in the job list "
+                    f"(max {CRON_NAME_MAX_LEN} characters). "
+                    "Summarize the user's request, e.g. 'Daily water reminder'."
+                ),
+            ),
+        ],
         fresh_thread: Annotated[
             bool,
             Field(description="If true, reset conversation context before each agent run."),
