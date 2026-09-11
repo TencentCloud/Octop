@@ -105,6 +105,52 @@ async def test_admin_can_unlock_login(env):
     assert r.status_code == 200
 
 
+async def test_admin_can_create_user_with_resource_policy(env, tmp_path):
+    c, _srv, auth = env
+    jail = tmp_path / "jail"
+    jail.mkdir()
+
+    r = await c.post(
+        "/api/users",
+        headers=auth,
+        json={
+            "username": "policy_create",
+            "password": "TestPass12",
+            "role": "user",
+            "workspace_root_dir": jail.as_posix(),
+            "token_quota": 2000,
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["workspace_root_dir"] == jail.resolve().as_posix()
+    assert body["token_quota"] == 2000
+
+    listed = (await c.get("/api/users", headers=auth)).json()
+    row = next(u for u in listed if u["username"] == "policy_create")
+    assert row["workspace_root_dir"] == jail.resolve().as_posix()
+    assert row["token_quota"] == 2000
+
+
+async def test_create_user_rejects_invalid_workspace_root(env, tmp_path):
+    c, _srv, auth = env
+    missing = tmp_path / "no-such-dir"
+
+    r = await c.post(
+        "/api/users",
+        headers=auth,
+        json={
+            "username": "bad_root",
+            "password": "TestPass12",
+            "role": "user",
+            "workspace_root_dir": missing.as_posix(),
+        },
+    )
+    assert r.status_code == 400, r.text
+    listed = (await c.get("/api/users", headers=auth)).json()
+    assert "bad_root" not in [u["username"] for u in listed]
+
+
 async def test_admin_can_set_resource_policy(env, tmp_path):
     from tests.support.auth import TEST_PASSWORD, create_user
 
