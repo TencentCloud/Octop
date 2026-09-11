@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.9.33-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.9.32-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -230,7 +230,7 @@ octop run --host 0.0.0.0 --port 8088
 octop service start
 ```
 
-Open **http://127.0.0.1:8088**. With Docker first-run defaults, sign in as `admin` / `Octop123` and change the password immediately. Interactive `octop init` / the setup wizard asks you to choose a password (≥8 characters, letters and digits).
+Open **http://127.0.0.1:8088**. With Docker, the first init generates a random admin password (written to `/data/.octop/credential.txt`) unless `OCTOP_DEFAULT_PASSWORD` is set. Interactive `octop init` / the setup wizard asks you to choose a password (≥8 characters, letters and digits).
 
 ### Docker (recommended for production)
 
@@ -244,18 +244,18 @@ docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
-  -e OCTOP_DEFAULT_PASSWORD=Octop123 \
+  -e OCTOP_DEFAULT_PASSWORD="<strong-password-or-omit-for-random>" \
   octop:latest
 ```
 
-Open `http://localhost:8088`. First boot creates an admin account with fixed default credentials `admin` / `Octop123` (written to `/data/.octop/credential.txt` in the container) — **not** a randomly generated password. Override the defaults via `OCTOP_ADMIN_USERNAME` / `OCTOP_DEFAULT_PASSWORD`.
+Open `http://localhost:8088`. First boot creates the admin account and writes the credentials to `/data/.octop/credential.txt` in the container. With `OCTOP_DEFAULT_PASSWORD` unset a strong random password is generated; a password you set must be ≥8 characters with letters and digits (weak/common passwords are rejected by the app password policy and fall back to a random one). Override the username via `OCTOP_ADMIN_USERNAME`.
 
 > **Password policy:** at least 8 characters with letters and digits.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OCTOP_PORT` | `8088` | HTTP listen port |
-| `OCTOP_DEFAULT_PASSWORD` | `Octop123` | First-run admin password (Docker bootstrap) |
+| `OCTOP_DEFAULT_PASSWORD` | _(unset)_ | First-run admin password (Docker bootstrap). Unset = random password written to `credential.txt` |
 | `OCTOP_ADMIN_USERNAME` | `admin` | First-run admin username |
 | `OCTOP_DATA` | `~/.octop` | Host data directory (compose bind mount) |
 

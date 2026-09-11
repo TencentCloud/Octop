@@ -86,13 +86,40 @@ octop_cmd() {
     "$PY" -m octop.cli.main "$@"
 }
 
-# 首次初始化管理员账号（仅当数据库尚未建立）
+# 首次初始化管理员账号（仅当数据库尚未建立）。
+# 密码兜底链（修复 issue #502）：
+#   1) .env 未写密码（旧包/异常安装）→ 自动生成随机密码；
+#   2) init 因密码策略被拒（如旧版写死的 Octop123 在弱密码黑名单内，
+#      报 "password is too common"）→ 换随机强密码重试一次；
+#   3) 重试后同步回写 .env 与 octop-login.txt 回落备份，保证凭据一致、用户不丢密码。
 if [ ! -f "$OCTOP_HOME/octop.db" ]; then
     echo "[octop-native] 首次启动，正在初始化管理员账号 ..."
-    octop_cmd init --yes \
+    INIT_PW="${OCTOP_DEFAULT_PASSWORD:-}"
+    if [ -z "$INIT_PW" ]; then
+        INIT_PW="$(octop_generate_password 16)"
+        echo "[octop-native] .env 未配置初始密码，已自动生成随机密码。"
+    fi
+    if ! octop_cmd init --yes \
         --admin-username "${OCTOP_ADMIN_USERNAME:-admin}" \
-        --admin-password "${OCTOP_DEFAULT_PASSWORD:-Octop123}" \
-        ${OCTOP_ADMIN_DISPLAY_NAME:+--admin-display-name "$OCTOP_ADMIN_DISPLAY_NAME"}
+        --admin-password "$INIT_PW" \
+        ${OCTOP_ADMIN_DISPLAY_NAME:+--admin-display-name "$OCTOP_ADMIN_DISPLAY_NAME"}; then
+        echo "[octop-native] 初始密码未通过应用密码策略（过弱或过于常见），改用随机密码重试 ..."
+        INIT_PW="$(octop_generate_password 16)"
+        octop_cmd init --yes \
+            --admin-username "${OCTOP_ADMIN_USERNAME:-admin}" \
+            --admin-password "$INIT_PW" \
+            ${OCTOP_ADMIN_DISPLAY_NAME:+--admin-display-name "$OCTOP_ADMIN_DISPLAY_NAME"} || {
+            echo "[octop-native] 错误：管理员账号初始化失败，请查看上方日志。" >&2
+            exit 1
+        }
+    fi
+    # .env 里的密码与实际生效密码不一致时（随机重试/自动生成路径），回写 .env，
+    # 让「设置」窗口显示、octop-cli 改密等链路拿到的都是真实凭据。
+    if [ "$INIT_PW" != "${OCTOP_DEFAULT_PASSWORD:-}" ]; then
+        octop_env_set "$PKGVAR/.env" OCTOP_DEFAULT_PASSWORD "$INIT_PW"
+        export OCTOP_DEFAULT_PASSWORD="$INIT_PW"
+    fi
+    octop_write_login_file "$DATA_DIR" "${OCTOP_ADMIN_USERNAME:-admin}" "$INIT_PW" "${OCTOP_PORT:-8089}"
 fi
 
 echo "[octop-native] 正在启动 Octop，$OCTOP_BIND_HOST:$OCTOP_PORT ..."
