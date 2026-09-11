@@ -1,0 +1,80 @@
+[
+    {
+        "stepTitle": "管理员账号与密码",
+        "items": [
+            {
+                "type": "tips",
+                "helpText": "当前管理员账号：<b><octop-current-username></b><br>当前管理员密码：<b><octop-current-password></b><br><br>修改密码后设置窗口会显示新密码，数据目录下的 octop-login.txt 备份也会同步更新；Web 控制台需使用新密码重新登录。"
+            },
+            {
+                "type": "radio",
+                "field": "wizard_password_mode",
+                "label": "密码设置方式",
+                "initValue": "keep",
+                "options": [
+                    {
+                        "label": "保持当前密码不变",
+                        "value": "keep"
+                    },
+                    {
+                        "label": "自动生成新的随机密码",
+                        "value": "random"
+                    },
+                    {
+                        "label": "我自己设置新密码",
+                        "value": "custom"
+                    }
+                ]
+            },
+            {
+                "type": "password",
+                "field": "wizard_admin_password",
+                "label": "新密码（选择「我自己设置新密码」时必填：至少 8 位，含字母和数字）",
+                "initValue": ""
+            }
+        ]
+    },
+    {
+        "stepTitle": "高级配置（可选）",
+        "items": [
+            {
+                "type": "tips",
+                "helpText": "留空表示保持不变。修改日志级别后应用会自动重启生效。"
+            },
+            {
+                "type": "select",
+                "field": "wizard_log_level",
+                "label": "日志级别",
+                "initValue": "keep",
+                "options": [
+                    {
+                        "label": "保持不变",
+                        "value": "keep"
+                    },
+                    {
+                        "label": "info（推荐）",
+                        "value": "info"
+                    },
+                    {
+                        "label": "debug（排障用，日志量大）",
+                        "value": "debug"
+                    },
+                    {
+                        "label": "warning",
+                        "value": "warning"
+                    }
+                ]
+            },
+            {
+                "type": "password",
+                "field": "wizard_openai_api_key",
+                "label": "OpenAI API Key（留空保持不变）"
+            },
+            {
+                "type": "password",
+                "field": "wizard_dashscope_api_key",
+                "label": "DashScope API Key（留空保持不变）"
+            }
+        ]
+    }
+]

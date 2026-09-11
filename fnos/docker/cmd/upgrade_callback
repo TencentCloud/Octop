@@ -1,3 +1,35 @@
 #!/bin/bash
-# Octop — 更新后回调（无特殊处理；新版镜像由应用中心拉取并重建容器）
+#
+# Octop — 升级后回调
+# 升级会重装包内向导文件（wizard/config 恢复成带占位符的模板），
+# 这里用现有 docker/.env 的凭据重新渲染「设置」窗口的当前密码显示，
+# 并确认回落备份 octop-login.txt 存在（不覆盖用户已在 Web 内修改的密码，
+# 仅在备份缺失时按 .env 重建）。新版镜像由应用中心拉取并重建容器。
+#
+set -euo pipefail
+
+_OCTOP_COMMON="$(dirname "$0")/common.sh"
+[ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop/cmd/common.sh"
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
+
+ENV_FILE="${TRIM_APPDEST:-/var/apps/octop/target}/docker/.env"
+DATA_DIR="/var/apps/octop/share/octop/data"
+mkdir -p "$DATA_DIR"
+
+ADMIN_USER="$(octop_env_get "$ENV_FILE" OCTOP_ADMIN_USERNAME)"
+ADMIN_PASS="$(octop_env_get "$ENV_FILE" OCTOP_DEFAULT_PASSWORD)"
+[ -n "$ADMIN_USER" ] || ADMIN_USER="admin"
+
+if [ -n "$ADMIN_PASS" ]; then
+    # 「设置」窗口当前密码显示刷新
+    WIZARD_TEMPLATE="${TRIM_APPDEST:-/var/apps/octop/target}/wizard/config.template"
+    WIZARD_DIR="$(dirname "${TRIM_APPDEST:-/var/apps/octop/target}")/wizard"
+    [ -f "$WIZARD_TEMPLATE" ] || WIZARD_TEMPLATE="${TRIM_APPDEST:-/var/apps/octop/target}/../wizard/config"
+    octop_render_config_wizard "$WIZARD_TEMPLATE" "$WIZARD_DIR" "$ADMIN_USER" "$ADMIN_PASS"
+    # 回落备份缺失时按 .env 重建（存在则不动，尊重用户在 Web 内改过的密码）
+    if [ ! -f "${DATA_DIR}/octop-login.txt" ]; then
+        octop_write_login_file "$DATA_DIR" "$ADMIN_USER" "$ADMIN_PASS" 8088
+    fi
+fi
+
 exit 0
