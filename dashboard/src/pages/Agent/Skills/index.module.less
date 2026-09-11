@@ -545,6 +545,11 @@
   gap: 12px;
 }
 
+.packageCardSwitch {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
 .iconWrapper {
   width: 44px;
   height: 44px;
@@ -666,6 +671,43 @@
   gap: 6px;
 }
 
+.skillTransferAlert {
+  margin-bottom: 16px;
+}
+
+.skillTransferList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 280px;
+  margin-bottom: 16px;
+  overflow-y: auto;
+
+  :global(.ant-checkbox-wrapper) {
+    align-items: flex-start;
+  }
+}
+
+.skillTransferSkillName,
+.skillTransferSkillSlug {
+  display: block;
+  line-height: 1.4;
+}
+
+.skillTransferSkillName {
+  color: var(--fn-text-primary);
+}
+
+.skillTransferSkillSlug {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.skillTransferSelect {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
 .deleteIconBtn {
   display: flex;
   align-items: center;
@@ -730,45 +772,6 @@
   &:hover {
     background: var(--fn-bg-secondary);
     color: var(--fn-text-secondary);
-  }
-}
-
-// ── Tab bar ───────────────────────────────────────────────────────────────────
-
-.tabBar {
-  display: flex;
-  gap: 0;
-  margin-bottom: 20px;
-  border-bottom: 1px solid var(--fn-border-secondary);
-  flex-shrink: 0;
-}
-
-.tab {
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--fn-text-secondary);
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease;
-  margin-bottom: -1px;
-
-  &:hover {
-    color: var(--fn-text-primary);
-  }
-
-  &.active {
-    color: var(--fn-color-brand);
-    border-bottom-color: var(--fn-color-brand);
-  }
-
-  @media (max-width: 767px) {
-    padding: 8px 12px;
-    font-size: 14px;
   }
 }
 

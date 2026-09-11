@@ -1,6 +1,15 @@
-/* ================================================================
-   Tab Bar – matching Personalization page style
-   ================================================================ */
+.tabLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tabIcon {
+  display: flex;
+  align-items: center;
+  line-height: 1;
+  flex-shrink: 0;
+}
 
 .tabBar {
   display: flex;
@@ -32,7 +41,6 @@
   white-space: nowrap;
   display: flex;
   align-items: center;
-  gap: 6px;
 
   &:hover {
     color: var(--fn-text-primary);
@@ -53,11 +61,4 @@
     padding: 8px 10px;
     font-size: 14px;
   }
-}
-
-.tabIcon {
-  display: flex;
-  align-items: center;
-  line-height: 1;
-  flex-shrink: 0;
 }

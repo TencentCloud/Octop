@@ -44,6 +44,8 @@ class AgentRow:
     skill_package_ids: str | None = None
     published_expert_id: str | None = None
     welcome_message: str | None = None
+    knowledge_base_ids: str | None = None
+    mcp_servers: str | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> AgentRow:
@@ -75,6 +77,8 @@ class AgentRow:
             skill_package_ids=_opt_str(r, "skill_package_ids"),
             published_expert_id=_opt_str(r, "published_expert_id"),
             welcome_message=_opt_str(r, "welcome_message"),
+            knowledge_base_ids=_opt_str(r, "knowledge_base_ids"),
+            mcp_servers=_opt_str(r, "mcp_servers"),
         )
 
 
@@ -101,6 +105,8 @@ class AgentRepo:
         skill_package_ids: str | None = None,
         published_expert_id: str | None = None,
         welcome_message: str | None = None,
+        knowledge_base_ids: str | None = None,
+        mcp_servers: str | None = None,
     ) -> str:
         ts = now_ts()
         with self._db.transaction() as conn:
@@ -108,9 +114,9 @@ class AgentRepo:
                 "INSERT INTO agents(agent_id, user_id, name, description, "
                 "persona_mbti, default_model, system_prompt, enabled, config_json, icon, "
                 "template_name, color, icon_name, icon_url, skill_package_ids, "
-                "published_expert_id, welcome_message, "
+                "published_expert_id, welcome_message, knowledge_base_ids, mcp_servers, "
                 "created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     agent_id,
                     user_id,
@@ -128,6 +134,8 @@ class AgentRepo:
                     skill_package_ids,
                     published_expert_id,
                     welcome_message,
+                    knowledge_base_ids,
+                    mcp_servers,
                     ts,
                     ts,
                 ),
@@ -208,6 +216,8 @@ class AgentRepo:
         skill_package_ids: str | None | object = UNSET,
         published_expert_id: str | None | object = UNSET,
         welcome_message: str | None | object = UNSET,
+        knowledge_base_ids: str | None | object = UNSET,
+        mcp_servers: str | None | object = UNSET,
     ) -> None:
         fields, params = optional_updates(
             [
@@ -225,6 +235,8 @@ class AgentRepo:
                 ("skill_package_ids", skill_package_ids),
                 ("published_expert_id", published_expert_id),
                 ("welcome_message", welcome_message),
+                ("knowledge_base_ids", knowledge_base_ids),
+                ("mcp_servers", mcp_servers),
             ]
         )
         if not fields:

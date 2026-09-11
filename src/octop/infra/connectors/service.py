@@ -414,16 +414,26 @@ class ConnectorService:
         explicit: list[str] | None,
         *,
         apply_defaults: bool | None = None,
+        extra_defaults: list[str] | None = None,
     ) -> list[str] | None:
         """Resolve turn MCP servers vs the user's default_open set.
 
         Dashboard passes an explicit list (``apply_defaults=False``) so users can
         opt out for a turn. IM uses ``explicit is None`` + defaults. Cron follows
         defaults when the job has no picks; explicit Cron picks win as-is.
+        ``extra_defaults`` (expert composer picks) are unioned with default_open
+        when defaults apply, but only names still available to *user_id*.
         """
+        defaults = list(self.list_default_open_mcp_server_names(user_id))
+        if extra_defaults:
+            allowed = set(self.list_active_mcp_server_names(user_id))
+            for name in extra_defaults:
+                text = str(name).strip()
+                if text and text in allowed and text not in defaults:
+                    defaults.append(text)
         return merge_mcp_servers_with_defaults(
             explicit,
-            self.list_default_open_mcp_server_names(user_id),
+            defaults,
             apply_defaults=apply_defaults,
         )
 

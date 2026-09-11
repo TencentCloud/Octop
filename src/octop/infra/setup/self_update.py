@@ -116,6 +116,10 @@ def fetch_latest_pypi_version(timeout: int = 10) -> str | None:
 class PyPIInfo:
     version: str
     description: str | None = None
+    """Package long description."""
+
+    source: str | None = None
+    """Label of the source that served this payload (e.g. ``pypi.org``)."""
 
 
 def fetch_pypi_info(timeout: int = 10) -> PyPIInfo | None:
@@ -134,6 +138,7 @@ def fetch_pypi_info(timeout: int = 10) -> PyPIInfo | None:
         return PyPIInfo(
             version=str(info["version"]),
             description=info.get("description"),
+            source="pypi.org",
         )
     except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
         logger.warning("failed to fetch PyPI info: %s", exc)

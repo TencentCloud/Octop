@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import { octopAgentsApi } from "../../../api/modules/octopAgents";
 import * as chatStore from "./chatStore";
@@ -42,6 +42,15 @@ export function useChatNavigation({
   refreshAgents,
 }: UseChatNavigationParams) {
   const navigate = useNavigate();
+  const location = useLocation();
+  // One-shot blank-chat intent from minimal nav "+" on non-chat routes.
+  const preferEmptyChatRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!(location.state as { newChat?: boolean } | null)?.newChat) return;
+    preferEmptyChatRef.current = true;
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, navigate, location.pathname]);
 
   useEffect(() => {
     if (!resolvedAgentId) return;
@@ -92,6 +101,20 @@ export function useChatNavigation({
     });
   }, [activeThreadId, fetchSessions]);
 
+  // A proactive run (cron) created or wrote to a thread outside the chat socket:
+  // refresh the list — and the open thread's history — without a page reload.
+  useEffect(() => {
+    return chatStore.onSessionEvent((event) => {
+      if (event.kind !== "sessionsChanged") return;
+      if (event.agentId && resolvedAgentId && event.agentId !== resolvedAgentId)
+        return;
+      void fetchSessions(activeThreadId ?? undefined);
+      if (!activeThreadId || event.sessionId !== activeThreadId) return;
+      chatStore.invalidateHistory(activeThreadId);
+      void loadHistory(activeThreadId);
+    });
+  }, [activeThreadId, resolvedAgentId, fetchSessions, loadHistory]);
+
   const initialNavDone = useRef<string | null>(null);
   const chatUrlStateRef = useRef<{ agentId?: string; threadId?: string }>({});
 
@@ -121,6 +144,10 @@ export function useChatNavigation({
     }
     if (initialNavDone.current === agent) return;
     initialNavDone.current = agent;
+    if (preferEmptyChatRef.current) {
+      preferEmptyChatRef.current = false;
+      return;
+    }
     if (sessions.length > 0) {
       const preferred = pickPreferredSession(sessions);
       if (preferred) {
@@ -191,6 +218,7 @@ export function useChatNavigation({
   const resetNavForAgentSwitch = () => {
     initialNavDone.current = null;
     ensureThreadAttemptRef.current = null;
+    preferEmptyChatRef.current = false;
   };
 
   const markInitialNavDone = (agentId: string) => {

@@ -18,6 +18,7 @@ import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
+import type { AgentSubagentSummary } from "../../../api/modules/subagents";
 import MentionPickerMenu from "./MentionPickerMenu";
 import ChatInputPreviewBar from "./ChatInputPreviewBar";
 import ChatInputActionsRow from "./ChatInputActionsRow";
@@ -27,6 +28,12 @@ import { useKeyboardOffset } from "../../../hooks/useKeyboardOffset";
 import { useChatAttachments } from "../hooks/useChatAttachments";
 import { useSlashMentionInput } from "../hooks/useSlashMentionInput";
 import { stripThinkingTags } from "../utils/chatAttachments";
+import { isSlashCommandText } from "../utils/slashText";
+import {
+  ensureExpertMentions,
+  toggleExpertMention,
+} from "../utils/expertMention";
+import { insertSkillSlash } from "../utils/skillSlash";
 import {
   consumePendingPrefillAttachments,
   readInputDraft,
@@ -90,8 +97,6 @@ interface ChatInputProps {
   selectedKnowledgeBaseIds?: string[];
   onKnowledgeBaseIdsChange?: (ids: string[]) => void;
   availableSkills?: SkillSpec[];
-  selectedSkills?: string[];
-  onSkillsChange?: (names: string[]) => void;
   availableAgents?: ChatAgentOption[];
   /**
    * Subset of experts the user can currently pick — only running ones
@@ -100,8 +105,7 @@ interface ChatInputProps {
    * expert is guaranteed to be running.
    */
   availableExperts?: ChatAgentOption[];
-  selectedTargetAgents?: string[];
-  onTargetAgentsChange?: (ids: string[]) => void;
+  availableSubagents?: AgentSubagentSummary[];
   agentId?: string | null;
   threadId?: string | null;
   defaultModel?: string | null;
@@ -143,16 +147,13 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       selectedKnowledgeBaseIds = [],
       onKnowledgeBaseIdsChange,
       availableSkills,
-      selectedSkills = [],
-      onSkillsChange,
       availableAgents = [],
       // Default ``availableExperts`` to the full projection so older callers
       // (and tests) keep working. Production callers in ``Chat/index.tsx``
       // explicitly pass the filtered list — keep that explicit to avoid
       // accidentally re-surfacing stopped experts in the @-picker.
       availableExperts = availableAgents,
-      selectedTargetAgents = [],
-      onTargetAgentsChange,
+      availableSubagents = [],
       agentId,
       threadId,
       defaultModel,
@@ -177,6 +178,11 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     // After submit, ignore one re-application of this exact initialText value
     // (parent may still hold the prefill string in a ref across the next render).
     const ignoreInitialTextRef = useRef<string | null>(null);
+
+    const setComposerText = useCallback((value: string) => {
+      userHasEditedRef.current = true;
+      setText(value);
+    }, []);
 
     const handleVoiceText = useCallback(
       (spoken: string) => {
@@ -343,7 +349,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       handleKeyDown,
     } = useSlashMentionInput({
       text,
-      setText,
+      setText: setComposerText,
       textareaRef,
       slashCommands,
       labelFor,
@@ -351,13 +357,10 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       availableSkills,
       availableConnectors,
       availableExperts,
+      availableSubagents,
       agentId,
-      selectedSkills,
       selectedConnectors,
-      selectedTargetAgents,
-      onSkillsChange,
       onConnectorsChange,
-      onTargetAgentsChange,
       onSend,
       onNewChat,
       onCancel,
@@ -365,6 +368,51 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onSubmitRef: submitRef,
       enterToSend: !isMobile,
     });
+
+    const insertSkillCommand = useCallback(
+      (slug: string) => {
+        userHasEditedRef.current = true;
+        const next = insertSkillSlash(text, slug);
+        setText(next);
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(next.length, next.length);
+        });
+      },
+      [text],
+    );
+
+    const insertExpertMention = useCallback(
+      (agent: ChatAgentOption) => {
+        userHasEditedRef.current = true;
+        const next = toggleExpertMention(text, agent.name);
+        setText(next.text);
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(next.cursor, next.cursor);
+        });
+      },
+      [text],
+    );
+
+    const insertSubagentMention = useCallback(
+      (subagent: AgentSubagentSummary) => {
+        userHasEditedRef.current = true;
+        const next = toggleExpertMention(text, subagent.slug);
+        setText(next.text);
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(next.cursor, next.cursor);
+        });
+      },
+      [text],
+    );
 
     const resetComposerAfterSubmit = useCallback(
       (prevHeight: number, submittedText: string) => {
@@ -418,10 +466,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           text: trimmed,
           attachments: attachments.length > 0 ? attachments : undefined,
           composerContext: buildComposerContext({
-            skills: selectedSkills,
             connectors: selectedConnectors,
             knowledgeBaseIds: selectedKnowledgeBaseIds,
-            targetAgents: selectedTargetAgents,
             selectedModel,
             reasoningMode,
             reasoningEffort,
@@ -449,9 +495,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       matchSlashCommand,
       runSlashCommand,
       resetComposerAfterSubmit,
-      selectedSkills,
       selectedConnectors,
-      selectedTargetAgents,
       selectedModel,
       reasoningMode,
       reasoningEffort,
@@ -468,14 +512,20 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           const item = onReclaimQueued(id);
           if (!item) return;
           userHasEditedRef.current = true;
-          setText(item.text);
-          restoreAttachments(item.attachments ?? []);
           const ctx = item.composerContext;
+          const restoredText =
+            ctx?.targetAgents && ctx.targetAgents.length > 0
+              ? ensureExpertMentions(
+                  item.text,
+                  ctx.targetAgents,
+                  availableAgents,
+                )
+              : item.text;
+          setText(restoredText);
+          restoreAttachments(item.attachments ?? []);
           if (ctx) {
-            onSkillsChange?.(ctx.skills ?? []);
             onConnectorsChange?.(ctx.connectors ?? []);
             onKnowledgeBaseIdsChange?.(ctx.knowledgeBaseIds ?? []);
-            onTargetAgentsChange?.(ctx.targetAgents ?? []);
             if (ctx.model !== undefined) {
               onModelChange?.(ctx.model);
             } else if (item.modelRef !== undefined) {
@@ -517,12 +567,11 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         text,
         attachments.length,
         t,
-        onSkillsChange,
         onConnectorsChange,
         onKnowledgeBaseIdsChange,
-        onTargetAgentsChange,
         onModelChange,
         onReasoningChange,
+        availableAgents,
       ],
     );
 
@@ -629,20 +678,14 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <ChatInputPreviewBar
             attachments={attachments}
             uploading={uploading}
-            selectedSkills={selectedSkills}
             selectedConnectors={selectedConnectors}
-            selectedTargetAgents={selectedTargetAgents}
             selectedModel={selectedModel}
-            availableSkills={availableSkills}
             availableConnectors={availableConnectors}
             availableKnowledgeBases={availableKnowledgeBases}
-            availableAgents={availableAgents}
             onRemoveAttachment={removeAttachment}
-            onSkillsChange={onSkillsChange}
             onConnectorsChange={onConnectorsChange}
             selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
             onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange}
-            onTargetAgentsChange={onTargetAgentsChange}
             onModelChange={onModelChange}
           />
 
@@ -671,7 +714,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             just surfaces a small inline pill so the user sees they're
             issuing a command, not a regular message.
           */}
-            {text.startsWith("/") && (
+            {isSlashCommandText(text) && (
               <span
                 data-testid="slash-badge"
                 style={{
@@ -702,9 +745,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           {mentionMenuOpen && mentionItems.length > 0 && (
             <MentionPickerMenu
               query={mentionQuery}
-              skills={availableSkills ?? []}
               connectors={availableConnectors ?? []}
               agents={mentionAgents}
+              subagents={availableSubagents}
               activeIndex={mentionMenuIndex}
               onSelect={handleMentionSelect}
               onHover={setMentionMenuIndex}
@@ -774,13 +817,13 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
             onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange}
             availableSkills={availableSkills}
-            selectedSkills={selectedSkills}
-            onSkillsChange={onSkillsChange}
+            onInsertSkillCommand={insertSkillCommand}
             availableExperts={availableExperts.filter(
               (a) => a.agent_id !== agentId,
             )}
-            selectedTargetAgents={selectedTargetAgents}
-            onTargetAgentsChange={onTargetAgentsChange}
+            onInsertExpertMention={insertExpertMention}
+            availableSubagents={availableSubagents}
+            onInsertSubagentMention={insertSubagentMention}
             slashPickerGroups={slashPickerGroups}
             slashMenuItems={slashMenuItems}
             onSlashShortcutSelect={handleSlashSelect}

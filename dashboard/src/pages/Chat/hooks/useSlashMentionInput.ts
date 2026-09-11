@@ -5,15 +5,18 @@ import { resolveSlashIcon } from "../../../utils/slashIcons";
 import { groupSlashByCategory } from "../../../utils/slashCategories";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import type { ChatAgentOption } from "../components/ExpertAgentAvatar";
+import type { AgentSubagentSummary } from "../../../api/modules/subagents";
 import {
   buildMentionItems,
   type MentionPick,
 } from "../components/MentionPickerMenu";
 import { getMentionAtCursor } from "../utils/mentionAtCursor";
+import { isSlashNamePrefix } from "../utils/slashText";
 import {
   slashCommandNeedsInput,
   slashCommandPrefillText,
 } from "../../../utils/quickInputPrefill";
+import { replaceMentionQuery } from "../utils/expertMention";
 
 export type SlashMenuItem = {
   command: string;
@@ -41,13 +44,10 @@ interface UseSlashMentionInputParams {
    * caller (only running experts). The hook itself doesn't filter further.
    */
   availableExperts: ChatAgentOption[];
+  availableSubagents?: AgentSubagentSummary[];
   agentId?: string | null;
-  selectedSkills: string[];
   selectedConnectors: string[];
-  selectedTargetAgents: string[];
-  onSkillsChange?: (names: string[]) => void;
   onConnectorsChange?: (names: string[]) => void;
-  onTargetAgentsChange?: (ids: string[]) => void;
   onSend: (text: string) => void;
   onNewChat: () => void;
   onCancel: () => void;
@@ -67,13 +67,10 @@ export function useSlashMentionInput({
   availableSkills,
   availableConnectors,
   availableExperts,
+  availableSubagents = [],
   agentId,
-  selectedSkills,
   selectedConnectors,
-  selectedTargetAgents,
-  onSkillsChange,
   onConnectorsChange,
-  onTargetAgentsChange,
   onSend,
   onNewChat,
   onCancel,
@@ -97,24 +94,58 @@ export function useSlashMentionInput({
     () =>
       buildMentionItems(
         mentionQuery,
-        availableSkills ?? [],
         availableConnectors ?? [],
         mentionAgents,
+        availableSubagents,
       ),
-    [mentionQuery, availableSkills, availableConnectors, mentionAgents],
+    [mentionQuery, availableConnectors, mentionAgents, availableSubagents],
   );
 
-  const slashMenuItems = useMemo<SlashMenuItem[]>(
-    () =>
-      slashCommands.map((spec) => ({
-        command: spec.usage || `/${spec.name}`,
-        label: labelFor(spec),
-        icon: resolveSlashIcon(spec.icon),
-        tone: spec.tone,
-        spec,
-      })),
-    [slashCommands, labelFor],
-  );
+  const reservedSlashNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const spec of slashCommands) {
+      names.add(spec.name);
+      for (const alias of spec.aliases) names.add(alias);
+    }
+    return names;
+  }, [slashCommands]);
+
+  const slashMenuItems = useMemo<SlashMenuItem[]>(() => {
+    const commands = slashCommands.map((spec) => ({
+      command: spec.usage || `/${spec.name}`,
+      label: labelFor(spec),
+      icon: resolveSlashIcon(spec.icon),
+      tone: spec.tone,
+      spec,
+    }));
+    const skills = (availableSkills ?? [])
+      .filter((skill) => skill.enabled && !reservedSlashNames.has(skill.slug))
+      .map((skill) => {
+        const command = `/${skill.slug}`;
+        return {
+          command,
+          label: skill.name || skill.slug,
+          icon: resolveSlashIcon("Sparkles"),
+          tone: "violet",
+          spec: {
+            name: skill.slug,
+            command,
+            aliases: [],
+            label_en: skill.name || skill.slug,
+            label_zh: skill.name || skill.slug,
+            description_en: skill.description || "",
+            description_zh: skill.description || "",
+            usage: `${command} <task>`,
+            icon: "Sparkles",
+            tone: "violet",
+            category: "skills",
+            origins: ["ui"],
+            client_action: "none" as const,
+          },
+        };
+      });
+    return [...commands, ...skills];
+  }, [slashCommands, labelFor, availableSkills, reservedSlashNames]);
 
   const filteredSlashCommands = useMemo(() => {
     if (!slashMenuOpen) return slashMenuItems;
@@ -195,29 +226,41 @@ export function useSlashMentionInput({
     [slashMenuItems],
   );
 
+  const focusAt = useCallback(
+    (cursor: number) => {
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(cursor, cursor);
+      });
+    },
+    [textareaRef],
+  );
+
   const handleMentionSelect = useCallback(
     (pick: MentionPick) => {
+      setMentionMenuOpen(false);
+      if (pick.kind === "agent" || pick.kind === "subagent") {
+        const tokenName = pick.kind === "subagent" ? pick.slug : pick.label;
+        const next = replaceMentionQuery(
+          text,
+          mentionAtIndex,
+          mentionQuery,
+          tokenName,
+        );
+        setText(next.text);
+        focusAt(next.cursor);
+        return;
+      }
       const before = text.slice(0, mentionAtIndex);
       const after = text.slice(mentionAtIndex + mentionQuery.length + 1);
       setText(`${before}${after}`.trimStart());
-      setMentionMenuOpen(false);
-      if (pick.kind === "skill" && onSkillsChange) {
-        onSkillsChange(
-          selectedSkills.includes(pick.slug)
-            ? selectedSkills.filter((n) => n !== pick.slug)
-            : [...selectedSkills, pick.slug],
-        );
-      } else if (pick.kind === "connector" && onConnectorsChange) {
+      if (pick.kind === "connector" && onConnectorsChange) {
         onConnectorsChange(
           selectedConnectors.includes(pick.name)
             ? selectedConnectors.filter((n) => n !== pick.name)
             : [...selectedConnectors, pick.name],
-        );
-      } else if (pick.kind === "agent" && onTargetAgentsChange) {
-        onTargetAgentsChange(
-          selectedTargetAgents.includes(pick.agent_id)
-            ? selectedTargetAgents.filter((id) => id !== pick.agent_id)
-            : [...selectedTargetAgents, pick.agent_id],
         );
       }
       textareaRef.current?.focus();
@@ -227,13 +270,10 @@ export function useSlashMentionInput({
       mentionAtIndex,
       mentionQuery,
       setText,
-      onSkillsChange,
-      selectedSkills,
       onConnectorsChange,
       selectedConnectors,
-      onTargetAgentsChange,
-      selectedTargetAgents,
       textareaRef,
+      focusAt,
     ],
   );
 
@@ -248,7 +288,7 @@ export function useSlashMentionInput({
   const handleTextChange = useCallback(
     (val: string) => {
       setText(val);
-      if (val.startsWith("/") && !val.includes(" ") && !val.includes("\n")) {
+      if (isSlashNamePrefix(val)) {
         setSlashMenuOpen(true);
         setSlashMenuIndex(0);
         setMentionMenuOpen(false);
@@ -257,7 +297,9 @@ export function useSlashMentionInput({
         const mention = getMentionAtCursor(val);
         if (
           mention &&
-          (availableSkills || availableConnectors || mentionAgents.length > 0)
+          (availableConnectors ||
+            mentionAgents.length > 0 ||
+            availableSubagents.length > 0)
         ) {
           setMentionMenuOpen(true);
           setMentionQuery(mention.query);
@@ -268,7 +310,12 @@ export function useSlashMentionInput({
         }
       }
     },
-    [setText, availableSkills, availableConnectors, mentionAgents.length],
+    [
+      setText,
+      availableConnectors,
+      mentionAgents.length,
+      availableSubagents.length,
+    ],
   );
 
   const handleKeyDown = useCallback(

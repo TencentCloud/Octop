@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { dockFileTabId } from "../utils/dockFilePath";
+import { dockKnowledgeTabId } from "../utils/dockKnowledgeTabId";
 import { ensureNoTrajectoryTab, useChatDockPanel } from "./useChatDockPanel";
 
 describe("useChatDockPanel tabs", () => {
@@ -30,6 +31,35 @@ describe("useChatDockPanel tabs", () => {
     ).toHaveLength(1);
     expect(result.current.activeTabId).toBe(fileId);
     expect(result.current.openTabs.map((t) => t.id)).toEqual([fileId]);
+  });
+
+  it("openKnowledgeCitation opens a dock tab and dedupes by kb/doc id", () => {
+    const { result } = renderHook(() => useChatDockPanel(false));
+    const citation = {
+      kbId: "kb1",
+      docId: "doc1",
+      kbName: "Personal",
+      filename: "a.md",
+    };
+    act(() => {
+      result.current.openKnowledgeCitation(citation);
+    });
+    expect(result.current.dockOpen).toBe(true);
+    expect(result.current.activeTabId).toBe(dockKnowledgeTabId("kb1", "doc1"));
+    act(() => {
+      result.current.openKnowledgeCitation({
+        ...citation,
+        filename: "renamed.md",
+      });
+    });
+    const knowledgeTabs = result.current.openTabs.filter(
+      (t) => t.kind === "knowledge",
+    );
+    expect(knowledgeTabs).toHaveLength(1);
+    expect(knowledgeTabs[0]).toMatchObject({
+      kind: "knowledge",
+      citation: { filename: "renamed.md" },
+    });
   });
 
   it("toggleBrowserPanel opens browser tab then closes dock when active", () => {

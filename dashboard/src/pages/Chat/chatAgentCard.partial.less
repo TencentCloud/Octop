@@ -39,6 +39,15 @@
   margin-bottom: 1px;
 }
 
+/* Name + shared flag stay packed left; unread can sit at the row end. */
+.agentNameCluster {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
 .agentCardName {
   font-size: 13px;
   font-weight: 500;
@@ -50,15 +59,21 @@
   text-overflow: ellipsis;
 }
 
-.sharedExpertHint {
+.sharedExpertFlag {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   flex-shrink: 0;
-  width: 16px;
+  max-width: 100%;
+  padding: 0 5px;
   height: 16px;
-  color: var(--fn-text-tertiary);
-  border-radius: 999px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--fn-color-brand);
+  background: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
+  white-space: nowrap;
 }
 
 .agentCardDesc {
@@ -312,6 +327,7 @@
   font-weight: 400;
   color: var(--fn-text-secondary);
   line-height: 1.35;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

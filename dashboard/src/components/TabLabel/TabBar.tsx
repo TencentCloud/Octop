@@ -1,25 +1,26 @@
-import type { ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import styles from "../AdvancedSettings/index.module.less";
+import TabLabel from "./index";
+import styles from "./index.module.less";
 
-export interface SettingsTabItem<T extends string = string> {
+export interface TabBarItem<T extends string = string> {
   key: T;
   labelKey: string;
-  icon?: ReactNode;
+  icon: LucideIcon;
 }
 
-interface SettingsTabBarProps<T extends string> {
-  tabs: SettingsTabItem<T>[];
+interface TabBarProps<T extends string> {
+  tabs: readonly TabBarItem<T>[];
   activeKey: T;
   onChange: (key: T) => void;
 }
 
-/** Shared underline tab bar for admin settings pages (Security / Advanced / Plugins). */
-export default function SettingsTabBar<T extends string>({
+/** Shared underline tab bar with Lucide icons (admin advanced style). */
+export default function TabBar<T extends string>({
   tabs,
   activeKey,
   onChange,
-}: SettingsTabBarProps<T>) {
+}: TabBarProps<T>) {
   const { t } = useTranslation();
 
   return (
@@ -35,12 +36,7 @@ export default function SettingsTabBar<T extends string>({
             className={`${styles.tab} ${selected ? styles.active : ""}`}
             onClick={() => onChange(tab.key)}
           >
-            {tab.icon ? (
-              <span className={styles.tabIcon} aria-hidden="true">
-                {tab.icon}
-              </span>
-            ) : null}
-            {t(tab.labelKey)}
+            <TabLabel icon={tab.icon}>{t(tab.labelKey)}</TabLabel>
           </button>
         );
       })}

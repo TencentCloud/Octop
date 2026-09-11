@@ -44,8 +44,8 @@ import yaml
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from octop.api.common.agent import require_agent_owner_row
-from octop.api.deps import current_user, get_server
+from octop.api.common.agent import require_agent_owner_row, require_agent_row
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.manager import (
     skill_package_ids_list,
 )
@@ -61,6 +61,12 @@ from octop.infra.skills.skill_packages import (
     read_cli_skill_install,
     resolve_skill_package,
     validate_skill_slug,
+)
+from octop.infra.skills.skill_transfer import (
+    SkillTransferConflict,
+    SkillTransferNotFound,
+    copy_package_skills_to_workspace,
+    copy_workspace_skill_to_package,
 )
 from octop.infra.utils.locale import Locale, resolve_request_locale
 
@@ -89,10 +95,12 @@ async def _ctx(
     user: Any,
     as_user: int | None,
     server: Any,
+    owner_only: bool = True,
 ) -> _AgentCtx:
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry
-    row = require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    require = require_agent_owner_row if owner_only else require_agent_row
+    row = require(agent_id, user=user, as_user=as_user, server=server)
     cfg = registry.get_config(agent_id)
     agent = registry.get_agent(agent_id)
     return _AgentCtx(runtime=row, workspace=agent.workspace, config=cfg)
@@ -415,7 +423,7 @@ async def _enabled_skill_names(
     user: Any,
 ) -> set[str]:
     """Return installed, non-disabled skill names for an agent."""
-    await _ctx(agent_id, user=user, as_user=None, server=server)
+    await _ctx(agent_id, user=user, as_user=None, server=server, owner_only=False)
     assert server.app_runtime is not None
     names: set[str] = set()
     for summary in await server.app_runtime.agent_registry.list_skill_summaries(agent_id):
@@ -450,7 +458,7 @@ async def list_skills(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    await _ctx(agent_id, user=user, as_user=as_user, server=server, owner_only=False)
     assert server.app_runtime is not None
     return cast(
         list[dict[str, Any]],
@@ -463,6 +471,16 @@ async def list_skills(
 
 class SkillPackageMountBody(BaseModel):
     package_ids: list[str]
+
+
+class CopyPackageSkillsBody(BaseModel):
+    skill_slugs: list[str]
+    overwrite: bool = False
+
+
+class PushSkillToPackageBody(BaseModel):
+    package_id: str
+    overwrite: bool = False
 
 
 @router.get(
@@ -519,6 +537,118 @@ async def replace_skill_package_mounts(
     return {"package_ids": package_ids}
 
 
+def _skill_package_store(server: Any) -> SkillPackageStore:
+    if server.services is None:
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "skill package store not initialized")
+    return SkillPackageStore(
+        repo=server.services.skill_package_repo,
+        root=server.paths.skill_packages_dir,
+    )
+
+
+def _skill_transfer_error(exc: SkillPackageError, *, locale: Locale) -> OctopError:
+    if isinstance(exc, SkillTransferConflict):
+        return OctopError.localized(
+            ErrorCode.SKILL_ALREADY_EXISTS,
+            locale,
+            name=exc.slug,
+        )
+    if isinstance(exc, SkillTransferNotFound):
+        return OctopError(ErrorCode.NOT_FOUND, str(exc))
+    return OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc))
+
+
+@router.post(
+    "/agents/{agent_id}/skill-packages/{package_id}/copy",
+    summary="Copy package skills into an agent workspace",
+)
+async def copy_skill_package_to_workspace(
+    agent_id: str,
+    package_id: str,
+    body: CopyPackageSkillsBody,
+    request: Request,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("skill_packages")),
+    server: Any = Depends(get_server),
+) -> dict[str, list[str]]:
+    ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    store = _skill_package_store(server)
+    if store.repo.get(package_id) is None:
+        raise OctopError.localized(
+            ErrorCode.SKILL_PACKAGE_NOT_FOUND,
+            resolve_request_locale(request),
+        )
+    try:
+        requested_slugs = list(
+            dict.fromkeys(validate_skill_slug(slug) for slug in body.skill_slugs)
+        )
+        copied_identity_keys = set(requested_slugs)
+        for slug in requested_slugs:
+            copied_identity_keys.update(await _skill_disable_keys(ctx, slug))
+        copied = await copy_package_skills_to_workspace(
+            store=store,
+            package_id=package_id,
+            slugs=requested_slugs,
+            workspace=ctx.workspace,
+            overwrite=body.overwrite,
+        )
+    except SkillPackageError as exc:
+        raise _skill_transfer_error(
+            exc,
+            locale=resolve_request_locale(request),
+        ) from exc
+
+    for slug in copied:
+        copied_identity_keys.update(await _skill_disable_keys(ctx, slug))
+    disabled = _disabled_set(ctx.config)
+    if disabled.intersection(copied_identity_keys):
+        disabled.difference_update(copied_identity_keys)
+        await _persist_disabled(server, agent_id, disabled)
+    return {"copied": copied}
+
+
+@router.post(
+    "/agents/{agent_id}/skills/{name}/push-to-package",
+    summary="Copy a workspace skill into a global skill package",
+)
+async def push_workspace_skill_to_package(
+    agent_id: str,
+    name: str,
+    body: PushSkillToPackageBody,
+    request: Request,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("skill_packages")),
+    server: Any = Depends(get_server),
+) -> dict[str, str]:
+    ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    store = _skill_package_store(server)
+    row = store.repo.get(body.package_id)
+    if row is None:
+        raise OctopError.localized(
+            ErrorCode.SKILL_PACKAGE_NOT_FOUND,
+            resolve_request_locale(request),
+        )
+    store.assert_can_mutate(row, user)
+    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, name)
+    try:
+        slug = await copy_workspace_skill_to_package(
+            workspace=ctx.workspace,
+            store=store,
+            package_id=body.package_id,
+            slug=name,
+            overwrite=body.overwrite,
+        )
+    except SkillPackageError as exc:
+        raise _skill_transfer_error(
+            exc,
+            locale=resolve_request_locale(request),
+        ) from exc
+
+    assert server.app_runtime is not None
+    await server.app_runtime.agent_registry.refresh_agents_for_package(body.package_id)
+    return {"package_id": body.package_id, "slug": slug}
+
+
 @router.get("/agents/{agent_id}/skills/{name}")
 async def get_skill(
     agent_id: str,
@@ -528,7 +658,13 @@ async def get_skill(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    ctx = await _ctx(
+        agent_id,
+        user=user,
+        as_user=as_user,
+        server=server,
+        owner_only=False,
+    )
     resolved = await _resolve_skill(ctx.workspace, name)
     if resolved is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"skill {name!r} not found")

@@ -4,7 +4,7 @@
  * Shows type icon (from STORAGE_TYPE_DEFS), name, kind, bucket/region/key info,
  * enabled toggle, edit and delete actions.
  */
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { App, Button, Switch, Tooltip } from "antd";
 
 import {
@@ -188,7 +188,12 @@ export function StorageBackendCard({
         className={`${styles.backendCard} ${
           isNew ? styles.backendCardNew : ""
         }`}
-        style={{ opacity: backend.enabled ? 1 : 0.65 }}
+        style={
+          {
+            opacity: backend.enabled ? 1 : 0.65,
+            "--catalog-accent": accent,
+          } as CSSProperties
+        }
       >
         {/* Header */}
         <div className={styles.backendCardHeader}>

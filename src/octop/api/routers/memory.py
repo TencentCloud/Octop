@@ -9,6 +9,8 @@ Surface (mirrors the design doc §6.2):
 
 * ``POST .../atoms/list``                       → ``list_atoms``
 * ``GET  .../atoms/{atom_id}``                  → ``memory_get`` (path projection)
+* ``POST .../atoms``                            → ``create_atom``
+* ``POST .../atoms/{atom_id}:replace``          → ``replace_atom``
 * ``POST .../atoms/{atom_id}:deprecate``        → ``deprecate_atom``
 * ``POST .../entities/list``                    → ``list_entities``
 * ``GET  .../entities/{entity_id}``             → ``memory_get`` (page projection, may be empty)
@@ -199,6 +201,24 @@ class _RejectCandidateBody(BaseModel):
 class _DeprecateAtomBody(BaseModel):
     reason: str | None = None
     actor: str | None = None
+
+
+class _CreateAtomBody(BaseModel):
+    assertion: str
+    entity_id: str | None = None
+    entity_name: str | None = None
+    entity_type: str | None = Field(
+        default=None, description="User / Person / Project / Decision / Task / Fact"
+    )
+    kind: str | None = Field(default=None, description="Fact / Decision / Task / Preference")
+    importance: str | None = None
+    confidence: str | None = None
+    reason: str | None = None
+
+
+class _ReplaceAtomBody(BaseModel):
+    assertion: str
+    reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -608,6 +628,64 @@ async def deprecate_atom(
         call_memory_rpc(
             agent_id=agent_id,
             method="deprecate_atom",
+            params=params,
+            user=user,
+            as_user=as_user,
+            server=server,
+        ),
+    )
+
+
+@router.post(
+    "/agents/{agent_id}/memory/atoms",
+    summary="Create a long-term memory",
+    description=(
+        "Creates a canonical memory under an existing or new entity. The request is recorded as actor=user; clients "
+        "cannot override the audit actor."
+    ),
+)
+async def create_atom(
+    agent_id: str,
+    body: _CreateAtomBody,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    return cast(
+        dict[str, Any],
+        call_memory_rpc(
+            agent_id=agent_id,
+            method="create_atom",
+            params=_strip_none(body.model_dump()),
+            user=user,
+            as_user=as_user,
+            server=server,
+        ),
+    )
+
+
+@router.post(
+    "/agents/{agent_id}/memory/atoms/{atom_id}:replace",
+    summary="Correct a long-term memory",
+    description=(
+        "Creates a successor Atom and supersedes the active Atom without creating a conversation event or extraction "
+        "candidate. The request is recorded as actor=user; clients cannot override the audit actor."
+    ),
+)
+async def replace_atom(
+    agent_id: str,
+    atom_id: str,
+    body: _ReplaceAtomBody,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    params = _strip_none({"atom_id": atom_id, **body.model_dump()})
+    return cast(
+        dict[str, Any],
+        call_memory_rpc(
+            agent_id=agent_id,
+            method="replace_atom",
             params=params,
             user=user,
             as_user=as_user,

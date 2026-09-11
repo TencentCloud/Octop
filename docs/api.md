@@ -69,7 +69,7 @@ routes until the wizard finishes.
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`    | `/users` | admin | `[{id, username, role, display_name, email, enabled, ...}]` |
-| `POST`   | `/users` | admin | body `{username, password, role, display_name?, email?}` → `201` |
+| `POST`   | `/users` | admin | body `{username, password, role, display_name?, email?, permissions?, workspace_root_dir?, token_quota?}` → `201` |
 | `GET`    | `/users/{id}` | admin | full user row |
 | `PATCH`  | `/users/{id}` | admin | body subset of `{role, display_name, email, enabled, locale}` |
 | `POST`   | `/users/{id}/reset-password` | admin | body `{new_password}` → `204` |
@@ -94,6 +94,17 @@ routes until the wizard finishes.
 | `GET`    | `/agents/{id}/tool-settings` | owner | built-in + installed plugin tools with enable / disableable / available flags |
 | `PUT`    | `/agents/{id}/tool-settings` | owner | body `{disabled_builtin: string[], plugins?}` — persists denylist + plugin flags (hot-sync, no reload) |
 | `PATCH`  | `/agents/{id}/tool-settings/{tool_name}` | owner | body `{enabled, source, plugin_id?}` — toggle one tool (hot-sync) |
+
+## Skills and skill packages
+
+Skill copy operations create snapshots; they do not keep the source and
+destination synchronized after the request completes.
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET` | `/skill-packages?writable_only=true` | user (`skill_packages`) | List only packages the current user may modify; admins may modify all packages |
+| `POST` | `/agents/{id}/skill-packages/{package_id}/copy` | owner (`skill_packages`) | body `{skill_slugs: string[], overwrite?: boolean}`; copy selected package skills into the workspace |
+| `POST` | `/agents/{id}/skills/{slug}/push-to-package` | owner (`skill_packages`) | body `{package_id, overwrite?: boolean}`; copy a workspace skill into a package created by the user (or any package for admins) |
 
 ## Chat (WebSocket)
 

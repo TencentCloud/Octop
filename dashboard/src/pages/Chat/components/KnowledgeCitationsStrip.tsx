@@ -1,15 +1,74 @@
+import { useLayoutEffect, useRef, useState } from "react";
+import { Tooltip } from "antd";
 import { FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import type { KnowledgeCitation } from "../../../utils/parseKnowledgeCitations";
+import {
+  knowledgeCitationHasNestedPath,
+  knowledgeCitationTooltip,
+} from "../../../utils/knowledgeCitationDisplay";
+import { useChatFilePreview } from "../ChatFilePreviewContext";
+import panelStyles from "./KnowledgeCitationPanelContent.module.less";
 import styles from "../index.module.less";
 
-export function knowledgeCitationHref(citation: KnowledgeCitation): string {
-  const params = new URLSearchParams();
-  if (citation.kbId) params.set("kb", citation.kbId);
-  if (citation.docId) params.set("doc", citation.docId);
-  const qs = params.toString();
-  return qs ? `/knowledge-bases?${qs}` : "/knowledge-bases";
+function isOverflowing(el: HTMLElement | null): boolean {
+  if (!el) return false;
+  return el.scrollWidth - el.clientWidth > 1;
+}
+
+function KnowledgeCitationChip({
+  citation,
+  onOpen,
+}: {
+  citation: KnowledgeCitation;
+  onOpen: () => void;
+}) {
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const kbRef = useRef<HTMLSpanElement>(null);
+  const [truncated, setTruncated] = useState(false);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      setTruncated(
+        isOverflowing(nameRef.current) || isOverflowing(kbRef.current),
+      );
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [citation.filename, citation.kbName, citation.path]);
+
+  const showTooltip = knowledgeCitationHasNestedPath(citation) || truncated;
+  const tip = knowledgeCitationTooltip(citation);
+
+  // Span wrapper keeps Tooltip + keyboard focus on the real <button>.
+  const button = (
+    <span className={panelStyles.chipHit}>
+      <button
+        type="button"
+        className={styles.knowledgeCitationChip}
+        onClick={onOpen}
+      >
+        <FileText size={13} strokeWidth={2} aria-hidden />
+        <span ref={nameRef} className={styles.knowledgeCitationName}>
+          {citation.filename}
+        </span>
+        {citation.kbName ? (
+          <span ref={kbRef} className={styles.knowledgeCitationKb}>
+            {citation.kbName}
+          </span>
+        ) : null}
+      </button>
+    </span>
+  );
+
+  if (!showTooltip) return button;
+
+  return (
+    <Tooltip title={tip} mouseEnterDelay={0.35}>
+      {button}
+    </Tooltip>
+  );
 }
 
 export function KnowledgeCitationsStrip({
@@ -18,7 +77,7 @@ export function KnowledgeCitationsStrip({
   citations: KnowledgeCitation[];
 }) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
+  const filePreview = useChatFilePreview();
 
   if (citations.length === 0) return null;
 
@@ -29,27 +88,11 @@ export function KnowledgeCitationsStrip({
       </div>
       <div className={styles.knowledgeCitationsList}>
         {citations.map((citation) => (
-          <button
+          <KnowledgeCitationChip
             key={citation.docId}
-            type="button"
-            className={styles.knowledgeCitationChip}
-            title={
-              citation.kbName
-                ? `${citation.kbName} · ${citation.filename}`
-                : citation.filename
-            }
-            onClick={() => navigate(knowledgeCitationHref(citation))}
-          >
-            <FileText size={13} strokeWidth={2} aria-hidden />
-            <span className={styles.knowledgeCitationName}>
-              {citation.filename}
-            </span>
-            {citation.kbName ? (
-              <span className={styles.knowledgeCitationKb}>
-                {citation.kbName}
-              </span>
-            ) : null}
-          </button>
+            citation={citation}
+            onOpen={() => filePreview?.openKnowledgeCitation(citation)}
+          />
         ))}
       </div>
     </div>

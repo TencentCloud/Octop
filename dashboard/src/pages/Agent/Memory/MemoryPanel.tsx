@@ -5,7 +5,20 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Empty, Segmented, Tabs } from "antd";
+import type { LucideIcon } from "lucide-react";
+import {
+  Bell,
+  Heart,
+  Inbox,
+  LayoutDashboard,
+  MessageSquare,
+  Network,
+  ScrollText,
+  Settings,
+  User,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
+import TabLabel from "../../../components/TabLabel";
 
 import ConversationRecords from "./ConversationRecords";
 import Overview from "./Overview";
@@ -39,28 +52,66 @@ interface TabDef {
   key: MemoryTab;
   labelKey: string;
   fallback: string;
+  icon: LucideIcon;
   showPendingBadge?: boolean;
 }
 
 const TABS: TabDef[] = [
-  { key: "overview", labelKey: "memory.tabs.overview", fallback: "概览" },
-  { key: "profile", labelKey: "memory.tabs.profile", fallback: "用户画像" },
-  { key: "library", labelKey: "memory.tabs.library", fallback: "记忆树" },
-  { key: "episodes", labelKey: "memory.tabs.episodes", fallback: "情绪日记" },
+  {
+    key: "overview",
+    labelKey: "memory.tabs.overview",
+    fallback: "概览",
+    icon: LayoutDashboard,
+  },
+  {
+    key: "profile",
+    labelKey: "memory.tabs.profile",
+    fallback: "用户画像",
+    icon: User,
+  },
+  {
+    key: "library",
+    labelKey: "memory.tabs.library",
+    fallback: "记忆树",
+    icon: Network,
+  },
+  {
+    key: "episodes",
+    labelKey: "memory.tabs.episodes",
+    fallback: "情绪日记",
+    icon: Heart,
+  },
   {
     key: "candidates",
     labelKey: "memory.tabs.candidates",
     fallback: "记忆沉淀",
     showPendingBadge: true,
+    icon: Inbox,
   },
-  { key: "journal", labelKey: "memory.tabs.journal", fallback: "整理记录" },
+  {
+    key: "journal",
+    labelKey: "memory.tabs.journal",
+    fallback: "整理记录",
+    icon: ScrollText,
+  },
   {
     key: "conversations",
     labelKey: "memory.conversationHistory",
     fallback: "对话记录",
+    icon: MessageSquare,
   },
-  { key: "proactive", labelKey: "memory.tabs.proactive", fallback: "主动关心" },
-  { key: "settings", labelKey: "memory.tabs.settings", fallback: "设置" },
+  {
+    key: "proactive",
+    labelKey: "memory.tabs.proactive",
+    fallback: "主动关心",
+    icon: Bell,
+  },
+  {
+    key: "settings",
+    labelKey: "memory.tabs.settings",
+    fallback: "设置",
+    icon: Settings,
+  },
 ];
 
 export interface MemoryPanelProps {
@@ -160,12 +211,12 @@ export default function MemoryPanel({
     return TABS.map((tab) => {
       const showBadge = tab.showPendingBadge && pendingCount > 0;
       const label = (
-        <span className={styles.tabLabel}>
+        <TabLabel icon={tab.icon}>
           {t(tab.labelKey, tab.fallback)}
           {showBadge ? (
             <span className={styles.tabBadge}>{pendingCount}</span>
           ) : null}
-        </span>
+        </TabLabel>
       );
 
       let children: ReactNode = null;

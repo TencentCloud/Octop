@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from harness_agent import HarnessAgent, HarnessAgentConfig, HarnessAgentManager
+from harness_agent.registry import AgentEntry
 from harness_agent.security.models import SecurityPolicy
 
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
@@ -25,9 +26,11 @@ from octop.infra.agents.media_generation import (
 )
 from octop.infra.agents.memory_backend import memory_backend_from_agent_config
 from octop.infra.agents.profile import (
+    dump_id_list,
     dump_skill_package_ids,
     dumps_config,
     extract_profile_from_config,
+    id_list_from_row,
     overlay_skill_package_ids,
     parse_config_json,
     strip_profile_config,
@@ -286,6 +289,8 @@ class AgentCreateSpec:
     skill_package_ids: list[str] | None = None
     published_expert_id: str | None = None
     welcome_message: str | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
     runtime_config: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
 
@@ -421,8 +426,16 @@ class AgentManager:
             providers=providers,
             langfuse=self._langfuse.harness_config(),
             team_processor=self._team_processor,
+            log_dir=str(self.paths.logs_dir),
         )
         if self._harness_manager is not None:
+            self._harness_manager.team.bind_peer_enrich(self._refresh_peer_entry)
+            proc = self._team_processor
+            if proc is not None:
+                prepare = getattr(proc, "prepare_peer_session", None)
+                after = getattr(proc, "record_peer_turn", None)
+                if prepare is not None or after is not None:
+                    self._harness_manager.team.bind_peer_session(prepare=prepare, after=after)
             self._harness_manager.set_security_policy(self._security.harness_policy())
 
         rows = self._repos.agent_repo.list_all(include_disabled=False)
@@ -519,6 +532,14 @@ class AgentManager:
                 DEFAULT_SYSTEM_FILES_PATH,
                 seed_workspace_dir_on_create,
             )
+            from octop.infra.users.resource_policy import raise_if_backend_outside_user_root
+
+            if spec.user_id is not None:
+                raise_if_backend_outside_user_root(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config.get("backend"),
+                )
 
             # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
             # After insert, resolve_workspace_dir reads the DB value as source of truth.
@@ -533,6 +554,16 @@ class AgentManager:
                 dump_skill_package_ids(spec.skill_package_ids)
                 if spec.skill_package_ids is not None
                 else profile.get("skill_package_ids")
+            )
+            knowledge_ids_json = (
+                dump_id_list(spec.knowledge_base_ids)
+                if spec.knowledge_base_ids is not None
+                else profile.get("knowledge_base_ids")
+            )
+            mcp_servers_json = (
+                dump_id_list(spec.mcp_servers)
+                if spec.mcp_servers is not None
+                else profile.get("mcp_servers")
             )
             self._repos.agent_repo.create(
                 agent_id=agent_id,
@@ -555,6 +586,8 @@ class AgentManager:
                     if spec.welcome_message is not None
                     else profile.get("welcome_message")
                 ),
+                knowledge_base_ids=knowledge_ids_json,
+                mcp_servers=mcp_servers_json,
             )
             row = self._repos.agent_repo.get(agent_id)
             assert row is not None
@@ -633,6 +666,15 @@ class AgentManager:
                 kwargs["config_json"] if isinstance(kwargs["config_json"], str) else None
             )
             parsed_profile_cfg = self._preserve_system_files_path(agent_id, parsed_profile_cfg)
+            owner_row = self._repos.agent_repo.get(agent_id)
+            if owner_row is not None and owner_row.user_id is not None:
+                from octop.infra.users.resource_policy import raise_if_backend_outside_user_root
+
+                raise_if_backend_outside_user_root(
+                    self._repos.user_policy_repo,
+                    owner_row.user_id,
+                    parsed_profile_cfg.get("backend"),
+                )
             lifted = extract_profile_from_config(parsed_profile_cfg)
             kwargs["config_json"] = dumps_config(parsed_profile_cfg)
             for key, value in lifted.items():
@@ -1284,11 +1326,29 @@ class AgentManager:
         explicit: list[str] | None,
         *,
         apply_defaults: bool | None = None,
+        extra_defaults: list[str] | None = None,
     ) -> list[str] | None:
-        """Resolve turn MCP servers vs the user's default_open connectors."""
+        """Resolve turn MCP servers vs default_open plus optional expert defaults."""
         return self._connector_svc.merge_turn_mcp_servers(
-            user_id, explicit, apply_defaults=apply_defaults
+            user_id,
+            explicit,
+            apply_defaults=apply_defaults,
+            extra_defaults=extra_defaults,
         )
+
+    def default_mcp_servers(self, agent_id: str) -> list[str]:
+        """Composer MCP servers selected on the expert for new sessions."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            return []
+        return id_list_from_row(row, "mcp_servers")
+
+    def default_knowledge_base_ids(self, agent_id: str) -> list[str]:
+        """Composer knowledge bases selected on the expert for new sessions."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            return []
+        return id_list_from_row(row, "knowledge_base_ids")
 
     async def prepare_chat_mcp(
         self,
@@ -1763,6 +1823,60 @@ class AgentManager:
                     f"skill package {package_id!r} not found",
                 )
         return normalized_ids
+
+    def persist_knowledge_base_ids(self, agent_id: str, knowledge_base_ids: list[str]) -> None:
+        """Persist composer knowledge-base defaults without reloading harness."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        normalized = (
+            self.validate_knowledge_base_ids(row.user_id, knowledge_base_ids)
+            if row.user_id is not None
+            else skill_package_ids_list({"skill_package_ids": knowledge_base_ids})
+        )
+        self._repos.agent_repo.update_config(
+            agent_id,
+            knowledge_base_ids=dump_id_list(normalized),
+        )
+
+    def persist_mcp_servers(self, agent_id: str, mcp_servers: list[str]) -> None:
+        """Persist composer connector defaults without reloading harness."""
+        row = self._repos.agent_repo.get(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        normalized = (
+            self.validate_mcp_servers(row.user_id, mcp_servers)
+            if row.user_id is not None
+            else skill_package_ids_list({"skill_package_ids": mcp_servers})
+        )
+        self._repos.agent_repo.update_config(
+            agent_id,
+            mcp_servers=dump_id_list(normalized),
+        )
+
+    def validate_knowledge_base_ids(self, user_id: int, knowledge_base_ids: list[str]) -> list[str]:
+        """Normalize ids and ensure each knowledge base is visible to *user_id*."""
+        normalized = skill_package_ids_list({"skill_package_ids": knowledge_base_ids})
+        if not normalized:
+            return []
+        visible = {base.id for base in self._repos.knowledge_repo.list_visible(user_id)}
+        unknown = [kb_id for kb_id in normalized if kb_id not in visible]
+        if unknown:
+            raise OctopError(
+                ErrorCode.KNOWLEDGE_NOT_FOUND,
+                f"knowledge base(s) not found: {', '.join(unknown)}",
+            )
+        return normalized
+
+    def validate_mcp_servers(self, user_id: int, mcp_servers: list[str]) -> list[str]:
+        """Normalize MCP server names and ensure they are available to *user_id*."""
+        normalized = skill_package_ids_list({"skill_package_ids": mcp_servers})
+        if not normalized:
+            return []
+        try:
+            return list(self._connector_svc.validate_mcp_servers_for_user(user_id, normalized))
+        except ValueError as exc:
+            raise OctopError(ErrorCode.CONNECTOR_NOT_BOUND, str(exc)) from exc
 
     def assert_backend_supports_skill_packages(
         self,
@@ -2380,10 +2494,66 @@ class AgentManager:
             "icon": row.icon,
             "template_name": row.template_name,
         }
+        self._apply_peer_profile_metadata(metadata, row.agent_id, row.description)
         tags: list[str] = []
         if row.template_name:
             tags.append(row.template_name)
         return cfg, metadata, tags, user_display
+
+    def _refresh_peer_entry(self, entry: AgentEntry) -> None:
+        """Re-read description / guidance cards into a running registry entry."""
+        row = self._repos.agent_repo.get(entry.agent_id)
+        row_desc = row.description if row is not None else None
+        self._apply_peer_profile_metadata(entry.metadata, entry.agent_id, row_desc)
+
+    def _apply_peer_profile_metadata(
+        self,
+        metadata: dict[str, Any],
+        agent_id: str,
+        row_description: str | None,
+    ) -> None:
+        extra = self._peer_manifest_metadata(agent_id, row_description)
+        if row_description and str(row_description).strip():
+            metadata["description"] = row_description
+        elif extra.get("description"):
+            metadata["description"] = extra["description"]
+        if "quick_prompts" not in extra:
+            return
+        prompts = extra["quick_prompts"]
+        if isinstance(prompts, list) and prompts:
+            metadata["quick_prompts"] = prompts
+        else:
+            metadata.pop("quick_prompts", None)
+
+    def _peer_manifest_metadata(
+        self,
+        agent_id: str,
+        row_description: str | None,
+    ) -> dict[str, Any]:
+        """Guidance cards (and fallback description) from workspace ``manifest.json``."""
+        extra: dict[str, Any] = {}
+        try:
+            host = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
+        except Exception:
+            return extra
+        for rel in (Path(".octop") / "manifest.json", Path("manifest.json")):
+            path = host / rel
+            if not path.is_file():
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                break
+            if not isinstance(data, dict):
+                break
+            prompts = data.get("quick_prompts")
+            extra["quick_prompts"] = prompts if isinstance(prompts, list) else []
+            if not (row_description or "").strip():
+                desc = data.get("description")
+                if isinstance(desc, (str, dict)) and desc:
+                    extra["description"] = desc
+            break
+        return extra
 
     def _connector_uid_for(
         self,
@@ -2533,6 +2703,7 @@ class AgentManager:
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
+        from octop.infra.agents.middleware.token_quota import TokenQuotaMiddleware
         from octop.infra.agents.middleware.workspace_image import (
             WorkspaceImageMaterializeMiddleware,
         )
@@ -2544,6 +2715,10 @@ class AgentManager:
         # WorkspaceImageMaterialize expands path-only vision refs at model-call time.
         agent_middleware: list[Any] = [
             *plugin_middleware,
+            TokenQuotaMiddleware(
+                policy_repo=self._repos.user_policy_repo,
+                usage_repo=self._repos.usage_repo,
+            ),
             ReasoningRequestMiddleware(),
             KnowledgeSearchHintMiddleware(),
             BrowserProfileMiddleware(),
@@ -2561,8 +2736,7 @@ class AgentManager:
         merged_tools.extend(knowledge_tools)
         merged_tools.extend(mobile_tools)
         merged_tools.extend(plugin_tools)
-        if self._harness_manager is not None:
-            merged_tools.extend(self._harness_manager.team.team_tools())
+        # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.
 
         acp_section = cfg.get("acp")
         acp_raw: dict[str, Any] = acp_section if isinstance(acp_section, dict) else {}

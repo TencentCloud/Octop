@@ -128,9 +128,10 @@
 .minimalAgentHeader {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 6px;
   width: 100%;
   min-height: 30px;
+  padding-left: 8px;
   border-radius: 6px;
   transition: background var(--fn-transition-fast);
 
@@ -139,20 +140,28 @@
   }
 }
 
+/* Expert icon and the collapse chevron share one cell: hover swaps them. */
+.minimalAgentIconSlot {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
 .minimalAgentChevronBtn {
+  position: absolute;
+  inset: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  width: 22px;
-  height: 28px;
-  margin-right: 2px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
   color: var(--fn-text-tertiary);
   cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
 
   &:hover {
     color: var(--fn-text-secondary);
@@ -175,7 +184,7 @@
   flex: 1;
   min-width: 0;
   min-height: 28px;
-  padding: 0 2px 0 8px;
+  padding: 0 2px 0 0;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -190,17 +199,65 @@
 }
 
 .minimalAgentAvatar {
-  width: 22px;
-  height: 22px;
+  position: absolute;
+  inset: 0;
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: opacity var(--fn-transition-fast);
+}
+
+.minimalAgentNewChatBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-right: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
+  }
+}
+
+.minimalAgentHeader:hover,
+.minimalAgentHeader:focus-within {
+  .minimalAgentAvatar {
+    opacity: 0;
+  }
+
+  .minimalAgentChevronBtn,
+  .minimalAgentNewChatBtn {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* Touch devices never hover — keep both controls reachable. */
+@media (hover: none) {
+  .minimalAgentAvatar {
+    opacity: 0;
+  }
+
+  .minimalAgentChevronBtn,
+  .minimalAgentNewChatBtn {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .minimalAgentName {
-  flex: 1;
   min-width: 0;
   font-size: 14px;
   font-weight: 400;
@@ -224,6 +281,32 @@
   font-size: 12px;
   line-height: 1.35;
   color: var(--fn-text-tertiary);
+}
+
+.sessionRowWorkingDot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--fn-color-brand);
+  animation: sessionWorkingPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes sessionWorkingPulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sessionRowWorkingDot {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 .sidebarNavEmbedded {

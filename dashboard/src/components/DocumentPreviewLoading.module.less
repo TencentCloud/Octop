@@ -1,0 +1,33 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  color: var(--fn-text-tertiary, rgba(0, 0, 0, 0.45));
+  background: var(--fn-bg-container, #fff);
+}
+
+.fill {
+  flex: 1;
+  align-self: stretch;
+  width: 100%;
+  min-height: 200px;
+  height: 100%;
+}
+
+.tip {
+  margin: 0;
+  max-width: 28em;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary, rgba(0, 0, 0, 0.65));
+}
+
+.progress {
+  width: min(240px, 70%);
+  margin: 0;
+}

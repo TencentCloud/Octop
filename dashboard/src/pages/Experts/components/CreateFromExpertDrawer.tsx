@@ -57,6 +57,7 @@ import {
 } from "./agentBackendForm";
 import AgentBackendFields from "./AgentBackendFields";
 import ExpertAvatarPicker from "./ExpertAvatarPicker";
+import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
 import styles from "../index.module.less";
 
 type FileContent = NamedFileContent;
@@ -161,6 +162,8 @@ export default function CreateFromExpertDrawer({
       composite_default: string;
       root_dir?: string;
       skill_package_ids?: string[];
+      knowledge_base_ids?: string[];
+      mcp_servers?: string[];
       enable_trajectory?: boolean;
     } & AgentRuntimeFormValues
   >();
@@ -220,6 +223,8 @@ export default function CreateFromExpertDrawer({
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
       skill_package_ids: [],
+      knowledge_base_ids: [],
+      mcp_servers: [],
       enable_trajectory: true,
     });
 
@@ -330,6 +335,8 @@ export default function CreateFromExpertDrawer({
         skill_package_ids: skillPackagesSupported
           ? values.skill_package_ids ?? []
           : [],
+        knowledge_base_ids: values.knowledge_base_ids ?? [],
+        mcp_servers: values.mcp_servers ?? [],
         color: isCuratedPalette(colorPalette)
           ? expertPaletteColor(colorPalette)
           : colorPalette,
@@ -450,7 +457,7 @@ export default function CreateFromExpertDrawer({
           showIcon
           message={t("experts.noModelsWarning")}
           action={
-            <a href="/admin/providers" style={{ whiteSpace: "nowrap" }}>
+            <a href="/admin/models" style={{ whiteSpace: "nowrap" }}>
               {t("experts.goToAdmin")}
             </a>
           }
@@ -599,6 +606,7 @@ export default function CreateFromExpertDrawer({
             placeholder={t("experts.skillPackagesPlaceholder")}
           />
         </Form.Item>
+        <ExpertComposerDefaultsFields />
 
         <Collapse
           ghost

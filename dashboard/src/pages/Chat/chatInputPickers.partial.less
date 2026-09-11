@@ -6,6 +6,13 @@
   border-radius: 10px;
 }
 
+.modelMenuColumn {
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+  max-width: 320px;
+}
+
 .modelMenu {
   min-width: 240px;
   max-width: 320px;
@@ -16,13 +23,43 @@
   gap: 2px;
 }
 
+.modelMenuDivider {
+  width: 100%;
+  height: 1px;
+  margin: 4px 0;
+  background: var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+}
+
+.modelMenuFooter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    background: var(--fn-sidebar-item-hover, rgba(0, 0, 0, 0.04));
+    color: var(--fn-text-primary);
+  }
+}
+
 .modelPickerPanel {
   display: flex;
   align-items: stretch;
   max-width: min(620px, calc(100vw - 32px));
 }
 
-.modelPickerPanelExpanded .modelMenu {
+.modelPickerPanelExpanded .modelMenuColumn {
   padding-right: 6px;
   border-right: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
 }
@@ -379,6 +416,14 @@
   flex-direction: row;
   align-items: center;
   gap: 6px;
+}
+
+.subagentPickerItemActive {
+  background: rgba(13, 148, 136, 0.1);
+
+  &:hover {
+    background: rgba(13, 148, 136, 0.14);
+  }
 }
 
 .expertSharedBadge {

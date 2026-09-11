@@ -345,10 +345,15 @@ export async function request<T = unknown>(
 
 /**
  * Download a binary resource as a Blob.
+ *
+ * ``onProgress`` (when the server sends ``Content-Length``) streams the body
+ * and reports ``(loaded, total)`` in bytes — used by the PDF preview's
+ * download progress bar.
  */
 export async function requestBlob(
   path: string,
   options: RequestInit = {},
+  onProgress?: (loaded: number, total: number) => void,
 ): Promise<Blob> {
   assertNotSetupLocked(path);
 
@@ -373,6 +378,23 @@ export async function requestBlob(
         text ? ` - ${text}` : ""
       }`,
     );
+  }
+
+  const total = Number(response.headers.get("content-length")) || 0;
+  if (onProgress && total > 0 && response.body) {
+    const reader = response.body.getReader();
+    const chunks: BlobPart[] = [];
+    let loaded = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value as unknown as BlobPart);
+        loaded += value.byteLength;
+        onProgress(loaded, total);
+      }
+    }
+    return new Blob(chunks);
   }
 
   return response.blob();

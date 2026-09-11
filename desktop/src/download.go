@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -36,11 +37,26 @@ func pythonExe(root string) string {
 func ensurePortable(locale Locale, status func(string)) error {
 	root := portableDir()
 	if launchReady(root) {
-		status(desktopText(locale, "正在使用已有运行环境…", "Using the existing runtime…"))
-		return nil
+		currentVersion := portableVersion(root)
+		bundledVersion, err := bundledPortableVersion()
+		if err != nil || bundledVersion == "" ||
+			(currentVersion != "" && compareVersions(bundledVersion, currentVersion) <= 0) {
+			status(desktopText(locale, copyStatusUsingRuntime))
+			return nil
+		}
+		status(desktopText(locale, copyStatusBackupDatabase, bundledVersion))
+		if _, err := backupSQLiteBeforeUpgrade(root, currentVersion, bundledVersion); err != nil {
+			return fmt.Errorf("%s: %w", desktopText(locale, copyErrorBackupFailed), err)
+		}
+		status(desktopText(locale, copyStatusUpdatingRuntime))
+	} else {
+		status(desktopText(locale, copyStatusFirstExtract))
 	}
-	status(desktopText(locale, "首次启动，正在解压内置运行环境…", "First launch: unpacking the bundled runtime…"))
-	if err := extractPortable(root); err != nil {
+	if err := replacePortable(root); err != nil {
+		if launchReady(root) {
+			status(desktopText(locale, copyStatusUpdateFailedKeep))
+			return nil
+		}
 		return err
 	}
 	if runtime.GOOS == "darwin" {
@@ -50,6 +66,190 @@ func ensurePortable(locale Locale, status func(string)) error {
 		return fmt.Errorf("portable extract missing launch.py or python under %s", root)
 	}
 	return nil
+}
+
+func replacePortable(root string) error {
+	next := root + ".new"
+	previous := root + ".previous"
+	_ = os.RemoveAll(next)
+	if err := extractPortable(next); err != nil {
+		_ = os.RemoveAll(next)
+		return err
+	}
+	if !launchReady(next) {
+		_ = os.RemoveAll(next)
+		return fmt.Errorf("portable extract missing launch.py or python under %s", next)
+	}
+
+	_ = os.RemoveAll(previous)
+	hadCurrent := false
+	if _, err := os.Stat(root); err == nil {
+		if err := os.Rename(root, previous); err != nil {
+			_ = os.RemoveAll(next)
+			return err
+		}
+		hadCurrent = true
+	}
+	if err := os.Rename(next, root); err != nil {
+		if hadCurrent {
+			_ = os.Rename(previous, root)
+		}
+		return err
+	}
+	_ = os.RemoveAll(previous)
+	return nil
+}
+
+func portableVersion(root string) string {
+	version := installedPackageVersion(root)
+	data, err := os.ReadFile(filepath.Join(root, "VERSION.txt"))
+	if err == nil {
+		bundledVersion := versionFromText(string(data))
+		if version == "" || compareVersions(bundledVersion, version) > 0 {
+			version = bundledVersion
+		}
+	}
+	return version
+}
+
+func installedPackageVersion(root string) string {
+	matches, _ := filepath.Glob(filepath.Join(root, "packages", "octop-*.dist-info", "METADATA"))
+	version := ""
+	for _, metadata := range matches {
+		data, err := os.ReadFile(metadata)
+		if err != nil {
+			continue
+		}
+		value := metadataVersion(string(data))
+		if value == "" {
+			continue
+		}
+		if version == "" || compareVersions(value, version) > 0 {
+			version = value
+		}
+	}
+	return version
+}
+
+func bundledPortableVersion() (string, error) {
+	if os.Getenv("OCTOP_DESKTOP_PORTABLE_ZIP") == "" && len(embeddedPortable) > 0 {
+		reader, err := zip.NewReader(bytes.NewReader(embeddedPortable), int64(len(embeddedPortable)))
+		if err != nil {
+			return "", err
+		}
+		return versionFromZip(reader.File)
+	}
+	zipPath, err := bundledPortableZip()
+	if err != nil {
+		return "", err
+	}
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+	return versionFromZip(reader.File)
+}
+
+func versionFromZip(files []*zip.File) (string, error) {
+	fromFile, err := zipEntryVersion(files, func(name string) bool {
+		return filepath.Base(filepath.FromSlash(name)) == "VERSION.txt"
+	}, versionFromText)
+	if err != nil {
+		return "", err
+	}
+	if fromFile != "" {
+		return fromFile, nil
+	}
+	return zipEntryVersion(files, func(name string) bool {
+		rel := filepath.ToSlash(name)
+		return strings.Contains(rel, "/octop-") && strings.HasSuffix(rel, ".dist-info/METADATA")
+	}, metadataVersion)
+}
+
+func zipEntryVersion(files []*zip.File, match func(string) bool, parse func(string) string) (string, error) {
+	version := ""
+	for _, file := range files {
+		if !match(file.Name) {
+			continue
+		}
+		reader, err := file.Open()
+		if err != nil {
+			return "", err
+		}
+		data, readErr := io.ReadAll(reader)
+		closeErr := reader.Close()
+		if readErr != nil {
+			return "", readErr
+		}
+		if closeErr != nil {
+			return "", closeErr
+		}
+		value := parse(string(data))
+		if value == "" {
+			continue
+		}
+		if version == "" || compareVersions(value, version) > 0 {
+			version = value
+		}
+	}
+	return version, nil
+}
+
+func versionFromText(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "octop_version="); ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func metadataVersion(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		value, ok := strings.CutPrefix(strings.TrimSpace(line), "Version:")
+		if ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func compareVersions(left, right string) int {
+	leftParts := strings.Split(left, ".")
+	rightParts := strings.Split(right, ".")
+	count := max(len(leftParts), len(rightParts))
+	for index := 0; index < count; index++ {
+		var leftPart, rightPart int
+		if index < len(leftParts) {
+			leftPart = versionPart(leftParts[index])
+		}
+		if index < len(rightParts) {
+			rightPart = versionPart(rightParts[index])
+		}
+		if leftPart < rightPart {
+			return -1
+		}
+		if leftPart > rightPart {
+			return 1
+		}
+	}
+	return 0
+}
+
+func versionPart(segment string) int {
+	numeric := ""
+	for _, ch := range segment {
+		if ch < '0' || ch > '9' {
+			break
+		}
+		numeric += string(ch)
+	}
+	if numeric == "" {
+		return 0
+	}
+	value, _ := strconv.Atoi(numeric)
+	return value
 }
 
 func extractPortable(root string) error {
@@ -219,23 +419,16 @@ func formatWaitDuration(locale Locale, d time.Duration) string {
 	if minutes {
 		n = sec / 60
 	}
-	if locale == LocaleEN {
-		unit := "seconds"
-		if minutes {
-			unit = "minutes"
-		}
-		if n == 1 {
-			if minutes {
-				return "1 minute"
-			}
-			return "1 second"
-		}
-		return fmt.Sprintf("%d %s", n, unit)
+	switch {
+	case minutes && n == 1:
+		return desktopText(locale, copyWait1Minute)
+	case minutes:
+		return desktopText(locale, copyWaitNMinutes, n)
+	case n == 1:
+		return desktopText(locale, copyWait1Second)
+	default:
+		return desktopText(locale, copyWaitNSeconds, n)
 	}
-	if minutes {
-		return fmt.Sprintf("%d 分钟", n)
-	}
-	return fmt.Sprintf("%d 秒", n)
 }
 
 func formatHealthWaitError(locale Locale, base string, timeout time.Duration, lastErr error, lastStatus int) error {
@@ -243,19 +436,10 @@ func formatHealthWaitError(locale Locale, base string, timeout time.Duration, la
 	wait := formatWaitDuration(locale, timeout)
 	switch {
 	case lastStatus >= 500:
-		return fmt.Errorf("%s", desktopText(locale,
-			fmt.Sprintf("Octop 服务未在%s内就绪（%s）。服务已响应但尚未就绪，请稍后再试，或查看终端日志。", wait, addr),
-			fmt.Sprintf("Octop did not become ready within %s (%s). The service responded but is not ready yet. Try again, or check the terminal logs.", wait, addr),
-		))
+		return fmt.Errorf("%s", desktopText(locale, copyHealthNotReady5xx, wait, addr))
 	case lastErr != nil:
-		return fmt.Errorf("%s", desktopText(locale,
-			fmt.Sprintf("Octop 服务未在%s内就绪（%s）。目前无法连接该地址，请确认 Octop 正在运行。", wait, addr),
-			fmt.Sprintf("Octop did not become ready within %s (%s). Could not connect — make sure Octop is running.", wait, addr),
-		))
+		return fmt.Errorf("%s", desktopText(locale, copyHealthNotReadyConnect, wait, addr))
 	default:
-		return fmt.Errorf("%s", desktopText(locale,
-			fmt.Sprintf("Octop 服务未在%s内就绪（%s）。请确认本机已启动 Octop，且地址、端口正确；也可查看终端日志。", wait, addr),
-			fmt.Sprintf("Octop did not become ready within %s (%s). Make sure Octop is running at this address, or check the terminal logs.", wait, addr),
-		))
+		return fmt.Errorf("%s", desktopText(locale, copyHealthNotReady, wait, addr))
 	}
 }

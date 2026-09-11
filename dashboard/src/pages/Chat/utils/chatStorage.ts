@@ -1,5 +1,4 @@
 export const CONNECTORS_STORAGE_PREFIX = "octop:chat-connectors:";
-export const SKILLS_STORAGE_PREFIX = "octop:chat-skills:";
 
 function loadSavedStringList(key: string): string[] {
   try {
@@ -29,25 +28,10 @@ export function hasSavedConnectors(agentId: string): boolean {
   }
 }
 
-export function loadSavedSkills(agentId: string): string[] {
-  return loadSavedStringList(`${SKILLS_STORAGE_PREFIX}${agentId}`);
-}
-
 export function saveConnectors(agentId: string, names: string[]): void {
   try {
     localStorage.setItem(
       `${CONNECTORS_STORAGE_PREFIX}${agentId}`,
-      JSON.stringify(names),
-    );
-  } catch {
-    /* ignore */
-  }
-}
-
-export function saveSkills(agentId: string, names: string[]): void {
-  try {
-    localStorage.setItem(
-      `${SKILLS_STORAGE_PREFIX}${agentId}`,
       JSON.stringify(names),
     );
   } catch {

@@ -22,6 +22,7 @@ from octop.infra.agents.avatar import (
     write_workspace_avatar,
 )
 from octop.infra.agents.profile import (
+    id_list_from_row,
     parse_config_json,
     parse_skill_package_ids_json,
     strip_profile_config,
@@ -54,6 +55,8 @@ class AgentCreateBody(AgentRuntimeFields):
     icon_url: str | None = None
     welcome_message: str | None = None
     skill_package_ids: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
 
 
 class AgentPatchBody(AgentRuntimeFields):
@@ -71,6 +74,8 @@ class AgentPatchBody(AgentRuntimeFields):
     icon_url: str | None = None
     welcome_message: str | None = None
     skill_package_ids: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
 
 
 def _attach_unread_counts(
@@ -159,6 +164,8 @@ def _row_dict(
         ),
         "color": row.color or cfg.get("color"),
         "skill_package_ids": packages,
+        "knowledge_base_ids": id_list_from_row(row, "knowledge_base_ids"),
+        "mcp_servers": id_list_from_row(row, "mcp_servers"),
         "published_expert_id": row.published_expert_id,
         "welcome_message": welcome_from_row(row),
         "is_shared": bool(int(getattr(row, "is_shared", 0) or 0)),
@@ -252,7 +259,23 @@ async def create_agent(
 
     assert server.app_runtime is not None
     if isinstance(body.config, dict):
-        assert_user_backend_root_dirs(user, body.config.get("backend"))
+        assert_user_backend_root_dirs(
+            user,
+            body.config.get("backend"),
+            policy_repo=server.services.user_policy_repo,
+        )
+    knowledge_ids = (
+        server.app_runtime.agent_registry.validate_knowledge_base_ids(
+            user.id, body.knowledge_base_ids
+        )
+        if body.knowledge_base_ids is not None
+        else None
+    )
+    mcp_servers = (
+        server.app_runtime.agent_registry.validate_mcp_servers(user.id, body.mcp_servers)
+        if body.mcp_servers is not None
+        else None
+    )
     spec = AgentCreateSpec(
         name=body.name,
         user_id=user.id,
@@ -270,6 +293,8 @@ async def create_agent(
         icon_url=body.icon_url,
         skill_package_ids=body.skill_package_ids,
         welcome_message=body.welcome_message,
+        knowledge_base_ids=knowledge_ids,
+        mcp_servers=mcp_servers,
     )
     row = await server.app_runtime.agent_registry.create(spec)
     return _row_dict(
@@ -332,7 +357,11 @@ async def patch_agent(
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
     if body.config is not None and isinstance(body.config, dict):
-        assert_user_backend_root_dirs(user, body.config.get("backend"))
+        assert_user_backend_root_dirs(
+            user,
+            body.config.get("backend"),
+            policy_repo=server.services.user_policy_repo,
+        )
     updates = {
         key: value
         for key, value in body.model_dump(exclude_unset=True).items()
@@ -342,6 +371,8 @@ async def patch_agent(
             "is_shared",
             "welcome_message",
             "skill_package_ids",
+            "knowledge_base_ids",
+            "mcp_servers",
         }
     }
     if body.config is not None:
@@ -354,6 +385,18 @@ async def patch_agent(
         await server.app_runtime.agent_registry.persist_skill_package_ids(
             agent_id, body.skill_package_ids
         )
+        refreshed = server.app_runtime.agent_registry.get_row(agent_id)
+        if refreshed is not None:
+            row = refreshed
+    if body.knowledge_base_ids is not None:
+        server.app_runtime.agent_registry.persist_knowledge_base_ids(
+            agent_id, body.knowledge_base_ids
+        )
+        refreshed = server.app_runtime.agent_registry.get_row(agent_id)
+        if refreshed is not None:
+            row = refreshed
+    if body.mcp_servers is not None:
+        server.app_runtime.agent_registry.persist_mcp_servers(agent_id, body.mcp_servers)
         refreshed = server.app_runtime.agent_registry.get_row(agent_id)
         if refreshed is not None:
             row = refreshed

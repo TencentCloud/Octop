@@ -19,7 +19,7 @@ func TestEnsurePortableUsesEmbeddedPackage(t *testing.T) {
 	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", "")
 
 	zipPath := filepath.Join(t.TempDir(), "embedded.zip")
-	writeTestGreenZip(t, zipPath)
+	writeTestGreenZip(t, zipPath, "1.0.0")
 	data, err := os.ReadFile(zipPath)
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestEnsurePortableUsesBundledPackage(t *testing.T) {
 
 	zipPath := filepath.Join(t.TempDir(), "Octop-"+greenPlat()+".zip")
 	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", zipPath)
-	writeTestGreenZip(t, zipPath)
+	writeTestGreenZip(t, zipPath, "1.0.0")
 
 	var statuses []string
 	err := ensurePortable(LocaleZH, func(status string) {
@@ -59,6 +59,236 @@ func TestEnsurePortableUsesBundledPackage(t *testing.T) {
 	}
 	if _, err := os.Stat(zipPath); err != nil {
 		t.Fatalf("bundled package should be retained: %v", err)
+	}
+}
+
+func TestEnsurePortableReplacesOlderRuntime(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OCTOP_HOME", home)
+	root := portableDir()
+
+	oldZip := filepath.Join(t.TempDir(), "old.zip")
+	writeTestGreenZip(t, oldZip, "0.9.31")
+	if err := unzipGreen(oldZip, root); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(root, "stale.txt")
+	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	newZip := filepath.Join(t.TempDir(), "new.zip")
+	writeTestGreenZip(t, newZip, "0.9.32")
+	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+	var statuses []string
+	if err := ensurePortable(LocaleZH, func(status string) { statuses = append(statuses, status) }); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := portableVersion(root); got != "0.9.32" {
+		t.Fatalf("portable version = %q, want 0.9.32", got)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("old runtime was not replaced: %v", err)
+	}
+	if len(statuses) < 2 ||
+		statuses[0] != "发现客户端新版 0.9.32，正在备份数据库…" ||
+		statuses[1] != "正在更新内置运行环境…" {
+		t.Fatalf("unexpected statuses: %v", statuses)
+	}
+}
+
+func TestEnsurePortableUpgradesBundledVersionAfterDatabaseBackup(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OCTOP_HOME", home)
+	root := portableDir()
+
+	oldZip := filepath.Join(t.TempDir(), "old.zip")
+	writeTestGreenZip(t, oldZip, "0.9.29")
+	if err := unzipGreen(oldZip, root); err != nil {
+		t.Fatal(err)
+	}
+	database := filepath.Join(home, "octop.db")
+	if err := os.WriteFile(database, []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	newZip := filepath.Join(t.TempDir(), "new.zip")
+	writeTestGreenZip(t, newZip, "0.9.32")
+	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+
+	previousBackup := runSQLiteBackup
+	runSQLiteBackup = func(_ string, source string, destination string) error {
+		if source != database {
+			t.Fatalf("backup source = %q, want %q", source, database)
+		}
+		return os.WriteFile(destination, []byte("backup"), 0o600)
+	}
+	t.Cleanup(func() { runSQLiteBackup = previousBackup })
+
+	if err := ensurePortable(LocaleZH, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got := portableVersion(root); got != "0.9.32" {
+		t.Fatalf("portable version = %q, want 0.9.32", got)
+	}
+	backups, err := filepath.Glob(filepath.Join(home, "backups", "octop-desktop-pre-upgrade-*.db"))
+	if err != nil || len(backups) != 1 {
+		t.Fatalf("upgrade backup = %v, err = %v", backups, err)
+	}
+}
+
+func TestEnsurePortableKeepsRuntimeWhenDatabaseBackupFails(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OCTOP_HOME", home)
+	root := portableDir()
+
+	oldZip := filepath.Join(t.TempDir(), "old.zip")
+	writeTestGreenZip(t, oldZip, "0.9.29")
+	if err := unzipGreen(oldZip, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "octop.db"), []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	newZip := filepath.Join(t.TempDir(), "new.zip")
+	writeTestGreenZip(t, newZip, "0.9.32")
+	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+
+	previousBackup := runSQLiteBackup
+	runSQLiteBackup = func(_, _, _ string) error { return errors.New("backup unavailable") }
+	t.Cleanup(func() { runSQLiteBackup = previousBackup })
+
+	if err := ensurePortable(LocaleZH, func(string) {}); err == nil {
+		t.Fatal("backup failure should abort the runtime upgrade")
+	}
+	if got := portableVersion(root); got != "0.9.29" {
+		t.Fatalf("portable version = %q, want preserved 0.9.29", got)
+	}
+}
+
+func TestEnsurePortableKeepsNewerExistingRuntime(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OCTOP_HOME", home)
+	root := portableDir()
+
+	newZip := filepath.Join(t.TempDir(), "new.zip")
+	writeTestGreenZip(t, newZip, "0.9.33")
+	if err := unzipGreen(newZip, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "VERSION.txt"),
+		[]byte("octop_version=0.9.31\n"),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(root, "keep.txt")
+	if err := os.WriteFile(sentinel, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldZip := filepath.Join(t.TempDir(), "old.zip")
+	writeTestGreenZip(t, oldZip, "0.9.32")
+	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", oldZip)
+	if err := ensurePortable(LocaleZH, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := portableVersion(root); got != "0.9.33" {
+		t.Fatalf("portable version = %q, want 0.9.33", got)
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Fatalf("newer runtime was unexpectedly replaced: %v", err)
+	}
+}
+
+func TestEnsurePortableKeepsCurrentRuntimeWhenReplacementIsInvalid(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OCTOP_HOME", home)
+	root := portableDir()
+
+	currentZip := filepath.Join(t.TempDir(), "current.zip")
+	writeTestGreenZip(t, currentZip, "0.9.31")
+	if err := unzipGreen(currentZip, root); err != nil {
+		t.Fatal(err)
+	}
+
+	invalidZip := filepath.Join(t.TempDir(), "invalid.zip")
+	writeVersionOnlyZip(t, invalidZip, "0.9.32")
+	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", invalidZip)
+	var statuses []string
+	if err := ensurePortable(LocaleZH, func(status string) { statuses = append(statuses, status) }); err != nil {
+		t.Fatalf("existing runtime should still boot after a failed replacement: %v", err)
+	}
+
+	if !launchReady(root) {
+		t.Fatal("current runtime should remain usable after replacement failure")
+	}
+	if got := portableVersion(root); got != "0.9.31" {
+		t.Fatalf("portable version = %q, want 0.9.31", got)
+	}
+	if len(statuses) == 0 || statuses[len(statuses)-1] != "更新内置运行环境失败，继续使用已有运行环境…" {
+		t.Fatalf("unexpected statuses: %v", statuses)
+	}
+}
+
+func TestEnsurePortableReplacesLegacyRuntimeWithoutVersionFiles(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OCTOP_HOME", home)
+	root := portableDir()
+
+	oldZip := filepath.Join(t.TempDir(), "old.zip")
+	writeTestGreenZip(t, oldZip, "0.9.31")
+	if err := unzipGreen(oldZip, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "VERSION.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(root, "packages")); err != nil {
+		t.Fatal(err)
+	}
+
+	newZip := filepath.Join(t.TempDir(), "new.zip")
+	writeTestGreenZip(t, newZip, "0.9.32")
+	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+	if err := ensurePortable(LocaleZH, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got := portableVersion(root); got != "0.9.32" {
+		t.Fatalf("portable version = %q, want 0.9.32", got)
+	}
+}
+
+func TestBundledPortableVersionFallsBackToMetadata(t *testing.T) {
+	zipPath := filepath.Join(t.TempDir(), "meta-only.zip")
+	writeMetadataOnlyZip(t, zipPath, "0.9.32")
+	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", zipPath)
+	got, err := bundledPortableVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "0.9.32" {
+		t.Fatalf("bundled version = %q, want 0.9.32", got)
+	}
+}
+
+func TestCompareVersions(t *testing.T) {
+	for _, test := range []struct {
+		left, right string
+		want        int
+	}{
+		{"0.9.32", "0.9.31", 1},
+		{"0.9.32", "0.9.32", 0},
+		{"0.9.31", "0.9.32", -1},
+		{"1.0", "1.0.0", 0},
+		{"0.9.32rc1", "0.9.31", 1},
+	} {
+		if got := compareVersions(test.left, test.right); got != test.want {
+			t.Fatalf("compareVersions(%q, %q) = %d, want %d", test.left, test.right, got, test.want)
+		}
 	}
 }
 
@@ -162,14 +392,18 @@ func TestWaitHealthTimesOutWithFriendlyMessage(t *testing.T) {
 	}
 }
 
-func writeTestGreenZip(t *testing.T, path string) {
+func writeTestGreenZip(t *testing.T, path, version string) {
 	t.Helper()
 	f, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	w := zip.NewWriter(f)
-	files := []string{"Octop-test/launch.py"}
+	files := []string{
+		"Octop-test/launch.py",
+		"Octop-test/VERSION.txt",
+		"Octop-test/packages/octop-" + version + ".dist-info/METADATA",
+	}
 	if runtime.GOOS == "windows" {
 		files = append(files, "Octop-test/runtime/python.exe")
 	} else {
@@ -181,7 +415,11 @@ func writeTestGreenZip(t *testing.T, path string) {
 	for _, name := range files {
 		header := &zip.FileHeader{Name: name, Method: zip.Store}
 		content := []byte("test executable payload")
-		if strings.HasSuffix(name, "/python3") {
+		if strings.HasSuffix(name, "/VERSION.txt") {
+			content = []byte("platform=test\noctop_version=" + version + "\n")
+		} else if strings.HasSuffix(name, "/METADATA") {
+			content = []byte("Name: octop\nVersion: " + version + "\n")
+		} else if strings.HasSuffix(name, "/python3") {
 			header.SetMode(os.ModeSymlink | 0o755)
 			content = []byte("python3.12")
 		} else {
@@ -197,6 +435,50 @@ func writeTestGreenZip(t *testing.T, path string) {
 		if _, err := entry.Write(content); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeMetadataOnlyZip(t *testing.T, path, version string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(f)
+	entry, err := w.Create("Octop-test/packages/octop-" + version + ".dist-info/METADATA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte("Name: octop\nVersion: " + version + "\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeVersionOnlyZip(t *testing.T, path, version string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(f)
+	entry, err := w.Create("Octop-test/VERSION.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte("octop_version=" + version + "\n")); err != nil {
+		t.Fatal(err)
 	}
 	if err := w.Close(); err != nil {
 		t.Fatal(err)

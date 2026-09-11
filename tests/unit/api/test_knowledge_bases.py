@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -273,6 +274,86 @@ async def test_preview_document_returns_extracted_text(
     )
 
     assert response == {"id": "doc-1", "filename": "notes.md", "text": "# Hello"}
+
+
+@pytest.mark.asyncio
+async def test_download_document_file_returns_original_bytes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    path = tmp_path / "doc.pdf"
+    path.write_bytes(b"%PDF-1.4 test")
+    service = SimpleNamespace(
+        resolve_document_file=lambda *_args, **_kwargs: (
+            path,
+            "报告.pdf",
+            "application/pdf",
+        )
+    )
+    server = SimpleNamespace(services=_services())
+    user = SimpleNamespace(id=1, is_admin=False)
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", lambda _server: service)
+
+    response = await knowledge_bases.download_document_file(
+        "kb-1",
+        "doc-1",
+        request=_request(),
+        disposition="inline",
+        server=server,
+        user=user,
+    )
+
+    assert response.path == path
+    assert response.media_type == "application/pdf"
+    assert "inline" in response.headers["Content-Disposition"]
+    assert "filename*" in response.headers["Content-Disposition"]
+
+
+@pytest.mark.asyncio
+async def test_download_document_file_missing_maps_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def missing(*_args: object, **_kwargs: object) -> None:
+        raise FileNotFoundError("knowledge document original file not found")
+
+    service = SimpleNamespace(resolve_document_file=missing)
+    server = SimpleNamespace(services=_services())
+    user = SimpleNamespace(id=1, is_admin=False)
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", lambda _server: service)
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.download_document_file(
+            "kb-1",
+            "doc-1",
+            request=_request(),
+            disposition="attachment",
+            server=server,
+            user=user,
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_NOT_FOUND
+
+
+def test_row_payload_includes_has_original(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.api.routers import knowledge_bases
+    from octop.infra.knowledge import files as knowledge_files
+
+    monkeypatch.setattr(
+        knowledge_files,
+        "documents_dir",
+        lambda _kb_id: tmp_path,
+    )
+    doc = _Document(filename="notes.md")
+    missing = knowledge_bases._row_payload(doc)
+    assert missing["has_original"] is False
+
+    (tmp_path / f"{doc.id}.md").write_text("hi", encoding="utf-8")
+    present = knowledge_bases._row_payload(doc)
+    assert present["has_original"] is True
+    assert present["document_id"] == doc.id
 
 
 @pytest.mark.asyncio

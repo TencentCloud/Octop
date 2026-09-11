@@ -621,7 +621,7 @@
       }
 
       function applyCopy(locale) {
-        const t = copy[locale] || copy.zh;
+        const t = copy[locale] || copy.en;
         document.getElementById("title").textContent = t.title;
         document.getElementById("subtitle").textContent = t.subtitle;
         document.getElementById("l-lang").textContent = t.lang;
@@ -726,9 +726,9 @@
       const settingsMode =
         new URLSearchParams(window.location.search).get("settings") === "1";
       const s = await call("GetSettingsStatus");
-      const locale = s.locale || "zh";
+      const locale = s.locale || "en";
       document.getElementById("status").textContent =
-        copy[locale].statusWait;
+        (copy[locale] || copy.en).statusWait;
       applyCopy(locale);
 
       if (settingsMode) {

@@ -157,12 +157,12 @@ func (a *App) setStatus(msg string) {
 }
 
 func (a *App) boot() {
-	locale := LocaleZH
+	locale := LocaleEN
 	if a.store != nil {
 		locale = a.store.get().Locale
 	}
 	if url := os.Getenv("OCTOP_DESKTOP_URL"); url != "" {
-		a.setStatus(desktopText(locale, "正在连接 Octop…", "Connecting to Octop…"))
+		a.setStatus(desktopText(locale, copyStatusConnecting))
 		if err := waitHealth(locale, url, 60*time.Second); err != nil {
 			a.setStatus(err.Error())
 			return
@@ -171,7 +171,7 @@ func (a *App) boot() {
 		return
 	}
 	s := a.store.get()
-	a.setStatus(desktopText(locale, "正在检查运行环境…", "Checking the runtime…"))
+	a.setStatus(desktopText(locale, copyStatusCheckingRuntime))
 	if err := ensurePortable(locale, a.setStatus); err != nil {
 		a.setStatus(err.Error())
 		return
@@ -187,7 +187,7 @@ func (a *App) boot() {
 		return
 	}
 	base := dashboardURL(s.Port)
-	a.setStatus(desktopText(locale, "正在启动 Octop 服务…", "Starting the Octop service…"))
+	a.setStatus(desktopText(locale, copyStatusStartingService))
 	if err := waitHealth(locale, base, 2*time.Minute); err != nil {
 		a.setStatus(err.Error())
 		return
@@ -206,7 +206,7 @@ func (a *App) showDashboard(base string) {
 		time.Sleep(800 * time.Millisecond)
 		a.applyDashboardPrefs(s)
 	}()
-	a.setStatus(desktopText(s.Locale, "Octop 已就绪", "Octop is ready"))
+	a.setStatus(desktopText(s.Locale, copyStatusReady))
 }
 
 func (a *App) hideToTray() {

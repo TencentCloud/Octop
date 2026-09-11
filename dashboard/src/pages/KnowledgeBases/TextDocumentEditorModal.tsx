@@ -1,10 +1,21 @@
 import { useEffect, useState } from "react";
-import { Button, Drawer, Form, Input, Segmented, Select, Spin } from "antd";
+import { Button, Drawer, Form, Input, Segmented, Select } from "antd";
 import { Eye, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import DocumentPreviewLoading from "../../components/DocumentPreviewLoading";
 import Markdown from "../../components/Markdown";
 import styles from "./index.module.less";
+
+// Re-export preview helpers so existing page imports keep working.
+export {
+  canDownloadKnowledgeOriginal,
+  canPreviewKnowledgeDocument,
+  canRichPreviewKnowledgeDocument,
+  isEditableKnowledgeDocument,
+  isKnowledgeMarkdownDocument,
+  isRichPreviewFilename,
+} from "../../utils/knowledgeDocPreview";
 
 export type TextDocumentFormat = "md" | "txt";
 
@@ -28,18 +39,6 @@ interface TextDocumentEditorModalProps {
   initialContent?: string;
   onCancel: () => void;
   onSubmit: (values: TextDocumentEditorValues) => void | Promise<void>;
-}
-
-export function isEditableKnowledgeDocument(doc: {
-  is_dir?: boolean;
-  content_type?: string;
-  filename?: string;
-}): boolean {
-  if (doc.is_dir) return false;
-  const ct = (doc.content_type || "").toLowerCase();
-  if (ct === "text/plain" || ct === "text/markdown") return true;
-  const name = (doc.filename || "").toLowerCase();
-  return name.endsWith(".md") || name.endsWith(".txt");
 }
 
 export default function TextDocumentEditorModal({
@@ -79,14 +78,36 @@ export default function TextDocumentEditorModal({
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
+      const name = String(values.name ?? initialName ?? "").trim();
+      const format = values.format ?? initialFormat;
+      const nextContent = values.content ?? "";
+
+      // Edit mode: unchanged content → just close; skip API / reindex.
+      if (mode === "edit" && nextContent === initialContent) {
+        onCancel();
+        return;
+      }
+
       setSubmitting(true);
       await onSubmit({
-        name: values.name.trim(),
-        format: values.format,
-        content: values.content ?? "",
+        // Edit mode does not mount name/format fields, so validateFields() may
+        // omit them — fall back to the props used to open the drawer.
+        name,
+        format,
+        content: nextContent,
       });
-    } catch {
-      // validation errors stay in the form
+    } catch (error) {
+      // Ant Design validation rejects with `{ errorFields }`; keep those silent.
+      // Real submit failures are handled inside `onSubmit` (toast) and must not
+      // be mistaken for a no-op click.
+      if (
+        error &&
+        typeof error === "object" &&
+        "errorFields" in error &&
+        Array.isArray((error as { errorFields?: unknown }).errorFields)
+      ) {
+        return;
+      }
     } finally {
       setSubmitting(false);
     }
@@ -117,7 +138,7 @@ export default function TextDocumentEditorModal({
         </div>
       }
       onClose={onCancel}
-      destroyOnClose
+      destroyOnHidden
       width={drawerWidth}
       className={styles.textEditorDrawer}
       styles={{
@@ -142,7 +163,7 @@ export default function TextDocumentEditorModal({
     >
       {loading ? (
         <div className={styles.textEditorLoading}>
-          <Spin />
+          <DocumentPreviewLoading phase="file" />
         </div>
       ) : (
         <Form

@@ -12,6 +12,11 @@ from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.permissions import PERMISSIONS
+from octop.infra.users.resource_policy import (
+    normalize_token_quota,
+    normalize_workspace_root_dir,
+    public_policy_fields,
+)
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
@@ -24,6 +29,8 @@ class UserCreateBody(BaseModel):
     display_name: str | None = None
     email: str | None = Field(default=None, max_length=254)
     permissions: list[str] = Field(default_factory=list)
+    workspace_root_dir: str | None = None
+    token_quota: int | None = Field(default=None, ge=0)
 
 
 class UserPatchBody(BaseModel):
@@ -32,13 +39,15 @@ class UserPatchBody(BaseModel):
     email: str | None = Field(default=None, max_length=254)
     disabled: bool | None = None
     permissions: list[str] | None = None
+    workspace_root_dir: str | None = None
+    token_quota: int | None = Field(default=None, ge=0)
 
 
 class ResetPasswordBody(BaseModel):
     new_password: str = Field(min_length=1, max_length=200)
 
 
-def _row_to_dict(r: Any) -> dict[str, Any]:
+def _row_to_dict(r: Any, policy: Any | None = None) -> dict[str, Any]:
     now = int(time.time())
     locked_until = int(getattr(r, "login_locked_until", 0) or 0)
     locked = locked_until > now and not bool(r.disabled)
@@ -58,7 +67,17 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "login_retry_after_seconds": retry_after,
         "created_at": int(r.created_at),
         "permissions": list(getattr(r, "permissions", None) or []),
+        **public_policy_fields(policy),
     }
+
+
+def _policy_kwargs_from_body(body: UserCreateBody | UserPatchBody) -> dict[str, Any]:
+    policy_kwargs: dict[str, Any] = {}
+    if "workspace_root_dir" in body.model_fields_set:
+        policy_kwargs["workspace_root_dir"] = body.workspace_root_dir
+    if "token_quota" in body.model_fields_set:
+        policy_kwargs["token_quota"] = body.token_quota
+    return policy_kwargs
 
 
 def _assert_can_assign(actor: User, permissions: list[str]) -> None:
@@ -133,7 +152,8 @@ async def list_users(
     _: Any = Depends(require_permission("users")), server: Any = Depends(get_server)
 ) -> list[dict[str, Any]]:
     rows = server.user_manager.list_all(include_disabled=True)
-    return [_row_to_dict(r) for r in rows]
+    policy_map = server.services.user_policy_repo.list_by_user_ids([r.id for r in rows])
+    return [_row_to_dict(r, policy_map.get(r.id)) for r in rows]
 
 
 @router.post("", status_code=201)
@@ -143,6 +163,11 @@ async def create_user(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     _assert_can_assign(actor, body.permissions)
+    policy_kwargs = _policy_kwargs_from_body(body)
+    if "workspace_root_dir" in policy_kwargs:
+        normalize_workspace_root_dir(policy_kwargs["workspace_root_dir"])
+    if "token_quota" in policy_kwargs:
+        normalize_token_quota(policy_kwargs["token_quota"])
     role = Role(body.role)
     user = await server.user_manager.create(
         username=body.username,
@@ -152,9 +177,11 @@ async def create_user(
         email=body.email,
         permissions=body.permissions,
     )
+    if policy_kwargs:
+        await server.user_manager.set_resource_policy(user.username, **policy_kwargs)
     row = server.user_manager.get_row(user.id)
     assert row is not None
-    return _row_to_dict(row)
+    return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id))
 
 
 @router.get("/{user_id}")
@@ -166,7 +193,7 @@ async def get_user(
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
-    return _row_to_dict(row)
+    return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id))
 
 
 @router.patch("/{user_id}")
@@ -201,9 +228,15 @@ async def patch_user(
         await server.user_manager.enable(row.username)
     if body.permissions is not None:
         await server.user_manager.set_permissions(row.username, body.permissions)
+    policy_kwargs = _policy_kwargs_from_body(body)
+    if policy_kwargs:
+        await server.user_manager.set_resource_policy(row.username, **policy_kwargs)
     updated = server.user_manager.get_row(user_id)
     assert updated is not None
-    return _row_to_dict(updated)
+    return _row_to_dict(
+        updated,
+        server.services.user_policy_repo.list_for_user(updated.id),
+    )
 
 
 @router.post("/{user_id}/unlock-login", status_code=204, summary="Clear login lockout")

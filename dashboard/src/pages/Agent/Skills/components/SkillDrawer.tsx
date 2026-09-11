@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Drawer, Form, Input, Button, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { MinusCircle, PanelLeftOpen, Plus } from "lucide-react";
+import { MinusCircle, PanelLeftOpen, Plus, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import EmojiPicker from "../../../../components/EmojiPicker";
@@ -287,6 +287,9 @@ interface SkillDrawerProps {
   agentId?: string | null;
   /** Agent harness must be running for workspace file/tree APIs. */
   workspaceReady?: boolean;
+  onPushToPackage?: (skill: SkillDetail) => void;
+  /** Hide edit/push actions (e.g. viewing another user's skill package). */
+  readOnly?: boolean;
 }
 
 export function SkillDrawer({
@@ -297,6 +300,8 @@ export function SkillDrawer({
   onSubmit,
   agentId,
   workspaceReady = false,
+  onPushToPackage,
+  readOnly = false,
 }: SkillDrawerProps) {
   const { t } = useTranslation();
   const isCreate = !editingSkill;
@@ -312,7 +317,7 @@ export function SkillDrawer({
 
   const skillRoot = editingSkill ? skillDirectoryPath(editingSkill) : null;
   const showFileTree = Boolean(editingSkill && agentId && skillRoot);
-  const isEdit = !!editingSkill && localEditMode;
+  const isEdit = !!editingSkill && localEditMode && !readOnly;
 
   const handleSelectFilePath = useCallback(
     (path: string) => {
@@ -328,7 +333,7 @@ export function SkillDrawer({
   const viewingSkillMd =
     !selectedFilePath || isSkillManifestPath(selectedFilePath);
 
-  const fieldsEditable = isCreate || isEdit;
+  const fieldsEditable = !readOnly && (isCreate || isEdit);
 
   useEffect(() => {
     if (!open) {
@@ -829,6 +834,7 @@ export function SkillDrawer({
       title={drawerTitle}
       open={open}
       onClose={onClose}
+      forceRender
       destroyOnHidden
       styles={{
         body: {
@@ -894,19 +900,31 @@ export function SkillDrawer({
           ) : (
             <>
               <Button onClick={onClose}>{t("common.close")}</Button>
-              {editingSkill?.kind === "workspace" && viewingSkillMd ? (
-                <Button
-                  type="primary"
-                  onClick={() => {
-                    if (editingSkill) {
-                      setSelectedFilePath(skillManifestPath(editingSkill));
-                    }
-                    setEditorTab("form");
-                    setLocalEditMode(true);
-                  }}
-                >
-                  {t("skills.editSkill")}
-                </Button>
+              {!readOnly &&
+              editingSkill?.kind === "workspace" &&
+              viewingSkillMd ? (
+                <>
+                  {onPushToPackage ? (
+                    <Button
+                      icon={<Upload size={14} />}
+                      onClick={() => onPushToPackage(editingSkill)}
+                    >
+                      {t("skills.pushToSkillPackage")}
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="primary"
+                    onClick={() => {
+                      if (editingSkill) {
+                        setSelectedFilePath(skillManifestPath(editingSkill));
+                      }
+                      setEditorTab("form");
+                      setLocalEditMode(true);
+                    }}
+                  >
+                    {t("skills.editSkill")}
+                  </Button>
+                </>
               ) : null}
             </>
           )}

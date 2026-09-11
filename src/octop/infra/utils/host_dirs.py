@@ -14,6 +14,7 @@ ProbeCode = Literal[
     "write_failed",
     "not_allowed",
     "outside_home",
+    "outside_root",
 ]
 
 _MAX_LIST_ENTRIES = 1000
@@ -22,6 +23,7 @@ _MAX_LIST_ENTRIES = 1000
 _DENIED_PREFIXES_POSIX = ("/proc", "/sys", "/dev", "/etc", "/root")
 
 _OUTSIDE_HOME_MSG = "path outside home"
+_OUTSIDE_ROOT_MSG = "path outside allowed workspace root"
 _NOT_ALLOWED_MSG = "path not allowed"
 
 
@@ -100,7 +102,19 @@ def _is_denied_host_path(resolved: Path) -> bool:
     return any(text == denied or text.startswith(f"{denied}/") for denied in _DENIED_PREFIXES_POSIX)
 
 
-def assert_safe_host_path(path: str, *, restrict_to_home: bool = False) -> Path:
+def _within_restrict_root(resolved_s: str, restrict_to_root: str | None) -> bool:
+    if not restrict_to_root or not str(restrict_to_root).strip():
+        return True
+    base = os.fspath(normalize_host_path(str(restrict_to_root).strip()))
+    return _path_within_base(resolved_s, base)
+
+
+def assert_safe_host_path(
+    path: str,
+    *,
+    restrict_to_home: bool = False,
+    restrict_to_root: str | None = None,
+) -> Path:
     """Resolve *path* and reject traversal tricks / disallowed host locations.
 
     When *restrict_to_home* is true, only the process home directory and its
@@ -133,12 +147,21 @@ def assert_safe_host_path(path: str, *, restrict_to_home: bool = False) -> Path:
         base = _browse_tree_base()
         if not _path_within_base(resolved_s, base):
             raise ValueError(_OUTSIDE_HOME_MSG)
+    if restrict_to_root and not _within_restrict_root(resolved_s, restrict_to_root):
+        raise ValueError(_OUTSIDE_ROOT_MSG)
     return resolved
 
 
-def list_host_subdirs(path: str, *, restrict_to_home: bool = False) -> list[dict[str, Any]]:
+def list_host_subdirs(
+    path: str,
+    *,
+    restrict_to_home: bool = False,
+    restrict_to_root: str | None = None,
+) -> list[dict[str, Any]]:
     """List readable child directories under *path*."""
-    root = assert_safe_host_path(path, restrict_to_home=restrict_to_home)
+    root = assert_safe_host_path(
+        path, restrict_to_home=restrict_to_home, restrict_to_root=restrict_to_root
+    )
     if not root.is_dir():
         raise ValueError(f"not a directory: {path}")
 
@@ -161,6 +184,10 @@ def list_host_subdirs(path: str, *, restrict_to_home: bool = False) -> list[dict
                 continue
             if restrict_to_home and not is_within_host_home(resolved):
                 continue
+            if restrict_to_root and not _within_restrict_root(
+                os.fspath(resolved), restrict_to_root
+            ):
+                continue
             if not os.access(resolved, os.R_OK | os.X_OK):
                 continue
         except OSError:
@@ -169,14 +196,23 @@ def list_host_subdirs(path: str, *, restrict_to_home: bool = False) -> list[dict
     return entries
 
 
-def probe_host_root_dir(path: str, *, restrict_to_home: bool = False) -> dict[str, Any]:
+def probe_host_root_dir(
+    path: str,
+    *,
+    restrict_to_home: bool = False,
+    restrict_to_root: str | None = None,
+) -> dict[str, Any]:
     """Verify *path* exists; write-probe only when not filesystem root ``/``."""
     try:
-        root = assert_safe_host_path(path, restrict_to_home=restrict_to_home)
+        root = assert_safe_host_path(
+            path, restrict_to_home=restrict_to_home, restrict_to_root=restrict_to_root
+        )
     except ValueError as exc:
         message = str(exc)
         if _OUTSIDE_HOME_MSG in message:
             code: ProbeCode = "outside_home"
+        elif _OUTSIDE_ROOT_MSG in message:
+            code = "outside_root"
         elif _NOT_ALLOWED_MSG in message:
             code = "not_allowed"
         else:
@@ -226,16 +262,24 @@ def _unique_child_name(parent: Path, base_name: str) -> str:
 
 
 def mkdir_host_subdir(
-    parent: str, *, base_name: str = "New Folder", restrict_to_home: bool = False
+    parent: str,
+    *,
+    base_name: str = "New Folder",
+    restrict_to_home: bool = False,
+    restrict_to_root: str | None = None,
 ) -> dict[str, Any]:
     """Create a child directory under *parent* with an unused name from *base_name*."""
-    root = assert_safe_host_path(parent, restrict_to_home=restrict_to_home)
+    root = assert_safe_host_path(
+        parent, restrict_to_home=restrict_to_home, restrict_to_root=restrict_to_root
+    )
     if not root.is_dir():
         raise ValueError(f"not a directory: {parent}")
     name = _unique_child_name(root, _validate_dir_basename(base_name))
     target = root / name
     # Re-check after composing path (deny creating into denied prefixes).
-    assert_safe_host_path(str(target), restrict_to_home=restrict_to_home)
+    assert_safe_host_path(
+        str(target), restrict_to_home=restrict_to_home, restrict_to_root=restrict_to_root
+    )
     try:
         target.mkdir(exist_ok=False)
     except OSError as exc:
@@ -243,14 +287,24 @@ def mkdir_host_subdir(
     return {"path": host_path_text(target), "name": name}
 
 
-def rename_host_dir(path: str, new_name: str, *, restrict_to_home: bool = False) -> dict[str, Any]:
+def rename_host_dir(
+    path: str,
+    new_name: str,
+    *,
+    restrict_to_home: bool = False,
+    restrict_to_root: str | None = None,
+) -> dict[str, Any]:
     """Rename a host directory in place (basename only)."""
-    source = assert_safe_host_path(path, restrict_to_home=restrict_to_home)
+    source = assert_safe_host_path(
+        path, restrict_to_home=restrict_to_home, restrict_to_root=restrict_to_root
+    )
     if not source.is_dir():
         raise ValueError(f"not a directory: {path}")
     name = _validate_dir_basename(new_name)
     target = source.parent / name
-    assert_safe_host_path(str(target), restrict_to_home=restrict_to_home)
+    assert_safe_host_path(
+        str(target), restrict_to_home=restrict_to_home, restrict_to_root=restrict_to_root
+    )
     if target.exists():
         raise ValueError("already exists")
     try:

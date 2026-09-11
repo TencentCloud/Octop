@@ -65,11 +65,16 @@ class TrajectoryService:
                     self._finalize_assistant(event.thread_id)
                     self._commit_new(event)
         except Exception:
+            self._store.record_failure(thread_id)
             logger.exception(
                 "trajectory observe_chunk failed agent=%s thread=%s",
                 agent_id,
                 thread_id,
             )
+
+    def record_failure(self, thread_id: str) -> None:
+        """Record an uncommitted trajectory flush for the archive status."""
+        self._store.record_failure(thread_id)
 
     def replace_store(self, store: TrajectoryStore) -> None:
         """Point append/list at a rebound control-plane pool."""

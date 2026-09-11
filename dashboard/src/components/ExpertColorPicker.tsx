@@ -62,7 +62,7 @@ export default function ExpertColorPicker({
           role="button"
         >
           <ColorPicker
-            value={curated ? undefined : value}
+            value={curated ? PALETTE_SWATCH[value] : value}
             onChangeComplete={(color: AggregationColor) => {
               onChange(color.toHexString());
             }}

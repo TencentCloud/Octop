@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { Typography } from "antd";
 import { useTranslation } from "react-i18next";
 
 import type { ConnectorCatalogEntry } from "../../../api/modules/connectors";
@@ -36,7 +37,20 @@ export const ConnectorCard = memo(function ConnectorCard({
           <div className={styles.typeCardIconLarge}>
             <ConnectorLogo kind={entry.kind} icon={entry.icon} size={40} />
           </div>
-          <div className={styles.typeCardTitle}>{entry.name}</div>
+          <div className={styles.typeCardTitleCol}>
+            <Typography.Text
+              className={styles.typeCardTitle}
+              ellipsis={{ tooltip: entry.name }}
+            >
+              {entry.name}
+            </Typography.Text>
+            <span
+              className={styles.categoryChip}
+              style={{ color: accent, background: `${accent}18` }}
+            >
+              {t(`connectors.category.${entry.category}`, entry.category)}
+            </span>
+          </div>
         </div>
 
         <div className={styles.typeCardDesc}>{entry.description}</div>

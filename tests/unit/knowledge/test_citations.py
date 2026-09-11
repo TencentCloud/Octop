@@ -14,8 +14,8 @@ from octop.infra.knowledge.citations import (
 
 def test_citations_from_ranked_dedupes_documents() -> None:
     base = SimpleNamespace(id="kb1", name="Policies")
-    doc_a = SimpleNamespace(id="d1", filename="a.md")
-    doc_b = SimpleNamespace(id="d2", filename="b.md")
+    doc_a = SimpleNamespace(id="d1", filename="a.md", path="notes/a.md")
+    doc_b = SimpleNamespace(id="d2", filename="b.md", path="b.md")
     hit = SimpleNamespace()
     ranked = [
         (base, hit, doc_a),
@@ -23,25 +23,55 @@ def test_citations_from_ranked_dedupes_documents() -> None:
         (base, hit, doc_b),
     ]
     assert citations_from_ranked(ranked) == [
-        {"kb_id": "kb1", "kb_name": "Policies", "doc_id": "d1", "filename": "a.md"},
-        {"kb_id": "kb1", "kb_name": "Policies", "doc_id": "d2", "filename": "b.md"},
+        {
+            "kb_id": "kb1",
+            "kb_name": "Policies",
+            "doc_id": "d1",
+            "filename": "a.md",
+            "path": "notes/a.md",
+        },
+        {
+            "kb_id": "kb1",
+            "kb_name": "Policies",
+            "doc_id": "d2",
+            "filename": "b.md",
+            "path": "b.md",
+        },
     ]
 
 
 def test_append_citations_marker() -> None:
     text = append_citations_marker(
         "passages here",
-        [{"kb_id": "kb", "kb_name": "KB", "doc_id": "d1", "filename": "doc.md"}],
+        [
+            {
+                "kb_id": "kb",
+                "kb_name": "KB",
+                "doc_id": "d1",
+                "filename": "doc.md",
+                "path": "doc.md",
+            }
+        ],
     )
     assert text.startswith("passages here\n\n" + CITATIONS_MARKER_PREFIX)
     assert '"filename":"doc.md"' in text
+    assert '"path":"doc.md"' in text
     assert text.endswith("-->")
 
 
 def test_append_citations_marker_skips_empty() -> None:
     assert (
         append_citations_marker(
-            "", [{"kb_id": "k", "kb_name": "n", "doc_id": "d", "filename": "f"}]
+            "",
+            [
+                {
+                    "kb_id": "k",
+                    "kb_name": "n",
+                    "doc_id": "d",
+                    "filename": "f",
+                    "path": "f",
+                }
+            ],
         )
         == ""
     )
@@ -51,7 +81,15 @@ def test_append_citations_marker_skips_empty() -> None:
 def test_strip_citations_marker() -> None:
     raw = append_citations_marker(
         "passages here",
-        [{"kb_id": "kb", "kb_name": "KB", "doc_id": "d1", "filename": "doc.md"}],
+        [
+            {
+                "kb_id": "kb",
+                "kb_name": "KB",
+                "doc_id": "d1",
+                "filename": "doc.md",
+                "path": "notes/doc.md",
+            }
+        ],
     )
     assert strip_citations_marker(raw) == "passages here"
     assert strip_citations_marker("plain") == "plain"

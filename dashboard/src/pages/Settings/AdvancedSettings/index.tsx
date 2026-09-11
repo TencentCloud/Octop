@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { Archive, Lock, RefreshCw, Variable, Activity } from "lucide-react";
@@ -8,7 +7,7 @@ import BackupRestorePanel from "../BackupRestore";
 import { HttpsSettingsPanel } from "../HttpsSettings";
 import UpdateConfig from "./UpdateConfig";
 import PageShell from "../../../layouts/PageShell";
-import SettingsTabBar from "../shared/SettingsTabBar";
+import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import tabStyles from "./tabContent.module.less";
 import ForbiddenPage from "../../../components/ForbiddenPage";
 import { useGatedSearchTabs } from "../../../hooks/useGatedSearchTabs";
@@ -16,24 +15,12 @@ import { ADVANCED_TAB_PERMISSIONS } from "../../../utils/permissions";
 
 type TabKey = "env-vars" | "observability" | "backup" | "https" | "updates";
 
-const TABS: { key: TabKey; labelKey: string; icon: ReactNode }[] = [
-  {
-    key: "env-vars",
-    labelKey: "nav.environments",
-    icon: <Variable size={15} />,
-  },
-  {
-    key: "observability",
-    labelKey: "nav.observability",
-    icon: <Activity size={15} />,
-  },
-  { key: "backup", labelKey: "nav.backupRestore", icon: <Archive size={15} /> },
-  { key: "https", labelKey: "nav.https", icon: <Lock size={15} /> },
-  {
-    key: "updates",
-    labelKey: "nav.checkUpdates",
-    icon: <RefreshCw size={15} />,
-  },
+const TABS: TabBarItem<TabKey>[] = [
+  { key: "env-vars", labelKey: "nav.environments", icon: Variable },
+  { key: "observability", labelKey: "nav.observability", icon: Activity },
+  { key: "backup", labelKey: "nav.backupRestore", icon: Archive },
+  { key: "https", labelKey: "nav.https", icon: Lock },
+  { key: "updates", labelKey: "nav.checkUpdates", icon: RefreshCw },
 ];
 
 function parseTab(raw: string | null): TabKey {
@@ -85,11 +72,7 @@ export default function AdvancedSettingsPage() {
       title={t("pageShell.adminAdvanced.title")}
       subtitle={t("pageShell.adminAdvanced.subtitle")}
       tabBar={
-        <SettingsTabBar
-          tabs={allowedTabs}
-          activeKey={activeTab}
-          onChange={selectTab}
-        />
+        <TabBar tabs={allowedTabs} activeKey={activeTab} onChange={selectTab} />
       }
     >
       <div className={tabStyles.panel}>{renderTab()}</div>

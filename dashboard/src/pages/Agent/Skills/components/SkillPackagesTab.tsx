@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Drawer, Empty, Spin, Switch } from "antd";
-import { Info } from "lucide-react";
+import { Alert, Checkbox, Drawer, Empty, Modal, Spin, Switch } from "antd";
+import { Copy, Info } from "lucide-react";
+import { message } from "@/utils/antdMessage";
 import { useTranslation } from "react-i18next";
 import { skillPackagesApi } from "../../../../api/modules/skillPackages";
 import type {
@@ -73,6 +74,14 @@ export default function SkillPackagesTab({
     null,
   );
   const [detailLoading, setDetailLoading] = useState(false);
+  const [copyPackage, setCopyPackage] = useState<SkillPackageDetail | null>(
+    null,
+  );
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [selectedCopySlugs, setSelectedCopySlugs] = useState<string[]>([]);
+  const [copyOverwrite, setCopyOverwrite] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +159,51 @@ export default function SkillPackagesTab({
     }
   };
 
+  const openCopyModal = async (pack: SkillPackage) => {
+    setCopyModalOpen(true);
+    setCopyLoading(true);
+    setCopyPackage(null);
+    setSelectedCopySlugs([]);
+    setCopyOverwrite(false);
+    try {
+      const detail = await skillPackagesApi.get(pack.id);
+      setCopyPackage(detail);
+      setSelectedCopySlugs(detail.skills.map((skill) => skill.slug));
+    } catch (error) {
+      showApiError(error, t("skills.packagesLoadFailed"), t);
+      setCopyModalOpen(false);
+    } finally {
+      setCopyLoading(false);
+    }
+  };
+
+  const handleCopySkills = async () => {
+    if (!copyPackage || selectedCopySlugs.length === 0) {
+      message.warning(t("skills.selectAtLeastOneSkill"));
+      return;
+    }
+    setCopying(true);
+    try {
+      const result = await skillPackagesApi.copyToWorkspace(
+        agentId,
+        copyPackage.id,
+        {
+          skill_slugs: selectedCopySlugs,
+          overwrite: copyOverwrite,
+        },
+      );
+      await fetchSkills();
+      message.success(
+        t("skills.copySkillsSuccess", { count: result.copied.length }),
+      );
+      setCopyModalOpen(false);
+    } catch (error) {
+      showApiError(error, t("skills.copySkillsFailed"), t);
+    } finally {
+      setCopying(false);
+    }
+  };
+
   if (loading) {
     return <Spin className={styles.skillPackagesLoading} />;
   }
@@ -223,6 +277,22 @@ export default function SkillPackagesTab({
                       ) : null}
                     </div>
                   </div>
+                  <div
+                    className={styles.packageCardSwitch}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Switch
+                      checked={mounted}
+                      disabled={!packagesSupported && !mounted}
+                      loading={mountingId === pack.id}
+                      onChange={(checked) => handleToggleMount(pack, checked)}
+                      aria-label={
+                        mounted
+                          ? t("skills.unmountPackage")
+                          : t("skills.mountPackage")
+                      }
+                    />
+                  </div>
                 </div>
 
                 <div
@@ -248,17 +318,14 @@ export default function SkillPackagesTab({
                     className={styles.footerActions}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <Switch
-                      checked={mounted}
-                      disabled={!packagesSupported && !mounted}
-                      loading={mountingId === pack.id}
-                      onChange={(checked) => handleToggleMount(pack, checked)}
-                      aria-label={
-                        mounted
-                          ? t("skills.unmountPackage")
-                          : t("skills.mountPackage")
-                      }
-                    />
+                    <button
+                      type="button"
+                      className={styles.detailBtn}
+                      onClick={() => void openCopyModal(pack)}
+                    >
+                      <Copy size={14} />
+                      {t("skills.copySkills")}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -275,7 +342,7 @@ export default function SkillPackagesTab({
           setDetailPackage(null);
         }}
         width={480}
-        destroyOnClose
+        destroyOnHidden
       >
         {detailLoading ? (
           <Spin className={styles.skillPackagesLoading} />
@@ -360,6 +427,60 @@ export default function SkillPackagesTab({
           </>
         )}
       </Drawer>
+
+      <Modal
+        title={t("skills.copyPackageSkillsTitle", {
+          name: copyPackage?.name ?? "",
+        })}
+        open={copyModalOpen}
+        onCancel={() => setCopyModalOpen(false)}
+        onOk={() => void handleCopySkills()}
+        okText={t("skills.copySkills")}
+        confirmLoading={copying}
+        okButtonProps={{
+          disabled: copyLoading || selectedCopySlugs.length === 0,
+        }}
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          showIcon
+          className={styles.skillTransferAlert}
+          message={t("skills.copySnapshotWarning")}
+        />
+        {copyLoading ? (
+          <Spin className={styles.skillPackagesLoading} />
+        ) : copyPackage?.skills.length ? (
+          <Checkbox.Group
+            value={selectedCopySlugs}
+            onChange={(values) =>
+              setSelectedCopySlugs(values.map((value) => String(value)))
+            }
+            className={styles.skillTransferList}
+          >
+            {copyPackage.skills.map((skill) => (
+              <Checkbox key={skill.slug} value={skill.slug}>
+                <span className={styles.skillTransferSkillName}>
+                  {skill.name || skill.slug}
+                </span>
+                <span className={styles.skillTransferSkillSlug}>
+                  {skill.slug}
+                </span>
+              </Checkbox>
+            ))}
+          </Checkbox.Group>
+        ) : (
+          <Empty description={t("skillPackages.emptySkills")} />
+        )}
+        {!copyLoading && copyPackage?.skills.length ? (
+          <Checkbox
+            checked={copyOverwrite}
+            onChange={(event) => setCopyOverwrite(event.target.checked)}
+          >
+            {t("skills.overwriteExisting")}
+          </Checkbox>
+        ) : null}
+      </Modal>
     </>
   );
 }

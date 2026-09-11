@@ -4,20 +4,24 @@ import { message } from "@/utils/antdMessage";
 
 import {
   Activity,
+  Blocks,
   CheckCircle2,
   ClipboardPaste,
   Copy,
   Download,
   ExternalLink,
+  Link2,
   Plug,
   Plus,
   RefreshCw,
   Sparkles,
+  Wrench,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import PageShell from "../../../layouts/PageShell";
+import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { OctopEmptyMascot } from "../../../components/EmptyState/OctopEmptyMascot";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
@@ -2098,12 +2102,18 @@ function ConnectorConfigDrawer({
   );
 }
 
+type ConnectorTab = "enabled" | "builtin" | "custom";
+
+const CONNECTOR_TABS: TabBarItem<ConnectorTab>[] = [
+  { key: "enabled", labelKey: "connectors.tabEnabled", icon: Link2 },
+  { key: "builtin", labelKey: "connectors.tabBuiltin", icon: Blocks },
+  { key: "custom", labelKey: "connectors.tabCustom", icon: Wrench },
+];
+
 export default function ConnectorsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"enabled" | "builtin" | "custom">(
-    "enabled",
-  );
+  const [activeTab, setActiveTab] = useState<ConnectorTab>("enabled");
   const [drawerEntry, setDrawerEntry] = useState<ConnectorCatalogEntry | null>(
     null,
   );
@@ -2184,38 +2194,14 @@ export default function ConnectorsPage() {
       title={t("pageShell.connectors.title")}
       subtitle={t("pageShell.connectors.subtitle")}
       tabBar={
-        <div className={styles.tabBar}>
-          <button
-            type="button"
-            className={`${styles.tab}${
-              activeTab === "enabled" ? ` ${styles.active}` : ""
-            }`}
-            onClick={() => setActiveTab("enabled")}
-          >
-            {t("connectors.tabEnabled", "已启用连接器")}
-          </button>
-          <button
-            type="button"
-            className={`${styles.tab}${
-              activeTab === "builtin" ? ` ${styles.active}` : ""
-            }`}
-            onClick={() => setActiveTab("builtin")}
-          >
-            {t("connectors.tabBuiltin", "内置连接器")}
-          </button>
-          <button
-            type="button"
-            className={`${styles.tab}${
-              activeTab === "custom" ? ` ${styles.active}` : ""
-            }`}
-            onClick={() => {
-              setCustomFocusServerName(null);
-              setActiveTab("custom");
-            }}
-          >
-            {t("connectors.tabCustom", "自定义连接器")}
-          </button>
-        </div>
+        <TabBar
+          tabs={CONNECTOR_TABS}
+          activeKey={activeTab}
+          onChange={(key) => {
+            if (key === "custom") setCustomFocusServerName(null);
+            setActiveTab(key);
+          }}
+        />
       }
     >
       {activeTab === "custom" ? (

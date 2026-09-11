@@ -258,7 +258,17 @@ def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager
     assert cfg.bootstrap_enabled is True
     # Kept for harness FilesystemGuardMiddleware (not passed to deepagents).
     assert cfg.permissions is not None
-    assert cfg.log_dir == str(manager.paths.logs_dir)
+
+
+@pytest.mark.asyncio
+async def test_boot_passes_process_log_dir_to_harness_manager(manager: AgentManager) -> None:
+    await manager.boot()
+    try:
+        hm = manager._harness_manager
+        assert hm is not None
+        assert hm._log_dir == manager.paths.logs_dir.resolve()
+    finally:
+        await manager.shutdown()
 
 
 def test_build_harness_config_enables_bootstrap_for_expert_template(manager: AgentManager) -> None:
@@ -787,6 +797,7 @@ async def test_start_agent_real_harness_seeds_agents_md(manager: AgentManager) -
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     row = manager._repos.agent_repo.create(
         agent_id="REAL01",
@@ -817,6 +828,7 @@ async def test_stop_and_start_round_trip(manager: AgentManager) -> None:
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     manager._repos.agent_repo.create(
         agent_id="STOP01",
@@ -852,6 +864,7 @@ async def test_save_security_rebuilds_running_harness_agent(manager: AgentManage
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     manager._repos.agent_repo.create(
         agent_id="SEC01",
@@ -880,6 +893,7 @@ async def test_reload_skips_stopped_agent(manager: AgentManager) -> None:
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     manager._repos.agent_repo.create(
         agent_id="SKIP01",
@@ -912,6 +926,7 @@ async def test_create_seeds_bootstrap_files(manager: AgentManager) -> None:
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     row = await manager.create(AgentCreateSpec(name="seeded", config=dict(_MEMORY_OFF)))
     agent = manager.get_agent(row.agent_id)
@@ -945,6 +960,7 @@ async def test_create_keeps_user_workspace_dir(
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     custom = tmp_path / "custom-user-ws"
     try:
@@ -983,6 +999,7 @@ async def test_create_persists_rootfs_workspace_under_scoped_root(
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     try:
         # manager fixture uses ``{tmp_path}/.octop`` as OCTOP_HOME, so scoping
@@ -1059,6 +1076,7 @@ async def test_templated_agent_keeps_expert_soul_on_reload(manager: AgentManager
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
         providers=manager.providers.build_harness_configs(),
+        log_dir=str(manager.paths.logs_dir),
     )
     row = await manager.create(
         AgentCreateSpec(
@@ -1412,3 +1430,87 @@ def test_prepare_stream_request_maps_model_settings_and_max_input_tokens(
         "max_tokens": 2048,
     }
     assert req["configurable"]["max_input_tokens"] == 32000
+
+
+def test_peer_manifest_metadata_missing_file(manager: AgentManager) -> None:
+    manager._repos.agent_repo.create(agent_id="AGT1", user_id=None, name="demo")
+    assert manager._peer_manifest_metadata("AGT1", None) == {}
+
+
+def test_peer_manifest_metadata_bad_json(manager: AgentManager) -> None:
+    manager._repos.agent_repo.create(agent_id="AGT1", user_id=None, name="demo")
+    ws = manager._paths.ensure_agent_workspace("AGT1")
+    (ws / ".octop").mkdir(parents=True, exist_ok=True)
+    (ws / ".octop" / "manifest.json").write_text("{", encoding="utf-8")
+    assert manager._peer_manifest_metadata("AGT1", "row") == {}
+
+
+def test_peer_manifest_metadata_reads_cards(manager: AgentManager) -> None:
+    manager._repos.agent_repo.create(
+        agent_id="AGT1", user_id=None, name="demo", description="from-db"
+    )
+    ws = manager._paths.ensure_agent_workspace("AGT1")
+    (ws / ".octop").mkdir(parents=True, exist_ok=True)
+    (ws / ".octop" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "description": {"zh": "manifest-only", "en": "manifest-only"},
+                "quick_prompts": [
+                    {
+                        "title": {"zh": "画图", "en": "Plot"},
+                        "description": {"zh": "说明", "en": "Hint"},
+                        "prompt": {"zh": "机密", "en": "secret"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    extra = manager._peer_manifest_metadata("AGT1", "from-db")
+    assert extra["quick_prompts"][0]["title"]["zh"] == "画图"
+    assert "description" not in extra
+
+
+def test_refresh_peer_entry_picks_up_manifest_edits(manager: AgentManager) -> None:
+    manager._repos.agent_repo.create(
+        agent_id="AGT1", user_id=None, name="demo", description="from-db"
+    )
+    ws = manager._paths.ensure_agent_workspace("AGT1")
+    (ws / ".octop").mkdir(parents=True, exist_ok=True)
+    (ws / ".octop" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "quick_prompts": [
+                    {
+                        "title": {"zh": "新卡", "en": "New"},
+                        "description": {"zh": "说明", "en": "Hint"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    entry = MagicMock()
+    entry.agent_id = "AGT1"
+    entry.metadata = {
+        "description": "stale",
+        "quick_prompts": [{"title": "old"}],
+    }
+    manager._refresh_peer_entry(entry)
+    assert entry.metadata["description"] == "from-db"
+    assert entry.metadata["quick_prompts"][0]["title"]["zh"] == "新卡"
+
+
+def test_refresh_peer_entry_clears_empty_cards(manager: AgentManager) -> None:
+    manager._repos.agent_repo.create(agent_id="AGT1", user_id=None, name="demo")
+    ws = manager._paths.ensure_agent_workspace("AGT1")
+    (ws / ".octop").mkdir(parents=True, exist_ok=True)
+    (ws / ".octop" / "manifest.json").write_text(
+        json.dumps({"quick_prompts": []}),
+        encoding="utf-8",
+    )
+    entry = MagicMock()
+    entry.agent_id = "AGT1"
+    entry.metadata = {"quick_prompts": [{"title": "old"}]}
+    manager._refresh_peer_entry(entry)
+    assert "quick_prompts" not in entry.metadata

@@ -22,6 +22,8 @@ def test_extract_profile_from_config_lifts_legacy_keys() -> None:
             "icon_name": "zap",
             "color": "#6366f1",
             "skill_package_ids": ["PACK01", ""],
+            "knowledge_base_ids": ["kb1", ""],
+            "mcp_servers": ["docs__1"],
             "backend": {"type": "local_shell"},
         }
     )
@@ -29,9 +31,16 @@ def test_extract_profile_from_config_lifts_legacy_keys() -> None:
     assert profile["icon_name"] == "zap"
     assert profile["color"] == "#6366f1"
     assert json.loads(profile["skill_package_ids"]) == ["PACK01"]
-    assert strip_profile_config({"expert_id": "x", "backend": {"type": "local_shell"}}) == {
-        "backend": {"type": "local_shell"}
-    }
+    assert json.loads(profile["knowledge_base_ids"]) == ["kb1"]
+    assert json.loads(profile["mcp_servers"]) == ["docs__1"]
+    assert strip_profile_config(
+        {
+            "expert_id": "x",
+            "knowledge_base_ids": ["kb1"],
+            "mcp_servers": ["docs__1"],
+            "backend": {"type": "local_shell"},
+        }
+    ) == {"backend": {"type": "local_shell"}}
 
 
 def test_welcome_from_row_requires_nonempty_text() -> None:
@@ -110,7 +119,7 @@ def test_migration_007_backfills_profile_columns(tmp_path: Path) -> None:
     with pool.connect() as conn:
         version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         row = conn.execute("SELECT * FROM agents WHERE agent_id = ?", ("ag1",)).fetchone()
-    assert version == 13
+    assert version == 14
     assert row["template_name"] == "general-assistant"
     assert row["icon_name"] == "zap"
     assert row["icon_url"] == "https://cdn.example.com/a.png"

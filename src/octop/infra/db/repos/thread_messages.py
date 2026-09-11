@@ -60,6 +60,73 @@ class ThreadMessageRepo:
     def __init__(self, db: DatabasePool) -> None:
         self._db = db
 
+    def head(self, thread_id: str) -> int:
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(MAX(seq),0) FROM thread_messages WHERE thread_id=?", (thread_id,)
+            ).fetchone()
+        return int(row[0])
+
+    def range_rows(self, thread_id: str, start: int, end: int) -> list[ThreadMessageRow]:
+        """Read an immutable legacy interval without triggering projection backfill."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT seq,message_id,role,message_json,created_at FROM thread_messages "
+                "WHERE thread_id=? AND seq>? AND seq<=? ORDER BY seq",
+                (thread_id, start, end),
+            ).fetchall()
+        return [ThreadMessageRow.from_row(row) for row in rows]
+
+    def range_page(
+        self, thread_id: str, start: int, end: int, limit: int
+    ) -> list[ThreadMessageRow]:
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT seq,message_id,role,message_json,created_at FROM thread_messages "
+                "WHERE thread_id=? AND seq>? AND seq<=? ORDER BY seq DESC LIMIT ?",
+                (thread_id, start, end, limit),
+            ).fetchall()
+        return [ThreadMessageRow.from_row(row) for row in rows]
+
+    def append_legacy_interval(self, thread_id: str, messages: Sequence[ThreadMessageInput]) -> int:
+        """Append rollback turns without claiming the old projection is complete."""
+        with self._db.transaction() as conn:
+            if self._db.dialect == "postgresql":
+                conn.execute(
+                    "SELECT thread_id FROM threads WHERE thread_id=? FOR UPDATE", (thread_id,)
+                ).fetchone()
+            seq = int(
+                conn.execute(
+                    "SELECT COALESCE(MAX(seq),0) FROM thread_messages WHERE thread_id=?",
+                    (thread_id,),
+                ).fetchone()[0]
+            )
+            count = 0
+            for message in messages:
+                if (
+                    message.message_id
+                    and conn.execute(
+                        "SELECT 1 FROM thread_messages WHERE thread_id=? AND message_id=?",
+                        (thread_id, message.message_id),
+                    ).fetchone()
+                ):
+                    continue
+                seq += 1
+                conn.execute(
+                    "INSERT INTO thread_messages "
+                    "(thread_id,seq,message_id,role,message_json,created_at) VALUES (?,?,?,?,?,?)",
+                    (
+                        thread_id,
+                        seq,
+                        message.message_id,
+                        message.role,
+                        message.message_json,
+                        message.created_at,
+                    ),
+                )
+                count += 1
+        return count
+
     def projection_status(self, thread_id: str) -> str:
         with self._db.connect() as conn:
             row = conn.execute(

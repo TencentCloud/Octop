@@ -10,6 +10,10 @@ export interface UpdateStatus {
   /** True when Octop is spawned by the Wails desktop shell (or ``OCTOP_DESKTOP=1``). */
   desktop?: boolean;
   error: string | null;
+  /** Stable error code (e.g. "pypi_unreachable") for localized UI messages; null on success. */
+  error_code: string | null;
+  /** Mirror that served the version info (null/`pypi.org` = official source). */
+  source: string | null;
   last_check_time: string | null;
   /** Markdown changelog for latest_version, null if not available. */
   release_notes: string | null;

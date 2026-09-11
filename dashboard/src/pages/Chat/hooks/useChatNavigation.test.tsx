@@ -30,9 +30,22 @@ vi.mock("../../../api/modules/octopAgents", () => ({
   },
 }));
 
+type StoreSessionEvent = { kind: string; sessionId: string; agentId?: string };
+const sessionListenerRef: {
+  current: ((event: StoreSessionEvent) => void) | null;
+} = { current: null };
+const invalidateHistoryMock = vi.fn();
+
 vi.mock("./chatStore", () => ({
   getSnapshot: () => ({ messages: [], isStreaming: false }),
   onStreamEvent: () => () => undefined,
+  onSessionEvent: (listener: (event: StoreSessionEvent) => void) => {
+    sessionListenerRef.current = listener;
+    return () => {
+      sessionListenerRef.current = null;
+    };
+  },
+  invalidateHistory: (...args: unknown[]) => invalidateHistoryMock(...args),
 }));
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -181,5 +194,111 @@ describe("useChatNavigation stale thread", () => {
         replace: true,
       });
     });
+  });
+});
+
+describe("useChatNavigation proactive session events", () => {
+  beforeEach(() => {
+    navigateMock.mockReset();
+    rebindMock.mockReset().mockResolvedValue({});
+    invalidateHistoryMock.mockReset();
+    sessionListenerRef.current = null;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function renderWithMocks(
+    loadHistory: ReturnType<typeof vi.fn>,
+    fetchSessions: ReturnType<typeof vi.fn>,
+  ) {
+    const prefillInputRef = { current: "" };
+    return renderHook(
+      () =>
+        useChatNavigation({
+          routeAgentId: "agent-a",
+          threadId: "thr_open",
+          resolvedAgentId: "agent-a",
+          activeThreadId: "thr_open",
+          sessions: [session("thr_open")],
+          sessionsLoading: false,
+          prefillInputRef,
+          loadHistory,
+          clearMessages: vi.fn(),
+          ensureThreadInList: vi.fn().mockResolvedValue("found"),
+          fetchSessions,
+          refreshAgents: vi.fn().mockResolvedValue(undefined),
+        }),
+      { wrapper },
+    );
+  }
+
+  it("reloads history when the open thread changed server-side", async () => {
+    const loadHistory = vi.fn().mockResolvedValue(undefined);
+    const fetchSessions = vi.fn().mockResolvedValue([session("thr_open")]);
+    renderWithMocks(loadHistory, fetchSessions);
+
+    await waitFor(() => expect(sessionListenerRef.current).toBeTruthy());
+    loadHistory.mockClear();
+    fetchSessions.mockClear();
+
+    sessionListenerRef.current?.({
+      kind: "sessionsChanged",
+      sessionId: "thr_open",
+      agentId: "agent-a",
+    });
+
+    await waitFor(() => {
+      expect(fetchSessions).toHaveBeenCalledWith("thr_open");
+      expect(invalidateHistoryMock).toHaveBeenCalledWith("thr_open");
+      expect(loadHistory).toHaveBeenCalledWith("thr_open");
+    });
+  });
+
+  it("refreshes the list but not history for another thread", async () => {
+    const loadHistory = vi.fn().mockResolvedValue(undefined);
+    const fetchSessions = vi.fn().mockResolvedValue([session("thr_open")]);
+    renderWithMocks(loadHistory, fetchSessions);
+
+    await waitFor(() => expect(sessionListenerRef.current).toBeTruthy());
+    loadHistory.mockClear();
+    fetchSessions.mockClear();
+
+    sessionListenerRef.current?.({
+      kind: "sessionsChanged",
+      sessionId: "thr_other",
+      agentId: "agent-a",
+    });
+
+    await waitFor(() => {
+      expect(fetchSessions).toHaveBeenCalledWith("thr_open");
+    });
+    expect(invalidateHistoryMock).not.toHaveBeenCalled();
+    expect(loadHistory).not.toHaveBeenCalled();
+  });
+
+  it("ignores events for another agent and plain deletions", async () => {
+    const loadHistory = vi.fn().mockResolvedValue(undefined);
+    const fetchSessions = vi.fn().mockResolvedValue([session("thr_open")]);
+    renderWithMocks(loadHistory, fetchSessions);
+
+    await waitFor(() => expect(sessionListenerRef.current).toBeTruthy());
+    loadHistory.mockClear();
+    fetchSessions.mockClear();
+
+    sessionListenerRef.current?.({
+      kind: "sessionsChanged",
+      sessionId: "thr_open",
+      agentId: "agent-b",
+    });
+    sessionListenerRef.current?.({
+      kind: "sessionDeleted",
+      sessionId: "thr_open",
+    });
+
+    expect(fetchSessions).not.toHaveBeenCalled();
+    expect(invalidateHistoryMock).not.toHaveBeenCalled();
+    expect(loadHistory).not.toHaveBeenCalled();
   });
 });

@@ -5,16 +5,27 @@ from __future__ import annotations
 from typing import Any
 
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.resource_policy import raise_if_backend_outside_user_root
 from octop.infra.utils.host_dirs import assert_backend_root_dirs_allowed
 
 
-def assert_user_backend_root_dirs(_user: Any, backend: Any) -> None:
-    """Reject local backend ``root_dir`` values that fail the host denylist.
+def assert_user_backend_root_dirs(
+    user: Any,
+    backend: Any,
+    *,
+    policy_repo: Any | None = None,
+) -> None:
+    """Reject local backend ``root_dir`` values that fail denylist or user policy.
 
-    All authenticated users may select host paths outside home (UI still
-    defaults to home). Sensitive pseudo-fs mounts remain blocked.
+    When *policy_repo* is provided, ``local_shell`` / ``filesystem`` roots must
+    stay under the user's ``workspace_root_dir`` (if set). All authenticated
+    users may otherwise select host paths outside home (UI still defaults to
+    home). Sensitive pseudo-fs mounts remain blocked.
     """
     if backend is None:
+        return
+    if policy_repo is not None and user is not None:
+        raise_if_backend_outside_user_root(policy_repo, int(user.id), backend)
         return
     try:
         assert_backend_root_dirs_allowed(backend, restrict_to_home=False)

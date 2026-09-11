@@ -13,14 +13,14 @@ export type { ChatAgentOption };
 interface ExpertPickerPopoverProps {
   agents: ChatAgentOption[];
   selectedAgentIds: string[];
-  onAgentsChange: (ids: string[]) => void;
+  onSelect: (agent: ChatAgentOption) => void;
   onNavigateAway?: () => void;
 }
 
 export default function ExpertPickerPopover({
   agents,
   selectedAgentIds,
-  onAgentsChange,
+  onSelect,
   onNavigateAway,
 }: ExpertPickerPopoverProps) {
   const { t } = useTranslation();
@@ -55,12 +55,7 @@ export default function ExpertPickerPopover({
             className={`${styles.skillPickerItem} ${
               active ? styles.expertPickerItemActive : ""
             }`}
-            onClick={() => {
-              const next = active
-                ? selectedAgentIds.filter((id) => id !== agent.agent_id)
-                : [...selectedAgentIds, agent.agent_id];
-              onAgentsChange(next);
-            }}
+            onClick={() => onSelect(agent)}
           >
             <ExpertAgentAvatar
               iconName={agent.icon_name}

@@ -45,7 +45,9 @@ export function CustomProviderModal({
     api_key?: string;
     note?: string;
   }>();
+  const name = Form.useWatch("name", form) as string | undefined;
   const kind = Form.useWatch("kind", form) as string | undefined;
+  const baseUrl = Form.useWatch("base_url", form) as string | undefined;
   const apiKey = Form.useWatch("api_key", form) as string | undefined;
   const [models, setModels] = useState<ProviderModel[]>([]);
   const canTest = !!apiKey?.trim();
@@ -53,15 +55,15 @@ export function CustomProviderModal({
   const draftProvider = useMemo<ProviderRow>(
     () => ({
       id: 0,
-      name: (form.getFieldValue("name") as string | undefined) || "draft",
-      kind: (form.getFieldValue("kind") as string | undefined) || "openai",
-      base_url: (form.getFieldValue("base_url") as string | undefined) || null,
-      api_key: (form.getFieldValue("api_key") as string | undefined) || null,
+      name: name || "draft",
+      kind: kind || "openai",
+      base_url: baseUrl || null,
+      api_key: apiKey || null,
       models,
       note: null,
       enabled: true,
     }),
-    [form, models],
+    [apiKey, baseUrl, kind, models, name],
   );
 
   useEffect(() => {
@@ -310,7 +312,7 @@ export function CustomProviderModal({
                     : "";
                 message.success(
                   t("models.testConnectionSuccess", {
-                    name: (form.getFieldValue("name") as string) || "draft",
+                    name: name || "draft",
                     latency,
                   }),
                 );

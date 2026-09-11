@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from harness_agent.slash import BufferSink, SlashCommand, SlashSink, parse_slash
+from harness_agent.slash import BufferSink, SlashCommand, SlashSink
 
 from octop.infra.gateway.slash.ctx import SlashCtx
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+from octop.infra.gateway.slash.parser import parse_slash
 
 
 async def try_handle_slash(
@@ -18,7 +19,8 @@ async def try_handle_slash(
     """Parse *text* and dispatch if it is a slash command.
 
     Returns ``(handled, lines, actions)``. *handled* is False when *text* is not
-    a slash command; True when a command was recognized (including unknown commands).
+    a known slash command (including unknown ``/foo`` names); True when a
+    registered command ran.
     """
     cmd = parse_slash(text)
     if cmd is None:
@@ -26,10 +28,10 @@ async def try_handle_slash(
     buf = sink if sink is not None else BufferSink()
     if sink is None:
         assert isinstance(buf, BufferSink)
-    await dispatcher.handle(cmd, ctx, buf)
+    handled = await dispatcher.handle(cmd, ctx, buf)
     if isinstance(buf, BufferSink):
-        return True, buf.lines, buf.actions
-    return True, [], []
+        return handled, buf.lines, buf.actions
+    return handled, [], []
 
 
 async def handle_slash_command(

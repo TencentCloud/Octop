@@ -299,10 +299,12 @@ function emitSlashAction(event: SlashActionEvent) {
 }
 
 // Session lifecycle events (e.g. deletion) for cross-module bridging.
-export type SessionEventKind = "sessionDeleted";
+export type SessionEventKind = "sessionDeleted" | "sessionsChanged";
 export interface SessionEvent {
   kind: SessionEventKind;
   sessionId: string;
+  /** Owning agent, when the event comes from a server push. */
+  agentId?: string;
 }
 type SessionEventListener = (event: SessionEvent) => void;
 const sessionEventListeners = new Set<SessionEventListener>();
@@ -335,6 +337,7 @@ function buildSnapshot(state: SessionStreamState): SessionSnapshot {
     historyHasMore: state.historyHasMore,
     historyLoadingMore: state.historyLoadingMore,
     historyNextOffset: state.historyNextOffset,
+    historyNextCursor: state.historyNextCursor,
     historyHydrated: state.historyHydrated,
   };
 }
@@ -357,6 +360,7 @@ function getOrCreate(sessionId: string): SessionStreamState {
       historyNextOffset: 0,
       historyLoadingMore: false,
       historyHydrated: false,
+      historyStale: false,
       listeners: new Set(),
       _snapshot: EMPTY_SNAPSHOT,
     };
@@ -516,7 +520,7 @@ export function setMessages(sessionId: string, messages: ChatMessage[]) {
 export function setHistoryPage(
   sessionId: string,
   messages: ChatMessage[],
-  opts: { hasMore: boolean; nextOffset: number },
+  opts: { hasMore: boolean; nextOffset: number; nextCursor?: string | null },
 ) {
   const state = getOrCreate(sessionId);
   state.messages = messages;
@@ -524,9 +528,29 @@ export function setHistoryPage(
   usageSamplesByState.delete(state);
   state.historyHasMore = opts.hasMore;
   state.historyNextOffset = opts.nextOffset;
+  state.historyNextCursor = opts.nextCursor ?? null;
   state.historyLoadingMore = false;
   state.historyHydrated = true;
+  state.historyStale = false;
   notify(state);
+}
+
+/**
+ * Mark history as stale so the next `loadHistory` refetches from the server.
+ * A live turn owns the message list, so leave a streaming session untouched.
+ * Messages and the hydration flag stay put: the reload replaces them once it
+ * lands, which keeps the view from flashing an empty loading state.
+ */
+export function invalidateHistory(sessionId: string) {
+  const state = sessionStates.get(sessionId);
+  if (!state || !state.historyHydrated) return;
+  if (state.isStreaming || isLiveSocketOpen(sessionId)) return;
+  state.historyStale = true;
+}
+
+/** True when a server push arrived after the last history fetch. */
+export function isHistoryStale(sessionId: string): boolean {
+  return sessionStates.get(sessionId)?.historyStale ?? false;
 }
 
 function dedupePrependMessages(
@@ -542,7 +566,7 @@ function dedupePrependMessages(
 export function prependHistoryMessages(
   sessionId: string,
   older: ChatMessage[],
-  opts: { hasMore: boolean; nextOffset: number },
+  opts: { hasMore: boolean; nextOffset: number; nextCursor?: string | null },
 ) {
   const state = getOrCreate(sessionId);
   const uniqueOlder = dedupePrependMessages(older, state.messages);
@@ -551,6 +575,7 @@ export function prependHistoryMessages(
   }
   state.historyHasMore = opts.hasMore;
   state.historyNextOffset = opts.nextOffset;
+  state.historyNextCursor = opts.nextCursor ?? null;
   notify(state);
 }
 
@@ -642,8 +667,10 @@ export function clearMessages(sessionId: string) {
   state.toolCallIdIndex = {};
   state.historyHasMore = false;
   state.historyNextOffset = 0;
+  state.historyNextCursor = null;
   state.historyLoadingMore = false;
   state.historyHydrated = false;
+  state.historyStale = false;
   notify(state);
 }
 
@@ -942,7 +969,7 @@ function handleHarnessChunk(
       finalizeStreamingMessages(state);
       break;
     case "error":
-      appendErrorBubble(state, chunk.message);
+      appendErrorBubble(state, chunk.message, chunk.error_code);
       break;
     case "hitl_required":
       handleHitlRequired(state, chunk.request);
@@ -1522,14 +1549,21 @@ function handleHitlRequired(
 
 /** Append an assistant error bubble — used for backend-emitted error
  *  chunks and HTTP-layer failures. */
-function appendErrorBubble(state: SessionStreamState, message: string): void {
+function appendErrorBubble(
+  state: SessionStreamState,
+  message: string,
+  errorCode?: string,
+): void {
   state.messages = [
     ...state.messages,
     {
       id: generateId(),
       role: "assistant",
       content: message,
-      errorInfo: { code: "stream_error", source: "frontend_stream" },
+      errorInfo: {
+        code: errorCode || "stream_error",
+        source: "frontend_stream",
+      },
       status: "error",
       timestamp: Date.now(),
     },
@@ -1813,7 +1847,6 @@ async function sendTurnWebSocket(
   threadId?: string | null,
   mcpServers?: string[] | null,
   knowledgeBaseIds?: string[] | null,
-  skills?: string[] | null,
   targetAgentIds?: string[] | null,
   onStreamEnd?: () => void,
   reasoningMode?: "auto" | "enabled" | "disabled",
@@ -1890,7 +1923,6 @@ async function sendTurnWebSocket(
       if (knowledgeBaseIds !== undefined && knowledgeBaseIds !== null) {
         payload.knowledge_base_ids = knowledgeBaseIds;
       }
-      if (skills && skills.length > 0) payload.skills = skills;
       if (targetAgentIds && targetAgentIds.length > 0) {
         payload.target_agent_ids = targetAgentIds;
       }
@@ -2017,7 +2049,6 @@ export async function sendTurn(
   threadId?: string | null,
   mcpServers?: string[] | null,
   knowledgeBaseIds?: string[] | null,
-  skills?: string[] | null,
   targetAgentIds?: string[] | null,
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
@@ -2088,7 +2119,6 @@ export async function sendTurn(
     threadId,
     mcpServers,
     knowledgeBaseIds,
-    skills,
     targetAgentIds,
     onStreamEnd,
     reasoningMode,

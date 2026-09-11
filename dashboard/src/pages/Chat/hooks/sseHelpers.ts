@@ -96,9 +96,12 @@ export interface SessionStreamState {
   toolCallIdIndex: Record<string, string>;
   historyHasMore: boolean;
   historyNextOffset: number;
+  historyNextCursor?: string | null;
   historyLoadingMore: boolean;
   /** True after the first history fetch finished (even if empty). */
   historyHydrated: boolean;
+  /** Server-side messages changed outside this client — refetch on next load. */
+  historyStale: boolean;
   listeners: Set<() => void>;
   /** Cached snapshot reference (updated on every notify). */
   _snapshot: SessionSnapshot;
@@ -114,5 +117,6 @@ export interface SessionSnapshot {
   historyHasMore: boolean;
   historyLoadingMore: boolean;
   historyNextOffset: number;
+  historyNextCursor?: string | null;
   historyHydrated: boolean;
 }

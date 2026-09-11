@@ -13,6 +13,9 @@ class TrajectoryStore:
     def __init__(self, repo: TrajectoryEventRepo) -> None:
         self._repo = repo
 
+    def record_failure(self, thread_id: str) -> None:
+        """Optional diagnostic hook for stores requiring archive completeness."""
+
     def append(self, event: TrajectoryEvent) -> bool:
         return self._repo.append(clip_persisted_event(event))
 
