@@ -74,6 +74,40 @@ async def test_register_stream_mode_uses_original_processor(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_register_qq_defaults_to_stream_processor(tmp_path: Path) -> None:
+    gw = _make_gateway(tmp_path)
+    gw._channel_manager = MagicMock()
+    gw._channel_manager.add_channel = AsyncMock()
+    gw._channel_manager.get_channel = MagicMock(return_value=MagicMock())
+    gw._processor = MagicMock()
+    row = _fake_row()
+    row.kind = "qq"
+    row.config_json = '{"app_id":"x","secret":"y","response_mode":"invoke","streaming":false}'
+
+    await gw._register_channel(row)
+
+    assert gw._channel_manager.add_channel.await_args is not None
+    assert gw._channel_manager.add_channel.await_args.kwargs["processor"] is gw._processor
+
+
+@pytest.mark.asyncio
+async def test_register_qq_invoke_when_c2c_streaming_is_off(tmp_path: Path) -> None:
+    gw = _make_gateway(tmp_path)
+    gw._channel_manager = MagicMock()
+    gw._channel_manager.add_channel = AsyncMock()
+    gw._channel_manager.get_channel = MagicMock(return_value=MagicMock())
+    gw._processor = MagicMock()
+    row = _fake_row()
+    row.kind = "qq"
+    row.config_json = '{"app_id":"x","secret":"y","c2c_streaming":false}'
+
+    await gw._register_channel(row)
+
+    assert gw._channel_manager.add_channel.await_args is not None
+    assert gw._channel_manager.add_channel.await_args.kwargs["processor"] is not gw._processor
+
+
+@pytest.mark.asyncio
 async def test_register_failure_sets_runtime_error(tmp_path: Path) -> None:
     gw = _make_gateway(tmp_path)
     gw._channel_manager = MagicMock()
