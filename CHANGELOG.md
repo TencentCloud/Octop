@@ -28,6 +28,21 @@
 
 - 聊天点技能改为插入 `/slug`；创建定时任务必须填写名称
 - 依赖 harness-gateway ≥ 0.9.6、orcakit-harness-agent ≥ 1.0.8
+### 新增
+
+- QQ 私聊默认走官方 `stream_messages` 替换流式：进站先发不可见换行 hold，再按完整 markdown 块更新同一条气泡；`<think>` 会剥掉且不 `.trim()` 掉换行
+- 流式失败、前缀被拒（`40007`）或只发出 hold 时，回落为一条静态 markdown（`msg_type=2`，失败再 `0`）
+
+### 修复
+
+- 飞书话题内回复改走话题回复接口并带 `reply_in_thread`，失败时回退为群内普通发送；话题以 `thread_id` 作为会话主体
+
+### 变更
+
+- QQ 私聊不再使用通用「回复模式」开关，旧键 `streaming` / `response_mode` 无效；只有显式 `c2c_streaming: false` 才退出流式
+- QQ 群聊 / 频道 / 频道私信没有 stream API，仍只发静态消息
+- 控制台保存 QQ 通道时写入 `c2c_streaming: true`，并提示工具过程会另占每条入站约 4 条被动回复配额
+- 依赖 `harness-gateway>=0.9.7`（含 QQ C2C 替换流式与飞书话题修复）
 
 ## [0.9.32] - 2026-09-06
 

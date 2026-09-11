@@ -496,3 +496,11 @@ For the customer WeCom support group, scan:
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
+
+## ✨ Contributors
+
+Thanks to all contributors:
+
+<a href="https://github.com/tencentcloud/octop/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=tencentcloud/octop" />
+</a>

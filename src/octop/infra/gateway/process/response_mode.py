@@ -28,6 +28,21 @@ def normalize_channel_response_mode(value: Any) -> ChannelResponseMode:
     return DEFAULT_CHANNEL_RESPONSE_MODE
 
 
+def _config_flag(value: Any, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+    return bool(value)
+
+
+def qq_channel_response_mode(config: dict[str, Any]) -> ChannelResponseMode:
+    """QQ C2C stream is on by default. Explicit ``c2c_streaming: false`` opts out."""
+    if _config_flag(config.get("c2c_streaming"), default=True):
+        return "stream"
+    return "invoke"
+
+
 async def collapse_to_invoke_response(
     events: AsyncIterator[MessageEvent],
 ) -> AsyncIterator[MessageEvent]:
@@ -117,4 +132,5 @@ __all__ = [
     "collapse_to_invoke_response",
     "normalize_channel_response_mode",
     "processor_for_response_mode",
+    "qq_channel_response_mode",
 ]
