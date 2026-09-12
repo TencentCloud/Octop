@@ -961,7 +961,9 @@
 }
 
 .previewBody {
-  max-height: min(60vh, 560px);
+  flex: 1;
+  min-height: 0;
+  height: 100%;
   margin: 0;
   overflow: auto;
   padding: 12px 14px;
@@ -973,6 +975,88 @@
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.previewModalTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.previewModalTitleText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.previewModalExpandBtn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-sm, 6px);
+  background: transparent;
+  color: var(--fn-text-secondary, rgba(0, 0, 0, 0.65));
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.06));
+    color: var(--fn-text-primary, rgba(0, 0, 0, 0.88));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand, #1677ff);
+    outline-offset: 1px;
+  }
+}
+
+/*
+ * Flex layout on the modal content caps the whole dialog at the viewport
+ * regardless of antd's responsive margins / header / footer heights: the
+ * body (see inline styles) is shrinkable, so the wrap never scrolls.
+ */
+.previewModalWrap {
+  /* layout.css mobile rule "[class*=-modal] { margin: 12px auto !important }"
+     also matches the wrap (its class contains "-modal") and shrinks the
+     fixed overlay by 24px — neutralize it so the wrap stays full-viewport. */
+  margin: 0 !important;
+}
+
+.previewModalContent {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  /* styles/layout.css adds !important rules for "[class*=-modal-content]" —
+     match that specificity so our flex sizing is not overridden. */
+  margin: 0 !important;
+}
+
+.previewModalMaximized {
+  /* layout.css mobile rule "[class*=-modal] { margin: 12px auto !important }"
+     must not apply to the maximized dialog. */
+  margin: 0 !important;
+  max-width: 100vw !important;
+  padding-bottom: 0 !important;
+}
+
+.previewModalContentMaximized {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  margin: 0 !important;
+  border-radius: 0;
+  /* Fill the screen behind the dialog in native fullscreen. */
+  background: var(--fn-bg-container, #fff);
 }
 
 .richPreviewBody {
@@ -987,7 +1071,142 @@
   background: var(--fn-bg-container, #fff);
 }
 
+/* Native fullscreen: the content area IS the screen — no dialog chrome. */
+.richPreviewBody:fullscreen {
+  border: none;
+  border-radius: 0;
+  background: var(--fn-bg-container, #fff);
+}
+
+/* Markdown preview: outline toolbar + sidebar + scrollable body. */
+.mdPreviewWrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.mdPreviewWrap:fullscreen {
+  border: none;
+  border-radius: 0;
+  background: var(--fn-bg-container, #fff);
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.mdPreviewToolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-container, #fff);
+}
+
+.mdOutlineToggleHost {
+  display: inline-flex;
+}
+
+.mdPreviewMeta {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.mdPreviewRow {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  min-height: 0;
+}
+
+.mdOutlinePanel {
+  flex: 0 0 auto;
+  width: 224px;
+  max-width: 40%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 6px 4px 12px;
+  border-right: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-container, #fff);
+}
+
+.mdOutlineItem {
+  display: block;
+  width: 100%;
+  padding: 4px 10px;
+  padding-right: 6px;
+  border: none;
+  border-radius: var(--fn-radius-sm, 6px);
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover {
+    background: var(--fn-bg-secondary);
+    color: var(--fn-text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: -2px;
+  }
+}
+
+.mdOutlineItemActive {
+  background: var(--fn-bg-secondary);
+  color: var(--fn-text-primary);
+  font-weight: 600;
+}
+
+.mdPreviewToolbarSpacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+.mdFindBar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: min(420px, 100%);
+}
+
+.mdFindInput {
+  width: 160px;
+}
+
+.mdFindFlash {
+  outline: 2px solid var(--fn-color-brand, #1677ff);
+  outline-offset: 2px;
+  border-radius: 2px;
+  transition: outline-color 0.2s ease;
+}
+
+.previewModalNav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+}
+
+.previewModalNavMeta {
+  min-width: 48px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
 .mdPreviewBody {
+  position: relative;
   flex: 1;
   min-height: 0;
   height: 100%;
@@ -997,17 +1216,6 @@
   border: 1px solid var(--fn-border-secondary);
   border-radius: var(--fn-radius-md);
   background: var(--fn-bg-container, #fff);
-}
-
-.mdPreviewSpin {
-  /* Keep Spin from eating the scroll container height. */
-  display: block;
-  min-height: 120px;
-
-  :global(.ant-spin-nested-loading),
-  :global(.ant-spin-container) {
-    min-height: inherit;
-  }
 }
 
 .memberList {

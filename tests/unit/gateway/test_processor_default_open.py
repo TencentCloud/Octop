@@ -23,6 +23,8 @@ async def test_im_call_merges_default_open_mcp_servers() -> None:
 
     agent_manager = MagicMock()
     agent_manager.merge_turn_mcp_servers = MagicMock(return_value=["docs__1"])
+    agent_manager.default_mcp_servers = MagicMock(return_value=[])
+    agent_manager.default_knowledge_base_ids = MagicMock(return_value=[])
     agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
     agent_manager.get_row = MagicMock(return_value=None)
     agent_manager.providers = MagicMock()
@@ -68,7 +70,9 @@ async def test_im_call_merges_default_open_mcp_servers() -> None:
         events = [ev async for ev in processor(msg)]
 
     assert events
-    agent_manager.merge_turn_mcp_servers.assert_called_once_with(7, None, apply_defaults=True)
+    agent_manager.merge_turn_mcp_servers.assert_called_once_with(
+        7, None, apply_defaults=True, extra_defaults=[]
+    )
     agent_manager.prepare_chat_mcp.assert_awaited_once()
     assert captured["request"]["mcp_servers"] == ["docs__1"]
 
@@ -80,6 +84,8 @@ async def test_dashboard_request_trusts_explicit_opt_out() -> None:
     agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
     agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
     agent_manager.get_row = MagicMock(return_value=None)
+    agent_manager.default_mcp_servers = MagicMock(return_value=[])
+    agent_manager.default_knowledge_base_ids = MagicMock(return_value=[])
     agent_manager.providers = MagicMock()
     agent_manager.providers.is_model_ref_usable = MagicMock(return_value=False)
     agent_manager.providers.resolve_explicit_default_model = MagicMock(return_value=None)
@@ -117,7 +123,9 @@ async def test_dashboard_request_trusts_explicit_opt_out() -> None:
         meta=msg.metadata or {},
     )
     assert "mcp_servers" not in request
-    agent_manager.merge_turn_mcp_servers.assert_called_once_with(1, [], apply_defaults=False)
+    agent_manager.merge_turn_mcp_servers.assert_called_once_with(
+        1, [], apply_defaults=False, extra_defaults=[]
+    )
 
 
 @pytest.mark.asyncio
@@ -125,6 +133,8 @@ async def test_dashboard_request_attaches_knowledge_base_ids_without_prepending(
     agent_manager = MagicMock()
     agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
     agent_manager.get_row = MagicMock(return_value=None)
+    agent_manager.default_mcp_servers = MagicMock(return_value=[])
+    agent_manager.default_knowledge_base_ids = MagicMock(return_value=[])
     agent_manager.providers = MagicMock()
     agent_manager.providers.is_model_ref_usable = MagicMock(return_value=False)
     agent_manager.providers.resolve_explicit_default_model = MagicMock(return_value=None)
@@ -192,6 +202,7 @@ async def test_resolve_turn_mcp_servers_raises_when_prepare_fails() -> None:
     agent_manager = MagicMock()
     agent_manager.merge_turn_mcp_servers = MagicMock(return_value=["bad__1"])
     agent_manager.prepare_chat_mcp = AsyncMock(return_value=["bad__1"])
+    agent_manager.default_mcp_servers = MagicMock(return_value=[])
 
     processor = GlobalProcessor(
         agent_manager=agent_manager,

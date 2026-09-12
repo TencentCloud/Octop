@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Any
 
 DEFAULT_KNOWLEDGE_BASE_IDS_CONFIG_KEY = "default_knowledge_base_ids"
 
@@ -71,7 +71,7 @@ def apply_default_knowledge_base_ids(
 
 
 def merge_knowledge_base_ids(
-    visible_bases: Sequence[_KnowledgeBase],
+    visible_bases: Sequence[KnowledgeBaseRow],
     explicit_ids: list[str] | None,
     *,
     owner_user_id: int,

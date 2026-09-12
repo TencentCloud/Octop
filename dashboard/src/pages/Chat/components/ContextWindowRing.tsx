@@ -35,7 +35,6 @@ interface ContextWindowRingProps {
   agentId?: string | null;
   threadId?: string | null;
   selectedConnectors?: string[];
-  selectedSkills?: string[];
   isMobile?: boolean;
 }
 
@@ -45,7 +44,6 @@ export default function ContextWindowRing({
   agentId,
   threadId,
   selectedConnectors = [],
-  selectedSkills = [],
   isMobile = false,
 }: ContextWindowRingProps) {
   const { t } = useTranslation();
@@ -73,9 +71,8 @@ export default function ContextWindowRing({
         threadId ?? "",
         String(max),
         selectedConnectors.join(","),
-        selectedSkills.join(","),
       ].join("|"),
-    [agentId, threadId, max, selectedConnectors, selectedSkills],
+    [agentId, threadId, max, selectedConnectors],
   );
 
   const loadBreakdown = useCallback(
@@ -104,7 +101,6 @@ export default function ContextWindowRing({
           maxTokens: max,
           inputTokens: !haveSegments && hint > 0 ? hint : undefined,
           mcpServers: selectedConnectors,
-          skills: selectedSkills,
         });
         if (data.used_tokens > 0) {
           cacheRef.current = { key: cacheKey, at: Date.now(), data };
@@ -120,7 +116,7 @@ export default function ContextWindowRing({
         if (!opts?.silent) setLoading(false);
       }
     },
-    [agentId, threadId, max, selectedConnectors, selectedSkills, cacheKey],
+    [agentId, threadId, max, selectedConnectors, cacheKey],
   );
 
   // Reset detail cache on thread/filter changes. The ring itself keeps growing

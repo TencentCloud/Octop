@@ -629,6 +629,7 @@ async def push_workspace_skill_to_package(
             resolve_request_locale(request),
         )
     store.assert_can_mutate(row, user)
+    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, name)
     try:
         slug = await copy_workspace_skill_to_package(
             workspace=ctx.workspace,

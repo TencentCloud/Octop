@@ -26,6 +26,7 @@ from octop.infra.gateway.process.processor import GlobalProcessor
 from octop.infra.gateway.process.response_mode import (
     normalize_channel_response_mode,
     processor_for_response_mode,
+    qq_channel_response_mode,
 )
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher, build_default_dispatcher
 from octop.infra.gateway.threads import ThreadRegistry
@@ -632,7 +633,11 @@ class Gateway:
         if not self._channel_manager or not self._processor:
             return
         config = self._config_from_row(row)
-        response_mode = normalize_channel_response_mode(config.get("response_mode"))
+        response_mode = (
+            qq_channel_response_mode(config)
+            if row.kind == "qq"
+            else normalize_channel_response_mode(config.get("response_mode"))
+        )
         processor = processor_for_response_mode(self._processor, response_mode)
         manager = self._require_channel_manager()
         await manager.add_channel(

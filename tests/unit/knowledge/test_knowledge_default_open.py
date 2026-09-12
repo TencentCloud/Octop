@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from octop.infra.knowledge.default_open import merge_knowledge_base_ids
+from octop.infra.knowledge.default_open import (
+    merge_knowledge_base_ids,
+    stamp_turn_knowledge_config,
+)
 
 
 def test_merge_knowledge_base_ids_applies_only_visible_defaults_when_omitted() -> None:

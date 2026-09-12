@@ -834,7 +834,6 @@ export function useChat(
       modelRef?: string | null,
       mcpServers?: string[] | null,
       knowledgeBaseIds?: string[] | null,
-      skills?: string[] | null,
       targetAgentIds?: string[] | null,
       composerContext?: UserComposerContext,
       reasoningMode?: "auto" | "enabled" | "disabled",
@@ -873,7 +872,6 @@ export function useChat(
         threadIdForApi,
         mcpServers,
         knowledgeBaseIds,
-        skills,
         targetAgentIds,
         reasoningMode,
         reasoningEffort,
@@ -899,7 +897,15 @@ export function useChat(
       }
 
       // Already have local history: only re-probe when we still expect a stream.
-      if (snap.messages.length > 0 || snap.historyHydrated) {
+      // A server push (cron, IM) marks history stale and forces a refetch.
+      // An empty cached page is never trusted: a background turn (cron, IM,
+      // another tab) may have written the first messages since we hydrated,
+      // and nothing would refetch them before a page reload.
+      const liveTurn = snap.isStreaming || chatStore.hasLiveSocket(key);
+      if (
+        (snap.messages.length > 0 || liveTurn) &&
+        !chatStore.isHistoryStale(key)
+      ) {
         if (shouldProbeActiveTurn({ isStreaming: snap.isStreaming })) {
           attachAfterHistory(key, targetThreadId);
         }

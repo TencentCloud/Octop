@@ -101,6 +101,20 @@ export function useChatNavigation({
     });
   }, [activeThreadId, fetchSessions]);
 
+  // A proactive run (cron) created or wrote to a thread outside the chat socket:
+  // refresh the list — and the open thread's history — without a page reload.
+  useEffect(() => {
+    return chatStore.onSessionEvent((event) => {
+      if (event.kind !== "sessionsChanged") return;
+      if (event.agentId && resolvedAgentId && event.agentId !== resolvedAgentId)
+        return;
+      void fetchSessions(activeThreadId ?? undefined);
+      if (!activeThreadId || event.sessionId !== activeThreadId) return;
+      chatStore.invalidateHistory(activeThreadId);
+      void loadHistory(activeThreadId);
+    });
+  }, [activeThreadId, resolvedAgentId, fetchSessions, loadHistory]);
+
   const initialNavDone = useRef<string | null>(null);
   const chatUrlStateRef = useRef<{ agentId?: string; threadId?: string }>({});
 

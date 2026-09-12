@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -80,7 +81,9 @@ async def test_deliver_agent_stamps_composer_on_human_message() -> None:
 
     agent_manager = MagicMock()
     agent_manager.merge_turn_mcp_servers = MagicMock(
-        side_effect=lambda _uid, explicit, apply_defaults=None: list(explicit) if explicit else None
+        side_effect=lambda _uid, explicit, apply_defaults=None, extra_defaults=None: (
+            list(explicit) if explicit else None
+        )
     )
     agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
     agent_manager.stream = _stream
@@ -121,6 +124,7 @@ async def test_deliver_agent_merges_default_open_when_empty() -> None:
 
     agent_manager = MagicMock()
     agent_manager.merge_turn_mcp_servers = MagicMock(return_value=["always__1"])
+    agent_manager.default_mcp_servers = MagicMock(return_value=[])
     agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
     agent_manager.stream = _stream
     agent_manager.get_row = MagicMock(return_value=agent_row)
@@ -138,7 +142,9 @@ async def test_deliver_agent_merges_default_open_when_empty() -> None:
     )
     await service.deliver(_command(mcp_servers=()))
 
-    agent_manager.merge_turn_mcp_servers.assert_called_once_with(1, None, apply_defaults=True)
+    agent_manager.merge_turn_mcp_servers.assert_called_once_with(
+        1, None, apply_defaults=True, extra_defaults=[]
+    )
     agent_manager.prepare_chat_mcp.assert_awaited()
     gateway.push_session_text.assert_awaited()
 
@@ -155,6 +161,7 @@ async def test_deliver_agent_explicit_mcp_overrides_defaults() -> None:
 
     agent_manager = MagicMock()
     agent_manager.merge_turn_mcp_servers = MagicMock(return_value=["picked__1"])
+    agent_manager.default_mcp_servers = MagicMock(return_value=[])
     agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
     agent_manager.stream = _stream
     agent_manager.get_row = MagicMock(return_value=agent_row)
@@ -173,6 +180,64 @@ async def test_deliver_agent_explicit_mcp_overrides_defaults() -> None:
     await service.deliver(_command(mcp_servers=("picked__1",)))
 
     agent_manager.merge_turn_mcp_servers.assert_called_once_with(
-        1, ["picked__1"], apply_defaults=False
+        1, ["picked__1"], apply_defaults=False, extra_defaults=[]
     )
+    gateway.push_session_text.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_deliver_agent_attaches_expert_knowledge_bases() -> None:
+    session = _dashboard_session()
+    agent_row = MagicMock()
+    agent_row.default_model = None
+    visible = [
+        SimpleNamespace(
+            id="owned-default",
+            owner_user_id=1,
+            default_open=True,
+            name="Always",
+            description="",
+        ),
+        SimpleNamespace(
+            id="expert-pick",
+            owner_user_id=1,
+            default_open=False,
+            name="Policies",
+            description="Refund rules",
+        ),
+    ]
+
+    async def _stream(_aid: str, request: dict):
+        configurable = request.get("configurable") or {}
+        assert configurable["knowledge_base_ids"] == ["owned-default", "expert-pick"]
+        assert configurable["knowledge_base_catalog"] == [
+            {"id": "owned-default", "name": "Always", "description": ""},
+            {"id": "expert-pick", "name": "Policies", "description": "Refund rules"},
+        ]
+        yield {"type": "token", "content": "ok"}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.default_mcp_servers = MagicMock(return_value=[])
+    agent_manager.default_knowledge_base_ids = MagicMock(return_value=["expert-pick", "gone"])
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=agent_row)
+
+    repos = MagicMock()
+    repos.knowledge_repo.list_visible.return_value = visible
+    repos.user_repo.get.return_value = MagicMock(role="user")
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=repos,
+    )
+    await service.deliver(_command())
     gateway.push_session_text.assert_awaited()

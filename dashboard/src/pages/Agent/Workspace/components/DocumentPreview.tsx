@@ -5,8 +5,11 @@
  */
 
 import { useCallback } from "react";
+import { App } from "antd";
+import { useTranslation } from "react-i18next";
 import DocumentPreviewCore from "../../../../components/DocumentPreviewCore";
 import { requestBlob } from "../../../../api/request";
+import { apiErrorMessage } from "../../../../utils/apiError";
 import { withFromWorkspace } from "../../../../utils/fromWorkspace";
 import type { DocKind } from "../utils/docKind";
 import styles from "../index.module.less";
@@ -36,10 +39,18 @@ export default function DocumentPreview({
   kind,
   fromWorkspace = true,
 }: DocumentPreviewProps) {
+  const { t } = useTranslation();
+  const { message } = App.useApp();
   const apiPath = documentDownloadUrl(agentId, path, fromWorkspace);
   const filename = path.split("/").filter(Boolean).pop() || path;
 
-  const fetchBlob = useCallback(() => requestBlob(apiPath), [apiPath]);
+  const fetchBlob = useCallback(
+    (
+      onProgress?: (loaded: number, total: number) => void,
+      signal?: AbortSignal,
+    ) => requestBlob(apiPath, { signal }, onProgress),
+    [apiPath],
+  );
 
   const onDownload = useCallback(async () => {
     try {
@@ -50,10 +61,10 @@ export default function DocumentPreview({
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      // Download errors surface via the network layer.
+    } catch (error) {
+      message.error(apiErrorMessage(error, t("workspace.downloadFailed"), t));
     }
-  }, [apiPath, filename]);
+  }, [apiPath, filename, message, t]);
 
   return (
     <div className={styles.documentPreview}>

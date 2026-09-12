@@ -55,6 +55,10 @@ export interface OctopAgent {
   top_p?: number | null;
   max_tokens?: number | null;
   config: Record<string, unknown>;
+  /** Knowledge bases opened by default in new chats with this expert. */
+  knowledge_base_ids?: string[];
+  /** Connectors opened by default in new chats with this expert. */
+  mcp_servers?: string[];
   /** Aggregated unread count across all sessions for this agent (current user). */
   unread_count?: number;
   /** True while BOOTSTRAP.md onboarding has not written ``.bootstrapped`` yet. */

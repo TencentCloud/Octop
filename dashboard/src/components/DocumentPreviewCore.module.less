@@ -32,10 +32,17 @@
 .documentLoading {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--fn-bg-container, #fff);
+  min-height: 0;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+  pointer-events: auto;
+}
+
+.documentLoadingHidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .docxWrap {
@@ -44,7 +51,7 @@
   width: 100%;
   overflow: auto;
   padding: 12px 16px 20px;
-  background: #fff;
+  background: var(--fn-bg-container, #fff);
   overscroll-behavior: contain;
 }
 
@@ -70,11 +77,34 @@
   gap: 8px;
 }
 
+.xlsxHintRow {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
 .xlsxHint {
   margin: 0;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 12px;
   color: var(--fn-text-tertiary);
+}
+
+.xlsxMediaGallery {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 4px;
+}
+
+.xlsxMediaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .xlsxTableHost {
@@ -86,7 +116,7 @@
   scrollbar-gutter: stable;
   border: 1px solid var(--fn-border-secondary, #f0f0f0);
   border-radius: 6px;
-  background: #fff;
+  background: var(--fn-bg-container, #fff);
 }
 
 .xlsxTable {
@@ -154,4 +184,19 @@
   border-radius: 4px;
   border: 1px solid var(--fn-border-secondary, #eee);
   background: var(--fn-bg-secondary, #f5f6f8);
+}
+
+:global(html[data-theme="dark"]) .docxWrap,
+:global(html[data-theme="dark"]) .xlsxWrap,
+:global(html[data-theme="dark"]) .xlsxTableHost {
+  background: var(--fn-bg-container, #141414);
+}
+
+:global(html[data-theme="dark"]) .xlsxTable thead th {
+  background: var(--fn-bg-secondary, #1f1f1f);
+}
+
+:global(html[data-theme="dark"]) .xlsxCellThumb {
+  background: var(--fn-bg-secondary, #1f1f1f);
+  border-color: var(--fn-border-secondary, #303030);
 }

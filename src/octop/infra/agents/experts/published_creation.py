@@ -42,6 +42,8 @@ class PublishedExpertInstallOptions:
     default_model: str | None = None
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
     color: str | None = None
     agent_id: str | None = None
     icon_url: str | None = None
@@ -292,7 +294,12 @@ async def install_published_expert(
     expert_id: str,
     options: PublishedExpertInstallOptions,
 ) -> dict[str, Any]:
-    """Create a private agent and seed it from the immutable published snapshot."""
+    """Create a private agent and seed it from the immutable published snapshot.
+
+    Composer defaults (knowledge bases / connectors) are installer-owned: the
+    snapshot does not copy them from the publisher's source agent. The installer
+    may pass their own lists on this request.
+    """
     row = require_published_expert(services, expert_id)
     snapshot_dir = _snapshot_dir(services, row.id)
     if not snapshot_dir.is_dir():
@@ -333,6 +340,8 @@ async def install_published_expert(
             icon_url=options.icon_url,
             color=options.color or row.color or None,
             skill_package_ids=package_ids,
+            knowledge_base_ids=options.knowledge_base_ids,
+            mcp_servers=options.mcp_servers,
             published_expert_id=row.id,
             welcome_message=options.welcome_message,
         ),

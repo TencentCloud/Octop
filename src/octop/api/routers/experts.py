@@ -70,6 +70,25 @@ from octop.infra.utils.locale import resolve_user_locale
 
 router = APIRouter()
 
+
+def _validated_session_defaults(
+    registry: Any,
+    user_id: int,
+    *,
+    knowledge_base_ids: list[str] | None,
+    mcp_servers: list[str] | None,
+) -> tuple[list[str] | None, list[str] | None]:
+    kb_ids = (
+        registry.validate_knowledge_base_ids(user_id, knowledge_base_ids)
+        if knowledge_base_ids is not None
+        else None
+    )
+    servers = (
+        registry.validate_mcp_servers(user_id, mcp_servers) if mcp_servers is not None else None
+    )
+    return kb_ids, servers
+
+
 _SAFE_MARKET_REASONS: dict[SkillHubMarketErrorKind, str] = {
     SkillHubMarketErrorKind.NOT_FOUND: "expert not found",
     SkillHubMarketErrorKind.INVALID_SLUG: "invalid expert id",
@@ -89,6 +108,8 @@ class FromExpertBody(AgentRuntimeFields):
     default_model: str | None = None
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
     color: str | None = None
     agent_id: str | None = Field(
         default=None,
@@ -134,6 +155,8 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     default_model: str | None = None
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
     color: str | None = None
     agent_id: str | None = Field(
         default=None,
@@ -511,6 +534,12 @@ async def install_published_expert(
         body.backend,
         policy_repo=server.services.user_policy_repo,
     )
+    kb_ids, servers = _validated_session_defaults(
+        server.app_runtime.agent_registry,
+        user.id,
+        knowledge_base_ids=body.knowledge_base_ids,
+        mcp_servers=body.mcp_servers,
+    )
     return await install_published_expert_agent(
         services=server.services,
         registry=server.app_runtime.agent_registry,
@@ -523,6 +552,8 @@ async def install_published_expert(
             default_model=body.default_model,
             backend=body.backend,
             skill_package_ids=body.skill_package_ids,
+            knowledge_base_ids=kb_ids,
+            mcp_servers=servers,
             color=body.color,
             agent_id=body.agent_id,
             welcome_message=body.welcome_message,
@@ -609,6 +640,12 @@ async def install_expert_hub_item(
     )
     if package_ids:
         server.app_runtime.agent_registry.assert_backend_supports_skill_packages(body.backend)
+    kb_ids, servers = _validated_session_defaults(
+        server.app_runtime.agent_registry,
+        user.id,
+        knowledge_base_ids=body.knowledge_base_ids,
+        mcp_servers=body.mcp_servers,
+    )
     try:
         result = await create_skillhub_market_agent(
             server=server,
@@ -624,6 +661,8 @@ async def install_expert_hub_item(
                 agent_id=body.agent_id,
                 welcome_message=body.welcome_message,
                 skill_package_ids=package_ids,
+                knowledge_base_ids=kb_ids,
+                mcp_servers=servers,
                 enable_trajectory=body.enable_trajectory,
                 default_conversation_mode=body.default_conversation_mode,
                 default_knowledge_base_ids=body.default_knowledge_base_ids,
@@ -694,6 +733,12 @@ async def create_agent_from_expert(
     )
     if package_ids:
         server.app_runtime.agent_registry.assert_backend_supports_skill_packages(body.backend)
+    kb_ids, servers = _validated_session_defaults(
+        server.app_runtime.agent_registry,
+        user.id,
+        knowledge_base_ids=body.knowledge_base_ids,
+        mcp_servers=body.mcp_servers,
+    )
 
     config_extra: dict[str, Any] = {}
     if body.providers:
@@ -722,6 +767,8 @@ async def create_agent_from_expert(
         color=body.color,
         welcome_message=body.welcome_message,
         skill_package_ids=package_ids,
+        knowledge_base_ids=kb_ids,
+        mcp_servers=servers,
     )
     row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
     return {

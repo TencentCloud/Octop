@@ -2,28 +2,39 @@
  * Framework-agnostic rich document renderer (PDF / Word / Excel / PPTX).
  *
  * Excel path: SheetJS parses the workbook → native HTML table (+ Ant Design
- * ``Tabs``). Embedded ``xl/media`` images are extracted as ``data:`` URLs and
- * shown in screenshot-like columns via Ant Design ``Image``.
+ * ``Tabs``). Embedded ``xl/media`` images are listed in a gallery below the
+ * sheet — they are not mapped into rows (zip order ≠ sheet anchors).
  *
  * Native ``<table>`` (not Ant Design ``Table``) keeps header/body column
  * widths in one layout tree — avoids the classic antd scroll/ellipsis drift.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Image, Spin, Tabs } from "antd";
+import { Button, Image, Tabs } from "antd";
 import { ArrowDownToLine } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { isNotFoundApiError } from "../utils/apiError";
 import type { DocKind } from "../utils/docKind";
 import styles from "./DocumentPreviewCore.module.less";
-import PdfDocumentPreview from "./PdfDocumentPreview";
+import DocumentPreviewLoading from "./DocumentPreviewLoading";
+import PdfDocumentPreview, { PdfViewerSkeleton } from "./PdfDocumentPreview";
 
 export interface DocumentPreviewCoreProps {
   kind: DocKind;
   filename: string;
-  fetchBlob: () => Promise<Blob>;
+  fetchBlob: (
+    onProgress?: (loaded: number, total: number) => void,
+    signal?: AbortSignal,
+  ) => Promise<Blob>;
   /** Optional download when the kind cannot be rendered (e.g. legacy ``.ppt``). */
   onDownload?: () => void | Promise<void>;
+}
+
+function isAbortError(err: unknown): boolean {
+  return (
+    (err instanceof DOMException && err.name === "AbortError") ||
+    (err instanceof Error && err.name === "AbortError")
+  );
 }
 
 interface ExcelSheetData {
@@ -177,7 +188,10 @@ function neutralizeDocxPreviewChrome(root: HTMLElement): void {
     const text = style.textContent;
     if (!text || !/background:\s*gray/i.test(text)) continue;
     style.textContent = text
-      .replace(/background:\s*gray/gi, "background: #fff")
+      .replace(
+        /background:\s*gray/gi,
+        "background: var(--fn-bg-container, #fff)",
+      )
       .replace(
         /box-shadow:\s*0 0 10px rgba\(0,\s*0,\s*0,\s*0\.5\)/gi,
         "box-shadow: none",
@@ -186,7 +200,11 @@ function neutralizeDocxPreviewChrome(root: HTMLElement): void {
   for (const el of root.querySelectorAll<HTMLElement>(
     ".docx-doc-wrapper, .docx-wrapper",
   )) {
-    el.style.setProperty("background", "#fff", "important");
+    el.style.setProperty(
+      "background",
+      "var(--fn-bg-container, #fff)",
+      "important",
+    );
   }
 }
 
@@ -226,7 +244,10 @@ function sheetToMatrix(
   return matrix;
 }
 
-function buildExcelTable(sheet: ExcelSheetData): ExcelTableModel {
+function buildExcelTable(
+  sheet: ExcelSheetData,
+  emptyColumnTitle: (n: number) => string,
+): ExcelTableModel {
   const matrix = trimEmptyMatrixColumns(sheet.matrix);
   const header = matrix[0] ?? [];
   const body = matrix.slice(1);
@@ -236,7 +257,8 @@ function buildExcelTable(sheet: ExcelSheetData): ExcelTableModel {
     1,
   );
 
-  // Prefer mapping media into the first screenshot-like column by row order.
+  // Image-like columns still render DISPIMG / media refs as "—", but we never
+  // inject zip ``xl/media`` by row index (order ≠ sheet anchors).
   let imageCol = -1;
   for (let index = 0; index < colCount; index += 1) {
     if (columnLooksLikeImage((header[index] || "").trim())) {
@@ -256,7 +278,7 @@ function buildExcelTable(sheet: ExcelSheetData): ExcelTableModel {
   const columns: ExcelColumn[] = Array.from(
     { length: colCount },
     (_, index) => {
-      const title = (header[index] || "").trim() || `Col ${index + 1}`;
+      const title = (header[index] || "").trim() || emptyColumnTitle(index + 1);
       const isImageCol = index === imageCol || columnLooksLikeImage(title);
       const hasBody = body.some((row) => (row[index] ?? "").trim().length > 0);
       let width: number;
@@ -304,22 +326,10 @@ function buildExcelTable(sheet: ExcelSheetData): ExcelTableModel {
 function ExcelCellContent({
   text,
   isImageCol,
-  mediaItem,
 }: {
   text: string;
   isImageCol: boolean;
-  mediaItem?: ExcelMediaItem;
 }) {
-  if (mediaItem) {
-    return (
-      <Image
-        src={mediaItem.dataUrl}
-        alt={mediaItem.name}
-        className={styles.xlsxCellThumb}
-        preview={{ src: mediaItem.dataUrl }}
-      />
-    );
-  }
   if (cellLooksLikeImageRef(text) || (isImageCol && !text.trim())) {
     return <span className={styles.xlsxImageCell}>—</span>;
   }
@@ -334,9 +344,16 @@ export default function DocumentPreviewCore({
 }: DocumentPreviewCoreProps) {
   const { t } = useTranslation();
   const [src, setSrc] = useState("");
+  /** Real download percent (0-100) while the blob streams in. */
+  const [downloadPercent, setDownloadPercent] = useState<number | null>(null);
+  const onBlobProgress = useCallback((loaded: number, total: number) => {
+    if (total > 0) setDownloadPercent((loaded / total) * 100);
+  }, []);
   const [loading, setLoading] = useState(true);
+  const [loadPhase, setLoadPhase] = useState<"file" | "parse">("file");
   const [error, setError] = useState<"missing" | "error" | null>(null);
   const [empty, setEmpty] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [excelSheets, setExcelSheets] = useState<ExcelSheetData[]>([]);
   const [excelTab, setExcelTab] = useState("0");
   const [excelTruncated, setExcelTruncated] = useState(false);
@@ -349,6 +366,11 @@ export default function DocumentPreviewCore({
     void onDownload?.();
   }, [onDownload]);
 
+  const handleRetry = useCallback(() => {
+    setError(null);
+    setReloadNonce((n) => n + 1);
+  }, []);
+
   const activeSheet = useMemo(() => {
     const index = Number(excelTab);
     return excelSheets[Number.isFinite(index) ? index : 0] ?? null;
@@ -356,12 +378,16 @@ export default function DocumentPreviewCore({
 
   const activeTable = useMemo(() => {
     if (!activeSheet) return null;
-    return buildExcelTable(activeSheet);
-  }, [activeSheet]);
+    return buildExcelTable(activeSheet, (n) =>
+      t("workspace.excelColumnFallback", "Column {{n}}", { n }),
+    );
+  }, [activeSheet, t]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadPhase("file");
+    setDownloadPercent(null);
     setError(null);
     setEmpty(false);
     setSrc("");
@@ -377,10 +403,14 @@ export default function DocumentPreviewCore({
       return;
     }
 
+    const abortController = new AbortController();
+
     const load = async () => {
       try {
-        const blob = await fetchBlob();
+        const blob = await fetchBlob(onBlobProgress, abortController.signal);
         if (cancelled) return;
+        setLoadPhase("parse");
+        setDownloadPercent(null);
 
         if (kind === "pdf") {
           const pdfBlob =
@@ -479,10 +509,9 @@ export default function DocumentPreviewCore({
         }
         if (!cancelled) setLoading(false);
       } catch (err) {
-        if (!cancelled) {
-          setError(isNotFoundApiError(err) ? "missing" : "error");
-          setLoading(false);
-        }
+        if (cancelled || isAbortError(err)) return;
+        setError(isNotFoundApiError(err) ? "missing" : "error");
+        setLoading(false);
       }
     };
 
@@ -490,6 +519,7 @@ export default function DocumentPreviewCore({
 
     return () => {
       cancelled = true;
+      abortController.abort();
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = undefined;
@@ -497,7 +527,7 @@ export default function DocumentPreviewCore({
       pptxViewerRef.current?.destroy();
       pptxViewerRef.current = null;
     };
-  }, [kind, fetchBlob]);
+  }, [kind, fetchBlob, reloadNonce, onBlobProgress]);
 
   if (empty) {
     return (
@@ -512,11 +542,20 @@ export default function DocumentPreviewCore({
   if (error) {
     return (
       <div className={styles.viewerEmpty}>
-        <p style={{ color: "var(--fn-text-tertiary)", margin: 0 }}>
+        <p
+          style={{
+            color: "var(--fn-text-tertiary)",
+            margin: "0 0 12px",
+            textAlign: "center",
+          }}
+        >
           {error === "missing"
             ? t("workspace.fileMaybeDeleted", "文件可能已被删除")
             : t("workspace.mediaLoadFailed", "无法加载预览")}
         </p>
+        <Button type="default" onClick={handleRetry}>
+          {t("workspace.retryPreview", "Retry")}
+        </Button>
       </div>
     );
   }
@@ -551,9 +590,10 @@ export default function DocumentPreviewCore({
 
   if (kind === "pdf") {
     if (!src) {
+      // Progress-bar skeleton while the blob downloads (large files take seconds).
       return (
-        <div className={styles.viewerLoading}>
-          <Spin />
+        <div className={styles.documentPreview}>
+          <PdfViewerSkeleton percent={downloadPercent} />
         </div>
       );
     }
@@ -580,13 +620,25 @@ export default function DocumentPreviewCore({
             />
           ) : null}
           {excelTruncated ? (
-            <p className={styles.xlsxHint}>
-              {t(
-                "workspace.excelPreviewTruncated",
-                "Preview shows the first {{rows}} rows and {{cols}} columns — download for the full sheet",
-                { rows: EXCEL_MAX_ROWS, cols: EXCEL_MAX_COLS },
-              )}
-            </p>
+            <div className={styles.xlsxHintRow}>
+              <p className={styles.xlsxHint}>
+                {t(
+                  "workspace.excelPreviewTruncated",
+                  "Preview shows the first {{rows}} rows and {{cols}} columns — download for the full sheet",
+                  { rows: EXCEL_MAX_ROWS, cols: EXCEL_MAX_COLS },
+                )}
+              </p>
+              {onDownload ? (
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<ArrowDownToLine size={14} />}
+                  onClick={handleDownload}
+                >
+                  {t("workspace.excelDownloadFull", "Download full file")}
+                </Button>
+              ) : null}
+            </div>
           ) : null}
           {activeTable ? (
             <div className={styles.xlsxTableHost}>
@@ -620,9 +672,6 @@ export default function DocumentPreviewCore({
                     <tr key={row.key}>
                       {activeTable.columns.map((col, colIndex) => {
                         const text = row.cells[colIndex] ?? "";
-                        const mediaItem = col.isImageCol
-                          ? excelMedia[row.rowIndex]
-                          : undefined;
                         return (
                           <td
                             key={col.key}
@@ -631,14 +680,11 @@ export default function DocumentPreviewCore({
                                 ? styles.xlsxImageTd
                                 : styles.xlsxTextTd
                             }
-                            title={
-                              col.isImageCol || mediaItem ? undefined : text
-                            }
+                            title={col.isImageCol ? undefined : text}
                           >
                             <ExcelCellContent
                               text={text}
                               isImageCol={col.isImageCol}
-                              mediaItem={mediaItem}
                             />
                           </td>
                         );
@@ -649,12 +695,37 @@ export default function DocumentPreviewCore({
               </table>
             </div>
           ) : null}
+          {excelMedia.length > 0 ? (
+            <div className={styles.xlsxMediaGallery}>
+              <p className={styles.xlsxHint}>
+                {t("workspace.excelEmbeddedImages", "Embedded images")}
+              </p>
+              <Image.PreviewGroup>
+                <div className={styles.xlsxMediaRow}>
+                  {excelMedia.map((item) => (
+                    <Image
+                      key={item.name}
+                      src={item.dataUrl}
+                      alt={item.name}
+                      className={styles.xlsxCellThumb}
+                    />
+                  ))}
+                </div>
+              </Image.PreviewGroup>
+            </div>
+          ) : null}
         </div>
-        {loading && (
-          <div className={styles.documentLoading}>
-            <Spin />
-          </div>
-        )}
+        <div
+          className={`${styles.documentLoading}${
+            loading ? "" : ` ${styles.documentLoadingHidden}`
+          }`}
+          aria-hidden={!loading}
+        >
+          <DocumentPreviewLoading
+            phase={loadPhase}
+            percent={loadPhase === "file" ? downloadPercent : null}
+          />
+        </div>
       </div>
     );
   }
@@ -665,11 +736,17 @@ export default function DocumentPreviewCore({
         className={kind === "word" ? styles.docxWrap : styles.pptxWrap}
         ref={containerRef}
       />
-      {loading && (
-        <div className={styles.documentLoading}>
-          <Spin />
-        </div>
-      )}
+      <div
+        className={`${styles.documentLoading}${
+          loading ? "" : ` ${styles.documentLoadingHidden}`
+        }`}
+        aria-hidden={!loading}
+      >
+        <DocumentPreviewLoading
+          phase={loadPhase}
+          percent={loadPhase === "file" ? downloadPercent : null}
+        />
+      </div>
     </div>
   );
 }

@@ -71,6 +71,7 @@ def test_render_systemd_unit_user_scope(tmp_path: Path) -> None:
     assert "WantedBy=default.target" in unit
     assert f"User={getpass.getuser()}" not in unit
     assert f"ExecStart={runtime.octop_bin} run\n" in unit
+    assert "LimitNOFILE=" in unit
     assert "--host" not in unit
 
 
@@ -81,6 +82,7 @@ def test_render_systemd_unit_system_scope(tmp_path: Path) -> None:
     assert 'Environment="HOME=' in unit
     assert "WantedBy=multi-user.target" in unit
     assert "OCTOP_SYSTEMD_USER=1" not in unit
+    assert f"LimitNOFILE={service_mod.SERVICE_NOFILE_LIMIT}" in unit
 
 
 def test_render_systemd_unit_system_scope_uses_runtime_scope_by_default(
@@ -156,13 +158,194 @@ def test_install_service_systemd_user_uses_systemctl_user(
         return _Proc()
 
     monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: False)
+    monkeypatch.setattr(service_mod, "ensure_nofile_dropin", lambda _rt: False)
     monkeypatch.setattr(service_mod, "_write_unit", lambda _rt: None)
     monkeypatch.setattr(service_mod, "_systemd_run", _fake_systemd_run)
     monkeypatch.setattr(service_mod, "_systemd_enable_linger", lambda _rt: None)
 
-    install_service(runtime)
+    assert install_service(runtime) is True
     assert calls[0] == ["daemon-reload"]
     assert calls[1] == ["enable", "octop"]
+
+
+def test_install_service_does_not_rewrite_custom_unit_without_force(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Hand-edited ExecStart/User must survive `octop service start/restart`."""
+    runtime = replace(_runtime(tmp_path), scope="user")
+    writes: list[object] = []
+    calls: list[list[str]] = []
+
+    def _fake_systemd_run(rt: ServiceRuntime, *args: str) -> object:
+        calls.append(list(args))
+
+        class _Proc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return _Proc()
+
+    monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: True)
+    monkeypatch.setattr(service_mod, "ensure_nofile_dropin", lambda _rt: False)
+    monkeypatch.setattr(service_mod, "_write_unit", lambda rt: writes.append(rt))
+    monkeypatch.setattr(service_mod, "_systemd_run", _fake_systemd_run)
+
+    assert install_service(runtime) is False
+    assert writes == []
+    assert calls == []
+
+
+def test_install_service_writes_nofile_dropin_without_touching_unit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = replace(_runtime(tmp_path), scope="user")
+    writes: list[object] = []
+    calls: list[list[str]] = []
+
+    def _fake_systemd_run(rt: ServiceRuntime, *args: str) -> object:
+        calls.append(list(args))
+
+        class _Proc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return _Proc()
+
+    monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: True)
+    monkeypatch.setattr(service_mod, "ensure_nofile_dropin", lambda _rt: True)
+    monkeypatch.setattr(service_mod, "_write_unit", lambda rt: writes.append(rt))
+    monkeypatch.setattr(service_mod, "_systemd_run", _fake_systemd_run)
+    monkeypatch.setattr(service_mod, "_systemd_enable_linger", lambda _rt: None)
+
+    assert install_service(runtime) is True
+    assert writes == []
+    assert calls == [["daemon-reload"]]
+
+
+def test_ensure_nofile_dropin_is_idempotent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = replace(_runtime(tmp_path), scope="user")
+    dropin = tmp_path / "octop.service.d" / service_mod.NOFILE_DROPIN_NAME
+    monkeypatch.setattr(service_mod, "nofile_dropin_path", lambda _rt: dropin)
+    monkeypatch.setattr(service_mod, "_nofile_limit_for", lambda _rt: 65535)
+
+    assert service_mod.ensure_nofile_dropin(runtime) is True
+    assert dropin.read_text(encoding="utf-8") == service_mod.render_nofile_dropin(65535)
+    assert "LimitNOFILE=65535" in dropin.read_text(encoding="utf-8")
+    assert service_mod.ensure_nofile_dropin(runtime) is False
+
+
+def test_start_service_restarts_systemd_when_apply_unit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = _runtime(tmp_path)
+    calls: list[list[str]] = []
+
+    def _fake_systemd_run(rt: ServiceRuntime, *args: str) -> object:
+        calls.append(list(args))
+
+        class _Proc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return _Proc()
+
+    monkeypatch.setattr(service_mod, "_systemd_run", _fake_systemd_run)
+    monkeypatch.setattr(service_mod, "_wait_for_startup", lambda: None)
+
+    service_mod.start_service(runtime, apply_unit=True)
+    assert calls == [["restart", "octop"]]
+
+    calls.clear()
+    service_mod.start_service(runtime, apply_unit=False)
+    assert calls == [["start", "octop"]]
+
+
+def test_restart_service_refreshes_unit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    runtime = replace(_runtime(tmp_path), scope="system")
+    installs: list[bool] = []
+    calls: list[list[str]] = []
+
+    def _fake_systemd_run(rt: ServiceRuntime, *args: str) -> object:
+        calls.append(list(args))
+
+        class _Proc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return _Proc()
+
+    monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        service_mod,
+        "install_service",
+        lambda rt, force=False: installs.append(force) or False,
+    )
+    monkeypatch.setattr(service_mod, "_systemd_run", _fake_systemd_run)
+    monkeypatch.setattr(service_mod, "_wait_for_startup", lambda: None)
+
+    restart_service(runtime)
+    assert installs == [False]
+    assert ["daemon-reload"] in calls
+    assert ["restart", "octop"] in calls
+    assert calls.index(["restart", "octop"]) > calls.index(["daemon-reload"])
+
+
+def test_restart_service_still_restarts_when_install_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Remote upgrades only `restart`; drop-in/sudo failures must not leave the process down."""
+    runtime = replace(_runtime(tmp_path), scope="system")
+    calls: list[list[str]] = []
+
+    def _fake_systemd_run(rt: ServiceRuntime, *args: str) -> object:
+        calls.append(list(args))
+
+        class _Proc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return _Proc()
+
+    def _boom(_rt: ServiceRuntime, force: bool = False) -> bool:
+        raise RuntimeError("sudo failed")
+
+    monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: True)
+    monkeypatch.setattr(service_mod, "install_service", _boom)
+    monkeypatch.setattr(service_mod, "_systemd_run", _fake_systemd_run)
+    monkeypatch.setattr(service_mod, "_wait_for_startup", lambda: None)
+
+    restart_service(runtime)
+    assert ["restart", "octop"] in calls
+
+
+def test_ensure_nofile_dropin_caps_user_hard_limit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = replace(_runtime(tmp_path), scope="user")
+    dropin = tmp_path / "octop.service.d" / service_mod.NOFILE_DROPIN_NAME
+    monkeypatch.setattr(service_mod, "nofile_dropin_path", lambda _rt: dropin)
+    monkeypatch.setattr(service_mod, "_user_nofile_cap", lambda: 4096)
+
+    assert service_mod.ensure_nofile_dropin(runtime) is True
+    assert "LimitNOFILE=4096" in dropin.read_text(encoding="utf-8")
+
+
+def test_ensure_nofile_dropin_skips_when_user_limit_unknown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = replace(_runtime(tmp_path), scope="user")
+    writes: list[object] = []
+    monkeypatch.setattr(service_mod, "_nofile_limit_for", lambda _rt: None)
+    monkeypatch.setattr(service_mod, "_write_managed_file", lambda *a, **k: writes.append(a))
+    assert service_mod.ensure_nofile_dropin(runtime) is False
+    assert writes == []
 
 
 def test_render_systemd_unit_includes_service_mode(tmp_path: Path) -> None:
@@ -171,6 +354,7 @@ def test_render_systemd_unit_includes_service_mode(tmp_path: Path) -> None:
     assert "OCTOP_SERVICE_MODE=systemd" in unit
     assert "ExecStart=" in unit
     assert f"ExecStart={runtime.octop_bin} run\n" in unit
+    assert "LimitNOFILE=" in unit
     assert "--host" not in unit
     assert "--port" not in unit
 
@@ -181,6 +365,8 @@ def test_render_launchd_plist_includes_service_mode(tmp_path: Path) -> None:
     assert "<key>OCTOP_SERVICE_MODE</key>" in plist
     assert "<string>launchd</string>" in plist
     assert "<string>run</string>" in plist
+    assert "<key>NumberOfFiles</key>" in plist
+    assert f"<integer>{service_mod.SERVICE_NOFILE_LIMIT}</integer>" in plist
     assert "<string>--host</string>" not in plist
     assert "<string>--port</string>" not in plist
 
@@ -471,6 +657,7 @@ def test_restart_service_waits_for_startup(monkeypatch: pytest.MonkeyPatch, tmp_
     sleeps: list[float] = []
 
     monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: True)
+    monkeypatch.setattr(service_mod, "install_service", lambda rt, force=False: False)
     monkeypatch.setattr(
         service_mod,
         "_launchctl_run",
@@ -649,6 +836,12 @@ def test_write_unit_sudo_path_creates_parent_dir_first(
     assert cp_index > mkdir_index, f"cp must run after mkdir: {cmds}"
     # And the mkdir target is the unit's parent directory.
     assert str(destination.parent) in cmds[mkdir_index]
+
+
+def test_needs_sudo_false_when_an_ancestor_is_writable(tmp_path: Path) -> None:
+    """Missing drop-in directory under a writable home must not force sudo."""
+    nested = tmp_path / "systemd" / "user" / "octop.service.d" / "10-nofile.conf"
+    assert service_mod._needs_sudo(nested) is False
 
 
 class _FakeOs:

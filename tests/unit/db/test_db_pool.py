@@ -119,6 +119,8 @@ def test_run_migrations_idempotent(db: SqlitePool):
         "skill_package_ids",
         "published_expert_id",
         "welcome_message",
+        "knowledge_base_ids",
+        "mcp_servers",
     }.issubset(agent_cols)
     assert "skill_packages" in table_names
     assert "knowledge_base_id" in kb_cols

@@ -11,8 +11,7 @@ import styles from "../index.module.less";
 
 interface SkillPickerPopoverProps {
   skills: SkillSpec[];
-  selectedSkills: string[];
-  onSkillsChange: (names: string[]) => void;
+  onSelectSkill: (slug: string) => void;
   onNavigateAway?: () => void;
 }
 
@@ -37,8 +36,7 @@ function skillAvatarFallback(skill: SkillSpec): string {
 
 export default function SkillPickerPopover({
   skills,
-  selectedSkills,
-  onSkillsChange,
+  onSelectSkill,
   onNavigateAway,
 }: SkillPickerPopoverProps) {
   const { t } = useTranslation();
@@ -76,36 +74,27 @@ export default function SkillPickerPopover({
         onNavigateAway?.();
         navigate("/personalization/skills");
       }}
-      renderItem={(skill) => {
-        const active = selectedSkills.includes(skill.slug);
-        return (
-          <button
-            key={skill.slug}
-            type="button"
-            className={`${styles.skillPickerItem} ${
-              active ? styles.skillPickerItemActive : ""
-            }`}
-            onClick={() => {
-              const next = active
-                ? selectedSkills.filter((n) => n !== skill.slug)
-                : [...selectedSkills, skill.slug];
-              onSkillsChange(next);
-            }}
-          >
-            <SkillAvatar skill={skill} />
-            <span className={pickerStyles.itemText}>
-              <span className={pickerStyles.itemName}>
-                {skillDisplayName(skill)}
-              </span>
-              {skill.description ? (
-                <span className={pickerStyles.itemDesc}>
-                  {skill.description}
-                </span>
-              ) : null}
+      renderItem={(skill) => (
+        <button
+          key={skill.slug}
+          type="button"
+          className={styles.skillPickerItem}
+          onClick={() => {
+            onSelectSkill(skill.slug);
+            onNavigateAway?.();
+          }}
+        >
+          <SkillAvatar skill={skill} />
+          <span className={pickerStyles.itemText}>
+            <span className={pickerStyles.itemName}>
+              {skillDisplayName(skill)}
             </span>
-          </button>
-        );
-      }}
+            {skill.description ? (
+              <span className={pickerStyles.itemDesc}>{skill.description}</span>
+            ) : null}
+          </span>
+        </button>
+      )}
     />
   );
 }

@@ -57,6 +57,7 @@ import WorkspaceDrawer from "../Agent/Workspace/components/WorkspaceDrawer";
 import TrajectoryDrawer from "./components/TrajectoryDrawer";
 import { useExpertChatWelcome } from "./hooks/useExpertQuickCards";
 import { useSkills } from "../Agent/Skills/useSkills";
+import { useChatSubagents } from "./hooks/useChatSubagents";
 import {
   useAgent,
   selectEnabledExperts,
@@ -124,9 +125,6 @@ function ChatPageInner() {
   const isMinimalLayout = layoutMode === "minimal";
   const canTerminal = userCan(user, "terminal");
   const chatHistoryRail = useChatHistoryRail();
-  const [selectedTargetAgents, setSelectedTargetAgents] = useState<string[]>(
-    [],
-  );
   const [browserRecording, setBrowserRecording] = useState(false);
   const [browserRecordingId, setBrowserRecordingId] = useState<string | null>(
     null,
@@ -227,6 +225,9 @@ function ChatPageInner() {
   const { quickCards: expertQuickCards, welcomeSuffix } =
     useExpertChatWelcome(activeAgent);
   const { skills: chatSkills } = useSkills(
+    chatSkillCatalogAgentId(resolvedAgentId, agentChatReady, agentsLoading),
+  );
+  const chatSubagents = useChatSubagents(
     chatSkillCatalogAgentId(resolvedAgentId, agentChatReady, agentsLoading),
   );
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
@@ -358,6 +359,7 @@ function ChatPageInner() {
     handleModeChange: handleDockModeChange,
     openFileList,
     openFileAt,
+    openKnowledgeCitation,
     openBrowserTab,
     toggleBrowserPanel,
     toggleTerminalPanel,
@@ -436,7 +438,6 @@ function ChatPageInner() {
     selectedModel,
     setSelectedModel,
     selectedConnectors,
-    selectedSkills,
     selectedKnowledgeBaseIds,
     chatConnectors,
     chatKnowledgeBases,
@@ -448,11 +449,9 @@ function ChatPageInner() {
     conversationMode,
     handleConversationModeChange,
     handleConnectorsChange,
-    handleSkillsChange,
     handleKnowledgeBaseIdsChange,
   } = useChatComposerResources(
     resolvedAgentId,
-    chatSkills,
     activeThreadId,
     composerSession?.modelRef,
     composerSession?.reasoningMode,
@@ -554,8 +553,6 @@ function ChatPageInner() {
     selectedModel,
     selectedConnectors,
     selectedKnowledgeBaseIds,
-    selectedSkills,
-    selectedTargetAgents,
     reasoningMode,
     reasoningEffort,
     conversationMode,
@@ -662,7 +659,6 @@ function ChatPageInner() {
         composerContext: item.composerContext,
         modelRef: item.modelRef,
         selectedModel: item.composerContext?.model ?? item.modelRef ?? null,
-        selectedSkills: item.composerContext?.skills,
         selectedConnectors: item.composerContext?.connectors,
         selectedKnowledgeBaseIds: item.composerContext?.knowledgeBaseIds,
         selectedTargetAgents: item.composerContext?.targetAgents,
@@ -1032,7 +1028,10 @@ function ChatPageInner() {
   );
 
   return (
-    <ChatFilePreviewProvider openFilePreview={openFileAt}>
+    <ChatFilePreviewProvider
+      openFilePreview={openFileAt}
+      openKnowledgeCitation={openKnowledgeCitation}
+    >
       <ChatToolDockProvider
         dockOpen={dockOpen}
         openTabs={openTabs}
@@ -1444,12 +1443,9 @@ function ChatPageInner() {
               selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
               onKnowledgeBaseIdsChange={handleKnowledgeBaseIdsChange}
               availableSkills={chatSkills}
-              selectedSkills={selectedSkills}
-              onSkillsChange={handleSkillsChange}
               availableAgents={chatAgentOptions}
               availableExperts={chatAgentOptionsPickable}
-              selectedTargetAgents={selectedTargetAgents}
-              onTargetAgentsChange={setSelectedTargetAgents}
+              availableSubagents={chatSubagents}
               agentId={resolvedAgentId}
               threadId={activeThreadId}
               defaultModel={activeAgent?.default_model ?? null}

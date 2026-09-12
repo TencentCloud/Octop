@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from harness_agent.slash import SlashSink
 from harness_agent.teams.inbox import InboxMessage
 from harness_agent.teams.processor import ReplyEvent, default_compose_followup
+from harness_agent.teams.util import PeerCall, PeerSession, derive_peer_thread_id
 from harness_gateway.models import (
     InboundMessage,
     MessageEvent,
@@ -61,8 +62,7 @@ from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_u
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.parser import parse_slash
 from octop.infra.gateway.slash.runner import try_handle_slash
-from octop.infra.knowledge.default_open import merge_knowledge_base_ids
-from octop.infra.knowledge.hint import catalog_for_selected_bases
+from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.trajectory.settings import agent_trajectory_enabled
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
@@ -410,6 +410,61 @@ class GlobalProcessor:
         return out
 
     # -- TeamProcessor (harness inbox async peer collaboration) ----------------
+
+    async def prepare_peer_session(self, call: PeerCall) -> PeerSession | None:
+        """Map an ``ask_agent`` call onto the callee's threads row (no inbound gateway)."""
+        thread_id = (
+            derive_peer_thread_id(call.source_thread_id, call.to_agent_id)
+            if call.source_thread_id
+            else None
+        )
+        session_key = None
+        if call.source_session_key:
+            session_key = self._thread_registry.peer_session_key(
+                call.source_session_key, call.to_agent_id
+            )
+        uid = _octop_user_id(call.user_id)
+        if thread_id and session_key and uid is not None:
+            parts = session_key.split(":", 3)
+            channel_type = parts[1] if len(parts) == 4 else "dashboard"
+            self._thread_registry.ensure_thread(
+                thread_id=thread_id,
+                agent_id=call.to_agent_id,
+                user_id=uid,
+                channel_type=channel_type,
+                session_key=session_key,
+            )
+        return PeerSession(thread_id=thread_id, session_key=session_key)
+
+    async def record_peer_turn(
+        self,
+        call: PeerCall,
+        thread_id: str,
+        result: dict[str, Any],
+    ) -> None:
+        """Touch the callee thread and project history after a peer ``call``."""
+        if not thread_id:
+            return
+        self._touch_thread_after_turn(thread_id, call.message)
+        if self._thread_message_repo is None:
+            return
+        messages = result.get("messages")
+        if not isinstance(messages, list) or not messages:
+            return
+        visible = _peer_turn_messages(messages)
+        if not visible:
+            return
+        try:
+            self._thread_message_repo.append_if_ready(
+                thread_id,
+                message_inputs(visible, dedupe_missing_ids=True),
+            )
+        except Exception:
+            logger.warning(
+                "failed to append peer history projection for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
 
     def compose_followup(
         self,
@@ -1226,24 +1281,6 @@ class GlobalProcessor:
             request["mcp_servers"] = mcp_servers
         if "skills" in meta:
             request["skills"] = meta["skills"]
-        target_raw = meta.get("target_agent_ids")
-        if isinstance(target_raw, list) and target_raw:
-            is_admin = bool(meta.get("user_is_admin"))
-            filtered: list[str] = []
-            for raw_id in target_raw:
-                aid = str(raw_id).strip()
-                if not aid or aid == agent_id:
-                    continue
-                row = self._agent_repo.get(aid)
-                if row is None:
-                    continue
-                if not is_admin and row.user_id is not None and row.user_id != user_id:
-                    continue
-                filtered.append(aid)
-            if filtered:
-                configurable = dict(request.get("configurable") or {})
-                configurable["target_agent_ids"] = filtered
-                request["configurable"] = configurable
         return request
 
     def _attach_turn_knowledge_config(
@@ -1363,7 +1400,10 @@ class GlobalProcessor:
         from octop.infra.errors import ErrorCode, OctopError  # noqa: PLC0415
 
         merged = self._agent_manager.merge_turn_mcp_servers(
-            user_id, explicit, apply_defaults=apply_defaults
+            user_id,
+            explicit,
+            apply_defaults=apply_defaults,
+            extra_defaults=self._agent_manager.default_mcp_servers(agent_id),
         )
         if not merged:
             return None
@@ -1488,6 +1528,39 @@ class GlobalProcessor:
                 thread_id,
                 exc_info=True,
             )
+
+
+def _octop_user_id(user_id: str | int) -> int | None:
+    if isinstance(user_id, int):
+        return user_id if user_id > 0 else None
+    if isinstance(user_id, str) and user_id.isdigit():
+        uid = int(user_id)
+        return uid if uid > 0 else None
+    return None
+
+
+def _peer_turn_messages(messages: list[Any]) -> list[Any]:
+    """This turn's user prompt and final assistant reply (skip prior thread history)."""
+    trigger: Any | None = None
+    final_ai: Any | None = None
+    for msg in messages:
+        role = ""
+        if isinstance(msg, dict):
+            role = str(msg.get("role") or msg.get("type") or "").lower()
+            tool_calls = msg.get("tool_calls")
+        else:
+            role = str(getattr(msg, "type", None) or getattr(msg, "role", "") or "").lower()
+            tool_calls = getattr(msg, "tool_calls", None)
+        if role in ("human", "user"):
+            trigger = msg
+        if role in ("ai", "assistant") and not tool_calls:
+            final_ai = msg
+    out: list[Any] = []
+    if trigger is not None:
+        out.append(trigger)
+    if final_ai is not None:
+        out.append(final_ai)
+    return out
 
 
 def _mcp_server_names(raw: Any) -> list[str] | None:

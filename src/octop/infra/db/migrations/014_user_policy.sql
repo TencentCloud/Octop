@@ -1,4 +1,7 @@
 -- Schema v14: per-user policies (resource rows; missing/disabled = default).
+-- Expert composer defaults (knowledge_base_ids, mcp_servers) are added by
+-- migrate.py::_ensure_agent_profile_columns because this file is not executed
+-- on SQLite (version 14 uses the Python helper instead).
 
 CREATE TABLE user_policies (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,

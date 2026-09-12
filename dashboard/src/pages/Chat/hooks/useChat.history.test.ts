@@ -54,6 +54,25 @@ describe("history failures", () => {
     expect(chatStore.getSnapshot(thread).messages[0].content).toBe("restored");
   });
 
+  it("refetches a thread cached as empty so background turns show up", async () => {
+    chatStore.setHistoryPage(thread, [], {
+      hasMore: false,
+      nextOffset: 0,
+      nextCursor: null,
+    });
+    const history = vi.spyOn(octopThreadsApi, "history").mockResolvedValue({
+      thread_id: thread,
+      messages: [{ id: "cron", role: "assistant", content: "task done" }],
+      has_more: false,
+    });
+    const { result } = renderHook(() => useChat(thread, "agent"));
+    await act(async () => {
+      await result.current.loadHistory(thread);
+    });
+    expect(history).toHaveBeenCalled();
+    expect(chatStore.getSnapshot(thread).messages[0].content).toBe("task done");
+  });
+
   it("passes the pinned cursor when loading older messages", async () => {
     chatStore.setHistoryPage(
       thread,

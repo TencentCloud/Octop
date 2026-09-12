@@ -504,3 +504,11 @@ cd dashboard && npx tsc --noEmit
 ### 📄 许可证
 
 本项目采用 [MIT License](LICENSE)。
+
+### ✨ 贡献者
+
+感谢所有贡献者：
+
+<a href="https://github.com/tencentcloud/octop/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=tencentcloud/octop" />
+</a>

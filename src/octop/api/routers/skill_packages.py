@@ -366,16 +366,19 @@ async def get_skill_package(
     package_id: str,
     request: Request,
     server: OctopServer = Depends(get_server),
-    _user: User = Depends(require_permission("skill_packages")),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     store = _store(server)
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
-    return _package_payload_with_creator(
-        server,
-        store,
-        row,
-        locale=resolve_request_locale(request),
-    )
+    return {
+        **_package_payload_with_creator(
+            server,
+            store,
+            row,
+            locale=resolve_request_locale(request),
+        ),
+        "can_write": store.can_mutate(row, user),
+    }
 
 
 @router.patch("/{package_id}", summary="Update global skill package metadata")

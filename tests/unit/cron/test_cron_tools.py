@@ -80,10 +80,12 @@ async def test_cronjob_create_and_list(tmp_path: Path) -> None:
             {
                 "trigger": "interval:120",
                 "prompt": "say hi",
+                "name": "say hi",
             }
         )
         data = json.loads(out)
         assert data["prompt"] == "say hi"
+        assert data["name"] == "say hi"
         assert data["trigger"] == "interval:120"
         assert data["task_type"] == "text"
         cron_id = data["id"]
@@ -109,7 +111,9 @@ async def test_cronjob_isolated_by_agent_and_user(tmp_path: Path) -> None:
     list_tool = _tool_by_name(tools, "cronjob_list")
 
     with _configurable(agent_id=agent_a, user=str(uid)):
-        created = json.loads(await create.ainvoke({"trigger": "interval:60", "prompt": "a"}))
+        created = json.loads(
+            await create.ainvoke({"trigger": "interval:60", "prompt": "a", "name": "a"})
+        )
     cron_id = created["id"]
 
     with _configurable(agent_id=agent_b, user=str(uid)):
@@ -121,7 +125,9 @@ async def test_cronjob_isolated_by_agent_and_user(tmp_path: Path) -> None:
         assert "error" in err
         listed = json.loads(await list_tool.ainvoke({"include_disabled": True}))
         assert listed == []
-        created = json.loads(await create.ainvoke({"trigger": "interval:60", "prompt": "nope"}))
+        created = json.loads(
+            await create.ainvoke({"trigger": "interval:60", "prompt": "nope", "name": "nope"})
+        )
         assert "error" in created
 
 
@@ -137,7 +143,9 @@ async def test_cronjob_delete(tmp_path: Path) -> None:
     delete = _tool_by_name(tools, "cronjob_delete")
 
     with _configurable(agent_id=agent_id, user=str(user_id)):
-        created = json.loads(await create.ainvoke({"trigger": "interval:30", "prompt": "p"}))
+        created = json.loads(
+            await create.ainvoke({"trigger": "interval:30", "prompt": "p", "name": "p"})
+        )
         cron_id = created["id"]
         out = json.loads(await delete.ainvoke({"cron_id": cron_id}))
         assert out["deleted"] == cron_id
@@ -157,7 +165,9 @@ async def test_cronjob_run_now(tmp_path: Path) -> None:
     run_now = _tool_by_name(tools, "cronjob_run_now")
 
     with _configurable(agent_id=agent_id, user=str(user_id)):
-        created = json.loads(await create.ainvoke({"trigger": "interval:30", "prompt": "p"}))
+        created = json.loads(
+            await create.ainvoke({"trigger": "interval:30", "prompt": "p", "name": "p"})
+        )
         cron_id = created["id"]
         out = json.loads(await run_now.ainvoke({"cron_id": cron_id}))
         assert out["triggered"] == cron_id
@@ -181,7 +191,7 @@ async def test_cronjob_create_uses_configurable_session_key(tmp_path: Path) -> N
     )
 
     with _configurable(agent_id=agent_id, user=str(user_id), session_key=feishu_sk):
-        out = await create.ainvoke({"trigger": "interval:30", "prompt": "ping"})
+        out = await create.ainvoke({"trigger": "interval:30", "prompt": "ping", "name": "ping"})
     data = json.loads(out)
     assert data["session_key"] == feishu_sk
 
@@ -198,10 +208,46 @@ async def test_cronjob_create_persists_task_type(tmp_path: Path) -> None:
 
     with _configurable(agent_id=agent_id, user=str(user_id)):
         out = await create.ainvoke(
-            {"trigger": "interval:30", "prompt": "ping", "task_type": "text"}
+            {"trigger": "interval:30", "prompt": "ping", "name": "ping", "task_type": "text"}
         )
     data = json.loads(out)
     assert data["task_type"] == "text"
     row = mgr.get(data["id"])
     assert row is not None
     assert row.task_type == "text"
+
+
+@pytest.mark.asyncio
+async def test_cronjob_create_requires_name(tmp_path: Path) -> None:
+    from pydantic import ValidationError
+
+    services = _make_services(tmp_path)
+    agent_id = new_ulid()
+    user_id = services.repos.user_repo.create(username="req", password_hash="x", role="user")
+    services.repos.agent_repo.create(agent_id=agent_id, user_id=user_id, name="a")
+    mgr = _make_manager(services)
+    create = _tool_by_name(build_cronjob_tools(mgr), "cronjob_create")
+
+    with _configurable(agent_id=agent_id, user=str(user_id)), pytest.raises(ValidationError):
+        await create.ainvoke({"trigger": "interval:30", "prompt": "ping"})
+
+
+@pytest.mark.asyncio
+async def test_cronjob_create_blank_name_uses_prompt_prefix(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    agent_id = new_ulid()
+    user_id = services.repos.user_repo.create(username="fb", password_hash="x", role="user")
+    services.repos.agent_repo.create(agent_id=agent_id, user_id=user_id, name="a")
+    mgr = _make_manager(services)
+    create = _tool_by_name(build_cronjob_tools(mgr), "cronjob_create")
+
+    with _configurable(agent_id=agent_id, user=str(user_id)):
+        out = await create.ainvoke(
+            {
+                "trigger": "interval:30",
+                "prompt": "该喝水了💧\n记得站起来活动一下",
+                "name": "   ",
+            }
+        )
+    data = json.loads(out)
+    assert data["name"] == "该喝水了💧"

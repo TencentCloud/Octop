@@ -12,7 +12,11 @@ from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.permissions import PERMISSIONS
-from octop.infra.users.resource_policy import public_policy_fields
+from octop.infra.users.resource_policy import (
+    normalize_token_quota,
+    normalize_workspace_root_dir,
+    public_policy_fields,
+)
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
@@ -25,6 +29,8 @@ class UserCreateBody(BaseModel):
     display_name: str | None = None
     email: str | None = Field(default=None, max_length=254)
     permissions: list[str] = Field(default_factory=list)
+    workspace_root_dir: str | None = None
+    token_quota: int | None = Field(default=None, ge=0)
 
 
 class UserPatchBody(BaseModel):
@@ -63,6 +69,15 @@ def _row_to_dict(r: Any, policy: Any | None = None) -> dict[str, Any]:
         "permissions": list(getattr(r, "permissions", None) or []),
         **public_policy_fields(policy),
     }
+
+
+def _policy_kwargs_from_body(body: UserCreateBody | UserPatchBody) -> dict[str, Any]:
+    policy_kwargs: dict[str, Any] = {}
+    if "workspace_root_dir" in body.model_fields_set:
+        policy_kwargs["workspace_root_dir"] = body.workspace_root_dir
+    if "token_quota" in body.model_fields_set:
+        policy_kwargs["token_quota"] = body.token_quota
+    return policy_kwargs
 
 
 def _assert_can_assign(actor: User, permissions: list[str]) -> None:
@@ -148,6 +163,11 @@ async def create_user(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     _assert_can_assign(actor, body.permissions)
+    policy_kwargs = _policy_kwargs_from_body(body)
+    if "workspace_root_dir" in policy_kwargs:
+        normalize_workspace_root_dir(policy_kwargs["workspace_root_dir"])
+    if "token_quota" in policy_kwargs:
+        normalize_token_quota(policy_kwargs["token_quota"])
     role = Role(body.role)
     user = await server.user_manager.create(
         username=body.username,
@@ -157,6 +177,8 @@ async def create_user(
         email=body.email,
         permissions=body.permissions,
     )
+    if policy_kwargs:
+        await server.user_manager.set_resource_policy(user.username, **policy_kwargs)
     row = server.user_manager.get_row(user.id)
     assert row is not None
     return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id))
@@ -206,11 +228,7 @@ async def patch_user(
         await server.user_manager.enable(row.username)
     if body.permissions is not None:
         await server.user_manager.set_permissions(row.username, body.permissions)
-    policy_kwargs: dict[str, Any] = {}
-    if "workspace_root_dir" in body.model_fields_set:
-        policy_kwargs["workspace_root_dir"] = body.workspace_root_dir
-    if "token_quota" in body.model_fields_set:
-        policy_kwargs["token_quota"] = body.token_quota
+    policy_kwargs = _policy_kwargs_from_body(body)
     if policy_kwargs:
         await server.user_manager.set_resource_policy(row.username, **policy_kwargs)
     updated = server.user_manager.get_row(user_id)
