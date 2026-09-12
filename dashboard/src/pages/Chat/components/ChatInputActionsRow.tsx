@@ -51,6 +51,10 @@ import {
   COMPOSER_CONVERSATION_MODES,
   type ConversationMode,
 } from "../utils/conversationMode";
+import {
+  mentionedExpertIds,
+  mentionedSubagentSlugs,
+} from "../utils/expertMention";
 import styles from "../index.module.less";
 
 /** Shared by mobile drawers and narrow-desktop popovers. */

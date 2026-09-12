@@ -62,7 +62,6 @@ from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_u
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.parser import parse_slash
 from octop.infra.gateway.slash.runner import try_handle_slash
-from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.trajectory.settings import agent_trajectory_enabled
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
@@ -1305,7 +1304,9 @@ class GlobalProcessor:
         if agent_id and self._agent_manager is not None:
             from octop.infra.knowledge.default_open import (  # noqa: PLC0415
                 default_knowledge_base_ids_from_config,
+                merge_knowledge_base_ids,
             )
+            from octop.infra.knowledge.hint import catalog_for_selected_bases  # noqa: PLC0415
 
             agent_defaults = (
                 default_knowledge_base_ids_from_config(self._agent_manager.get_config(agent_id))

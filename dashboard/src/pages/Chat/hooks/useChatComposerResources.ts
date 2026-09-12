@@ -46,9 +46,7 @@ export function useChatComposerResources(
   const { agents } = useAgent();
   const expert = agents.find((item) => item.agent_id === resolvedAgentId);
   const expertMcpServers = expert?.mcp_servers;
-  const expertKnowledgeBaseIds = expert?.knowledge_base_ids;
   const expertMcpKey = (expertMcpServers ?? []).join("\0");
-  const expertKbKey = (expertKnowledgeBaseIds ?? []).join("\0");
   const isNewSession = !activeThreadId || isPendingThread(activeThreadId);
   const composerTouchedRef = useRef(false);
   const [selectedConnectors, setSelectedConnectors] = useState<string[]>([]);

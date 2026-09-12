@@ -287,6 +287,18 @@ async def create_agent(
             policy_repo=server.services.user_policy_repo,
         )
         config = _validated_agent_config(body.config) or {}
+    knowledge_ids = (
+        server.app_runtime.agent_registry.validate_knowledge_base_ids(
+            user.id, body.knowledge_base_ids
+        )
+        if body.knowledge_base_ids is not None
+        else None
+    )
+    mcp_servers = (
+        server.app_runtime.agent_registry.validate_mcp_servers(user.id, body.mcp_servers)
+        if body.mcp_servers is not None
+        else None
+    )
     spec = AgentCreateSpec(
         name=body.name,
         user_id=user.id,
