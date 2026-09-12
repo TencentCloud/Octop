@@ -6,14 +6,31 @@ import asyncio
 import hashlib
 import json
 import re
-from typing import Any
+from typing import Any, cast
 
-from langchain_core.messages import AIMessage, ToolMessage, message_to_dict
+from langchain_core.messages import AIMessage, ToolMessage
 
-from octop.infra.gateway.process.history_projection import TurnHistoryTracker, _role, message_input
+from octop.infra.gateway.process.history_projection import (
+    TurnHistoryTracker,
+    _role,
+    live_message_input,
+    message_input,
+)
+from octop.infra.gateway.process.message_keys import (
+    CHECKPOINT_TS_KEY,
+    STREAM_ERROR_CODE_KEY,
+    STREAM_ERROR_FLAG,
+)
 from octop.infra.history.service import HistoryArchive
 from octop.infra.history.store import dumps
 from octop.infra.trajectory.projector import _tool_result_fields
+
+
+def _live_wire(message: Any) -> dict[str, Any] | None:
+    item = live_message_input(message)
+    if item is None:
+        return None
+    return cast(dict[str, Any], json.loads(item.message_json))
 
 
 class RecordingTracker(TurnHistoryTracker):
@@ -39,9 +56,9 @@ class RecordingTracker(TurnHistoryTracker):
             restored = bool(self._parts)
             if not self._parts:
                 for seed in seeds:
-                    item = message_input(seed)
-                    if item is not None:
-                        self._parts.append(json.loads(item.message_json))
+                    wire = _live_wire(seed)
+                    if wire is not None:
+                        self._parts.append(wire)
             for wire in self._parts:
                 extra = wire["data"].get("additional_kwargs", {})
                 if extra.get("history_source"):
@@ -83,9 +100,11 @@ class RecordingTracker(TurnHistoryTracker):
         ):
             self._assistant = None
         if self._assistant is None:
-            self._assistant = message_to_dict(
+            self._assistant = _live_wire(
                 AIMessage(content="", id=f"{self.turn['id']}:stream:{len(self._parts)}")
             )
+            if self._assistant is None:
+                return {}
             if message_id:
                 self._assistant["data"]["id"] = message_id
                 self._assistant["data"].setdefault("additional_kwargs", {})["history_stream_id"] = (
@@ -160,21 +179,20 @@ class RecordingTracker(TurnHistoryTracker):
             wires: list[dict[str, Any]] = []
             if isinstance(raw, list):
                 for msg in raw:
-                    item = message_input(msg)
-                    if item is not None:
-                        wires.append(json.loads(item.message_json))
+                    wire = _live_wire(msg)
+                    if wire is not None:
+                        wires.append(wire)
             if not wires:
                 call_id, name, result = _tool_result_fields(chunk)
-                wires = [
-                    message_to_dict(
-                        ToolMessage(
-                            content=result if isinstance(result, (str, list)) else dumps(result),
-                            name=name,
-                            tool_call_id=call_id,
-                            id=f"{self.turn['id']}:tool:{call_id}",
-                        )
+                fallback = _live_wire(
+                    ToolMessage(
+                        content=result if isinstance(result, (str, list)) else dumps(result),
+                        name=name,
+                        tool_call_id=call_id,
+                        id=f"{self.turn['id']}:tool:{call_id}",
                     )
-                ]
+                )
+                wires = [fallback] if fallback is not None else []
             for wire in wires:
                 call_id = wire["data"].get("tool_call_id")
                 existing = next(
@@ -190,6 +208,24 @@ class RecordingTracker(TurnHistoryTracker):
                 elif existing != wire:
                     existing.update(wire)
                     self._mark_changed(existing)
+            self._assistant = None
+        elif kind == "error":
+            text = str(chunk.get("message") or chunk.get("content") or "")
+            if not text:
+                return
+            error_extra: dict[str, Any] = {STREAM_ERROR_FLAG: True}
+            code = chunk.get("error_code")
+            if code:
+                error_extra[STREAM_ERROR_CODE_KEY] = str(code)
+            error_wire = _live_wire(
+                AIMessage(
+                    content=text,
+                    id=f"{self.turn['id']}:error",
+                    additional_kwargs=error_extra,
+                )
+            )
+            if error_wire is not None:
+                self._append_part(error_wire)
             self._assistant = None
 
     def _merge_state(self) -> None:
@@ -238,9 +274,13 @@ class RecordingTracker(TurnHistoryTracker):
                 self._append_part(wire)
                 continue
             previous = target["data"]
+            prev_extra = previous.get("additional_kwargs", {})
+            data_extra = data.setdefault("additional_kwargs", {})
+            if CHECKPOINT_TS_KEY not in data_extra and prev_extra.get(CHECKPOINT_TS_KEY):
+                data_extra[CHECKPOINT_TS_KEY] = prev_extra[CHECKPOINT_TS_KEY]
             for key in ("reasoning_content", "history_source", "history_stream_id"):
-                value = previous.get("additional_kwargs", {}).get(key)
-                if value and not data.setdefault("additional_kwargs", {}).get(key):
+                value = prev_extra.get(key)
+                if value and not data_extra.get(key):
                     # Final state may already carry the same visible thinking
                     # inline. Preserve its original representation only once.
                     content = data.get("content")

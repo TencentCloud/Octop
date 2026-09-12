@@ -115,5 +115,23 @@
       "color": "#fdf4e7",
       "icon_name": "terminal"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」巡检 Kubernetes 集群：异常 Pod、节点 NotReady、最近事件，有问题再通知我，任务创建后立即启用",
+      "每「4 小时」检查磁盘使用率和 inode，超过 80% 时立即告警，从今天开始持续生效",
+      "每周一「10:00」汇总上周故障与变更，列出待处理项发给我",
+      "每个工作日「18:00」复盘当天告警与变更窗口，标出未关闭工单",
+      "每周五「16:00」检查证书与密钥到期日，30 天内到期的列出来",
+      "每月 1 日「10:00」输出容量与成本摘要：节点、存储和本月费用"
+    ],
+    "en": [
+      "Every day at 09:00, inspect the Kubernetes cluster (bad pods, NotReady nodes, recent events) and notify me only if something is wrong — enable immediately",
+      "Every 4 hours, check disk usage and inodes; alert immediately if either exceeds 80%, starting today",
+      "Every Monday at 10:00, summarize last week's incidents and changes and send me the open items",
+      "Every weekday at 18:00, recap today's alerts and change windows and flag unclosed tickets",
+      "Every Friday at 16:00, check certificate and key expiry and list anything due within 30 days",
+      "On the 1st of each month at 10:00, send a capacity and cost brief: nodes, storage, and this month's bill"
+    ]
+  }
 }

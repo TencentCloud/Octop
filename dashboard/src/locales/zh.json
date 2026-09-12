@@ -767,6 +767,8 @@
     "marketIncludedSkills": "包含技能",
     "marketQuickPrompts": "快速启动卡片",
     "marketQuickPromptsEmpty": "暂无快速启动卡片预览",
+    "marketTaskExamples": "计划任务示例",
+    "marketTaskExamplesEmpty": "暂无计划任务示例",
     "marketWorkflowPrompt": "工作流说明",
     "marketWorkflowMeta": "技能包信息",
     "marketWorkflowVersion": "v{{version}}",

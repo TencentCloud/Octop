@@ -107,3 +107,19 @@ def test_workspace_dir_from_config_roundtrip(tmp_path: Path) -> None:
     host = default_agent_workspace_dir(paths, "RT001", cfg=cfg)
     cfg["workspace_dir"] = scoped_workspace_dir_str("RT001")
     assert workspace_dir_from_config(cfg, paths=paths, agent_id="RT001") == host.resolve()
+
+
+def test_workspace_dir_from_config_ensure_false_does_not_mkdir(tmp_path: Path) -> None:
+    paths = PathLayout(tmp_path / "octop-home")
+    missing = tmp_path / "gone" / "YZQ7X4"
+    cfg = {"workspace_dir": str(missing)}
+    out = workspace_dir_from_config(cfg, paths=paths, agent_id="YZQ7X4", ensure=False)
+    assert out == missing.resolve()
+    assert not missing.exists()
+
+
+def test_default_workspace_ensure_false_does_not_mkdir(tmp_path: Path) -> None:
+    paths = PathLayout(tmp_path / "octop-home")
+    out = default_agent_workspace_dir(paths, "A1", ensure=False)
+    assert out == paths.agent_workspace("A1")
+    assert not out.exists()

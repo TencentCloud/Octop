@@ -120,5 +120,23 @@
       "color": "#eef2ff",
       "icon_name": "refresh-cw"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」对腾讯云 CVM 集群做健康巡检，按木桶原理打分并指出最弱节点，任务创建后立即启用",
+      "每个工作日「18:00」汇总当天跨节点异常关联，列出需人工确认的修复项",
+      "每周一「10:00」输出集群风险周报：容量、故障与待修复项",
+      "每「4 小时」检查节点 CPU / 磁盘 / 网络异常，超过阈值再通知我",
+      "每月 1 日「10:00」对照木桶短板给出扩容或下线建议，先不执行",
+      "每周五「16:00」核对集群变更与告警是否对齐，标出未关闭项"
+    ],
+    "en": [
+      "Every day at 09:00, patrol the Tencent Cloud CVM cluster, score it by the weakest-link rule, and name the weakest node — enable immediately",
+      "Every weekday at 18:00, summarize cross-node correlations from today and list remediations that need confirmation",
+      "Every Monday at 10:00, send a cluster risk weekly: capacity, incidents, and open fixes",
+      "Every 4 hours, check node CPU / disk / network anomalies and notify me only above threshold",
+      "On the 1st of each month at 10:00, suggest scale-up or retirement from the weakest-link gaps — do not execute",
+      "Every Friday at 16:00, check cluster changes against alerts and flag still-open items"
+    ]
+  }
 }

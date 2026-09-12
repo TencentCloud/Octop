@@ -11,6 +11,11 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from octop.infra.agents.experts.catalog import (
+    default_task_examples,
+    parse_task_examples,
+    snap_task_examples,
+)
 from octop.infra.utils.llm_text import ainvoke_text
 
 logger = logging.getLogger(__name__)
@@ -28,6 +33,9 @@ _MAX_WELCOME_CHARS_ZH = 40
 _MAX_WELCOME_CHARS_EN = 90
 _MAX_QUICK_PROMPTS = 6
 _MIN_QUICK_PROMPTS = 6
+_MIN_TASK_EXAMPLES = 3
+_MAX_TASK_EXAMPLES = 6
+_MAX_TASK_EXAMPLE_CHARS = 140
 
 _ALLOWED_ICONS = {
     "zap",
@@ -150,7 +158,12 @@ async def generate_skillhub_manifest_assets(
             "welcome_max_chars_en": _MAX_WELCOME_CHARS_EN,
             "quick_prompt_min": _MIN_QUICK_PROMPTS,
             "quick_prompt_max": _MAX_QUICK_PROMPTS,
-            "output": "label + description + one-line welcome_message + quick_prompts for Octop expert manifest",
+            "task_example_min": _MIN_TASK_EXAMPLES,
+            "task_example_max": _MAX_TASK_EXAMPLES,
+            "output": (
+                "label + description + one-line welcome_message + quick_prompts "
+                "+ task_examples for Octop expert manifest"
+            ),
         },
     }
     messages = [
@@ -192,6 +205,7 @@ def merge_manifest_assets(
     out["description"] = assets["description"]
     out["welcome_message"] = assets["welcome_message"]
     out["quick_prompts"] = assets["quick_prompts"]
+    out["task_examples"] = assets["task_examples"]
     raw_skillhub = out.get("skillhub")
     skillhub = dict(raw_skillhub) if isinstance(raw_skillhub, dict) else {}
     generated = {
@@ -402,6 +416,12 @@ def normalize_manifest_assets(
         if len(prompts) >= _MAX_QUICK_PROMPTS:
             break
 
+    task_examples = _normalize_task_examples(
+        payload.get("task_examples"),
+        label_zh=label_zh,
+        label_en=label_en,
+    )
+
     if len(prompts) < 2:
         raise ExpertManifestGenerationError("model returned too few usable quick prompts")
     while len(prompts) < _MIN_QUICK_PROMPTS:
@@ -432,7 +452,27 @@ def normalize_manifest_assets(
         "description": {"zh": expert_description_zh, "en": expert_description_en},
         "welcome_message": {"zh": welcome_zh, "en": welcome_en},
         "quick_prompts": prompts[:_MAX_QUICK_PROMPTS],
+        "task_examples": task_examples,
     }
+
+
+def _normalize_task_examples(
+    raw: Any,
+    *,
+    label_zh: str,
+    label_en: str,
+) -> dict[str, list[str]]:
+    """Keep exactly 3 or 6 bilingual scheduled-task prompts."""
+    fallback = default_task_examples(label_zh, label_en)
+    parsed = parse_task_examples({"task_examples": raw} if raw is not None else {})
+    zh = [_clip(item, _MAX_TASK_EXAMPLE_CHARS) for item in (parsed or {}).get("zh", [])]
+    en = [_clip(item, _MAX_TASK_EXAMPLE_CHARS) for item in (parsed or {}).get("en", [])]
+    return snap_task_examples(
+        zh,
+        en,
+        fillers_zh=fallback["zh"],
+        fillers_en=fallback["en"],
+    )
 
 
 def _manifest_skill_slugs(manifest: dict[str, Any]) -> list[str]:

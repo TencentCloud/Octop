@@ -72,6 +72,7 @@ import {
 } from "../../utils/sharedExpert";
 import ChatDockPanels from "./components/ChatDockPanels";
 import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
+import { ChatAgentProfileProvider } from "./ChatAgentProfileContext";
 import {
   ChatToolDockProvider,
   dockTabIdForToolCall,
@@ -1176,38 +1177,44 @@ function ChatPageInner() {
                   hideMascot={isStreaming}
                 />
               ) : (
-                <MessageList
-                  messages={messages}
-                  composerLookups={composerLookups}
-                  loading={awaitingThreadHistory}
-                  historyHasMore={historyHasMore}
-                  historyLoadingMore={historyLoadingMore}
-                  historyRefreshing={historyRefreshing}
-                  onLoadMoreHistory={loadMoreHistory}
-                  onRefreshHistory={refreshHistory}
-                  isStreaming={isStreaming}
-                  thinkingStartedAt={thinkingStartedAt}
-                  sessionKey={activeThreadId ?? undefined}
-                  onCancel={cancelStream}
-                  onRegenerate={handleRegenerate}
-                  onEditUserMessage={handleEditUserMessage}
-                  onForkAssistantMessage={handleForkAssistantMessage}
-                  forkDisabled={forkDisabled}
-                  forkDisabledHint={forkDisabledHint}
-                  onAcpPermissionSelect={handleAcpPermissionSelect}
-                  onHitlDecision={handleHitlDecision}
-                  onTurnRailVisibilityChange={setTurnRailVisible}
-                  onOpenBrowser={
-                    hasBrowserTool && !isMobile ? openBrowserTab : undefined
-                  }
-                  onEditFile={
-                    !sharedExpertViewer &&
-                    panelFilePaths.length > 0 &&
-                    !isMobile
-                      ? openFileList
-                      : undefined
-                  }
-                />
+                <ChatAgentProfileProvider
+                  canOpen={Boolean(resolvedAgentId) && !sharedExpertViewer}
+                  onOpen={() => setAgentProfileOpen(true)}
+                >
+                  <MessageList
+                    messages={messages}
+                    agentId={resolvedAgentId}
+                    composerLookups={composerLookups}
+                    loading={awaitingThreadHistory}
+                    historyHasMore={historyHasMore}
+                    historyLoadingMore={historyLoadingMore}
+                    historyRefreshing={historyRefreshing}
+                    onLoadMoreHistory={loadMoreHistory}
+                    onRefreshHistory={refreshHistory}
+                    isStreaming={isStreaming}
+                    thinkingStartedAt={thinkingStartedAt}
+                    sessionKey={activeThreadId ?? undefined}
+                    onCancel={cancelStream}
+                    onRegenerate={handleRegenerate}
+                    onEditUserMessage={handleEditUserMessage}
+                    onForkAssistantMessage={handleForkAssistantMessage}
+                    forkDisabled={forkDisabled}
+                    forkDisabledHint={forkDisabledHint}
+                    onAcpPermissionSelect={handleAcpPermissionSelect}
+                    onHitlDecision={handleHitlDecision}
+                    onTurnRailVisibilityChange={setTurnRailVisible}
+                    onOpenBrowser={
+                      hasBrowserTool && !isMobile ? openBrowserTab : undefined
+                    }
+                    onEditFile={
+                      !sharedExpertViewer &&
+                      panelFilePaths.length > 0 &&
+                      !isMobile
+                        ? openFileList
+                        : undefined
+                    }
+                  />
+                </ChatAgentProfileProvider>
               )}
             </div>
 

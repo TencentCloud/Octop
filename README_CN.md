@@ -9,6 +9,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.9.33-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -36,7 +37,7 @@
 
 **Octop** 是一个开源、自托管的 AI 助手。它不仅是工具，更是可并行运作的数字生命体。通过多 Agent 架构，它为团队、家庭和个人构建了既独立又协作的智能环境。并且这一切都运行在你的机器上——完全自托管的设计让隐私不再是妥协，而单进程启动的便捷性，则让强大的 Web 控制台、CLI 与 IM 集成触手可及。
 
-借助飞书、钉钉、QQ、Discord、企业微信或 HTTP/SSE API 与任意 Agent 对话；通过**专家库**一键创建专业角色，通过 **Connector**（OAuth + MCP）接入外部服务，通过 **ACP** 与 IDE / 终端 AI 工具双向协作。
+借助飞书、钉钉、QQ、Discord、企业微信或 HTTP/SSE/WebSocket API 与任意 Agent 对话；通过**专家库**一键创建专业角色，通过 **Connector**（OAuth + MCP）接入外部服务，通过 **ACP** 与 IDE / 终端 AI 工具双向协作。
 
 > Octop 的设计目标：让每一次对话、工作区与凭据都留在你自己的机器上，同时为每个用户配备一组可按场景切换的专业 Agent。
 
@@ -50,6 +51,8 @@
 | 🔌 | **Connector 拓展体系** | 一键接入腾讯全家桶（文档 / 微博 / 新闻等），OAuth 与 MCP 网关轻松扩展 |
 | 💾 | **可插拔后端存储** | 本地目录、Docker 容器、PostgreSQL 或 COS/S3，AI 在隔离边界内操作 |
 | 🧠 | **可迁移记忆系统** | 基于 harness-memory，记忆随工作区迁移 |
+| 📚 | **知识库** | 基于文档的 RAG 检索，让 Agent 的回答锚定你的私有知识库 |
+| 🧩 | **插件** | 支持第三方插件扩展；内置插件随安装注入，按需一键启用 |
 | ↔️ | **ACP 双向集成** | `octop acp` 增强 IDE 与终端 AI；对话中委派 OpenCode / Claude Code 等 |
 | 💻 | **终端 AI+** | 浏览器内交互式 Shell，AI 辅助命令执行与排障 |
 | 🌐 | **浏览器 AI+** | 基于 Chromium 的无头浏览器会话，支持网页自动化、截图与远程操控 |
@@ -116,6 +119,10 @@ Octop 不依赖外部消息队列或中间件，而是通过进程内的 `Harnes
 - **CLI** — `octop run`、`octop chat`、`octop acp`、管理命令
 - **HTTP/SSE/WebSocket API** — 完整的程序化访问能力
 
+### 知识库与插件
+- **知识库** — 基于文档的 RAG 检索；上传文件后，语义检索让 Agent 的回答锚定你的私有知识库
+- **插件** — 安装并管理第三方插件（`octop plugin`）；内置插件随安装注入，按需在控制台一键启用
+
 ### ACP（Agent Client Protocol）
 
 Octop 支持两个方向的 ACP 集成：
@@ -152,6 +159,7 @@ Octop 支持两个方向的 ACP 集成：
 
 - **macOS / Linux / Windows**
 - 无需预先安装 Python — 安装脚本通过 [uv](https://docs.astral.sh/uv/) 在 `~/.octop/` 下创建隔离的 Python 3.12 虚拟环境
+- 现代多核 CPU，并预留数 GB 内存供进程与模型/Embedding 缓存使用；磁盘需容纳数据库、Agent 工作区与文档语料
 
 ### 1. 安装
 
@@ -233,7 +241,7 @@ octop run --host 0.0.0.0 --port 8088
 octop service start
 ```
 
-打开 **http://127.0.0.1:8088**。Docker 首次初始化默认账号为 `admin` / `Octop123`，请立即修改密码。交互式 `octop init` / 设置向导会让你自行设置密码（至少 8 位，且同时包含字母和数字）。
+打开 **http://127.0.0.1:8088**。Docker 首次初始化会自动生成随机管理员密码（写入 `/data/.octop/credential.txt`），除非设置了 `OCTOP_DEFAULT_PASSWORD`。交互式 `octop init` / 设置向导会让你自行设置密码（至少 8 位，且同时包含字母和数字）。
 
 ### Docker（推荐用于生产部署）
 
@@ -247,18 +255,18 @@ docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
-  -e OCTOP_DEFAULT_PASSWORD=Octop123 \
+  -e OCTOP_DEFAULT_PASSWORD="<自定义强密码，留空则自动生成随机密码>" \
   octop:latest
 ```
 
-打开 `http://localhost:8088`。首次初始化会以固定默认凭据创建管理员：`admin` / `Octop123`（并写入容器内 `/data/.octop/credential.txt`）——**并非随机生成**。可通过 `OCTOP_ADMIN_USERNAME` / `OCTOP_DEFAULT_PASSWORD` 覆盖默认值。
+打开 `http://localhost:8088`。首次初始化会创建管理员账号，并把凭据写入容器内 `/data/.octop/credential.txt`。未设置 `OCTOP_DEFAULT_PASSWORD` 时自动生成随机强密码；自行设置的密码须 ≥8 位且同时包含字母和数字（被应用密码策略拒绝的常见弱密码会自动回退为随机密码）。可通过 `OCTOP_ADMIN_USERNAME` 覆盖用户名。
 
 > **密码策略：** 至少 8 位，且同时包含字母和数字。
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `OCTOP_PORT` | `8088` | HTTP 监听端口 |
-| `OCTOP_DEFAULT_PASSWORD` | `Octop123` | 首次运行管理员密码（Docker 引导） |
+| `OCTOP_DEFAULT_PASSWORD` | _(未设置)_ | 首次运行管理员密码（Docker 引导）。未设置 = 自动生成随机密码并写入 `credential.txt` |
 | `OCTOP_ADMIN_USERNAME` | `admin` | 首次运行管理员用户名 |
 | `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载） |
 
@@ -271,6 +279,7 @@ docker run -d \
 - [概述](#-概述)
 - [核心技术](#-核心技术)
 - [功能特性](#-功能特性)
+- [规划](#-规划)
 - [快速开始](#-快速开始)
 - **部署与使用**
   - [安装方式](#-安装方式)
@@ -283,7 +292,6 @@ docker run -d \
   - [项目结构](#-项目结构)
   - [开发](#-开发)
 - **项目信息**
-  - [规划](#-规划)
   - [安全与隐私](#-安全与隐私)
   - [参与贡献](#-参与贡献)
   - [更新日志](#-更新日志)
@@ -303,6 +311,16 @@ docker run -d \
 | Docker | 全平台 | `docker/docker-compose.yml` |
 
 所有安装脚本均在 `~/.octop/venv` 创建隔离环境，并通过 `~/.octop/bin/octop` 包装 CLI，不会影响系统 Python。
+
+### 升级
+
+`octop update` 只替换 wheel / 二进制，你的 `~/.octop/` 数据库、工作区、密钥与 `config.json` 均会保留：
+
+```bash
+octop update          # 获取并安装最新版 Octop，若已注册系统服务则自动重启
+```
+
+数据库结构会在下次启动时自动迁移；仅当设置向导提示需要迁移时才运行 `octop init`。跨版本升级前请务必先备份（`octop backup`）。
 
 ### ⚙️ 配置
 
@@ -358,6 +376,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 | `octop cron` | 管理定时任务 |
 | `octop models` | 供应商预设与模型解析 |
 | `octop skills` | 按 Agent 启用/禁用 Skill |
+| `octop plugin` | 安装并管理第三方插件 |
 | `octop backup` | 导出 / 恢复备份 |
 | `octop clean` | 清理 CLI 状态或清空 `~/.octop/` |
 | `octop update` | 检查并安装更新 |
@@ -377,6 +396,8 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 - **Connector** — OAuth 应用与 MCP 网关
 - **通道** — IM 平台配置
 - **定时任务** — 可视化 Cron 管理
+- **知识库** — 管理文档语料与语义检索
+- **插件** — 安装、启用与配置插件
 - **ACP** — 配置出站编程 Agent Runner
 - **设置** — 用户、安全、TLS、系统
 
@@ -460,6 +481,7 @@ cd dashboard && npx tsc --noEmit
 
 - **本地优先**：配置、对话、工作区与凭证均存储在 `~/.octop/`。
 - **多用户隔离**：JWT 认证，按用户隔离 Agent 与工作区。
+- **敏感信息脱敏与工具审批**：离开工作区前自动脱敏敏感数据；高风险工具或 Shell 命令需依据护栏规则显式审批。
 - **工具护栏**：可在 `~/.octop/security/tool_guard/` 编辑 Shell 命令规则。
 - **无厂商锁定**：可自由切换 LLM 供应商、存储后端与 IM 通道。
 

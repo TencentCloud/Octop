@@ -166,6 +166,43 @@ def test_backup_packs_config_workspace_dir(layout: PathLayout, tmp_path: Path) -
     assert not (layout.agent_workspace("agent01") / "SOUL.md").exists()
 
 
+def test_backup_skips_unwritable_workspace_dir(layout: PathLayout, tmp_path: Path) -> None:
+    """Stale host paths (e.g. former /root/.octop/agents/…) must not abort backup."""
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    reachable = layout.ensure_agent_workspace("ok01")
+    (reachable / "keep.txt").write_text("ok", encoding="utf-8")
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    stale = blocker / "YZQ7X4"
+
+    class OkRow:
+        agent_id = "ok01"
+        name = "Ok"
+
+    class StaleRow:
+        agent_id = "YZQ7X4"
+        name = "Stale"
+        config_json = json.dumps({"workspace_dir": str(stale)})
+
+    archive = tmp_path / "skip-stale-ws.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[StaleRow(), OkRow()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+    )
+    pool.close()
+
+    assert archive.is_file()
+    assert not stale.exists()
+    with tarfile.open(archive, mode="r:gz") as tf:
+        names = tf.getnames()
+    assert "workspaces/ok01/keep.txt" in names
+    assert not any(name.startswith("workspaces/YZQ7X4/") for name in names)
+
+
 def test_backup_skips_junk_directories(layout: PathLayout, tmp_path: Path) -> None:
     pool = SqlitePool(layout.db)
     run_migrations(pool)

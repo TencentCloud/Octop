@@ -25,6 +25,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from octop.infra.agents.experts.catalog import default_task_examples, snap_task_examples
 from octop.infra.utils.ssl_errors import looks_like_ssl_error
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ _HTTP_TIMEOUT = 30
 _SKILLSET_PAGE_SIZE = 100
 _MAX_SKILLSET_PAGES = 20
 _MAX_WORKFLOW_QUICK_PROMPTS = 6
+_MAX_TASK_EXAMPLES = 6
 _SKILLSET_LIST_CACHE_TTL_SECONDS = 300.0
 _MAX_HTTP_BYTES = 32 * 1024 * 1024
 _MAX_ZIP_ENTRIES = 2_000
@@ -139,6 +141,7 @@ class SkillHubSkillset:
             "skill_slugs": list(self.skill_slugs),
             "skill_count": self.skill_count or len(self.skill_slugs),
             "source": "skillhub",
+            "task_examples": task_examples_for_skillset(self),
         }
         if include_content:
             out["content"] = {"zh": self.content, "en": self.content_en}
@@ -867,6 +870,7 @@ def _expert_manifest(
         "color": _scene_color(item.scene),
         "prompt_files": ["SOUL.md"],
         "quick_prompts": quick_prompts_for_skillset(item, skillset_prompt),
+        "task_examples": task_examples_for_skillset(item, skillset_prompt),
         "source": {
             "type": "skillhub",
             "kind": "skillset",
@@ -993,6 +997,53 @@ def quick_prompts_for_skillset(
 ) -> list[dict[str, Any]]:
     prompts = _workflow_quick_prompts(item, workflow_prompt or item.content)
     return _ensure_min_quick_prompts(item, prompts)
+
+
+def task_examples_for_skillset(
+    item: SkillHubSkillset,
+    workflow_prompt: str | None = None,
+) -> dict[str, list[str]]:
+    """Scheduled-task starter prompts for the tasks-page empty state."""
+    generated = _workflow_task_examples(item, workflow_prompt or item.content)
+    defaults = default_task_examples(_expert_label_zh(item), _expert_label_en(item))
+    return snap_task_examples(
+        list(generated["zh"]),
+        list(generated["en"]),
+        fillers_zh=defaults["zh"],
+        fillers_en=defaults["en"],
+    )
+
+
+_TASK_EXAMPLE_SCHEDULES = (
+    ("每天「09:00」", "Every day at 09:00"),
+    ("每个工作日「18:00」", "Every weekday at 18:00"),
+    ("每周一「10:00」", "Every Monday at 10:00"),
+    ("每周五「17:00」", "Every Friday at 17:00"),
+    ("每天「08:00」", "Every day at 08:00"),
+    ("每月 1 日「09:30」", "On the 1st of each month at 09:30"),
+)
+
+
+def _workflow_task_examples(
+    item: SkillHubSkillset,
+    workflow_prompt: str,
+) -> dict[str, list[str]]:
+    steps = _workflow_steps(workflow_prompt)
+    zh: list[str] = []
+    en: list[str] = []
+    for idx, step in enumerate(steps[:_MAX_TASK_EXAMPLES]):
+        title = _clip_text(step["title"], 16)
+        if not title:
+            continue
+        zh_sched, en_sched = _TASK_EXAMPLE_SCHEDULES[idx % len(_TASK_EXAMPLE_SCHEDULES)]
+        enable_zh = "，任务创建后立即启用" if not zh else ""
+        enable_en = " — enable immediately" if not en else ""
+        zh.append(f"{zh_sched}帮我完成「{title}」并把结果发给我{enable_zh}")
+        en.append(
+            f"{en_sched}, help me complete “{_english_step_title(title, idx)}” "
+            f"and send the result{enable_en}"
+        )
+    return {"zh": zh, "en": en}
 
 
 def _ensure_min_quick_prompts(

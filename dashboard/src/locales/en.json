@@ -767,6 +767,8 @@
     "marketIncludedSkills": "Included Skills",
     "marketQuickPrompts": "Quick-start cards",
     "marketQuickPromptsEmpty": "No quick-start card preview yet",
+    "marketTaskExamples": "Scheduled-task examples",
+    "marketTaskExamplesEmpty": "No scheduled-task examples yet",
     "marketWorkflowPrompt": "Workflow overview",
     "marketWorkflowMeta": "Package info",
     "marketWorkflowVersion": "v{{version}}",

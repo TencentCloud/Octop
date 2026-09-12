@@ -1,39 +1,78 @@
 #!/bin/bash
 #
 # Octop — 安装后回调
-# 使用固定默认配置写入 docker-compose 同目录的 .env（安装向导已移除）。
-# docker compose 会自动加载该 .env，从而完成前后端参数配置。
+#
+# 密码策略（修复 issue #502：旧版写死 Octop123 被应用弱密码黑名单拒绝，
+# 容器首次 init 报 "password is too common" 退出、反复重启）：
+# 安装向导提供「自己输入密码 / 自动生成随机密码」两种方式，此处预校验
+# 自定义密码，随机密码本地生成，统一写入 docker/.env 供容器首次 init 使用；
+# 并把凭据回落保存到数据共享目录 octop-login.txt（容器内 credential.txt 之外
+# 的宿主机侧备份），渲染应用「设置」窗口的当前密码显示。
 #
 set -euo pipefail
 
-# 共享函数库（find_python312 / fix_ownership_and_perms / free_octop_ports）
+# 共享函数库（find_python312 / fix_ownership_and_perms / free_octop_ports /
+# octop_generate_password / octop_validate_password / octop_write_login_file /
+# octop_render_config_wizard 等）
 # 打包时由 scripts/build-fpk.sh 注入；仓库内运行无此文件时跳过（函数缺失时再报错）。
-_OCTOP_COMMON=""$(dirname "$0")/common.sh""
+_OCTOP_COMMON="$(dirname "$0")/common.sh"
+[ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop/cmd/common.sh"
 [ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
 
 # 释放 Octop 端口（8088=Docker 版，8089=本地版），杀掉残留/孤儿进程，避免重装端口冲突。
-
-
 free_octop_ports
 
 ENV_FILE="${TRIM_APPDEST:-/var/apps/octop/target}/docker/.env"
 mkdir -p "$(dirname "$ENV_FILE")"
 
-# 安装向导已移除，使用固定默认值（用户首次登录后可在控制台「设置」中修改）。
-ADMIN_USER="admin"
-ADMIN_PASS="Octop123"
-LOG_LEVEL="info"
-OPENAI=""
-DASHSCOPE=""
+# 容器数据目录在宿主机侧的挂载源（与 docker-compose.yaml 的卷映射保持一致），
+# 凭据回落保存到这里，升级/重建容器都保留。
+DATA_DIR="/var/apps/octop/share/octop/data"
+mkdir -p "$DATA_DIR"
 
-# 去除可能破坏 .env 格式的换行/引号（安全起见）
-sanitize() { printf '%s' "$1" | tr -d '\n\r"'"'"''; }
+fail_install() {
+    echo "[octop] $1" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+    echo "[octop] $1" >&2 || true
+    exit 1
+}
 
-ADMIN_USER=$(sanitize "$ADMIN_USER")
-ADMIN_PASS=$(sanitize "$ADMIN_PASS")
-LOG_LEVEL=$(sanitize "$LOG_LEVEL")
-OPENAI=$(sanitize "$OPENAI")
-DASHSCOPE=$(sanitize "$DASHSCOPE")
+# ---------------------------------------------------------------------------
+# 解析向导字段（wizard/install 的 field 名即环境变量名）
+# ---------------------------------------------------------------------------
+ADMIN_USER="$(octop_sanitize_value "${wizard_admin_username:-admin}")"
+PASSWORD_MODE="$(octop_sanitize_value "${wizard_password_mode:-random}")"
+WIZARD_PASSWORD="$(octop_sanitize_value "${wizard_admin_password:-}")"
+LOG_LEVEL="$(octop_sanitize_value "${wizard_log_level:-info}")"
+OPENAI="$(octop_sanitize_value "${wizard_openai_api_key:-}")"
+DASHSCOPE="$(octop_sanitize_value "${wizard_dashscope_api_key:-}")"
+
+if [ -z "$ADMIN_USER" ]; then
+    fail_install "管理员用户名不能为空"
+fi
+if ! printf '%s' "$ADMIN_USER" | grep -qE '^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,31}$'; then
+    fail_install "管理员用户名「${ADMIN_USER}」无效：只能包含字母、数字、点、下划线和连字符（2-32 位）"
+fi
+
+# ---------------------------------------------------------------------------
+# 密码：两种方式（自定义 / 随机生成），无效密码让安装直接失败并给出原因
+# ---------------------------------------------------------------------------
+case "$PASSWORD_MODE" in
+    custom)
+        if [ -z "$WIZARD_PASSWORD" ]; then
+            fail_install "您选择了自己输入密码，但密码为空。请返回安装向导输入密码，或改选「自动生成随机密码」。"
+        fi
+        if ! ADMIN_PASS_REASON="$(octop_validate_password "$WIZARD_PASSWORD" 2>&1)"; then
+            fail_install "管理员密码不符合要求：${ADMIN_PASS_REASON}（要求：至少 8 位，且同时包含字母和数字，不能使用过于常见的密码）"
+        fi
+        ADMIN_PASS="$WIZARD_PASSWORD"
+        ;;
+    random)
+        ADMIN_PASS="$(octop_generate_password 16)"
+        ;;
+    *)
+        fail_install "密码设置方式无效：${PASSWORD_MODE}（应为 custom 或 random）"
+        ;;
+esac
 
 {
     echo "OCTOP_PORT=8088"
@@ -48,4 +87,15 @@ DASHSCOPE=$(sanitize "$DASHSCOPE")
 
 chmod 600 "$ENV_FILE"
 echo "[octop] 已写入配置: $ENV_FILE" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# 凭据回落保存（octop-login.txt）+ 「设置」窗口当前密码显示渲染
+# ---------------------------------------------------------------------------
+octop_write_login_file "$DATA_DIR" "$ADMIN_USER" "$ADMIN_PASS" 8088
+
+WIZARD_TEMPLATE="${TRIM_APPDEST:-/var/apps/octop/target}/wizard/config.template"
+WIZARD_DIR="$(dirname "${TRIM_APPDEST:-/var/apps/octop/target}")/wizard"
+[ -f "$WIZARD_TEMPLATE" ] || WIZARD_TEMPLATE="${TRIM_APPDEST:-/var/apps/octop/target}/../wizard/config"
+octop_render_config_wizard "$WIZARD_TEMPLATE" "$WIZARD_DIR" "$ADMIN_USER" "$ADMIN_PASS"
+
 exit 0

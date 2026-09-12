@@ -866,6 +866,7 @@ class GlobalProcessor:
         yield MessageEvent.typing()
         stream_ok = False
         hitl_paused = False
+        persist_failed_turn = False
         usage_tracker = UsageTracker()
         history_tracker = await self._begin_history(agent_id, thread_id, request)
         projection_state = StreamProjectionState()
@@ -896,6 +897,14 @@ class GlobalProcessor:
             message, error_code = _stream_error(exc, locale)
             if error_code:
                 message = f"[{error_code}] {message}"
+            persist_failed_turn = True
+            history_tracker.observe(
+                {
+                    "type": "error",
+                    "message": message,
+                    **({"error_code": error_code} if error_code else {}),
+                }
+            )
             yield MessageEvent.error_event(message)
         else:
             if stream_ok and not hitl_paused:
@@ -908,7 +917,12 @@ class GlobalProcessor:
                 )
                 await self._record_turn_history(thread_id, history_tracker)
         finally:
-            await self._finish_history(history_tracker, completed=stream_ok and not hitl_paused)
+            if persist_failed_turn or (not stream_ok and not hitl_paused):
+                await self._persist_incomplete_turn(
+                    thread_id, history_tracker, title_source=msg.text
+                )
+            else:
+                await self._finish_history(history_tracker, completed=stream_ok and not hitl_paused)
         yield MessageEvent.completed()
 
     # -- Raw harness-chunk stream (Dashboard WS, etc.) -------------------------
@@ -1031,6 +1045,7 @@ class GlobalProcessor:
         )
 
         stream_ok = False
+        persist_failed_turn = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         usage_tracker = UsageTracker()
 
@@ -1095,10 +1110,17 @@ class GlobalProcessor:
             payload = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
+            history_tracker.observe(payload)
+            persist_failed_turn = True
             yield payload
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
-            await self._finish_history(history_tracker, completed=stream_ok)
+            if persist_failed_turn or not stream_ok:
+                await self._persist_incomplete_turn(
+                    thread_id, history_tracker, title_source=msg.text
+                )
+            else:
+                await self._finish_history(history_tracker, completed=stream_ok)
         if stream_ok:
             self._touch_thread_after_turn(thread_id, msg.text)
             self._record_turn_usage(
@@ -1122,6 +1144,7 @@ class GlobalProcessor:
         usage_tracker = UsageTracker()
         history_tracker = await self._begin_history(agent_id, thread_id, {}, resume=True)
         completed = False
+        persist_failed_turn = False
         traj_on = self._agent_trajectory_enabled(agent_id)
         try:
             async for chunk in self._agent_manager.resume_hitl(
@@ -1142,9 +1165,26 @@ class GlobalProcessor:
                 )
                 yield chunk
             completed = True
+        except Exception as exc:
+            await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
+            locale = resolve_user_locale(
+                user_repo=self._user_repo,
+                user_id=user_id,
+                channel_type="dashboard",
+            )
+            message, error_code = _stream_error(exc, locale)
+            payload = {"type": "error", "message": message}
+            if error_code:
+                payload["error_code"] = error_code
+            history_tracker.observe(payload)
+            persist_failed_turn = True
+            yield payload
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
-            await self._finish_history(history_tracker, completed=completed)
+            if persist_failed_turn or not completed:
+                await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
+            else:
+                await self._finish_history(history_tracker, completed=completed)
             if completed:
                 self._touch_thread_after_turn(thread_id, None)
                 self._record_turn_usage(
@@ -1463,10 +1503,23 @@ class GlobalProcessor:
             usage=usage,
         )
 
+    async def _persist_incomplete_turn(
+        self,
+        thread_id: str,
+        tracker: TurnHistoryTracker,
+        *,
+        title_source: str | None,
+    ) -> None:
+        """Keep partial tokens (and any error) when a turn is stopped or fails."""
+        self._touch_thread_after_turn(thread_id, title_source)
+        await self._record_turn_history(thread_id, tracker, completed=False)
+
     async def _record_turn_history(
         self,
         thread_id: str,
         tracker: TurnHistoryTracker,
+        *,
+        completed: bool = True,
     ) -> None:
         from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
 
@@ -1475,7 +1528,9 @@ class GlobalProcessor:
                 await asyncio.to_thread(
                     tracker.archive.messages.append_legacy_interval, thread_id, tracker.inputs
                 )
-                await tracker.finish(completed=True)
+                await tracker.finish(completed=completed)
+            elif not completed:
+                await tracker.finish(completed=False)
             return
         if self._thread_message_repo is None:
             return

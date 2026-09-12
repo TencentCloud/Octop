@@ -51,5 +51,17 @@
       "color": "#fef3c7",
       "icon_name": "users"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每个工作日「09:30」检查进行中的多专家协作计划，汇报卡在哪一步，任务创建后立即启用",
+      "每周五「17:00」汇总本周已完成的协作任务与遗留依赖",
+      "每天「18:00」若有未关闭的 DAG 步骤，提醒我确认是否继续或换角"
+    ],
+    "en": [
+      "Every weekday at 09:30, inspect in-flight multi-expert plans and report which step is blocked — enable immediately",
+      "Every Friday at 17:00, summarize completed collaboration tasks and leftover dependencies",
+      "Every day at 18:00, if any DAG step is still open, ask me whether to continue or reassign the role"
+    ]
+  }
 }

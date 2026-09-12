@@ -461,10 +461,20 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
               source: "tool_result",
               retryable: toolFeedback?.retryable,
             }
+          : entry.status === "error"
+          ? {
+              code:
+                typeof entry.error_code === "string" && entry.error_code
+                  ? entry.error_code
+                  : "stream_error",
+              source: "history",
+            }
           : undefined,
       _toolKind: tool?.kind,
       status:
         tool?.kind === "result" && (toolFeedback?.isError || toolErrorCode)
+          ? "error"
+          : entry.status === "error"
           ? "error"
           : "done",
       timestamp: resolveEntryTimestamp(entry),
@@ -661,6 +671,8 @@ export function convertHistoryMessages(
     composer_context?: unknown;
     inbound_attachments?: unknown;
     ui_hidden?: unknown;
+    status?: string;
+    error_code?: string;
   }>,
   agentId?: string,
 ): ChatMessage[] {
@@ -684,6 +696,8 @@ export function convertHistoryMessages(
       timestamp:
         typeof message.timestamp === "number" ? message.timestamp : undefined,
       metadata: Object.keys(meta).length > 0 ? meta : undefined,
+      status: message.status,
+      error_code: message.error_code,
     };
   });
   const converted = convertCallEntries(entries).filter(

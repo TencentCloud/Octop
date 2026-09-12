@@ -24,6 +24,8 @@ async def test_list_experts_returns_bundled_library(env: Any) -> None:
     assert len(rows) >= 1
     sample = next(r for r in rows if r["id"] == "general-assistant")
     assert "label" in sample and "zh" in sample["label"] and "en" in sample["label"]
+    assert sample["task_examples"]["zh"]
+    assert len(sample["task_examples"]["zh"]) == 3
 
 
 async def test_get_expert_includes_prompt_files(env: Any) -> None:

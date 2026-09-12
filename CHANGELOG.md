@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+### 修复
+
+- 刷新会话后消息时间戳不再丢失：当前轮投影补写 `checkpoint_ts`，历史接口缺戳时回退 `created_at`
+- 用户头像与输入气泡对齐，不再跟上方面板 chip 齐平；复制/编辑改到时间左侧同一行
+
+### 变更
+
+- README / README_CN 补齐知识库、插件、PostgreSQL、WebSocket 与 `octop update` 说明
+
 ## [0.9.33] - 2026-09-11
 
 ### 新增

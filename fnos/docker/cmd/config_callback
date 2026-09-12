@@ -1,40 +1,125 @@
 #!/bin/bash
 #
-# Octop — 配置后回调（重新配置时调用）
-# 逻辑与 install_callback 一致：用新配置重写 .env。
-# 注意：修改管理员密码/账号不会改动已初始化的数据库（仅首次启动生效）；
-#       修改 LLM 密钥与日志级别会在容器重启后生效。
+# Octop — 配置后回调（应用「设置」窗口提交后执行）
+#
+# 功能：
+#   - 管理员密码三选一：保持不变（keep）/ 自动生成新的随机密码（random）/
+#     自己设置新密码（custom，先按应用侧策略校验）；
+#   - 修改密码时：更新 docker/.env、数据共享目录 octop-login.txt 回落备份、
+#     「设置」窗口的当前密码显示；容器在运行时通过官方 CLI
+#     （docker exec ... octop user passwd）直接改密，无需重建容器；
+#   - API Key / 日志级别可选更新，容器重启后生效。
 #
 set -euo pipefail
+
+_OCTOP_COMMON="$(dirname "$0")/common.sh"
+[ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop/cmd/common.sh"
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
 
 ENV_FILE="${TRIM_APPDEST:-/var/apps/octop/target}/docker/.env"
 mkdir -p "$(dirname "$ENV_FILE")"
 
-ADMIN_USER="${wizard_admin_username:-admin}"
-ADMIN_PASS="${wizard_admin_password:-octop}"
-LOG_LEVEL="${wizard_log_level:-info}"
-OPENAI="${wizard_openai_api_key:-}"
-DASHSCOPE="${wizard_dashscope_api_key:-}"
+# 容器数据目录在宿主机侧的挂载源（与 docker-compose.yaml 的卷映射保持一致）
+DATA_DIR="/var/apps/octop/share/octop/data"
+mkdir -p "$DATA_DIR"
 
-sanitize() { printf '%s' "$1" | tr -d '\n\r"'"'"''; }
+CONTAINER="octop"
+LOG="${TRIM_TEMP_LOGFILE:-/dev/null}"
 
-ADMIN_USER=$(sanitize "$ADMIN_USER")
-ADMIN_PASS=$(sanitize "$ADMIN_PASS")
-LOG_LEVEL=$(sanitize "$LOG_LEVEL")
-OPENAI=$(sanitize "$OPENAI")
-DASHSCOPE=$(sanitize "$DASHSCOPE")
+# 现有配置（.env 不存在时给安全默认值，正常情况下 install_callback 已写入）
+CUR_USER="$(octop_env_get "$ENV_FILE" OCTOP_ADMIN_USERNAME)"
+CUR_PASS="$(octop_env_get "$ENV_FILE" OCTOP_DEFAULT_PASSWORD)"
+CUR_LOG="$(octop_env_get "$ENV_FILE" OCTOP_LOG_LEVEL)"
+CUR_OPENAI="$(octop_env_get "$ENV_FILE" OPENAI_API_KEY)"
+CUR_DASH="$(octop_env_get "$ENV_FILE" DASHSCOPE_API_KEY)"
+[ -n "$CUR_USER" ] || CUR_USER="admin"
 
-{
-    echo "OCTOP_PORT=8088"
-    echo "OCTOP_BIND_HOST=0.0.0.0"
-    echo "OCTOP_LOG_LEVEL=${LOG_LEVEL}"
-    echo "OCTOP_ADMIN_USERNAME=${ADMIN_USER}"
-    echo "OCTOP_DEFAULT_PASSWORD=${ADMIN_PASS}"
-    echo "OCTOP_ADMIN_DISPLAY_NAME=Admin"
-    echo "OPENAI_API_KEY=${OPENAI}"
-    echo "DASHSCOPE_API_KEY=${DASHSCOPE}"
-} > "$ENV_FILE"
+ADMIN_USER="$CUR_USER"
+PASSWORD_MODE="$(octop_sanitize_value "${wizard_password_mode:-keep}")"
+WIZARD_PASSWORD="$(octop_sanitize_value "${wizard_admin_password:-}")"
+LOG_LEVEL_SEL="$(octop_sanitize_value "${wizard_log_level:-keep}")"
+OPENAI_NEW="$(octop_sanitize_value "${wizard_openai_api_key:-}")"
+DASHSCOPE_NEW="$(octop_sanitize_value "${wizard_dashscope_api_key:-}")"
 
-chmod 600 "$ENV_FILE"
-echo "[octop] 配置已更新: $ENV_FILE" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+fail_config() {
+    echo "[octop] $1" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+    echo "[octop] $1" >&2 || true
+    exit 1
+}
+
+# ---------------------------------------------------------------------------
+# 计算新密码
+# ---------------------------------------------------------------------------
+PASS_CHANGED=0
+case "$PASSWORD_MODE" in
+    keep)
+        ADMIN_PASS="$CUR_PASS"
+        ;;
+    random)
+        ADMIN_PASS="$(octop_generate_password 16)"
+        PASS_CHANGED=1
+        ;;
+    custom)
+        if [ -z "$WIZARD_PASSWORD" ]; then
+            fail_config "您选择了自己设置新密码，但密码为空。请输入新密码，或改选「自动生成新的随机密码」。"
+        fi
+        if ! REASON="$(octop_validate_password "$WIZARD_PASSWORD" 2>&1)"; then
+            fail_config "新密码不符合要求：${REASON}（要求：至少 8 位，且同时包含字母和数字，不能使用过于常见的密码）"
+        fi
+        ADMIN_PASS="$WIZARD_PASSWORD"
+        PASS_CHANGED=1
+        ;;
+    *)
+        fail_config "密码设置方式无效：${PASSWORD_MODE}（应为 keep / custom / random）"
+        ;;
+esac
+
+# 日志级别：keep=保持不变
+LOG_LEVEL="$CUR_LOG"
+[ -n "$LOG_LEVEL" ] || LOG_LEVEL="info"
+case "$LOG_LEVEL_SEL" in
+    keep) : ;;
+    info|debug|warning) LOG_LEVEL="$LOG_LEVEL_SEL" ;;
+    *) LOG_LEVEL="$(octop_sanitize_value "$LOG_LEVEL_SEL")" ;;
+esac
+
+# API Key：留空=保持不变
+OPENAI="$CUR_OPENAI"
+[ -n "$OPENAI_NEW" ] && OPENAI="$OPENAI_NEW"
+DASHSCOPE="$CUR_DASH"
+[ -n "$DASHSCOPE_NEW" ] && DASHSCOPE="$DASHSCOPE_NEW"
+
+# ---------------------------------------------------------------------------
+# 已初始化且容器在运行：用官方 CLI 直接改密（不影响已有数据库）
+# ---------------------------------------------------------------------------
+if [ "$PASS_CHANGED" = "1" ]; then
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER" \
+        && docker exec "$CONTAINER" octop user passwd "$ADMIN_USER" --password "$ADMIN_PASS" > "$LOG" 2>&1; then
+        echo "[octop] 已通过官方 CLI（docker exec octop octop user passwd）修改管理员密码" > "$LOG" 2>&1 || true
+    else
+        echo "[octop] 提示：容器未运行或在线改密未成功，密码将写入 .env；重建容器/重新初始化时生效。" > "$LOG" 2>&1 || true
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 写回 .env（逐键更新，保留未知键）
+# ---------------------------------------------------------------------------
+octop_env_set "$ENV_FILE" OCTOP_PORT "8088"
+octop_env_set "$ENV_FILE" OCTOP_BIND_HOST "0.0.0.0"
+octop_env_set "$ENV_FILE" OCTOP_LOG_LEVEL "$LOG_LEVEL"
+octop_env_set "$ENV_FILE" OCTOP_ADMIN_USERNAME "$ADMIN_USER"
+octop_env_set "$ENV_FILE" OCTOP_DEFAULT_PASSWORD "$ADMIN_PASS"
+octop_env_set "$ENV_FILE" OCTOP_ADMIN_DISPLAY_NAME "Admin"
+octop_env_set "$ENV_FILE" OPENAI_API_KEY "$OPENAI"
+octop_env_set "$ENV_FILE" DASHSCOPE_API_KEY "$DASHSCOPE"
+
+echo "[octop] 配置已更新: $ENV_FILE" > "$LOG" 2>&1 || true
+
+# 凭据回落保存 + 「设置」窗口当前密码显示刷新
+octop_write_login_file "$DATA_DIR" "$ADMIN_USER" "$ADMIN_PASS" 8088
+WIZARD_TEMPLATE="${TRIM_APPDEST:-/var/apps/octop/target}/wizard/config.template"
+WIZARD_DIR="$(dirname "${TRIM_APPDEST:-/var/apps/octop/target}")/wizard"
+[ -f "$WIZARD_TEMPLATE" ] || WIZARD_TEMPLATE="${TRIM_APPDEST:-/var/apps/octop/target}/../wizard/config"
+octop_render_config_wizard "$WIZARD_TEMPLATE" "$WIZARD_DIR" "$ADMIN_USER" "$ADMIN_PASS"
+
 exit 0

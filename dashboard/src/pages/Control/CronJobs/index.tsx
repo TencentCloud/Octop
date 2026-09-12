@@ -20,6 +20,8 @@ import { OctopEmptyMascot } from "../../../components/EmptyState";
 import { ResizableTable } from "../../../components/ResizableTable";
 import PageShell from "../../../layouts/PageShell";
 import { useAgent } from "../../../context/AgentContext";
+import { taskExampleColumns } from "./taskExamples";
+import { useTaskExamples } from "./useTaskExamples";
 import styles from "./index.module.less";
 
 type CronJob = CronJobSpecOutput;
@@ -27,18 +29,15 @@ type CronJob = CronJobSpecOutput;
 interface CronJobsEmptyStateProps {
   onCreate: () => void;
   onSuggestionClick: (text: string) => void;
+  suggestions: string[];
 }
 
 function CronJobsEmptyState({
   onCreate,
   onSuggestionClick,
+  suggestions,
 }: CronJobsEmptyStateProps) {
   const { t } = useTranslation();
-  const suggestions = [
-    t("cronJobs.noJobsSuggestion1"),
-    t("cronJobs.noJobsSuggestion2"),
-    t("cronJobs.noJobsSuggestion3"),
-  ];
 
   return (
     <div className={styles.emptyState}>
@@ -47,19 +46,28 @@ function CronJobsEmptyState({
       </div>
       <h2 className={styles.emptyStateTitle}>{t("cronJobs.noJobs")}</h2>
       <p className={styles.emptyStateDesc}>{t("cronJobs.noJobsDesc")}</p>
-      <div className={styles.emptyStateSuggestions}>
-        {suggestions.map((text, i) => (
-          <button
-            key={i}
-            type="button"
-            className={styles.emptyStateSuggestionItem}
-            onClick={() => onSuggestionClick(text)}
-          >
-            <span className={styles.emptyStateSuggestionText}>{text}</span>
-            <span className={styles.emptyStateSuggestionArrow}>→</span>
-          </button>
-        ))}
-      </div>
+      {suggestions.length > 0 ? (
+        <div
+          className={`${styles.emptyStateSuggestions} ${
+            taskExampleColumns(suggestions.length) === 2
+              ? styles.emptyStateSuggestionsCols2
+              : ""
+          }`}
+        >
+          {suggestions.map((text, i) => (
+            <button
+              key={i}
+              type="button"
+              className={styles.emptyStateSuggestionItem}
+              title={text}
+              onClick={() => onSuggestionClick(text)}
+            >
+              <span className={styles.emptyStateSuggestionText}>{text}</span>
+              <span className={styles.emptyStateSuggestionArrow}>→</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <Button
         type="primary"
         onClick={onCreate}
@@ -78,6 +86,7 @@ function CronJobsPage() {
   const navigate = useNavigate();
   const { activeAgentId, activeAgent } = useAgent();
   const canManageJobs = activeAgent?.is_owner === true;
+  const taskExamples = useTaskExamples(activeAgentId);
   const {
     jobs,
     loading,
@@ -315,6 +324,7 @@ function CronJobsPage() {
         <CronJobsEmptyState
           onCreate={handleCreate}
           onSuggestionClick={handleSuggestionClick}
+          suggestions={taskExamples}
         />
       ) : (
         <div

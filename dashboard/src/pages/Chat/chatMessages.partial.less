@@ -145,14 +145,15 @@
 
 .messageListInner {
   overflow-anchor: none;
-  max-width: var(--chat-column-max, 960px);
+  --chat-column-max: 960px;
+  --chat-msg-avatar-slot: 44px;
+  /* Full list width; each row centers a 960px text track + avatar gutters
+     so history and live turns share the same column as the composer. */
+  box-sizing: border-box;
+  width: 100%;
   min-width: 280px;
   margin: 0 auto;
-  padding: 0 var(--chat-column-pad-x, 24px);
-
-  @media (max-width: 767px) {
-    padding: 0 12px;
-  }
+  padding-inline: var(--chat-column-pad-x, 24px);
 }
 
 .messageListLoading {
@@ -183,9 +184,19 @@
 }
 
 /* ---------- Message bubbles ---------- */
+/* 3 columns: expert avatar | composer-aligned text | user avatar */
+.chatMsgColumns() {
+  display: grid;
+  grid-template-columns:
+    var(--chat-msg-avatar-slot, 44px) minmax(0, var(--chat-column-max, 960px))
+    var(--chat-msg-avatar-slot, 44px);
+  justify-content: center;
+  width: 100%;
+}
+
 .messageBubble {
-  display: flex;
-  gap: 10px;
+  .chatMsgColumns();
+  align-items: start;
   margin-bottom: 16px;
 }
 
@@ -199,6 +210,15 @@
 
   .messageBubble {
     margin-bottom: 0;
+  }
+}
+
+.turnInset {
+  .chatMsgColumns();
+
+  > * {
+    grid-column: 2;
+    min-width: 0;
   }
 }
 
@@ -244,19 +264,45 @@
 }
 
 .userBubble {
-  flex-direction: row-reverse;
-  justify-content: flex-start;
   animation: fadeIn 0.25s ease;
 
-  /* User bubble content should shrink-to-fit, not stretch full width */
   .bubbleContent {
-    flex: 0 1 auto;
+    grid-column: 2;
+    justify-self: end;
     max-width: min(75%, 600px);
+  }
+
+  .avatarCol {
+    grid-column: 3;
+    justify-self: center;
+  }
+}
+
+.userBubbleWithTags {
+  row-gap: 0;
+
+  .userComposerTags {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    max-width: min(75%, 600px);
+  }
+
+  .bubbleContent,
+  .avatarCol {
+    grid-row: 2;
   }
 }
 
 .assistantBubble {
-  flex-direction: row;
+  .bubbleContent {
+    grid-column: 2;
+  }
+
+  .avatarCol {
+    grid-column: 1;
+    justify-self: center;
+  }
 }
 
 .errorBubble .bubbleContent {
@@ -267,9 +313,62 @@
   color: var(--fn-color-danger);
 }
 
-.avatarCol {
+.msgSender {
   flex-shrink: 0;
   padding-top: 2px;
+  line-height: 0;
+}
+
+.msgSenderBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  line-height: 0;
+  cursor: pointer;
+  border-radius: 50%;
+
+  &:hover {
+    opacity: 0.85;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}
+
+.msgAvatarPlain {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.msgUserAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fn-color-brand);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.avatarCol {
+  display: flex;
+  justify-content: center;
+  padding-top: 2px;
+  min-width: 0;
 }
 
 .botAvatar {
@@ -295,7 +394,6 @@
 .bubbleContent {
   max-width: 100%;
   min-width: 0;
-  flex: 1;
 
   &:hover .msgCopyBtn {
     opacity: 1;
@@ -674,9 +772,18 @@
 
 /* ---------- Assistant turn process summary (tools + thinking) ---------- */
 .processSummaryRow {
-  display: block;
-  width: fit-content;
+  .chatMsgColumns();
+  align-items: start;
   max-width: 100%;
+
+  .avatarCol {
+    grid-column: 1;
+    justify-self: center;
+  }
+
+  .processSummary {
+    grid-column: 2;
+  }
 }
 
 .processSummary {
@@ -1086,8 +1193,8 @@
 .msgTime {
   font-size: 10px;
   color: var(--fn-text-quaternary);
-  margin-top: 4px;
-  padding: 0 4px;
+  margin-top: 0;
+  padding: 0;
   user-select: none;
   display: flex;
   align-items: center;
@@ -1117,6 +1224,7 @@
 
 .msgMetaRowRight {
   justify-content: flex-end;
+  flex-wrap: nowrap;
 }
 
 .msgUsage {
@@ -1170,15 +1278,13 @@
   align-items: center;
   justify-content: flex-end;
   gap: 2px;
-  margin-top: 2px;
-  /* Stable 32px hit row so copy/edit stay easy to aim at. */
-  min-height: 32px;
+  margin: 0;
   padding: 0;
 
   .msgCopyBtn,
   .msgActionBtn {
-    width: 32px;
-    height: 32px;
+    width: 22px;
+    height: 22px;
     margin-left: 0;
     /* Invisible until hover/focus, but still receive clicks if aimed. */
     opacity: 0;
@@ -1206,11 +1312,11 @@
   }
 }
 
-/* Reveal when the user bubble is hovered/focused, not only the tiny buttons. */
-.userMsgColumn:hover .userMsgActions .msgCopyBtn,
-.userMsgColumn:hover .userMsgActions .msgActionBtn,
-.userMsgColumn:focus-within .userMsgActions .msgCopyBtn,
-.userMsgColumn:focus-within .userMsgActions .msgActionBtn,
+/* Reveal when the user bubble (or meta row) is hovered/focused. */
+.bubbleContent:hover .userMsgActions .msgCopyBtn,
+.bubbleContent:hover .userMsgActions .msgActionBtn,
+.bubbleContent:focus-within .userMsgActions .msgCopyBtn,
+.bubbleContent:focus-within .userMsgActions .msgActionBtn,
 .messageBubble:hover .userMsgActions .msgCopyBtn,
 .messageBubble:hover .userMsgActions .msgActionBtn {
   opacity: 1;

@@ -1,3 +1,33 @@
 #!/bin/bash
-# Octop — 配置前回调（无特殊处理）
+#
+# Octop — 配置变更前回调
+# 在应用「设置」窗口提交的配置生效之前做前置校验：自定义密码无效时
+# 直接拦截（错误信息经 TRIM_TEMP_LOGFILE 展示给用户）。
+#
+set -euo pipefail
+
+_OCTOP_COMMON="$(dirname "$0")/common.sh"
+[ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop/cmd/common.sh"
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
+
+fail_config() {
+    echo "[octop] $1" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+    echo "[octop] $1" >&2 || true
+    exit 1
+}
+
+PASSWORD_MODE="$(octop_sanitize_value "${wizard_password_mode:-keep}")"
+WIZARD_PASSWORD="$(octop_sanitize_value "${wizard_admin_password:-}")"
+
+if [ "$PASSWORD_MODE" = "custom" ]; then
+    if [ -z "$WIZARD_PASSWORD" ]; then
+        fail_config "您选择了自己设置新密码，但密码为空。请输入新密码，或改选「自动生成新的随机密码」。"
+    fi
+    if ! REASON="$(octop_validate_password "$WIZARD_PASSWORD" 2>&1)"; then
+        fail_config "新密码不符合要求：${REASON}（要求：至少 8 位，且同时包含字母和数字，不能使用过于常见的密码）"
+    fi
+elif [ "$PASSWORD_MODE" != "keep" ] && [ "$PASSWORD_MODE" != "random" ]; then
+    fail_config "密码设置方式无效：${PASSWORD_MODE}（应为 keep / custom / random）"
+fi
+
 exit 0

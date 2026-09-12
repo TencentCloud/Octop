@@ -486,6 +486,18 @@
   margin-bottom: 24px;
 }
 
+.emptyStateSuggestionsCols2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 760px;
+
+  @media (max-width: 640px) {
+    display: flex;
+    flex-direction: column;
+    max-width: 560px;
+  }
+}
+
 .emptyStateSuggestionItem {
   display: flex;
   align-items: center;
@@ -518,6 +530,11 @@
   color: var(--fn-text-secondary);
   line-height: 1.5;
   flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .emptyStateSuggestionArrow {

@@ -183,6 +183,112 @@ def test_skillhub_manifest_keeps_up_to_six_workflow_quick_prompts() -> None:
     assert manifest["quick_prompts"][-1]["title"]["zh"] == "步骤标题 6"
 
 
+def test_skillhub_manifest_defaults_task_examples_without_workflow() -> None:
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubSkillset,
+        _expert_manifest,
+    )
+
+    item = SkillHubSkillset(
+        slug="tech-test-automation",
+        display_name="技术测试自动化",
+        display_name_en="Tech Test Automation",
+        scene="tech",
+    )
+
+    manifest = _expert_manifest(item, ["playwright"])
+    examples = manifest["task_examples"]
+
+    assert len(examples["zh"]) == 3
+    assert len(examples["en"]) == 3
+    assert "技术测试自动化专家" in examples["zh"][0]
+    assert "09:00" in examples["zh"][0]
+    assert "任务创建后立即启用" in examples["zh"][0]
+    assert "Tech Test Automation Expert" in examples["en"][0]
+    assert "09:00" in examples["en"][0]
+
+
+def test_skillhub_manifest_generates_workflow_task_examples() -> None:
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubSkillset,
+        _expert_manifest,
+    )
+
+    item = SkillHubSkillset(
+        slug="media-storyboard-design",
+        display_name="分镜设计",
+        scene="media",
+        content="""# 分镜设计工作流
+
+## 步骤 1：剧本到分镜表格转换（获取层）
+- 将剧本文本解析为结构化分镜表格
+
+输出标准分镜表格和拍摄计划。
+
+## 步骤 2：电影感镜头运动设计（获取层）
+- 为每个分镜设计镜头运动方案
+
+输出镜头运动设计方案和机位规划。
+""",
+    )
+
+    manifest = _expert_manifest(item, ["script-to-storyboard"])
+    examples = manifest["task_examples"]
+
+    assert len(examples["zh"]) == 3
+    assert len(examples["zh"]) == len(examples["en"])
+    assert examples["zh"][0].startswith("每天「09:00」")
+    assert "剧本到分镜表格转换" in examples["zh"][0]
+    assert "任务创建后立即启用" in examples["zh"][0]
+    assert "电影感镜头运动设计" in examples["zh"][1]
+    assert "18:00" in examples["zh"][1]
+    assert "enable immediately" in examples["en"][0]
+    assert not _has_cjk(examples["en"][0])
+
+
+def test_skillhub_manifest_keeps_up_to_six_task_examples() -> None:
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubSkillset,
+        _expert_manifest,
+    )
+
+    workflow = "# 工作流\n\n" + "\n\n".join(
+        f"## 步骤 {idx}：步骤标题 {idx}（处理层）\n- 执行动作 {idx}\n\n输出交付物 {idx}。"
+        for idx in range(1, 11)
+    )
+    item = SkillHubSkillset(
+        slug="demo",
+        display_name="演示专家",
+        scene="tech",
+        content=workflow,
+    )
+
+    examples = _expert_manifest(item, ["demo"])["task_examples"]
+
+    assert len(examples["zh"]) == 6
+    assert "步骤标题 1" in examples["zh"][0]
+    assert "步骤标题 6" in examples["zh"][-1]
+
+
+def test_skillhub_api_dict_includes_task_examples_with_content() -> None:
+    from octop.infra.agents.experts.skillhub_market import SkillHubSkillset
+
+    item = SkillHubSkillset(
+        slug="demo",
+        display_name="演示",
+        display_name_en="Demo",
+        scene="tech",
+        content="## 步骤 1：巡检集群\n输出健康报告。",
+    )
+
+    preview = item.api_dict(include_content=True)
+    listing = item.api_dict()
+
+    assert len(listing["task_examples"]["zh"]) == 3
+    assert preview["task_examples"]["zh"][0].startswith("每天「09:00」")
+    assert "巡检集群" in preview["task_examples"]["zh"][0]
+
+
 def test_browse_skillsets_filters_by_scene(monkeypatch) -> None:
     from octop.infra.agents.experts import skillhub_market
 

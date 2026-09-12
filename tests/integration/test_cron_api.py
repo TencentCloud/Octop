@@ -7,6 +7,7 @@ run-now invoking the cron manager and updating last_status.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -172,6 +173,65 @@ async def test_cron_settings_returns_timezone(env: Any) -> None:
     r = await c.get("/api/cron/settings", headers=alice_auth)
     assert r.status_code == 200
     assert r.json() == {"timezone": "Asia/Shanghai"}
+
+
+async def test_cron_examples_missing_field_is_null(env: Any) -> None:
+    c, _srv, alice_auth, _bob_auth, aid = env
+    r = await c.get(f"/api/agents/{aid}/cron/examples", headers=alice_auth)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"task_examples": None}
+
+
+async def test_cron_examples_reads_workspace_manifest(env: Any) -> None:
+    c, srv, alice_auth, bob_auth, aid = env
+    workspace = srv.app_runtime.agent_registry.workspace_for_agent(aid)
+    assert workspace is not None
+    await workspace.awrite_text(
+        ".octop/manifest.json",
+        json.dumps(
+            {
+                "id": "demo",
+                "task_examples": {
+                    "zh": ["每天 09:00 巡检"],
+                    "en": ["Patrol daily at 09:00"],
+                },
+            }
+        ),
+        force=True,
+    )
+    r = await c.get(f"/api/agents/{aid}/cron/examples", headers=alice_auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["task_examples"] == {
+        "zh": ["每天 09:00 巡检"],
+        "en": ["Patrol daily at 09:00"],
+    }
+    denied = await c.get(f"/api/agents/{aid}/cron/examples", headers=bob_auth)
+    assert denied.status_code == 403
+
+
+async def test_cron_examples_display_normalizes_four_or_five_to_three(env: Any) -> None:
+    c, srv, alice_auth, _bob_auth, aid = env
+    workspace = srv.app_runtime.agent_registry.workspace_for_agent(aid)
+    assert workspace is not None
+    await workspace.awrite_text(
+        ".octop/manifest.json",
+        json.dumps(
+            {
+                "id": "demo",
+                "task_examples": {
+                    "zh": ["一", "二", "三", "四", "五"],
+                    "en": ["a", "b", "c", "d", "e"],
+                },
+            }
+        ),
+        force=True,
+    )
+    r = await c.get(f"/api/agents/{aid}/cron/examples", headers=alice_auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["task_examples"] == {"zh": ["一", "二", "三"], "en": ["a", "b", "c"]}
+    welcome = await c.get(f"/api/agents/{aid}/chat/welcome", headers=alice_auth)
+    assert welcome.status_code == 200, welcome.text
+    assert welcome.json()["task_examples"] == {"zh": ["一", "二", "三"], "en": ["a", "b", "c"]}
 
 
 async def test_settings_timezone_returns_default(env: Any) -> None:

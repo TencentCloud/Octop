@@ -4,14 +4,34 @@
 
 ## 首次使用（初始账号）
 
-安装完成后打开应用（Docker 版：`http://<设备IP>:8088`，本地版：`http://<设备IP>:8089`），使用**初始管理员账号**登录：
+安装向导中设置管理员账号与密码，两种方式任选：
 
-| 字段 | 值 |
-|------|-----|
-| 用户名 | `admin` |
-| 密码 | `Octop123` |
+1. **自己输入密码** —— 至少 8 位，且必须同时包含字母和数字（与应用侧密码策略一致；过于常见的密码如 `Octop123` 会被拒绝，无效输入会在安装时直接提示，不会装完才失败）。
+2. **自动生成随机密码（推荐）** —— 安装时自动生成 16 位强密码。
 
-> 该密码是固定初始值（与官方 Docker 镜像默认一致），并非随机生成。**首次登录后请立即在头像菜单 →「修改密码」中更换**。若安装时通过环境变量自定义了 `OCTOP_ADMIN_USERNAME` / `OCTOP_DEFAULT_PASSWORD`，则以自定义值为准。
+生成的 / 设置的密码通过以下两种方式**双保险**送达用户：
+
+- **应用「设置」窗口**：飞牛应用中心 → Octop → 设置，窗口顶部直接显示当前管理员账号与密码，也可在此随时改密（保持不变 / 随机生成 / 自己设置）；
+- **回落备份文件**：数据共享目录下的 `octop-login.txt`（本地版在 data-share 共享目录，Docker 版在 `/var/apps/octop/share/octop/data/`），永久保留并随改密同步更新。
+
+> 若你在 Web 控制台「头像菜单 → 修改密码」中改过密码，则以 Web 密码为准（`octop-login.txt` 与「设置」窗口显示的是安装/配置阶段写入的凭据）。
+
+### 官方命令行管理
+
+本地版安装后自动注册官方 CLI 到 PATH（`/usr/local/bin/octop` → `octop-cli`），SSH 进飞牛即可使用全部官方管理命令（以 root 或 octop-native 身份执行最顺）：
+
+```bash
+octop --help            # 官方 CLI 全部子命令
+octop version
+octop provider list     # 模型 provider
+octop agent list        # 专家/Agent
+octop user list         # 用户管理
+octop user passwd <用户名> --password <新密码>   # 离线改密（应用「设置」窗口改密也走这一命令）
+octop skills --help     # 技能管理
+octop backup --help     # 备份/恢复
+```
+
+> 注意：不要手动执行 `octop run`（会与飞牛应用中心托管的服务实例抢 8089 端口）；Web 服务一律由应用中心启停。
 
 ## 两种安装包
 
@@ -41,7 +61,9 @@ fnos/
 │   │   ├── privilege       # 权限声明（docker-octop 用户）
 │   │   └── resource        # 资源声明（docker-project + 数据共享目录）
 │   ├── wizard/
-│   │   └── install         # 安装向导（可配置管理员账号/密码、日志级别、LLM 密钥）
+│   │   ├── install       # 安装向导（管理员账号/密码：自输或随机生成、日志级别、LLM 密钥）
+│   │   ├── config        # 应用「设置」窗口（当前密码显示 + 改密 + 日志级别 + LLM 密钥）
+│   │   └── uninstall     # 卸载向导（数据清理方式）
 │   ├── app/
 │   │   ├── docker/
 │   │   │   └── docker-compose.yaml   # 引用 ghcr.io/tencentcloud/octop:latest
@@ -56,7 +78,8 @@ fnos/
     │   ├── privilege       # 权限声明（root，用于 sudo / 远程桌面等）
     │   └── resource        # data-share + usr-local-linker
     ├── app/
-    │   ├── bin/octop       # 启动器（用自带 Python 运行时启动 octop init/run）
+    │   ├── bin/octop       # 启动器（用自带 Python 运行时启动 octop init/run，init 带弱密码自动重试兜底）
+    │   ├── wizard/config.template   # 「设置」窗口表单模板（渲染当前密码后落到已安装包 wizard/config）
     │   └── ui/             # 桌面图标入口
     └── wizard/             # 安装/配置/卸载/升级向导
 ```

@@ -13,6 +13,18 @@ COMPOSER_CTX_KEY = "octop_composer_context"
 INBOUND_ATTACHMENTS_KEY = "octop_inbound_attachments"
 # Plan→Craft silent handoff: history should not render this user turn as a bubble.
 UI_HIDDEN_KEY = "octop_ui_hidden"
+# Must match harness_agent.messages.CHECKPOINT_TS_KEY (epoch-ms).
+CHECKPOINT_TS_KEY = "checkpoint_ts"
+# Persisted on AIMessage.additional_kwargs when a stream fails mid-turn.
+STREAM_ERROR_FLAG = "octop_stream_error"
+STREAM_ERROR_CODE_KEY = "error_code"
+
+
+def parse_checkpoint_ts_ms(raw: Any) -> int | None:
+    """Normalize a checkpoint/created_at value to epoch milliseconds."""
+    if isinstance(raw, bool) or not isinstance(raw, int | float) or raw <= 0:
+        return None
+    return int(raw) if raw > 1_000_000_000_000 else int(raw * 1000)
 
 
 def build_composer_context(

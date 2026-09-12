@@ -25,6 +25,17 @@ interface UserMessageComposerTagsProps {
   lookups?: ComposerTagLookups;
 }
 
+export function hasUserComposerTags(context?: UserComposerContext): boolean {
+  if (!context) return false;
+  return Boolean(
+    context.skills?.length ||
+      context.connectors?.length ||
+      context.knowledgeBaseIds?.length ||
+      context.targetAgents?.length ||
+      context.model,
+  );
+}
+
 export default function UserMessageComposerTags({
   context,
   lookups,

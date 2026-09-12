@@ -206,6 +206,7 @@ class ExpertHubItemResponse(BaseModel):
     source: str = "skillhub"
     content: LocalizedTextResponse | None = None
     quick_prompts: list[QuickPromptResponse] | None = None
+    task_examples: dict[str, list[str]] | None = None
 
 
 class ExpertHubListResponse(BaseModel):
@@ -276,6 +277,7 @@ def _summary_dict(s: Any) -> dict[str, Any]:
         "icon_name": s.icon_name,
         "color": s.color,
         "quick_prompts": [_quick_prompt_dict(p) for p in getattr(s, "quick_prompts", ())],
+        "task_examples": getattr(s, "task_examples", None),
     }
 
 

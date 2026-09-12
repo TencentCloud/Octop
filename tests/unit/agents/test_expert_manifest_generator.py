@@ -119,6 +119,10 @@ async def test_generate_and_apply_skillhub_manifest_assets(tmp_path) -> None:
     assert data["quick_prompts"][0]["title"]["en"] == "Card 1"
     assert data["skillhub"]["manifest_generated"]["model"] == "p/model"
     assert data["skillhub"]["welcome_generated"]["model"] == "p/model"
+    assert len(data["task_examples"]["zh"]) == 3
+    assert len(data["task_examples"]["en"]) == 3
+    assert "测试工作流专家" in data["task_examples"]["zh"][0]
+    assert "09:00" in data["task_examples"]["zh"][0]
 
     catalog = ExpertCatalog(tmp_path)
     catalog.refresh()
@@ -292,3 +296,66 @@ def test_normalize_manifest_assets_pads_to_six_quick_prompts() -> None:
     assert len(assets["quick_prompts"]) == 6
     assert assets["quick_prompts"][0]["title"]["zh"] == "启动任务"
     assert assets["quick_prompts"][3]["title"]["zh"] == "继续推进 4"
+
+
+def test_normalize_manifest_assets_pads_task_examples() -> None:
+    from octop.infra.agents.experts.manifest_generator import normalize_manifest_assets
+
+    payload = _generated_payload()
+    payload["task_examples"] = {
+        "zh": ["每天「08:00」推送测试早报"],
+        "en": ["Every day at 08:00, push a test briefing"],
+    }
+
+    assets = normalize_manifest_assets(
+        payload,
+        fallback_name_zh="测试工作流专家",
+        fallback_name_en="Test Workflow Expert",
+    )
+
+    assert len(assets["task_examples"]["zh"]) == 3
+    assert len(assets["task_examples"]["en"]) == 3
+    assert assets["task_examples"]["zh"][0] == "每天「08:00」推送测试早报"
+    assert "测试工作流专家" in assets["task_examples"]["zh"][1]
+
+
+def test_normalize_manifest_assets_pads_four_task_examples_to_six() -> None:
+    from octop.infra.agents.experts.manifest_generator import normalize_manifest_assets
+
+    payload = _generated_payload()
+    payload["task_examples"] = {
+        "zh": [f"每天「0{idx}:00」跑第 {idx} 项巡检" for idx in range(1, 5)],
+        "en": [f"Every day at 0{idx}:00, run patrol {idx}" for idx in range(1, 5)],
+    }
+
+    assets = normalize_manifest_assets(
+        payload,
+        fallback_name_zh="测试工作流专家",
+        fallback_name_en="Test Workflow Expert",
+    )
+
+    assert len(assets["task_examples"]["zh"]) == 6
+    assert len(assets["task_examples"]["en"]) == 6
+    assert assets["task_examples"]["zh"][0] == "每天「01:00」跑第 1 项巡检"
+    assert "测试工作流专家" in assets["task_examples"]["zh"][4]
+
+
+def test_normalize_manifest_assets_keeps_at_most_six_task_examples() -> None:
+    from octop.infra.agents.experts.manifest_generator import normalize_manifest_assets
+
+    payload = _generated_payload()
+    payload["task_examples"] = {
+        "zh": [f"每天「0{idx}:00」跑第 {idx} 项巡检" for idx in range(1, 9)],
+        "en": [f"Every day at 0{idx}:00, run patrol {idx}" for idx in range(1, 9)],
+    }
+
+    assets = normalize_manifest_assets(
+        payload,
+        fallback_name_zh="专家",
+        fallback_name_en="Expert",
+    )
+
+    assert assets["task_examples"]["zh"] == [
+        f"每天「0{idx}:00」跑第 {idx} 项巡检" for idx in range(1, 7)
+    ]
+    assert len(assets["task_examples"]["en"]) == 6
