@@ -22,32 +22,34 @@ export default function GeneratingIndicator({
   const showTimer = Boolean(showElapsed && startedAt != null && startedAt > 0);
 
   return (
-    <div
-      className={styles.generatingIndicator}
-      role="status"
-      aria-live="polite"
-    >
-      <span className={styles.thinkingDot} />
-      <span className={styles.thinkingDot} />
-      <span className={styles.thinkingDot} />
-      <span className={styles.generatingText}>
-        {showTimer
-          ? t("chat.generatingWithElapsed", {
-              seconds: elapsed,
-              defaultValue: "生成中 · {{seconds}}s",
-            })
-          : t("chat.generating", "生成中")}
-      </span>
-      {onCancel && (
-        <button
-          className={styles.thinkingCancelBtn}
-          onClick={onCancel}
-          type="button"
-          title={t("common.cancel")}
-        >
-          {t("common.cancel")}
-        </button>
-      )}
+    <div className={styles.turnInset}>
+      <div
+        className={styles.generatingIndicator}
+        role="status"
+        aria-live="polite"
+      >
+        <span className={styles.thinkingDot} />
+        <span className={styles.thinkingDot} />
+        <span className={styles.thinkingDot} />
+        <span className={styles.generatingText}>
+          {showTimer
+            ? t("chat.generatingWithElapsed", {
+                seconds: elapsed,
+                defaultValue: "生成中 · {{seconds}}s",
+              })
+            : t("chat.generating", "生成中")}
+        </span>
+        {onCancel && (
+          <button
+            className={styles.thinkingCancelBtn}
+            onClick={onCancel}
+            type="button"
+            title={t("common.cancel")}
+          >
+            {t("common.cancel")}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
