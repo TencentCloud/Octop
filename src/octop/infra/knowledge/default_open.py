@@ -3,17 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, Protocol
+from typing import Any
 
 from octop.infra.db.repos.knowledge import KnowledgeBaseRow
 
 DEFAULT_KNOWLEDGE_BASE_IDS_CONFIG_KEY = "default_knowledge_base_ids"
-
-
-class _KnowledgeBase(Protocol):
-    id: str
-    owner_user_id: int
-    default_open: bool
 
 
 def default_knowledge_base_ids_from_config(cfg: object | None) -> list[str]:
@@ -77,28 +71,31 @@ def merge_knowledge_base_ids(
     explicit_ids: list[str] | None,
     *,
     owner_user_id: int,
+    extra_ids: Sequence[str] | None = None,
     agent_default_ids: Sequence[str] | None = None,
 ) -> list[str]:
-    """Resolve turn KB ids: explicit → agent defaults → owner default-open.
+    """Use the actor's own default-open bases when a turn omits a list.
 
     ``default_open`` is per-owner preference: shared bases marked default-open
     are auto-injected only for the creating user, not for other viewers.
-    Agent defaults are filtered to ids present in *visible_bases*.
+    ``extra_ids`` (expert composer picks) and ``agent_default_ids`` (agent
+    config defaults) are unioned in when still visible.
     """
     if explicit_ids is not None:
         return list(explicit_ids)
-    visible = {base.id for base in visible_bases}
-    # Agent defaults (expert picks) take priority over owner's default-open
-    if agent_default_ids:
-        selected = [kid for kid in agent_default_ids if kid in visible]
-        if selected:
-            return selected
-    # Fall back to owner's default-open bases
-    return [
-        base.id
-        for base in visible_bases
-        if base.default_open and int(base.owner_user_id) == int(owner_user_id)
-    ]
+    selected: list[str] = []
+    visible_ids = {base.id for base in visible_bases}
+    for base in visible_bases:
+        if base.default_open and int(base.owner_user_id) == int(owner_user_id):
+            selected.append(base.id)
+    extras: list[str] = []
+    extras.extend(str(kb_id) for kb_id in extra_ids or [])
+    extras.extend(str(kb_id) for kb_id in agent_default_ids or [])
+    for kb_id in extras:
+        text = kb_id.strip()
+        if text and text in visible_ids and text not in selected:
+            selected.append(text)
+    return selected
 
 
 def stamp_turn_knowledge_config(
@@ -118,18 +115,8 @@ def stamp_turn_knowledge_config(
         visible_bases,
         explicit_ids,
         owner_user_id=owner_user_id,
-        agent_default_ids=extra_ids,
+        extra_ids=extra_ids,
     )
-    # Union: owner's default-open bases + agent defaults (expert picks)
-    if explicit_ids is None and extra_ids:
-        visible = {base.id for base in visible_bases}
-        owner_defaults = [
-            base.id
-            for base in visible_bases
-            if base.default_open and int(base.owner_user_id) == int(owner_user_id)
-        ]
-        agent_picks = [kid for kid in extra_ids if kid in visible]
-        selected_ids = list(dict.fromkeys(owner_defaults + agent_picks))
     configurable = dict(request.get("configurable") or {})
     configurable["knowledge_base_ids"] = selected_ids
     configurable["knowledge_base_catalog"] = catalog_for_selected_bases(visible_bases, selected_ids)
