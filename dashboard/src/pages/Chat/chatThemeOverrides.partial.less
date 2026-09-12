@@ -630,16 +630,11 @@
 }
 
 .messageListInner {
-  max-width: 960px;
+  width: 100%;
   min-width: 280px;
   margin: 0 auto;
-  padding: 0 20px;
-  width: 100%;
+  padding-inline: var(--chat-column-pad-x, 24px);
   overflow-anchor: none;
-
-  @media (max-width: 767px) {
-    padding: 0 14px;
-  }
 }
 
 .inlineToolBlock {
