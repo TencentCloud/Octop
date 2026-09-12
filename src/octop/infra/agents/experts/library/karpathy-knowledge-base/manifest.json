@@ -21,8 +21,14 @@
   ],
   "quick_prompts": [
     {
-      "title": {"zh": "初始化知识主题", "en": "Initialize a topic"},
-      "description": {"zh": "确定知识库范围、目标和首批来源", "en": "Define scope, goals, and initial sources"},
+      "title": {
+        "zh": "初始化知识主题",
+        "en": "Initialize a topic"
+      },
+      "description": {
+        "zh": "确定知识库范围、目标和首批来源",
+        "en": "Define scope, goals, and initial sources"
+      },
       "prompt": {
         "zh": "请和我一起初始化这个知识库。主题是：；我希望长期回答的问题是：；首批资料是：。先检查现有 MEMORY.md 和 Wiki，再给出初始化方案。",
         "en": "Help me initialize this knowledge base. Topic:; long-term questions:; initial sources:. Check MEMORY.md and the existing wiki first, then propose the setup."
@@ -31,8 +37,14 @@
       "icon_name": "book-open"
     },
     {
-      "title": {"zh": "摄取新资料", "en": "Ingest a source"},
-      "description": {"zh": "读取一个来源并更新相关 Wiki 页面", "en": "Read one source and update related wiki pages"},
+      "title": {
+        "zh": "摄取新资料",
+        "en": "Ingest a source"
+      },
+      "description": {
+        "zh": "读取一个来源并更新相关 Wiki 页面",
+        "en": "Read one source and update related wiki pages"
+      },
       "prompt": {
         "zh": "请把以下资料摄取到知识库：。先确认来源身份和范围，再摘要、交叉链接并更新索引与日志。",
         "en": "Ingest this source into the knowledge base:. Confirm its identity and scope, then summarize, cross-link, and update the indexes and log."
@@ -41,8 +53,14 @@
       "icon_name": "file-text"
     },
     {
-      "title": {"zh": "查询知识库", "en": "Query the wiki"},
-      "description": {"zh": "基于已编译知识与原始来源回答", "en": "Answer from compiled knowledge and raw sources"},
+      "title": {
+        "zh": "查询知识库",
+        "en": "Query the wiki"
+      },
+      "description": {
+        "zh": "基于已编译知识与原始来源回答",
+        "en": "Answer from compiled knowledge and raw sources"
+      },
       "prompt": {
         "zh": "请基于当前知识库回答这个问题：。先从 MEMORY.md 和 index.md 定位，再引用具体 Wiki 页面与原始来源。",
         "en": "Answer this question from the current knowledge base:. Start with MEMORY.md and index.md, then cite the relevant wiki pages and raw sources."
@@ -51,8 +69,14 @@
       "icon_name": "search"
     },
     {
-      "title": {"zh": "运行知识库体检", "en": "Lint the knowledge base"},
-      "description": {"zh": "检查冲突、陈旧内容、断链和索引漂移", "en": "Find conflicts, stale claims, broken links, and index drift"},
+      "title": {
+        "zh": "运行知识库体检",
+        "en": "Lint the knowledge base"
+      },
+      "description": {
+        "zh": "检查冲突、陈旧内容、断链和索引漂移",
+        "en": "Find conflicts, stale claims, broken links, and index drift"
+      },
       "prompt": {
         "zh": "请对整个知识库做一次 lint：检查冲突、过期主张、孤立页面、断链、缺失来源和 MEMORY.md/index.md 漂移；先报告，再执行安全修复。",
         "en": "Lint the knowledge base for contradictions, stale claims, orphan pages, broken links, missing sources, and MEMORY.md/index.md drift. Report first, then apply safe fixes."
@@ -61,8 +85,14 @@
       "icon_name": "list-checks"
     },
     {
-      "title": {"zh": "整理主题地图", "en": "Build a topic map"},
-      "description": {"zh": "把分散页面组织成概念关系和研究缺口", "en": "Organize pages into concepts, relationships, and gaps"},
+      "title": {
+        "zh": "整理主题地图",
+        "en": "Build a topic map"
+      },
+      "description": {
+        "zh": "把分散页面组织成概念关系和研究缺口",
+        "en": "Organize pages into concepts, relationships, and gaps"
+      },
       "prompt": {
         "zh": "请为这个主题整理一张知识地图：。标出核心概念、实体、关键来源、相互关系、冲突和待研究问题，并把有长期价值的结果归档到 Wiki。",
         "en": "Build a knowledge map for this topic:. Show core concepts, entities, sources, relationships, conflicts, and research gaps, then file durable results into the wiki."
@@ -70,5 +100,23 @@
       "color": "#e0f2fe",
       "icon_name": "network"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「21:00」对知识库做一次 lint：断链、孤立页、无来源主张，只报告不自动大改，任务创建后立即启用",
+      "每周日「20:00」根据 MEMORY.md 活跃主题生成一周研究摘要",
+      "每个工作日「09:30」提醒我今日待摄取的来源，并更新 MEMORY 索引",
+      "每周三「21:00」把本周新增笔记按主题归入索引，不改原文",
+      "每月 1 日「20:00」盘点孤立页与重复主题，给出合并建议但不自动改",
+      "每周五「21:00」根据本周摄取来源更新 MEMORY 待办，不改正文"
+    ],
+    "en": [
+      "Every day at 21:00, lint the knowledge base for broken links, orphan pages, and unsourced claims — report only, no large auto-edits; enable immediately",
+      "Every Sunday at 20:00, write a weekly research digest from the active topics in MEMORY.md",
+      "Every weekday at 09:30, remind me of sources waiting to ingest and refresh the MEMORY index",
+      "Every Wednesday at 21:00, file this week's new notes into the index by topic without rewriting them",
+      "On the 1st of each month at 20:00, inventory orphan pages and duplicate topics and suggest merges — no auto-edits",
+      "Every Friday at 21:00, refresh MEMORY todos from this week's sources — do not rewrite notes"
+    ]
+  }
 }

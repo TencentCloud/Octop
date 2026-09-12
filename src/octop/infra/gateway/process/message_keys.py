@@ -11,6 +11,9 @@ from octop.infra.gateway.threads import ThreadRegistry
 # Persisted on HumanMessage.additional_kwargs for dashboard history UI.
 COMPOSER_CTX_KEY = "octop_composer_context"
 INBOUND_ATTACHMENTS_KEY = "octop_inbound_attachments"
+# Persisted on AIMessage.additional_kwargs when a stream fails mid-turn.
+STREAM_ERROR_FLAG = "octop_stream_error"
+STREAM_ERROR_CODE_KEY = "error_code"
 
 
 def build_composer_context(

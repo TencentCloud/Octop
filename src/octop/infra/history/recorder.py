@@ -11,6 +11,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, ToolMessage, message_to_dict
 
 from octop.infra.gateway.process.history_projection import TurnHistoryTracker, _role, message_input
+from octop.infra.gateway.process.message_keys import STREAM_ERROR_CODE_KEY, STREAM_ERROR_FLAG
 from octop.infra.history.service import HistoryArchive
 from octop.infra.history.store import dumps
 from octop.infra.trajectory.projector import _tool_result_fields
@@ -190,6 +191,24 @@ class RecordingTracker(TurnHistoryTracker):
                 elif existing != wire:
                     existing.update(wire)
                     self._mark_changed(existing)
+            self._assistant = None
+        elif kind == "error":
+            text = str(chunk.get("message") or chunk.get("content") or "")
+            if not text:
+                return
+            error_extra: dict[str, Any] = {STREAM_ERROR_FLAG: True}
+            code = chunk.get("error_code")
+            if code:
+                error_extra[STREAM_ERROR_CODE_KEY] = str(code)
+            self._append_part(
+                message_to_dict(
+                    AIMessage(
+                        content=text,
+                        id=f"{self.turn['id']}:error",
+                        additional_kwargs=error_extra,
+                    )
+                )
+            )
             self._assistant = None
 
     def _merge_state(self) -> None:

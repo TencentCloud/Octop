@@ -117,5 +117,23 @@
       "color": "#fff1f2",
       "icon_name": "pen-line"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「21:00」提醒我记录宝宝今日饮食、睡眠和异常，持续生效并立即启用",
+      "每周日「20:00」汇总本周发育与健康记录，对照档案给出注意事项",
+      "距离下次疫苗接种 7 天内，每天「09:00」提醒我预约和注意事项",
+      "每月孩子月龄日「20:00」汇总当月发育并对照 WHO 曲线，仅在偏好窗口内发送",
+      "每天「07:30」根据档案提醒今日辅食或过敏观察要点",
+      "每周五「21:00」整理本周日记条目索引，不改原文"
+    ],
+    "en": [
+      "Every day at 21:00, remind me to log today's feeding, sleep, and anything unusual — enable immediately and keep it running",
+      "Every Sunday at 20:00, summarize this week's growth and health notes against the profile",
+      "When the next vaccine is within 7 days, remind me daily at 09:00 to book it and review precautions",
+      "On the child's monthly age-day at 20:00, summarize growth vs WHO curves — send only in the preferred window",
+      "Every day at 07:30, remind me of today's feeding or allergy-watch notes from the profile",
+      "Every Friday at 21:00, index this week's diary entries without rewriting them"
+    ]
+  }
 }

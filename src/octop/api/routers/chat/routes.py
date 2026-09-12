@@ -16,7 +16,11 @@ from octop.api.routers.chat.sse import format_sse
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
     default_welcome_payload,
-    read_workspace_manifest_welcome,
+    normalize_task_examples_for_display,
+    parse_task_examples,
+    read_workspace_manifest_data,
+    welcome_payload_from_manifest_data,
+    welcome_payload_has_content,
 )
 from octop.infra.agents.profile import welcome_from_row
 from octop.infra.errors import ErrorCode, OctopError
@@ -67,8 +71,14 @@ async def get_chat_welcome(
 
     workspace = registry.workspace_for_agent(agent_id)
     payload: dict[str, Any] | None = None
+    task_examples = None
     if workspace is not None:
-        payload = await read_workspace_manifest_welcome(workspace)
+        manifest = await read_workspace_manifest_data(workspace)
+        if manifest is not None:
+            welcome = welcome_payload_from_manifest_data(manifest)
+            if welcome_payload_has_content(welcome):
+                payload = welcome
+            task_examples = normalize_task_examples_for_display(parse_task_examples(manifest))
 
     row = registry.get_row(agent_id)
     if payload is None:
@@ -77,7 +87,7 @@ async def get_chat_welcome(
     db_welcome = welcome_from_row(row) if row is not None else None
     if db_welcome is not None:
         payload = {**payload, "welcome_message": {"zh": db_welcome, "en": db_welcome}}
-    return payload
+    return {**payload, "task_examples": task_examples}
 
 
 async def iter_dashboard_hitl_resume_sse(

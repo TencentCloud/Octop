@@ -14,6 +14,7 @@ export interface ExpertSummary {
   icon_name?: string | null;
   color?: string | null;
   files?: string[];
+  task_examples?: { zh?: string[]; en?: string[] } | null;
 }
 
 interface ExpertCardProps {

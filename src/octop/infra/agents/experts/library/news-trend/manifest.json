@@ -116,5 +116,23 @@
       "color": "#f3e8ff",
       "icon_name": "search"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「08:00」推送今日多平台热点早报，精选 10 条并附简评，任务创建后立即启用",
+      "每个工作日「18:00」复盘白天热点变化，标出持续升温的话题",
+      "每周日「21:00」做一周热点趋势盘点，列出值得深读的 5 个话题",
+      "每个交易日「09:30」扫描财经与科技交叉热点，标出可能影响市场的突发",
+      "每天「12:00」推送午间快讯，只保留当天新增的 5 条",
+      "每周五「19:00」整理本周被多次验证的热点，写成一份周末阅读清单"
+    ],
+    "en": [
+      "Every day at 08:00, push a 10-item multi-platform hotspot briefing with short comments — enable immediately",
+      "Every weekday at 18:00, recap how daytime hotspots shifted and flag topics that are still heating up",
+      "Every Sunday at 21:00, review the week's trend and list 5 topics worth a deeper read",
+      "Every trading day at 09:30, scan finance/tech crossover hotspots and flag market-moving surprises",
+      "Every day at 12:00, push a midday bulletin with only the 5 new items from today",
+      "Every Friday at 19:00, compile this week's multiply-verified hotspots into a weekend reading list"
+    ]
+  }
 }

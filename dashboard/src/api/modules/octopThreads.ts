@@ -26,6 +26,8 @@ export interface OctopThreadHistory {
     id?: string;
     usage?: unknown;
     timestamp?: number;
+    status?: string;
+    error_code?: string;
   }>;
   pinned?: boolean;
   model_ref?: string | null;

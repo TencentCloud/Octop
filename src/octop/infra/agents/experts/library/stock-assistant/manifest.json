@@ -116,5 +116,23 @@
       "color": "#fff1f2",
       "icon_name": "bar-chart-3"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "设置「每个交易日 09:15」推送今日 A 股开盘综述（大盘、热点板块、北向资金），任务创建后立即启用",
+      "每个交易日「15:10」复盘收盘：指数涨跌、涨停跌停池和我关注的自选股，从今天开始持续生效",
+      "每周一「08:30」汇总上周板块资金流向和我自选股的技术面变化，发送给我",
+      "每个交易日「11:35」盘中快报：指数、成交额和我自选股异动",
+      "每个交易日「21:00」复盘美股与隔夜期货对 A 股的可能影响",
+      "每月最后一个交易日「16:00」汇总本月自选股涨跌和估值变化"
+    ],
+    "en": [
+      "Push today's A-share open briefing (index, hot sectors, northbound flow) every trading day at 09:15, and enable the job immediately",
+      "Every trading day at 15:10, recap the close: index moves, limit-up/down pool, and my watchlist — start today and keep it running",
+      "Every Monday at 08:30, summarize last week's sector fund flows and technical changes on my watchlist",
+      "Every trading day at 11:35, send a midday flash: index, turnover, and watchlist movers",
+      "Every trading day at 21:00, recap how US stocks and overnight futures may affect A-shares",
+      "On the last trading day of each month at 16:00, summarize this month's watchlist moves and valuation changes"
+    ]
+  }
 }

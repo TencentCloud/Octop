@@ -66,6 +66,15 @@ function promptText(
   return pickLocale(prompt[field], lang) || "";
 }
 
+function taskExampleTexts(expert: MarketExpert, lang: "zh" | "en"): string[] {
+  const raw = expert.task_examples;
+  if (!raw) return [];
+  const primary = lang === "zh" ? raw.zh : raw.en;
+  const fallback = lang === "zh" ? raw.en : raw.zh;
+  const picked = primary?.length ? primary : fallback;
+  return (picked ?? []).map((item) => item.trim()).filter(Boolean);
+}
+
 export default function ExpertMarketTab({
   lang,
   installedExpertIds,
@@ -142,6 +151,8 @@ export default function ExpertMarketTab({
     },
     [onRequestCreate],
   );
+
+  const selectedTaskExamples = selected ? taskExampleTexts(selected, lang) : [];
 
   const totalText = useMemo(
     () => t("experts.totalMarket", { count: items.length }),
@@ -393,6 +404,30 @@ export default function ExpertMarketTab({
               ) : (
                 <div className={styles.marketWorkflowPreview}>
                   {t("experts.marketQuickPromptsEmpty")}
+                </div>
+              )}
+            </div>
+            <div>
+              <div className={styles.marketSectionTitle}>
+                {t("experts.marketTaskExamples")}
+              </div>
+              {detailLoading ? (
+                <Spin size="small" />
+              ) : selectedTaskExamples.length > 0 ? (
+                <div className={styles.marketTaskExampleList}>
+                  {selectedTaskExamples.map((text, idx) => (
+                    <div
+                      key={`${text}-${idx}`}
+                      className={styles.marketTaskExampleItem}
+                      title={text}
+                    >
+                      {text}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className={styles.marketWorkflowEmpty}>
+                  {t("experts.marketTaskExamplesEmpty")}
                 </div>
               )}
             </div>

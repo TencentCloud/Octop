@@ -10,6 +10,7 @@ export interface ChatWelcomeResponse {
     color?: string;
     icon_name?: string | null;
   }>;
+  task_examples?: { zh?: string[]; en?: string[] } | null;
 }
 
 export const agentChatApi = {

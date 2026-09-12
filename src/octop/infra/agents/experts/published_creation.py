@@ -15,6 +15,8 @@ from psycopg import IntegrityError as PsycopgIntegrityError
 from octop.infra.agents.avatar import bind_workspace_avatar_icon_url
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
+    parse_task_examples,
+    read_workspace_manifest_task_examples,
     read_workspace_manifest_welcome,
     seed_expert_directory,
 )
@@ -95,6 +97,15 @@ async def _workspace_quick_prompts(workspace: Any) -> tuple[dict[str, Any], ...]
     return _manifest_quick_prompts(payload) if payload is not None else ()
 
 
+def _manifest_task_examples(manifest: dict[str, Any]) -> dict[str, list[str]] | None:
+    return parse_task_examples(manifest)
+
+
+async def _workspace_task_examples(workspace: Any) -> dict[str, list[str]] | None:
+    """Tasks-page examples from the source workspace, so publishing never drops them."""
+    return await read_workspace_manifest_task_examples(workspace)
+
+
 def _agent_color(registry: Any, agent_id: str) -> str | None:
     row = registry.get_row(agent_id)
     if row is not None:
@@ -115,6 +126,7 @@ def _snapshot_meta(
     welcome_message_zh: str = "",
     welcome_message_en: str = "",
     quick_prompts: tuple[dict[str, Any], ...] = (),
+    task_examples: dict[str, list[str]] | None = None,
 ) -> PublishedExpertSnapshotMeta:
     return PublishedExpertSnapshotMeta(
         name=name,
@@ -126,6 +138,7 @@ def _snapshot_meta(
         welcome_message_zh=welcome_message_zh,
         welcome_message_en=welcome_message_en,
         quick_prompts=quick_prompts,
+        task_examples=task_examples,
     )
 
 
@@ -153,6 +166,7 @@ async def publish_agent_expert(
     welcome_message_zh: str = "",
     welcome_message_en: str = "",
     quick_prompts: tuple[dict[str, Any], ...] = (),
+    task_examples: dict[str, list[str]] | None = None,
 ) -> PublishedExpertRow:
     """Snapshot an owned agent workspace into a globally installable expert template."""
     repo = services.published_expert_repo
@@ -169,6 +183,9 @@ async def publish_agent_expert(
     snapshot_dir = _snapshot_dir(services, expert_id)
     resolved_description = description or source.description or ""
     resolved_quick_prompts = quick_prompts or await _workspace_quick_prompts(workspace)
+    resolved_task_examples = (
+        task_examples if task_examples is not None else await _workspace_task_examples(workspace)
+    )
     color = _agent_color(registry, source.agent_id) or ""
     icon_name = getattr(source, "icon_name", None) or source.icon or ""
     try:
@@ -183,6 +200,7 @@ async def publish_agent_expert(
                 welcome_message_zh=welcome_message_zh,
                 welcome_message_en=welcome_message_en,
                 quick_prompts=resolved_quick_prompts,
+                task_examples=resolved_task_examples,
             ),
             manifest_id=resolved_slug,
         )
@@ -224,6 +242,7 @@ async def refresh_published_expert(
     welcome_message_zh: str | None = None,
     welcome_message_en: str | None = None,
     quick_prompts: tuple[dict[str, Any], ...] | None = None,
+    task_examples: dict[str, list[str]] | None = None,
 ) -> PublishedExpertRow:
     """Replace a published snapshot using its still-owned source agent workspace."""
     row = require_published_expert(services, expert_id)
@@ -237,6 +256,7 @@ async def refresh_published_expert(
     existing_manifest = await asyncio.to_thread(_read_snapshot_manifest, snapshot_dir)
     existing_welcome_zh, existing_welcome_en = _manifest_welcome(existing_manifest)
     existing_quick_prompts = _manifest_quick_prompts(existing_manifest)
+    existing_task_examples = _manifest_task_examples(existing_manifest)
     resolved_name = name if name is not None else row.name
     resolved_description = description if description is not None else row.description
     resolved_welcome_zh = (
@@ -248,6 +268,12 @@ async def refresh_published_expert(
     resolved_quick_prompts = quick_prompts
     if resolved_quick_prompts is None:
         resolved_quick_prompts = await _workspace_quick_prompts(workspace) or existing_quick_prompts
+    resolved_task_examples = task_examples
+    if resolved_task_examples is None:
+        workspace_examples = await _workspace_task_examples(workspace)
+        resolved_task_examples = (
+            workspace_examples if workspace_examples is not None else existing_task_examples
+        )
     await export_agent_workspace_to_dir(
         workspace=workspace,
         dest=snapshot_dir,
@@ -259,6 +285,7 @@ async def refresh_published_expert(
             welcome_message_zh=resolved_welcome_zh,
             welcome_message_en=resolved_welcome_en,
             quick_prompts=resolved_quick_prompts,
+            task_examples=resolved_task_examples,
         ),
         manifest_id=row.slug,
     )

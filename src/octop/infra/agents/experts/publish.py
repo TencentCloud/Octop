@@ -72,6 +72,7 @@ class PublishedExpertSnapshotMeta:
     welcome_message_zh: str
     welcome_message_en: str
     quick_prompts: tuple[dict[str, Any], ...] = ()
+    task_examples: dict[str, list[str]] | None = None
 
 
 def assert_can_mutate_published(row: PublishedExpertRow, user: User) -> None:
@@ -222,6 +223,8 @@ def _manifest_from_metadata(
         data["color"] = metadata.color
     if metadata.quick_prompts:
         data["quick_prompts"] = list(metadata.quick_prompts)
+    if metadata.task_examples is not None:
+        data["task_examples"] = metadata.task_examples
     return json.dumps(data, ensure_ascii=False).encode("utf-8")
 
 

@@ -86,6 +86,19 @@ def test_serialize_history_message_includes_thinking_and_tools() -> None:
     assert failed_tool_result is not None
     assert failed_tool_result["content"][0]["error_code"] == "tool_error"
 
+    stream_error = _serialize_history_message(
+        AIMessage(
+            content="模型服务返回余额或额度不足。",
+            additional_kwargs={
+                "octop_stream_error": True,
+                "error_code": "TOKEN_QUOTA_EXCEEDED",
+            },
+        )
+    )
+    assert stream_error is not None
+    assert stream_error["status"] == "error"
+    assert stream_error["error_code"] == "TOKEN_QUOTA_EXCEEDED"
+
 
 def test_split_string_thinking_parses_redacted_block() -> None:
     from octop.api.routers.chat.serialize import _split_string_thinking

@@ -71,4 +71,27 @@ describe("history token usage", () => {
       "/api/agents/agent_1/",
     );
   });
+
+  it("maps persisted stream errors to assistant error bubbles", () => {
+    const messages = convertHistoryMessages([
+      { role: "user", content: "continue this", id: "u1" },
+      { role: "assistant", content: "partial answer", id: "a1" },
+      {
+        role: "assistant",
+        content: "模型服务返回余额或额度不足。",
+        id: "a2",
+        status: "error",
+        error_code: "TOKEN_QUOTA_EXCEEDED",
+      },
+    ]);
+
+    expect(messages).toHaveLength(3);
+    expect(messages[1]?.content).toBe("partial answer");
+    expect(messages[1]?.status).toBe("done");
+    expect(messages[2]?.status).toBe("error");
+    expect(messages[2]?.errorInfo).toMatchObject({
+      code: "TOKEN_QUOTA_EXCEEDED",
+      source: "history",
+    });
+  });
 });

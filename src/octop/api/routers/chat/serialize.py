@@ -20,6 +20,8 @@ from octop.infra.agents.context_breakdown import usage_dict_from_message
 from octop.infra.gateway.process.message_keys import (
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
+    STREAM_ERROR_CODE_KEY,
+    STREAM_ERROR_FLAG,
 )
 from octop.infra.utils.llm_text import strip_thinking as _strip_thinking
 from octop.infra.utils.locale import normalize_locale
@@ -981,6 +983,11 @@ def _serialize_history_message(msg: Any, *, user: Any = None) -> dict[str, Any] 
     ts_ms = _extract_message_timestamp_ms(msg)
     if ts_ms is not None:
         entry["timestamp"] = ts_ms
+    if additional_kwargs.get(STREAM_ERROR_FLAG):
+        entry["status"] = "error"
+        code = additional_kwargs.get(STREAM_ERROR_CODE_KEY)
+        if code:
+            entry["error_code"] = str(code)
     return entry
 
 

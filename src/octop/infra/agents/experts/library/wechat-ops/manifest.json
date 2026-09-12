@@ -115,5 +115,23 @@
       "color": "#fff7ed",
       "icon_name": "image"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每个工作日「09:00」检查公众号草稿箱，列出待发布文章并提醒我确认，任务创建后立即启用",
+      "每周一「10:00」根据本周选题日历起草一篇短内容，放到待发布",
+      "每月 1 日「09:30」汇总上月各平台发布数据，给出下月选题建议",
+      "每个工作日「18:00」复盘当天阅读、点赞和留言，标出需回复的评论",
+      "每周五「16:00」对照选题日历检查下周空档，补一条备稿",
+      "每天「12:00」检查待发布队列，有到点稿件提醒我确认"
+    ],
+    "en": [
+      "Every weekday at 09:00, check the WeChat draft box, list posts waiting to publish, and ask me to confirm — enable immediately",
+      "Every Monday at 10:00, draft a short piece from this week's topic calendar and leave it in the publish queue",
+      "On the 1st of each month at 09:30, summarize last month's publish stats and suggest next month's topics",
+      "Every weekday at 18:00, recap today's reads, likes, and comments, and flag replies still due",
+      "Every Friday at 16:00, check next week's topic calendar for gaps and add one backup draft",
+      "Every day at 12:00, check the publish queue and remind me to confirm anything due"
+    ]
+  }
 }

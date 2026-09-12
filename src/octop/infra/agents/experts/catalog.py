@@ -4,7 +4,8 @@ An *expert* is metadata in ``manifest.json`` plus files on disk under
 ``library/<id>/``. At seed time files (including a copy of ``manifest.json``)
 are written into the agent workspace under ``.octop/manifest.json``.
 ``prompt_files`` in the manifest is metadata for the dashboard only — persona
-text is read from the workspace.
+text is read from the workspace. ``task_examples`` is an optional locale-keyed
+string array shown as empty-state cards on the tasks page.
 
 Templates are discovered at server start by :class:`ExpertCatalog`.
 """
@@ -62,6 +63,7 @@ class ExpertSummary:
     icon_name: str | None = None
     color: str | None = None
     quick_prompts: tuple[ExpertQuickPrompt, ...] = ()
+    task_examples: dict[str, list[str]] | None = None
 
 
 @dataclass(frozen=True)
@@ -274,10 +276,10 @@ def default_welcome_payload(catalog: ExpertCatalog | None = None) -> dict[str, A
     }
 
 
-async def read_workspace_manifest_welcome(
+async def read_workspace_manifest_data(
     workspace: BackendWorkspace,
 ) -> dict[str, Any] | None:
-    """Parse workspace welcome manifest (``.octop/manifest.json``), if present and valid."""
+    """Parse workspace ``.octop/manifest.json`` (legacy root fallback) as a dict."""
     text = await read_workspace_manifest_text(workspace)
     if text is None:
         return None
@@ -286,10 +288,28 @@ async def read_workspace_manifest_welcome(
     except json.JSONDecodeError:
         logger.warning("workspace %s is not valid JSON", WORKSPACE_MANIFEST_PATH)
         return None
-    if not isinstance(data, dict):
+    return data if isinstance(data, dict) else None
+
+
+async def read_workspace_manifest_welcome(
+    workspace: BackendWorkspace,
+) -> dict[str, Any] | None:
+    """Parse workspace welcome manifest (``.octop/manifest.json``), if present and valid."""
+    data = await read_workspace_manifest_data(workspace)
+    if data is None:
         return None
     payload = welcome_payload_from_manifest_data(data)
     return payload if welcome_payload_has_content(payload) else None
+
+
+async def read_workspace_manifest_task_examples(
+    workspace: BackendWorkspace,
+) -> dict[str, list[str]] | None:
+    """Return ``task_examples`` from the workspace manifest, or ``None`` if absent."""
+    data = await read_workspace_manifest_data(workspace)
+    if data is None:
+        return None
+    return parse_task_examples(data)
 
 
 def read_text_file_contents(expert_dir: Path, paths: list[str]) -> list[dict[str, str]]:
@@ -344,6 +364,131 @@ def _parse_quick_prompts(data: dict[str, Any]) -> tuple[ExpertQuickPrompt, ...]:
             ),
         )
     return tuple(out)
+
+
+def _coerce_string_list(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for item in raw:
+        if isinstance(item, str):
+            text = item.strip()
+            if text:
+                out.append(text)
+    return out
+
+
+def parse_task_examples(data: dict[str, Any]) -> dict[str, list[str]] | None:
+    """Parse ``task_examples`` from a manifest dict.
+
+    Canonical form is locale-keyed string arrays::
+
+        {"zh": ["…"], "en": ["…"]}
+
+    A plain ``["…"]`` list is treated as the same strings for both locales.
+    Missing or invalid values return ``None`` so callers can keep default cards.
+    """
+    if "task_examples" not in data:
+        return None
+    raw = data["task_examples"]
+    if isinstance(raw, list):
+        items = _coerce_string_list(raw)
+        return {"zh": list(items), "en": list(items)}
+    if isinstance(raw, dict):
+        zh_raw = raw.get("zh")
+        en_raw = raw.get("en")
+        if isinstance(zh_raw, list) or isinstance(en_raw, list):
+            return {
+                "zh": _coerce_string_list(zh_raw),
+                "en": _coerce_string_list(en_raw),
+            }
+    return None
+
+
+_TASK_EXAMPLE_COUNT_THREE = 3
+_TASK_EXAMPLE_COUNT_SIX = 6
+
+
+def default_task_examples(label_zh: str, label_en: str) -> dict[str, list[str]]:
+    """Shared bilingual fallbacks for generated / padded ``task_examples``."""
+    return {
+        "zh": [
+            f"每天「09:00」按「{label_zh}」工作流巡检一次，有结果再发给我，任务创建后立即启用",
+            f"每周一「10:00」汇总上周与「{label_zh}」相关的进展和下周计划",
+            "每个工作日「18:00」复盘当天工作，列出待跟进项",
+            f"每周五「17:00」汇总本周与「{label_zh}」相关的交付物和下周安排",
+            f"每天「08:00」按「{label_zh}」工作流推送一条可执行简报",
+            f"每月 1 日「09:30」复盘上月「{label_zh}」进展，列出本月优先项",
+        ],
+        "en": [
+            (
+                f"Every day at 09:00, run the {label_en} workflow once and notify me "
+                "when there is a result — enable immediately"
+            ),
+            f"Every Monday at 10:00, summarize last week's {label_en} progress and next week's plan",
+            "Every weekday at 18:00, recap the day's work and list follow-ups",
+            f"Every Friday at 17:00, recap this week's {label_en} deliverables and next week's plan",
+            f"Every day at 08:00, push one actionable {label_en} briefing",
+            (
+                f"On the 1st of each month at 09:30, recap last month's {label_en} "
+                "progress and list this month's priorities"
+            ),
+        ],
+    }
+
+
+def normalize_task_examples_for_display(
+    parsed: dict[str, list[str]] | None,
+) -> dict[str, list[str]] | None:
+    """Keep display lists at 3 or 6 entries; 4–5 truncate to 3, extras cap at 6."""
+    if parsed is None:
+        return None
+    zh = list(parsed.get("zh") or [])
+    en = list(parsed.get("en") or [])
+    if not zh and not en:
+        return {"zh": [], "en": []}
+    cap = (
+        _TASK_EXAMPLE_COUNT_SIX
+        if max(len(zh), len(en)) >= _TASK_EXAMPLE_COUNT_SIX
+        else _TASK_EXAMPLE_COUNT_THREE
+    )
+    return {"zh": zh[:cap], "en": en[:cap]}
+
+
+def snap_task_examples(
+    zh: list[str],
+    en: list[str],
+    *,
+    fillers_zh: list[str],
+    fillers_en: list[str],
+    count: int | None = None,
+) -> dict[str, list[str]]:
+    """Keep exactly 3 or 6 bilingual examples (4–5 pad to 6; fewer pad to 3)."""
+    out_zh = [item for item in zh if item][:_TASK_EXAMPLE_COUNT_SIX]
+    out_en = [item for item in en if item][:_TASK_EXAMPLE_COUNT_SIX]
+    if count in (_TASK_EXAMPLE_COUNT_THREE, _TASK_EXAMPLE_COUNT_SIX):
+        target = count
+    else:
+        target = (
+            _TASK_EXAMPLE_COUNT_SIX
+            if max(len(out_zh), len(out_en)) > _TASK_EXAMPLE_COUNT_THREE
+            else _TASK_EXAMPLE_COUNT_THREE
+        )
+
+    def _pad(side: list[str], extras: list[str]) -> None:
+        for item in extras:
+            if len(side) >= target:
+                return
+            if item and item not in side:
+                side.append(item)
+        idx = 0
+        while len(side) < target and extras:
+            side.append(extras[idx % len(extras)])
+            idx += 1
+
+    _pad(out_zh, fillers_zh)
+    _pad(out_en, fillers_en)
+    return {"zh": out_zh[:target], "en": out_en[:target]}
 
 
 class ExpertCatalog:
@@ -414,6 +559,7 @@ class ExpertCatalog:
                     icon_name=data.get("icon_name"),
                     color=data.get("color"),
                     quick_prompts=_parse_quick_prompts(data),
+                    task_examples=normalize_task_examples_for_display(parse_task_examples(data)),
                 )
                 out[ex_id] = Expert(
                     summary=summary,
