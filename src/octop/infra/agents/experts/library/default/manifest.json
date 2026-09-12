@@ -17,5 +17,17 @@
   "prompt_files": [
     "SOUL.md",
     "IDENTITY.md"
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每个工作日「09:00」列出今日待办并按优先级排序，任务创建后立即启用",
+      "每周日「20:00」复盘本周完成事项，并给出下周计划",
+      "每天「22:00」提醒我整理明天要处理的三件事，从今天开始持续生效"
+    ],
+    "en": [
+      "Every weekday at 09:00, list today's todos ranked by priority — enable immediately",
+      "Every Sunday at 20:00, recap what got done this week and outline next week's plan",
+      "Every day at 22:00, remind me to pick the three things to handle tomorrow — start today and keep running"
+    ]
+  }
 }

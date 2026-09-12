@@ -86,18 +86,27 @@ def default_agent_workspace_dir(
     agent_id: str,
     *,
     cfg: dict[str, Any] | None = None,
+    ensure: bool = True,
 ) -> Path:
-    """Create-time on-disk workspace (mkdir -p). Not what harness receives."""
+    """Create-time on-disk workspace (mkdir -p unless ``ensure=False``).
+
+    Not what harness receives.
+    """
     root_raw = local_backend_root_dir(cfg)
     if root_raw is not None and not _is_host_root_sentinel(root_raw):
         try:
             root = Path(root_raw).expanduser().resolve()
         except OSError:
-            return paths.ensure_agent_workspace(agent_id)
+            if ensure:
+                return paths.ensure_agent_workspace(agent_id)
+            return paths.agent_workspace(agent_id)
         out = root / DEFAULT_SYSTEM_FILES_PATH / SCOPED_WORKSPACE_DIRNAME / agent_id
-        out.mkdir(parents=True, exist_ok=True)
+        if ensure:
+            out.mkdir(parents=True, exist_ok=True)
         return out
-    return paths.ensure_agent_workspace(agent_id)
+    if ensure:
+        return paths.ensure_agent_workspace(agent_id)
+    return paths.agent_workspace(agent_id)
 
 
 def seed_workspace_dir_on_create(
@@ -285,14 +294,20 @@ def workspace_dir_from_config(
     *,
     paths: PathLayout,
     agent_id: str,
+    ensure: bool = True,
 ) -> Path:
-    """On-disk workspace for Octop host ops (may map ``/.octop/…`` under root_dir)."""
+    """On-disk workspace for Octop host ops (may map ``/.octop/…`` under root_dir).
+
+    Read-only callers (backup) pass ``ensure=False`` so a stale or unwritable
+    ``workspace_dir`` is not created.
+    """
     raw = (cfg or {}).get("workspace_dir")
     if isinstance(raw, str) and raw.strip():
         out = resolve_workspace_host_path(raw, cfg)
-        out.mkdir(parents=True, exist_ok=True)
+        if ensure:
+            out.mkdir(parents=True, exist_ok=True)
         return out
-    return default_agent_workspace_dir(paths, agent_id, cfg=cfg)
+    return default_agent_workspace_dir(paths, agent_id, cfg=cfg, ensure=ensure)
 
 
 def system_files_path_from_config(cfg: dict[str, Any] | None) -> str:
@@ -338,13 +353,14 @@ def workspace_dir_from_config_json(
     *,
     paths: PathLayout,
     agent_id: str,
+    ensure: bool = True,
 ) -> Path:
     try:
         parsed = json.loads(config_json or "{}")
     except (json.JSONDecodeError, TypeError):
         parsed = {}
     cfg = parsed if isinstance(parsed, dict) else {}
-    return workspace_dir_from_config(cfg, paths=paths, agent_id=agent_id)
+    return workspace_dir_from_config(cfg, paths=paths, agent_id=agent_id, ensure=ensure)
 
 
 __all__ = [

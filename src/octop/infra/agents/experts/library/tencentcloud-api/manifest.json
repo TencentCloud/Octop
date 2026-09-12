@@ -114,5 +114,23 @@
       "color": "#ffe8f0",
       "icon_name": "stethoscope"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:30」巡检腾讯云 CVM：运行中实例、异常状态和即将到期资源，发给我，任务创建后立即启用",
+      "每周一「10:00」汇总上周费用与高危操作记录，标出异常账单",
+      "每月 1 日「09:00」检查即将到期的包年包月资源并提醒续费",
+      "每个工作日「18:00」核对安全组与密钥变更，只报告差异不自动改",
+      "每周五「11:00」汇总本周 API 调用失败率最高的接口",
+      "每「6 小时」检查核心实例状态，有异常再通知我，从今天开始持续生效"
+    ],
+    "en": [
+      "Every day at 09:30, inspect Tencent Cloud CVM — running instances, unhealthy states, and resources nearing expiry — enable immediately",
+      "Every Monday at 10:00, summarize last week's billing and high-risk operations, and flag unusual charges",
+      "On the 1st of each month at 09:00, check prepaid resources that will expire soon and remind me to renew",
+      "Every weekday at 18:00, diff security-group and key changes — report only, no auto-edits",
+      "Every Friday at 11:00, list this week's APIs with the highest failure rates",
+      "Every 6 hours, check core instance health and notify me only on anomalies, starting today"
+    ]
+  }
 }

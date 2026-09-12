@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import shutil
 import tarfile
@@ -45,6 +46,8 @@ from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.env_file import env_file_path
 from octop.infra.utils.paths import PathLayout
+
+logger = logging.getLogger(__name__)
 
 _CONFIG_DIR = "config"
 _DB_DIR = "db"
@@ -293,18 +296,28 @@ def create_system_backup(
                     tf.add(root / _CONFIG_DIR / "env", arcname=f"{_CONFIG_DIR}/env")
                 if include_workspaces:
                     for row in agent_rows:
-                        ws = workspace_dir_from_config_json(
-                            getattr(row, "config_json", None),
-                            paths=paths,
-                            agent_id=str(row.agent_id),
-                        )
-                        if ws.is_dir():
+                        agent_id = str(row.agent_id)
+                        try:
+                            ws = workspace_dir_from_config_json(
+                                getattr(row, "config_json", None),
+                                paths=paths,
+                                agent_id=agent_id,
+                                ensure=False,
+                            )
+                            if not ws.is_dir():
+                                continue
                             _add_dir(
                                 tf,
                                 ws,
-                                f"{_WORKSPACES_DIR}/{row.agent_id}",
+                                f"{_WORKSPACES_DIR}/{agent_id}",
                                 skip_chats=not include_chats,
                                 system_files_path=_system_files_path_from_row(row),
+                            )
+                        except OSError:
+                            logger.warning(
+                                "skipping workspace for agent %s",
+                                agent_id,
+                                exc_info=True,
                             )
                 if include_skill_packages and paths.skill_packages_dir.is_dir():
                     _add_dir(

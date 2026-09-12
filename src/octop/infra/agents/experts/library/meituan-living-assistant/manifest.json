@@ -114,5 +114,23 @@
       "color": "#ffe8f0",
       "icon_name": "shopping-bag"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」自动领取美团各品类优惠券和红包，领完后把结果发给我，任务创建后立即启用",
+      "每个工作日「11:30」根据我附近推荐今日午餐团购，列出 3 个高性价比选项",
+      "每周五「18:00」汇总本周省了多少、哪些券快过期",
+      "每天「17:30」根据天气和位置推荐晚餐外卖，列出 3 个选项",
+      "每周日「10:00」扫描本周可订的周末休闲/出行团购",
+      "每月 1 日「09:00」汇总上月优惠使用和过期券，给出本月领取提醒"
+    ],
+    "en": [
+      "Every day at 09:00, collect Meituan coupons and red packets across categories and send me the result — enable immediately",
+      "Every weekday at 11:30, recommend 3 high-value nearby lunch group-buys",
+      "Every Friday at 18:00, summarize how much I saved this week and which coupons expire soon",
+      "Every day at 17:30, recommend 3 dinner takeout options from weather and location",
+      "Every Sunday at 10:00, scan weekend leisure or travel group-buys still bookable this week",
+      "On the 1st of each month at 09:00, recap last month's coupon use and expiries, and remind me what to claim"
+    ]
+  }
 }

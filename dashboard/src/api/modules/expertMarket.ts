@@ -28,6 +28,7 @@ export interface MarketExpert {
   source?: string;
   content?: LocalizedText;
   quick_prompts?: ExpertMarketQuickPrompt[];
+  task_examples?: { zh?: string[]; en?: string[] } | null;
 }
 
 export interface ExpertHubListResponse {

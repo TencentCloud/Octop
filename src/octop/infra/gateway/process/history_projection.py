@@ -7,12 +7,14 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from langchain_core.messages import convert_to_messages, message_to_dict
+from langchain_core.messages import AIMessage, convert_to_messages, message_to_dict
 
 from octop.infra.db.repos._base import now_ts
 from octop.infra.db.repos.thread_messages import ThreadMessageInput
+from octop.infra.gateway.process.message_keys import STREAM_ERROR_CODE_KEY, STREAM_ERROR_FLAG
 
 _USER_ROLES = frozenset({"human", "user"})
+_ASSISTANT_ROLES = frozenset({"ai", "assistant"})
 
 
 def _role(message: Any) -> str:
@@ -73,12 +75,38 @@ def message_inputs(
     return out
 
 
+def _wire_text(item: ThreadMessageInput) -> str:
+    try:
+        wire = json.loads(item.message_json)
+    except json.JSONDecodeError:
+        return ""
+    data = wire.get("data") if isinstance(wire, dict) else None
+    content = data.get("content") if isinstance(data, dict) else None
+    if content is None and isinstance(wire, dict):
+        content = wire.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                parts.append(str(block.get("text") or ""))
+        return "".join(parts)
+    return ""
+
+
 @dataclass
 class TurnHistoryTracker:
     """Keep only the current user turn from replay-prone state chunks."""
 
     seed_messages: list[Any] = field(default_factory=list)
     _state_messages: list[Any] = field(default_factory=list, init=False)
+    _stream_text: str = field(default="", init=False)
+    _reasoning_text: str = field(default="", init=False)
+    _error_message: str = field(default="", init=False)
+    _error_code: str | None = field(default=None, init=False)
 
     @classmethod
     def from_request(cls, request: dict[str, Any]) -> TurnHistoryTracker:
@@ -86,19 +114,57 @@ class TurnHistoryTracker:
         return cls(seed_messages=list(raw) if isinstance(raw, list) else [])
 
     def observe(self, chunk: dict[str, Any]) -> None:
-        if chunk.get("type") not in ("state_snapshot", "state_update"):
+        kind = chunk.get("type")
+        if kind in ("state_snapshot", "state_update"):
+            messages = _chunk_messages(chunk)
+            if not messages:
+                return
+            last_user = max(
+                (index for index, msg in enumerate(messages) if _role(msg) in _USER_ROLES),
+                default=-1,
+            )
+            if last_user >= 0:
+                self._state_messages = messages[last_user:]
+            else:
+                self._state_messages.extend(messages)
             return
-        messages = _chunk_messages(chunk)
-        if not messages:
+        if kind == "token":
+            self._stream_text += str(chunk.get("content") or "")
             return
-        last_user = max(
-            (index for index, msg in enumerate(messages) if _role(msg) in _USER_ROLES),
-            default=-1,
+        if kind == "reasoning":
+            self._reasoning_text += str(chunk.get("content") or "")
+            return
+        if kind == "error":
+            text = str(chunk.get("message") or chunk.get("content") or "")
+            if text:
+                self._error_message = text
+            code = chunk.get("error_code")
+            if code:
+                self._error_code = str(code)
+
+    def _stream_message(self) -> ThreadMessageInput | None:
+        if not self._stream_text and not self._reasoning_text:
+            return None
+        extra: dict[str, Any] = {}
+        if self._reasoning_text:
+            extra["reasoning_content"] = self._reasoning_text
+        return message_input(AIMessage(content=self._stream_text, additional_kwargs=extra))
+
+    def _error_input(self) -> ThreadMessageInput | None:
+        if not self._error_message:
+            return None
+        extra: dict[str, Any] = {STREAM_ERROR_FLAG: True}
+        if self._error_code:
+            extra[STREAM_ERROR_CODE_KEY] = self._error_code
+        return message_input(AIMessage(content=self._error_message, additional_kwargs=extra))
+
+    def _inputs_cover_stream(self, items: list[ThreadMessageInput]) -> bool:
+        if not self._stream_text:
+            return False
+        return any(
+            item.role in _ASSISTANT_ROLES and self._stream_text in _wire_text(item)
+            for item in items
         )
-        if last_user >= 0:
-            self._state_messages = messages[last_user:]
-        else:
-            self._state_messages.extend(messages)
 
     @property
     def inputs(self) -> list[ThreadMessageInput]:
@@ -106,7 +172,15 @@ class TurnHistoryTracker:
         source = (
             self._state_messages if state_has_user else [*self.seed_messages, *self._state_messages]
         )
-        return message_inputs(
+        items = message_inputs(
             source,
             dedupe_missing_ids=True,
         )
+        if not self._inputs_cover_stream(items):
+            streamed = self._stream_message()
+            if streamed is not None:
+                items.append(streamed)
+        error = self._error_input()
+        if error is not None:
+            items.append(error)
+        return items
