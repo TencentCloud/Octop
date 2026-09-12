@@ -10,6 +10,7 @@ import {
   Link2,
   Sparkles,
   Wand2,
+  ListTodo,
   Mic,
   CircleDot,
   Play,
@@ -358,7 +359,7 @@ export default function ChatInputActionsRow({
 
   const conversationModeIcon = (mode: ConversationMode) => {
     if (mode === "ask") return <MessageSquarePlus size={16} />;
-    if (mode === "plan") return <Wand2 size={16} />;
+    if (mode === "plan") return <ListTodo size={16} />;
     return <Zap size={16} />;
   };
 
