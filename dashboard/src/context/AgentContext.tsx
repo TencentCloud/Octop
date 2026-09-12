@@ -37,6 +37,10 @@ export interface OctopAgent {
   description: string | null;
   persona_mbti: string | null;
   default_model: string | null;
+  /** Composer default: ask | plan | craft (#616). Missing → craft. */
+  default_conversation_mode?: "ask" | "plan" | "craft" | null;
+  /** Composer / turn default knowledge bases when the turn omits an explicit list. */
+  default_knowledge_base_ids?: string[] | null;
   system_prompt: string | null;
   template_name: string | null;
   state: "running" | "stopped" | "failed" | "starting" | "stopping" | string;

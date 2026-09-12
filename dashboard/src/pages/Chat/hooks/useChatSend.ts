@@ -13,6 +13,7 @@ import {
   buildUserMessage,
   resolveTurnModelRef,
 } from "../utils/chatMessages";
+import type { ConversationMode } from "../utils/conversationMode";
 
 interface UseChatSendParams {
   resolvedAgentId: string | null | undefined;
@@ -25,6 +26,7 @@ interface UseChatSendParams {
   selectedTargetAgents?: string[];
   reasoningMode: "auto" | "enabled" | "disabled";
   reasoningEffort: string | null;
+  conversationMode: ConversationMode;
   defaultModel?: string | null;
   sendMessage: (
     text: string,
@@ -39,6 +41,9 @@ interface UseChatSendParams {
     composerContext?: UserComposerContext,
     reasoningMode?: "auto" | "enabled" | "disabled",
     reasoningEffort?: string | null,
+    conversationMode?: ConversationMode,
+    planBrief?: string,
+    hideUserMessage?: boolean,
   ) => void;
   createSession: () => { session: Session; resolvedId: Promise<string> };
   renameSession: (id: string, name: string) => void;
@@ -59,6 +64,11 @@ export type ChatSendOverrides = {
   selectedTargetAgents?: string[];
   composerContext?: UserComposerContext;
   modelRef?: string | null;
+  conversationMode?: ConversationMode;
+  /** Internal plan brief for Craft handoff — not shown as chat text. */
+  planBrief?: string;
+  /** Do not append a local user bubble (PlanReady execute). */
+  hideUserMessage?: boolean;
   /** Send to this thread instead of the active one (queued flush). */
   threadId?: string | null;
   /** Send as this agent instead of the active one (queued flush). */
@@ -76,6 +86,7 @@ export function useChatSend({
   selectedTargetAgents = [],
   reasoningMode,
   reasoningEffort,
+  conversationMode,
   defaultModel,
   sendMessage,
   createSession,
@@ -99,9 +110,14 @@ export function useChatSend({
       }
 
       const trimmed = text.trim();
-      if (!trimmed && !(attachments && attachments.length > 0)) return false;
+      const planBrief = overrides?.planBrief?.trim() || "";
+      const hideUserMessage = Boolean(overrides?.hideUserMessage);
+      if (!trimmed && !(attachments && attachments.length > 0) && !planBrief) {
+        return false;
+      }
 
       const maybeRenameNewThread = (tid: string, hadMessages: boolean) => {
+        if (!trimmed) return;
         const current = sessions.find((s) => s.id === tid);
         if (current?.name === "New Chat" && !hadMessages) {
           renameSession(tid, deriveThreadTitle(trimmed));
@@ -129,6 +145,10 @@ export function useChatSend({
             overrides?.composerContext?.reasoningMode ?? reasoningMode,
           reasoningEffort:
             overrides?.composerContext?.reasoningEffort ?? reasoningEffort,
+          conversationMode:
+            overrides?.composerContext?.conversationMode ??
+            overrides?.conversationMode ??
+            conversationMode,
         });
 
       const modelOverride =
@@ -151,6 +171,9 @@ export function useChatSend({
           composerContext,
           composerContext?.reasoningMode ?? reasoningMode,
           composerContext?.reasoningEffort ?? reasoningEffort,
+          composerContext?.conversationMode ?? conversationMode,
+          overrides?.planBrief,
+          hideUserMessage,
         );
       };
 
@@ -168,6 +191,11 @@ export function useChatSend({
             : chatStore.getSnapshot(targetThreadId).messages.length > 0;
         runSend(targetThreadId, hadMessages);
         return true;
+      }
+
+      // Silent plan execute requires an existing thread (no empty-bubble draft).
+      if (hideUserMessage || planBrief) {
+        return false;
       }
 
       const userMsg = buildUserMessage(trimmed, attachments, composerContext);
@@ -210,6 +238,8 @@ export function useChatSend({
           targetAgents,
           composerContext?.reasoningMode ?? reasoningMode,
           composerContext?.reasoningEffort ?? reasoningEffort,
+          composerContext?.conversationMode ?? conversationMode,
+          overrides?.planBrief,
         );
         navigate(`/chat/${agent}/${tid}`, { replace: true });
       });
@@ -230,6 +260,7 @@ export function useChatSend({
       selectedTargetAgents,
       reasoningMode,
       reasoningEffort,
+      conversationMode,
       defaultModel,
       t,
     ],

@@ -81,6 +81,12 @@ import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatTitleBar from "./components/ChatTitleBar";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import AskQuestionCard from "./components/AskQuestionCard";
+import PlanReadyCard from "./components/PlanReadyCard";
+import {
+  buildPlanBriefFromMessages,
+  planContinueHandoff,
+  planExecuteHandoff,
+} from "./utils/planArtifact";
 import { extractAskQuestions, isAskHitl } from "../../api/types/hitl";
 import { isAgentChatReady } from "../../utils/agentError";
 import { useMemoryMaintenance } from "./hooks/useMemoryMaintenance";
@@ -441,6 +447,8 @@ function ChatPageInner() {
     reasoningMode,
     reasoningEffort,
     handleReasoningChange,
+    conversationMode,
+    handleConversationModeChange,
     handleConnectorsChange,
     handleKnowledgeBaseIdsChange,
   } = useChatComposerResources(
@@ -449,6 +457,8 @@ function ChatPageInner() {
     composerSession?.modelRef,
     composerSession?.reasoningMode,
     composerSession?.reasoningEffort,
+    activeAgent?.default_conversation_mode,
+    activeAgent?.default_knowledge_base_ids,
   );
 
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
@@ -546,6 +556,7 @@ function ChatPageInner() {
     selectedKnowledgeBaseIds,
     reasoningMode,
     reasoningEffort,
+    conversationMode,
     defaultModel: activeAgent?.default_model ?? null,
     sendMessage,
     createSession,
@@ -569,7 +580,13 @@ function ChatPageInner() {
     setBrowserLastRecordingId,
   });
 
-  // Wrap handleSend to intercept skill recording workflow keywords
+  const [planReadyBrief, setPlanReadyBrief] = useState<string | null>(null);
+  const wasStreamingRef = useRef(false);
+  const planModeTurnRef = useRef(false);
+
+  // Wrap handleSend to intercept skill recording workflow keywords.
+  // Also latch plan-mode at send time so PlanReady still appears if the
+  // composer reseeds while the new thread id is assigned mid-turn.
   const wrappedHandleSend = useCallback(
     (
       text: string,
@@ -580,10 +597,55 @@ function ChatPageInner() {
         // The workflow intercepted the message — don't send it to the agent
         return;
       }
+      const modeForTurn =
+        overrides?.conversationMode ??
+        overrides?.composerContext?.conversationMode ??
+        conversationMode;
+      if (modeForTurn === "plan") {
+        planModeTurnRef.current = true;
+      }
       handleSend(text, attachments, overrides);
     },
-    [interceptUserMessage, handleSend],
+    [interceptUserMessage, handleSend, conversationMode],
   );
+
+  useEffect(() => {
+    if (conversationMode === "plan" && isStreaming) {
+      planModeTurnRef.current = true;
+    }
+  }, [conversationMode, isStreaming]);
+
+  useEffect(() => {
+    const wasStreaming = wasStreamingRef.current;
+    wasStreamingRef.current = isStreaming;
+    if (!wasStreaming || isStreaming) return;
+    if (!planModeTurnRef.current) return;
+    planModeTurnRef.current = false;
+    const brief = buildPlanBriefFromMessages(messages);
+    if (brief) setPlanReadyBrief(brief);
+  }, [isStreaming, messages]);
+
+  useEffect(() => {
+    setPlanReadyBrief(null);
+  }, [activeThreadId, resolvedAgentId]);
+
+  const handlePlanExecute = useCallback(() => {
+    if (!planReadyBrief) return;
+    const brief = planReadyBrief;
+    setPlanReadyBrief(null);
+    const handoff = planExecuteHandoff(brief);
+    handleConversationModeChange(handoff.conversationMode);
+    wrappedHandleSend(handoff.text, undefined, {
+      conversationMode: handoff.conversationMode,
+      planBrief: handoff.planBrief,
+      hideUserMessage: handoff.hideUserMessage,
+    });
+  }, [planReadyBrief, handleConversationModeChange, wrappedHandleSend]);
+
+  const handlePlanContinue = useCallback(() => {
+    setPlanReadyBrief(null);
+    handleConversationModeChange(planContinueHandoff().conversationMode);
+  }, [handleConversationModeChange]);
 
   const flushQueuedItem = useCallback(
     (item: QueuedChatItem, ctx: ChatQueueFlushContext): boolean => {
@@ -1351,6 +1413,13 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
+            {planReadyBrief && !pendingAsk && !isStreaming ? (
+              <PlanReadyCard
+                brief={planReadyBrief}
+                onExecute={handlePlanExecute}
+                onContinue={handlePlanContinue}
+              />
+            ) : null}
             <ChatInput
               ref={chatInputRef}
               onSend={wrappedHandleSend}
@@ -1372,6 +1441,8 @@ function ChatPageInner() {
               reasoningMode={reasoningMode}
               reasoningEffort={reasoningEffort}
               onReasoningChange={handleReasoningChange}
+              conversationMode={conversationMode}
+              onConversationModeChange={handleConversationModeChange}
               availableConnectors={chatConnectors}
               selectedConnectors={selectedConnectors}
               onConnectorsChange={handleConnectorsChange}

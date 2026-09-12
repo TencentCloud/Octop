@@ -78,12 +78,16 @@ import AgentBackendFields from "./AgentBackendFields";
 import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
 import styles from "../index.module.less";
+import { conversationModeSelectOptions } from "../../Chat/utils/conversationMode";
+import { knowledgeBasesApi } from "../../../api/modules/knowledgeBases";
 
 interface AgentDetail {
   id: string;
   name: string;
   description: string | null;
   default_model: string | null;
+  default_conversation_mode?: "ask" | "plan" | "craft" | null;
+  default_knowledge_base_ids?: string[] | null;
   color?: string | null;
   icon_url?: string | null;
   max_iters?: number | null;
@@ -129,6 +133,8 @@ interface EditFormValues {
   welcome_message?: string;
   is_shared?: boolean;
   default_model: string;
+  default_conversation_mode: "ask" | "plan" | "craft";
+  default_knowledge_base_ids?: string[];
   backend_choice: string;
   composite_default: string;
   root_dir?: string;
@@ -153,6 +159,8 @@ interface EditAgentDrawerProps {
       | "name"
       | "description"
       | "default_model"
+      | "default_conversation_mode"
+      | "default_knowledge_base_ids"
       | "is_shared"
       | "color"
       | "icon_url"
@@ -230,6 +238,9 @@ function EditAgentDrawerBody({
     useAgentFormResources(true);
   const [pathMappings, setPathMappings] = useState<PathMapping[]>([]);
   const [agentConfig, setAgentConfig] = useState<Record<string, unknown>>({});
+  const [knowledgeBaseOptions, setKnowledgeBaseOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
   const [colorPalette, setColorPalette] = useState<string>(
     () => parseStoredColor(agent.color) ?? DEFAULT_PALETTE,
   );
@@ -270,6 +281,27 @@ function EditAgentDrawerBody({
 
   useEffect(() => {
     let cancelled = false;
+    void knowledgeBasesApi
+      .list()
+      .then((bases) => {
+        if (cancelled) return;
+        setKnowledgeBaseOptions(
+          bases.map((base) => ({
+            value: base.id,
+            label: base.name?.trim() || base.id,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setKnowledgeBaseOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setPathMappings([]);
     setAgentConfig({});
@@ -303,6 +335,23 @@ function EditAgentDrawerBody({
             typeof ag.welcome_message === "string" ? ag.welcome_message : "",
           is_shared: agent.is_shared ?? false,
           default_model: defaultModelToForm(ag.default_model),
+          default_conversation_mode:
+            ag.default_conversation_mode === "ask" ||
+            ag.default_conversation_mode === "plan" ||
+            ag.default_conversation_mode === "craft"
+              ? ag.default_conversation_mode
+              : "craft",
+          default_knowledge_base_ids: Array.isArray(
+            ag.default_knowledge_base_ids,
+          )
+            ? ag.default_knowledge_base_ids.filter(
+                (id): id is string => typeof id === "string" && Boolean(id),
+              )
+            : Array.isArray(cfg.default_knowledge_base_ids)
+            ? (cfg.default_knowledge_base_ids as unknown[]).filter(
+                (id): id is string => typeof id === "string" && Boolean(id),
+              )
+            : [],
           backend_choice: parsedBackend.backendChoice,
           composite_default: parsedBackend.compositeDefault,
           root_dir: parsedBackend.rootDir,
@@ -408,6 +457,8 @@ function EditAgentDrawerBody({
         ...agentConfig,
         backend: backendSpec,
         enable_trajectory: values.enable_trajectory === true,
+        default_conversation_mode: values.default_conversation_mode,
+        default_knowledge_base_ids: values.default_knowledge_base_ids ?? [],
       });
       delete nextConfig.color;
       delete nextConfig.icon_name;
@@ -483,6 +534,8 @@ function EditAgentDrawerBody({
         name: values.name,
         description: values.description || null,
         default_model: defaultModel,
+        default_conversation_mode: values.default_conversation_mode,
+        default_knowledge_base_ids: values.default_knowledge_base_ids ?? [],
         is_shared: values.is_shared ?? false,
         color: nextColor,
         icon_url: iconUrl,
@@ -797,6 +850,38 @@ function EditAgentDrawerBody({
                       .toLowerCase()
                       .includes(input.toLowerCase())
                   }
+                />
+              </Form.Item>
+              <Form.Item
+                name="default_conversation_mode"
+                label={t(
+                  "experts.defaultConversationModeLabel",
+                  "默认对话模式",
+                )}
+                extra={t(
+                  "experts.defaultConversationModeHint",
+                  "新对话的初始权限模式；可在聊天输入栏随时切换。",
+                )}
+              >
+                <Select options={conversationModeSelectOptions(t)} />
+              </Form.Item>
+              <Form.Item
+                name="default_knowledge_base_ids"
+                label={t("experts.defaultKnowledgeBasesLabel", "默认知识库")}
+                extra={t(
+                  "experts.defaultKnowledgeBasesHint",
+                  "新对话未手动选择知识库时自动附带；仍可在输入栏增减。",
+                )}
+              >
+                <Select
+                  mode="multiple"
+                  allowClear
+                  optionFilterProp="label"
+                  options={knowledgeBaseOptions}
+                  placeholder={t(
+                    "experts.defaultKnowledgeBasesPlaceholder",
+                    "选择知识库",
+                  )}
                 />
               </Form.Item>
 

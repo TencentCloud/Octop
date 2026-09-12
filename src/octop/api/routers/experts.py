@@ -12,7 +12,7 @@ POST /api/experts/hub/{slug}/install → create agent from market expert
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
@@ -25,6 +25,7 @@ from octop.infra.agents.avatar import (
     display_published_expert_icon_url,
     read_snapshot_avatar,
 )
+from octop.infra.agents.conversation_mode import apply_default_conversation_mode
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
     build_create_spec_from_expert,
@@ -63,6 +64,7 @@ from octop.infra.agents.experts.skillhub_market import (
     fetch_skillset,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.knowledge.default_open import apply_default_knowledge_base_ids
 from octop.infra.trajectory.settings import apply_enable_trajectory
 from octop.infra.utils.locale import resolve_user_locale
 
@@ -116,6 +118,17 @@ class FromExpertBody(AgentRuntimeFields):
     )
     welcome_message: str | None = None
     enable_trajectory: bool = True
+    default_conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
+        default=None,
+        description=(
+            "Initial chat permission mode for new threads "
+            "(ask / plan / craft). Omit to default to craft."
+        ),
+    )
+    default_knowledge_base_ids: list[str] | None = Field(
+        default=None,
+        description="Knowledge bases auto-attached when a turn omits an explicit list.",
+    )
 
 
 class PublishExpertBody(BaseModel):
@@ -152,6 +165,17 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     )
     welcome_message: str | None = None
     enable_trajectory: bool = True
+    default_conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
+        default=None,
+        description=(
+            "Initial chat permission mode for new threads "
+            "(ask / plan / craft). Omit to default to craft."
+        ),
+    )
+    default_knowledge_base_ids: list[str] | None = Field(
+        default=None,
+        description="Knowledge bases auto-attached when a turn omits an explicit list.",
+    )
 
 
 class LocalizedTextResponse(BaseModel):
@@ -537,6 +561,8 @@ async def install_published_expert(
             welcome_message=body.welcome_message,
             runtime_config=runtime_field_updates(body, exclude_unset=True),
             enable_trajectory=body.enable_trajectory,
+            default_conversation_mode=body.default_conversation_mode,
+            default_knowledge_base_ids=body.default_knowledge_base_ids,
         ),
     )
 
@@ -640,6 +666,8 @@ async def install_expert_hub_item(
                 knowledge_base_ids=kb_ids,
                 mcp_servers=servers,
                 enable_trajectory=body.enable_trajectory,
+                default_conversation_mode=body.default_conversation_mode,
+                default_knowledge_base_ids=body.default_knowledge_base_ids,
                 **runtime_field_updates(body, exclude_unset=False),
             ),
         )
@@ -720,6 +748,8 @@ async def create_agent_from_expert(
     if body.backend:
         config_extra["backend"] = body.backend
     apply_enable_trajectory(config_extra, body.enable_trajectory)
+    apply_default_conversation_mode(config_extra, body.default_conversation_mode)
+    apply_default_knowledge_base_ids(config_extra, body.default_knowledge_base_ids)
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,

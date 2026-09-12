@@ -21,6 +21,7 @@ import UserMessageComposerTags, {
   type ComposerTagLookups,
 } from "./UserMessageComposerTags";
 import { deriveMessageContent } from "../utils/messageContent";
+import { stripConversationModeUiInstructions } from "../utils/planArtifact";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import { ChatMediaPlayer } from "./ChatMediaPlayer";
 import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
@@ -594,10 +595,16 @@ function MessageBubble({
     [message.errorInfo],
   );
 
-  const { textContent } = useMemo(
+  const { textContent: rawTextContent } = useMemo(
     () => deriveMessageContent(message),
     [message],
   );
+  const textContent = useMemo(() => {
+    if (message.role === "user" || message.toolData || message.hitlData) {
+      return rawTextContent;
+    }
+    return stripConversationModeUiInstructions(rawTextContent);
+  }, [message.role, message.toolData, message.hitlData, rawTextContent]);
   const speechText = useMemo(
     () => prepareSpeechText(textContent),
     [textContent],

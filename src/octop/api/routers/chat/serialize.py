@@ -23,6 +23,7 @@ from octop.infra.gateway.process.message_keys import (
     INBOUND_ATTACHMENTS_KEY,
     STREAM_ERROR_CODE_KEY,
     STREAM_ERROR_FLAG,
+    UI_HIDDEN_KEY,
     parse_checkpoint_ts_ms,
 )
 from octop.infra.utils.llm_text import strip_thinking as _strip_thinking
@@ -1000,6 +1001,8 @@ def _serialize_history_message(
             entry["composer_context"] = raw_ctx
         if has_user_attachments:
             entry["inbound_attachments"] = raw_att
+        if additional_kwargs.get(UI_HIDDEN_KEY):
+            entry["ui_hidden"] = True
     if additional_kwargs.get(STREAM_ERROR_FLAG):
         entry["status"] = "error"
         code = additional_kwargs.get(STREAM_ERROR_CODE_KEY)

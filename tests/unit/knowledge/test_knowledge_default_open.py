@@ -35,6 +35,32 @@ def test_merge_knowledge_base_ids_default_open_only_for_owner() -> None:
     assert merge_knowledge_base_ids(visible, None, owner_user_id=2) == ["shared-default"]
 
 
+def test_merge_knowledge_base_ids_unions_agent_default_ids() -> None:
+    visible = [
+        SimpleNamespace(id="default", owner_user_id=1, default_open=True, shared=False),
+        SimpleNamespace(id="agent-kb", owner_user_id=1, default_open=False, shared=False),
+        SimpleNamespace(id="other", owner_user_id=1, default_open=False, shared=False),
+    ]
+    assert merge_knowledge_base_ids(
+        visible,
+        None,
+        owner_user_id=1,
+        agent_default_ids=["agent-kb", "missing"],
+    ) == ["default", "agent-kb"]
+
+
+def test_merge_knowledge_base_ids_falls_back_when_agent_defaults_invisible() -> None:
+    visible = [
+        SimpleNamespace(id="default", owner_user_id=1, default_open=True, shared=False),
+    ]
+    assert merge_knowledge_base_ids(
+        visible,
+        None,
+        owner_user_id=1,
+        agent_default_ids=["gone"],
+    ) == ["default"]
+
+
 def test_merge_knowledge_base_ids_unions_visible_extra_ids() -> None:
     visible = [
         SimpleNamespace(id="default", owner_user_id=1, default_open=True, shared=False),

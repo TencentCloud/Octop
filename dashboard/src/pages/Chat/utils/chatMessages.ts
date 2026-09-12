@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   UserComposerContext,
 } from "../hooks/sseHelpers";
+import type { ConversationMode } from "./conversationMode";
 
 export function normalizeComposerContext(
   value: unknown,
@@ -48,6 +49,14 @@ export function normalizeComposerContext(
     ctx.reasoningEffort = raw.reasoningEffort.trim();
     has = true;
   }
+  if (
+    raw.conversationMode === "ask" ||
+    raw.conversationMode === "plan" ||
+    raw.conversationMode === "craft"
+  ) {
+    ctx.conversationMode = raw.conversationMode;
+    has = true;
+  }
 
   return has ? ctx : undefined;
 }
@@ -88,6 +97,7 @@ export function buildComposerContext(params: {
   selectedModel?: string | null;
   reasoningMode?: "auto" | "enabled" | "disabled";
   reasoningEffort?: string | null;
+  conversationMode?: ConversationMode;
 }): UserComposerContext | undefined {
   const ctx: UserComposerContext = {};
   let has = false;
@@ -120,6 +130,10 @@ export function buildComposerContext(params: {
   }
   if (params.reasoningEffort) {
     ctx.reasoningEffort = params.reasoningEffort;
+    has = true;
+  }
+  if (params.conversationMode) {
+    ctx.conversationMode = params.conversationMode;
     has = true;
   }
 

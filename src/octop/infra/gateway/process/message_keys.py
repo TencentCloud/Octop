@@ -11,6 +11,8 @@ from octop.infra.gateway.threads import ThreadRegistry
 # Persisted on HumanMessage.additional_kwargs for dashboard history UI.
 COMPOSER_CTX_KEY = "octop_composer_context"
 INBOUND_ATTACHMENTS_KEY = "octop_inbound_attachments"
+# Plan→Craft silent handoff: history should not render this user turn as a bubble.
+UI_HIDDEN_KEY = "octop_ui_hidden"
 # Must match harness_agent.messages.CHECKPOINT_TS_KEY (epoch-ms).
 CHECKPOINT_TS_KEY = "checkpoint_ts"
 # Persisted on AIMessage.additional_kwargs when a stream fails mid-turn.

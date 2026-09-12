@@ -224,6 +224,7 @@ export default function ExpertsPage() {
         | "name"
         | "description"
         | "default_model"
+        | "default_conversation_mode"
         | "is_shared"
         | "color"
         | "icon_url"
@@ -238,6 +239,7 @@ export default function ExpertsPage() {
                 name: updated.name,
                 description: updated.description,
                 default_model: updated.default_model,
+                default_conversation_mode: updated.default_conversation_mode,
                 is_shared: updated.is_shared,
                 color: updated.color,
                 icon_url: updated.icon_url,

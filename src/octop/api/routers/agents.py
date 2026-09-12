@@ -21,6 +21,10 @@ from octop.infra.agents.avatar import (
     read_workspace_avatar,
     write_workspace_avatar,
 )
+from octop.infra.agents.conversation_mode import (
+    default_conversation_mode_from_config,
+    normalize_config_default_conversation_mode,
+)
 from octop.infra.agents.profile import (
     id_list_from_row,
     parse_config_json,
@@ -33,11 +37,26 @@ from octop.infra.agents.runtime_limits import (
     agent_runtime_values,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.knowledge.default_open import (
+    default_knowledge_base_ids_from_config,
+    normalize_config_default_knowledge_base_ids,
+)
 from octop.infra.users.permissions import user_has_permission
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _validated_agent_config(config: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Normalize conversation-mode / KB default fields; raise OctopError on invalid values."""
+    if config is None:
+        return None
+    try:
+        out = normalize_config_default_conversation_mode(config)
+        return normalize_config_default_knowledge_base_ids(out)
+    except ValueError as exc:
+        raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc), status=400) from exc
 
 
 class AgentCreateBody(AgentRuntimeFields):
@@ -150,6 +169,8 @@ def _row_dict(
         "description": row.description,
         "persona_mbti": row.persona_mbti,
         "default_model": row.default_model,
+        "default_conversation_mode": default_conversation_mode_from_config(cfg),
+        "default_knowledge_base_ids": default_knowledge_base_ids_from_config(cfg),
         "system_prompt": row.system_prompt,
         "state": row.last_state or "unknown",
         "last_error": row.last_error,
@@ -258,12 +279,14 @@ async def create_agent(
     from octop.infra.agents.manager import AgentCreateSpec  # noqa: PLC0415
 
     assert server.app_runtime is not None
+    config = body.config if isinstance(body.config, dict) else {}
     if isinstance(body.config, dict):
         assert_user_backend_root_dirs(
             user,
             body.config.get("backend"),
             policy_repo=server.services.user_policy_repo,
         )
+        config = _validated_agent_config(body.config) or {}
     knowledge_ids = (
         server.app_runtime.agent_registry.validate_knowledge_base_ids(
             user.id, body.knowledge_base_ids
@@ -283,7 +306,7 @@ async def create_agent(
         persona_mbti=body.persona_mbti,
         default_model=body.default_model,
         system_prompt=body.system_prompt,
-        config=body.config,
+        config=config,
         runtime_config=runtime_field_updates(body, exclude_unset=True),
         icon=body.icon,
         template_name=body.template_name,
@@ -376,7 +399,8 @@ async def patch_agent(
         }
     }
     if body.config is not None:
-        updates["config_json"] = json.dumps(body.config)
+        validated = _validated_agent_config(body.config if isinstance(body.config, dict) else {})
+        updates["config_json"] = json.dumps(validated)
     if body.welcome_message is not None:
         updates["welcome_message"] = body.welcome_message
     if updates:

@@ -21,6 +21,9 @@ from harness_gateway.models import (
 from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n.domains.stream import format_stream_error
+from octop.infra.agents.conversation_mode import (
+    ConversationMode,
+)
 from octop.infra.agents.profile import parse_config_json
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.errors import OctopError
@@ -59,7 +62,6 @@ from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_u
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.parser import parse_slash
 from octop.infra.gateway.slash.runner import try_handle_slash
-from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.trajectory.settings import agent_trajectory_enabled
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
@@ -851,6 +853,13 @@ class GlobalProcessor:
             locale=locale,
             agent_id=agent_id,
         )
+        self._attach_conversation_mode_config(
+            request,
+            msg.metadata,
+            locale=locale,
+            agent_id=agent_id,
+            thread_id=thread_id,
+        )
         if mcp_servers:
             request["mcp_servers"] = mcp_servers
 
@@ -1199,6 +1208,7 @@ class GlobalProcessor:
         from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
             COMPOSER_CTX_KEY,
             INBOUND_ATTACHMENTS_KEY,
+            UI_HIDDEN_KEY,
         )
 
         media_backend = media_backend_for_agent(self._agent_manager, agent_id)
@@ -1235,6 +1245,10 @@ class GlobalProcessor:
         attachments = meta.get(INBOUND_ATTACHMENTS_KEY)
         if isinstance(attachments, list) and attachments:
             message_kwargs[INBOUND_ATTACHMENTS_KEY] = attachments
+        raw_brief = meta.get("plan_brief")
+        if isinstance(raw_brief, str) and raw_brief.strip():
+            # Dashboard PlanReady CTA — do not render the trigger as a user bubble.
+            message_kwargs[UI_HIDDEN_KEY] = True
 
         explicit_mcp = meta.get("mcp_servers")
         # Dashboard always sends mcp_servers (possibly []); trust that list so
@@ -1294,6 +1308,13 @@ class GlobalProcessor:
             locale=locale,
             agent_id=agent_id,
         )
+        self._attach_conversation_mode_config(
+            request,
+            meta,
+            locale=locale,
+            agent_id=agent_id,
+            thread_id=thread_id,
+        )
 
         if mcp_servers:
             request["mcp_servers"] = mcp_servers
@@ -1319,16 +1340,88 @@ class GlobalProcessor:
             if is_admin
             else self._knowledge_services.knowledge_repo.list_visible(user_id)
         )
-        extra_ids = self._agent_manager.default_knowledge_base_ids(agent_id) if agent_id else None
-        stamp_turn_knowledge_config(
-            request,
-            visible_bases=bases,
-            explicit_ids=explicit_ids,
+        agent_defaults: list[str] | None = None
+        if agent_id and self._agent_manager is not None:
+            from octop.infra.knowledge.default_open import (  # noqa: PLC0415
+                default_knowledge_base_ids_from_config,
+                merge_knowledge_base_ids,
+            )
+            from octop.infra.knowledge.hint import catalog_for_selected_bases  # noqa: PLC0415
+
+            agent_defaults = (
+                default_knowledge_base_ids_from_config(self._agent_manager.get_config(agent_id))
+                or None
+            )
+        selected_ids = merge_knowledge_base_ids(
+            bases,
+            explicit_ids,
             owner_user_id=user_id,
-            extra_ids=extra_ids,
-            is_admin=is_admin,
-            locale=locale,
+            agent_default_ids=agent_defaults,
         )
+        configurable = dict(request.get("configurable") or {})
+        configurable["knowledge_base_ids"] = selected_ids
+        configurable["knowledge_base_catalog"] = catalog_for_selected_bases(bases, selected_ids)
+        configurable["user_is_admin"] = is_admin
+        configurable["locale"] = locale
+        request["configurable"] = configurable
+
+    def _resolve_conversation_mode(
+        self,
+        meta: dict[str, Any] | None,
+        *,
+        agent_id: str | None = None,
+        thread_id: str | None = None,
+    ) -> ConversationMode:
+        """explicit meta → thread /mode sticky → agent default → craft."""
+        from octop.infra.agents.conversation_mode import (  # noqa: PLC0415
+            default_conversation_mode_from_config,
+            resolve_conversation_mode,
+        )
+
+        explicit = (meta or {}).get("conversation_mode")
+        thread_override: ConversationMode | None = None
+        if agent_id and thread_id and self._agent_manager is not None:
+            raw_sticky = self._agent_manager.get_thread_conversation_mode(agent_id, thread_id)
+            if raw_sticky in ("ask", "plan", "craft"):
+                thread_override = raw_sticky  # type: ignore[assignment]
+        agent_default: ConversationMode | None = None
+        if agent_id and self._agent_manager is not None:
+            agent_default = default_conversation_mode_from_config(
+                self._agent_manager.get_config(agent_id)
+            )
+        return resolve_conversation_mode(
+            explicit=explicit,
+            thread_override=thread_override,
+            agent_default=agent_default,
+        )
+
+    def _attach_conversation_mode_config(
+        self,
+        request: dict[str, Any],
+        meta: dict[str, Any] | None,
+        *,
+        locale: str | None = None,
+        agent_id: str | None = None,
+        thread_id: str | None = None,
+    ) -> None:
+        """Stamp resolved conversation_mode (+ localized system hint) onto configurable."""
+        from octop.i18n.domains.conversation import (
+            conversation_mode_plan_brief_block,
+            conversation_mode_system_hint,
+        )
+
+        mode = self._resolve_conversation_mode(meta, agent_id=agent_id, thread_id=thread_id)
+        configurable = dict(request.get("configurable") or {})
+        configurable["conversation_mode"] = mode
+        hint_locale = locale or str(configurable.get("locale") or "en")
+        hint = conversation_mode_system_hint(mode, hint_locale)
+        raw_brief = (meta or {}).get("plan_brief")
+        brief = raw_brief.strip() if isinstance(raw_brief, str) else ""
+        if brief:
+            configurable["plan_brief"] = brief
+            hint = f"{hint}\n\n{conversation_mode_plan_brief_block(brief, hint_locale)}"
+        configurable["conversation_mode_hint"] = hint
+        request["configurable"] = configurable
 
     async def _resolve_turn_mcp_servers(
         self,

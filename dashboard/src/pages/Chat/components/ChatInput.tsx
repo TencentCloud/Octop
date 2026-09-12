@@ -19,6 +19,7 @@ import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import type { AgentSubagentSummary } from "../../../api/modules/subagents";
+import type { ConversationMode } from "../utils/conversationMode";
 import MentionPickerMenu from "./MentionPickerMenu";
 import ChatInputPreviewBar from "./ChatInputPreviewBar";
 import ChatInputActionsRow from "./ChatInputActionsRow";
@@ -86,6 +87,8 @@ interface ChatInputProps {
     mode: "auto" | "enabled" | "disabled",
     effort: string | null,
   ) => void;
+  conversationMode?: ConversationMode;
+  onConversationModeChange?: (mode: ConversationMode) => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -140,6 +143,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       reasoningMode = "auto",
       reasoningEffort = null,
       onReasoningChange,
+      conversationMode = "craft",
+      onConversationModeChange,
       availableConnectors,
       selectedConnectors = [],
       onConnectorsChange,
@@ -809,6 +814,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             reasoningMode={reasoningMode}
             reasoningEffort={reasoningEffort}
             onReasoningChange={onReasoningChange}
+            conversationMode={conversationMode}
+            onConversationModeChange={onConversationModeChange}
             defaultModel={defaultModel}
             availableConnectors={availableConnectors}
             selectedConnectors={selectedConnectors}

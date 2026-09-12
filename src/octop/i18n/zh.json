@@ -111,6 +111,13 @@
       "cleared": "已清除模型覆盖。",
       "set": "此话题模型 → {model}。"
     },
+    "mode": {
+      "override": "对话模式覆盖：{mode}",
+      "current_default": "对话模式：{mode}（Agent 默认）",
+      "usage": "用法：/mode ask|plan|craft|reset（别名：/ask /plan /craft）",
+      "cleared": "已清除对话模式覆盖。",
+      "set": "此话题对话模式 → {mode}。"
+    },
     "compact": {
       "done": "已压缩模型上下文（话题 `{short}`）：较早消息 {count} 条已总结，保留最近对话。\n\n聊天记录仍完整保留；下一轮起模型只使用摘要 + 近期对话。",
       "done_offload": "已压缩模型上下文（话题 `{short}`）：较早消息 {count} 条已总结，保留最近对话。\n\n- 原文：`{path}`\n- 聊天记录仍完整保留；下一轮起模型只使用摘要 + 近期对话。",
@@ -213,6 +220,10 @@
       "model": {
         "label": "切换模型",
         "description": "查看、设置或重置当前话题的模型覆盖"
+      },
+      "mode": {
+        "label": "对话模式",
+        "description": "查看、设置或重置当前话题的问答 / 计划 / 默认模式"
       },
       "new": {
         "label": "新对话",
@@ -682,5 +693,14 @@
     "row_total": "合计",
     "axis_tokens": "Token 数",
     "filename_prefix": "Token用量"
+  },
+  "conversation": {
+    "mode": {
+      "ask_system_hint": "当前为问答（Ask）模式：只用只读能力（知识库检索、读文件、网页抓取等）回答与解释。不要创建、编辑、删除、执行，也不要写 todos/计划清单；不要发送文件或操作浏览器/桌面/手机，也不要通过 task / ACP / ask_agent 委派执行。若用户需要实际改动，可说明可使用计划或默认模式——不要指导用户如何操作界面控件。",
+      "plan_system_hint": "当前为计划（Plan）模式：用只读工具探索，只产出清晰的分步计划/规格说明。优先用 write_todos 与结构化计划文本。不要执行、改文件，也不要通过 task / ACP / ask_agent 委派。计划就绪后停止即可，产品界面会提供确认执行入口。不要让用户去切换模式按钮，也不要输出内部切换提示词。",
+      "craft_system_hint": "当前为默认（Craft）模式：在现有安全与 HITL 规则下，可使用已启用的完整工具集执行用户请求。",
+      "plan_brief_prefix": "用户已确认以下计划。请在默认模式下立即执行。除非澄清需要，否则不要原样复述整份计划：",
+      "tool_blocked": "当前为 {mode} 模式，工具 `{tool_name}` 不可用。如需执行改动或委派类操作，请切换到默认（Craft）模式。"
+    }
   }
 }

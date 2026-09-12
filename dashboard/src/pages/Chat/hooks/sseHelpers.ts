@@ -11,6 +11,7 @@ import type {
   TokenUsage,
 } from "../../../api/types";
 import type { ContentBlockItem } from "../../../utils/messageParser";
+import type { ConversationMode } from "../utils/conversationMode";
 
 export interface ToolCallData {
   name?: string;
@@ -53,6 +54,7 @@ export interface UserComposerContext {
   model?: string;
   reasoningMode?: "auto" | "enabled" | "disabled";
   reasoningEffort?: string | null;
+  conversationMode?: ConversationMode;
 }
 
 export interface ChatMessage {
@@ -71,6 +73,8 @@ export interface ChatMessage {
   errorInfo?: ProcessErrorInfo;
   status?: "streaming" | "done" | "error";
   timestamp: number;
+  /** Plan→Craft silent handoff — omit from chat transcript UI. */
+  uiHidden?: boolean;
 }
 
 /** Per-session state held in the chat store's module-scoped Map. */

@@ -19,12 +19,16 @@
 
 ### 新增
 
-- 知识库支持下载原文、按原排版预览，聊天内可直接预览引用
-- 技能可在技能包与专家工作区之间复制
-- 记忆树支持手动新建与修正；Token 统计支持日期筛选与 Excel 导出
-- 按用户限制存储根目录与 Token 配额；创建专家可带默认知识库与连接器
-- 聊天支持 @ 子专家、技能斜杠插入，以及 ask_agent 独立对话线程
-- 滴滴连接器；可选分段历史归档；便携运行时升级并支持 SQLite 备份
+- 知识库支持下载上传原文；PDF / DOCX / PPTX / XLSX 在预览弹窗中按原排版查看；文档区支持拖拽上传（#591）
+- 知识库 / 工作区 PDF 预览改用 PDF.js（react-pdf），替代浏览器内置 iframe 查看器
+- 技能包支持将选定技能一次性复制到专家工作区，工作区技能也可推送到当前用户有写权限的技能包（#618）。
+- 对话权限模式 Ask / Plan / Craft：turn 级 `conversation_mode`、`ConversationModeMiddleware`（工具过滤 + 系统提示 + denylist 硬拒；Ask 额外禁用 `write_todos`；Ask/Plan 拦截 `task` / `acp_runner` / `ask_agent`）、agent `default_conversation_mode` 与 `default_knowledge_base_ids`；Composer 模式菜单（默认 / 计划 / 问答）；IM `/mode`（及 `/ask` `/plan` `/craft`）线程粘性覆盖（#616）
+- 计划模式回合结束后展示「按计划执行 / 继续改计划」；确认后切到默认模式，计划 brief 经 `plan_brief` 由网关注入 system（不落对话气泡）（#616）
+- 记忆树支持手动新建主题/记忆，以及编辑已有记忆（replace/supersede，保留变更历史）。
+- Token 统计支持日期范围筛选（RangePicker 预设 + 自定义起止）并导出 Excel 用量明细（#154）
+- Token 用量 Excel 含专家名称、中英列表头，以及按天/专家/模型汇总 sheet 与图表
+- Token 用量 Excel 按报表规范打磨：冻结表头、千分位、合计公式行、筛选与仪表盘配色柱图
+- 知识库卡片「更多」菜单可一键添加到当前会话
 
 ### 修复
 

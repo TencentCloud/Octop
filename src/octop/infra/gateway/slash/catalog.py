@@ -88,6 +88,14 @@ CATALOG: tuple[SlashCommandSpec, ...] = (
         category="core",
     ),
     SlashCommandSpec(
+        name="mode",
+        aliases=("ask", "plan", "craft"),
+        usage="/mode [ask|plan|craft|reset]",
+        icon="Shield",
+        tone="violet",
+        category="core",
+    ),
+    SlashCommandSpec(
         name="new",
         aliases=("clear",),
         usage="/new [title]",

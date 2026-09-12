@@ -24,7 +24,13 @@ import {
   peekPendingAttachKnowledgeBaseId,
 } from "../utils/pendingAttachKnowledgeBase";
 import { withDefaultOpenKnowledgeBases } from "../utils/withDefaultOpenKnowledgeBases";
+import { PENDING_THREAD_ID } from "../constants";
 import { isPendingThread } from "./useSessions";
+import {
+  parseConversationMode,
+  type ConversationMode,
+} from "../utils/conversationMode";
+import { resolveSeedConversationMode } from "../utils/seedConversationMode";
 
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
@@ -32,15 +38,15 @@ export function useChatComposerResources(
   stickyModel?: string | null,
   stickyReasoningMode?: "auto" | "enabled" | "disabled" | null,
   stickyReasoningEffort?: string | null,
+  defaultConversationMode?: ConversationMode | string | null,
+  defaultKnowledgeBaseIds?: string[] | null,
 ) {
   const user = useCurrentUser();
   const currentUserId = user?.id ?? null;
   const { agents } = useAgent();
   const expert = agents.find((item) => item.agent_id === resolvedAgentId);
   const expertMcpServers = expert?.mcp_servers;
-  const expertKnowledgeBaseIds = expert?.knowledge_base_ids;
   const expertMcpKey = (expertMcpServers ?? []).join("\0");
-  const expertKbKey = (expertKnowledgeBaseIds ?? []).join("\0");
   const isNewSession = !activeThreadId || isPendingThread(activeThreadId);
   const composerTouchedRef = useRef(false);
   const [selectedConnectors, setSelectedConnectors] = useState<string[]>([]);
@@ -72,6 +78,9 @@ export function useChatComposerResources(
     "auto" | "enabled" | "disabled"
   >("auto");
   const [reasoningEffort, setReasoningEffort] = useState<string | null>(null);
+  const [conversationMode, setConversationMode] = useState<ConversationMode>(
+    () => parseConversationMode(defaultConversationMode),
+  );
   const [conversationOverrides, setConversationOverrides] = useState<
     Record<
       string,
@@ -79,17 +88,80 @@ export function useChatComposerResources(
         model: string | null;
         mode: "auto" | "enabled" | "disabled";
         effort: string | null;
+        conversationMode?: ConversationMode;
       }
     >
   >({});
 
-  useEffect(() => {
-    composerTouchedRef.current = false;
-  }, [resolvedAgentId]);
+  // Keep refs so thread-id transitions can stamp the composer mode the user
+  // already picked on an empty / pending chat (PlanReady P0).
+  const conversationModeRef = useRef(conversationMode);
+  conversationModeRef.current = conversationMode;
+  const selectedModelRef = useRef(selectedModel);
+  selectedModelRef.current = selectedModel;
+  const reasoningModeRef = useRef(reasoningMode);
+  reasoningModeRef.current = reasoningMode;
+  const reasoningEffortRef = useRef(reasoningEffort);
+  reasoningEffortRef.current = reasoningEffort;
+  const prevThreadIdRef = useRef(activeThreadId);
 
+  // Seed from agent default, then restore any per-thread override (#616 OCR).
+  // When a new chat first gets a thread id (empty → pending → real), preserve
+  // the composer selection instead of wiping it back to the agent default —
+  // otherwise Plan turns never show PlanReady on the first send.
   useEffect(() => {
-    if (isNewSession) composerTouchedRef.current = false;
-  }, [isNewSession]);
+    const prevThreadId = prevThreadIdRef.current;
+    prevThreadIdRef.current = activeThreadId;
+    const decision = resolveSeedConversationMode({
+      activeThreadId,
+      previousThreadId: prevThreadId,
+      override: activeThreadId
+        ? conversationOverrides[activeThreadId]?.conversationMode
+        : undefined,
+      agentDefault: defaultConversationMode,
+      currentComposerMode: conversationModeRef.current,
+    });
+
+    if (decision.action === "set") {
+      setConversationMode(decision.mode);
+      // Drop the reusable pending bucket so the next new-chat first-send does
+      // not revive a previous Plan/Ask selection.
+      if (!activeThreadId) {
+        setConversationOverrides((current) => {
+          if (!(PENDING_THREAD_ID in current)) return current;
+          const next = { ...current };
+          delete next[PENDING_THREAD_ID];
+          return next;
+        });
+      }
+      return;
+    }
+
+    if (decision.action === "stamp-override" && activeThreadId) {
+      const mode = decision.mode;
+      setConversationMode(mode);
+      setConversationOverrides((current) => {
+        const prev = current[activeThreadId];
+        if (prev?.conversationMode === mode) {
+          return current;
+        }
+        return {
+          ...current,
+          [activeThreadId]: {
+            model: prev?.model ?? selectedModelRef.current,
+            mode: prev?.mode ?? reasoningModeRef.current,
+            effort: prev?.effort ?? reasoningEffortRef.current,
+            conversationMode: mode,
+          },
+        };
+      });
+    }
+  }, [
+    resolvedAgentId,
+    activeThreadId,
+    defaultConversationMode,
+    conversationOverrides,
+  ]);
 
   // Auto = omit turn model; backend applies the expert default.
   useEffect(() => {
@@ -211,6 +283,9 @@ export function useChatComposerResources(
         return knowledgeBasesApi.list().then((bases) => {
           if (cancelled) return;
           setChatKnowledgeBases(bases);
+          const agentDefaults = (defaultKnowledgeBaseIds ?? []).filter((id) =>
+            bases.some((base) => base.id === id),
+          );
           const ownedDefaults = bases
             .filter(
               (base) =>
@@ -219,34 +294,16 @@ export function useChatComposerResources(
                 base.owner_user_id === currentUserId,
             )
             .map((base) => base.id);
-          const allowed = new Set(bases.map((base) => base.id));
-          const defaults = withDefaultOpenKnowledgeBases(
-            ownedDefaults,
-            (expertKnowledgeBaseIds ?? []).filter((id) => allowed.has(id)),
-          );
-          setSelectedKnowledgeBaseIds((previous) => {
-            if (composerTouchedRef.current) {
-              return pendingId &&
-                allowed.has(pendingId) &&
-                !previous.includes(pendingId)
-                ? [...previous, pendingId]
-                : previous;
-            }
-            if (isNewSession) {
-              return withDefaultOpenKnowledgeBases(
-                pendingId && allowed.has(pendingId) ? [pendingId] : [],
-                defaults,
-              );
-            }
-            return withDefaultOpenKnowledgeBases(
-              pendingId &&
-                allowed.has(pendingId) &&
-                !previous.includes(pendingId)
+          const seedDefaults =
+            agentDefaults.length > 0 ? agentDefaults : ownedDefaults;
+          setSelectedKnowledgeBaseIds((previous) =>
+            withDefaultOpenKnowledgeBases(
+              pendingId && !previous.includes(pendingId)
                 ? [...previous, pendingId]
                 : previous,
-              ownedDefaults,
-            );
-          });
+              seedDefaults,
+            ),
+          );
           if (pendingId) consumePendingAttachKnowledgeBaseId();
         });
       })
@@ -256,7 +313,7 @@ export function useChatComposerResources(
     return () => {
       cancelled = true;
     };
-  }, [resolvedAgentId, currentUserId, isNewSession, expertKbKey]);
+  }, [resolvedAgentId, currentUserId, defaultKnowledgeBaseIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -330,6 +387,26 @@ export function useChatComposerResources(
     setSelectedKnowledgeBaseIds(ids);
   }, []);
 
+  const handleConversationModeChange = useCallback(
+    (mode: ConversationMode) => {
+      setConversationMode(mode);
+      if (!activeThreadId) return;
+      setConversationOverrides((current) => {
+        const prev = current[activeThreadId];
+        return {
+          ...current,
+          [activeThreadId]: {
+            model: prev?.model ?? selectedModel,
+            mode: prev?.mode ?? reasoningMode,
+            effort: prev?.effort ?? reasoningEffort,
+            conversationMode: mode,
+          },
+        };
+      });
+    },
+    [activeThreadId, selectedModel, reasoningMode, reasoningEffort],
+  );
+
   const handleModelChange = useCallback(
     (model: string | null) => {
       setSelectedModel(model);
@@ -342,14 +419,18 @@ export function useChatComposerResources(
       setReasoningMode(nextMode);
       setReasoningEffort(nextEffort);
       if (activeThreadId) {
-        setConversationOverrides((current) => ({
-          ...current,
-          [activeThreadId]: {
-            model,
-            mode: nextMode,
-            effort: nextEffort,
-          },
-        }));
+        setConversationOverrides((current) => {
+          const prev = current[activeThreadId];
+          return {
+            ...current,
+            [activeThreadId]: {
+              model,
+              mode: nextMode,
+              effort: nextEffort,
+              conversationMode: prev?.conversationMode,
+            },
+          };
+        });
       }
       if (
         resolvedAgentId &&
@@ -371,14 +452,18 @@ export function useChatComposerResources(
       setReasoningMode(mode);
       setReasoningEffort(effort);
       if (activeThreadId) {
-        setConversationOverrides((current) => ({
-          ...current,
-          [activeThreadId]: {
-            model: selectedModel,
-            mode,
-            effort,
-          },
-        }));
+        setConversationOverrides((current) => {
+          const prev = current[activeThreadId];
+          return {
+            ...current,
+            [activeThreadId]: {
+              model: selectedModel,
+              mode,
+              effort,
+              conversationMode: prev?.conversationMode,
+            },
+          };
+        });
       }
       if (
         resolvedAgentId &&
@@ -400,6 +485,8 @@ export function useChatComposerResources(
     reasoningMode,
     reasoningEffort,
     handleReasoningChange,
+    conversationMode,
+    handleConversationModeChange,
     selectedConnectors,
     selectedKnowledgeBaseIds,
     chatConnectors,
