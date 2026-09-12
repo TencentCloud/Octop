@@ -82,6 +82,63 @@ async def test_no_migration_single_write_and_cross_boundary_cursor(archive):
 
 
 @pytest.mark.asyncio
+async def test_streamed_archive_messages_include_checkpoint_ts(archive):
+    from octop.infra.gateway.process.message_keys import CHECKPOINT_TS_KEY
+
+    turn = archive.begin("a", "t")
+    recorder = RecordingTracker(
+        archive, turn, [{"role": "user", "content": "question", "id": "u1"}]
+    )
+    recorder.observe({"type": "token", "content": "answer"})
+    await recorder.finish(completed=True)
+    messages = messages_from_dict(
+        (await archive.page("t", limit=10, cursor=None, legacy_reader=no_anchor))["messages"]
+    )
+    assert all(
+        isinstance(msg.additional_kwargs.get(CHECKPOINT_TS_KEY), int)
+        and msg.additional_kwargs[CHECKPOINT_TS_KEY] > 0
+        for msg in messages
+    )
+
+
+@pytest.mark.asyncio
+async def test_state_merge_keeps_checkpoint_ts_from_snapshot(archive):
+    from octop.infra.gateway.process.message_keys import CHECKPOINT_TS_KEY
+
+    turn = archive.begin("a", "t")
+    recorder = RecordingTracker(archive, turn, [HumanMessage(content="question", id="u1")])
+    recorder.observe({"type": "token", "message_id": "a1", "content": "partial"})
+    recorder.observe(
+        {
+            "type": "state_snapshot",
+            "data": {
+                "messages": [
+                    HumanMessage(
+                        content="question",
+                        id="u1",
+                        additional_kwargs={CHECKPOINT_TS_KEY: 1_700_000_000_111},
+                    ),
+                    AIMessage(
+                        content="final",
+                        id="a1",
+                        additional_kwargs={CHECKPOINT_TS_KEY: 1_700_000_000_222},
+                    ),
+                ]
+            },
+        }
+    )
+    await recorder.finish(completed=True)
+    messages = {
+        msg.id: msg
+        for msg in messages_from_dict(
+            (await archive.page("t", limit=10, cursor=None, legacy_reader=no_anchor))["messages"]
+        )
+    }
+    assert messages["u1"].additional_kwargs[CHECKPOINT_TS_KEY] == 1_700_000_000_111
+    assert messages["a1"].additional_kwargs[CHECKPOINT_TS_KEY] == 1_700_000_000_222
+
+
+@pytest.mark.asyncio
 async def test_state_metadata_thinking_tools_and_shared_trajectory_bodies(archive):
     text = "A final answer with sufficient distinct content"
     turn = archive.begin("a", "t")

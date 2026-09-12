@@ -214,6 +214,49 @@ def test_serialize_history_message_includes_checkpoint_timestamp_for_tool() -> N
     assert tool["timestamp"] == 1_700_000_000_123
 
 
+def test_serialize_history_message_falls_back_to_created_at() -> None:
+    user = _serialize_history_message(
+        HumanMessage(content="hello"),
+        fallback_created_at=1_700_000_000,
+    )
+    assert user is not None
+    assert user["timestamp"] == 1_700_000_000_000
+
+
+def test_serialize_history_message_prefers_checkpoint_ts_over_created_at() -> None:
+    user = _serialize_history_message(
+        HumanMessage(
+            content="hello",
+            additional_kwargs={"checkpoint_ts": 1_700_000_000_000},
+        ),
+        fallback_created_at=1,
+    )
+    assert user is not None
+    assert user["timestamp"] == 1_700_000_000_000
+
+
+def test_load_projected_falls_back_to_created_at() -> None:
+    import json
+
+    from langchain_core.messages import message_to_dict
+
+    from octop.api.routers.chat.serialize import _load_projected_thread_messages
+
+    row = SimpleNamespace(
+        seq=1,
+        message_json=json.dumps(message_to_dict(HumanMessage(content="hi", id="m1"))),
+        created_at=1_700_000_000,
+    )
+    server = SimpleNamespace(
+        services=SimpleNamespace(
+            thread_message_repo=SimpleNamespace(page=lambda *_a, **_k: ([row], False))
+        )
+    )
+    messages, has_more = _load_projected_thread_messages(server, "agent", "thread", 25, user=None)
+    assert has_more is False
+    assert messages[0]["timestamp"] == 1_700_000_000_000
+
+
 def test_ts_to_ms_converts_seconds() -> None:
     assert _ts_to_ms(1_700_000_000.5) == 1_700_000_000_500
 

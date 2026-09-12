@@ -16,8 +16,10 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import type { ChatAttachment, ChatMessage } from "../hooks/useChat";
-import type { ComposerTagLookups } from "./UserMessageComposerTags";
-import UserMessageComposerTags from "./UserMessageComposerTags";
+import UserMessageComposerTags, {
+  hasUserComposerTags,
+  type ComposerTagLookups,
+} from "./UserMessageComposerTags";
 import { deriveMessageContent } from "../utils/messageContent";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import { ChatMediaPlayer } from "./ChatMediaPlayer";
@@ -653,6 +655,8 @@ function MessageBubble({
   }
 
   const isUser = message.role === "user";
+  const showUserComposerTags =
+    isUser && !isEditing && hasUserComposerTags(message.composerContext);
   const isStreaming = message.status === "streaming";
   const hasToolData = !!message.toolData;
   const looksLikeStreamError =
@@ -746,12 +750,18 @@ function MessageBubble({
     <div
       className={`${styles.messageBubble} ${
         isUser ? styles.userBubble : styles.assistantBubble
-      } ${isError ? styles.errorBubble : ""} ${
-        compact ? styles.compactBubble : ""
-      }`}
+      } ${showUserComposerTags ? styles.userBubbleWithTags : ""} ${
+        isError ? styles.errorBubble : ""
+      } ${compact ? styles.compactBubble : ""}`}
     >
       {!isUser && senderAvatar ? (
         <div className={styles.avatarCol}>{senderAvatar}</div>
+      ) : null}
+      {showUserComposerTags ? (
+        <UserMessageComposerTags
+          context={message.composerContext}
+          lookups={composerLookups}
+        />
       ) : null}
       <div className={styles.bubbleContent}>
         {isUser ? (
@@ -792,78 +802,48 @@ function MessageBubble({
                   </div>
                 </div>
               ) : (
-                <>
-                  <UserMessageComposerTags
-                    context={message.composerContext}
-                    lookups={composerLookups}
-                  />
-                  <div className={styles.userText}>
-                    {imageAttachments.length > 0 && (
-                      <ImageGallery
-                        images={imageAttachments}
-                        agentId={agentId}
-                      />
-                    )}
-                    {videoAttachments.length > 0 && (
-                      <div className={styles.messageMediaList}>
-                        {videoAttachments.map((attachment, idx) => (
-                          <ChatMediaPlayer
-                            key={`${attachment.url}-${idx}`}
-                            url={attachment.url}
-                            filename={attachment.filename}
-                            workspacePath={attachment.workspacePath}
-                            mediaType={attachment.mediaType}
-                            kind="video"
-                            agentId={agentId}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {audioAttachments.length > 0 && (
-                      <div className={styles.messageMediaList}>
-                        {audioAttachments.map((attachment, idx) => (
-                          <ChatMediaPlayer
-                            key={`${attachment.url}-${idx}`}
-                            url={attachment.url}
-                            filename={attachment.filename}
-                            workspacePath={attachment.workspacePath}
-                            mediaType={attachment.mediaType}
-                            kind="audio"
-                            agentId={agentId}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {fileAttachments.length > 0 && (
-                      <FileAttachmentList
-                        files={fileAttachments}
-                        agentId={agentId}
-                      />
-                    )}
-                    {message.content && <div>{message.content}</div>}
-                  </div>
-                  {(message.content || onEditUserMessage) && (
-                    <div className={styles.userMsgActions} role="group">
-                      {message.content ? (
-                        <CopyButton text={message.content} />
-                      ) : null}
-                      {onEditUserMessage ? (
-                        <button
-                          className={styles.msgActionBtn}
-                          onClick={() => {
-                            setEditText(message.content);
-                            setIsEditing(true);
-                          }}
-                          title={t("common.edit")}
-                          type="button"
-                          aria-label={t("common.edit")}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                      ) : null}
+                <div className={styles.userText}>
+                  {imageAttachments.length > 0 && (
+                    <ImageGallery images={imageAttachments} agentId={agentId} />
+                  )}
+                  {videoAttachments.length > 0 && (
+                    <div className={styles.messageMediaList}>
+                      {videoAttachments.map((attachment, idx) => (
+                        <ChatMediaPlayer
+                          key={`${attachment.url}-${idx}`}
+                          url={attachment.url}
+                          filename={attachment.filename}
+                          workspacePath={attachment.workspacePath}
+                          mediaType={attachment.mediaType}
+                          kind="video"
+                          agentId={agentId}
+                        />
+                      ))}
                     </div>
                   )}
-                </>
+                  {audioAttachments.length > 0 && (
+                    <div className={styles.messageMediaList}>
+                      {audioAttachments.map((attachment, idx) => (
+                        <ChatMediaPlayer
+                          key={`${attachment.url}-${idx}`}
+                          url={attachment.url}
+                          filename={attachment.filename}
+                          workspacePath={attachment.workspacePath}
+                          mediaType={attachment.mediaType}
+                          kind="audio"
+                          agentId={agentId}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {fileAttachments.length > 0 && (
+                    <FileAttachmentList
+                      files={fileAttachments}
+                      agentId={agentId}
+                    />
+                  )}
+                  {message.content && <div>{message.content}</div>}
+                </div>
               )}
             </div>
           </div>
@@ -968,15 +948,42 @@ function MessageBubble({
             )}
           </>
         )}
-        {/* Meta row: only show on the last message in a group (or standalone messages) */}
+        {/* Meta row: last-in-group only. User copy/edit sit left of the timestamp. */}
         {isLastInGroup &&
           !hasToolData &&
-          (message.timestamp > 0 || usageParts.length > 0) && (
+          (message.timestamp > 0 ||
+            usageParts.length > 0 ||
+            (isUser &&
+              !isEditing &&
+              Boolean(message.content || onEditUserMessage))) && (
             <div
               className={`${styles.msgMetaRow} ${
                 isUser ? styles.msgMetaRowRight : ""
               }`}
             >
+              {isUser &&
+                !isEditing &&
+                (message.content || onEditUserMessage) && (
+                  <div className={styles.userMsgActions} role="group">
+                    {message.content ? (
+                      <CopyButton text={message.content} />
+                    ) : null}
+                    {onEditUserMessage ? (
+                      <button
+                        className={styles.msgActionBtn}
+                        onClick={() => {
+                          setEditText(message.content);
+                          setIsEditing(true);
+                        }}
+                        title={t("common.edit")}
+                        type="button"
+                        aria-label={t("common.edit")}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    ) : null}
+                  </div>
+                )}
               {message.timestamp > 0 && (
                 <div
                   className={`${styles.msgTime} ${

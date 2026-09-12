@@ -1,15 +1,85 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
+from langchain_core.messages import HumanMessage
 
 from octop.infra.gateway.history_backfill import HistoryBackfillQueue
 from octop.infra.gateway.process.history_projection import (
     TurnHistoryTracker,
     _wire_text,
+    live_message_input,
+    message_input,
 )
-from octop.infra.gateway.process.message_keys import STREAM_ERROR_FLAG
+from octop.infra.gateway.process.message_keys import (
+    CHECKPOINT_TS_KEY,
+    STREAM_ERROR_FLAG,
+    parse_checkpoint_ts_ms,
+)
+
+
+def test_message_input_preserves_existing_checkpoint_ts() -> None:
+    item = message_input(
+        HumanMessage(
+            content="hi",
+            additional_kwargs={CHECKPOINT_TS_KEY: 1_700_000_000_000},
+        )
+    )
+    assert item is not None
+    wire = json.loads(item.message_json)
+    assert wire["data"]["additional_kwargs"][CHECKPOINT_TS_KEY] == 1_700_000_000_000
+    assert item.created_at == 1_700_000_000
+
+
+def test_message_input_does_not_invent_stamp_by_default() -> None:
+    item = message_input(HumanMessage(content="hi"))
+    assert item is not None
+    wire = json.loads(item.message_json)
+    assert CHECKPOINT_TS_KEY not in (wire["data"].get("additional_kwargs") or {})
+
+
+def test_live_message_input_stamps_when_missing() -> None:
+    item = live_message_input(
+        HumanMessage(content="hi"),
+        now_ms=1_700_000_000_123,
+    )
+    assert item is not None
+    wire = json.loads(item.message_json)
+    assert wire["data"]["additional_kwargs"][CHECKPOINT_TS_KEY] == 1_700_000_000_123
+    assert item.created_at == 1_700_000_000
+
+
+def test_live_message_input_preserves_existing_stamp() -> None:
+    item = live_message_input(
+        HumanMessage(
+            content="hi",
+            additional_kwargs={CHECKPOINT_TS_KEY: 1_700_000_000_000},
+        ),
+        now_ms=9,
+    )
+    assert item is not None
+    wire = json.loads(item.message_json)
+    assert wire["data"]["additional_kwargs"][CHECKPOINT_TS_KEY] == 1_700_000_000_000
+
+
+def test_parse_checkpoint_ts_ms() -> None:
+    assert parse_checkpoint_ts_ms(1_700_000_000) == 1_700_000_000_000
+    assert parse_checkpoint_ts_ms(1_700_000_000_000) == 1_700_000_000_000
+    assert parse_checkpoint_ts_ms(0) is None
+    assert parse_checkpoint_ts_ms(True) is None
+    assert parse_checkpoint_ts_ms(None) is None
+
+
+def test_stream_tokens_stamp_checkpoint_ts() -> None:
+    tracker = TurnHistoryTracker.from_request(
+        {"messages": [{"role": "user", "content": "hi", "id": "u1"}]}
+    )
+    tracker.observe({"type": "token", "content": "hello"})
+    assistant = next(item for item in tracker.inputs if item.role in ("ai", "assistant"))
+    wire = json.loads(assistant.message_json)
+    assert CHECKPOINT_TS_KEY in (wire["data"].get("additional_kwargs") or {})
 
 
 def test_turn_tracker_keeps_only_latest_user_turn_and_dedupes_replay() -> None:

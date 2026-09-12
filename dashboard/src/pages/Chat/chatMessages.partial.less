@@ -278,6 +278,22 @@
   }
 }
 
+.userBubbleWithTags {
+  row-gap: 0;
+
+  .userComposerTags {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    max-width: min(75%, 600px);
+  }
+
+  .bubbleContent,
+  .avatarCol {
+    grid-row: 2;
+  }
+}
+
 .assistantBubble {
   .bubbleContent {
     grid-column: 2;
@@ -1177,8 +1193,8 @@
 .msgTime {
   font-size: 10px;
   color: var(--fn-text-quaternary);
-  margin-top: 4px;
-  padding: 0 4px;
+  margin-top: 0;
+  padding: 0;
   user-select: none;
   display: flex;
   align-items: center;
@@ -1208,6 +1224,7 @@
 
 .msgMetaRowRight {
   justify-content: flex-end;
+  flex-wrap: nowrap;
 }
 
 .msgUsage {
@@ -1261,15 +1278,13 @@
   align-items: center;
   justify-content: flex-end;
   gap: 2px;
-  margin-top: 2px;
-  /* Stable 32px hit row so copy/edit stay easy to aim at. */
-  min-height: 32px;
+  margin: 0;
   padding: 0;
 
   .msgCopyBtn,
   .msgActionBtn {
-    width: 32px;
-    height: 32px;
+    width: 22px;
+    height: 22px;
     margin-left: 0;
     /* Invisible until hover/focus, but still receive clicks if aimed. */
     opacity: 0;
@@ -1297,11 +1312,11 @@
   }
 }
 
-/* Reveal when the user bubble is hovered/focused, not only the tiny buttons. */
-.userMsgColumn:hover .userMsgActions .msgCopyBtn,
-.userMsgColumn:hover .userMsgActions .msgActionBtn,
-.userMsgColumn:focus-within .userMsgActions .msgCopyBtn,
-.userMsgColumn:focus-within .userMsgActions .msgActionBtn,
+/* Reveal when the user bubble (or meta row) is hovered/focused. */
+.bubbleContent:hover .userMsgActions .msgCopyBtn,
+.bubbleContent:hover .userMsgActions .msgActionBtn,
+.bubbleContent:focus-within .userMsgActions .msgCopyBtn,
+.bubbleContent:focus-within .userMsgActions .msgActionBtn,
 .messageBubble:hover .userMsgActions .msgCopyBtn,
 .messageBubble:hover .userMsgActions .msgActionBtn {
   opacity: 1;
