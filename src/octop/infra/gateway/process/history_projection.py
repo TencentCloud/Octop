@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -11,7 +12,12 @@ from langchain_core.messages import AIMessage, convert_to_messages, message_to_d
 
 from octop.infra.db.repos._base import now_ts
 from octop.infra.db.repos.thread_messages import ThreadMessageInput
-from octop.infra.gateway.process.message_keys import STREAM_ERROR_CODE_KEY, STREAM_ERROR_FLAG
+from octop.infra.gateway.process.message_keys import (
+    CHECKPOINT_TS_KEY,
+    STREAM_ERROR_CODE_KEY,
+    STREAM_ERROR_FLAG,
+    parse_checkpoint_ts_ms,
+)
 
 _USER_ROLES = frozenset({"human", "user"})
 _ASSISTANT_ROLES = frozenset({"ai", "assistant"})
@@ -32,20 +38,52 @@ def _chunk_messages(chunk: dict[str, Any]) -> list[Any]:
     return []
 
 
+def checkpoint_ts_ms(message: Any) -> int | None:
+    kwargs = getattr(message, "additional_kwargs", None)
+    if not isinstance(kwargs, dict):
+        return None
+    return parse_checkpoint_ts_ms(kwargs.get(CHECKPOINT_TS_KEY))
+
+
+def _ensure_checkpoint_ts(message: Any, *, now_ms: int | None = None) -> Any:
+    """Stamp ``checkpoint_ts`` on a live copy. Existing stamps are left alone."""
+    if checkpoint_ts_ms(message) is not None:
+        return message
+    copy = getattr(message, "model_copy", None)
+    if not callable(copy):
+        return message
+    kwargs = dict(getattr(message, "additional_kwargs", None) or {})
+    kwargs[CHECKPOINT_TS_KEY] = now_ms if now_ms is not None else int(time.time() * 1000)
+    return copy(update={"additional_kwargs": kwargs})
+
+
+def _convert_message(message: Any) -> Any:
+    return convert_to_messages([message])[0] if isinstance(message, dict) else message
+
+
 def message_input(message: Any) -> ThreadMessageInput | None:
-    """Serialize one LangChain/dict message before entering a DB transaction."""
+    """Serialize one LangChain/dict message. Never invents ``checkpoint_ts``."""
     try:
-        converted = convert_to_messages([message])[0] if isinstance(message, dict) else message
+        converted = _convert_message(message)
         wire = message_to_dict(converted)
         role = _role(converted)
         if role in ("", "system"):
             return None
+        ts_ms = checkpoint_ts_ms(converted)
         return ThreadMessageInput(
             message_id=str(getattr(converted, "id", "") or "") or None,
             role=role,
             message_json=json.dumps(wire, ensure_ascii=False, default=str),
-            created_at=now_ts(),
+            created_at=(ts_ms // 1000) if ts_ms is not None else now_ts(),
         )
+    except Exception:
+        return None
+
+
+def live_message_input(message: Any, *, now_ms: int | None = None) -> ThreadMessageInput | None:
+    """Serialize a current-turn message, stamping ``checkpoint_ts`` if missing."""
+    try:
+        return message_input(_ensure_checkpoint_ts(_convert_message(message), now_ms=now_ms))
     except Exception:
         return None
 
@@ -73,6 +111,22 @@ def message_inputs(
         seen.add(key)
         out.append(item)
     return out
+
+
+def live_message_inputs(
+    messages: list[Any],
+    *,
+    dedupe_missing_ids: bool = False,
+    now_ms: int | None = None,
+) -> list[ThreadMessageInput]:
+    """Like ``message_inputs``, but stamps missing ``checkpoint_ts`` on this turn."""
+    prepared: list[Any] = []
+    for message in messages:
+        try:
+            prepared.append(_ensure_checkpoint_ts(_convert_message(message), now_ms=now_ms))
+        except Exception:
+            continue
+    return message_inputs(prepared, dedupe_missing_ids=dedupe_missing_ids)
 
 
 def _wire_text(item: ThreadMessageInput) -> str:
@@ -148,7 +202,7 @@ class TurnHistoryTracker:
         extra: dict[str, Any] = {}
         if self._reasoning_text:
             extra["reasoning_content"] = self._reasoning_text
-        return message_input(AIMessage(content=self._stream_text, additional_kwargs=extra))
+        return live_message_input(AIMessage(content=self._stream_text, additional_kwargs=extra))
 
     def _error_input(self) -> ThreadMessageInput | None:
         if not self._error_message:
@@ -156,7 +210,7 @@ class TurnHistoryTracker:
         extra: dict[str, Any] = {STREAM_ERROR_FLAG: True}
         if self._error_code:
             extra[STREAM_ERROR_CODE_KEY] = self._error_code
-        return message_input(AIMessage(content=self._error_message, additional_kwargs=extra))
+        return live_message_input(AIMessage(content=self._error_message, additional_kwargs=extra))
 
     def _inputs_cover_stream(self, items: list[ThreadMessageInput]) -> bool:
         if not self._stream_text:
@@ -172,7 +226,7 @@ class TurnHistoryTracker:
         source = (
             self._state_messages if state_has_user else [*self.seed_messages, *self._state_messages]
         )
-        items = message_inputs(
+        items = live_message_inputs(
             source,
             dedupe_missing_ids=True,
         )
