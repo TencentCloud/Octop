@@ -16,8 +16,10 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import type { ChatAttachment, ChatMessage } from "../hooks/useChat";
-import type { ComposerTagLookups } from "./UserMessageComposerTags";
-import UserMessageComposerTags from "./UserMessageComposerTags";
+import UserMessageComposerTags, {
+  hasUserComposerTags,
+  type ComposerTagLookups,
+} from "./UserMessageComposerTags";
 import { deriveMessageContent } from "../utils/messageContent";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import { ChatMediaPlayer } from "./ChatMediaPlayer";
@@ -40,6 +42,13 @@ import {
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
 import HitlApprovalCard from "./HitlApprovalCard";
+import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import { useAgent } from "../../../context/AgentContext";
+import {
+  accountDisplayName,
+  accountInitials,
+} from "../utils/accountDisplayName";
 import { extractAskQuestions, isAskHitl } from "../../../api/types/hitl";
 import styles from "../index.module.less";
 import {
@@ -77,6 +86,8 @@ interface MessageBubbleProps {
   compact?: boolean;
   /** Position within an assistant group — controls border-radius & meta visibility. */
   groupPosition?: "first" | "middle" | "last" | "only";
+  /** Assistant avatar. Hide when the turn already shows one on the process row. */
+  showAvatar?: boolean;
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
@@ -524,6 +535,7 @@ function MessageBubble({
   onHitlDecision,
   compact,
   groupPosition = "only",
+  showAvatar = true,
   onRunShellCommand,
   shellCommandDisabled,
   shellCommandDisabledTitle,
@@ -531,6 +543,15 @@ function MessageBubble({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const serverTimezone = useServerTimezone();
+  const user = useCurrentUser();
+  const { agents, activeAgent } = useAgent();
+  const expert = useMemo(
+    () =>
+      (agentId && agents.find((item) => item.agent_id === agentId)) ||
+      activeAgent,
+    [agentId, agents, activeAgent],
+  );
+  const userName = accountDisplayName(user);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
@@ -592,41 +613,50 @@ function MessageBubble({
       const questions = extractAskQuestions(actions);
       return (
         <div
-          className={`${styles.bubble} ${styles.assistantBubble} ${
-            compact ? styles.compact : ""
+          className={`${styles.messageBubble} ${styles.assistantBubble} ${
+            compact ? styles.compactBubble : ""
           }`}
         >
-          <AskQuestionCard
-            questions={questions}
-            status={hitlStatus}
-            onSubmit={
-              onHitlDecision
-                ? (answer) =>
-                    onHitlDecision(
-                      actions.map(() => ({ type: "respond", message: answer })),
-                    )
-                : undefined
-            }
-          />
+          <div className={styles.bubbleContent}>
+            <AskQuestionCard
+              questions={questions}
+              status={hitlStatus}
+              onSubmit={
+                onHitlDecision
+                  ? (answer) =>
+                      onHitlDecision(
+                        actions.map(() => ({
+                          type: "respond",
+                          message: answer,
+                        })),
+                      )
+                  : undefined
+              }
+            />
+          </div>
         </div>
       );
     }
     return (
       <div
-        className={`${styles.bubble} ${styles.assistantBubble} ${
-          compact ? styles.compact : ""
+        className={`${styles.messageBubble} ${styles.assistantBubble} ${
+          compact ? styles.compactBubble : ""
         }`}
       >
-        <HitlApprovalCard
-          actions={actions}
-          status={hitlStatus}
-          onDecision={onHitlDecision}
-        />
+        <div className={styles.bubbleContent}>
+          <HitlApprovalCard
+            actions={actions}
+            status={hitlStatus}
+            onDecision={onHitlDecision}
+          />
+        </div>
       </div>
     );
   }
 
   const isUser = message.role === "user";
+  const showUserComposerTags =
+    isUser && !isEditing && hasUserComposerTags(message.composerContext);
   const isStreaming = message.status === "streaming";
   const hasToolData = !!message.toolData;
   const looksLikeStreamError =
@@ -695,57 +725,83 @@ function MessageBubble({
         : ""
       : "";
 
+  const showSender =
+    (isUser || groupPosition === "first" || groupPosition === "only") &&
+    (isUser || showAvatar);
+  const senderAvatar = !showSender ? null : isUser ? (
+    <MessageSender
+      name={userName}
+      avatar={
+        <span className={styles.msgUserAvatar}>
+          {accountInitials(userName)}
+        </span>
+      }
+    />
+  ) : expert ? (
+    <ExpertMessageAvatar
+      name={expert.name}
+      color={expert.color}
+      iconName={expert.icon_name}
+      iconUrl={expert.icon_url}
+    />
+  ) : null;
+
   return (
     <div
       className={`${styles.messageBubble} ${
         isUser ? styles.userBubble : styles.assistantBubble
-      } ${isError ? styles.errorBubble : ""} ${
-        compact ? styles.compactBubble : ""
-      }`}
+      } ${showUserComposerTags ? styles.userBubbleWithTags : ""} ${
+        isError ? styles.errorBubble : ""
+      } ${compact ? styles.compactBubble : ""}`}
     >
+      {!isUser && senderAvatar ? (
+        <div className={styles.avatarCol}>{senderAvatar}</div>
+      ) : null}
+      {showUserComposerTags ? (
+        <UserMessageComposerTags
+          context={message.composerContext}
+          lookups={composerLookups}
+        />
+      ) : null}
       <div className={styles.bubbleContent}>
         {isUser ? (
           <div className={styles.userMsgRow}>
-            {isEditing ? (
-              <div className={styles.editArea}>
-                <textarea
-                  ref={editTextareaRef}
-                  className={styles.editTextarea}
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  autoFocus
-                  rows={4}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleEditSubmit();
-                    }
-                    if (e.key === "Escape") handleEditCancel();
-                  }}
-                />
-                <div className={styles.editActions}>
-                  <button
-                    className={styles.editSaveBtn}
-                    onClick={handleEditSubmit}
-                    type="button"
-                  >
-                    {t("common.save", "保存并重新发送")}
-                  </button>
-                  <button
-                    className={styles.editCancelBtn}
-                    onClick={handleEditCancel}
-                    type="button"
-                  >
-                    {t("common.cancel", "取消")}
-                  </button>
+            <div className={styles.userMsgColumn}>
+              {isEditing ? (
+                <div className={styles.editArea}>
+                  <textarea
+                    ref={editTextareaRef}
+                    className={styles.editTextarea}
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    autoFocus
+                    rows={4}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleEditSubmit();
+                      }
+                      if (e.key === "Escape") handleEditCancel();
+                    }}
+                  />
+                  <div className={styles.editActions}>
+                    <button
+                      className={styles.editSaveBtn}
+                      onClick={handleEditSubmit}
+                      type="button"
+                    >
+                      {t("common.save", "保存并重新发送")}
+                    </button>
+                    <button
+                      className={styles.editCancelBtn}
+                      onClick={handleEditCancel}
+                      type="button"
+                    >
+                      {t("common.cancel", "取消")}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className={styles.userMsgColumn}>
-                <UserMessageComposerTags
-                  context={message.composerContext}
-                  lookups={composerLookups}
-                />
+              ) : (
                 <div className={styles.userText}>
                   {imageAttachments.length > 0 && (
                     <ImageGallery images={imageAttachments} agentId={agentId} />
@@ -788,29 +844,8 @@ function MessageBubble({
                   )}
                   {message.content && <div>{message.content}</div>}
                 </div>
-                {(message.content || onEditUserMessage) && (
-                  <div className={styles.userMsgActions} role="group">
-                    {message.content ? (
-                      <CopyButton text={message.content} />
-                    ) : null}
-                    {onEditUserMessage ? (
-                      <button
-                        className={styles.msgActionBtn}
-                        onClick={() => {
-                          setEditText(message.content);
-                          setIsEditing(true);
-                        }}
-                        title={t("common.edit")}
-                        type="button"
-                        aria-label={t("common.edit")}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         ) : (
           <>
@@ -913,15 +948,42 @@ function MessageBubble({
             )}
           </>
         )}
-        {/* Meta row: only show on the last message in a group (or standalone messages) */}
+        {/* Meta row: last-in-group only. User copy/edit sit left of the timestamp. */}
         {isLastInGroup &&
           !hasToolData &&
-          (message.timestamp > 0 || usageParts.length > 0) && (
+          (message.timestamp > 0 ||
+            usageParts.length > 0 ||
+            (isUser &&
+              !isEditing &&
+              Boolean(message.content || onEditUserMessage))) && (
             <div
               className={`${styles.msgMetaRow} ${
                 isUser ? styles.msgMetaRowRight : ""
               }`}
             >
+              {isUser &&
+                !isEditing &&
+                (message.content || onEditUserMessage) && (
+                  <div className={styles.userMsgActions} role="group">
+                    {message.content ? (
+                      <CopyButton text={message.content} />
+                    ) : null}
+                    {onEditUserMessage ? (
+                      <button
+                        className={styles.msgActionBtn}
+                        onClick={() => {
+                          setEditText(message.content);
+                          setIsEditing(true);
+                        }}
+                        title={t("common.edit")}
+                        type="button"
+                        aria-label={t("common.edit")}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    ) : null}
+                  </div>
+                )}
               {message.timestamp > 0 && (
                 <div
                   className={`${styles.msgTime} ${
@@ -983,6 +1045,9 @@ function MessageBubble({
             </div>
           )}
       </div>
+      {isUser && senderAvatar ? (
+        <div className={styles.avatarCol}>{senderAvatar}</div>
+      ) : null}
     </div>
   );
 }

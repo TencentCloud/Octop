@@ -18,8 +18,12 @@ from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.i18n.domains.attachment import attachment_empty_image
 from octop.infra.agents.context_breakdown import usage_dict_from_message
 from octop.infra.gateway.process.message_keys import (
+    CHECKPOINT_TS_KEY,
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
+    STREAM_ERROR_CODE_KEY,
+    STREAM_ERROR_FLAG,
+    parse_checkpoint_ts_ms,
 )
 from octop.infra.utils.llm_text import strip_thinking as _strip_thinking
 from octop.infra.utils.locale import normalize_locale
@@ -45,9 +49,6 @@ _OFFLOAD_PLACEHOLDER_RE = re.compile(
     r"^\s*\[\s*(?:image|audio)\s+offloaded\s*:",
     re.IGNORECASE,
 )
-
-# Must match harness_agent.agent.CHECKPOINT_TS_KEY (epoch-ms in additional_kwargs).
-CHECKPOINT_TS_KEY = "checkpoint_ts"
 
 HISTORY_DEFAULT_LIMIT = 25
 HISTORY_MAX_LIMIT = 200
@@ -314,10 +315,6 @@ def _slice_message_page(
     return page, has_more
 
 
-def _epoch_to_ms(raw: int | float) -> int:
-    return int(raw) if raw > 1_000_000_000_000 else int(raw * 1000)
-
-
 async def _load_checkpoint_messages(
     harness: Any,
     thread_id: str,
@@ -472,7 +469,11 @@ def _load_projected_thread_messages(
                 exc_info=True,
             )
             continue
-        entry = _serialize_history_message(message, user=user)
+        entry = _serialize_history_message(
+            message,
+            user=user,
+            fallback_created_at=row.created_at,
+        )
         if entry is not None:
             out.append(entry)
     return _enrich_history_tool_media(out, agent_id=agent_id), has_more
@@ -586,11 +587,30 @@ def _extract_message_timestamp_ms(msg: Any) -> int | None:
     if not isinstance(additional_kwargs, dict):
         return None
     raw = additional_kwargs.get(CHECKPOINT_TS_KEY)
-    if isinstance(raw, int | float) and raw > 0:
-        return _epoch_to_ms(raw)
+    parsed = parse_checkpoint_ts_ms(raw)
+    if parsed is not None:
+        return parsed
     if isinstance(raw, str) and raw.strip():
         return _ts_to_ms(_parse_jsonl_ts(raw))
     return None
+
+
+def _history_timestamp_ms(msg: Any, fallback_created_at: int | None = None) -> int | None:
+    ts_ms = _extract_message_timestamp_ms(msg)
+    if ts_ms is not None:
+        return ts_ms
+    return parse_checkpoint_ts_ms(fallback_created_at)
+
+
+def _apply_history_timestamp(
+    entry: dict[str, Any],
+    msg: Any,
+    fallback_created_at: int | None = None,
+) -> dict[str, Any]:
+    ts_ms = _history_timestamp_ms(msg, fallback_created_at)
+    if ts_ms is not None:
+        entry["timestamp"] = ts_ms
+    return entry
 
 
 def _parse_jsonl_ts(ts: str | None) -> float | None:
@@ -892,7 +912,12 @@ def _split_string_thinking(text: str) -> list[dict[str, Any]]:
     return blocks
 
 
-def _serialize_history_message(msg: Any, *, user: Any = None) -> dict[str, Any] | None:
+def _serialize_history_message(
+    msg: Any,
+    *,
+    user: Any = None,
+    fallback_created_at: int | None = None,
+) -> dict[str, Any] | None:
     """Project a LangGraph checkpoint message into dashboard history shape."""
     role = _message_role(msg)
     if role in ("system", ""):
@@ -921,10 +946,7 @@ def _serialize_history_message(msg: Any, *, user: Any = None) -> dict[str, Any] 
         entry: dict[str, Any] = {"role": "tool", "content": blocks}
         if mid:
             entry["id"] = mid
-        ts_ms = _extract_message_timestamp_ms(msg)
-        if ts_ms is not None:
-            entry["timestamp"] = ts_ms
-        return entry
+        return _apply_history_timestamp(entry, msg, fallback_created_at)
 
     content = _msg_attr(msg, "content", "")
     blocks = _content_blocks_from_raw(content, additional_kwargs)
@@ -978,10 +1000,12 @@ def _serialize_history_message(msg: Any, *, user: Any = None) -> dict[str, Any] 
             entry["composer_context"] = raw_ctx
         if has_user_attachments:
             entry["inbound_attachments"] = raw_att
-    ts_ms = _extract_message_timestamp_ms(msg)
-    if ts_ms is not None:
-        entry["timestamp"] = ts_ms
-    return entry
+    if additional_kwargs.get(STREAM_ERROR_FLAG):
+        entry["status"] = "error"
+        code = additional_kwargs.get(STREAM_ERROR_CODE_KEY)
+        if code:
+            entry["error_code"] = str(code)
+    return _apply_history_timestamp(entry, msg, fallback_created_at)
 
 
 def _message_content(msg: Any) -> str:

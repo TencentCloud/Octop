@@ -82,6 +82,63 @@ async def test_no_migration_single_write_and_cross_boundary_cursor(archive):
 
 
 @pytest.mark.asyncio
+async def test_streamed_archive_messages_include_checkpoint_ts(archive):
+    from octop.infra.gateway.process.message_keys import CHECKPOINT_TS_KEY
+
+    turn = archive.begin("a", "t")
+    recorder = RecordingTracker(
+        archive, turn, [{"role": "user", "content": "question", "id": "u1"}]
+    )
+    recorder.observe({"type": "token", "content": "answer"})
+    await recorder.finish(completed=True)
+    messages = messages_from_dict(
+        (await archive.page("t", limit=10, cursor=None, legacy_reader=no_anchor))["messages"]
+    )
+    assert all(
+        isinstance(msg.additional_kwargs.get(CHECKPOINT_TS_KEY), int)
+        and msg.additional_kwargs[CHECKPOINT_TS_KEY] > 0
+        for msg in messages
+    )
+
+
+@pytest.mark.asyncio
+async def test_state_merge_keeps_checkpoint_ts_from_snapshot(archive):
+    from octop.infra.gateway.process.message_keys import CHECKPOINT_TS_KEY
+
+    turn = archive.begin("a", "t")
+    recorder = RecordingTracker(archive, turn, [HumanMessage(content="question", id="u1")])
+    recorder.observe({"type": "token", "message_id": "a1", "content": "partial"})
+    recorder.observe(
+        {
+            "type": "state_snapshot",
+            "data": {
+                "messages": [
+                    HumanMessage(
+                        content="question",
+                        id="u1",
+                        additional_kwargs={CHECKPOINT_TS_KEY: 1_700_000_000_111},
+                    ),
+                    AIMessage(
+                        content="final",
+                        id="a1",
+                        additional_kwargs={CHECKPOINT_TS_KEY: 1_700_000_000_222},
+                    ),
+                ]
+            },
+        }
+    )
+    await recorder.finish(completed=True)
+    messages = {
+        msg.id: msg
+        for msg in messages_from_dict(
+            (await archive.page("t", limit=10, cursor=None, legacy_reader=no_anchor))["messages"]
+        )
+    }
+    assert messages["u1"].additional_kwargs[CHECKPOINT_TS_KEY] == 1_700_000_000_111
+    assert messages["a1"].additional_kwargs[CHECKPOINT_TS_KEY] == 1_700_000_000_222
+
+
+@pytest.mark.asyncio
 async def test_state_metadata_thinking_tools_and_shared_trajectory_bodies(archive):
     text = "A final answer with sufficient distinct content"
     turn = archive.begin("a", "t")
@@ -669,6 +726,58 @@ async def test_write_failure_does_not_deliver_or_retry_uncommitted_content(archi
     assert turn["status"] == "failed" and turn["error"] == "archive_write_failed"
     with archive.store.db.connect() as conn:
         assert not conn.execute("SELECT 1 FROM bodies WHERE value LIKE '%never-show%'").fetchall()
+
+
+@pytest.mark.asyncio
+async def test_dashboard_error_keeps_partial_tokens_and_error(archive):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from harness_gateway.models import ChannelSubject, InboundMessage, TextContent
+
+    from octop.infra.gateway.process.processor import GlobalProcessor
+    from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+    from octop.infra.gateway.ws import WS_CHANNEL_ID
+
+    async def stream(*_args, **_kwargs):
+        yield {"type": "token", "message_id": "m", "content": "partial answer"}
+        raise RuntimeError("Error code: 402 insufficient balance")
+
+    manager = MagicMock()
+    manager.stream = stream
+    manager.merge_turn_mcp_servers.return_value = None
+    manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    processor = GlobalProcessor(
+        agent_manager=manager,
+        thread_registry=MagicMock(),
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        thread_message_repo=archive.messages,
+        history_archive=archive,
+    )
+    processor._record_stream_error = AsyncMock()
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="a",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="question")],
+        metadata={"session_key": "s", "thread_id": "t"},
+    )
+    delivered = [chunk async for chunk in processor.iter_turn_chunks(msg)]
+    assert any(chunk.get("type") == "error" for chunk in delivered)
+    history = (await archive.page("t", limit=20, cursor=None, legacy_reader=no_anchor))["messages"]
+    recovered = messages_from_dict(history)
+    texts = [str(message.content) for message in recovered]
+    assert any("question" in text for text in texts)
+    assert "partial answer" in texts
+    error = next(
+        message for message in recovered if message.additional_kwargs.get("octop_stream_error")
+    )
+    assert "余额" in str(error.content) or "insufficient" in str(error.content).lower()
+    assert archive.store.turn("t")["status"] == "failed"
 
 
 @pytest.mark.asyncio

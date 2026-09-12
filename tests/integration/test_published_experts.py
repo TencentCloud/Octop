@@ -258,6 +258,57 @@ async def test_install_keeps_source_quick_prompts_when_publish_body_omits_them(
     assert fork_welcome.json()["quick_prompts"] == source_prompts
 
 
+@posix_only
+async def test_install_keeps_source_task_examples_when_publish_body_omits_them(
+    env: tuple[Any, Any, dict[str, str]],
+) -> None:
+    client, _server, admin_auth = env
+    owner_auth = await create_user(client, admin_auth, username="taskex_owner")
+    peer_auth = await create_user(client, admin_auth, username="taskex_peer")
+    created = await client.post(
+        "/api/agents/from-expert/ai-coding-coach",
+        headers=owner_auth,
+        json={"name": "taskex-source"},
+    )
+    assert created.status_code == 201, created.text
+    source_agent_id = created.json()["agent_id"]
+
+    source_examples = await client.get(
+        f"/api/agents/{source_agent_id}/cron/examples",
+        headers=owner_auth,
+    )
+    assert source_examples.status_code == 200, source_examples.text
+    source_payload = source_examples.json()["task_examples"]
+    assert source_payload and source_payload["zh"] and source_payload["en"]
+
+    published = await client.post(
+        f"/api/agents/{source_agent_id}/publish-expert",
+        headers=owner_auth,
+        json={"name": "Task example expert"},
+    )
+    assert published.status_code == 201, published.text
+
+    installed = await client.post(
+        f"/api/experts/published/{published.json()['id']}/install",
+        headers=peer_auth,
+        json={"name": "Task example fork"},
+    )
+    assert installed.status_code == 201, installed.text
+
+    unpublished = await client.delete(
+        f"/api/experts/published/{published.json()['id']}",
+        headers=owner_auth,
+    )
+    assert unpublished.status_code == 204, unpublished.text
+
+    fork_examples = await client.get(
+        f"/api/agents/{installed.json()['agent_id']}/cron/examples",
+        headers=peer_auth,
+    )
+    assert fork_examples.status_code == 200, fork_examples.text
+    assert fork_examples.json()["task_examples"] == source_payload
+
+
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
 

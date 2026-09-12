@@ -4,11 +4,11 @@
 # 用法（在仓库根目录执行）:
 #   docker compose -f docker/docker-compose.yml up -d
 #   OCTOP_PORT=9090 docker compose -f docker/docker-compose.yml up -d
-#   OCTOP_DEFAULT_PASSWORD=Octop123 docker compose -f docker/docker-compose.yml up -d
+#   OCTOP_DEFAULT_PASSWORD=<your-strong-password> docker compose -f docker/docker-compose.yml up -d
 #
 # 可在 docker/ 目录放置 .env 文件，例如:
 #   OCTOP_PORT=9090
-#   OCTOP_DEFAULT_PASSWORD=Octop123
+#   OCTOP_DEFAULT_PASSWORD=<your-strong-password>
 #   OCTOP_ADMIN_USERNAME=admin
 #   OCTOP_DATABASE_DRIVER=postgresql
 #   OCTOP_DATABASE_URL=postgresql://octop:octop@host.docker.internal:5432/octop
@@ -36,7 +36,7 @@ services:
       - OCTOP_BIND_HOST=0.0.0.0
       - OCTOP_PORT=${OCTOP_PORT:-8088}
       - OCTOP_LOG_LEVEL=${OCTOP_LOG_LEVEL:-info}
-      - OCTOP_DEFAULT_PASSWORD=${OCTOP_DEFAULT_PASSWORD:-Octop123}
+      - OCTOP_DEFAULT_PASSWORD=${OCTOP_DEFAULT_PASSWORD:-}
       - OCTOP_ADMIN_USERNAME=${OCTOP_ADMIN_USERNAME:-admin}
       - OCTOP_ADMIN_DISPLAY_NAME=${OCTOP_ADMIN_DISPLAY_NAME:-Admin}
       - OCTOP_DATABASE_URL=${OCTOP_DATABASE_URL:-}

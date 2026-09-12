@@ -1,3 +1,41 @@
 #!/bin/bash
-# Octop — 安装前回调（无特殊处理；docker-project 由应用中心管理）
+#
+# Octop — 安装前回调
+# 在安装文件应用之前预校验安装向导的密码输入：无效密码在此拦截，
+# 避免装到一半才失败（错误信息经 TRIM_TEMP_LOGFILE 展示给用户）。
+#
+set -euo pipefail
+
+_OCTOP_COMMON="$(dirname "$0")/common.sh"
+[ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop/cmd/common.sh"
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
+
+fail_init() {
+    echo "[octop] $1" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+    echo "[octop] $1" >&2 || true
+    exit 1
+}
+
+ADMIN_USER="$(octop_sanitize_value "${wizard_admin_username:-admin}")"
+PASSWORD_MODE="$(octop_sanitize_value "${wizard_password_mode:-random}")"
+WIZARD_PASSWORD="$(octop_sanitize_value "${wizard_admin_password:-}")"
+
+if [ -z "$ADMIN_USER" ]; then
+    fail_init "管理员用户名不能为空"
+fi
+if ! printf '%s' "$ADMIN_USER" | grep -qE '^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,31}$'; then
+    fail_init "管理员用户名「${ADMIN_USER}」无效：只能包含字母、数字、点、下划线和连字符（2-32 位）"
+fi
+
+if [ "$PASSWORD_MODE" = "custom" ]; then
+    if [ -z "$WIZARD_PASSWORD" ]; then
+        fail_init "您选择了自己输入密码，但密码为空。请输入密码，或改选「自动生成随机密码」。"
+    fi
+    if ! REASON="$(octop_validate_password "$WIZARD_PASSWORD" 2>&1)"; then
+        fail_init "管理员密码不符合要求：${REASON}（要求：至少 8 位，且同时包含字母和数字，不能使用过于常见的密码）"
+    fi
+elif [ "$PASSWORD_MODE" != "random" ]; then
+    fail_init "密码设置方式无效：${PASSWORD_MODE}（应为 custom 或 random）"
+fi
+
 exit 0

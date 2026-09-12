@@ -506,27 +506,29 @@ export default function MessageList(props: MessageListProps) {
   const historyHeader = useMemo(() => {
     if (!historyHasMore && !historyLoadingMore) return null;
     return (
-      <div className={styles.historyLoadMore}>
-        {historyLoadingMore ? (
-          <>
-            <Spin size="small" />
-            <span>{t("chat.loadingEarlierMessages")}</span>
-          </>
-        ) : (
-          <>
-            <span className={styles.historyLoadMoreHint}>
-              {t("chat.scrollForEarlierMessages")}
-            </span>
-            <Button
-              type="link"
-              size="small"
-              className={styles.historyLoadMoreBtn}
-              onClick={requestOlderMessages}
-            >
-              {t("chat.loadEarlierMessages")}
-            </Button>
-          </>
-        )}
+      <div className={styles.turnInset}>
+        <div className={styles.historyLoadMore}>
+          {historyLoadingMore ? (
+            <>
+              <Spin size="small" />
+              <span>{t("chat.loadingEarlierMessages")}</span>
+            </>
+          ) : (
+            <>
+              <span className={styles.historyLoadMoreHint}>
+                {t("chat.scrollForEarlierMessages")}
+              </span>
+              <Button
+                type="link"
+                size="small"
+                className={styles.historyLoadMoreBtn}
+                onClick={requestOlderMessages}
+              >
+                {t("chat.loadEarlierMessages")}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
     );
   }, [historyHasMore, historyLoadingMore, requestOlderMessages, t]);
@@ -534,9 +536,11 @@ export default function MessageList(props: MessageListProps) {
   const refreshFooter = useMemo(() => {
     if (!historyRefreshing) return null;
     return (
-      <div className={styles.historyLoadMore}>
-        <Spin size="small" />
-        <span>{t("chat.refreshingMessages")}</span>
+      <div className={styles.turnInset}>
+        <div className={styles.historyLoadMore}>
+          <Spin size="small" />
+          <span>{t("chat.refreshingMessages")}</span>
+        </div>
       </div>
     );
   }, [historyRefreshing, t]);

@@ -204,3 +204,28 @@ def test_expert_quick_prompts_from_manifest(tmp_path: Path) -> None:
     assert len(expert.quick_prompts) == 1
     assert expert.quick_prompts[0].title_zh == "标题"
     assert expert.quick_prompts[0].prompt_en == "Hello"
+
+
+def test_expert_task_examples_from_manifest(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.catalog import ExpertCatalog
+
+    expert_dir = tmp_path / "my-expert"
+    expert_dir.mkdir()
+    _write_manifest(
+        expert_dir,
+        extra={
+            "task_examples": {
+                "zh": ["一", "二", "三", "四", "五"],
+                "en": ["a", "b", "c", "d", "e"],
+            }
+        },
+    )
+
+    catalog = ExpertCatalog(tmp_path)
+    catalog.refresh()
+    expert = catalog.get("my-expert")
+    assert expert is not None
+    assert expert.summary.task_examples == {
+        "zh": ["一", "二", "三"],
+        "en": ["a", "b", "c"],
+    }

@@ -7,7 +7,7 @@ description: Generate bilingual Octop expert manifest metadata from a SkillHub s
 
 You turn a SkillHub skillset package into the small manifest metadata Octop needs
 for an expert agent. You do not create a soul/persona file. You only generate
-display metadata, a welcome message, and quick-start cards.
+display metadata, a welcome message, quick-start cards, and scheduled-task examples.
 
 Return JSON only. Do not include Markdown fences, commentary, XML tags, or
 reasoning.
@@ -51,7 +51,11 @@ Return exactly this shape:
       "color": "#RRGGBB",
       "icon_name": "string"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": ["string"],
+    "en": ["string"]
+  }
 }
 ```
 
@@ -115,6 +119,18 @@ Return exactly this shape:
 - Prefer professional, task-oriented wording.
 - Do not mention SkillHub, packages, JSON, schema, or internal implementation.
 - Do not invent unsupported abilities beyond the workflow prompt and skills.
+- Produce exactly 3 or exactly 6 `task_examples` (prefer 6 when the workflow
+  has recurring work). Do not return 4 or 5.
+  These are empty-state cards on the **tasks / cron** page: each string is a
+  natural-language request that asks the expert to **create a scheduled job**.
+- Every task example must include a concrete schedule in quotes, for example
+  `每天「09:00」` / `every weekday at 18:00`, and should say to enable the job
+  after creation when that is the first card.
+- Domain-specific only — do not reuse generic drink-water / zodiac / tech-news
+  examples. Cover daily patrol, weekly recap, and at least one deliverable push
+  when the workflow supports it.
+- `task_examples.zh` and `task_examples.en` must be the same length and express
+  the same jobs. Keep each string under ~120 characters.
 
 Allowed `icon_name` values:
 

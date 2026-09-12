@@ -2503,7 +2503,7 @@ wheels = [
 
 [[package]]
 name = "octop"
-version = "0.9.32"
+version = "0.9.34"
 source = { editable = "." }
 dependencies = [
     { name = "acme" },
@@ -2599,8 +2599,8 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.110" },
     { name = "fastembed", marker = "extra == 'local-embedding'", specifier = ">=0.4" },
     { name = "harness-browser", specifier = ">=0.7.8" },
-    { name = "harness-memory", specifier = ">=0.9.10" },
     { name = "harness-gateway", specifier = ">=0.9.7" },
+    { name = "harness-memory", specifier = ">=0.9.10" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "huggingface-hub", marker = "extra == 'local-embedding'", specifier = ">=0.20" },
     { name = "josepy", specifier = ">=2.2.0" },

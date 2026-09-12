@@ -275,6 +275,7 @@ async def test_export_snapshot_builds_manifest_from_publish_metadata_only(
         "description": {"zh": "旧说明", "en": "Old description"},
         "welcome_message": {"zh": "欢迎回来", "en": "Welcome back"},
         "quick_prompts": [{"title": {"zh": "开始", "en": "Start"}}],
+        "task_examples": {"zh": ["工作区示例"], "en": ["Workspace example"]},
         "icon_name": "zap",
         "color": "#111111",
         "skillhub": {"manifest_generated": {"by": "test"}},
@@ -315,10 +316,45 @@ async def test_export_snapshot_builds_manifest_from_publish_metadata_only(
         "en": "Start researching",
     }
     assert "quick_prompts" not in merged
+    assert "task_examples" not in merged
     assert "skillhub" not in merged
     assert merged["icon_name"] == "search"
     assert merged["color"] == "#123456"
     assert merged["prompt_files"] == ["SOUL.md"]
+
+
+@pytest.mark.asyncio
+async def test_export_snapshot_writes_task_examples_from_metadata(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source = _workspace(source_dir)
+    await source.aupload_many(
+        [
+            (MANIFEST_FILENAME, json.dumps({"id": "source"}).encode()),
+            ("SOUL.md", b"# Source soul"),
+        ]
+    )
+
+    destination = tmp_path / "published-expert"
+    await export_agent_workspace_to_dir(
+        workspace=source,
+        dest=destination,
+        metadata=PublishedExpertSnapshotMeta(
+            name="Research Expert",
+            description="Helps with research",
+            icon_name=None,
+            color=None,
+            label_zh="研究专家",
+            label_en="Research Expert",
+            welcome_message_zh="",
+            welcome_message_en="",
+            task_examples={"zh": ["每天巡检"], "en": ["Daily patrol"]},
+        ),
+        manifest_id="research-expert",
+    )
+
+    merged = json.loads((destination / MANIFEST_FILENAME).read_text(encoding="utf-8"))
+    assert merged["task_examples"] == {"zh": ["每天巡检"], "en": ["Daily patrol"]}
 
 
 @pytest.mark.asyncio

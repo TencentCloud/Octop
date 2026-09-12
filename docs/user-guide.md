@@ -120,7 +120,7 @@ docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
-  -e OCTOP_DEFAULT_PASSWORD=Octop123 \
+  -e OCTOP_DEFAULT_PASSWORD="<自定义强密码，留空则自动生成随机密码>" \
   octop:latest
 ```
 
@@ -129,7 +129,7 @@ docker run -d \
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `OCTOP_PORT` | `8088` | HTTP 监听端口 |
-| `OCTOP_DEFAULT_PASSWORD` | `Octop123` | 首次运行管理员密码（Docker 引导；≥8 位且含字母+数字） |
+| `OCTOP_DEFAULT_PASSWORD` | _(空)_ | 首次运行管理员密码（Docker 引导；≥8 位且含字母+数字；留空则自动生成随机密码并写入 credential.txt） |
 | `OCTOP_ADMIN_USERNAME` | `admin` | 首次运行管理员用户名 |
 | `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载） |
 
@@ -210,7 +210,7 @@ octop service start   # Linux(systemd) / macOS(launchd) / Windows 服务
 
 ```bash
 export OCTOP_ADMIN_USERNAME=admin
-export OCTOP_ADMIN_PASSWORD=Octop123
+export OCTOP_ADMIN_PASSWORD="<你的强密码，≥8 位且含字母和数字>"
 octop run
 ```
 
@@ -299,7 +299,7 @@ octop provider --help     # 供应商增删改查帮助
 
 打开 **http://127.0.0.1:8088**，使用向导创建的账号登录。
 
-> ⚠️ **安全提醒**：Docker 首次初始化默认管理员密码为 `Octop123`。若使用默认值，请尽快在 **个人设置 → 修改密码** 中更换，避免服务暴露到公网时被未授权访问。
+> ⚠️ **安全提醒**：Docker 首次初始化若未设置 `OCTOP_DEFAULT_PASSWORD`，会自动生成随机管理员密码（写入 `/data/.octop/credential.txt`，可用 `docker exec <容器> cat /data/.octop/credential.txt` 查看）。无论哪种方式，都请尽快在 **个人设置 → 修改密码** 中更换，避免服务暴露到公网时被未授权访问。
 
 ![图 5.1 — 登录页面](assets/use-01-login.png)
 

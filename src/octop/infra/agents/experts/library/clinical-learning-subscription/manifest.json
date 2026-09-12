@@ -324,5 +324,23 @@
       "color": "#f3e8ff",
       "icon_name": "sparkles"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每个工作日「07:30」按我的学习轨道推送当天指南学习单元，任务创建后立即启用",
+      "每周日「20:00」复盘本周学习进度，给出下周章节建议",
+      "每月 1 日「08:00」检查当前指南是否有新版；若有则预览迁移影响，先不改轨道",
+      "每个工作日「21:00」根据今日学习单元出 3 道自测题，不给诊疗建议",
+      "每周三「07:30」推送一条医保政策学习摘要（仅政策层面）",
+      "每周五「21:00」整理本周学习笔记索引，不改原文、不给诊疗建议"
+    ],
+    "en": [
+      "Every weekday at 07:30, push today's guideline learning unit from my track — enable immediately",
+      "Every Sunday at 20:00, recap this week's learning progress and suggest next week's sections",
+      "On the 1st of each month at 08:00, check whether the current guideline has a new edition; if so, preview migration impact without changing the track yet",
+      "Every weekday at 21:00, write 3 self-check questions from today's unit — no clinical advice",
+      "Every Wednesday at 07:30, push one insurance-policy learning brief (policy level only)",
+      "Every Friday at 21:00, index this week's study notes — no rewrites and no clinical advice"
+    ]
+  }
 }
