@@ -119,7 +119,7 @@ function PageShell({
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        padding: `${outerPadTop}px ${outerPad}px ${outerPad}px`,
+        padding: `${outerPadTop}px ${outerPad}px calc(${outerPad}px + env(safe-area-inset-bottom, 0px))`,
         boxSizing: "border-box",
         overflow: "hidden",
       }}

@@ -180,9 +180,14 @@ export default function MainLayout() {
         <div
           style={{
             height: "100dvh",
+            boxSizing: "border-box",
+            /* iOS PWA: notch / landscape sides. Bottom is handled per-surface. */
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            paddingLeft: "env(safe-area-inset-left, 0px)",
+            paddingRight: "env(safe-area-inset-right, 0px)",
             display: "flex",
             flexDirection: "row",
-            background: "var(--fn-bg-layout)",
+            background: "var(--fn-bg-primary)",
             transition: "background var(--fn-transition)",
             overflow: "hidden",
           }}
