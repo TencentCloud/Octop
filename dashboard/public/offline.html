@@ -24,7 +24,10 @@
       }
       .container {
         text-align: center;
-        padding: 40px 24px;
+        padding: max(40px, env(safe-area-inset-top, 0px))
+          max(24px, env(safe-area-inset-right, 0px))
+          max(40px, env(safe-area-inset-bottom, 0px))
+          max(24px, env(safe-area-inset-left, 0px));
         max-width: 360px;
       }
       .logo {

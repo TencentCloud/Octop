@@ -223,9 +223,12 @@ export default function LoginPage() {
     <div
       style={{
         minHeight: "100dvh",
+        boxSizing: "border-box",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        padding:
+          "max(24px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px))",
         background: "var(--fn-bg-layout)",
         transition: "background var(--fn-transition)",
         boxSizing: "border-box",

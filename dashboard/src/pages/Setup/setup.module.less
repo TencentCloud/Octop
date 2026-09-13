@@ -1,5 +1,6 @@
 .wizardShell {
   min-height: 100dvh;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -13,7 +14,10 @@
 
 .wizardCard {
   width: 100%;
-  max-height: calc(100dvh - 48px);
+  max-height: calc(
+    100dvh - 48px - env(safe-area-inset-top, 0px) -
+      env(safe-area-inset-bottom, 0px)
+  );
   display: flex;
   flex-direction: column;
   background: var(--fn-bg-elevated);
