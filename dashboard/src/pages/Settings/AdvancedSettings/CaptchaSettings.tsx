@@ -215,8 +215,12 @@ export default function CaptchaSettingsPanel() {
                 view.source === "env" ? "Env" : "Settings"
               }`,
             )}
-            {" · "}
-            {t("advancedSettings.captcha.v3MinScore")}: {view.v3_min_score}
+            {active === "recaptcha-v3" ? (
+              <>
+                {" · "}
+                {t("advancedSettings.captcha.v3MinScore")}: {view.v3_min_score}
+              </>
+            ) : null}
           </div>
         ) : null}
         <Button type="primary" loading={saving || loading} onClick={onSave}>
