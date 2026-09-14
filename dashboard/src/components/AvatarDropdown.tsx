@@ -161,31 +161,33 @@ export default function AvatarDropdown({
       });
   };
 
-  const feishuProvider = ssoProviders.find((item) => item.kind === "feishu");
-  const feishuName =
-    feishuProvider?.display_name.trim() || t("login.providerKind.feishu");
+  const appOauthKinds = new Set(["feishu", "dingtalk", "wecom"]);
+  const bindableProviders = ssoProviders.filter((item) =>
+    appOauthKinds.has(item.kind),
+  );
   const linkedKinds = new Set(
     (user?.sso_identities ?? [])
       .map((item) => item.kind)
       .concat(user?.sso_kind ? [user.sso_kind] : []),
   );
-  const feishuLinked = linkedKinds.has("feishu");
+  const providerDisplayName = (kind: string, displayName?: string) =>
+    displayName?.trim() ||
+    t(`login.providerKind.${kind}`, { defaultValue: kind });
   const linkedProviderLabels = [...linkedKinds].map((kind) =>
-    kind === "feishu"
-      ? t("login.providerKind.feishu")
-      : t("login.providerKind.oidc"),
+    providerDisplayName(
+      kind,
+      ssoProviders.find((item) => item.kind === kind)?.display_name,
+    ),
   );
-  const canUnbindFeishu =
-    feishuLinked && (user?.has_password !== false || linkedKinds.size > 1);
+  const canUnbindKind = (kind: string) =>
+    linkedKinds.has(kind) &&
+    (user?.has_password !== false || linkedKinds.size > 1);
 
-  const handleBindFeishu = async () => {
+  const handleBindOauth = async (kind: string) => {
     const popup = openSsoPopup();
     setSsoBinding(true);
     try {
-      const { authorization_url } = await authApi.startOauthBind(
-        "feishu",
-        "/chat",
-      );
+      const { authorization_url } = await authApi.startOauthBind(kind, "/chat");
       if (popup && !popup.closed) {
         popup.location.href = authorization_url;
         const timer = window.setInterval(() => {
@@ -206,9 +208,9 @@ export default function AvatarDropdown({
     }
   };
 
-  const handleUnbindFeishu = async () => {
+  const handleUnbindOauth = async (kind: string) => {
     try {
-      const next = await authApi.unbindOauth("feishu");
+      const next = await authApi.unbindOauth(kind);
       onUserChange?.(next);
       message.success(t("account.ssoUnbindSuccess"));
     } catch (err) {
@@ -553,7 +555,7 @@ export default function AvatarDropdown({
         <PaletteSwitcher />
       </section>
 
-      {Boolean(feishuProvider || linkedKinds.size > 0) && (
+      {Boolean(bindableProviders.length > 0 || linkedKinds.size > 0) && (
         <>
           <Divider className={styles.settingsDivider} />
           <section className={styles.settingsSection}>
@@ -572,26 +574,57 @@ export default function AvatarDropdown({
                   })
                 : t("account.ssoUnlinked")}
             </p>
-            {feishuProvider && !feishuLinked && (
-              <Button
-                block
-                loading={ssoBinding}
-                onClick={() => void handleBindFeishu()}
-                style={{ marginTop: 8 }}
-              >
-                {t("account.ssoBind", { name: feishuName })}
-              </Button>
-            )}
-            {canUnbindFeishu && (
-              <Button
-                block
-                danger
-                onClick={() => void handleUnbindFeishu()}
-                style={{ marginTop: 8 }}
-              >
-                {t("account.ssoUnbind", { name: feishuName })}
-              </Button>
-            )}
+            {bindableProviders.map((provider) => {
+              const name = providerDisplayName(
+                provider.kind,
+                provider.display_name,
+              );
+              if (!linkedKinds.has(provider.kind)) {
+                return (
+                  <Button
+                    key={`bind-${provider.kind}`}
+                    block
+                    loading={ssoBinding}
+                    onClick={() => void handleBindOauth(provider.kind)}
+                    style={{ marginTop: 8 }}
+                  >
+                    {t("account.ssoBind", { name })}
+                  </Button>
+                );
+              }
+              if (!canUnbindKind(provider.kind)) return null;
+              return (
+                <Button
+                  key={`unbind-${provider.kind}`}
+                  block
+                  danger
+                  onClick={() => void handleUnbindOauth(provider.kind)}
+                  style={{ marginTop: 8 }}
+                >
+                  {t("account.ssoUnbind", { name })}
+                </Button>
+              );
+            })}
+            {[...linkedKinds]
+              .filter(
+                (kind) =>
+                  appOauthKinds.has(kind) &&
+                  !bindableProviders.some((item) => item.kind === kind) &&
+                  canUnbindKind(kind),
+              )
+              .map((kind) => (
+                <Button
+                  key={`unbind-orphan-${kind}`}
+                  block
+                  danger
+                  onClick={() => void handleUnbindOauth(kind)}
+                  style={{ marginTop: 8 }}
+                >
+                  {t("account.ssoUnbind", {
+                    name: providerDisplayName(kind),
+                  })}
+                </Button>
+              ))}
           </section>
         </>
       )}

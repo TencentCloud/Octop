@@ -61,12 +61,12 @@ routes until the wizard finishes.
 | `POST`   | `/auth/oidc/config/test` | admin | Verify configured discovery metadata and JWKS endpoint |
 | `GET`    | `/auth/oauth/status` | public | `{providers:[{kind, display_name, enabled}]}` |
 | `POST`   | `/auth/oauth/start` | public | body `{kind, redirect_after?}` → authorization URL |
-| `GET`    | `/auth/oauth/callback` | public | Feishu (and future providers) callback; same completion page as OIDC |
+| `GET`    | `/auth/oauth/callback` | public | App OAuth callback (`code` or DingTalk `authCode`); same completion page as OIDC |
 | `POST`   | `/auth/oauth/exchange` | public | Same one-time code exchange as `/auth/oidc/exchange` |
 | `POST`   | `/auth/oauth/bind/start` | user | body `{kind, redirect_after?}` → bind the identity to the current user |
 | `POST`   | `/auth/oauth/unbind` | user | Unlink one SSO identity by `kind` (requires a local password when it is the last login method) |
-| `GET`    | `/auth/oauth/providers/{kind}` | admin | Provider config; `kind` is `oidc` or `feishu` |
-| `PUT`    | `/auth/oauth/providers/{kind}` | admin | Upsert provider config; `client_secret` is write-only |
+| `GET`    | `/auth/oauth/providers/{kind}` | admin | Provider config; `kind` is `oidc`, `feishu`, `dingtalk`, or `wecom` |
+| `PUT`    | `/auth/oauth/providers/{kind}` | admin | Upsert provider config; `client_secret` is write-only; WeCom uses `extra.agent_id` |
 | `POST`   | `/auth/oauth/providers/{kind}/test` | admin | Test provider credentials |
 | `POST`   | `/auth/logout` | user | `204` |
 | `GET`    | `/auth/me` | user | `{id, username, role, display_name, locale, ...}` |

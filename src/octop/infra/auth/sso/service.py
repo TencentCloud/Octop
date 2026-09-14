@@ -156,15 +156,26 @@ class SsoService:
         if kind == "feishu":
             region = extra.get("region", "feishu")
             extra = {"region": "lark" if region == "lark" else "feishu"}
+        elif kind == "wecom":
+            agent_raw = extra.get("agent_id", "")
+            agent_id = str(agent_raw).strip() if agent_raw is not None else ""
+            extra = {"agent_id": agent_id}
+        elif kind == "dingtalk":
+            extra = {}
 
         dashboard_origin = self._nullable_string(body, "dashboard_origin", current)
-        if kind == "feishu":
+        if kind in {"feishu", "dingtalk", "wecom"}:
             dashboard_origin = parse_strict_origin(dashboard_origin)
 
         issuer = self._string(body, "issuer", current, "")
-        if kind == "feishu":
+        if kind in {"feishu", "dingtalk", "wecom"}:
             issuer = ""
 
+        default_names = {
+            "feishu": "Feishu",
+            "dingtalk": "DingTalk",
+            "wecom": "WeCom",
+        }
         provider = self._services.sso_repo.upsert_by_kind(
             kind,
             enabled=bool(body.get("enabled", current.enabled if current else False)),
@@ -172,7 +183,7 @@ class SsoService:
                 body,
                 "display_name",
                 current,
-                "Feishu" if kind == "feishu" else "Octop SSO",
+                default_names.get(kind, "Octop SSO"),
             ),
             issuer=issuer,
             client_id=self._string(body, "client_id", current, ""),

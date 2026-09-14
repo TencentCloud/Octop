@@ -27,6 +27,7 @@ interface OauthFormValues {
   client_id: string;
   client_secret?: string;
   region?: "feishu" | "lark";
+  agent_id?: string;
 }
 
 interface OauthProviderCardProps {
@@ -87,6 +88,10 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
         client_id: config.client_id,
         client_secret: undefined,
         region: config.extra?.region === "lark" ? "lark" : "feishu",
+        agent_id:
+          typeof config.extra?.agent_id === "string"
+            ? config.extra.agent_id
+            : "",
       });
       setRedirectUri(config.redirect_uri ?? "");
       setHasClientSecret(config.has_client_secret);
@@ -124,6 +129,12 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
       };
       if (provider.hasRegion) {
         body.extra = { region: values.region === "lark" ? "lark" : "feishu" };
+      }
+      if (provider.hasAgentId) {
+        body.extra = {
+          ...body.extra,
+          agent_id: values.agent_id?.trim() || "",
+        };
       }
       applyConfig(await ssoApi.putOauthProvider(provider.kind, body));
       message.success(
@@ -182,19 +193,34 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
 
   const previewName = displayName.trim() || t(provider.defaultNameKey);
 
-  const extraFields: ReactNode = provider.hasRegion ? (
-    <Form.Item name="region" label={t("adminSso.feishuRegion")}>
-      <Select
-        options={[
-          {
-            value: "feishu",
-            label: t("adminSso.feishuRegionFeishu"),
-          },
-          { value: "lark", label: t("adminSso.feishuRegionLark") },
-        ]}
-      />
-    </Form.Item>
-  ) : null;
+  const extraFields: ReactNode = (
+    <>
+      {provider.hasRegion ? (
+        <Form.Item name="region" label={t("adminSso.feishuRegion")}>
+          <Select
+            options={[
+              {
+                value: "feishu",
+                label: t("adminSso.feishuRegionFeishu"),
+              },
+              { value: "lark", label: t("adminSso.feishuRegionLark") },
+            ]}
+          />
+        </Form.Item>
+      ) : null}
+      {provider.hasAgentId ? (
+        <Form.Item
+          name="agent_id"
+          label={t("adminSso.wecomAgentId")}
+          rules={[
+            { required: true, message: t("adminSso.wecomAgentIdRequired") },
+          ]}
+        >
+          <Input autoComplete="off" />
+        </Form.Item>
+      ) : null}
+    </>
+  );
 
   return (
     <Spin spinning={loading}>
@@ -284,7 +310,7 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
             <div className={styles.ssoFieldGrid}>
               <Form.Item
                 name="client_id"
-                label={t("adminSso.oauthAppId")}
+                label={t(provider.clientIdKey ?? "adminSso.oauthAppId")}
                 rules={[
                   { required: true, message: t("adminSso.clientIdRequired") },
                 ]}
@@ -295,7 +321,7 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
                 name="client_secret"
                 label={
                   <span className={styles.ssoSecretLabel}>
-                    {t("adminSso.oauthAppSecret")}
+                    {t(provider.clientSecretKey ?? "adminSso.oauthAppSecret")}
                     {hasClientSecret && (
                       <Tag className={styles.ssoSecretTag}>
                         <Lock size={11} />

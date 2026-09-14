@@ -25,7 +25,7 @@ from octop.infra.users.identity import User
 
 router = APIRouter()
 
-SsoKind = Literal["oidc", "feishu"]
+SsoKind = Literal["oidc", "feishu", "dingtalk", "wecom"]
 
 
 class OauthStartBody(BaseModel):
@@ -102,6 +102,7 @@ async def oauth_start(
 async def oauth_callback(
     request: Request,
     code: str | None = None,
+    authCode: str | None = None,
     state: str | None = None,
     error: str | None = None,
     server: Any = Depends(get_server),
@@ -109,12 +110,13 @@ async def oauth_callback(
     """Complete an OAuth authorization-code callback and redirect to the dashboard."""
     public_base = _public_base(request)
     stored = cookie_state(request)
+    auth_code = code or authCode
     if not state or not stored or not secrets.compare_digest(stored, state):
         frontend = _login_error_redirect(server, public_base)
         response = RedirectResponse(f"{frontend}/login?oidc_error=state", status_code=302)
     else:
         result = await _service(server).handle_callback(
-            code=code,
+            code=auth_code,
             state=state,
             error=error,
             public_base=public_base,

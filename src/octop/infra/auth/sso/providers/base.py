@@ -6,7 +6,7 @@ from typing import Any, Protocol
 
 from octop.infra.db.repos.sso import SsoLoginStateRow, SsoProviderRow
 
-SSO_KINDS = ("oidc", "feishu")
+SSO_KINDS = ("oidc", "feishu", "dingtalk", "wecom")
 DEFAULT_OAUTH_CALLBACK_PATH = "/api/auth/oauth/callback"
 
 

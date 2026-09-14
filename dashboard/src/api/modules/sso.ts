@@ -33,7 +33,7 @@ export interface OauthAppConfig {
   client_id: string;
   has_client_secret: boolean;
   redirect_uri?: string;
-  extra: { region?: string };
+  extra: { region?: string; agent_id?: string };
 }
 
 export interface OauthAppConfigPut {
@@ -41,7 +41,7 @@ export interface OauthAppConfigPut {
   display_name: string;
   client_id: string;
   client_secret?: string;
-  extra?: { region?: string };
+  extra?: { region?: string; agent_id?: string };
 }
 
 /** @deprecated Prefer OauthAppConfig */

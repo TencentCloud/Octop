@@ -13,6 +13,12 @@ export interface OauthProviderDef {
   enabledAriaKey: string;
   /** Feishu/Lark region selector. */
   hasRegion?: boolean;
+  /** WeCom CorpApp Agent ID in ``extra.agent_id``. */
+  hasAgentId?: boolean;
+  /** Override default App ID field label (e.g. WeCom CorpID). */
+  clientIdKey?: string;
+  /** Override default App Secret field label. */
+  clientSecretKey?: string;
 }
 
 export const OAUTH_APP_PROVIDERS: OauthProviderDef[] = [
@@ -27,7 +33,7 @@ export const OAUTH_APP_PROVIDERS: OauthProviderDef[] = [
   },
   {
     kind: "dingtalk",
-    available: false,
+    available: true,
     titleKey: "adminSso.dingtalkTitle",
     descKey: "adminSso.dingtalkDesc",
     defaultNameKey: "login.providerKind.dingtalk",
@@ -35,10 +41,13 @@ export const OAUTH_APP_PROVIDERS: OauthProviderDef[] = [
   },
   {
     kind: "wecom",
-    available: false,
+    available: true,
     titleKey: "adminSso.wecomTitle",
     descKey: "adminSso.wecomDesc",
     defaultNameKey: "login.providerKind.wecom",
     enabledAriaKey: "adminSso.wecomEnabled",
+    hasAgentId: true,
+    clientIdKey: "adminSso.wecomCorpId",
+    clientSecretKey: "adminSso.wecomSecret",
   },
 ];

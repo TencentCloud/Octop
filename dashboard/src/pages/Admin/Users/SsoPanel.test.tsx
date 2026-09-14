@@ -37,15 +37,20 @@ async function expandOidc(user: ReturnType<typeof userEvent.setup>) {
 describe("<SsoPanel />", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    getOauthProvider.mockResolvedValue({
-      kind: "feishu",
+    getOauthProvider.mockImplementation(async (kind: string) => ({
+      kind,
       enabled: false,
       display_name: "",
       client_id: "",
       has_client_secret: false,
       redirect_uri: "https://octop.example.com/api/auth/oauth/callback",
-      extra: { region: "feishu" },
-    });
+      extra:
+        kind === "feishu"
+          ? { region: "feishu" }
+          : kind === "wecom"
+          ? { agent_id: "" }
+          : {},
+    }));
   });
 
   it("loads the provider configuration and displays its callback URL", async () => {
@@ -71,6 +76,8 @@ describe("<SsoPanel />", () => {
     await waitFor(() =>
       expect(getOauthProvider).toHaveBeenCalledWith("feishu"),
     );
+    expect(getOauthProvider).toHaveBeenCalledWith("dingtalk");
+    expect(getOauthProvider).toHaveBeenCalledWith("wecom");
 
     await expandOidc(user);
     expect(screen.getByDisplayValue("Acme SSO")).toBeInTheDocument();

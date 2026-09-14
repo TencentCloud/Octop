@@ -49,7 +49,7 @@ async def test_oauth_public_routes_and_oidc_kind_share_redirect(
     status = await c.get("/api/auth/oauth/status")
     assert status.status_code == 200
     kinds = {item["kind"] for item in status.json()["providers"]}
-    assert kinds == {"oidc", "feishu"}
+    assert kinds == {"oidc", "feishu", "dingtalk", "wecom"}
 
     start = await c.post("/api/auth/oauth/start", json={"kind": "oidc", "redirect_after": "/chat"})
     assert start.status_code == 200
@@ -81,8 +81,44 @@ async def test_oauth_bind_requires_auth_and_providers_are_not_public(client) -> 
     # Provider is not configured, so start is a 400 — but it is authenticated.
     assert started.status_code == 400
 
-    config = await c.get("/api/auth/oauth/providers/feishu", headers=bearer(token))
-    assert config.status_code == 200
-    assert config.json()["kind"] == "feishu"
-    assert config.json()["redirect_uri"].endswith("/api/auth/oauth/callback")
-    assert "client_secret" not in config.json()
+    for kind in ("feishu", "dingtalk", "wecom"):
+        config = await c.get(f"/api/auth/oauth/providers/{kind}", headers=bearer(token))
+        assert config.status_code == 200
+        assert config.json()["kind"] == kind
+        assert config.json()["redirect_uri"].endswith("/api/auth/oauth/callback")
+        assert "client_secret" not in config.json()
+
+
+async def test_oauth_callback_accepts_dingtalk_auth_code(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    c, srv, home = client
+    await bootstrap_admin(c, home)
+
+    seen: dict[str, str | None] = {}
+
+    async def callback(self: SsoService, **kwargs: Any) -> RedirectResult:
+        seen["code"] = kwargs.get("code")
+        return RedirectResult("http://testserver/login/oidc/complete#code=one-time")
+
+    monkeypatch.setattr(SsoService, "handle_callback", callback)
+    monkeypatch.setattr(
+        SsoService,
+        "start_login_for_kind",
+        lambda self, kind, *, redirect_after, public_base, bind_user_id=None: {
+            "authorization_url": "https://login.dingtalk.com/oauth2/auth?state=browser-state",
+            "state": "browser-state",
+        },
+    )
+
+    start = await c.post(
+        "/api/auth/oauth/start", json={"kind": "dingtalk", "redirect_after": "/chat"}
+    )
+    assert start.status_code == 200
+
+    response = await c.get(
+        "/api/auth/oauth/callback",
+        params={"authCode": "ding-auth", "state": "browser-state"},
+    )
+    assert response.status_code == 302
+    assert seen["code"] == "ding-auth"
