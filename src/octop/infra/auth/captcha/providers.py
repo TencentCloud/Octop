@@ -30,6 +30,7 @@ class CaptchaProvider(Protocol):
     siteverify_url: str | None
     requires_score: bool
     aliases: tuple[str, ...]
+    listed: bool
 
     def verify_call(
         self,
@@ -67,6 +68,7 @@ class _SliderProvider:
     siteverify_url: str | None = None
     requires_score: bool = False
     aliases: tuple[str, ...] = ()
+    listed: bool = True
 
     def verify_call(
         self,
@@ -91,6 +93,7 @@ class _SuccessProvider:
     requires_token: bool = True
     requires_score: bool = False
     aliases: tuple[str, ...] = ()
+    listed: bool = True
 
     def verify_call(
         self,
@@ -118,6 +121,7 @@ class _RecaptchaV3Provider:
     siteverify_url: str | None = "https://www.google.com/recaptcha/api/siteverify"
     requires_score: bool = True
     aliases: tuple[str, ...] = ("recaptcha_v3",)
+    listed: bool = True
 
     def verify_call(
         self,
@@ -157,6 +161,7 @@ class _TencentProvider:
     siteverify_url: str | None = "https://captcha.tencentcloudapi.com/"
     requires_score: bool = False
     aliases: tuple[str, ...] = ("tcaptcha",)
+    listed: bool = True
 
     def verify_call(
         self,
@@ -248,6 +253,9 @@ _HCAPTCHA = _SuccessProvider(
 _RECAPTCHA = _SuccessProvider(
     slug="recaptcha",
     siteverify_url="https://www.google.com/recaptcha/api/siteverify",
+    # Unlisted: no verified deployment key yet; stays resolvable for
+    # existing configs but is not offered in the settings catalog.
+    listed=False,
 )
 _RECAPTCHA_V3 = _RecaptchaV3Provider()
 _TENCENT = _TencentProvider()
@@ -279,7 +287,7 @@ def get_provider(slug: str) -> CaptchaProvider | None:
 
 
 def list_providers() -> list[str]:
-    return list(_REGISTRY)
+    return [slug for slug, provider in _REGISTRY.items() if provider.listed]
 
 
 def parse_slug(raw: str) -> str:

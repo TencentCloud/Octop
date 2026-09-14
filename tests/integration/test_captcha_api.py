@@ -266,7 +266,6 @@ async def test_admin_captcha_get_put_and_null_delete(env: Any) -> None:
         "tencent",
         "turnstile",
         "hcaptcha",
-        "recaptcha",
         "recaptcha-v3",
     ]
     assert body["source"] in {"settings", "env"}

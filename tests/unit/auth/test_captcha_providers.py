@@ -52,9 +52,14 @@ def test_list_providers_is_builtin_registration_order() -> None:
         "tencent",
         "turnstile",
         "hcaptcha",
-        "recaptcha",
         "recaptcha-v3",
     ]
+
+
+def test_unlisted_recaptcha_v2_still_resolvable() -> None:
+    assert "recaptcha" not in list_providers()
+    assert get_provider("recaptcha") is not None
+    assert parse_slug("recaptcha") == "recaptcha"
 
 
 class _FakeStrong:
