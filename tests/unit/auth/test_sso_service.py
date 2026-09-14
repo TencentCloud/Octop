@@ -50,7 +50,13 @@ def configure_provider(
     )
 
 
-def add_login_state(service: SsoService, provider_id: int, state: str = "valid-state") -> None:
+def add_login_state(
+    service: SsoService,
+    provider_id: int,
+    state: str = "valid-state",
+    *,
+    user_id: int | None = None,
+) -> None:
     service._services.sso_repo.create_login_state(
         state=state,
         provider_id=provider_id,
@@ -58,6 +64,7 @@ def add_login_state(service: SsoService, provider_id: int, state: str = "valid-s
         code_verifier="pkce-verifier",
         redirect_after="/chat",
         expires_at=int(time.time()) + 600,
+        user_id=user_id,
     )
 
 
@@ -350,3 +357,87 @@ async def test_exchange_login_code_rejects_unavailable_user(service: SsoService)
         pytest.raises(ValueError, match="unavailable"),
     ):
         await service.exchange_login_code("unavailable")
+
+
+def test_oidc_status_ignores_feishu_row(service: SsoService) -> None:
+    service._services.sso_repo.upsert_by_kind(
+        "feishu",
+        enabled=True,
+        display_name="Feishu",
+        issuer="",
+        client_id="cli_xxx",
+        client_secret_enc=b"secret",
+        scopes="",
+        dashboard_origin=None,
+        extra={"region": "feishu"},
+    )
+    with patch.object(service._user_manager, "count", return_value=1):
+        assert service.status() == {"enabled": False, "display_name": ""}
+    configure_provider(service, display_name="Company Login")
+    with patch.object(service._user_manager, "count", return_value=1):
+        assert service.status() == {"enabled": True, "display_name": "Company Login"}
+
+
+def test_start_login_for_kind_oidc_keeps_oidc_redirect(service: SsoService) -> None:
+    service._services.user_repo.create(username="admin", role="admin")
+    configure_provider(service)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "issuer": "https://issuer.example",
+                "authorization_endpoint": "https://issuer.example/authorize",
+            },
+        )
+
+    with discovery_client(handler):
+        started = service.start_login_for_kind(
+            "oidc", redirect_after="/chat", public_base="https://octop.example"
+        )
+    query = httpx.QueryParams(started["authorization_url"].split("?", 1)[1])
+    assert query["redirect_uri"] == "https://octop.example/api/auth/oidc/callback"
+
+
+@pytest.mark.asyncio
+async def test_callback_bind_links_current_user(service: SsoService) -> None:
+    user_id = service._services.user_repo.create(username="admin", role="admin")
+    provider = configure_provider(service)
+    add_login_state(service, provider.id, user_id=user_id)
+    with patch.object(
+        service,
+        "_exchange_claims",
+        return_value={"sub": "bound-sub", "name": "Admin Feishu"},
+    ):
+        result = await service.handle_callback(
+            code="code",
+            state="valid-state",
+            error=None,
+            public_base="https://octop.example",
+        )
+    assert "bind=1" in result.url
+    row = service._services.user_repo.get(user_id)
+    assert row is not None
+    assert row.sso_subject == "bound-sub"
+    assert row.sso_provider_id == provider.id
+
+
+@pytest.mark.asyncio
+async def test_callback_bind_rejects_identity_owned_by_another_user(
+    service: SsoService,
+) -> None:
+    provider = configure_provider(service)
+    owner_id = service._services.user_repo.create(username="owner", role="user")
+    service._services.user_repo.set_sso(
+        owner_id, sso_provider_id=provider.id, sso_subject="taken-sub"
+    )
+    current_id = service._services.user_repo.create(username="admin", role="admin")
+    add_login_state(service, provider.id, user_id=current_id)
+    with patch.object(service, "_exchange_claims", return_value={"sub": "taken-sub"}):
+        result = await service.handle_callback(
+            code="code",
+            state="valid-state",
+            error=None,
+            public_base="https://octop.example",
+        )
+    assert result.url.endswith("/login?oidc_error=identity_taken")

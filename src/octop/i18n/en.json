@@ -374,6 +374,8 @@
     "PUBLISHED_EXPERT_SLUG_TAKEN": "Published expert slug {slug} already exists.",
     "PUBLISHED_EXPERT_ALREADY_EXISTS": "This agent is already published as “{name}”. Refresh the published template instead.",
     "OIDC_BAD_REQUEST": "Invalid OIDC request: {detail}",
+    "SSO_IDENTITY_TAKEN": "This login is already linked to another Octop account.",
+    "SSO_UNBIND_REQUIRES_PASSWORD": "Set a password before unlinking single sign-on.",
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
     "DESKTOP_SESSION_LIMIT": "Too many concurrent remote desktop streams (max {limit}). Close other connections and try again.",

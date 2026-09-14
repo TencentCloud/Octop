@@ -212,7 +212,7 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/admin/users", element: <OctopAdminUsersPage /> },
   {
     path: "/admin/sso",
-    element: <Navigate to="/admin/users?tab=sso" replace />,
+    element: <Navigate to="/admin/users?tab=oidc" replace />,
   },
   {
     path: "/admin/shared-models",

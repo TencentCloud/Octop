@@ -263,6 +263,64 @@
   }
 }
 
+.ssoList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.08));
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--fn-bg-elevated, #fff);
+}
+
+.ssoRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.06));
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.ssoIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--fn-bg-tertiary, rgba(0, 0, 0, 0.04));
+
+  img {
+    display: block;
+  }
+}
+
+.ssoMeta {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ssoName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  line-height: 1.3;
+}
+
+.ssoStatus {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--fn-text-tertiary);
+}
+
 .settingsDivider {
   margin: 16px 0 !important;
 }

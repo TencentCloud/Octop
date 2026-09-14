@@ -1,17 +1,66 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Input, Button } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { Lock, User } from "lucide-react";
+import { KeyRound, Lock, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { clearAuthToken, setAuthToken } from "../../api";
-import { authApi, type OidcStatus } from "../../api/modules/auth";
+import { authApi, type OauthProviderStatus } from "../../api/modules/auth";
 import { apiErrorMessage } from "../../utils/apiError";
 import { refreshServerLabels } from "../../i18n";
 import { applyUserLocale, applyGuestLocale } from "../../utils/locale";
 import { useTheme } from "../../context/ThemeContext";
+import {
+  isSsoPopup,
+  isSsoPopupMessage,
+  notifySsoOpener,
+  openSsoPopup,
+} from "../../utils/ssoPopup";
+import feishuIcon from "../../assets/channels/feishu.svg";
+import dingtalkIcon from "../../assets/channels/dingtalk.svg";
+import wecomIcon from "../../assets/channels/wecom.svg";
+import googleIcon from "../../assets/providers/google.svg";
 import SlideCaptcha from "./SlideCaptcha";
+
+function providerLabel(
+  provider: OauthProviderStatus,
+  t: (key: string, opts?: Record<string, string>) => string,
+): string {
+  const name = provider.display_name.trim();
+  if (name) return name;
+  return t(`login.providerKind.${provider.kind}`, {
+    defaultValue: provider.kind,
+  });
+}
+
+function providerIcon(provider: OauthProviderStatus): ReactNode {
+  if (provider.kind === "feishu") {
+    return (
+      <img src={feishuIcon} alt="" width={18} height={18} draggable={false} />
+    );
+  }
+  if (provider.kind === "dingtalk") {
+    return (
+      <img src={dingtalkIcon} alt="" width={18} height={18} draggable={false} />
+    );
+  }
+  if (provider.kind === "wecom") {
+    return (
+      <img src={wecomIcon} alt="" width={18} height={18} draggable={false} />
+    );
+  }
+  const name = provider.display_name.trim().toLowerCase();
+  if (
+    provider.kind === "oidc" &&
+    (name === "google" || name.includes("google"))
+  ) {
+    return (
+      <img src={googleIcon} alt="" width={18} height={18} draggable={false} />
+    );
+  }
+  return <KeyRound size={18} />;
+}
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -21,12 +70,11 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [oidc, setOidc] = useState<OidcStatus | null>(null);
-  const [oidcLoading, setOidcLoading] = useState(false);
+  const [providers, setProviders] = useState<OauthProviderStatus[]>([]);
+  const [ssoLoadingKind, setSsoLoadingKind] = useState<string | null>(null);
   const [slideVerified, setSlideVerified] = useState(false);
   const [slideResetKey, setSlideResetKey] = useState(0);
 
-  // If no admin exists, redirect to /setup so the wizard can bootstrap one.
   useEffect(() => {
     void applyGuestLocale();
   }, []);
@@ -42,11 +90,12 @@ export default function LoginPage() {
           navigate("/setup", { replace: true });
           return;
         }
-        // Only probe OIDC after setup is done — otherwise lockdown 503s.
         authApi
-          .getOidcStatus()
+          .getOauthStatus()
           .then((next) => {
-            if (!cancelled) setOidc(next);
+            if (!cancelled) {
+              setProviders(next.providers.filter((item) => item.enabled));
+            }
           })
           .catch(() => {});
       })
@@ -63,6 +112,7 @@ export default function LoginPage() {
   useEffect(() => {
     const code = searchParams.get("oidc_error");
     if (!code) return;
+    if (notifySsoOpener({ ok: false, error: code })) return;
     message.error(
       t(`login.oidcError.${code}`, {
         defaultValue: t("login.oidcError.generic"),
@@ -71,19 +121,63 @@ export default function LoginPage() {
     navigate("/login", { replace: true });
   }, [navigate, searchParams, t]);
 
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (!isSsoPopupMessage(event, window.location.origin) || !event.data.ok) {
+        if (
+          isSsoPopupMessage(event, window.location.origin) &&
+          !event.data.ok
+        ) {
+          setSsoLoadingKind(null);
+          const code = event.data.error || "generic";
+          message.error(
+            t(`login.oidcError.${code}`, {
+              defaultValue: t("login.oidcError.generic"),
+            }),
+          );
+        }
+        return;
+      }
+      window.location.replace(event.data.redirect || "/chat");
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [t]);
+
   const resetSlide = () => {
     setSlideVerified(false);
     setSlideResetKey((k) => k + 1);
   };
 
-  const onOidc = async () => {
-    setOidcLoading(true);
+  const onSso = async (kind: string) => {
+    setSsoLoadingKind(kind);
+    let popup: Window | null = null;
+    if (kind !== "oidc") {
+      popup = openSsoPopup();
+    }
     try {
-      const { authorization_url } = await authApi.startOidc("/chat");
-      window.location.href = authorization_url;
+      const { authorization_url } = await authApi.startOauth(kind, "/chat");
+      if (kind === "oidc") {
+        window.location.href = authorization_url;
+        return;
+      }
+      if (popup && !popup.closed) {
+        popup.location.href = authorization_url;
+        const timer = window.setInterval(() => {
+          if (!popup || popup.closed) {
+            window.clearInterval(timer);
+            setSsoLoadingKind((current) => (current === kind ? null : current));
+          }
+        }, 400);
+      } else {
+        popup?.close();
+        message.error(t("account.ssoPopupBlocked"));
+        setSsoLoadingKind(null);
+      }
     } catch (err) {
+      popup?.close();
       message.error(apiErrorMessage(err, t("login.oidcStartFailed"), t));
-      setOidcLoading(false);
+      setSsoLoadingKind(null);
     }
   };
 
@@ -103,6 +197,10 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  if (isSsoPopup() && searchParams.get("oidc_error")) {
+    return null;
+  }
 
   return (
     <div
@@ -198,7 +296,7 @@ export default function LoginPage() {
           {t("login.submit")}
         </Button>
 
-        {oidc?.enabled && (
+        {providers.length > 0 && (
           <>
             <div
               style={{
@@ -226,15 +324,19 @@ export default function LoginPage() {
                 }}
               />
             </div>
-            <Button
-              size="large"
-              block
-              loading={oidcLoading}
-              onClick={onOidc}
-              style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
-            >
-              {t("login.oidcWith", { name: oidc.display_name })}
-            </Button>
+            {providers.map((provider) => (
+              <Button
+                key={provider.kind}
+                size="large"
+                block
+                icon={providerIcon(provider)}
+                loading={ssoLoadingKind === provider.kind}
+                onClick={() => void onSso(provider.kind)}
+                style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
+              >
+                {t("login.oidcWith", { name: providerLabel(provider, t) })}
+              </Button>
+            ))}
           </>
         )}
       </div>
