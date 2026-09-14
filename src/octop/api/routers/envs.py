@@ -24,6 +24,24 @@ router = APIRouter(prefix="/envs", tags=["envs"])
 logger = logging.getLogger(__name__)
 
 _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_CAPTCHA_SECRET_KEY = "OCTOP_CAPTCHA_SECRET"
+_SECRET_SENTINEL = "********"
+
+
+def _redact_env_items(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [
+        {**item, "value": _SECRET_SENTINEL} if item["key"] == _CAPTCHA_SECRET_KEY else item
+        for item in items
+    ]
+
+
+def _restore_secret_sentinel(cleaned: dict[str, str], previous: dict[str, str]) -> None:
+    if cleaned.get(_CAPTCHA_SECRET_KEY) != _SECRET_SENTINEL:
+        return
+    if _CAPTCHA_SECRET_KEY in previous:
+        cleaned[_CAPTCHA_SECRET_KEY] = previous[_CAPTCHA_SECRET_KEY]
+    else:
+        cleaned.pop(_CAPTCHA_SECRET_KEY, None)
 
 
 def _after_env_sync(server: Any, previous: dict[str, str], new: dict[str, str]) -> None:
@@ -56,7 +74,7 @@ async def list_envs(
     server: Any = Depends(get_server),
 ) -> list[dict[str, str]]:
     path = env_file_path(server.paths.root)
-    return list_env_items(path)
+    return _redact_env_items(list_env_items(path))
 
 
 @router.put(
@@ -85,10 +103,11 @@ async def batch_save_envs(
         cleaned[k] = str(value)
     path = env_file_path(server.paths.root)
     previous = load_env_file(path)
+    _restore_secret_sentinel(cleaned, previous)
     save_env_file(path, cleaned)
     apply_env_file_replace(path, previous=previous)
     _after_env_sync(server, previous, cleaned)
-    return list_env_items(path)
+    return _redact_env_items(list_env_items(path))
 
 
 @router.delete(
@@ -111,4 +130,4 @@ async def delete_env(
     save_env_file(path, values)
     apply_env_file_replace(path, previous=previous)
     _after_env_sync(server, previous, values)
-    return list_env_items(path)
+    return _redact_env_items(list_env_items(path))

@@ -399,7 +399,9 @@
     "INVITE_REVOKED": "该邀请码已被撤销。",
     "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。",
     "WORKSPACE_ROOT_RESTRICTED": "所选存储根目录超出了该账号允许的范围。",
-    "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{used}/{quota}）。"
+    "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{used}/{quota}）。",
+    "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
+    "CAPTCHA_FAILED": "验证码校验失败，请重试。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",

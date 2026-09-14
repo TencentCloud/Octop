@@ -38,6 +38,31 @@ async def test_envs_put_unsets_removed_process_keys(env: Any) -> None:
     assert os.environ.get("KEEP") == "2"
 
 
+async def test_envs_redacts_captcha_secret_and_put_keeps_sentinel(env: Any) -> None:
+    c, srv, auth = env
+    r = await c.put(
+        "/api/envs",
+        headers=auth,
+        json={"OCTOP_CAPTCHA_SECRET": "live-secret", "FOO": "bar"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    by_key = {row["key"]: row["value"] for row in body}
+    assert by_key["OCTOP_CAPTCHA_SECRET"] == "********"
+    assert "live-secret" not in str(body)
+    env_path = srv.paths.root / "env"
+    assert "live-secret" in env_path.read_text(encoding="utf-8")
+
+    r = await c.put(
+        "/api/envs",
+        headers=auth,
+        json={"OCTOP_CAPTCHA_SECRET": "********", "FOO": "bar"},
+    )
+    assert r.status_code == 200
+    assert "live-secret" in env_path.read_text(encoding="utf-8")
+    assert "********" not in env_path.read_text(encoding="utf-8")
+
+
 async def test_envs_non_admin_forbidden(env: Any) -> None:
     c, _srv, admin_auth = env
     await c.post(
