@@ -174,7 +174,6 @@
     "experts": "Experts",
     "tasks": "Automation",
     "connectors": "Connectors",
-    "acp": "ACP",
     "agents": "Agents",
     "providers": "Providers",
     "models": "Model Management",
@@ -3655,6 +3654,7 @@
     "tabs": {
       "skills": "Skills",
       "tools": "Tools",
+      "acp": "ACP Tools",
       "plugins": "Plugins",
       "subagents": "Subagents",
       "channels": "Channels",
@@ -5135,10 +5135,6 @@
     "connectors": {
       "title": "Connectors",
       "subtitle": "Account-level docs, cloud & email — pick per chat"
-    },
-    "acp": {
-      "title": "ACP",
-      "subtitle": "Configure external coding agent runners (OpenCode, Claude Code, …)"
     },
     "skills": {
       "title": "Skills",
