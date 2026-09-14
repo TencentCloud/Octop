@@ -1,10 +1,42 @@
-"""CaptchaProvider registry."""
+"""Login captcha providers: contract, default implementation, registry.
+
+Four layers (execution lives in ``octop.infra.auth.captcha.verify``):
+
+1. Contract — ``CaptchaProvider`` (Protocol): metadata plus
+   ``verify_call()`` (token + credentials -> outbound request spec) and
+   ``interpret()`` (vendor response body -> pass/fail). Structural typing
+   lets plugins register providers without importing a base class.
+2. Default implementation — ``_FormPostProvider``: form-POST plus
+   ``success == true`` verdict, shared by turnstile/hcaptcha/recaptcha-v2;
+   those vendors differ only by ``siteverify_url``.
+3. Execution — ``verify.ensure_captcha``: the only layer with outbound I/O
+   (timeout, error -> ``OctopError`` mapping, ``set_test_siteverify_url``
+   test seam). Providers stay pure.
+4. Registry — ``register`` / ``get_provider`` / ``list_providers`` /
+   ``parse_slug`` with aliases and the ``listed`` flag: unlisted providers
+   stay resolvable for existing configs but are not offered in settings.
+
+Settled design decisions (re-litigate only with new data):
+
+- The slider is a pseudo-provider (``requires_token=False``): the local
+  unverified fallback kept inside one unified config/UI list.
+- Verification failures surface as one blunt ``CAPTCHA_FAILED`` message;
+  vendor nuance belongs in server logs, not user-facing strings.
+- No automatic siteverify retry: user retry covers vendor blips; an
+  in-request retry would add login-path latency for marginal gain.
+- Dashboard widget metadata (script URLs, modes) stays hardcoded in the
+  frontend bundle (auditable, CSP-friendly), not served by the API.
+
+Adding a vendor: one provider dataclass here + one ``register()`` call in
+``_register_builtins`` + one widget adapter in
+``dashboard/src/pages/Login/captchaAdapters.ts``.
+"""
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.tencent_sign import tc3_headers
@@ -25,12 +57,20 @@ class VerifyCall:
 
 
 class CaptchaProvider(Protocol):
-    slug: str
-    requires_token: bool
-    siteverify_url: str | None
-    requires_score: bool
-    aliases: tuple[str, ...]
-    listed: bool
+    """Read-only metadata so frozen-dataclass providers satisfy the contract."""
+
+    @property
+    def slug(self) -> str: ...
+    @property
+    def requires_token(self) -> bool: ...
+    @property
+    def siteverify_url(self) -> str | None: ...
+    @property
+    def requires_score(self) -> bool: ...
+    @property
+    def aliases(self) -> tuple[str, ...]: ...
+    @property
+    def listed(self) -> bool: ...
 
     def verify_call(
         self,
@@ -87,7 +127,9 @@ class _SliderProvider:
 
 
 @dataclass(frozen=True)
-class _SuccessProvider:
+class _FormPostProvider:
+    """Default implementation: form-POST siteverify, ``success == true``."""
+
     slug: str
     siteverify_url: str | None
     requires_token: bool = True
@@ -242,15 +284,15 @@ class _TencentProvider:
         raise _failed()
 
 
-_TURNSTILE = _SuccessProvider(
+_TURNSTILE = _FormPostProvider(
     slug="turnstile",
     siteverify_url="https://challenges.cloudflare.com/turnstile/v0/siteverify",
 )
-_HCAPTCHA = _SuccessProvider(
+_HCAPTCHA = _FormPostProvider(
     slug="hcaptcha",
     siteverify_url="https://api.hcaptcha.com/siteverify",
 )
-_RECAPTCHA = _SuccessProvider(
+_RECAPTCHA = _FormPostProvider(
     slug="recaptcha",
     siteverify_url="https://www.google.com/recaptcha/api/siteverify",
     # Unlisted: no verified deployment key yet; stays resolvable for
@@ -302,7 +344,11 @@ def parse_slug(raw: str) -> str:
 
 def _register_builtins() -> None:
     for provider in (_SLIDER, _TENCENT, _TURNSTILE, _HCAPTCHA, _RECAPTCHA, _RECAPTCHA_V3):
-        register(cast(CaptchaProvider, provider))
+        register(provider)
 
 
 _register_builtins()
+_check_c: CaptchaProvider = _TURNSTILE
+_check_d: CaptchaProvider = _HCAPTCHA
+_check_e: CaptchaProvider = _RECAPTCHA
+_check_f: CaptchaProvider = _RECAPTCHA_V3

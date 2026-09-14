@@ -76,5 +76,10 @@ def validate_boot(env: CaptchaEnv, *, has_readable_blob: bool) -> None:
         missing.append("OCTOP_CAPTCHA_SITE_KEY")
     if not env.secret:
         missing.append("OCTOP_CAPTCHA_SECRET")
+    if env.provider == "tencent":
+        if not env.cam_secret_id:
+            missing.append("OCTOP_CAPTCHA_CAM_SECRET_ID")
+        if not env.cam_secret_key:
+            missing.append("OCTOP_CAPTCHA_CAM_SECRET_KEY")
     if missing:
         raise ValueError("incomplete captcha env (no settings blob): " + ", ".join(missing))

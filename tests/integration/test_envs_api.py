@@ -43,23 +43,36 @@ async def test_envs_redacts_captcha_secret_and_put_keeps_sentinel(env: Any) -> N
     r = await c.put(
         "/api/envs",
         headers=auth,
-        json={"OCTOP_CAPTCHA_SECRET": "live-secret", "FOO": "bar"},
+        json={
+            "OCTOP_CAPTCHA_SECRET": "live-secret",
+            "OCTOP_CAPTCHA_CAM_SECRET_KEY": "cam-live",
+            "FOO": "bar",
+        },
     )
     assert r.status_code == 200
     body = r.json()
     by_key = {row["key"]: row["value"] for row in body}
     assert by_key["OCTOP_CAPTCHA_SECRET"] == "********"
+    assert by_key["OCTOP_CAPTCHA_CAM_SECRET_KEY"] == "********"
     assert "live-secret" not in str(body)
+    assert "cam-live" not in str(body)
     env_path = srv.paths.root / "env"
     assert "live-secret" in env_path.read_text(encoding="utf-8")
+    assert "cam-live" in env_path.read_text(encoding="utf-8")
 
     r = await c.put(
         "/api/envs",
         headers=auth,
-        json={"OCTOP_CAPTCHA_SECRET": "********", "FOO": "bar"},
+        json={
+            "OCTOP_CAPTCHA_SECRET": "********",
+            "OCTOP_CAPTCHA_CAM_SECRET_KEY": "********",
+            "FOO": "bar",
+        },
     )
     assert r.status_code == 200
-    assert "live-secret" in env_path.read_text(encoding="utf-8")
+    env_text = env_path.read_text(encoding="utf-8")
+    assert "live-secret" in env_text
+    assert "cam-live" in env_text
     assert "********" not in env_path.read_text(encoding="utf-8")
 
 

@@ -1,4 +1,9 @@
-"""Ensure a login captcha token against the effective provider."""
+"""Execution layer for login captcha: the only outbound-I/O seam.
+
+Providers stay pure (request spec + verdict); this module owns the HTTP
+call, timeout, error -> OctopError mapping, and the siteverify test seam.
+Ensures a login captcha token against the effective provider.
+"""
 
 from __future__ import annotations
 
