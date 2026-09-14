@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import secrets
 import time
 from collections.abc import Mapping
@@ -32,6 +33,8 @@ from octop.infra.users.manager import UserManager
 _LOGIN_STATE_TTL_SECONDS = 600
 _LOGIN_CODE_TTL_SECONDS = 60
 _HTTP_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -294,8 +297,10 @@ class SsoService:
                 ),
             )
         except jwt.InvalidTokenError:
+            logger.exception("SSO callback returned an invalid token (kind=%s)", provider.kind)
             return self._error_redirect(frontend, "invalid_token")
         except (httpx.HTTPError, ValueError):
+            logger.exception("SSO callback exchange failed (kind=%s)", provider.kind)
             return self._error_redirect(frontend, "exchange")
 
         if not subject:
