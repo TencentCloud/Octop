@@ -1,6 +1,6 @@
 {
   "app": {
-    "pageTitle": "Octop - 生而为云，懂云更懂你！"
+    "pageTitle": "Octop - 懂你、帮你、陪你成长的智能伙伴"
   },
   "layout": {
     "collapsePanel": "收起面板",
@@ -4649,7 +4649,7 @@
   },
   "login": {
     "title": "登录",
-    "subtitle": "生而为云，懂云更懂你",
+    "subtitle": "懂你、帮你、陪你成长的智能伙伴",
     "username": "用户名或邮箱",
     "password": "密码",
     "submit": "登录",

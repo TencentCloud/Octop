@@ -1,6 +1,6 @@
 {
   "app": {
-    "pageTitle": "Octop - Born for Cloud, Knows You Better"
+    "pageTitle": "Octop - An intelligent partner that understands you, helps you, and grows with you"
   },
   "layout": {
     "collapsePanel": "Collapse panel",
@@ -4510,7 +4510,7 @@
   },
   "login": {
     "title": "Sign in",
-    "subtitle": "Multi-user, multi-Agent AI server",
+    "subtitle": "An intelligent partner that understands you, helps you, and grows with you",
     "username": "Username or email",
     "password": "Password",
     "submit": "Sign in",
