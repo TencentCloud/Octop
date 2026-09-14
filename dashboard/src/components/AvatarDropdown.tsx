@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Avatar,
   Modal,
@@ -32,6 +32,7 @@ import { preferencesApi } from "../api/modules/preferences";
 import { clearAuthToken } from "../api/request";
 import { applyGuestLocale, applyUserLocale } from "../utils/locale";
 import { apiErrorMessage } from "../utils/apiError";
+import { isSsoPopupMessage, openSsoPopup } from "../utils/ssoPopup";
 import {
   MIN_PASSWORD_LENGTH,
   passwordPolicyIssue,
@@ -78,6 +79,10 @@ export default function AvatarDropdown({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [ssoProviders, setSsoProviders] = useState<
+    { kind: string; display_name: string; enabled: boolean }[]
+  >([]);
+  const [ssoBinding, setSsoBinding] = useState(false);
   const [changingPw, setChangingPw] = useState(false);
   const [profileForm] = Form.useForm<{ display_name: string }>();
   const [pwForm] = Form.useForm<{
@@ -156,6 +161,61 @@ export default function AvatarDropdown({
       });
   };
 
+  const feishuProvider = ssoProviders.find((item) => item.kind === "feishu");
+  const feishuName =
+    feishuProvider?.display_name.trim() || t("login.providerKind.feishu");
+  const linkedKinds = new Set(
+    (user?.sso_identities ?? [])
+      .map((item) => item.kind)
+      .concat(user?.sso_kind ? [user.sso_kind] : []),
+  );
+  const feishuLinked = linkedKinds.has("feishu");
+  const linkedProviderLabels = [...linkedKinds].map((kind) =>
+    kind === "feishu"
+      ? t("login.providerKind.feishu")
+      : t("login.providerKind.oidc"),
+  );
+  const canUnbindFeishu =
+    feishuLinked && (user?.has_password !== false || linkedKinds.size > 1);
+
+  const handleBindFeishu = async () => {
+    const popup = openSsoPopup();
+    setSsoBinding(true);
+    try {
+      const { authorization_url } = await authApi.startOauthBind(
+        "feishu",
+        "/chat",
+      );
+      if (popup && !popup.closed) {
+        popup.location.href = authorization_url;
+        const timer = window.setInterval(() => {
+          if (!popup || popup.closed) {
+            window.clearInterval(timer);
+            setSsoBinding(false);
+          }
+        }, 400);
+      } else {
+        popup?.close();
+        message.error(t("account.ssoPopupBlocked"));
+        setSsoBinding(false);
+      }
+    } catch (err) {
+      popup?.close();
+      message.error(apiErrorMessage(err, t("account.ssoBindFailed"), t));
+      setSsoBinding(false);
+    }
+  };
+
+  const handleUnbindFeishu = async () => {
+    try {
+      const next = await authApi.unbindOauth("feishu");
+      onUserChange?.(next);
+      message.success(t("account.ssoUnbindSuccess"));
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("account.ssoUnbindFailed"), t));
+    }
+  };
+
   const currentLang = i18n.language?.startsWith("zh") ? "zh" : "en";
   const roleLabel =
     role === "admin" ? t("account.roleAdmin") : t("account.roleUser");
@@ -186,6 +246,45 @@ export default function AvatarDropdown({
 
   const closeSettings = () => setSettingsOpen(false);
   const closePassword = () => setPasswordOpen(false);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    void authApi
+      .me()
+      .then((next) => onUserChange?.(next))
+      .catch(() => undefined);
+    void authApi
+      .getOauthStatus()
+      .then((status) =>
+        setSsoProviders(status.providers.filter((item) => item.enabled)),
+      )
+      .catch(() => undefined);
+  }, [onUserChange, settingsOpen]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (!isSsoPopupMessage(event, window.location.origin)) return;
+      setSsoBinding(false);
+      if (!event.data.ok) {
+        const code = event.data.error || "generic";
+        message.error(
+          t(`login.oidcError.${code}`, {
+            defaultValue: t("login.oidcError.generic"),
+          }),
+        );
+        return;
+      }
+      void authApi
+        .me()
+        .then((next) => {
+          onUserChange?.(next);
+          message.success(t("account.ssoBindSuccess"));
+        })
+        .catch(() => undefined);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [onUserChange, t]);
 
   const avatar = (
     <Avatar
@@ -453,6 +552,49 @@ export default function AvatarDropdown({
         </div>
         <PaletteSwitcher />
       </section>
+
+      {Boolean(feishuProvider || linkedKinds.size > 0) && (
+        <>
+          <Divider className={styles.settingsDivider} />
+          <section className={styles.settingsSection}>
+            <div className={styles.settingsSectionHead}>
+              <h3 className={styles.settingsSectionTitle}>
+                {t("account.ssoTitle")}
+              </h3>
+              <p className={styles.settingsSectionDesc}>
+                {t("account.ssoHint")}
+              </p>
+            </div>
+            <p className={styles.settingsSectionDesc}>
+              {linkedProviderLabels.length > 0
+                ? t("account.ssoLinked", {
+                    name: linkedProviderLabels.join(" · "),
+                  })
+                : t("account.ssoUnlinked")}
+            </p>
+            {feishuProvider && !feishuLinked && (
+              <Button
+                block
+                loading={ssoBinding}
+                onClick={() => void handleBindFeishu()}
+                style={{ marginTop: 8 }}
+              >
+                {t("account.ssoBind", { name: feishuName })}
+              </Button>
+            )}
+            {canUnbindFeishu && (
+              <Button
+                block
+                danger
+                onClick={() => void handleUnbindFeishu()}
+                style={{ marginTop: 8 }}
+              >
+                {t("account.ssoUnbind", { name: feishuName })}
+              </Button>
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 
