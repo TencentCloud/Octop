@@ -101,6 +101,14 @@ const SCOPE_OPTIONS = ["openid", "profile", "email", "offline_access"].map(
   (value) => ({ value, label: value }),
 );
 
+const GUIDE_STEPS = [
+  "adminSso.guideStep1",
+  "adminSso.guideStep2",
+  "adminSso.guideStep3",
+  "adminSso.guideStep4",
+  "adminSso.guideStep5",
+] as const;
+
 function configToFormValues(config: OidcConfig): SsoFormValues {
   return {
     enabled: config.enabled,
@@ -138,6 +146,8 @@ export default function SsoPanel() {
 
   const enabled = Form.useWatch("enabled", form) ?? false;
   const displayName = Form.useWatch("display_name", form) ?? "";
+  const issuer = Form.useWatch("issuer", form) ?? "";
+  const clientId = Form.useWatch("client_id", form) ?? "";
 
   const applyConfig = useCallback(
     (config: OidcConfig) => {
@@ -259,6 +269,15 @@ export default function SsoPanel() {
     setTestResult(null);
   };
 
+  const guideStep = (() => {
+    if (!issuer.trim() || !clientId.trim()) return 0;
+    if (!redirectUri) return 1;
+    if (dirty) return 2;
+    if (!testResult?.ok) return 3;
+    if (!enabled) return 4;
+    return 5;
+  })();
+
   const statusLabel = enabled
     ? t("adminSso.statusEnabled", {
         name: displayName.trim() || t("adminSso.statusUnnamed"),
@@ -321,6 +340,58 @@ export default function SsoPanel() {
             >
               <div className={styles.ssoLayout}>
                 <aside className={styles.ssoAside}>
+                  <div className={styles.ssoGuide}>
+                    <div className={styles.ssoAsideTitle}>
+                      {t("adminSso.guideTitle")}
+                    </div>
+                    <ol className={styles.ssoGuideList}>
+                      {GUIDE_STEPS.map((key, index) => {
+                        const done = guideStep > index;
+                        const current = guideStep === index;
+                        return (
+                          <li
+                            key={key}
+                            className={[
+                              styles.ssoGuideItem,
+                              done ? styles.ssoGuideDone : "",
+                              current ? styles.ssoGuideCurrent : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                          >
+                            <span className={styles.ssoGuideIndex} aria-hidden>
+                              {done ? <Check size={12} /> : index + 1}
+                            </span>
+                            <span>{t(key)}</span>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </div>
+
+                  <div className={styles.ssoAsideCard}>
+                    <div className={styles.ssoAsideTitle}>
+                      {t("adminSso.loginPreview")}
+                    </div>
+                    <div
+                      className={[
+                        styles.ssoPreviewBtn,
+                        enabled ? "" : styles.ssoPreviewBtnMuted,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      {t("login.oidcWith", {
+                        name: displayName.trim() || t("adminSso.statusUnnamed"),
+                      })}
+                    </div>
+                    {!enabled && (
+                      <p className={styles.ssoPreviewHint}>
+                        {t("adminSso.loginPreviewDisabled")}
+                      </p>
+                    )}
+                  </div>
+
                   <section className={styles.ssoRedirectCard}>
                     <div className={styles.ssoRedirectHeader}>
                       <h4 className={styles.ssoSectionTitle}>
