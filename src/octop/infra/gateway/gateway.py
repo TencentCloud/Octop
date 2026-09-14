@@ -20,6 +20,10 @@ from octop.infra.db.repos.channels import ChannelRow
 from octop.infra.db.repos.sessions import SessionRow
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.cli import CLI_CHANNEL_ID, CliChannel, CliHub
+from octop.infra.gateway.feishu_ws_compat import (
+    ensure_feishu_ws_stop_fix,
+    probe_feishu_credentials,
+)
 from octop.infra.gateway.history_backfill import HistoryBackfillQueue
 from octop.infra.gateway.process import media_backend_for_agent
 from octop.infra.gateway.process.processor import GlobalProcessor
@@ -217,6 +221,8 @@ class Gateway:
             trajectory_service=self._trajectory_service,
             history_archive=self._history_archive,
         )
+
+        ensure_feishu_ws_stop_fix()
 
         self._channel_manager = ChannelManager(channels={})
         self._channel_manager.set_pre_lock_handler(self._preempt_cancel_on_stop)
@@ -532,7 +538,7 @@ class Gateway:
     async def probe_channel(
         self, channel_id: str, *, locale: Locale = DEFAULT_LOCALE
     ) -> dict[str, Any]:
-        """Start/stop an ephemeral channel instance to verify credentials."""
+        """Verify channel credentials without persisting configuration changes."""
         row = self.get_channel(channel_id)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "channel not found")
@@ -577,13 +583,16 @@ class Gateway:
             raise RuntimeError("gateway not booted")
 
         try:
-            await manager.probe_channel(
-                row.kind,
-                raw_cfg,
-                tenant_id=row.agent_id,
-                channel_id=row.channel_id,
-                processor=_probe_processor,
-            )
+            if row.kind == "feishu":
+                await probe_feishu_credentials(raw_cfg, _probe_processor)
+            else:
+                await manager.probe_channel(
+                    row.kind,
+                    raw_cfg,
+                    tenant_id=row.agent_id,
+                    channel_id=row.channel_id,
+                    processor=_probe_processor,
+                )
             return {"ok": True}
         except ChannelCredentialsError as exc:
             return {"ok": False, "error": channel_probe_incomplete(exc.missing, locale)}
