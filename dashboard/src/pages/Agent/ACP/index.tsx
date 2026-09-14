@@ -259,9 +259,11 @@ export default function ACPPanel() {
 
   return (
     <>
-      <div className={styles.description}>{t("acp.description")}</div>
-      <p className={styles.scopeHint}>{t("acp.globalRunnersHint")}</p>
       <div className={styles.toolbar}>
+        <div className={styles.toolbarText}>
+          <div className={styles.description}>{t("acp.description")}</div>
+          <p className={styles.scopeHint}>{t("acp.globalRunnersHint")}</p>
+        </div>
         <Button type="primary" onClick={openCreate}>
           {t("acp.create")}
         </Button>
