@@ -6,6 +6,21 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 登录验证码：密码登录可选的人机验证，默认本地滑块（仅前端），支持 Cloudflare Turnstile、hCaptcha、reCAPTCHA v2/v3、腾讯云验证码（强校验提供商由服务端向厂商核验，密钥加密保存，设置页可切换）
+- `octop captcha reset`：被验证码误配置锁定时离线清除已保存设置，回退默认滑块
+- 登录验证码组件语言跟随站点语言（腾讯/turnstile/hcaptcha/reCAPTCHA 全部适配）
+
+### 修复
+
+- 腾讯验证码票据校验改用 DescribeCaptchaResult 接口（旧端点对新票据返回 decrypt fail）；校验需云 API 密钥签名，设置页新增对应字段
+
+### 变更
+
+- reCAPTCHA v2 暂从设置列表隐藏（无已验证密钥），存量配置仍可校验
+
+=======
 ## [1.0.0] - 2026-09-14
 
 ### 新增

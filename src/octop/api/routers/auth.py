@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Request, Response
+from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, sign_token
+from octop.infra.auth.captcha import current_env, ensure_captcha, load_effective, public_config
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.permissions import effective_permissions
 from octop.infra.utils.locale import normalize_locale
@@ -30,6 +31,12 @@ def _user_json(user: Any, *, locale: str | None = None) -> dict[str, Any]:
 class LoginBody(BaseModel):
     username: str
     password: str
+    captcha_token: str | None = Field(default=None, max_length=4096)
+
+
+class CaptchaPublicResponse(BaseModel):
+    provider: str
+    site_key: str | None = None
 
 
 class ChangePasswordBody(BaseModel):
@@ -37,11 +44,47 @@ class ChangePasswordBody(BaseModel):
     new_password: str
 
 
+@router.get(
+    "/captcha",
+    summary="Public login captcha config",
+    response_model=CaptchaPublicResponse,
+    response_model_exclude_none=True,
+)
+async def get_captcha(server: Any = Depends(get_server)) -> CaptchaPublicResponse:
+    """Return the active login captcha provider and public site key. No secret."""
+    if server.user_manager.count() == 0:
+        raise OctopError(ErrorCode.SETUP_REQUIRED, "initial admin not created")
+    effective = load_effective(
+        server.services.settings_repo,
+        server.services.secret_repo,
+        current_env(),
+    )
+    return CaptchaPublicResponse.model_validate(public_config(effective))
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip() or "unknown"
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
 @router.post("/login", summary="Sign in")
-async def login(body: LoginBody, server: Any = Depends(get_server)) -> dict[str, Any]:
+async def login(
+    body: LoginBody, request: Request, server: Any = Depends(get_server)
+) -> dict[str, Any]:
     """Exchange username (or email) and password for a JWT access token and user profile."""
     if server.user_manager.count() == 0:
         raise OctopError(ErrorCode.SETUP_REQUIRED, "initial admin not created")
+    server.user_manager.raise_if_login_locked(body.username)
+    effective = load_effective(
+        server.services.settings_repo,
+        server.services.secret_repo,
+        current_env(),
+    )
+    await ensure_captcha(effective, body.captcha_token, _client_ip(request))
     user = await server.user_manager.authenticate(body.username, body.password)
     if user is None:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid credentials")

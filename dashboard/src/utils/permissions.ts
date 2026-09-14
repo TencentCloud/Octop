@@ -25,7 +25,7 @@ export const PERM = {
   storage: ["storage_backends"],
   plugins: ["plugins"],
   securityPage: ["security", "admin_console"],
-  advancedPage: ["update", "envs", "tls", "observability", "backup"],
+  advancedPage: ["update", "envs", "tls", "observability", "backup", "captcha"],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Sidebar item key → permission keys. Shared with path guards. */
@@ -59,6 +59,7 @@ export const ADVANCED_TAB_PERMISSIONS = {
   backup: "backup",
   https: "tls",
   updates: "update",
+  captcha: "captcha",
 } as const;
 
 export const SECURITY_TAB_PERMISSIONS = {

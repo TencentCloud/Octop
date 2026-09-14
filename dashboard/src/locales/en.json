@@ -165,7 +165,9 @@
     "INVITE_REVOKED": "This invite code has been revoked.",
     "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later.",
     "WORKSPACE_ROOT_RESTRICTED": "The selected storage root is outside the allowed directory for this account.",
-    "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({{used}}/{{quota}})."
+    "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({{used}}/{{quota}}).",
+    "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
+    "CAPTCHA_FAILED": "Captcha verification failed. Try again."
   },
   "nav": {
     "chat": "Conversation",
@@ -194,6 +196,7 @@
     "https": "HTTPS",
     "backupRestore": "Backup & Restore",
     "environments": "Environments",
+    "loginCaptcha": "Login captcha",
     "search": "AI Search",
     "collapseSidebar": "Collapse",
     "expandSidebar": "Expand",
@@ -3009,6 +3012,42 @@
   },
   "advancedSettings": {
     "description": "Manage runtime configuration and environment variables.",
+    "captcha": {
+      "title": "Login captcha",
+      "description": "Optional server-side captcha for password login. The slider is client-only; strong providers are verified with the vendor.",
+      "active": "Active provider",
+      "siteKey": "Site key",
+      "secret": "Secret",
+      "secretPlaceholder": "Leave blank to keep the stored secret",
+      "camSecretId": "Cloud API SecretId (signs ticket verification)",
+      "camSecret": "Cloud API SecretKey",
+      "camHint": "Tencent ticket verification (DescribeCaptchaResult) is signed with CAM API keys; grant the sub-account QcloudCaptchaFullAccess only.",
+      "source": "Source",
+      "sourceSettings": "saved settings",
+      "sourceEnv": "boot environment",
+      "v3MinScore": "reCAPTCHA v3 minimum score",
+      "save": "Save",
+      "saved": "Captcha settings saved",
+      "saveFailed": "Could not save captcha settings",
+      "loadFailed": "Could not load captcha settings",
+      "confirmStrongTitle": "Enable a strong captcha?",
+      "confirmStrong": "HTTP clients that cannot show this widget will not be able to complete login.",
+      "unknownActive": "Unknown provider — reselect",
+      "providers": {
+        "slider": "Default",
+        "turnstile": "Cloudflare Turnstile",
+        "hcaptcha": "hCaptcha",
+        "recaptcha": "reCAPTCHA v2",
+        "recaptcha-v3": "reCAPTCHA v3",
+        "tencent": "Tencent Cloud Captcha"
+      },
+      "fields": {
+        "tencent": {
+          "siteKey": "CaptchaAppId",
+          "secret": "AppSecretKey"
+        }
+      }
+    },
     "search": {
       "desc": "Manage web search providers for agents to retrieve from the internet.",
       "tip": "You can configure or modify search providers here. Changes take effect immediately on the next chat session.",
@@ -4478,6 +4517,7 @@
     "failed": "Login failed",
     "slideHint": "Slide to the end to verify",
     "slideVerified": "Verified",
+    "unsupportedCaptcha": "This captcha provider is not supported in this client. Use a supported client to sign in.",
     "or": "or",
     "oidcWith": "Continue with {{name}}",
     "oidcStartFailed": "Could not start single sign-on",
