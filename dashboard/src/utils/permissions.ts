@@ -37,7 +37,6 @@ export const NAV_PERMISSIONS = {
   workbench: PERM.workbench,
   "remote-desktop": ["desktop", "mobile"],
   "remote-phone": PERM.mobile,
-  acp: "admin",
   "admin-users": PERM.usersPage,
   models: PERM.modelsPage,
   "admin-storage": PERM.storage,
@@ -203,7 +202,13 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   if (pathname === "/workbench" || pathname.startsWith("/workbench/")) {
     return PERM.workbench;
   }
-  if (pathname === "/acp" || pathname.startsWith("/acp/")) {
+  // ACP: no module key this round — admin role only. `/acp` is a legacy redirect.
+  if (
+    pathname === "/personalization/acp" ||
+    pathname.startsWith("/personalization/acp/") ||
+    pathname === "/acp" ||
+    pathname.startsWith("/acp/")
+  ) {
     return "admin";
   }
   return null;

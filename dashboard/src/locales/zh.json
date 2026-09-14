@@ -174,7 +174,6 @@
     "experts": "专家",
     "tasks": "自动化",
     "connectors": "连接器",
-    "acp": "ACP",
     "agents": "Agents",
     "providers": "Providers",
     "models": "模型",
@@ -3785,6 +3784,7 @@
     "tabs": {
       "skills": "技能",
       "tools": "工具",
+      "acp": "ACP 工具",
       "plugins": "插件",
       "subagents": "子智能体",
       "channels": "通道",
@@ -5274,10 +5274,6 @@
     "connectors": {
       "title": "连接器",
       "subtitle": "账户级连接文档、网盘与邮箱；对话时按需勾选"
-    },
-    "acp": {
-      "title": "ACP",
-      "subtitle": "配置外部编程 Agent Runner（OpenCode、Claude Code 等）"
     },
     "skills": {
       "title": "技能",
