@@ -3372,13 +3372,17 @@
     "ssoHint": "将多个登录方式绑定到当前账号，任意一种均可登录。",
     "ssoLinked": "已绑定（{{name}}）",
     "ssoUnlinked": "未绑定",
+    "ssoStatusLinked": "已绑定",
+    "ssoStatusUnlinked": "未绑定",
+    "ssoConnect": "绑定",
+    "ssoDisconnect": "解除绑定",
     "ssoBind": "绑定{{name}}",
     "ssoUnbind": "解除{{name}}绑定",
     "ssoBindSuccess": "已绑定单点登录",
     "ssoUnbindSuccess": "已解除单点登录",
     "ssoBindFailed": "无法开始绑定",
     "ssoUnbindFailed": "无法解除绑定",
-    "ssoPopupBlocked": "请允许弹出窗口以继续飞书登录。"
+    "ssoPopupBlocked": "请允许弹出窗口以继续单点登录。"
   },
   "user": {
     "title": "用户设置",

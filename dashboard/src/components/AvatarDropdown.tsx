@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, type ReactNode } from "react";
 import {
   Avatar,
   Modal,
@@ -45,9 +45,26 @@ import type { OctopUser } from "../api/modules/auth";
 import { useLayoutMode } from "../context/LayoutModeContext";
 import type { LayoutMode } from "../layouts/layoutModeStorage";
 import { userCan } from "../utils/permissions";
+import feishuIcon from "../assets/channels/feishu.svg";
+import dingtalkIcon from "../assets/channels/dingtalk.svg";
+import wecomIcon from "../assets/channels/wecom.svg";
 import styles from "./AvatarDropdown.module.less";
 
 const GITHUB_URL = "https://github.com/TencentCloud/Octop";
+const APP_OAUTH_KINDS = new Set(["feishu", "dingtalk", "wecom"]);
+
+function oauthProviderIcon(kind: string): ReactNode {
+  const src =
+    kind === "feishu"
+      ? feishuIcon
+      : kind === "dingtalk"
+      ? dingtalkIcon
+      : kind === "wecom"
+      ? wecomIcon
+      : null;
+  if (!src) return <KeyRound size={18} />;
+  return <img src={src} alt="" width={20} height={20} draggable={false} />;
+}
 
 interface AvatarDropdownProps {
   user: OctopUser | null;
@@ -82,7 +99,7 @@ export default function AvatarDropdown({
   const [ssoProviders, setSsoProviders] = useState<
     { kind: string; display_name: string; enabled: boolean }[]
   >([]);
-  const [ssoBinding, setSsoBinding] = useState(false);
+  const [ssoBindingKind, setSsoBindingKind] = useState<string | null>(null);
   const [changingPw, setChangingPw] = useState(false);
   const [profileForm] = Form.useForm<{ display_name: string }>();
   const [pwForm] = Form.useForm<{
@@ -161,9 +178,8 @@ export default function AvatarDropdown({
       });
   };
 
-  const appOauthKinds = new Set(["feishu", "dingtalk", "wecom"]);
   const bindableProviders = ssoProviders.filter((item) =>
-    appOauthKinds.has(item.kind),
+    APP_OAUTH_KINDS.has(item.kind),
   );
   const linkedKinds = new Set(
     (user?.sso_identities ?? [])
@@ -173,19 +189,27 @@ export default function AvatarDropdown({
   const providerDisplayName = (kind: string, displayName?: string) =>
     displayName?.trim() ||
     t(`login.providerKind.${kind}`, { defaultValue: kind });
-  const linkedProviderLabels = [...linkedKinds].map((kind) =>
-    providerDisplayName(
-      kind,
-      ssoProviders.find((item) => item.kind === kind)?.display_name,
-    ),
-  );
   const canUnbindKind = (kind: string) =>
     linkedKinds.has(kind) &&
     (user?.has_password !== false || linkedKinds.size > 1);
 
+  const ssoRows: { kind: string; display_name: string }[] = [];
+  const seenSsoKinds = new Set<string>();
+  for (const provider of bindableProviders) {
+    ssoRows.push({
+      kind: provider.kind,
+      display_name: provider.display_name,
+    });
+    seenSsoKinds.add(provider.kind);
+  }
+  for (const kind of linkedKinds) {
+    if (!APP_OAUTH_KINDS.has(kind) || seenSsoKinds.has(kind)) continue;
+    ssoRows.push({ kind, display_name: "" });
+  }
+
   const handleBindOauth = async (kind: string) => {
     const popup = openSsoPopup();
-    setSsoBinding(true);
+    setSsoBindingKind(kind);
     try {
       const { authorization_url } = await authApi.startOauthBind(kind, "/chat");
       if (popup && !popup.closed) {
@@ -193,28 +217,31 @@ export default function AvatarDropdown({
         const timer = window.setInterval(() => {
           if (!popup || popup.closed) {
             window.clearInterval(timer);
-            setSsoBinding(false);
+            setSsoBindingKind(null);
           }
         }, 400);
       } else {
         popup?.close();
         message.error(t("account.ssoPopupBlocked"));
-        setSsoBinding(false);
+        setSsoBindingKind(null);
       }
     } catch (err) {
       popup?.close();
       message.error(apiErrorMessage(err, t("account.ssoBindFailed"), t));
-      setSsoBinding(false);
+      setSsoBindingKind(null);
     }
   };
 
   const handleUnbindOauth = async (kind: string) => {
+    setSsoBindingKind(kind);
     try {
       const next = await authApi.unbindOauth(kind);
       onUserChange?.(next);
       message.success(t("account.ssoUnbindSuccess"));
     } catch (err) {
       message.error(apiErrorMessage(err, t("account.ssoUnbindFailed"), t));
+    } finally {
+      setSsoBindingKind(null);
     }
   };
 
@@ -266,7 +293,7 @@ export default function AvatarDropdown({
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (!isSsoPopupMessage(event, window.location.origin)) return;
-      setSsoBinding(false);
+      setSsoBindingKind(null);
       if (!event.data.ok) {
         const code = event.data.error || "generic";
         message.error(
@@ -555,7 +582,7 @@ export default function AvatarDropdown({
         <PaletteSwitcher />
       </section>
 
-      {Boolean(bindableProviders.length > 0 || linkedKinds.size > 0) && (
+      {ssoRows.length > 0 && (
         <>
           <Divider className={styles.settingsDivider} />
           <section className={styles.settingsSection}>
@@ -567,64 +594,54 @@ export default function AvatarDropdown({
                 {t("account.ssoHint")}
               </p>
             </div>
-            <p className={styles.settingsSectionDesc}>
-              {linkedProviderLabels.length > 0
-                ? t("account.ssoLinked", {
-                    name: linkedProviderLabels.join(" · "),
-                  })
-                : t("account.ssoUnlinked")}
-            </p>
-            {bindableProviders.map((provider) => {
-              const name = providerDisplayName(
-                provider.kind,
-                provider.display_name,
-              );
-              if (!linkedKinds.has(provider.kind)) {
-                return (
-                  <Button
-                    key={`bind-${provider.kind}`}
-                    block
-                    loading={ssoBinding}
-                    onClick={() => void handleBindOauth(provider.kind)}
-                    style={{ marginTop: 8 }}
-                  >
-                    {t("account.ssoBind", { name })}
-                  </Button>
+            <ul className={styles.ssoList}>
+              {ssoRows.map((provider) => {
+                const name = providerDisplayName(
+                  provider.kind,
+                  provider.display_name,
                 );
-              }
-              if (!canUnbindKind(provider.kind)) return null;
-              return (
-                <Button
-                  key={`unbind-${provider.kind}`}
-                  block
-                  danger
-                  onClick={() => void handleUnbindOauth(provider.kind)}
-                  style={{ marginTop: 8 }}
-                >
-                  {t("account.ssoUnbind", { name })}
-                </Button>
-              );
-            })}
-            {[...linkedKinds]
-              .filter(
-                (kind) =>
-                  appOauthKinds.has(kind) &&
-                  !bindableProviders.some((item) => item.kind === kind) &&
-                  canUnbindKind(kind),
-              )
-              .map((kind) => (
-                <Button
-                  key={`unbind-orphan-${kind}`}
-                  block
-                  danger
-                  onClick={() => void handleUnbindOauth(kind)}
-                  style={{ marginTop: 8 }}
-                >
-                  {t("account.ssoUnbind", {
-                    name: providerDisplayName(kind),
-                  })}
-                </Button>
-              ))}
+                const linked = linkedKinds.has(provider.kind);
+                const busy = ssoBindingKind === provider.kind;
+                return (
+                  <li key={provider.kind} className={styles.ssoRow}>
+                    <span className={styles.ssoIcon} aria-hidden>
+                      {oauthProviderIcon(provider.kind)}
+                    </span>
+                    <div className={styles.ssoMeta}>
+                      <span className={styles.ssoName}>{name}</span>
+                      <span className={styles.ssoStatus}>
+                        {linked
+                          ? t("account.ssoStatusLinked")
+                          : t("account.ssoStatusUnlinked")}
+                      </span>
+                    </div>
+                    {linked ? (
+                      canUnbindKind(provider.kind) ? (
+                        <Button
+                          size="small"
+                          danger
+                          loading={busy}
+                          disabled={ssoBindingKind !== null && !busy}
+                          onClick={() => void handleUnbindOauth(provider.kind)}
+                        >
+                          {t("account.ssoDisconnect")}
+                        </Button>
+                      ) : null
+                    ) : (
+                      <Button
+                        size="small"
+                        type="primary"
+                        loading={busy}
+                        disabled={ssoBindingKind !== null && !busy}
+                        onClick={() => void handleBindOauth(provider.kind)}
+                      >
+                        {t("account.ssoConnect")}
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </section>
         </>
       )}

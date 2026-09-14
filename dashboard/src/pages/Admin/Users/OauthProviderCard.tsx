@@ -84,7 +84,7 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
       hydratingRef.current = true;
       form.setFieldsValue({
         enabled: config.enabled,
-        display_name: config.display_name,
+        display_name: config.display_name.trim() || t(provider.defaultNameKey),
         client_id: config.client_id,
         client_secret: undefined,
         region: config.extra?.region === "lark" ? "lark" : "feishu",
@@ -100,7 +100,7 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
         hydratingRef.current = false;
       });
     },
-    [form],
+    [form, provider.defaultNameKey, t],
   );
 
   const loadConfig = useCallback(async () => {

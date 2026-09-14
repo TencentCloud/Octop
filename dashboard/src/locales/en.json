@@ -3375,13 +3375,17 @@
     "ssoHint": "Link providers to this account so you can sign in with any of them.",
     "ssoLinked": "Linked ({{name}})",
     "ssoUnlinked": "Not linked",
+    "ssoStatusLinked": "Linked",
+    "ssoStatusUnlinked": "Not linked",
+    "ssoConnect": "Link",
+    "ssoDisconnect": "Unlink",
     "ssoBind": "Link {{name}}",
     "ssoUnbind": "Unlink {{name}}",
     "ssoBindSuccess": "Single sign-on linked",
     "ssoUnbindSuccess": "Single sign-on unlinked",
     "ssoBindFailed": "Could not start account linking",
     "ssoUnbindFailed": "Could not unlink single sign-on",
-    "ssoPopupBlocked": "Allow pop-ups to continue with Feishu."
+    "ssoPopupBlocked": "Allow pop-ups to continue with single sign-on."
   },
   "user": {
     "title": "User Settings",
