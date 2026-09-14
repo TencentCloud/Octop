@@ -2,7 +2,7 @@ export type CaptchaMode = "slider" | "checkbox" | "invisible" | "popup";
 
 export type CaptchaWidgetAdapter = {
   slug: string;
-  scriptSrc: string | ((siteKey: string) => string);
+  scriptSrc: string | ((siteKey: string, hl: string) => string);
   globalName: string;
   onloadName?: string;
   mode: CaptchaMode;
@@ -28,26 +28,30 @@ export const CAPTCHA_WIDGETS: Record<string, CaptchaWidgetAdapter> = {
   },
   hcaptcha: {
     slug: "hcaptcha",
-    scriptSrc:
-      "https://js.hcaptcha.com/1/api.js?render=explicit&onload=__octopHcaptchaOnload",
+    scriptSrc: (_siteKey: string, hl: string) =>
+      `https://js.hcaptcha.com/1/api.js?render=explicit&onload=__octopHcaptchaOnload&hl=${encodeURIComponent(
+        hl,
+      )}`,
     globalName: "hcaptcha",
     onloadName: "__octopHcaptchaOnload",
     mode: "checkbox",
   },
   recaptcha: {
     slug: "recaptcha",
-    scriptSrc:
-      "https://www.google.com/recaptcha/api.js?render=explicit&onload=__octopRecaptchaOnload",
+    scriptSrc: (_siteKey: string, hl: string) =>
+      `https://www.google.com/recaptcha/api.js?render=explicit&onload=__octopRecaptchaOnload&hl=${encodeURIComponent(
+        hl,
+      )}`,
     globalName: "grecaptcha",
     onloadName: "__octopRecaptchaOnload",
     mode: "checkbox",
   },
   "recaptcha-v3": {
     slug: "recaptcha-v3",
-    scriptSrc: (siteKey: string) =>
+    scriptSrc: (siteKey: string, hl: string) =>
       `https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(
         siteKey,
-      )}`,
+      )}&hl=${encodeURIComponent(hl)}`,
     globalName: "grecaptcha",
     mode: "invisible",
   },

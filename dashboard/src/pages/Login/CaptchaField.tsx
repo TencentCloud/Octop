@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import SlideCaptcha from "./SlideCaptcha";
 import {
   CAPTCHA_WIDGETS,
@@ -33,6 +34,7 @@ type VendorApi = {
       callback: (token: string) => void;
       "expired-callback": () => void;
       "error-callback": () => void;
+      language?: string;
     },
   ) => string | number;
   remove?: (id: string | number) => void;
@@ -49,13 +51,19 @@ function vendorGlobal(name: string): VendorApi | undefined {
   return undefined;
 }
 
+/** Widget language follows the dashboard UI locale, not the browser's. */
+function vendorLang(lng: string): string {
+  return lng.startsWith("zh") ? "zh-CN" : "en";
+}
+
 function loadVendorScript(
   adapter: CaptchaWidgetAdapter,
   siteKey: string,
+  hl: string,
 ): Promise<VendorApi> {
   const src =
     typeof adapter.scriptSrc === "function"
-      ? adapter.scriptSrc(siteKey)
+      ? adapter.scriptSrc(siteKey, hl)
       : adapter.scriptSrc;
   return new Promise((resolve, reject) => {
     const existing = vendorGlobal(adapter.globalName);
@@ -99,7 +107,10 @@ type TencentCaptchaCtor = new (
   options?: Record<string, unknown>,
 ) => { show: () => void };
 
-function tencentPopupToken(siteKey: string): Promise<string | undefined> {
+function tencentPopupToken(
+  siteKey: string,
+  hl: string,
+): Promise<string | undefined> {
   const Ctor = (window as unknown as Record<string, unknown>).TencentCaptcha as
     | TencentCaptchaCtor
     | undefined;
@@ -115,7 +126,7 @@ function tencentPopupToken(siteKey: string): Promise<string | undefined> {
               : undefined,
           );
         },
-        { userLanguage: navigator.language },
+        { userLanguage: hl },
       );
       captcha.show();
     } catch {
@@ -137,6 +148,8 @@ const CaptchaField = forwardRef<CaptchaFieldHandle, CaptchaFieldProps>(
     ref,
   ) {
     const adapter = CAPTCHA_WIDGETS[config.provider];
+    const { i18n } = useTranslation();
+    const hl = vendorLang(i18n.language);
     const hostRef = useRef<HTMLDivElement>(null);
     const widgetId = useRef<string | number | null>(null);
     const tokenRef = useRef<string | null>(null);
@@ -165,11 +178,12 @@ const CaptchaField = forwardRef<CaptchaFieldHandle, CaptchaFieldProps>(
       }
       let cancelled = false;
       const host = hostRef.current;
-      void loadVendorScript(adapter, config.site_key)
+      void loadVendorScript(adapter, config.site_key, hl)
         .then((api) => {
           if (cancelled || !host || !api.render || !config.site_key) return;
           widgetId.current = api.render(host, {
             sitekey: config.site_key,
+            ...(adapter.slug === "turnstile" ? { language: hl } : {}),
             callback: (token) => {
               tokenRef.current = token;
               onReadyChange(true);
@@ -201,7 +215,7 @@ const CaptchaField = forwardRef<CaptchaFieldHandle, CaptchaFieldProps>(
         tokenRef.current = null;
         if (host) host.replaceChildren();
       };
-    }, [adapter, config.site_key, resetKey, onReadyChange]);
+    }, [adapter, config.site_key, hl, resetKey, onReadyChange]);
 
     useEffect(() => {
       if (
@@ -211,8 +225,10 @@ const CaptchaField = forwardRef<CaptchaFieldHandle, CaptchaFieldProps>(
       ) {
         return;
       }
-      void loadVendorScript(adapter, config.site_key).catch(() => undefined);
-    }, [adapter, config.site_key, resetKey]);
+      void loadVendorScript(adapter, config.site_key, hl).catch(
+        () => undefined,
+      );
+    }, [adapter, config.site_key, hl, resetKey]);
 
     useImperativeHandle(
       ref,
@@ -224,7 +240,7 @@ const CaptchaField = forwardRef<CaptchaFieldHandle, CaptchaFieldProps>(
           }
           if (adapter.mode === "popup") {
             if (!config.site_key) return undefined;
-            return tencentPopupToken(config.site_key);
+            return tencentPopupToken(config.site_key, hl);
           }
           const api = vendorGlobal(adapter.globalName);
           const siteKey = config.site_key;
@@ -237,7 +253,7 @@ const CaptchaField = forwardRef<CaptchaFieldHandle, CaptchaFieldProps>(
           return api.execute(siteKey, { action: "login" });
         },
       }),
-      [adapter, config.site_key],
+      [adapter, config.site_key, hl],
     );
 
     if (!adapter) {
