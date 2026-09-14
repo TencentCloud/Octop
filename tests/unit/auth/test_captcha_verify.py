@@ -21,6 +21,8 @@ def _effective(
     site_key: str = "site",
     secret: str = "secret",
     v3_min_score: float = 0.5,
+    cam_id: str = "",
+    cam_key: str = "",
 ) -> EffectiveCaptcha:
     return EffectiveCaptcha(
         slug=slug,
@@ -29,6 +31,8 @@ def _effective(
         source="env",
         stored_active=None,
         v3_min_score=v3_min_score,
+        cam_id=cam_id,
+        cam_key=cam_key,
     )
 
 
@@ -37,6 +41,7 @@ class _Siteverify(BaseHTTPRequestHandler):
     status: int = 200
     hang: bool = False
     last_query: dict[str, list[str]] = {}
+    last_body: dict[str, object] = {}
 
     def _reply(self) -> None:
         if self.hang:
@@ -49,6 +54,9 @@ class _Siteverify(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length") or 0)
+        if length and (self.headers.get("Content-Type") or "").startswith("application/json"):
+            type(self).last_body = json.loads(self.rfile.read(length))
         self._reply()
 
     def do_GET(self) -> None:
@@ -62,6 +70,7 @@ class _Siteverify(BaseHTTPRequestHandler):
 @pytest.fixture
 def siteverify() -> tuple[str, type[_Siteverify]]:
     _Siteverify.last_query = {}
+    _Siteverify.last_body = {}
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Siteverify)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -140,19 +149,26 @@ async def test_tencent_ok_sends_ticket_pair_and_ip(
     siteverify: tuple[str, type[_Siteverify]],
 ) -> None:
     url, handler = siteverify
-    handler.payload = {"response": "1", "evil_level": "0", "err_msg": ""}
+    handler.payload = {"Response": {"CaptchaCode": 1, "CaptchaMsg": "OK"}}
     set_test_siteverify_url("tencent", url)
     await ensure_captcha(
-        _effective("tencent", site_key="195642000", secret="app-secret"),
+        _effective(
+            "tencent",
+            site_key="195642000",
+            secret="app-secret",
+            cam_id="AKIDcam",
+            cam_key="camkey",
+        ),
         "tr03ticket:@rand",
         "203.0.113.7",
     )
-    assert handler.last_query == {
-        "aid": ["195642000"],
-        "AppSecretKey": ["app-secret"],
-        "Ticket": ["tr03ticket"],
-        "Randstr": ["@rand"],
-        "UserIP": ["203.0.113.7"],
+    assert handler.last_body == {
+        "CaptchaType": 9,
+        "Ticket": "tr03ticket",
+        "Randstr": "@rand",
+        "UserIp": "203.0.113.7",
+        "CaptchaAppId": 195642000,
+        "AppSecretKey": "app-secret",
     }
 
 
@@ -161,10 +177,13 @@ async def test_tencent_rejected_response_fails(
     siteverify: tuple[str, type[_Siteverify]],
 ) -> None:
     url, handler = siteverify
-    handler.payload = {"response": "7", "err_msg": "captcha no match"}
+    handler.payload = {"Response": {"CaptchaCode": 7, "CaptchaMsg": "captcha no match"}}
     set_test_siteverify_url("tencent", url)
     with pytest.raises(OctopError) as exc:
-        await ensure_captcha(_effective("tencent"), "tr03ticket:@rand")
+        await ensure_captcha(
+            _effective("tencent", site_key="195642000", cam_id="AKIDcam", cam_key="camkey"),
+            "tr03ticket:@rand",
+        )
     assert exc.value.code is ErrorCode.CAPTCHA_FAILED
 
 

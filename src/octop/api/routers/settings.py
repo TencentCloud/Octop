@@ -85,6 +85,8 @@ async def get_capabilities(
 class CaptchaPairView(BaseModel):
     site_key: str
     has_secret: bool
+    cam_secret_id: str = ""
+    has_cam_secret: bool = False
 
 
 class CaptchaSettingsResponse(BaseModel):
@@ -98,6 +100,8 @@ class CaptchaSettingsResponse(BaseModel):
 class CaptchaPairBody(BaseModel):
     site_key: str | None = None
     secret: str | None = None
+    cam_secret_id: str | None = None
+    cam_secret: str | None = None
 
 
 class CaptchaSettingsPut(BaseModel):

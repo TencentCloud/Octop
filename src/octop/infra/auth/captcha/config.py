@@ -19,6 +19,8 @@ class CaptchaEnv:
     site_key: str
     secret: str
     v3_min_score: float = _DEFAULT_V3_MIN_SCORE
+    cam_secret_id: str = ""
+    cam_secret_key: str = ""
 
     @property
     def pair_complete(self) -> bool:
@@ -45,6 +47,8 @@ def snapshot_env(environ: Mapping[str, str] | None = None) -> CaptchaEnv:
         site_key=(src.get("OCTOP_CAPTCHA_SITE_KEY") or "").strip(),
         secret=(src.get("OCTOP_CAPTCHA_SECRET") or "").strip(),
         v3_min_score=v3_min_score,
+        cam_secret_id=(src.get("OCTOP_CAPTCHA_CAM_SECRET_ID") or "").strip(),
+        cam_secret_key=(src.get("OCTOP_CAPTCHA_CAM_SECRET_KEY") or "").strip(),
     )
 
 

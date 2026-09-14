@@ -3019,6 +3019,9 @@
       "siteKey": "Site key",
       "secret": "Secret",
       "secretPlaceholder": "Leave blank to keep the stored secret",
+      "camSecretId": "Cloud API SecretId (signs ticket verification)",
+      "camSecret": "Cloud API SecretKey",
+      "camHint": "Tencent ticket verification (DescribeCaptchaResult) is signed with CAM API keys; grant the sub-account QcloudCaptchaFullAccess only.",
       "source": "Source",
       "sourceSettings": "saved settings",
       "sourceEnv": "boot environment",
@@ -3031,12 +3034,18 @@
       "confirmStrong": "HTTP clients that cannot show this widget will not be able to complete login.",
       "unknownActive": "Unknown provider — reselect",
       "providers": {
-        "slider": "Slider",
+        "slider": "Default",
         "turnstile": "Cloudflare Turnstile",
         "hcaptcha": "hCaptcha",
         "recaptcha": "reCAPTCHA v2",
         "recaptcha-v3": "reCAPTCHA v3",
         "tencent": "Tencent Cloud Captcha"
+      },
+      "fields": {
+        "tencent": {
+          "siteKey": "CaptchaAppId",
+          "secret": "AppSecretKey"
+        }
       }
     },
     "search": {

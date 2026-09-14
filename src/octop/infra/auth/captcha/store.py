@@ -30,6 +30,8 @@ class EffectiveCaptcha:
     source: Source
     stored_active: str | None
     v3_min_score: float
+    cam_id: str = ""
+    cam_key: str = ""
 
 
 _CACHE_KEY: tuple[str | None, str, str, str, float] | None = None
@@ -73,12 +75,20 @@ def _read_blob(settings_repo: SettingsRepo, secret_repo: SecretRepo) -> dict[str
             if isinstance(enc, str) and enc and _decode_secret(secret_repo, enc) is None:
                 logger.warning("captcha settings blob secret cannot be decrypted; ignoring")
                 return None
+            cam_enc = pair.get("cam_secret_enc")
+            if (
+                isinstance(cam_enc, str)
+                and cam_enc
+                and _decode_secret(secret_repo, cam_enc) is None
+            ):
+                logger.warning("captcha settings blob cam secret cannot be decrypted; ignoring")
+                return None
     return data
 
 
 def _pair_from_blob(
     blob: dict[str, Any], secret_repo: SecretRepo, slug: str
-) -> tuple[str, str] | None:
+) -> tuple[str, str, str, str] | None:
     providers = blob.get("providers")
     if not isinstance(providers, dict):
         return None
@@ -89,7 +99,10 @@ def _pair_from_blob(
     enc = row.get("secret_enc")
     secret = _decode_secret(secret_repo, enc) if isinstance(enc, str) else None
     if site_key and secret:
-        return site_key, secret
+        cam_id = str(row.get("cam_secret_id") or "").strip()
+        cam_enc = row.get("cam_secret_enc")
+        cam_key = _decode_secret(secret_repo, cam_enc) if isinstance(cam_enc, str) else None
+        return site_key, secret, cam_id, cam_key or ""
     return None
 
 
@@ -147,6 +160,8 @@ def _resolve_effective(
             source="env",
             stored_active=None,
             v3_min_score=env.v3_min_score,
+            cam_id=env.cam_secret_id,
+            cam_key=env.cam_secret_key,
         )
 
     raw_active = str(blob.get("active") or "").strip()
@@ -166,7 +181,7 @@ def _resolve_effective(
 
     stored = _pair_from_blob(blob, secret_repo, active)
     if stored is not None:
-        site_key, secret = stored
+        site_key, secret, cam_id, cam_key = stored
         return EffectiveCaptcha(
             slug=active,
             site_key=site_key,
@@ -174,6 +189,8 @@ def _resolve_effective(
             source="settings",
             stored_active=active,
             v3_min_score=env.v3_min_score,
+            cam_id=cam_id or env.cam_secret_id,
+            cam_key=cam_key or env.cam_secret_key,
         )
 
     if env.provider == active and env.pair_complete:
@@ -184,14 +201,26 @@ def _resolve_effective(
             source="settings",
             stored_active=active,
             v3_min_score=env.v3_min_score,
+            cam_id=env.cam_secret_id,
+            cam_key=env.cam_secret_key,
         )
 
     logger.warning("captcha settings pair for %s is incomplete; using slider", active)
     return _slider("settings", active, env)
 
 
-def _pair_view(site_key: str, has_secret: bool) -> dict[str, str | bool]:
-    return {"site_key": site_key, "has_secret": has_secret}
+def _pair_view(
+    site_key: str,
+    has_secret: bool,
+    cam_secret_id: str = "",
+    has_cam_secret: bool = False,
+) -> dict[str, str | bool]:
+    return {
+        "site_key": site_key,
+        "has_secret": has_secret,
+        "cam_secret_id": cam_secret_id,
+        "has_cam_secret": has_cam_secret,
+    }
 
 
 def load_view(
@@ -205,7 +234,9 @@ def load_view(
         providers: dict[str, dict[str, str | bool]] = {}
         provider = get_provider(env.provider)
         if provider is not None and provider.requires_token and env.pair_complete:
-            providers[env.provider] = _pair_view(env.site_key, True)
+            providers[env.provider] = _pair_view(
+                env.site_key, True, env.cam_secret_id, bool(env.cam_secret_key)
+            )
         return {
             "active": env.provider or "slider",
             "available": available,
@@ -226,8 +257,13 @@ def load_view(
             has_secret = isinstance(enc, str) and bool(enc)
             if isinstance(enc, str) and enc:
                 has_secret = _decode_secret(secret_repo, enc) is not None
+            cam_id = str(pair.get("cam_secret_id") or "").strip()
+            cam_enc = pair.get("cam_secret_enc")
+            has_cam = isinstance(cam_enc, str) and bool(cam_enc)
+            if isinstance(cam_enc, str) and cam_enc:
+                has_cam = _decode_secret(secret_repo, cam_enc) is not None
             if site_key or has_secret:
-                providers[str(slug)] = _pair_view(site_key, has_secret)
+                providers[str(slug)] = _pair_view(site_key, has_secret, cam_id, has_cam)
 
     try:
         canonical = parse_slug(raw_active)
@@ -289,8 +325,15 @@ def save_settings(
             if "site_key" in pair and pair["site_key"] is not None:
                 row["site_key"] = str(pair["site_key"]).strip()
             secret = pair.get("secret")
-            if isinstance(secret, str) and secret:
-                row["secret_enc"] = encrypt_secret(secret_repo, secret).decode("ascii")
+            if isinstance(secret, str) and secret.strip():
+                row["secret_enc"] = encrypt_secret(secret_repo, secret.strip()).decode("ascii")
+            if "cam_secret_id" in pair and pair["cam_secret_id"] is not None:
+                row["cam_secret_id"] = str(pair["cam_secret_id"]).strip()
+            cam_secret = pair.get("cam_secret")
+            if isinstance(cam_secret, str) and cam_secret.strip():
+                row["cam_secret_enc"] = encrypt_secret(secret_repo, cam_secret.strip()).decode(
+                    "ascii"
+                )
             providers[slug] = row
 
     blob["providers"] = providers

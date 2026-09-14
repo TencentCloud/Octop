@@ -34,8 +34,8 @@ const TABS: TabBarItem<TabKey>[] = [
   { key: "observability", labelKey: "nav.observability", icon: Activity },
   { key: "backup", labelKey: "nav.backupRestore", icon: Archive },
   { key: "https", labelKey: "nav.https", icon: Lock },
-  { key: "updates", labelKey: "nav.checkUpdates", icon: RefreshCw },
   { key: "captcha", labelKey: "nav.loginCaptcha", icon: ShieldCheck },
+  { key: "updates", labelKey: "nav.checkUpdates", icon: RefreshCw },
 ];
 
 function parseTab(raw: string | null): TabKey {

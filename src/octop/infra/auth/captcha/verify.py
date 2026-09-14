@@ -47,16 +47,21 @@ async def ensure_captcha(
         secret=effective.secret,
         token=(token or "").strip(),
         client_ip=client_ip,
+        cam_id=effective.cam_id,
+        cam_key=effective.cam_key,
     )
     url = _TEST_URLS.get(provider.slug) or call.url
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            if call.method == "GET":
+            if call.json_body is not None:
+                resp = await client.post(url, json=call.json_body, headers=call.headers)
+            elif call.method == "GET":
                 resp = await client.get(url, params=call.params)
             else:
                 resp = await client.post(url, data=call.data)
             body: Any = resp.json()
-    except (httpx.HTTPError, ValueError, TypeError):
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        logger.warning("captcha siteverify request failed: %s", exc)
         raise _failed() from None
     if not isinstance(body, dict):
         raise _failed()

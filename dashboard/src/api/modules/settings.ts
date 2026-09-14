@@ -16,6 +16,8 @@ export interface OctopCapabilitiesSettings {
 export interface CaptchaPairView {
   site_key: string;
   has_secret: boolean;
+  cam_secret_id?: string;
+  has_cam_secret?: boolean;
 }
 
 export interface CaptchaSettings {
@@ -29,6 +31,8 @@ export interface CaptchaSettings {
 export type CaptchaPairBody = {
   site_key?: string;
   secret?: string;
+  cam_secret_id?: string;
+  cam_secret?: string;
 } | null;
 
 export interface CaptchaSettingsPut {
