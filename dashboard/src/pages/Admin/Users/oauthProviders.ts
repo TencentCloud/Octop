@@ -19,6 +19,13 @@ export interface OauthProviderDef {
   clientIdKey?: string;
   /** Override default App Secret field label. */
   clientSecretKey?: string;
+  /**
+   * WeCom registers a host-only “授权回调域”, not the full callback path.
+   * When true, the admin aside also shows the hostname to copy.
+   */
+  showCallbackDomain?: boolean;
+  redirectHintKey?: string;
+  redirectDocsKey?: string;
 }
 
 export const OAUTH_APP_PROVIDERS: OauthProviderDef[] = [
@@ -49,5 +56,8 @@ export const OAUTH_APP_PROVIDERS: OauthProviderDef[] = [
     hasAgentId: true,
     clientIdKey: "adminSso.wecomCorpId",
     clientSecretKey: "adminSso.wecomSecret",
+    showCallbackDomain: true,
+    redirectHintKey: "adminSso.wecomRedirectHint",
+    redirectDocsKey: "adminSso.wecomRedirectDocs",
   },
 ];

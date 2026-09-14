@@ -2,23 +2,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const { getOidcConfig, putOidcConfig, testOidcConfig, getOauthProvider } =
-  vi.hoisted(() => ({
-    getOidcConfig: vi.fn(),
-    putOidcConfig: vi.fn(),
-    testOidcConfig: vi.fn(),
-    getOauthProvider: vi.fn(),
-  }));
+const { getOidcConfig, putOidcConfig, testOidcConfig } = vi.hoisted(() => ({
+  getOidcConfig: vi.fn(),
+  putOidcConfig: vi.fn(),
+  testOidcConfig: vi.fn(),
+}));
 
 vi.mock("../../../api/modules/sso", () => ({
   ssoApi: {
     getOidcConfig,
     putOidcConfig,
     testOidcConfig,
-    getOauthProvider,
+    getOauthProvider: vi.fn(),
     putOauthProvider: vi.fn(),
     testOauthProvider: vi.fn(),
-    getFeishuConfig: () => getOauthProvider("feishu"),
+    getFeishuConfig: vi.fn(),
     putFeishuConfig: vi.fn(),
     testFeishuConfig: vi.fn(),
   },
@@ -30,31 +28,12 @@ vi.mock("@/utils/antdMessage", () => ({
 
 import SsoPanel from "./SsoPanel";
 
-async function expandOidc(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByText("adminSso.oidcTitle"));
-}
-
 describe("<SsoPanel />", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    getOauthProvider.mockImplementation(async (kind: string) => ({
-      kind,
-      enabled: false,
-      display_name: "",
-      client_id: "",
-      has_client_secret: false,
-      redirect_uri: "https://octop.example.com/api/auth/oauth/callback",
-      extra:
-        kind === "feishu"
-          ? { region: "feishu" }
-          : kind === "wecom"
-          ? { agent_id: "" }
-          : {},
-    }));
   });
 
-  it("loads the provider configuration and displays its callback URL", async () => {
-    const user = userEvent.setup();
+  it("loads the OIDC configuration and displays its callback URL", async () => {
     getOidcConfig.mockResolvedValue({
       enabled: true,
       display_name: "Acme SSO",
@@ -69,17 +48,6 @@ describe("<SsoPanel />", () => {
     render(<SsoPanel />);
 
     await waitFor(() => expect(getOidcConfig).toHaveBeenCalledOnce());
-    expect(screen.getByText("adminSso.oauthFamilyTitle")).toBeInTheDocument();
-    expect(screen.getByText("adminSso.feishuTitle")).toBeInTheDocument();
-    expect(screen.getByText("adminSso.dingtalkTitle")).toBeInTheDocument();
-    expect(screen.getByText("adminSso.wecomTitle")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(getOauthProvider).toHaveBeenCalledWith("feishu"),
-    );
-    expect(getOauthProvider).toHaveBeenCalledWith("dingtalk");
-    expect(getOauthProvider).toHaveBeenCalledWith("wecom");
-
-    await expandOidc(user);
     expect(screen.getByDisplayValue("Acme SSO")).toBeInTheDocument();
     expect(
       screen.getByDisplayValue(
@@ -87,7 +55,12 @@ describe("<SsoPanel />", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("adminSso.statusEnabled")).toBeInTheDocument();
-    expect(screen.getByText("adminSso.oidcTitle")).toBeInTheDocument();
+    expect(screen.getByText("adminSso.oidcKind")).toBeInTheDocument();
+    expect(screen.getByText("adminSso.guideTitle")).toBeInTheDocument();
+    expect(screen.getByText("adminSso.loginPreview")).toBeInTheDocument();
+    expect(
+      screen.queryByText("adminSso.oauthFamilyTitle"),
+    ).not.toBeInTheDocument();
   });
 
   it("applies an IdP preset into display name", async () => {
@@ -106,7 +79,6 @@ describe("<SsoPanel />", () => {
     render(<SsoPanel />);
 
     await waitFor(() => expect(getOidcConfig).toHaveBeenCalledOnce());
-    await expandOidc(user);
     await user.click(
       screen.getByRole("button", { name: "adminSso.presetGoogle" }),
     );

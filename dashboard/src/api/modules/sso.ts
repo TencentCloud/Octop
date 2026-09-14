@@ -12,12 +12,12 @@ export interface OidcConfig {
 }
 
 export interface OidcConfigPut {
-  enabled: boolean;
-  display_name: string;
-  issuer: string;
-  client_id: string;
+  enabled?: boolean;
+  display_name?: string;
+  issuer?: string;
+  client_id?: string;
   client_secret?: string;
-  scopes: string;
+  scopes?: string;
   dashboard_origin?: string | null;
 }
 
@@ -37,9 +37,9 @@ export interface OauthAppConfig {
 }
 
 export interface OauthAppConfigPut {
-  enabled: boolean;
-  display_name: string;
-  client_id: string;
+  enabled?: boolean;
+  display_name?: string;
+  client_id?: string;
   client_secret?: string;
   extra?: { region?: string; agent_id?: string };
 }

@@ -4778,7 +4778,11 @@
     "ssoBadge": "单点登录",
     "passwordBadge": "密码",
     "tabLocal": "内置用户",
-    "tabSso": "单点登录",
+    "tabFeishu": "飞书",
+    "tabWecom": "企微",
+    "tabDingtalk": "钉钉",
+    "tabOidc": "OIDC",
+    "tabSso": "OIDC",
     "colPermissions": "权限",
     "permAll": "全部（管理员）",
     "permAllHint": "管理员自动拥有全部模块权限，无需单独勾选。",
@@ -4829,7 +4833,7 @@
     "enabled": "启用单点登录",
     "enabledHint": "允许用户通过已配置的 OpenID Connect 身份提供商登录。",
     "loginPreview": "登录页预览",
-    "loginPreviewDisabled": "仅在启用 SSO 后，登录页才会显示此按钮。",
+    "loginPreviewDisabled": "仅在启用该登录方式后，登录页才会显示此按钮。",
     "sectionProvider": "身份提供商",
     "sectionProviderHint": "可先选择预设填充默认值，再填写签发者 URL。",
     "presetsLabel": "快速开始",
@@ -4901,6 +4905,13 @@
     "wecomSecret": "应用 Secret",
     "wecomAgentId": "应用 AgentID",
     "wecomAgentIdRequired": "请输入企业微信应用 AgentID",
+    "wecomRedirectHint": "企业微信控制台填写的是「授权回调域」（仅域名），不是完整回调路径。",
+    "wecomRedirectDocs": "在企业微信 → 应用 → Web 网页：将「授权回调域」设为下方主机名（如 localhost 或 octop.example.com）。不要填写 http:// 或 /api/…。Octop 实际仍会跳转到完整回调 URL。",
+    "wecomCallbackDomainHint": "请将此主机名填入企业微信「授权回调域」：",
+    "callbackDomainHint": "请将此主机名登记为授权回调域：",
+    "callbackFullUriHint": "Octop 使用的完整回调地址（仅供对照）：",
+    "copyCallbackDomain": "复制回调域名",
+    "copyDomainSuccess": "回调域名已复制",
     "oauthGuideStep1": "填写 App ID 与密钥",
     "oauthGuideStep2": "复制回调地址",
     "oauthGuideStep3": "保存配置",
@@ -5393,10 +5404,10 @@
     },
     "adminUsers": {
       "title": "用户管理",
-      "subtitle": "管理内置账号与单点登录"
+      "subtitle": "管理内置账号与登录方式（OIDC、飞书、企微、钉钉）"
     },
     "adminSso": {
-      "title": "单点登录",
+      "title": "OIDC",
       "subtitle": "配置 OpenID Connect 身份提供商"
     },
     "adminStorage": {

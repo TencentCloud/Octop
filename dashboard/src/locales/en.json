@@ -4639,7 +4639,11 @@
     "ssoBadge": "SSO",
     "passwordBadge": "Password",
     "tabLocal": "Local users",
-    "tabSso": "Single sign-on",
+    "tabFeishu": "Feishu",
+    "tabWecom": "WeCom",
+    "tabDingtalk": "DingTalk",
+    "tabOidc": "OIDC",
+    "tabSso": "OIDC",
     "colPermissions": "Permissions",
     "permAll": "All (admin)",
     "permAllHint": "Admins automatically have every module permission; no need to select them.",
@@ -4690,7 +4694,7 @@
     "enabled": "Enable single sign-on",
     "enabledHint": "Allow users to sign in through the configured OpenID Connect provider.",
     "loginPreview": "Login page preview",
-    "loginPreviewDisabled": "This button appears on the login page only when SSO is enabled.",
+    "loginPreviewDisabled": "This button appears on the login page only when this login method is enabled.",
     "sectionProvider": "Identity provider",
     "sectionProviderHint": "Choose a preset to fill defaults, then enter your issuer URL.",
     "presetsLabel": "Quick start",
@@ -4762,6 +4766,13 @@
     "wecomSecret": "Secret",
     "wecomAgentId": "Agent ID",
     "wecomAgentIdRequired": "Enter the WeCom Agent ID",
+    "wecomRedirectHint": "WeCom’s console asks for an authorization callback domain (host only), not the full callback path.",
+    "wecomRedirectDocs": "In WeCom → App → Web: set 授权回调域 to the host below (e.g. localhost or octop.example.com). Do not paste http:// or /api/…. Octop still redirects to the full callback URL.",
+    "wecomCallbackDomainHint": "Copy this host into WeCom “授权回调域”:",
+    "callbackDomainHint": "Register this host as the authorization callback domain:",
+    "callbackFullUriHint": "Octop’s full redirect URI (for reference):",
+    "copyCallbackDomain": "Copy callback domain",
+    "copyDomainSuccess": "Callback domain copied",
     "oauthGuideStep1": "Fill App ID & secret",
     "oauthGuideStep2": "Copy redirect URI",
     "oauthGuideStep3": "Save settings",
@@ -5254,10 +5265,10 @@
     },
     "adminUsers": {
       "title": "User Management",
-      "subtitle": "Manage local accounts and single sign-on"
+      "subtitle": "Manage local accounts and login providers (OIDC, Feishu, WeCom, DingTalk)"
     },
     "adminSso": {
-      "title": "Single sign-on",
+      "title": "OIDC",
       "subtitle": "Configure an OpenID Connect identity provider"
     },
     "adminStorage": {

@@ -32,15 +32,29 @@ interface OauthFormValues {
 
 interface OauthProviderCardProps {
   provider: OauthProviderDef;
+  /** Full-page tab: no Collapse wrapper. */
+  standalone?: boolean;
 }
 
-/** Shared admin card for one App ID / Secret OAuth provider (Feishu today). */
+/** Shared admin card for one App ID / Secret OAuth provider. */
 export default function OauthProviderCard({
   provider,
+  standalone = false,
 }: OauthProviderCardProps) {
   const { t } = useTranslation();
 
   if (!provider.available) {
+    if (standalone) {
+      return (
+        <div className={styles.ssoStandalone}>
+          <p className={styles.ssoComingSoonBody}>
+            {t("adminSso.oauthComingSoonHint", {
+              name: t(provider.defaultNameKey),
+            })}
+          </p>
+        </div>
+      );
+    }
     return (
       <SsoProviderCard
         kind={t("adminSso.oauthKind")}
@@ -62,22 +76,30 @@ export default function OauthProviderCard({
     );
   }
 
-  return <OauthProviderCardLive provider={provider} />;
+  return <OauthProviderCardLive provider={provider} standalone={standalone} />;
 }
 
-function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
+function OauthProviderCardLive({
+  provider,
+  standalone,
+}: OauthProviderCardProps) {
   const { t } = useTranslation();
   const [form] = Form.useForm<OauthFormValues>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean } | null>(null);
+  const [toggling, setToggling] = useState(false);
   const [redirectUri, setRedirectUri] = useState("");
   const [hasClientSecret, setHasClientSecret] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState(false);
   const hydratingRef = useRef(false);
   const enabled = Form.useWatch("enabled", form) ?? false;
   const displayName = Form.useWatch("display_name", form) ?? "";
+  const clientId = Form.useWatch("client_id", form) ?? "";
+  const agentId = Form.useWatch("agent_id", form) ?? "";
 
   const applyConfig = useCallback(
     (config: OauthAppConfig) => {
@@ -96,6 +118,7 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
       setRedirectUri(config.redirect_uri ?? "");
       setHasClientSecret(config.has_client_secret);
       setDirty(false);
+      setTestResult(null);
       queueMicrotask(() => {
         hydratingRef.current = false;
       });
@@ -147,6 +170,29 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
     }
   };
 
+  const toggleEnabled = async (next: boolean) => {
+    const previous = !next;
+    const name = displayName.trim() || t(provider.defaultNameKey);
+    setToggling(true);
+    try {
+      await ssoApi.putOauthProvider(provider.kind, { enabled: next });
+      message.success(
+        next
+          ? t("adminSso.statusEnabled", { name })
+          : t("adminSso.statusDisabled"),
+      );
+    } catch (error) {
+      hydratingRef.current = true;
+      form.setFieldsValue({ enabled: previous });
+      queueMicrotask(() => {
+        hydratingRef.current = false;
+      });
+      message.error(apiErrorMessage(error, t("adminSso.saveFailed"), t));
+    } finally {
+      setToggling(false);
+    }
+  };
+
   const testConnection = async () => {
     if (dirty) {
       message.warning(t("adminSso.testNeedsSave"));
@@ -155,6 +201,7 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
     setTesting(true);
     try {
       const result = await ssoApi.testOauthProvider(provider.kind);
+      setTestResult({ ok: result.ok });
       const detail =
         result.detail ||
         (result.ok
@@ -167,6 +214,7 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
       if (result.ok) message.success(detail);
       else message.error(detail);
     } catch (error) {
+      setTestResult({ ok: false });
       message.error(
         apiErrorMessage(
           error,
@@ -191,7 +239,40 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
     }
   };
 
+  const callbackDomain = (() => {
+    if (!provider.showCallbackDomain || !redirectUri) return "";
+    try {
+      return new URL(redirectUri).hostname;
+    } catch {
+      return "";
+    }
+  })();
+
+  const copyCallbackDomain = async () => {
+    if (!callbackDomain) return;
+    const ok = await copyText(callbackDomain);
+    if (ok) {
+      message.success(t("adminSso.copyDomainSuccess"));
+      setCopiedDomain(true);
+      window.setTimeout(() => setCopiedDomain(false), 2000);
+    } else {
+      message.error(t("adminSso.copyFailed"));
+    }
+  };
+
   const previewName = displayName.trim() || t(provider.defaultNameKey);
+
+  const guideStep = (() => {
+    const credentialsReady =
+      Boolean(clientId.trim()) &&
+      (!provider.hasAgentId || Boolean(String(agentId).trim()));
+    if (!credentialsReady) return 0;
+    if (!redirectUri) return 1;
+    if (dirty) return 2;
+    if (!testResult?.ok) return 3;
+    if (!enabled) return 4;
+    return 5;
+  })();
 
   const extraFields: ReactNode = (
     <>
@@ -229,9 +310,12 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
         layout="vertical"
         requiredMark={false}
         onFinish={(values) => void saveConfig(values)}
-        onValuesChange={() => {
+        onValuesChange={(changed) => {
           if (hydratingRef.current) return;
+          const keys = Object.keys(changed);
+          if (keys.length === 1 && keys[0] === "enabled") return;
           setDirty(true);
+          setTestResult(null);
         }}
         initialValues={{
           enabled: false,
@@ -243,6 +327,7 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
           kind={t("adminSso.oauthKind")}
           title={t(provider.titleKey)}
           description={t(provider.descKey)}
+          standalone={standalone}
           statusLabel={
             <Tag
               className={
@@ -265,15 +350,39 @@ function OauthProviderCardLive({ provider }: OauthProviderCardProps) {
               valuePropName="checked"
               className={styles.ssoEnableSwitch}
             >
-              <Switch aria-label={t(provider.enabledAriaKey)} />
+              <Switch
+                aria-label={t(provider.enabledAriaKey)}
+                loading={toggling}
+                disabled={loading || saving || toggling}
+                onChange={(checked) => void toggleEnabled(checked)}
+              />
             </Form.Item>
           }
           redirectUri={redirectUri}
-          redirectHint={t("adminSso.oauthRedirectHint", {
-            name: t(provider.defaultNameKey),
-          })}
+          redirectHint={t(
+            provider.redirectHintKey ?? "adminSso.oauthRedirectHint",
+            { name: t(provider.defaultNameKey) },
+          )}
+          redirectDocs={t(
+            provider.redirectDocsKey ?? "adminSso.oauthRedirectDocs",
+          )}
+          callbackDomain={callbackDomain || undefined}
+          callbackDomainHint={
+            provider.showCallbackDomain
+              ? t("adminSso.wecomCallbackDomainHint")
+              : undefined
+          }
           copied={copied}
+          copiedDomain={copiedDomain}
           onCopyRedirect={() => void copyRedirectUri()}
+          onCopyDomain={
+            provider.showCallbackDomain
+              ? () => void copyCallbackDomain()
+              : undefined
+          }
+          guideStep={guideStep}
+          enabled={enabled}
+          previewName={previewName}
         >
           <section className={styles.ssoSection}>
             <div className={styles.ssoSectionHeader}>
