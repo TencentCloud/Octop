@@ -52,7 +52,10 @@ async def dashboard_notifications_ws(
             json.dumps(frame, ensure_ascii=False, default=json_chunk_default),
         )
 
-    hub.register(connection_id, send_frame, user_id=user.id)
+    async def close_slow_connection() -> None:
+        await websocket.close(code=1013, reason="client is not keeping up")
+
+    hub.register(connection_id, send_frame, user_id=user.id, close_fn=close_slow_connection)
 
     try:
         while websocket.application_state == WebSocketState.CONNECTED:

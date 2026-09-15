@@ -678,11 +678,14 @@ export function parseStructuredToolOutput(
 }
 
 const IMAGE_EXT = "(?:png|jpe?g|gif|webp|bmp|svg)";
+const IMAGE_EXT_IN_TEXT = new RegExp(`\\.${IMAGE_EXT}`, "i");
 
 /** Pull a filesystem image path from plain tool output (browser screenshot, send_file). */
 export function extractImagePathFromText(text: string): string | null {
   const trimmed = text.trim();
-  if (!trimmed) return null;
+  // Tool output can contain huge base64 payloads; skip path scans when none
+  // of the supported image extensions can match.
+  if (!trimmed || !IMAGE_EXT_IN_TEXT.test(trimmed)) return null;
 
   const patterns = [
     new RegExp(
@@ -690,7 +693,12 @@ export function extractImagePathFromText(text: string): string | null {
       "i",
     ),
     new RegExp(`(file://[^\\s"'()]+\\.${IMAGE_EXT})`, "i"),
-    new RegExp(`(/[^\\s"'()]+/outbound/[^\\s"'()]+\\.${IMAGE_EXT})`, "i"),
+    // Start once per token, not at every slash in a base64 payload. The
+    // non-path prefix preserves matches such as "path=/home/me/outbound/a.png".
+    new RegExp(
+      `(?:^|[\\s"'()])[^/\\s"'()]*(/[^\\s"'()]+/outbound/[^\\s"'()]+\\.${IMAGE_EXT})`,
+      "i",
+    ),
     new RegExp(`(/Users/[^\\s"'()]+\\.${IMAGE_EXT})`, "i"),
     new RegExp(`(/tmp/[^\\s"'()]+\\.${IMAGE_EXT})`, "i"),
   ];
