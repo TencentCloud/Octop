@@ -21,6 +21,7 @@ _EXPECTED = frozenset(
         "tetris",
         "parcel-tracker",
         "qrcode",
+        "you-search",
     },
 )
 
