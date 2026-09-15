@@ -111,3 +111,11 @@ bar image to the full `NSStatusBar` thickness (22pt) where the glyph should be
 ~16pt. Full-bleed sources on either surface render a size bigger than every
 other app. On macOS the Dock icon comes from the bundle's `icons.icns` only —
 see `applyAppIcon` in `src/icons_darwin.go`.
+
+## Troubleshooting
+
+- **Linker errors on macOS 27 hosts** (`unknown architecture arm64e.x1-macos`,
+  `tapi error: malformed file` against `MacOSX27.0.sdk` stubs): the Command Line
+  Tools SDK 27 stubs can be newer than the clang Xcode links with by default.
+  Pin an SDK your clang accepts before `wails3 dev` / `package-*.sh`, e.g.
+  `export SDKROOT=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk`.

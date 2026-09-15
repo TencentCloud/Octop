@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   applyDesktopChrome,
+  injectedDesktopChromeStyle,
   installDesktopWindowDrag,
   isDesktopShell,
   resolveDesktopChromeStyle,
@@ -22,17 +23,30 @@ export function useDesktopChrome(): DesktopChromeStyle | null {
 
   useEffect(() => {
     let cancelled = false;
-    const tryApply = () => {
-      if (cancelled || !isDesktopShell()) return false;
+    let recheck = 0;
+    const applyNow = () => {
       const next = resolveDesktopChromeStyle();
       applyDesktopChrome(next);
-      installDesktopWindowDrag();
       setStyle(next);
+      if (injectedDesktopChromeStyle()) return;
+      // First paint can race the Go injection; re-resolve once it lands.
+      recheck = window.setTimeout(() => {
+        if (cancelled) return;
+        const again = resolveDesktopChromeStyle();
+        applyDesktopChrome(again);
+        setStyle(again);
+      }, 1200);
+    };
+    const tryApply = () => {
+      if (cancelled || !isDesktopShell()) return false;
+      applyNow();
+      installDesktopWindowDrag();
       return true;
     };
     if (tryApply()) {
       return () => {
         cancelled = true;
+        window.clearTimeout(recheck);
       };
     }
     const timer = window.setInterval(() => {
@@ -43,6 +57,7 @@ export function useDesktopChrome(): DesktopChromeStyle | null {
       cancelled = true;
       window.clearInterval(timer);
       window.clearTimeout(stop);
+      window.clearTimeout(recheck);
     };
   }, []);
 

@@ -27,6 +27,7 @@ import {
   resolveDesktopChromeStyle,
   WINDOW_CONTROLS_SPACER_ATTR,
   windowControlsEndSpacerPx,
+  windowControlsStartSpacerPx,
 } from "../../utils/desktopChrome";
 import styles from "./ChatBrowserPanel.module.less";
 
@@ -387,6 +388,11 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     mode === "right" || mode === "popup",
     DOCK_WINDOW_CONTROLS_PAD_PX,
   );
+  // mac lights sit at the window start: only a fullscreen popup reaches them.
+  const startSpacerPx = windowControlsStartSpacerPx(
+    desktopChrome,
+    mode === "popup" && popupFullscreen,
+  );
   const toolbarStyle: React.CSSProperties | undefined = popupFullscreen
     ? { cursor: "default" }
     : undefined;
@@ -449,6 +455,13 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
         onPointerDown={handlePopupDragStart}
         style={toolbarStyle}
       >
+        {startSpacerPx > 0 ? (
+          <span
+            aria-hidden
+            className={styles.windowControlsSpacer}
+            style={{ width: startSpacerPx }}
+          />
+        ) : null}
         <div className={styles.toolbarTitle}>{title}</div>
         <div className={styles.toolbarSpacer} />
         {toolbarActions ? (

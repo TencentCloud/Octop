@@ -6,6 +6,7 @@ import {
   CHROME_END_PAD_ATTR,
   chromeEndPadValue,
   emitDesktopWindowAction,
+  injectedDesktopChromeStyle,
   installDesktopWindowDrag,
   isDesktopShell,
   resolveDesktopChromeStyle,
@@ -14,8 +15,10 @@ import {
   WINDOW_CONTROLS_INSET,
   WINDOW_CONTROLS_SPACER_ATTR,
   windowControlsEndSpacerPx,
+  windowControlsSide,
+  windowControlsStartSpacerPx,
+  CHROME_TOP_PAD_ATTR,
   DESKTOP_DRAG_REGION_CLASS,
-  DOCK_WINDOW_CONTROLS_PAD_PX,
 } from "./desktopChrome";
 
 describe("desktopChrome", () => {
@@ -39,6 +42,28 @@ describe("desktopChrome", () => {
     expect(
       resolveDesktopChromeStyle(
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+      ),
+    ).toBe("mac");
+  });
+
+  it("prefers the Go-injected chrome style over the user agent", () => {
+    const win = { __OCTOP_DESKTOP_CHROME__: "mac" } as unknown as Window;
+    expect(injectedDesktopChromeStyle(win)).toBe("mac");
+    expect(
+      resolveDesktopChromeStyle(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
+        win,
+      ),
+    ).toBe("mac");
+  });
+
+  it("ignores invalid injected values and falls back to the user agent", () => {
+    const win = { __OCTOP_DESKTOP_CHROME__: "linux" } as unknown as Window;
+    expect(injectedDesktopChromeStyle(win)).toBeNull();
+    expect(
+      resolveDesktopChromeStyle(
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+        win,
       ),
     ).toBe("mac");
   });
@@ -69,23 +94,30 @@ describe("desktopChrome", () => {
     );
     expect(chromeEndPadValue(12)).toContain("--window-controls-inset-end");
     expect(chromeEndPadValue(12)).toContain("12px");
-    expect(windowControlsEndSpacerPx("mac", true)).toBe(
-      WINDOW_CONTROLS_INSET.mac,
-    );
+    expect(windowControlsEndSpacerPx("mac", true)).toBe(0);
     expect(windowControlsEndSpacerPx("windows", true)).toBe(
       WINDOW_CONTROLS_INSET.windows,
     );
-    expect(windowControlsEndSpacerPx("mac", true, 12)).toBe(
-      WINDOW_CONTROLS_INSET.mac - 12,
-    );
-    expect(
-      windowControlsEndSpacerPx("mac", true, DOCK_WINDOW_CONTROLS_PAD_PX),
-    ).toBe(WINDOW_CONTROLS_INSET.mac - DOCK_WINDOW_CONTROLS_PAD_PX);
     expect(windowControlsEndSpacerPx("windows", true, 12)).toBe(
       WINDOW_CONTROLS_INSET.windows - 12,
     );
     expect(windowControlsEndSpacerPx("mac", false)).toBe(0);
     expect(windowControlsEndSpacerPx(null, true)).toBe(0);
+  });
+
+  it("hosts controls at the start edge on mac and the end edge elsewhere", () => {
+    expect(windowControlsSide("mac")).toBe("start");
+    expect(windowControlsSide("windows")).toBe("end");
+    expect(windowControlsStartSpacerPx("mac", true)).toBe(
+      WINDOW_CONTROLS_INSET.mac,
+    );
+    expect(windowControlsStartSpacerPx("mac", true, 12)).toBe(
+      WINDOW_CONTROLS_INSET.mac - 12,
+    );
+    expect(windowControlsStartSpacerPx("mac", false)).toBe(0);
+    expect(windowControlsStartSpacerPx("windows", true)).toBe(0);
+    expect(windowControlsStartSpacerPx(null, true)).toBe(0);
+    expect(CHROME_TOP_PAD_ATTR).toBe("data-octop-chrome-top-pad");
   });
 
   it("pads right-edge overlays away from frameless window controls", () => {
@@ -97,6 +129,12 @@ describe("desktopChrome", () => {
     expect(css).not.toContain("[data-dock-panel]");
     expect(css).toContain(".octop-drawer-right");
     expect(css).toMatch(/padding-inline-end:\s*max\(/);
+    expect(css).toContain(
+      '[data-octop-desktop-chrome="mac"] .octop-drawer-left',
+    );
+    expect(css).toContain(
+      'html[data-octop-desktop-chrome="mac"] [data-octop-chrome-top-pad]',
+    );
   });
 
   it("exports a stable class for Wails title-bar dragging", () => {
@@ -108,15 +146,37 @@ describe("desktopChrome", () => {
     expect(document.documentElement.dataset.octopDesktopChrome).toBe("mac");
     expect(
       document.documentElement.style.getPropertyValue(
-        "--window-controls-inset-end",
+        "--window-controls-inset-start",
       ),
     ).toBe(`${WINDOW_CONTROLS_INSET.mac}px`);
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--window-controls-inset-end",
+      ),
+    ).toBe("0px");
+
+    applyDesktopChrome("windows");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--window-controls-inset-end",
+      ),
+    ).toBe(`${WINDOW_CONTROLS_INSET.windows}px`);
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--window-controls-inset-start",
+      ),
+    ).toBe("0px");
 
     applyDesktopChrome(null);
     expect(document.documentElement.dataset.octopDesktopChrome).toBeUndefined();
     expect(
       document.documentElement.style.getPropertyValue(
         "--window-controls-inset-end",
+      ),
+    ).toBe("");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--window-controls-inset-start",
       ),
     ).toBe("");
   });
