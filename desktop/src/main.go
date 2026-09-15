@@ -271,6 +271,7 @@ func (a *App) scheduleDragOverlay() {
 	go func() {
 		for range 40 {
 			time.Sleep(250 * time.Millisecond)
+			a.installChromeStyle()
 			a.installDragOverlay()
 			a.installExternalLinks()
 		}

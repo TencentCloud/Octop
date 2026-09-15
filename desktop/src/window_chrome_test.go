@@ -53,6 +53,16 @@ func TestSplashHTMLHasFramelessWindowControls(t *testing.T) {
 	if !strings.Contains(body, `data-chrome="mac"`) || !strings.Contains(body, `data-chrome="windows"`) {
 		t.Fatal("splash HTML must ship both mac and windows caption groups")
 	}
+	macGroup := body[strings.Index(body, `class="window-controls ctrl-mac"`):strings.Index(body, `class="window-controls ctrl-win"`)]
+	closeIdx := strings.Index(macGroup, `data-action="close"`)
+	minIdx := strings.Index(macGroup, `data-action="minimise"`)
+	zoomIdx := strings.Index(macGroup, `data-action="toggle-maximise"`)
+	if !(closeIdx >= 0 && closeIdx < minIdx && minIdx < zoomIdx) {
+		t.Fatal("mac traffic lights must render in close / minimize / zoom order")
+	}
+	if !strings.Contains(body, `html[data-chrome="mac"] .window-controls`) {
+		t.Fatal("mac splash controls must anchor to the window start edge")
+	}
 }
 
 func TestSplashLoadingCardWrapsProgressAndStatus(t *testing.T) {

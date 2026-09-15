@@ -13,8 +13,11 @@
 }
 
 .mac {
+  /* Native macOS convention: traffic lights hug the window's start edge. */
+  left: 0;
+  right: auto;
   gap: 8px;
-  padding: 0 12px 0 8px;
+  padding: 0 8px 0 12px;
 }
 
 .light {
@@ -41,10 +44,10 @@
 .glyph {
   opacity: 0;
   display: block;
-  font-size: 9px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 500;
   line-height: 1;
-  color: inherit;
+  color: rgba(0, 0, 0, 0.5);
   pointer-events: none;
   transform: translateY(-0.5px);
 }
@@ -53,22 +56,21 @@
   opacity: 0.85;
 }
 
+/* Sampled from native macOS lights: per-color dark ring + bottom-lightening
+   vertical gradient (screen capture, 2026-09-15). */
 .zoom {
-  background: #28c840;
+  background: linear-gradient(180deg, #28c840 40%, #45cb52 100%);
   border-color: #12a12a;
-  color: #003a08;
 }
 
 .min {
-  background: #febc2e;
+  background: linear-gradient(180deg, #febc2e 40%, #fbcf4f 100%);
   border-color: #d89e19;
-  color: #5c3b00;
 }
 
 .close {
-  background: #ff5f57;
+  background: linear-gradient(180deg, #ff5f57 40%, #f1837e 100%);
   border-color: #e0443e;
-  color: #4d0000;
 }
 
 .windows {

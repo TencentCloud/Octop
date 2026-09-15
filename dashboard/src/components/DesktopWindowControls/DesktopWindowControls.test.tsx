@@ -15,17 +15,17 @@ vi.mock("../../utils/desktopChrome", async (importOriginal) => {
 });
 
 describe("DesktopWindowControls", () => {
-  it("renders traffic lights with close on the far right", async () => {
+  it("renders traffic lights in native close / minimize / zoom order", async () => {
     const user = userEvent.setup();
     render(<DesktopWindowControls chrome="mac" />);
 
     const buttons = screen.getAllByRole("button");
     expect(buttons).toHaveLength(3);
-    expect(buttons[0]).toHaveAccessibleName(/maximize/i);
+    expect(buttons[0]).toHaveAccessibleName(/close/i);
     expect(buttons[1]).toHaveAccessibleName(/minimize/i);
-    expect(buttons[2]).toHaveAccessibleName(/close/i);
+    expect(buttons[2]).toHaveAccessibleName(/maximize/i);
 
-    await user.click(buttons[2]);
+    await user.click(buttons[0]);
     expect(emitDesktopWindowAction).toHaveBeenCalledWith("close");
   });
 
