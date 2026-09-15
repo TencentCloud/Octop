@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ipaddress
 from typing import Any
+from urllib.parse import urlsplit
 
 # LocalServiceCard creates the ONNX provider with ``api_key=preset.id`` ("onnx").
 _ONNX_PRESET_API_KEY = "onnx"
@@ -11,6 +13,41 @@ _ONNX_PRESET_NAMES = frozenset({"onnx", "onnx (local)"})
 # Same pattern for Ollama (placeholder api_key + exact preset names).
 _OLLAMA_PRESET_API_KEY = "ollama"
 _OLLAMA_PRESET_NAMES = frozenset({"ollama", "ollama (local)"})
+# Hosts that always mean "this machine" (docker service name, container
+# hostnames, loopback aliases). Public names such as ``ollama.com`` are
+# deliberately absent: every official Ollama host contains "ollama".
+_LOCAL_HOSTS = frozenset({"localhost", "ollama", "host.docker.internal", "gateway.docker.internal"})
+# Suffixes reserved for local naming (mDNS, localhost subdomains, internal nets).
+_LOCAL_HOST_SUFFIXES = (".local", ".localhost", ".internal")
+
+
+def _base_url_is_local_machine(raw_url: str) -> bool:
+    """True when a provider base URL points at this machine.
+
+    Port 11434, loopback / private / link-local IPs, well-known local host
+    names and local suffixes all count. Anything else — including public
+    domains that merely contain "ollama" (e.g. ``https://ollama.com/v1``) —
+    does not. Mirrors the dashboard ``hostLooksLocal`` rule.
+    """
+    url = raw_url.strip().lower()
+    if not url:
+        return False
+    try:
+        parts = urlsplit(url if "://" in url else f"http://{url}")
+    except ValueError:
+        return False
+    host = (parts.hostname or "").rstrip(".")
+    if not host:
+        return "11434" in url
+    if parts.port == 11434:
+        return True
+    if host in _LOCAL_HOSTS or host.endswith(_LOCAL_HOST_SUFFIXES):
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return addr.is_loopback or addr.is_private or addr.is_link_local
 
 
 def is_onnx_local_provider(
@@ -39,8 +76,9 @@ def is_ollama_local_provider(
     """True when this row is the local Ollama preset.
 
     Prefer the stable placeholder API key, then exact preset names. Base URL
-    hints match the dashboard (port 11434 / host ``ollama``) so delete
-    protection stays aligned with the hidden UI button.
+    hints match the dashboard (this-machine hosts only) so delete protection
+    stays aligned with the hidden UI button. In particular a cloud endpoint
+    such as ``https://ollama.com/v1`` is *not* local.
     """
     if is_onnx_local_provider(provider_name, provider_api_key=provider_api_key):
         return False
@@ -48,8 +86,7 @@ def is_ollama_local_provider(
         return True
     if provider_name and provider_name.strip().lower() in _OLLAMA_PRESET_NAMES:
         return True
-    url = (provider_base_url or "").strip().lower()
-    return "11434" in url or "ollama" in url
+    return _base_url_is_local_machine(provider_base_url or "")
 
 
 def is_local_runtime_provider(
