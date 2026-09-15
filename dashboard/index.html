@@ -220,18 +220,50 @@
         <div id="octop-boot-text">Loading…</div>
       </div>
     </div>
+    <!--
+      Boot splash locale. Must mirror `resolveInitialLocale()` in
+      src/utils/localePrefs.ts: the stored user preference wins over the
+      browser/system language. Reading only `navigator.language` showed the
+      splash in English for a user who had picked 简体中文 on an English OS.
+      src/utils/bootSplashLocale.test.ts parses this block and pins the
+      storage key to `UI_LOCALE_STORAGE_KEY`, so keep both in sync.
+    -->
     <script>
       (function () {
-        var el = document.getElementById("octop-boot-text");
-        if (!el) return;
+        /* boot-splash-locale */
+        var STORAGE_KEY = "octop:ui-locale";
+        var TEXT = { zh: "加载中…", en: "Loading…" };
+
+        function storedLocale() {
+          try {
+            var raw = localStorage.getItem(STORAGE_KEY);
+            if (raw === "zh" || raw === "en") return raw;
+          } catch (e) {}
+          return null;
+        }
+
+        function browserLocale() {
+          try {
+            var nav = navigator || {};
+            var tags =
+              nav.languages && nav.languages.length
+                ? nav.languages
+                : [nav.language || nav.userLanguage || ""];
+            for (var i = 0; i < tags.length; i++) {
+              var tag = (tags[i] || "").toLowerCase();
+              if (tag.indexOf("zh") === 0) return "zh";
+              if (tag.indexOf("en") === 0) return "en";
+            }
+          } catch (e) {}
+          return "en";
+        }
+
+        var locale = storedLocale() || browserLocale();
         try {
-          var lang = (
-            navigator.language ||
-            navigator.userLanguage ||
-            ""
-          ).toLowerCase();
-          if (lang.indexOf("zh") === 0) el.textContent = "加载中…";
+          document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
         } catch (e) {}
+        var el = document.getElementById("octop-boot-text");
+        if (el) el.textContent = TEXT[locale];
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>
