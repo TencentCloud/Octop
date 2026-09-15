@@ -1,0 +1,3 @@
+{
+  "renderers": [{ "id": "you_search_list", "tools": ["you_search"] }]
+}

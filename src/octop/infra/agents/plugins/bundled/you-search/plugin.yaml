@@ -1,0 +1,12 @@
+id: you-search
+version: 0.1.0
+name: You.com 搜索
+description: 使用 You.com 搜索互联网，在聊天中展示可点击的结果列表（免费端点开箱即用，可选 API key）
+icon: "🔎"
+kind: tool
+entry: main.py
+requires:
+  - httpx>=0.27
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json
