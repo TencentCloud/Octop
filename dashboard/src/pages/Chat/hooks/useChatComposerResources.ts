@@ -29,6 +29,7 @@ import { isPendingThread } from "./useSessions";
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
   activeThreadId?: string | null,
+  threadKbKey?: string | null,
   stickyModel?: string | null,
   stickyReasoningMode?: "auto" | "enabled" | "disabled" | null,
   stickyReasoningEffort?: string | null,
@@ -85,11 +86,7 @@ export function useChatComposerResources(
 
   useEffect(() => {
     composerTouchedRef.current = false;
-  }, [resolvedAgentId]);
-
-  useEffect(() => {
-    if (isNewSession) composerTouchedRef.current = false;
-  }, [isNewSession]);
+  }, [resolvedAgentId, activeThreadId]);
 
   // Auto = omit turn model; backend applies the expert default.
   useEffect(() => {
@@ -238,16 +235,12 @@ export function useChatComposerResources(
                 defaults,
               );
             }
-            return withDefaultOpenKnowledgeBases(
-              pendingId &&
-                allowed.has(pendingId) &&
-                !previous.includes(pendingId)
-                ? [...previous, pendingId]
-                : previous,
-              ownedDefaults,
-            );
+            return previous;
           });
-          if (pendingId) consumePendingAttachKnowledgeBaseId();
+          // Existing threads consume the pending attachment when restoring history.
+          if (pendingId && (isNewSession || composerTouchedRef.current)) {
+            consumePendingAttachKnowledgeBaseId();
+          }
         });
       })
       .catch(() => {
@@ -257,6 +250,37 @@ export function useChatComposerResources(
       cancelled = true;
     };
   }, [resolvedAgentId, currentUserId, isNewSession, expertKbKey]);
+
+  useEffect(() => {
+    if (isNewSession || !chatKnowledgeBases || composerTouchedRef.current)
+      return;
+
+    const allowed = new Set(chatKnowledgeBases.map((base) => base.id));
+    const ids =
+      threadKbKey != null
+        ? threadKbKey.split("\0").filter((id) => allowed.has(id))
+        : withDefaultOpenKnowledgeBases(
+            chatKnowledgeBases
+              .filter(
+                (base) =>
+                  base.default_open && base.owner_user_id === currentUserId,
+              )
+              .map((base) => base.id),
+            expertKbKey.split("\0").filter((id) => allowed.has(id)),
+          );
+    const pendingId = consumePendingAttachKnowledgeBaseId();
+    if (pendingId && allowed.has(pendingId) && !ids.includes(pendingId)) {
+      ids.push(pendingId);
+    }
+    setSelectedKnowledgeBaseIds(ids);
+  }, [
+    activeThreadId,
+    threadKbKey,
+    chatKnowledgeBases,
+    isNewSession,
+    currentUserId,
+    expertKbKey,
+  ]);
 
   useEffect(() => {
     let cancelled = false;

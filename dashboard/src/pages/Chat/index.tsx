@@ -418,6 +418,17 @@ function ChatPageInner() {
     [sessions, activeThreadId],
   );
 
+  const activeThreadKbKey = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role === "user") {
+        return (message.composerContext?.knowledgeBaseIds ?? []).join("\0");
+      }
+    }
+    // No user message yet; an empty string instead means an empty selection.
+    return null;
+  }, [messages]);
+
   const panelFilePaths = useMemo(() => {
     const fromTabs = openTabs
       .filter((tab) => tab.kind === "file")
@@ -446,6 +457,7 @@ function ChatPageInner() {
   } = useChatComposerResources(
     resolvedAgentId,
     activeThreadId,
+    activeThreadKbKey,
     composerSession?.modelRef,
     composerSession?.reasoningMode,
     composerSession?.reasoningEffort,
