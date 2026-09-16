@@ -1539,3 +1539,52 @@ def test_refresh_peer_entry_clears_empty_cards(manager: AgentManager) -> None:
     entry.metadata = {"quick_prompts": [{"title": "old"}]}
     manager._refresh_peer_entry(entry)
     assert "quick_prompts" not in entry.metadata
+
+
+@pytest.mark.asyncio
+async def test_seed_expert_template_binds_workspace_avatar(
+    manager: AgentManager,
+    tmp_path: Path,
+) -> None:
+    from octop.infra.agents.experts.catalog import ExpertCatalog
+
+    expert_root = tmp_path / "custom_experts"
+    expert_dir = expert_root / "avatar-expert"
+    octop_dir = expert_dir / ".octop"
+    octop_dir.mkdir(parents=True, exist_ok=True)
+
+    png_bytes = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4"
+        b"\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    (octop_dir / "avatar.png").write_bytes(png_bytes)
+    (expert_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "avatar-expert",
+                "label": {"zh": "头像专家", "en": "Avatar Expert"},
+                "description": {"zh": "测试", "en": "Test"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (expert_dir / "SOUL.md").write_text("# Avatar Expert", encoding="utf-8")
+
+    catalog = ExpertCatalog(expert_root)
+    catalog.refresh()
+    manager._expert_catalog = catalog
+
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    spec = AgentCreateSpec(
+        agent_id="AGT_AVATAR_TEST",
+        name="测试头像绑定",
+        template_name="avatar-expert",
+        icon_url="https://cos.example.com/temp/signed_avatar.png",
+    )
+    row = await manager.create(spec, defer_bootstrap=True)
+    assert row.icon_url == "/api/agents/AGT_AVATAR_TEST/avatar"
+    fresh = manager._repos.agent_repo.get("AGT_AVATAR_TEST")
+    assert fresh is not None
+    assert fresh.icon_url == "/api/agents/AGT_AVATAR_TEST/avatar"

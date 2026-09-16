@@ -679,3 +679,82 @@ def test_fetch_ranking_maps_url_timeout(monkeypatch: pytest.MonkeyPatch) -> None
             "recommended",
             timeout=7,
         )
+
+
+def test_write_expert_template_persists_avatar_when_icon_url_present(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    import octop.infra.agents.experts.skillhub_market as expert_market_module
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubSkillset,
+        _write_expert_template,
+    )
+
+    png_bytes = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4"
+        b"\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+    def fake_http_get(url: str, *, accept: str) -> bytes:
+        assert url == "https://cos.example.com/avatars/exp_icon.png"
+        return png_bytes
+
+    monkeypatch.setattr(expert_market_module, "_http_get", fake_http_get)
+
+    item = SkillHubSkillset(
+        slug="test-avatar-expert",
+        display_name="头像测试专家",
+        summary="测试头像持久化保存",
+        scene="testing",
+        icon_url="https://cos.example.com/avatars/exp_icon.png",
+    )
+
+    expert_dir = tmp_path / item.expert_id
+    _write_expert_template(
+        expert_dir=expert_dir,
+        item=item,
+        skill_slugs=[],
+        skillset_prompt="# Test",
+    )
+
+    avatar_path = expert_dir / ".octop" / "avatar.png"
+    assert avatar_path.is_file(), "avatar.png must be downloaded and persisted in .octop directory"
+    assert avatar_path.read_bytes() == png_bytes
+
+
+def test_write_expert_template_gracefully_degrades_on_avatar_fetch_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    import octop.infra.agents.experts.skillhub_market as expert_market_module
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubSkillset,
+        _write_expert_template,
+    )
+
+    def fake_http_get_fail(url: str, *, accept: str) -> bytes:
+        raise OSError("Network connection refused")
+
+    monkeypatch.setattr(expert_market_module, "_http_get", fake_http_get_fail)
+
+    item = SkillHubSkillset(
+        slug="test-avatar-expert-fail",
+        display_name="头像测试失败专家",
+        summary="测试头像下载失败时优雅降级",
+        scene="testing",
+        icon_url="https://cos.example.com/avatars/unavailable.png",
+    )
+
+    expert_dir = tmp_path / item.expert_id
+    # Must not raise an exception even when avatar download fails
+    _write_expert_template(
+        expert_dir=expert_dir,
+        item=item,
+        skill_slugs=[],
+        skillset_prompt="# Test",
+    )
+
+    assert (expert_dir / "manifest.json").is_file()
+    assert (expert_dir / "SOUL.md").is_file()

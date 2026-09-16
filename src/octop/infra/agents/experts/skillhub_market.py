@@ -674,6 +674,43 @@ def _write_expert_template(
     skillset_dir = expert_dir / "skills" / item.slug
     skillset_dir.mkdir(parents=True, exist_ok=True)
     (skillset_dir / "SKILL.md").write_text(skillset_prompt, encoding="utf-8")
+    if item.icon_url:
+        _download_icon_into_template(icon_url=item.icon_url, expert_dir=expert_dir)
+
+
+def _download_icon_into_template(*, icon_url: str, expert_dir: Path) -> Path | None:
+    """Download market icon and persist it inside template ``.octop/avatar.*``."""
+    url = (icon_url or "").strip()
+    if not url:
+        return None
+    try:
+        data = _http_get(url, accept="image/*")
+    except Exception as exc:
+        logger.warning("SkillHub expert icon download failed url=%s: %s", url, exc)
+        return None
+    if not data:
+        return None
+    from octop.infra.gateway.media.attachment_hints import sniff_image_media_type
+
+    media_type = sniff_image_media_type(data[:16])
+    if not media_type:
+        logger.warning("SkillHub expert icon has unrecognized media type url=%s", url)
+        return None
+    ext_map = {
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/webp": "webp",
+        "image/gif": "gif",
+    }
+    ext = ext_map.get(media_type)
+    if not ext:
+        return None
+    octop_dir = expert_dir / ".octop"
+    octop_dir.mkdir(parents=True, exist_ok=True)
+    dest = octop_dir / f"avatar.{ext}"
+    dest.write_bytes(data)
+    logger.info("SkillHub expert icon persisted to %s", dest)
+    return dest
 
 
 def _download_skill_into_template(*, skill_slug: str, expert_dir: Path) -> None:
