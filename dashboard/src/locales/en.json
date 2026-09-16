@@ -2785,6 +2785,8 @@
     "modelRemoveFailed": "Failed to remove model",
     "modelsCount": "{{count}} models",
     "noModels": "No models",
+    "searchModelsPlaceholder": "Search model ID or name",
+    "noMatchingModels": "No matching models",
     "addModelFirst": "Please add a model first",
     "localDownloadModel": "Download Model",
     "localModelsTitle": "{{provider}} — Models",
