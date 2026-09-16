@@ -18,6 +18,7 @@
 
 ### 修复
 
+- 修复 `config.json` 解析失败时被静默清空的问题（#730）：`octop run --host/--port`、`octop service start --host/--port`、插件开关与插件 seeding 过去会把无法解析的配置当成空配置再写回，导致 `bind_host`、`database` 等全部设置丢失（PostgreSQL 实例会静默退回全新空 SQLite，且无任何告警）；现在直接报错并保留原文件不动，错误信息含行列号但不回显文件内容（其中含数据库凭据），配置写入统一改为原子写
 - 腾讯验证码票据校验改用 DescribeCaptchaResult 接口（旧端点对新票据返回 decrypt fail）；校验需云 API 密钥签名，设置页新增对应字段
 
 ### 变更

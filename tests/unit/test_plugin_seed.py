@@ -11,6 +11,7 @@ from harness_agent.plugins import PluginRegistry
 
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.agents.plugins.seed import seed_bundled_plugins
+from octop.infra.errors import ErrorCode, OctopError
 
 
 def _write_plugin(root: Path, plugin_id: str, *, version: str = "0.1.0") -> Path:
@@ -172,3 +173,20 @@ def test_load_installed_clears_stale_registry_entries(tmp_path: Path) -> None:
     assert [item.manifest.id for item in loaded] == ["weather"]
     assert PluginRegistry().get("stale") is None
     assert PluginRegistry().get("weather") is not None
+
+
+def test_seed_refuses_corrupt_config_and_preserves_bytes(tmp_path: Path) -> None:
+    """issue #730: seeding always writes back, so a corrupt file must not read as ``{}``."""
+    bundled = tmp_path / "bundled"
+    _write_plugin(bundled, "weather")
+    config_path = tmp_path / "config.json"
+    original = '{\n  "bind_host": "0.0.0.0",\n  "database": {"driver": "postgresql"}\n,}'
+    config_path.write_text(original, encoding="utf-8")
+    with pytest.raises(OctopError) as excinfo:
+        seed_bundled_plugins(
+            bundled_root=bundled,
+            plugins_dir=tmp_path / "plugins",
+            config_path=config_path,
+        )
+    assert excinfo.value.code is ErrorCode.CONFIG_FILE_CORRUPT
+    assert config_path.read_text(encoding="utf-8") == original
