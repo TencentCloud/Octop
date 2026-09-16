@@ -2783,6 +2783,8 @@
     "modelRemoveFailed": "移除模型失败",
     "modelsCount": "{{count}} 个模型",
     "noModels": "暂无模型",
+    "searchModelsPlaceholder": "搜索模型 ID 或名称",
+    "noMatchingModels": "没有匹配的模型",
     "addModelFirst": "请先添加模型",
     "localDownloadModel": "下载模型",
     "localModelsTitle": "{{provider}} — 模型",
