@@ -51,7 +51,7 @@ PERMISSIONS: dict[str, PermissionDef] = {
     # --- settings (nav.settings) — listed & default-selected for new users ---
     "channels": _p("channels", "settings", "通道", "Channels"),
     "connectors": _p("connectors", "settings", "连接器", "Connectors"),
-    "skill_packages": _p("skill_packages", "settings", "技能包", "Skill Packages"),
+    "skill_packages": _p("skill_packages", "settings", "技能库", "Skill Library"),
     "knowledge_bases": _p("knowledge_bases", "settings", "知识库", "Knowledge Base"),
     # --- control (nav.control) — page/tab labels ---
     "terminal": _p("terminal", "control", "工作台/终端", "Workbench / Terminal"),
