@@ -758,3 +758,41 @@ def test_write_expert_template_gracefully_degrades_on_avatar_fetch_failure(
 
     assert (expert_dir / "manifest.json").is_file()
     assert (expert_dir / "SOUL.md").is_file()
+
+
+def test_write_expert_template_rejects_oversized_avatar(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    import octop.infra.agents.experts.skillhub_market as expert_market_module
+    from octop.infra.agents.avatar import MAX_AVATAR_BYTES
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubSkillset,
+        _write_expert_template,
+    )
+
+    oversized_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * (MAX_AVATAR_BYTES + 10)
+
+    def fake_http_get_large(url: str, *, accept: str) -> bytes:
+        return oversized_data
+
+    monkeypatch.setattr(expert_market_module, "_http_get", fake_http_get_large)
+
+    item = SkillHubSkillset(
+        slug="test-avatar-expert-oversized",
+        display_name="超大头像测试专家",
+        summary="测试超大头像拒绝保存",
+        scene="testing",
+        icon_url="https://cos.example.com/avatars/too_big.png",
+    )
+
+    expert_dir = tmp_path / item.expert_id
+    _write_expert_template(
+        expert_dir=expert_dir,
+        item=item,
+        skill_slugs=[],
+        skillset_prompt="# Test",
+    )
+
+    assert (expert_dir / "manifest.json").is_file()
+    assert not (expert_dir / ".octop" / "avatar.png").exists()

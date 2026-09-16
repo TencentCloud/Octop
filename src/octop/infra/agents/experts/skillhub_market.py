@@ -690,7 +690,17 @@ def _download_icon_into_template(*, icon_url: str, expert_dir: Path) -> Path | N
         return None
     if not data:
         return None
+    from octop.infra.agents.avatar import MAX_AVATAR_BYTES
     from octop.infra.gateway.media.attachment_hints import sniff_image_media_type
+
+    if len(data) > MAX_AVATAR_BYTES:
+        logger.warning(
+            "SkillHub expert icon exceeds max avatar size (%d > %d) url=%s",
+            len(data),
+            MAX_AVATAR_BYTES,
+            url,
+        )
+        return None
 
     media_type = sniff_image_media_type(data[:16])
     if not media_type:

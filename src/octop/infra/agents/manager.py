@@ -2451,9 +2451,16 @@ class AgentManager:
                 exc,
             )
             return
-        from octop.infra.agents.avatar import bind_workspace_avatar_icon_url  # noqa: PLC0415
+        try:
+            from octop.infra.agents.avatar import bind_workspace_avatar_icon_url  # noqa: PLC0415
 
-        await bind_workspace_avatar_icon_url(self, row.agent_id, workspace)
+            await bind_workspace_avatar_icon_url(self, row.agent_id, workspace)
+        except Exception as exc:
+            logger.warning(
+                "Agent %s: expert avatar bind failed: %s",
+                row.agent_id,
+                exc,
+            )
         logger.info(
             "Agent %s: seeded expert template %r (%d files)",
             row.agent_id,
