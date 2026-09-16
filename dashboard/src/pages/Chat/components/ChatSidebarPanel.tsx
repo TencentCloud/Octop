@@ -35,6 +35,10 @@ interface ChatSidebarPanelProps {
   onForkSession: (id: string, agentId?: string | null) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
+  sessionFolders: string[];
+  sessionTags: string[];
+  onSetSessionFolder: (id: string, folder: string | null) => void;
+  onSetSessionTags: (id: string, tags: string[]) => void;
   onSidebarOpenChange: (open: boolean) => void;
   onSidebarResizeStart: (e: React.PointerEvent) => void;
   /** Mounted in MainLayout left rail (between app nav and content). */
@@ -69,6 +73,10 @@ export default function ChatSidebarPanel({
   onForkSession,
   forkDisabled,
   forkDisabledHint,
+  sessionFolders,
+  sessionTags,
+  onSetSessionFolder,
+  onSetSessionTags,
   onSidebarOpenChange,
   onSidebarResizeStart,
   layoutRail = false,
@@ -120,6 +128,10 @@ export default function ChatSidebarPanel({
       onFork={onForkSession}
       activeForkDisabled={forkDisabled}
       activeForkDisabledHint={forkDisabledHint}
+      folders={sessionFolders}
+      tags={sessionTags}
+      onSetFolder={onSetSessionFolder}
+      onSetTags={onSetSessionTags}
     />
   );
 

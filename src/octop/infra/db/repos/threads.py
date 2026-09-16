@@ -51,6 +51,37 @@ def merge_thread_artifacts(existing: Sequence[str], incoming: Sequence[str]) -> 
     return merged[-MAX_THREAD_ARTIFACTS:]
 
 
+def parse_thread_tags(raw: object) -> tuple[str, ...]:
+    """Decode the threads.tags JSON column into unique non-empty tags."""
+    if raw is None:
+        return ()
+    if isinstance(raw, (list, tuple)):
+        parsed: object = list(raw)
+    elif isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return ()
+        try:
+            parsed = json.loads(text)
+        except (ValueError, TypeError):
+            return ()
+    else:
+        return ()
+    if not isinstance(parsed, list):
+        return ()
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in parsed:
+        if not isinstance(item, str):
+            continue
+        tag = item.strip()
+        if not tag or tag in seen:
+            continue
+        seen.add(tag)
+        out.append(tag)
+    return tuple(out)
+
+
 @dataclass(frozen=True)
 class ThreadRow:
     id: int
@@ -67,6 +98,8 @@ class ThreadRow:
     reasoning_mode: str | None = None
     reasoning_effort: str | None = None
     artifacts: tuple[str, ...] = field(default_factory=tuple)
+    folder: str | None = None
+    tags: tuple[str, ...] = field(default_factory=tuple)
 
     @classmethod
     def from_row(cls, r: DbRow) -> ThreadRow:
@@ -74,6 +107,14 @@ class ThreadRow:
             raw_artifacts = r["artifacts"]
         except (KeyError, IndexError):
             raw_artifacts = None
+        try:
+            raw_tags = r["tags"]
+        except (KeyError, IndexError):
+            raw_tags = None
+        try:
+            folder = r["folder"]
+        except (KeyError, IndexError):
+            folder = None
         return cls(
             id=r["id"],
             thread_id=r["thread_id"],
@@ -89,6 +130,8 @@ class ThreadRow:
             reasoning_mode=r["reasoning_mode"],
             reasoning_effort=r["reasoning_effort"],
             artifacts=tuple(parse_thread_artifacts(raw_artifacts)),
+            folder=str(folder) if folder else None,
+            tags=parse_thread_tags(raw_tags),
         )
 
 
@@ -166,13 +209,15 @@ class ThreadRepo:
         session_key: str,
         title: str | None = None,
         last_active: int | None = None,
+        folder: str | None = None,
+        tags: Sequence[str] = (),
     ) -> None:
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO threads(thread_id, agent_id, user_id, channel_type, "
-                "session_key, title, last_active, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "session_key, title, last_active, created_at, folder, tags) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     thread_id,
                     agent_id,
@@ -182,6 +227,8 @@ class ThreadRepo:
                     clip_thread_title(title) if title else None,
                     ts if last_active is None else last_active,
                     ts,
+                    (folder or "").strip() or None,
+                    json.dumps(list(parse_thread_tags(list(tags))), ensure_ascii=False),
                 ),
             )
             conn.execute(
@@ -233,6 +280,69 @@ class ThreadRepo:
             ).fetchall()
         return map_rows(rows, ThreadRow)
 
+    def list_folders(self, *, agent_id: str, user_id: int) -> list[str]:
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT folder FROM threads "
+                "WHERE agent_id = ? AND user_id = ? "
+                "AND folder IS NOT NULL AND folder <> '' "
+                "ORDER BY folder",
+                (agent_id, user_id),
+            ).fetchall()
+        return [str(r["folder"]) for r in rows]
+
+    def list_tags(self, *, agent_id: str, user_id: int) -> list[str]:
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT tags FROM threads "
+                "WHERE agent_id = ? AND user_id = ? "
+                "AND tags IS NOT NULL AND tags <> ''",
+                (agent_id, user_id),
+            ).fetchall()
+        seen: set[str] = set()
+        for r in rows:
+            seen.update(parse_thread_tags(r["tags"]))
+        return sorted(seen)
+
+    def list_by_folder(
+        self, *, agent_id: str, user_id: int, folder: str | None, limit: int = 50
+    ) -> list[ThreadRow]:
+        order = (
+            "ORDER BY pinned DESC, "
+            "CASE WHEN last_active > 0 THEN last_active ELSE created_at END DESC, "
+            "thread_id DESC LIMIT ?"
+        )
+        with self._db.connect() as conn:
+            if folder is None:
+                rows = conn.execute(
+                    "SELECT * FROM threads WHERE agent_id = ? AND user_id = ? "
+                    f"AND folder IS NULL {order}",
+                    (agent_id, user_id, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM threads WHERE agent_id = ? AND user_id = ? "
+                    f"AND folder = ? {order}",
+                    (agent_id, user_id, folder, limit),
+                ).fetchall()
+        return map_rows(rows, ThreadRow)
+
+    def list_by_tag(
+        self, *, agent_id: str, user_id: int, tag: str, limit: int = 50
+    ) -> list[ThreadRow]:
+        # Tags are stored as a JSON string array; match the quoted element so
+        # tag "工" does not hit "工作".
+        needle = f'%"{tag.strip()}"%'
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM threads WHERE agent_id = ? AND user_id = ? AND tags LIKE ? "
+                "ORDER BY pinned DESC, "
+                "CASE WHEN last_active > 0 THEN last_active ELSE created_at END DESC, "
+                "thread_id DESC LIMIT ?",
+                (agent_id, user_id, needle, limit),
+            ).fetchall()
+        return map_rows(rows, ThreadRow)
+
     def set_title_if_null(self, thread_id: str, title: str) -> None:
         with self._db.transaction() as conn:
             conn.execute(
@@ -252,6 +362,20 @@ class ThreadRepo:
             conn.execute(
                 "UPDATE threads SET pinned = ? WHERE thread_id = ?",
                 (bool_int(pinned), thread_id),
+            )
+
+    def set_folder(self, thread_id: str, folder: str | None) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE threads SET folder = ? WHERE thread_id = ?",
+                ((folder or "").strip() or None, thread_id),
+            )
+
+    def set_tags(self, thread_id: str, tags: Sequence[str]) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE threads SET tags = ? WHERE thread_id = ?",
+                (json.dumps(list(parse_thread_tags(list(tags))), ensure_ascii=False), thread_id),
             )
 
     def update_composer(

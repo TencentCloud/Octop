@@ -138,6 +138,7 @@ interface EditFormValues {
   top_p?: number;
   max_tokens?: number;
   enable_trajectory?: boolean;
+  auto_thread_tags?: boolean;
   knowledge_base_ids?: string[];
   mcp_servers?: string[];
 }
@@ -308,6 +309,7 @@ function EditAgentDrawerBody({
           root_dir: parsedBackend.rootDir,
           ...readAgentRuntimeFormValues(ag),
           enable_trajectory: cfg.enable_trajectory !== false,
+          auto_thread_tags: cfg.auto_thread_tags === true,
           knowledge_base_ids: Array.isArray(ag.knowledge_base_ids)
             ? ag.knowledge_base_ids
             : [],
@@ -408,6 +410,7 @@ function EditAgentDrawerBody({
         ...agentConfig,
         backend: backendSpec,
         enable_trajectory: values.enable_trajectory === true,
+        auto_thread_tags: values.auto_thread_tags === true,
       });
       delete nextConfig.color;
       delete nextConfig.icon_name;
@@ -812,6 +815,14 @@ function EditAgentDrawerBody({
                 onUpdatePathMapping={updatePathMapping}
               />
               <AgentTrajectoryField />
+              <Form.Item
+                name="auto_thread_tags"
+                label={t("experts.autoThreadTags.label")}
+                extra={t("experts.autoThreadTags.hint")}
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
               <ExpertComposerDefaultsFields />
               {!skillPackagesSupported ? (
                 <Alert

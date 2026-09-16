@@ -647,6 +647,10 @@
       "badge": "已共享",
       "fromOwner": "共享专家 · 来自 {{name}}"
     },
+    "autoThreadTags": {
+      "label": "自动打标签",
+      "hint": "新会话首次回复成功后，额外调用一次模型自动生成会话标签。默认关闭。"
+    },
     "published": {
       "title": "发布模板",
       "badge": "已发布",
@@ -1177,6 +1181,22 @@
     "resizeSidebar": "调整侧栏宽度",
     "expandHistorySidebar": "展开对话历史",
     "collapseHistorySidebar": "收起对话历史",
+    "folders": {
+      "title": "文件夹",
+      "ungrouped": "未分组",
+      "newFolder": "新建文件夹",
+      "moveTo": "移至文件夹",
+      "rename": "重命名文件夹",
+      "delete": "删除文件夹"
+    },
+    "tags": {
+      "title": "标签",
+      "addTag": "添加标签",
+      "removeTag": "移除标签",
+      "filterByTag": "按标签筛选",
+      "clearFilter": "清除筛选",
+      "noTags": "暂无标签"
+    },
     "agentProfile": {
       "open": "查看专家详情",
       "title": "专家详情"

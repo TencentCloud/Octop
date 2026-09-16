@@ -15,6 +15,8 @@ export interface OctopThread {
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
+  folder?: string | null;
+  tags?: string[];
   artifacts?: string[];
 }
 
@@ -54,6 +56,8 @@ export interface OctopThreadPatch {
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
+  folder?: string | null;
+  tags?: string[];
 }
 
 export type ContextUsageSegmentKey =
@@ -91,9 +95,32 @@ export interface HistoryMigrationStatus {
 export const CHAT_HISTORY_PAGE_SIZE = 25;
 
 export const octopThreadsApi = {
-  list: (agentId: string, limit = 50) =>
-    request<OctopThread[]>(
-      `/agents/${encodeURIComponent(agentId)}/threads?limit=${limit}`,
+  list: (
+    agentId: string,
+    limit = 50,
+    params: { folder?: string | null; tag?: string | null } = {},
+  ) => {
+    const search = new URLSearchParams();
+    search.set("limit", String(limit));
+    if (params.folder != null) {
+      search.set("folder", params.folder);
+    }
+    if (params.tag != null) {
+      search.set("tag", params.tag);
+    }
+    return request<OctopThread[]>(
+      `/agents/${encodeURIComponent(agentId)}/threads?${search.toString()}`,
+    );
+  },
+
+  listFolders: (agentId: string) =>
+    request<{ folders: string[] }>(
+      `/agents/${encodeURIComponent(agentId)}/thread-folders`,
+    ),
+
+  listTags: (agentId: string) =>
+    request<{ tags: string[] }>(
+      `/agents/${encodeURIComponent(agentId)}/thread-tags`,
     ),
 
   create: (agentId: string) =>
@@ -171,6 +198,8 @@ export const octopThreadsApi = {
       model_ref?: string | null;
       reasoning_mode?: "auto" | "enabled" | "disabled" | null;
       reasoning_effort?: string | null;
+      folder?: string | null;
+      tags?: string[];
     }>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
         threadId,

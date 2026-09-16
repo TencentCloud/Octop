@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
 import { onSessionEvent } from "./chatStore";
@@ -16,6 +16,8 @@ export interface Session {
   modelRef?: string | null;
   reasoningMode?: "auto" | "enabled" | "disabled" | null;
   reasoningEffort?: string | null;
+  folder?: string | null;
+  tags?: string[];
   artifacts?: string[];
 }
 
@@ -34,6 +36,8 @@ export function toSession(row: {
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
+  folder?: string | null;
+  tags?: string[] | null;
   artifacts?: string[] | null;
 }): Session {
   const hasActivity =
@@ -57,6 +61,13 @@ export function toSession(row: {
     modelRef: row.model_ref ?? null,
     reasoningMode: row.reasoning_mode ?? null,
     reasoningEffort: row.reasoning_effort ?? null,
+    folder: row.folder ?? null,
+    tags: Array.isArray(row.tags)
+      ? row.tags.filter(
+          (tag): tag is string =>
+            typeof tag === "string" && tag.trim().length > 0,
+        )
+      : [],
     artifacts: Array.isArray(row.artifacts)
       ? row.artifacts.filter(
           (path): path is string =>
@@ -313,6 +324,41 @@ export function useSessions(agentId: string | null) {
     subscribeSessionStore,
     getSessionSnapshot,
   );
+  const [folders, setFolders] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+
+  const fetchFolders = useCallback(async () => {
+    if (!agentId) {
+      setFolders([]);
+      return;
+    }
+    try {
+      const res = await octopThreadsApi.listFolders(agentId);
+      setFolders(res.folders);
+    } catch {
+      /* ignore */
+    }
+  }, [agentId]);
+
+  const fetchTags = useCallback(async () => {
+    if (!agentId) {
+      setTags([]);
+      return;
+    }
+    try {
+      const res = await octopThreadsApi.listTags(agentId);
+      setTags(res.tags);
+    } catch {
+      /* ignore */
+    }
+  }, [agentId]);
+
+  useEffect(() => {
+    setFolders([]);
+    setTags([]);
+    void fetchFolders();
+    void fetchTags();
+  }, [fetchFolders, fetchTags]);
 
   const fetchSessions = useCallback(
     async (activeThreadId?: string) => {
@@ -534,6 +580,38 @@ export function useSessions(agentId: string | null) {
     [agentId],
   );
 
+  const setSessionFolder = useCallback(
+    (id: string, folder: string | null) => {
+      const next = (folder ?? "").trim() || null;
+      setModuleSessions((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, folder: next } : s)),
+      );
+      if (agentId) {
+        void octopThreadsApi
+          .patch(agentId, id, { folder: next })
+          .then(() => fetchFolders())
+          .catch(() => {});
+      }
+    },
+    [agentId, fetchFolders],
+  );
+
+  const setSessionTags = useCallback(
+    (id: string, tags: string[]) => {
+      const next = tags.map((tag) => tag.trim()).filter(Boolean);
+      setModuleSessions((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, tags: next } : s)),
+      );
+      if (agentId) {
+        void octopThreadsApi
+          .patch(agentId, id, { tags: next })
+          .then(() => fetchTags())
+          .catch(() => {});
+      }
+    },
+    [agentId, fetchTags],
+  );
+
   const syncSession = useCallback(
     async (localId: string): Promise<string | null> => {
       void localId;
@@ -547,10 +625,16 @@ export function useSessions(agentId: string | null) {
     loading,
     hasMore,
     loadingMore,
+    folders,
+    fetchFolders,
+    tags,
+    fetchTags,
     createSession,
     deleteSession,
     renameSession,
     pinSession,
+    setSessionFolder,
+    setSessionTags,
     fetchSessions,
     loadMoreSessions,
     fetchAllSessions,
