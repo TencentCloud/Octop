@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.config import OctopConfig
+from octop.infra.auth.captcha import current_env, load_view, save_settings
+from octop.infra.users.identity import User
 
 router = APIRouter()
 
@@ -78,3 +80,74 @@ async def get_capabilities(
     return CapabilitiesResponse(
         mobile=MobileCapabilitiesResponse(enabled=cap.enabled, backend=cap.backend)
     )
+
+
+class CaptchaPairView(BaseModel):
+    site_key: str
+    has_secret: bool
+    cam_secret_id: str = ""
+    has_cam_secret: bool = False
+
+
+class CaptchaSettingsResponse(BaseModel):
+    active: str
+    available: list[str]
+    providers: dict[str, CaptchaPairView]
+    source: Literal["settings", "env"]
+    v3_min_score: float
+
+
+class CaptchaPairBody(BaseModel):
+    site_key: str | None = None
+    secret: str | None = None
+    cam_secret_id: str | None = None
+    cam_secret: str | None = None
+
+
+class CaptchaSettingsPut(BaseModel):
+    active: str | None = None
+    providers: dict[str, CaptchaPairBody | None] | None = None
+
+
+@router.get(
+    "/settings/captcha",
+    summary="Login captcha settings",
+    response_model=CaptchaSettingsResponse,
+)
+async def get_captcha_settings(
+    _admin: User = Depends(require_permission("captcha")),
+    server: Any = Depends(get_server),
+) -> CaptchaSettingsResponse:
+    """Return the stored captcha catalog. Secrets are never included."""
+    view = load_view(
+        server.services.settings_repo,
+        server.services.secret_repo,
+        current_env(),
+    )
+    return CaptchaSettingsResponse.model_validate(view)
+
+
+@router.put(
+    "/settings/captcha",
+    summary="Update login captcha settings",
+    response_model=CaptchaSettingsResponse,
+)
+async def put_captcha_settings(
+    body: CaptchaSettingsPut,
+    admin: User = Depends(require_permission("captcha")),
+    server: Any = Depends(get_server),
+) -> CaptchaSettingsResponse:
+    """Merge captcha settings. Empty secret keeps the stored ciphertext."""
+    view = save_settings(
+        server.services.settings_repo,
+        server.services.secret_repo,
+        current_env(),
+        body.model_dump(exclude_unset=True),
+    )
+    server.services.audit_repo.write(
+        actor=admin.username,
+        action="captcha.settings.update",
+        target=str(view["active"]),
+        payload=f"source={view['source']}",
+    )
+    return CaptchaSettingsResponse.model_validate(view)

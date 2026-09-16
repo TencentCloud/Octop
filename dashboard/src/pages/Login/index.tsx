@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Input, Button } from "antd";
 import { message } from "@/utils/antdMessage";
@@ -11,7 +11,8 @@ import { apiErrorMessage } from "../../utils/apiError";
 import { refreshServerLabels } from "../../i18n";
 import { applyUserLocale, applyGuestLocale } from "../../utils/locale";
 import { useTheme } from "../../context/ThemeContext";
-import SlideCaptcha from "./SlideCaptcha";
+import CaptchaField, { type CaptchaFieldHandle } from "./CaptchaField";
+import { type PublicCaptchaConfig } from "./captchaAdapters";
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -23,8 +24,12 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [oidc, setOidc] = useState<OidcStatus | null>(null);
   const [oidcLoading, setOidcLoading] = useState(false);
-  const [slideVerified, setSlideVerified] = useState(false);
-  const [slideResetKey, setSlideResetKey] = useState(0);
+  const [captchaReady, setCaptchaReady] = useState(false);
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const [captcha, setCaptcha] = useState<PublicCaptchaConfig>({
+    provider: "slider",
+  });
+  const captchaRef = useRef<CaptchaFieldHandle>(null);
 
   // If no admin exists, redirect to /setup so the wizard can bootstrap one.
   useEffect(() => {
@@ -42,13 +47,21 @@ export default function LoginPage() {
           navigate("/setup", { replace: true });
           return;
         }
-        // Only probe OIDC after setup is done — otherwise lockdown 503s.
+        // Only probe OIDC / captcha after setup is done — otherwise lockdown 503s.
         authApi
           .getOidcStatus()
           .then((next) => {
             if (!cancelled) setOidc(next);
           })
           .catch(() => {});
+        authApi
+          .getCaptcha()
+          .then((next) => {
+            if (!cancelled) setCaptcha(next);
+          })
+          .catch(() => {
+            if (!cancelled) setCaptcha({ provider: "slider" });
+          });
       })
       .catch(() => {
         // Backend unreachable — let the user attempt login and show a real
@@ -71,9 +84,9 @@ export default function LoginPage() {
     navigate("/login", { replace: true });
   }, [navigate, searchParams, t]);
 
-  const resetSlide = () => {
-    setSlideVerified(false);
-    setSlideResetKey((k) => k + 1);
+  const resetCaptcha = () => {
+    setCaptchaReady(false);
+    setCaptchaResetKey((k) => k + 1);
   };
 
   const onOidc = async () => {
@@ -88,17 +101,18 @@ export default function LoginPage() {
   };
 
   const handleLogin = async () => {
-    if (!username || !password || !slideVerified) return;
+    if (!username || !password || !captchaReady) return;
     setLoading(true);
     try {
-      const res = await authApi.login(username, password);
+      const token = await captchaRef.current?.getToken();
+      const res = await authApi.login(username, password, token);
       setAuthToken(res.access_token);
       await applyUserLocale(res.user.locale);
       void refreshServerLabels(res.user.locale);
       navigate("/chat", { replace: true });
     } catch (err) {
       message.error(apiErrorMessage(err, t("login.failed"), t));
-      resetSlide();
+      resetCaptcha();
     } finally {
       setLoading(false);
     }
@@ -179,11 +193,14 @@ export default function LoginPage() {
           style={{ borderRadius: 10 }}
         />
 
-        <SlideCaptcha
-          hint={t("login.slideHint")}
-          verifiedLabel={t("login.slideVerified")}
-          onVerified={() => setSlideVerified(true)}
-          resetKey={slideResetKey}
+        <CaptchaField
+          ref={captchaRef}
+          config={captcha}
+          resetKey={captchaResetKey}
+          slideHint={t("login.slideHint")}
+          slideVerifiedLabel={t("login.slideVerified")}
+          unsupportedLabel={t("login.unsupportedCaptcha")}
+          onReadyChange={setCaptchaReady}
         />
 
         <Button
@@ -192,7 +209,7 @@ export default function LoginPage() {
           block
           loading={loading}
           onClick={handleLogin}
-          disabled={!username || !password || !slideVerified}
+          disabled={!username || !password || !captchaReady}
           style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
         >
           {t("login.submit")}
