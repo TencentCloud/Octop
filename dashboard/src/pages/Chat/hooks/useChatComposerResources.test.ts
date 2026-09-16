@@ -66,6 +66,7 @@ describe("useChatComposerResources knowledge bases", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    sessionStorage.clear();
     consumePendingAttachKnowledgeBaseId();
     vi.mocked(knowledgeBasesApi.list).mockResolvedValue([
       knowledgeBase("creative", { default_open: true }),
@@ -108,7 +109,7 @@ describe("useChatComposerResources knowledge bases", () => {
       expect(result.current.selectedKnowledgeBaseIds).toEqual(["research"]),
     );
 
-    act(() => result.current.handleKnowledgeBaseIdsChange(["creative"]));
+    act(() => result.current.handleConnectorsChange([]));
     rerender({ threadId: "thread-2", threadKbKey: "" });
     expect(result.current.selectedKnowledgeBaseIds).toEqual([]);
 
@@ -138,6 +139,88 @@ describe("useChatComposerResources knowledge bases", () => {
         "expert",
       ]),
     );
+  });
+
+  it.each([{ selection: ["research"] }, { selection: [] }])(
+    "keeps the unsent selection $selection across navigation and remounts",
+    async ({ selection }) => {
+      const { result, rerender, unmount } = renderHook(
+        ({ threadId }) =>
+          useChatComposerResources("agent-1", threadId, "creative\0research"),
+        { initialProps: { threadId: "thread-1" } },
+      );
+      await waitFor(() =>
+        expect(result.current.selectedKnowledgeBaseIds).toEqual([
+          "creative",
+          "research",
+        ]),
+      );
+      act(() => result.current.handleKnowledgeBaseIdsChange(selection));
+
+      rerender({ threadId: "thread-2" });
+      expect(result.current.selectedKnowledgeBaseIds).toEqual([
+        "creative",
+        "research",
+      ]);
+      rerender({ threadId: "thread-1" });
+      expect(result.current.selectedKnowledgeBaseIds).toEqual(selection);
+      unmount();
+
+      const remounted = renderHook(() =>
+        useChatComposerResources("agent-1", "thread-1", "creative\0research"),
+      );
+      await waitFor(() =>
+        expect(remounted.result.current.chatKnowledgeBases).toHaveLength(4),
+      );
+      expect(remounted.result.current.selectedKnowledgeBaseIds).toEqual(
+        selection,
+      );
+    },
+  );
+
+  it("retires a draft after a user message records it", async () => {
+    const { result, rerender, unmount } = renderHook(
+      ({ threadKbKey }) =>
+        useChatComposerResources("agent-1", "thread-1", threadKbKey),
+      { initialProps: { threadKbKey: "creative\0research" } },
+    );
+    await waitFor(() =>
+      expect(result.current.chatKnowledgeBases).toHaveLength(4),
+    );
+    act(() => result.current.handleKnowledgeBaseIdsChange(["research"]));
+    rerender({ threadKbKey: "research" });
+    unmount();
+
+    // A later message can update history without an old draft overriding it.
+    const restored = renderHook(() =>
+      useChatComposerResources("agent-1", "thread-1", "creative"),
+    );
+    await waitFor(() =>
+      expect(restored.result.current.selectedKnowledgeBaseIds).toEqual([
+        "creative",
+      ]),
+    );
+  });
+
+  it("waits for history before applying defaults or consuming pending attachments", async () => {
+    setPendingAttachKnowledgeBaseId("expert");
+    const { result, rerender } = renderHook(
+      ({ threadKbKey }: { threadKbKey: string | undefined }) =>
+        useChatComposerResources("agent-1", "thread-1", threadKbKey),
+      { initialProps: { threadKbKey: undefined as string | undefined } },
+    );
+    await waitFor(() =>
+      expect(result.current.chatKnowledgeBases).toHaveLength(4),
+    );
+    expect(result.current.selectedKnowledgeBaseIds).toEqual([]);
+    expect(peekPendingAttachKnowledgeBaseId()).toBe("expert");
+
+    rerender({ threadKbKey: "research" });
+    expect(result.current.selectedKnowledgeBaseIds).toEqual([
+      "research",
+      "expert",
+    ]);
+    expect(peekPendingAttachKnowledgeBaseId()).toBe("");
   });
 
   it("attaches a pending base once alongside restored history or new-thread defaults", async () => {

@@ -425,9 +425,11 @@ function ChatPageInner() {
         return (message.composerContext?.knowledgeBaseIds ?? []).join("\0");
       }
     }
-    // No user message yet; an empty string instead means an empty selection.
+    // Wait for history before treating an existing thread as empty.
+    if (activeThreadId && !historyHydrated) return undefined;
+    // No user message; an empty string instead means an empty selection.
     return null;
-  }, [messages]);
+  }, [messages, activeThreadId, historyHydrated]);
 
   const panelFilePaths = useMemo(() => {
     const fromTabs = openTabs

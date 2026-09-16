@@ -38,3 +38,30 @@ export function saveConnectors(agentId: string, names: string[]): void {
     /* ignore */
   }
 }
+
+/** An unsent selection in this tab; null is absent, [] is an explicit opt-out. */
+export function loadKnowledgeBaseDraft(key: string): string[] | null {
+  try {
+    const raw = sessionStorage.getItem(`octop:chat-knowledge-bases:${key}`);
+    if (raw == null) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((id) => typeof id === "string")
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveKnowledgeBaseDraft(
+  key: string,
+  ids: string[] | null,
+): void {
+  try {
+    const storageKey = `octop:chat-knowledge-bases:${key}`;
+    if (ids === null) sessionStorage.removeItem(storageKey);
+    else sessionStorage.setItem(storageKey, JSON.stringify(ids));
+  } catch {
+    // sessionStorage unavailable or quota exceeded.
+  }
+}
