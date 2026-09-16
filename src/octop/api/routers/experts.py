@@ -69,6 +69,20 @@ from octop.infra.utils.locale import resolve_user_locale
 router = APIRouter()
 
 
+def _hidden_for_user(server: Any, user: Any, *, kind: str) -> bool:
+    """True when ``kind`` ("builtin" | "market") experts are hidden from ``user``.
+
+    Admins always see everything; an unset policy keeps the historic behaviour
+    (both visible), so single-tenant / self-hosted installs are unaffected.
+    """
+    if getattr(user, "is_admin", False):
+        return False
+    policy = server.services.settings_repo.get_expert_visibility()
+    if kind == "builtin":
+        return bool(policy["hide_builtin_experts"])
+    return bool(policy["hide_market"])
+
+
 def _validated_session_defaults(
     registry: Any,
     user_id: int,
@@ -543,9 +557,11 @@ async def install_published_expert(
 
 @router.get("/experts")
 async def list_experts(
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
+    if _hidden_for_user(server, user, kind="builtin"):
+        return []
     catalog = server.expert_catalog
     if catalog is None:
         return []
@@ -560,9 +576,12 @@ async def list_experts(
 async def list_expert_hub(
     q: str = "",
     scene: str = "",
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """List SkillHub skillsets as market expert cards, optionally filtered by scene."""
+    if _hidden_for_user(server, user, kind="market"):
+        return {"items": [], "scenes": []}
     try:
         items, scenes = await asyncio.to_thread(browse_skillsets, q, scene=scene)
     except SkillHubMarketError as exc:
@@ -580,9 +599,12 @@ async def list_expert_hub(
 )
 async def get_expert_hub_item(
     slug: str,
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """SkillHub market detail, including workflow prompt and default quick prompts."""
+    if _hidden_for_user(server, user, kind="market"):
+        raise OctopError(ErrorCode.FORBIDDEN, "expert market is not available")
     try:
         item = await asyncio.to_thread(fetch_skillset, slug)
     except SkillHubMarketError as exc:
@@ -603,6 +625,8 @@ async def install_expert_hub_item(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Create an agent from a SkillHub skillset-backed expert template."""
+    if _hidden_for_user(server, user, kind="market"):
+        raise OctopError(ErrorCode.FORBIDDEN, "expert market is not available")
     assert server.app_runtime is not None
     assert_user_backend_root_dirs(
         user,
@@ -672,9 +696,11 @@ async def install_expert_hub_item(
 @router.get("/experts/{expert_id}")
 async def get_expert(
     expert_id: str,
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
+    if _hidden_for_user(server, user, kind="builtin"):
+        raise OctopError(ErrorCode.FORBIDDEN, "built-in experts are not available")
     catalog = server.expert_catalog
     expert = None if catalog is None else catalog.get(expert_id)
     if expert is None:
@@ -690,6 +716,8 @@ async def create_agent_from_expert(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Create an agent with the expert template workspace files."""
+    if _hidden_for_user(server, user, kind="builtin"):
+        raise OctopError(ErrorCode.FORBIDDEN, "built-in experts are not available")
     catalog = server.expert_catalog
     expert = None if catalog is None else catalog.get(expert_id)
     if expert is None:
