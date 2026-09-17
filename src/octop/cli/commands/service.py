@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from typing import NoReturn
+
 import click
 
+from octop.infra.errors import OctopError
 from octop.infra.setup.service import (
     DEFAULT_HEALTH_ATTEMPTS,
     DEFAULT_HEALTH_DELAY_SECONDS,
@@ -35,7 +38,7 @@ def _runtime(host: str | None, port: int | None, scope: ServiceScope | None) -> 
         raise SystemExit(1) from exc
 
 
-def _fail(exc: Exception) -> None:
+def _fail(exc: Exception) -> NoReturn:
     click.echo(f"error: {exc}", err=True)
     raise SystemExit(1) from exc
 
@@ -125,13 +128,13 @@ def _echo_summary_for(runtime: ServiceRuntime, *, warn_health: bool) -> None:
 def start(host: str | None, port: int | None, force_install: bool, scope: str) -> None:
     """Install if needed, ensure the NOFILE drop-in, then start the service."""
     runtime = _runtime(host, port, _resolve_scope(scope))
-    if host is not None or port is not None:
-        persist_bind_options(runtime.home, host=host, port=port)
-        runtime = _runtime(host, port, _resolve_scope(scope))
     try:
+        if host is not None or port is not None:
+            persist_bind_options(runtime.home, host=host, port=port)
+            runtime = _runtime(host, port, _resolve_scope(scope))
         wrote = install_service(runtime, force=force_install)
         start_service(runtime, apply_unit=wrote)
-    except RuntimeError as exc:
+    except (RuntimeError, OctopError) as exc:
         _fail(exc)
     _echo_summary_for(runtime, warn_health=True)
 

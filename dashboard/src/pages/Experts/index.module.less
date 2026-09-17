@@ -1756,14 +1756,20 @@
   width: 100%;
   min-width: 0;
   max-width: 100%;
+  position: relative;
 
   :global(.octop-table-wrapper),
   :global(.ant-table-wrapper) {
     max-width: 100%;
   }
 
-  :global(.octop-table-pagination) {
+  // Pagination must stay below the table body's horizontal scrollbar and
+  // remain clickable (fixes #460: pagination hidden behind scrollbar).
+  :global(.octop-table-pagination),
+  :global(.ant-table-pagination) {
     margin: 12px 0 0 !important;
+    position: relative;
+    z-index: 1;
   }
 }
 
