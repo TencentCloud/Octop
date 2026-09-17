@@ -218,7 +218,7 @@ create(agent)
 - [ ] `context_breakdown`、`bootstrap_pending` 经 backend 读
 - [ ] `gateway/backend_files` 无 agent workspace 本地 fallback
 - [ ] `system_archive` 备份含 backend 内容
-- [ ] `make all` 绿；涉及 dashboard 时 `cd dashboard && npx tsc --noEmit`
+- [ ] `make all` 绿；涉及 dashboard 时 `cd dashboard && npx tsc -b`
 - [ ] 代码审查：新增 agent 内容文件 IO 必须出现 `backend.aread` / `aupload_files` 等，不得 `ensure_agent_workspace(...) / "xxx").write_text`
 
 ---

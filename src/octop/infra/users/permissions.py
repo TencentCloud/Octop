@@ -204,6 +204,15 @@ PERMISSIONS: dict[str, PermissionDef] = {
         page_zh="应用设置",
         page_en="App settings",
     ),
+    "captcha": _p(
+        "captcha",
+        "admin",
+        "登录验证码",
+        "Login captcha",
+        page="advanced",
+        page_zh="应用设置",
+        page_en="App settings",
+    ),
 }
 
 ALL_PERMISSION_KEYS: set[str] = set(PERMISSIONS)

@@ -24,7 +24,12 @@ from harness_agent.plugins import (
     unload_plugin,
 )
 
-from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.errors import ErrorCode, OctopError, corrupt_config_error
+from octop.infra.utils.json_file import (
+    JsonFileCorruptError,
+    read_json_object,
+    write_json_atomic,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,15 +78,18 @@ def _read_global_plugins(config_path: Path) -> dict[str, bool]:
 
 
 def _write_global_plugin_enabled(config_path: Path, plugin_id: str, enabled: bool) -> None:
-    """Merge ``plugins.<id>.enabled`` into ``config.json`` without dropping other keys."""
-    data: dict[str, Any] = {}
-    if config_path.is_file():
-        try:
-            raw = json.loads(config_path.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                data = raw
-        except Exception:
-            data = {}
+    """Merge ``plugins.<id>.enabled`` into ``config.json`` without dropping other keys.
+
+    A corrupt config.json raises instead of being treated as empty: merging into
+    ``{}`` and writing back destroys every other setting, including the
+    ``database`` section (issue #730).
+    """
+    try:
+        data = read_json_object(config_path)
+    except JsonFileCorruptError as exc:
+        raise corrupt_config_error(exc.path, exc.detail) from exc
+    if data is None:
+        data = {}
     plugins = data.get("plugins")
     if not isinstance(plugins, dict):
         plugins = {}
@@ -91,8 +99,7 @@ def _write_global_plugin_enabled(config_path: Path, plugin_id: str, enabled: boo
         entry = {}
     entry["enabled"] = bool(enabled)
     plugins[plugin_id] = entry
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(config_path, data)
 
 
 def _assert_http_url(url: str) -> None:

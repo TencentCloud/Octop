@@ -289,3 +289,38 @@ def test_parse_plugin_icon(tmp_path: Path) -> None:
     )
     assert parse_plugin_icon(plugin_dir) == "🧩"
     assert parse_plugin_icon(tmp_path / "missing") is None
+
+
+def test_set_enabled_refuses_corrupt_config_and_preserves_bytes(tmp_path: Path) -> None:
+    """issue #730: the dashboard toggle must not wipe an unparseable config.json."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+    mgr.install_path(_FIXTURE, force=True)
+
+    corrupt = '{"bind_host": "0.0.0.0", "database": {"driver": "postgresql"},}'
+    config_path.write_text(corrupt, encoding="utf-8")
+    with pytest.raises(OctopError) as excinfo:
+        mgr.set_enabled("echo-tool", False)
+    assert excinfo.value.code is ErrorCode.CONFIG_FILE_CORRUPT
+    assert config_path.read_text(encoding="utf-8") == corrupt
+
+
+def test_set_enabled_preserves_unrelated_keys(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "bind_host": "0.0.0.0",
+                "database": {"driver": "postgresql", "host": "db.internal"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+    mgr.install_path(_FIXTURE, force=True)
+    mgr.set_enabled("echo-tool", False)
+    data = json.loads(config_path.read_text(encoding="utf-8"))
+    assert data["bind_host"] == "0.0.0.0"
+    assert data["database"] == {"driver": "postgresql", "host": "db.internal"}
+    assert data["plugins"]["echo-tool"]["enabled"] is False

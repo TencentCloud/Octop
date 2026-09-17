@@ -104,6 +104,9 @@ class ErrorCode(StrEnum):
     INVITE_RATE_LIMITED = "INVITE_RATE_LIMITED"
     WORKSPACE_ROOT_RESTRICTED = "WORKSPACE_ROOT_RESTRICTED"
     TOKEN_QUOTA_EXCEEDED = "TOKEN_QUOTA_EXCEEDED"
+    CAPTCHA_REQUIRED = "CAPTCHA_REQUIRED"
+    CAPTCHA_FAILED = "CAPTCHA_FAILED"
+    CONFIG_FILE_CORRUPT = "CONFIG_FILE_CORRUPT"
 
 
 _DEFAULT_STATUS: dict[ErrorCode, int] = {
@@ -200,6 +203,9 @@ _DEFAULT_STATUS: dict[ErrorCode, int] = {
     ErrorCode.INVITE_RATE_LIMITED: 429,
     ErrorCode.WORKSPACE_ROOT_RESTRICTED: 400,
     ErrorCode.TOKEN_QUOTA_EXCEEDED: 403,
+    ErrorCode.CAPTCHA_REQUIRED: 400,
+    ErrorCode.CAPTCHA_FAILED: 400,
+    ErrorCode.CONFIG_FILE_CORRUPT: 400,
 }
 
 
@@ -249,3 +255,17 @@ class OctopError(Exception):
                 "details": self.details,
             }
         }
+
+
+def corrupt_config_error(path: object, detail: str) -> OctopError:
+    """``OctopError`` for a config file that exists but cannot be parsed.
+
+    Raised instead of writing back a merged-into-empty dict, which would destroy
+    every unrelated setting (issue #730). Carries the path and the parser
+    position only — never file contents, which hold database credentials.
+    """
+    return OctopError(
+        ErrorCode.CONFIG_FILE_CORRUPT,
+        f"{path} is not valid JSON ({detail}); fix it and retry — no settings were changed",
+        details={"path": str(path), "detail": detail},
+    )

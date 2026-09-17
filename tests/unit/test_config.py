@@ -408,3 +408,25 @@ def test_loads_mobile_capabilities(tmp_path: Path) -> None:
     cfg = load_config(cfg_path)
     assert cfg.capabilities.mobile.enabled is True
     assert cfg.capabilities.mobile.backend == "physical"
+
+
+def test_corrupt_config_names_file_and_position_without_leaking_contents(tmp_path: Path):
+    """issue #730: a bare JSONDecodeError never says *which* config file failed."""
+    cfg_path = tmp_path / "config.json"
+    original = '{"database": {"password": "s3cret"},}'  # trailing comma
+    cfg_path.write_text(original, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"line \d+, column \d+") as excinfo:
+        load_config(cfg_path)
+    msg = str(excinfo.value)
+    assert str(cfg_path) in msg
+    assert "s3cret" not in msg
+    # the file is left exactly as the user wrote it
+    assert cfg_path.read_text(encoding="utf-8") == original
+
+
+def test_non_object_config_raises(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text("[1, 2]", encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON object"):
+        load_config(cfg_path)
+    assert cfg_path.read_text(encoding="utf-8") == "[1, 2]"
