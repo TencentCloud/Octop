@@ -22,9 +22,14 @@
 
 ### 修复
 
+<<<<<<< HEAD
 - 超长 URL 导致历史消息加载极慢
 - 手动创建渠道默认启用；PostgreSQL 知识库缺列；损坏 config 被清空
 - 若干 Dashboard / 构建相关问题（权限页签、抽屉滚动、Windows 构建等）
+=======
+- 腾讯验证码票据校验改用 DescribeCaptchaResult 接口（旧端点对新票据返回 decrypt fail）；校验需云 API 密钥签名，设置页新增对应字段
+- iOS PWA 顶栏/侧栏避让状态栏：`env(safe-area-inset-top)` 垫高移动端 Header 与抽屉品牌行（#664）
+>>>>>>> 58e3e51c (fix(pwa): pad mobile header/sidebar for iOS safe-area (#664))
 
 ### 变更
 
