@@ -1145,6 +1145,8 @@
     "downloadFailed": "Download failed, please try again",
     "hideThinking": "Hide thinking",
     "showThinking": "Show thinking",
+    "collapseThinking": "Collapse thinking by default",
+    "collapseThinkingHint": "Keep thinking and tool calls collapsed while generating replies. You can still expand them manually. Saved in this browser.",
     "processSummary": "Called {{tools}} tools, {{thinking}} deep thoughts",
     "processSummaryToolsOnly": "Called {{tools}} tools",
     "processSummaryThinkingOnly": "{{thinking}} deep thoughts",

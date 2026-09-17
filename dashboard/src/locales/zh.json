@@ -1145,6 +1145,8 @@
     "downloadFailed": "下载失败，请重试",
     "hideThinking": "隐藏思维过程",
     "showThinking": "查看思维过程",
+    "collapseThinking": "默认折叠思考过程",
+    "collapseThinkingHint": "生成回复时默认折叠思考与工具调用面板，仍可手动展开。设置保存在当前浏览器。",
     "processSummary": "已调用 {{tools}} 次工具，{{thinking}} 次深度思考",
     "processSummaryToolsOnly": "已调用 {{tools}} 次工具",
     "processSummaryThinkingOnly": "{{thinking}} 次深度思考",
