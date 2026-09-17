@@ -21,6 +21,7 @@
 - 修复 `config.json` 解析失败时被静默清空的问题（#730）：`octop run --host/--port`、`octop service start --host/--port`、插件开关与插件 seeding 过去会把无法解析的配置当成空配置再写回，导致 `bind_host`、`database` 等全部设置丢失（PostgreSQL 实例会静默退回全新空 SQLite，且无任何告警）；现在直接报错并保留原文件不动，错误信息含行列号但不回显文件内容（其中含数据库凭据），配置写入统一改为原子写
 - `config.json` 无法解析时，`load_config` 的报错现在带上文件路径与行列号（此前是裸 `JSONDecodeError`，不说哪个文件出错），并拒绝“合法 JSON 但不是 object”的文件；报错不回显内容
 - 腾讯验证码票据校验改用 DescribeCaptchaResult 接口（旧端点对新票据返回 decrypt fail）；校验需云 API 密钥签名，设置页新增对应字段
+- 修复 HITL resume 对待暂停线程的空转静默 no-op（#582）：当 graph 线程没有待审批 interrupt 时，dashboard 的 `POST /chat/hitl/resume` 过去返回 200 却无任何输出、服务端零日志，前端误以为已恢复；现在 SSE 层检测到整轮 resume 零产出即下发明确的 error 帧并记录 warning，异常路径也补了服务端异常日志
 
 ### 变更
 
