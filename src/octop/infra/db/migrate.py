@@ -1403,8 +1403,7 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
             _backfill_agent_profile_from_config(db)
             if _table_exists(db, "threads"):
                 _ensure_column(db, "threads", "artifacts", "TEXT NOT NULL DEFAULT '[]'")
-            _rebuild_knowledge_identity_schema(db)
-            _drop_knowledge_base_members(db)
+            _ensure_knowledge_bases_schema(db)
             _ensure_skill_packages_schema(db)
             _ensure_published_experts_schema(db)
             if max_version >= 8:
@@ -1440,8 +1439,7 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _backfill_agent_profile_from_config(db)
         if _table_exists(db, "threads"):
             _ensure_column(db, "threads", "artifacts", "TEXT NOT NULL DEFAULT '[]'")
-        _rebuild_knowledge_identity_schema(db)
-        _drop_knowledge_base_members(db)
+        _ensure_knowledge_bases_schema(db)
         _ensure_skill_packages_schema(db)
         _ensure_published_experts_schema(db)
     if max_version >= 8:
@@ -1619,9 +1617,12 @@ def run_migrations(db: DatabasePool) -> None:
                 _collapse_legacy_agent_welcome_columns(db)
                 _ensure_skill_packages_schema(db)
                 _ensure_published_experts_schema(db)
+            if version == 10:
+                _ensure_knowledge_bases_schema(db)
         else:
             _apply_sqlite_migration(db, version, path)
     _reconcile_pre_squash_schema_version(db)
+    _ensure_knowledge_bases_schema(db)
     _ensure_skill_packages_schema(db)
     _ensure_published_experts_schema(db)
     _ensure_usage_cache_schema(db)
