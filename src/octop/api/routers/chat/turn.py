@@ -288,6 +288,7 @@ async def prepare_dashboard_turn(
         target_agent_ids=target_ids,
         model_ref=model_ref,
         default_model=default_model,
+        knowledge_base_ids=turn.knowledge_base_ids,
     )
     inbound_content = content_parts_from_dashboard_turn(turn)
     inbound_attachments = inbound_attachments_from_parts(inbound_content)
