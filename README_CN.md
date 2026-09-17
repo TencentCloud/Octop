@@ -407,7 +407,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 - **ACP** — 配置出站编程 Agent Runner
 - **设置** — 用户、安全、TLS、系统
 
-交互式 API 文档：**http://127.0.0.1:8088/api/docs**（默认关闭 — 在 `config.json` 中设置 `"enable_api_docs": true` 开启）
+交互式 API 文档： **http://127.0.0.1:8088/api/docs** （默认关闭 — 在 `config.json` 中设置 `"enable_api_docs": true` 开启）
 
 ### 📁 数据目录
 
