@@ -1,11 +1,12 @@
-import { useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { GraduationCap } from "lucide-react";
+import { Eye, EyeOff, GraduationCap } from "lucide-react";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
 import ExpertAgentAvatar, { type ChatAgentOption } from "./ExpertAgentAvatar";
+import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import styles from "../index.module.less";
 
 export type { ChatAgentOption };
@@ -25,6 +26,20 @@ export default function ExpertPickerPopover({
 }: ExpertPickerPopoverProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [showingHidden, setShowingHidden] = useState(false);
+  const { filterVisible, pickHidden, hide, unhide, canHide } =
+    useHiddenSharedExperts();
+
+  const hiddenAgents = useMemo(() => pickHidden(agents), [agents, pickHidden]);
+  const visibleAgents = useMemo(
+    () =>
+      filterVisible(agents, {
+        keepAgentIds: selectedAgentIds,
+      }),
+    [agents, filterVisible, selectedAgentIds],
+  );
+
+  const listAgents = showingHidden ? hiddenAgents : visibleAgents;
 
   const filterFn = useCallback(
     (agent: ChatAgentOption, query: string) =>
@@ -35,10 +50,18 @@ export default function ExpertPickerPopover({
 
   return (
     <SearchablePickerPanel
-      items={agents}
+      items={listAgents}
       filterFn={filterFn}
-      searchPlaceholder={t("chat.expertPickerSearch")}
-      emptyMessage={t("chat.expertPickerEmpty")}
+      searchPlaceholder={
+        showingHidden
+          ? t("chat.expertPickerHiddenSearch")
+          : t("chat.expertPickerSearch")
+      }
+      emptyMessage={
+        showingHidden
+          ? t("chat.expertPickerHiddenEmpty")
+          : t("chat.expertPickerEmpty")
+      }
       width="compact"
       footerIcon={<GraduationCap size={15} aria-hidden />}
       footerLabel={t("chat.expertPickerManage")}
@@ -46,33 +69,74 @@ export default function ExpertPickerPopover({
         onNavigateAway?.();
         navigate("/experts");
       }}
+      beforeFooter={
+        hiddenAgents.length > 0 ? (
+          <button
+            type="button"
+            className={styles.expertHiddenToggle}
+            onClick={() => setShowingHidden((v) => !v)}
+          >
+            {showingHidden
+              ? t("chat.expertPickerShowVisible")
+              : t("chat.expertPickerHidden", { count: hiddenAgents.length })}
+          </button>
+        ) : null
+      }
       renderItem={(agent) => {
         const active = selectedAgentIds.includes(agent.agent_id);
+        const hideable = canHide(agent);
         return (
-          <button
+          <div
             key={agent.agent_id}
-            type="button"
             className={`${styles.skillPickerItem} ${
               active ? styles.expertPickerItemActive : ""
-            }`}
-            onClick={() => onSelect(agent)}
+            } ${styles.expertPickerRow}`}
           >
-            <ExpertAgentAvatar
-              iconName={agent.icon_name}
-              iconUrl={agent.icon_url}
-              color={agent.color}
-              size={32}
-              iconSize={18}
-            />
-            <span className={styles.expertPickerItemText}>
-              <span className={pickerStyles.itemName}>{agent.name}</span>
-              {agent.is_shared && (
-                <span className={styles.expertSharedBadge}>
-                  {t("chat.expertSharedBadge", "共享")}
-                </span>
-              )}
-            </span>
-          </button>
+            <button
+              type="button"
+              className={styles.expertPickerSelect}
+              onClick={() => onSelect(agent)}
+            >
+              <ExpertAgentAvatar
+                iconName={agent.icon_name}
+                iconUrl={agent.icon_url}
+                color={agent.color}
+                size={32}
+                iconSize={18}
+              />
+              <span className={styles.expertPickerItemText}>
+                <span className={pickerStyles.itemName}>{agent.name}</span>
+                {agent.is_shared && (
+                  <span className={styles.expertSharedBadge}>
+                    {t("chat.expertSharedBadge", "共享")}
+                  </span>
+                )}
+              </span>
+            </button>
+            {hideable ? (
+              <button
+                type="button"
+                className={styles.expertHideBtn}
+                title={
+                  showingHidden
+                    ? t("chat.expertUnhide")
+                    : t("chat.expertHide")
+                }
+                aria-label={
+                  showingHidden
+                    ? t("chat.expertUnhide")
+                    : t("chat.expertHide")
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (showingHidden) unhide(agent.agent_id);
+                  else hide(agent.agent_id);
+                }}
+              >
+                {showingHidden ? <Eye size={15} /> : <EyeOff size={15} />}
+              </button>
+            ) : null}
+          </div>
         );
       }}
     />
