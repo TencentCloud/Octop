@@ -599,6 +599,8 @@ class AgentManager:
                 assert row is not None
             if spec.template_name:
                 await self._seed_expert_template(row, spec.template_name)
+                row = self._repos.agent_repo.get(agent_id)
+                assert row is not None
             if workspace_initializer is not None:
                 workspace = self._backend_workspace_for_row(row)
                 await workspace_initializer(row, workspace)
@@ -2449,6 +2451,16 @@ class AgentManager:
                 exc,
             )
             return
+        try:
+            from octop.infra.agents.avatar import bind_workspace_avatar_icon_url  # noqa: PLC0415
+
+            await bind_workspace_avatar_icon_url(self, row.agent_id, workspace)
+        except Exception as exc:
+            logger.warning(
+                "Agent %s: expert avatar bind failed: %s",
+                row.agent_id,
+                exc,
+            )
         logger.info(
             "Agent %s: seeded expert template %r (%d files)",
             row.agent_id,
