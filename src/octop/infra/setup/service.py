@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import platform
@@ -11,13 +10,18 @@ import subprocess
 import sys
 import tempfile
 import time
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from octop.config import load_config
+from octop.infra.errors import corrupt_config_error
 from octop.infra.utils import posix_compat as pwd
+from octop.infra.utils.json_file import (
+    JsonFileCorruptError,
+    read_json_object,
+    write_json_atomic,
+)
 from octop.infra.utils.paths import PathLayout
 from octop.infra.utils.posix_compat import chown, geteuid, getuid, is_root
 
@@ -230,22 +234,26 @@ def resolve_service_home(*, run_as_user: str | None = None) -> Path:
 
 
 def persist_bind_options(home: Path, *, host: str | None = None, port: int | None = None) -> None:
-    """Write bind host/port into ``config.json`` before (re)installing the unit."""
+    """Write bind host/port into ``config.json`` before (re)installing the unit.
+
+    Raises on a corrupt config.json rather than treating it as empty — writing a
+    merged-into-``{}`` dict would destroy every other setting, including the
+    ``database`` section (issue #730).
+    """
     if host is None and port is None:
         return
     config_path = home / "config.json"
-    data: dict[str, object] = {}
-    if config_path.is_file():
-        with suppress(OSError, json.JSONDecodeError):
-            loaded = json.loads(config_path.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                data = loaded
+    try:
+        data = read_json_object(config_path)
+    except JsonFileCorruptError as exc:
+        raise corrupt_config_error(exc.path, exc.detail) from exc
+    if data is None:
+        data = {}
     if host is not None:
         data["bind_host"] = host
     if port is not None:
         data["port"] = port
-    home.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(config_path, data)
 
 
 def resolve_bind_options(home: Path | None = None) -> tuple[str, int]:

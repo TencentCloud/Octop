@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "tsc -b && NODE_ENV=production vite build",
+    "build": "tsc -b && vite build",
     "build:docker": "vite build",
     "build:prod": "tsc -b && vite build --mode production",
     "build:test": "tsc -b && vite build --mode test",

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Empty, Form, Switch } from "antd";
 
 import { useTranslation } from "react-i18next";
-import PageShell from "../../../layouts/PageShell";
 import { CardSkeleton } from "../../../components/Skeleton";
 import { acpApi } from "../../../api/modules/acp";
 import {
@@ -22,7 +21,7 @@ import styles from "./index.module.less";
 
 const EMPTY_RUNNERS: Record<string, ACPRunnerConfig> = {};
 
-export default function ACPPage() {
+export default function ACPPanel() {
   const { t } = useTranslation();
   const { modal, message } = App.useApp();
   const { activeAgentId } = useAgent();
@@ -259,18 +258,16 @@ export default function ACPPage() {
   );
 
   return (
-    <PageShell
-      title={t("pageShell.acp.title")}
-      subtitle={t("pageShell.acp.subtitle")}
-      agentScoped
-      actions={
+    <>
+      <div className={styles.toolbar}>
+        <div className={styles.toolbarText}>
+          <div className={styles.description}>{t("acp.description")}</div>
+          <p className={styles.scopeHint}>{t("acp.globalRunnersHint")}</p>
+        </div>
         <Button type="primary" onClick={openCreate}>
           {t("acp.create")}
         </Button>
-      }
-    >
-      <div className={styles.description}>{t("acp.description")}</div>
-      <p className={styles.scopeHint}>{t("acp.globalRunnersHint")}</p>
+      </div>
 
       {runnersLoading && cards.length === 0 ? (
         <CardSkeleton count={4} />
@@ -323,6 +320,6 @@ export default function ACPPage() {
         onSubmit={handleSubmit}
         onDelete={handleDelete}
       />
-    </PageShell>
+    </>
   );
 }

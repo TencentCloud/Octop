@@ -5,7 +5,6 @@ import { Navigate, useLocation } from "react-router-dom";
 const ExpertsPage = lazy(() => import("../pages/Experts"));
 const CronJobsPage = lazy(() => import("../pages/Control/CronJobs"));
 const ConnectorsPage = lazy(() => import("../pages/Agent/Connectors"));
-const ACPPage = lazy(() => import("../pages/Agent/ACP"));
 const SkillPackagesPage = lazy(() => import("../pages/SkillPackages"));
 const KnowledgeBasesPage = lazy(() => import("../pages/KnowledgeBases"));
 const PersonalizationPage = lazy(
@@ -53,10 +52,10 @@ export const pathToKey: Record<string, string> = {
   "/connectors": "connectors",
   "/skill-packages": "skill-packages",
   "/knowledge-bases": "knowledge-bases",
-  "/acp": "acp",
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
   "/personalization/tools": "personalization",
+  "/personalization/acp": "personalization",
   "/personalization/plugins": "personalization",
   "/personalization/subagents": "personalization",
   "/personalization/channels": "channels",
@@ -161,7 +160,10 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/token-usage", element: <TokenUsagePage /> },
 
   // Control (RequirePermission via pathPermissionKeys in MainLayout)
-  { path: "/acp", element: <ACPPage /> },
+  {
+    path: "/acp",
+    element: <RedirectPreserveSearch to="/personalization/acp" />,
+  },
   {
     path: "/channels",
     element: <RedirectPreserveSearch to="/personalization/channels" />,

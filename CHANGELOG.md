@@ -9,6 +9,25 @@
 ### 修复
 
 - 专家市场（SkillHub）安装的专家持久化头像到工作区，并在创建后绑定到本地头像接口，防止外部签名 URL 过期导致裂图 (#609)
+### 变更
+
+- ACP Runner 管理从侧边栏独立入口迁入「个性化 → ACP 工具」标签页，旧 `/acp` 路径自动重定向
+
+### 新增
+
+- 登录验证码：密码登录可选的人机验证，默认本地滑块（仅前端），支持 Cloudflare Turnstile、hCaptcha、reCAPTCHA v2/v3、腾讯云验证码（强校验提供商由服务端向厂商核验，密钥加密保存，设置页可切换）
+- `octop captcha reset`：被验证码误配置锁定时离线清除已保存设置，回退默认滑块
+- 登录验证码组件语言跟随站点语言（腾讯/turnstile/hcaptcha/reCAPTCHA 全部适配）
+
+### 修复
+
+- 修复 `config.json` 解析失败时被静默清空的问题（#730）：`octop run --host/--port`、`octop service start --host/--port`、插件开关与插件 seeding 过去会把无法解析的配置当成空配置再写回，导致 `bind_host`、`database` 等全部设置丢失（PostgreSQL 实例会静默退回全新空 SQLite，且无任何告警）；现在直接报错并保留原文件不动，错误信息含行列号但不回显文件内容（其中含数据库凭据），配置写入统一改为原子写
+- `config.json` 无法解析时，`load_config` 的报错现在带上文件路径与行列号（此前是裸 `JSONDecodeError`，不说哪个文件出错），并拒绝“合法 JSON 但不是 object”的文件；报错不回显内容
+- 腾讯验证码票据校验改用 DescribeCaptchaResult 接口（旧端点对新票据返回 decrypt fail）；校验需云 API 密钥签名，设置页新增对应字段
+
+### 变更
+
+- reCAPTCHA v2 暂从设置列表隐藏（无已验证密钥），存量配置仍可校验
 
 ## [1.0.0] - 2026-09-14
 
