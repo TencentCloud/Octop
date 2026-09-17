@@ -83,6 +83,13 @@ def _isolated_user_home(
     home = tmp_path_factory.mktemp("user-home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
+    for key in (
+        "OCTOP_CAPTCHA_PROVIDER",
+        "OCTOP_CAPTCHA_SITE_KEY",
+        "OCTOP_CAPTCHA_SECRET",
+        "OCTOP_CAPTCHA_V3_MIN_SCORE",
+    ):
+        monkeypatch.delenv(key, raising=False)
     return home
 
 

@@ -478,7 +478,7 @@ make all              # format-all + lint + typecheck + test (ship bar)
 # Frontend (separate terminal)
 make dev-frontend     # Vite dev server on :5173 (override with VITE_DEV_PORT)
 make build-frontend   # production build → src/octop/dashboard/
-cd dashboard && npx tsc --noEmit
+cd dashboard && npx tsc -b
 ```
 
 Individual targets: `make test`, `make lint`, `make typecheck`, `make format`.

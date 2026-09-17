@@ -74,6 +74,17 @@ async def test_health_no_auth_required(client):
     assert isinstance(body.get("started_at"), int)
 
 
+async def test_captcha_public_is_setup_locked_then_slider(client):
+    c, _, home = client
+    r = await c.get("/api/auth/captcha")
+    assert r.status_code == 503
+    assert r.json()["setup_required"] is True
+    await bootstrap_admin(c, home, username="alice", password="TestPass12")
+    r = await c.get("/api/auth/captcha")
+    assert r.status_code == 200
+    assert r.json() == {"provider": "slider"}
+
+
 async def test_patch_me_updates_display_name(client) -> None:
     c, _srv, home = client
     await bootstrap_admin(c, home)

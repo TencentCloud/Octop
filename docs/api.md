@@ -30,12 +30,38 @@ admin can clear the lockout with `POST /api/users/{id}/unlock-login`.
 ### Public endpoints (no token)
 
 `/api/docs`, `/api/openapi.json`, `/api/health`, `/api/setup/*`,
-`/api/auth/login`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
+`/api/auth/login`, `/api/auth/captcha`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
 `/api/auth/oidc/callback`, `/api/auth/oidc/exchange`,
 `/api/connectors/oauth/callback`, and `/api/internal/mcp/*`. All other routes are JWT-gated by
 `api/middleware/jwt_auth.py`; the setup lockdown middleware
 (`api/middleware/setup_lockdown.py`) additionally blocks non-setup
 routes until the wizard finishes.
+
+Password login may require a vendor captcha token. `GET /api/auth/captcha`
+returns `{provider: "slider"}` by default (dashboard slider only; no server
+check). When a strong provider is active (`turnstile`, `hcaptcha`,
+`recaptcha`, `recaptcha-v3`, `tencent`), `POST /api/auth/login` must include
+`captcha_token` (max 4096 characters; for `tencent` the dashboard sends the
+callback pair as `ticket:randstr`, verified via GET with the client IP).
+Captcha failures do not increment
+login lockout. OIDC login is unchanged. A request for an unknown username
+with a garbage token still triggers one outbound siteverify request (bounded
+by a 10s timeout and the token length limit); a known locked user is
+rejected before siteverify.
+
+Offline recovery: delete the `captcha.settings` row via local CLI /
+`settings_repo` if a settings-sourced strong provider is unreachable. If
+the process refused to start because `OCTOP_CAPTCHA_PROVIDER` is strong
+without both keys and no readable settings blob, edit `~/.octop/env` on
+disk — the dashboard and `PUT /api/envs` are unreachable until the
+process starts. `GET /api/envs` redacts `OCTOP_CAPTCHA_SECRET` as
+`********`; sending that sentinel on PUT keeps the on-disk value.
+
+If you serve the dashboard behind a CSP, allow
+`challenges.cloudflare.com`; `js.hcaptcha.com`, `newassets.hcaptcha.com`,
+`api.hcaptcha.com`; `www.google.com`, `www.gstatic.com`;
+`turing.captcha.qcloud.com`, `captcha.qq.com`, `ssl.captcha.qq.com`. Octop
+does not set these headers itself.
 
 ## Setup & auth
 
@@ -50,7 +76,8 @@ routes until the wizard finishes.
 | `POST`   | `/setup/resume-wizard` | public | Issue a fresh wizard token mid-setup |
 | `POST`   | `/setup/test-provider` | public | Ping a provider draft (kind/base_url/api_key/model) |
 | `POST`   | `/setup/finish` | public | Finalise setup and unlock the rest of the API |
-| `POST`   | `/auth/login` | public | body `{username, password}` (`username` may be email) → `{access_token, role, user, ...}` |
+| `GET`    | `/auth/captcha` | public | `{provider, site_key?}` for the login widget; 503 while setup is required |
+| `POST`   | `/auth/login` | public | body `{username, password, captcha_token?}` (`username` may be email) → `{access_token, role, user, ...}` |
 | `GET`    | `/auth/oidc/status` | public | OIDC login availability and provider display name |
 | `POST`   | `/auth/oidc/start` | public | body `{redirect_after?}` → identity-provider authorization URL |
 | `GET`    | `/auth/oidc/callback` | public | Identity-provider callback; redirects to dashboard login completion |
@@ -164,6 +191,8 @@ because each request is a one-shot continuation.
 |--------|------|------|-------|
 | `GET`    | `/settings/timezone` | user | process-level `{timezone}` from `default_timezone` |
 | `GET`    | `/settings/upload` | user | `{max_upload_mb, max_upload_bytes}` from `max_upload_mb` |
+| `GET`    | `/settings/captcha` | `captcha` | `{active, available, providers, source, v3_min_score}`; secrets omitted |
+| `PUT`    | `/settings/captcha` | `captcha` | merge `{active?, providers?}`; empty secret keeps ciphertext; `null` removes a pair |
 | `GET`    | `/cron/settings` | user | compat alias of `/settings/timezone` |
 | `GET`    | `/agents/{aid}/cron/examples` | agent access | `{task_examples}` from workspace `.octop/manifest.json` (`{zh,en}` string arrays, display-normalized to 3 or 6); `null` if the field is absent (dashboard keeps default cards). Prefer `GET /agents/{aid}/chat/welcome` which includes the same field. |
 | `GET`    | `/agents/{aid}/cron` | owner only | list cron rows; non-owners (including admin) get `[]` |

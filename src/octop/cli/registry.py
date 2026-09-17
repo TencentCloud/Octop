@@ -21,6 +21,11 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
     "models": (".commands.models", "models", "Provider presets and resolved models."),
     "skills": (".commands.skills", "skills", "Per-agent skill enable/disable."),
     "admin": (".commands.admin", "admin", "Admin commands."),
+    "captcha": (
+        ".commands.captcha",
+        "captcha",
+        "Login captcha maintenance (lockout escape hatch).",
+    ),
     "version": (".commands.version", "version", "Show the installed octop version."),
     "completion": (".commands.completion", "completion", "Shell completion utilities."),
     "update": (".commands.update", "update", "Check for and install a newer Octop release."),

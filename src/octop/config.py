@@ -410,10 +410,28 @@ def env_bind_overrides() -> tuple[str | None, int | None]:
 
 
 def load_config(path: Path) -> OctopConfig:
-    """Load ``config.json``; write defaults if absent. Apply env overrides."""
+    """Load ``config.json``; write defaults if absent. Apply env overrides.
+
+    A corrupt file raises with the path and parser position named, and is never
+    treated as empty: this is the same policy as ``infra/utils/json_file.py``,
+    duplicated here because ``octop.config`` must stay free of ``infra`` imports
+    (AGENTS.md §5). The message never echoes file contents — they hold database
+    credentials.
+    """
     file_defaults = _defaults_for_file()
     if path.exists():
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"{path} is not valid JSON (line {exc.lineno}, column {exc.colno});"
+                " fix it and retry — no settings were changed"
+            ) from exc
+        if not isinstance(raw, dict):
+            raise ValueError(
+                f"{path} must contain a JSON object, got {type(raw).__name__};"
+                " fix it and retry — no settings were changed"
+            )
         database_in_file = "database" in raw
     else:
         path.parent.mkdir(parents=True, exist_ok=True)

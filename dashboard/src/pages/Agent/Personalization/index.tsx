@@ -6,6 +6,7 @@ import {
   Brain,
   Notebook,
   Puzzle,
+  Share2,
   Sparkles,
   Waypoints,
   Wrench,
@@ -15,9 +16,10 @@ import { useAgent } from "../../../context/AgentContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { usePathTabs } from "../../../hooks/usePathTabs";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
-import { userCan } from "../../../utils/permissions";
+import { canAccessKeys, userCan } from "../../../utils/permissions";
 import SkillsTabs from "../Skills/components/SkillsTabs";
 import ToolsPanel from "../Tools/ToolsPanel";
+import ACPPanel from "../ACP";
 import SubagentManager from "../../Experts/components/SubagentManager";
 import MBTISelector from "./components/MBTISelector";
 import AgentPluginsPanel from "./components/AgentPluginsPanel";
@@ -29,6 +31,7 @@ export type PersonalizationTab =
   | "skills"
   | "subagents"
   | "tools"
+  | "acp"
   | "plugins"
   | "mbti"
   | "memory"
@@ -38,6 +41,7 @@ const PERSONALIZATION_TABS = [
   "skills",
   "subagents",
   "tools",
+  "acp",
   "plugins",
   "mbti",
   "memory",
@@ -48,6 +52,7 @@ const TAB_ICONS = {
   skills: Sparkles,
   subagents: Bot,
   tools: Wrench,
+  acp: Share2,
   plugins: Puzzle,
   mbti: Brain,
   memory: Notebook,
@@ -61,8 +66,11 @@ export default function PersonalizationPage() {
   const { activeAgentId, agents } = useAgent();
   const activeAgent = agents.find((a) => a.agent_id === activeAgentId);
   const isAllowed = useCallback(
-    (tab: PersonalizationTab) =>
-      tab !== "channels" || userCan(user, "channels"),
+    (tab: PersonalizationTab) => {
+      if (tab === "channels") return userCan(user, "channels");
+      if (tab === "acp") return canAccessKeys(user, "admin");
+      return true;
+    },
     [user],
   );
 
@@ -126,6 +134,16 @@ export default function PersonalizationPage() {
             <div className={pageShellStyles.fillChild}>
               <ToolsPanel agentId={activeAgentId} />
             </div>
+          </div>
+        )}
+
+        {isMounted("acp") && (
+          <div
+            className={styles.panel}
+            style={{ display: activeTab === "acp" ? "flex" : "none" }}
+            aria-hidden={activeTab !== "acp"}
+          >
+            <ACPPanel />
           </div>
         )}
 
