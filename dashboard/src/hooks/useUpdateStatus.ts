@@ -45,8 +45,9 @@ export function useUpdateStatus() {
   }, []);
 
   useEffect(() => {
-    // Startup: use cache if fresh (< 1h); otherwise probe and persist.
-    void refreshStatus(false);
+    // Dashboard boot: always re-fetch so a restarted server is not hidden
+    // by a still-fresh localStorage entry. Focus / interval still honor TTL.
+    void refreshStatus(true);
   }, [refreshStatus]);
 
   useEffect(() => {
