@@ -142,6 +142,52 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
+async def test_export_snapshot_omits_disabled_skills(tmp_path: Path) -> None:
+    """Publisher's skills_disabled must not land in the installable snapshot (#497)."""
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source = _workspace(source_dir)
+    manifest = {
+        "id": "source-agent",
+        "label": {"zh": "来源", "en": "Source"},
+        "description": {"zh": "说明", "en": "Description"},
+    }
+    await source.aupload_many(
+        [
+            (WORKSPACE_MANIFEST_PATH, json.dumps(manifest, ensure_ascii=False).encode()),
+            ("SOUL.md", b"# Soul"),
+            ("skills/enabled-skill/SKILL.md", b"# Enabled"),
+            ("skills/disabled-skill/SKILL.md", b"# Disabled"),
+            (".octop/skills/also-disabled/SKILL.md", b"# Also disabled"),
+        ]
+    )
+
+    destination = tmp_path / "published"
+    exported = await export_agent_workspace_to_dir(
+        workspace=source,
+        dest=destination,
+        skills_disabled={"disabled-skill", "also-disabled"},
+    )
+
+    assert "skills/enabled-skill/SKILL.md" in exported
+    assert "skills/disabled-skill/SKILL.md" not in exported
+    assert "skills/also-disabled/SKILL.md" not in exported
+    assert (destination / "skills" / "enabled-skill" / "SKILL.md").exists()
+    assert not (destination / "skills" / "disabled-skill").exists()
+    assert not (destination / "skills" / "also-disabled").exists()
+
+    installed_dir = tmp_path / "installed"
+    installed_dir.mkdir()
+    await seed_expert_directory(
+        expert_dir=destination,
+        workspace=_workspace(installed_dir),
+    )
+    assert (installed_dir / "skills" / "enabled-skill" / "SKILL.md").exists()
+    assert not (installed_dir / "skills" / "disabled-skill").exists()
+    assert not (installed_dir / "skills" / "also-disabled").exists()
+
+
+@pytest.mark.asyncio
 async def test_export_snapshot_rejects_invalid_manifest(tmp_path: Path) -> None:
     source_dir = tmp_path / "source"
     source_dir.mkdir()
