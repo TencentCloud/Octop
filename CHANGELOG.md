@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 新增内置插件 You.com 搜索（`you-search`）：免费匿名端点开箱即用，可选 `YDC_API_KEY` 或工具配置 `api_key` 使用认证端点，默认关闭
 ### 变更
 
 - ACP Runner 管理从侧边栏独立入口迁入「个性化 → ACP 工具」标签页，旧 `/acp` 路径自动重定向
