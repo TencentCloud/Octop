@@ -118,6 +118,7 @@ async def iter_dashboard_hitl_resume_sse(
         channel_type=channel_type,
     )
     disconnected = False
+    emitted = False
     try:
         async for chunk in processor.iter_hitl_resume_chunks(
             agent_id=agent_id,
@@ -131,6 +132,7 @@ async def iter_dashboard_hitl_resume_sse(
                 request_payload = chunk.get("request")
                 if isinstance(request_payload, dict):
                     hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
+            emitted = True
             if not disconnected:
                 yield format_sse("chunk", chunk)
         if pending is not None:
@@ -139,8 +141,33 @@ async def iter_dashboard_hitl_resume_sse(
                 "rejected" if rejected else "approved",
             )
         if not disconnected:
-            yield format_sse("chunk", {"type": "done"})
+            if not emitted:
+                logger.warning(
+                    "dashboard hitl resume did no work thread=%s agent=%s user=%s "
+                    "(no pending interrupt and harness produced no chunks)",
+                    thread_id,
+                    agent_id,
+                    user_id,
+                )
+                yield format_sse(
+                    "chunk",
+                    {
+                        "type": "error",
+                        "message": (
+                            "No pending approval to resume — this thread is not "
+                            "paused for a decision."
+                        ),
+                    },
+                )
+            else:
+                yield format_sse("chunk", {"type": "done"})
     except Exception as exc:
+        logger.exception(
+            "dashboard hitl resume failed thread=%s agent=%s user=%s",
+            thread_id,
+            agent_id,
+            user_id,
+        )
         yield format_sse(
             "chunk",
             {"type": "error", "message": format_stream_error(exc, locale)},
