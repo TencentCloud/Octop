@@ -18,11 +18,26 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import stat
 import tempfile
 from pathlib import Path
 from typing import Any
 
 __all__ = ["JsonFileCorruptError", "read_json_object", "write_json_atomic"]
+
+
+def _default_file_mode() -> int:
+    """The mode a plain ``write_text`` would produce (``0o666 & ~umask``).
+
+    POSIX has no get-only umask call, so read it by set-and-restore. Matches the
+    two pre-existing config.json writers (``db/rebind.py``, ``backup/auto.py``)
+    instead of leaving ``mkstemp``'s 0600, which would make a root-created
+    config.json unreadable to the service user after
+    ``octop service start --scope system``.
+    """
+    mask = os.umask(0o022)
+    os.umask(mask)
+    return 0o666 & ~mask
 
 
 class JsonFileCorruptError(ValueError):
@@ -67,18 +82,26 @@ def write_json_atomic(path: Path, data: dict[str, Any]) -> None:
 
     Readers never observe a partially written file, so an interrupted write
     cannot leave the truncated JSON that :func:`read_json_object` then refuses
-    to merge. Mirrors the fd handling of the pre-existing writer in
-    ``octop.cli.commands.run``: the descriptor is closed on every path, and the
-    temp file is removed on any failure.
+    to merge. The temp file is unique per call (``mkstemp``), so concurrent
+    writers cannot share one ``.tmp`` name.
+
+    Permissions follow the file being replaced, or the process umask for a new
+    file — a config write must never silently tighten or loosen the mode of a
+    file the user already had.
     """
     payload = (json.dumps(data, indent=2) + "\n").encode("utf-8")
     path.parent.mkdir(parents=True, exist_ok=True)
+    existing_mode: int | None = None
+    if os.name == "posix" and path.exists():
+        existing_mode = stat.S_IMODE(path.stat().st_mode)
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
         try:
             os.write(fd, payload)
         finally:
             os.close(fd)
+        if os.name == "posix":
+            os.chmod(tmp_name, _default_file_mode() if existing_mode is None else existing_mode)
         os.replace(tmp_name, path)
     except BaseException:  # also covers KeyboardInterrupt / SystemExit
         with contextlib.suppress(OSError):

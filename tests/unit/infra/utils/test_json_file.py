@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -12,6 +14,8 @@ from octop.infra.utils.json_file import (
     read_json_object,
     write_json_atomic,
 )
+
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
 
 
 def test_read_absent_file_returns_none(tmp_path: Path) -> None:
@@ -76,3 +80,28 @@ def test_failed_replace_leaves_original_intact_and_cleans_temp(
         write_json_atomic(path, {"port": 1})
     assert path.read_text(encoding="utf-8") == original
     assert [p.name for p in tmp_path.iterdir()] == ["config.json"]
+
+
+@posix_only
+def test_write_preserves_existing_file_mode(tmp_path: Path) -> None:
+    """A config write must never silently change an existing file's mode."""
+    path = tmp_path / "config.json"
+    path.write_text("{}", encoding="utf-8")
+    os.chmod(path, 0o640)
+    write_json_atomic(path, {"a": 1})
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+
+
+@posix_only
+def test_write_new_file_uses_umask_default_not_mkstemp_0600(tmp_path: Path) -> None:
+    """mkstemp's 0600 must not leak into a new config.json.
+
+    A root-created 0600 file would be unreadable to the service user after
+    ``octop service start --scope system``; the two pre-existing config.json
+    writers (``db/rebind.py``, ``backup/auto.py``) produce the umask default.
+    """
+    mask = os.umask(0o022)
+    os.umask(mask)
+    path = tmp_path / "fresh.json"
+    write_json_atomic(path, {"a": 1})
+    assert stat.S_IMODE(path.stat().st_mode) == 0o666 & ~mask
