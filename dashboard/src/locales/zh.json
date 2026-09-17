@@ -167,7 +167,8 @@
     "WORKSPACE_ROOT_RESTRICTED": "所选存储根目录超出了该账号允许的范围。",
     "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{{used}}/{{quota}}）。",
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
-    "CAPTCHA_FAILED": "验证码校验失败，请重试。"
+    "CAPTCHA_FAILED": "验证码校验失败，请重试。",
+    "CONFIG_FILE_CORRUPT": "无法更新 {{path}}：该文件不是合法 JSON（{{detail}}）。请修正语法后重试；现有配置未被改动。"
   },
   "nav": {
     "chat": "对话",

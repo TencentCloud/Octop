@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.setup import service as service_mod
 from octop.infra.setup.service import (
     ServiceRuntime,
@@ -862,3 +863,15 @@ class _FakeOs:
     def unlink(self, _path: object) -> None:
         # The tmp file is `delete=False`, so this is called in `finally`.
         return None
+
+
+def test_persist_bind_options_refuses_corrupt_config(tmp_path: Path) -> None:
+    """issue #730: must not merge into an empty dict and wipe every other key."""
+    home = tmp_path / "octop"
+    home.mkdir()
+    corrupt = '{"bind_host": "0.0.0.0", "database": {"driver": "postgresql"},}'
+    (home / "config.json").write_text(corrupt, encoding="utf-8")
+    with pytest.raises(OctopError) as excinfo:
+        service_mod.persist_bind_options(home, host="127.0.0.1", port=443)
+    assert excinfo.value.code is ErrorCode.CONFIG_FILE_CORRUPT
+    assert (home / "config.json").read_text(encoding="utf-8") == corrupt

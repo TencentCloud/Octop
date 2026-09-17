@@ -115,13 +115,34 @@ export default function AgentExpertsTable({
 
   useLayoutEffect(() => {
     if (isMobile) return;
-    const el = tableWrapRef.current;
-    if (!el) return;
+    const wrap = tableWrapRef.current;
+    if (!wrap) return;
 
     const update = () => {
-      const top = el.getBoundingClientRect().top;
-      // Table header (~55) + pagination (~56) + bottom padding (~16).
-      const next = Math.floor(window.innerHeight - top - 127);
+      const top = wrap.getBoundingClientRect().top;
+      // Fixed chrome that must stay visible below the scrollable body:
+      //   - table header row
+      //   - gap + pagination row (measured live so i18n / pageSize changes
+      //     and the body's horizontal scrollbar never overlap it)
+      const headerEl =
+        wrap.querySelector<HTMLElement>(".ant-table-thead") ??
+        wrap.querySelector<HTMLElement>(".ant-table-header");
+      const paginationEl = wrap.querySelector<HTMLElement>(
+        ".ant-table-pagination",
+      );
+      const headerH = headerEl ? headerEl.getBoundingClientRect().height : 55;
+      let paginationH = 0;
+      if (paginationEl) {
+        const pStyle = getComputedStyle(paginationEl);
+        const marginTop = parseFloat(pStyle.marginTop) || 0;
+        const marginBottom = parseFloat(pStyle.marginBottom) || 0;
+        const pRect = paginationEl.getBoundingClientRect();
+        paginationH = pRect.height + marginTop + marginBottom;
+      }
+      // Page content bottom padding below the pagination.
+      const bottomPad = 24;
+      const reserved = headerH + paginationH + bottomPad;
+      const next = Math.floor(window.innerHeight - top - reserved);
       setScrollY(Math.max(200, next));
     };
 

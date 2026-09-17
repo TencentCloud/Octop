@@ -167,7 +167,8 @@
     "WORKSPACE_ROOT_RESTRICTED": "The selected storage root is outside the allowed directory for this account.",
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({{used}}/{{quota}}).",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
-    "CAPTCHA_FAILED": "Captcha verification failed. Try again."
+    "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
+    "CONFIG_FILE_CORRUPT": "Cannot update {{path}}: the file is not valid JSON ({{detail}}). Fix the syntax and retry — no settings were changed."
   },
   "nav": {
     "chat": "Conversation",

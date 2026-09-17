@@ -70,7 +70,7 @@ help:
 	@echo "Quality targets (frontend):"
 	@echo "  lint-frontend    ESLint + Prettier check"
 	@echo "  format-frontend  Prettier write"
-	@echo "  typecheck-frontend  tsc --noEmit"
+	@echo "  typecheck-frontend  tsc -b (project references)"
 	@echo ""
 	@echo "Quality targets (full stack):"
 	@echo "  lint-all         lint + lint-frontend"
@@ -274,7 +274,7 @@ format-frontend:
 .PHONY: typecheck-frontend
 typecheck-frontend:
 	@echo "[typecheck-frontend] tsc..."
-	cd $(DASHBOARD_DIR) && npx tsc --noEmit
+	cd $(DASHBOARD_DIR) && npx tsc -b
 
 # ─── Quality (full stack) ────────────────────────────────────────────────────
 
