@@ -14,6 +14,7 @@ from octop.infra.connectors.custom_mcp import (
     extract_servers,
     harness_spec_for_server,
     normalize_server_spec,
+    server_brief_description,
     validate_servers_map,
 )
 from octop.infra.connectors.service import ConnectorService
@@ -221,6 +222,24 @@ def test_harness_spec_streamable_http_adds_accept():
     assert "enabled" not in spec
 
 
+def test_server_brief_description_http_and_stdio():
+    assert (
+        server_brief_description(
+            {"transport": "streamable_http", "url": "https://mcp.example.com/mcp"}
+        )
+        == "https://mcp.example.com/mcp"
+    )
+    assert (
+        server_brief_description(
+            {"transport": "stdio", "command": "npx", "args": ["-y", "demo"]}
+        )
+        == "npx -y demo"
+    )
+    assert server_brief_description({"transport": "stdio", "command": "uvx"}) == "uvx"
+    assert server_brief_description(None) == ""
+    assert server_brief_description({"transport": "stdio"}) == ""
+
+
 def test_put_and_expand_custom_mcp(svc: ConnectorService, db: SqlitePool):
     uid = _ensure_user(db)
     servers = svc.put_custom_servers(
@@ -249,6 +268,8 @@ def test_put_and_expand_custom_mcp(svc: ConnectorService, db: SqlitePool):
     assert by_name["deepwiki"]["status"] == "active"
     assert by_name["local"]["status"] == "disabled"
     assert by_name["deepwiki"]["instance_id"] == "custom:deepwiki"
+    assert by_name["deepwiki"]["description"] == "https://mcp.deepwiki.com/mcp"
+    assert by_name["local"]["description"] == "npx -y x"
 
     active = svc.list_active_mcp_server_names(uid)
     assert active == ["deepwiki"]

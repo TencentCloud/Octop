@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
@@ -9,10 +16,17 @@ import {
   Pencil,
   Trash2,
   GitFork,
+  Check,
+  Brain,
 } from "lucide-react";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";
+import {
+  loadExpandProcessWhileStreaming,
+  saveExpandProcessWhileStreaming,
+  subscribeExpandProcessWhileStreaming,
+} from "../utils/chatStorage";
 import styles from "../index.module.less";
 import { DESKTOP_DRAG_REGION_CLASS } from "../../../utils/desktopChrome";
 
@@ -41,6 +55,11 @@ export default function ChatTitleBar({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
+  const expandProcessWhileStreaming = useSyncExternalStore(
+    subscribeExpandProcessWhileStreaming,
+    loadExpandProcessWhileStreaming,
+    () => false,
+  );
 
   useEffect(() => {
     if (!isEditing) setEditValue(title);
@@ -82,6 +101,20 @@ export default function ChatTitleBar({
         onClick: () => onFork(session.id),
       },
       {
+        key: "expand-process",
+        label: t(
+          "chat.expandProcessWhileStreaming",
+          "生成时展开思考过程",
+        ),
+        icon: expandProcessWhileStreaming ? (
+          <Check size={14} />
+        ) : (
+          <Brain size={14} />
+        ),
+        onClick: () =>
+          saveExpandProcessWhileStreaming(!expandProcessWhileStreaming),
+      },
+      {
         key: "delete",
         label: t("common.delete"),
         icon: <Trash2 size={14} />,
@@ -107,6 +140,7 @@ export default function ChatTitleBar({
       onDelete,
       forkDisabled,
       forkDisabledHint,
+      expandProcessWhileStreaming,
       t,
     ],
   );

@@ -201,6 +201,21 @@ def server_display_name(name: str, spec: dict[str, Any] | None) -> str:
     return name
 
 
+def server_brief_description(spec: dict[str, Any] | None) -> str:
+    """One-line MCP endpoint summary for list cards (URL or stdio command)."""
+    if not isinstance(spec, dict):
+        return ""
+    transport = str(spec.get("transport") or "").strip()
+    if transport in ("streamable_http", "http"):
+        return str(spec.get("url") or "").strip()
+    command = str(spec.get("command") or "").strip()
+    args = spec.get("args")
+    if isinstance(args, list) and args:
+        parts = [command, *[str(a) for a in args if str(a).strip()]]
+        return " ".join(p for p in parts if p).strip()
+    return command
+
+
 def validate_servers_map(
     servers: Any,
     *,
@@ -382,6 +397,7 @@ def expand_custom_instances(
         enabled = server_enabled(spec)
         if shared_view and spec.get("shared") is not True:
             continue
+        brief = server_brief_description(spec)
         items.append(
             {
                 "instance_id": (
@@ -391,6 +407,7 @@ def expand_custom_instances(
                 ),
                 "kind": CUSTOM_MCP_KIND,
                 "display_name": server_display_name(name, spec),
+                "description": brief or None,
                 "status": "active" if enabled else "disabled",
                 "mcp_server_name": (
                     shared_mcp_server_name(parent.instance_id, name) if shared_view else name
