@@ -570,6 +570,39 @@ def default_task_examples(label_zh: str, label_en: str) -> dict[str, list[str]]:
     }
 
 
+def resolve_display_task_examples(
+    *,
+    parsed: dict[str, list[str]] | None,
+    catalog: ExpertCatalog | None = None,
+    template_name: str | None = None,
+    label_zh: str = "",
+    label_en: str = "",
+) -> dict[str, list[str]]:
+    """Workspace field, then catalog template, then name-based defaults (never null).
+
+    Explicit empty lists in the workspace stay empty (hide suggestion cards).
+    Missing field falls through so different experts no longer share one i18n set.
+    """
+    if parsed is not None:
+        normalized = normalize_task_examples_for_display(parsed)
+        return normalized if normalized is not None else {"zh": [], "en": []}
+    if catalog is not None and template_name:
+        expert = catalog.get(template_name)
+        summary_examples = (
+            getattr(expert.summary, "task_examples", None) if expert is not None else None
+        )
+        if summary_examples is not None:
+            normalized = normalize_task_examples_for_display(summary_examples)
+            if normalized is not None:
+                return normalized
+    zh = (label_zh or label_en or "助手").strip() or "助手"
+    en = (label_en or label_zh or "Assistant").strip() or "Assistant"
+    return normalize_task_examples_for_display(default_task_examples(zh, en)) or {
+        "zh": [],
+        "en": [],
+    }
+
+
 def normalize_task_examples_for_display(
     parsed: dict[str, list[str]] | None,
 ) -> dict[str, list[str]] | None:
