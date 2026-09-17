@@ -4,7 +4,9 @@ import { Spin } from "antd";
 import { clearAuthToken, getAuthToken } from "../api/request";
 import { authApi, type OctopUser } from "../api/modules/auth";
 import { applyUserLocale } from "../utils/locale";
+import { isNetworkFetchError } from "../utils/networkError";
 import { CurrentUserProvider } from "../hooks/useCurrentUser";
+import BootOfflinePanel from "./BootOfflinePanel";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -23,17 +25,25 @@ interface AuthGuardProps {
  * When unauthenticated we must NOT render children: MainLayout / AgentProvider
  * would fire authenticated APIs, trip the 401 interceptor, and race the
  * navigate back to ``/login``.
+ *
+ * When the backend is unreachable (offline / Failed to fetch), show an
+ * explicit offline panel with Retry instead of mounting a blank shell.
  */
 export default function AuthGuard({ children }: AuthGuardProps) {
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
   const [authed, setAuthed] = useState(false);
   const [user, setUser] = useState<OctopUser | null>(null);
+  const [offline, setOffline] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
     const check = async () => {
+      setOffline(false);
+      setChecking(true);
+      setAuthed(false);
       try {
         const status = await authApi.getAuthStatus();
 
@@ -68,19 +78,24 @@ export default function AuthGuard({ children }: AuthGuardProps) {
             setAuthed(true);
             setChecking(false);
           }
-        } catch {
-          if (!cancelled) {
-            setAuthed(false);
-            navigate("/login", { replace: true });
+        } catch (err) {
+          if (cancelled) return;
+          if (isNetworkFetchError(err)) {
+            setOffline(true);
+            setChecking(false);
+            return;
           }
+          setAuthed(false);
+          navigate("/login", { replace: true });
         }
-      } catch {
-        // Backend unreachable — let the user through. The next API call
-        // will surface the real error if the network is broken.
-        if (!cancelled) {
-          setAuthed(true);
-          setChecking(false);
-        }
+      } catch (err) {
+        if (cancelled) return;
+        // Backend unreachable (or setup/status otherwise failed) — do not
+        // mount MainLayout with a null user (that produced a blank white
+        // shell with no recovery action).
+        void err;
+        setOffline(true);
+        setChecking(false);
       }
     };
 
@@ -88,7 +103,17 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [navigate, retryKey]);
+
+  if (offline) {
+    return (
+      <BootOfflinePanel
+        onRetry={() => {
+          setRetryKey((k) => k + 1);
+        }}
+      />
+    );
+  }
 
   if (checking || !authed) {
     return (

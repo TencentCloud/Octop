@@ -36,6 +36,7 @@
     "preview": "预览",
     "content": "内容",
     "loading": "加载中…",
+    "retry": "重试",
     "done": "已完成",
     "pending": "等待中",
     "running": "执行中",
@@ -5665,6 +5666,8 @@
     "unexpectedSubtitle": "发生意外错误。",
     "reload": "重新加载",
     "retry": "重试",
+    "offlineTitle": "无法连接 Octop 服务",
+    "offlineSubtitle": "网络不可用或后端未启动。请检查网络与服务状态后重试。",
     "backHome": "返回首页"
   },
   "adminProviders": {

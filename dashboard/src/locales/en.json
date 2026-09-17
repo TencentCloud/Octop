@@ -36,6 +36,7 @@
     "preview": "Preview",
     "content": "Content",
     "loading": "Loading…",
+    "retry": "Retry",
     "done": "Done",
     "pending": "Pending",
     "running": "Running",
@@ -5526,6 +5527,8 @@
     "unexpectedSubtitle": "An unexpected error occurred.",
     "reload": "Reload",
     "retry": "Retry",
+    "offlineTitle": "Cannot reach the Octop server",
+    "offlineSubtitle": "The network may be offline or the backend is not running. Check connectivity and try again.",
     "backHome": "Back to Home"
   },
   "adminProviders": {
