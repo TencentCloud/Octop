@@ -20,6 +20,7 @@
 
 - 修复 `config.json` 解析失败时被静默清空的问题（#730）：`octop run --host/--port`、`octop service start --host/--port`、插件开关与插件 seeding 过去会把无法解析的配置当成空配置再写回，导致 `bind_host`、`database` 等全部设置丢失（PostgreSQL 实例会静默退回全新空 SQLite，且无任何告警）；现在直接报错并保留原文件不动，错误信息含行列号但不回显文件内容（其中含数据库凭据），配置写入统一改为原子写
 - `config.json` 无法解析时，`load_config` 的报错现在带上文件路径与行列号（此前是裸 `JSONDecodeError`，不说哪个文件出错），并拒绝“合法 JSON 但不是 object”的文件；报错不回显内容
+- 手动新增通道默认启用：此前创建抽屉的「启用频道」开关默认关闭，保存后紧跟一次 `enabled=false` 的 PATCH，导致新通道"出生即禁用"（created_at == updated_at 且无任何提示，机器人从此静默不回复）。现与后端创建默认值（enabled=1）及扫码绑定流程对齐，保存仅一次 POST，不再产生启停抖动
 - 腾讯验证码票据校验改用 DescribeCaptchaResult 接口（旧端点对新票据返回 decrypt fail）；校验需云 API 密钥签名，设置页新增对应字段
 
 ### 变更

@@ -85,4 +85,29 @@ describe("<ChannelsPanel /> create-flow default", () => {
       config: expect.objectContaining({ bot_token: "123456:ABC-token" }),
     });
   });
+
+  it("still honors a deliberate opt-out: unchecking fires the alignment PATCH", async () => {
+    render(<ChannelsPanel agentId="ag1" />);
+
+    const card = (await screen.findAllByText("channels.label_telegram"))[0];
+    await userEvent.click(card);
+
+    await userEvent.type(
+      await screen.findByLabelText(/Bot Token/i),
+      "123456:ABC-token",
+    );
+    // user explicitly turns the switch off before saving
+    await userEvent.click(screen.getByLabelText("channels.enableChannel"));
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+
+    await waitFor(() => {
+      const patch = api.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
+      );
+      expect(patch).toBeDefined();
+      expect(String((patch![1] as RequestInit).body)).toBe(
+        JSON.stringify({ enabled: false }),
+      );
+    });
+  });
 });
