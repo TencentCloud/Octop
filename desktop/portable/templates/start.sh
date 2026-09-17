@@ -4,6 +4,9 @@
 #   ./start.sh
 #   ./start.sh --home /path/to/data
 #   ./start.sh --home ./data --host 0.0.0.0 --port 8088
+#
+# When --host/--port are omitted, the bind address comes from config.json
+# (default 127.0.0.1:8088), so hand-edited bind_host values are preserved.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,6 +14,8 @@ export OCTOP_HOME="${OCTOP_HOME:-${ROOT}/data}"
 
 HOST="127.0.0.1"
 PORT="8088"
+HOST_ARG=""
+PORT_ARG=""
 EXTRA=()
 
 while [[ $# -gt 0 ]]; do
@@ -23,11 +28,13 @@ while [[ $# -gt 0 ]]; do
     --host)
       [[ $# -ge 2 ]] || { echo "start.sh: --host requires a value" >&2; exit 1; }
       HOST="$2"
+      HOST_ARG="$2"
       shift 2
       ;;
     --port)
       [[ $# -ge 2 ]] || { echo "start.sh: --port requires a value" >&2; exit 1; }
       PORT="$2"
+      PORT_ARG="$2"
       shift 2
       ;;
     -h|--help)
@@ -38,8 +45,8 @@ Usage: ./start.sh [--home DIR] [--host HOST] [--port PORT] [octop run args...]
 
 Defaults:
   OCTOP_HOME / --home   ${ROOT}/data
-  --host                127.0.0.1
-  --port                8088
+  --host                127.0.0.1 (only forwarded when given; otherwise config.json decides)
+  --port                8088 (only forwarded when given; otherwise config.json decides)
 
 Environment:
   OCTOP_HOME            User data directory (overridden by --home)
@@ -70,10 +77,18 @@ fi
 export PYTHONNOUSERSITE=1
 unset PYTHONPATH || true
 
+RUN_ARGS=()
+if [[ -n "$HOST_ARG" ]]; then
+  RUN_ARGS+=(--host "$HOST_ARG")
+fi
+if [[ -n "$PORT_ARG" ]]; then
+  RUN_ARGS+=(--port "$PORT_ARG")
+fi
+
 echo "[octop] home=${OCTOP_HOME}"
 echo "[octop] http://${HOST}:${PORT}"
 if [[ ${#EXTRA[@]} -gt 0 ]]; then
-  exec "$PY" "${ROOT}/launch.py" run --host "$HOST" --port "$PORT" "${EXTRA[@]}"
+  exec "$PY" "${ROOT}/launch.py" run "${RUN_ARGS[@]}" "${EXTRA[@]}"
 else
-  exec "$PY" "${ROOT}/launch.py" run --host "$HOST" --port "$PORT"
+  exec "$PY" "${ROOT}/launch.py" run "${RUN_ARGS[@]}"
 fi
