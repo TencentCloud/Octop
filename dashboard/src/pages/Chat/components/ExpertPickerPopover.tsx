@@ -39,7 +39,9 @@ export default function ExpertPickerPopover({
     [agents, filterVisible, selectedAgentIds],
   );
 
-  const listAgents = showingHidden ? hiddenAgents : visibleAgents;
+  // Leave the hidden-only view once nothing remains hidden.
+  const viewingHidden = showingHidden && hiddenAgents.length > 0;
+  const listAgents = viewingHidden ? hiddenAgents : visibleAgents;
 
   const filterFn = useCallback(
     (agent: ChatAgentOption, query: string) =>
@@ -53,12 +55,12 @@ export default function ExpertPickerPopover({
       items={listAgents}
       filterFn={filterFn}
       searchPlaceholder={
-        showingHidden
+        viewingHidden
           ? t("chat.expertPickerHiddenSearch")
           : t("chat.expertPickerSearch")
       }
       emptyMessage={
-        showingHidden
+        viewingHidden
           ? t("chat.expertPickerHiddenEmpty")
           : t("chat.expertPickerEmpty")
       }
@@ -76,7 +78,7 @@ export default function ExpertPickerPopover({
             className={styles.expertHiddenToggle}
             onClick={() => setShowingHidden((v) => !v)}
           >
-            {showingHidden
+            {viewingHidden
               ? t("chat.expertPickerShowVisible")
               : t("chat.expertPickerHidden", { count: hiddenAgents.length })}
           </button>
@@ -118,22 +120,22 @@ export default function ExpertPickerPopover({
                 type="button"
                 className={styles.expertHideBtn}
                 title={
-                  showingHidden
+                  viewingHidden
                     ? t("chat.expertUnhide")
                     : t("chat.expertHide")
                 }
                 aria-label={
-                  showingHidden
+                  viewingHidden
                     ? t("chat.expertUnhide")
                     : t("chat.expertHide")
                 }
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (showingHidden) unhide(agent.agent_id);
+                  if (viewingHidden) unhide(agent.agent_id);
                   else hide(agent.agent_id);
                 }}
               >
-                {showingHidden ? <Eye size={15} /> : <EyeOff size={15} />}
+                {viewingHidden ? <Eye size={15} /> : <EyeOff size={15} />}
               </button>
             ) : null}
           </div>

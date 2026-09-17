@@ -543,14 +543,16 @@ export default function SessionList({
     return [...visible].sort((a, b) => b.id - a.id);
   }, [agents, filterVisible, activeAgentId]);
 
-  const listAgents = showingHidden ? hiddenAgents : sortedAgents;
+  // Leave the hidden-only view once nothing remains hidden.
+  const viewingHidden = showingHidden && hiddenAgents.length > 0;
+  const agentsToRender = viewingHidden ? hiddenAgents : sortedAgents;
 
   const expandedAgentId = useMemo(
     () =>
-      showingHidden
+      viewingHidden
         ? null
         : activeAgentId ?? sortedAgents[0]?.agent_id ?? null,
-    [activeAgentId, sortedAgents, showingHidden],
+    [activeAgentId, sortedAgents, viewingHidden],
   );
   const activeAgent = useMemo(
     () => sortedAgents.find((a) => a.agent_id === expandedAgentId) ?? null,
@@ -593,15 +595,8 @@ export default function SessionList({
         </div>
       ) : (
         <div className={styles.sessionItems}>
-          {showingHidden ? (
-            hiddenAgents.length === 0 ? (
-              <div className={styles.sessionEmptyAgents}>
-                <p className={styles.sessionEmptyAgentsText}>
-                  {t("chat.expertListHiddenEmpty")}
-                </p>
-              </div>
-            ) : (
-              hiddenAgents.map((agent) => (
+          {viewingHidden
+            ? hiddenAgents.map((agent) => (
                 <InactiveAgentRow
                   key={agent.agent_id}
                   agent={agent}
@@ -613,56 +608,53 @@ export default function SessionList({
                   onUnhide={() => unhide(agent.agent_id)}
                 />
               ))
-            )
-          ) : (
-            listAgents.map((agent) => {
-              const expanded = agent.agent_id === expandedAgentId;
-              if (expanded) {
+            : agentsToRender.map((agent) => {
+                const expanded = agent.agent_id === expandedAgentId;
+                if (expanded) {
+                  return (
+                    <ActiveAgentCard
+                      key={agent.agent_id}
+                      agent={agent}
+                      sessions={sessions}
+                      activeId={activeId}
+                      searchQuery={searchQuery}
+                      hasMore={hasMore}
+                      loadingMore={loadingMore}
+                      onLoadMore={onLoadMore}
+                      onFetchAllSessions={onFetchAllSessions}
+                      onSelect={onSelect}
+                      onNewChat={onNewChat}
+                      onDelete={onDelete}
+                      onRename={onRename}
+                      onPin={onPin}
+                      onFork={onFork}
+                      activeForkDisabled={activeForkDisabled}
+                      activeForkDisabledHint={activeForkDisabledHint}
+                      onHide={
+                        canHide(agent) ? () => hide(agent.agent_id) : undefined
+                      }
+                    />
+                  );
+                }
                 return (
-                  <ActiveAgentCard
+                  <InactiveAgentRow
                     key={agent.agent_id}
                     agent={agent}
-                    sessions={sessions}
-                    activeId={activeId}
-                    searchQuery={searchQuery}
-                    hasMore={hasMore}
-                    loadingMore={loadingMore}
-                    onLoadMore={onLoadMore}
-                    onFetchAllSessions={onFetchAllSessions}
-                    onSelect={onSelect}
-                    onNewChat={onNewChat}
-                    onDelete={onDelete}
-                    onRename={onRename}
-                    onPin={onPin}
-                    onFork={onFork}
-                    activeForkDisabled={activeForkDisabled}
-                    activeForkDisabledHint={activeForkDisabledHint}
+                    onSelect={() => onAgentSelect(agent.agent_id)}
+                    onNewChat={() => onNewChat(agent.agent_id)}
                     onHide={
                       canHide(agent) ? () => hide(agent.agent_id) : undefined
                     }
                   />
                 );
-              }
-              return (
-                <InactiveAgentRow
-                  key={agent.agent_id}
-                  agent={agent}
-                  onSelect={() => onAgentSelect(agent.agent_id)}
-                  onNewChat={() => onNewChat(agent.agent_id)}
-                  onHide={
-                    canHide(agent) ? () => hide(agent.agent_id) : undefined
-                  }
-                />
-              );
-            })
-          )}
-          {hiddenAgents.length > 0 || showingHidden ? (
+              })}
+          {hiddenAgents.length > 0 ? (
             <button
               type="button"
               className={styles.expertHiddenToggle}
               onClick={() => setShowingHidden((v) => !v)}
             >
-              {showingHidden
+              {viewingHidden
                 ? t("chat.expertListShowVisible")
                 : t("chat.expertListHidden", { count: hiddenAgents.length })}
             </button>
