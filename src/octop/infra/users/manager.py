@@ -315,6 +315,28 @@ class UserManager:
                 cached_user.display_name = display_name
             return cached_user
 
+    def raise_if_login_locked(self, username: str) -> None:
+        identifier = (username or "").strip()
+        if not identifier:
+            return
+        row = self._services.user_repo.get_by_username(identifier)
+        if row is None:
+            email = normalize_email(identifier)
+            if email is not None:
+                row = self._services.user_repo.get_by_email(email)
+        if row is None:
+            return
+        now = int(time.time())
+        locked_until = int(row.login_locked_until or 0)
+        if locked_until > now:
+            retry_after = locked_until - now
+            minutes = max(1, (retry_after + 59) // 60)
+            raise OctopError(
+                ErrorCode.LOGIN_LOCKED,
+                "account temporarily locked",
+                details={"retry_after_seconds": retry_after, "minutes": minutes},
+            )
+
     async def authenticate(self, username: str, password: str) -> User | None:
         identifier = (username or "").strip()
         if not identifier:

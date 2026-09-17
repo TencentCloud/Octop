@@ -57,6 +57,11 @@ export interface LoginResponse {
   token: string;
 }
 
+export interface PublicCaptcha {
+  provider: string;
+  site_key?: string;
+}
+
 export interface OidcStatus {
   enabled: boolean;
   display_name: string;
@@ -144,11 +149,22 @@ export const authApi = {
     return result;
   },
 
+  /** Public captcha widget config for the login form. */
+  getCaptcha: () => request<PublicCaptcha>("/auth/captcha"),
+
   /** Login — octop uses username + password. */
-  login: async (username: string, password: string): Promise<LoginResponse> => {
+  login: async (
+    username: string,
+    password: string,
+    captchaToken?: string,
+  ): Promise<LoginResponse> => {
     const raw = await request<RawLoginResponse>("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify(
+        captchaToken
+          ? { username, password, captcha_token: captchaToken }
+          : { username, password },
+      ),
     });
     return { ...raw, token: raw.access_token };
   },

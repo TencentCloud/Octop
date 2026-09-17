@@ -165,7 +165,10 @@
     "INVITE_REVOKED": "该邀请码已被撤销。",
     "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。",
     "WORKSPACE_ROOT_RESTRICTED": "所选存储根目录超出了该账号允许的范围。",
-    "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{{used}}/{{quota}}）。"
+    "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{{used}}/{{quota}}）。",
+    "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
+    "CAPTCHA_FAILED": "验证码校验失败，请重试。",
+    "CONFIG_FILE_CORRUPT": "无法更新 {{path}}：该文件不是合法 JSON（{{detail}}）。请修正语法后重试；现有配置未被改动。"
   },
   "nav": {
     "chat": "对话",
@@ -174,7 +177,6 @@
     "experts": "专家",
     "tasks": "自动化",
     "connectors": "连接器",
-    "acp": "ACP",
     "agents": "Agents",
     "providers": "Providers",
     "models": "模型",
@@ -194,6 +196,7 @@
     "https": "HTTPS",
     "backupRestore": "备份与恢复",
     "environments": "环境变量",
+    "loginCaptcha": "登录验证码",
     "search": "AI 搜索",
     "collapseSidebar": "收起",
     "expandSidebar": "展开",
@@ -3006,6 +3009,42 @@
   },
   "advancedSettings": {
     "description": "管理运行配置和环境变量等高级选项。",
+    "captcha": {
+      "title": "登录验证码",
+      "description": "可选的密码登录服务端验证码。滑块仅在前端生效；强校验提供商会向厂商校验。",
+      "active": "当前提供商",
+      "siteKey": "Site key",
+      "secret": "Secret",
+      "secretPlaceholder": "留空则保留已保存的密钥",
+      "camSecretId": "云 API SecretId（用于票据校验签名）",
+      "camSecret": "云 API SecretKey",
+      "camHint": "腾讯票据校验（DescribeCaptchaResult）需使用云 API 密钥签名；建议子账号仅授予 QcloudCaptchaFullAccess 权限。",
+      "source": "来源",
+      "sourceSettings": "已保存设置",
+      "sourceEnv": "启动环境变量",
+      "v3MinScore": "reCAPTCHA v3 最低分数",
+      "save": "保存",
+      "saved": "验证码设置已保存",
+      "saveFailed": "无法保存验证码设置",
+      "loadFailed": "无法加载验证码设置",
+      "confirmStrongTitle": "启用强校验验证码？",
+      "confirmStrong": "无法展示该组件的 HTTP 客户端将无法完成登录。",
+      "unknownActive": "未知提供商 — 请重新选择",
+      "providers": {
+        "slider": "默认",
+        "turnstile": "Cloudflare Turnstile",
+        "hcaptcha": "hCaptcha",
+        "recaptcha": "reCAPTCHA v2",
+        "recaptcha-v3": "reCAPTCHA v3",
+        "tencent": "腾讯云验证码"
+      },
+      "fields": {
+        "tencent": {
+          "siteKey": "CaptchaAppId",
+          "secret": "AppSecretKey"
+        }
+      }
+    },
     "search": {
       "desc": "管理网络搜索提供商，供智能体检索互联网。",
       "tip": "您可以在此处配置或修改搜索提供商。更改将在下一次聊天会话时生效。",
@@ -3785,6 +3824,7 @@
     "tabs": {
       "skills": "技能",
       "tools": "工具",
+      "acp": "ACP 工具",
       "plugins": "插件",
       "subagents": "子智能体",
       "channels": "通道",
@@ -4617,6 +4657,7 @@
     "failed": "登录失败",
     "slideHint": "拖动滑块到最右侧完成验证",
     "slideVerified": "验证通过",
+    "unsupportedCaptcha": "当前客户端不支持此验证码。请使用支持的客户端登录。",
     "or": "或",
     "oidcWith": "使用 {{name}} 继续",
     "oidcStartFailed": "无法启动单点登录",
@@ -5274,10 +5315,6 @@
     "connectors": {
       "title": "连接器",
       "subtitle": "账户级连接文档、网盘与邮箱；对话时按需勾选"
-    },
-    "acp": {
-      "title": "ACP",
-      "subtitle": "配置外部编程 Agent Runner（OpenCode、Claude Code 等）"
     },
     "skills": {
       "title": "技能",

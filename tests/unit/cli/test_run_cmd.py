@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from click.testing import CliRunner
@@ -182,10 +184,22 @@ def test_run_merges_with_existing_config(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert data == {"theme": "dark", "bind_host": "0.0.0.0", "port": 80}
 
 
-def test_run_handles_corrupt_config_without_crashing(
+def _all_output(result: Any) -> str:
+    """stdout + stderr across click versions (8.2+ can separate the streams)."""
+    text = result.output or ""
+    with contextlib.suppress(ValueError, AttributeError):
+        text += result.stderr
+    return text
+
+
+def test_run_reports_corrupt_config_cleanly(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A malformed config.json must not block the run command."""
+    """A malformed config.json must fail cleanly, not with a traceback (#730).
+
+    The command cannot guess the ~18 settings the file holds, and boot would die
+    in ``load_config`` anyway, so the CLI names the file and position and stops.
+    """
     _patch_home(monkeypatch, tmp_path)
     (tmp_path / "config.json").write_text("{not valid json", encoding="utf-8")
 
@@ -200,22 +214,28 @@ def test_run_handles_corrupt_config_without_crashing(
 
     runner = CliRunner()
     r = runner.invoke(cli, ["run", "--port", "80"])
-    assert r.exit_code == 0, r.output
-    # Falls back to launch defaults for host, CLI for port.
-    assert captured["port"] == 80
-    assert captured["host"] is None
+    assert r.exit_code == 1, _all_output(r)
+    # Never starts with the settings it could not read.
+    assert captured == {}
+    out = _all_output(r)
+    assert "Traceback" not in out
+    assert "not valid JSON" in out
 
 
-def test_run_overwrites_corrupt_config_with_resolved_values(
+def test_run_does_not_overwrite_corrupt_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A corrupt config.json is replaced with the resolved values on save.
+    """A corrupt config.json is preserved byte-for-byte, never rewritten as empty.
 
-    Documents the deliberate ``read-merge-write`` contract: a malformed file
-    is treated as empty, so the next run rewrites it cleanly.
+    Supersedes the old "treat a malformed file as empty so the next run rewrites
+    it cleanly" contract. That rewrite destroyed every other setting: one
+    trailing comma plus ``octop run --port`` wiped the ``database`` section and
+    silently flipped a PostgreSQL instance back to a greenfield SQLite one, with
+    no warning in the log (issue #730).
     """
     _patch_home(monkeypatch, tmp_path)
-    (tmp_path / "config.json").write_text("{not valid json", encoding="utf-8")
+    corrupt = '{"bind_host": "0.0.0.0", "database": {"driver": "postgresql"},}'
+    (tmp_path / "config.json").write_text(corrupt, encoding="utf-8")
 
     def _fake(**_kw: object) -> None:
         return None
@@ -226,11 +246,8 @@ def test_run_overwrites_corrupt_config_with_resolved_values(
 
     runner = CliRunner()
     r = runner.invoke(cli, ["run", "--host", "0.0.0.0", "--port", "80"])
-    assert r.exit_code == 0, r.output
-
-    config_path = tmp_path / "config.json"
-    data = json.loads(config_path.read_text(encoding="utf-8"))
-    assert data == {"bind_host": "0.0.0.0", "port": 80}
+    assert r.exit_code == 1, _all_output(r)
+    assert (tmp_path / "config.json").read_text(encoding="utf-8") == corrupt
 
 
 def test_run_port_zero_not_overridden_by_config(
