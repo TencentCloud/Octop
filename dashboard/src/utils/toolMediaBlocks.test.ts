@@ -3,6 +3,7 @@ import {
   agentAttachmentAccessUrl,
   agentMediaPreviewUrl,
   canonicalizeMediaApiUrl,
+  extractImagePathFromText,
   isHostAbsoluteMediaPath,
   needsAuthBlobFetch,
   parseStructuredToolOutput,
@@ -10,6 +11,42 @@ import {
   toMediaPreviewSource,
   workspaceDownloadUrl,
 } from "./toolMediaBlocks";
+
+describe("extractImagePathFromText", () => {
+  it.each([
+    ["saved to generated/chart.png (640x480)", "generated/chart.png"],
+    ["written to result.jpeg", "result.jpeg"],
+    ["file path: result.GIF", "result.GIF"],
+    ["saved to file:///var/cache/a.webp", "file:///var/cache/a.webp"],
+    ["path=/home/me/outbound/a.png", "/home/me/outbound/a.png"],
+    ["(/home/me/outbound/a.svg)", "/home/me/outbound/a.svg"],
+    ["/home/me/outbound/a.jpg", "/home/me/outbound/a.jpg"],
+    ["preview /Users/me/Desktop/a.bmp", "/Users/me/Desktop/a.bmp"],
+    ["preview /tmp/a.png", "/tmp/a.png"],
+    ["No image here", null],
+  ])("extracts a path from %s", (output, expected) => {
+    expect(extractImagePathFromText(output)).toBe(expected);
+  });
+
+  it("scans large base64 tool output without stalling streaming updates", () => {
+    const payload = `data:image/jpeg;base64,${`${"A".repeat(69)}/`.repeat(
+      8000,
+    )}`;
+    const start = performance.now();
+
+    expect(extractImagePathFromText(payload)).toBeNull();
+    // An extension elsewhere must not cause the preceding payload to be
+    // retried from each slash. Keep real outbound previews working as well.
+    expect(extractImagePathFromText(`${payload}\ncaption.png`)).toBeNull();
+    expect(
+      extractImagePathFromText(`${payload}\npath=/home/me/outbound/chart.png`),
+    ).toBe("/home/me/outbound/chart.png");
+
+    // Deliberately generous: these scans take milliseconds, while the old
+    // expression takes seconds on this payload and runs on every token.
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+});
 
 describe("workspaceDownloadUrl", () => {
   it("keeps host-absolute paths as-is", () => {

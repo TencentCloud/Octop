@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 from collections.abc import AsyncIterator
@@ -32,6 +33,105 @@ async def test_ws_hub_push() -> None:
     hub.unregister("c1")
     await hub.push("c1", {"type": "token", "content": "miss"})
     assert frames == [{"type": "token", "content": "hi"}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["timeout", "error"])
+async def test_ws_hub_drops_failed_connection_and_closes_it(failure: str) -> None:
+    hub = WebSocketHub(send_timeout=0.01)
+    attempts = 0
+    closed = False
+
+    async def send(frame: dict[str, Any]) -> None:
+        nonlocal attempts
+        attempts += 1
+        if failure == "error":
+            raise ConnectionError("socket disconnected")
+        await asyncio.Event().wait()
+
+    async def close() -> None:
+        nonlocal closed
+        closed = True
+
+    hub.register("slow", send, user_id=7, close_fn=close)
+    hub.subscribe("thread-1", "slow")
+    await asyncio.wait_for(hub.push_to_thread("thread-1", {"type": "token"}), timeout=1)
+    assert closed
+    assert hub.connection_count == 0
+    await hub.push_to_thread("thread-1", {"type": "done"})
+    await hub.push_to_user(7, {"type": "dashboard_push"})
+    await hub.push("slow", {"type": "token"})
+    assert attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_ws_channel_finishes_with_a_stalled_subscriber_and_close() -> None:
+    hub = WebSocketHub(send_timeout=0.01, close_timeout=0.01)
+    frames: list[dict[str, Any]] = []
+    close_started = False
+    turn_finished = False
+
+    async def slow(frame: dict[str, Any]) -> None:
+        await asyncio.Event().wait()
+
+    async def close() -> None:
+        nonlocal close_started
+        close_started = True
+        await asyncio.Event().wait()
+
+    async def fast(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    class _FakeProcessor:
+        async def iter_turn_chunks(self, msg: InboundMessage) -> AsyncIterator[dict[str, Any]]:
+            nonlocal turn_finished
+            yield {"type": "token", "content": "hello"}
+            yield {"type": "token", "content": " world"}
+            yield {"type": "done"}
+            turn_finished = True
+
+    hub.register("slow", slow, close_fn=close)
+    hub.register("fast", fast)
+    hub.subscribe("thread-1", "slow")
+    hub.subscribe("thread-1", "fast")
+    channel = WebSocketChannel(_FakeProcessor(), hub=hub)  # type: ignore[arg-type]
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="7"),
+        content=[TextContent(text="hi")],
+        metadata={"ws_connection_id": "fast", "session_key": "sk", "thread_id": "thread-1"},
+    )
+    await asyncio.wait_for(channel.handle_inbound(msg), timeout=1)
+
+    assert close_started
+    assert turn_finished
+    assert hub.connection_count == 1
+    assert not hub.is_turn_active("thread-1")
+    assert frames == [
+        _token("hello", "thread-1"),
+        _token(" world", "thread-1"),
+        {"type": "done", "thread_id": "thread-1"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_ws_hub_does_not_swallow_turn_cancellation() -> None:
+    hub = WebSocketHub()
+    sending = asyncio.Event()
+
+    async def send(frame: dict[str, Any]) -> None:
+        sending.set()
+        await asyncio.Event().wait()
+
+    hub.register("c1", send)
+    task = asyncio.create_task(hub.push("c1", {"type": "token"}))
+    await asyncio.wait_for(sending.wait(), timeout=1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert hub.connection_count == 1
 
 
 @pytest.mark.asyncio

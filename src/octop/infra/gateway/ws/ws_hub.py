@@ -11,6 +11,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 SendFn = Callable[[dict[str, Any]], Awaitable[None]]
+CloseFn = Callable[[], Awaitable[None]]
 
 
 def stamp_thread_id(frame: dict[str, Any], thread_id: str) -> dict[str, Any]:
@@ -32,8 +33,11 @@ class WebSocketHub:
     thread at a time.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, send_timeout: float = 5.0, close_timeout: float = 1.0) -> None:
+        self._send_timeout = send_timeout
+        self._close_timeout = close_timeout
         self._connections: dict[str, SendFn] = {}
+        self._close_callbacks: dict[str, CloseFn] = {}
         self._thread_subscribers: dict[str, set[str]] = {}
         self._conn_thread: dict[str, str] = {}
         self._user_conns: dict[int, set[str]] = {}
@@ -46,9 +50,13 @@ class WebSocketHub:
         send_fn: SendFn,
         *,
         user_id: int | None = None,
+        close_fn: CloseFn | None = None,
     ) -> None:
         self._unbind_user(connection_id)
         self._connections[connection_id] = send_fn
+        self._close_callbacks.pop(connection_id, None)
+        if close_fn is not None:
+            self._close_callbacks[connection_id] = close_fn
         if user_id is None:
             return
         self._conn_user[connection_id] = user_id
@@ -58,6 +66,7 @@ class WebSocketHub:
         self.unsubscribe_connection(connection_id)
         self._unbind_user(connection_id)
         self._connections.pop(connection_id, None)
+        self._close_callbacks.pop(connection_id, None)
 
     def _unbind_user(self, connection_id: str) -> None:
         user_id = self._conn_user.pop(connection_id, None)
@@ -117,9 +126,30 @@ class WebSocketHub:
             logger.debug("ws hub: connection %s not found", connection_id)
             return
         try:
-            await send_fn(frame)
+            # A browser that stops reading must not stall the turn iterator
+            # indefinitely (including delivery to healthy subscribers).
+            async with asyncio.timeout(self._send_timeout):
+                await send_fn(frame)
+        except TimeoutError:
+            logger.warning("ws hub: send timed out for %s; disconnecting", connection_id)
         except Exception:
             logger.exception("ws hub: push failed for %s", connection_id)
+        else:
+            return
+
+        # A callback may have been replaced while this send was in flight.
+        if self._connections.get(connection_id) is not send_fn:
+            return
+        close_fn = self._close_callbacks.get(connection_id)
+        self.unregister(connection_id)
+        if close_fn is not None:
+            try:
+                # Closing a congested socket can also block. Bound cleanup,
+                # while letting the client reconnect and recover turn status.
+                async with asyncio.timeout(self._close_timeout):
+                    await close_fn()
+            except Exception:
+                logger.warning("ws hub: close failed for %s", connection_id, exc_info=True)
 
     async def push_to_thread(self, thread_id: str, frame: dict[str, Any]) -> None:
         tid = thread_id.strip()

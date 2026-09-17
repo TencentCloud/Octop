@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
-from starlette.websockets import WebSocketDisconnect
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from tests.support.app import octop_client
 from tests.support.auth import (
@@ -247,6 +248,36 @@ async def test_ws_emits_chunks_then_done(env: Any) -> None:
     types = [ch.get("type") for ch in chunks]
     assert "token" in types
     assert chunks[-1]["type"] == "done"
+
+
+async def test_ws_slow_send_closes_socket_and_reconnect_reports_idle(
+    env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    create = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    tid = create.json()["thread_id"]
+    hub = srv.app_runtime.gateway.ws_hub
+    monkeypatch.setattr(hub, "_send_timeout", 0.01)
+    original_send = WebSocket.send_text
+
+    async def congested_send(socket: WebSocket, data: str) -> None:
+        if json.loads(data).get("type") == "token":
+            await asyncio.Event().wait()
+        await original_send(socket, data)
+
+    monkeypatch.setattr(WebSocket, "send_text", congested_send)
+    async with _chat_ws(c, aid, alice_auth) as ws:
+        await ws.send_json({"type": "user_turn", "text": "Hello", "thread_id": tid})
+        with pytest.raises(WebSocketDisconnect) as closed:
+            await ws.receive_json(timeout=2)
+        assert closed.value.code == 1013
+
+    async with asyncio.timeout(2):
+        while hub.is_turn_active(tid):
+            await asyncio.sleep(0.001)
+    assert hub.connection_count == 0
+    frame = await _subscribe_ws(c, aid, alice_auth, tid)
+    assert frame == {"type": "turn_status", "thread_id": tid, "active": False}
 
 
 async def test_ws_disconnect_does_not_cancel_active_turn(env: Any) -> None:
