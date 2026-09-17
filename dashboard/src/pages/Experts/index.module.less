@@ -1322,21 +1322,27 @@
   overscroll-behavior: contain;
 }
 
-.catalogDrawerRoot {
+/* Bounded drawer height so catalog children can scroll (desktop + mobile). */
+.catalogDrawerFlex {
   :global {
-    .ant-drawer-content-wrapper {
-      width: 100% !important;
-      max-width: 100vw !important;
-    }
-
     .ant-drawer-content {
       display: flex;
       flex-direction: column;
+      height: 100%;
     }
 
     .ant-drawer-body {
       flex: 1;
       min-height: 0;
+    }
+  }
+}
+
+.catalogDrawerRoot {
+  :global {
+    .ant-drawer-content-wrapper {
+      width: 100% !important;
+      max-width: 100vw !important;
     }
   }
 }

@@ -18,6 +18,7 @@
 
 ### 修复
 
+- 专家页子智能体目录抽屉在桌面端可滚动，不再只显示首屏约十几张卡片（#136）
 - 修复 PostgreSQL 全新部署中 `knowledge_bases` 缺失 `max_documents` 列导致创建知识库失败（#755）：在 `010_thread_message_projection.pg.sql` 补齐 `ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS max_documents`，并在 `migrate.py` 迁移结束处跨方言统一执行 `_ensure_knowledge_bases_schema(db)`；同时修复 `_map_knowledge_error` 将未分类系统异常误报为“向量模型或依赖尚未就绪”掩盖真实错误的问题，改为记录堆栈并返回 `INTERNAL_ERROR`。
 - 修复 `config.json` 解析失败时被静默清空的问题（#730）：`octop run --host/--port`、`octop service start --host/--port`、插件开关与插件 seeding 过去会把无法解析的配置当成空配置再写回，导致 `bind_host`、`database` 等全部设置丢失（PostgreSQL 实例会静默退回全新空 SQLite，且无任何告警）；现在直接报错并保留原文件不动，错误信息含行列号但不回显文件内容（其中含数据库凭据），配置写入统一改为原子写
 - `config.json` 无法解析时，`load_config` 的报错现在带上文件路径与行列号（此前是裸 `JSONDecodeError`，不说哪个文件出错），并拒绝“合法 JSON 但不是 object”的文件；报错不回显内容
