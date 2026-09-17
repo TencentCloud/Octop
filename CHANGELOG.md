@@ -23,6 +23,7 @@
 - `config.json` 无法解析时，`load_config` 的报错现在带上文件路径与行列号（此前是裸 `JSONDecodeError`，不说哪个文件出错），并拒绝“合法 JSON 但不是 object”的文件；报错不回显内容
 - 手动新增通道默认启用：此前创建抽屉的「启用频道」开关默认关闭，保存后紧跟一次 `enabled=false` 的 PATCH，导致新通道"出生即禁用"（created_at == updated_at 且无任何提示，机器人从此静默不回复）。现与后端创建默认值（enabled=1）及扫码绑定流程对齐，保存仅一次 POST，不再产生启停抖动
 - 腾讯验证码票据校验改用 DescribeCaptchaResult 接口（旧端点对新票据返回 decrypt fail）；校验需云 API 密钥签名，设置页新增对应字段
+- 修复 HITL resume 对待暂停线程的空转静默 no-op（#582）：当 graph 线程没有待审批 interrupt 时，dashboard 的 `POST /chat/hitl/resume` 过去返回 200 却无任何输出、服务端零日志，前端误以为已恢复；现在 SSE 层检测到整轮 resume 零产出即下发明确的 error 帧并记录 warning，异常路径也补了服务端异常日志
 
 ### 变更
 

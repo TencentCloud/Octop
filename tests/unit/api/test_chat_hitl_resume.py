@@ -158,3 +158,80 @@ async def test_dashboard_hitl_resume_finishes_after_client_disconnect() -> None:
 
     assert completed is True
     assert frames == []
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hitl_resume_no_pending_zero_output_errors_not_silent_done(
+    caplog: Any,
+) -> None:
+    """A thread with no pending interrupt must not silently no-op (#582).
+
+    When the harness produces no resume chunks at all, the SSE stream should
+    emit an explicit error instead of a bare ``done`` and log server-side.
+    """
+    async def _resume(*_args: object, **_kwargs: object):
+        if False:
+            yield None  # pragma: no cover
+        return
+
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = _resume
+    hitl = HitlChannelCoordinator()
+
+    frames = [
+        frame
+        async for frame in iter_dashboard_hitl_resume_sse(
+            processor=processor,
+            hitl_coordinator=hitl,
+            agent_id="agent-1",
+            thread_id="thr-no-pending",
+            user_id=9,
+            decisions=[{"type": "approve"}],
+            pending=None,
+            session_key="sk-none",
+            channel_type="dashboard",
+            locale="en",
+            is_disconnected=AsyncMock(return_value=False),
+        )
+    ]
+
+    chunks = _parse_sse_chunks("".join(frames))
+    assert chunks
+    assert chunks[-1]["type"] == "error"
+    assert "No pending approval to resume" in chunks[-1]["message"]
+    assert any(c.get("type") == "done" for c in chunks) is False
+    assert "did no work" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hitl_resume_error_chunk_finishes_normally() -> None:
+    """A harness error chunk is a real resume outcome → done, not a silent no-op."""
+    async def _resume(*_args: object, **_kwargs: object):
+        yield {"type": "error", "message": "boom"}
+
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = _resume
+    hitl = HitlChannelCoordinator()
+
+    frames = [
+        frame
+        async for frame in iter_dashboard_hitl_resume_sse(
+            processor=processor,
+            hitl_coordinator=hitl,
+            agent_id="agent-1",
+            thread_id="thr-err",
+            user_id=9,
+            decisions=[{"type": "approve"}],
+            pending=None,
+            session_key="sk-err",
+            channel_type="dashboard",
+            locale="en",
+            is_disconnected=AsyncMock(return_value=False),
+        )
+    ]
+
+    chunks = _parse_sse_chunks("".join(frames))
+    assert chunks
+    assert chunks[0]["type"] == "error"
+    assert "boom" in chunks[0]["message"]
+    assert chunks[-1]["type"] == "done"
