@@ -673,3 +673,107 @@ async def test_ws_channel_send_text_finalizes_with_done() -> None:
     assert frames[0]["type"] == "token"
     assert frames[0]["content"] == "hello"
     assert frames[-1]["type"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_user_message_persisted_before_stream_completes(tmp_path: Path) -> None:
+    """Regression for #737: the user's message must be durable before the turn
+    finishes, so a refresh during model thinking does not lose it.
+
+    The dashboard WS path only wrote the user message at turn end
+    (``_record_turn_history``) or on interrupt (``_persist_incomplete_turn``).
+    A turn that is still streaming (model thinking) had nothing in
+    ``thread_message_repo`` yet — refreshing the page lost the user message.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from octop.infra.db.migrate import run_migrations
+    from octop.infra.db.pool import SqlitePool
+    from octop.infra.db.repos.agents import AgentRepo
+    from octop.infra.db.repos.thread_messages import ThreadMessageRepo
+    from octop.infra.db.repos.threads import ThreadRepo
+    from octop.infra.db.repos.users import UserRepo
+    from octop.infra.gateway.process.processor import GlobalProcessor
+    from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+
+    db = SqlitePool(tmp_path / "octop.db")
+    run_migrations(db)
+    user_id = UserRepo(db).create(username="u", password_hash="hash", role="user")
+    agent_repo = AgentRepo(db)
+    agent_repo.create(agent_id="agent-1", user_id=user_id, name="Agent")
+    ThreadRepo(db).insert(
+        thread_id="thread-1",
+        agent_id="agent-1",
+        user_id=user_id,
+        channel_type="dashboard",
+        session_key="sk",
+    )
+    history_repo = ThreadMessageRepo(db)
+
+    released = asyncio.Event()
+
+    async def _stream(*_args: object, **_kwargs: object):
+        # First chunk = turn is live, model is "thinking". Hold here so the
+        # test can inspect durability mid-turn, exactly like a page refresh.
+        yield {"type": "token", "content": "thinking..."}
+        await released.wait()
+
+    agent_manager = MagicMock()
+    agent_manager.stream = _stream
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+
+    thread_registry = MagicMock()
+    thread_registry.get_or_create_by_key = AsyncMock(return_value="thread-1")
+
+    processor = GlobalProcessor(
+        agent_manager=agent_manager,
+        thread_registry=thread_registry,
+        audit_repo=MagicMock(),
+        agent_repo=agent_repo,
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        usage_repo=None,
+        thread_message_repo=history_repo,
+        gateway=None,
+    )
+
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="please summarize the repo")],
+        metadata={"session_key": "sk", "thread_id": "thread-1"},
+    )
+
+    async def _consume() -> list[dict[str, Any]]:
+        return [c async for c in processor.iter_turn_chunks(msg)]
+
+    task = asyncio.create_task(_consume())
+    # Let the turn start and stream its first chunk.
+    await asyncio.sleep(0.05)
+
+    # The user message must already be durable even though the model is still
+    # streaming. (This is the assertion that fails before the fix.)
+    messages, has_more = history_repo.page("thread-1", limit=10)
+    roles = [m.role for m in messages]
+    assert has_more is False
+    assert "human" in roles, (
+        "user message not persisted while the turn is still streaming "
+        f"(got roles={roles}); refreshing the page loses it (#737)"
+    )
+    human_wires = [
+        json.loads(m.message_json) for m in messages if m.role == "human"
+    ]
+    assert any(
+        "please summarize the repo" in str(w.get("data", {}).get("content") or "")
+        for w in human_wires
+    )
+
+    released.set()
+    chunks = await task
+    assert any(c.get("type") == "done" for c in chunks)
+    db.close()
