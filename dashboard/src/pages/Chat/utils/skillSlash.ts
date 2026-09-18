@@ -18,3 +18,14 @@ export function insertSkillSlash(text: string, slug: string): string {
   const pad = text.length > 0 && !/\s$/.test(text) ? " " : "";
   return `${text}${pad}${token} `;
 }
+
+/** Slugs of skills the draft already invokes (its leading ``/slug`` token). */
+export function mentionedSkillSlugs(
+  text: string,
+  skills: ReadonlyArray<{ slug: string }>,
+): string[] {
+  const match = text.match(LEADING_SLASH);
+  if (!match) return [];
+  const slug = match[2].slice(1);
+  return skills.some((skill) => skill.slug === slug) ? [slug] : [];
+}

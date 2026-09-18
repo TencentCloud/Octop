@@ -51,6 +51,7 @@ import {
   mentionedExpertIds,
   mentionedSubagentSlugs,
 } from "../utils/expertMention";
+import { mentionedSkillSlugs } from "../utils/skillSlash";
 import styles from "../index.module.less";
 
 /** Shared by mobile drawers and narrow-desktop popovers. */
@@ -243,6 +244,7 @@ export default function ChatInputActionsRow({
     text,
     availableSubagents ?? [],
   );
+  const selectedSkillSlugs = mentionedSkillSlugs(text, availableSkills ?? []);
   const showShortcutPicker = true;
   const showOverflowMenu =
     showConnectorPicker ||
@@ -256,7 +258,8 @@ export default function ChatInputActionsRow({
     selectedConnectors.length +
     selectedKnowledgeBaseIds.length +
     mentionedExperts.length +
-    mentionedSubagents.length;
+    mentionedSubagents.length +
+    selectedSkillSlugs.length;
 
   const closeCompactPicker = () => {
     setCompactPicker(null);
@@ -666,6 +669,7 @@ export default function ChatInputActionsRow({
         return (
           <SkillPickerPopover
             skills={availableSkills ?? []}
+            selectedSlugs={selectedSkillSlugs}
             onSelectSkill={(slug) => {
               onInsertSkillCommand?.(slug);
               closeCompactPicker();
@@ -965,6 +969,7 @@ export default function ChatInputActionsRow({
             content={
               <SkillPickerPopover
                 skills={availableSkills!}
+                selectedSlugs={selectedSkillSlugs}
                 onSelectSkill={(slug) => {
                   onInsertSkillCommand?.(slug);
                   setSkillPickerOpen(false);
@@ -974,8 +979,18 @@ export default function ChatInputActionsRow({
             }
           >
             <Tooltip title={t("chat.skillPicker")} mouseEnterDelay={0.4}>
-              <button className={styles.secondaryBtn} type="button">
+              <button
+                className={`${styles.secondaryBtn} ${
+                  selectedSkillSlugs.length > 0 ? styles.secondaryBtnActive : ""
+                }`}
+                type="button"
+              >
                 <Sparkles size={16} />
+                {selectedSkillSlugs.length > 0 && (
+                  <span className={styles.toolbarBadge}>
+                    {selectedSkillSlugs.length}
+                  </span>
+                )}
               </button>
             </Tooltip>
           </Popover>

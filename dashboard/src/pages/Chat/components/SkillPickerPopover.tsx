@@ -11,6 +11,7 @@ import styles from "../index.module.less";
 
 interface SkillPickerPopoverProps {
   skills: SkillSpec[];
+  selectedSlugs?: string[];
   onSelectSkill: (slug: string) => void;
   onNavigateAway?: () => void;
 }
@@ -36,6 +37,7 @@ function skillAvatarFallback(skill: SkillSpec): string {
 
 export default function SkillPickerPopover({
   skills,
+  selectedSlugs = [],
   onSelectSkill,
   onNavigateAway,
 }: SkillPickerPopoverProps) {
@@ -74,27 +76,34 @@ export default function SkillPickerPopover({
         onNavigateAway?.();
         navigate("/personalization/skills");
       }}
-      renderItem={(skill) => (
-        <button
-          key={skill.slug}
-          type="button"
-          className={styles.skillPickerItem}
-          onClick={() => {
-            onSelectSkill(skill.slug);
-            onNavigateAway?.();
-          }}
-        >
-          <SkillAvatar skill={skill} />
-          <span className={pickerStyles.itemText}>
-            <span className={pickerStyles.itemName}>
-              {skillDisplayName(skill)}
+      renderItem={(skill) => {
+        const active = selectedSlugs.includes(skill.slug);
+        return (
+          <button
+            key={skill.slug}
+            type="button"
+            className={`${styles.skillPickerItem} ${
+              active ? styles.skillPickerItemActive : ""
+            }`}
+            onClick={() => {
+              onSelectSkill(skill.slug);
+              onNavigateAway?.();
+            }}
+          >
+            <SkillAvatar skill={skill} />
+            <span className={pickerStyles.itemText}>
+              <span className={pickerStyles.itemName}>
+                {skillDisplayName(skill)}
+              </span>
+              {skill.description ? (
+                <span className={pickerStyles.itemDesc}>
+                  {skill.description}
+                </span>
+              ) : null}
             </span>
-            {skill.description ? (
-              <span className={pickerStyles.itemDesc}>{skill.description}</span>
-            ) : null}
-          </span>
-        </button>
-      )}
+          </button>
+        );
+      }}
     />
   );
 }

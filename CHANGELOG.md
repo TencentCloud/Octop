@@ -21,6 +21,7 @@
 
 ### 修复
 
+- 对话技能选择器新增已选用标记（#784）：列表高亮草稿开头 `/技能` 命令对应的技能，工具栏技能按钮高亮并显示数量徽标（含移动端溢出菜单徽标），与知识库选择器交互对齐
 - 专家页子智能体目录抽屉在桌面端可滚动，不再只显示首屏约十几张卡片（#136）
 - SSO 回调失败时在服务端日志记录真实错误原因；httpx 请求 URL 不再写入 INFO 日志，避免泄露查询参数中的密钥
 - 修复 PostgreSQL 全新部署中 `knowledge_bases` 缺失 `max_documents` 列导致创建知识库失败（#755）：在 `010_thread_message_projection.pg.sql` 补齐 `ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS max_documents`，并在 `migrate.py` 迁移结束处跨方言统一执行 `_ensure_knowledge_bases_schema(db)`；同时修复 `_map_knowledge_error` 将未分类系统异常误报为“向量模型或依赖尚未就绪”掩盖真实错误的问题，改为记录堆栈并返回 `INTERNAL_ERROR`。
