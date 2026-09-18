@@ -215,6 +215,9 @@
 
 .turnInset {
   .chatMsgColumns();
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 
   > * {
     grid-column: 2;
@@ -589,13 +592,28 @@
   }
 }
 
-/* Unified bottom waiting state — fixed slot for the whole stream. */
+/* Unified bottom waiting state — fixed slot for the whole stream.
+   Keep width tied to the message column: a flex slot + turnInset grid can
+   resolve to the grid's preferred max (avatar gutters + 960px) after the
+   session sidebar opens/closes and the chatMain width reflows. */
 .generatingSlot {
   min-height: 36px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   display: flex;
   align-items: center;
   padding: 4px 4px 8px;
   box-sizing: border-box;
+  overflow: hidden;
+
+  > * {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
 }
 
 .generatingIndicator {
@@ -603,6 +621,9 @@
   align-items: center;
   gap: 6px;
   padding: 4px 0;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .generatingText {
