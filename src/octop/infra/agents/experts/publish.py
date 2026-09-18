@@ -297,9 +297,7 @@ def _is_seedable_path(
         return basename in _EXPORT_ROOT_MD
     if parts[0] == "skills":
         slug = parts[1] if len(parts) >= 2 else ""
-        if slug and skills_disabled and slug in skills_disabled:
-            return False
-        return True
+        return not (slug and skills_disabled and slug in skills_disabled)
     if parts[0] == "agents":
         return basename.endswith(".md")
     return False
