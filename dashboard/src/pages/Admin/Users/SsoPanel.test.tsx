@@ -9,7 +9,17 @@ const { getOidcConfig, putOidcConfig, testOidcConfig } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../api/modules/sso", () => ({
-  ssoApi: { getOidcConfig, putOidcConfig, testOidcConfig },
+  ssoApi: {
+    getOidcConfig,
+    putOidcConfig,
+    testOidcConfig,
+    getOauthProvider: vi.fn(),
+    putOauthProvider: vi.fn(),
+    testOauthProvider: vi.fn(),
+    getFeishuConfig: vi.fn(),
+    putFeishuConfig: vi.fn(),
+    testFeishuConfig: vi.fn(),
+  },
 }));
 
 vi.mock("@/utils/antdMessage", () => ({
@@ -23,7 +33,7 @@ describe("<SsoPanel />", () => {
     vi.clearAllMocks();
   });
 
-  it("loads the provider configuration and displays its callback URL", async () => {
+  it("loads the OIDC configuration and displays its callback URL", async () => {
     getOidcConfig.mockResolvedValue({
       enabled: true,
       display_name: "Acme SSO",
@@ -44,8 +54,13 @@ describe("<SsoPanel />", () => {
         "https://octop.example.com/api/auth/oidc/callback",
       ),
     ).toBeInTheDocument();
-    // Mocked t() returns the key; interpolation keeps {{name}} unless options used.
     expect(screen.getByText("adminSso.statusEnabled")).toBeInTheDocument();
+    expect(screen.getByText("adminSso.oidcKind")).toBeInTheDocument();
+    expect(screen.getByText("adminSso.guideTitle")).toBeInTheDocument();
+    expect(screen.getByText("adminSso.loginPreview")).toBeInTheDocument();
+    expect(
+      screen.queryByText("adminSso.oauthFamilyTitle"),
+    ).not.toBeInTheDocument();
   });
 
   it("applies an IdP preset into display name", async () => {

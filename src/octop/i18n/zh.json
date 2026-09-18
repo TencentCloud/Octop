@@ -374,6 +374,8 @@
     "PUBLISHED_EXPERT_SLUG_TAKEN": "已存在发布专家 slug：{slug}。",
     "PUBLISHED_EXPERT_ALREADY_EXISTS": "该专家已发布为「{name}」，请改为刷新已发布模板。",
     "OIDC_BAD_REQUEST": "OIDC 请求无效：{detail}",
+    "SSO_IDENTITY_TAKEN": "该登录身份已绑定到其他 Octop 账号。",
+    "SSO_UNBIND_REQUIRES_PASSWORD": "请先设置密码再解绑单点登录。",
     "EXPERT_MARKET_FAILED": "专家市场暂时不可用，请稍后重试。",
     "SKILLHUB_SSL_FAILED": "SkillHub 请求失败：检测到 Python SSL 错误。macOS 可尝试 `brew reinstall openssl@3`，或检查系统 CA 证书。",
     "DESKTOP_SESSION_LIMIT": "远程桌面并发连接已达上限（最多 {limit} 路），请关闭其他连接后重试。",

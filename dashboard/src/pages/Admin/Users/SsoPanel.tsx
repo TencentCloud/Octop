@@ -24,7 +24,6 @@ import {
   CheckCircle2,
   Copy,
   FlaskConical,
-  KeyRound,
   Lock,
   Save,
   XCircle,
@@ -38,7 +37,6 @@ import {
 } from "../../../api/modules/sso";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { copyText } from "../../../utils/copyText";
-import { TabPanelHeader } from "../../Settings/AdvancedSettings/TabPanelHeader";
 import styles from "./index.module.less";
 
 interface SsoFormValues {
@@ -130,6 +128,7 @@ export default function SsoPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const [redirectUri, setRedirectUri] = useState("");
   const [hasClientSecret, setHasClientSecret] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -219,6 +218,29 @@ export default function SsoPanel() {
     }
   };
 
+  const toggleEnabled = async (next: boolean) => {
+    const previous = !next;
+    const name = displayName.trim() || t("adminSso.statusUnnamed");
+    setToggling(true);
+    try {
+      await ssoApi.putOidcConfig({ enabled: next });
+      message.success(
+        next
+          ? t("adminSso.statusEnabled", { name })
+          : t("adminSso.statusDisabled"),
+      );
+    } catch (error) {
+      hydratingRef.current = true;
+      form.setFieldsValue({ enabled: previous });
+      queueMicrotask(() => {
+        hydratingRef.current = false;
+      });
+      message.error(apiErrorMessage(error, t("adminSso.saveFailed"), t));
+    } finally {
+      setToggling(false);
+    }
+  };
+
   const testConnection = async () => {
     if (dirty) {
       message.warning(t("adminSso.testNeedsSave"));
@@ -282,392 +304,391 @@ export default function SsoPanel() {
     : t("adminSso.statusDisabled");
 
   return (
-    <div className={styles.ssoPanel}>
-      <TabPanelHeader
-        icon={<KeyRound size={22} />}
-        title={t("adminSso.panelTitle")}
-        description={t("adminSso.panelDesc")}
-        actions={
-          <Tag
-            className={enabled ? styles.ssoStatusTagOn : styles.ssoStatusTagOff}
-          >
-            <span
-              className={
-                enabled ? styles.ssoStatusDotOn : styles.ssoStatusDotOff
-              }
-            />
-            {statusLabel}
-          </Tag>
-        }
-      />
-
+    <div className={styles.ssoProviders}>
       <Spin spinning={loading}>
-        <div className={styles.ssoLayout}>
-          <aside className={styles.ssoAside}>
-            <div className={styles.ssoGuide}>
-              <div className={styles.ssoAsideTitle}>
-                {t("adminSso.guideTitle")}
-              </div>
-              <ol className={styles.ssoGuideList}>
-                {GUIDE_STEPS.map((key, index) => {
-                  const done = guideStep > index;
-                  const current = guideStep === index;
-                  return (
-                    <li
-                      key={key}
-                      className={[
-                        styles.ssoGuideItem,
-                        done ? styles.ssoGuideDone : "",
-                        current ? styles.ssoGuideCurrent : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      <span className={styles.ssoGuideIndex} aria-hidden>
-                        {done ? <Check size={12} /> : index + 1}
-                      </span>
-                      <span>{t(key)}</span>
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
-
-            <div className={styles.ssoAsideCard}>
-              <div className={styles.ssoAsideTitle}>
-                {t("adminSso.loginPreview")}
-              </div>
-              <div
-                className={[
-                  styles.ssoPreviewBtn,
-                  enabled ? "" : styles.ssoPreviewBtnMuted,
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                {t("login.oidcWith", {
-                  name: displayName.trim() || t("adminSso.statusUnnamed"),
-                })}
-              </div>
-              {!enabled && (
-                <p className={styles.ssoPreviewHint}>
-                  {t("adminSso.loginPreviewDisabled")}
-                </p>
-              )}
-            </div>
-
-            <section className={styles.ssoRedirectCard}>
-              <div className={styles.ssoRedirectHeader}>
-                <h4 className={styles.ssoSectionTitle}>
-                  {t("adminSso.redirectUri")}
-                </h4>
-                <p className={styles.ssoSectionHint}>
-                  {t("adminSso.redirectUriHint")}
-                </p>
-              </div>
-              <Space.Compact className={styles.ssoRedirectRow}>
-                <Tooltip title={redirectUri || undefined}>
-                  <Input
-                    readOnly
-                    value={redirectUri}
-                    className={styles.ssoRedirectInput}
-                    placeholder={t("adminSso.redirectUriEmpty")}
-                  />
-                </Tooltip>
-                <Button
-                  type="primary"
-                  icon={copied ? <Check size={15} /> : <Copy size={15} />}
-                  onClick={() => void copyRedirectUri()}
-                  disabled={!redirectUri}
-                  aria-label={t("adminSso.copyRedirectUri")}
-                >
-                  {copied ? t("adminSso.copied") : t("adminSso.copy")}
-                </Button>
-              </Space.Compact>
-              <Typography.Paragraph
-                type="secondary"
-                className={styles.ssoRedirectDocs}
-              >
-                {t("adminSso.redirectUriDocs")}
-              </Typography.Paragraph>
-            </section>
-
-            {testResult && (
-              <Alert
-                className={styles.ssoAlert}
-                type={testResult.ok ? "success" : "error"}
-                showIcon
-                icon={
-                  testResult.ok ? (
-                    <CheckCircle2 size={16} />
-                  ) : (
-                    <XCircle size={16} />
-                  )
-                }
-                message={
-                  testResult.ok
-                    ? t("adminSso.testSuccess")
-                    : t("adminSso.testFailed")
-                }
-                description={testResult.detail}
-                closable
-                onClose={() => setTestResult(null)}
-              />
-            )}
-          </aside>
-
-          <Form<SsoFormValues>
-            form={form}
-            layout="vertical"
-            requiredMark={false}
-            onFinish={(values) => void saveConfig(values)}
-            onValuesChange={() => {
-              if (hydratingRef.current) return;
-              setDirty(true);
-              setTestResult(null);
-            }}
-            initialValues={{
-              enabled: false,
-              scopes: ["openid", "profile", "email"],
-            }}
-            className={styles.ssoForm}
-          >
-            <section className={styles.ssoSection}>
-              <div className={styles.ssoEnableRow}>
-                <div className={styles.ssoEnableText}>
-                  <div className={styles.ssoSectionTitle}>
-                    {t("adminSso.enabled")}
-                  </div>
-                  <p className={styles.ssoSectionHint}>
-                    {t("adminSso.enabledHint")}
-                  </p>
-                </div>
-                <Form.Item
-                  name="enabled"
-                  valuePropName="checked"
-                  className={styles.ssoEnableSwitch}
-                >
-                  <Switch />
-                </Form.Item>
-              </div>
-            </section>
-
-            <section className={styles.ssoSection}>
-              <div className={styles.ssoSectionHeader}>
-                <h4 className={styles.ssoSectionTitle}>
-                  {t("adminSso.sectionProvider")}
-                </h4>
-                <p className={styles.ssoSectionHint}>
-                  {t("adminSso.sectionProviderHint")}
-                </p>
-              </div>
-
-              <div className={styles.ssoPresets}>
-                <span className={styles.ssoPresetsLabel}>
-                  {t("adminSso.presetsLabel")}
+        <Form<SsoFormValues>
+          form={form}
+          layout="vertical"
+          requiredMark={false}
+          onFinish={(values) => void saveConfig(values)}
+          onValuesChange={(changed) => {
+            if (hydratingRef.current) return;
+            const keys = Object.keys(changed);
+            if (keys.length === 1 && keys[0] === "enabled") return;
+            setDirty(true);
+            setTestResult(null);
+          }}
+          initialValues={{
+            enabled: false,
+            scopes: ["openid", "profile", "email"],
+          }}
+          className={styles.ssoForm}
+        >
+          <div className={styles.ssoStandalone}>
+            <div className={styles.ssoStandaloneToolbar}>
+              <div className={styles.ssoStandaloneMeta}>
+                <span className={styles.ssoKindBadge}>
+                  {t("adminSso.oidcKind")}
                 </span>
-                <div className={styles.ssoPresetChips}>
-                  {IDP_PRESETS.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      className={[
-                        styles.ssoPresetChip,
-                        activePreset === preset.id
-                          ? styles.ssoPresetChipActive
-                          : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      onClick={() => applyPreset(preset)}
-                    >
-                      {t(preset.labelKey)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <Form.Item
-                name="display_name"
-                label={t("adminSso.displayName")}
-                rules={[
-                  {
-                    required: true,
-                    message: t("adminSso.displayNameRequired"),
-                  },
-                ]}
-              >
-                <Input placeholder={t("adminSso.displayNamePlaceholder")} />
-              </Form.Item>
-              <Form.Item
-                name="issuer"
-                label={t("adminSso.issuer")}
-                extra={t("adminSso.issuerHint")}
-                rules={[
-                  {
-                    required: true,
-                    type: "url",
-                    message: t("adminSso.issuerRequired"),
-                  },
-                ]}
-                getValueFromEvent={(e: ChangeEvent<HTMLInputElement>) =>
-                  e.target.value
-                }
-              >
-                <Input
-                  placeholder={issuerPlaceholder}
-                  onBlur={(e) => {
-                    const next = normalizeIssuer(e.target.value);
-                    if (next !== e.target.value) {
-                      form.setFieldValue("issuer", next);
-                      if (!hydratingRef.current) setDirty(true);
-                    }
-                  }}
-                />
-              </Form.Item>
-            </section>
-
-            <section className={styles.ssoSection}>
-              <div className={styles.ssoSectionHeader}>
-                <h4 className={styles.ssoSectionTitle}>
-                  {t("adminSso.sectionCredentials")}
-                </h4>
-                <p className={styles.ssoSectionHint}>
-                  {t("adminSso.sectionCredentialsHint")}
-                </p>
-              </div>
-              <div className={styles.ssoFieldGrid}>
-                <Form.Item
-                  name="client_id"
-                  label={t("adminSso.clientId")}
-                  rules={[
-                    {
-                      required: true,
-                      message: t("adminSso.clientIdRequired"),
-                    },
-                  ]}
-                >
-                  <Input autoComplete="off" />
-                </Form.Item>
-                <Form.Item
-                  name="client_secret"
-                  label={
-                    <span className={styles.ssoSecretLabel}>
-                      {t("adminSso.clientSecret")}
-                      {hasClientSecret && (
-                        <Tag className={styles.ssoSecretTag}>
-                          <Lock size={11} />
-                          {t("adminSso.clientSecretConfiguredTag")}
-                        </Tag>
-                      )}
-                    </span>
-                  }
-                  extra={
-                    hasClientSecret
-                      ? t("adminSso.clientSecretConfigured")
-                      : t("adminSso.clientSecretHint")
+                <Tag
+                  className={
+                    enabled ? styles.ssoStatusTagOn : styles.ssoStatusTagOff
                   }
                 >
-                  <Input.Password
-                    autoComplete="new-password"
-                    placeholder={
-                      hasClientSecret
-                        ? t("adminSso.clientSecretPlaceholder")
-                        : undefined
+                  <span
+                    className={
+                      enabled ? styles.ssoStatusDotOn : styles.ssoStatusDotOff
                     }
                   />
-                </Form.Item>
+                  {statusLabel}
+                </Tag>
               </div>
               <Form.Item
-                name="scopes"
-                label={t("adminSso.scopes")}
-                rules={[
-                  {
-                    validator: async (_, value: string[] | undefined) => {
-                      if (!value || value.length === 0) {
-                        throw new Error(t("adminSso.scopesRequired"));
-                      }
-                    },
-                  },
-                ]}
+                name="enabled"
+                valuePropName="checked"
+                className={styles.ssoEnableSwitch}
               >
-                <Select
-                  mode="tags"
-                  tokenSeparators={[",", " "]}
-                  options={SCOPE_OPTIONS}
-                  placeholder={t("adminSso.scopesPlaceholder")}
+                <Switch
+                  aria-label={t("adminSso.oidcEnabled")}
+                  loading={toggling}
+                  disabled={loading || saving || toggling}
+                  onChange={(checked) => void toggleEnabled(checked)}
                 />
               </Form.Item>
-            </section>
+            </div>
+            <div className={styles.ssoLayout}>
+              <aside className={styles.ssoAside}>
+                <div className={styles.ssoGuide}>
+                  <div className={styles.ssoAsideTitle}>
+                    {t("adminSso.guideTitle")}
+                  </div>
+                  <ol className={styles.ssoGuideList}>
+                    {GUIDE_STEPS.map((key, index) => {
+                      const done = guideStep > index;
+                      const current = guideStep === index;
+                      return (
+                        <li
+                          key={key}
+                          className={[
+                            styles.ssoGuideItem,
+                            done ? styles.ssoGuideDone : "",
+                            current ? styles.ssoGuideCurrent : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                        >
+                          <span className={styles.ssoGuideIndex} aria-hidden>
+                            {done ? <Check size={12} /> : index + 1}
+                          </span>
+                          <span>{t(key)}</span>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
 
-            <Collapse
-              ghost
-              className={styles.ssoAdvanced}
-              items={[
-                {
-                  key: "advanced",
-                  label: t("adminSso.sectionAdvanced"),
-                  children: (
+                <div className={styles.ssoAsideCard}>
+                  <div className={styles.ssoAsideTitle}>
+                    {t("adminSso.loginPreview")}
+                  </div>
+                  <div
+                    className={[
+                      styles.ssoPreviewBtn,
+                      enabled ? "" : styles.ssoPreviewBtnMuted,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    {t("login.oidcWith", {
+                      name: displayName.trim() || t("adminSso.statusUnnamed"),
+                    })}
+                  </div>
+                  {!enabled && (
+                    <p className={styles.ssoPreviewHint}>
+                      {t("adminSso.loginPreviewDisabled")}
+                    </p>
+                  )}
+                </div>
+
+                <section className={styles.ssoRedirectCard}>
+                  <div className={styles.ssoRedirectHeader}>
+                    <h4 className={styles.ssoSectionTitle}>
+                      {t("adminSso.redirectUri")}
+                    </h4>
+                    <p className={styles.ssoSectionHint}>
+                      {t("adminSso.redirectUriHint")}
+                    </p>
+                  </div>
+                  <Space.Compact className={styles.ssoRedirectRow}>
+                    <Tooltip title={redirectUri || undefined}>
+                      <Input
+                        readOnly
+                        value={redirectUri}
+                        className={styles.ssoRedirectInput}
+                        placeholder={t("adminSso.redirectUriEmpty")}
+                      />
+                    </Tooltip>
+                    <Button
+                      type="primary"
+                      icon={copied ? <Check size={15} /> : <Copy size={15} />}
+                      onClick={() => void copyRedirectUri()}
+                      disabled={!redirectUri}
+                      aria-label={t("adminSso.copyRedirectUri")}
+                    >
+                      {copied ? t("adminSso.copied") : t("adminSso.copy")}
+                    </Button>
+                  </Space.Compact>
+                  <Typography.Paragraph
+                    type="secondary"
+                    className={styles.ssoRedirectDocs}
+                  >
+                    {t("adminSso.redirectUriDocs")}
+                  </Typography.Paragraph>
+                </section>
+
+                {testResult && (
+                  <Alert
+                    className={styles.ssoAlert}
+                    type={testResult.ok ? "success" : "error"}
+                    showIcon
+                    icon={
+                      testResult.ok ? (
+                        <CheckCircle2 size={16} />
+                      ) : (
+                        <XCircle size={16} />
+                      )
+                    }
+                    message={
+                      testResult.ok
+                        ? t("adminSso.testSuccess")
+                        : t("adminSso.testFailed")
+                    }
+                    description={testResult.detail}
+                    closable
+                    onClose={() => setTestResult(null)}
+                  />
+                )}
+              </aside>
+
+              <div>
+                <section className={styles.ssoSection}>
+                  <div className={styles.ssoSectionHeader}>
+                    <h4 className={styles.ssoSectionTitle}>
+                      {t("adminSso.sectionProvider")}
+                    </h4>
+                    <p className={styles.ssoSectionHint}>
+                      {t("adminSso.sectionProviderHint")}
+                    </p>
+                  </div>
+
+                  <div className={styles.ssoPresets}>
+                    <span className={styles.ssoPresetsLabel}>
+                      {t("adminSso.presetsLabel")}
+                    </span>
+                    <div className={styles.ssoPresetChips}>
+                      {IDP_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          className={[
+                            styles.ssoPresetChip,
+                            activePreset === preset.id
+                              ? styles.ssoPresetChipActive
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                          onClick={() => applyPreset(preset)}
+                        >
+                          {t(preset.labelKey)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Form.Item
+                    name="display_name"
+                    label={t("adminSso.displayName")}
+                    rules={[
+                      {
+                        required: true,
+                        message: t("adminSso.displayNameRequired"),
+                      },
+                    ]}
+                  >
+                    <Input placeholder={t("adminSso.displayNamePlaceholder")} />
+                  </Form.Item>
+                  <Form.Item
+                    name="issuer"
+                    label={t("adminSso.issuer")}
+                    extra={t("adminSso.issuerHint")}
+                    rules={[
+                      {
+                        required: true,
+                        type: "url",
+                        message: t("adminSso.issuerRequired"),
+                      },
+                    ]}
+                    getValueFromEvent={(e: ChangeEvent<HTMLInputElement>) =>
+                      e.target.value
+                    }
+                  >
+                    <Input
+                      placeholder={issuerPlaceholder}
+                      onBlur={(e) => {
+                        const next = normalizeIssuer(e.target.value);
+                        if (next !== e.target.value) {
+                          form.setFieldValue("issuer", next);
+                          if (!hydratingRef.current) setDirty(true);
+                        }
+                      }}
+                    />
+                  </Form.Item>
+                </section>
+
+                <section className={styles.ssoSection}>
+                  <div className={styles.ssoSectionHeader}>
+                    <h4 className={styles.ssoSectionTitle}>
+                      {t("adminSso.sectionCredentials")}
+                    </h4>
+                    <p className={styles.ssoSectionHint}>
+                      {t("adminSso.sectionCredentialsHint")}
+                    </p>
+                  </div>
+                  <div className={styles.ssoFieldGrid}>
                     <Form.Item
-                      name="dashboard_origin"
-                      label={t("adminSso.dashboardOrigin")}
-                      extra={t("adminSso.dashboardOriginHint")}
+                      name="client_id"
+                      label={t("adminSso.clientId")}
                       rules={[
                         {
-                          type: "url",
-                          message: t("adminSso.dashboardOriginInvalid"),
+                          required: true,
+                          message: t("adminSso.clientIdRequired"),
                         },
                       ]}
                     >
-                      <Input placeholder="https://octop.example.com" />
+                      <Input autoComplete="off" />
                     </Form.Item>
-                  ),
-                },
-              ]}
-            />
-
-            <div className={styles.ssoFooter}>
-              <div className={styles.ssoFooterActions}>
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  icon={<Save size={15} />}
-                  loading={saving}
-                >
-                  {t("adminSso.save")}
-                </Button>
-                <Button
-                  icon={<FlaskConical size={15} />}
-                  loading={testing}
-                  disabled={dirty}
-                  onClick={() => void testConnection()}
-                >
-                  {t("adminSso.testConnection")}
-                </Button>
-                {dirty && (
-                  <Button
-                    type="link"
-                    onClick={() => void loadConfig()}
-                    disabled={saving || loading}
+                    <Form.Item
+                      name="client_secret"
+                      label={
+                        <span className={styles.ssoSecretLabel}>
+                          {t("adminSso.clientSecret")}
+                          {hasClientSecret && (
+                            <Tag className={styles.ssoSecretTag}>
+                              <Lock size={11} />
+                              {t("adminSso.clientSecretConfiguredTag")}
+                            </Tag>
+                          )}
+                        </span>
+                      }
+                      extra={
+                        hasClientSecret
+                          ? t("adminSso.clientSecretConfigured")
+                          : t("adminSso.clientSecretHint")
+                      }
+                    >
+                      <Input.Password
+                        autoComplete="new-password"
+                        placeholder={
+                          hasClientSecret
+                            ? t("adminSso.clientSecretPlaceholder")
+                            : undefined
+                        }
+                      />
+                    </Form.Item>
+                  </div>
+                  <Form.Item
+                    name="scopes"
+                    label={t("adminSso.scopes")}
+                    rules={[
+                      {
+                        validator: async (_, value: string[] | undefined) => {
+                          if (!value || value.length === 0) {
+                            throw new Error(t("adminSso.scopesRequired"));
+                          }
+                        },
+                      },
+                    ]}
                   >
-                    {t("adminSso.discard")}
-                  </Button>
-                )}
-              </div>
-              <div className={styles.ssoFooterMeta}>
-                {dirty ? (
-                  <span className={styles.ssoDirtyHint}>
-                    {t("adminSso.unsavedChanges")}
-                  </span>
-                ) : (
-                  <span className={styles.ssoTestHint}>
-                    {t("adminSso.testHint")}
-                  </span>
-                )}
+                    <Select
+                      mode="tags"
+                      tokenSeparators={[",", " "]}
+                      options={SCOPE_OPTIONS}
+                      placeholder={t("adminSso.scopesPlaceholder")}
+                    />
+                  </Form.Item>
+                </section>
+
+                <Collapse
+                  ghost
+                  className={styles.ssoAdvanced}
+                  items={[
+                    {
+                      key: "advanced",
+                      label: t("adminSso.sectionAdvanced"),
+                      children: (
+                        <Form.Item
+                          name="dashboard_origin"
+                          label={t("adminSso.dashboardOrigin")}
+                          extra={t("adminSso.dashboardOriginHint")}
+                          rules={[
+                            {
+                              type: "url",
+                              message: t("adminSso.dashboardOriginInvalid"),
+                            },
+                          ]}
+                        >
+                          <Input placeholder="https://octop.example.com" />
+                        </Form.Item>
+                      ),
+                    },
+                  ]}
+                />
+
+                <div className={styles.ssoFooter}>
+                  <div className={styles.ssoFooterActions}>
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      icon={<Save size={15} />}
+                      loading={saving}
+                    >
+                      {t("adminSso.save")}
+                    </Button>
+                    <Button
+                      icon={<FlaskConical size={15} />}
+                      loading={testing}
+                      disabled={dirty}
+                      onClick={() => void testConnection()}
+                    >
+                      {t("adminSso.testConnection")}
+                    </Button>
+                    {dirty && (
+                      <Button
+                        type="link"
+                        onClick={() => void loadConfig()}
+                        disabled={saving || loading}
+                      >
+                        {t("adminSso.discard")}
+                      </Button>
+                    )}
+                  </div>
+                  <div className={styles.ssoFooterMeta}>
+                    {dirty ? (
+                      <span className={styles.ssoDirtyHint}>
+                        {t("adminSso.unsavedChanges")}
+                      </span>
+                    ) : (
+                      <span className={styles.ssoTestHint}>
+                        {t("adminSso.testHint")}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-          </Form>
-        </div>
+          </div>
+        </Form>
       </Spin>
     </div>
   );

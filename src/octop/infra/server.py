@@ -574,6 +574,11 @@ class OctopServer:
 
         level = os.environ.get("OCTOP_LOG_LEVEL", "info").upper()
         root.setLevel(getattr(logging, level, logging.INFO))
+        if root.level > logging.DEBUG:
+            # httpx logs full request URLs at INFO, leaking query-string
+            # secrets (OAuth access_token, corpsecret) into the log file.
+            logging.getLogger("httpx").setLevel(logging.WARNING)
+            logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     def _ensure_jwt_secret(self) -> None:
         assert self.services is not None
