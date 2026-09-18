@@ -230,9 +230,7 @@ def test_server_brief_description_http_and_stdio():
         == "https://mcp.example.com/mcp"
     )
     assert (
-        server_brief_description(
-            {"transport": "stdio", "command": "npx", "args": ["-y", "demo"]}
-        )
+        server_brief_description({"transport": "stdio", "command": "npx", "args": ["-y", "demo"]})
         == "npx -y demo"
     )
     assert server_brief_description({"transport": "stdio", "command": "uvx"}) == "uvx"
