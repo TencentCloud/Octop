@@ -225,11 +225,18 @@
         var el = document.getElementById("octop-boot-text");
         if (!el) return;
         try {
-          var lang = (
-            navigator.language ||
-            navigator.userLanguage ||
-            ""
-          ).toLowerCase();
+          var lang = "";
+          try {
+            var stored = localStorage.getItem("octop:ui-locale");
+            if (stored === "zh" || stored === "en") lang = stored;
+          } catch (e) {}
+          if (!lang) {
+            lang = (
+              navigator.language ||
+              navigator.userLanguage ||
+              ""
+            ).toLowerCase();
+          }
           if (lang.indexOf("zh") === 0) el.textContent = "加载中…";
         } catch (e) {}
       })();

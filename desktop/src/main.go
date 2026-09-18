@@ -93,7 +93,7 @@ func (a *App) SaveSettings(next Settings) (Settings, error) {
 		return cur, err
 	}
 	saved := a.store.get()
-	a.applyDashboardPrefs(saved)
+	a.applyDashboardPrefs(saved, saved.Locale != cur.Locale)
 	return saved, nil
 }
 
@@ -133,14 +133,15 @@ func (a *App) setAutostart(on bool) (bool, error) {
 	return status.Enabled, nil
 }
 
-func (a *App) applyDashboardPrefs(s Settings) {
+func (a *App) applyDashboardPrefs(s Settings, overwrite bool) {
 	if a.window == nil {
 		return
 	}
-	js := fmt.Sprintf(
-		`(function(){try{localStorage.setItem('octop:ui-locale',%s);}catch(e){}})();`,
-		jsonString(string(s.Locale)),
-	)
+	set := fmt.Sprintf("localStorage.setItem('octop:ui-locale',%s);", jsonString(string(s.Locale)))
+	if !overwrite {
+		set = fmt.Sprintf("if(!localStorage.getItem('octop:ui-locale')){%s}", set)
+	}
+	js := fmt.Sprintf("(function(){try{%s}catch(e){}})();", set)
 	a.window.ExecJS(js)
 }
 
@@ -204,7 +205,7 @@ func (a *App) showDashboard(base string) {
 	s := a.store.get()
 	go func() {
 		time.Sleep(800 * time.Millisecond)
-		a.applyDashboardPrefs(s)
+		a.applyDashboardPrefs(s, false)
 	}()
 	a.setStatus(desktopText(s.Locale, copyStatusReady))
 }
