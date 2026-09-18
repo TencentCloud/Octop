@@ -27,6 +27,25 @@ def _parse_permissions(raw: object) -> builtins.list[str]:
 
 
 @dataclass(frozen=True)
+class UserSsoIdentityRow:
+    user_id: int
+    provider_id: int
+    subject: str
+    kind: str
+    created_at: int
+
+    @classmethod
+    def from_row(cls, r: DbRow) -> UserSsoIdentityRow:
+        return cls(
+            user_id=int(r["user_id"]),
+            provider_id=int(r["provider_id"]),
+            subject=str(r["subject"]),
+            kind=str(r["kind"]),
+            created_at=int(r["created_at"]),
+        )
+
+
+@dataclass(frozen=True)
 class UserRow:
     id: int
     username: str
@@ -117,15 +136,100 @@ class UserRepo:
     def get_by_sso(self, provider_id: int, subject: str) -> UserRow | None:
         with self._db.connect() as conn:
             r = conn.execute(
+                "SELECT u.* FROM users u "
+                "INNER JOIN user_sso_identities i ON i.user_id = u.id "
+                "WHERE i.provider_id = ? AND i.subject = ?",
+                (provider_id, subject),
+            ).fetchone()
+            if r is not None:
+                return UserRow.from_row(r)
+            # Legacy single-slot fallback for rows not yet backfilled.
+            r = conn.execute(
                 "SELECT * FROM users WHERE sso_provider_id = ? AND sso_subject = ?",
                 (provider_id, subject),
             ).fetchone()
-        return UserRow.from_row(r) if r else None
+        if r is None:
+            return None
+        row = UserRow.from_row(r)
+        self.upsert_sso_identity(row.id, provider_id=provider_id, subject=subject)
+        return row
+
+    def list_sso_identities(self, user_id: int) -> builtins.list[UserSsoIdentityRow]:
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT i.user_id, i.provider_id, i.subject, i.created_at, p.kind "
+                "FROM user_sso_identities i "
+                "INNER JOIN sso_providers p ON p.id = i.provider_id "
+                "WHERE i.user_id = ? "
+                "ORDER BY i.created_at ASC, i.id ASC",
+                (user_id,),
+            ).fetchall()
+        return map_rows(rows, UserSsoIdentityRow)
+
+    def upsert_sso_identity(
+        self,
+        user_id: int,
+        *,
+        provider_id: int,
+        subject: str,
+    ) -> None:
+        """Link ``(provider_id, subject)`` to ``user_id`` (one subject per provider)."""
+        ts = now_ts()
+        with self._db.transaction() as conn:
+            conn.execute(
+                "INSERT INTO user_sso_identities(user_id, provider_id, subject, created_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(user_id, provider_id) DO UPDATE SET subject = excluded.subject",
+                (user_id, provider_id, subject, ts),
+            )
+            conn.execute(
+                "UPDATE users SET sso_provider_id = ?, sso_subject = ? WHERE id = ?",
+                (provider_id, subject, user_id),
+            )
+
+    def remove_sso_identity(self, user_id: int, *, provider_id: int) -> bool:
+        """Remove one provider link. Returns True when a row was deleted."""
+        with self._db.transaction() as conn:
+            cur = conn.execute(
+                "DELETE FROM user_sso_identities WHERE user_id = ? AND provider_id = ?",
+                (user_id, provider_id),
+            )
+            deleted = int(cur.rowcount or 0) > 0
+            remaining = conn.execute(
+                "SELECT provider_id, subject FROM user_sso_identities "
+                "WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+                (user_id,),
+            ).fetchone()
+            if remaining is None:
+                conn.execute(
+                    "UPDATE users SET sso_provider_id = NULL, sso_subject = NULL WHERE id = ?",
+                    (user_id,),
+                )
+            else:
+                conn.execute(
+                    "UPDATE users SET sso_provider_id = ?, sso_subject = ? WHERE id = ?",
+                    (remaining["provider_id"], remaining["subject"], user_id),
+                )
+        return deleted
 
     def get_by_email(self, email: str) -> UserRow | None:
         with self._db.connect() as conn:
             r = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         return UserRow.from_row(r) if r else None
+
+    def set_sso(
+        self,
+        user_id: int,
+        *,
+        sso_provider_id: int | None,
+        sso_subject: str | None,
+    ) -> None:
+        """Legacy primary-slot writer; prefer ``upsert_sso_identity`` / ``remove_sso_identity``."""
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE users SET sso_provider_id = ?, sso_subject = ? WHERE id = ?",
+                (sso_provider_id, sso_subject, user_id),
+            )
 
     def update_sso_profile(
         self,

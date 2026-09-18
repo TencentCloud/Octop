@@ -8,6 +8,7 @@ import { authApi } from "../../api/modules/auth";
 import { refreshServerLabels } from "../../i18n";
 import { apiErrorMessage } from "../../utils/apiError";
 import { applyUserLocale } from "../../utils/locale";
+import { notifySsoOpener } from "../../utils/ssoPopup";
 
 const DEFAULT_REDIRECT = "/chat";
 
@@ -30,16 +31,18 @@ export function safeRedirect(path: string | null): string {
 export function readOidcCompleteParams(
   hash: string,
   search: string,
-): { code: string | null; redirect: string | null } {
+): { code: string | null; redirect: string | null; bind: boolean } {
   const fromHash = new URLSearchParams(
     hash.startsWith("#") ? hash.slice(1) : hash,
   );
   const fromQuery = new URLSearchParams(
     search.startsWith("?") ? search.slice(1) : search,
   );
+  const bind = (fromHash.get("bind") || fromQuery.get("bind") || "") === "1";
   return {
     code: fromHash.get("code") || fromQuery.get("code"),
     redirect: fromHash.get("redirect") || fromQuery.get("redirect"),
+    bind,
   };
 }
 
@@ -53,12 +56,13 @@ export default function OidcComplete() {
     if (did.current) return;
     did.current = true;
 
-    const { code, redirect } = readOidcCompleteParams(
+    const { code, redirect, bind } = readOidcCompleteParams(
       window.location.hash,
       window.location.search,
     );
     if (!code) {
       const text = t("login.oidcComplete.missingCode");
+      if (notifySsoOpener({ ok: false, error: "generic", bind })) return;
       setError(text);
       message.error(text);
       return;
@@ -75,10 +79,13 @@ export default function OidcComplete() {
         setAuthToken(res.access_token);
         await applyUserLocale(res.user.locale);
         void refreshServerLabels(res.user.locale);
-        navigate(safeRedirect(redirect), { replace: true });
+        const dest = safeRedirect(redirect);
+        if (notifySsoOpener({ ok: true, redirect: dest, bind })) return;
+        navigate(dest, { replace: true });
       })
       .catch((err) => {
         const text = apiErrorMessage(err, t("login.oidcComplete.failed"), t);
+        if (notifySsoOpener({ ok: false, error: "exchange", bind })) return;
         setError(text);
         message.error(text);
       });

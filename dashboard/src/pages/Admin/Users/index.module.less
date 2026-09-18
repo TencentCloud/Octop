@@ -6,7 +6,8 @@
 .userCardGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  row-gap: 16px;
+  column-gap: 12px;
   padding: 4px 0 32px;
 
   @media (max-width: 640px) {
@@ -1004,7 +1005,187 @@
 .ssoPanel {
   width: 100%;
   min-width: 0;
-  padding-bottom: 88px;
+  padding-bottom: 24px;
+}
+
+.ssoProviders {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ssoStandalone {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.08));
+  border-radius: 12px;
+  background: var(--fn-bg-elevated, #fff);
+}
+
+.ssoStandaloneToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ssoStandaloneMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.ssoFamily {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.ssoFamilyHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 2px 0;
+}
+
+.ssoFamilyTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.ssoFamilyDesc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fn-text-secondary);
+}
+
+.ssoComingSoonBody {
+  margin: 0;
+  padding: 4px 2px 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+}
+
+.ssoCollapse {
+  background: var(--fn-bg-primary);
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-lg, 12px);
+  overflow: hidden;
+
+  :global(.ant-collapse-item) {
+    border: none;
+  }
+
+  :global(.ant-collapse-header) {
+    align-items: flex-start !important;
+    padding: 14px 16px !important;
+    background: var(--fn-bg-primary);
+  }
+
+  :global(.ant-collapse-expand-icon) {
+    padding-inline-end: 10px !important;
+    height: 22px !important;
+  }
+
+  :global(.ant-collapse-content) {
+    border-top: 1px solid var(--fn-border-secondary, var(--fn-border-primary));
+    background: var(--fn-bg-primary);
+  }
+
+  :global(.ant-collapse-content-box) {
+    padding: 16px !important;
+  }
+}
+
+.ssoCollapseLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-right: 8px;
+}
+
+.ssoCollapseLabelTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ssoCollapseExtra {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.ssoKindBadge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--fn-bg-container, rgba(0, 0, 0, 0.04));
+  color: var(--fn-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ssoProviderTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-wrap: balance;
+  color: var(--fn-text-primary);
+}
+
+.ssoProviderDesc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  text-wrap: pretty;
+  color: var(--fn-text-tertiary);
+}
+
+.ssoCollapse .ssoRedirectCard {
+  margin-bottom: 4px;
+}
+
+.ssoCollapse .ssoSection {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  padding: 0 0 16px;
+  margin-bottom: 16px;
+  box-shadow: none;
+}
+
+.ssoCollapse .ssoFooter {
+  position: static;
+  margin-top: 4px;
+  padding: 16px 0 0;
+  background: none;
+}
+
+@media (max-width: 720px) {
+  .ssoCollapseExtra {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 }
 
 .ssoLayout {

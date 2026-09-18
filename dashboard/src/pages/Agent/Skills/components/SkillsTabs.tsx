@@ -45,7 +45,8 @@ export default function SkillsTabs({ agentId }: SkillsTabsProps) {
   const canSkillPackages = userCanAny(currentUser, PERM.skillPackages);
   const [activeTab, setActiveTab] = useState<SkillsTab>("custom");
   const tabs = useMemo(
-    () => SKILL_TABS.filter((tab) => tab.key !== "packages" || canSkillPackages),
+    () =>
+      SKILL_TABS.filter((tab) => tab.key !== "packages" || canSkillPackages),
     [canSkillPackages],
   );
   const onInstalledTab =

@@ -1,7 +1,11 @@
 .panel {
   height: 100%;
   overflow: auto;
-  padding: 4px;
+  padding: 4px 12px 4px 4px;
+
+  @media (max-width: 767px) {
+    padding: 4px;
+  }
 }
 
 .loading {

@@ -138,7 +138,8 @@
 .typeGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  row-gap: 16px;
+  column-gap: 12px;
 
   @media (max-width: 767px) {
     grid-template-columns: 1fr;
@@ -336,6 +337,7 @@
   flex: 1;
   min-width: 0;
   overflow-y: auto;
+  padding-right: 12px;
   scrollbar-width: thin;
   scrollbar-color: var(--fn-border-primary) transparent;
 
@@ -345,6 +347,10 @@
   &::-webkit-scrollbar-thumb {
     background: var(--fn-border-primary);
     border-radius: 2px;
+  }
+
+  @media (max-width: 767px) {
+    padding-right: 0;
   }
 }
 
