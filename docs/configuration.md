@@ -100,10 +100,12 @@ Notes:
   scheduling, and harness. Legacy `cron_timezone` in `config.json` and
   `OCTOP_CRON_TIMEZONE` are still accepted; the new key/env wins when both
   are set.
-- `database.password`：向导用离散字段配置 PostgreSQL 时**可能**写入
-  `config.json`（便于本机首次启动）。生产环境更推荐只用
-  `OCTOP_DATABASE_PASSWORD` 或带密码的 `OCTOP_DATABASE_URL`，并限制
-  `config.json` 文件权限。环境变量始终覆盖文件中的同名配置。
+- `database.password`: when the wizard configures PostgreSQL via discrete
+  fields, this **may** be written into `config.json` (convenient for local
+  first-run). In production, prefer using only `OCTOP_DATABASE_PASSWORD` or
+  a `OCTOP_DATABASE_URL` that includes the password, and restrict
+  `config.json` file permissions. Environment variables always override the
+  same-named setting in the file.
 - `enable_api_docs=false` keeps `/api/docs` (Scalar) off in production
   while still serving `/api/openapi.json` to the dashboard.
 - `require_setup_password=true` adds the wizard password gate to the
@@ -241,8 +243,13 @@ Per-agent provider credentials (e.g. API keys) live in the SQLite
 `providers` table and are surfaced through
 `infra/connectors/credential_crypto.py` for connector OAuth flows.
 
-## 可选分段历史归档
+## Optional segmented history archive
 
-`history_v2_enabled` 默认 `false`，可用 `OCTOP_HISTORY_V2_ENABLED=true` 开启。
-该开关只决定下一完整回合的写入格式，关闭后仍读取已经保存的新格式。
-启用前请阅读 [分段历史归档与回退](versioned-history.md)，尤其是配套版本与备份恢复边界。
+`history_v2_enabled` defaults to `false`; enable it with
+`OCTOP_HISTORY_V2_ENABLED=true`.
+This switch only affects the write format of the next complete turn —
+once disabled, turns already saved in the new format are still read
+correctly.
+Before enabling, read
+[Segmented history archive & rollback](versioned-history.md), especially
+the version compatibility and backup/restore boundaries it covers.
