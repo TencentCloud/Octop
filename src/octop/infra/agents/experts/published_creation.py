@@ -26,7 +26,7 @@ from octop.infra.agents.experts.publish import (
     export_agent_workspace_to_dir,
     resolve_published_expert_slug,
 )
-from octop.infra.agents.manager import AgentCreateSpec
+from octop.infra.agents.manager import AgentCreateSpec, skills_disabled_set
 from octop.infra.db.repos.published_experts import PublishedExpertRow
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.trajectory.settings import apply_enable_trajectory
@@ -188,6 +188,7 @@ async def publish_agent_expert(
     )
     color = _agent_color(registry, source.agent_id) or ""
     icon_name = getattr(source, "icon_name", None) or source.icon or ""
+    skills_disabled = skills_disabled_set(registry.get_config(source.agent_id) or {})
     try:
         await export_agent_workspace_to_dir(
             workspace=workspace,
@@ -203,6 +204,7 @@ async def publish_agent_expert(
                 task_examples=resolved_task_examples,
             ),
             manifest_id=resolved_slug,
+            skills_disabled=skills_disabled,
         )
         return cast(
             PublishedExpertRow,
@@ -253,6 +255,7 @@ async def refresh_published_expert(
     color = _agent_color(registry, source.agent_id) or ""
     icon_name = getattr(source, "icon_name", None) or source.icon or ""
     snapshot_dir = _snapshot_dir(services, row.id)
+    skills_disabled = skills_disabled_set(registry.get_config(source.agent_id) or {})
     existing_manifest = await asyncio.to_thread(_read_snapshot_manifest, snapshot_dir)
     existing_welcome_zh, existing_welcome_en = _manifest_welcome(existing_manifest)
     existing_quick_prompts = _manifest_quick_prompts(existing_manifest)
@@ -288,6 +291,7 @@ async def refresh_published_expert(
             task_examples=resolved_task_examples,
         ),
         manifest_id=row.slug,
+        skills_disabled=skills_disabled,
     )
     return cast(
         PublishedExpertRow,

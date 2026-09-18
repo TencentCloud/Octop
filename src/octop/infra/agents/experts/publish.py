@@ -114,8 +114,13 @@ async def export_agent_workspace_to_dir(
     dest: Path,
     metadata: PublishedExpertSnapshotMeta | None = None,
     manifest_id: str | None = None,
+    skills_disabled: set[str] | frozenset[str] | None = None,
 ) -> list[str]:
-    """Atomically replace *dest* with exported workspace files."""
+    """Atomically replace *dest* with exported workspace files.
+
+    *skills_disabled* omits those skill directories from the snapshot so installers
+    do not receive skills the publisher had turned off (#497).
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     staging_dir = Path(tempfile.mkdtemp(prefix=f".{dest.name}.", dir=dest.parent))
     try:
@@ -124,6 +129,7 @@ async def export_agent_workspace_to_dir(
             dest=staging_dir,
             metadata=metadata,
             manifest_id=manifest_id or dest.name,
+            skills_disabled=skills_disabled,
         )
         _replace_snapshot_dir(staging_dir, dest)
     except BaseException:
@@ -138,14 +144,16 @@ async def _write_workspace_snapshot(
     dest: Path,
     metadata: PublishedExpertSnapshotMeta | None,
     manifest_id: str,
+    skills_disabled: set[str] | frozenset[str] | None = None,
 ) -> list[str]:
     """Copy seedable workspace files into an empty staging directory."""
     paths = await _workspace_file_paths(workspace)
     dest.mkdir(parents=True, exist_ok=True)
+    disabled = frozenset(skills_disabled or ())
 
     exported: list[str] = []
     for rel in paths:
-        if not _is_seedable_path(rel):
+        if not _is_seedable_path(rel, skills_disabled=disabled):
             continue
         logical = _logical_seed_path(rel)
         if logical == MANIFEST_FILENAME:
@@ -271,7 +279,11 @@ def _logical_seed_path(path: str) -> str:
     return rel
 
 
-def _is_seedable_path(path: str) -> bool:
+def _is_seedable_path(
+    path: str,
+    *,
+    skills_disabled: frozenset[str] | set[str] | None = None,
+) -> bool:
     logical = _logical_seed_path(path)
     parts = PurePosixPath(logical).parts
     if not parts or any(part in _EXCLUDED_PARTS or part.startswith(".") for part in parts):
@@ -284,7 +296,8 @@ def _is_seedable_path(path: str) -> bool:
     if len(parts) == 1:
         return basename in _EXPORT_ROOT_MD
     if parts[0] == "skills":
-        return True
+        slug = parts[1] if len(parts) >= 2 else ""
+        return not (slug and skills_disabled and slug in skills_disabled)
     if parts[0] == "agents":
         return basename.endswith(".md")
     return False
