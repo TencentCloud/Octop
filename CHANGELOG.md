@@ -23,6 +23,7 @@
 - `config.json` 无法解析时，`load_config` 的报错现在带上文件路径与行列号（此前是裸 `JSONDecodeError`，不说哪个文件出错），并拒绝“合法 JSON 但不是 object”的文件；报错不回显内容
 - 手动新增通道默认启用：此前创建抽屉的「启用频道」开关默认关闭，保存后紧跟一次 `enabled=false` 的 PATCH，导致新通道"出生即禁用"（created_at == updated_at 且无任何提示，机器人从此静默不回复）。现与后端创建默认值（enabled=1）及扫码绑定流程对齐，保存仅一次 POST，不再产生启停抖动
 - 腾讯验证码票据校验改用 DescribeCaptchaResult 接口（旧端点对新票据返回 decrypt fail）；校验需云 API 密钥签名，设置页新增对应字段
+- 修复 Windows 下飞书通道「一键创建机器人」扫不到码或扫码后仍提示“飞书机器人创建失败”的问题：绿色便携包只把 `packages/` 加进服务进程自己的 `sys.path`（`launch.py` + `site.addsitedir`，同时清空 `PYTHONPATH`），创建子进程因此以 `ModuleNotFoundError: No module named 'lark_oapi'` 退出、二维码根本生成不出来；另外子进程 stdout 沿用 ANSI 代码页（cp936），输出带 `✅` 的完成事件时抛 `UnicodeEncodeError`，导致飞书应用其实已创建成功却无法把凭据回传、界面误报失败。现在创建子进程统一携带包路径并以 UTF-8 输出
 
 ### 变更
 
