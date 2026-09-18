@@ -122,7 +122,10 @@ export function ConnectorInstanceCard({
           {instance.description ||
             catalogEntry?.description ||
             catalogEntry?.name ||
-            instance.kind}
+            (instance.kind === "custom-mcp"
+              ? instance.mcp_server_name ||
+                t("connectors.customMcp", "自定义 MCP")
+              : instance.kind)}
         </div>
       </div>
 

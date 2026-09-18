@@ -84,4 +84,14 @@ describe("<ConnectorInstanceCard />", () => {
       "typography-ellipsis",
     );
   });
+
+  it("shows MCP brief description under the title", () => {
+    renderCard(
+      makeInstance({
+        description: "https://mcp.example.com/mcp",
+      }),
+    );
+
+    expect(screen.getByText("https://mcp.example.com/mcp")).toBeInTheDocument();
+  });
 });

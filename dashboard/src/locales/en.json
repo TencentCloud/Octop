@@ -1142,6 +1142,7 @@
     "downloadFailed": "Download failed, please try again",
     "hideThinking": "Hide thinking",
     "showThinking": "Show thinking",
+    "expandProcessWhileStreaming": "Expand thinking while generating",
     "processSummary": "Called {{tools}} tools, {{thinking}} deep thoughts",
     "processSummaryToolsOnly": "Called {{tools}} tools",
     "processSummaryThinkingOnly": "{{thinking}} deep thoughts",
