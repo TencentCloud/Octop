@@ -90,3 +90,67 @@ async def test_admin_cannot_delete_local_runtime_provider(env):
     r = await c.get("/api/admin/providers", headers=auth)
     ids = [p["id"] for p in r.json()]
     assert pid in ids
+
+
+async def test_active_model_canonicalizes_numeric_provider_id(env):
+    """PUT /providers/active-model accepts a provider id and stores the canonical name."""
+    c, _, auth = env
+    r = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={
+            "name": "opencode-go",
+            "kind": "anthropic",
+            "base_url": "https://opencode.ai/zen/go",
+            "api_key": "k",
+            "models": [{"id": "deepseek-v4-pro", "name": "d", "enabled": True}],
+        },
+    )
+    assert r.status_code == 201, r.text
+    provider_id = r.json()["id"]
+
+    r = await c.put(
+        "/api/providers/active-model",
+        headers=auth,
+        json={"provider_name": str(provider_id), "model": "deepseek-v4-pro"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"provider_name": "opencode-go", "model": "deepseek-v4-pro"}
+
+    r = await c.get("/api/providers/active-model", headers=auth)
+    assert r.json() == {"provider_name": "opencode-go", "model": "deepseek-v4-pro"}
+
+
+async def test_active_model_rejects_unknown_provider(env):
+    """PUT /providers/active-model refuses an unusable ref instead of persisting it."""
+    c, _, auth = env
+    r = await c.put(
+        "/api/providers/active-model",
+        headers=auth,
+        json={"provider_name": "missing", "model": "nope"},
+    )
+    assert r.status_code == 404
+
+    r = await c.get("/api/providers/active-model", headers=auth)
+    assert r.json() == {"provider_name": "", "model": ""}
+
+
+async def test_active_model_get_canonicalizes_legacy_numeric_id(env):
+    """A legacy active_model stored with a provider id reads back by name."""
+    c, srv, auth = env
+    r = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={
+            "name": "legacy-go",
+            "kind": "anthropic",
+            "base_url": "https://opencode.ai/zen/go",
+            "api_key": "k",
+            "models": [{"id": "deepseek-v4-pro", "name": "d", "enabled": True}],
+        },
+    )
+    provider_id = r.json()["id"]
+    srv.services.settings_repo.set_active_model(str(provider_id), "deepseek-v4-pro")
+
+    r = await c.get("/api/providers/active-model", headers=auth)
+    assert r.json() == {"provider_name": "legacy-go", "model": "deepseek-v4-pro"}
