@@ -140,3 +140,25 @@ def test_format_stream_error_unknown_falls_back_to_localized() -> None:
     text = format_stream_error("disk full", "en")
     assert "disk full" not in text
     assert "model call failed" in text
+
+
+def test_classify_timeout_network_extended_patterns() -> None:
+    # Python native and httpx timeout/network exception types
+    assert classify_stream_error_message("TimeoutError") == "octop:stream_errors.timeout_network"
+    assert (
+        classify_stream_error_message("ConnectError: [Errno 111] Connection refused")
+        == "octop:stream_errors.timeout_network"
+    )
+    assert (
+        classify_stream_error_message("ReadTimeout: timed out")
+        == "octop:stream_errors.timeout_network"
+    )
+    assert classify_stream_error_message("ConnectTimeout") == "octop:stream_errors.timeout_network"
+    assert (
+        classify_stream_error_message("ConnectionRefusedError: Connection refused")
+        == "octop:stream_errors.timeout_network"
+    )
+    assert (
+        classify_stream_error_message("ConnectionResetError: Connection reset by peer")
+        == "octop:stream_errors.timeout_network"
+    )

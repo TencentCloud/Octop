@@ -137,6 +137,12 @@ def classify_stream_error_message(message: str) -> str | None:
         or "connection error" in lower
         or "apitimeouterror" in compact
         or "apiconnectionerror" in compact
+        or "timeouterror" in compact
+        or "connecterror" in compact
+        or "readtimeout" in compact
+        or "connecttimeout" in compact
+        or "connectionrefused" in compact
+        or "connectionreset" in compact
     ):
         return TIMEOUT_NETWORK
 

@@ -21,6 +21,7 @@
 
 ### 修复
 
+- 修复模型提供商探测失败时日志与界面空白问题（#766）：当探活或拉取模型列表遭遇无参数异常（如 `TimeoutError()`、`ConnectionError()`）或包装后丢失 message 的异常时，`str(exc)` 为空导致日志截断丢失类型信息且前端错误为空；现提取异常类型与原因链，日志显式打印异常类型及 repr 并保留 debug 堆栈；同时 `stream_error_message` 扩充对 `TimeoutError`、`ConnectError` 等内置与网络异常模式的本地化映射，确保探活失败时前端始终展现可诊断的明确指引。
 - 专家页子智能体目录抽屉在桌面端可滚动，不再只显示首屏约十几张卡片（#136）
 - SSO 回调失败时在服务端日志记录真实错误原因；httpx 请求 URL 不再写入 INFO 日志，避免泄露查询参数中的密钥
 - 修复 PostgreSQL 全新部署中 `knowledge_bases` 缺失 `max_documents` 列导致创建知识库失败（#755）：在 `010_thread_message_projection.pg.sql` 补齐 `ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS max_documents`，并在 `migrate.py` 迁移结束处跨方言统一执行 `_ensure_knowledge_bases_schema(db)`；同时修复 `_map_knowledge_error` 将未分类系统异常误报为“向量模型或依赖尚未就绪”掩盖真实错误的问题，改为记录堆栈并返回 `INTERNAL_ERROR`。
