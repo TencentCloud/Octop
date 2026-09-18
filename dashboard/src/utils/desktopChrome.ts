@@ -14,6 +14,11 @@ export const WINDOW_CONTROLS_INSET: Record<DesktopChromeStyle, number> = {
 
 /** Right-edge overlay chrome (dock toolbar, etc.) to keep clear of caption buttons. */
 export const CHROME_END_PAD_ATTR = "data-octop-chrome-end-pad";
+/**
+ * Left-edge chrome rows (sidebar brand) that drop below the macOS traffic
+ * lights instead of sitting under them. Ignored on Windows chrome.
+ */
+export const CHROME_TOP_PAD_ATTR = "data-octop-chrome-top-pad";
 export const WINDOW_CONTROLS_SPACER_ATTR = "data-octop-window-controls-spacer";
 
 /**
@@ -24,6 +29,7 @@ export const WINDOW_CONTROLS_SPACER_ATTR = "data-octop-window-controls-spacer";
 export const DOCK_WINDOW_CONTROLS_PAD_PX = 18;
 
 const INSET_VAR = "--window-controls-inset-end";
+const INSET_START_VAR = "--window-controls-inset-start";
 
 /** Inline padding so CSS-module `padding` shorthands cannot clobber the inset. */
 export function chromeEndPadValue(minPx = 12): string {
@@ -31,13 +37,32 @@ export function chromeEndPadValue(minPx = 12): string {
 }
 
 /** Pixel width of a flex spacer that clears overlay caption buttons. */
+/** Window edge that hosts the frameless controls for a chrome style. */
+export function windowControlsSide(
+  chrome: DesktopChromeStyle,
+): "start" | "end" {
+  return chrome === "mac" ? "start" : "end";
+}
+
 export function windowControlsEndSpacerPx(
   chrome: DesktopChromeStyle | null,
   panelTouchesWindowEnd: boolean,
   existingEndPadPx = 0,
 ): number {
   if (!chrome || !panelTouchesWindowEnd) return 0;
+  if (windowControlsSide(chrome) !== "end") return 0;
   return Math.max(0, WINDOW_CONTROLS_INSET[chrome] - existingEndPadPx);
+}
+
+/** Start-edge spacer, for chrome styles whose controls sit at the window start (mac). */
+export function windowControlsStartSpacerPx(
+  chrome: DesktopChromeStyle | null,
+  panelTouchesWindowStart: boolean,
+  existingStartPadPx = 0,
+): number {
+  if (!chrome || !panelTouchesWindowStart) return 0;
+  if (windowControlsSide(chrome) !== "start") return 0;
+  return Math.max(0, WINDOW_CONTROLS_INSET[chrome] - existingStartPadPx);
 }
 
 /** Marks shell chrome that Wails should treat as a window-drag region. */
@@ -54,11 +79,34 @@ export function isDesktopShell(
   return typeof win._wails?.invoke === "function";
 }
 
-export function resolveDesktopChromeStyle(
-  userAgent = navigator.userAgent,
-): DesktopChromeStyle {
+/** Global published by the Go shell (desktop/src/desktop_chrome.go). */
+const INJECTED_CHROME_GLOBAL = "__OCTOP_DESKTOP_CHROME__";
+
+export function injectedDesktopChromeStyle(
+  win: Window = window,
+): DesktopChromeStyle | null {
+  const value = (win as unknown as Record<string, unknown>)[
+    INJECTED_CHROME_GLOBAL
+  ];
+  return value === "mac" || value === "windows" ? value : null;
+}
+
+/**
+ * User-agent bootstrap fallback. Keep the regex in sync with the splash
+ * bootstrap in desktop/src/assets/index.html, which paints before the Go
+ * shell can inject the authoritative style.
+ */
+function uaChromeStyle(userAgent: string): DesktopChromeStyle {
   if (/Mac|iPhone|iPad/.test(userAgent)) return "mac";
   return "windows";
+}
+
+export function resolveDesktopChromeStyle(
+  userAgent = navigator.userAgent,
+  win: Window = window,
+): DesktopChromeStyle {
+  // The Go shell knows the host OS exactly; UA sniffing is fallback only.
+  return injectedDesktopChromeStyle(win) ?? uaChromeStyle(userAgent);
 }
 
 export function titleRowEndPadding(outerPadPx: number): string {
@@ -72,10 +120,14 @@ export function applyDesktopChrome(
   if (!style) {
     delete root.dataset.octopDesktopChrome;
     root.style.removeProperty(INSET_VAR);
+    root.style.removeProperty(INSET_START_VAR);
     return;
   }
   root.dataset.octopDesktopChrome = style;
-  root.style.setProperty(INSET_VAR, `${WINDOW_CONTROLS_INSET[style]}px`);
+  const width = `${WINDOW_CONTROLS_INSET[style]}px`;
+  const side = windowControlsSide(style);
+  root.style.setProperty(INSET_VAR, side === "end" ? width : "0px");
+  root.style.setProperty(INSET_START_VAR, side === "start" ? width : "0px");
 }
 
 export function emitDesktopWindowAction(

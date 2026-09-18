@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Octop</title>
     <script>
+      /* Keep this regex in sync with uaChromeStyle in
+         dashboard/src/utils/desktopChrome.ts (UA bootstrap fallback). */
       document.documentElement.dataset.chrome = /Mac|iPhone|iPad/.test(
         navigator.userAgent,
       )
@@ -78,6 +80,11 @@
       html[data-chrome="windows"] .ctrl-win {
         display: flex;
       }
+      /* Native macOS convention: traffic lights hug the window's start edge. */
+      html[data-chrome="mac"] .window-controls {
+        left: 0;
+        right: auto;
+      }
       html[data-mode="settings"],
       html[data-mode="settings"] body {
         overflow: hidden;
@@ -99,6 +106,13 @@
       html[data-mode="settings"] #title {
         padding-right: var(--window-controls-inset-end);
       }
+      html[data-mode="settings"][data-chrome="mac"] {
+        --window-controls-inset-start: 36px;
+      }
+      html[data-mode="settings"][data-chrome="mac"] #title {
+        padding-right: 0;
+        padding-left: var(--window-controls-inset-start, 36px);
+      }
       html[data-mode="settings"] .subtitle {
         margin-bottom: 16px;
       }
@@ -108,7 +122,7 @@
       }
       .ctrl-mac {
         gap: 8px;
-        padding: 0 12px 0 8px;
+        padding: 0 8px 0 12px;
       }
       .light {
         width: 12px;
@@ -131,30 +145,29 @@
       .glyph {
         opacity: 0;
         display: block;
-        font-size: 9px;
-        font-weight: 700;
+        font-size: 10px;
+        font-weight: 500;
         line-height: 1;
-        color: inherit;
+        color: rgba(0, 0, 0, 0.5);
         pointer-events: none;
         transform: translateY(-0.5px);
       }
       .ctrl-mac:hover .glyph {
         opacity: 0.85;
       }
+      /* Sampled from native macOS lights: per-color dark ring +
+         bottom-lightening vertical gradient. */
       .zoom {
-        background: #28c840;
+        background: linear-gradient(180deg, #28c840 40%, #45cb52 100%);
         border-color: #12a12a;
-        color: #003a08;
       }
       .min {
-        background: #febc2e;
+        background: linear-gradient(180deg, #febc2e 40%, #fbcf4f 100%);
         border-color: #d89e19;
-        color: #5c3b00;
       }
       .close {
-        background: #ff5f57;
+        background: linear-gradient(180deg, #ff5f57 40%, #f1837e 100%);
         border-color: #e0443e;
-        color: #4d0000;
       }
       .win-btn {
         width: 46px;
@@ -424,13 +437,14 @@
       data-octop-no-drag="true"
       aria-label="窗口控制"
     >
+      <!-- Native order: close, minimize, zoom — red leftmost. -->
       <button
         type="button"
-        class="light zoom"
-        data-action="toggle-maximise"
-        aria-label="最大化"
+        class="light close"
+        data-action="close"
+        aria-label="关闭"
       >
-        <span class="glyph" aria-hidden>+</span>
+        <span class="glyph" aria-hidden>×</span>
       </button>
       <button
         type="button"
@@ -442,11 +456,11 @@
       </button>
       <button
         type="button"
-        class="light close"
-        data-action="close"
-        aria-label="关闭"
+        class="light zoom"
+        data-action="toggle-maximise"
+        aria-label="最大化"
       >
-        <span class="glyph" aria-hidden>×</span>
+        <span class="glyph" aria-hidden>+</span>
       </button>
     </div>
     <div

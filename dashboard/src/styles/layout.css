@@ -14,6 +14,7 @@ body {
 
 html {
   --window-controls-inset-end: 0px;
+  --window-controls-inset-start: 0px;
 }
 
 /* Wails v3 frameless drag: the element under the cursor must set this. */
@@ -39,6 +40,17 @@ html[data-octop-desktop-chrome] [data-octop-chrome-end-pad] {
     12px,
     var(--window-controls-inset-end, 0px)
   ) !important;
+}
+
+/* macOS lights sit top-left: left drawer headers keep clear of them. */
+html[data-octop-desktop-chrome="mac"] .octop-drawer-left .octop-drawer-header,
+html[data-octop-desktop-chrome="mac"] .ant-drawer-left .ant-drawer-header {
+  padding-inline-start: var(--window-controls-inset-start, 0px) !important;
+}
+
+/* Sidebar brand row drops below the lights instead of sitting under them. */
+html[data-octop-desktop-chrome="mac"] [data-octop-chrome-top-pad] {
+  padding-top: 36px !important;
 }
 
 html[data-octop-desktop-chrome] .octop-drawer-right .octop-drawer-header,
