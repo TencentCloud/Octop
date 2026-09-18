@@ -8,6 +8,7 @@
 
 ### 变更
 
+- 用户可见文案「技能包」改为「技能库」（英文 Skill package(s) → Skill library/libraries）；API / 权限键 / 库表名不变 (#690)
 - ACP Runner 管理从侧边栏独立入口迁入「个性化 → ACP 工具」标签页，旧 `/acp` 路径自动重定向
 
 ### 新增
