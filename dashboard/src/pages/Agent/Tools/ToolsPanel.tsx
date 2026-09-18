@@ -137,17 +137,35 @@ function toolIcon(tool: ToolSettingsItem): LucideIcon {
 
 interface ToolsPanelProps {
   agentId: string | null;
+  /** Which tool source to show. Defaults to built-in. */
+  source?: "builtin" | "plugin";
 }
 
 /**
- * Built-in tools surface shared by Personalization and Experts.
+ * Tools enable/disable surface shared by Personalization and Experts.
  */
-export default function ToolsPanel({ agentId }: ToolsPanelProps) {
+export default function ToolsPanel({
+  agentId,
+  source = "builtin",
+}: ToolsPanelProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [tools, setTools] = useState<ToolSettingsItem[]>([]);
   const [enabledMap, setEnabledMap] = useState<Record<string, boolean>>({});
+
+  const applyTools = useCallback(
+    (all: ToolSettingsItem[]) => {
+      const filtered = all.filter((tool) => tool.source === source);
+      setTools(filtered);
+      const next: Record<string, boolean> = {};
+      for (const tool of filtered) {
+        next[toolKey(tool)] = tool.enabled;
+      }
+      setEnabledMap(next);
+    },
+    [source],
+  );
 
   const load = useCallback(async () => {
     if (!agentId) {
@@ -158,15 +176,7 @@ export default function ToolsPanel({ agentId }: ToolsPanelProps) {
     setLoading(true);
     try {
       const res = await agentToolsApi.get(agentId);
-      const builtinTools = res.tools.filter(
-        (tool) => tool.source === "builtin",
-      );
-      setTools(builtinTools);
-      const next: Record<string, boolean> = {};
-      for (const tool of builtinTools) {
-        next[toolKey(tool)] = tool.enabled;
-      }
-      setEnabledMap(next);
+      applyTools(res.tools);
     } catch (err) {
       message.error(
         err instanceof Error ? err.message : t("toolSettings.loadFailed"),
@@ -176,7 +186,7 @@ export default function ToolsPanel({ agentId }: ToolsPanelProps) {
     } finally {
       setLoading(false);
     }
-  }, [agentId, t]);
+  }, [agentId, applyTools, t]);
 
   useEffect(() => {
     void load();
@@ -215,16 +225,7 @@ export default function ToolsPanel({ agentId }: ToolsPanelProps) {
         source: tool.source,
         plugin_id: tool.plugin_id ?? undefined,
       });
-      const next: Record<string, boolean> = {};
-      for (const row of res.tools) {
-        next[
-          row.source === "plugin"
-            ? `plugin:${row.plugin_id ?? ""}:${row.name}`
-            : `builtin:${row.name}`
-        ] = row.enabled;
-      }
-      setTools(res.tools);
-      setEnabledMap(next);
+      applyTools(res.tools);
     } catch (err) {
       setEnabledMap((cur) => ({ ...cur, [key]: prev }));
       message.error(
@@ -253,12 +254,24 @@ export default function ToolsPanel({ agentId }: ToolsPanelProps) {
   }
 
   if (tools.length === 0) {
-    return <Empty description={t("toolSettings.empty")} />;
+    return (
+      <Empty
+        description={
+          source === "plugin"
+            ? t("toolSettings.emptyPlugin")
+            : t("toolSettings.empty")
+        }
+      />
+    );
   }
 
   return (
     <div className={styles.panel}>
-      <p className={styles.hint}>{t("toolSettings.hint")}</p>
+      <p className={styles.hint}>
+        {source === "plugin"
+          ? t("toolSettings.hintPlugin")
+          : t("toolSettings.hint")}
+      </p>
       <div className={styles.groups}>
         {groups.map((group) => (
           <section key={group.category} className={styles.group}>

@@ -4,7 +4,7 @@
  * Mutations stay local until the parent modal saves (PATCH full models array).
  * Connectivity tests still hit the live provider endpoint.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   App,
   Button,
@@ -23,6 +23,7 @@ import {
   Download,
   Pencil,
   Plus,
+  Search,
   Trash2,
   X,
   Zap,
@@ -88,6 +89,7 @@ export function ModelListEditor({
   })();
   const requireDownload = !!localDownload?.requireDownloadToEnable;
   const [adding, setAdding] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
@@ -364,13 +366,37 @@ export function ModelListEditor({
   const isFormVisible = adding || isEditing;
   const hasApiKey = canTest ?? !!provider.api_key;
 
+  const filteredModels = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return models;
+    return models.filter(
+      (m) =>
+        m.id.toLowerCase().includes(query) ||
+        m.name.toLowerCase().includes(query),
+    );
+  }, [models, searchQuery]);
+
   return (
     <div>
+      {models.length > 0 && (
+        <Input
+          allowClear
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          prefix={<Search size={14} />}
+          placeholder={t("models.searchModelsPlaceholder")}
+          style={{ marginTop: 12 }}
+        />
+      )}
       <div className={styles.modelList}>
         {models.length === 0 ? (
           <div className={styles.modelListEmpty}>{t("models.noModels")}</div>
+        ) : filteredModels.length === 0 ? (
+          <div className={styles.modelListEmpty}>
+            {t("models.noMatchingModels")}
+          </div>
         ) : (
-          models.map((m) => {
+          filteredModels.map((m) => {
             const isCurrentEditing = editingModelId === m.id;
             const isEnabled = m.enabled !== false;
             const isTesting = testingIds.has(m.id);

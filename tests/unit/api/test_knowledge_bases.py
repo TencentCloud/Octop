@@ -704,3 +704,31 @@ async def test_update_base_rejects_max_documents_out_of_range() -> None:
     assert knowledge_bases.UpdateBaseBody(max_documents=0).max_documents == 0
     assert knowledge_bases.UpdateBaseBody(max_documents=10_000).max_documents == 10_000
     assert knowledge_bases.UpdateBaseBody().max_documents is None
+
+
+def test_map_knowledge_error_unclassified_returns_internal_error() -> None:
+    from octop.api.routers.knowledge_bases import _map_knowledge_error
+
+    err = _map_knowledge_error(RuntimeError("column max_documents does not exist"), locale="zh")
+    assert err.code == ErrorCode.INTERNAL_ERROR
+    assert err.status == 500
+
+    err_generic = _map_knowledge_error(Exception("unexpected db failure"), locale="zh")
+    assert err_generic.code == ErrorCode.INTERNAL_ERROR
+    assert err_generic.status == 500
+
+
+def test_map_knowledge_error_prerequisites_distinguished() -> None:
+    from octop.api.routers.knowledge_bases import _map_knowledge_error
+
+    err = _map_knowledge_error(
+        RuntimeError("knowledge embedding prerequisites are not satisfied"), locale="zh"
+    )
+    assert err.code == ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED
+    assert err.status == 409
+
+    err_model = _map_knowledge_error(
+        ValueError("enabling knowledge bases requires an embedding model"), locale="zh"
+    )
+    assert err_model.code == ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED
+    assert err_model.status == 409

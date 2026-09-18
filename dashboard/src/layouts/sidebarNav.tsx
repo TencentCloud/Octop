@@ -10,6 +10,7 @@ import {
   Cpu,
   Users as UsersIcon,
   Activity,
+  Share2,
   Sparkles,
   Puzzle,
   Package,
@@ -54,6 +55,7 @@ export const SIDEBAR_GROUPED_NAV_KEYS = [
   "knowledge-bases",
   "workbench",
   "remote-desktop",
+  "acp",
   "admin-users",
   "models",
   "admin-storage",
@@ -167,6 +169,15 @@ export function buildNavSections(
       path: "/remote-desktop",
       icon: <Monitor size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.remoteDesktop",
+    });
+  }
+  // ACP: no module key this round — admin role only.
+  if (navAllowed(user, "acp")) {
+    controlItems.push({
+      key: "acp",
+      path: "/acp",
+      icon: <Share2 size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.acp",
     });
   }
   if (controlItems.length > 0) {

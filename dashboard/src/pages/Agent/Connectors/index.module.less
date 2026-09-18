@@ -28,7 +28,8 @@
 .typeGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 16px;
+  row-gap: 16px;
+  column-gap: 12px;
   /* Extra room for 2px border + hover translateY(-2px) inside overflow. */
   padding-top: 4px;
   padding-bottom: 4px;
@@ -37,7 +38,8 @@
 .instanceGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
+  row-gap: 16px;
+  column-gap: 12px;
 }
 
 .emptyGuideMascot {
@@ -802,7 +804,8 @@
 .customMcpGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 14px;
+  row-gap: 14px;
+  column-gap: 12px;
 }
 
 .customMcpServerCard {

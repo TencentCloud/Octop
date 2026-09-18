@@ -142,7 +142,12 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
       setLoadingConfig(false);
       const defaults: ChannelFormValues = {
         kind,
-        enabled: false,
+        // Create defaults to ENABLED, matching the server-side create default
+        // (repos/channels.py writes enabled=1) and the QR-bind auto-enable
+        // flows ("channel is usable immediately"). A channel born enabled
+        // needs no follow-up PATCH, so the row keeps a clean single-write
+        // signature and no start/stop churn happens behind the save.
+        enabled: true,
         ...DEFAULT_CHANNEL_DISPLAY_CONFIG,
         ...(kind === "qq"
           ? { group_context: { ...DEFAULT_QQ_GROUP_CONTEXT_CONFIG } }

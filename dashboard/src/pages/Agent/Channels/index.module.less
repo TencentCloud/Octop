@@ -31,12 +31,17 @@
   overflow: auto;
   /* Keep card hover translateY(-2px) inside the scrollport. */
   padding-top: 8px;
+  /* Keep rightmost cards clear of the vertical scrollbar. */
+  padding-right: 12px;
+  padding-bottom: 8px;
 
   @media (max-width: 767px) {
     flex: none;
     min-height: 0;
     overflow: visible;
     padding-top: 0;
+    padding-right: 0;
+    padding-bottom: 0;
   }
 }
 
@@ -81,7 +86,8 @@
 .channelsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 20px;
+  row-gap: 16px;
+  column-gap: 12px;
 
   @media (max-width: 767px) {
     grid-template-columns: 1fr;

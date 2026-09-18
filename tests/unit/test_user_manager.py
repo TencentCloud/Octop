@@ -17,10 +17,11 @@ from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
 
 
-def _insert_sso_provider(manager: UserManager) -> int:
+def _insert_sso_provider(manager: UserManager, *, kind: str = "oidc") -> int:
     with manager._services.db.transaction() as conn:
         cursor = conn.execute(
-            "INSERT INTO sso_providers(enabled, created_at, updated_at) VALUES (1, 0, 0)"
+            "INSERT INTO sso_providers(enabled, kind, created_at, updated_at) VALUES (1, ?, 0, 0)",
+            (kind,),
         )
         return int(cursor.lastrowid)
 
@@ -140,6 +141,7 @@ async def test_sso_create_then_updates_same_subject(manager: UserManager):
     row = manager.get_row(user.id)
     assert row.password_hash is None
     assert row.email == "alice@example.com"
+    assert row.display_name == "Alice"
     assert row.sso_provider_id == provider_id
     assert row.sso_subject == "sub-1"
 
@@ -151,7 +153,7 @@ async def test_sso_create_then_updates_same_subject(manager: UserManager):
 
     assert updated.id == user.id
     row = manager.get_row(user.id)
-    assert row.display_name == "Alice 2"
+    assert row.display_name == "Alice"
     assert row.email == "alice-2@example.com"
 
 
@@ -231,6 +233,95 @@ async def test_sso_disabled_user_is_rejected(manager: UserManager):
             claims={"name": "Alice"},
         )
     assert ei.value.code is ErrorCode.USER_DISABLED
+
+
+async def test_bind_sso_identity_links_current_user_and_rejects_taken_identity(
+    manager: UserManager,
+):
+    provider_id = _insert_sso_provider(manager, kind="feishu")
+    local = await manager.create(
+        username="alice", password="TestPass12", role=Role.ADMIN, display_name="Alice"
+    )
+    other = await manager.create(
+        username="bob", password="TestPass12", role=Role.USER, display_name="Bob"
+    )
+    await manager.bind_sso_identity(
+        user_id=other.id,
+        provider_id=provider_id,
+        subject="union-bob",
+        claims={"name": "Bob Feishu"},
+    )
+    with pytest.raises(OctopError) as ei:
+        await manager.bind_sso_identity(
+            user_id=local.id,
+            provider_id=provider_id,
+            subject="union-bob",
+            claims={},
+        )
+    assert ei.value.code is ErrorCode.SSO_IDENTITY_TAKEN
+
+    bound = await manager.bind_sso_identity(
+        user_id=local.id,
+        provider_id=provider_id,
+        subject="union-alice",
+        claims={"name": "Alice Feishu", "email": "alice@example.com"},
+    )
+    assert bound.id == local.id
+    row = manager.get_row(local.id)
+    assert row.sso_provider_id == provider_id
+    assert row.sso_subject == "union-alice"
+    assert row.display_name == "Alice"
+    assert bound.display_name == "Alice"
+    identities = manager.list_sso_identities(local.id)
+    assert [(item.kind, item.subject) for item in identities] == [("feishu", "union-alice")]
+
+
+async def test_bind_multiple_sso_identities_on_same_user(manager: UserManager):
+    oidc_id = _insert_sso_provider(manager, kind="oidc")
+    feishu_id = _insert_sso_provider(manager, kind="feishu")
+    local = await manager.create(
+        username="alice", password="TestPass12", role=Role.USER, display_name="Alice"
+    )
+    await manager.bind_sso_identity(
+        user_id=local.id, provider_id=oidc_id, subject="oidc-alice", claims={}
+    )
+    await manager.bind_sso_identity(
+        user_id=local.id, provider_id=feishu_id, subject="feishu-alice", claims={}
+    )
+    identities = manager.list_sso_identities(local.id)
+    assert {(item.kind, item.subject) for item in identities} == {
+        ("oidc", "oidc-alice"),
+        ("feishu", "feishu-alice"),
+    }
+    assert manager._services.user_repo.get_by_sso(oidc_id, "oidc-alice").id == local.id
+    assert manager._services.user_repo.get_by_sso(feishu_id, "feishu-alice").id == local.id
+
+    await manager.unbind_sso_identity(user_id=local.id, kind="feishu")
+    remaining = manager.list_sso_identities(local.id)
+    assert [(item.kind, item.subject) for item in remaining] == [("oidc", "oidc-alice")]
+
+
+async def test_unbind_sso_identity_requires_password(manager: UserManager):
+    provider_id = _insert_sso_provider(manager, kind="feishu")
+    user = await manager.resolve_or_create_sso_user(
+        provider_id=provider_id,
+        subject="sub-1",
+        claims={"preferred_username": "ssoonly"},
+    )
+    with pytest.raises(OctopError) as ei:
+        await manager.unbind_sso_identity(user_id=user.id, kind="feishu")
+    assert ei.value.code is ErrorCode.SSO_UNBIND_REQUIRES_PASSWORD
+
+    local = await manager.create(username="alice", password="TestPass12", role=Role.USER)
+    await manager.bind_sso_identity(
+        user_id=local.id, provider_id=provider_id, subject="sub-2", claims={}
+    )
+    unbound = await manager.unbind_sso_identity(user_id=local.id, kind="feishu")
+    assert unbound.id == local.id
+    row = manager.get_row(local.id)
+    assert row.sso_provider_id is None
+    assert row.sso_subject is None
+    assert manager.list_sso_identities(local.id) == []
 
 
 async def test_authenticate_locks_after_max_failures(manager: UserManager):

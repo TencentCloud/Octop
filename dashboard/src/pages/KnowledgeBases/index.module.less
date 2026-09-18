@@ -366,7 +366,8 @@
 .list {
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 2px;
+  /* Keep list cards clear of the vertical scrollbar. */
+  padding: 4px 12px 4px 2px;
 }
 
 .list :global(.ant-list-items) {
@@ -687,6 +688,8 @@
   flex-direction: column;
   min-height: 0;
   overflow: auto;
+  /* Keep document cards clear of the vertical scrollbar. */
+  padding-right: 12px;
 }
 
 .detailBodyDropActive {
@@ -803,7 +806,8 @@
 .docCardGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px;
+  row-gap: 14px;
+  column-gap: 12px;
 }
 
 .docCard {
@@ -1315,6 +1319,7 @@
 
   .layoutMobile .detailBody {
     padding: 0 4px;
+    padding-right: 4px;
   }
 }
 
