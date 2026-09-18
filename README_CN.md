@@ -471,7 +471,7 @@ make all              # format-all + lint + typecheck + test（发布门槛）
 # 前端（另开终端）
 make dev-frontend     # Vite 开发服务器 :5173
 make build-frontend   # 生产构建 → src/octop/dashboard/
-cd dashboard && npx tsc --noEmit
+cd dashboard && npx tsc -b
 ```
 
 单独执行：`make test`、`make lint`、`make typecheck`、`make format`。

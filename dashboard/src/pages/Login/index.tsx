@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Input, Button } from "antd";
 import { message } from "@/utils/antdMessage";
@@ -21,7 +21,8 @@ import feishuIcon from "../../assets/channels/feishu.svg";
 import dingtalkIcon from "../../assets/channels/dingtalk.svg";
 import wecomIcon from "../../assets/channels/wecom.svg";
 import googleIcon from "../../assets/providers/google.svg";
-import SlideCaptcha from "./SlideCaptcha";
+import CaptchaField, { type CaptchaFieldHandle } from "./CaptchaField";
+import { type PublicCaptchaConfig } from "./captchaAdapters";
 
 function providerLabel(
   provider: OauthProviderStatus,
@@ -72,8 +73,12 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [providers, setProviders] = useState<OauthProviderStatus[]>([]);
   const [ssoLoadingKind, setSsoLoadingKind] = useState<string | null>(null);
-  const [slideVerified, setSlideVerified] = useState(false);
-  const [slideResetKey, setSlideResetKey] = useState(0);
+  const [captchaReady, setCaptchaReady] = useState(false);
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const [captcha, setCaptcha] = useState<PublicCaptchaConfig>({
+    provider: "slider",
+  });
+  const captchaRef = useRef<CaptchaFieldHandle>(null);
 
   useEffect(() => {
     void applyGuestLocale();
@@ -90,6 +95,7 @@ export default function LoginPage() {
           navigate("/setup", { replace: true });
           return;
         }
+        // Only probe OIDC / captcha after setup is done — otherwise lockdown 503s.
         authApi
           .getOauthStatus()
           .then((next) => {
@@ -98,6 +104,14 @@ export default function LoginPage() {
             }
           })
           .catch(() => {});
+        authApi
+          .getCaptcha()
+          .then((next) => {
+            if (!cancelled) setCaptcha(next);
+          })
+          .catch(() => {
+            if (!cancelled) setCaptcha({ provider: "slider" });
+          });
       })
       .catch(() => {
         // Backend unreachable — let the user attempt login and show a real
@@ -144,9 +158,9 @@ export default function LoginPage() {
     return () => window.removeEventListener("message", onMessage);
   }, [t]);
 
-  const resetSlide = () => {
-    setSlideVerified(false);
-    setSlideResetKey((k) => k + 1);
+  const resetCaptcha = () => {
+    setCaptchaReady(false);
+    setCaptchaResetKey((k) => k + 1);
   };
 
   const onSso = async (kind: string) => {
@@ -182,17 +196,18 @@ export default function LoginPage() {
   };
 
   const handleLogin = async () => {
-    if (!username || !password || !slideVerified) return;
+    if (!username || !password || !captchaReady) return;
     setLoading(true);
     try {
-      const res = await authApi.login(username, password);
+      const token = await captchaRef.current?.getToken();
+      const res = await authApi.login(username, password, token);
       setAuthToken(res.access_token);
       await applyUserLocale(res.user.locale);
       void refreshServerLabels(res.user.locale);
       navigate("/chat", { replace: true });
     } catch (err) {
       message.error(apiErrorMessage(err, t("login.failed"), t));
-      resetSlide();
+      resetCaptcha();
     } finally {
       setLoading(false);
     }
@@ -277,11 +292,14 @@ export default function LoginPage() {
           style={{ borderRadius: 10 }}
         />
 
-        <SlideCaptcha
-          hint={t("login.slideHint")}
-          verifiedLabel={t("login.slideVerified")}
-          onVerified={() => setSlideVerified(true)}
-          resetKey={slideResetKey}
+        <CaptchaField
+          ref={captchaRef}
+          config={captcha}
+          resetKey={captchaResetKey}
+          slideHint={t("login.slideHint")}
+          slideVerifiedLabel={t("login.slideVerified")}
+          unsupportedLabel={t("login.unsupportedCaptcha")}
+          onReadyChange={setCaptchaReady}
         />
 
         <Button
@@ -290,7 +308,7 @@ export default function LoginPage() {
           block
           loading={loading}
           onClick={handleLogin}
-          disabled={!username || !password || !slideVerified}
+          disabled={!username || !password || !captchaReady}
           style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
         >
           {t("login.submit")}

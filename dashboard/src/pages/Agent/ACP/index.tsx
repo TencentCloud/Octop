@@ -22,7 +22,8 @@ import styles from "./index.module.less";
 
 const EMPTY_RUNNERS: Record<string, ACPRunnerConfig> = {};
 
-export default function ACPPage() {
+/** ACP runners manager — shared by `/acp` and Personalization → Tools. */
+export function ACPPanel() {
   const { t } = useTranslation();
   const { modal, message } = App.useApp();
   const { activeAgentId } = useAgent();
@@ -259,18 +260,16 @@ export default function ACPPage() {
   );
 
   return (
-    <PageShell
-      title={t("pageShell.acp.title")}
-      subtitle={t("pageShell.acp.subtitle")}
-      agentScoped
-      actions={
+    <>
+      <div className={styles.toolbar}>
+        <div className={styles.toolbarText}>
+          <div className={styles.description}>{t("acp.description")}</div>
+          <p className={styles.scopeHint}>{t("acp.globalRunnersHint")}</p>
+        </div>
         <Button type="primary" onClick={openCreate}>
           {t("acp.create")}
         </Button>
-      }
-    >
-      <div className={styles.description}>{t("acp.description")}</div>
-      <p className={styles.scopeHint}>{t("acp.globalRunnersHint")}</p>
+      </div>
 
       {runnersLoading && cards.length === 0 ? (
         <CardSkeleton count={4} />
@@ -323,6 +322,20 @@ export default function ACPPage() {
         onSubmit={handleSubmit}
         onDelete={handleDelete}
       />
+    </>
+  );
+}
+
+/** Standalone ACP page (sidebar Control entry). */
+export default function ACPPage() {
+  const { t } = useTranslation();
+  return (
+    <PageShell
+      title={t("pageShell.acp.title")}
+      subtitle={t("pageShell.acp.subtitle")}
+      agentScoped
+    >
+      <ACPPanel />
     </PageShell>
   );
 }

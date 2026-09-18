@@ -980,7 +980,11 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  align-self: flex-start;
+  /* Grid child of .turnInset — default stretch fills the message column;
+     keep the chip hug its label (same idea as .messageFileCard). */
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
   margin-top: 6px;
   padding: 8px 14px;
   border: 1px solid color-mix(in srgb, var(--fn-color-brand) 22%, transparent);

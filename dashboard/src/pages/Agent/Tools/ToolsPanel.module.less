@@ -4,7 +4,12 @@
   gap: 20px;
   height: 100%;
   overflow: auto;
+  padding-right: 12px;
   padding-bottom: 8px;
+
+  @media (max-width: 767px) {
+    padding-right: 0;
+  }
 }
 
 .hint {
@@ -43,7 +48,8 @@
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 20px;
+  row-gap: 16px;
+  column-gap: 12px;
 
   @media (max-width: 767px) {
     grid-template-columns: 1fr;

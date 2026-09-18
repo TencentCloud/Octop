@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ADVANCED_TAB_PERMISSIONS,
   canAccessPath,
   NAV_PERMISSIONS,
   pathPermissionKeys,
@@ -42,6 +43,8 @@ describe("pathPermissionKeys", () => {
     expect([...PERM.advancedPage]).not.toContain("sso");
     expect(NAV_PERMISSIONS["admin-users"]).toEqual(PERM.usersPage);
     expect(NAV_PERMISSIONS["admin-advanced"]).toEqual(PERM.advancedPage);
+    expect(ADVANCED_TAB_PERMISSIONS.captcha).toBe("captcha");
+    expect([...PERM.advancedPage]).toContain("captcha");
   });
 
   it("keeps voice and search on models page, not advanced", () => {

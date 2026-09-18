@@ -2,27 +2,36 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from octop.infra.errors import corrupt_config_error
+from octop.infra.utils.json_file import (
+    JsonFileCorruptError,
+    read_json_object,
+    write_json_atomic,
+)
+
 
 def _read_config(config_path: Path) -> dict[str, Any]:
-    if not config_path.is_file():
-        return {}
+    """Load ``config.json`` for merging; ``{}`` when absent.
+
+    A corrupt file raises instead of reading as empty: ``seed_bundled_plugins``
+    always writes back, so merging into ``{}`` would destroy every other setting
+    (issue #730).
+    """
     try:
-        raw = json.loads(config_path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return raw if isinstance(raw, dict) else {}
+        data = read_json_object(config_path)
+    except JsonFileCorruptError as exc:
+        raise corrupt_config_error(exc.path, exc.detail) from exc
+    return data if data is not None else {}
 
 
 def _write_config(config_path: Path, data: dict[str, Any]) -> None:
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(config_path, data)
 
 
 def _plugin_version(plugin_dir: Path) -> tuple[int, ...]:

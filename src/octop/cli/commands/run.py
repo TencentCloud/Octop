@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import contextlib
-import json
-import os
-import tempfile
-from pathlib import Path
-
 import click
 
+from octop.cli.support.errors import fail_octop
 from octop.config import env_bind_overrides
+from octop.infra.errors import OctopError, corrupt_config_error
+from octop.infra.utils.json_file import (
+    JsonFileCorruptError,
+    read_json_object,
+    write_json_atomic,
+)
 from octop.infra.utils.paths import PathLayout
 
 
@@ -69,20 +70,29 @@ def _maybe_generate_self_signed(
 
 
 def _load_configfile_overrides() -> tuple[str | None, int | None]:
+    """Read ``bind_host`` / ``port`` from ``config.json``.
+
+    An absent or unreadable file falls back to the launch defaults, but a
+    *corrupt* one raises: silently ignoring it would bind defaults while
+    discarding every other setting, and boot would then die with a bare
+    ``JSONDecodeError`` traceback instead of an actionable message.
+    """
     cfg_path = PathLayout.from_env().config
-    if not cfg_path.exists():
+    try:
+        data = read_json_object(cfg_path)
+    except JsonFileCorruptError as exc:
+        raise corrupt_config_error(exc.path, exc.detail) from exc
+    except OSError:
         return None, None
-    with contextlib.suppress(OSError, json.JSONDecodeError):
-        data = json.loads(cfg_path.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            # Prefer new key "bind_host"; fall back to legacy "host" for old configs.
-            host = data.get("bind_host") or data.get("host")
-            port = data.get("port")
-            return (
-                host if isinstance(host, str) else None,
-                port if isinstance(port, int) and not isinstance(port, bool) else None,
-            )
-    return None, None
+    if data is None:
+        return None, None
+    # Prefer new key "bind_host"; fall back to legacy "host" for old configs.
+    host = data.get("bind_host") or data.get("host")
+    port = data.get("port")
+    return (
+        host if isinstance(host, str) else None,
+        port if isinstance(port, int) and not isinstance(port, bool) else None,
+    )
 
 
 def resolve_bind(host: str | None, port: int | None) -> tuple[str | None, int | None]:
@@ -96,48 +106,30 @@ def resolve_bind(host: str | None, port: int | None) -> tuple[str | None, int | 
     return resolved_host, resolved_port
 
 
-def _atomic_write_json(path: Path, data: dict[str, object]) -> None:
-    """Write JSON atomically: temp file + ``os.replace`` to avoid torn writes.
-
-    Uses ``os.write`` with pre-encoded bytes (instead of ``os.fdopen``) so the
-    file descriptor is owned and closed deterministically, even if encoding
-    is unavailable or the process is interrupted mid-write.
-    """
-    payload = (json.dumps(data, indent=2) + "\n").encode("utf-8")
-    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".config.", suffix=".tmp")
-    try:
-        try:
-            os.write(fd, payload)
-        finally:
-            # Always close — covers the case where ``os.write`` itself raises
-            # (disk full, EIO, EPIPE) so the fd does not leak.
-            os.close(fd)
-        os.replace(tmp_name, path)
-    except BaseException:  # also covers KeyboardInterrupt / SystemExit
-        # Best-effort cleanup of the temp file on any failure path.
-        with contextlib.suppress(OSError):
-            os.unlink(tmp_name)
-        raise
-
-
 def _save_configfile_overrides(host: str | None, port: int | None) -> None:
-    """Persist resolved host/port to config.json (read-merge-write, atomic)."""
+    """Persist resolved host/port to config.json (read-merge-write, atomic).
+
+    A corrupt config.json is a hard error, never an empty base: merging into
+    ``{}`` and writing back destroys every other setting (issue #730 — one
+    trailing comma plus ``octop run --port`` wiped the ``database`` section and
+    silently flipped a PostgreSQL instance back to greenfield SQLite).
+    """
     paths = PathLayout.from_env()
     paths.ensure_root()
     cfg_path = paths.config
-    data: dict[str, object] = {}
-    if cfg_path.exists():
-        with contextlib.suppress(OSError, json.JSONDecodeError):
-            loaded = json.loads(cfg_path.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                data = loaded
+    try:
+        data = read_json_object(cfg_path)
+    except JsonFileCorruptError as exc:
+        raise corrupt_config_error(exc.path, exc.detail) from exc
+    if data is None:
+        data = {}
     if host is not None:
         data["bind_host"] = host
     if port is not None:
         data["port"] = port
     click.echo(f"Saved config to {cfg_path}")
     try:
-        _atomic_write_json(cfg_path, data)
+        write_json_atomic(cfg_path, data)
     except OSError as exc:
         click.echo(f"Warning: could not save config.json: {exc}", err=True)
 
@@ -181,9 +173,12 @@ def run(
     starts.
     """
     cli_host, cli_port = host, port
-    host, port = resolve_bind(host, port)
-    if cli_host is not None or cli_port is not None:
-        _save_configfile_overrides(cli_host, cli_port)
+    try:
+        host, port = resolve_bind(host, port)
+        if cli_host is not None or cli_port is not None:
+            _save_configfile_overrides(cli_host, cli_port)
+    except OctopError as exc:
+        fail_octop(exc)
     certfile, keyfile = _maybe_generate_self_signed(ssl, ssl_certfile, ssl_keyfile)
     _run_uvicorn(
         host=host,

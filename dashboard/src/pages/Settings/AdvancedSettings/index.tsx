@@ -1,11 +1,19 @@
 import { useTranslation } from "react-i18next";
 import { Navigate, useSearchParams } from "react-router-dom";
-import { Archive, Lock, RefreshCw, Variable, Activity } from "lucide-react";
+import {
+  Archive,
+  Lock,
+  RefreshCw,
+  ShieldCheck,
+  Variable,
+  Activity,
+} from "lucide-react";
 import EnvironmentsPage from "../Environments";
 import { ObservabilitySettingsPanel } from "../Observability";
 import BackupRestorePanel from "../BackupRestore";
 import { HttpsSettingsPanel } from "../HttpsSettings";
 import UpdateConfig from "./UpdateConfig";
+import CaptchaSettingsPanel from "./CaptchaSettings";
 import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import tabStyles from "./tabContent.module.less";
@@ -13,13 +21,20 @@ import ForbiddenPage from "../../../components/ForbiddenPage";
 import { useGatedSearchTabs } from "../../../hooks/useGatedSearchTabs";
 import { ADVANCED_TAB_PERMISSIONS } from "../../../utils/permissions";
 
-type TabKey = "env-vars" | "observability" | "backup" | "https" | "updates";
+type TabKey =
+  | "env-vars"
+  | "observability"
+  | "backup"
+  | "https"
+  | "updates"
+  | "captcha";
 
 const TABS: TabBarItem<TabKey>[] = [
   { key: "env-vars", labelKey: "nav.environments", icon: Variable },
   { key: "observability", labelKey: "nav.observability", icon: Activity },
   { key: "backup", labelKey: "nav.backupRestore", icon: Archive },
   { key: "https", labelKey: "nav.https", icon: Lock },
+  { key: "captcha", labelKey: "nav.loginCaptcha", icon: ShieldCheck },
   { key: "updates", labelKey: "nav.checkUpdates", icon: RefreshCw },
 ];
 
@@ -28,7 +43,8 @@ function parseTab(raw: string | null): TabKey {
     raw === "observability" ||
     raw === "backup" ||
     raw === "https" ||
-    raw === "updates"
+    raw === "updates" ||
+    raw === "captcha"
   ) {
     return raw;
   }
@@ -64,6 +80,8 @@ export default function AdvancedSettingsPage() {
         return <HttpsSettingsPanel />;
       case "updates":
         return <UpdateConfig />;
+      case "captcha":
+        return <CaptchaSettingsPanel />;
     }
   };
 

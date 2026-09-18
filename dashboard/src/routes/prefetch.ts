@@ -21,6 +21,7 @@ const ROUTE_PREFETCHERS: Record<string, () => Promise<unknown>> = {
   "/personalization": () => import("../pages/Agent/Personalization"),
   "/personalization/skills": () => import("../pages/Agent/Personalization"),
   "/personalization/tools": () => import("../pages/Agent/Personalization"),
+  "/personalization/acp": () => import("../pages/Agent/ACP"),
   "/personalization/subagents": () => import("../pages/Agent/Personalization"),
   "/personalization/channels": () => import("../pages/Agent/Personalization"),
   "/personalization/mbti": () => import("../pages/Agent/Personalization"),

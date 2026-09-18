@@ -23,7 +23,7 @@ from octop.i18n.domains.voice import (
 from octop.infra.db.repos.voice_providers import VoiceProviderRow
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.ssrf_guard import validate_https_url_resolved
-from octop.infra.voice.tencent_sign import tc3_headers
+from octop.infra.utils.tencent_sign import tc3_headers
 
 _ui_locale: ContextVar[str | None] = ContextVar("voice_ui_locale", default=None)
 

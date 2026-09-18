@@ -192,7 +192,7 @@ make format-frontend                    # prettier write (dashboard only)
 uv run pytest -m "not live"            # full test suite (no LLM calls)
 uv run pytest tests/unit -x -q        # unit tests only, stop on first fail
 uv run pytest tests/integration -x -q # integration tests only
-cd dashboard && npx tsc --noEmit       # frontend typecheck (after UI changes)
+cd dashboard && npx tsc -b             # frontend typecheck (after UI changes)
 make build-frontend                     # dashboard/ → src/octop/dashboard/
 ```
 
@@ -379,7 +379,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 1. **Clarify scope** — read relevant code/docs; confirm assumptions and ambiguities with the user (see [§1](#1-collaboration-principles)).
 2. **Hooks** — if this clone has not run `make install-hooks` yet, do it before committing (see [§6](#6-run-commands)). Pre-commit must stay green (`make all` + dashboard build).
 3. **Minimal implementation** — change only task-related files; dashboard source is in `dashboard/`, build output in `src/octop/dashboard/` (run `make build-frontend` after UI changes).
-4. **Verify** — backend/ship bar: `make all` (`format-all` + `lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc --noEmit` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. Treat Windows CI as part of the bar: follow [§7 Cross-platform tests](#7-key-patterns).
+4. **Verify** — backend/ship bar: `make all` (`format-all` + `lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc -b` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. Treat Windows CI as part of the bar: follow [§7 Cross-platform tests](#7-key-patterns).
 5. **Wrap up** — remove orphan symbols introduced in this change; do not commit or push unless asked.
 
 ### Branching & release

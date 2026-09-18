@@ -17,7 +17,7 @@ import { usePathTabs } from "../../../hooks/usePathTabs";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { userCan } from "../../../utils/permissions";
 import SkillsTabs from "../Skills/components/SkillsTabs";
-import ToolsPanel from "../Tools/ToolsPanel";
+import ToolsTabs from "../Tools/ToolsTabs";
 import SubagentManager from "../../Experts/components/SubagentManager";
 import MBTISelector from "./components/MBTISelector";
 import AgentPluginsPanel from "./components/AgentPluginsPanel";
@@ -61,8 +61,10 @@ export default function PersonalizationPage() {
   const { activeAgentId, agents } = useAgent();
   const activeAgent = agents.find((a) => a.agent_id === activeAgentId);
   const isAllowed = useCallback(
-    (tab: PersonalizationTab) =>
-      tab !== "channels" || userCan(user, "channels"),
+    (tab: PersonalizationTab) => {
+      if (tab === "channels") return userCan(user, "channels");
+      return true;
+    },
     [user],
   );
 
@@ -124,7 +126,7 @@ export default function PersonalizationPage() {
             aria-hidden={activeTab !== "tools"}
           >
             <div className={pageShellStyles.fillChild}>
-              <ToolsPanel agentId={activeAgentId} />
+              <ToolsTabs agentId={activeAgentId} />
             </div>
           </div>
         )}

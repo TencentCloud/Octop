@@ -93,7 +93,8 @@
 .list {
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 2px;
+  /* Keep list cards clear of the vertical scrollbar. */
+  padding: 4px 12px 4px 2px;
 }
 
 .list :global(.ant-list-items) {
@@ -520,6 +521,8 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  /* Keep skill cards clear of the vertical scrollbar. */
+  padding-right: 12px;
 }
 
 .skillsToolbar {
@@ -622,6 +625,7 @@
 
 .layoutMobile .detailBody {
   padding: 0 4px;
+  padding-right: 4px;
 }
 
 .layoutMobile :global(.ant-typography) {

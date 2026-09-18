@@ -322,6 +322,9 @@ class OctopServer:
         db = open_database(config, self.paths)
         run_migrations(db)
         self.services = build_shared_services(db=db, paths=self.paths, config=config)
+        from octop.infra.auth.captcha import boot_from_services  # noqa: PLC0415
+
+        boot_from_services(self.services.settings_repo, self.services.secret_repo)
         self._ensure_jwt_secret()
         await self._boot_runtime(config)
         self._started = True
@@ -346,6 +349,9 @@ class OctopServer:
             db.close()
             raise
         self.services = build_shared_services(db=db, paths=self.paths, config=config)
+        from octop.infra.auth.captcha import boot_from_services  # noqa: PLC0415
+
+        boot_from_services(self.services.settings_repo, self.services.secret_repo)
         self._ensure_jwt_secret()
         await self._boot_runtime(config)
         logger.info(
