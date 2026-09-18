@@ -192,6 +192,14 @@ def test_build_harness_config_accepts_memory_extract_settings(manager: AgentMana
         assert cfg.memory_extract_idle_seconds == 600.0
 
 
+def test_build_harness_config_includes_inbound_context_middleware(manager: AgentManager) -> None:
+    from octop.infra.agents.middleware.inbound_context import InboundContextMiddleware
+
+    cfg = manager._build_harness_config(_row(config_json=json.dumps(_MEMORY_OFF)))
+
+    assert any(isinstance(item, InboundContextMiddleware) for item in cfg.middleware)
+
+
 def test_format_agent_start_error_unwraps_exception_group() -> None:
     exc = BaseExceptionGroup(
         "unhandled errors in a TaskGroup (1 sub-exception)",

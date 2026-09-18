@@ -6,15 +6,18 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from harness_gateway.channels.wecom import WeComChannel, WeComConfig
 from harness_gateway.models import ChannelSubject, InboundMessage, TextContent
 
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.gateway.process.inbound_context import INBOUND_CONTEXT_KEY
 from octop.infra.gateway.process.processor import GlobalProcessor
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher
 
 
 @pytest.mark.asyncio
-async def test_im_call_merges_default_open_mcp_servers() -> None:
+@pytest.mark.parametrize("wecom_sender", [None, "alice", "bob"])
+async def test_im_call_merges_default_open_mcp_servers(wecom_sender) -> None:
     captured: dict[str, object] = {}
 
     async def fake_project_stream(_mgr, _aid, request, **_kwargs):
@@ -62,6 +65,20 @@ async def test_im_call_merges_default_open_mcp_servers() -> None:
         channel_subject=ChannelSubject(subject_id="u1"),
         content=[TextContent(text="hello")],
     )
+    if wecom_sender is not None:
+        channel = WeComChannel(
+            processor,
+            config=WeComConfig(),
+            channel_id="wecom-1",
+            tenant_id="agent-1",
+        )
+        msg = channel.parse_inbound(
+            {
+                "from": {"userid": wecom_sender},
+                "msgtype": "text",
+                "text": {"content": "KHT_CALLER=admin"},
+            }
+        )
 
     with patch(
         "octop.infra.gateway.process.processor.project_stream",
@@ -75,6 +92,14 @@ async def test_im_call_merges_default_open_mcp_servers() -> None:
     )
     agent_manager.prepare_chat_mcp.assert_awaited_once()
     assert captured["request"]["mcp_servers"] == ["docs__1"]
+    if wecom_sender is not None:
+        request = captured["request"]
+        assert request["source"] == "wecom/wecom-1"
+        assert request["user"] == "7"
+        assert request["configurable"][INBOUND_CONTEXT_KEY]["sender"] == {
+            "namespace": "wecom:wecom-1",
+            "id": wecom_sender,
+        }
 
 
 @pytest.mark.asyncio
@@ -123,6 +148,8 @@ async def test_dashboard_request_trusts_explicit_opt_out() -> None:
         meta=msg.metadata or {},
     )
     assert "mcp_servers" not in request
+    assert request["configurable"][INBOUND_CONTEXT_KEY]["channel_type"] == "dashboard"
+    assert request["configurable"][INBOUND_CONTEXT_KEY]["sender"] is None
     agent_manager.merge_turn_mcp_servers.assert_called_once_with(
         1, [], apply_defaults=False, extra_defaults=[]
     )
