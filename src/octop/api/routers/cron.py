@@ -114,9 +114,7 @@ async def cron_examples(
     row = registry.get_row(agent_id)
     agent_name = str(getattr(row, "name", "") or "").strip() if row is not None else ""
     template_name = (
-        str(getattr(row, "template_name", None) or "").strip() or None
-        if row is not None
-        else None
+        str(getattr(row, "template_name", None) or "").strip() or None if row is not None else None
     )
     catalog = getattr(server, "expert_catalog", None)
     examples = resolve_display_task_examples(
