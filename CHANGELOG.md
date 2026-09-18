@@ -13,6 +13,7 @@
 
 ### 修复
 
+- 修复模型提供商探测失败时日志与界面空白问题（#766）：当探活或拉取模型列表遭遇无参数异常（如 `TimeoutError()`、`ConnectionError()`）或包装后丢失 message 的异常时，`str(exc)` 为空导致日志截断丢失类型信息且前端错误为空；现提取异常类型与原因链，日志显式打印异常类型及 repr 并保留 debug 堆栈；同时 `stream_error_message` 扩充对 `TimeoutError`、`ConnectError` 等内置与网络异常模式的本地化映射，确保探活失败时前端始终展现可诊断的明确指引。
 - Dashboard 在 Chromium 90 等旧版浏览器中因缺少 `Object.hasOwn` 而无法启动
 - 无网络或后端不可达时，启动页展示明确错误与重试，而不再白屏 (#696)
 - iOS PWA 顶栏/侧栏避让状态栏：`env(safe-area-inset-top)` 垫高移动端 Header 与抽屉品牌行（#664）
