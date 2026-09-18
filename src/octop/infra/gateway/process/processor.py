@@ -1012,6 +1012,7 @@ class GlobalProcessor:
             thread_id=thread_id,
             meta=meta,
         )
+        self._prepersist_user_message(thread_id, request)
         history_tracker = await self._begin_history(agent_id, thread_id, request)
         await self._observe_turn_start_context(
             agent_id=agent_id,
@@ -1410,6 +1411,50 @@ class GlobalProcessor:
             thread_id=thread_id,
             usage=usage,
         )
+
+    def _prepersist_user_message(
+        self,
+        thread_id: str,
+        request: dict[str, Any],
+    ) -> None:
+        """Persist the user's message before the agent turn streams.
+
+        The legacy dashboard WS path only wrote the user message at turn end
+        (``_record_turn_history``) or on interrupt (``_persist_incomplete_turn``).
+        A refresh while the model is still thinking therefore lost the user's
+        message (TencentCloud/Octop#737). Writing it up front, keyed by a stable
+        ``message_id``, makes it durable immediately; ``append_if_ready`` skips
+        it again at turn end because the id matches the tracker's projection.
+
+        The v2 history-archive path does not need this: ``RecordingTracker``
+        flushes the seeded user message during ``_begin_history`` already, and
+        v2 turns write only to the archive, never to ``thread_message_repo``.
+        """
+        if self._history_archive is not None:
+            return
+        if self._thread_message_repo is None:
+            return
+        messages = request.get("messages")
+        if not isinstance(messages, list) or not messages:
+            return
+        user = messages[0]
+        if not isinstance(user, dict) or str(user.get("role") or "") != "user":
+            return
+        if not user.get("id"):
+            user["id"] = f"dashboard:{new_ulid()}:human"
+        try:
+            self._thread_message_repo.append_if_ready(
+                thread_id,
+                message_inputs([user], dedupe_missing_ids=True),
+            )
+        except Exception:
+            # History projection is a read optimization; a failed pre-persist
+            # must never block the chat turn.
+            logger.warning(
+                "failed to pre-persist user message for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
 
     async def _persist_incomplete_turn(
         self,

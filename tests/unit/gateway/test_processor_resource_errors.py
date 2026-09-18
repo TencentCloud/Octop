@@ -78,6 +78,11 @@ def _processor_with_stream(
     return processor, msg, appended
 
 
+def _flatten_appended(appended: list[list[Any]]) -> list[Any]:
+    """All messages written across pre-persist and end-of-turn appends."""
+    return [item for batch in appended for item in batch]
+
+
 @pytest.mark.asyncio
 async def test_iter_turn_chunks_persists_partial_output_and_error() -> None:
     async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
@@ -90,13 +95,13 @@ async def test_iter_turn_chunks_persists_partial_output_and_error() -> None:
     assert any(chunk.get("type") == "error" for chunk in chunks)
     assert chunks[-1]["type"] == "done"
     assert appended
-    texts = [_wire_text(item) for item in appended[0]]
+    texts = [_wire_text(item) for item in _flatten_appended(appended)]
     assert any("continue this" in text for text in texts)
     assert "partial answer" in texts
     assert any("余额" in text or "insufficient" in text.lower() for text in texts)
     assert any(
         json.loads(item.message_json)["data"]["additional_kwargs"].get("octop_stream_error")
-        for item in appended[0]
+        for item in _flatten_appended(appended)
         if "余额" in _wire_text(item) or "insufficient" in _wire_text(item).lower()
     )
     processor._thread_registry.touch_last_active.assert_called_with("thread-1")
@@ -112,7 +117,7 @@ async def test_iter_turn_chunks_persists_streamed_tokens_without_state() -> None
 
     assert not any(chunk.get("type") == "error" for chunk in chunks)
     assert chunks[-1]["type"] == "done"
-    texts = [_wire_text(item) for item in appended[0]]
+    texts = [_wire_text(item) for item in _flatten_appended(appended)]
     assert any("continue this" in text for text in texts)
     assert "partial answer" in texts
 
@@ -127,6 +132,6 @@ async def test_iter_turn_chunks_persists_partial_when_cancelled() -> None:
     with pytest.raises(asyncio.CancelledError):
         _ = [chunk async for chunk in processor.iter_turn_chunks(msg)]
 
-    texts = [_wire_text(item) for item in appended[0]]
+    texts = [_wire_text(item) for item in _flatten_appended(appended)]
     assert any("continue this" in text for text in texts)
     assert "partial answer" in texts
