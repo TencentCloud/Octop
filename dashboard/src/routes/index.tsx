@@ -10,6 +10,7 @@ const KnowledgeBasesPage = lazy(() => import("../pages/KnowledgeBases"));
 const PersonalizationPage = lazy(
   () => import("../pages/Agent/Personalization"),
 );
+const ACPPage = lazy(() => import("../pages/Agent/ACP"));
 const TokenUsagePage = lazy(() => import("../pages/Control/TokenUsage"));
 
 // Lazy-loaded pages — Control
@@ -55,7 +56,6 @@ export const pathToKey: Record<string, string> = {
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
   "/personalization/tools": "personalization",
-  "/personalization/acp": "personalization",
   "/personalization/plugins": "personalization",
   "/personalization/subagents": "personalization",
   "/personalization/channels": "channels",
@@ -65,6 +65,7 @@ export const pathToKey: Record<string, string> = {
   "/token-usage": "token-usage",
   "/agent-config": "agent-config",
   // Control
+  "/acp": "acp",
   "/channels": "channels",
   "/workbench": "workbench",
   "/workbench/terminal": "workbench",
@@ -152,6 +153,10 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/connectors", element: <ConnectorsPage /> },
   { path: "/skill-packages", element: <SkillPackagesPage /> },
   { path: "/knowledge-bases", element: <KnowledgeBasesPage /> },
+  {
+    path: "/personalization/acp",
+    element: <RedirectPreserveSearch to="/acp" />,
+  },
   { path: "/personalization/*", element: <PersonalizationPage /> },
   {
     path: "/skills",
@@ -160,10 +165,7 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/token-usage", element: <TokenUsagePage /> },
 
   // Control (RequirePermission via pathPermissionKeys in MainLayout)
-  {
-    path: "/acp",
-    element: <RedirectPreserveSearch to="/personalization/acp" />,
-  },
+  { path: "/acp", element: <ACPPage /> },
   {
     path: "/channels",
     element: <RedirectPreserveSearch to="/personalization/channels" />,

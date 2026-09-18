@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Empty, Form, Switch } from "antd";
 
 import { useTranslation } from "react-i18next";
+import PageShell from "../../../layouts/PageShell";
 import { CardSkeleton } from "../../../components/Skeleton";
 import { acpApi } from "../../../api/modules/acp";
 import {
@@ -21,7 +22,8 @@ import styles from "./index.module.less";
 
 const EMPTY_RUNNERS: Record<string, ACPRunnerConfig> = {};
 
-export default function ACPPanel() {
+/** ACP runners manager — shared by `/acp` and Personalization → Tools. */
+export function ACPPanel() {
   const { t } = useTranslation();
   const { modal, message } = App.useApp();
   const { activeAgentId } = useAgent();
@@ -321,5 +323,19 @@ export default function ACPPanel() {
         onDelete={handleDelete}
       />
     </>
+  );
+}
+
+/** Standalone ACP page (sidebar Control entry). */
+export default function ACPPage() {
+  const { t } = useTranslation();
+  return (
+    <PageShell
+      title={t("pageShell.acp.title")}
+      subtitle={t("pageShell.acp.subtitle")}
+      agentScoped
+    >
+      <ACPPanel />
+    </PageShell>
   );
 }

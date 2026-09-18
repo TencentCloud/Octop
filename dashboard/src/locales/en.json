@@ -177,6 +177,7 @@
     "experts": "Experts",
     "tasks": "Automation",
     "connectors": "Connectors",
+    "acp": "ACP",
     "agents": "Agents",
     "providers": "Providers",
     "models": "Model Management",
@@ -1471,7 +1472,9 @@
   "toolSettings": {
     "title": "Tool settings",
     "hint": "Turn off built-in tools you do not want the model to call. Required system tools cannot be disabled.",
+    "hintPlugin": "Turn off plugin tools you do not want the model to call. Unloaded plugins must be enabled under Plugins first.",
     "empty": "No tools available",
+    "emptyPlugin": "No plugin tools yet. Enable plugins for this agent on the Plugins tab first.",
     "loadFailed": "Failed to load tool settings",
     "saveSuccess": "Tool settings saved",
     "saveFailed": "Failed to save tool settings",
@@ -1481,6 +1484,11 @@
     "requiredBadge": "Required",
     "unavailable": "Not loaded",
     "unavailableHint": "This plugin is not enabled globally. Enable it under Plugins first.",
+    "tabs": {
+      "builtin": "Built-in tools",
+      "acp": "ACP tools",
+      "plugin": "Plugin tools"
+    },
     "categories": {
       "filesystem": "Files & shell",
       "orchestration": "Planning & sub-agents",
@@ -3694,7 +3702,6 @@
     "tabs": {
       "skills": "Skills",
       "tools": "Tools",
-      "acp": "ACP Tools",
       "plugins": "Plugins",
       "subagents": "Subagents",
       "channels": "Channels",
@@ -5176,6 +5183,10 @@
     "connectors": {
       "title": "Connectors",
       "subtitle": "Account-level docs, cloud & email — pick per chat"
+    },
+    "acp": {
+      "title": "ACP",
+      "subtitle": "Configure external coding agent runners (OpenCode, Claude Code, …)"
     },
     "skills": {
       "title": "Skills",

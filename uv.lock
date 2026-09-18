@@ -1330,7 +1330,7 @@ wheels = [
 
 [[package]]
 name = "harness-browser"
-version = "0.7.8"
+version = "0.7.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1338,9 +1338,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/84/de/482fbf2d10a1e425f14f1a2bde4d36a479c2cb714ffa080cdca1c296aefe/harness_browser-0.7.8.tar.gz", hash = "sha256:7ffe4e4af8285df4598341bded14e1cb2769b835df6b1e729b603a8a2cacfc92", size = 339599, upload-time = "2026-09-03T06:16:19.629Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/08/8dfe724dc05de9ab8c903f64482dbe54f67a9323995867ebbd4094c52fe2/harness_browser-0.7.9.tar.gz", hash = "sha256:a88a7a9d55649c628ff41b073be749885d16d95925521ab8a3e2e4e11c3f37f8", size = 341291, upload-time = "2026-09-17T13:00:12.571Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/26/00/87f162ed67c17b9dcf0517cfa7c64112616b30a57a7c0165c62f462798db/harness_browser-0.7.8-py3-none-any.whl", hash = "sha256:6f95d97109ac23ad389d74f725ce9bb7e34863188e8f1a31569b5f1f9d18f913", size = 102054, upload-time = "2026-09-03T06:16:17.851Z" },
+    { url = "https://files.pythonhosted.org/packages/fb/29/b652bc07e2bf4b1c012469f512cca9bab01c1958842129304996811e80a1/harness_browser-0.7.9-py3-none-any.whl", hash = "sha256:4c1afc19e225105cbc6f2804a1ae56fd32555b1e32cf8a215752823f79a69023", size = 102702, upload-time = "2026-09-17T13:00:10.986Z" },
 ]
 
 [[package]]
@@ -2598,7 +2598,7 @@ requires-dist = [
     { name = "edge-tts", specifier = ">=6.1" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "fastembed", marker = "extra == 'local-embedding'", specifier = ">=0.4" },
-    { name = "harness-browser", specifier = ">=0.7.8" },
+    { name = "harness-browser", specifier = ">=0.7.9" },
     { name = "harness-gateway", specifier = ">=0.9.7" },
     { name = "harness-memory", specifier = ">=0.9.10" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },

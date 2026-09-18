@@ -177,6 +177,7 @@
     "experts": "专家",
     "tasks": "自动化",
     "connectors": "连接器",
+    "acp": "ACP",
     "agents": "Agents",
     "providers": "Providers",
     "models": "模型",
@@ -1471,7 +1472,9 @@
   "toolSettings": {
     "title": "工具设置",
     "hint": "关闭后模型将无法调用该内置工具。系统必需工具不可关闭。",
+    "hintPlugin": "关闭后模型将无法调用该插件工具。未挂载的插件需先在「插件管理」中启用。",
     "empty": "暂无工具",
+    "emptyPlugin": "暂无插件工具。请先在「插件」页为当前智能体启用插件。",
     "loadFailed": "加载工具设置失败",
     "saveSuccess": "工具设置已保存",
     "saveFailed": "保存工具设置失败",
@@ -1481,6 +1484,11 @@
     "requiredBadge": "必需",
     "unavailable": "未挂载",
     "unavailableHint": "插件未全局启用或未加载，请先在「插件管理」中启用该插件。",
+    "tabs": {
+      "builtin": "内置工具",
+      "acp": "ACP 工具",
+      "plugin": "插件工具"
+    },
     "categories": {
       "filesystem": "文件与终端",
       "orchestration": "规划与子智能体",
@@ -3824,7 +3832,6 @@
     "tabs": {
       "skills": "技能",
       "tools": "工具",
-      "acp": "ACP 工具",
       "plugins": "插件",
       "subagents": "子智能体",
       "channels": "通道",
@@ -5315,6 +5322,10 @@
     "connectors": {
       "title": "连接器",
       "subtitle": "账户级连接文档、网盘与邮箱；对话时按需勾选"
+    },
+    "acp": {
+      "title": "ACP",
+      "subtitle": "配置外部编程 Agent Runner（OpenCode、Claude Code 等）"
     },
     "skills": {
       "title": "技能",
