@@ -126,10 +126,7 @@ export function useSkillRecordingWorkflow({
       }
 
       antMessage.success(
-        t(
-          "skillRecord.recordingStopped",
-          `录制完成，已生成 ${data.steps ?? 0} 个回放步骤`,
-        ),
+        t("skillRecord.recordingStopped", { steps: data.steps ?? 0 }),
       );
     } catch (err) {
       antMessage.error(
@@ -186,10 +183,9 @@ export function useSkillRecordingWorkflow({
       );
 
       antMessage.success(
-        t(
-          "skillRecord.skillApplied",
-          `技能 "${result.name || pendingSkillName}" 已成功应用`,
-        ),
+        t("skillRecord.skillApplied", {
+          name: result.name || pendingSkillName,
+        }),
       );
     } catch (err) {
       antMessage.error(

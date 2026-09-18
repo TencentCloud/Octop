@@ -18,6 +18,9 @@
 
 ### 修复
 
+- 补全仪表盘英文翻译：为 330+ 个仅存在于中文词典（或组件内联中文兜底）的键补充 `en.json` 条目（记忆库、连接器、技能录制引导、主动关心、场景等），修复两个中英混杂的英文词条；同步回填 `zh.json` 缺失键，两个语言包现已完全对齐
+- 记忆库页面的标签、提示与摘要文案此前硬编码中文、未走 i18n：`MemoryTree` / `CandidatesReview` / `JournalList` / `EpisodesList` / `AtomsList` 全部改用 `t()` + 双语词典；活动日志的后端备注改为跟随界面语言（英文界面直接显示英文备注，不再翻译成中文）
+- 修复技能录制完成提示的插值写法（`useSkillRecordingWorkflow`）：改用 i18next `{{steps}}` / `{{name}}` 插值，替换预拼接的中文模板字符串
 - 修复 PostgreSQL 全新部署中 `knowledge_bases` 缺失 `max_documents` 列导致创建知识库失败（#755）：在 `010_thread_message_projection.pg.sql` 补齐 `ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS max_documents`，并在 `migrate.py` 迁移结束处跨方言统一执行 `_ensure_knowledge_bases_schema(db)`；同时修复 `_map_knowledge_error` 将未分类系统异常误报为“向量模型或依赖尚未就绪”掩盖真实错误的问题，改为记录堆栈并返回 `INTERNAL_ERROR`。
 - 修复 `config.json` 解析失败时被静默清空的问题（#730）：`octop run --host/--port`、`octop service start --host/--port`、插件开关与插件 seeding 过去会把无法解析的配置当成空配置再写回，导致 `bind_host`、`database` 等全部设置丢失（PostgreSQL 实例会静默退回全新空 SQLite，且无任何告警）；现在直接报错并保留原文件不动，错误信息含行列号但不回显文件内容（其中含数据库凭据），配置写入统一改为原子写
 - `config.json` 无法解析时，`load_config` 的报错现在带上文件路径与行列号（此前是裸 `JSONDecodeError`，不说哪个文件出错），并拒绝“合法 JSON 但不是 object”的文件；报错不回显内容

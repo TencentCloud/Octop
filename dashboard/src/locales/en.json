@@ -70,7 +70,9 @@
       "created": "Created",
       "error": "Error",
       "unknown": "Unknown"
-    }
+    },
+    "back": "Back",
+    "operationFailed": "Operation failed"
   },
   "apiErrors": {
     "AUTH_FAILED": "Authentication failed.",
@@ -227,7 +229,8 @@
     "remoteAndroid": "Remote Phone",
     "records": "Tasks",
     "paneSettings": "Settings",
-    "paneRecords": "Tasks"
+    "paneRecords": "Tasks",
+    "acp": "ACP"
   },
   "skillPackages": {
     "title": "Skill Packages",
@@ -971,7 +974,9 @@
     "pluginsBtn": "Plugins",
     "mbtiBtn": "MBTI",
     "channelsBtn": "Channels",
-    "memoryBtn": "Memory"
+    "memoryBtn": "Memory",
+    "agentDisable": "Disable",
+    "openChat": "Chat"
   },
   "subagents": {
     "catalogTitle": "Manage subagents",
@@ -1417,7 +1422,10 @@
     "toolUiDockedOpen": "Open side panel",
     "loadEarlierMessages": "Load earlier messages",
     "historyLoadFailed": "History could not be loaded. Existing messages have been kept. Please retry.",
-    "historyRetry": "Retry"
+    "historyRetry": "Retry",
+    "creatingSession": "Creating session, please wait…",
+    "resizePopup": "Resize window",
+    "unreadMessages": "Unread messages"
   },
   "tools": {
     "unknown": "Unknown tool",
@@ -1750,7 +1758,7 @@
     "skillContent": "Skill Content",
     "pleaseInputName": "Please input skill name",
     "pleaseInputContent": "Please input skill content",
-    "skillNamePlaceholder": "e.g., weather-analysis / 天气查询",
+    "skillNamePlaceholder": "e.g., weather-analysis",
     "contentPlaceholder": "---\nname: <skill_name> (required)\ndescription: <skill description> (required)\nmetadata: { \"octop\": { \"emoji\": \"🔧\" } }\n---\n\nSkill implementation content...\n\n# Example:\n# ---\n# name: cron\n# description: Manage cron jobs via octop commands - create, query, pause, resume, delete tasks\n# metadata: { \"octop\": { \"emoji\": \"⏰\" } }\n# ---",
     "createSuccess": "Skill created successfully",
     "importSuccess": "Skill imported successfully",
@@ -1865,7 +1873,11 @@
     "stock-info": "Stock Info",
     "cvm-ai-doctor": "CVM AI Doctor",
     "tencentcloud-infra": "Tencent Cloud Infra",
-    "publisher-multi-platform": "Multi-platform Publisher"
+    "publisher-multi-platform": "Multi-platform Publisher",
+    "table": {
+      "actions": "Actions",
+      "enabled": "Enabled"
+    }
   },
   "cronJobs": {
     "title": "Cron Jobs",
@@ -2050,9 +2062,11 @@
       "dispatchMode": "Dispatch Mode",
       "runtimeMaxConcurrency": "Max Concurrency",
       "runtimeTimeoutSeconds": "Timeout (s)",
-      "runtimeMisfireGrace": "Misfire Grace (s)"
+      "runtimeMisfireGrace": "Misfire Grace (s)",
+      "enabled": "Enabled"
     },
-    "noAgentSelected": "Pick an expert in the top-right switcher first to manage its scheduled tasks"
+    "noAgentSelected": "Pick an expert in the top-right switcher first to manage its scheduled tasks",
+    "goToChat": "Send to chat"
   },
   "channels": {
     "title": "Channels",
@@ -2274,7 +2288,8 @@
     "rawConfigTooltip": "Channel-specific config — see harness-gateway docs",
     "getCredentials": "Get credentials",
     "channelSettingsNamed": "{{kind}} channel settings",
-    "deleteConfirmTitle": "Delete channel \"{{name}}\"?"
+    "deleteConfirmTitle": "Delete channel \"{{name}}\"?",
+    "dmPolicyDisabled": "Direct messages disabled"
   },
   "tokenUsage": {
     "title": "Token Usage Analytics",
@@ -3008,7 +3023,8 @@
     "onnxNotReady": "not ready",
     "onnxCacheDir": "Cache: {{dir}}",
     "onnxLocalCached": "Cached models",
-    "onnxQuickDownload": "Quick download from catalog…"
+    "onnxQuickDownload": "Quick download from catalog…",
+    "defaultModelExtra": "Model used when testing the connection; leave empty to use the first enabled model"
   },
   "advancedSettings": {
     "description": "Manage runtime configuration and environment variables.",
@@ -3219,7 +3235,20 @@
     "quietHoursEnd": "Do Not Disturb Until",
     "saveSuccess": "Proactive reminder settings saved",
     "saveFailed": "Failed to save proactive reminder settings",
-    "loadFailed": "Failed to load proactive reminder settings"
+    "loadFailed": "Failed to load proactive reminder settings",
+    "activeHoursEnd": "Check-in hours · End",
+    "activeHoursEndRequired": "Choose an end time",
+    "activeHoursStart": "Check-in hours · Start",
+    "activeHoursStartRequired": "Choose a start time",
+    "episodeBannerText": "Octop picks fitting moments from your mood journal to reach out with a caring message. You can see which entries it draws from in the mood journal.",
+    "intervalOrderError": "Minimum interval can't be greater than maximum",
+    "maxIntervalHours": "Maximum interval (hours)",
+    "maxIntervalRequired": "Enter a maximum interval",
+    "minIntervalHours": "Minimum interval (hours)",
+    "minIntervalMin": "Minimum interval must be at least 1 hour",
+    "minIntervalRequired": "Enter a minimum interval",
+    "timeRangeError": "Check-in hours must start before they end",
+    "viewEpisodes": "Open mood journal →"
   },
   "chatWelcome": {
     "greeting": "Hi! Your personal AI sidekick is here",
@@ -3556,11 +3585,16 @@
       "emptyTitle": "Memories are still being distilled",
       "emptyNoRaw": "No memories yet. Start chatting and the system will capture material and distill memories automatically.",
       "emptyWithRaw": "{{n}} pieces of conversation material captured. Distillation runs automatically once a session goes idle; the first memories usually appear after a few exchanges.",
-      "emptyPendingSuffix": "{{n}} memory candidates are awaiting confirmation in Pending Review."
+      "emptyPendingSuffix": "{{n}} memory candidates are awaiting confirmation in Pending Review.",
+      "lastExtract": "Last tidied {{time}}"
     },
     "library": {
       "viewRaw": "Raw material",
-      "hintRaw": "Raw conversation material captured before distillation (counts don't map 1:1 to Conversations)"
+      "hintRaw": "Raw conversation material captured before distillation (counts don't map 1:1 to Conversations)",
+      "hintAtoms": "All memories in a flat list, filterable by importance",
+      "hintTree": "Browse memories grouped by topic — people, projects, tools, and more",
+      "viewAtoms": "List view",
+      "viewTree": "Topic view"
     },
     "raw": {
       "typeFilter": "Type",
@@ -3626,7 +3660,31 @@
       "turnsEmpty": "No conversation turns in the last 7 days",
       "turns": "Turns",
       "growthTitle": "Memory growth · 7 days",
-      "growthEmpty": "No new memories in the last 7 days"
+      "growthEmpty": "No new memories in the last 7 days",
+      "atomsDelta7dShort": "New (7 days)",
+      "dirtyPages": "Topics pending refresh",
+      "dirtyPagesClean": "All topic summaries are up to date",
+      "dirtyPagesHint": "Some topic summaries need regenerating",
+      "entitiesShort": "Topics",
+      "episodesShort": "Episodes",
+      "heroTitle": "User profile",
+      "indexedEntities": "Indexed topics",
+      "indexedEntitiesHint": "Expand by topic in the memory library",
+      "memories": "Memories",
+      "pendingReview": "Pending review",
+      "pendingReviewClean": "No memory drafts waiting for review",
+      "pendingReviewHint": "Some memory drafts are waiting for your review",
+      "processingStatus": "Processing status",
+      "profileEyebrow": "User profile",
+      "profileSubtitle": "Preferences, current focus, key facts, and frequently mentioned people and things, distilled from saved memories.",
+      "reviewAction": "Refine profile",
+      "rowGoLibrary": "Open memory library →",
+      "rowHintToLibrary": "If something is wrong, deprecate it in the memory library",
+      "statusEmpty": "No status data",
+      "subtitleRawEventsUnit": "raw events",
+      "viewAll": "View all",
+      "weeklyNewAtoms": "New this week",
+      "weeklyNewAtomsHint": "See how quickly memories have been building up lately"
     },
     "entitySummary": "Topic summary",
     "tree": {
@@ -3638,7 +3696,31 @@
       "viewSummaryTip": "View this topic's summary",
       "deprecateTooltip": "Deprecate this memory",
       "deprecate": "Deprecate this memory",
-      "actions": "Actions"
+      "actions": "Actions",
+      "dirtyTag": "Pending refresh",
+      "noAtomsInTopic": "(No memories under this topic yet)",
+      "aka": "(aka {{names}})",
+      "akaInline": "aka {{names}}",
+      "importanceTag": "Importance: {{v}}",
+      "confidenceTag": "Confidence: {{v}}",
+      "confidenceTitle": "Confidence",
+      "deprecatedTag": "Forgotten",
+      "activeTag": "Active",
+      "assertionTitle": "Memory content",
+      "searchTermsTitle": "Related keywords",
+      "firstRecorded": "First recorded {{time}}",
+      "occurredAt": " · Happened {{time}}",
+      "summaryLoadFailed": "Failed to load the summary. Please try again later.",
+      "summaryNotGenerated": "The summary for this topic hasn't been generated yet.",
+      "summaryNotGeneratedDesc": "After a topic is created or its memories change, the system builds a long-form summary in the background — check back a little later to read it.",
+      "summaryVersion": "Version v{{v}} · Updated {{time}}",
+      "summaryDirtyNote": " · Memories changed recently — the summary will refresh in the background shortly",
+      "importanceHigh": "Very important",
+      "importanceMedium": "Important",
+      "importanceLow": "Normal",
+      "confidenceHigh": "Highly confident",
+      "confidenceMedium": "Fairly confident",
+      "confidenceLow": "Uncertain"
     },
     "create": {
       "title": "New memory",
@@ -3686,6 +3768,222 @@
       "ok": "Deprecate",
       "success": "Deprecated — Octop will no longer use this memory",
       "failed": "Operation failed: {{message}}"
+    },
+    "atomDetail": "Memory detail",
+    "candidates": {
+      "confirmPromote": "Accept this memory?",
+      "confirmReject": "Ignore",
+      "detail": "Memory draft detail",
+      "empty": "No memory content",
+      "kindLabel": "Type",
+      "promote": "Accept",
+      "promoteOk": "Accepted",
+      "reject": "Ignore",
+      "rejectHint": "Ignoring keeps this out of long-term memory. You can optionally note a reason for later review.",
+      "rejectOk": "Ignored",
+      "rejectReasonPlaceholder": "Optional reason, e.g. outdated / incorrect / unimportant",
+      "rejectTitle": "Ignore this draft",
+      "statusLabel": "Status",
+      "status": {
+        "pending": "Pending",
+        "needsReview": "Needs review",
+        "conflict": "Possible conflict",
+        "promoted": "Accepted",
+        "rejected": "Ignored",
+        "all": "All"
+      },
+      "kindAll": "All types",
+      "promoteMerged": "Merged with {{n}} existing memories",
+      "promoteNeedsReview": "{{n}} marked for review",
+      "promoteNew": "{{n}} newly accepted",
+      "draftContent": "Draft content",
+      "verbatimTitle": "Original quote",
+      "suggestionTitle": "Octop's suggestion",
+      "subjectTitle": "About whom / what",
+      "guide": {
+        "pendingTitle": "About \"Pending\" drafts",
+        "pending1": "Octop extracted these drafts from your conversations automatically; they're waiting for system rules to decide.",
+        "pending2a": "The system decides automatically — accept, merge into an existing memory, mark for review, or discard — ",
+        "pending2b": "no manual action needed",
+        "pending3": "To act early, switch to the \"Needs review\" or \"Possible conflict\" filter to see drafts that need your decision.",
+        "reviewTitle": "About \"Needs review\" drafts",
+        "reviewAcceptDesc": " → enters long-term memory immediately and gets priority in future conversations.",
+        "reviewRejectDesc": " → stays out of long-term memory; you can attach a reason (kept in the activity log for later review).",
+        "reviewTimeout": "⏰ If unhandled for 7 days",
+        "reviewTimeoutDesc": ", the system adds it to long-term memory automatically — with lower confidence and ranking, so it won't affect main conversations.",
+        "conflictTitle": "About \"Possible conflict\" drafts",
+        "conflict1": "These drafts contradict existing long-term memories and the system can't adjudicate automatically — you decide which one is accurate.",
+        "conflictAcceptDesc": " → this draft becomes the source of truth and enters long-term memory.",
+        "conflictRejectDesc": " → keeps the existing memory unchanged.",
+        "conflictNoTimeout": "⚠️ Conflicting drafts never time out",
+        "conflictNoTimeoutDesc": " — they stay in this queue until handled."
+      }
+    },
+    "confidence": {
+      "high": "High confidence",
+      "low": "Low confidence",
+      "medium": "Medium confidence"
+    },
+    "entityType": {
+      "concept": "Concept",
+      "event": "Event",
+      "organization": "Organization",
+      "other": "Other",
+      "person": "Person",
+      "place": "Place",
+      "project": "Project",
+      "tool": "Tool"
+    },
+    "episodeDetail": "Mood journal entry",
+    "episodes": {
+      "disclaimer": "This journal captures the feelings and little stories from your time with Octop. It isn't quoted in regular conversations — it just helps Octop care about you better, and feeds the weekly and monthly recaps.",
+      "emotionTag": "{{emotion}} · intensity {{intensity}}",
+      "summaryTitle": "Summary",
+      "peopleTitle": "People involved",
+      "occurredAt": "Happened {{time}}",
+      "emotion": {
+        "happy": "Happy",
+        "sad": "Sad",
+        "angry": "Angry",
+        "surprised": "Surprised",
+        "anxious": "Anxious",
+        "calm": "Calm",
+        "other": "Uncategorized"
+      }
+    },
+    "importance": {
+      "high": "High",
+      "low": "Low",
+      "medium": "Medium",
+      "title": "Importance"
+    },
+    "journal": {
+      "action": {
+        "create": "Create",
+        "deprecate": "Deprecate",
+        "merge": "Merge",
+        "promote": "Accept",
+        "reject": "Ignore",
+        "update": "Update",
+        "extractRun": "Extraction run",
+        "capture": "Recorded conversation",
+        "extract": "Generated drafts"
+      },
+      "filter": {
+        "all": "All entries",
+        "userEdit": "Edit",
+        "pageRegen": "Topic refresh",
+        "label": "Filter type:"
+      },
+      "empty": "No journal entries yet",
+      "itemsCount": "{{n}} items",
+      "summary": {
+        "noModel": "No extraction model configured — run skipped",
+        "failed": "Extraction failed this run",
+        "scanned": "Scanned {{n}} conversations, nothing new",
+        "processedNone": "Processed {{n}} conversations, nothing worth remembering",
+        "processed": "Processed {{extracted}} conversations, drafted {{candidates}}, promoted {{promoted}} memories"
+      },
+      "title": {
+        "tidied": "Tidied up a conversation",
+        "captured": "Recorded {{n}} conversations",
+        "processed": "Processed {{c}} conversations and drafted {{e}} memories",
+        "extracted": "Drafted {{n}} memories",
+        "regen": "Refreshed {{n}} topic summaries",
+        "processedRegen": "Processed {{c}} conversations and refreshed {{r}} topic summaries",
+        "extractedRegen": "Drafted {{e}} memories and refreshed {{r}} topic summaries"
+      },
+      "tag": {
+        "conversations": "📥 {{n}} conversations",
+        "drafts": "📝 {{n}} drafts",
+        "refreshes": "🔄 {{n}} refreshes"
+      },
+      "targetQuoted": "\"{{text}}\"",
+      "targetAtom": "a memory",
+      "targetEntity": "a topic",
+      "targetCandidate": "a draft",
+      "note": {
+        "entityResolved": "Linked to existing topic \"{{name}}\"",
+        "entityCreated": "Created new topic \"{{name}}\"",
+        "deprecatedNoReplacement": "Deprecated (no replacement memory)",
+        "semanticDuplicate": "Semantic duplicate — merged"
+      }
+    },
+    "kind": {
+      "conflict": "Possible conflict",
+      "decision": "Decision",
+      "fact": "Fact",
+      "preference": "Preference",
+      "task": "Task"
+    },
+    "list": {
+      "importanceMin": "Minimum importance",
+      "kind": "Type"
+    },
+    "migrate": {
+      "alreadyAdopted": "Already migrated, skipped",
+      "alreadyAdoptedAt": "This package was already imported at {{at}}",
+      "buttonLabel": "Migrate memories",
+      "chooseFile": "Choose file",
+      "comparePkgLabel": "Optional: upload a .hmpkg file to compare row counts",
+      "confirmDesc": "Review everything, then click \"Confirm\" to run the import.",
+      "confirmImport": "Confirm",
+      "conflictLabel": "Conflict strategy",
+      "conflictReplace": "Overwrite (replace with new data)",
+      "conflictSkip": "Skip (keep existing)",
+      "doctorAllPassed": "All checks passed ✓",
+      "doctorDesc": "Run a health check on this Octop's memory store, verifying schema, indexes, and foreign-key integrity.",
+      "doctorFailed": "Some checks failed — see details",
+      "doctorLabel": "Verify migration",
+      "doctorTitle": "Verify migration health",
+      "dryRunResult": "Dry-run results",
+      "exportBtn": "Package & download",
+      "exportDesc": "Pack all of this Octop's memories into a .hmpkg file and download it. You can import the file on another host (openclaw / hermes) to continue there.",
+      "exportLabel": "Export to file",
+      "exportSuccess": "Memory package downloaded",
+      "exportTitle": "Export memories to a file",
+      "hostRewriteKeep": "Keep original host",
+      "hostRewriteLabel": "Host field",
+      "hostRewriteTarget": "Rewrite to target host",
+      "importBtn": "Import directly",
+      "importDone": "Import finished",
+      "importLabel": "Import from file",
+      "importStats": "{{n}} written, {{s}} skipped",
+      "importSuccess": "Import finished — {{n}} memories written",
+      "importTitle": "Import memories from a file",
+      "previewBtn": "Dry run",
+      "rowCountDiff": "Row count difference:",
+      "runDoctor": "Run checks",
+      "selectFile": "Choose a .hmpkg file first",
+      "selectFileLabel": "Choose a .hmpkg file",
+      "targetHostLabel": "Target host",
+      "targetNs": "Target namespace: {{ns}}",
+      "willApply": "Expected writes: {{n}}"
+    },
+    "terminal": {
+      "aboutMe": "About you",
+      "aboutMeDesc": "Stable, long-term preferences and facts",
+      "atomCount": "{{n}} memories",
+      "currentFocus": "Current focus",
+      "currentFocusDesc": "Work in progress and recent decisions",
+      "emptyAboutMe": "Octop is still getting to know you — chat a bit more and this will fill in",
+      "emptyEntities": "No frequently mentioned people or things yet",
+      "emptyFocus": "Nothing in progress right now",
+      "emptyToldMe": "No firm facts noted yet",
+      "entities": "Key people & things",
+      "entitiesDesc": "Topics that appear most often in memories",
+      "toldMe": "Things you've said",
+      "toldMeDesc": "Key things Octop has recently noted down"
+    },
+    "time": {
+      "daysAgo": "{{n}} days ago",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "justNow": "Just now",
+      "minutesAgo": "{{n}} min ago",
+      "hoursAgo": "{{n}} hr ago",
+      "monthsAgo": "{{n}} mo ago",
+      "yearsAgo": "{{n}} yr ago"
     }
   },
   "personalization": {
@@ -3729,7 +4027,7 @@
       "title": "MBTI Personality",
       "subtitle": "Pick an MBTI type or take a 3-minute test to unlock a unique personality!",
       "takeTest": "Take the test",
-      "listSummary": "{{total}} personalities available, selected「{{selected}}」",
+      "listSummary": "{{total}} personalities available, {{selected}} selected",
       "dimensions": "Dimensions",
       "behavior": "Behavior Profile",
       "applyType": "I choose you!",
@@ -3785,7 +4083,17 @@
     "clickToPreview": "Click to preview",
     "moreScenes": "More Scenes",
     "readOnlyHint": "Read-only — This is preset content. After applying, you can edit it in \"Current Scene\".",
-    "fileCount": "{{count}} files"
+    "fileCount": "{{count}} files",
+    "currentSceneTab": "Current scene",
+    "drawerApply": "Apply this scene",
+    "drawerConfigFiles": "Config files",
+    "drawerSkillFiles": "Included skills",
+    "moreScenesComing": "More scenes on the way",
+    "moreScenesSub": "New scenes arrive with every update — stay tuned",
+    "noSceneApplied": "No scene applied yet",
+    "noSceneAppliedHint": "Pick a scene in \"Scene selection\" to get started",
+    "sceneSelectTab": "Scene selection",
+    "yourConfiguration": "Your configuration"
   },
   "workbench": {
     "title": "Workbench",
@@ -3978,7 +4286,9 @@
       "confirmPlaceholder": "Type \"confirm\" to apply",
       "placeholderWithSkills": "Type skill to replay, or chat",
       "inputPlaceholder": "Ask about page or control browser..."
-    }
+    },
+    "playwrightOptional": "playwright package not installed (optional)",
+    "playwrightOptionalDesc": "harness-browser (CDP) is ready and browser features are available. To use the Playwright fallback mode, install the octop[browser] extras."
   },
   "remoteDesktop": {
     "subtitle": "Control the Octop host operating system desktop",
@@ -4068,7 +4378,8 @@
     "mobileHint": "Tap the view to control the remote desktop; shortcut buttons send common key chords.",
     "adminOnlyTitle": "Admin access required",
     "adminOnlyDesc": "Remote desktop controls the host OS and is available to administrators only. Ask an admin if you need access.",
-    "adminOnlyBack": "Back to chat"
+    "adminOnlyBack": "Back to chat",
+    "streamError": "Remote desktop connection failed"
   },
   "browserWorkspace": {
     "title": "Browser",
@@ -4219,7 +4530,8 @@
       "database": "Database",
       "password": "Password",
       "admin": "Admin",
-      "model": "Models"
+      "model": "Models",
+      "finish": "Finish"
     },
     "database": {
       "hint": "Choose where Octop stores control-plane data (users, agents, channels). The default SQLite file works for most installs.",
@@ -4997,7 +5309,39 @@
     "chatPickerSearch": "Search connectors",
     "chatNone": "None",
     "chatEmptyHint": "Add connectors on the Connectors page first",
-    "manageConnectors": "Manage connectors"
+    "manageConnectors": "Manage connectors",
+    "apiKeyDoc": "See how to get an API key",
+    "apiKeyPlaceholder": "Paste API key",
+    "authCodeDoc": "See how to get an authorization code",
+    "authCodePlaceholder": "Paste authorization code",
+    "authUrlFailed": "Failed to open the authorization page",
+    "authUrlMissing": "Could not get the authorization page URL",
+    "deleteFailed": "Delete failed",
+    "detectLocal": "Detect local service",
+    "difyMcpUrlInvalid": "Paste the full MCP Server URL from your Dify endpoint",
+    "difyPasteUrlRequired": "No MCP URL found in the clipboard",
+    "difyStep1": "Publish an app or workflow in Dify",
+    "difyStep2": "Enable MCP on the endpoint and copy the full Server URL",
+    "disableSuccess": "Disabled",
+    "enableSuccess": "Enabled",
+    "getTokenAt": "Get a token",
+    "guidedSetup": "Quick setup",
+    "guidedStepProbe": "Paste credentials, then probe and save",
+    "lexiangCompanyFrom": "Tenant ID (company_from)",
+    "lexiangCompanyFromPlaceholder": "Copy from the Lexiang credentials page",
+    "manualTokenDoc": "Manual token guide",
+    "oauthTimedOut": "Authorization timed out — try one-click authorization again",
+    "openAuthorizePage": "Open authorization page",
+    "pasteMcpUrl": "Paste MCP URL",
+    "probeNeedSecretAfterConfigChange": "The connection config changed — re-enter the secret before probing",
+    "smartPaste": "Smart paste",
+    "toggleFailed": "Update failed",
+    "viewGuide": "View instructions",
+    "weknoraDetectFailed": "Failed to detect local WeKnora",
+    "weknoraFound": "Local WeKnora detected and address filled in",
+    "weknoraNotFound": "WeKnora not detected on the Octop host at 127.0.0.1:8080",
+    "weknoraStep1": "Open WeKnora and create an API key",
+    "weknoraStep2": "Detect the local service, or enter the deployment address manually"
   },
   "mbtiPage": {
     "pickAgent": "Select an Agent first"
@@ -5268,6 +5612,10 @@
     "mobile": {
       "title": "Remote Phone",
       "subtitle": "View and control a connected phone or emulator"
+    },
+    "acp": {
+      "title": "ACP",
+      "subtitle": "Configure external coding agent runners (OpenCode, Claude Code, …)"
     }
   },
   "remoteAndroid": {
@@ -5414,5 +5762,44 @@
     "updateReady": "A new version is ready",
     "updateNow": "Update now",
     "later": "Later"
+  },
+  "browser": {
+    "recordReplay": {
+      "noRecording": "Record a browser session first",
+      "replay": "Replay the last browser recording",
+      "replayFailed": "Replay failed",
+      "replayPassed": "Replay finished",
+      "start": "Start browser recording",
+      "startFailed": "Failed to start recording",
+      "started": "Browser recording started",
+      "stop": "Stop browser recording"
+    }
+  },
+  "shortcut": {
+    "title": "Quick commands"
+  },
+  "skillRecord": {
+    "applyFailed": "Failed to apply skill",
+    "recordingStopped": "Recording finished — {{steps}} replay steps generated",
+    "skillApplied": "Skill \"{{name}}\" applied successfully",
+    "stopFailed": "Failed to stop recording"
+  },
+  "skillRecordGuide": {
+    "buttonLabel": "Record skill",
+    "buttonTip": "Record browser actions to create a reusable skill script",
+    "envNotReady": "Set up the browser environment first",
+    "envWarning": "Browser environment not ready",
+    "envWarningDesc": "Make sure the browser environment is available before recording.",
+    "intro": "Turn recorded browser actions into reusable skill scripts. After recording starts, you'll type the task goal and describe the steps in the AI assistant chat.",
+    "startRecording": "Start recording",
+    "step1Desc": "Click the button below and the system will start recording all browser actions.",
+    "step1Title": "Start recording",
+    "step2Desc": "Once recording starts, the AI assistant asks for a task goal — it becomes the skill's name and trigger keyword (e.g. \"Log in to the OA portal\").",
+    "step2Title": "Enter the task goal",
+    "step3Desc": "Then describe what you want the AI assistant to do in the browser — it executes and records automatically.",
+    "step3Title": "Describe the steps",
+    "step4Desc": "When done, type \"end\" to stop the recording. After you confirm, the skill is saved under the task goal's name — typing the goal keyword replays the same flow.",
+    "step4Title": "Stop and confirm",
+    "title": "Skill recording guide"
   }
 }

@@ -45,6 +45,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 import {
   memoryDashboardApi,
@@ -381,6 +382,7 @@ function RootRow({
   agentId: string;
   entityCount: number;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       style={{
@@ -394,7 +396,9 @@ function RootRow({
       <ChevronDown size={10} style={{ marginRight: 6, color: "#8c8c8c" }} />
       <span style={{ marginRight: 6 }}>🧠</span>
       <span>{agentId}</span>
-      <Tag style={{ marginLeft: 8 }}>{entityCount} 个主题</Tag>
+      <Tag style={{ marginLeft: 8 }}>
+        {t("memory.tree.entityCount", { n: entityCount })}
+      </Tag>
     </div>
   );
 }
@@ -449,10 +453,10 @@ function EntityRow({
       <span style={{ marginRight: 6 }}>🏷️</span>
       <span style={{ fontWeight: 500 }}>{entity.canonical_name}</span>
       <Tag style={{ marginLeft: 8, fontSize: 11 }}>
-        {entityTypeLabel(entity.entity_type)}
+        {entityTypeLabel(entity.entity_type, t)}
       </Tag>
       <Tag color="blue" style={{ fontSize: 11 }}>
-        {entity.atom_count} 条记忆
+        {t("memory.tree.atomCount", { n: entity.atom_count })}
       </Tag>
       {entity.aliases.length > 0 ? (
         <span
@@ -466,14 +470,14 @@ function EntityRow({
             maxWidth: 220,
           }}
         >
-          (也叫 {entity.aliases.join(", ")})
+          {t("memory.tree.aka", { names: entity.aliases.join(", ") })}
         </span>
       ) : null}
       {/* Push the summary affordance to the right edge. */}
       <span style={{ marginLeft: "auto" }} />
       {entity.page_dirty ? (
         <Tag color="orange" style={{ fontSize: 11, margin: 0 }}>
-          待刷新
+          {t("memory.tree.dirtyTag")}
         </Tag>
       ) : null}
       <Tooltip title={t("memory.create.addToTopicTip", "在此主题下添加记忆")}>
@@ -525,6 +529,7 @@ function AtomChildren({
   onEdit?: (atom: AtomItem) => void;
   onDeprecate?: (atom: AtomItem) => void;
 }) {
+  const { t } = useTranslation();
   if (!cache || cache.loading) {
     return (
       <div
@@ -535,7 +540,8 @@ function AtomChildren({
           fontSize: 12,
         }}
       >
-        <Spin size="small" /> <span style={{ marginLeft: 6 }}>加载中...</span>
+        <Spin size="small" />{" "}
+        <span style={{ marginLeft: 6 }}>{t("common.loading")}</span>
       </div>
     );
   }
@@ -551,7 +557,7 @@ function AtomChildren({
           fontStyle: "italic",
         }}
       >
-        （该主题下暂无记忆）
+        {t("memory.tree.noAtomsInTopic")}
       </div>
     );
   }
@@ -627,11 +633,11 @@ function AtomRow({
       </span>
       {atom.kind ? (
         <Tag style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
-          {kindLabel(atom.kind)}
+          {kindLabel(atom.kind, t)}
         </Tag>
       ) : null}
       <span style={{ fontSize: 11, color: "#8c8c8c", whiteSpace: "nowrap" }}>
-        {formatRelativeTime(atom.created_at)}
+        {formatRelativeTime(atom.created_at, t)}
       </span>
       {showActions && onEdit ? (
         <Tooltip title={t("memory.edit.tooltip", "编辑这条记忆")}>
@@ -696,14 +702,15 @@ function AtomRow({
 }
 
 function ConfidenceDot({ value }: { value: Confidence }) {
+  const { t } = useTranslation();
   const color =
     value === "high" ? "#52c41a" : value === "medium" ? "#faad14" : "#f5222d";
   const tip =
     value === "high"
-      ? "很有把握"
+      ? t("memory.tree.confidenceHigh")
       : value === "medium"
-      ? "一般把握"
-      : "不太确定";
+      ? t("memory.tree.confidenceMedium")
+      : t("memory.tree.confidenceLow");
   return (
     <span
       title={tip}
@@ -767,19 +774,33 @@ function AtomDetailDrawer({
       {atom ? (
         <div>
           <Space size={4} wrap style={{ marginBottom: 12 }}>
-            {atom.kind ? <Tag>{kindLabel(atom.kind)}</Tag> : null}
-            <Tag>重要程度：{importanceLabel(atom.importance)}</Tag>
-            <Tag>可信度：{confidenceLabel(atom.confidence)}</Tag>
+            {atom.kind ? <Tag>{kindLabel(atom.kind, t)}</Tag> : null}
+            <Tag>
+              {t("memory.tree.importanceTag", {
+                v: importanceLabel(atom.importance, t),
+              })}
+            </Tag>
+            <Tag>
+              {t("memory.tree.confidenceTag", {
+                v: confidenceLabel(atom.confidence, t),
+              })}
+            </Tag>
             <Tag color={isAtomDeprecated(atom) ? "red" : "green"}>
-              {isAtomDeprecated(atom) ? "已忘记" : "在用"}
+              {isAtomDeprecated(atom)
+                ? t("memory.tree.deprecatedTag")
+                : t("memory.tree.activeTag")}
             </Tag>
           </Space>
           <LineageStrip agentId={agentId} atom={atom} />
-          <Typography.Title level={5}>记忆内容</Typography.Title>
+          <Typography.Title level={5}>
+            {t("memory.tree.assertionTitle")}
+          </Typography.Title>
           <Typography.Paragraph>{atom.assertion}</Typography.Paragraph>
           {(atom.search_terms ?? []).length > 0 ? (
             <>
-              <Typography.Title level={5}>关联关键词</Typography.Title>
+              <Typography.Title level={5}>
+                {t("memory.tree.searchTermsTitle")}
+              </Typography.Title>
               <Space size={4} wrap>
                 {(atom.search_terms ?? []).map((s) => (
                   <Tag key={s}>{s}</Tag>
@@ -791,9 +812,13 @@ function AtomDetailDrawer({
             type="secondary"
             style={{ fontSize: 12, marginTop: 16 }}
           >
-            首次记录于 {formatRelativeTime(atom.created_at)}
+            {t("memory.tree.firstRecorded", {
+              time: formatRelativeTime(atom.created_at, t),
+            })}
             {atom.occurred_at
-              ? ` · 发生于 ${formatRelativeTime(atom.occurred_at)}`
+              ? t("memory.tree.occurredAt", {
+                  time: formatRelativeTime(atom.occurred_at, t),
+                })
               : ""}
           </Typography.Paragraph>
 
@@ -892,13 +917,19 @@ function EntitySummaryDrawer({
             <span style={{ fontSize: 16, fontWeight: 600 }}>
               {entity.canonical_name}
             </span>
-            <Tag>{entityTypeLabel(entity.entity_type)}</Tag>
-            <Tag color="blue">{entity.atom_count} 条记忆</Tag>
-            {page?.dirty ? <Tag color="orange">待刷新</Tag> : null}
+            <Tag>{entityTypeLabel(entity.entity_type, t)}</Tag>
+            <Tag color="blue">
+              {t("memory.tree.atomCount", { n: entity.atom_count })}
+            </Tag>
+            {page?.dirty ? (
+              <Tag color="orange">{t("memory.tree.dirtyTag")}</Tag>
+            ) : null}
           </Space>
           {entity.aliases.length > 0 ? (
             <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-              也叫 {entity.aliases.join("、")}
+              {t("memory.tree.akaInline", {
+                names: entity.aliases.join("、"),
+              })}
             </Typography.Paragraph>
           ) : null}
 
@@ -918,11 +949,12 @@ function EntitySummaryBody({
   failed: boolean;
   page: EntityPage | null;
 }) {
+  const { t } = useTranslation();
   if (loading) return <Skeleton active paragraph={{ rows: 6 }} />;
   if (failed) {
     return (
       <Typography.Paragraph type="danger">
-        摘要加载失败，请稍后重试。
+        {t("memory.tree.summaryLoadFailed")}
       </Typography.Paragraph>
     );
   }
@@ -930,10 +962,10 @@ function EntitySummaryBody({
     return (
       <div style={{ marginTop: 12 }}>
         <Typography.Paragraph type="secondary">
-          这个主题的摘要还没有生成。
+          {t("memory.tree.summaryNotGenerated")}
         </Typography.Paragraph>
         <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-          新建主题或有新记忆改动后，系统会在后台自动整理出一份长文摘要，稍后回来即可查看。
+          {t("memory.tree.summaryNotGeneratedDesc")}
         </Typography.Paragraph>
       </div>
     );
@@ -960,9 +992,11 @@ function EntitySummaryBody({
         type="secondary"
         style={{ fontSize: 12, marginTop: 16 }}
       >
-        版本 v{page.summary_version} · 更新于{" "}
-        {formatRelativeTime(page.updated_at)}
-        {page.dirty ? " · 有新记忆改动，后台稍后会自动刷新这份摘要" : ""}
+        {t("memory.tree.summaryVersion", {
+          v: page.summary_version,
+          time: formatRelativeTime(page.updated_at, t),
+        })}
+        {page.dirty ? t("memory.tree.summaryDirtyNote") : ""}
       </Typography.Paragraph>
     </>
   );
@@ -972,67 +1006,75 @@ function EntitySummaryBody({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function kindLabel(k: string): string {
+function kindLabel(k: string, t: TFunction): string {
   switch (k) {
     case "Fact":
-      return "事实";
+      return t("memory.kind.fact");
     case "Decision":
-      return "决定";
+      return t("memory.kind.decision");
     case "Task":
-      return "任务";
+      return t("memory.kind.task");
     case "Preference":
-      return "偏好";
+      return t("memory.kind.preference");
     case "ConflictCandidate":
-      return "可能矛盾";
+      return t("memory.kind.conflict");
     default:
       return k;
   }
 }
 
-function entityTypeLabel(t: string): string {
-  switch ((t || "").toLowerCase()) {
+function entityTypeLabel(type: string, t: TFunction): string {
+  switch ((type || "").toLowerCase()) {
     case "person":
-      return "人物";
+      return t("memory.entityType.person");
     case "place":
-      return "地点";
+      return t("memory.entityType.place");
     case "project":
-      return "项目";
+      return t("memory.entityType.project");
     case "tool":
-      return "工具";
+      return t("memory.entityType.tool");
     case "concept":
-      return "概念";
+      return t("memory.entityType.concept");
     case "organization":
-      return "组织";
+      return t("memory.entityType.organization");
     case "event":
-      return "事件";
+      return t("memory.entityType.event");
     default:
-      return t || "其它";
+      return type || t("memory.entityType.other");
   }
 }
 
-function importanceLabel(v: string): string {
-  return v === "high" ? "非常重要" : v === "medium" ? "重要" : "一般";
+function importanceLabel(v: string, t: TFunction): string {
+  return v === "high"
+    ? t("memory.tree.importanceHigh")
+    : v === "medium"
+    ? t("memory.tree.importanceMedium")
+    : t("memory.tree.importanceLow");
 }
 
-function confidenceLabel(v: string): string {
-  return v === "high" ? "很有把握" : v === "medium" ? "一般把握" : "不太确定";
+function confidenceLabel(v: string, t: TFunction): string {
+  return v === "high"
+    ? t("memory.tree.confidenceHigh")
+    : v === "medium"
+    ? t("memory.tree.confidenceMedium")
+    : t("memory.tree.confidenceLow");
 }
 
-function formatRelativeTime(iso: string): string {
+function formatRelativeTime(iso: string, t: TFunction): string {
   try {
     const then = new Date(iso).getTime();
     const now = Date.now();
     const diffSec = Math.max(0, Math.floor((now - then) / 1000));
-    if (diffSec < 60) return "刚刚";
+    if (diffSec < 60) return t("memory.time.justNow");
     const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `${diffMin} 分钟前`;
+    if (diffMin < 60) return t("memory.time.minutesAgo", { n: diffMin });
     const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr} 小时前`;
+    if (diffHr < 24) return t("memory.time.hoursAgo", { n: diffHr });
     const diffDay = Math.floor(diffHr / 24);
-    if (diffDay < 30) return `${diffDay} 天前`;
+    if (diffDay < 30) return t("memory.time.daysAgo", { n: diffDay });
     const diffMonth = Math.floor(diffDay / 30);
-    if (diffMonth < 12) return `${diffMonth} 个月前`;
-    return `${Math.floor(diffMonth / 12)} 年前`;
+    if (diffMonth < 12) return t("memory.time.monthsAgo", { n: diffMonth });
+    return t("memory.time.yearsAgo", { n: Math.floor(diffMonth / 12) });
   } catch {
     return iso;
   }
