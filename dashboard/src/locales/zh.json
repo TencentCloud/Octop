@@ -70,7 +70,9 @@
       "created": "已创建",
       "error": "异常",
       "unknown": "未知"
-    }
+    },
+    "back": "返回",
+    "operationFailed": "操作失败"
   },
   "apiErrors": {
     "AUTH_FAILED": "认证失败。",
@@ -230,7 +232,8 @@
     "remoteAndroid": "远程手机",
     "records": "任务",
     "paneSettings": "设置",
-    "paneRecords": "任务"
+    "paneRecords": "任务",
+    "acp": "ACP"
   },
   "skillPackages": {
     "title": "技能包",
@@ -974,7 +977,8 @@
     "pluginsBtn": "插件",
     "mbtiBtn": "MBTI",
     "channelsBtn": "通道",
-    "memoryBtn": "记忆"
+    "memoryBtn": "记忆",
+    "openChat": "对话"
   },
   "subagents": {
     "catalogTitle": "子智能体管理",
@@ -1420,7 +1424,10 @@
     "toolUiDockedOpen": "打开侧栏",
     "loadEarlierMessages": "加载更早的消息",
     "historyLoadFailed": "历史记录加载失败，已显示的消息仍然保留。请重试。",
-    "historyRetry": "重试"
+    "historyRetry": "重试",
+    "creatingSession": "正在创建会话，请稍候",
+    "resizePopup": "调整窗口大小",
+    "unreadMessages": "未读消息"
   },
   "tools": {
     "unknown": "未知工具",
@@ -1610,7 +1617,8 @@
     "dirTypeFolder": "文件夹",
     "dirTypeFile": "文件",
     "cannotMoveHere": "无法移动到此位置",
-    "protectedPath": "内置技能目录不可修改"
+    "protectedPath": "内置技能目录不可修改",
+    "saveFailed": "保存失败"
   },
   "backup": {
     "storedTitle": "备份文件",
@@ -1874,7 +1882,11 @@
     "stock-info": "股票信息",
     "cvm-ai-doctor": "CVM AI 诊断",
     "tencentcloud-infra": "腾讯云基础设施",
-    "publisher-multi-platform": "多平台发布"
+    "publisher-multi-platform": "多平台发布",
+    "table": {
+      "actions": "操作",
+      "enabled": "启用"
+    }
   },
   "cronJobs": {
     "title": "定时任务",
@@ -2061,7 +2073,9 @@
       "runtimeTimeoutSeconds": "超时时间 (秒)",
       "runtimeMisfireGrace": "错过容忍 (秒)"
     },
-    "noAgentSelected": "请先在右上角选择一个专家来管理它的定时任务"
+    "noAgentSelected": "请先在右上角选择一个专家来管理它的定时任务",
+    "goToChat": "发送到聊天",
+    "deleteFailed": "删除失败"
   },
   "channels": {
     "title": "通道",
@@ -2579,7 +2593,8 @@
     "saved": "可观测配置已保存",
     "testConnection": "测试连接",
     "testSuccess": "Langfuse 连接成功",
-    "testFailed": "Langfuse 连接失败"
+    "testFailed": "Langfuse 连接失败",
+    "saveFailed": "保存设置失败"
   },
   "mediaGeneration": {
     "title": "火山方舟生成模型",
@@ -3015,7 +3030,9 @@
     "onnxNotReady": "未就绪",
     "onnxCacheDir": "缓存目录：{{dir}}",
     "onnxLocalCached": "已缓存模型",
-    "onnxQuickDownload": "从目录快速下载…"
+    "onnxQuickDownload": "从目录快速下载…",
+    "defaultModelExtra": "测试连接时使用此模型；留空则使用第一个已启用的模型",
+    "deleteProviderFailedSimple": "删除失败"
   },
   "advancedSettings": {
     "description": "管理运行配置和环境变量等高级选项。",
@@ -3226,7 +3243,20 @@
     "quietHoursEnd": "免打扰结束",
     "saveSuccess": "设置已保存",
     "saveFailed": "保存失败，请稍后再试",
-    "loadFailed": "主动提醒设置加载失败"
+    "loadFailed": "主动提醒设置加载失败",
+    "activeHoursEnd": "关心时段 · 结束",
+    "activeHoursEndRequired": "请选择结束时间",
+    "activeHoursStart": "关心时段 · 开始",
+    "activeHoursStartRequired": "请选择开始时间",
+    "episodeBannerText": "Octop 会从你的情绪日记中挑选合适的时机，主动发来一句关心。你可以在「情绪日记」中查看哪些记录会被参考。",
+    "intervalOrderError": "最短间隔不能大于最长间隔",
+    "maxIntervalHours": "最长间隔（小时）",
+    "maxIntervalRequired": "请输入最大间隔",
+    "minIntervalHours": "最短间隔（小时）",
+    "minIntervalMin": "最小间隔不能小于 1 小时",
+    "minIntervalRequired": "请输入最小间隔",
+    "timeRangeError": "关心时段的开始时间必须早于结束时间",
+    "viewEpisodes": "去看情绪日记 →"
   },
   "chatWelcome": {
     "greeting": "嗨！你专属的智能伙伴来啦～",
@@ -3601,7 +3631,13 @@
       "heroTitle": "用户画像",
       "profileSubtitle": "基于已有记忆整理的偏好、当前重点、关键事实与高频人事物。",
       "memories": "条记忆",
-      "entitiesShort": "个主题"
+      "entitiesShort": "个主题",
+      "atomsDelta7dShort": "条近7天新增",
+      "episodesShort": "段对话片段",
+      "reviewAction": "整理画像",
+      "rowGoLibrary": "去记忆库 →",
+      "rowHintToLibrary": "如有误，可在记忆库中弃用",
+      "viewAll": "查看全部"
     },
     "terminal": {
       "aboutMe": "关于你",
@@ -3654,7 +3690,31 @@
       "viewSummaryTip": "查看这个主题的摘要",
       "deprecateTooltip": "弃用这条记忆",
       "deprecate": "弃用这条记忆",
-      "actions": "操作"
+      "actions": "操作",
+      "dirtyTag": "待刷新",
+      "noAtomsInTopic": "（该主题下暂无记忆）",
+      "aka": "（也叫 {{names}}）",
+      "akaInline": "也叫 {{names}}",
+      "importanceTag": "重要程度：{{v}}",
+      "confidenceTag": "可信度：{{v}}",
+      "confidenceTitle": "可信度",
+      "deprecatedTag": "已忘记",
+      "activeTag": "在用",
+      "assertionTitle": "记忆内容",
+      "searchTermsTitle": "关联关键词",
+      "firstRecorded": "首次记录于 {{time}}",
+      "occurredAt": " · 发生于 {{time}}",
+      "summaryLoadFailed": "摘要加载失败，请稍后重试。",
+      "summaryNotGenerated": "这个主题的摘要还没有生成。",
+      "summaryNotGeneratedDesc": "新建主题或有新记忆改动后，系统会在后台自动整理出一份长文摘要，稍后回来即可查看。",
+      "summaryVersion": "版本 v{{v}} · 更新于 {{time}}",
+      "summaryDirtyNote": " · 有新记忆改动，后台稍后会自动刷新这份摘要",
+      "importanceHigh": "非常重要",
+      "importanceMedium": "重要",
+      "importanceLow": "一般",
+      "confidenceHigh": "很有把握",
+      "confidenceMedium": "一般把握",
+      "confidenceLow": "不太确定"
     },
     "create": {
       "title": "新建记忆",
@@ -3707,7 +3767,20 @@
     "entitySummary": "主题摘要",
     "episodeDetail": "情绪日记详情",
     "episodes": {
-      "disclaimer": "这里记录你与 Octop 相处中的情绪和小故事。它不会用于常规对话引用，只会帮 Octop 更好地关心你，并用于周 / 月小结。"
+      "disclaimer": "这里记录你与 Octop 相处中的情绪和小故事。它不会用于常规对话引用，只会帮 Octop 更好地关心你，并用于周 / 月小结。",
+      "emotionTag": "{{emotion}} · 强度 {{intensity}}",
+      "summaryTitle": "摘要",
+      "peopleTitle": "涉及的人",
+      "occurredAt": "发生于 {{time}}",
+      "emotion": {
+        "happy": "开心",
+        "sad": "难过",
+        "angry": "生气",
+        "surprised": "惊讶",
+        "anxious": "焦虑",
+        "calm": "平静",
+        "other": "未分类"
+      }
     },
     "candidates": {
       "promoteOk": "已采纳",
@@ -3722,7 +3795,41 @@
       "rejectTitle": "忽略这条草稿",
       "confirmReject": "确认忽略",
       "rejectHint": "忽略后这条记忆不会进入长期记忆。可选择填写原因，便于日后回顾。",
-      "rejectReasonPlaceholder": "原因可选，例如：已过期 / 记录有误 / 不重要"
+      "rejectReasonPlaceholder": "原因可选，例如：已过期 / 记录有误 / 不重要",
+      "status": {
+        "pending": "待处理",
+        "needsReview": "待复核",
+        "conflict": "可能冲突",
+        "promoted": "已采纳",
+        "rejected": "已忽略",
+        "all": "全部"
+      },
+      "kindAll": "全部类型",
+      "promoteMerged": "与现有记忆合并 {{n}} 条",
+      "promoteNeedsReview": "需复核 {{n}} 条",
+      "promoteNew": "新增采纳 {{n}} 条",
+      "draftContent": "草稿内容",
+      "verbatimTitle": "原话依据",
+      "suggestionTitle": "Octop 的建议",
+      "subjectTitle": "关于谁 / 什么",
+      "guide": {
+        "pendingTitle": "关于「待处理」草稿",
+        "pending1": "这些草稿由 Octop 从对话中自动提取，正在等待系统规则判断。",
+        "pending2a": "系统会自动决定：直接采纳、合并到已有记忆、标记为待复核或丢弃——",
+        "pending2b": "无需手动干预",
+        "pending3": "如需提前处理，可切换到「待复核」或「可能冲突」状态查看需要你决策的草稿。",
+        "reviewTitle": "关于「待复核」草稿",
+        "reviewAcceptDesc": " → 立即进入长期记忆，下次对话优先使用。",
+        "reviewRejectDesc": " → 不会进入长期记忆，可附上原因（保存在操作日志中，便于日后回顾）。",
+        "reviewTimeout": "⏰ 若 7 天内未处理",
+        "reviewTimeoutDesc": "，系统会自动将其加入长期记忆，但置信度较低，排序靠后，不影响主要对话。",
+        "conflictTitle": "关于「可能冲突」草稿",
+        "conflict1": "这些草稿与已有长期记忆存在矛盾，系统无法自动裁决，需要你来决定哪个是准确的。",
+        "conflictAcceptDesc": " → 以这条草稿为准，进入长期记忆。",
+        "conflictRejectDesc": " → 保留原有记忆不变。",
+        "conflictNoTimeout": "⚠️ 冲突草稿没有自动超时",
+        "conflictNoTimeoutDesc": "，不处理会一直停留在此队列。"
+      }
     },
     "journal": {
       "action": {
@@ -3731,7 +3838,49 @@
         "promote": "采纳",
         "deprecate": "弃用",
         "reject": "忽略",
-        "merge": "合并"
+        "merge": "合并",
+        "extractRun": "提取运行",
+        "capture": "记录对话",
+        "extract": "生成草稿"
+      },
+      "filter": {
+        "all": "全部记录",
+        "userEdit": "编辑",
+        "pageRegen": "刷新主题",
+        "label": "筛选类型:"
+      },
+      "empty": "暂无整理记录",
+      "itemsCount": "{{n}} 项",
+      "summary": {
+        "noModel": "未配置提取模型，本次未运行",
+        "failed": "本次提取失败",
+        "scanned": "扫描 {{n}} 段对话，无新增内容",
+        "processedNone": "处理 {{n}} 段对话，未发现可记忆的内容",
+        "processed": "处理 {{extracted}} 段对话，生成 {{candidates}} 条草稿，晋升 {{promoted}} 条记忆"
+      },
+      "title": {
+        "tidied": "整理了一段对话",
+        "captured": "记录了 {{n}} 段对话",
+        "processed": "处理了 {{c}} 段对话，生成 {{e}} 条记忆草稿",
+        "extracted": "生成了 {{n}} 条记忆草稿",
+        "regen": "刷新了 {{n}} 个主题摘要",
+        "processedRegen": "处理了 {{c}} 段对话，并刷新了 {{r}} 个主题摘要",
+        "extractedRegen": "生成了 {{e}} 条记忆草稿，并刷新了 {{r}} 个主题摘要"
+      },
+      "tag": {
+        "conversations": "📥 {{n}} 段对话",
+        "drafts": "📝 {{n}} 条草稿",
+        "refreshes": "🔄 {{n}} 次刷新"
+      },
+      "targetQuoted": "「{{text}}」",
+      "targetAtom": "一条记忆",
+      "targetEntity": "一个主题",
+      "targetCandidate": "一条草稿",
+      "note": {
+        "entityResolved": "关联到已有主题「{{name}}」",
+        "entityCreated": "新建主题「{{name}}」",
+        "deprecatedNoReplacement": "弃用（无替代记忆）",
+        "semanticDuplicate": "语义重复，已被合并"
       }
     },
     "vs": {
@@ -3784,7 +3933,8 @@
       "deleteModelCacheTitle": "删除模型缓存？",
       "deleteModelCacheDesc": "确定删除 {{model}} 的本地缓存吗？删除后需要重新下载才能再次启用向量检索。",
       "deleteModelCacheSuccess": "模型缓存已删除",
-      "deleteModelCacheFailed": "删除失败：当前模型可能正在激活中。请先切换/保存/重启后再删除。"
+      "deleteModelCacheFailed": "删除失败：当前模型可能正在激活中。请先切换/保存/重启后再删除。",
+      "done": "已就绪"
     },
     "migrate": {
       "buttonLabel": "迁移记忆",
@@ -3840,7 +3990,23 @@
       "emptyTitle": "记忆还在提炼中",
       "emptyNoRaw": "还没有记忆。开始对话后，系统会自动捕获素材并提炼记忆。",
       "emptyWithRaw": "已捕获 {{n}} 条对话记忆。记忆提炼会在会话空闲后自动运行，首批记忆通常在几轮对话后出现。",
-      "emptyPendingSuffix": "另有 {{n}} 条候选记忆待确认，请前往「记忆沉淀」查看。"
+      "emptyPendingSuffix": "另有 {{n}} 条候选记忆待确认，请前往「记忆沉淀」查看。",
+      "lastExtract": "上次整理 {{time}}"
+    },
+    "confidence": {
+      "high": "高置信",
+      "low": "低置信",
+      "medium": "中置信"
+    },
+    "time": {
+      "daysAgo": "{{n}} 天前",
+      "today": "今天",
+      "yesterday": "昨天",
+      "justNow": "刚刚",
+      "minutesAgo": "{{n}} 分钟前",
+      "hoursAgo": "{{n}} 小时前",
+      "monthsAgo": "{{n}} 个月前",
+      "yearsAgo": "{{n}} 年前"
     }
   },
   "personalization": {
@@ -4141,7 +4307,9 @@
       "confirmPlaceholder": "输入\"确认\"应用技能，或继续对话",
       "placeholderWithSkills": "输入技能名回放，或继续对话",
       "inputPlaceholder": "问问网页，或继续操作浏览器..."
-    }
+    },
+    "playwrightOptional": "playwright 包未安装（可选）",
+    "playwrightOptionalDesc": "harness-browser (CDP) 已就绪，浏览器功能可用。如需 Playwright 备用模式，可安装 octop[browser] extras。"
   },
   "remoteDesktop": {
     "subtitle": "控制 Octop 主机操作系统桌面",
@@ -4231,7 +4399,8 @@
     "mobileHint": "点击画面可操控远程桌面；快捷按钮会发送常用快捷键。",
     "adminOnlyTitle": "需要管理员权限",
     "adminOnlyDesc": "远程桌面可操控主机操作系统，仅管理员可用。如需使用，请联系管理员。",
-    "adminOnlyBack": "返回对话"
+    "adminOnlyBack": "返回对话",
+    "streamError": "远程桌面连接失败"
   },
   "browserWorkspace": {
     "title": "浏览器",
@@ -4336,7 +4505,8 @@
     "vectorIndexWarning": "更换向量化模型、切换本地/第三方方式，或修改「向量维度」后，若与当前记忆向量库维度不一致，系统会重建 Qdrant 集合，原有向量会被清空，并需从记忆文件重新建立索引。",
     "loadError": "加载配置失败",
     "applySuccess": "配置已应用",
-    "saveAndApply": "保存并应用"
+    "saveAndApply": "保存并应用",
+    "done": "已完成"
   },
   "admin": {
     "sharedModels": {
@@ -5226,7 +5396,39 @@
     "chatPickerSearch": "搜索连接器",
     "chatNone": "无",
     "chatEmptyHint": "请先在连接器页面添加连接",
-    "manageConnectors": "管理连接器"
+    "manageConnectors": "管理连接器",
+    "apiKeyDoc": "查看如何获取 API Key",
+    "apiKeyPlaceholder": "粘贴 API Key",
+    "authCodeDoc": "查看如何获取授权码",
+    "authCodePlaceholder": "粘贴授权码",
+    "authUrlFailed": "打开授权页失败",
+    "authUrlMissing": "无法获取授权页地址",
+    "deleteFailed": "删除失败",
+    "detectLocal": "检测本机服务",
+    "difyMcpUrlInvalid": "请粘贴 Dify 访问点提供的完整 MCP Server URL",
+    "difyPasteUrlRequired": "剪贴板中没有 MCP URL",
+    "difyStep1": "在 Dify 中发布应用或工作流",
+    "difyStep2": "在访问点启用 MCP 并复制完整 Server URL",
+    "disableSuccess": "已停用",
+    "enableSuccess": "已启用",
+    "getTokenAt": "前往获取 Token",
+    "guidedSetup": "快速接入",
+    "guidedStepProbe": "粘贴凭证后探测并保存",
+    "lexiangCompanyFrom": "企业标识 (company_from)",
+    "lexiangCompanyFromPlaceholder": "从乐享凭证页复制",
+    "manualTokenDoc": "手动获取 Token 文档",
+    "oauthTimedOut": "授权超时，请重试一键授权",
+    "openAuthorizePage": "打开授权页",
+    "pasteMcpUrl": "粘贴 MCP 地址",
+    "probeNeedSecretAfterConfigChange": "连接配置已修改，请重新填写密钥后再探测",
+    "smartPaste": "智能粘贴",
+    "toggleFailed": "更新失败",
+    "viewGuide": "查看获取说明",
+    "weknoraDetectFailed": "检测本机 WeKnora 失败",
+    "weknoraFound": "已检测到本机 WeKnora 并填入地址",
+    "weknoraNotFound": "未在 OCTOP 主机的 127.0.0.1:8080 检测到 WeKnora",
+    "weknoraStep1": "打开 WeKnora 并创建 API Key",
+    "weknoraStep2": "检测本机服务，或手动填写部署地址"
   },
   "mbtiPage": {
     "pickAgent": "请先选择一个 Agent"
@@ -5501,6 +5703,10 @@
     "mobile": {
       "title": "远程手机",
       "subtitle": "查看并控制已连接的手机或模拟器"
+    },
+    "acp": {
+      "title": "ACP",
+      "subtitle": "配置外部编程 Agent Runner（OpenCode、Claude Code 等）"
     }
   },
   "remoteAndroid": {
@@ -5647,5 +5853,50 @@
     "updateReady": "新版本已就绪",
     "updateNow": "立即更新",
     "later": "稍后更新"
+  },
+  "browser": {
+    "recordReplay": {
+      "noRecording": "请先完成一次浏览器录制",
+      "replay": "回放最近一次浏览器录制",
+      "replayFailed": "回放失败",
+      "replayPassed": "回放完成",
+      "start": "开始浏览器录制",
+      "startFailed": "开始录制失败",
+      "started": "已开始浏览器录制",
+      "stop": "停止浏览器录制"
+    }
+  },
+  "shortcut": {
+    "title": "快捷指令"
+  },
+  "skillRecord": {
+    "applyFailed": "应用技能失败",
+    "recordingStopped": "录制完成，已生成 ${data.steps ?? 0} 个回放步骤",
+    "skillApplied": "技能 \"${result.name || pendingSkillName}\" 已成功应用",
+    "stopFailed": "停止录制失败",
+    "push": {
+      "recordingPreview": "✅ 录制完成！已生成 {{steps}} 个回放步骤。\n\n📝 **技能脚本预览：**\n\n{{preview}}{{truncation}}\n\n回复“确认”即可应用此技能，之后可以一键回放相同操作流程。",
+      "truncated": "\n\n... (共 {{lines}} 行，完整内容将在确认后保存)",
+      "generateFailed": "✅ 录制完成！已生成 {{steps}} 个回放步骤。\n\n⚠️ 技能脚本生成失败，请稍后重试或手动生成。",
+      "applied": "🎉 技能 **{{name}}** 已成功应用！\n\n之后可以通过聊天输入相关指令，一键回放相同的浏览器操作流程。"
+    }
+  },
+  "skillRecordGuide": {
+    "buttonLabel": "技能录制",
+    "buttonTip": "录制浏览器操作，生成可复用的技能脚本",
+    "envNotReady": "请先安装浏览器环境",
+    "envWarning": "浏览器环境未就绪",
+    "envWarningDesc": "请先确保浏览器环境可用，然后再开始录制。",
+    "intro": "通过录制浏览器操作，自动生成可复用的技能脚本。录制开始后，你将在AI助手对话中输入任务目标和操作描述。",
+    "startRecording": "开始录制",
+    "step1Desc": "点击下方按钮，系统将开始录制所有浏览器操作。",
+    "step1Title": "开始录制",
+    "step2Desc": "录制开始后，AI助手会提示你输入任务目标——这将成为技能的名称和触发关键词（例如\"登录OA系统\"）。",
+    "step2Title": "输入任务目标",
+    "step3Desc": "接着描述你想让AI助手在浏览器中执行的操作，助手会自动执行并录制。",
+    "step3Title": "描述操作步骤",
+    "step4Desc": "操作完成后，输入\"结束\"停止录制，确认后技能将以任务目标为名保存。之后只需输入任务目标关键词即可触发回放。",
+    "step4Title": "结束录制并确认",
+    "title": "技能录制引导"
   }
 }

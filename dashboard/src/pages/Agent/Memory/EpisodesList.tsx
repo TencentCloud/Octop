@@ -18,6 +18,7 @@ import {
   Typography,
 } from "antd";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 import {
   memoryDashboardApi,
@@ -66,7 +67,11 @@ export default function EpisodesList({ agentId }: Props) {
   }, [agentId, load]);
 
   // Group by date while preserving order; consecutive same-day records share one section.
-  const groups = useMemo(() => groupByDay(items, timeZone), [items, timeZone]);
+  // ``t`` intentionally excluded from deps — fresh ref each render.
+  const groups = useMemo(
+    () => groupByDay(items, timeZone, t),
+    [items, timeZone], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   return (
     <Card size="small">
@@ -83,11 +88,7 @@ export default function EpisodesList({ agentId }: Props) {
           lineHeight: 1.6,
         }}
       >
-        💡{" "}
-        {t(
-          "memory.episodes.disclaimer",
-          "这里记录你与 Octop 相处中的情绪和小故事。它不会用于常规对话引用，只会帮 Octop 更好地关心你，并用于周 / 月小结。",
-        )}
+        💡 {t("memory.episodes.disclaimer")}
       </div>
       {loading && items.length === 0 ? (
         <Skeleton active />
@@ -153,7 +154,10 @@ export default function EpisodesList({ agentId }: Props) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <Space size={4} wrap>
                         <Tag color={emotionColor(ep.emotion)}>
-                          {emotionLabel(ep.emotion)} · 强度 {ep.intensity}
+                          {t("memory.episodes.emotionTag", {
+                            emotion: emotionLabel(ep.emotion, t),
+                            intensity: ep.intensity,
+                          })}
                         </Tag>
                         {(ep.topics || []).slice(0, 3).map((topic) => (
                           <Tag key={topic}>{topic}</Tag>
@@ -182,7 +186,7 @@ export default function EpisodesList({ agentId }: Props) {
       </div>
 
       <Drawer
-        title={t("memory.episodeDetail", "情绪日记详情")}
+        title={t("memory.episodeDetail")}
         open={!!selected}
         onClose={() => setSelected(null)}
         width={520}
@@ -191,21 +195,30 @@ export default function EpisodesList({ agentId }: Props) {
           <div>
             <Space size={4} wrap style={{ marginBottom: 12 }}>
               <Tag color={emotionColor(selected.emotion)}>
-                {emotionLabel(selected.emotion)} · 强度 {selected.intensity}
+                {t("memory.episodes.emotionTag", {
+                  emotion: emotionLabel(selected.emotion, t),
+                  intensity: selected.intensity,
+                })}
               </Tag>
               {(selected.topics || []).map((tp) => (
                 <Tag key={tp}>{tp}</Tag>
               ))}
             </Space>
-            <Typography.Title level={5}>摘要</Typography.Title>
+            <Typography.Title level={5}>
+              {t("memory.episodes.summaryTitle")}
+            </Typography.Title>
             <Typography.Paragraph>{selected.summary}</Typography.Paragraph>
-            <Typography.Title level={5}>原话依据</Typography.Title>
+            <Typography.Title level={5}>
+              {t("memory.candidates.verbatimTitle")}
+            </Typography.Title>
             <Typography.Paragraph type="secondary">
               {selected.verbatim_quote}
             </Typography.Paragraph>
             {selected.people && selected.people.length > 0 ? (
               <>
-                <Typography.Title level={5}>涉及的人</Typography.Title>
+                <Typography.Title level={5}>
+                  {t("memory.episodes.peopleTitle")}
+                </Typography.Title>
                 <Space size={4} wrap>
                   {selected.people.map((p) => (
                     <Tag key={p}>{p}</Tag>
@@ -217,7 +230,9 @@ export default function EpisodesList({ agentId }: Props) {
               type="secondary"
               style={{ fontSize: 12, marginTop: 12 }}
             >
-              发生于 {formatServerIsoDateTime(selected.occurred_at, timeZone)}
+              {t("memory.episodes.occurredAt", {
+                time: formatServerIsoDateTime(selected.occurred_at, timeZone),
+              })}
             </Typography.Paragraph>
           </div>
         ) : null}
@@ -236,15 +251,19 @@ function emotionColor(e: string): string {
   return "default";
 }
 
-function emotionLabel(e: string): string {
+function emotionLabel(e: string, t: TFunction): string {
   const k = (e || "").toLowerCase();
-  if (k.includes("happy") || k.includes("joy")) return "开心";
-  if (k.includes("sad")) return "难过";
-  if (k.includes("angry") || k.includes("anger")) return "生气";
-  if (k.includes("surpr")) return "惊讶";
-  if (k.includes("anxi") || k.includes("worry")) return "焦虑";
-  if (k.includes("calm") || k.includes("neutral")) return "平静";
-  return e || "未分类";
+  if (k.includes("happy") || k.includes("joy"))
+    return t("memory.episodes.emotion.happy");
+  if (k.includes("sad")) return t("memory.episodes.emotion.sad");
+  if (k.includes("angry") || k.includes("anger"))
+    return t("memory.episodes.emotion.angry");
+  if (k.includes("surpr")) return t("memory.episodes.emotion.surprised");
+  if (k.includes("anxi") || k.includes("worry"))
+    return t("memory.episodes.emotion.anxious");
+  if (k.includes("calm") || k.includes("neutral"))
+    return t("memory.episodes.emotion.calm");
+  return e || t("memory.episodes.emotion.other");
 }
 
 function emotionHex(e: string): string {
@@ -262,14 +281,19 @@ interface DayGroup {
   items: EpisodeItem[];
 }
 
-function groupByDay(items: EpisodeItem[], timeZone: string): DayGroup[] {
+function groupByDay(
+  items: EpisodeItem[],
+  timeZone: string,
+  t: TFunction,
+): DayGroup[] {
   const groups: DayGroup[] = [];
   for (const it of items) {
     const diffDays = calendarDaysAgo(it.occurred_at, timeZone);
     let label: string;
-    if (diffDays === 0) label = "今天";
-    else if (diffDays === 1) label = "昨天";
-    else if (diffDays > 1 && diffDays < 7) label = `${diffDays} 天前`;
+    if (diffDays === 0) label = t("memory.time.today");
+    else if (diffDays === 1) label = t("memory.time.yesterday");
+    else if (diffDays > 1 && diffDays < 7)
+      label = t("memory.time.daysAgo", { n: diffDays });
     else label = formatServerYmd(it.occurred_at, timeZone);
 
     const last = groups[groups.length - 1];

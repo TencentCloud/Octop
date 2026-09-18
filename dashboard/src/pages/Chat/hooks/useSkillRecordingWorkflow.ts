@@ -106,36 +106,33 @@ export function useSkillRecordingWorkflow({
         // Push a preview message to chat
         const previewLines = data.skillContent.split("\n").slice(0, 20);
         const previewText = previewLines.join("\n");
+        const totalLines = data.skillContent.split("\n").length;
         const truncationNotice =
-          data.skillContent.split("\n").length > 20
-            ? `\n\n... (共 ${
-                data.skillContent.split("\n").length
-              } 行，完整内容将在确认后保存)`
+          totalLines > 20
+            ? t("skillRecord.push.truncated", { lines: totalLines })
             : "";
 
         chatStore.appendPushMessage(
-          `✅ 录制完成！已生成 ${data.steps ?? 0} 个回放步骤。\n\n` +
-            `📝 **技能脚本预览：**\n\n${previewText}${truncationNotice}\n\n` +
-            `回复"确认"即可应用此技能，之后可以一键回放相同操作流程。`,
+          t("skillRecord.push.recordingPreview", {
+            steps: data.steps ?? 0,
+            preview: previewText,
+            truncation: truncationNotice,
+          }),
         );
       } else {
         chatStore.appendPushMessage(
-          `✅ 录制完成！已生成 ${data.steps ?? 0} 个回放步骤。\n\n` +
-            `⚠️ 技能脚本生成失败，请稍后重试或手动生成。`,
+          t("skillRecord.push.generateFailed", {
+            steps: data.steps ?? 0,
+          }),
         );
       }
 
       antMessage.success(
-        t(
-          "skillRecord.recordingStopped",
-          `录制完成，已生成 ${data.steps ?? 0} 个回放步骤`,
-        ),
+        t("skillRecord.recordingStopped", { steps: data.steps ?? 0 }),
       );
     } catch (err) {
       antMessage.error(
-        err instanceof Error
-          ? err.message
-          : t("skillRecord.stopFailed", "停止录制失败"),
+        err instanceof Error ? err.message : t("skillRecord.stopFailed"),
       );
     } finally {
       workflowBusyRef.current = false;
@@ -181,21 +178,19 @@ export function useSkillRecordingWorkflow({
 
       // Push confirmation message to chat
       chatStore.appendPushMessage(
-        `🎉 技能 **${result.name || pendingSkillName}** 已成功应用！\n\n` +
-          `之后可以通过聊天输入相关指令，一键回放相同的浏览器操作流程。`,
+        t("skillRecord.push.applied", {
+          name: result.name || pendingSkillName,
+        }),
       );
 
       antMessage.success(
-        t(
-          "skillRecord.skillApplied",
-          `技能 "${result.name || pendingSkillName}" 已成功应用`,
-        ),
+        t("skillRecord.skillApplied", {
+          name: result.name || pendingSkillName,
+        }),
       );
     } catch (err) {
       antMessage.error(
-        err instanceof Error
-          ? err.message
-          : t("skillRecord.applyFailed", "应用技能失败"),
+        err instanceof Error ? err.message : t("skillRecord.applyFailed"),
       );
     } finally {
       workflowBusyRef.current = false;

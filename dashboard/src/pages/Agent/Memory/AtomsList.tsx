@@ -17,6 +17,7 @@ import {
 } from "antd";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 import {
   memoryDashboardApi,
@@ -37,21 +38,23 @@ import CreateAtomModal from "./shared/createAtom";
 const PAGE_SIZE = 20;
 
 // Type filter: map backend enum values to user-facing labels.
-const KIND_OPTIONS: { value: AtomKind | ""; label: string }[] = [
-  { value: "", label: "全部类型" },
-  { value: "Fact", label: "事实" },
-  { value: "Decision", label: "决定" },
-  { value: "Task", label: "任务" },
-  { value: "Preference", label: "偏好" },
-  { value: "ConflictCandidate", label: "可能矛盾" },
-];
+const kindOptions = (t: TFunction) =>
+  [
+    { value: "", label: t("memory.candidates.kindAll") },
+    { value: "Fact", label: t("memory.kind.fact") },
+    { value: "Decision", label: t("memory.kind.decision") },
+    { value: "Task", label: t("memory.kind.task") },
+    { value: "Preference", label: t("memory.kind.preference") },
+    { value: "ConflictCandidate", label: t("memory.kind.conflict") },
+  ] as { value: AtomKind | ""; label: string }[];
 
-const IMPORTANCE_OPTIONS: { value: Importance | ""; label: string }[] = [
-  { value: "", label: "全部" },
-  { value: "low", label: "一般" },
-  { value: "medium", label: "重要" },
-  { value: "high", label: "非常重要" },
-];
+const importanceOptions = (t: TFunction) =>
+  [
+    { value: "", label: t("memory.candidates.status.all") },
+    { value: "low", label: t("memory.tree.importanceLow") },
+    { value: "medium", label: t("memory.tree.importanceMedium") },
+    { value: "high", label: t("memory.tree.importanceHigh") },
+  ] as { value: Importance | ""; label: string }[];
 
 interface Props {
   agentId: string;
@@ -124,7 +127,7 @@ export default function AtomsList({ agentId }: Props) {
 
   const toolbar = (
     <>
-      <span style={{ color: "#595959" }}>{t("memory.list.kind", "类型")}:</span>
+      <span style={{ color: "#595959" }}>{t("memory.list.kind")}:</span>
       <Select
         style={{ width: 160 }}
         value={kind}
@@ -132,10 +135,10 @@ export default function AtomsList({ agentId }: Props) {
           setKind(v);
           setPage(1);
         }}
-        options={KIND_OPTIONS}
+        options={kindOptions(t)}
       />
       <span style={{ color: "#595959" }}>
-        {t("memory.list.importanceMin", "重要程度不低于")}:
+        {t("memory.list.importanceMin")}:
       </span>
       <Select
         style={{ width: 140 }}
@@ -144,14 +147,14 @@ export default function AtomsList({ agentId }: Props) {
           setImportance(v);
           setPage(1);
         }}
-        options={IMPORTANCE_OPTIONS}
+        options={importanceOptions(t)}
       />
       <Button
         size="small"
         icon={<Plus size={14} />}
         onClick={() => setCreateOpen(true)}
       >
-        {t("memory.create.title", "新建记忆")}
+        {t("memory.create.title")}
       </Button>
     </>
   );
@@ -177,7 +180,7 @@ export default function AtomsList({ agentId }: Props) {
         selected={selected}
         onItemClick={setSelected}
         onCloseDrawer={() => setSelected(null)}
-        drawerTitle={t("memory.atomDetail", "记忆详情")}
+        drawerTitle={t("memory.atomDetail")}
         drawerWidth={560}
         renderItem={(a) => (
           <div
@@ -190,12 +193,14 @@ export default function AtomsList({ agentId }: Props) {
           >
             <Space size={4}>
               <ImportanceStars importance={a.importance} />
-              {isAtomDeprecated(a) ? <Tag color="red">已忘记</Tag> : null}
+              {isAtomDeprecated(a) ? (
+                <Tag color="red">{t("memory.tree.deprecatedTag")}</Tag>
+              ) : null}
             </Space>
             <div style={{ marginTop: 4, fontSize: 13 }}>{a.assertion}</div>
             <div style={{ marginTop: 2, fontSize: 12, color: "#8c8c8c" }}>
-              {formatRelativeTime(a.created_at)}
-              {a.kind ? ` · ${kindLabel(a.kind)}` : ""}
+              {formatRelativeTime(a.created_at, t)}
+              {a.kind ? ` · ${kindLabel(a.kind, t)}` : ""}
             </div>
             {!isAtomDeprecated(a) && hoveredId === a.id ? (
               <span
@@ -208,7 +213,7 @@ export default function AtomsList({ agentId }: Props) {
                   gap: 4,
                 }}
               >
-                <Tooltip title={t("memory.edit.tooltip", "编辑这条记忆")}>
+                <Tooltip title={t("memory.edit.tooltip")}>
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
@@ -225,9 +230,7 @@ export default function AtomsList({ agentId }: Props) {
                     <Pencil size={14} />
                   </span>
                 </Tooltip>
-                <Tooltip
-                  title={t("memory.tree.deprecateTooltip", "弃用这条记忆")}
-                >
+                <Tooltip title={t("memory.tree.deprecateTooltip")}>
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
@@ -251,30 +254,38 @@ export default function AtomsList({ agentId }: Props) {
         renderDrawer={(atom) => (
           <div>
             <Space size={8} wrap style={{ marginBottom: 12 }}>
-              {atom.kind ? <Tag>{kindLabel(atom.kind)}</Tag> : null}
+              {atom.kind ? <Tag>{kindLabel(atom.kind, t)}</Tag> : null}
               <ImportanceStars importance={atom.importance} />
               <Tag color={isAtomDeprecated(atom) ? "red" : "green"}>
-                {isAtomDeprecated(atom) ? "已忘记" : "在用"}
+                {isAtomDeprecated(atom)
+                  ? t("memory.tree.deprecatedTag")
+                  : t("memory.tree.activeTag")}
               </Tag>
             </Space>
 
             <LineageStrip agentId={agentId} atom={atom} />
 
-            <Typography.Title level={5}>记忆内容</Typography.Title>
+            <Typography.Title level={5}>
+              {t("memory.tree.assertionTitle")}
+            </Typography.Title>
             <Typography.Paragraph>{atom.assertion}</Typography.Paragraph>
 
-            <Typography.Title level={5}>原话依据</Typography.Title>
+            <Typography.Title level={5}>
+              {t("memory.candidates.verbatimTitle")}
+            </Typography.Title>
             <Typography.Paragraph type="secondary">
               {atom.verbatim_quote}
             </Typography.Paragraph>
 
-            <Typography.Title level={5}>可信度</Typography.Title>
+            <Typography.Title level={5}>
+              {t("memory.tree.confidenceTitle")}
+            </Typography.Title>
             <ConfidenceBar confidence={atom.confidence} />
 
             {(atom.search_terms ?? []).length > 0 ? (
               <>
                 <Typography.Title level={5} style={{ marginTop: 12 }}>
-                  关联关键词
+                  {t("memory.tree.searchTermsTitle")}
                 </Typography.Title>
                 <Space size={4} wrap>
                   {(atom.search_terms ?? []).map((s) => (
@@ -288,23 +299,27 @@ export default function AtomsList({ agentId }: Props) {
               type="secondary"
               style={{ fontSize: 12, marginTop: 16 }}
             >
-              首次记录于 {formatRelativeTime(atom.created_at)}
+              {t("memory.tree.firstRecorded", {
+                time: formatRelativeTime(atom.created_at, t),
+              })}
               {atom.occurred_at
-                ? ` · 发生于 ${formatRelativeTime(atom.occurred_at)}`
+                ? t("memory.tree.occurredAt", {
+                    time: formatRelativeTime(atom.occurred_at, t),
+                  })
                 : ""}
             </Typography.Paragraph>
 
             {!isAtomDeprecated(atom) ? (
               <>
                 <Typography.Title level={5} style={{ marginTop: 12 }}>
-                  {t("memory.tree.actions", "操作")}
+                  {t("memory.tree.actions")}
                 </Typography.Title>
                 <Space>
                   <Button onClick={() => handleEdit(atom)}>
-                    {t("memory.edit.action", "编辑这条记忆")}
+                    {t("memory.edit.action")}
                   </Button>
                   <Button danger onClick={() => handleDeprecate(atom)}>
-                    {t("memory.tree.deprecate", "弃用这条记忆")}
+                    {t("memory.tree.deprecate")}
                   </Button>
                 </Space>
               </>
@@ -337,34 +352,36 @@ export default function AtomsList({ agentId }: Props) {
 // Visual helpers
 // ---------------------------------------------------------------------------
 
-function kindLabel(k: string): string {
+function kindLabel(k: string, t: TFunction): string {
   switch (k) {
     case "Fact":
-      return "事实";
+      return t("memory.kind.fact");
     case "Decision":
-      return "决定";
+      return t("memory.kind.decision");
     case "Task":
-      return "任务";
+      return t("memory.kind.task");
     case "Preference":
-      return "偏好";
+      return t("memory.kind.preference");
     case "ConflictCandidate":
-      return "可能矛盾";
+      return t("memory.kind.conflict");
     default:
       return k;
   }
 }
 
 function ImportanceStars({ importance }: { importance: string }) {
+  const { t } = useTranslation();
   const n = importance === "high" ? 3 : importance === "medium" ? 2 : 1;
   return (
     <span
-      title={`重要程度：${
-        importance === "high"
-          ? "非常重要"
-          : importance === "medium"
-          ? "重要"
-          : "一般"
-      }`}
+      title={t("memory.tree.importanceTag", {
+        v:
+          importance === "high"
+            ? t("memory.tree.importanceHigh")
+            : importance === "medium"
+            ? t("memory.tree.importanceMedium")
+            : t("memory.tree.importanceLow"),
+      })}
       style={{ color: "#faad14", fontSize: 13, letterSpacing: 1 }}
     >
       {"★".repeat(n)}
@@ -374,13 +391,14 @@ function ImportanceStars({ importance }: { importance: string }) {
 }
 
 function ConfidenceBar({ confidence }: { confidence: string }) {
+  const { t } = useTranslation();
   const pct = confidence === "high" ? 90 : confidence === "medium" ? 60 : 30;
   const label =
     confidence === "high"
-      ? "很有把握"
+      ? t("memory.tree.confidenceHigh")
       : confidence === "medium"
-      ? "一般把握"
-      : "不太确定";
+      ? t("memory.tree.confidenceMedium")
+      : t("memory.tree.confidenceLow");
   return (
     <div style={{ maxWidth: 320 }}>
       <Progress
@@ -399,21 +417,21 @@ function ConfidenceBar({ confidence }: { confidence: string }) {
   );
 }
 
-function formatRelativeTime(iso: string): string {
+function formatRelativeTime(iso: string, t: TFunction): string {
   try {
     const then = new Date(iso).getTime();
     const now = Date.now();
     const diffSec = Math.max(0, Math.floor((now - then) / 1000));
-    if (diffSec < 60) return "刚刚";
+    if (diffSec < 60) return t("memory.time.justNow");
     const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `${diffMin} 分钟前`;
+    if (diffMin < 60) return t("memory.time.minutesAgo", { n: diffMin });
     const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr} 小时前`;
+    if (diffHr < 24) return t("memory.time.hoursAgo", { n: diffHr });
     const diffDay = Math.floor(diffHr / 24);
-    if (diffDay < 30) return `${diffDay} 天前`;
+    if (diffDay < 30) return t("memory.time.daysAgo", { n: diffDay });
     const diffMonth = Math.floor(diffDay / 30);
-    if (diffMonth < 12) return `${diffMonth} 个月前`;
-    return `${Math.floor(diffMonth / 12)} 年前`;
+    if (diffMonth < 12) return t("memory.time.monthsAgo", { n: diffMonth });
+    return t("memory.time.yearsAgo", { n: Math.floor(diffMonth / 12) });
   } catch {
     return iso;
   }

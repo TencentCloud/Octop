@@ -39,6 +39,7 @@ import {
 import { message } from "@/utils/antdMessage";
 
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 import {
   memoryDashboardApi,
@@ -52,23 +53,25 @@ import styles from "./CandidatesReview.module.less";
 
 const PAGE_SIZE = 20;
 
-const STATUS_OPTIONS: { value: CandidateStatus | ""; label: string }[] = [
-  { value: "pending", label: "待处理" },
-  { value: "needs_review", label: "待复核" },
-  { value: "conflict", label: "可能冲突" },
-  { value: "promoted", label: "已采纳" },
-  { value: "rejected", label: "已忽略" },
-  { value: "", label: "全部" },
-];
+const statusOptions = (t: TFunction) =>
+  [
+    { value: "pending", label: t("memory.candidates.status.pending") },
+    { value: "needs_review", label: t("memory.candidates.status.needsReview") },
+    { value: "conflict", label: t("memory.candidates.status.conflict") },
+    { value: "promoted", label: t("memory.candidates.status.promoted") },
+    { value: "rejected", label: t("memory.candidates.status.rejected") },
+    { value: "", label: t("memory.candidates.status.all") },
+  ] as { value: CandidateStatus | ""; label: string }[];
 
-const KIND_OPTIONS: { value: AtomKind | ""; label: string }[] = [
-  { value: "", label: "全部类型" },
-  { value: "Fact", label: "事实" },
-  { value: "Decision", label: "决定" },
-  { value: "Task", label: "任务" },
-  { value: "Preference", label: "偏好" },
-  { value: "ConflictCandidate", label: "可能冲突" },
-];
+const kindOptions = (t: TFunction) =>
+  [
+    { value: "", label: t("memory.candidates.kindAll") },
+    { value: "Fact", label: t("memory.kind.fact") },
+    { value: "Decision", label: t("memory.kind.decision") },
+    { value: "Task", label: t("memory.kind.task") },
+    { value: "Preference", label: t("memory.kind.preference") },
+    { value: "ConflictCandidate", label: t("memory.kind.conflict") },
+  ] as { value: AtomKind | ""; label: string }[];
 
 interface Props {
   agentId: string;
@@ -126,16 +129,14 @@ export default function CandidatesReview({ agentId }: Props) {
       const r = await memoryDashboardApi.promoteCandidate(agentId, c.id);
       const detail =
         r.merged > 0
-          ? `与现有记忆合并 ${r.merged} 条`
+          ? t("memory.candidates.promoteMerged", { n: r.merged })
           : r.needs_review > 0
-          ? `需复核 ${r.needs_review} 条`
-          : `新增采纳 ${r.promoted} 条`;
-      message.success(
-        t("memory.candidates.promoteOk", "已采纳") + ` · ${detail}`,
-      );
+          ? t("memory.candidates.promoteNeedsReview", { n: r.needs_review })
+          : t("memory.candidates.promoteNew", { n: r.promoted });
+      message.success(t("memory.candidates.promoteOk") + ` · ${detail}`);
       void load();
     } catch (e) {
-      message.error((e as Error).message ?? "操作失败");
+      message.error((e as Error).message ?? t("common.operationFailed"));
     } finally {
       setBusyId(null);
     }
@@ -148,12 +149,12 @@ export default function CandidatesReview({ agentId }: Props) {
       await memoryDashboardApi.rejectCandidate(agentId, rejectTarget.id, {
         reason: rejectReason.trim() || undefined,
       });
-      message.success(t("memory.candidates.rejectOk", "已忽略"));
+      message.success(t("memory.candidates.rejectOk"));
       setRejectTarget(null);
       setRejectReason("");
       void load();
     } catch (e) {
-      message.error((e as Error).message ?? "操作失败");
+      message.error((e as Error).message ?? t("common.operationFailed"));
     } finally {
       setRejecting(false);
     }
@@ -165,7 +166,7 @@ export default function CandidatesReview({ agentId }: Props) {
       <div className={styles.candidatesFilters}>
         <div className={styles.candidatesFilterField}>
           <span className={styles.candidatesFilterLabel}>
-            {t("memory.candidates.statusLabel", "状态")}
+            {t("memory.candidates.statusLabel")}
           </span>
           <Select
             className={styles.candidatesFilterSelect}
@@ -174,12 +175,12 @@ export default function CandidatesReview({ agentId }: Props) {
               setStatus(v);
               setPage(1);
             }}
-            options={STATUS_OPTIONS}
+            options={statusOptions(t)}
           />
         </div>
         <div className={styles.candidatesFilterField}>
           <span className={styles.candidatesFilterLabel}>
-            {t("memory.candidates.kindLabel", "类型")}
+            {t("memory.candidates.kindLabel")}
           </span>
           <Select
             className={styles.candidatesFilterSelect}
@@ -188,7 +189,7 @@ export default function CandidatesReview({ agentId }: Props) {
               setKind(v);
               setPage(1);
             }}
-            options={KIND_OPTIONS}
+            options={kindOptions(t)}
           />
         </div>
       </div>
@@ -198,7 +199,7 @@ export default function CandidatesReview({ agentId }: Props) {
       ) : items.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t("memory.candidates.empty", "暂无记忆内容")}
+          description={t("memory.candidates.empty")}
         />
       ) : (
         <ul className={styles.candidateList}>
@@ -212,10 +213,10 @@ export default function CandidatesReview({ agentId }: Props) {
                 >
                   <Space size={4} wrap>
                     <Tag color={kindColor(c.candidate_type)}>
-                      {kindLabel(c.candidate_type)}
+                      {kindLabel(c.candidate_type, t)}
                     </Tag>
                     <Tag color={statusColor(c.status)}>
-                      {statusLabel(c.status)}
+                      {statusLabel(c.status, t)}
                     </Tag>
                     <ImportanceStars importance={c.importance} />
                   </Space>
@@ -228,12 +229,9 @@ export default function CandidatesReview({ agentId }: Props) {
                 </div>
                 <div className={styles.candidateActions}>
                   <Popconfirm
-                    title={t(
-                      "memory.candidates.confirmPromote",
-                      "采纳这条记忆？",
-                    )}
-                    okText={t("common.confirm", "采纳")}
-                    cancelText={t("common.cancel", "取消")}
+                    title={t("memory.candidates.confirmPromote")}
+                    okText={t("common.confirm")}
+                    cancelText={t("common.cancel")}
                     disabled={decided}
                     onConfirm={() => void handlePromote(c)}
                   >
@@ -243,7 +241,7 @@ export default function CandidatesReview({ agentId }: Props) {
                       loading={busyId === c.id}
                       disabled={decided}
                     >
-                      {t("memory.candidates.promote", "采纳")}
+                      {t("memory.candidates.promote")}
                     </Button>
                   </Popconfirm>
                   <Button
@@ -255,7 +253,7 @@ export default function CandidatesReview({ agentId }: Props) {
                       setRejectReason("");
                     }}
                   >
-                    {t("memory.candidates.reject", "忽略")}
+                    {t("memory.candidates.reject")}
                   </Button>
                 </div>
               </li>
@@ -276,7 +274,7 @@ export default function CandidatesReview({ agentId }: Props) {
       </div>
 
       <Drawer
-        title={t("memory.candidates.detail", "记忆草稿详情")}
+        title={t("memory.candidates.detail")}
         open={!!selected}
         onClose={() => setSelected(null)}
         width={isMobile ? "100%" : 560}
@@ -285,38 +283,46 @@ export default function CandidatesReview({ agentId }: Props) {
           <div>
             <Space size={4} wrap style={{ marginBottom: 12 }}>
               <Tag color={kindColor(selected.candidate_type)}>
-                {kindLabel(selected.candidate_type)}
+                {kindLabel(selected.candidate_type, t)}
               </Tag>
               <Tag color={statusColor(selected.status)}>
-                {statusLabel(selected.status)}
+                {statusLabel(selected.status, t)}
               </Tag>
               <ImportanceStars importance={selected.importance} />
             </Space>
-            <Typography.Title level={5}>草稿内容</Typography.Title>
+            <Typography.Title level={5}>
+              {t("memory.candidates.draftContent")}
+            </Typography.Title>
             <Typography.Paragraph>{selected.assertion}</Typography.Paragraph>
-            <Typography.Title level={5}>原话依据</Typography.Title>
+            <Typography.Title level={5}>
+              {t("memory.candidates.verbatimTitle")}
+            </Typography.Title>
             <Typography.Paragraph type="secondary">
               “{selected.verbatim_quote}”
             </Typography.Paragraph>
-            <Typography.Title level={5}>Octop 的建议</Typography.Title>
+            <Typography.Title level={5}>
+              {t("memory.candidates.suggestionTitle")}
+            </Typography.Title>
             <Typography.Paragraph>
               {selected.recommended_action}
               {selected.promotion_reason
                 ? ` — ${selected.promotion_reason}`
                 : ""}
             </Typography.Paragraph>
-            <Typography.Title level={5}>关于谁 / 什么</Typography.Title>
+            <Typography.Title level={5}>
+              {t("memory.candidates.subjectTitle")}
+            </Typography.Title>
             <Typography.Paragraph>{selected.subject_name}</Typography.Paragraph>
           </div>
         ) : null}
       </Drawer>
 
       <Modal
-        title={t("memory.candidates.rejectTitle", "忽略这条草稿")}
+        title={t("memory.candidates.rejectTitle")}
         open={!!rejectTarget}
         confirmLoading={rejecting}
-        okText={t("memory.candidates.confirmReject", "确认忽略")}
-        cancelText={t("common.cancel", "取消")}
+        okText={t("memory.candidates.confirmReject")}
+        cancelText={t("common.cancel")}
         okButtonProps={{ danger: true }}
         onCancel={() => {
           if (rejecting) return;
@@ -326,19 +332,13 @@ export default function CandidatesReview({ agentId }: Props) {
         onOk={() => void handleReject()}
       >
         <Typography.Paragraph>
-          {t(
-            "memory.candidates.rejectHint",
-            "忽略后这条记忆不会进入长期记忆。可选择填写原因，便于日后回顾。",
-          )}
+          {t("memory.candidates.rejectHint")}
         </Typography.Paragraph>
         <Input.TextArea
           rows={3}
           value={rejectReason}
           onChange={(e) => setRejectReason(e.target.value)}
-          placeholder={t(
-            "memory.candidates.rejectReasonPlaceholder",
-            "原因可选，例如：已过期 / 记录有误 / 不重要",
-          )}
+          placeholder={t("memory.candidates.rejectReasonPlaceholder")}
         />
       </Modal>
     </Card>
@@ -350,23 +350,22 @@ export default function CandidatesReview({ agentId }: Props) {
 // ---------------------------------------------------------------------------
 
 function GuidanceBanner({ status }: { status: CandidateStatus | "" }) {
+  const { t } = useTranslation();
   if (status === "pending") {
     return (
       <Alert
         type="info"
         showIcon
         style={{ marginBottom: 14 }}
-        message="关于「待处理」草稿"
+        message={t("memory.candidates.guide.pendingTitle")}
         description={
           <ul style={{ margin: "4px 0 0", paddingLeft: 18, lineHeight: "1.8" }}>
-            <li>这些草稿由 Octop 从对话中自动提取，正在等待系统规则判断。</li>
+            <li>{t("memory.candidates.guide.pending1")}</li>
             <li>
-              系统会自动决定：直接采纳、合并到已有记忆、标记为待复核或丢弃——
-              <strong>无需手动干预</strong>。
+              {t("memory.candidates.guide.pending2a")}
+              <strong>{t("memory.candidates.guide.pending2b")}</strong>。
             </li>
-            <li>
-              如需提前处理，可切换到「待复核」或「可能冲突」状态查看需要你决策的草稿。
-            </li>
+            <li>{t("memory.candidates.guide.pending3")}</li>
           </ul>
         }
       />
@@ -379,19 +378,20 @@ function GuidanceBanner({ status }: { status: CandidateStatus | "" }) {
         type="warning"
         showIcon
         style={{ marginBottom: 14 }}
-        message="关于「待复核」草稿"
+        message={t("memory.candidates.guide.reviewTitle")}
         description={
           <ul style={{ margin: "4px 0 0", paddingLeft: 18, lineHeight: "1.8" }}>
             <li>
-              <strong>采纳</strong> → 立即进入长期记忆，下次对话优先使用。
+              <strong>{t("memory.candidates.promote")}</strong>
+              {t("memory.candidates.guide.reviewAcceptDesc")}
             </li>
             <li>
-              <strong>忽略</strong> →
-              不会进入长期记忆，可附上原因（保存在操作日志中，便于日后回顾）。
+              <strong>{t("memory.candidates.reject")}</strong>
+              {t("memory.candidates.guide.reviewRejectDesc")}
             </li>
             <li>
-              <strong>⏰ 若 7 天内未处理</strong>
-              ，系统会自动将其加入长期记忆，但置信度较低，排序靠后，不影响主要对话。
+              <strong>{t("memory.candidates.guide.reviewTimeout")}</strong>
+              {t("memory.candidates.guide.reviewTimeoutDesc")}
             </li>
           </ul>
         }
@@ -405,21 +405,21 @@ function GuidanceBanner({ status }: { status: CandidateStatus | "" }) {
         type="error"
         showIcon
         style={{ marginBottom: 14 }}
-        message="关于「可能冲突」草稿"
+        message={t("memory.candidates.guide.conflictTitle")}
         description={
           <ul style={{ margin: "4px 0 0", paddingLeft: 18, lineHeight: "1.8" }}>
+            <li>{t("memory.candidates.guide.conflict1")}</li>
             <li>
-              这些草稿与已有长期记忆存在矛盾，系统无法自动裁决，需要你来决定哪个是准确的。
+              <strong>{t("memory.candidates.promote")}</strong>
+              {t("memory.candidates.guide.conflictAcceptDesc")}
             </li>
             <li>
-              <strong>采纳</strong> → 以这条草稿为准，进入长期记忆。
+              <strong>{t("memory.candidates.reject")}</strong>
+              {t("memory.candidates.guide.conflictRejectDesc")}
             </li>
             <li>
-              <strong>忽略</strong> → 保留原有记忆不变。
-            </li>
-            <li>
-              <strong>⚠️ 冲突草稿没有自动超时</strong>
-              ，不处理会一直停留在此队列。
+              <strong>{t("memory.candidates.guide.conflictNoTimeout")}</strong>
+              {t("memory.candidates.guide.conflictNoTimeoutDesc")}
             </li>
           </ul>
         }
@@ -451,18 +451,18 @@ function kindColor(k: string): string {
   }
 }
 
-function kindLabel(k: string): string {
+function kindLabel(k: string, t: TFunction): string {
   switch (k) {
     case "Fact":
-      return "事实";
+      return t("memory.kind.fact");
     case "Decision":
-      return "决定";
+      return t("memory.kind.decision");
     case "Task":
-      return "任务";
+      return t("memory.kind.task");
     case "Preference":
-      return "偏好";
+      return t("memory.kind.preference");
     case "ConflictCandidate":
-      return "可能冲突";
+      return t("memory.kind.conflict");
     default:
       return k;
   }
@@ -485,33 +485,35 @@ function statusColor(s: string): string {
   }
 }
 
-function statusLabel(s: string): string {
+function statusLabel(s: string, t: TFunction): string {
   switch (s) {
     case "pending":
-      return "待处理";
+      return t("memory.candidates.status.pending");
     case "needs_review":
-      return "待复核";
+      return t("memory.candidates.status.needsReview");
     case "conflict":
-      return "可能冲突";
+      return t("memory.candidates.status.conflict");
     case "promoted":
-      return "已采纳";
+      return t("memory.candidates.status.promoted");
     case "rejected":
-      return "已忽略";
+      return t("memory.candidates.status.rejected");
     default:
       return s;
   }
 }
 function ImportanceStars({ importance }: { importance: string }) {
+  const { t } = useTranslation();
   const n = importance === "high" ? 3 : importance === "medium" ? 2 : 1;
   return (
     <span
-      title={`重要程度：${
-        importance === "high"
-          ? "非常重要"
-          : importance === "medium"
-          ? "重要"
-          : "一般"
-      }`}
+      title={t("memory.tree.importanceTag", {
+        v:
+          importance === "high"
+            ? t("memory.tree.importanceHigh")
+            : importance === "medium"
+            ? t("memory.tree.importanceMedium")
+            : t("memory.tree.importanceLow"),
+      })}
       style={{ color: "#faad14", fontSize: 13, letterSpacing: 1 }}
     >
       {"★".repeat(n)}

@@ -55,8 +55,12 @@ describe("<JournalList />", () => {
     render(<JournalList agentId="ZYWZTD" />);
 
     await waitFor(() => {
-      expect(screen.getByText("采纳")).toBeInTheDocument();
-      expect(screen.getByText("弃用")).toBeInTheDocument();
+      expect(
+        screen.getByText("memory.journal.action.promote"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("memory.journal.action.deprecate"),
+      ).toBeInTheDocument();
     });
 
     expect(api.listJournal).toHaveBeenCalledWith("ZYWZTD", {
@@ -66,11 +70,15 @@ describe("<JournalList />", () => {
 
     // With target_summary, show the specific adopted item; without it, fall back to a generic topic.
     expect(
-      screen.getByText("「我最喜欢喝一点点抹茶奶冻」"),
+      // ``targetText`` renders ``t("memory.journal.targetQuoted", ...)``; the
+      // i18n test mock resolves fallback-less keys to the key itself.
+      screen.getByText("memory.journal.targetQuoted"),
     ).toBeInTheDocument();
-    expect(screen.getByText("一个主题")).toBeInTheDocument();
+    expect(screen.getByText("memory.journal.targetEntity")).toBeInTheDocument();
     // Notes show only Chinese: English dev logs are translated and the original English is hidden.
-    expect(screen.getByText("新建主题「User」")).toBeInTheDocument();
+    expect(
+      screen.getByText("memory.journal.note.entityCreated"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText(/no existing entity matched/),
     ).not.toBeInTheDocument();
@@ -107,12 +115,16 @@ describe("<JournalList />", () => {
     render(<JournalList agentId="ZYWZTD" />);
 
     await waitFor(() =>
-      expect(screen.getAllByText("提取运行")).toHaveLength(2),
+      expect(
+        screen.getAllByText("memory.journal.action.extractRun"),
+      ).toHaveLength(2),
     );
     expect(
-      screen.getByText("处理 4 段对话，生成 2 条草稿，晋升 2 条记忆"),
+      screen.getByText("memory.journal.summary.processed"),
     ).toBeInTheDocument();
-    expect(screen.getByText("扫描 4 段对话，无新增内容")).toBeInTheDocument();
+    expect(
+      screen.getByText("memory.journal.summary.scanned"),
+    ).toBeInTheDocument();
   });
 
   it("renders empty state on no entries", async () => {

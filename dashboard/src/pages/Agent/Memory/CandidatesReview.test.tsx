@@ -79,12 +79,15 @@ describe("<CandidatesReview />", () => {
       expect(screen.getByText("咖啡偏好")).toBeInTheDocument(),
     );
 
-    const promoteBtn = screen.getByRole("button", { name: /采\s*纳/ });
+    const promoteBtn = screen.getByRole("button", {
+      name: /memory\.candidates\.promote|common\.confirm/,
+    });
     await user.click(promoteBtn);
 
-    // Popconfirm okText and inline action text are both the same label; antd may add spacing, so match loosely.
+    // The action button and the Popconfirm okText render their i18n keys under
+    // the test mock (fallback-less t()); match either and take the last (OK).
     const allRecord = await screen.findAllByRole("button", {
-      name: /采\s*纳/,
+      name: /memory\.candidates\.promote|common\.confirm/,
     });
     const confirmBtn = allRecord[allRecord.length - 1];
     await user.click(confirmBtn);
@@ -111,17 +114,25 @@ describe("<CandidatesReview />", () => {
       expect(screen.getByText("可疑事实")).toBeInTheDocument(),
     );
 
-    const rejectBtn = screen.getByRole("button", { name: /忽\s*略/ });
+    const rejectBtn = screen.getByRole("button", {
+      name: /memory\.candidates\.reject/,
+    });
     await user.click(rejectBtn);
 
     await waitFor(() => {
-      expect(screen.getByText("忽略这条草稿")).toBeInTheDocument();
+      expect(
+        screen.getByText("memory.candidates.rejectTitle"),
+      ).toBeInTheDocument();
     });
 
-    const textarea = screen.getByPlaceholderText(/原因可选/);
+    const textarea = screen.getByPlaceholderText(
+      /memory\.candidates\.rejectReasonPlaceholder/,
+    );
     await user.type(textarea, "重复信息");
 
-    const okBtn = screen.getByRole("button", { name: /确认忽略/ });
+    const okBtn = screen.getByRole("button", {
+      name: /memory\.candidates\.confirmReject/,
+    });
     await user.click(okBtn);
 
     await waitFor(() => {
@@ -138,7 +149,7 @@ describe("<CandidatesReview />", () => {
     api.listCandidates.mockResolvedValue(listCandidatesResp([]));
     render(<CandidatesReview agentId="ZYWZTD" />);
     await waitFor(() => expect(api.listCandidates).toHaveBeenCalled());
-    expect(screen.getByText("暂无记忆内容")).toBeInTheDocument();
+    expect(screen.getByText("memory.candidates.empty")).toBeInTheDocument();
   });
 
   it("disables promote/reject buttons for already-decided candidates", async () => {
@@ -159,8 +170,12 @@ describe("<CandidatesReview />", () => {
       expect(screen.getByText("已升级的候选")).toBeInTheDocument(),
     );
 
-    const promoteBtn = screen.getByRole("button", { name: /采\s*纳/ });
-    const rejectBtn = screen.getByRole("button", { name: /忽\s*略/ });
+    const promoteBtn = screen.getByRole("button", {
+      name: /memory\.candidates\.promote|common\.confirm/,
+    });
+    const rejectBtn = screen.getByRole("button", {
+      name: /memory\.candidates\.reject/,
+    });
     expect(promoteBtn).toBeDisabled();
     expect(rejectBtn).toBeDisabled();
   });
