@@ -954,7 +954,6 @@
     },
     "pathLabel": "Path prefix (from /)",
     "backendForPath": "Backend",
-    "removeMapping": "Remove",
     "mdFilesTitle": "Template File Preview",
     "mdFilesHint": "These are the configuration files from the template. You can edit them in the workspace after creation.",
     "openWorkspace": "Edit Workspace",
@@ -2493,7 +2492,6 @@
     "browserNoChineseVoice": "Chrome has no Chinese voice — using Edge TTS instead",
     "ttsFallback": "Server TTS failed — switched to browser speech",
     "micDenied": "Microphone access denied",
-    "browserOnly": "Handled by the browser",
     "readAloud": "Read aloud",
     "micNotAvailable": "Audio recording unavailable — please use HTTPS",
     "sttNotAvailable": "Voice input not available on this device (HTTPS required)",
@@ -4197,7 +4195,6 @@
     "idleHint": "Watch Agent browse in real time, or launch to pre-login sites and manage bookmarks. Your login sessions persist after closing this page — Agent can reuse them.",
     "goBack": "Go Back",
     "goForward": "Go Forward",
-    "reload": "Reload",
     "go": "Go",
     "fullscreen": "Toggle Fullscreen",
     "fullscreenFailed": "Could not enter fullscreen",
@@ -5782,7 +5779,13 @@
     "applyFailed": "Failed to apply skill",
     "recordingStopped": "Recording finished — {{steps}} replay steps generated",
     "skillApplied": "Skill \"{{name}}\" applied successfully",
-    "stopFailed": "Failed to stop recording"
+    "stopFailed": "Failed to stop recording",
+    "push": {
+      "recordingPreview": "✅ Recording finished — {{steps}} replay steps generated.\n\n📝 **Skill script preview:**\n\n{{preview}}{{truncation}}\n\nReply \"confirm\" to apply this skill, then replay the same browser flow with one message.",
+      "truncated": "\n\n... ({{lines}} lines total; the full content will be saved once you confirm)",
+      "generateFailed": "✅ Recording finished — {{steps}} replay steps generated.\n\n⚠️ Failed to generate the skill script. Try again later or generate it manually.",
+      "applied": "🎉 Skill **{{name}}** applied!\n\nFrom now on, send its trigger phrase in chat to replay the same browser flow with one message."
+    }
   },
   "skillRecordGuide": {
     "buttonLabel": "Record skill",

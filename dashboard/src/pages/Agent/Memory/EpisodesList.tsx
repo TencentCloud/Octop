@@ -88,11 +88,7 @@ export default function EpisodesList({ agentId }: Props) {
           lineHeight: 1.6,
         }}
       >
-        💡{" "}
-        {t(
-          "memory.episodes.disclaimer",
-          "这里记录你与 Octop 相处中的情绪和小故事。它不会用于常规对话引用，只会帮 Octop 更好地关心你，并用于周 / 月小结。",
-        )}
+        💡 {t("memory.episodes.disclaimer")}
       </div>
       {loading && items.length === 0 ? (
         <Skeleton active />
@@ -190,7 +186,7 @@ export default function EpisodesList({ agentId }: Props) {
       </div>
 
       <Drawer
-        title={t("memory.episodeDetail", "情绪日记详情")}
+        title={t("memory.episodeDetail")}
         open={!!selected}
         onClose={() => setSelected(null)}
         width={520}

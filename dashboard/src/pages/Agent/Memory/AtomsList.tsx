@@ -127,7 +127,7 @@ export default function AtomsList({ agentId }: Props) {
 
   const toolbar = (
     <>
-      <span style={{ color: "#595959" }}>{t("memory.list.kind", "类型")}:</span>
+      <span style={{ color: "#595959" }}>{t("memory.list.kind")}:</span>
       <Select
         style={{ width: 160 }}
         value={kind}
@@ -138,7 +138,7 @@ export default function AtomsList({ agentId }: Props) {
         options={kindOptions(t)}
       />
       <span style={{ color: "#595959" }}>
-        {t("memory.list.importanceMin", "重要程度不低于")}:
+        {t("memory.list.importanceMin")}:
       </span>
       <Select
         style={{ width: 140 }}
@@ -154,7 +154,7 @@ export default function AtomsList({ agentId }: Props) {
         icon={<Plus size={14} />}
         onClick={() => setCreateOpen(true)}
       >
-        {t("memory.create.title", "新建记忆")}
+        {t("memory.create.title")}
       </Button>
     </>
   );
@@ -180,7 +180,7 @@ export default function AtomsList({ agentId }: Props) {
         selected={selected}
         onItemClick={setSelected}
         onCloseDrawer={() => setSelected(null)}
-        drawerTitle={t("memory.atomDetail", "记忆详情")}
+        drawerTitle={t("memory.atomDetail")}
         drawerWidth={560}
         renderItem={(a) => (
           <div
@@ -213,7 +213,7 @@ export default function AtomsList({ agentId }: Props) {
                   gap: 4,
                 }}
               >
-                <Tooltip title={t("memory.edit.tooltip", "编辑这条记忆")}>
+                <Tooltip title={t("memory.edit.tooltip")}>
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
@@ -230,9 +230,7 @@ export default function AtomsList({ agentId }: Props) {
                     <Pencil size={14} />
                   </span>
                 </Tooltip>
-                <Tooltip
-                  title={t("memory.tree.deprecateTooltip", "弃用这条记忆")}
-                >
+                <Tooltip title={t("memory.tree.deprecateTooltip")}>
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
@@ -314,14 +312,14 @@ export default function AtomsList({ agentId }: Props) {
             {!isAtomDeprecated(atom) ? (
               <>
                 <Typography.Title level={5} style={{ marginTop: 12 }}>
-                  {t("memory.tree.actions", "操作")}
+                  {t("memory.tree.actions")}
                 </Typography.Title>
                 <Space>
                   <Button onClick={() => handleEdit(atom)}>
-                    {t("memory.edit.action", "编辑这条记忆")}
+                    {t("memory.edit.action")}
                   </Button>
                   <Button danger onClick={() => handleDeprecate(atom)}>
-                    {t("memory.tree.deprecate", "弃用这条记忆")}
+                    {t("memory.tree.deprecate")}
                   </Button>
                 </Space>
               </>

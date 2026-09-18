@@ -84,7 +84,7 @@ describe("<AtomsList />", () => {
     // Active atom: drawer has the deprecate action.
     await user.click(screen.getByText("在用记忆。"));
     await waitFor(() => {
-      expect(screen.getByText("弃用这条记忆")).toBeInTheDocument();
+      expect(screen.getByText("memory.tree.deprecate")).toBeInTheDocument();
     });
     expect(screen.getByText("memory.tree.activeTag")).toBeInTheDocument();
 
@@ -95,7 +95,7 @@ describe("<AtomsList />", () => {
         screen.getAllByText("memory.tree.deprecatedTag").length,
       ).toBeGreaterThanOrEqual(1);
     });
-    expect(screen.queryByText("弃用这条记忆")).not.toBeInTheDocument();
+    expect(screen.queryByText("memory.tree.deprecate")).not.toBeInTheDocument();
   });
 
   it("renders Empty when API returns no items", async () => {

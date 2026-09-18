@@ -233,7 +233,7 @@ export default function MemoryTree({ agentId, initialExpandEntityId }: Props) {
       >
         <Space size={8}>
           <span style={{ fontSize: 14, fontWeight: 600 }}>
-            {t("memory.tree.title", "按主题浏览")}
+            {t("memory.tree.title")}
           </span>
           <Tag>
             {t("memory.tree.entityCount", "{{n}} 个主题", {
@@ -253,22 +253,19 @@ export default function MemoryTree({ agentId, initialExpandEntityId }: Props) {
               setCreateOpen(true);
             }}
           >
-            {t("memory.create.title", "新建记忆")}
+            {t("memory.create.title")}
           </Button>
           <a
             onClick={handleRefresh}
             style={{ fontSize: 12, cursor: "pointer" }}
           >
-            <RefreshCw size={14} /> {t("common.refresh", "刷新")}
+            <RefreshCw size={14} /> {t("common.refresh")}
           </a>
         </Space>
       </div>
 
       <div style={{ fontSize: 12, color: "#8c8c8c", marginBottom: 8 }}>
-        {t(
-          "memory.tree.hint",
-          "点击主题展开它下面的记忆；再点击具体记忆查看详情。",
-        )}
+        {t("memory.tree.hint")}
       </div>
 
       {entitiesLoading && entities.length === 0 ? (
@@ -480,7 +477,7 @@ function EntityRow({
           {t("memory.tree.dirtyTag")}
         </Tag>
       ) : null}
-      <Tooltip title={t("memory.create.addToTopicTip", "在此主题下添加记忆")}>
+      <Tooltip title={t("memory.create.addToTopicTip")}>
         <Button
           size="small"
           type="text"
@@ -640,7 +637,7 @@ function AtomRow({
         {formatRelativeTime(atom.created_at, t)}
       </span>
       {showActions && onEdit ? (
-        <Tooltip title={t("memory.edit.tooltip", "编辑这条记忆")}>
+        <Tooltip title={t("memory.edit.tooltip")}>
           <span
             onClick={(e) => {
               e.stopPropagation();
@@ -766,7 +763,7 @@ function AtomDetailDrawer({
   const { t } = useTranslation();
   return (
     <Drawer
-      title={t("memory.atomDetail", "记忆详情")}
+      title={t("memory.atomDetail")}
       open={open}
       onClose={onClose}
       width={520}
@@ -838,7 +835,7 @@ function AtomDetailDrawer({
                     })
                   }
                 >
-                  {t("memory.edit.action", "编辑这条记忆")}
+                  {t("memory.edit.action")}
                 </Button>
                 <Button
                   danger
@@ -905,7 +902,7 @@ function EntitySummaryDrawer({
 
   return (
     <Drawer
-      title={t("memory.entitySummary", "主题摘要")}
+      title={t("memory.entitySummary")}
       open={!!entity}
       onClose={onClose}
       width={560}
