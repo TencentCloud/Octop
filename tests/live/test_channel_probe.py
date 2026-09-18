@@ -1,8 +1,7 @@
 """Live channel credential probes (WeChat iLink + Feishu).
 
-Exercises the same ``ChannelManager.probe_channel`` path the dashboard uses
-via ``Gateway.probe_config`` / ``POST …/channels/test`` — so a green result
-means the real app credentials reach the real upstream.
+Exercises the credential checks used by the dashboard. Feishu verifies its
+tenant token without opening a second WebSocket connection.
 
 Credentials come from the repo-root ``.env`` (loaded by ``tests/live/conftest.py``)
 or from CI GitHub Secrets mapped in ``.github/workflows/ci.yml``. Missing vars
@@ -22,6 +21,9 @@ from harness_gateway.channels.weixin.types import WeixinAPIError
 from harness_gateway.manager import ChannelManager
 from tests.support.secrets import optional_env, require_env
 
+from octop.infra.gateway.feishu_ws_compat import probe_feishu_credentials
+from octop.infra.gateway.gateway import _probe_processor
+
 pytestmark = pytest.mark.live
 
 _DEFAULT_WEIXIN_BASE_URL = "https://ilinkai.weixin.qq.com"
@@ -33,16 +35,13 @@ async def _noop_processor(_msg: object) -> None:
 
 @pytest.mark.asyncio
 async def test_feishu_probe_accepts_app_credentials() -> None:
-    """Feishu ``start()`` refreshes tenant_access_token — validates app id/secret."""
+    """Validate app id/secret through the same token check as the dashboard."""
     app_id = require_env("FEISHU_APP_ID")
     app_secret = require_env("FEISHU_APP_SECRET")
 
-    manager = ChannelManager(processor=_noop_processor)
-    await manager.probe_channel(
-        "feishu",
+    await probe_feishu_credentials(
         {"app_id": app_id, "app_secret": app_secret},
-        tenant_id="live-probe",
-        channel_id="live-feishu-probe",
+        _probe_processor,
     )
 
 
