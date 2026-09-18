@@ -412,6 +412,7 @@ class UserManager:
         )
         self._users[row.username] = user
         return user
+
     def raise_if_login_locked(self, username: str) -> None:
         identifier = (username or "").strip()
         if not identifier:
