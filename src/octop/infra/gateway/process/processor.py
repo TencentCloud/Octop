@@ -59,6 +59,7 @@ from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_u
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.parser import parse_slash
 from octop.infra.gateway.slash.runner import try_handle_slash
+from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.history.trajectory.settings import agent_trajectory_enabled
 from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.users.preferences import (
@@ -76,9 +77,14 @@ if TYPE_CHECKING:
     from octop.infra.db.repos.sessions import SessionRow
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.gateway.slash.dispatcher import SlashDispatcher
-    from octop.infra.gateway.threads import ThreadRegistry
 
 logger = logging.getLogger(__name__)
+
+# How far back to read the checkpoint when projecting a background peer reply.
+# The turn is the follow-up prompt plus the source agent's tool rounds and final
+# answer; messages already projected are skipped by id, so a generous tail is
+# safe and keeps the whole turn in view (#834).
+_TEAM_REPLY_PROJECTION_LIMIT = 8
 
 
 def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
@@ -493,12 +499,65 @@ class GlobalProcessor:
 
         if event.status != "done":
             text = event.error_text or "Background task did not complete."
-            await self._deliver_team_text(session, sk, text)
+            await self._deliver_team_text(session, sk, text, thread_id=event.source_thread_id)
             return
 
-        await self._deliver_team_text(session, sk, event.reply_text or "(empty)")
+        await self._deliver_team_text(
+            session, sk, event.reply_text or "(empty)", thread_id=event.source_thread_id
+        )
 
-    async def _deliver_team_text(self, session: SessionRow, session_key: str, text: str) -> None:
+    def _delivery_thread_id(self, session: SessionRow, thread_id: str | None) -> str:
+        """Pick the thread a background reply belongs to.
+
+        Prefer the thread the task was dispatched from. The session may have
+        moved on (the user opened another conversation) while the task ran, and
+        routing by the session's *current* thread would file the reply into the
+        wrong conversation (#834).  Fall back to the session only when the
+        originating thread is gone.
+        """
+        if thread_id:
+            tid = thread_id.strip()
+            if tid and self._thread_registry.get_thread(tid) is not None:
+                return tid
+        return session.thread_id
+
+    async def _project_team_reply(self, agent_id: str, thread_id: str) -> None:
+        """Publish the source agent's background turn to the visible history.
+
+        The source-side turn runs through ``TeamManager._call_agent``, which
+        writes the checkpoint but never goes through the turn pipeline that
+        fills ``thread_messages`` — so the Dashboard history stayed empty while
+        the model itself had the transcript (#834).  Re-projecting the
+        checkpoint tail is idempotent: ``append_if_ready`` skips message ids
+        already stored.
+        """
+        repo = self._thread_message_repo
+        if repo is None or not thread_id:
+            return
+        try:
+            harness = self._agent_manager.get_agent(agent_id)
+            aget_history = getattr(harness, "aget_history", None)
+            if not callable(aget_history):
+                return
+            history = list(await aget_history(thread_id, limit=_TEAM_REPLY_PROJECTION_LIMIT))
+            if not history:
+                return
+            repo.append_if_ready(thread_id, message_inputs(history, dedupe_missing_ids=True))
+        except Exception:
+            logger.warning(
+                "failed to project team reply history for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+
+    async def _deliver_team_text(
+        self,
+        session: SessionRow,
+        session_key: str,
+        text: str,
+        *,
+        thread_id: str | None = None,
+    ) -> None:
         if session.channel_id and self._gateway is not None:
             await self._gateway.push_text(
                 session.channel_type,
@@ -507,8 +566,20 @@ class GlobalProcessor:
                 text,
             )
             return
+        # Dashboard / CLI have no channel_id. The source agent's background turn
+        # only reached the checkpoint, so nothing projected it into the visible
+        # history or pushed it — the user saw a bare unread badge (#834).
+        target = self._delivery_thread_id(session, thread_id)
+        await self._project_team_reply(session.agent_id, target)
         self._thread_registry.increment_unread(session_key)
-        self._thread_registry.touch_last_active(session.thread_id)
+        self._thread_registry.touch_last_active(target)
+        if self._gateway is None:
+            return
+        if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD:
+            await self._gateway.push_thread_text(target, text)
+            await self._gateway.notify_dashboard_push(
+                session, session.agent_id, text, thread_id=target
+            )
 
     def _peer_display_name(self, agent_id: str) -> str:
         row = self._agent_manager.get_row(agent_id)
