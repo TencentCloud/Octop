@@ -395,7 +395,7 @@ export default function Sidebar({
   const showChatRailExpand = !isMinimal && !chatSidebarOpen;
 
   const isRailCollapsed = collapsed && !isMobile;
-  const wordmarkSrc = isDark ? "/logo_name_dark.png" : "/logo_name.png";
+  const wordmarkSrc = isDark ? "/logo_horizontal_white.png" : "/logo_horizontal_dark.png";
 
   const selectMinimalPane = useCallback(
     (pane: MinimalNavPane, opts?: { expand?: boolean }) => {
