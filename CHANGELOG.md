@@ -17,6 +17,7 @@
 - 无网络或后端不可达时，启动页展示明确错误与重试，而不再白屏 (#696)
 - iOS PWA 顶栏/侧栏避让状态栏：`env(safe-area-inset-top)` 垫高移动端 Header 与抽屉品牌行（#664）
 - 定时任务空状态提示词按专家区分：workspace → 目录模板 → 名称默认，不再共用一套通用文案（#651）
+- S3 / 自定义 S3 兼容对象存储无法读写：不再请求 `orcakit-harness-agent` 的 `all` 额外项，避免引入与 deepagents 0.7 协议不兼容的 `deepagents-backends`，让 harness 自带的 boto3 后端生效
 
 ## [1.0.1] - 2026-09-18
 
