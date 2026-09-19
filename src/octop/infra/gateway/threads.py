@@ -104,6 +104,17 @@ class ThreadRegistry:
             channel_id=channel_id or row.channel_id,
         )
 
+    def _live_thread_id(self, row: SessionRow) -> str | None:
+        """Return ``row.thread_id`` only while that thread still exists.
+
+        Deleting a thread does not clear the sessions bound to it, so a session
+        can outlive its thread and keep handing out a dead id — replies still
+        stream back, but nothing lands in ``thread_messages`` (#833).  Treating
+        the binding as absent lets callers create a fresh thread instead of
+        writing against a row that is gone.
+        """
+        return row.thread_id if self._threads.get(row.thread_id) is not None else None
+
     async def get_or_create(
         self,
         *,
@@ -123,17 +134,21 @@ class ThreadRegistry:
         )
         row = self._sessions.get(session_key)
         if row is not None:
-            self._refresh_session_if_needed(
-                row, channel_id=channel_id, channel_metadata=channel_metadata
-            )
-            return row.thread_id
-        async with self._lock:
-            row = self._sessions.get(session_key)
-            if row is not None:
+            live = self._live_thread_id(row)
+            if live is not None:
                 self._refresh_session_if_needed(
                     row, channel_id=channel_id, channel_metadata=channel_metadata
                 )
-                return row.thread_id
+                return live
+        async with self._lock:
+            row = self._sessions.get(session_key)
+            if row is not None:
+                live = self._live_thread_id(row)
+                if live is not None:
+                    self._refresh_session_if_needed(
+                        row, channel_id=channel_id, channel_metadata=channel_metadata
+                    )
+                    return live
             tid = _new_thread_id()
             meta = dict(channel_metadata or {})
             meta.setdefault("channel_type", channel_type)
@@ -178,10 +193,12 @@ class ThreadRegistry:
             if row.agent_id != agent_id:
                 msg = f"session {session_key!r} belongs to agent {row.agent_id!r}, not {agent_id!r}"
                 raise ValueError(msg)
-            self._refresh_session_if_needed(
-                row, channel_id=channel_channel_id, channel_metadata=channel_metadata
-            )
-            return row.thread_id
+            live = self._live_thread_id(row)
+            if live is not None:
+                self._refresh_session_if_needed(
+                    row, channel_id=channel_channel_id, channel_metadata=channel_metadata
+                )
+                return live
         parts = session_key.split(":", 3)
         subject_id = parts[2] if len(parts) >= 3 else str(user_id)
         return await self.get_or_create(
@@ -196,7 +213,7 @@ class ThreadRegistry:
 
     def get_bound_thread_id(self, session_key: str) -> str | None:
         row = self._sessions.get(session_key)
-        return row.thread_id if row else None
+        return self._live_thread_id(row) if row else None
 
     def get_session(self, session_key: str) -> SessionRow | None:
         return self._sessions.get(session_key)
@@ -406,6 +423,9 @@ class ThreadRegistry:
 
     def delete_thread(self, thread_id: str) -> None:
         self._threads.delete(thread_id)
+        # Unbind any session left pointing at the removed thread, otherwise it
+        # keeps resolving to a dead id and the conversation stops persisting (#833).
+        self._sessions.delete_by_thread(thread_id)
 
     def increment_unread(self, session_key: str, *, delta: int = 1) -> None:
         self._sessions.increment_unread(session_key, delta=delta)

@@ -177,6 +177,18 @@ class SessionRepo:
                 (thread_id, now_ts(), session_key),
             )
 
+    def delete_by_thread(self, thread_id: str) -> int:
+        """Drop every session row still bound to *thread_id*.
+
+        ``sessions.thread_id`` has no foreign key onto ``threads``, so deleting
+        a thread leaves its sessions pointing at a row that no longer exists.
+        Such a session keeps handing out a dead id and the conversation stops
+        persisting — see #833.  Returns the number of rows removed.
+        """
+        with self._db.transaction() as conn:
+            cursor = conn.execute("DELETE FROM sessions WHERE thread_id = ?", (thread_id,))
+        return int(cursor.rowcount or 0)
+
     def set_agent_id(self, session_key: str, agent_id: str) -> None:
         with self._db.transaction() as conn:
             conn.execute(

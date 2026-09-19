@@ -281,6 +281,119 @@ async def test_metadata_refresh_keeps_bound_channel_id(registry: ThreadRegistry)
     assert row.channel_metadata["chat_id"] == "oc_1"
 
 
+@pytest.mark.asyncio
+async def test_delete_thread_clears_session_binding(registry: ThreadRegistry) -> None:
+    """Deleting a thread must unbind the session that points at it (#833).
+
+    ``sessions.thread_id`` has no foreign key onto ``threads``, so without an
+    explicit cleanup the session outlives its thread and keeps resolving to a
+    dead id — replies still stream back but nothing lands in ``thread_messages``.
+    """
+    sk = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_x")
+    tid = await registry.get_or_create_by_key(
+        session_key=sk, agent_id="a1", user_id=1, channel_type="feishu"
+    )
+    assert registry.get_bound_thread_id(sk) == tid
+
+    registry.delete_thread(tid)
+
+    assert registry.get_thread(tid) is None
+    assert registry.get_session(sk) is None
+    assert registry.get_bound_thread_id(sk) is None
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_leaves_other_sessions_alone(registry: ThreadRegistry) -> None:
+    """Only sessions bound to the removed thread may be dropped."""
+    sk_a = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_a")
+    sk_b = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_b")
+    tid_a = await registry.get_or_create_by_key(
+        session_key=sk_a, agent_id="a1", user_id=1, channel_type="feishu"
+    )
+    tid_b = await registry.get_or_create_by_key(
+        session_key=sk_b, agent_id="a1", user_id=1, channel_type="feishu"
+    )
+
+    registry.delete_thread(tid_a)
+
+    assert registry.get_session(sk_a) is None
+    assert registry.get_bound_thread_id(sk_b) == tid_b
+
+
+@pytest.mark.asyncio
+async def test_dangling_session_is_treated_as_unbound(registry: ThreadRegistry) -> None:
+    """A session whose thread vanished must not hand out a dead id (#833).
+
+    Covers rows left behind by a pre-fix database, where the thread is gone but
+    the session row survives.
+    """
+    sk = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_x")
+    tid = await registry.get_or_create_by_key(
+        session_key=sk, agent_id="a1", user_id=1, channel_type="feishu"
+    )
+    # Simulate the pre-fix state: thread gone, session still pointing at it.
+    registry._threads.delete(tid)
+    assert registry.get_session(sk) is not None
+
+    assert registry.get_bound_thread_id(sk) is None
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_by_key_recovers_from_dangling_session(
+    registry: ThreadRegistry,
+) -> None:
+    """A dangling binding must fall through to a fresh thread, not be returned."""
+    sk = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_x")
+    dead = await registry.get_or_create_by_key(
+        session_key=sk, agent_id="a1", user_id=1, channel_type="feishu"
+    )
+    registry._threads.delete(dead)
+
+    fresh = await registry.get_or_create_by_key(
+        session_key=sk, agent_id="a1", user_id=1, channel_type="feishu"
+    )
+
+    assert fresh != dead
+    assert registry.get_thread(fresh) is not None
+    assert registry.get_bound_thread_id(sk) == fresh
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_recovers_from_dangling_session(registry: ThreadRegistry) -> None:
+    dead = await registry.get_or_create(
+        agent_id="a1",
+        user_id=1,
+        channel_type="feishu",
+        channel_subject_id="ou_x",
+    )
+    registry._threads.delete(dead)
+
+    fresh = await registry.get_or_create(
+        agent_id="a1",
+        user_id=1,
+        channel_type="feishu",
+        channel_subject_id="ou_x",
+    )
+
+    assert fresh != dead
+    assert registry.get_thread(fresh) is not None
+
+
+@pytest.mark.asyncio
+async def test_dangling_session_still_rejects_agent_mismatch(registry: ThreadRegistry) -> None:
+    """The dangling check must not weaken the cross-agent guard."""
+    sk = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_x")
+    tid = await registry.get_or_create_by_key(
+        session_key=sk, agent_id="a1", user_id=1, channel_type="feishu"
+    )
+    registry._threads.delete(tid)
+
+    with pytest.raises(ValueError, match="belongs to agent"):
+        await registry.get_or_create_by_key(
+            session_key=sk, agent_id="a2", user_id=1, channel_type="feishu"
+        )
+
+
 def test_peer_session_key_rewrites_agent_segment() -> None:
     src = ThreadRegistry.make_key(
         agent_id="a1",
