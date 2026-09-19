@@ -132,7 +132,7 @@ Only `launch.py` may import both `infra/server` and `api/app` in the same module
 | Path | Owns | Must NOT own |
 |------|------|--------------|
 | `api/app.py` | FastAPI factory, router registration, static dashboard mount | domain rules, SQL |
-| `api/deps.py`, `api/jwt_tokens.py` | JWT extraction, `current_user`, `get_server` | agent lifecycle, cron logic |
+| `api/deps.py` | JWT extraction, `current_user`, `get_server` | agent lifecycle, cron logic |
 | `api/middleware/` | JWT gate, setup lockdown | business validation beyond auth/setup |
 | `api/openapi_meta.py` | Scalar tags, API intro text | route handlers |
 | `api/errors.py` | Map `OctopError` → HTTP status + JSON | new error semantics (add to `infra/errors.py`) |
@@ -351,7 +351,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 
 | Question | Location |
 |----------|----------|
-| How does auth work? | `api/jwt_tokens.py`, `api/deps.py`, `api/middleware/jwt_auth.py`, `api/routers/auth.py` |
+| How does auth work? | `api/deps.py`, `api/middleware/jwt_auth.py`, `api/routers/auth.py` |
 | Setup wizard (password file, tokens) | `infra/setup/`, `api/routers/setup.py` |
 | TLS / Let's Encrypt | `infra/setup/tls/`, `api/routers/tls.py` |
 | `octop run` boot sequence | `launch.py`, `cli/run_cmd.py` |

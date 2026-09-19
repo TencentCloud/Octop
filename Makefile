@@ -83,7 +83,6 @@ help:
 	@echo "  install          Install Python dev dependencies (alias: install-dev)"
 	@echo "  install-dev      uv sync / pip install -e \".[dev]\""
 	@echo "  install-tools    Install build + twine for publishing"
-	@echo "  docs-cli         Regenerate docs/cli.md from Click commands"
 	@echo "  clean            Remove build artifacts and caches"
 	@echo "  clean-online     Remove the .venv-online environment"
 	@echo "  version          Show current project version"
@@ -313,10 +312,6 @@ endif
 install-tools:
 	$(PIP) install --quiet build twine
 	@echo "[install-tools] build and twine installed."
-
-.PHONY: docs-cli
-docs-cli:
-	@$(PYTHON) scripts/regen_cli_docs.py
 
 .PHONY: clean
 clean:
