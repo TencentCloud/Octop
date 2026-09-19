@@ -55,6 +55,37 @@ def _model_dict_supports_image(model: dict[str, Any]) -> bool:
     return is_vision_model(model)
 
 
+def resolve_model_ref(
+    provider_repo: Any,
+    provider: str,
+    model_id: str,
+) -> tuple[str, str] | None:
+    """Canonicalize a ``provider`` / ``model`` pair, accepting a provider name or id.
+
+    Returns ``(provider_name, model_id)`` when the provider exists and the model
+    is enabled and chat-eligible; ``None`` otherwise. This is the single place
+    that decides whether a default-model ref is persistable, so a numeric
+    provider id (as occasionally produced by scripts/older UIs) can never be
+    silently stored as a dangling ref that the runtime then ignores.
+    """
+    name = (provider or "").strip()
+    mid = (model_id or "").strip()
+    if not name or not mid:
+        return None
+    row = provider_repo.get_by_name(name)
+    if row is None and name.isdigit():
+        row = provider_repo.get(int(name))
+    if row is None or not row.enabled or not row.api_key or not row.base_url:
+        return None
+    for model in row.get_models():
+        if str(model.get("id") or "").strip() != mid:
+            continue
+        if is_chat_eligible_model(model, provider_name=row.name, provider_api_key=row.api_key):
+            return row.name, mid
+        return None
+    return None
+
+
 def enabled_model_refs(
     provider_name: str,
     models: list[dict[str, Any]],
@@ -252,6 +283,18 @@ class ProviderStore:
                 model, provider_name=provider_name, provider_api_key=row.api_key
             )
         return False
+
+    def canonical_model_ref(self, ref: str) -> tuple[str, str] | None:
+        """Resolve a stored ref, mapping a numeric provider id back to its name.
+
+        Unlike :meth:`is_model_ref_usable`, this accepts ``"4/model"`` and returns
+        ``("OpenCode Go (Anthropic)", "model")`` so legacy numeric-id refs still
+        route correctly instead of being silently dropped.
+        """
+        provider, sep, model_id = (ref or "").strip().partition("/")
+        if not sep:
+            return None
+        return resolve_model_ref(self._provider_repo, provider, model_id)
 
     def get_model_reasoning_capability(self, ref: str) -> dict[str, Any] | None:
         """Return normalized reasoning metadata for a usable model ref."""

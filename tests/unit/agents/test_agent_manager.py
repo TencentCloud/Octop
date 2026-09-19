@@ -750,6 +750,18 @@ def test_build_harness_config_active_model_ignored_when_unusable(
     assert cfg.default_model == "test-openai/gpt-4o-mini"
 
 
+def test_build_harness_config_active_model_numeric_id_is_canonicalized(
+    manager: AgentManager,
+) -> None:
+    """A numeric-provider-id active model resolves to the name and self-heals."""
+    _seed_test_provider(manager)
+    provider_id = manager._repos.provider_repo.get_by_name("test-openai").id
+    manager._repos.settings_repo.set_active_model(str(provider_id), "gpt-4o-mini")
+    cfg = manager._build_harness_config(_row(default_model=None))
+    assert cfg.default_model == "test-openai/gpt-4o-mini"
+    assert manager._repos.settings_repo.get_active_model() == ("test-openai", "gpt-4o-mini")
+
+
 def test_build_harness_config_explicit_default_wins_over_active(
     manager: AgentManager,
 ) -> None:
