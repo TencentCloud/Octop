@@ -15,6 +15,14 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 
+// PDF.js needs browser canvas APIs absent in jsdom. PDF viewer tests provide
+// their own react-pdf mocks to exercise rendering behavior.
+vi.mock("react-pdf", () => ({
+  Document: () => null,
+  Page: () => null,
+  pdfjs: { GlobalWorkerOptions: {} },
+}));
+
 // Auto-mock react-i18next so components' ``t(key, fallback)`` calls
 // resolve synchronously to ``fallback`` without needing the real
 // i18n module (which would async-fetch tool labels and add 1-2s of
