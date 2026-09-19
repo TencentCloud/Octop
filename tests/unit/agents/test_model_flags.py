@@ -127,3 +127,28 @@ def test_list_resolved_models_skips_embedding() -> None:
     assert resolved[0]["max_input_tokens"] == 120_000
     assert resolved[0]["max_output_tokens"] == 16_384
     assert resolved[0]["max_tokens"] == 16_384
+
+
+def test_ollama_cloud_endpoint_is_not_local() -> None:
+    from octop.infra.agents.providers.model_flags import is_ollama_local_provider
+
+    # Official cloud endpoints contain "ollama" but are not this machine.
+    assert not is_ollama_local_provider(
+        provider_name="oll", provider_base_url="https://ollama.com/v1"
+    )
+    assert not is_ollama_local_provider(provider_base_url="https://www.ollama.com/v1")
+    assert not is_ollama_local_provider(provider_base_url="https://registry.ollama.com/v1")
+
+
+def test_ollama_this_machine_urls_stay_local() -> None:
+    from octop.infra.agents.providers.model_flags import is_ollama_local_provider
+
+    assert is_ollama_local_provider(provider_base_url="http://localhost:11434/v1")
+    assert is_ollama_local_provider(provider_base_url="http://127.0.0.1:11434")
+    assert is_ollama_local_provider(provider_base_url="http://192.168.1.10:11434/v1")
+    assert is_ollama_local_provider(provider_base_url="http://ollama:11434")
+    assert is_ollama_local_provider(provider_base_url="http://myserver.local:11434/v1")
+    # Exact preset identity still wins regardless of URL.
+    assert is_ollama_local_provider(
+        provider_name="Ollama (Local)", provider_base_url="https://ollama.com/v1"
+    )
