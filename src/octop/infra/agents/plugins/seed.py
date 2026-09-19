@@ -1,4 +1,8 @@
-"""Copy packaged plugins into the user plugins directory, globally disabled."""
+"""Upgrade already-installed bundled plugins from the in-tree catalog.
+
+New plugins are installed via the marketplace (copy today; remote ZIP later),
+not by seed. Seed only refreshes local copies when the catalog version is newer.
+"""
 
 from __future__ import annotations
 
@@ -58,18 +62,19 @@ def seed_bundled_plugins(
     plugins_dir: Path,
     config_path: Path,
 ) -> list[str]:
-    """Copy missing bundled plugins into ``plugins_dir``, globally disabled.
+    """Upgrade already-installed bundled plugins when the catalog version is newer.
 
-    An id listed in ``bundled_plugins_seeded`` is never re-created after
-    uninstall. Existing dest dirs are overwritten only when the bundled
-    ``plugin.yaml`` version is newer (enabled flag is preserved).
+    New plugins are **not** auto-copied. Install them from the plugin marketplace
+    (``PluginManager.install_from_market``), which copies from the in-tree
+    catalog today and will fetch remote ZIPs later.
+
+    Existing dest dirs are overwritten only when the bundled ``plugin.yaml``
+    version is newer (enabled flag is preserved). Does not write config when
+    nothing was upgraded.
     """
     if not bundled_root.is_dir():
         return []
     data = _read_config(config_path)
-    seeded_raw = data.get("bundled_plugins_seeded")
-    seeded: list[str] = [str(x) for x in seeded_raw] if isinstance(seeded_raw, list) else []
-    seeded_set = set(seeded)
     plugins_cfg = data.get("plugins")
     if not isinstance(plugins_cfg, dict):
         plugins_cfg = {}
@@ -84,33 +89,19 @@ def seed_bundled_plugins(
             continue
         plugin_id = child.name
         dest = plugins_dir / plugin_id
-        if dest.exists():
-            if _plugin_version(child) > _plugin_version(dest):
-                enabled_entry = plugins_cfg.get(plugin_id)
-                shutil.rmtree(dest)
-                shutil.copytree(child, dest)
-                copied.append(plugin_id)
-                if isinstance(enabled_entry, dict):
-                    plugins_cfg[plugin_id] = dict(enabled_entry)
-            if plugin_id not in seeded_set:
-                seeded.append(plugin_id)
-                seeded_set.add(plugin_id)
-                entry = plugins_cfg.get(plugin_id)
-                if not isinstance(entry, dict):
-                    plugins_cfg[plugin_id] = {"enabled": False}
+        if not dest.exists():
             continue
-        if plugin_id in seeded_set:
+        if _plugin_version(child) <= _plugin_version(dest):
             continue
+        enabled_entry = plugins_cfg.get(plugin_id)
+        shutil.rmtree(dest)
         shutil.copytree(child, dest)
-        existing = plugins_cfg.get(plugin_id)
-        plugin_entry: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
-        plugin_entry["enabled"] = False
-        plugins_cfg[plugin_id] = plugin_entry
-        seeded.append(plugin_id)
-        seeded_set.add(plugin_id)
         copied.append(plugin_id)
+        if isinstance(enabled_entry, dict):
+            plugins_cfg[plugin_id] = dict(enabled_entry)
 
-    data["bundled_plugins_seeded"] = seeded
+    if not copied:
+        return []
     data["plugins"] = plugins_cfg
     _write_config(config_path, data)
     return copied

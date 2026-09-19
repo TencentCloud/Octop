@@ -1,6 +1,6 @@
 // dashboard/src/pages/Experts/components/ToolCatalogDrawer.tsx
 import { useTranslation } from "react-i18next";
-import ToolsPanel from "../../Agent/Tools/ToolsPanel";
+import ToolsTabs from "../../Agent/Tools/ToolsTabs";
 import CatalogDrawer from "./CatalogDrawer";
 
 interface ToolCatalogDrawerProps {
@@ -23,7 +23,7 @@ export default function ToolCatalogDrawer({
       open={open}
       onClose={onClose}
     >
-      <ToolsPanel agentId={agentId || null} />
+      <ToolsTabs agentId={agentId || null} />
     </CatalogDrawer>
   );
 }

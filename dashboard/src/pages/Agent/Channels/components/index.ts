@@ -25,6 +25,8 @@ export {
   normalizeChannelFieldValue,
   normalizeQqGroupContextConfig,
   hasRequiredCredentials,
+  partitionChannelKeys,
+  isCollapsedChannelKey,
   type ChannelKey,
   type ChannelField,
 } from "./constants";

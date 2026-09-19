@@ -3,6 +3,7 @@ import {
   useRef,
   useCallback,
   useEffect,
+  useMemo,
   forwardRef,
   useImperativeHandle,
 } from "react";
@@ -33,7 +34,13 @@ import {
   ensureExpertMentions,
   toggleExpertMention,
 } from "../utils/expertMention";
-import { insertSkillSlash } from "../utils/skillSlash";
+import {
+  insertSkillSlash,
+  materializeSkillSlashes,
+  parseSkillSlugsInText,
+  type SkillTokenRef,
+} from "../utils/skillSlash";
+import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import {
   consumePendingPrefillAttachments,
   readInputDraft,
@@ -165,6 +172,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const { t, i18n } = useTranslation();
     const { modal, message: antMessage } = App.useApp();
     const { commands: slashCommands, labelFor } = useSlashCommands("ui");
+    const skillDisplayName = useSkillDisplayName();
     const isMobile = useIsMobile();
     useKeyboardOffset();
     const [text, setText] = useState(
@@ -371,10 +379,24 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       enterToSend: !isMobile,
     });
 
+    const skillTokenRefs = useMemo<SkillTokenRef[]>(
+      () =>
+        (availableSkills ?? []).map((skill) => ({
+          slug: skill.slug,
+          label: skillDisplayName(skill),
+          emoji: skill.emoji,
+        })),
+      [availableSkills, skillDisplayName],
+    );
+
     const insertSkillCommand = useCallback(
       (slug: string) => {
         userHasEditedRef.current = true;
-        const next = insertSkillSlash(text, slug);
+        const ref =
+          skillTokenRefs.find(
+            (item) => item.slug.toLowerCase() === slug.toLowerCase(),
+          ) ?? ({ slug } satisfies SkillTokenRef);
+        const next = insertSkillSlash(text, ref);
         setText(next);
         requestAnimationFrame(() => {
           const el = textareaRef.current;
@@ -383,7 +405,12 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           el.setSelectionRange(next.length, next.length);
         });
       },
-      [text],
+      [text, skillTokenRefs],
+    );
+
+    const selectedSkillSlugs = useMemo(
+      () => parseSkillSlugsInText(text, skillTokenRefs),
+      [text, skillTokenRefs],
     );
 
     const insertExpertMention = useCallback(
@@ -452,7 +479,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const submitMessage = useCallback(() => {
       const trimmed = text.trim();
       if ((!trimmed && attachments.length === 0) || disabled) return;
-      const slashItem = matchSlashCommand(trimmed);
+      const wireText = materializeSkillSlashes(trimmed, skillTokenRefs).trim();
+      const slashItem = matchSlashCommand(wireText);
       if (slashItem && slashItem.spec.client_action !== "none") {
         // Slash actions are never queued — run immediately or leave input alone.
         if (isStreaming) return;
@@ -465,9 +493,10 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       if (isStreaming) {
         if (!onQueue) return;
         const result = onQueue({
-          text: trimmed,
+          text: wireText,
           attachments: attachments.length > 0 ? attachments : undefined,
           composerContext: buildComposerContext({
+            skills: selectedSkillSlugs,
             connectors: selectedConnectors,
             knowledgeBaseIds: selectedKnowledgeBaseIds,
             selectedModel,
@@ -485,7 +514,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         return;
       }
 
-      onSend(trimmed, attachments.length > 0 ? attachments : undefined);
+      onSend(wireText, attachments.length > 0 ? attachments : undefined);
       resetComposerAfterSubmit(prevHeight, trimmed);
     }, [
       text,
@@ -498,6 +527,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       runSlashCommand,
       resetComposerAfterSubmit,
       selectedConnectors,
+      selectedKnowledgeBaseIds,
+      selectedSkillSlugs,
+      skillTokenRefs,
       selectedModel,
       reasoningMode,
       reasoningEffort,

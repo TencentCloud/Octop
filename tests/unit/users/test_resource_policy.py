@@ -30,12 +30,16 @@ def db(tmp_path: Path) -> SqlitePool:
     return pool
 
 
-def test_normalize_workspace_root_dir_unlimited() -> None:
+def test_normalize_workspace_root_dir_unlimited(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
     assert normalize_workspace_root_dir(None) is None
     assert normalize_workspace_root_dir("  ") is None
 
 
-def test_normalize_workspace_root_dir_must_be_directory(tmp_path: Path) -> None:
+def test_normalize_workspace_root_dir_must_be_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
     root = tmp_path / "jail"
     root.mkdir()
     assert normalize_workspace_root_dir(str(root)) == root.resolve().as_posix()
@@ -44,6 +48,21 @@ def test_normalize_workspace_root_dir_must_be_directory(tmp_path: Path) -> None:
     with pytest.raises(OctopError) as exc:
         normalize_workspace_root_dir(str(file_path))
     assert exc.value.code is ErrorCode.WORKSPACE_ROOT_RESTRICTED
+
+
+def test_normalize_workspace_root_dir_rejected_in_container(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.users.resource_policy import effective_workspace_root_dir
+
+    root = tmp_path / "jail"
+    root.mkdir()
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
+    assert normalize_workspace_root_dir(None) is None
+    with pytest.raises(OctopError) as exc:
+        normalize_workspace_root_dir(str(root))
+    assert exc.value.code is ErrorCode.WORKSPACE_ROOT_CONTAINER_UNSUPPORTED
+    assert effective_workspace_root_dir(str(root)) is None
 
 
 def test_assert_backend_within_user_root(tmp_path: Path) -> None:

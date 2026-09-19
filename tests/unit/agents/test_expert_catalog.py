@@ -41,6 +41,76 @@ def test_expert_discovers_seed_paths(tmp_path: Path) -> None:
     assert expert.prompt_files == []
 
 
+def test_resolve_expert_icon_url_uses_scene_for_skillhub() -> None:
+    from octop.infra.agents.experts.catalog import resolve_expert_icon_url
+
+    assert (
+        resolve_expert_icon_url(
+            "skillhub-skillset-healthcare-nursing-plan",
+            None,
+            scene="healthcare",
+        )
+        == "/experts/avatars/scene-healthcare.svg"
+    )
+    # Do not invent missing per-skillset SVG paths.
+    assert (
+        resolve_expert_icon_url(
+            "skillhub-skillset-healthcare-nursing-plan",
+            "/experts/avatars/skillhub-skillset-healthcare-nursing-plan.svg",
+            scene="healthcare",
+        )
+        == "/experts/avatars/scene-healthcare.svg"
+    )
+    assert resolve_expert_icon_url("stock-assistant", None) == (
+        "/experts/avatars/stock-assistant.svg"
+    )
+    assert resolve_expert_icon_url(
+        "external",
+        "https://cdn.example.com/a.png",
+    ) == ("https://cdn.example.com/a.png")
+
+
+def test_bundled_avatar_ids_discovered_from_public_dir() -> None:
+    from octop.infra.agents.experts.catalog import (
+        _BUNDLED_AVATAR_IDS,
+        bundled_avatars_dir,
+        discover_bundled_avatar_ids,
+    )
+
+    avatars = bundled_avatars_dir()
+    assert avatars is not None
+    discovered = discover_bundled_avatar_ids(avatars)
+    assert "stock-assistant" in discovered
+    assert "scene-healthcare" in discovered
+    assert discovered == _BUNDLED_AVATAR_IDS
+    # Empty / missing dir falls back without crashing.
+    assert "scene-default" in discover_bundled_avatar_ids(avatars / "missing")
+
+
+def test_skillhub_market_manifest_gets_scene_icon_url(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.catalog import ExpertCatalog
+
+    market_root = tmp_path / "market"
+    expert_dir = market_root / "skillhub-skillset-healthcare-nursing-plan"
+    expert_dir.mkdir(parents=True)
+    _write_manifest(
+        expert_dir,
+        extra={
+            "id": "skillhub-skillset-healthcare-nursing-plan",
+            "icon_name": "heart",
+            "source": {"type": "skillhub", "scene": "healthcare"},
+        },
+    )
+
+    catalog = ExpertCatalog(tmp_path / "bundled", extra_roots=[market_root])
+    (tmp_path / "bundled").mkdir()
+    catalog.refresh()
+
+    expert = catalog.get("skillhub-skillset-healthcare-nursing-plan")
+    assert expert is not None
+    assert expert.summary.icon_url == "/experts/avatars/scene-healthcare.svg"
+
+
 def test_expert_catalog_reads_extra_roots(tmp_path: Path) -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog
 
@@ -58,6 +128,13 @@ def test_expert_catalog_reads_extra_roots(tmp_path: Path) -> None:
     catalog.refresh()
 
     assert catalog.get("bundled-expert") is not None
+    assert catalog.get("market-expert") is not None
+    # Library UI lists only bundled templates; market cache stays resolvable via get().
+    assert [s.id for s in catalog.list_summaries()] == ["bundled-expert"]
+    assert [s.id for s in catalog.list_summaries(include_market_cache=True)] == [
+        "bundled-expert",
+        "market-expert",
+    ]
     market = catalog.get("market-expert")
     assert market is not None
     assert catalog.expert_dir("market-expert") == market_dir

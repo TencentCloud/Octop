@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import suppress
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
@@ -176,3 +177,46 @@ async def bind_workspace_avatar_icon_url(
         return False
     registry.set_icon_url(agent_id, agent_avatar_api_path(agent_id))
     return True
+
+
+async def materialize_remote_icon_url(
+    registry: Any,
+    agent_id: str,
+    workspace: WorkspaceAvatarIO,
+    icon_url: str | None,
+    *,
+    timeout: float = 15.0,
+) -> bool:
+    """Download an http(s) raster image into the workspace and rebind ``icon_url``.
+
+    Bundled ``/experts/avatars/*.svg`` paths are left as URL references — the
+    workspace avatar pipeline only stores PNG/JPEG/WebP/GIF.
+    """
+    from urllib.error import HTTPError, URLError
+    from urllib.parse import urlparse
+    from urllib.request import Request, urlopen
+
+    text = str(icon_url or "").strip()
+    if not text:
+        return False
+    parsed = urlparse(text)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+
+    def _download() -> bytes:
+        req = Request(text, headers={"User-Agent": "octop-avatar/1.0"})
+        with urlopen(req, timeout=timeout) as resp:  # noqa: S310 — scheme checked above
+            payload: bytes = resp.read(MAX_AVATAR_BYTES + 1)
+            return payload
+
+    try:
+        data = await asyncio.to_thread(_download)
+    except (HTTPError, URLError, TimeoutError, OSError):
+        return False
+    if not data or len(data) > MAX_AVATAR_BYTES:
+        return False
+    try:
+        await write_workspace_avatar(workspace, data)
+    except OctopError:
+        return False
+    return await bind_workspace_avatar_icon_url(registry, agent_id, workspace)

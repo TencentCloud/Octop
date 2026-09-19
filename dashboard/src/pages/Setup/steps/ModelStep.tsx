@@ -34,6 +34,7 @@ import { enrichWizardModel } from "../../Settings/Models/wizardModelMeta";
 import {
   groupPresets,
   isLocalPreset,
+  isOverseasPreset,
   presetLogoId,
   presetVariantLabel,
   type PresetGroup,
@@ -101,31 +102,40 @@ interface Props {
 
 type SetupMode = "preset" | "custom";
 
-/** Match admin/models Cloud tab order (grouped brands, then singles); show this many by default. */
-const WIZARD_FEATURED_COUNT = 6;
-
+/** Match admin/models: domestic cloud first; overseas + local behind "more". */
 function buildWizardPresetDisplay(presets: ProviderPreset[]): {
   featured: PresetDisplayItem[];
   more: PresetDisplayItem[];
 } {
-  const cloud = presets.filter((p) => !isLocalPreset(p as AdminProviderPreset));
-  const local = presets.filter((p) => isLocalPreset(p as AdminProviderPreset));
-  const { grouped, ungrouped } = groupPresets(cloud as AdminProviderPreset[]);
-  const ordered: PresetDisplayItem[] = [
-    ...grouped.map((group): PresetDisplayItem => ({ kind: "group", group })),
-    ...ungrouped.map(
-      (preset): PresetDisplayItem => ({
-        kind: "single",
-        preset: preset as ProviderPreset,
-      }),
-    ),
-  ];
-  const featured = ordered.slice(0, WIZARD_FEATURED_COUNT);
-  const more: PresetDisplayItem[] = [
-    ...ordered.slice(WIZARD_FEATURED_COUNT),
-    ...local.map((preset): PresetDisplayItem => ({ kind: "single", preset })),
-  ];
-  return { featured, more };
+  const asAdmin = (p: ProviderPreset) => p as AdminProviderPreset;
+  const featuredCloud = presets.filter(
+    (p) => !isLocalPreset(asAdmin(p)) && !isOverseasPreset(asAdmin(p)),
+  );
+  const overseasCloud = presets.filter(
+    (p) => !isLocalPreset(asAdmin(p)) && isOverseasPreset(asAdmin(p)),
+  );
+  const local = presets.filter((p) => isLocalPreset(asAdmin(p)));
+
+  const toItems = (list: ProviderPreset[]): PresetDisplayItem[] => {
+    const { grouped, ungrouped } = groupPresets(list.map(asAdmin));
+    return [
+      ...grouped.map((group): PresetDisplayItem => ({ kind: "group", group })),
+      ...ungrouped.map(
+        (preset): PresetDisplayItem => ({
+          kind: "single",
+          preset: preset as ProviderPreset,
+        }),
+      ),
+    ];
+  };
+
+  return {
+    featured: toItems(featuredCloud),
+    more: [
+      ...toItems(overseasCloud),
+      ...local.map((preset): PresetDisplayItem => ({ kind: "single", preset })),
+    ],
+  };
 }
 
 function defaultPresetFromItem(item: PresetDisplayItem): ProviderPreset {

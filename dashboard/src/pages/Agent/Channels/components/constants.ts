@@ -47,6 +47,33 @@ export const CHANNEL_KEYS: ChannelKey[] = [
   "mqtt",
 ];
 
+/** Overseas / less-common kinds hidden behind "更多通道" until expanded. */
+const COLLAPSED_CHANNEL_KEYS = new Set<ChannelKey>(["telegram"]);
+
+export function isCollapsedChannelKey(key: ChannelKey): boolean {
+  return COLLAPSED_CHANNEL_KEYS.has(key);
+}
+
+/**
+ * Split catalogue into default-visible vs collapsed. Already-configured
+ * collapsed kinds stay visible so operators can manage them without expanding.
+ */
+export function partitionChannelKeys(
+  keys: readonly ChannelKey[],
+  configuredKinds: ReadonlySet<ChannelKey>,
+): { featured: ChannelKey[]; more: ChannelKey[] } {
+  const featured: ChannelKey[] = [];
+  const more: ChannelKey[] = [];
+  for (const key of keys) {
+    if (!isCollapsedChannelKey(key) || configuredKinds.has(key)) {
+      featured.push(key);
+    } else {
+      more.push(key);
+    }
+  }
+  return { featured, more };
+}
+
 /** i18n key for each channel's display name (``channels.label_{key}``). */
 export const CHANNEL_LABEL_KEYS: Record<ChannelKey, string> = {
   feishu: "channels.label_feishu",

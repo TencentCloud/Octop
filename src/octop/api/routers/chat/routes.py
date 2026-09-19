@@ -16,9 +16,9 @@ from octop.api.routers.chat.sse import format_sse
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
     default_welcome_payload,
-    normalize_task_examples_for_display,
     parse_task_examples,
     read_workspace_manifest_data,
+    resolve_display_task_examples,
     welcome_payload_from_manifest_data,
     welcome_payload_has_content,
 )
@@ -71,14 +71,14 @@ async def get_chat_welcome(
 
     workspace = registry.workspace_for_agent(agent_id)
     payload: dict[str, Any] | None = None
-    task_examples = None
+    parsed_examples = None
     if workspace is not None:
         manifest = await read_workspace_manifest_data(workspace)
         if manifest is not None:
             welcome = welcome_payload_from_manifest_data(manifest)
             if welcome_payload_has_content(welcome):
                 payload = welcome
-            task_examples = normalize_task_examples_for_display(parse_task_examples(manifest))
+            parsed_examples = parse_task_examples(manifest)
 
     row = registry.get_row(agent_id)
     if payload is None:
@@ -87,6 +87,17 @@ async def get_chat_welcome(
     db_welcome = welcome_from_row(row) if row is not None else None
     if db_welcome is not None:
         payload = {**payload, "welcome_message": {"zh": db_welcome, "en": db_welcome}}
+    agent_name = str(getattr(row, "name", "") or "").strip() if row is not None else ""
+    template_name = (
+        str(getattr(row, "template_name", None) or "").strip() or None if row is not None else None
+    )
+    task_examples = resolve_display_task_examples(
+        parsed=parsed_examples,
+        catalog=catalog,
+        template_name=template_name,
+        label_zh=agent_name,
+        label_en=agent_name,
+    )
     return {**payload, "task_examples": task_examples}
 
 

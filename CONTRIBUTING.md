@@ -33,7 +33,6 @@ make check-all        # full stack quality gate
 | `make check-all` | Full stack quality gate |
 | `make dev` | Start frontend + backend dev servers |
 | `make build` | Build dashboard + Python wheel |
-| `make docs-cli` | Regenerate CLI documentation |
 
 ## Branching
 

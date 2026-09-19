@@ -1,15 +1,9 @@
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  KeyRound,
-  MessageCircle,
-  Building2,
-  Bell,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import { Users } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
+import { TAB_ICON_SIZE } from "../../../components/TabLabel";
 import { TabPanelHeader } from "../../Settings/AdvancedSettings/TabPanelHeader";
 import UsersListPanel from "./UsersListPanel";
 import SsoPanel from "./SsoPanel";
@@ -18,22 +12,52 @@ import { OAUTH_APP_PROVIDERS, type OauthAppKind } from "./oauthProviders";
 import ForbiddenPage from "../../../components/ForbiddenPage";
 import { useGatedSearchTabs } from "../../../hooks/useGatedSearchTabs";
 import { USERS_TAB_PERMISSIONS } from "../../../utils/permissions";
+import feishuIcon from "../../../assets/channels/feishu.svg";
+import wecomIcon from "../../../assets/channels/wecom.svg";
+import dingtalkIcon from "../../../assets/channels/dingtalk.svg";
+import openidIcon from "../../../assets/providers/openid.svg";
 import styles from "./index.module.less";
 
 type TabKey = "local" | OauthAppKind | "oidc";
 
-const OAUTH_TAB_ICONS: Record<OauthAppKind, LucideIcon> = {
-  feishu: MessageCircle,
-  wecom: Building2,
-  dingtalk: Bell,
+const OAUTH_BRAND_ICONS: Record<OauthAppKind, string> = {
+  feishu: feishuIcon,
+  wecom: wecomIcon,
+  dingtalk: dingtalkIcon,
 };
+
+function BrandTabIcon({
+  src,
+  size = TAB_ICON_SIZE,
+}: {
+  src: string;
+  size?: number;
+}) {
+  return <img src={src} alt="" width={size} height={size} draggable={false} />;
+}
 
 const TABS: TabBarItem<TabKey>[] = [
   { key: "local", labelKey: "adminUsers.tabLocal", icon: Users },
-  { key: "oidc", labelKey: "adminUsers.tabOidc", icon: KeyRound },
-  { key: "feishu", labelKey: "adminUsers.tabFeishu", icon: MessageCircle },
-  { key: "wecom", labelKey: "adminUsers.tabWecom", icon: Building2 },
-  { key: "dingtalk", labelKey: "adminUsers.tabDingtalk", icon: Bell },
+  {
+    key: "feishu",
+    labelKey: "adminUsers.tabFeishu",
+    icon: <BrandTabIcon src={feishuIcon} />,
+  },
+  {
+    key: "wecom",
+    labelKey: "adminUsers.tabWecom",
+    icon: <BrandTabIcon src={wecomIcon} />,
+  },
+  {
+    key: "dingtalk",
+    labelKey: "adminUsers.tabDingtalk",
+    icon: <BrandTabIcon src={dingtalkIcon} />,
+  },
+  {
+    key: "oidc",
+    labelKey: "adminUsers.tabOidc",
+    icon: <BrandTabIcon src={openidIcon} />,
+  },
 ];
 
 function parseTab(raw: string | null): TabKey {
@@ -57,12 +81,11 @@ function OauthTabPanel({ kind }: { kind: OauthAppKind }) {
     [kind],
   );
   if (!provider) return null;
-  const Icon = OAUTH_TAB_ICONS[kind];
 
   return (
     <div className={styles.ssoPanel}>
       <TabPanelHeader
-        icon={<Icon size={22} />}
+        icon={<BrandTabIcon src={OAUTH_BRAND_ICONS[kind]} size={22} />}
         title={t(provider.titleKey)}
         description={t(provider.descKey)}
       />
@@ -87,7 +110,7 @@ export default function AdminUsersPage() {
     body = (
       <div className={styles.ssoPanel}>
         <TabPanelHeader
-          icon={<KeyRound size={22} />}
+          icon={<BrandTabIcon src={openidIcon} size={22} />}
           title={t("adminSso.oidcTitle")}
           description={t("adminSso.oidcDesc")}
         />

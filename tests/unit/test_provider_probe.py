@@ -193,3 +193,81 @@ async def test_chat_probe_skips_embeddings_endpoint() -> None:
     assert result["ok"] is True
     client.assert_not_called()
     fake.ainvoke.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_chat_probe_empty_exception_message_returns_type_name(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Bare TimeoutError() has str==''; must not blank the UI / logs (#766)."""
+    from octop.infra.agents.providers import probe as probe_mod
+
+    row = SimpleNamespace(
+        name="Agnes AI",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        extra_json=None,
+        get_models=lambda: [{"id": "gpt-4o-mini", "name": "gpt-4o-mini"}],
+    )
+    fake = AsyncMock()
+    fake.ainvoke = AsyncMock(side_effect=TimeoutError())
+    with (
+        patch(
+            "octop.infra.agents.providers.probe.build_probe_chat_model",
+            return_value=fake,
+        ),
+        caplog.at_level("INFO", logger=probe_mod.__name__),
+    ):
+        result = await probe_provider_row(row, model_id="gpt-4o-mini", locale="zh")
+
+    assert result["ok"] is False
+    assert result["error"] == "TimeoutError"
+    assert any(
+        "provider probe failed for Agnes AI" in r.message and "TimeoutError" in r.message
+        for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_chat_probe_empty_exception_with_cause_includes_root_type() -> None:
+    row = SimpleNamespace(
+        name="HAI",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        extra_json=None,
+        get_models=lambda: [{"id": "gpt-4o-mini", "name": "gpt-4o-mini"}],
+    )
+    wrapped = RuntimeError()
+    wrapped.__cause__ = ConnectionError()
+    fake = AsyncMock()
+    fake.ainvoke = AsyncMock(side_effect=wrapped)
+    with patch(
+        "octop.infra.agents.providers.probe.build_probe_chat_model",
+        return_value=fake,
+    ):
+        result = await probe_provider_row(row, model_id="gpt-4o-mini")
+
+    assert result["ok"] is False
+    assert result["error"] == "RuntimeError <- ConnectionError"
+
+
+@pytest.mark.asyncio
+async def test_embedding_probe_empty_exception_message_returns_type_name() -> None:
+    post = AsyncMock(side_effect=OSError())
+    with patch(
+        "octop.infra.agents.providers.probe.httpx.AsyncClient",
+        return_value=_mock_async_client(post=post),
+    ):
+        result = await probe_provider_row(_embedding_row(), locale="en")
+
+    assert result["ok"] is False
+    assert result["error"] == "OSError"
+
+
+def test_friendly_probe_error_empty_string_passthrough() -> None:
+    from octop.infra.agents.providers.probe import _friendly_probe_error
+
+    assert _friendly_probe_error("", locale="en") == "unknown error"
+    assert _friendly_probe_error(TimeoutError(), locale="zh") == "TimeoutError"

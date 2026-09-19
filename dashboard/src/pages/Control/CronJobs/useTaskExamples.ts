@@ -6,6 +6,13 @@ import type { CronTaskExamples } from "../../../api/modules/cronjob";
 import { normalizeUiLocale } from "../../../utils/locale";
 import { resolveTaskExamples } from "./taskExamples";
 
+/**
+ * Cron empty-state suggestion prompts for the active expert.
+ *
+ * Prefer ``task_examples`` from chat welcome (workspace → catalog template →
+ * name-based defaults on the server). Client i18n strings remain the last
+ * resort when the request fails.
+ */
 export function useTaskExamples(agentId: string | null): string[] {
   const { t, i18n } = useTranslation();
   const locale = normalizeUiLocale(i18n.language);

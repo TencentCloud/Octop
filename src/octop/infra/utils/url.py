@@ -11,4 +11,9 @@ def normalize_nav_url(raw: str) -> str:
         if lower.startswith(("http://", "https://")):
             return t
         return ""
+    if t.startswith("//"):
+        # Protocol-relative URL (e.g. pasted from a page source): keep the host
+        # and force https, instead of producing "https:////host" with an empty
+        # host name.
+        return f"https://{t[2:]}"
     return f"https://{t}"

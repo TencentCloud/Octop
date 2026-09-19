@@ -34,13 +34,21 @@ export default function CatalogDrawer({
       onClose={onClose}
       width={isMobile ? "100%" : width}
       destroyOnHidden
-      rootClassName={isMobile ? styles.catalogDrawerRoot : undefined}
+      // Flex height chain on every viewport so overflow:auto children can scroll
+      // (desktop used to clip long catalogs — see #136 / #340).
+      rootClassName={
+        isMobile
+          ? `${styles.catalogDrawerFlex} ${styles.catalogDrawerRoot}`
+          : styles.catalogDrawerFlex
+      }
       styles={{
         body: {
           padding: isMobile ? mobileBodyPadding : "16px 20px 20px",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          minHeight: 0,
+          flex: 1,
         },
       }}
     >

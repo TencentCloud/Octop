@@ -11,7 +11,7 @@ import {
   PinOff,
   GitFork,
   ChevronRight,
-  Plus,
+  MessageSquarePlus,
 } from "lucide-react";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { ExpertIcon } from "../../Experts/components/iconForName";
@@ -573,7 +573,7 @@ export default function MinimalAgentSessionNav({
                 title={t("chatWelcome.newChat")}
                 onClick={() => onNewChat(agent.agent_id)}
               >
-                <Plus size={14} strokeWidth={2} aria-hidden />
+                <MessageSquarePlus size={14} strokeWidth={1.75} aria-hidden />
               </button>
             </div>
 

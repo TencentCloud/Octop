@@ -34,7 +34,7 @@ from octop.infra.utils.paths import PathLayout
 
 if TYPE_CHECKING:
     from octop.infra.auth.sso.service import SsoService
-    from octop.infra.trajectory.service import TrajectoryService
+    from octop.infra.history.trajectory.service import TrajectoryService
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +234,7 @@ class AppRuntime:
             care_push_repo=services.repos.care_push_repo,
         )
         if self.trajectory_service is not None:
-            from octop.infra.trajectory.store import TrajectoryStore  # noqa: PLC0415
+            from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
 
             self.trajectory_service.replace_store(TrajectoryStore(services.trajectory_event_repo))
 
@@ -378,9 +378,9 @@ class OctopServer:
             plugin_manager=self.plugin_manager,
         )
 
-        from octop.infra.trajectory.live import TrajectoryLiveBus  # noqa: PLC0415
-        from octop.infra.trajectory.service import TrajectoryService  # noqa: PLC0415
-        from octop.infra.trajectory.store import TrajectoryStore  # noqa: PLC0415
+        from octop.infra.history.trajectory.live import TrajectoryLiveBus  # noqa: PLC0415
+        from octop.infra.history.trajectory.service import TrajectoryService  # noqa: PLC0415
+        from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
 
         history_archive = None
         trajectory_store = TrajectoryStore(self.services.trajectory_event_repo)
@@ -392,7 +392,9 @@ class OctopServer:
         ):
             from octop.infra.history.service import HistoryArchive  # noqa: PLC0415
             from octop.infra.history.store import HistoryStore  # noqa: PLC0415
-            from octop.infra.history.trajectory import ArchiveTrajectoryStore  # noqa: PLC0415
+            from octop.infra.history.trajectory_compat import (
+                ArchiveTrajectoryStore,  # noqa: PLC0415
+            )
 
             identity = str(config.database.resolve_sqlite_path(self.paths.root).resolve())
             if not config.database.is_sqlite:

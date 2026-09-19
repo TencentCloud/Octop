@@ -63,7 +63,7 @@ from octop.infra.agents.experts.skillhub_market import (
     fetch_skillset,
 )
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.trajectory.settings import apply_enable_trajectory
+from octop.infra.history.trajectory.settings import apply_enable_trajectory
 from octop.infra.utils.locale import resolve_user_locale
 
 router = APIRouter()
@@ -251,6 +251,7 @@ def _summary_dict(s: Any) -> dict[str, Any]:
             "en": s.welcome_message_en,
         },
         "icon_name": s.icon_name,
+        "icon_url": getattr(s, "icon_url", None),
         "color": s.color,
         "quick_prompts": [_quick_prompt_dict(p) for p in getattr(s, "quick_prompts", ())],
         "task_examples": getattr(s, "task_examples", None),

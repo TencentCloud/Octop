@@ -115,3 +115,16 @@ def test_malformed_cron_raises():
 def test_cron_rejects_invalid_weekday(weekday: str):
     with pytest.raises(OctopError):
         build_trigger(f"cron:0 9 * * {weekday}")
+
+
+@pytest.mark.parametrize("spec", ["interval:0", "interval:-5", "interval:-1"])
+def test_interval_rejects_non_positive_seconds(spec: str) -> None:
+    """A zero or negative interval is an unbounded hot loop, not a schedule."""
+    with pytest.raises(OctopError, match="positive integer"):
+        build_trigger(spec)
+
+
+def test_interval_one_second_is_accepted() -> None:
+    trig = build_trigger("interval:1")
+    assert isinstance(trig, IntervalTrigger)
+    assert trig.interval == dt.timedelta(seconds=1)

@@ -22,6 +22,7 @@ import {
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeChannelFieldValue,
   normalizeQqGroupContextConfig,
+  partitionChannelKeys,
   type ChannelKey,
 } from "./components";
 import type { ChannelRow } from "./useChannels";
@@ -105,6 +106,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
   } = useChannels(agentId);
 
   const [hoverId, setHoverId] = useState<ChannelKey | null>(null);
+  const [showMoreChannels, setShowMoreChannels] = useState(false);
   const [enableLoadingKey, setEnableLoadingKey] = useState<ChannelKey | null>(
     null,
   );
@@ -135,6 +137,18 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
     }
     return map;
   }, [channels]);
+
+  const { featuredChannelKeys, moreChannelKeys } = useMemo(() => {
+    const { featured, more } = partitionChannelKeys(
+      CHANNEL_KEYS,
+      new Set(channelByKind.keys()),
+    );
+    return { featuredChannelKeys: featured, moreChannelKeys: more };
+  }, [channelByKind]);
+
+  const visibleChannelKeys = showMoreChannels
+    ? [...featuredChannelKeys, ...moreChannelKeys]
+    : featuredChannelKeys;
 
   const openCreate = useCallback(
     (kind: ChannelKey) => {
@@ -414,7 +428,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
       ) : (
         <div className={styles.channelsBody}>
           <div className={styles.channelsGrid}>
-            {CHANNEL_KEYS.map((key) => {
+            {visibleChannelKeys.map((key) => {
               const row = channelByKind.get(key);
               return (
                 <ChannelCard
@@ -435,6 +449,20 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
               );
             })}
           </div>
+          {moreChannelKeys.length > 0 && (
+            <Button
+              type="link"
+              size="small"
+              className={styles.showMoreChannelsBtn}
+              onClick={() => setShowMoreChannels((v) => !v)}
+            >
+              {showMoreChannels
+                ? t("channels.hideMoreChannels")
+                : t("channels.showMoreChannels", {
+                    count: moreChannelKeys.length,
+                  })}
+            </Button>
+          )}
         </div>
       )}
 

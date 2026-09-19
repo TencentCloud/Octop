@@ -50,13 +50,18 @@ class _Siteverify(BaseHTTPRequestHandler):
         self.send_response(self.status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(raw)))
+        # Avoid keep-alive reuse after form POSTs on Windows CI.
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(raw)
 
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length") or 0)
-        if length and (self.headers.get("Content-Type") or "").startswith("application/json"):
-            type(self).last_body = json.loads(self.rfile.read(length))
+        # Always drain the body — form posts (reCAPTCHA) leave unread bytes
+        # otherwise, which flaky-breaks the next keep-alive request on Windows.
+        raw_body = self.rfile.read(length) if length else b""
+        if raw_body and (self.headers.get("Content-Type") or "").startswith("application/json"):
+            type(self).last_body = json.loads(raw_body)
         self._reply()
 
     def do_GET(self) -> None:
@@ -71,6 +76,9 @@ class _Siteverify(BaseHTTPRequestHandler):
 def siteverify() -> tuple[str, type[_Siteverify]]:
     _Siteverify.last_query = {}
     _Siteverify.last_body = {}
+    _Siteverify.payload = {"success": True}
+    _Siteverify.status = 200
+    _Siteverify.hang = False
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Siteverify)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()

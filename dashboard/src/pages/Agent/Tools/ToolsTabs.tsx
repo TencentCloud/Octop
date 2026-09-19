@@ -1,8 +1,8 @@
 /**
  * ToolsTabs — three-tab tools surface for Personalization:
  *   1. Built-in tools
- *   2. ACP tools (admin only)
- *   3. Plugin tools
+ *   2. Plugin tools
+ *   3. ACP tools (admin only)
  */
 
 import { useMemo, useState } from "react";
@@ -14,12 +14,12 @@ import { ACPPanel } from "../ACP";
 import ToolsPanel from "./ToolsPanel";
 import styles from "./ToolsTabs.module.less";
 
-type ToolsTab = "builtin" | "acp" | "plugin";
+type ToolsTab = "builtin" | "plugin" | "acp";
 
 const TOOL_TABS: TabBarItem<ToolsTab>[] = [
   { key: "builtin", labelKey: "toolSettings.tabs.builtin", icon: Wrench },
-  { key: "acp", labelKey: "toolSettings.tabs.acp", icon: Share2 },
   { key: "plugin", labelKey: "toolSettings.tabs.plugin", icon: Puzzle },
+  { key: "acp", labelKey: "toolSettings.tabs.acp", icon: Share2 },
 ];
 
 interface ToolsTabsProps {

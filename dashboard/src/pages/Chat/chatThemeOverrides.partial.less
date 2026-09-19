@@ -771,6 +771,12 @@
     gap: 10px;
   }
 
+  /* Assistant rows share a left gutter with processSummaryRow; do not add a
+     column gap that would push only the answer bubble right of the thinking box. */
+  .assistantBubble {
+    gap: 0;
+  }
+
   .assistantText::before,
   .userText::before {
     display: none;

@@ -59,6 +59,27 @@ describe("useUpdateStatus", () => {
     expect(result.current.status?.latest_version).toBe("0.9.7");
   });
 
+  it("probes on mount even when the local cache is still fresh", async () => {
+    storeUpdateStatus({
+      ...sample,
+      current_version: "0.9.0",
+      latest_version: "0.9.0",
+      has_update: false,
+    });
+    getUpdateStatus.mockResolvedValue(sample);
+    const { result } = renderHook(() => useUpdateStatus());
+
+    expect(result.current.status?.current_version).toBe("0.9.0");
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(getUpdateStatus).toHaveBeenCalledTimes(1);
+    expect(result.current.status?.current_version).toBe("0.9.6");
+    expect(result.current.hasUpdate).toBe(true);
+  });
+
   it("re-probes after TTL via the poll interval", async () => {
     getUpdateStatus.mockResolvedValue(sample);
     renderHook(() => useUpdateStatus());

@@ -23,6 +23,8 @@ export interface FilesystemDefaults {
   default_root_dir: string;
   allow_outside_home: boolean;
   tree_root: string;
+  /** True when the Octop server process runs inside a container. */
+  in_container?: boolean;
 }
 
 export async function fetchFilesystemDefaults(): Promise<FilesystemDefaults> {

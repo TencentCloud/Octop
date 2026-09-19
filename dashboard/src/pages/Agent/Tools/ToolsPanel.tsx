@@ -5,52 +5,25 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Empty, Spin, Switch, Tooltip } from "antd";
-import type { LucideIcon } from "lucide-react";
-import {
-  AppWindow,
-  BookOpen,
-  Brain,
-  CalendarClock,
-  Clock,
-  Code2,
-  Eye,
-  FileKey,
-  FilePen,
-  FileSearch,
-  FileText,
-  Folder,
-  Globe,
-  Handshake,
-  Image,
-  Library,
-  ListChecks,
-  ListTodo,
-  MessageCircle,
-  Monitor,
-  MousePointerClick,
-  Move,
-  Pencil,
-  Play,
-  Plug,
-  Plus,
-  Puzzle,
-  Search,
-  Send,
-  Smartphone,
-  SquareTerminal,
-  Trash2,
-  Users,
-  Video,
-  Wrench,
-} from "lucide-react";
+import { Empty, Segmented, Spin, Switch, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/antdMessage";
 import {
   agentToolsApi,
   type ToolSettingsItem,
 } from "../../../api/modules/agentTools";
+import { pluginsApi, type AgentPlugin } from "../../../api/modules/plugins";
+import { builtinToolIcon } from "../../../utils/builtinToolIcons";
+import { PluginIconView } from "../../Admin/Plugins/PluginIconView";
+import { PluginGroupTag } from "../../Admin/Plugins/PluginGroupTag";
+import {
+  PLUGIN_GROUP_ORDER,
+  isKnownPluginGroup,
+} from "../../Admin/Plugins/pluginGroups";
+import pluginStyles from "../../Admin/Plugins/index.module.less";
 import styles from "./ToolsPanel.module.less";
+
+const GROUP_ALL = "all";
 
 const CATEGORY_ORDER = [
   "filesystem",
@@ -81,48 +54,11 @@ const CATEGORY_ACCENT: Record<string, string> = {
   misc: "#64748B",
 };
 
-const TOOL_ICONS: Record<string, LucideIcon> = {
-  ls: Folder,
-  read_file: FileSearch,
-  write_file: FilePen,
-  edit_file: Pencil,
-  glob: Search,
-  grep: FileText,
-  execute: SquareTerminal,
-  write_todos: ListTodo,
-  task: Users,
-  current_time: Clock,
-  web_fetch: Globe,
-  browser_use: AppWindow,
-  desktop_screenshot: Monitor,
-  send_file_to_user: Send,
-  read_env_file: FileKey,
-  write_env_file: FileKey,
-  tavily_search: Search,
-  brave_search: Search,
-  google_search: Search,
-  kimi_search: Search,
-  searchfree_search: Search,
-  generate_image: Image,
-  generate_video: Video,
-  memory_search: Brain,
-  memory_get: BookOpen,
-  acp_runner: Plug,
-  cronjob_list: ListChecks,
-  cronjob_get: Eye,
-  cronjob_create: Plus,
-  cronjob_update: CalendarClock,
-  cronjob_delete: Trash2,
-  cronjob_run_now: Play,
-  search_knowledge: Library,
-  mobile_screenshot: Smartphone,
-  mobile_tap: MousePointerClick,
-  mobile_swipe: Move,
-  mobile_launch_app: AppWindow,
-  mobile_ui_dump: Code2,
-  mobile_handoff_to_user: Handshake,
-  agent_list: Users,
-  ask_agent: MessageCircle,
+type PluginMeta = {
+  name: string;
+  icon: string | null;
+  group: string | null;
+  description: string | null;
 };
 
 function toolKey(tool: ToolSettingsItem): string {
@@ -131,8 +67,18 @@ function toolKey(tool: ToolSettingsItem): string {
     : `builtin:${tool.name}`;
 }
 
-function toolIcon(tool: ToolSettingsItem): LucideIcon {
-  return TOOL_ICONS[tool.name] ?? (tool.source === "plugin" ? Puzzle : Wrench);
+/** Prefer API label, else a short phrase from description (not snake_case id). */
+function pluginToolTitle(tool: ToolSettingsItem): string {
+  if (tool.label && tool.label !== tool.name) return tool.label;
+  // Label may already be the CJK registration name.
+  if (tool.label && !/^[a-zA-Z0-9_-]+$/.test(tool.label)) return tool.label;
+  const desc = tool.description?.trim();
+  if (desc) {
+    const stripped = desc.replace(/^\[原名:\s*.+?\]\s*/, "");
+    const phrase = stripped.split(/[，,。！？.!?\n]/)[0]?.trim();
+    if (phrase && phrase.length >= 2 && phrase.length <= 36) return phrase;
+  }
+  return tool.label || tool.name;
 }
 
 interface ToolsPanelProps {
@@ -153,6 +99,8 @@ export default function ToolsPanel({
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [tools, setTools] = useState<ToolSettingsItem[]>([]);
   const [enabledMap, setEnabledMap] = useState<Record<string, boolean>>({});
+  const [pluginMeta, setPluginMeta] = useState<Record<string, PluginMeta>>({});
+  const [activeGroup, setActiveGroup] = useState<string>(GROUP_ALL);
 
   const applyTools = useCallback(
     (all: ToolSettingsItem[]) => {
@@ -167,32 +115,58 @@ export default function ToolsPanel({
     [source],
   );
 
+  const applyPluginMeta = useCallback((plugins: AgentPlugin[]) => {
+    const next: Record<string, PluginMeta> = {};
+    for (const plugin of plugins) {
+      next[plugin.id] = {
+        name: (plugin.name || plugin.id).trim() || plugin.id,
+        icon: plugin.icon?.trim() || null,
+        group: plugin.group?.trim() || null,
+        description: plugin.description?.trim() || null,
+      };
+    }
+    setPluginMeta(next);
+  }, []);
+
   const load = useCallback(async () => {
     if (!agentId) {
       setTools([]);
       setEnabledMap({});
+      setPluginMeta({});
       return;
     }
     setLoading(true);
     try {
-      const res = await agentToolsApi.get(agentId);
-      applyTools(res.tools);
+      if (source === "plugin") {
+        const [toolsRes, pluginsRes] = await Promise.all([
+          agentToolsApi.get(agentId),
+          pluginsApi.listAgentPlugins(agentId),
+        ]);
+        applyTools(toolsRes.tools);
+        applyPluginMeta(pluginsRes.plugins);
+      } else {
+        const res = await agentToolsApi.get(agentId);
+        applyTools(res.tools);
+        setPluginMeta({});
+      }
     } catch (err) {
       message.error(
         err instanceof Error ? err.message : t("toolSettings.loadFailed"),
       );
       setTools([]);
       setEnabledMap({});
+      setPluginMeta({});
     } finally {
       setLoading(false);
     }
-  }, [agentId, applyTools, t]);
+  }, [agentId, applyPluginMeta, applyTools, source, t]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const groups = useMemo(() => {
+  const builtinGroups = useMemo(() => {
+    if (source !== "builtin") return [];
     const byCategory = new Map<string, ToolSettingsItem[]>();
     for (const tool of tools) {
       const list = byCategory.get(tool.category) ?? [];
@@ -206,10 +180,67 @@ export default function ToolsPanel({
       )
       .sort();
     return [...ordered, ...extras].map((category) => ({
-      category,
+      key: category,
+      title: t(`toolSettings.categories.${category}`, {
+        defaultValue: category,
+      }),
       tools: byCategory.get(category) ?? [],
     }));
-  }, [tools]);
+  }, [source, tools, t]);
+
+  const pluginGroups = useMemo(() => {
+    if (source !== "plugin") return [];
+    const byPlugin = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        icon: string | null;
+        group: string | null;
+        description: string | null;
+        tools: ToolSettingsItem[];
+      }
+    >();
+    for (const tool of tools) {
+      const id = tool.plugin_id?.trim() || "unknown";
+      const meta = pluginMeta[id];
+      const name = meta?.name || tool.plugin_name?.trim() || id;
+      const icon = meta?.icon ?? tool.plugin_icon?.trim() ?? null;
+      const group = meta?.group ?? null;
+      const description = meta?.description ?? null;
+      const existing = byPlugin.get(id);
+      if (existing) {
+        existing.tools.push(tool);
+        if (!existing.icon && icon) existing.icon = icon;
+        if (!existing.group && group) existing.group = group;
+        if (existing.name === id && name !== id) existing.name = name;
+        if (!existing.description && description) {
+          existing.description = description;
+        }
+      } else {
+        byPlugin.set(id, {
+          id,
+          name,
+          icon,
+          group,
+          description,
+          tools: [tool],
+        });
+      }
+    }
+    return [...byPlugin.values()].sort((a, b) => {
+      const ai = PLUGIN_GROUP_ORDER.indexOf(
+        a.group as (typeof PLUGIN_GROUP_ORDER)[number],
+      );
+      const bi = PLUGIN_GROUP_ORDER.indexOf(
+        b.group as (typeof PLUGIN_GROUP_ORDER)[number],
+      );
+      const ag = ai >= 0 ? ai : PLUGIN_GROUP_ORDER.length;
+      const bg = bi >= 0 ? bi : PLUGIN_GROUP_ORDER.length;
+      if (ag !== bg) return ag - bg;
+      return a.name.localeCompare(b.name, "zh");
+    });
+  }, [pluginMeta, source, tools]);
 
   const handleToggle = async (tool: ToolSettingsItem, enabled: boolean) => {
     if (!agentId || !tool.disableable) return;
@@ -234,6 +265,31 @@ export default function ToolsPanel({
     } finally {
       setSavingKey(null);
     }
+  };
+
+  const renderSwitch = (tool: ToolSettingsItem) => {
+    const key = toolKey(tool);
+    const checked = enabledMap[key] ?? tool.enabled;
+    const switchEl = (
+      <Switch
+        size="small"
+        checked={checked && tool.available !== false}
+        disabled={
+          !tool.disableable || tool.available === false || savingKey === key
+        }
+        loading={savingKey === key}
+        onChange={(value) => void handleToggle(tool, value)}
+        onClick={(_, e) => e.stopPropagation()}
+      />
+    );
+    if (!tool.disableable) {
+      return (
+        <Tooltip title={t("toolSettings.criticalHint")}>
+          <span>{switchEl}</span>
+        </Tooltip>
+      );
+    }
+    return switchEl;
   };
 
   if (!agentId) {
@@ -265,42 +321,166 @@ export default function ToolsPanel({
     );
   }
 
+  if (source === "plugin") {
+    const groupOptions = (() => {
+      const present = new Set<string>();
+      for (const row of pluginGroups) {
+        const g = (row.group || "").trim().toLowerCase();
+        if (g) present.add(g);
+      }
+      const ordered = PLUGIN_GROUP_ORDER.filter((g) => present.has(g));
+      const extras = [...present]
+        .filter((g) => !isKnownPluginGroup(g))
+        .sort((a, b) => a.localeCompare(b));
+      return [
+        { value: GROUP_ALL, label: t("plugins.groupAll") },
+        ...ordered.map((g) => ({
+          value: g,
+          label: t(`plugins.groups.${g}`),
+        })),
+        ...extras.map((g) => ({
+          value: g,
+          label: t("plugins.groupUnknown"),
+        })),
+      ];
+    })();
+    const filteredGroups =
+      activeGroup === GROUP_ALL
+        ? pluginGroups
+        : pluginGroups.filter(
+            (row) => (row.group || "").trim().toLowerCase() === activeGroup,
+          );
+
+    return (
+      <div className={styles.panel}>
+        <p className={styles.hint}>{t("toolSettings.hintPlugin")}</p>
+        {groupOptions.length > 1 ? (
+          <div className={pluginStyles.groupTabsWrap}>
+            <Segmented
+              block
+              size="large"
+              value={activeGroup}
+              onChange={(v) => setActiveGroup(String(v))}
+              options={groupOptions}
+              className={pluginStyles.groupTabs}
+            />
+          </div>
+        ) : null}
+        {filteredGroups.length === 0 ? (
+          <Empty description={t("plugins.emptyGroup")} />
+        ) : (
+          <div className={pluginStyles.cardGrid}>
+            {filteredGroups.map((group) => {
+              const anyUnavailable = group.tools.some(
+                (tool) => tool.available === false,
+              );
+              return (
+                <article
+                  key={group.id}
+                  className={`${pluginStyles.card}${
+                    anyUnavailable ? ` ${pluginStyles.cardDisabled}` : ""
+                  }`}
+                >
+                  <div className={pluginStyles.cardBody}>
+                    <div className={pluginStyles.cardTop}>
+                      <PluginIconView
+                        icon={group.icon}
+                        size={32}
+                        className={pluginStyles.cardIcon}
+                      />
+                      <div className={pluginStyles.cardTitleCol}>
+                        <h3 className={pluginStyles.cardName}>{group.name}</h3>
+                        <div className={pluginStyles.cardChips}>
+                          <PluginGroupTag group={group.group} />
+                          <div className={styles.pluginIdChip} title={group.id}>
+                            {group.id}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <p className={pluginStyles.cardDesc}>
+                      {group.description ||
+                        t("toolSettings.pluginToolCount", {
+                          count: group.tools.length,
+                        })}
+                    </p>
+                    <div className={styles.pluginToolList}>
+                      {group.tools.map((tool) => {
+                        const key = toolKey(tool);
+                        const title = pluginToolTitle(tool);
+                        const showDesc =
+                          !!tool.description &&
+                          tool.description !== title &&
+                          !tool.description.startsWith(`[原名: ${title}]`);
+                        return (
+                          <div
+                            key={key}
+                            className={`${pluginStyles.detailToolItem}${
+                              tool.available === false
+                                ? ` ${pluginStyles.detailToolItemOff}`
+                                : ""
+                            }`}
+                          >
+                            <div className={pluginStyles.detailToolMeta}>
+                              <div className={pluginStyles.detailToolNameRow}>
+                                <span
+                                  className={styles.pluginToolTitle}
+                                  title={title}
+                                >
+                                  {title}
+                                </span>
+                                {tool.available === false ? (
+                                  <Tooltip
+                                    title={t("toolSettings.unavailableHint")}
+                                  >
+                                    <span className={styles.unavailableBadge}>
+                                      {t("toolSettings.unavailable")}
+                                    </span>
+                                  </Tooltip>
+                                ) : null}
+                              </div>
+                              {showDesc ? (
+                                <div
+                                  className={pluginStyles.detailToolDesc}
+                                  title={tool.description ?? undefined}
+                                >
+                                  {tool.description?.replace(
+                                    /^\[原名:\s*.+?\]\s*/,
+                                    "",
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className={pluginStyles.detailToolActions}>
+                              {renderSwitch(tool)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className={styles.panel}>
-      <p className={styles.hint}>
-        {source === "plugin"
-          ? t("toolSettings.hintPlugin")
-          : t("toolSettings.hint")}
-      </p>
+      <p className={styles.hint}>{t("toolSettings.hint")}</p>
       <div className={styles.groups}>
-        {groups.map((group) => (
-          <section key={group.category} className={styles.group}>
-            <h3 className={styles.groupTitle}>
-              {t(`toolSettings.categories.${group.category}`, {
-                defaultValue: group.category,
-              })}
-            </h3>
+        {builtinGroups.map((group) => (
+          <section key={group.key} className={styles.group}>
+            <h3 className={styles.groupTitle}>{group.title}</h3>
             <div className={styles.grid}>
               {group.tools.map((tool) => {
                 const key = toolKey(tool);
-                const checked = enabledMap[key] ?? tool.enabled;
                 const accent =
                   CATEGORY_ACCENT[tool.category] ?? CATEGORY_ACCENT.misc;
-                const Icon = toolIcon(tool);
-                const switchEl = (
-                  <Switch
-                    size="small"
-                    checked={checked && tool.available !== false}
-                    disabled={
-                      !tool.disableable ||
-                      tool.available === false ||
-                      savingKey === key
-                    }
-                    loading={savingKey === key}
-                    onChange={(value) => void handleToggle(tool, value)}
-                    onClick={(_, e) => e.stopPropagation()}
-                  />
-                );
+                const Icon = builtinToolIcon(tool.name);
                 return (
                   <div
                     key={key}
@@ -331,24 +511,12 @@ export default function ToolsPanel({
                           </Tooltip>
                         ) : null}
                       </div>
-                      {tool.source === "plugin" && tool.description ? (
-                        <div className={styles.desc} title={tool.description}>
-                          {tool.description}
-                        </div>
-                      ) : (
-                        <div className={styles.name} title={tool.name}>
-                          {tool.name}
-                        </div>
-                      )}
+                      <div className={styles.name} title={tool.name}>
+                        {tool.name}
+                      </div>
                     </div>
                     <div className={styles.cardAction}>
-                      {tool.disableable ? (
-                        switchEl
-                      ) : (
-                        <Tooltip title={t("toolSettings.criticalHint")}>
-                          <span>{switchEl}</span>
-                        </Tooltip>
-                      )}
+                      {renderSwitch(tool)}
                     </div>
                   </div>
                 );

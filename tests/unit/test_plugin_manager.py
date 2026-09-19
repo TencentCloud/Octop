@@ -14,6 +14,7 @@ from harness_agent.plugins import PluginRegistry
 from octop.infra.agents.plugins.manager import (
     PluginManager,
     normalize_plugin_download_url,
+    parse_plugin_group,
     parse_plugin_icon,
     parse_plugin_ui_meta,
 )
@@ -289,6 +290,47 @@ def test_parse_plugin_icon(tmp_path: Path) -> None:
     )
     assert parse_plugin_icon(plugin_dir) == "🧩"
     assert parse_plugin_icon(tmp_path / "missing") is None
+
+    file_icon_dir = tmp_path / "file-icon"
+    file_icon_dir.mkdir()
+    (file_icon_dir / "icon.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"/>',
+        encoding="utf-8",
+    )
+    (file_icon_dir / "plugin.yaml").write_text(
+        "\n".join(
+            [
+                "id: file-icon",
+                "version: 0.1.0",
+                "name: File Icon",
+                "kind: tool",
+                "entry: main.py",
+                "icon: icon.svg",
+            ],
+        ),
+        encoding="utf-8",
+    )
+    assert parse_plugin_icon(file_icon_dir) == "/api/plugins/file-icon/ui/icon.svg"
+
+
+def test_parse_plugin_group(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "grouped"
+    plugin_dir.mkdir()
+    (plugin_dir / "plugin.yaml").write_text(
+        "\n".join(
+            [
+                "id: grouped",
+                "version: 0.1.0",
+                "name: Grouped",
+                "kind: tool",
+                "entry: main.py",
+                "group: games",
+            ],
+        ),
+        encoding="utf-8",
+    )
+    assert parse_plugin_group(plugin_dir) == "games"
+    assert parse_plugin_group(tmp_path / "missing") is None
 
 
 def test_set_enabled_refuses_corrupt_config_and_preserves_bytes(tmp_path: Path) -> None:

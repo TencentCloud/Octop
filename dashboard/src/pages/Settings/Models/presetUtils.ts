@@ -125,6 +125,63 @@ export function isLocalPreset(preset: ProviderPreset): boolean {
   return LOCAL_PRESET_IDS.has(preset.id);
 }
 
+/** Presets / groups hidden behind "更多模型提供商" on admin Models (and setup). */
+const OVERSEAS_PRESET_IDS = new Set([
+  "openai",
+  "openai-codex",
+  "anthropic",
+  "gemini",
+  "groq",
+  "openrouter",
+]);
+
+/** Brand groups that belong in the collapsed "more providers" section. */
+const MORE_PROVIDER_GROUPS = new Set(["opencode"]);
+
+export function isOverseasPreset(preset: ProviderPreset): boolean {
+  if (OVERSEAS_PRESET_IDS.has(preset.id)) return true;
+  if (
+    preset.provider_group &&
+    MORE_PROVIDER_GROUPS.has(preset.provider_group)
+  ) {
+    return true;
+  }
+  return preset.id === "opencode" || preset.id.startsWith("opencode-");
+}
+
+/**
+ * Split cloud presets into default-visible (domestic / already configured)
+ * and collapsed presets shown only after "更多模型提供商"
+ * (overseas clouds + OpenCode).
+ */
+export function partitionCloudPresets(
+  cloudPresets: ProviderPreset[],
+  providers: ProviderRow[],
+): {
+  featured: { grouped: PresetGroup[]; ungrouped: ProviderPreset[] };
+  more: { grouped: PresetGroup[]; ungrouped: ProviderPreset[] };
+  moreCount: number;
+} {
+  const featuredList: ProviderPreset[] = [];
+  const moreList: ProviderPreset[] = [];
+  for (const preset of cloudPresets) {
+    if (
+      !isOverseasPreset(preset) ||
+      findConfiguredProvider(preset, providers)
+    ) {
+      featuredList.push(preset);
+    } else {
+      moreList.push(preset);
+    }
+  }
+  const featured = groupPresets(featuredList);
+  const more = groupPresets(moreList);
+  const moreCount =
+    more.grouped.reduce((n, g) => n + g.presets.length, 0) +
+    more.ungrouped.length;
+  return { featured, more, moreCount };
+}
+
 /** Local providers that do not require a real API key. */
 export function isLocalNoKeyPresetId(presetId: string): boolean {
   return presetId === "ollama" || presetId === "onnx";

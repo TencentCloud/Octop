@@ -154,10 +154,50 @@ def parse_plugin_ui_meta(plugin_dir: Path) -> dict[str, str] | None:
     return {"entry": entry, "manifest": manifest}
 
 
-def parse_plugin_icon(plugin_dir: Path) -> str | None:
-    """Optional ``icon`` from ``plugin.yaml``: emoji text or absolute image URL.
+_ICON_FILE_SUFFIXES = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
-    Harness ignores unknown keys; Octop surfaces ``icon`` for Dashboard cards.
+# Stable catalog slugs for Dashboard grouping. Unknown values still pass through.
+PLUGIN_GROUPS: frozenset[str] = frozenset(
+    {
+        "lifestyle",
+        "news",
+        "finance",
+        "media",
+        "fun",
+        "games",
+        "tools",
+        "ops",
+    },
+)
+
+
+def parse_plugin_group(plugin_dir: Path) -> str | None:
+    """Optional ``group`` slug from ``plugin.yaml`` (e.g. ``lifestyle``, ``games``)."""
+    try:
+        data = _read_plugin_yaml(plugin_dir)
+    except Exception:
+        return None
+    raw = data.get("group")
+    if raw is None:
+        return None
+    group = str(raw).strip().lower().replace("_", "-")
+    if not group or len(group) > 64:
+        return None
+    if not all(ch.isalnum() or ch == "-" for ch in group):
+        return None
+    return group
+
+
+def parse_plugin_icon(
+    plugin_dir: Path,
+    *,
+    asset_prefix: str | None = None,
+) -> str | None:
+    """Optional ``icon`` from ``plugin.yaml`` for Dashboard cards.
+
+    Accepts emoji text, absolute ``http(s)://`` / ``/api/...`` URLs, or a
+    plugin-relative image path (e.g. ``icon.svg``) resolved to
+    ``/api/plugins/{id}/ui/...`` (or ``asset_prefix`` when listing the market).
     """
     try:
         data = _read_plugin_yaml(plugin_dir)
@@ -169,6 +209,24 @@ def parse_plugin_icon(plugin_dir: Path) -> str | None:
     icon = str(raw).strip()
     if not icon or len(icon) > 2048:
         return None
+    if icon.startswith(("http://", "https://", "/api/", "data:image/")) or icon.startswith("//"):
+        return icon
+    # Relative image file shipped with the plugin package.
+    cleaned = icon.lstrip("/").replace("\\", "/")
+    if (
+        cleaned
+        and ".." not in cleaned.split("/")
+        and Path(cleaned).suffix.lower() in _ICON_FILE_SUFFIXES
+    ):
+        target = (plugin_dir / cleaned).resolve()
+        try:
+            target.relative_to(plugin_dir.resolve())
+        except ValueError:
+            return icon
+        if target.is_file():
+            plugin_id = str(data.get("id") or plugin_dir.name).strip() or plugin_dir.name
+            prefix = (asset_prefix or f"/api/plugins/{plugin_id}/ui").rstrip("/")
+            return f"{prefix}/{cleaned}"
     return icon
 
 
@@ -181,6 +239,32 @@ def parse_plugin_requires(plugin_dir: Path) -> list[str]:
     if not isinstance(raw, list):
         return []
     return [str(r).strip() for r in raw if str(r).strip()]
+
+
+def _read_installed_version(plugin_dir: Path) -> str | None:
+    try:
+        data = _read_plugin_yaml(plugin_dir)
+    except Exception:
+        return None
+    ver = data.get("version")
+    if ver is None:
+        return None
+    text = str(ver).strip()
+    return text or None
+
+
+def _version_tuple(version: str | None) -> tuple[int, ...]:
+    ver = str(version or "0").strip() or "0"
+    parts: list[int] = []
+    for bit in ver.split("."):
+        try:
+            parts.append(int(bit))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts) or (0,)
+
+
+_MARKET_ASSET_SUFFIXES = frozenset({".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"})
 
 
 class PluginManager:
@@ -201,7 +285,7 @@ class PluginManager:
         return _read_global_plugins(self._config_path)
 
     def seed_bundled(self) -> list[str]:
-        """Copy packaged plugins into ``plugins_dir`` with ``enabled: false``."""
+        """Upgrade already-installed bundled plugins when catalog versions are newer."""
         from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
         from octop.infra.agents.plugins.seed import seed_bundled_plugins
 
@@ -210,6 +294,96 @@ class PluginManager:
             plugins_dir=self._plugins_dir,
             config_path=self._config_path,
         )
+
+    def market_root(self) -> Path:
+        """In-tree marketplace catalog root (future: remote index)."""
+        from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
+
+        return default_bundled_plugins_root()
+
+    def market_plugin_dir(self, plugin_id: str) -> Path | None:
+        """Return a catalog plugin directory when it exists under the market root."""
+        cleaned = plugin_id.strip()
+        if not cleaned or ".." in cleaned or "/" in cleaned or "\\" in cleaned:
+            return None
+        dest = self.market_root() / cleaned
+        if dest.is_dir() and (dest / "plugin.yaml").is_file():
+            return dest
+        return None
+
+    def list_market(self) -> list[dict[str, Any]]:
+        """List marketplace catalog entries (in-tree today; remote API later)."""
+        root = self.market_root()
+        out: list[dict[str, Any]] = []
+        if not root.is_dir():
+            return out
+        for plugin_dir in discover_plugin_dirs(root):
+            try:
+                manifest = PluginManifest.load(plugin_dir / "plugin.yaml")
+            except Exception as exc:
+                out.append(
+                    {
+                        "id": plugin_dir.name,
+                        "error": str(exc),
+                        "installed": (self._plugins_dir / plugin_dir.name).is_dir(),
+                    },
+                )
+                continue
+            installed_dir = self.plugin_dir(manifest.id)
+            installed_version = (
+                None if installed_dir is None else _read_installed_version(installed_dir)
+            )
+            out.append(
+                {
+                    "id": manifest.id,
+                    "version": manifest.version,
+                    "name": manifest.name,
+                    "kind": manifest.kind,
+                    "description": manifest.description,
+                    "icon": parse_plugin_icon(
+                        plugin_dir,
+                        asset_prefix=f"/api/plugins/market/{manifest.id}/ui",
+                    ),
+                    "group": parse_plugin_group(plugin_dir),
+                    "requires": parse_plugin_requires(plugin_dir),
+                    "installed": installed_dir is not None,
+                    "installed_version": installed_version,
+                    "update_available": (
+                        installed_dir is not None
+                        and _version_tuple(manifest.version) > _version_tuple(installed_version)
+                    ),
+                },
+            )
+        return out
+
+    def install_from_market(self, plugin_id: str, *, force: bool = False) -> LoadedPlugin:
+        """Install a catalog plugin by copying the in-tree package locally.
+
+        Future: download a ZIP from a remote API / object storage and extract.
+        """
+        source = self.market_plugin_dir(plugin_id)
+        if source is None:
+            raise OctopError(
+                ErrorCode.NOT_FOUND,
+                f"marketplace plugin {plugin_id!r} not found",
+            )
+        loaded = self.install_path(source, force=force)
+        _write_global_plugin_enabled(self._config_path, loaded.manifest.id, True)
+        return loaded
+
+    def resolve_market_ui_file(self, plugin_id: str, rel_path: str) -> Path:
+        """Resolve a marketplace catalog asset (icons only)."""
+        plugin_dir = self.market_plugin_dir(plugin_id)
+        if plugin_dir is None:
+            raise OctopError(
+                ErrorCode.NOT_FOUND,
+                f"marketplace plugin {plugin_id!r} not found",
+            )
+        cleaned = rel_path.strip().lstrip("/").replace("\\", "/")
+        suffix = Path(cleaned).suffix.lower()
+        if suffix not in _MARKET_ASSET_SUFFIXES:
+            raise OctopError(ErrorCode.NOT_FOUND, "invalid marketplace asset path")
+        return self._resolve_plugin_asset(plugin_dir, cleaned)
 
     def load_installed(self, *, install_deps: bool = True) -> list[LoadedPlugin]:
         enabled = self.global_enabled_map()
@@ -316,6 +490,7 @@ class PluginManager:
                     "kind": manifest.kind,
                     "description": manifest.description,
                     "icon": parse_plugin_icon(plugin_dir),
+                    "group": parse_plugin_group(plugin_dir),
                     "requires": parse_plugin_requires(plugin_dir),
                     "path": str(plugin_dir),
                     "loaded": loaded is not None,
@@ -394,6 +569,10 @@ class PluginManager:
                 ErrorCode.NOT_FOUND,
                 f"plugin {plugin_id!r} not found",
             )
+        return self._resolve_plugin_asset(plugin_dir, rel_path)
+
+    @staticmethod
+    def _resolve_plugin_asset(plugin_dir: Path, rel_path: str) -> Path:
         cleaned = rel_path.strip().lstrip("/").replace("\\", "/")
         if not cleaned or any(part == ".." for part in cleaned.split("/")):
             raise OctopError(ErrorCode.NOT_FOUND, "invalid plugin UI path")

@@ -58,7 +58,7 @@ action=close             → end session
 Example user message:
 
 ```text
-请用 acp_runner：action=start, runner=opencode, message=在 workspace 里找 README 并总结。
+Use acp_runner: action=start, runner=opencode, message=find the README in the workspace and summarize it.
 ```
 
 Permission prompts from the external agent appear in chat; pick an option or instruct the agent to call `action=respond` with the option id.

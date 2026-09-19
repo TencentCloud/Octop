@@ -263,6 +263,54 @@ def test_host_fs_tree_root_admin_posix(monkeypatch: pytest.MonkeyPatch) -> None:
     assert host_fs_tree_root(allow_outside_home=False) == home.resolve().as_posix()
 
 
+def test_running_in_container_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.utils.host_dirs import running_in_container
+
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
+    assert running_in_container() is True
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    assert running_in_container() is False
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "false")
+    assert running_in_container() is False
+
+
+@posix_only
+def test_running_in_container_detects_dockerenv(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.utils.host_dirs import running_in_container
+
+    monkeypatch.delenv("OCTOP_IN_CONTAINER", raising=False)
+
+    class _FakePath:
+        def __init__(self, path: object) -> None:
+            self._path = str(path)
+
+        def is_file(self) -> bool:
+            return self._path == "/.dockerenv"
+
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path", _FakePath)
+    assert running_in_container() is True
+
+
+def test_default_host_root_dir_uses_fs_root_in_container(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.utils.host_dirs import default_host_root_dir, host_fs_tree_root
+
+    home = tmp_path / "os_home"
+    home.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    assert default_host_root_dir(allow_outside_home=True) == home.resolve().as_posix()
+
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
+    assert default_host_root_dir(allow_outside_home=True) == host_fs_tree_root(
+        allow_outside_home=True
+    )
+    # Policy / home-jail mode must not jump to filesystem root.
+    assert default_host_root_dir(allow_outside_home=False) == home.resolve().as_posix()
+
+
 def test_list_and_probe_return_posix_paths(tmp_path: Path) -> None:
     (tmp_path / "alpha").mkdir()
     entries = list_host_subdirs(str(tmp_path))

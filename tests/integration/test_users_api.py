@@ -105,7 +105,8 @@ async def test_admin_can_unlock_login(env):
     assert r.status_code == 200
 
 
-async def test_admin_can_create_user_with_resource_policy(env, tmp_path):
+async def test_admin_can_create_user_with_resource_policy(env, tmp_path, monkeypatch):
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
     c, _srv, auth = env
     jail = tmp_path / "jail"
     jail.mkdir()
@@ -132,7 +133,30 @@ async def test_admin_can_create_user_with_resource_policy(env, tmp_path):
     assert row["token_quota"] == 2000
 
 
-async def test_create_user_rejects_invalid_workspace_root(env, tmp_path):
+async def test_create_user_rejects_workspace_root_in_container(env, tmp_path, monkeypatch):
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
+    c, _srv, auth = env
+    jail = tmp_path / "jail"
+    jail.mkdir()
+
+    r = await c.post(
+        "/api/users",
+        headers=auth,
+        json={
+            "username": "policy_container",
+            "password": "TestPass12",
+            "role": "user",
+            "workspace_root_dir": jail.as_posix(),
+        },
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["code"] == "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED"
+    listed = (await c.get("/api/users", headers=auth)).json()
+    assert "policy_container" not in [u["username"] for u in listed]
+
+
+async def test_create_user_rejects_invalid_workspace_root(env, tmp_path, monkeypatch):
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
     c, _srv, auth = env
     missing = tmp_path / "no-such-dir"
 
@@ -151,7 +175,8 @@ async def test_create_user_rejects_invalid_workspace_root(env, tmp_path):
     assert "bad_root" not in [u["username"] for u in listed]
 
 
-async def test_admin_can_set_resource_policy(env, tmp_path):
+async def test_admin_can_set_resource_policy(env, tmp_path, monkeypatch):
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
     from tests.support.auth import TEST_PASSWORD, create_user
 
     c, _srv, auth = env
