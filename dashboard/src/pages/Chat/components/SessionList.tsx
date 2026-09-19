@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Dropdown } from "antd";
+import { AutoComplete, Checkbox, Dropdown, Modal, Popover, Select } from "antd";
 import type { MenuProps } from "antd";
 import {
   Pencil,
@@ -11,6 +11,12 @@ import {
   PinOff,
   Search,
   GitFork,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderInput,
+  Tag,
+  X,
 } from "lucide-react";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
@@ -19,6 +25,7 @@ import { showConfirmModal } from "../../../utils/confirmModal";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import SessionChannelIcon from "./SessionChannelIcon";
 import SharedExpertHint from "./SharedExpertHint";
+import { recordTagClick, readTagClicks } from "../utils/tagFilterClicks";
 import styles from "../index.module.less";
 
 function AgentUnreadBadge({ count }: { count: number }) {
@@ -44,6 +51,10 @@ interface SessionItemProps {
   onFork: (id: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
+  folders: string[];
+  allTags: string[];
+  onSetFolder: (id: string, folder: string | null) => void;
+  onSetTags: (id: string, tags: string[]) => void;
 }
 
 const SessionItem = memo(function SessionItem({
@@ -56,10 +67,18 @@ const SessionItem = memo(function SessionItem({
   onFork,
   forkDisabled,
   forkDisabledHint,
+  folders,
+  allTags,
+  onSetFolder,
+  onSetTags,
 }: SessionItemProps) {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(session.name);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [folderValue, setFolderValue] = useState("");
+  const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
+  const [tagsValue, setTagsValue] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -73,6 +92,14 @@ const SessionItem = memo(function SessionItem({
     }
   }, [isEditing]);
 
+  useEffect(() => {
+    if (folderDialogOpen) setFolderValue(session.folder ?? "");
+  }, [folderDialogOpen, session.folder]);
+
+  useEffect(() => {
+    if (tagsDialogOpen) setTagsValue(session.tags ?? []);
+  }, [tagsDialogOpen, session.tags]);
+
   const commitEdit = useCallback(() => {
     const trimmed = editValue.trim();
     if (trimmed && trimmed !== session.name) {
@@ -83,11 +110,22 @@ const SessionItem = memo(function SessionItem({
     setIsEditing(false);
   }, [editValue, session.name, session.id, onRename]);
 
+  const commitFolder = useCallback(() => {
+    onSetFolder(session.id, folderValue.trim() || null);
+    setFolderDialogOpen(false);
+  }, [folderValue, session.id, onSetFolder]);
+
+  const commitTags = useCallback(() => {
+    onSetTags(session.id, tagsValue.map((tag) => tag.trim()).filter(Boolean));
+    setTagsDialogOpen(false);
+  }, [tagsValue, session.id, onSetTags]);
+
   const itemForkDisabled = Boolean(forkDisabled) || !session.hasActivity;
   const itemForkHint = !session.hasActivity
     ? t("chat.forkNoAssistant")
     : forkDisabledHint;
 
+  const sessionTags = session.tags ?? [];
   const menuItems: MenuProps["items"] = [
     {
       key: "pin",
@@ -120,6 +158,44 @@ const SessionItem = memo(function SessionItem({
         setIsEditing(true);
       },
     },
+    {
+      key: "folder",
+      label: t("chat.folders.moveTo"),
+      icon: <FolderInput size={14} />,
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        setFolderDialogOpen(true);
+      },
+    },
+    {
+      key: "tags",
+      label: t("chat.tags.addTag"),
+      icon: <Tag size={14} />,
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        setTagsDialogOpen(true);
+      },
+    },
+    ...(sessionTags.length > 0
+      ? [
+          {
+            key: "removeTag",
+            label: t("chat.tags.removeTag"),
+            icon: <X size={14} />,
+            children: sessionTags.map((tag) => ({
+              key: `remove-${tag}`,
+              label: tag,
+              onClick: ({ domEvent }: { domEvent: React.SyntheticEvent }) => {
+                domEvent.stopPropagation();
+                onSetTags(
+                  session.id,
+                  sessionTags.filter((item) => item !== tag),
+                );
+              },
+            })),
+          },
+        ]
+      : []),
     {
       key: "delete",
       label: t("common.delete", "Delete"),
@@ -200,17 +276,147 @@ const SessionItem = memo(function SessionItem({
               <MoreHorizontal size={15} />
             </button>
           </Dropdown>
+          <Modal
+            title={t("chat.folders.moveTo")}
+            open={folderDialogOpen}
+            onCancel={() => setFolderDialogOpen(false)}
+            onOk={commitFolder}
+            okText={t("common.confirm")}
+            cancelText={t("common.cancel")}
+            width={360}
+            destroyOnHidden
+          >
+            <AutoComplete
+              value={folderValue}
+              onChange={(value) => setFolderValue(value)}
+              options={folders.map((folder) => ({
+                value: folder,
+                label: folder,
+              }))}
+              placeholder={t("chat.folders.newFolder")}
+              style={{ width: "100%" }}
+              autoFocus
+            />
+            {session.folder ? (
+              <button
+                type="button"
+                className={styles.sessionEmptyAgentsLink}
+                style={{ marginTop: 10 }}
+                onClick={() => {
+                  onSetFolder(session.id, null);
+                  setFolderDialogOpen(false);
+                }}
+              >
+                {t("chat.folders.ungrouped")}
+              </button>
+            ) : null}
+          </Modal>
+          <Modal
+            title={t("chat.tags.addTag")}
+            open={tagsDialogOpen}
+            onCancel={() => setTagsDialogOpen(false)}
+            onOk={commitTags}
+            okText={t("common.confirm")}
+            cancelText={t("common.cancel")}
+            width={360}
+            destroyOnHidden
+          >
+            <Select
+              mode="tags"
+              value={tagsValue}
+              onChange={(value) => setTagsValue(value)}
+              options={allTags
+                .filter((tag) => !sessionTags.includes(tag))
+                .map((tag) => ({ value: tag, label: tag }))}
+              placeholder={t("chat.tags.addTag")}
+              style={{ width: "100%" }}
+            />
+          </Modal>
         </>
       )}
     </div>
   );
 });
 
+const FOLDERS_COLLAPSED_STORAGE_KEY = "octop:chat-folders-collapsed";
+const UNGROUPED_FOLDER_KEY = "__ungrouped__";
+
+function readCollapsedFolders(): Set<string> {
+  try {
+    const raw = localStorage.getItem(FOLDERS_COLLAPSED_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function FolderSection({
+  folderKey,
+  title,
+  count,
+  children,
+}: {
+  folderKey: string;
+  title: string;
+  count: number;
+  children: React.ReactNode;
+}) {
+  const [collapsed, setCollapsed] = useState(() =>
+    readCollapsedFolders().has(folderKey),
+  );
+
+  const toggle = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        const collapsedSet = readCollapsedFolders();
+        if (next) {
+          collapsedSet.add(folderKey);
+        } else {
+          collapsedSet.delete(folderKey);
+        }
+        localStorage.setItem(
+          FOLDERS_COLLAPSED_STORAGE_KEY,
+          JSON.stringify(Array.from(collapsedSet)),
+        );
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, [folderKey]);
+
+  return (
+    <div className={styles.folderSection}>
+      <button
+        type="button"
+        className={styles.folderSectionHeader}
+        onClick={toggle}
+        aria-expanded={!collapsed}
+      >
+        <span className={styles.folderSectionChevron}>
+          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+        </span>
+        <span className={styles.folderSectionIcon}>
+          <Folder size={12} />
+        </span>
+        <span className={styles.folderSectionName}>{title}</span>
+        <span className={styles.folderSectionCount}>{count}</span>
+      </button>
+      {collapsed ? null : (
+        <div className={styles.folderSectionBody}>{children}</div>
+      )}
+    </div>
+  );
+}
+
 interface AgentCardProps {
   agent: OctopAgent;
   sessions: Session[];
   activeId: string | null;
   searchQuery: string;
+  activeTags: string[];
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
@@ -222,6 +428,10 @@ interface AgentCardProps {
   onFork: (id: string) => void;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
+  folders: string[];
+  allTags: string[];
+  onSetFolder: (id: string, folder: string | null) => void;
+  onSetTags: (id: string, tags: string[]) => void;
 }
 
 function ActiveAgentCard({
@@ -229,6 +439,7 @@ function ActiveAgentCard({
   sessions,
   activeId,
   searchQuery,
+  activeTags,
   hasMore,
   loadingMore,
   onLoadMore,
@@ -240,29 +451,87 @@ function ActiveAgentCard({
   onFork,
   activeForkDisabled,
   activeForkDisabledHint,
+  folders,
+  allTags,
+  onSetFolder,
+  onSetTags,
 }: AgentCardProps) {
   const { t } = useTranslation();
   const accent = agent.color || "#6366f1";
 
   const filteredSessions = useMemo(() => {
+    let list = sessions;
+    if (activeTags.length > 0) {
+      list = list.filter((s) =>
+        (s.tags ?? []).some((tag) => activeTags.includes(tag)),
+      );
+    }
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return sessions;
-    return sessions.filter((s) => s.name.toLowerCase().includes(q));
-  }, [sessions, searchQuery]);
+    if (!q) return list;
+    return list.filter((s) => s.name.toLowerCase().includes(q));
+  }, [sessions, searchQuery, activeTags]);
+
+  const folderGroups = useMemo(() => {
+    const groups = new Map<string | null, Session[]>();
+    for (const session of filteredSessions) {
+      const key = session.folder ?? null;
+      const bucket = groups.get(key);
+      if (bucket) {
+        bucket.push(session);
+      } else {
+        groups.set(key, [session]);
+      }
+    }
+    return groups;
+  }, [filteredSessions]);
+
+  const folderKeys = useMemo(() => {
+    const keys = Array.from(folderGroups.keys());
+    keys.sort((a, b) => {
+      if (a === null) return 1;
+      if (b === null) return -1;
+      return a.localeCompare(b);
+    });
+    return keys;
+  }, [folderGroups]);
+
+  const hasFolders = folderKeys.some((key) => key !== null);
+
+  const renderSessionItem = (session: Session) => (
+    <SessionItem
+      key={session.id}
+      session={session}
+      isActive={activeId === session.id}
+      onSelect={(id) => onSelect(id, agent.agent_id)}
+      onDelete={onDelete}
+      onRename={onRename}
+      onPin={onPin}
+      onFork={onFork}
+      forkDisabled={activeId === session.id ? activeForkDisabled : undefined}
+      forkDisabledHint={
+        activeId === session.id ? activeForkDisabledHint : undefined
+      }
+      folders={folders}
+      allTags={allTags}
+      onSetFolder={onSetFolder}
+      onSetTags={onSetTags}
+    />
+  );
 
   const fetchAllRequestedRef = useRef(false);
   useEffect(() => {
-    const searching = Boolean(searchQuery.trim());
-    if (!searching) {
+    const filtering = Boolean(searchQuery.trim()) || activeTags.length > 0;
+    if (!filtering) {
       fetchAllRequestedRef.current = false;
       return;
     }
     if (fetchAllRequestedRef.current) return;
     fetchAllRequestedRef.current = true;
     onFetchAllSessions();
-  }, [searchQuery, onFetchAllSessions]);
+  }, [searchQuery, activeTags, onFetchAllSessions]);
 
-  const showExpandMore = hasMore && !searchQuery.trim();
+  const showExpandMore =
+    hasMore && !searchQuery.trim() && activeTags.length === 0;
   const sessionsEnabled = isAgentChatReady(agent.state);
 
   return (
@@ -321,24 +590,33 @@ function ActiveAgentCard({
           </div>
         ) : (
           <>
-            {filteredSessions.map((s) => (
-              <SessionItem
-                key={s.id}
-                session={s}
-                isActive={activeId === s.id}
-                onSelect={(id) => onSelect(id, agent.agent_id)}
-                onDelete={onDelete}
-                onRename={onRename}
-                onPin={onPin}
-                onFork={onFork}
-                forkDisabled={
-                  activeId === s.id ? activeForkDisabled : undefined
-                }
-                forkDisabledHint={
-                  activeId === s.id ? activeForkDisabledHint : undefined
-                }
-              />
-            ))}
+            {hasFolders
+              ? folderKeys.map((folderKey) => {
+                  const bucket = folderGroups.get(folderKey) ?? [];
+                  if (folderKey === null) {
+                    return (
+                      <FolderSection
+                        key={UNGROUPED_FOLDER_KEY}
+                        folderKey={UNGROUPED_FOLDER_KEY}
+                        title={t("chat.folders.ungrouped")}
+                        count={bucket.length}
+                      >
+                        {bucket.map(renderSessionItem)}
+                      </FolderSection>
+                    );
+                  }
+                  return (
+                    <FolderSection
+                      key={folderKey}
+                      folderKey={folderKey}
+                      title={folderKey}
+                      count={bucket.length}
+                    >
+                      {bucket.map(renderSessionItem)}
+                    </FolderSection>
+                  );
+                })
+              : filteredSessions.map(renderSessionItem)}
             {showExpandMore ? (
               <button
                 type="button"
@@ -409,6 +687,11 @@ interface SessionListProps {
   onFork: (id: string) => void;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
+  folders: string[];
+  /** All tags for the agent from the backend; derived tags are merged in as fallback. */
+  tags: string[];
+  onSetFolder: (id: string, folder: string | null) => void;
+  onSetTags: (id: string, tags: string[]) => void;
 }
 
 export default function SessionList({
@@ -428,16 +711,17 @@ export default function SessionList({
   onFork,
   activeForkDisabled,
   activeForkDisabledHint,
+  folders,
+  tags,
+  onSetFolder,
+  onSetTags,
 }: SessionListProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState("");
-
   const sortedAgents = useMemo(
     () => [...agents].sort((a, b) => b.id - a.id),
     [agents],
   );
-
   const expandedAgentId = useMemo(
     () => activeAgentId ?? sortedAgents[0]?.agent_id ?? null,
     [activeAgentId, sortedAgents],
@@ -447,6 +731,60 @@ export default function SessionList({
     [sortedAgents, expandedAgentId],
   );
   const showSessions = isAgentChatReady(activeAgent?.state);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [tagClickCounts, setTagClickCounts] = useState<Record<string, number>>(
+    () => (expandedAgentId ? readTagClicks(expandedAgentId) : {}),
+  );
+
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>(tags);
+    for (const session of sessions) {
+      for (const tag of session.tags ?? []) {
+        tagSet.add(tag);
+      }
+    }
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+  }, [tags, sessions]);
+
+  useEffect(() => {
+    setActiveTags((prev) => {
+      const next = prev.filter((tag) => allTags.includes(tag));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [allTags]);
+
+  useEffect(() => {
+    setTagClickCounts(expandedAgentId ? readTagClicks(expandedAgentId) : {});
+  }, [expandedAgentId]);
+
+  const toggleTag = useCallback(
+    (tag: string, nextChecked?: boolean) => {
+      const currentlyChecked = activeTags.includes(tag);
+      const checked = nextChecked ?? !currentlyChecked;
+      if (checked === currentlyChecked) return;
+
+      setActiveTags((prev) =>
+        checked ? [...prev, tag] : prev.filter((item) => item !== tag),
+      );
+      if (checked && expandedAgentId) {
+        recordTagClick(expandedAgentId, tag);
+        setTagClickCounts(readTagClicks(expandedAgentId));
+      }
+    },
+    [activeTags, expandedAgentId],
+  );
+
+  const quickTags = useMemo(
+    () =>
+      [...allTags]
+        .sort((a, b) => {
+          const countDiff = (tagClickCounts[b] ?? 0) - (tagClickCounts[a] ?? 0);
+          return countDiff || a.localeCompare(b);
+        })
+        .slice(0, 3),
+    [allTags, tagClickCounts],
+  );
 
   return (
     <div className={styles.sessionList}>
@@ -465,6 +803,67 @@ export default function SessionList({
             placeholder={t("chat.searchSessions", "搜索会话")}
             aria-label={t("chat.searchSessions", "搜索会话")}
           />
+        </div>
+      ) : null}
+
+      {showSessions && allTags.length > 0 ? (
+        <div className={styles.tagFilterRow}>
+          <Popover
+            trigger="click"
+            placement="bottomLeft"
+            arrow={false}
+            content={
+              <div className={styles.tagFilterPopover}>
+                <div className={styles.tagFilterPopoverList}>
+                  {allTags.map((tag) => (
+                    <label key={tag} className={styles.tagFilterOption}>
+                      <Checkbox
+                        checked={activeTags.includes(tag)}
+                        onChange={(e) => toggleTag(tag, e.target.checked)}
+                      >
+                        {tag}
+                      </Checkbox>
+                    </label>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className={styles.tagFilterClear}
+                  disabled={activeTags.length === 0}
+                  onClick={() => setActiveTags([])}
+                >
+                  {t("chat.tags.clearFilter")}
+                </button>
+              </div>
+            }
+          >
+            <button
+              type="button"
+              className={`${styles.tagFilterBtn} ${
+                activeTags.length > 0 ? styles.tagFilterBtnActive : ""
+              }`}
+            >
+              <Tag size={12} />
+              <span>{t("chat.tags.filterByTag")}</span>
+              {activeTags.length > 0 ? (
+                <span className={styles.tagFilterBadge}>
+                  {activeTags.length}
+                </span>
+              ) : null}
+            </button>
+          </Popover>
+          {quickTags.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              className={`${styles.tagFilterChip} ${
+                activeTags.includes(tag) ? styles.tagFilterChipActive : ""
+              }`}
+              onClick={() => toggleTag(tag)}
+            >
+              {tag}
+            </button>
+          ))}
         </div>
       ) : null}
 
@@ -493,6 +892,7 @@ export default function SessionList({
                   sessions={sessions}
                   activeId={activeId}
                   searchQuery={searchQuery}
+                  activeTags={activeTags}
                   hasMore={hasMore}
                   loadingMore={loadingMore}
                   onLoadMore={onLoadMore}
@@ -504,6 +904,10 @@ export default function SessionList({
                   onFork={onFork}
                   activeForkDisabled={activeForkDisabled}
                   activeForkDisabledHint={activeForkDisabledHint}
+                  folders={folders}
+                  allTags={allTags}
+                  onSetFolder={onSetFolder}
+                  onSetTags={onSetTags}
                 />
               );
             }

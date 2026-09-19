@@ -147,6 +147,18 @@ def _ensure_agent_profile_columns(db: DatabasePool) -> None:
     _collapse_legacy_agent_welcome_columns(db)
 
 
+def _ensure_thread_organization_schema(db: DatabasePool) -> None:
+    """Add thread organization columns (folder + tags) when missing."""
+    if not _table_exists(db, "threads"):
+        return
+    _ensure_column(db, "threads", "folder", "TEXT")
+    _ensure_column(db, "threads", "tags", "TEXT NOT NULL DEFAULT '[]'")
+    with db.connect() as conn:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_threads_folder ON threads(agent_id, user_id, folder)"
+        )
+
+
 def _ensure_cron_jobs_schema(db: DatabasePool) -> None:
     if not _table_exists(db, "cron_jobs"):
         return
@@ -1427,6 +1439,7 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
         _ensure_column(db, "threads", "reasoning_mode", "TEXT")
         _ensure_column(db, "threads", "reasoning_effort", "TEXT")
         _ensure_column(db, "threads", "artifacts", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_thread_organization_schema(db)
     if _table_exists(db, "agents"):
         _ensure_column(db, "agents", "is_shared", "INTEGER NOT NULL DEFAULT 0")
         _ensure_agent_profile_columns(db)
@@ -1488,6 +1501,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_user_policy_schema(db)
             if max_version >= 15:
                 _ensure_sso_provider_kind_schema(db)
+            if max_version >= 16:
+                _ensure_thread_organization_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -1526,6 +1541,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_user_policy_schema(db)
     if max_version >= 15:
         _ensure_sso_provider_kind_schema(db)
+    if max_version >= 16:
+        _ensure_thread_organization_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -1563,6 +1580,9 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     Version 14 adds per-user named policy rows.
     Version 15 adds pluggable SSO provider ``kind`` / ``extra`` and
     multi-identity ``user_sso_identities``.
+    Version 16 adds thread organization (folder + tags). SQLite uses the
+    idempotent helper because ``_repair_legacy_schema`` may already have
+    added the columns before the migration loop runs.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1668,6 +1688,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 16:
+        _ensure_thread_organization_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -1709,5 +1734,6 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_trajectory_events_schema(db)
     _ensure_connectors_v13_schema(db)
     _ensure_user_policy_schema(db)
+    _ensure_thread_organization_schema(db)
     _ensure_agent_profile_columns(db)
     _ensure_sso_provider_kind_schema(db)

@@ -16,6 +16,7 @@ from harness_gateway.manager import ChannelManager
 from harness_gateway.models import ChannelSubject
 
 from octop.i18n import channel_probe_incomplete, channel_runtime_reason, tr
+from octop.infra.agents.auto_tag import AutoTagger
 from octop.infra.db.repos.channels import ChannelRow
 from octop.infra.db.repos.sessions import SessionRow
 from octop.infra.errors import ErrorCode, OctopError
@@ -216,6 +217,13 @@ class Gateway:
             gateway=self,
             trajectory_service=self._trajectory_service,
             history_archive=self._history_archive,
+            auto_tagger=AutoTagger(
+                thread_repo=self._repos.thread_repo,
+                agent_repo=self._repos.agent_repo,
+                settings_repo=self._repos.settings_repo,
+                provider_repo=self._repos.provider_repo,
+                fallback_model_ref=self._agent_manager.resolve_fallback_model_ref,
+            ),
         )
 
         self._channel_manager = ChannelManager(channels={})
