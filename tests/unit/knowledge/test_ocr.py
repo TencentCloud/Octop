@@ -122,6 +122,101 @@ def test_image_requires_enabled_ocr(tmp_path: Path) -> None:
         parse_document(image)
 
 
+def _stub_pdf(monkeypatch: pytest.MonkeyPatch, texts: list[str]) -> Path:
+    """Point PdfReader at pages that extract to *texts*, as in the #837 report."""
+    pages = [SimpleNamespace(extract_text=lambda text=text: text) for text in texts]
+    monkeypatch.setattr("pypdf.PdfReader", lambda _path: SimpleNamespace(pages=pages))
+    return Path("/not-read/synthetic.pdf")
+
+
+def _recording_ocr(calls: list[Path], text: str = "OCR text"):
+    def extract(path: Path) -> str:
+        calls.append(path)
+        return text
+
+    return extract
+
+
+def test_pdf_glyph_garbage_text_layer_uses_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-empty but glyph-encoded text layer must not pass as parsed (#837).
+
+    Pre-fix the whole-file "is there any text?" test saw ``/G21/G22/G23/G24`` as
+    content, skipped OCR, and indexed the garbage.
+    """
+    pdf = _stub_pdf(monkeypatch, ["/G21/G22/G23/G24", ""])
+    calls: list[Path] = []
+
+    assert parse_document(pdf, ocr=_recording_ocr(calls)) == "OCR text"
+    assert calls == [pdf]
+
+
+def test_pdf_cid_text_layer_uses_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
+    pdf = _stub_pdf(monkeypatch, ["(cid:12)(cid:13)(cid:14)"])
+    calls: list[Path] = []
+
+    assert parse_document(pdf, ocr=_recording_ocr(calls)) == "OCR text"
+    assert calls == [pdf]
+
+
+def test_pdf_mixed_text_and_scan_pages_use_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One readable page must not make the whole file skip OCR for its scans."""
+    pdf = _stub_pdf(monkeypatch, ["real page text", "", "another page"])
+    calls: list[Path] = []
+
+    assert parse_document(pdf, ocr=_recording_ocr(calls)) == "OCR text"
+    assert calls == [pdf]
+
+
+def test_pdf_keeps_embedded_text_when_ocr_returns_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When OCR yields nothing we keep what did extract rather than blank it out."""
+    pdf = _stub_pdf(monkeypatch, ["real page text", ""])
+
+    assert parse_document(pdf, ocr=lambda _path: "") == "real page text\n"
+
+
+def test_pdf_prose_containing_paths_does_not_use_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Path-like tokens in ordinary prose must not be mistaken for glyph garbage."""
+    text = "see /usr/local/bin and /etc/hosts for the config"
+    pdf = _stub_pdf(monkeypatch, [text])
+
+    def unexpected_ocr(_path: Path) -> str:
+        raise AssertionError("OCR must not run for a text PDF")
+
+    assert parse_document(pdf, ocr=unexpected_ocr) == text
+
+
+def test_pdf_glyph_run_inside_prose_is_not_garbage(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A glyph run that does not dominate the page is left alone."""
+    text = "prefix /G21/G22/G23/G24 and a long tail of normal words here"
+    pdf = _stub_pdf(monkeypatch, [text])
+
+    def unexpected_ocr(_path: Path) -> str:
+        raise AssertionError("OCR must not run for a text PDF")
+
+    assert parse_document(pdf, ocr=unexpected_ocr) == text
+
+
+@pytest.mark.parametrize(
+    ("text", "usable"),
+    [
+        ("", False),
+        ("   \n\t ", False),
+        ("/G21/G22/G23/G24", False),
+        ("(cid:12)(cid:13)(cid:14)", False),
+        ("plain prose", True),
+        ("12345", True),
+        ("/usr/local/bin", True),
+        ("prefix /G21/G22/G23/G24 and a long tail of normal words here", True),
+    ],
+)
+def test_pdf_page_text_usability(text: str, usable: bool) -> None:
+    from octop.infra.knowledge.parse import _pdf_page_text_is_usable  # noqa: PLC0415
+
+    assert _pdf_page_text_is_usable(text) is usable
+
+
 def test_local_ocr_joins_rapidocr_text_lines(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

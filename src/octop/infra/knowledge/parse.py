@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from collections.abc import Iterable
 from html.parser import HTMLParser
 from pathlib import Path
@@ -27,6 +28,10 @@ _PLAIN_TEXT_SUFFIXES = {
 _DOCX_FALLBACK_TAG = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
 _DOCX_HTML_TYPES = {"application/xhtml+xml", "text/html"}
 _DOCX_MAIN_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+# A PDF page whose font has no usable ToUnicode map extracts as glyph names
+# ("/G21/G22/G23") or unmapped CIDs ("(cid:123)") instead of characters.
+_PDF_CID_RE = re.compile(r"\(cid:\d+\)")
+_PDF_GLYPH_RUN_RE = re.compile(r"(?:/[A-Za-z]{1,4}\d{1,4}){3,}")
 
 
 def parse_document(path: Path, *, ocr: OcrExtractor | None = None) -> str:
@@ -47,12 +52,7 @@ def parse_document(path: Path, *, ocr: OcrExtractor | None = None) -> str:
     if suffix == ".tsv":
         return _parse_delimited(path, delimiter="\t")
     if suffix == ".pdf":
-        from pypdf import PdfReader
-
-        text = "\n".join(page.extract_text() or "" for page in PdfReader(path).pages)
-        if text.strip() or ocr is None:
-            return text
-        return ocr(path)
+        return _parse_pdf(path, ocr=ocr)
     if suffix == ".docx":
         return _parse_docx(path)
     if suffix == ".pptx":
@@ -69,6 +69,43 @@ def parse_document(path: Path, *, ocr: OcrExtractor | None = None) -> str:
     if suffix == ".xls":
         return _parse_xls(path)
     raise ValueError(f"unsupported knowledge document extension: {suffix or '(none)'}")
+
+
+def _pdf_page_text_is_usable(text: str) -> bool:
+    """Whether a PDF page's embedded text layer is worth indexing.
+
+    A blank page (a scan) and a page that extracts as glyph names or unmapped
+    CIDs are both unusable and need OCR instead — see #837.
+    """
+    stripped = "".join(text.split())
+    if not stripped:
+        return False
+    if _PDF_CID_RE.search(stripped):
+        return False
+    # A stray "/Ab/Cd/Ef" inside otherwise normal prose is not a broken text
+    # layer, so only treat the page as garbage when glyph runs dominate it.
+    glyphs = _PDF_GLYPH_RUN_RE.search(stripped)
+    return glyphs is None or len(glyphs.group(0)) * 2 < len(stripped)
+
+
+def _parse_pdf(path: Path, *, ocr: OcrExtractor | None) -> str:
+    """Extract PDF text, falling back to OCR when a page has no usable text.
+
+    Judging the whole file at once is not enough (#837): a glyph-encoded text
+    layer is non-empty but meaningless, and a mixed PDF can hold one text page
+    next to several scans — both used to look parsed while real content was
+    dropped.  ``ocr`` renders every page, so once a single page needs it we run
+    it for the whole document and prefer its output; if it yields nothing we
+    keep the embedded text rather than lose what did extract.
+    """
+    from pypdf import PdfReader
+
+    pages = [page.extract_text() or "" for page in PdfReader(path).pages]
+    text = "\n".join(pages)
+    if ocr is None or all(_pdf_page_text_is_usable(page) for page in pages):
+        return text
+    ocr_text = ocr(path)
+    return ocr_text if ocr_text.strip() else text
 
 
 def _read_text(path: Path) -> str:
