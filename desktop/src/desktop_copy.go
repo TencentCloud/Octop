@@ -9,12 +9,12 @@ const (
 	copyStatusReady            = "status.ready"
 	copyStatusUsingRuntime     = "status.using_runtime"
 	copyStatusBackupDatabase   = "status.backup_database"
-	copyStatusInstallingUpdate  = "status.installing_update"
-	copyStatusUpdatingRuntime   = "status.updating_runtime"
-	copyStatusFirstExtract      = "status.first_extract"
-	copyStatusUpdateFailedKeep  = "status.update_failed_keep"
-	copyErrorBackupFailed       = "error.backup_failed"
-	copyErrorUpgradeFailed      = "error.upgrade_failed"
+	copyStatusInstallingUpdate = "status.installing_update"
+	copyStatusUpdatingRuntime  = "status.updating_runtime"
+	copyStatusFirstExtract     = "status.first_extract"
+	copyStatusUpdateFailedKeep = "status.update_failed_keep"
+	copyErrorBackupFailed      = "error.backup_failed"
+	copyErrorUpgradeFailed     = "error.upgrade_failed"
 	copyWait1Minute            = "wait.1_minute"
 	copyWaitNMinutes           = "wait.n_minutes"
 	copyWait1Second            = "wait.1_second"
@@ -22,6 +22,9 @@ const (
 	copyHealthNotReady5xx      = "health.not_ready_5xx"
 	copyHealthNotReadyConnect  = "health.not_ready_connect"
 	copyHealthNotReady         = "health.not_ready"
+	copyTraySettings           = "tray.settings"
+	copyTrayShowMain           = "tray.show_main"
+	copyTrayQuit               = "tray.quit"
 )
 
 var desktopCopy = map[Locale]map[string]string{
@@ -45,6 +48,9 @@ var desktopCopy = map[Locale]map[string]string{
 		copyHealthNotReady5xx:      "Octop did not become ready within %s (%s). The service responded but is not ready yet. Try again, or check the terminal logs.",
 		copyHealthNotReadyConnect:  "Octop did not become ready within %s (%s). Could not connect — make sure Octop is running.",
 		copyHealthNotReady:         "Octop did not become ready within %s (%s). Make sure Octop is running at this address, or check the terminal logs.",
+		copyTraySettings:           "Settings",
+		copyTrayShowMain:           "Show Octop",
+		copyTrayQuit:               "Quit",
 	},
 	LocaleZH: {
 		copyStatusConnecting:       "正在连接 Octop…",
@@ -66,6 +72,9 @@ var desktopCopy = map[Locale]map[string]string{
 		copyHealthNotReady5xx:      "Octop 服务未在%s内就绪（%s）。服务已响应但尚未就绪，请稍后再试，或查看终端日志。",
 		copyHealthNotReadyConnect:  "Octop 服务未在%s内就绪（%s）。目前无法连接该地址，请确认 Octop 正在运行。",
 		copyHealthNotReady:         "Octop 服务未在%s内就绪（%s）。请确认本机已启动 Octop，且地址、端口正确；也可查看终端日志。",
+		copyTraySettings:           "设置",
+		copyTrayShowMain:           "显示 Octop",
+		copyTrayQuit:               "退出",
 	},
 }
 
