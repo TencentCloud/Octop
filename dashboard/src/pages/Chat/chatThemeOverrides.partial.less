@@ -666,7 +666,7 @@
   z-index: 1;
   max-width: 960px;
   width: calc(100% - 2 * var(--chat-column-pad-x, 32px));
-  margin: 0 auto 8px;
+  margin: 8px auto;
   font-size: 12px;
   box-sizing: border-box;
 }
@@ -775,13 +775,14 @@
   }
 
   .messageBubble {
-    gap: 10px;
+    column-gap: var(--chat-msg-gutter);
   }
 
-  /* Assistant rows share a left gutter with processSummaryRow; do not add a
-     column gap that would push only the answer bubble right of the thinking box. */
+  /* Same gutter as processSummaryRow / left inset — do not use a different
+     gap that would shift only the answer bubble. */
   .assistantBubble {
-    gap: 0;
+    column-gap: var(--chat-msg-gutter);
+    row-gap: 0;
   }
 
   .assistantText::before,
