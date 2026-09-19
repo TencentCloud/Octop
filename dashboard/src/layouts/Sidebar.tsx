@@ -622,8 +622,9 @@ export default function Sidebar({
         style={{
           position: "fixed",
           top: 0,
+          bottom: 0,
           left: 0,
-          height: "100dvh",
+          height: "auto",
           width: EXPANDED_WIDTH,
           boxSizing: "border-box",
           paddingTop: "env(safe-area-inset-top, 0px)",

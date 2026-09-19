@@ -646,11 +646,18 @@
 .chatInput {
   position: relative;
   z-index: 1;
-  padding: 10px 20px 18px;
+  padding-top: 10px;
+  padding-inline: 20px;
+  padding-bottom: 18px;
   background: var(--fn-bg-elevated, #fff);
 
   @media (max-width: 767px) {
-    padding: 6px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    padding-top: 6px;
+    padding-inline: 12px;
+    padding-bottom: calc(
+      6px +
+        max(env(safe-area-inset-bottom, 0px), var(--keyboard-offset, 0px))
+    );
   }
 }
 

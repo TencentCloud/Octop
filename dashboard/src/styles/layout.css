@@ -1,6 +1,10 @@
 html,
 body {
+  /* lvh = largest viewport (behind the home indicator). dvh stops short. */
   height: 100%;
+  height: 100lvh;
+  min-height: 100lvh;
+  min-height: -webkit-fill-available;
   overflow: hidden;
   margin: 0;
   padding: 0;
@@ -10,6 +14,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
+  /* Override index.html boot gray (#f7f8fa) so iOS PWA letterboxing
+     below 100dvh is not a stray gray strip. */
+  background: var(--fn-bg-layout, #f5f6f8);
 }
 
 html {
@@ -59,9 +66,33 @@ html[data-octop-desktop-chrome] .ant-drawer-right .ant-drawer-close {
 }
 
 #root {
-  height: 100%;
+  /* Pin to the layout viewport. With viewport-fit=cover this includes
+     the iOS home-indicator band; 100dvh does not. */
+  position: fixed;
+  inset: 0;
+  height: auto;
+  width: auto;
   overflow: hidden;
   overscroll-behavior: none;
+}
+
+/* ConfigProvider prefixCls="octop" → antd <App> is .octop-app.
+   Without an explicit height, MainLayout's height:100% cannot fill #root. */
+.octop-app,
+.ant-app {
+  height: 100%;
+}
+
+/* Chat paints to the screen edge; don't leak page-layout gray under the
+   composer or in the iOS home-indicator letterbox. */
+html.octop-chat-open,
+html.octop-chat-open body,
+html.octop-chat-open #root {
+  background: var(--fn-bg-elevated, #fff);
+}
+
+html.octop-chat-open .page-container {
+  background: var(--fn-bg-elevated, #fff);
 }
 
 /* ---- Global touch & interaction fixes ---- */

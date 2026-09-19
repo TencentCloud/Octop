@@ -43,12 +43,12 @@
   background: var(--fn-bg-elevated, #fff);
 
   @media (max-width: 767px) {
-    padding: 12px 12px calc(14px + env(safe-area-inset-bottom, 0px));
-    /* In PWA standalone mode the layout viewport does not shrink when the
-       soft keyboard opens. --keyboard-offset is set by the useKeyboardOffset
-       hook (visualViewport API) so we nudge the input area above the keyboard. */
+    padding: 6px 12px 6px;
+    /* Shell now paints under the home indicator. Keep buttons above it
+       (or above the keyboard); do not add both. */
     padding-bottom: calc(
-      14px + env(safe-area-inset-bottom, 0px) + var(--keyboard-offset, 0px)
+      6px +
+        max(env(safe-area-inset-bottom, 0px), var(--keyboard-offset, 0px))
     );
     transition: padding-bottom 0.15s ease;
   }
