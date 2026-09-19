@@ -9,7 +9,7 @@
 本能力全部落在：
 
 - `desktop/portable/**`（脚本 / 模板 / 本目录 Makefile）
-- `.github/workflows/octop-portable.yml`（多平台 CI）
+- `.github/workflows/octop-desktop.yml`（多平台 CI）
 - 根 `.gitignore` 一行 `/green`（忽略构建产物）
 - `tests/unit/test_green_launch.py`（launch.py PATH / addsitedir）
 
@@ -106,7 +106,7 @@ OCTOP_GREEN_OFFLINE=1 bash desktop/portable/package.sh
 
 ## CI
 
-[`.github/workflows/octop-portable.yml`](../../.github/workflows/octop-portable.yml) 在 6 个 runner 上出 zip：
+[`.github/workflows/octop-desktop.yml`](../../.github/workflows/octop-desktop.yml) 在 6 个 runner 上出 zip：
 
 `linux-amd64` `linux-arm64` `darwin-arm64` `darwin-amd64` `windows-amd64` `windows-arm64`
 
