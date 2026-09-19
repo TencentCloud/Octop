@@ -6,7 +6,8 @@ import asyncio
 import json
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from tests.support.harness import build_harness_manager_mock
@@ -157,3 +158,112 @@ async def test_on_provider_changed_selective_skips_unrelated(
     reload_mock.assert_awaited_once()
     called_ids = set(reload_mock.await_args.args[0])
     assert called_ids == {"ref-one"}
+
+
+@pytest.mark.asyncio
+async def test_connector_reload_waits_before_setting_override_and_reads_latest_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    services = _make_services(tmp_path)
+    services.repos.agent_repo.create(agent_id="a", user_id=None, name="Before")
+    registry = _registry(services)
+    bundle = MagicMock(side_effect=lambda row: (row.name, {}, [], "User"))
+    monkeypatch.setattr(registry, "_agent_runtime_bundle", bundle)
+    monkeypatch.setattr(registry, "_post_start_agent", AsyncMock())
+    entered, release, second_started = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    seen = []
+
+    async def rebuild(agent_id, config, **kwargs):
+        seen.append((config, registry._connector_user_override.get(agent_id)))
+        if len(seen) == 1:
+            entered.set()
+            await release.wait()
+        return SimpleNamespace(agent=object())
+
+    monkeypatch.setattr(registry._harness_manager, "arebuild_agent", AsyncMock(side_effect=rebuild))
+
+    async def reload_connectors():
+        second_started.set()
+        await registry.reload_connectors("a", connector_user_id=11)
+
+    async with asyncio.timeout(5), asyncio.TaskGroup() as tasks:
+        tasks.create_task(registry.reload("a"))
+        await entered.wait()
+        tasks.create_task(reload_connectors())
+        await second_started.wait()
+        assert bundle.call_count == 1
+        assert seen == [("Before", None)]
+        assert registry._connector_user_override == {}
+        services.repos.agent_repo.update_config("a", name="After")
+        release.set()
+
+    assert seen == [("Before", None), ("After", 11)]
+    assert registry._connector_user_override == {}
+
+
+@pytest.mark.asyncio
+async def test_reload_lock_preserves_cross_agent_parallelism(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    services = _make_services(tmp_path)
+    for agent_id in ("a", "b"):
+        services.repos.agent_repo.create(agent_id=agent_id, user_id=None, name=agent_id)
+    registry = _registry(services)
+    monkeypatch.setattr(registry, "_agent_runtime_bundle", lambda row: (row.name, {}, [], "User"))
+    monkeypatch.setattr(registry, "_post_start_agent", AsyncMock())
+    entered = {agent_id: asyncio.Event() for agent_id in ("a", "b")}
+    release = asyncio.Event()
+
+    async def rebuild(agent_id, config, **kwargs):
+        entered[agent_id].set()
+        await release.wait()
+        return SimpleNamespace(agent=object())
+
+    monkeypatch.setattr(registry._harness_manager, "arebuild_agent", AsyncMock(side_effect=rebuild))
+    async with asyncio.timeout(5), asyncio.TaskGroup() as tasks:
+        tasks.create_task(registry._reload_agents(["a", "b"]))
+        await asyncio.gather(*(event.wait() for event in entered.values()))
+        release.set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_stage", ["credentials", "rebuild"])
+async def test_connector_reload_failure_clears_override_and_releases_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure_stage: str
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    services = _make_services(tmp_path)
+    services.repos.agent_repo.create(agent_id="a", user_id=None, name="Agent")
+    registry = _registry(services)
+    bundle = MagicMock(side_effect=lambda row: (row.name, {}, [], "User"))
+    monkeypatch.setattr(registry, "_agent_runtime_bundle", bundle)
+    monkeypatch.setattr(registry, "_post_start_agent", AsyncMock())
+    visible = MagicMock(
+        return_value=[SimpleNamespace(status="active", instance_id="connector", kind="test")]
+    )
+    monkeypatch.setattr(services.repos.connector_repo, "list_visible", visible)
+    refresh = AsyncMock()
+    rebuild = AsyncMock(return_value=SimpleNamespace(agent=object()))
+    monkeypatch.setattr(registry._connector_svc, "ensure_fresh_credentials", refresh)
+    monkeypatch.setattr(registry._harness_manager, "arebuild_agent", rebuild)
+    failing = refresh if failure_stage == "credentials" else rebuild
+    failing.side_effect = RuntimeError("reload failed")
+
+    async with asyncio.timeout(5):
+        if failure_stage == "credentials":
+            with pytest.raises(RuntimeError, match="reload failed"):
+                await registry.reload_connectors("a", connector_user_id=11)
+        else:
+            await registry.reload_connectors("a", connector_user_id=11)
+            assert registry.get_row("a").last_state == "failed"
+        assert registry._connector_user_override == {}
+        assert not registry._lifecycle_lock_for("a").locked()
+
+        failing.side_effect = None
+        await registry.reload_connectors("a", connector_user_id=22)
+
+    assert visible.call_args_list == [call(11), call(22)]
+    assert registry.get_row("a").last_state == "running"
+    assert registry._connector_user_override == {}
