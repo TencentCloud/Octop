@@ -646,11 +646,18 @@
 .chatInput {
   position: relative;
   z-index: 1;
-  padding: 10px 20px 18px;
+  padding-top: 10px;
+  padding-inline: var(--chat-column-pad-x, 32px);
+  padding-bottom: 18px;
   background: var(--fn-bg-elevated, #fff);
 
   @media (max-width: 767px) {
-    padding: 6px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    padding-top: 6px;
+    padding-inline: 12px;
+    padding-bottom: calc(
+      6px +
+        max(env(safe-area-inset-bottom, 0px), var(--keyboard-offset, 0px))
+    );
   }
 }
 
@@ -658,8 +665,8 @@
   position: relative;
   z-index: 1;
   max-width: 960px;
-  width: calc(100% - 48px);
-  margin: 0 auto 8px;
+  width: calc(100% - 2 * var(--chat-column-pad-x, 32px));
+  margin: 8px auto;
   font-size: 12px;
   box-sizing: border-box;
 }
@@ -741,7 +748,7 @@
 .aiDisclaimer {
   max-width: 960px;
   margin: 8px auto 0;
-  width: calc(100% - 48px);
+  width: calc(100% - 2 * var(--chat-column-pad-x, 32px));
 }
 
 .messageImages,
@@ -768,13 +775,14 @@
   }
 
   .messageBubble {
-    gap: 10px;
+    column-gap: var(--chat-msg-gutter);
   }
 
-  /* Assistant rows share a left gutter with processSummaryRow; do not add a
-     column gap that would push only the answer bubble right of the thinking box. */
+  /* Same gutter as processSummaryRow / left inset — do not use a different
+     gap that would shift only the answer bubble. */
   .assistantBubble {
-    gap: 0;
+    column-gap: var(--chat-msg-gutter);
+    row-gap: 0;
   }
 
   .assistantText::before,

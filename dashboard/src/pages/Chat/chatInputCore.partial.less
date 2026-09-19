@@ -2,7 +2,7 @@
 /* ---------- Chat input ---------- */
 .runUsageBar {
   max-width: var(--chat-column-max, 960px);
-  width: calc(100% - 48px);
+  width: calc(100% - 2 * var(--chat-column-pad-x, 32px));
   margin: 0 auto 6px;
   padding: 0 2px;
   display: flex;
@@ -39,16 +39,16 @@
 
 .chatInput {
   flex-shrink: 0;
-  padding: 16px 24px 20px;
+  padding: 16px var(--chat-column-pad-x, 32px) 20px;
   background: var(--fn-bg-elevated, #fff);
 
   @media (max-width: 767px) {
-    padding: 12px 12px calc(14px + env(safe-area-inset-bottom, 0px));
-    /* In PWA standalone mode the layout viewport does not shrink when the
-       soft keyboard opens. --keyboard-offset is set by the useKeyboardOffset
-       hook (visualViewport API) so we nudge the input area above the keyboard. */
+    padding: 6px 12px 6px;
+    /* Shell now paints under the home indicator. Keep buttons above it
+       (or above the keyboard); do not add both. */
     padding-bottom: calc(
-      14px + env(safe-area-inset-bottom, 0px) + var(--keyboard-offset, 0px)
+      6px +
+        max(env(safe-area-inset-bottom, 0px), var(--keyboard-offset, 0px))
     );
     transition: padding-bottom 0.15s ease;
   }
@@ -542,7 +542,7 @@
 /* ---------- Queued messages (while streaming) ---------- */
 .queuedMessages {
   max-width: var(--chat-column-max, 960px);
-  width: calc(100% - 48px);
+  width: calc(100% - 2 * var(--chat-column-pad-x, 32px));
   margin: 0 auto 8px;
   display: flex;
   flex-direction: column;
