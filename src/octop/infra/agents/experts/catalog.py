@@ -603,6 +603,39 @@ def resolve_display_task_examples(
     }
 
 
+def display_task_examples_for_agent(
+    *,
+    parsed: dict[str, list[str]] | None,
+    catalog: ExpertCatalog | None = None,
+    row: Any | None = None,
+) -> dict[str, list[str]]:
+    """Apply :func:`resolve_display_task_examples` using labels from an agent row."""
+    name = str(getattr(row, "name", "") or "").strip() if row is not None else ""
+    template = (
+        str(getattr(row, "template_name", None) or "").strip() or None if row is not None else None
+    )
+    return resolve_display_task_examples(
+        parsed=parsed,
+        catalog=catalog,
+        template_name=template,
+        label_zh=name,
+        label_en=name,
+    )
+
+
+async def resolve_agent_display_task_examples(
+    *,
+    workspace: BackendWorkspace | None,
+    row: Any | None,
+    catalog: ExpertCatalog | None = None,
+) -> dict[str, list[str]]:
+    """Load workspace ``task_examples``, then catalog / name fallbacks."""
+    parsed = (
+        await read_workspace_manifest_task_examples(workspace) if workspace is not None else None
+    )
+    return display_task_examples_for_agent(parsed=parsed, catalog=catalog, row=row)
+
+
 def normalize_task_examples_for_display(
     parsed: dict[str, list[str]] | None,
 ) -> dict[str, list[str]] | None:

@@ -9,11 +9,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_access, require_agent_row, user_owns_agent
 from octop.api.deps import current_user, get_server
-from octop.infra.agents.experts.catalog import (
-    parse_task_examples,
-    read_workspace_manifest_data,
-    resolve_display_task_examples,
-)
+from octop.infra.agents.experts.catalog import resolve_agent_display_task_examples
 from octop.infra.cron.task_type import (
     normalize_cron_task_type,
     require_cron_name,
@@ -51,11 +47,7 @@ class CronPatchBody(BaseModel):
 
 
 class CronExamplesResponse(BaseModel):
-    """Empty-state prompts for the tasks page.
-
-    Always resolves to display lists (workspace → catalog → name defaults).
-    Explicit empty lists hide suggestion cards; ``null`` is unused.
-    """
+    """Compat mirror of welcome ``task_examples`` (workspace → catalog → name)."""
 
     task_examples: dict[str, list[str]] | None = None
 
@@ -97,32 +89,14 @@ async def cron_examples(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> CronExamplesResponse:
-    """Return display ``task_examples`` for the cron empty-state cards.
-
-    Resolves workspace manifest → expert catalog template → name-based
-    defaults so different experts no longer share one generic i18n set.
-    """
+    """Same resolution as ``GET …/chat/welcome`` ``task_examples`` (API compat)."""
     assert_agent_access(server, agent_id, user)
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry
-    workspace = registry.workspace_for_agent(agent_id)
-    parsed = None
-    if workspace is not None:
-        manifest = await read_workspace_manifest_data(workspace)
-        if manifest is not None:
-            parsed = parse_task_examples(manifest)
-    row = registry.get_row(agent_id)
-    agent_name = str(getattr(row, "name", "") or "").strip() if row is not None else ""
-    template_name = (
-        str(getattr(row, "template_name", None) or "").strip() or None if row is not None else None
-    )
-    catalog = getattr(server, "expert_catalog", None)
-    examples = resolve_display_task_examples(
-        parsed=parsed,
-        catalog=catalog,
-        template_name=template_name,
-        label_zh=agent_name,
-        label_en=agent_name,
+    examples = await resolve_agent_display_task_examples(
+        workspace=registry.workspace_for_agent(agent_id),
+        row=registry.get_row(agent_id),
+        catalog=getattr(server, "expert_catalog", None),
     )
     return CronExamplesResponse(task_examples=examples)
 

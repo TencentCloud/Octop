@@ -7,11 +7,7 @@ import { normalizeUiLocale } from "../../../utils/locale";
 import { resolveTaskExamples } from "./taskExamples";
 
 /**
- * Cron empty-state suggestion prompts for the active expert.
- *
- * Prefer ``task_examples`` from chat welcome (workspace → catalog template →
- * name-based defaults on the server). Client i18n strings remain the last
- * resort when the request fails.
+ * Cron empty-state cards: prefer welcome ``task_examples``; i18n only on fetch failure.
  */
 export function useTaskExamples(agentId: string | null): string[] {
   const { t, i18n } = useTranslation();

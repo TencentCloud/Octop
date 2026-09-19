@@ -14,15 +14,8 @@ export interface CronTaskExamples {
   en?: string[];
 }
 
-export interface CronExamplesResponse {
-  task_examples: CronTaskExamples | null;
-}
-
 export const octopCronApi = {
   settings: () => request<OctopCronSettings>("/cron/settings"),
-
-  examples: (agentId: string) =>
-    request<CronExamplesResponse>(`/agents/${agentId}/cron/examples`),
 
   list: (agentId: string) => request<OctopCronRow[]>(`/agents/${agentId}/cron`),
 

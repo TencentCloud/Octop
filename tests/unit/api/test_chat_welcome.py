@@ -190,6 +190,24 @@ def test_resolve_display_task_examples_falls_back_to_name() -> None:
     assert "Patrol Expert" in out["en"][0]
 
 
+def test_display_task_examples_for_agent_reads_row_labels() -> None:
+    from types import SimpleNamespace
+
+    from octop.infra.agents.experts.catalog import display_task_examples_for_agent
+
+    named = display_task_examples_for_agent(
+        parsed=None,
+        row=SimpleNamespace(name="巡检专家", template_name=None),
+    )
+    assert "巡检专家" in named["zh"][0]
+
+    preferred = display_task_examples_for_agent(
+        parsed={"zh": ["工作区"], "en": ["Workspace"]},
+        row=SimpleNamespace(name="忽略", template_name=None),
+    )
+    assert preferred == {"zh": ["工作区"], "en": ["Workspace"]}
+
+
 def test_normalize_task_examples_for_display_keeps_three_or_six() -> None:
     assert normalize_task_examples_for_display(None) is None
     assert normalize_task_examples_for_display({"zh": ["a", "b"], "en": ["A"]}) == {

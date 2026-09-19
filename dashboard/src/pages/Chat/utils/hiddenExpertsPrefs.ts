@@ -13,7 +13,9 @@ function parseIdList(raw: string | null): string[] {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((x): x is string => typeof x === "string" && x.length > 0);
+    return parsed.filter(
+      (x): x is string => typeof x === "string" && x.length > 0,
+    );
   } catch {
     return [];
   }
@@ -21,7 +23,9 @@ function parseIdList(raw: string | null): string[] {
 
 export function readHiddenExpertIds(userId?: number | null): Set<string> {
   try {
-    return new Set(parseIdList(localStorage.getItem(hiddenExpertsStorageKey(userId))));
+    return new Set(
+      parseIdList(localStorage.getItem(hiddenExpertsStorageKey(userId))),
+    );
   } catch {
     return new Set();
   }
@@ -44,7 +48,10 @@ export function writeHiddenExpertIds(
   }
 }
 
-export function hideExpertId(agentId: string, userId?: number | null): Set<string> {
+export function hideExpertId(
+  agentId: string,
+  userId?: number | null,
+): Set<string> {
   const next = readHiddenExpertIds(userId);
   if (!agentId) return next;
   next.add(agentId);
