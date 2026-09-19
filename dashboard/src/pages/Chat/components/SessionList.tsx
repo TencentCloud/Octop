@@ -393,6 +393,7 @@ function InactiveAgentRow({ agent, onSelect }: AgentRowProps) {
 }
 
 interface SessionListProps {
+  isMobile?: boolean;
   agents: OctopAgent[];
   sessions: Session[];
   activeId: string | null;
@@ -412,6 +413,7 @@ interface SessionListProps {
 }
 
 export default function SessionList({
+  isMobile = false,
   agents,
   sessions,
   activeId,
@@ -462,8 +464,22 @@ export default function SessionList({
             className={styles.sessionSearchInput}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t("chat.searchSessions", "搜索会话")}
-            aria-label={t("chat.searchSessions", "搜索会话")}
+            placeholder={
+              isMobile
+                ? t(
+                    "chat.searchCurrentExpertSessions",
+                    "Search this expert's conversations",
+                  )
+                : t("chat.searchSessions", "搜索会话")
+            }
+            aria-label={
+              isMobile
+                ? t(
+                    "chat.searchCurrentExpertSessions",
+                    "Search this expert's conversations",
+                  )
+                : t("chat.searchSessions", "搜索会话")
+            }
           />
         </div>
       ) : null}

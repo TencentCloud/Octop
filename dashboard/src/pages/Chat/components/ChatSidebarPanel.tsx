@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { RefObject } from "react";
+import { X } from "lucide-react";
 import SessionList from "./SessionList";
 import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
 import type { Session } from "../hooks/useSessions";
@@ -104,6 +105,7 @@ export default function ChatSidebarPanel({
     />
   ) : (
     <SessionList
+      isMobile={isMobile}
       agents={agents}
       sessions={sessions}
       activeId={activeThreadId}
@@ -155,6 +157,21 @@ export default function ChatSidebarPanel({
             : undefined
         }
       >
+        {isMobile && (
+          <div className={styles.mobileSidebarHeader}>
+            <div className={styles.mobileSidebarTitle}>
+              {t("chat.historyTitle", "Chat history")}
+            </div>
+            <button
+              type="button"
+              className={styles.mobileSidebarClose}
+              onClick={() => onSidebarOpenChange(false)}
+              aria-label={t("common.close", "Close")}
+            >
+              <X size={20} strokeWidth={1.8} />
+            </button>
+          </div>
+        )}
         {sessionList}
         {!isMobile && sidebarOpen && (
           <div

@@ -6,6 +6,13 @@
   border-radius: 14px;
   border: 1px solid transparent;
   box-shadow: none;
+
+  @media (max-width: 767px) {
+    margin-bottom: 8px;
+    padding: 4px 4px 6px;
+    border: none;
+    border-radius: 14px;
+  }
 }
 
 .agentCardProfile {
@@ -14,6 +21,11 @@
   gap: 8px;
   margin-bottom: 4px;
   padding: 4px 4px 2px;
+
+  @media (max-width: 767px) {
+    align-items: center;
+    padding: 6px 6px 4px;
+  }
 }
 
 .agentCardAvatar {
@@ -85,6 +97,10 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+
+  @media (max-width: 767px) {
+    -webkit-line-clamp: 1;
+  }
 }
 
 .agentCardDescMuted {
@@ -119,6 +135,11 @@
   color: var(--fn-text-secondary);
   transition: background 0.15s;
   min-height: 0;
+
+  @media (max-width: 767px) {
+    min-height: 44px;
+    padding: 8px 6px 8px 10px;
+  }
 
   &:hover {
     background: color-mix(in srgb, var(--fn-text-primary) 4%, transparent);
@@ -261,6 +282,14 @@
     background 0.15s,
     color 0.15s;
 
+  @media (max-width: 767px) {
+    width: 32px;
+    height: 32px;
+    opacity: 1;
+    color: var(--fn-text-tertiary);
+    touch-action: manipulation;
+  }
+
   &:hover {
     background: rgba(0, 0, 0, 0.06);
     color: var(--fn-text-secondary);
@@ -293,6 +322,11 @@
   transition:
     background 0.15s,
     border-color 0.15s;
+
+  @media (max-width: 767px) {
+    min-height: 48px;
+    padding: 8px 8px;
+  }
 
   &:hover {
     background: var(--fn-sidebar-item-hover, rgba(0, 0, 0, 0.03));
