@@ -3,21 +3,36 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 from harness_agent.teams.inbox import InboxMessage
 from harness_agent.teams.processor import ReplyEvent
+from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.sessions import SessionRepo
+from octop.infra.db.repos.thread_messages import ThreadMessageRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.gateway.process.processor import GlobalProcessor
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher
 from octop.infra.gateway.threads import ThreadRegistry
+
+
+class _StubHarness:
+    """Stand-in for a live harness agent handle."""
+
+    def __init__(self) -> None:
+        self.history: list[Any] = []
+        self.history_calls: list[tuple[str, int]] = []
+
+    async def aget_history(self, thread_id: str, limit: int) -> list[Any]:
+        self.history_calls.append((thread_id, limit))
+        return list(self.history)[-limit:]
 
 
 @pytest.fixture
@@ -31,14 +46,17 @@ def processor_env(tmp_path: Path) -> dict[str, object]:
     repos = MagicMock()
     repos.session_repo = SessionRepo(db)
     repos.thread_repo = ThreadRepo(db)
+    repos.thread_message_repo = ThreadMessageRepo(db)
     repos.channel_repo = MagicMock()
     repos.audit_repo = MagicMock()
     repos.agent_repo = AgentRepo(db)
     repos.user_repo = UserRepo(db)
     repos.connector_repo = MagicMock()
 
+    harness = _StubHarness()
     agent_manager = MagicMock()
     agent_manager.get_row.side_effect = lambda aid: AgentRepo(db).get(aid)
+    agent_manager.get_agent.return_value = harness
 
     from octop.infra.gateway.gateway import Gateway
 
@@ -71,8 +89,36 @@ def processor_env(tmp_path: Path) -> dict[str, object]:
         connector_repo=repos.connector_repo,
         dispatcher=SlashDispatcher(),
         gateway=gw,
+        thread_message_repo=repos.thread_message_repo,
     )
-    return {"processor": processor, "gateway": gw, "parent_sk": parent_sk}
+    return {
+        "processor": processor,
+        "gateway": gw,
+        "parent_sk": parent_sk,
+        "harness": harness,
+        "projection": repos.thread_message_repo,
+    }
+
+
+def _reply_event(
+    *,
+    parent_sk: str,
+    thread_id: str = "thr_parent",
+    status: str = "done",
+    reply_text: str | None = "final synthesized reply",
+    error_text: str | None = None,
+) -> ReplyEvent:
+    return ReplyEvent(
+        inbox_id="job-1",
+        status=status,  # type: ignore[arg-type]
+        source_agent_id="parent",
+        source_thread_id=thread_id,
+        target_agent_id="child",
+        user_id=1,
+        reply_text=reply_text,
+        error_text=error_text,
+        metadata={"session_key": parent_sk},
+    )
 
 
 def test_compose_followup_uses_peer_display_name(processor_env: dict) -> None:
@@ -96,22 +142,160 @@ async def test_on_reply_increments_unread_on_dashboard(processor_env: dict) -> N
     processor = processor_env["processor"]
     parent_sk = processor_env["parent_sk"]
 
-    await processor.on_reply(
-        ReplyEvent(
-            inbox_id="job-1",
-            status="done",
-            source_agent_id="parent",
-            source_thread_id="thr_parent",
-            target_agent_id="child",
-            user_id=1,
-            reply_text="final synthesized reply",
-            metadata={"session_key": parent_sk},
-        )
-    )
+    await processor.on_reply(_reply_event(parent_sk=str(parent_sk)))
 
     session = processor_env["gateway"].thread_registry.get_session(parent_sk)  # type: ignore[attr-defined]
     assert session is not None
     assert session.unread_count == 1
+
+
+@pytest.mark.asyncio
+async def test_on_reply_projects_background_turn_into_history(processor_env: dict) -> None:
+    """The source agent's background turn must reach the visible history (#834).
+
+    The source-side turn runs through ``TeamManager._call_agent``, which writes
+    only the checkpoint. Pre-fix the Dashboard branch stopped at the unread
+    badge, so ``thread_messages`` stayed empty and the Dashboard showed nothing
+    even though the model itself had the transcript.
+    """
+    processor = processor_env["processor"]
+    harness = processor_env["harness"]
+    harness.history = [
+        HumanMessage(content="[background task from agent child]", id="m-human"),
+        AIMessage(content="final synthesized reply", id="m-ai"),
+    ]
+
+    await processor.on_reply(_reply_event(parent_sk=str(processor_env["parent_sk"])))
+
+    rows, _has_more = processor_env["projection"].page("thr_parent", limit=10)
+    assert [r.message_id for r in rows] == ["m-human", "m-ai"]
+    assert [r.role for r in rows] == ["human", "ai"]
+    assert harness.history_calls == [("thr_parent", 8)]
+
+
+@pytest.mark.asyncio
+async def test_on_reply_projection_is_idempotent(processor_env: dict) -> None:
+    """Repeated callbacks must not duplicate the turn in the history."""
+    processor = processor_env["processor"]
+    processor_env["harness"].history = [
+        HumanMessage(content="prompt", id="m-human"),
+        AIMessage(content="reply", id="m-ai"),
+    ]
+    event = _reply_event(parent_sk=str(processor_env["parent_sk"]))
+
+    await processor.on_reply(event)
+    await processor.on_reply(event)
+
+    rows, _has_more = processor_env["projection"].page("thr_parent", limit=10)
+    assert [r.message_id for r in rows] == ["m-human", "m-ai"]
+
+
+@pytest.mark.asyncio
+async def test_on_reply_waits_for_pending_projection(processor_env: dict) -> None:
+    """A legacy thread still backfilling must not be appended to out of band."""
+    processor = processor_env["processor"]
+    processor_env["harness"].history = [AIMessage(content="reply", id="m-ai")]
+    processor_env["projection"].mark_projection("thr_parent", "pending")
+
+    await processor.on_reply(_reply_event(parent_sk=str(processor_env["parent_sk"])))
+
+    rows, _has_more = processor_env["projection"].page("thr_parent", limit=10)
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_on_reply_pushes_reply_to_thread_subscribers(processor_env: dict) -> None:
+    """A watching Dashboard must receive the reply text, not just a badge bump."""
+    processor = processor_env["processor"]
+    frames: list[dict[str, Any]] = []
+
+    async def _send(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    hub = processor_env["gateway"].ws_hub  # type: ignore[attr-defined]
+    hub.register("conn-1", _send, user_id=1)
+    hub.subscribe("thr_parent", "conn-1")
+
+    await processor.on_reply(_reply_event(parent_sk=str(processor_env["parent_sk"])))
+
+    kinds = [f["type"] for f in frames]
+    assert kinds[:2] == ["token", "done"]
+    assert frames[0]["content"] == "final synthesized reply"
+    assert frames[0]["thread_id"] == "thr_parent"
+    # The owner also gets a toast, matching the cron/proactive delivery path.
+    assert kinds[2:] == ["dashboard_push"]
+    assert frames[2]["thread_id"] == "thr_parent"
+
+
+@pytest.mark.asyncio
+async def test_on_reply_delivers_to_dispatch_thread_after_session_moved(
+    processor_env: dict,
+) -> None:
+    """A reply must land in the thread it was dispatched from (#834).
+
+    While the background task ran the user opened another conversation, so the
+    session now points at ``thr_new``. Routing by the session's current thread
+    would file the reply into the wrong conversation.
+    """
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    parent_sk = str(processor_env["parent_sk"])
+    registry = gateway.thread_registry  # type: ignore[attr-defined]
+    registry.create_thread(
+        agent_id="parent",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=parent_sk,
+        thread_id="thr_new",
+    )
+    registry._sessions.set_thread(parent_sk, "thr_new")
+    processor_env["harness"].history = [AIMessage(content="reply", id="m-ai")]
+
+    await processor.on_reply(_reply_event(parent_sk=parent_sk))
+
+    dispatched, _has_more = processor_env["projection"].page("thr_parent", limit=10)
+    assert [r.message_id for r in dispatched] == ["m-ai"]
+    later, _has_more = processor_env["projection"].page("thr_new", limit=10)
+    assert later == []
+
+
+@pytest.mark.asyncio
+async def test_on_reply_falls_back_when_dispatch_thread_is_gone(processor_env: dict) -> None:
+    """A deleted dispatch thread must not swallow the reply."""
+    processor = processor_env["processor"]
+    processor_env["harness"].history = [AIMessage(content="reply", id="m-ai")]
+
+    await processor.on_reply(
+        _reply_event(parent_sk=str(processor_env["parent_sk"]), thread_id="thr_deleted")
+    )
+
+    rows, _has_more = processor_env["projection"].page("thr_parent", limit=10)
+    assert [r.message_id for r in rows] == ["m-ai"]
+
+
+@pytest.mark.asyncio
+async def test_on_reply_failure_text_is_delivered_too(processor_env: dict) -> None:
+    """A failed background task still owes the user a visible explanation."""
+    processor = processor_env["processor"]
+    frames: list[dict[str, Any]] = []
+
+    async def _send(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    hub = processor_env["gateway"].ws_hub  # type: ignore[attr-defined]
+    hub.register("conn-1", _send, user_id=1)
+    hub.subscribe("thr_parent", "conn-1")
+
+    await processor.on_reply(
+        _reply_event(
+            parent_sk=str(processor_env["parent_sk"]),
+            status="failed",
+            reply_text=None,
+            error_text="child agent crashed",
+        )
+    )
+
+    assert frames[0]["content"] == "child agent crashed"
 
 
 @pytest.mark.asyncio

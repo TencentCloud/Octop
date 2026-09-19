@@ -465,6 +465,8 @@ class Gateway:
         session: SessionRow,
         agent_id: str,
         text: str,
+        *,
+        thread_id: str | None = None,
     ) -> None:
         """Fan out a toast payload to the owner's dashboard notification sockets."""
         if not text.strip():
@@ -477,11 +479,26 @@ class Gateway:
             {
                 "type": "dashboard_push",
                 "agent_id": agent_id,
-                "thread_id": session.thread_id,
+                "thread_id": thread_id or session.thread_id,
                 "text": text,
                 "agent_name": agent_name,
             },
         )
+
+    async def push_thread_text(self, thread_id: str, text: str) -> None:
+        """Push one complete message to a Dashboard thread's live subscribers.
+
+        For turns that never streamed through the websocket channel — a
+        background peer reply reaches only the checkpoint — so a watcher sees
+        the text right away instead of just a bumped unread badge (#834).
+        No-op when nobody is watching: the history projection is the durable
+        copy, this is only the live frame.
+        """
+        tid = thread_id.strip()
+        if not tid or not text.strip():
+            return
+        await self._ws_hub.push_to_thread(tid, {"type": "token", "content": text})
+        await self._ws_hub.push_to_thread(tid, {"type": "done"})
 
     def _require_channel_manager(self) -> ChannelManager:
         if self._channel_manager is None:
