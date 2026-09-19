@@ -141,6 +141,7 @@ async def iter_dashboard_hitl_resume_sse(
         if not disconnected:
             yield format_sse("chunk", {"type": "done"})
     except Exception as exc:
+        logger.exception("dashboard hitl resume failed agent=%s thread=%s", agent_id, thread_id)
         yield format_sse(
             "chunk",
             {"type": "error", "message": format_stream_error(exc, locale)},
