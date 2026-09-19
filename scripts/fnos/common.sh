@@ -126,6 +126,97 @@ find_python312() {
 }
 
 # ---------------------------------------------------------------------------
+# 校验本机 CPU 架构与包内载荷是否匹配（issue #816）。
+#
+# 背景：本地版的 site-packages 由 CI 在 x86_64 runner 上现场编译（pip install
+# --target），只含 x86_64 的 .so；manifest 却曾声明 platform=all。ARM64 飞牛
+# 设备因此能"安装成功"，却在首次启动时于 argon2 / pydantic_core 等编译型依赖
+# 上抛 ImportError，用户看到的是一个装得上、起不来的应用。
+#
+# 这里在启动最前端做一次显式闸门：架构不匹配时给出可执行的说明后退出，而不是
+# 让 Python 在 import 阶段抛出难以理解的动态库错误。
+#
+# 判定规则——只拦「确证为 x86_64」的载荷，证据不足一律放行，避免误伤：
+#   1. 逐个检查载荷内的 .so（上限 200 个），任一被确证为 aarch64 → 放行；
+#   2. 文件名带 aarch64 / arm64 标记 → 放行（wheel 命名规范）；
+#   3. 确认存在 x86_64 二进制，且以上证据都不存在 → 拦截；
+#   4. 其余情况（没有 .so、无法归类、工具缺失）→ 放行。
+# 单文件判定优先 readelf；缺失时退回纯 shell 读 ELF 头——先校验魔数，再取偏移
+# 18 处的 e_machine 小端 2 字节（0x3E = x86-64，0xB7 = AArch64），避免把普通文件
+# 偏移 18 处的字节误当架构。
+# ---------------------------------------------------------------------------
+octop_require_supported_arch() {
+    local appdest="${TRIM_APPDEST:-/var/apps/octop-native}"
+    local sp="$appdest/site-packages"
+    local host_arch elf arch magic list arm_marker has_x86=0 has_arm=0
+
+    command -v uname >/dev/null 2>&1 || return 0
+    host_arch="$(uname -m 2>/dev/null)" || return 0
+
+    # 只有 64 位 ARM 需要拦截；x86_64 与其它架构沿用原有行为。
+    case "$host_arch" in
+        aarch64|arm64) ;;
+        *) return 0 ;;
+    esac
+
+    [ -d "$sp" ] || return 0
+
+    # 逐个检查载荷内的二进制扩展，而不是只抽样第一个：抽样会让判定结果取决于
+    # find 的返回顺序，既可能漏拦（第一个恰好是 arm）也可能误拦（第一个不可归类）。
+    # 发现 aarch64 立即放行；确认 x86_64 先记下，全部看完再决定。
+    list="$(find "$sp" -name '*.so' 2>/dev/null | head -n 200)" || true
+    while IFS= read -r elf; do
+        [ -n "$elf" ] || continue
+        arch=""
+        if command -v readelf >/dev/null 2>&1; then
+            arch="$(readelf -h "$elf" 2>/dev/null | sed -n 's/.*Machine:[[:space:]]*//p')" || arch=""
+            case "$arch" in
+                AArch64) arch="aarch64" ;;
+                *X86-64*) arch="x86_64" ;;
+                *) arch="" ;;
+            esac
+        elif command -v od >/dev/null 2>&1; then
+            magic="$(od -An -N4 -tx1 "$elf" 2>/dev/null | tr -d '[:space:]')" || magic=""
+            if [ "$magic" = "7f454c46" ]; then
+                arch="$(od -An -j18 -N2 -tu2 "$elf" 2>/dev/null | tr -d '[:space:]')" || arch=""
+                case "$arch" in
+                    183) arch="aarch64" ;;  # 0xB7
+                    62)  arch="x86_64" ;;   # 0x3E
+                    *)   arch="" ;;
+                esac
+            fi
+        fi
+        case "$arch" in
+            aarch64) has_arm=1; break ;;
+            x86_64)  has_x86=1 ;;
+        esac
+    done <<< "$list"
+
+    # 回退：pip wheel 命名规范会把架构写进文件名（dist-info/WHEEL 等同样适用）。
+    if [ "$has_arm" = 0 ]; then
+        arm_marker="$(find "$sp" \( -name '*aarch64*' -o -name '*arm64*' \) -print -quit 2>/dev/null)" || true
+        if [ -n "$arm_marker" ]; then
+            has_arm=1
+        fi
+    fi
+
+    if [ "$has_arm" = 1 ]; then
+        return 0
+    fi
+    if [ "$has_x86" = 0 ]; then
+        return 0
+    fi
+
+    echo "[octop-native] 错误：本安装包只包含 x86_64 构建产物，无法在 ${host_arch} 设备上运行。" >&2
+    echo "  原因：包内 site-packages 的编译型依赖（如 argon2-cffi-bindings、pydantic-core）" >&2
+    echo "        是在 x86_64 构建机上现场编译的，缺少 aarch64 版本。" >&2
+    echo "  解决：请在 x86_64 飞牛设备上安装，或改用支持多架构的容器版部署：" >&2
+    echo "        docker pull ghcr.io/tencentcloud/octop:latest" >&2
+    echo "  跟踪：https://github.com/TencentCloud/Octop/issues/816" >&2
+    return 1
+}
+
+# ---------------------------------------------------------------------------
 # 管理员密码：生成 / 校验 / 凭据回落保存。
 #
 # 背景（issue #502）：src/octop/infra/users/password.py 的弱密码黑名单包含
