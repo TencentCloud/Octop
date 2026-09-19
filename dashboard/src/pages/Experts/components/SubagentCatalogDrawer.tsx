@@ -28,12 +28,19 @@ export default function SubagentCatalogDrawer({
       onClose={onClose}
       mobileBodyPadding={0}
     >
-      {/* Same scroll shell as ChannelCatalogDrawer — desktop used to clip (~12 cards). */}
+      {/*
+        Flex column + overflow:hidden so fillHeight SubagentManager gets a
+        bounded height and owns scrolling. A plain overflow:auto shell left the
+        inner catalogDrawerMobile unconstrained; overscroll-behavior:contain then
+        ate wheel events and desktop scroll appeared broken.
+      */}
       <div
         style={{
           flex: 1,
           minHeight: 0,
-          overflow: "auto",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
         }}
       >
         <SubagentManager

@@ -6,7 +6,9 @@
   box-shadow: var(--fn-shadow-xs);
   box-sizing: border-box;
   width: 100%;
-  max-width: var(--chat-column-max, 960px);
+  /* Width is constrained by .askQuestionDockInner — avoid a second max-width
+     that can drift from the composer when gutters differ. */
+  max-width: none;
 }
 
 .titleRow {

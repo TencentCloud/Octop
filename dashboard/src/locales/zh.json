@@ -167,6 +167,7 @@
     "INVITE_REVOKED": "该邀请码已被撤销。",
     "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。",
     "WORKSPACE_ROOT_RESTRICTED": "所选存储根目录超出了该账号允许的范围。",
+    "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "容器环境下不能设置「允许的存储根目录」。",
     "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{{used}}/{{quota}}）。",
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
     "CAPTCHA_FAILED": "验证码校验失败，请重试。",
@@ -904,6 +905,7 @@
     "backendRootDir": "存储根目录",
     "backendRootDirPlaceholder": "浏览并选择目录",
     "backendRootDirDesc": "默认使用当前系统用户的 home 目录（{{home}}）。也可从文件系统根目录 `/` 起浏览并选择。",
+    "backendRootDirDescContainer": "当前运行在容器环境中，默认使用文件系统根目录 `/`（容器本身已是隔离边界）。也可浏览并选择其他目录。",
     "backendRootDirDescAdmin": "默认使用当前系统用户的 home 目录（{{home}}）。也可从文件系统根目录 `/` 起浏览并选择。",
     "backendRootDirJailHint": "保存至非根目录时，Octop 会通过沙箱技术将 AI 文件系统限制在该目录内，禁止跨目录访问。",
     "backendRootDirImmutableHint": "创建后不可更改。",
@@ -1057,7 +1059,7 @@
     }
   },
   "agent_errors": {
-    "no_models_configured": "未配置可用模型，请前往「设置 → 模型」配置 Provider，然后重新启用此专家。",
+    "no_models_configured": "未配置可用模型，请前往「设置 → 模型」配置模型，然后重新启用此专家。",
     "model_ref_unavailable": "默认模型不可用或已禁用，请检查「设置 → 模型」或修改此专家的默认模型后重试。"
   },
   "stream_errors": {
@@ -1336,7 +1338,8 @@
         "readFile": "读取文件 {{path}}",
         "editFile": "编辑文件 {{path}}",
         "fetchUrl": "抓取网页 {{url}}"
-      }
+      },
+      "finishPendingFirst": "请先完成当前的审批或提问，再发送新消息。"
     },
     "ask": {
       "title": "先问几个问题",
@@ -1354,7 +1357,8 @@
       "answered": "已回答",
       "answeredSummary": "已回答 {{count}} 个问题",
       "dismissedSummary": "已关闭 {{count}} 个问题",
-      "expand": "查看"
+      "expand": "查看",
+      "useCardForAttachments": "回答提问时不能发送附件，请使用上方卡片，或用文字作答。"
     },
     "modifiedFiles": "已修改文件（{{count}}）",
     "openBrowser": "查看浏览器",
@@ -1785,6 +1789,7 @@
     "importSuccess": "技能导入成功",
     "importFailed": "技能导入失败",
     "loadFailed": "加载技能失败",
+    "corruptSkipped": "以下技能的 SKILL.md 编码损坏，已跳过：{{slugs}}",
     "loadDetailFailed": "加载技能详情失败",
     "enabledSuccess": "技能已启用",
     "disabledSuccess": "技能已禁用",
@@ -1894,7 +1899,8 @@
     "stock-info": "股票信息",
     "cvm-ai-doctor": "CVM AI 诊断",
     "tencentcloud-infra": "腾讯云基础设施",
-    "publisher-multi-platform": "多平台发布"
+    "publisher-multi-platform": "多平台发布",
+    "docker-management": "Docker 管理"
   },
   "cronJobs": {
     "title": "定时任务",
@@ -2283,6 +2289,8 @@
     "botNamePlaceholder": "如：小助手",
     "noAgentSelected": "请先选择或创建一个 Agent 才能管理其频道",
     "statsSummary": "当前支持 {{supported}} 个通道，已配置 {{configured}} 个",
+    "showMoreChannels": "更多通道（{{count}}）",
+    "hideMoreChannels": "收起",
     "createChannel": "新建通道",
     "emptyHint": "暂无频道,点击右上角新建",
     "testSuccess": "频道探测通过",
@@ -2773,10 +2781,12 @@
     "presetProviders": "预置提供商",
     "presetCloud": "云端",
     "presetLocal": "本地",
+    "showMoreProviders": "更多模型提供商（{{count}}）",
+    "hideMoreProviders": "收起",
     "noPresetProvidersInTab": "暂无提供商",
     "customProviders": "自定义提供商",
     "noCustomProvidersHint": "暂无自定义提供商，点击右上角「自定义供应商」添加",
-    "builtinProviders": "内置提供商",
+    "builtinProviders": "预置提供商",
     "addProvider": "添加提供商",
     "addProviderTitle": "添加自定义提供商",
     "providerIdLabel": "提供商 ID",
@@ -2890,7 +2900,7 @@
     "inputTypeAudio": "音频",
     "costInput": "输入费用（每百万 Token）",
     "costOutput": "输出费用（每百万 Token）",
-    "templateApplied": "✓ 已从内置模板预填充，您可以修改这些值。",
+    "templateApplied": "✓ 已从预置模板预填充，您可以修改这些值。",
     "modelPool": "可用模型池",
     "autoRouteTooltip": "自动模式优先使用你的偏好模型；当输入类型不兼容时，系统会切换到支持该输入的模型",
     "autoRouteDesc": "以下为当前可用模型。自动模式会优先使用你的偏好模型；当消息包含图片等当前模型不支持的内容时，系统会自动切换到兼容模型。",
@@ -4466,7 +4476,7 @@
       "skip": "跳过",
       "presetTab": "预置提供商",
       "customTab": "自定义提供商",
-      "showMorePresets": "显示更多提供商（{{count}} 个）",
+      "showMorePresets": "更多模型提供商（{{count}}）",
       "hideMorePresets": "收起",
       "choosePreset": "选择预置提供商",
       "choosePresetHint": "点击卡片快速填入配置，只需填写 API Key。同品牌多站点会先弹出站点选择。",
@@ -4848,11 +4858,11 @@
     "ssoBadge": "单点登录",
     "passwordBadge": "密码",
     "tabLocal": "内置用户",
-    "tabFeishu": "飞书",
-    "tabWecom": "企微",
-    "tabDingtalk": "钉钉",
-    "tabOidc": "OIDC",
-    "tabSso": "OIDC",
+    "tabFeishu": "飞书登录",
+    "tabWecom": "企微登录",
+    "tabDingtalk": "钉钉登录",
+    "tabOidc": "通用OIDC",
+    "tabSso": "通用OIDC",
     "colPermissions": "权限",
     "permAll": "全部（管理员）",
     "permAllHint": "管理员自动拥有全部模块权限，无需单独勾选。",
@@ -4868,6 +4878,7 @@
     "policyWorkspaceRoot": "允许的存储根目录",
     "policyWorkspaceRootHint": "限制该用户创建专家时「{{localShell}}」/「{{filesystem}}」的根目录。关闭表示不额外限制。",
     "policyWorkspaceRootRequired": "请选择允许的存储根目录",
+    "policyWorkspaceRootContainerHint": "容器环境下不可设置——容器文件系统本身已是隔离边界，创建专家时默认使用 `/`。",
     "policyTokenQuota": "Token 使用上限",
     "policyTokenQuotaHint": "该用户所有专家累计的输入+输出 token。关闭表示不限制。",
     "policyTokenQuotaRequired": "请输入 token 上限",
@@ -5474,10 +5485,10 @@
     },
     "adminUsers": {
       "title": "用户管理",
-      "subtitle": "管理内置账号与登录方式（OIDC、飞书、企微、钉钉）"
+      "subtitle": "管理内置账号与登录方式（通用OIDC、飞书、企微、钉钉）"
     },
     "adminSso": {
-      "title": "OIDC",
+      "title": "通用OIDC",
       "subtitle": "配置 OpenID Connect 身份提供商"
     },
     "adminStorage": {

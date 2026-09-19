@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import {
@@ -47,6 +47,8 @@ import type { SlashMenuItem } from "../hooks/useSlashMentionInput";
 import { SHORTCUT_ICON_TONE_CLASS } from "../utils/slashShortcutStyles";
 import { isSttAvailable } from "../../../hooks/useVoiceInput";
 import { resolveTurnModelOverride } from "../utils/chatMessages";
+import { parseSkillSlugsInText } from "../utils/skillSlash";
+import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import {
   mentionedExpertIds,
   mentionedSubagentSlugs,
@@ -174,6 +176,7 @@ export default function ChatInputActionsRow({
 }: ChatInputActionsRowProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const skillDisplayName = useSkillDisplayName();
   const actionsRowRef = useRef<HTMLDivElement | null>(null);
   const [isCompact, setIsCompact] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
@@ -243,6 +246,16 @@ export default function ChatInputActionsRow({
     text,
     availableSubagents ?? [],
   );
+  const skillTokenRefs = useMemo(
+    () =>
+      (availableSkills ?? []).map((skill) => ({
+        slug: skill.slug,
+        label: skillDisplayName(skill),
+        emoji: skill.emoji,
+      })),
+    [availableSkills, skillDisplayName],
+  );
+  const activeSkillSlugs = parseSkillSlugsInText(text, skillTokenRefs);
   const showShortcutPicker = true;
   const showOverflowMenu =
     showConnectorPicker ||
@@ -255,6 +268,7 @@ export default function ChatInputActionsRow({
   const overflowBadgeCount =
     selectedConnectors.length +
     selectedKnowledgeBaseIds.length +
+    activeSkillSlugs.length +
     mentionedExperts.length +
     mentionedSubagents.length;
 
@@ -574,6 +588,11 @@ export default function ChatInputActionsRow({
             <span>{t("chat.skillPicker")}</span>
           </span>
           <span className={styles.mobileOverflowItemMeta}>
+            {activeSkillSlugs.length > 0 ? (
+              <span className={styles.toolbarBadge}>
+                {activeSkillSlugs.length}
+              </span>
+            ) : null}
             <ChevronRight size={16} />
           </span>
         </button>
@@ -666,6 +685,7 @@ export default function ChatInputActionsRow({
         return (
           <SkillPickerPopover
             skills={availableSkills ?? []}
+            activeSlugs={activeSkillSlugs}
             onSelectSkill={(slug) => {
               onInsertSkillCommand?.(slug);
               closeCompactPicker();
@@ -965,6 +985,7 @@ export default function ChatInputActionsRow({
             content={
               <SkillPickerPopover
                 skills={availableSkills!}
+                activeSlugs={activeSkillSlugs}
                 onSelectSkill={(slug) => {
                   onInsertSkillCommand?.(slug);
                   setSkillPickerOpen(false);
@@ -974,8 +995,18 @@ export default function ChatInputActionsRow({
             }
           >
             <Tooltip title={t("chat.skillPicker")} mouseEnterDelay={0.4}>
-              <button className={styles.secondaryBtn} type="button">
+              <button
+                className={`${styles.secondaryBtn} ${
+                  activeSkillSlugs.length > 0 ? styles.secondaryBtnActive : ""
+                }`}
+                type="button"
+              >
                 <Sparkles size={16} />
+                {activeSkillSlugs.length > 0 ? (
+                  <span className={styles.toolbarBadge}>
+                    {activeSkillSlugs.length}
+                  </span>
+                ) : null}
               </button>
             </Tooltip>
           </Popover>

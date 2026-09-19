@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from octop.infra.agents.avatar import materialize_remote_icon_url
 from octop.infra.agents.experts.catalog import (
     WORKSPACE_MANIFEST_PATH,
     build_create_spec_from_expert,
@@ -18,6 +19,7 @@ from octop.infra.agents.experts.skillhub_market import (
     SkillHubMarketError,
     SkillHubMarketErrorKind,
     install_skillset_template,
+    skillhub_portrait_url,
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.trajectory.settings import apply_enable_trajectory
@@ -293,6 +295,7 @@ async def create_agent_from_skillhub_skillset(
         user_id=user.id,
     )
     customized_welcome = options.welcome_message is not None
+    portrait_url = skillhub_portrait_url(item) or expert.summary.icon_url
     spec = build_create_spec_from_expert(
         expert_id=item.expert_id,
         expert=expert,
@@ -314,14 +317,32 @@ async def create_agent_from_skillhub_skillset(
             }.items()
             if value is not None
         },
-        icon_url=item.icon_url or None,
+        icon_url=portrait_url,
         color=options.color,
         welcome_message=(options.welcome_message if customized_welcome else None),
         skill_package_ids=options.skill_package_ids,
         knowledge_base_ids=options.knowledge_base_ids,
         mcp_servers=options.mcp_servers,
     )
-    row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
+    registry = server.app_runtime.agent_registry
+    row = await registry.create(spec, defer_bootstrap=True)
+
+    workspace = registry.workspace_for_agent(row.agent_id)
+    if workspace is not None and portrait_url:
+        try:
+            await materialize_remote_icon_url(
+                registry,
+                row.agent_id,
+                workspace,
+                portrait_url,
+            )
+        except Exception:
+            logger.warning(
+                "SkillHub avatar materialize failed agent=%s slug=%s",
+                row.agent_id,
+                item.slug,
+                exc_info=True,
+            )
 
     if can_enrich:
         asyncio.create_task(

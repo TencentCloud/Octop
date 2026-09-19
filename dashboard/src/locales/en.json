@@ -167,6 +167,7 @@
     "INVITE_REVOKED": "This invite code has been revoked.",
     "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later.",
     "WORKSPACE_ROOT_RESTRICTED": "The selected storage root is outside the allowed directory for this account.",
+    "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({{used}}/{{quota}}).",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
@@ -903,6 +904,7 @@
     "backendRootDir": "Storage Root Dir",
     "backendRootDirPlaceholder": "Browse and select a directory",
     "backendRootDirDesc": "Defaults to the server user's home directory ({{home}}). You may also browse from filesystem root `/`.",
+    "backendRootDirDescContainer": "Running in a container: defaults to filesystem root `/` (the container is already the isolation boundary). You may still browse and pick another directory.",
     "backendRootDirDescAdmin": "Defaults to the server user's home directory ({{home}}). You may also browse from filesystem root `/`.",
     "backendRootDirJailHint": "When saving to a non-root directory, Octop sandboxes the AI filesystem to that directory and blocks cross-directory access.",
     "backendRootDirImmutableHint": "Cannot be changed after creation.",
@@ -1336,7 +1338,8 @@
         "readFile": "Read file {{path}}",
         "editFile": "Edit file {{path}}",
         "fetchUrl": "Fetch {{url}}"
-      }
+      },
+      "finishPendingFirst": "Finish the pending approval or question before sending another message."
     },
     "ask": {
       "title": "A few questions first",
@@ -1354,7 +1357,8 @@
       "answered": "Answered",
       "answeredSummary": "Answered {{count}} question(s)",
       "dismissedSummary": "Closed {{count}} question(s)",
-      "expand": "View"
+      "expand": "View",
+      "useCardForAttachments": "Attachments can't be sent while answering questions — use the card above, or answer with text."
     },
     "modifiedFiles": "Modified files ({{count}})",
     "openBrowser": "View browser",
@@ -1786,6 +1790,7 @@
     "importSuccess": "Skill imported successfully",
     "importFailed": "Failed to import skill",
     "loadFailed": "Failed to load skills",
+    "corruptSkipped": "Skipped skills with corrupted SKILL.md encoding: {{slugs}}",
     "loadDetailFailed": "Failed to load skill details",
     "enabledSuccess": "Skill enabled",
     "disabledSuccess": "Skill disabled",
@@ -1895,7 +1900,8 @@
     "stock-info": "Stock Info",
     "cvm-ai-doctor": "CVM AI Doctor",
     "tencentcloud-infra": "Tencent Cloud Infra",
-    "publisher-multi-platform": "Multi-platform Publisher"
+    "publisher-multi-platform": "Multi-platform Publisher",
+    "docker-management": "Docker Management"
   },
   "cronJobs": {
     "title": "Cron Jobs",
@@ -2283,6 +2289,8 @@
     "botNamePlaceholder": "e.g. My Assistant",
     "noAgentSelected": "Select or create an agent first to manage its channels",
     "statsSummary": "Supports {{supported}} channels, {{configured}} configured",
+    "showMoreChannels": "More channels ({{count}})",
+    "hideMoreChannels": "Show less",
     "createChannel": "New Channel",
     "emptyHint": "No channels yet. Click the top right to create one.",
     "testSuccess": "Channel probe succeeded",
@@ -2775,10 +2783,12 @@
     "presetProviders": "Preset Providers",
     "presetCloud": "Cloud",
     "presetLocal": "Local",
+    "showMoreProviders": "More model providers ({{count}})",
+    "hideMoreProviders": "Show less",
     "noPresetProvidersInTab": "No providers in this tab",
     "customProviders": "Custom Providers",
     "noCustomProvidersHint": "No custom providers yet. Click \"Add provider\" above to create one.",
-    "builtinProviders": "Built-in Providers",
+    "builtinProviders": "Preset Providers",
     "addProvider": "Add Provider",
     "addProviderTitle": "Add Custom Provider",
     "providerIdLabel": "Provider ID",
@@ -2892,7 +2902,7 @@
     "inputTypeAudio": "Audio",
     "costInput": "Input Cost (per 1M tokens)",
     "costOutput": "Output Cost (per 1M tokens)",
-    "templateApplied": "✓ Pre-filled from built-in template. You can edit these values.",
+    "templateApplied": "✓ Pre-filled from preset template. You can edit these values.",
     "modelPool": "Available Model Pool",
     "autoRouteTooltip": "Auto mode prioritizes your preferred model and switches when the input type is incompatible",
     "autoRouteDesc": "These models are currently available. Auto mode prioritizes your preferred model; if a message contains images or other content the current model cannot handle, the system switches to a compatible model.",
@@ -4327,7 +4337,7 @@
       "skip": "Skip",
       "presetTab": "Preset provider",
       "customTab": "Custom provider",
-      "showMorePresets": "Show more providers ({{count}})",
+      "showMorePresets": "More model providers ({{count}})",
       "hideMorePresets": "Show less",
       "choosePreset": "Choose a preset provider",
       "choosePresetHint": "Click a card to pre-fill settings — you only need to enter your API key. Multi-site brands open a site picker first.",
@@ -4709,11 +4719,11 @@
     "ssoBadge": "SSO",
     "passwordBadge": "Password",
     "tabLocal": "Local users",
-    "tabFeishu": "Feishu",
-    "tabWecom": "WeCom",
-    "tabDingtalk": "DingTalk",
-    "tabOidc": "OIDC",
-    "tabSso": "OIDC",
+    "tabFeishu": "Feishu Login",
+    "tabWecom": "WeCom Login",
+    "tabDingtalk": "DingTalk Login",
+    "tabOidc": "Generic OIDC",
+    "tabSso": "Generic OIDC",
     "colPermissions": "Permissions",
     "permAll": "All (admin)",
     "permAllHint": "Admins automatically have every module permission; no need to select them.",
@@ -4729,6 +4739,7 @@
     "policyWorkspaceRoot": "Allowed storage root",
     "policyWorkspaceRootHint": "Restricts roots for “{{localShell}}” and “{{filesystem}}” when creating experts. Off means no extra limit.",
     "policyWorkspaceRootRequired": "Choose an allowed storage root",
+    "policyWorkspaceRootContainerHint": "Not available in container deployments — the container filesystem is already the isolation boundary, and new experts default to `/`.",
     "policyTokenQuota": "Token usage limit",
     "policyTokenQuotaHint": "Lifetime input + output tokens across this user's experts. Off means no limit.",
     "policyTokenQuotaRequired": "Enter a token quota",
@@ -5335,10 +5346,10 @@
     },
     "adminUsers": {
       "title": "User Management",
-      "subtitle": "Manage local accounts and login providers (OIDC, Feishu, WeCom, DingTalk)"
+      "subtitle": "Manage local accounts and login providers (Generic OIDC, Feishu, WeCom, DingTalk)"
     },
     "adminSso": {
-      "title": "OIDC",
+      "title": "Generic OIDC",
       "subtitle": "Configure an OpenID Connect identity provider"
     },
     "adminStorage": {

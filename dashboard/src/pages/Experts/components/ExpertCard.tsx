@@ -3,7 +3,7 @@ import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { CheckCircle } from "lucide-react";
 import { pickLocale } from "../../../utils/localizedText";
-import { iconForName } from "./iconForName";
+import { ExpertIcon, resolveExpertAvatarUrl } from "./iconForName";
 import styles from "../index.module.less";
 
 export interface ExpertSummary {
@@ -12,6 +12,7 @@ export interface ExpertSummary {
   description: { zh?: string; en?: string };
   welcome_message?: { zh?: string; en?: string };
   icon_name?: string | null;
+  icon_url?: string | null;
   color?: string | null;
   files?: string[];
   task_examples?: { zh?: string[]; en?: string[] } | null;
@@ -34,6 +35,8 @@ export const ExpertCard = memo(function ExpertCard({
   const label = pickLocale(expert.label, lang) || expert.id;
   const desc = pickLocale(expert.description, lang);
   const accent = expert.color || "var(--fn-color-brand)";
+  const portraitUrl = resolveExpertAvatarUrl(expert.icon_url);
+  const hasPortrait = Boolean(portraitUrl);
 
   return (
     <div
@@ -48,13 +51,23 @@ export const ExpertCard = memo(function ExpertCard({
       {/* Icon + title */}
       <div className={styles.expertTemplateHeader}>
         <div
-          className={styles.agentCardIcon}
-          style={{
-            color: accent,
-            background: `${accent}18`,
-          }}
+          className={`${styles.agentCardIcon} ${
+            hasPortrait ? styles.agentCardPortrait : ""
+          }`}
+          style={
+            hasPortrait
+              ? undefined
+              : {
+                  color: accent,
+                  background: `${accent}18`,
+                }
+          }
         >
-          {iconForName(expert.icon_name, 20)}
+          <ExpertIcon
+            iconUrl={portraitUrl}
+            iconName={expert.icon_name}
+            size={hasPortrait ? 44 : 20}
+          />
         </div>
         <div className={styles.agentCardTitleBlock}>
           <div className={styles.agentCardName}>{label}</div>

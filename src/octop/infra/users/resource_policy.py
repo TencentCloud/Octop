@@ -11,6 +11,7 @@ from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
     host_path_text,
     iter_local_backend_root_dirs,
+    running_in_container,
 )
 
 POLICY_WORKSPACE_ROOT_DIR = "workspace_root_dir"
@@ -51,6 +52,13 @@ def workspace_root_dir_of(raw: Any) -> str | None:
     return active_policy_value(raw)
 
 
+def effective_workspace_root_dir(raw: Any) -> str | None:
+    """Stored workspace-root policy, ignored when Octop runs in a container."""
+    if running_in_container():
+        return None
+    return workspace_root_dir_of(raw)
+
+
 def token_quota_of(raw: Any) -> int | None:
     if isinstance(raw, int):
         return raw
@@ -84,9 +92,18 @@ def public_policy_fields(rows: Sequence[Any] | Mapping[str, str] | None) -> dict
 
 
 def normalize_workspace_root_dir(raw: str | None) -> str | None:
-    """Return a canonical host path, or ``None`` when unrestricted."""
+    """Return a canonical host path, or ``None`` when unrestricted.
+
+    Setting a non-empty root is refused in container deployments — the
+    container filesystem is already the isolation boundary.
+    """
     if raw is None or not str(raw).strip():
         return None
+    if running_in_container():
+        raise OctopError(
+            ErrorCode.WORKSPACE_ROOT_CONTAINER_UNSUPPORTED,
+            "workspace root policy is unavailable in container deployments",
+        )
     path = assert_safe_host_path(str(raw).strip(), restrict_to_home=False)
     if not path.is_dir():
         raise OctopError(
@@ -117,7 +134,7 @@ def assert_backend_within_user_root(backend: Any, allowed_root: str | None) -> N
 
 
 def raise_if_backend_outside_user_root(policy_repo: Any, user_id: int, backend: Any) -> None:
-    allowed = workspace_root_dir_of(policy_repo.get(user_id, POLICY_WORKSPACE_ROOT_DIR))
+    allowed = effective_workspace_root_dir(policy_repo.get(user_id, POLICY_WORKSPACE_ROOT_DIR))
     try:
         assert_backend_within_user_root(backend, allowed)
     except ValueError as exc:

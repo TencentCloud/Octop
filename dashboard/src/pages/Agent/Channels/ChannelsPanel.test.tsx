@@ -37,13 +37,22 @@ beforeEach(() => {
 });
 
 describe("<ChannelsPanel /> create-flow default", () => {
-  it("opens the create drawer with the enable switch ON", async () => {
+  async function openTelegramCreateDrawer() {
     render(<ChannelsPanel agentId="ag1" />);
-
+    // Telegram is collapsed behind "更多通道" until expanded.
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: /channels\.showMoreChannels/,
+      }),
+    );
     // telegram has no quick-config path -> clicking its card opens the
     // manual create drawer directly.
     const card = (await screen.findAllByText("channels.label_telegram"))[0];
     await userEvent.click(card);
+  }
+
+  it("opens the create drawer with the enable switch ON", async () => {
+    await openTelegramCreateDrawer();
 
     // the drawer's "Enable channel" switch (Form.Item wires label<->control)
     const sw = await screen.findByLabelText("channels.enableChannel");
@@ -51,10 +60,7 @@ describe("<ChannelsPanel /> create-flow default", () => {
   });
 
   it("saves a new channel with a single POST and no follow-up PATCH", async () => {
-    render(<ChannelsPanel agentId="ag1" />);
-
-    const card = (await screen.findAllByText("channels.label_telegram"))[0];
-    await userEvent.click(card);
+    await openTelegramCreateDrawer();
 
     await userEvent.type(
       await screen.findByLabelText(/Bot Token/i),
@@ -87,10 +93,7 @@ describe("<ChannelsPanel /> create-flow default", () => {
   });
 
   it("still honors a deliberate opt-out: unchecking fires the alignment PATCH", async () => {
-    render(<ChannelsPanel agentId="ag1" />);
-
-    const card = (await screen.findAllByText("channels.label_telegram"))[0];
-    await userEvent.click(card);
+    await openTelegramCreateDrawer();
 
     await userEvent.type(
       await screen.findByLabelText(/Bot Token/i),

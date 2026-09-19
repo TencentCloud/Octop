@@ -401,6 +401,7 @@
     "INVITE_REVOKED": "This invite code has been revoked.",
     "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later.",
     "WORKSPACE_ROOT_RESTRICTED": "The selected storage root is outside the allowed directory for this account.",
+    "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({used}/{quota}).",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
@@ -535,7 +536,8 @@
     "stock-info": "Stock Info",
     "cvm-ai-doctor": "CVM AI Doctor",
     "tencentcloud-infra": "Tencent Cloud Infra",
-    "publisher-multi-platform": "Multi-platform Publisher"
+    "publisher-multi-platform": "Multi-platform Publisher",
+    "docker-management": "Docker Management"
   },
   "channel": {
     "tool_hint_start": "🔧 Calling tool: {tool_name}",

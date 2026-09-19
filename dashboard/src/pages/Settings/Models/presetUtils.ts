@@ -125,6 +125,52 @@ export function isLocalPreset(preset: ProviderPreset): boolean {
   return LOCAL_PRESET_IDS.has(preset.id);
 }
 
+/** Overseas / global cloud presets hidden behind "more providers" on admin Models. */
+const OVERSEAS_PRESET_IDS = new Set([
+  "openai",
+  "openai-codex",
+  "anthropic",
+  "gemini",
+  "groq",
+  "openrouter",
+]);
+
+export function isOverseasPreset(preset: ProviderPreset): boolean {
+  return OVERSEAS_PRESET_IDS.has(preset.id);
+}
+
+/**
+ * Split cloud presets into default-visible (domestic / already configured)
+ * and overseas presets shown only after "更多模型提供商".
+ */
+export function partitionCloudPresets(
+  cloudPresets: ProviderPreset[],
+  providers: ProviderRow[],
+): {
+  featured: { grouped: PresetGroup[]; ungrouped: ProviderPreset[] };
+  more: { grouped: PresetGroup[]; ungrouped: ProviderPreset[] };
+  moreCount: number;
+} {
+  const featuredList: ProviderPreset[] = [];
+  const moreList: ProviderPreset[] = [];
+  for (const preset of cloudPresets) {
+    if (
+      !isOverseasPreset(preset) ||
+      findConfiguredProvider(preset, providers)
+    ) {
+      featuredList.push(preset);
+    } else {
+      moreList.push(preset);
+    }
+  }
+  const featured = groupPresets(featuredList);
+  const more = groupPresets(moreList);
+  const moreCount =
+    more.grouped.reduce((n, g) => n + g.presets.length, 0) +
+    more.ungrouped.length;
+  return { featured, more, moreCount };
+}
+
 /** Local providers that do not require a real API key. */
 export function isLocalNoKeyPresetId(presetId: string): boolean {
   return presetId === "ollama" || presetId === "onnx";

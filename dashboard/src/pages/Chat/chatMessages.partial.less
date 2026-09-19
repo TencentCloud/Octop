@@ -184,7 +184,8 @@
 }
 
 /* ---------- Message bubbles ---------- */
-/* 3 columns: expert avatar | composer-aligned text | user avatar */
+/* Desktop: 3 columns — expert avatar | composer-aligned text | user avatar.
+   Mobile (≤767): only the active side keeps a slot (see overrides below). */
 .chatMsgColumns() {
   display: grid;
   grid-template-columns:
@@ -400,10 +401,6 @@
 
   &:hover .msgCopyBtn {
     opacity: 1;
-  }
-
-  @media (max-width: 767px) {
-    max-width: min(95%, calc(100vw - 60px));
   }
 }
 
@@ -807,11 +804,67 @@
   }
 }
 
+/* Mobile: drop the unused opposite avatar track so the text column gains ~44px.
+   Two-column grids (not 0-width third tracks) so row `gap` does not still reserve space.
+   Placed after all `.chatMsgColumns()` call sites so these overrides win the cascade.
+   Keep column-gap: 0 so thinking / tools / answer share the same content left edge
+   (themeOverrides used to set .messageBubble { gap: 10px } only on reply rows). */
+@media (max-width: 767px) {
+  .assistantBubble,
+  .processSummaryRow,
+  .turnInset {
+    grid-template-columns: var(--chat-msg-avatar-slot, 44px) minmax(0, 1fr);
+    column-gap: 0;
+
+    .avatarCol {
+      grid-column: 1;
+    }
+
+    .bubbleContent,
+    .processSummary {
+      grid-column: 2;
+      justify-self: stretch;
+      width: 100%;
+      min-width: 0;
+    }
+  }
+
+  .assistantBubble {
+    /* Beat themeOverrides `.messageBubble { gap: 10px }` — that gap only on the
+       answer row shifted it right of the thinking box by 10px. */
+    gap: 0;
+  }
+
+  .turnInset > * {
+    grid-column: 2;
+  }
+
+  .userBubble {
+    grid-template-columns: minmax(0, 1fr) var(--chat-msg-avatar-slot, 44px);
+
+    .bubbleContent {
+      grid-column: 1;
+    }
+
+    .avatarCol {
+      grid-column: 2;
+    }
+  }
+
+  .userBubbleWithTags {
+    .userComposerTags {
+      grid-column: 1;
+    }
+  }
+}
+
 .processSummary {
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
   align-items: stretch;
+  width: 100%;
   max-width: 100%;
+  box-sizing: border-box;
   padding: 8px 12px;
   border-radius: 10px;
   border: none;

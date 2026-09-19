@@ -7,6 +7,7 @@ from octop.i18n.domains.stream import (
     RECURSION_LIMIT,
     STREAM_STALL,
     classify_stream_error_message,
+    exception_display_message,
     format_stream_error,
     stream_error_message,
 )
@@ -140,3 +141,22 @@ def test_format_stream_error_unknown_falls_back_to_localized() -> None:
     text = format_stream_error("disk full", "en")
     assert "disk full" not in text
     assert "model call failed" in text
+
+
+def test_exception_display_message_empty_falls_back_to_type() -> None:
+    assert exception_display_message(TimeoutError()) == "TimeoutError"
+    assert exception_display_message(RuntimeError()) == "RuntimeError"
+    assert exception_display_message(ConnectionError()) == "ConnectionError"
+    assert exception_display_message(OSError()) == "OSError"
+    assert exception_display_message(TimeoutError("timed out")) == "timed out"
+    assert exception_display_message("") == "unknown error"
+
+    wrapped = RuntimeError()
+    wrapped.__cause__ = ConnectionError()
+    assert exception_display_message(wrapped) == "RuntimeError <- ConnectionError"
+
+
+def test_format_stream_error_empty_exception_still_localized() -> None:
+    text = format_stream_error(TimeoutError(), "zh")
+    assert text
+    assert "模型调用" in text

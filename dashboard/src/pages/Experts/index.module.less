@@ -373,6 +373,15 @@
   overflow: hidden;
 }
 
+.agentCardPortrait {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--fn-border, #e2e8f0) 80%, transparent);
+}
+
 .agentCardTitleBlock {
   flex: 1;
   min-width: 0;
@@ -426,10 +435,13 @@
   color: var(--fn-text-secondary);
   line-height: 1.5;
   min-height: 2.4em;
+  max-height: 3em;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .agentCardErrorWrap {

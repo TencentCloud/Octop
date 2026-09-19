@@ -401,6 +401,7 @@
     "INVITE_REVOKED": "该邀请码已被撤销。",
     "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。",
     "WORKSPACE_ROOT_RESTRICTED": "所选存储根目录超出了该账号允许的范围。",
+    "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "容器环境下不能设置「允许的存储根目录」。",
     "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{used}/{quota}）。",
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
     "CAPTCHA_FAILED": "验证码校验失败，请重试。",
@@ -535,7 +536,8 @@
     "stock-info": "股票信息",
     "cvm-ai-doctor": "CVM AI 诊断",
     "tencentcloud-infra": "腾讯云基础设施",
-    "publisher-multi-platform": "多平台发布"
+    "publisher-multi-platform": "多平台发布",
+    "docker-management": "Docker 管理"
   },
   "channel": {
     "tool_hint_start": "🔧 正在调用工具：{tool_name}",
@@ -586,7 +588,7 @@
     }
   },
   "agent_errors": {
-    "no_models_configured": "未配置可用模型，请前往「设置 → 模型」配置 Provider，然后重新启用此专家。",
+    "no_models_configured": "未配置可用模型，请前往「设置 → 模型」配置模型，然后重新启用此专家。",
     "model_ref_unavailable": "默认模型不可用或已禁用，请检查「设置 → 模型」或修改此专家的默认模型后重试。"
   },
   "stream_errors": {

@@ -32,7 +32,7 @@ function skill(over: Partial<SkillSpec> = {}): SkillSpec {
 }
 
 describe("useSlashMentionInput skills", () => {
-  it("lists enabled skills as /slug items and skips reserved slash names", () => {
+  it("lists enabled skills with friendly labels and skips reserved slash names", () => {
     const { result } = renderHook(() =>
       useSlashMentionInput({
         text: "",
@@ -58,12 +58,13 @@ describe("useSlashMentionInput skills", () => {
 
     expect(result.current.slashMenuItems.map((item) => item.command)).toEqual([
       "/stop",
-      "/web-search",
+      "✦ Web Search",
     ]);
     const skillItem = result.current.slashMenuItems.find(
-      (item) => item.command === "/web-search",
+      (item) => item.spec.name === "web-search",
     );
-    expect(skillItem?.spec.usage).toBe("/web-search <task>");
+    expect(skillItem?.label).toBe("Web Search");
+    expect(skillItem?.spec.usage).toBe("✦ Web Search <task>");
     expect(skillItem?.spec.category).toBe("skills");
   });
 });

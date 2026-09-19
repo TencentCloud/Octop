@@ -66,7 +66,10 @@ from octop.infra.db.repos.audit import ACTOR_SYSTEM
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.skills.presentation import apply_skill_presentation, localize_skill_summary
 from octop.infra.skills.skill_package_store import SkillPackageStore
-from octop.infra.skills.workspace_catalog import list_workspace_skill_summaries
+from octop.infra.skills.workspace_catalog import (
+    list_workspace_skill_summaries,
+    repair_workspace_skill_manifests,
+)
 from octop.infra.utils.locale import Locale
 from octop.infra.utils.ulid import new_short_id
 
@@ -1993,21 +1996,65 @@ class AgentManager:
 
         agent = self.get_agent(agent_id)
         cfg = self.get_config(agent_id)
+        workspace_dir = self.resolve_workspace_dir(agent_id)
+        repaired = repair_workspace_skill_manifests(workspace_dir)
+        if repaired:
+            logger.warning(
+                "repaired invalid UTF-8 skill manifests for agent %s: %s",
+                agent_id,
+                ", ".join(repaired),
+            )
+
         try:
             harness_rows = list(await agent.list_skill_summaries())
-        except (OSError, PermissionError) as exc:
+        except (OSError, PermissionError, UnicodeDecodeError, UnicodeError) as exc:
             logger.warning(
                 "harness list_skill_summaries failed for agent %s; using workspace fallback: %s",
                 agent_id,
                 exc,
             )
-            harness_rows = []
-            workspace_dir = self.resolve_workspace_dir(agent_id)
-            harness_rows.extend(
-                list_workspace_skill_summaries(
-                    workspace_dir,
-                    skills_disabled=skills_disabled_set(cfg),
-                )
+            harness_rows = list_workspace_skill_summaries(
+                workspace_dir,
+                skills_disabled=skills_disabled_set(cfg),
+            )
+        except ExceptionGroup as exc:
+            # Starlette/anyio may wrap a single UnicodeDecodeError in a group.
+            if not any(
+                isinstance(inner, (OSError, PermissionError, UnicodeDecodeError, UnicodeError))
+                for inner in exc.exceptions
+            ):
+                raise
+            logger.warning(
+                "harness list_skill_summaries failed for agent %s; using workspace fallback: %s",
+                agent_id,
+                exc,
+            )
+            harness_rows = list_workspace_skill_summaries(
+                workspace_dir,
+                skills_disabled=skills_disabled_set(cfg),
+            )
+        # Surface unrepairable manifests that harness silently skipped.
+        present = {
+            str(row.get("slug") or "").strip()
+            for row in harness_rows
+            if str(row.get("slug") or "").strip()
+        }
+        for row in list_workspace_skill_summaries(
+            workspace_dir,
+            skills_disabled=skills_disabled_set(cfg),
+            include_corrupt=True,
+        ):
+            if not row.get("corrupt"):
+                continue
+            slug = str(row.get("slug") or "").strip()
+            if not slug or slug in present:
+                continue
+            harness_rows.append(row)
+            logger.warning(
+                "agent %s skill %s skipped: %s",
+                agent_id,
+                slug,
+                row.get("error") or "corrupt",
             )
         from harness_agent.skills import catalog as harness_skill_catalog  # noqa: PLC0415
 

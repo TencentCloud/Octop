@@ -251,6 +251,7 @@ def _summary_dict(s: Any) -> dict[str, Any]:
             "en": s.welcome_message_en,
         },
         "icon_name": s.icon_name,
+        "icon_url": getattr(s, "icon_url", None),
         "color": s.color,
         "quick_prompts": [_quick_prompt_dict(p) for p in getattr(s, "quick_prompts", ())],
         "task_examples": getattr(s, "task_examples", None),

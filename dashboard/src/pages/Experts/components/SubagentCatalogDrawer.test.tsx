@@ -7,13 +7,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("./CatalogDrawer", () => ({
-  default: ({
-    children,
-    title,
-  }: {
-    children: ReactNode;
-    title: string;
-  }) => (
+  default: ({ children, title }: { children: ReactNode; title: string }) => (
     <div data-testid="catalog-drawer" data-title={title}>
       {children}
     </div>
@@ -24,7 +18,12 @@ const managerProps = vi.fn();
 vi.mock("./SubagentManager", () => ({
   default: (props: { fillHeight?: boolean }) => {
     managerProps(props);
-    return <div data-testid="subagent-manager" data-fill-height={String(!!props.fillHeight)} />;
+    return (
+      <div
+        data-testid="subagent-manager"
+        data-fill-height={String(!!props.fillHeight)}
+      />
+    );
   },
 }));
 
@@ -36,7 +35,7 @@ describe("SubagentCatalogDrawer", () => {
   });
 
   it("enables fillHeight so the catalog can scroll on desktop (#136)", () => {
-    render(
+    const { container } = render(
       <SubagentCatalogDrawer
         agentId="ag_1"
         agentState="running"
@@ -54,5 +53,15 @@ describe("SubagentCatalogDrawer", () => {
     expect(managerProps).toHaveBeenCalledWith(
       expect.objectContaining({ fillHeight: true }),
     );
+    // Scroll shell must be a flex column with overflow:hidden so the
+    // fillHeight child is height-bounded (nested overflow:auto alone breaks wheel).
+    const shell = container.querySelector(
+      "[data-testid='catalog-drawer'] > div",
+    ) as HTMLElement | null;
+    expect(shell).not.toBeNull();
+    expect(shell!.style.display).toBe("flex");
+    expect(shell!.style.flexDirection).toBe("column");
+    expect(shell!.style.overflow).toBe("hidden");
+    expect(shell!.style.minHeight).toMatch(/^0(px)?$/);
   });
 });

@@ -34,6 +34,72 @@ WORKSPACE_MANIFEST_PATH = f"{DEFAULT_SYSTEM_FILES_PATH}/{MANIFEST_FILENAME}"
 # Prefer system path; keep root ``manifest.json`` readable for pre-migration agents.
 _WORKSPACE_MANIFEST_READ_PATHS = (WORKSPACE_MANIFEST_PATH, MANIFEST_FILENAME)
 
+# Bundled illustrated portraits live in the dashboard public assets tree.
+_BUILTIN_AVATAR_URL_TEMPLATE = "/experts/avatars/{expert_id}.svg"
+
+# Fallback when the dashboard avatars directory is not on disk (packaged installs).
+_FALLBACK_BUNDLED_AVATAR_IDS = frozenset(
+    {
+        "ai-coding-coach",
+        "ai-safety-guardian",
+        "clinical-learning-subscription",
+        "cvm-ai-doctor",
+        "cvm-cluster-doctor",
+        "default",
+        "general-assistant",
+        "karpathy-knowledge-base",
+        "meituan-living-assistant",
+        "multi-agent-orchestrator",
+        "news-trend",
+        "office-automation",
+        "ops-engineer",
+        "parenting-companion",
+        "stock-assistant",
+        "superpowers-methodology",
+        "tencentcloud-api",
+        "wechat-ops",
+        "scene-academic",
+        "scene-content-creation",
+        "scene-data",
+        "scene-default",
+        "scene-design",
+        "scene-ecommerce",
+        "scene-education",
+        "scene-finance",
+        "scene-healthcare",
+        "scene-hr",
+        "scene-legal",
+        "scene-lifestyle",
+        "scene-marketing",
+        "scene-media",
+        "scene-mysticism",
+        "scene-office",
+        "scene-tech",
+    }
+)
+
+
+def bundled_avatars_dir() -> Path | None:
+    """Locate ``dashboard/public/experts/avatars`` relative to this package."""
+    # catalog.py → experts → agents → infra → octop → src → Octop/
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "dashboard" / "public" / "experts" / "avatars"
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def discover_bundled_avatar_ids(avatars_dir: Path | None = None) -> frozenset[str]:
+    """Single source of truth: SVG basenames under the public avatars tree."""
+    root = avatars_dir if avatars_dir is not None else bundled_avatars_dir()
+    if root is None or not root.is_dir():
+        return _FALLBACK_BUNDLED_AVATAR_IDS
+    ids = {path.stem for path in root.glob("*.svg") if path.is_file()}
+    return frozenset(ids) if ids else _FALLBACK_BUNDLED_AVATAR_IDS
+
+
+_BUNDLED_AVATAR_IDS = discover_bundled_avatar_ids()
+
 
 @dataclass(frozen=True)
 class ExpertQuickPrompt:
@@ -61,6 +127,7 @@ class ExpertSummary:
     welcome_message_zh: str = ""
     welcome_message_en: str = ""
     icon_name: str | None = None
+    icon_url: str | None = None
     color: str | None = None
     quick_prompts: tuple[ExpertQuickPrompt, ...] = ()
     task_examples: dict[str, list[str]] | None = None
@@ -327,6 +394,72 @@ def read_text_file_contents(expert_dir: Path, paths: list[str]) -> list[dict[str
     return out
 
 
+def builtin_expert_avatar_url(expert_id: str) -> str:
+    """Public dashboard URL for a bundled expert portrait."""
+    return _BUILTIN_AVATAR_URL_TEMPLATE.format(expert_id=expert_id)
+
+
+def scene_expert_avatar_url(scene: str | None) -> str | None:
+    """Portrait URL for a SkillHub scene, or None when no bundled art exists."""
+    key = f"scene-{(scene or '').strip().lower()}"
+    if key in _BUNDLED_AVATAR_IDS:
+        return builtin_expert_avatar_url(key)
+    if "scene-default" in _BUNDLED_AVATAR_IDS:
+        return builtin_expert_avatar_url("scene-default")
+    return None
+
+
+def _avatar_id_from_url(url: str) -> str | None:
+    text = url.strip()
+    prefix = "/experts/avatars/"
+    if not text.startswith(prefix) or not text.endswith(".svg"):
+        return None
+    return text[len(prefix) : -len(".svg")]
+
+
+def resolve_expert_icon_url(
+    expert_id: str,
+    manifest_icon_url: Any = None,
+    *,
+    scene: str | None = None,
+) -> str | None:
+    """Resolve a portrait URL only when the asset is known to exist.
+
+    SkillHub market templates reuse scene portraits; unknown ids do **not** get
+    a fabricated ``/experts/avatars/<id>.svg`` path (that 404s in the UI).
+    """
+    text = str(manifest_icon_url or "").strip()
+    if text:
+        avatar_id = _avatar_id_from_url(text)
+        if avatar_id is None:
+            return text  # external CDN / uploaded URL
+        if avatar_id in _BUNDLED_AVATAR_IDS:
+            return text
+        # Stale/missing bundled path — fall through to scene / builtin lookup.
+
+    if expert_id in _BUNDLED_AVATAR_IDS:
+        return builtin_expert_avatar_url(expert_id)
+
+    scene_url = scene_expert_avatar_url(scene)
+    if scene_url:
+        return scene_url
+    return None
+
+
+def _manifest_scene(data: dict[str, Any]) -> str | None:
+    source = data.get("source")
+    if isinstance(source, dict):
+        scene = str(source.get("scene") or "").strip()
+        if scene:
+            return scene
+    skillhub = data.get("skillhub")
+    if isinstance(skillhub, dict):
+        scene = str(skillhub.get("scene") or "").strip()
+        if scene:
+            return scene
+    return None
+
+
 def _read_manifest(path: Path) -> dict[str, Any] | None:
     try:
         return cast("dict[str, Any]", json.loads(path.read_text(encoding="utf-8")))
@@ -492,11 +625,13 @@ def snap_task_examples(
 
 
 class ExpertCatalog:
-    """Loads expert templates from a directory tree.
+    """Loads expert templates from the primary library root.
 
-    Construction is cheap (it only validates the root); :meth:`refresh`
-    walks the directory and populates the in-memory cache. Tests can
-    point ``library_root`` at a fixture directory.
+    Optional ``extra_roots`` (typically ``expert_market/``) hold SkillHub
+    install caches. Those entries stay resolvable via :meth:`get` /
+    :meth:`expert_dir` for create flows, but :meth:`list_summaries` defaults to
+    **bundled** (primary-root) ids only so the library UI never mixes market
+    cache into the builtin tab.
     """
 
     def __init__(self, library_root: Path, extra_roots: list[Path] | None = None) -> None:
@@ -504,6 +639,7 @@ class ExpertCatalog:
         self._extra_roots = list(extra_roots or [])
         self._experts: dict[str, Expert] = {}
         self._expert_dirs: dict[str, Path] = {}
+        self._bundled_ids: set[str] = set()
 
     @property
     def root(self) -> Path:
@@ -515,6 +651,10 @@ class ExpertCatalog:
 
     def expert_dir(self, expert_id: str) -> Path:
         return self._expert_dirs.get(expert_id) or (self._root / expert_id)
+
+    def is_bundled(self, expert_id: str) -> bool:
+        """Return True when *expert_id* comes from the primary library root."""
+        return expert_id in self._bundled_ids
 
     def read_file_contents(
         self,
@@ -533,9 +673,14 @@ class ExpertCatalog:
         """Re-scan the library directory; quietly skip malformed entries."""
         out: dict[str, Expert] = {}
         dirs: dict[str, Path] = {}
+        bundled_ids: set[str] = set()
         for root in self.roots:
             if not root.exists():
                 continue
+            try:
+                from_primary = root.resolve() == self._root.resolve()
+            except OSError:
+                from_primary = root == self._root
             for entry in sorted(root.iterdir()):
                 if not entry.is_dir():
                     continue
@@ -557,10 +702,18 @@ class ExpertCatalog:
                     welcome_message_zh=_coerce_label(data.get("welcome_message"), "zh"),
                     welcome_message_en=_coerce_label(data.get("welcome_message"), "en"),
                     icon_name=data.get("icon_name"),
+                    icon_url=resolve_expert_icon_url(
+                        ex_id,
+                        data.get("icon_url"),
+                        scene=_manifest_scene(data),
+                    ),
                     color=data.get("color"),
                     quick_prompts=_parse_quick_prompts(data),
                     task_examples=normalize_task_examples_for_display(parse_task_examples(data)),
                 )
+                # Primary library wins on id collision; market cache fills gaps.
+                if ex_id in out and not from_primary:
+                    continue
                 out[ex_id] = Expert(
                     summary=summary,
                     files=seed_paths,
@@ -568,12 +721,33 @@ class ExpertCatalog:
                     quick_prompts=summary.quick_prompts,
                 )
                 dirs[ex_id] = entry
+                if from_primary:
+                    bundled_ids.add(ex_id)
         self._experts = out
         self._expert_dirs = dirs
-        logger.info("expert catalog loaded: %d templates", len(out))
+        self._bundled_ids = bundled_ids
+        logger.info(
+            "expert catalog loaded: %d templates (%d bundled)",
+            len(out),
+            len(bundled_ids),
+        )
 
-    def list_summaries(self) -> list[ExpertSummary]:
-        summaries = [e.summary for e in self._experts.values() if e.summary.id != "default"]
+    def list_summaries(self, *, include_market_cache: bool = False) -> list[ExpertSummary]:
+        """Return expert cards for the library UI.
+
+        By default only **bundled** templates (primary library root) are listed.
+        SkillHub installs are cached under ``expert_market/`` for create/install,
+        but they belong in the market tab (``/experts/hub``), not the builtin
+        library tab.
+        """
+        summaries: list[ExpertSummary] = []
+        for expert in self._experts.values():
+            ex_id = expert.summary.id
+            if ex_id == "default":
+                continue
+            if not include_market_cache and ex_id not in self._bundled_ids:
+                continue
+            summaries.append(expert.summary)
         summaries.sort(key=lambda s: (0 if s.id == "general-assistant" else 1, s.id))
         return summaries
 
@@ -670,7 +844,7 @@ def build_create_spec_from_expert(
         icon=icon,
         template_name=expert_id,
         icon_name=icon_name or extra_icon_name or expert.summary.icon_name,
-        icon_url=icon_url or extra_icon_url,
+        icon_url=icon_url or extra_icon_url or expert.summary.icon_url,
         color=color or extra_color or expert.summary.color,
         skill_package_ids=skill_package_ids,
         knowledge_base_ids=knowledge_base_ids,
