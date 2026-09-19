@@ -10,14 +10,14 @@ export function isNetworkFetchError(error: unknown): boolean {
     error instanceof Error
       ? error.name
       : error && typeof error === "object" && "name" in error
-        ? String((error as { name: unknown }).name)
-        : "";
+      ? String((error as { name: unknown }).name)
+      : "";
   const message =
     error instanceof Error
       ? error.message
       : typeof error === "string"
-        ? error
-        : String(error ?? "");
+      ? error
+      : String(error ?? "");
   if (
     /failed to fetch|networkerror|network request failed|load failed|err_network|err_internet_disconnected|err_connection|econnrefused|enotfound/i.test(
       message,
