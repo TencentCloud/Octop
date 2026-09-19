@@ -549,9 +549,7 @@ export default function SessionList({
 
   const expandedAgentId = useMemo(
     () =>
-      viewingHidden
-        ? null
-        : activeAgentId ?? sortedAgents[0]?.agent_id ?? null,
+      viewingHidden ? null : activeAgentId ?? sortedAgents[0]?.agent_id ?? null,
     [activeAgentId, sortedAgents, viewingHidden],
   );
   const activeAgent = useMemo(

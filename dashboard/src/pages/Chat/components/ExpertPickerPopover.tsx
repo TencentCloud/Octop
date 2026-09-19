@@ -120,14 +120,10 @@ export default function ExpertPickerPopover({
                 type="button"
                 className={styles.expertHideBtn}
                 title={
-                  viewingHidden
-                    ? t("chat.expertUnhide")
-                    : t("chat.expertHide")
+                  viewingHidden ? t("chat.expertUnhide") : t("chat.expertHide")
                 }
                 aria-label={
-                  viewingHidden
-                    ? t("chat.expertUnhide")
-                    : t("chat.expertHide")
+                  viewingHidden ? t("chat.expertUnhide") : t("chat.expertHide")
                 }
                 onClick={(e) => {
                   e.stopPropagation();
