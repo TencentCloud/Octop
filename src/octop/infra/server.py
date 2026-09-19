@@ -42,6 +42,16 @@ logger = logging.getLogger(__name__)
 DEFAULT_LOG_MAX_BYTES = 100 * 1024 * 1024
 DEFAULT_LOG_RETENTION_DAYS = 14
 
+# Third-party loggers capped at WARNING unless Octop itself runs at DEBUG.
+#   httpx / httpcore: log full request URLs at INFO, leaking query-string secrets
+#     (OAuth access_token, corpsecret) into the log file.
+#   mcp.client.streamable_http: servers that advertise "no server->client SSE" by
+#     answering GET with 405 (e.g. GitHub Copilot MCP) make the SDK retry and log
+#     "GET stream disconnected, reconnecting in 1000ms..." plus a session ID per
+#     connect -- spec-conformant behaviour that reads like a network fault. Real
+#     failures in that module are logged at WARNING or above.
+QUIET_LOGGERS = ("httpx", "httpcore", "mcp.client.streamable_http")
+
 
 class SizeTimedRotatingFileHandler(TimedRotatingFileHandler):
     """Daily rotation with an optional per-file byte cap (whichever triggers first)."""
@@ -577,10 +587,8 @@ class OctopServer:
         level = os.environ.get("OCTOP_LOG_LEVEL", "info").upper()
         root.setLevel(getattr(logging, level, logging.INFO))
         if root.level > logging.DEBUG:
-            # httpx logs full request URLs at INFO, leaking query-string
-            # secrets (OAuth access_token, corpsecret) into the log file.
-            logging.getLogger("httpx").setLevel(logging.WARNING)
-            logging.getLogger("httpcore").setLevel(logging.WARNING)
+            for name in QUIET_LOGGERS:
+                logging.getLogger(name).setLevel(logging.WARNING)
 
     def _ensure_jwt_secret(self) -> None:
         assert self.services is not None
