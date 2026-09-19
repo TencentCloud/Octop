@@ -69,7 +69,14 @@ def build_trigger(spec: str) -> BaseTrigger:
         raise OctopError(ErrorCode.CRON_TRIGGER_INVALID, f"trigger value empty: {spec!r}")
     try:
         if kind == "interval":
-            return IntervalTrigger(seconds=int(value))
+            seconds = int(value)
+            # A non-positive interval is a hot loop: the computed fire time stays
+            # in the past (or at the current instant) forever, so the job runs
+            # back-to-back without waiting. Reject it like the invalid weekdays
+            # below instead of letting it spin.
+            if seconds <= 0:
+                raise ValueError(f"interval seconds must be a positive integer, got {seconds}")
+            return IntervalTrigger(seconds=seconds)
         if kind == "cron":
             return _cron_trigger_from_unix_crontab(value)
         if kind == "date":
