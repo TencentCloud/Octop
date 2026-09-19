@@ -21,7 +21,15 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
-    "orcakit-harness-agent[all]>=1.0.11",
+    # Deliberately NOT ``[all]``: that extra also pulls ``deepagents-backends``
+    # (see ``[remote-backends]``), whose S3 backend still targets the deepagents
+    # 0.5/0.6 protocol — it builds ``WriteResult(files_update=...)`` and only
+    # implements the removed ``ls_info`` / ``glob_info`` / ``grep_raw`` names.
+    # Under deepagents 0.7 every S3 write/edit fails and ``ls`` raises
+    # NotImplementedError, so harness ``_build_s3`` could never reach its own
+    # boto3 fallback. Listing the narrower extras keeps every other capability
+    # while leaving that package out; see issue #780.
+    "orcakit-harness-agent[acp,desktop,docker,object-storage,observability,web-search-all]>=1.0.11",
     "harness-memory>=0.9.10",
     "lark-oapi>=1.7.3",
     "harness-gateway>=0.9.8",
