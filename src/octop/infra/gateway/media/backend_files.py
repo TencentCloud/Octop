@@ -357,7 +357,12 @@ def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
         pass
 
     if "/.octop/agents/" in norm:
-        return True
+        # 2026-09-07 修复：原对任意 /.octop/agents/ 路径放行（不校验归属），
+        # 多用户/共享 agent 场景下可跨 agent 读他人工作区。收窄为当前 agent
+        # 自身 workspace 前缀（workspace 内部已由上方 relative_to 覆盖，此分支
+        # 只是兜底同前缀场景）；其他 agent 目录显式拒绝。
+        ws_norm = str(workspace.resolve()).replace("\\", "/").lower()
+        return norm == ws_norm or norm.startswith(ws_norm.rstrip("/") + "/")
     if is_allowed_host_temp_path(resolved):
         return True
 
