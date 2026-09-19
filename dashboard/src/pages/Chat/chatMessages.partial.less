@@ -146,7 +146,7 @@
 .messageListInner {
   overflow-anchor: none;
   --chat-column-max: 960px;
-  --chat-msg-avatar-slot: 44px;
+  --chat-msg-avatar-slot: 48px;
   /* Full list width; each row centers a 960px text track + avatar gutters
      so history and live turns share the same column as the composer. */
   box-sizing: border-box;
@@ -154,6 +154,12 @@
   min-width: 280px;
   margin: 0 auto;
   padding-inline: var(--chat-column-pad-x, 24px);
+
+  @media (max-width: 767px) {
+    --chat-column-pad-x: var(--chat-column-pad-x-narrow, 12px);
+    --chat-msg-avatar-slot: 36px;
+    --chat-msg-gutter: var(--chat-column-pad-x-narrow, 12px);
+  }
 }
 
 .messageListLoading {
@@ -189,8 +195,9 @@
 .chatMsgColumns() {
   display: grid;
   grid-template-columns:
-    var(--chat-msg-avatar-slot, 44px) minmax(0, var(--chat-column-max, 960px))
-    var(--chat-msg-avatar-slot, 44px);
+    var(--chat-msg-avatar-slot, 48px) minmax(0, var(--chat-column-max, 960px))
+    var(--chat-msg-avatar-slot, 48px);
+  column-gap: var(--chat-msg-gutter, 0px);
   justify-content: center;
   width: 100%;
 }
@@ -869,6 +876,31 @@
   border-radius: 10px;
   border: none;
   background: rgba(15, 23, 42, 0.025);
+}
+
+/* Mobile: same gutter on every row, assistant copy uses the empty right
+   avatar slot so replies are not a narrow center column. */
+@media (max-width: 767px) {
+  .messageList {
+    scrollbar-gutter: auto;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      width: 0;
+      display: none;
+    }
+  }
+
+  .assistantBubble .bubbleContent,
+  .processSummaryRow .processSummary,
+  .turnInset > * {
+    grid-column: 2 / -1;
+  }
+
+  .processSummary {
+    /* Match .assistantText inline padding so the fold lines up with the card. */
+    padding-inline: 14px;
+  }
 }
 
 .pinnedToolResults {

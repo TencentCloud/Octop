@@ -647,7 +647,7 @@
   position: relative;
   z-index: 1;
   padding-top: 10px;
-  padding-inline: 20px;
+  padding-inline: var(--chat-column-pad-x, 32px);
   padding-bottom: 18px;
   background: var(--fn-bg-elevated, #fff);
 
@@ -665,7 +665,7 @@
   position: relative;
   z-index: 1;
   max-width: 960px;
-  width: calc(100% - 48px);
+  width: calc(100% - 2 * var(--chat-column-pad-x, 32px));
   margin: 0 auto 8px;
   font-size: 12px;
   box-sizing: border-box;
@@ -748,7 +748,7 @@
 .aiDisclaimer {
   max-width: 960px;
   margin: 8px auto 0;
-  width: calc(100% - 48px);
+  width: calc(100% - 2 * var(--chat-column-pad-x, 32px));
 }
 
 .messageImages,
