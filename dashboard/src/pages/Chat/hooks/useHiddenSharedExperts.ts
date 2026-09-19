@@ -50,9 +50,7 @@ export function useHiddenSharedExperts() {
       options?: { keepAgentIds?: Iterable<string> },
     ): T[] => {
       const keep = new Set(
-        options?.keepAgentIds
-          ? [...options.keepAgentIds].filter(Boolean)
-          : [],
+        options?.keepAgentIds ? [...options.keepAgentIds].filter(Boolean) : [],
       );
       return agents.filter((agent) => {
         if (!isSharedExpertViewer(agent)) return true;
@@ -66,8 +64,7 @@ export function useHiddenSharedExperts() {
   const pickHidden = useCallback(
     <T extends ExpertLike>(agents: T[]): T[] =>
       agents.filter(
-        (agent) =>
-          isSharedExpertViewer(agent) && hiddenIds.has(agent.agent_id),
+        (agent) => isSharedExpertViewer(agent) && hiddenIds.has(agent.agent_id),
       ),
     [hiddenIds],
   );
@@ -87,14 +84,6 @@ export function useHiddenSharedExperts() {
       pickHidden,
       canHide,
     }),
-    [
-      hiddenIds,
-      hide,
-      unhide,
-      isHidden,
-      filterVisible,
-      pickHidden,
-      canHide,
-    ],
+    [hiddenIds, hide, unhide, isHidden, filterVisible, pickHidden, canHide],
   );
 }
