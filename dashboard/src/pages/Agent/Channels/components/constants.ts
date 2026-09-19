@@ -397,6 +397,21 @@ export const CHANNEL_DISPLAY_CONFIG_KEYS = [
   "c2c_streaming",
 ] as const;
 
+/**
+ * Form-level fields that live outside the channel ``config`` blob.
+ *
+ * They must never be written into ``config`` nor read back out of it. Older
+ * saves leaked the enable switch into ``config``; on reopen the stringified
+ * copy then overwrote the real boolean form value, so the switch showed the
+ * wrong state and the next save persisted that wrong state (#774).
+ */
+export const CHANNEL_FORM_RESERVED_KEYS = [
+  "kind",
+  "name",
+  "enabled",
+  "__raw_config",
+] as const;
+
 /** Default per-channel display settings (harness-gateway ChannelConfig). */
 export const DEFAULT_CHANNEL_DISPLAY_CONFIG = {
   response_mode: "stream" as const,
