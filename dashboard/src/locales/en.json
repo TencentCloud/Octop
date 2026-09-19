@@ -1223,10 +1223,11 @@
     "sessionWorking": "Working",
     "composerContextLabel": "Message context",
     "contextWindow": {
-      "tooltip": "Context {{used}} / {{max}} · {{percent}}% (last model request)",
+      "tooltip": "Context snapshot {{used}} / {{max}} · {{percent}}% (limit supplied by configuration or runtime)",
+      "unavailableTooltip": "No reliable context snapshot (limit {{max}} supplied by configuration or runtime)",
       "breakdownTitle": "Context Usage",
       "breakdownPercent": "{{percent}}% Full",
-      "breakdownHint": "Shows current context-window occupancy, not this turn’s billed total.",
+      "breakdownHint": "This is a context snapshot. Its limit comes from configuration or runtime, not necessarily the provider's physical window.",
       "segments": {
         "system_prompt": "System prompt",
         "tool_definitions": "Tool definitions",
