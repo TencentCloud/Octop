@@ -85,11 +85,14 @@ describe("<ChannelsPanel /> create-flow default", () => {
     const [, init] = api.mock.calls.find(
       ([, i]) => (i as RequestInit | undefined)?.method === "POST",
     ) as [string, RequestInit];
-    expect(JSON.parse(String(init.body))).toEqual({
+    const body = JSON.parse(String(init.body));
+    expect(body).toEqual({
       kind: "telegram",
       name: "telegram",
       config: expect.objectContaining({ bot_token: "123456:ABC-token" }),
     });
+    // Regression: the enable toggle must live at the top level, never inside config (#774)
+    expect(body.config).not.toHaveProperty("enabled");
   });
 
   it("still honors a deliberate opt-out: unchecking fires the alignment PATCH", async () => {
