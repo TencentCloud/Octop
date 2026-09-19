@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 修复
+
+- 移除失效的 `make docs-cli` 目标，并修正 AGENTS.md / desktop/portable/README.md 中指向不存在文件的引用
+
 ## [1.0.1] - 2026-09-18
 
 ### 新增
