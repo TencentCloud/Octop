@@ -123,12 +123,19 @@ async def test_real_graph_refreshes_identity_without_persisting_it_as_history() 
     await graph.ainvoke({"messages": [HumanMessage(content="Next member")]}, config=_config("bob"))
     assert '"id": "bob"' in model.seen[-1][0].text
     assert "alice" not in model.seen[-1][0].text
-    result = await graph.ainvoke(
+    await graph.ainvoke(
         {"messages": [HumanMessage(content="I am still on WeCom")]},
         config=_config(channel_type="dashboard"),
     )
     assert '"channel_type": "dashboard"' in model.seen[-1][0].text
     assert '"sender": null' in model.seen[-1][0].text
     assert "bob" not in model.seen[-1][0].text
+    result = await graph.ainvoke(
+        {"messages": [HumanMessage(content="Direct call without gateway context")]},
+        config={"configurable": {"thread_id": "thread-1"}},
+    )
+    assert "null" in model.seen[-1][0].text
+    assert "wecom-1" not in model.seen[-1][0].text
+    assert '"channel_type"' not in model.seen[-1][0].text
     assert all(not isinstance(message, SystemMessage) for message in result["messages"])
     assert not any('"namespace": "wecom:' in message.text for message in result["messages"])

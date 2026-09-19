@@ -92,18 +92,25 @@ async def test_im_call_merges_default_open_mcp_servers(wecom_sender) -> None:
     )
     agent_manager.prepare_chat_mcp.assert_awaited_once()
     assert captured["request"]["mcp_servers"] == ["docs__1"]
+    request = captured["request"]
+    context = request["configurable"][INBOUND_CONTEXT_KEY]
+    assert request["source"] == f"{msg.channel_type}/{msg.channel_id}"
+    assert request["user"] == "7"
+    assert context["channel_type"] == msg.channel_type
+    assert context["channel_id"] == msg.channel_id
+    assert context["octop_user_id"] == 7
     if wecom_sender is not None:
-        request = captured["request"]
-        assert request["source"] == "wecom/wecom-1"
-        assert request["user"] == "7"
-        assert request["configurable"][INBOUND_CONTEXT_KEY]["sender"] == {
+        assert context["sender"] == {
             "namespace": "wecom:wecom-1",
             "id": wecom_sender,
         }
+    else:
+        assert context["sender"] is None
 
 
 @pytest.mark.asyncio
-async def test_dashboard_request_trusts_explicit_opt_out() -> None:
+@pytest.mark.parametrize("channel_type", ["dashboard", "cli"])
+async def test_dashboard_request_trusts_explicit_opt_out(channel_type) -> None:
     """Dashboard mcp_servers=[] must not re-inject default_open connectors."""
     agent_manager = MagicMock()
     agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
@@ -133,7 +140,7 @@ async def test_dashboard_request_trusts_explicit_opt_out() -> None:
 
     msg = InboundMessage(
         channel_id="ws",
-        channel_type="dashboard",
+        channel_type=channel_type,
         tenant_id="agent-1",
         channel_subject=ChannelSubject(subject_id="1"),
         content=[TextContent(text="hi")],
@@ -148,7 +155,9 @@ async def test_dashboard_request_trusts_explicit_opt_out() -> None:
         meta=msg.metadata or {},
     )
     assert "mcp_servers" not in request
-    assert request["configurable"][INBOUND_CONTEXT_KEY]["channel_type"] == "dashboard"
+    assert request["source"] == f"{channel_type}/ws"
+    assert request["user"] == "1"
+    assert request["configurable"][INBOUND_CONTEXT_KEY]["channel_type"] == channel_type
     assert request["configurable"][INBOUND_CONTEXT_KEY]["sender"] is None
     agent_manager.merge_turn_mcp_servers.assert_called_once_with(
         1, [], apply_defaults=False, extra_defaults=[]

@@ -1,4 +1,9 @@
-"""Per-invocation identity facts from gateway adapters, separate from Octop ownership."""
+"""Per-invocation identity facts from gateway adapters, separate from Octop ownership.
+
+Contract: ``docs/inbound-context.md``. Gateway turns (including dashboard/CLI)
+populate the context; only WeCom can populate ``sender``. Direct harness calls
+may omit the context entirely. Neither context presence nor sender grants access.
+"""
 
 from __future__ import annotations
 

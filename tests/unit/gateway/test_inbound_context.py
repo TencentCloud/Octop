@@ -79,17 +79,35 @@ def test_incomplete_or_conflicting_adapter_identity_is_unknown(mutation) -> None
     assert build_inbound_context(msg, user_id=1, locale="en")["sender"] is None
 
 
-def test_dashboard_cannot_claim_wecom_sender_using_metadata() -> None:
+@pytest.mark.parametrize(
+    "channel_type",
+    [
+        "feishu",
+        "dingtalk",
+        "telegram",
+        "qq",
+        "slack",
+        "discord",
+        "wechat",
+        "dashboard",
+        "cli",
+        "unknown",
+    ],
+)
+def test_non_wecom_channels_cannot_claim_wecom_sender_using_metadata(channel_type) -> None:
     msg = _wecom_message()
-    msg.channel_type = "dashboard"
-    msg.channel_id = "octop-dashboard"
+    msg.channel_type = channel_type
+    msg.channel_id = f"{channel_type}-1"
     msg.metadata["channel_type"] = "wecom"
-    msg.metadata[INBOUND_CONTEXT_KEY] = {"channel_type": "wecom"}
+    msg.metadata[INBOUND_CONTEXT_KEY] = {
+        "channel_type": "wecom",
+        "sender": {"namespace": "wecom:wecom-1", "id": "admin"},
+    }
 
     context = build_inbound_context(msg, user_id=42, locale="en")
 
-    assert context["channel_type"] == "dashboard"
-    assert context["channel_id"] == "octop-dashboard"
+    assert context["channel_type"] == channel_type
+    assert context["channel_id"] == f"{channel_type}-1"
     assert context["octop_user_id"] == 42
     assert context["sender"] is None
 
@@ -121,6 +139,48 @@ def test_identity_survives_all_request_forms_and_harness_config(payload) -> None
     assert config["source"] == "wecom/wecom-1"
     assert config["session_key"] == "session-1"
     assert config["octop_reasoning_overrides"]["model_fields"]["reasoning_effort"] == "high"
+
+
+def test_wecom_sender_requires_channel_instance() -> None:
+    msg = _wecom_message()
+    msg.channel_id = ""
+
+    assert build_inbound_context(msg, user_id=1, locale="en")["sender"] is None
+
+
+def test_same_wecom_user_in_different_channel_instances_has_distinct_identity() -> None:
+    msg = _wecom_message()
+    first = build_inbound_context(msg, user_id=1, locale="en")
+    msg.channel_id = "wecom-2"
+    second = build_inbound_context(msg, user_id=1, locale="en")
+
+    assert first["sender"] == {"namespace": "wecom:wecom-1", "id": "alice"}
+    assert second["sender"] == {"namespace": "wecom:wecom-2", "id": "alice"}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"content": "hello"},
+        {"content": [{"type": "text", "text": "hello"}]},
+        {"messages": [{"role": "user", "content": "hello"}]},
+    ],
+)
+def test_direct_request_without_context_does_not_infer_sender_from_source_or_session(
+    payload,
+) -> None:
+    request = build_harness_request(
+        thread_id="thread-1",
+        user_id=1,
+        source="wecom/wecom-1",
+        session_key="agent-1:wecom:alice:dm",
+        **payload,
+    )
+    config = ChatRequest.coerce(request).to_runnable_config()["configurable"]
+
+    assert INBOUND_CONTEXT_KEY not in config
+    assert config["user"] == "1"
+    assert config["source"] == "wecom/wecom-1"
 
 
 def test_identity_snapshot_does_not_follow_later_adapter_mutations() -> None:
