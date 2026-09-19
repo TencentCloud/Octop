@@ -16,6 +16,15 @@ name: Build Octop FPK
 # Jobs：
 #   version → ensure-image → fpk（Docker 版 .fpk，仅打包 compose）
 #           ↘ native（本地版 .fpk）→ release（把 .fpk 挂到已有的 v* GitHub Release）
+#
+# 架构说明（issue #816）：
+#   本地版（native）的 site-packages 由 `uv pip install --target` 在 ubuntu-latest
+#   （x86_64）上现场编译，因此只含 x86_64 的二进制扩展。为此：
+#     - fnos/native/manifest 声明 platform=x86（不再谎报 all）；
+#     - 启动脚本在 ARM64 设备上会明确报错并引导改用容器版（见 scripts/fnos/common.sh
+#       的 octop_require_supported_arch）。
+#   要真正支持 ARM64，需在本工作流引入 ubuntu-24.04-arm 矩阵并为每个架构分别构建
+#   FPK——参考 .github/workflows/octop-desktop.yml 已有的 arm64 runner 用法。
 
 on:
   workflow_dispatch:
