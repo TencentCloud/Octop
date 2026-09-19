@@ -71,6 +71,40 @@ def test_is_local_runtime_provider() -> None:
     )
 
 
+def test_is_ollama_local_provider_url_heuristic() -> None:
+    from octop.infra.agents.providers.model_flags import is_ollama_local_provider
+
+    # Local runtimes: default port 11434, loopback/private/link-local hosts, and
+    # well-known local hostnames (including the docker service name ``ollama``).
+    for url in (
+        "http://127.0.0.1:11434",
+        "http://localhost:11434",
+        "http://ollama:11434",
+        "http://ollama",
+        "http://localhost",
+        "http://host.docker.internal",
+        "http://gateway.docker.internal",
+        "http://foo.local",
+        "http://192.168.1.10",
+        "http://10.0.0.2",
+    ):
+        assert is_ollama_local_provider(provider_base_url=url), url
+
+    # Cloud endpoints must NOT be treated as local just because the hostname
+    # contains "ollama" (regression for https://ollama.com/v1).
+    for url in (
+        "https://ollama.com/v1",
+        "https://www.ollama.com/v1",
+        "https://registry.ollama.com",
+        "https://api.openai.com/v1",
+        "https://proxy.example/v1",
+    ):
+        assert not is_ollama_local_provider(provider_base_url=url), url
+
+    assert not is_ollama_local_provider(provider_base_url=None)
+    assert not is_ollama_local_provider(provider_base_url="")
+
+
 def test_chat_eligible_excludes_embedding() -> None:
     assert is_chat_eligible_model({"id": "gpt", "enabled": True})
     assert not is_chat_eligible_model({"id": "emb", "enabled": True, "embedding": True})
