@@ -37,6 +37,7 @@ class ContextBreakdownResult:
     max_tokens: int
     used_tokens: int
     segments: dict[str, int]
+    available: bool = False
 
 
 def _empty_breakdown(*, max_tokens: int) -> ContextBreakdownResult:
@@ -53,16 +54,12 @@ def _usage_to_breakdown(usage: Any, *, fallback_max_tokens: int) -> ContextBreak
     segments = {key: int(raw_segments.get(key, 0) or 0) for key in SEGMENT_KEYS}
     used = int(getattr(usage, "used_tokens", 0) or 0)
     cap = int(getattr(usage, "max_tokens", fallback_max_tokens) or fallback_max_tokens or 128_000)
-    return ContextBreakdownResult(max_tokens=cap, used_tokens=used, segments=segments)
-
-
-def _from_stream_input_tokens(input_tokens: int, *, max_tokens: int) -> ContextBreakdownResult:
-    """Minimal fallback when harness has no persisted breakdown yet."""
-    cap = max_tokens if max_tokens > 0 else 128_000
-    used = min(max(0, input_tokens), cap)
-    segments = dict.fromkeys(SEGMENT_KEYS, 0)
-    segments["conversation"] = used
-    return ContextBreakdownResult(max_tokens=cap, used_tokens=used, segments=segments)
+    return ContextBreakdownResult(
+        max_tokens=cap,
+        used_tokens=used,
+        segments=segments,
+        available=True,
+    )
 
 
 def _usage_has_segments(usage: Any) -> bool:
@@ -200,14 +197,14 @@ async def compute_context_breakdown(
     skills: list[str] | None = None,
     usage_repo: Any | None = None,
 ) -> ContextBreakdownResult:
-    """Return a non-blocking context snapshot or a token-ledger fallback.
+    """Return a non-blocking live context snapshot when one is available.
 
     ``mcp_servers`` / ``skills`` are accepted for dashboard query compatibility
     but unused — the live harness snapshot already reflects the filtered request.
     This endpoint deliberately never falls back to checkpoint history: opening
     the context popover must not decode a multi-gigabyte legacy checkpoint.
     """
-    del mcp_servers, skills
+    del input_tokens, mcp_servers, skills, usage_repo
     row = registry.get_row(agent_id)
     if row is None:
         raise ValueError(f"agent {agent_id!r} not found")
@@ -234,21 +231,5 @@ async def compute_context_breakdown(
 
     if _usage_has_segments(usage):
         return _usage_to_breakdown(usage, fallback_max_tokens=max_tokens)
-
-    logged = 0
-    if usage_repo is not None:
-        last_fn = getattr(usage_repo, "last_thread_input_tokens", None)
-        if callable(last_fn):
-            try:
-                logged = _token_int(last_fn(agent_id=agent_id, thread_id=thread_id))
-            except Exception:
-                logger.debug(
-                    "usage_log fallback failed for thread=%s",
-                    thread_id,
-                    exc_info=True,
-                )
-    fallback = logged or _token_int(input_tokens)
-    if fallback:
-        return _from_stream_input_tokens(fallback, max_tokens=max_tokens)
 
     return _empty_breakdown(max_tokens=max_tokens)
