@@ -47,6 +47,32 @@ def test_session_upsert_and_get(repos):
     assert row.thread_id == "thr_1"
 
 
+def test_delete_by_thread_drops_only_matching_sessions(repos):
+    """`sessions.thread_id` has no FK onto `threads`, so it must be cleared by hand (#833)."""
+    sessions, threads = repos
+    sk_a = ThreadRegistry.make_key(agent_id="a1", channel_type="dashboard", channel_subject_id="1")
+    sk_b = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_1")
+    for tid, sk, channel in (("thr_a", sk_a, "dashboard"), ("thr_b", sk_b, "feishu")):
+        threads.insert(
+            thread_id=tid, agent_id="a1", user_id=1, channel_type=channel, session_key=sk
+        )
+        sessions.upsert(
+            session_key=sk,
+            agent_id="a1",
+            user_id=1,
+            channel_type=channel,
+            chat_type="dm",
+            thread_id=tid,
+        )
+
+    assert sessions.delete_by_thread("thr_a") == 1
+
+    assert sessions.get(sk_a) is None
+    assert sessions.get(sk_b) is not None
+    # Idempotent — a second delete finds nothing and must not raise.
+    assert sessions.delete_by_thread("thr_a") == 0
+
+
 def test_session_channel_id_persisted(repos):
     sessions, threads = repos
     sk = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_1")

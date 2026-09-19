@@ -553,3 +553,7 @@ def delete_thread_offline(agent_id: str, thread_id: str, *, home: Path | None = 
         except Exception:
             logger.exception("trajectory cascade delete failed thread=%s", thread_id)
         svc.thread_repo.delete(thread_id)
+        # `sessions.thread_id` has no FK onto `threads`, so drop the bindings
+        # explicitly — a session left pointing at the removed thread would keep
+        # resolving to a dead id and the conversation would stop persisting (#833).
+        svc.session_repo.delete_by_thread(thread_id)
