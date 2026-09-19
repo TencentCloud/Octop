@@ -253,7 +253,7 @@ export default function LoginPage() {
         }}
       >
         <img
-          src={isDark ? "/logo_name_dark.png" : "/logo_name.png"}
+          src={isDark ? "/logo_horizontal_white.png" : "/logo_horizontal_dark.png"}
           alt="Octop"
           style={{
             height: 48,

@@ -257,7 +257,7 @@ export default function SetupPage() {
           <div className={styles.wizardHeaderTop}>
             <div className={styles.wizardHeaderBrand}>
               <img
-                src={isDark ? "/logo_name_dark.png" : "/logo_name.png"}
+                src={isDark ? "/logo_horizontal_white.png" : "/logo_horizontal_dark.png"}
                 alt="Octop"
                 className={styles.wizardHeaderLogo}
               />
