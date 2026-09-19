@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 对话支持默认折叠思考与工具过程（浏览器本地偏好）(#718)
+
 ### 修复
 
 - Dashboard 在 Chromium 90 等旧版浏览器中因缺少 `Object.hasOwn` 而无法启动
