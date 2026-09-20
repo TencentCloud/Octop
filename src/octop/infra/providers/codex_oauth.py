@@ -61,6 +61,15 @@ class CodexOAuthRefreshError(RuntimeError):
         self.reason = reason
 
 
+class CodexOAuthDeviceCodeError(RuntimeError):
+    """A sanitized failure while starting the ChatGPT device-code flow."""
+
+    def __init__(self, *, reason: str, upstream_status: int | None = None) -> None:
+        super().__init__("Codex device code request failed")
+        self.reason = reason
+        self.upstream_status = upstream_status
+
+
 def oauth_token_file(paths: PathLayout) -> Path:
     return paths.root / "codex_oauth.json"
 
@@ -216,14 +225,19 @@ def request_device_code() -> DeviceCodeInfo:
         with urllib.request.urlopen(req, timeout=TOKEN_REQUEST_TIMEOUT_S) as resp:
             body = json.loads(resp.read())
     except urllib.error.HTTPError as exc:
-        body_text = exc.read().decode(errors="replace")
-        raise RuntimeError(
-            f"Codex device code request failed (HTTP {exc.code}): {body_text}"
+        raise CodexOAuthDeviceCodeError(
+            reason="upstream_http_error", upstream_status=exc.code
         ) from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise CodexOAuthDeviceCodeError(reason="network_error") from exc
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CodexOAuthDeviceCodeError(reason="invalid_response") from exc
+    if not isinstance(body, dict):
+        raise CodexOAuthDeviceCodeError(reason="invalid_response")
     device_auth_id = body.get("device_auth_id", "")
     user_code = body.get("user_code") or body.get("usercode") or ""
     if not device_auth_id or not user_code:
-        raise RuntimeError("Device code response is missing device_auth_id or user_code")
+        raise CodexOAuthDeviceCodeError(reason="invalid_response")
     return DeviceCodeInfo(
         device_auth_id=device_auth_id,
         user_code=user_code,

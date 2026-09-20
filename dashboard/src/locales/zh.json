@@ -106,6 +106,7 @@
     "PROVIDER_NOT_VISIBLE": "提供商不可见。",
     "PROVIDER_REFERENCED": "提供商正在使用中，无法删除。",
     "PROVIDER_LOCAL_PROTECTED": "本地提供商无法删除。",
+    "CODEX_OAUTH_START_FAILED": "无法启动 ChatGPT 登录。请检查服务器到 auth.openai.com 的连接后重试。",
     "STORAGE_BACKEND_NAME_TAKEN": "存储后端名称已被占用。",
     "STORAGE_BACKEND_REFERENCED": "存储后端正在使用中，无法删除。",
     "STORAGE_BACKEND_DEPS_FAILED": "无法安装此后端所需的可选组件。请检查网络后重试。",

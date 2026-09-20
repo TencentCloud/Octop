@@ -7,8 +7,11 @@ import urllib.error
 import urllib.request
 from unittest import mock
 
+import pytest
+
 from octop.infra.providers.codex_apply import CODEX_MODELS, CODEX_PROVIDER_NAME
 from octop.infra.providers.codex_oauth import (
+    CodexOAuthDeviceCodeError,
     build_codex_headers,
     exchange_device_code,
     poll_device_token,
@@ -46,6 +49,35 @@ def test_request_device_code_parses_response() -> None:
     assert info["user_code"] == "ABCD-1234"
     assert info["interval_s"] == 5
     assert "auth.openai.com" in info["verification_url"]
+
+
+def test_request_device_code_normalizes_network_failures() -> None:
+    def fake_urlopen(req: urllib.request.Request, timeout: float = 30) -> _Resp:
+        raise urllib.error.URLError("DNS lookup failed")
+
+    with (
+        mock.patch("urllib.request.urlopen", fake_urlopen),
+        pytest.raises(CodexOAuthDeviceCodeError) as raised,
+    ):
+        request_device_code()
+
+    assert raised.value.reason == "network_error"
+    assert raised.value.upstream_status is None
+    assert "DNS lookup failed" not in str(raised.value)
+
+
+def test_request_device_code_preserves_upstream_http_status() -> None:
+    def fake_urlopen(req: urllib.request.Request, timeout: float = 30) -> _Resp:
+        raise urllib.error.HTTPError(req.full_url, 503, "unavailable", {}, None)  # type: ignore[arg-type]
+
+    with (
+        mock.patch("urllib.request.urlopen", fake_urlopen),
+        pytest.raises(CodexOAuthDeviceCodeError) as raised,
+    ):
+        request_device_code()
+
+    assert raised.value.reason == "upstream_http_error"
+    assert raised.value.upstream_status == 503
 
 
 def test_poll_device_token_returns_none_while_pending() -> None:

@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from octop.infra.providers.codex_oauth import CodexOAuthDeviceCodeError
+
 
 async def test_admin_test_draft_requires_api_key(env: Any) -> None:
     client, _srv, auth = env
@@ -67,3 +69,20 @@ async def test_admin_codex_oauth_start(env: Any) -> None:
     assert body["state_id"]
     assert body["user_code"] == "ABCD-1234"
     assert "auth.openai.com" in body["verification_url"]
+
+
+async def test_admin_codex_oauth_start_reports_upstream_failure(env: Any) -> None:
+    client, _srv, auth = env
+    with patch(
+        "octop.api.routers.providers.request_device_code",
+        side_effect=CodexOAuthDeviceCodeError(reason="upstream_http_error", upstream_status=503),
+    ):
+        response = await client.post(
+            "/api/admin/providers/codex-oauth/start",
+            headers=auth,
+        )
+
+    assert response.status_code == 502, response.text
+    error = response.json()["error"]
+    assert error["code"] == "CODEX_OAUTH_START_FAILED"
+    assert error["details"] == {"reason": "upstream_http_error", "upstream_status": 503}
