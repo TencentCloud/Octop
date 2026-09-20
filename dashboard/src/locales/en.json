@@ -1273,6 +1273,9 @@
     "processThinkingLive": "Thinking",
     "send": "Send",
     "stop": "Stop",
+    "stopRequested": "Stop request sent. Waiting for the task to end.",
+    "stopInactive": "No running turn was detected.",
+    "stopUnconfirmed": "Stop request not confirmed. Check your connection and try again.",
     "queue": {
       "label": "Queued messages",
       "action": "Queue",

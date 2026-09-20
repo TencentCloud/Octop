@@ -5,6 +5,8 @@ import {
   useSyncExternalStore,
   useEffect,
 } from "react";
+import { useTranslation } from "react-i18next";
+import { message } from "@/utils/antdMessage";
 import type {
   MessageMetadata,
   TokenUsage,
@@ -801,6 +803,8 @@ export function useChat(
   useEffect(() => {
     chatStore.setSessionTeamRoom(stableSessionId, isTeamRoom);
   }, [stableSessionId, isTeamRoom]);
+  const { t } = useTranslation();
+  const cancelInFlight = useRef(false);
   const [historyError, setHistoryError] = useState(false);
   const failedHistoryOperation = useRef<"initial" | "older" | "latest">(
     "initial",
@@ -915,9 +919,26 @@ export function useChat(
     [stableSessionId],
   );
 
-  const cancelStream = useCallback(() => {
-    chatStore.cancelStream(stableSessionId);
-  }, [stableSessionId]);
+  const cancelStream = useCallback(async () => {
+    if (cancelInFlight.current) return;
+    cancelInFlight.current = true;
+    try {
+      const response = await chatStore.cancelStream(
+        stableSessionId,
+        agentId || "",
+      );
+      void message.info(
+        t(response.requested ? "chat.stopRequested" : "chat.stopInactive"),
+      );
+      if (!chatStore.hasLiveSocket(stableSessionId)) {
+        attachAfterHistory(stableSessionId, response.thread_id);
+      }
+    } catch {
+      void message.error(t("chat.stopUnconfirmed"));
+    } finally {
+      cancelInFlight.current = false;
+    }
+  }, [stableSessionId, agentId, attachAfterHistory, t]);
 
   const loadHistory = useCallback(
     async (targetThreadId: string) => {
@@ -947,7 +968,7 @@ export function useChat(
       }
 
       // Never cancelStream here — load/hydrate must not stop a live server turn.
-      // (Weak resume: only the Stop control / cancelStream may send `cancel`.)
+      // The Stop control requests cancellation separately over HTTP.
 
       const gen = ++loadGenRef.current;
       setHistoryLoading(true);
