@@ -39,8 +39,10 @@ export default function Header({ onToggle, isMobile }: HeaderProps) {
         alignItems: "center",
         justifyContent: "space-between",
         background: "var(--fn-header-bg)",
-        backdropFilter: "blur(var(--fn-header-blur))",
-        WebkitBackdropFilter: "blur(var(--fn-header-blur))",
+        // Opaque inset: translucent blur under `black-translucent` frosts
+        // page content through the iOS status bar (#874).
+        backdropFilter: "none",
+        WebkitBackdropFilter: "none",
         borderBottom: "1px solid var(--fn-border-primary)",
         transition: "background var(--fn-transition)",
         flexShrink: 0,

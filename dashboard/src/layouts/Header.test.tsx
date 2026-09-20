@@ -27,6 +27,13 @@ describe("Header", () => {
     expect(header.style.padding).toContain("safe-area-inset-top");
   });
 
+  it("keeps the status-bar inset opaque so iOS does not frost page content", () => {
+    render(<Header isMobile onToggle={() => undefined} />);
+    const header = screen.getByRole("banner");
+    expect(header.style.backdropFilter).toBe("none");
+    expect(header.style.WebkitBackdropFilter).toBe("none");
+  });
+
   it("renders nothing on desktop", () => {
     const { container } = render(<Header isMobile={false} />);
     expect(container).toBeEmptyDOMElement();
