@@ -123,6 +123,13 @@ async def iter_dashboard_hitl_resume_sse(
         channel_type=channel_type,
     )
     disconnected = False
+    # Clear the in-memory pause before the (possibly long) resume stream so
+    # history reload cannot reinject the same card while the turn continues.
+    if pending is not None:
+        hitl_coordinator.store.mark_resolved(
+            pending.pending_id,
+            "rejected" if rejected else "approved",
+        )
     try:
         async for chunk in processor.iter_hitl_resume_chunks(
             agent_id=agent_id,
@@ -138,11 +145,6 @@ async def iter_dashboard_hitl_resume_sse(
                     hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
             if not disconnected:
                 yield format_sse("chunk", chunk)
-        if pending is not None:
-            hitl_coordinator.store.mark_resolved(
-                pending.pending_id,
-                "rejected" if rejected else "approved",
-            )
         if not disconnected:
             yield format_sse("chunk", {"type": "done"})
     except Exception as exc:

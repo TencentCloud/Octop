@@ -34,6 +34,7 @@ export interface HitlRequestData {
   action_requests: HitlActionRequest[];
   review_configs?: Array<{ action_name: string; allowed_decisions: string[] }>;
   status?: "pending" | "approved" | "rejected";
+  pending_id?: string;
 }
 
 export interface ChatAttachment {

@@ -979,6 +979,7 @@ class GlobalProcessor:
                 command=msg.text,
                 response_lines=slash_lines,
             )
+            self._hitl.expire_pending_for_thread(thread_id, agent_id=agent_id, user_id=user_id)
             self._touch_thread_after_turn(thread_id, msg.text)
             for line in slash_lines:
                 yield {"type": "token", "content": f"{line}\n"}
@@ -1004,6 +1005,7 @@ class GlobalProcessor:
                 channel_metadata=im_meta,
             )
 
+        self._hitl.expire_pending_for_thread(thread_id, agent_id=agent_id, user_id=user_id)
         request = await self._build_dashboard_request(
             msg,
             agent_id=agent_id,

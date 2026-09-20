@@ -570,6 +570,72 @@ async def test_global_processor_iter_turn_chunks_registers_hitl() -> None:
 
 
 @pytest.mark.asyncio
+async def test_global_processor_iter_turn_chunks_expires_stale_hitl() -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator
+    from octop.infra.gateway.process.processor import GlobalProcessor
+    from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+
+    async def _stream(*_args: object, **_kwargs: object):
+        yield {"type": "token", "content": "ok"}
+
+    agent_manager = MagicMock()
+    agent_manager.stream = _stream
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+
+    thread_registry = MagicMock()
+    thread_registry.get_or_create_by_key = AsyncMock(return_value="thread-hitl")
+
+    hitl = HitlChannelCoordinator()
+    stale = hitl.store.register(
+        thread_id="thread-hitl",
+        agent_id="agent-1",
+        user_id=1,
+        session_key="sk",
+        channel_type="dashboard",
+        action_requests=[{"name": "ask_user_question", "args": {"questions": []}}],
+        review_configs=None,
+    )
+    processor = GlobalProcessor(
+        agent_manager=agent_manager,
+        thread_registry=thread_registry,
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        usage_repo=None,
+        gateway=None,
+        hitl=hitl,
+    )
+
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="never mind, do this instead")],
+        metadata={"session_key": "sk", "thread_id": "thread-hitl"},
+    )
+
+    chunks = [c async for c in processor.iter_turn_chunks(msg)]
+    assert any(c.get("type") == "token" for c in chunks)
+    assert (
+        hitl.store.resolve_pending_for_thread(
+            "thread-hitl",
+            agent_id="agent-1",
+            user_id=1,
+        )
+        is None
+    )
+    leftover = hitl.store.get(stale.pending_id)
+    assert leftover is not None
+    assert leftover.status == "expired"
+
+
+@pytest.mark.asyncio
 async def test_global_processor_iter_turn_chunks_slash(tmp_path: Path) -> None:
     from unittest.mock import AsyncMock, MagicMock
 

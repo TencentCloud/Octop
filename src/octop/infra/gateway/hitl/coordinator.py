@@ -146,6 +146,20 @@ class HitlChannelCoordinator:
         reject_message = message or "Rejected by user"
         return [{"type": "reject", "message": reject_message} for _ in range(count)]
 
+    def expire_pending_for_thread(
+        self,
+        thread_id: str,
+        *,
+        agent_id: str,
+        user_id: int | None = None,
+    ) -> None:
+        """Expire in-memory pauses for a dashboard thread (new turn / interrupt)."""
+        self._store.expire_pending_for_thread(
+            thread_id,
+            agent_id=agent_id,
+            user_id=user_id,
+        )
+
     def resolve_ask_pending(
         self,
         session_key: str,
