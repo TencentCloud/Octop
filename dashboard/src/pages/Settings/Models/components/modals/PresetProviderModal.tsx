@@ -1,9 +1,9 @@
 /**
- * PresetProviderModal — create a cloud provider from a built-in preset.
+ * PresetProviderModal — create a cloud provider from a built-in preset (right-side drawer).
  * Local runtimes (Ollama / ONNX) use LocalServiceCard + ProviderConfigModal instead.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Button, Divider, Form, Input, Modal } from "antd";
+import { Button, Divider, Drawer, Form, Input } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Download, Zap } from "lucide-react";
@@ -248,16 +248,13 @@ export function PresetProviderModal({
     : "sk-...";
 
   return (
-    <Modal
+    <Drawer
       title={t("models.setupPreset", { name: preset.name })}
       open={open}
-      onCancel={onClose}
-      onOk={isCodexOAuth ? undefined : handleSubmit}
-      confirmLoading={saving}
-      okText={t("common.create")}
-      cancelText={t("common.cancel")}
+      onClose={onClose}
       destroyOnHidden
       width={640}
+      placement="right"
       footer={
         isCodexOAuth ? (
           <Button onClick={onClose}>{t("common.cancel")}</Button>
@@ -356,6 +353,6 @@ export function PresetProviderModal({
           />
         </>
       )}
-    </Modal>
+    </Drawer>
   );
 }

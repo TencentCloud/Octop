@@ -50,6 +50,11 @@ def _normalize_message(message: str) -> str:
     return msg
 
 
+def _looks_like_send_file_tool_error(message: str) -> bool:
+    """True for ``send_file_to_user`` path failures that should not look like a model outage."""
+    return "send_file_to_user:" in _normalize_message(message).lower()
+
+
 def classify_stream_error_message(message: str) -> str | None:
     """Return a stable ``octop:stream_errors.*`` key for known model failures."""
     msg = _normalize_message(message)
@@ -183,9 +188,15 @@ def stream_error_message(error: str | None, locale: str | Locale = "en") -> str:
 
 
 def format_stream_error(exc: BaseException | str, locale: str | Locale = "en") -> str:
-    """Classify an exception or raw message; fall back to a generic localized message."""
+    """Classify an exception or raw message; fall back to a generic localized message.
+
+    Tool / path failures (e.g. ``send_file_to_user`` missing file) pass through so
+    the UI does not mislabel them as a model-call outage.
+    """
     message = exception_display_message(exc)
     classified = classify_stream_error_message(message)
     if classified is not None:
         return tr(classified.removeprefix(_PREFIX), locale)
+    if _looks_like_send_file_tool_error(message):
+        return message
     return tr(MODEL_CALL_FAILED.removeprefix(_PREFIX), locale)

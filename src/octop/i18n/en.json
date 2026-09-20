@@ -347,6 +347,8 @@
     "CONNECTOR_NAME_TAKEN": "This connector name is already in use. Please choose another.",
     "CONNECTOR_INVALID_CREDENTIALS": "Invalid connector credentials.",
     "CONNECTOR_OAUTH_HTTPS_REQUIRED": "Octop is currently being accessed over public HTTP, but Notion OAuth callbacks require HTTPS. Use HTTPS, or access Octop locally through localhost or 127.0.0.1.",
+    "CONNECTOR_MCP_URL_INVALID": "Invalid MCP server URL: {reason}",
+    "CONNECTOR_MCP_HTTPS_REQUIRED": "Public MCP server URLs must use HTTPS. Local and LAN addresses may use HTTP.",
     "CONNECTOR_KIND_UNSUPPORTED": "Unsupported connector type.",
     "CONNECTOR_NOT_BOUND": "Connector is not bound to this agent.",
     "CONNECTOR_ALREADY_BOUND": "Connector is already bound.",
@@ -469,7 +471,7 @@
         "fail_mismatch": "{domain} resolves to {resolved_ips}; expected {public_ip}"
       },
       "public_ip": {
-        "fail": "Could not determine this host's public IP (check outbound HTTPS)"
+        "fail": "Could not determine this host's public IP (check outbound network, or cloud metadata access)"
       }
     },
     "preflight_failed_summary": "One or more preflight checks failed"

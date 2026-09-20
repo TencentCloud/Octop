@@ -15,6 +15,8 @@ interface SearchablePickerPanelProps<T> {
   footerIcon: ReactNode;
   footerLabel: string;
   onFooterClick: () => void;
+  /** Optional row(s) rendered between the list and the primary footer. */
+  beforeFooter?: ReactNode;
 }
 
 export default function SearchablePickerPanel<T>({
@@ -27,6 +29,7 @@ export default function SearchablePickerPanel<T>({
   footerIcon,
   footerLabel,
   onFooterClick,
+  beforeFooter,
 }: SearchablePickerPanelProps<T>) {
   const { query, setQuery, filtered } = useFilteredList(items, filterFn);
   const panelClass =
@@ -56,6 +59,8 @@ export default function SearchablePickerPanel<T>({
           filtered.map((item) => renderItem(item))
         )}
       </div>
+
+      {beforeFooter}
 
       <button type="button" className={styles.footer} onClick={onFooterClick}>
         {footerIcon}

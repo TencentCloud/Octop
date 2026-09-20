@@ -18,8 +18,8 @@ describe("isNetworkFetchError", () => {
 
   it("ignores HTTP API errors", () => {
     vi.stubGlobal("navigator", { onLine: true });
-    expect(isNetworkFetchError(new Error("Request failed with status 503"))).toBe(
-      false,
-    );
+    expect(
+      isNetworkFetchError(new Error("Request failed with status 503")),
+    ).toBe(false);
   });
 });

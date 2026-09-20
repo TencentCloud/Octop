@@ -322,11 +322,24 @@
   padding: 0;
 }
 
+.agentRowWrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+
+  &:hover .agentHideBtn,
+  &:focus-within .agentHideBtn {
+    opacity: 1;
+  }
+}
+
 .agentRow {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 7px 8px;
   border: 1px solid transparent;
   border-radius: 10px;
@@ -341,6 +354,37 @@
     background: var(--fn-sidebar-item-hover, rgba(0, 0, 0, 0.03));
     border-color: var(--fn-border-primary, rgba(0, 0, 0, 0.05));
   }
+}
+
+.agentHideBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-top: 6px;
+  margin-right: 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+
+  &:hover {
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
+    color: var(--fn-text-primary);
+  }
+}
+
+.agentCardActive:hover .agentHideBtn,
+.agentCardActive:focus-within .agentHideBtn {
+  opacity: 1;
 }
 
 .agentRowAvatar {

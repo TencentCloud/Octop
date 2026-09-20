@@ -388,7 +388,8 @@ for non-`/` paths.
 Custom MCP OAuth (streamable HTTP, public HTTPS URL only): Octop discovers the authorization
 server from the MCP URL (401 / RFC 9728 protected-resource metadata), requires dynamic client
 registration (DCR), stores encrypted tokens in the custom MCP spec, and injects `Authorization:
-Bearer` when loading tools. Loopback MCP URLs do not use remote OAuth discovery.
+Bearer` when loading tools. Loopback and LAN MCP URLs may use HTTP and do not use remote OAuth
+discovery.
 
 ## Internal MCP (harness agents)
 

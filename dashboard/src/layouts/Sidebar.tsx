@@ -637,11 +637,13 @@ export default function Sidebar({
       >
         <div
           style={{
-            height: 56,
+            // Match Header: iOS PWA draws under the status bar (#664).
+            height: "calc(56px + env(safe-area-inset-top, 0px))",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "0 12px 0 16px",
+            padding: "env(safe-area-inset-top, 0px) 12px 0 16px",
+            boxSizing: "border-box",
             flexShrink: 0,
             gap: 8,
           }}
