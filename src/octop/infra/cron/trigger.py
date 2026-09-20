@@ -50,17 +50,22 @@ def _unix_day_of_week(expression: str) -> str:
     return ",".join(translated)
 
 
-def _cron_trigger_from_unix_crontab(expression: str) -> CronTrigger:
+def _cron_trigger_from_unix_crontab(expression: str, timezone: str | None) -> CronTrigger:
     """Build a trigger whose weekday field follows Unix crontab semantics."""
     fields = expression.split()
     if len(fields) != 5:
         raise ValueError(f"Wrong number of fields; got {len(fields)}, expected 5")
     fields[4] = _unix_day_of_week(fields[4])
-    return CronTrigger.from_crontab(" ".join(fields))
+    return CronTrigger.from_crontab(" ".join(fields), timezone=timezone)
 
 
-def build_trigger(spec: str) -> BaseTrigger:
-    """Parse 'cron:<expr>' / 'interval:<seconds>' / 'date:<ISO>'."""
+def build_trigger(spec: str, timezone: str | None = None) -> BaseTrigger:
+    """Parse 'cron:<expr>' / 'interval:<seconds>' / 'date:<ISO>'.
+
+    Scheduling callers must pass the server timezone (``config.default_timezone``):
+    without it APScheduler interprets the expression in the host OS timezone,
+    and a trigger instance handed to ``add_job`` never inherits the scheduler's.
+    """
     if ":" not in spec:
         raise OctopError(ErrorCode.CRON_TRIGGER_INVALID, f"trigger spec missing kind: {spec!r}")
     kind, _, value = spec.partition(":")
@@ -78,9 +83,9 @@ def build_trigger(spec: str) -> BaseTrigger:
                 raise ValueError(f"interval seconds must be a positive integer, got {seconds}")
             return IntervalTrigger(seconds=seconds)
         if kind == "cron":
-            return _cron_trigger_from_unix_crontab(value)
+            return _cron_trigger_from_unix_crontab(value, timezone)
         if kind == "date":
-            return DateTrigger(run_date=dt.datetime.fromisoformat(value))
+            return DateTrigger(run_date=dt.datetime.fromisoformat(value), timezone=timezone)
     except (ValueError, TypeError) as exc:
         raise OctopError(
             ErrorCode.CRON_TRIGGER_INVALID,

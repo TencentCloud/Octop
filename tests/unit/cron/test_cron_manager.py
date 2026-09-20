@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -75,7 +76,12 @@ async def _aiter(items):
         yield item
 
 
-def _make_manager(services, *, gateway: MagicMock | None = None) -> CronManager:
+def _make_manager(
+    services,
+    *,
+    gateway: MagicMock | None = None,
+    timezone: str = "UTC",
+) -> CronManager:
     gw = gateway or _make_gateway()
     mgr = CronManager(
         gateway=gw,
@@ -85,7 +91,7 @@ def _make_manager(services, *, gateway: MagicMock | None = None) -> CronManager:
             repos=services.repos,
         ),
         repos=services.repos,
-        timezone="UTC",
+        timezone=timezone,
     )
     # Replace real APScheduler with a mock to avoid background threads
     fake_scheduler = MagicMock()
@@ -271,6 +277,27 @@ async def test_create_schedules_job(tmp_path: Path) -> None:
     )
 
     mgr._scheduler.add_job.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_scheduled_trigger_uses_manager_timezone(tmp_path: Path) -> None:
+    """add_job() never applies the scheduler timezone to a trigger instance."""
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    # A zone no CI host uses as its OS timezone, so the host-zone fallback
+    # APScheduler applies without an explicit timezone cannot pass by luck.
+    mgr = _make_manager(services, timezone="America/New_York")
+
+    await mgr.create(
+        cron_id=_cron_id(),
+        agent_id=aid,
+        user_id=uid,
+        trigger="cron:0 9 * * *",
+        prompt="ping",
+    )
+
+    trigger = mgr._scheduler.add_job.call_args.kwargs["trigger"]
+    assert trigger.timezone == ZoneInfo("America/New_York")
 
 
 @pytest.mark.asyncio

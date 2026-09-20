@@ -24,6 +24,20 @@ def test_cron_expression():
     assert isinstance(trig, CronTrigger)
 
 
+def test_cron_trigger_uses_passed_timezone():
+    trig = build_trigger("cron:0 9 * * *", timezone="Asia/Shanghai")
+    assert isinstance(trig, CronTrigger)
+    next_fire = trig.get_next_fire_time(None, dt.datetime(2026, 9, 21, 0, 0, tzinfo=trig.timezone))
+    assert next_fire is not None
+    assert (next_fire.hour, next_fire.utcoffset()) == (9, dt.timedelta(hours=8))
+
+
+def test_date_trigger_uses_passed_timezone():
+    trig = build_trigger("date:2026-12-31T09:00:00", timezone="Asia/Shanghai")
+    assert isinstance(trig, DateTrigger)
+    assert (trig.run_date.hour, trig.run_date.utcoffset()) == (9, dt.timedelta(hours=8))
+
+
 def _next_weekdays(trig: CronTrigger, *, count: int) -> list[int]:
     next_fire = trig.get_next_fire_time(None, dt.datetime(2026, 8, 8, 12, tzinfo=trig.timezone))
     actual: list[int] = []
