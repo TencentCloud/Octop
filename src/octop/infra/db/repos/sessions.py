@@ -184,6 +184,11 @@ class SessionRepo:
                 (agent_id, now_ts(), session_key),
             )
 
+    def delete_for_thread(self, thread_id: str) -> None:
+        """Drop sessions still bound to a deleted thread; the next turn rebinds."""
+        with self._db.transaction() as conn:
+            conn.execute("DELETE FROM sessions WHERE thread_id = ?", (thread_id,))
+
     def increment_unread(self, session_key: str, *, delta: int = 1) -> None:
         with self._db.transaction() as conn:
             conn.execute(

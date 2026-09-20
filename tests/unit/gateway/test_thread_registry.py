@@ -329,3 +329,55 @@ async def test_ensure_thread_is_stable_and_does_not_rebind(registry: ThreadRegis
     ids = {t.thread_id for t in registry.list_threads(agent_id="a2", user_id=1)}
     assert derived in ids
     assert bound in ids
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_unbinds_session(registry: ThreadRegistry) -> None:
+    sk = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    tid = await registry.get_or_create_by_key(
+        session_key=sk,
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+    )
+    registry.delete_thread(tid)
+    assert registry.get_session(sk) is None
+    assert registry.get_bound_thread_id(sk) is None
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_revives_dangling_session(registry: ThreadRegistry) -> None:
+    sk = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    dead = await registry.get_or_create_by_key(
+        session_key=sk,
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+    )
+    # Simulate a session left pointing at a thread deleted without the cascade.
+    registry._threads.delete(dead)
+    assert registry.get_session(sk) is not None
+
+    tid = await registry.get_or_create_by_key(
+        session_key=sk,
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+    )
+    assert tid != dead
+    assert registry.get_thread(tid) is not None
+    assert registry.get_bound_thread_id(sk) == tid
+
+
+@pytest.mark.asyncio
+async def test_get_bound_thread_id_ignores_deleted_thread(registry: ThreadRegistry) -> None:
+    sk = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    tid = await registry.get_or_create_by_key(
+        session_key=sk,
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+    )
+    assert registry.get_bound_thread_id(sk) == tid
+    registry._threads.delete(tid)
+    assert registry.get_bound_thread_id(sk) is None
