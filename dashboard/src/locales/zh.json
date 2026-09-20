@@ -4708,6 +4708,7 @@
     "username": "用户名或邮箱",
     "password": "密码",
     "submit": "登录",
+    "forgotPasswordHint": "忘记密码？在 Octop 主机执行 octop user passwd <用户名>，或请管理员在用户页重置。",
     "failed": "登录失败",
     "slideHint": "拖动滑块到最右侧完成验证",
     "slideVerified": "验证通过",
