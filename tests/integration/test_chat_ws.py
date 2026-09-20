@@ -12,7 +12,8 @@ import httpx
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
-from tests.support.app import octop_client
+from octop.infra.errors import ErrorCode, OctopError
+from tests.support.app import octop_client, write_octop_config
 from tests.support.auth import (
     auth_header,
     bootstrap_admin,
@@ -30,6 +31,7 @@ def _chat_ws(c: httpx.AsyncClient, aid: str, auth: dict[str, str]) -> Any:
 
 @pytest.fixture
 async def env(tmp_octop_home: Path) -> AsyncIterator[Any]:
+    write_octop_config(tmp_octop_home, enable_api_docs=True)
     fake = FakeHarnessAgent(
         chunks=[
             {"type": "token", "node": "agent", "content": "Hello "},
@@ -335,6 +337,86 @@ async def test_ws_cancel_frame_cancels_active_turn(env: Any) -> None:
     cancel_spy.assert_called()
     assert cancel_spy.call_args.args[0] == aid
     assert cancel_spy.call_args.args[1] == tid
+
+
+@pytest.mark.parametrize("active", [False, True])
+async def test_http_cancel_ack_and_ownership(
+    env: Any, monkeypatch: pytest.MonkeyPatch, active: bool
+) -> None:
+    c, srv, _fake, alice_auth, bob_auth, aid = env
+    tid = (await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)).json()["thread_id"]
+    other_aid = await create_agent(c, alice_auth, name="Other agent")
+    registry = srv.app_runtime.agent_registry
+    cancel = MagicMock()
+    monkeypatch.setattr(registry, "cancel_stream", cancel)
+    monkeypatch.setattr(srv.app_runtime.gateway.ws_hub, "is_turn_active", lambda _: active)
+    url = f"/api/agents/{aid}/threads/{tid}/cancel"
+    # Sharing the agent does not share ownership of its private conversations.
+    await c.patch(f"/api/agents/{aid}", headers=alice_auth, json={"is_shared": True})
+    assert (await c.post(url, headers=bob_auth)).status_code == 403
+    assert (
+        await c.post(f"/api/agents/{other_aid}/threads/{tid}/cancel", headers=alice_auth)
+    ).status_code == 404
+    assert (await c.post(url)).status_code == 401
+    cancel.assert_not_called()
+
+    response = await c.post(url, headers=alice_auth)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"thread_id": tid, "requested": active}
+    if active:
+        cancel.assert_called_once_with(aid, tid)
+        cancel.reset_mock()
+        monkeypatch.setattr(
+            registry,
+            "get_agent",
+            MagicMock(side_effect=OctopError.localized(ErrorCode.AGENT_NOT_RUNNING)),
+        )
+        assert (await c.post(url, headers=alice_auth)).status_code != 200
+        cancel.assert_not_called()
+    else:
+        cancel.assert_not_called()
+
+    schema = (await c.get("/api/openapi.json", headers=alice_auth)).json()
+    operation = schema["paths"]["/api/agents/{agent_id}/threads/{thread_id}/cancel"]["post"]
+    assert operation["summary"] and operation["description"]
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/CancelThreadResponse"
+    )
+    assert (await c.get("/api/docs", headers=alice_auth)).status_code == 200
+
+
+async def test_http_cancel_after_disconnect_keeps_turn_until_done(
+    env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    c, srv, _fake, auth, _bob_auth, aid = env
+    tid = (await c.post(f"/api/agents/{aid}/threads", headers=auth)).json()["thread_id"]
+    gate = asyncio.Event()
+
+    async def slow_stream(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "node": "agent", "content": "started"}
+        await gate.wait()
+
+    registry = srv.app_runtime.agent_registry
+    registry.get_agent(aid).stream = slow_stream
+    cancel = MagicMock(wraps=registry.cancel_stream)
+    monkeypatch.setattr(registry, "cancel_stream", cancel)
+    async with _chat_ws(c, aid, auth) as ws:
+        await ws.send_json({"type": "user_turn", "text": "slow task", "thread_id": tid})
+        assert (await ws.receive_json())["type"] == "token"
+    cancel.assert_not_called()
+    try:
+        response = await c.post(f"/api/agents/{aid}/threads/{tid}/cancel", headers=auth)
+        assert response.json() == {"thread_id": tid, "requested": True}
+        cancel.assert_called_once_with(aid, tid)
+        # The fake harness deliberately delays completion beyond the HTTP ack.
+        async with _chat_ws(c, aid, auth) as ws:
+            await ws.send_json({"type": "subscribe", "thread_id": tid})
+            assert (await ws.receive_json())["active"] is True
+            gate.set()
+            assert (await ws.drain_turn())[-1]["type"] == "done"
+        assert (await _subscribe_ws(c, aid, auth, tid))["active"] is False
+    finally:
+        gate.set()
 
 
 async def test_ws_emits_error_frame_on_exception(env: Any) -> None:
