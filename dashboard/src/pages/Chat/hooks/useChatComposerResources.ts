@@ -17,6 +17,9 @@ import {
   hasSavedConnectors,
   loadSavedConnectors,
   saveConnectors,
+  hasSavedKnowledgeBaseIds,
+  loadSavedKnowledgeBaseIds,
+  saveKnowledgeBaseIds,
 } from "../utils/chatStorage";
 import { resolveInitialConnectors } from "../utils/resolveInitialConnectors";
 import {
@@ -85,6 +88,11 @@ export function useChatComposerResources(
 
   useEffect(() => {
     composerTouchedRef.current = false;
+    // Selections are remembered per expert (localStorage below); never carry
+    // the previous expert's in-memory selection across the switch. Connectors
+    // get the same reset so their per-agent saved prefs resolve cleanly.
+    setSelectedKnowledgeBaseIds([]);
+    setSelectedConnectors([]);
   }, [resolvedAgentId]);
 
   useEffect(() => {
@@ -225,27 +233,26 @@ export function useChatComposerResources(
             (expertKnowledgeBaseIds ?? []).filter((id) => allowed.has(id)),
           );
           setSelectedKnowledgeBaseIds((previous) => {
-            if (composerTouchedRef.current) {
-              return pendingId &&
-                allowed.has(pendingId) &&
-                !previous.includes(pendingId)
-                ? [...previous, pendingId]
-                : previous;
-            }
-            if (isNewSession) {
-              return withDefaultOpenKnowledgeBases(
-                pendingId && allowed.has(pendingId) ? [pendingId] : [],
-                defaults,
-              );
-            }
-            return withDefaultOpenKnowledgeBases(
-              pendingId &&
-                allowed.has(pendingId) &&
-                !previous.includes(pendingId)
-                ? [...previous, pendingId]
-                : previous,
-              ownedDefaults,
-            );
+            const base = resolveInitialConnectors({
+              // resolver is selection-generic (string ids)
+              prev: previous,
+              saved: resolvedAgentId
+                ? loadSavedKnowledgeBaseIds(resolvedAgentId)
+                : [],
+              hasSaved: resolvedAgentId
+                ? hasSavedKnowledgeBaseIds(resolvedAgentId)
+                : false,
+              defaults,
+              allowed,
+              ignorePrev: isNewSession && !composerTouchedRef.current,
+              ignoreSaved: isNewSession,
+              preferPrev: composerTouchedRef.current,
+            });
+            return pendingId &&
+              allowed.has(pendingId) &&
+              !base.includes(pendingId)
+              ? [...base, pendingId]
+              : base;
           });
           if (pendingId) consumePendingAttachKnowledgeBaseId();
         });
@@ -325,10 +332,14 @@ export function useChatComposerResources(
     [resolvedAgentId],
   );
 
-  const handleKnowledgeBaseIdsChange = useCallback((ids: string[]) => {
-    composerTouchedRef.current = true;
-    setSelectedKnowledgeBaseIds(ids);
-  }, []);
+  const handleKnowledgeBaseIdsChange = useCallback(
+    (ids: string[]) => {
+      composerTouchedRef.current = true;
+      setSelectedKnowledgeBaseIds(ids);
+      if (resolvedAgentId) saveKnowledgeBaseIds(resolvedAgentId, ids);
+    },
+    [resolvedAgentId],
+  );
 
   const handleModelChange = useCallback(
     (model: string | null) => {
