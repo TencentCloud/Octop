@@ -159,6 +159,14 @@ export const octopThreadsApi = {
       { method: "POST" },
     ),
 
+  cancel: (agentId: string, threadId: string, signal?: AbortSignal) =>
+    request<{ thread_id: string; requested: boolean }>(
+      `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
+        threadId,
+      )}/cancel`,
+      { method: "POST", signal },
+    ),
+
   historyMigrationStatus: (agentId: string) =>
     request<HistoryMigrationStatus>(
       `/agents/${encodeURIComponent(agentId)}/history-migration/status`,

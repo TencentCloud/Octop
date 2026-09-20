@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- Dashboard 停止普通运行回合改用带回执的 HTTP 请求，不再依赖已有 WebSocket 或提前将消息标为完成；失败时明确提示并保留接收状态 (#803)
 - 模型调用重试耗尽后保留异常及失败状态，不再把错误转换成正常回答；后台委派正确标记为 failed 并携带错误原因，避免源专家把失败当作已完成任务（#839）
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
 
