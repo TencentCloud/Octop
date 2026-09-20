@@ -1147,17 +1147,21 @@ async def test_create_with_unknown_template_does_not_crash(tmp_path: Path) -> No
 
 
 def _spy_resolve_backend(monkeypatch) -> list[Any]:
-    """Record every ``resolve_backend`` call made while resolving a workspace."""
-    import harness_agent.backends as harness_backends  # noqa: PLC0415
+    """Record every backend resolution made while resolving a workspace.
+
+    Octop resolves workspaces through ``harness_compat`` (which fixes
+    S3-compatible specs before delegating), so that is the seam to observe.
+    """
+    from octop.infra.backend import harness_compat  # noqa: PLC0415
 
     calls: list[Any] = []
-    original = harness_backends.resolve_backend
+    original = harness_compat.resolve_backend
 
     def _spy(*args: Any, **kwargs: Any) -> Any:
         calls.append((args, kwargs))
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(harness_backends, "resolve_backend", _spy)
+    monkeypatch.setattr(harness_compat, "resolve_backend", _spy)
     return calls
 
 

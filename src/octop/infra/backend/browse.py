@@ -6,9 +6,8 @@ import contextlib
 import tempfile
 from typing import Any
 
-from harness_agent.backends import resolve_backend
-
 from octop.infra.backend.adapter import row_to_backend_spec
+from octop.infra.backend.harness_compat import resolve_backend_spec
 from octop.infra.db.repos.backends import BackendRow
 
 
@@ -19,7 +18,7 @@ def resolve_storage_backend(row: BackendRow) -> Any:
         raise ValueError("configuration incomplete")
     workspace = tempfile.mkdtemp(prefix="octop-storage-browse-")
     try:
-        return resolve_backend(spec, workspace_dir=workspace)
+        return resolve_backend_spec(spec, workspace_dir=workspace)
     except ValueError:
         raise
     except Exception as exc:

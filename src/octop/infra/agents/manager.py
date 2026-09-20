@@ -51,6 +51,10 @@ from octop.infra.backend.docker_spec import (
     enrich_docker_backend_spec,
     inject_docker_global_environment,
 )
+from octop.infra.backend.harness_compat import (
+    harness_compatible_spec,
+    resolve_backend_spec,
+)
 from octop.infra.backend.resolver import (
     default_agent_backend_spec,
     resolve_agent_backend_spec,
@@ -2450,7 +2454,6 @@ class AgentManager:
         allow_ephemeral_remote: bool = False,
     ) -> Any:
         """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""
-        from harness_agent.backends import resolve_backend  # noqa: PLC0415
         from harness_agent.backends.workspace import BackendWorkspace  # noqa: PLC0415
 
         from octop.infra.agents.workspace_dir import system_files_path_from_config  # noqa: PLC0415
@@ -2474,7 +2477,7 @@ class AgentManager:
         elif self._spec_is_opensandbox(backend):
             ensure_opensandbox_deps(allow_install=True)
         return BackendWorkspace(
-            resolve_backend(backend, workspace_dir=workspace_dir),
+            resolve_backend_spec(backend, workspace_dir=workspace_dir),
             workspace_dir,
             system_files_path=system_files_path_from_config(cfg),
         )
@@ -2964,7 +2967,11 @@ class AgentManager:
         )
         # OpenSandbox.create is not idempotent — reuse the instance already
         # wrapped by ``ws`` so start does not spawn a second remote sandbox.
-        harness_backend: Any = ws.backend if self._spec_is_opensandbox(backend) else backend
+        # Object-storage specs are converted to working instances here; every
+        # other backend type keeps going through harness resolution untouched.
+        harness_backend: Any = (
+            ws.backend if self._spec_is_opensandbox(backend) else harness_compatible_spec(backend)
+        )
 
         harness_cfg = HarnessAgentConfig(
             name=_memory_namespace(row.agent_id),

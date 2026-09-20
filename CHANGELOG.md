@@ -19,6 +19,9 @@
 - 无网络或后端不可达时，启动页展示明确错误与重试，而不再白屏 (#696)
 - iOS PWA 顶栏/侧栏避让状态栏：`env(safe-area-inset-top)` 垫高移动端 Header 与抽屉品牌行（#664）
 - 定时任务空状态提示词：workspace 缺省时回退到专家目录模板 / 名称默认，与 welcome 共用解析 (#651)
+- 修复对象存储 backend（`kind=s3` / `custom` 即 MinIO、Ceph 等）不可用：不再使用与 `deepagents` 0.7 协议不兼容的 `deepagents-backends`，改为基于 harness 自带 boto3 后端构造实例（SigV4 签名）。此前存储探测报 `files_update`、目录浏览报 `SignatureDoesNotMatch`；现探测、读写、列目录、删除均可用，composite 路由内的对象存储同样生效。序列化到 `config_json` 的仍是 backend spec，未改动存储格式
+- 修复对象存储 backend 缺少协议 `delete`（`s3` / `custom` / `cos` / `obs` / `oss` 全系）：LLM 文件工具删除文件不再抛 `NotImplementedError`
+- 修复 S3 兼容存储在**主机名 endpoint** 下探测报 `InvalidBucketName`：`type="s3"`（含 `custom`）带自定义 endpoint 时默认改用 path-style 寻址（此前沿用上游的 virtual-hosted，会把桶名拼进域名，只有配好泛域名 DNS / `MINIO_DOMAIN` 才成立）；不带 endpoint 的 AWS 场景与显式 `config_json.addressing_style` 不受影响
 
 ## [1.0.1] - 2026-09-18
 

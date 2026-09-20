@@ -324,3 +324,50 @@ Harness 侧只认调用方传入的 ``workspace_dir``；Docker 默认把它镜�
 - storage backend 浏览 API 支持 docker kind（`previewable` 时）；探测走 test id 沙箱
 - Admin「支持类型」页的 Docker 卡片可配置沙箱镜像；打开配置抽屉后可探测本机 Docker，并提供一键安装 / 复制脚本 / 安装提示词
 
+---
+
+## 14. 对象存储 backend（`s3` / `custom` / `cos` / `oss` / `obs`）
+
+`kind=s3` 与 `kind=custom` 解析为 harness `type: "s3"`（boto3，适用于 MinIO、Ceph 等 S3 兼容存储）；
+`kind=cos` / `oss` / `obs` 解析为各自的 `type`，走厂商 SDK（`cos-python-sdk-v5` / `oss2` /
+`esdk-obs-python`）。见 `infra/backend/adapter.py`。
+
+上游 `orcakit-harness-agent` 有四处缺口，由 `infra/backend/harness_compat.py` 兜底：
+
+| 缺口 | 影响 kind | 现象 |
+|------|-----------|------|
+| `backends._build_s3` 优先使用 `deepagents-backends` | **仅 `s3`/`custom`** | 该包仍停留在 deepagents 0.5/0.6 协议（传已删除的 `files_update`，且只实现已移除的 `ls_info` / `glob_info` / `grep_raw`）；而 Octop 经 `orcakit-harness-agent[all]` 必然引入它 → 写入报 `TypeError`、列目录抛 `NotImplementedError` |
+| 自带 boto3 后端硬编码 SigV2 | **仅 `s3`/`custom`** | `signature_version="s3"`；仅支持 SigV4 的存储（MinIO / Ceph）在 `ListObjectsV2` 上报 `SignatureDoesNotMatch`。`S3Config` 无该字段且 `_build_client` 不读 `extra`，无法用 spec / `config_json` 覆盖 |
+| `CloudStorageBackend` 未实现协议 `delete` | **全部四类** | LLM 文件工具删除文件时抛 `NotImplementedError`（`BackendWorkspace` 的仪表盘删除走它自己的 `delete_path`，不受影响） |
+| `S3Config.addressing_style` 默认 `virtual` | **仅 `s3`/`custom`** | 主机名 endpoint 下桶名被拼进域名（`<bucket>.<host>`），存储从 `Host` 解析不出合法桶名 → 探测报 `InvalidBucketName`。只有配了泛域名 DNS（MinIO 需 `MINIO_DOMAIN`）才成立 |
+
+做法：`SigV4S3Backend` / `CosCompatBackend` / `OssCompatBackend` / `ObsCompatBackend` 分别继承
+对应的 harness 后端（`s3` 还需额外覆写 `_build_client` 为 SigV4，并把带自定义 endpoint 的
+spec 默认改为 **path-style 寻址**：自建 S3 兼容存储几乎都靠 host:port 直连、没有泛域名 DNS，
+而 path-style 是所有实现都接受的形式；不带 endpoint（即 AWS 自身）保持上游默认，
+`config_json.addressing_style` 显式指定时始终优先），统一由 `_ProtocolDelete` 补齐协议 `delete`；
+再由调用方把**实例**交给 harness（`HarnessAgentConfig.backend` 接受 `BackendProtocol` 对象，
+`resolve_backend` 对实例原样返回；这些类型不会被 composite 包装，故与传 spec 等价）：
+
+- `harness_compatible_spec(spec)`：给 harness 自行解析的位置（agent backend）；非对象存储 spec 原样透传
+- `resolve_backend_spec(spec, *, workspace_dir)`：Octop 需要立刻拿到后端实例的位置（工作区、存储浏览）
+- `is_object_store_spec(spec)`：探测入口用它判断是否需要绕开 harness 的 `probe_backend`
+  （后者只接受 spec 并自行解析，无法注入实例）
+- `_convert` 递归处理 `composite` 的 `routes` / `default`，因此 named 引用的对象存储同样生效
+
+继承（而非重新实现）还顺带保留了 `BackendWorkspace` 变异操作依赖的 `delete_path` / `mkdir_path` /
+`move_path` —— 这是走「修复 `deepagents-backends`」路线拿不到的。
+
+存储格式未改：`config_json` 里持久化的仍是 backend spec，实例只在运行时派生。
+
+**移除条件**：`orcakit-harness-agent` 自身修好上述三点（SigV4、协议 `delete`、不再盲选
+`deepagents-backends`）后，删除 `harness_compat.py` 及其 4 个调用点。
+回归覆盖见 `tests/unit/backend/test_harness_s3_compat.py`（四类 kind 的实例选择、SigV4 签名、
+`delete` 语义与错误、spec 转换、非对象存储透传、「不 patch harness 内部」）。真机验证：任意 S3 兼容
+存储（如 `docker run minio/minio`）确认探测返回 `ok`、`ls` / `glob` / `grep` / `delete` 与工作区
+读写删均可用；`cos` / `oss` / `obs` 因无可用凭据仅做到单元级与不可达端点下的结构化报错验证。
+
+> 另注：`obs` 还有一处**独立的上游缺陷**（`obs_backend.py` 调 esdk `getObject` 时抛
+> `TypeError: 'tuple' object cannot be interpreted as an integer`），在 harness 原生路径上同样复现，
+> 与本兼容层无关，未纳入本次范围。
+

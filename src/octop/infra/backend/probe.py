@@ -17,6 +17,7 @@ from octop.infra.backend.docker_spec import (
     DEFAULT_SANDBOX_PREFIX,
     enrich_docker_backend_spec,
 )
+from octop.infra.backend.harness_compat import is_object_store_spec, resolve_backend_spec
 from octop.infra.db.repos.backends import BackendRow
 
 logger = logging.getLogger(__name__)
@@ -89,7 +90,49 @@ def probe_storage_backend(row: BackendRow) -> dict[str, Any]:
             return {"ok": False, "message": "host/endpoint not configured"}
         return {"ok": True, "message": "postgres configuration present (no file round-trip)"}
 
+    if is_object_store_spec(spec):
+        # harness ``probe_backend`` resolves the spec itself — for ``s3`` that
+        # picks the unusable implementation, and for every kind it would test a
+        # different class than the one the runtime uses; probe ours instead.
+        return _probe_object_store(spec)
+
     return probe_backend(spec)
+
+
+def _probe_object_store(spec: dict[str, Any]) -> dict[str, Any]:
+    """Write → read → delete a probe object through a resolved backend.
+
+    Mirrors ``harness_agent.backends.probe.probe_backend`` so the dashboard sees
+    the same ``probe_roundtrip_ok`` result, but resolves the backend through
+    :func:`resolve_backend_spec` so object stores exercise the class they will
+    actually run with.
+    """
+    workspace = tempfile.mkdtemp(prefix="octop-storage-probe-")
+    test_path = f"/.octop-probe-{uuid.uuid4().hex}.txt"
+    try:
+        backend = resolve_backend_spec(spec, workspace_dir=workspace)
+        write_result = backend.write(test_path, _PROBE_CONTENT)
+        if getattr(write_result, "error", None):
+            return {"ok": False, "message": f"write failed: {write_result.error}"}
+
+        read_result = backend.read(test_path)
+        if getattr(read_result, "error", None):
+            return {"ok": False, "message": f"read failed: {read_result.error}"}
+        file_data = getattr(read_result, "file_data", None) or {}
+        content = file_data.get("content") if isinstance(file_data, dict) else None
+        if content != _PROBE_CONTENT:
+            return {"ok": False, "message": "read content mismatch"}
+
+        delete_result = backend.delete(test_path)
+        if getattr(delete_result, "error", None):
+            return {"ok": False, "message": f"delete failed: {delete_result.error}"}
+
+        return {"ok": True, "message_key": "probe_roundtrip_ok"}
+    except Exception as exc:
+        logger.info("object storage probe failed: %s", exc)
+        return {"ok": False, "message": str(exc)}
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
 
 
 def _docker_probe_spec(row: BackendRow) -> dict[str, Any] | None:
