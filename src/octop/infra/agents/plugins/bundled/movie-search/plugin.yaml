@@ -1,0 +1,13 @@
+id: movie-search
+version: 0.1.0
+name: 影视搜索
+description: 在 Bangumi 搜索动画与电影条目
+icon: icon.svg
+group: media
+kind: tool
+entry: main.py
+requires:
+  - httpx>=0.27
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

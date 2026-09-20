@@ -132,10 +132,16 @@ function sourceIcon(source: CreateFromTemplateSource | null): {
 } {
   if (!source) return { iconUrl: null, iconName: null };
   if (source.kind === "builtin") {
-    return { iconUrl: null, iconName: source.expert.icon_name ?? null };
+    return {
+      iconUrl: source.expert.icon_url ?? null,
+      iconName: source.expert.icon_name ?? null,
+    };
   }
   if (source.kind === "published") {
-    return { iconUrl: null, iconName: source.expert.icon_name };
+    return {
+      iconUrl: source.expert.icon_url ?? null,
+      iconName: source.expert.icon_name,
+    };
   }
   return {
     iconUrl: source.expert.icon_url ?? null,

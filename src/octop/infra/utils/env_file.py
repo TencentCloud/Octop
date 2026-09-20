@@ -52,7 +52,23 @@ def parse_env_text(text: str) -> dict[str, str]:
             continue
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            quote = value[0]
             value = value[1:-1]
+            # format_env_file escapes backslash and double quote inside the
+            # double-quoted values it writes; undo exactly those two escapes so a
+            # value such as a Windows path survives a save/load roundtrip.
+            if quote == '"' and "\\" in value:
+                unescaped: list[str] = []
+                i, n = 0, len(value)
+                while i < n:
+                    c = value[i]
+                    if c == "\\" and i + 1 < n and value[i + 1] in ('"', "\\"):
+                        unescaped.append(value[i + 1])
+                        i += 2
+                    else:
+                        unescaped.append(c)
+                        i += 1
+                value = "".join(unescaped)
         out[key] = value
     return out
 

@@ -13,6 +13,7 @@ import {
   buildUserMessage,
   resolveTurnModelRef,
 } from "../utils/chatMessages";
+import { parseSkillSlugsInText } from "../utils/skillSlash";
 
 interface UseChatSendParams {
   resolvedAgentId: string | null | undefined;
@@ -121,6 +122,7 @@ export function useChatSend({
       const composerContext =
         overrides?.composerContext ??
         buildComposerContext({
+          skills: parseSkillSlugsInText(trimmed),
           connectors,
           knowledgeBaseIds,
           targetAgents,

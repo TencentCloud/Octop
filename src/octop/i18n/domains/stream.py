@@ -28,6 +28,7 @@ __all__ = [
     "STREAM_STALL",
     "TIMEOUT_NETWORK",
     "classify_stream_error_message",
+    "exception_display_message",
     "format_stream_error",
     "stream_error_message",
 ]
@@ -146,6 +147,27 @@ def classify_stream_error_message(message: str) -> str | None:
     return None
 
 
+def exception_display_message(exc: BaseException | str) -> str:
+    """Return ``str(exc)``, or the exception type name when the message is empty.
+
+    Bare constructors like ``TimeoutError()`` / ``ConnectionError()`` yield
+    ``str(exc) == ""``, which previously made probe logs and UI show nothing.
+    Walk ``__cause__`` so wrapped empty wrappers still surface a root type.
+    """
+    if not isinstance(exc, BaseException):
+        raw = str(exc).strip()
+        return raw or "unknown error"
+    raw = str(exc).strip()
+    if raw:
+        return raw
+    cause: BaseException = exc
+    while cause.__cause__ is not None:
+        cause = cause.__cause__
+    if cause is exc:
+        return type(exc).__name__
+    return f"{type(exc).__name__} <- {type(cause).__name__}"
+
+
 def stream_error_message(error: str | None, locale: str | Locale = "en") -> str:
     """Localized stream / model error for user-facing chat and IM output."""
     if not error:
@@ -162,7 +184,7 @@ def stream_error_message(error: str | None, locale: str | Locale = "en") -> str:
 
 def format_stream_error(exc: BaseException | str, locale: str | Locale = "en") -> str:
     """Classify an exception or raw message; fall back to a generic localized message."""
-    message = str(exc) if isinstance(exc, BaseException) else exc
+    message = exception_display_message(exc)
     classified = classify_stream_error_message(message)
     if classified is not None:
         return tr(classified.removeprefix(_PREFIX), locale)

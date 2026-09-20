@@ -22,6 +22,7 @@ import {
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeChannelFieldValue,
   normalizeQqGroupContextConfig,
+  partitionChannelKeys,
   type ChannelKey,
 } from "./components";
 import type { ChannelRow } from "./useChannels";
@@ -105,6 +106,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
   } = useChannels(agentId);
 
   const [hoverId, setHoverId] = useState<ChannelKey | null>(null);
+  const [showMoreChannels, setShowMoreChannels] = useState(false);
   const [enableLoadingKey, setEnableLoadingKey] = useState<ChannelKey | null>(
     null,
   );
@@ -136,13 +138,30 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
     return map;
   }, [channels]);
 
+  const { featuredChannelKeys, moreChannelKeys } = useMemo(() => {
+    const { featured, more } = partitionChannelKeys(
+      CHANNEL_KEYS,
+      new Set(channelByKind.keys()),
+    );
+    return { featuredChannelKeys: featured, moreChannelKeys: more };
+  }, [channelByKind]);
+
+  const visibleChannelKeys = showMoreChannels
+    ? [...featuredChannelKeys, ...moreChannelKeys]
+    : featuredChannelKeys;
+
   const openCreate = useCallback(
     (kind: ChannelKey) => {
       setEditing(null);
       setLoadingConfig(false);
       const defaults: ChannelFormValues = {
         kind,
-        enabled: false,
+        // Create defaults to ENABLED, matching the server-side create default
+        // (repos/channels.py writes enabled=1) and the QR-bind auto-enable
+        // flows ("channel is usable immediately"). A channel born enabled
+        // needs no follow-up PATCH, so the row keeps a clean single-write
+        // signature and no start/stop churn happens behind the save.
+        enabled: true,
         ...DEFAULT_CHANNEL_DISPLAY_CONFIG,
         ...(kind === "qq"
           ? { group_context: { ...DEFAULT_QQ_GROUP_CONTEXT_CONFIG } }
@@ -409,7 +428,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
       ) : (
         <div className={styles.channelsBody}>
           <div className={styles.channelsGrid}>
-            {CHANNEL_KEYS.map((key) => {
+            {visibleChannelKeys.map((key) => {
               const row = channelByKind.get(key);
               return (
                 <ChannelCard
@@ -430,6 +449,20 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
               );
             })}
           </div>
+          {moreChannelKeys.length > 0 && (
+            <Button
+              type="link"
+              size="small"
+              className={styles.showMoreChannelsBtn}
+              onClick={() => setShowMoreChannels((v) => !v)}
+            >
+              {showMoreChannels
+                ? t("channels.hideMoreChannels")
+                : t("channels.showMoreChannels", {
+                    count: moreChannelKeys.length,
+                  })}
+            </Button>
+          )}
         </div>
       )}
 

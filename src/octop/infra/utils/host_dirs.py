@@ -52,6 +52,36 @@ def host_fs_tree_root(*, allow_outside_home: bool) -> str:
     return host_path_text(Path(home.anchor))
 
 
+def running_in_container() -> bool:
+    """True when the Octop process appears to run inside a container.
+
+    Used so Docker (and Podman) deployments default local backend ``root_dir``
+    to filesystem root — the container is already the isolation boundary.
+
+    Override with ``OCTOP_IN_CONTAINER=1|0`` (also ``true``/``false``).
+    """
+    forced = os.environ.get("OCTOP_IN_CONTAINER", "").strip().lower()
+    if forced in {"1", "true", "yes", "on"}:
+        return True
+    if forced in {"0", "false", "no", "off"}:
+        return False
+    if os.name != "posix":
+        return False
+    return Path("/.dockerenv").is_file() or Path("/run/.containerenv").is_file()
+
+
+def default_host_root_dir(*, allow_outside_home: bool) -> str:
+    """UI default for local backend ``root_dir``.
+
+    Process home on bare metal; filesystem root when running in a container
+    (and browsing outside home is allowed). Policy-restricted callers should
+    pass their jail path instead of calling this helper.
+    """
+    if allow_outside_home and running_in_container():
+        return host_fs_tree_root(allow_outside_home=True)
+    return host_path_text(host_home_dir())
+
+
 def _path_within_base(resolved: str, base: str) -> bool:
     """True when *resolved* equals *base* or is a subdirectory (normcase-safe).
 

@@ -57,6 +57,11 @@
   min-height: 0;
   overflow: auto;
   padding-top: 6px;
+  padding-right: 12px;
+
+  @media (max-width: 767px) {
+    padding-right: 0;
+  }
 }
 
 // Reusable tabbed surface — fills its container (page body or drawer body).
@@ -72,6 +77,11 @@
   min-height: 0;
   overflow: auto;
   padding-top: 6px;
+  padding-right: 12px;
+
+  @media (max-width: 767px) {
+    padding-right: 0;
+  }
 }
 
 /* ── Toolbar (matches Experts page) ─────────────────────────────── */
@@ -467,7 +477,8 @@
 #skills-grid-layout() {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
+  row-gap: 16px;
+  column-gap: 12px;
 
   @media (max-width: 767px) {
     grid-template-columns: 1fr;

@@ -451,3 +451,21 @@ async def test_enrich_plain_text_screenshot_output() -> None:
     assert parsed[0]["type"] == "text"
     assert parsed[1]["type"] == "image"
     assert parsed[1]["preview_url"].startswith("/api/agents/A1/")
+
+
+@pytest.mark.parametrize("prefix", ["", "See ", '"', "'", "(", "\n"])
+def test_plain_text_outbound_image_at_token_boundary(prefix: str) -> None:
+    from octop.infra.gateway.media.tool_media import _plain_text_image_path
+
+    path = "/workspace/outbound/screenshots/chart.PNG"
+    assert _plain_text_image_path(f"{prefix}{path})") == path
+
+
+def test_plain_text_image_scan_handles_long_web_output() -> None:
+    from octop.infra.gateway.media.tool_media import enrich_tool_output_string_sync
+
+    # A long URL/encoded token without an image used to stall the event loop.
+    text = "Fetched page: https://example.com/" + "a" * 100_000
+    started = time.perf_counter()
+    assert enrich_tool_output_string_sync(text, agent_id="A1") == text
+    assert time.perf_counter() - started < 1.0

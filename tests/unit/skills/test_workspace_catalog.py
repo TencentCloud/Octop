@@ -34,3 +34,48 @@ def test_list_workspace_skill_summaries_follows_symlinked_skill(tmp_path: Path) 
             "kind": "workspace",
         }
     ]
+
+
+def test_list_workspace_skill_summaries_repairs_known_utf8_corruption(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "agent"
+    skill_dir = workspace / "skills" / "humanizer"
+    skill_dir.mkdir(parents=True)
+    corrupted = (
+        "---\nname: humanizer\ndescription: copy\n---\n每句 ".encode()
+        + b"\xe2j$"
+        + "15 字\n".encode()
+    )
+    (skill_dir / "SKILL.md").write_bytes(corrupted)
+
+    rows = list_workspace_skill_summaries(workspace, skills_disabled=set())
+
+    assert [row["slug"] for row in rows] == ["humanizer"]
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert "≤15" in text
+
+
+def test_list_workspace_skill_summaries_skips_unrepairable_utf8(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    workspace = tmp_path / "agent"
+    good = workspace / "skills" / "good"
+    bad = workspace / "skills" / "bad"
+    good.mkdir(parents=True)
+    bad.mkdir(parents=True)
+    (good / "SKILL.md").write_text(
+        "---\nname: good\ndescription: ok\n---\n",
+        encoding="utf-8",
+    )
+    (bad / "SKILL.md").write_bytes(b"---\nname: bad\n---\n\xff\xfe broken")
+
+    with caplog.at_level("WARNING"):
+        rows = list_workspace_skill_summaries(workspace, skills_disabled=set())
+
+    assert [row["slug"] for row in rows] == ["bad", "good"]
+    corrupt = next(row for row in rows if row["slug"] == "bad")
+    assert corrupt["corrupt"] is True
+    assert corrupt["error"] == "invalid_utf8"
+    assert corrupt["enabled"] is False
+    assert any("not valid UTF-8" in record.message for record in caplog.records)

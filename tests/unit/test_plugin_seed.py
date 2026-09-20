@@ -1,4 +1,4 @@
-"""Unit tests for bundled plugin seeding (copy + globally disabled)."""
+"""Unit tests for bundled plugin seeding (upgrade-only; market installs new)."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _reset_registry() -> None:
     PluginRegistry.reset()
 
 
-def test_seed_copies_and_disables(tmp_path: Path) -> None:
+def test_seed_does_not_auto_install_missing(tmp_path: Path) -> None:
     bundled = tmp_path / "bundled"
     _write_plugin(bundled, "weather")
     plugins_dir = tmp_path / "plugins"
@@ -48,11 +48,8 @@ def test_seed_copies_and_disables(tmp_path: Path) -> None:
         plugins_dir=plugins_dir,
         config_path=config_path,
     )
-    assert copied == ["weather"]
-    assert (plugins_dir / "weather" / "plugin.yaml").is_file()
-    raw = json.loads(config_path.read_text(encoding="utf-8"))
-    assert raw["plugins"]["weather"]["enabled"] is False
-    assert raw["bundled_plugins_seeded"] == ["weather"]
+    assert copied == []
+    assert not (plugins_dir / "weather").exists()
 
 
 def test_seed_does_not_overwrite_same_version(tmp_path: Path) -> None:
@@ -104,6 +101,7 @@ def test_seed_does_not_recreate_after_uninstall(tmp_path: Path) -> None:
     bundled = tmp_path / "bundled"
     _write_plugin(bundled, "weather")
     plugins_dir = tmp_path / "plugins"
+    _write_plugin(plugins_dir, "weather")
     config_path = tmp_path / "config.json"
     seed_bundled_plugins(
         bundled_root=bundled,
@@ -120,10 +118,11 @@ def test_seed_does_not_recreate_after_uninstall(tmp_path: Path) -> None:
     assert not (plugins_dir / "weather").exists()
 
 
-def test_seed_adds_new_bundled_id(tmp_path: Path) -> None:
+def test_seed_does_not_add_new_bundled_id(tmp_path: Path) -> None:
     bundled = tmp_path / "bundled"
     _write_plugin(bundled, "weather")
     plugins_dir = tmp_path / "plugins"
+    _write_plugin(plugins_dir, "weather")
     config_path = tmp_path / "config.json"
     seed_bundled_plugins(
         bundled_root=bundled,
@@ -136,10 +135,8 @@ def test_seed_adds_new_bundled_id(tmp_path: Path) -> None:
         plugins_dir=plugins_dir,
         config_path=config_path,
     )
-    assert copied == ["qrcode"]
-    raw = json.loads(config_path.read_text(encoding="utf-8"))
-    assert raw["plugins"]["qrcode"]["enabled"] is False
-    assert set(raw["bundled_plugins_seeded"]) == {"weather", "qrcode"}
+    assert copied == []
+    assert not (plugins_dir / "qrcode").exists()
 
 
 def test_load_installed_skips_disabled_before_import(tmp_path: Path) -> None:
@@ -179,13 +176,15 @@ def test_seed_refuses_corrupt_config_and_preserves_bytes(tmp_path: Path) -> None
     """issue #730: seeding always writes back, so a corrupt file must not read as ``{}``."""
     bundled = tmp_path / "bundled"
     _write_plugin(bundled, "weather")
+    plugins_dir = tmp_path / "plugins"
+    _write_plugin(plugins_dir, "weather")
     config_path = tmp_path / "config.json"
     original = '{\n  "bind_host": "0.0.0.0",\n  "database": {"driver": "postgresql"}\n,}'
     config_path.write_text(original, encoding="utf-8")
     with pytest.raises(OctopError) as excinfo:
         seed_bundled_plugins(
             bundled_root=bundled,
-            plugins_dir=tmp_path / "plugins",
+            plugins_dir=plugins_dir,
             config_path=config_path,
         )
     assert excinfo.value.code is ErrorCode.CONFIG_FILE_CORRUPT

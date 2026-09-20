@@ -4,6 +4,7 @@ import type { SlashCommandSpec } from "../../../api/modules/slash";
 import { resolveSlashIcon } from "../../../utils/slashIcons";
 import { groupSlashByCategory } from "../../../utils/slashCategories";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
+import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import type { ChatAgentOption } from "../components/ExpertAgentAvatar";
 import type { AgentSubagentSummary } from "../../../api/modules/subagents";
 import {
@@ -22,6 +23,10 @@ import {
   isPathLikeMentionQuery,
   replaceFileMentionQuery,
 } from "../utils/fileMention";
+import {
+  deleteSkillTokenAtCursor,
+  skillComposerToken,
+} from "../utils/skillSlash";
 import { useWorkspaceFileMention } from "./useWorkspaceFileMention";
 
 export type SlashMenuItem = {
@@ -84,6 +89,16 @@ export function useSlashMentionInput({
   onSubmitRef,
   enterToSend = true,
 }: UseSlashMentionInputParams) {
+  const skillDisplayName = useSkillDisplayName();
+  const skillTokenRefs = useMemo(
+    () =>
+      (availableSkills ?? []).map((skill) => ({
+        slug: skill.slug,
+        label: skillDisplayName(skill),
+        emoji: skill.emoji,
+      })),
+    [availableSkills, skillDisplayName],
+  );
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
@@ -152,21 +167,27 @@ export function useSlashMentionInput({
     const skills = (availableSkills ?? [])
       .filter((skill) => skill.enabled && !reservedSlashNames.has(skill.slug))
       .map((skill) => {
-        const command = `/${skill.slug}`;
+        const label = skillDisplayName(skill);
+        const token = skillComposerToken({
+          slug: skill.slug,
+          label,
+          emoji: skill.emoji,
+        });
         return {
-          command,
-          label: skill.name || skill.slug,
+          // Composer + menu show emoji + friendly label; wire ``/slug`` on send.
+          command: token,
+          label,
           icon: resolveSlashIcon("Sparkles"),
           tone: "violet",
           spec: {
             name: skill.slug,
-            command,
-            aliases: [],
-            label_en: skill.name || skill.slug,
-            label_zh: skill.name || skill.slug,
+            command: token,
+            aliases: [skill.slug],
+            label_en: label,
+            label_zh: label,
             description_en: skill.description || "",
             description_zh: skill.description || "",
-            usage: `${command} <task>`,
+            usage: `${token} <task>`,
             icon: "Sparkles",
             tone: "violet",
             category: "skills",
@@ -176,7 +197,13 @@ export function useSlashMentionInput({
         };
       });
     return [...commands, ...skills];
-  }, [slashCommands, labelFor, availableSkills, reservedSlashNames]);
+  }, [
+    slashCommands,
+    labelFor,
+    availableSkills,
+    reservedSlashNames,
+    skillDisplayName,
+  ]);
 
   const filteredSlashCommands = useMemo(() => {
     if (!slashMenuOpen) return slashMenuItems;
@@ -420,6 +447,34 @@ export function useSlashMentionInput({
         }
       }
 
+      if (
+        e.key === "Backspace" &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !mentionMenuOpen &&
+        !slashMenuOpen
+      ) {
+        const el = textareaRef.current;
+        if (el && el.selectionStart === el.selectionEnd) {
+          const deleted = deleteSkillTokenAtCursor(
+            text,
+            el.selectionStart,
+            skillTokenRefs,
+          );
+          if (deleted) {
+            e.preventDefault();
+            setText(deleted.text);
+            requestAnimationFrame(() => {
+              const node = textareaRef.current;
+              if (!node) return;
+              node.setSelectionRange(deleted.cursor, deleted.cursor);
+            });
+            return;
+          }
+        }
+      }
+
       if (enterToSend && e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         // During streaming, submit queues the message instead of sending.
@@ -438,6 +493,10 @@ export function useSlashMentionInput({
       slashMenuFlat,
       slashMenuIndex,
       handleSlashSelect,
+      text,
+      setText,
+      textareaRef,
+      skillTokenRefs,
     ],
   );
 

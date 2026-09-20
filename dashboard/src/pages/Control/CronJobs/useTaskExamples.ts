@@ -6,6 +6,9 @@ import type { CronTaskExamples } from "../../../api/modules/cronjob";
 import { normalizeUiLocale } from "../../../utils/locale";
 import { resolveTaskExamples } from "./taskExamples";
 
+/**
+ * Cron empty-state cards: prefer welcome ``task_examples``; i18n only on fetch failure.
+ */
 export function useTaskExamples(agentId: string | null): string[] {
   const { t, i18n } = useTranslation();
   const locale = normalizeUiLocale(i18n.language);

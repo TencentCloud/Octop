@@ -29,7 +29,7 @@ from octop.infra.agents.experts.publish import (
 from octop.infra.agents.manager import AgentCreateSpec
 from octop.infra.db.repos.published_experts import PublishedExpertRow
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.trajectory.settings import apply_enable_trajectory
+from octop.infra.history.trajectory.settings import apply_enable_trajectory
 from octop.infra.users.identity import User
 from octop.infra.utils.ulid import new_ulid
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 import tempfile
 from pathlib import Path
@@ -68,6 +69,7 @@ class AgentPluginItem(BaseModel):
     kind: str | None = None
     description: str | None = None
     icon: str | None = None
+    group: str | None = None
     loaded: bool = False
     global_enabled: bool = True
     agent_enabled: bool = True
@@ -199,6 +201,75 @@ async def upload_plugin(
     }
 
 
+@router.get("/market", summary="List marketplace catalog plugins")
+async def list_market_plugins(
+    server: OctopServer = Depends(get_server),
+    _user: Any = Depends(current_user),
+) -> list[dict[str, Any]]:
+    """Return the in-tree marketplace catalog (future: remote index API)."""
+    return _plugin_manager(server).list_market()
+
+
+@router.post(
+    "/market/{plugin_id}/install",
+    summary="Install a plugin from the marketplace (admin)",
+)
+async def install_market_plugin(
+    plugin_id: str,
+    force: bool = False,
+    server: OctopServer = Depends(get_server),
+    _user: Any = Depends(require_permission("plugins")),
+) -> dict[str, Any]:
+    """Copy a catalog plugin into ``~/.octop/plugins`` (future: download ZIP)."""
+    mgr = _plugin_manager(server)
+    loop = asyncio.get_running_loop()
+    try:
+        loaded = await loop.run_in_executor(
+            None,
+            lambda: mgr.install_from_market(plugin_id, force=force),
+        )
+    except OctopError:
+        raise
+    except Exception as exc:
+        raise OctopError(
+            ErrorCode.PLUGIN_INSTALL_FAILED,
+            f"plugin install failed: {exc}",
+            details={"reason": str(exc)},
+        ) from exc
+    # install_from_market already loads the plugin into the process registry.
+    if server.app_runtime is not None:
+        await server.app_runtime.agent_registry.reload_all()
+    return {
+        "id": loaded.manifest.id,
+        "version": loaded.manifest.version,
+        "name": loaded.manifest.name,
+        "kind": loaded.manifest.kind,
+    }
+
+
+@router.get(
+    "/market/{plugin_id}/ui/{file_path:path}",
+    summary="Serve a marketplace catalog UI asset",
+    response_model=None,
+)
+async def get_market_plugin_ui_asset(
+    plugin_id: str,
+    file_path: str,
+    server: OctopServer = Depends(get_server),
+    _user: Any = Depends(current_user),
+) -> Response:
+    """Static files from the in-tree catalog (icons before install)."""
+    target = _plugin_manager(server).resolve_market_ui_file(plugin_id, file_path)
+    suffix = target.suffix.lower()
+    media_type = _UI_CONTENT_TYPES.get(suffix) or mimetypes.guess_type(target.name)[0]
+    return FileResponse(
+        path=target,
+        media_type=media_type or "application/octet-stream",
+        filename=target.name,
+        content_disposition_type="inline",
+    )
+
+
 class PluginPatchBody(BaseModel):
     enabled: bool = Field(..., description="Global enable switch for this plugin")
 
@@ -296,6 +367,7 @@ def _agent_plugins_response(
                 kind=plugin.get("kind"),
                 description=plugin.get("description"),
                 icon=plugin.get("icon"),
+                group=plugin.get("group"),
                 loaded=bool(plugin.get("loaded")),
                 global_enabled=global_enabled,
                 agent_enabled=per_agent_enabled,

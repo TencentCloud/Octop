@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from octop.infra.trajectory.projector import project_harness_chunk
+from octop.infra.history.trajectory.projector import project_harness_chunk
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
 

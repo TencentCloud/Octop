@@ -281,3 +281,62 @@ async def test_setup_database_postgresql_bind(tmp_octop_home: Path) -> None:
         assert created.status_code in (200, 201), created.text
         assert srv.user_manager is not None
         assert srv.user_manager.count() == 1
+
+
+@requires_postgresql
+@pytest.mark.postgresql
+def test_pg_knowledge_base_max_documents_schema_and_crud() -> None:
+    """Ensure PostgreSQL fresh migration includes max_documents on knowledge_bases and CRUD works."""
+    from octop.infra.db.migrate import run_migrations
+    from octop.infra.db.pool import PostgresPool
+    from octop.infra.db.repos.knowledge import KnowledgeRepo
+    from octop.infra.db.repos.users import UserRepo
+
+    pool = PostgresPool(_conninfo())
+    try:
+        _reset_public_schema(pool)
+        run_migrations(pool)
+
+        # 1. Assert schema column exists in information_schema
+        with pool.connect() as conn:
+            cursor = conn.execute(
+                """
+                SELECT column_name, data_type, column_default
+                FROM information_schema.columns
+                WHERE table_name = 'knowledge_bases' AND column_name = 'max_documents';
+                """
+            )
+            col = cursor.fetchone()
+            assert col is not None, (
+                "max_documents column missing from knowledge_bases in PostgreSQL"
+            )
+            assert col[1] == "integer"
+            assert "100" in str(col[2])
+
+        # 2. Assert repo can insert and retrieve knowledge base with default max_documents
+        users = UserRepo(pool)
+        uid = users.create(
+            username=f"kb_user_{uuid.uuid4().hex[:8]}", password_hash="h", role="admin"
+        )
+        repo = KnowledgeRepo(pool)
+        kb_default = repo.create_base(
+            owner_user_id=uid,
+            name="Default Limit Base",
+        )
+        assert kb_default.max_documents == 100
+
+        # 3. Assert repo can insert with explicit max_documents
+        kb_custom = repo.create_base(
+            owner_user_id=uid,
+            name="Custom Limit Base",
+            max_documents=50,
+        )
+        assert kb_custom.max_documents == 50
+
+        # 4. Assert update_base works with max_documents
+        repo.update_base(kb_custom.id, max_documents=200)
+        fetched = repo.get_base(kb_custom.id)
+        assert fetched is not None
+        assert fetched.max_documents == 200
+    finally:
+        pool.close()

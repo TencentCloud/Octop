@@ -109,7 +109,7 @@ export function ExpertIcon({
   size?: number;
   className?: string;
 }): ReactNode {
-  const url = iconUrl?.trim();
+  const url = resolveExpertAvatarUrl(iconUrl);
   if (url) {
     return (
       <ExpertIconImage
@@ -121,6 +121,12 @@ export function ExpertIcon({
     );
   }
   return iconForName(iconName, size);
+}
+
+/** Trust the API ``icon_url``; do not invent scene portraits on the client. */
+export function resolveExpertAvatarUrl(iconUrl?: string | null): string | null {
+  const url = iconUrl?.trim() || "";
+  return url || null;
 }
 
 function ExpertIconImage({
@@ -138,7 +144,10 @@ function ExpertIconImage({
   if (!src || loadState !== "ready") {
     return iconForName(iconName, size);
   }
-  const cover = needsAuthBlobFetch(url) || url.startsWith("blob:");
+  const cover =
+    needsAuthBlobFetch(url) ||
+    url.startsWith("blob:") ||
+    url.includes("/experts/avatars/");
   return (
     <img
       src={src}

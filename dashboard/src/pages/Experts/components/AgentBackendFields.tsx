@@ -195,9 +195,11 @@ export default function AgentBackendFields({
                     margin: 0,
                   }}
                 >
-                  {t("experts.backendRootDirDesc", {
-                    home: fsDefaults?.home ?? "~",
-                  })}
+                  {fsDefaults?.in_container
+                    ? t("experts.backendRootDirDescContainer")
+                    : t("experts.backendRootDirDesc", {
+                        home: fsDefaults?.home ?? "~",
+                      })}
                 </p>
                 <p
                   style={{

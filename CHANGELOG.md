@@ -6,15 +6,27 @@
 
 ## [Unreleased]
 
-### 变更
+### 新增
 
-- ACP Runner 管理从侧边栏独立入口迁入「个性化 → ACP 工具」标签页，旧 `/acp` 路径自动重定向
+- 对话支持默认折叠思考与工具过程（浏览器本地偏好）(#718)
+- 对话中可隐藏不常用的共享专家（浏览器本地偏好）(#589)
+
+### 修复
+
+- Dashboard 在 Chromium 90 等旧版浏览器中因缺少 `Object.hasOwn` 而无法启动
+- 侧栏切换路由不再因 AuthGuard 重跑校验而整页闪 Spinner；仅右侧内容区切换 (#696)
+- 无网络或后端不可达时，启动页展示明确错误与重试，而不再白屏 (#696)
+- iOS PWA 顶栏/侧栏避让状态栏：`env(safe-area-inset-top)` 垫高移动端 Header 与抽屉品牌行（#664）
+- 定时任务空状态提示词：workspace 缺省时回退到专家目录模板 / 名称默认，与 welcome 共用解析 (#651)
+
+## [1.0.1] - 2026-09-18
 
 ### 新增
 
-- 登录验证码：密码登录可选的人机验证，默认本地滑块（仅前端），支持 Cloudflare Turnstile、hCaptcha、reCAPTCHA v2/v3、腾讯云验证码（强校验提供商由服务端向厂商核验，密钥加密保存，设置页可切换）
-- `octop captcha reset`：被验证码误配置锁定时离线清除已保存设置，回退默认滑块
-- 登录验证码组件语言跟随站点语言（腾讯/turnstile/hcaptcha/reCAPTCHA 全部适配）
+- 飞书 / 钉钉 / 企业微信 OAuth SSO 登录与绑定
+- 可选登录验证码（滑块及多家云验证码），并提供 `octop captcha reset`
+- 容器工作区默认、专家头像，以及聊天 HITL / 技能选择体验优化
+- 模型列表搜索；ACP 纳入个性化「工具」页签
 
 ### 修复
 
@@ -22,10 +34,13 @@
 - `config.json` 无法解析时，`load_config` 的报错现在带上文件路径与行列号（此前是裸 `JSONDecodeError`，不说哪个文件出错），并拒绝“合法 JSON 但不是 object”的文件；报错不回显内容
 - 腾讯验证码票据校验改用 DescribeCaptchaResult 接口（旧端点对新票据返回 decrypt fail）；校验需云 API 密钥签名，设置页新增对应字段
 - 修复 Windows 下飞书通道「一键创建机器人」扫不到码或扫码后仍提示“飞书机器人创建失败”的问题：绿色便携包只把 `packages/` 加进服务进程自己的 `sys.path`（`launch.py` + `site.addsitedir`，同时清空 `PYTHONPATH`），创建子进程因此以 `ModuleNotFoundError: No module named 'lark_oapi'` 退出、二维码根本生成不出来；另外子进程 stdout 沿用 ANSI 代码页（cp936），输出带 `✅` 的完成事件时抛 `UnicodeEncodeError`，导致飞书应用其实已创建成功却无法把凭据回传、界面误报失败。现在创建子进程统一携带包路径并以 UTF-8 输出
+- 超长 URL 导致历史消息加载极慢
+- 手动创建渠道默认启用；PostgreSQL 知识库缺列；损坏 config 被清空
+- 若干 Dashboard / 构建相关问题（权限页签、抽屉滚动、Windows 构建等）
 
 ### 变更
 
-- reCAPTCHA v2 暂从设置列表隐藏（无已验证密钥），存量配置仍可校验
+- 升级 harness-agent / harness-browser
 
 ## [1.0.0] - 2026-09-14
 

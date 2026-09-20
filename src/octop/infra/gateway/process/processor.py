@@ -59,8 +59,8 @@ from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_u
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.parser import parse_slash
 from octop.infra.gateway.slash.runner import try_handle_slash
+from octop.infra.history.trajectory.settings import agent_trajectory_enabled
 from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
-from octop.infra.trajectory.settings import agent_trajectory_enabled
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
@@ -288,7 +288,7 @@ class GlobalProcessor:
         if service is None:
             return
         try:
-            from octop.infra.trajectory.turn_context import (  # noqa: PLC0415
+            from octop.infra.history.trajectory.turn_context import (  # noqa: PLC0415
                 build_turn_start_chunks,
                 filter_turn_skill_names,
             )
@@ -384,7 +384,7 @@ class GlobalProcessor:
 
     async def _trajectory_workspace_files(self, agent_id: str) -> list[str]:
         """Return existing harness memory paths without duplicating their contents."""
-        from octop.infra.trajectory.turn_context import memory_file_order  # noqa: PLC0415
+        from octop.infra.history.trajectory.turn_context import memory_file_order  # noqa: PLC0415
 
         workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         if workspace is None:

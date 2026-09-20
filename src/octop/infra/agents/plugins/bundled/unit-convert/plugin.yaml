@@ -1,0 +1,11 @@
+id: unit-convert
+version: 0.1.0
+name: 单位换算
+description: 长度、质量与温度单位互转
+icon: icon.svg
+group: tools
+kind: tool
+entry: main.py
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

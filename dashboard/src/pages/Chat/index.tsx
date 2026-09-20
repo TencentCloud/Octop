@@ -81,7 +81,7 @@ import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatTitleBar from "./components/ChatTitleBar";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import AskQuestionCard from "./components/AskQuestionCard";
-import { extractAskQuestions, isAskHitl } from "../../api/types/hitl";
+import { findPendingAsk, hasPendingHitl } from "./utils/pendingHitl";
 import { isAgentChatReady } from "../../utils/agentError";
 import { useMemoryMaintenance } from "./hooks/useMemoryMaintenance";
 import MemoryMaintenanceBanner from "./components/MemoryMaintenanceBanner";
@@ -323,6 +323,12 @@ function ChatPageInner() {
     clearMessages,
     resumeHitl,
   } = useChat(activeThreadId, resolvedAgentId);
+
+  const hasPendingHitlPause = useMemo(
+    () => hasPendingHitl(messages),
+    [messages],
+  );
+  const pendingAsk = useMemo(() => findPendingAsk(messages), [messages]);
 
   const refreshBrowserRef = useRef<() => void>(() => {});
 
@@ -569,7 +575,9 @@ function ChatPageInner() {
     setBrowserLastRecordingId,
   });
 
-  // Wrap handleSend to intercept skill recording workflow keywords
+  // Wrap handleSend: skill-recording keywords, then pending HITL routing.
+  // An open ask pause must become respond-resume (not a new turn); any other
+  // pending HITL must not start a turn that would cancel the interrupt.
   const wrappedHandleSend = useCallback(
     (
       text: string,
@@ -580,9 +588,47 @@ function ChatPageInner() {
         // The workflow intercepted the message — don't send it to the agent
         return;
       }
+      const targetThreadId = overrides?.threadId ?? activeThreadId ?? undefined;
+      const ask =
+        targetThreadId && targetThreadId === activeThreadId
+          ? pendingAsk
+          : targetThreadId
+          ? findPendingAsk(chatStore.getSnapshot(targetThreadId).messages)
+          : pendingAsk;
+      if (ask) {
+        const trimmed = text.trim();
+        if (attachments && attachments.length > 0) {
+          antMessage.warning(t("chat.ask.useCardForAttachments"));
+          return;
+        }
+        if (!trimmed) return;
+        resumeHitl(
+          ask.actions.map(() => ({ type: "respond", message: trimmed })),
+          targetThreadId,
+        );
+        return;
+      }
+      const blocked =
+        targetThreadId && targetThreadId === activeThreadId
+          ? hasPendingHitlPause
+          : targetThreadId
+          ? hasPendingHitl(chatStore.getSnapshot(targetThreadId).messages)
+          : hasPendingHitlPause;
+      if (blocked) {
+        antMessage.warning(t("chat.hitl.finishPendingFirst"));
+        return;
+      }
       handleSend(text, attachments, overrides);
     },
-    [interceptUserMessage, handleSend],
+    [
+      interceptUserMessage,
+      handleSend,
+      pendingAsk,
+      hasPendingHitlPause,
+      activeThreadId,
+      resumeHitl,
+      t,
+    ],
   );
 
   const flushQueuedItem = useCallback(
@@ -612,6 +658,10 @@ function ChatPageInner() {
     [handleSend, t],
   );
 
+  const shouldDeferQueueFlush = useCallback((threadId: string) => {
+    return hasPendingHitl(chatStore.getSnapshot(threadId).messages);
+  }, []);
+
   const {
     items: queuedItems,
     enqueue: enqueueQueued,
@@ -623,6 +673,7 @@ function ChatPageInner() {
     threadId: activeThreadId,
     isStreaming,
     onFlush: flushQueuedItem,
+    shouldDeferFlush: shouldDeferQueueFlush,
   });
 
   const {
@@ -724,6 +775,10 @@ function ChatPageInner() {
   // Regenerate: re-send the last user message before this assistant message
   const handleRegenerate = useCallback(
     (messageId: string) => {
+      if (hasPendingHitlPause) {
+        antMessage.warning(t("chat.hitl.finishPendingFirst"));
+        return;
+      }
       const idx = messages.findIndex((m) => m.id === messageId);
       if (idx < 0) return;
       // Find the user message that preceded this assistant response
@@ -737,7 +792,7 @@ function ChatPageInner() {
       if (!userMsg) return;
       wrappedHandleSend(userMsg.content, userMsg.attachments);
     },
-    [messages, wrappedHandleSend],
+    [messages, wrappedHandleSend, hasPendingHitlPause, t],
   );
 
   // Edit user message: truncate history from that message onwards, replace
@@ -745,37 +800,19 @@ function ChatPageInner() {
   const handleEditUserMessage = useCallback(
     (messageId: string, newText: string) => {
       if (!activeThreadId) return;
+      if (hasPendingHitlPause) {
+        antMessage.warning(t("chat.hitl.finishPendingFirst"));
+        return;
+      }
       editAndResend(messageId, newText, "", resolvedAgentId ?? "");
     },
-    [activeThreadId, editAndResend, resolvedAgentId],
+    [activeThreadId, editAndResend, resolvedAgentId, hasPendingHitlPause, t],
   );
 
   const [forking, setForking] = useState(false);
-  const hasPendingHitl = useMemo(
-    () => messages.some((message) => message.hitlData?.status === "pending"),
-    [messages],
-  );
-  const pendingAsk = useMemo(() => {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index];
-      const hitl = message.hitlData;
-      if (
-        !hitl ||
-        (hitl.status ?? "pending") !== "pending" ||
-        !isAskHitl(hitl.action_requests)
-      ) {
-        continue;
-      }
-      const questions = extractAskQuestions(hitl.action_requests);
-      if (questions.length > 0) {
-        return { id: message.id, actions: hitl.action_requests, questions };
-      }
-    }
-    return null;
-  }, [messages]);
-  const forkDisabled = forking || isStreaming || hasPendingHitl;
+  const forkDisabled = forking || isStreaming || hasPendingHitlPause;
   const forkDisabledHint =
-    !forking && (isStreaming || hasPendingHitl)
+    !forking && (isStreaming || hasPendingHitlPause)
       ? t("chat.forkDisabledWhileBusy")
       : undefined;
   const hasAssistantReply = useMemo(
@@ -850,7 +887,7 @@ function ChatPageInner() {
     async (threadId: string, agentId?: string | null) => {
       const agent = agentId || resolvedAgentId;
       if (!agent || !threadId || forking) return;
-      if (threadId === activeThreadId && (isStreaming || hasPendingHitl)) {
+      if (threadId === activeThreadId && (isStreaming || hasPendingHitlPause)) {
         antMessage.warning(t("chat.forkDisabledWhileBusy"));
         return;
       }
@@ -874,7 +911,7 @@ function ChatPageInner() {
       activeThreadId,
       forking,
       hasAssistantReply,
-      hasPendingHitl,
+      hasPendingHitlPause,
       isStreaming,
       navigateToForkedThread,
       resolvedAgentId,
@@ -1335,7 +1372,7 @@ function ChatPageInner() {
               <div className={styles.askQuestionDock}>
                 <div className={styles.askQuestionDockInner}>
                   <AskQuestionCard
-                    key={pendingAsk.id}
+                    key={pendingAsk.messageId}
                     questions={pendingAsk.questions}
                     status="pending"
                     onSubmit={(answer) =>

@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, bool_int, sql_in_placeholders
-from octop.infra.trajectory.types import TrajectoryEvent, TrajectoryKind
+from octop.infra.history.trajectory.types import TrajectoryEvent, TrajectoryKind
 
 _SELECT_COLS = (
     "event_id, agent_id, thread_id, seq, ts, kind, turn_id, "

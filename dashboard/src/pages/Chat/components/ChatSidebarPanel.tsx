@@ -27,7 +27,7 @@ interface ChatSidebarPanelProps {
   onFetchAllSessions: () => void;
   onSelectSession: (sessionId: string, agentId: string) => void;
   onAgentSelect: (agentId: string) => void;
-  /** Minimal layout only: start a fresh chat from an expert row. */
+  /** Start a fresh chat from an expert row (classic + minimal). */
   onNewChatWithAgent: (agentId: string) => void;
   onDeleteSession: (id: string) => void;
   onRenameSession: (id: string, name: string) => void;
@@ -114,6 +114,7 @@ export default function ChatSidebarPanel({
       onFetchAllSessions={onFetchAllSessions}
       onSelect={onSelectSession}
       onAgentSelect={onAgentSelect}
+      onNewChat={onNewChatWithAgent}
       onDelete={onDeleteSession}
       onRename={onRenameSession}
       onPin={onPinSession}

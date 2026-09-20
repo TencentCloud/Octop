@@ -25,8 +25,17 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-from octop.infra.agents.experts.catalog import default_task_examples, snap_task_examples
+from octop.infra.agents.experts.catalog import (
+    default_task_examples,
+    scene_expert_avatar_url,
+    snap_task_examples,
+)
+from octop.infra.skills.install import valid_skillhub_icon_url
 from octop.infra.utils.ssl_errors import looks_like_ssl_error
+from octop.infra.utils.utf8_text import (
+    InvalidSkillManifestEncodingError,
+    coerce_utf8_text_bytes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +144,7 @@ class SkillHubSkillset:
             },
             "scene": self.scene,
             "sub_scene": self.sub_scene,
-            "icon_url": self.icon_url or None,
+            "icon_url": skillhub_portrait_url(self),
             "icon_name": _scene_icon_name(self.scene),
             "color": _scene_color(self.scene),
             "skill_slugs": list(self.skill_slugs),
@@ -161,6 +170,14 @@ _install_locks: dict[str, threading.Lock] = {}
 
 def market_expert_id(slug: str) -> str:
     return f"{MARKET_EXPERT_PREFIX}{slug}"
+
+
+def skillhub_portrait_url(item: SkillHubSkillset) -> str | None:
+    """Prefer SkillHub CDN ``iconUrl``; fall back to a bundled scene portrait."""
+    upstream = str(item.icon_url or "").strip()
+    if upstream and valid_skillhub_icon_url(upstream):
+        return upstream
+    return scene_expert_avatar_url(item.scene)
 
 
 def validate_skillset_slug(slug: str) -> str:
@@ -701,7 +718,15 @@ def _extract_zip(zip_bytes: bytes, target_dir: Path) -> None:
             dest = target_dir / member.filename
             dest.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(member) as src:
-                dest.write_bytes(_read_zip_member_limited(src, member))
+                payload = _read_zip_member_limited(src, member)
+                try:
+                    payload = coerce_utf8_text_bytes(payload, path=member.filename)
+                except InvalidSkillManifestEncodingError as exc:
+                    raise SkillHubMarketError(
+                        str(exc),
+                        kind=SkillHubMarketErrorKind.PACKAGE_INVALID,
+                    ) from exc
+                dest.write_bytes(payload)
 
 
 def _read_zip_member_limited(src: Any, member: zipfile.ZipInfo) -> bytes:
@@ -867,6 +892,7 @@ def _expert_manifest(
             ),
         },
         "icon_name": _scene_icon_name(item.scene),
+        "icon_url": skillhub_portrait_url(item),
         "color": _scene_color(item.scene),
         "prompt_files": ["SOUL.md"],
         "quick_prompts": quick_prompts_for_skillset(item, skillset_prompt),

@@ -28,6 +28,24 @@ def _user_json(user: Any, *, locale: str | None = None) -> dict[str, Any]:
     }
 
 
+def me_payload(user: Any, server: Any) -> dict[str, Any]:
+    """Profile JSON for ``/auth/me`` and OAuth bind/unbind responses."""
+    payload = _user_json(user, locale=user.locale)
+    row = server.user_manager.get_row(user.id)
+    if row is None:
+        payload["sso_linked"] = False
+        payload["sso_kind"] = None
+        payload["sso_identities"] = []
+        payload["has_password"] = True
+        return payload
+    identities = [{"kind": item.kind} for item in server.user_manager.list_sso_identities(user.id)]
+    payload["sso_identities"] = identities
+    payload["sso_linked"] = bool(identities)
+    payload["sso_kind"] = identities[0]["kind"] if identities else None
+    payload["has_password"] = row.password_hash is not None
+    return payload
+
+
 class LoginBody(BaseModel):
     username: str
     password: str
@@ -109,9 +127,11 @@ async def logout(user: Any = Depends(current_user), server: Any = Depends(get_se
 
 
 @router.get("/me", summary="Current user profile")
-async def me(user: Any = Depends(current_user)) -> dict[str, Any]:
+async def me(
+    user: Any = Depends(current_user), server: Any = Depends(get_server)
+) -> dict[str, Any]:
     """Return the authenticated user's id, username, role, display name, and locale."""
-    return _user_json(user, locale=user.locale)
+    return me_payload(user, server)
 
 
 @router.post("/change-password", status_code=204, summary="Change password")

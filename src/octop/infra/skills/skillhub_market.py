@@ -17,6 +17,11 @@ from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlparse
 
+from octop.infra.utils.utf8_text import (
+    InvalidSkillManifestEncodingError,
+    coerce_utf8_text_bytes,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_SKILLHUB_HOST = "https://api.skillhub.cn"
@@ -229,11 +234,15 @@ def parse_skillhub_package(payload: bytes) -> list[tuple[str, bytes]]:
     """Validate a SkillHub ZIP and return workspace-relative file payloads."""
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as zf:
-            files = [
-                (clean, _read_zip_member(zf, member))
-                for member, clean in _validate_zip(zf)
-                if not member.is_dir()
-            ]
+            files: list[tuple[str, bytes]] = []
+            for member, clean in _validate_zip(zf):
+                if member.is_dir():
+                    continue
+                raw = _read_zip_member(zf, member)
+                try:
+                    files.append((clean, coerce_utf8_text_bytes(raw, path=clean)))
+                except InvalidSkillManifestEncodingError as exc:
+                    raise SkillHubPackageError(str(exc)) from exc
     except SkillHubPackageError:
         raise
     except (OSError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:

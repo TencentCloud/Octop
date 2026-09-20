@@ -8,7 +8,8 @@ Security notes:
   ``/etc``, ``/root`` on POSIX). The process home is never denied (so uid 0
   with home ``/root`` can use the default picker path).
 - All authenticated users may browse from host root ``/`` (denylist still applies).
-  The UI default ``root_dir`` remains the process home directory.
+  The UI default ``root_dir`` is the process home on bare metal, or host ``/``
+  when Octop runs inside a container (override with ``OCTOP_IN_CONTAINER``).
 - Directory listing is capped and skips unreadable entries.
 - Write probe creates a short-lived dotfile only for non-``/`` selections.
 - mkdir / rename only allow basename-safe names under already-browsable parents.
@@ -25,11 +26,15 @@ from pydantic import BaseModel, Field
 from octop.api.deps import current_user, get_server
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
-from octop.infra.users.resource_policy import POLICY_WORKSPACE_ROOT_DIR, workspace_root_dir_of
+from octop.infra.users.resource_policy import (
+    POLICY_WORKSPACE_ROOT_DIR,
+    effective_workspace_root_dir,
+)
 from octop.infra.utils.bwrap import ensure_bubblewrap
 from octop.infra.utils.docker_env import docker_status, ensure_docker
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
+    default_host_root_dir,
     host_fs_tree_root,
     host_home_dir,
     host_path_text,
@@ -37,13 +42,14 @@ from octop.infra.utils.host_dirs import (
     mkdir_host_subdir,
     probe_host_root_dir,
     rename_host_dir,
+    running_in_container,
 )
 
 router = APIRouter()
 
 
 def _user_workspace_root(server: Any, user: User) -> str | None:
-    return workspace_root_dir_of(
+    return effective_workspace_root_dir(
         server.services.user_policy_repo.get(user.id, POLICY_WORKSPACE_ROOT_DIR)
     )
 
@@ -73,8 +79,13 @@ async def filesystem_defaults(
     user: User = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Return the process home path and browse-tree root (host ``/`` on POSIX)."""
+    """Return the process home path and browse-tree root (host ``/`` on POSIX).
+
+    When Octop runs inside a container, ``default_root_dir`` is filesystem
+    root (not home) unless the user has a workspace-root policy jail.
+    """
     home = host_path_text(host_home_dir())
+    in_container = running_in_container()
     allowed = _user_workspace_root(server, user)
     if allowed:
         return {
@@ -82,12 +93,14 @@ async def filesystem_defaults(
             "default_root_dir": allowed,
             "allow_outside_home": False,
             "tree_root": allowed,
+            "in_container": in_container,
         }
     return {
         "home": home,
-        "default_root_dir": home,
+        "default_root_dir": default_host_root_dir(allow_outside_home=True),
         "allow_outside_home": True,
         "tree_root": host_fs_tree_root(allow_outside_home=True),
+        "in_container": in_container,
     }
 
 

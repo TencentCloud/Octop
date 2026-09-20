@@ -43,3 +43,10 @@ def test_build_redirect_uri_uses_oidc_callback_path() -> None:
         build_redirect_uri("https://octop.example/")
         == "https://octop.example/api/auth/oidc/callback"
     )
+
+
+def test_build_redirect_uri_accepts_oauth_callback_path() -> None:
+    assert (
+        build_redirect_uri("https://octop.example", "/api/auth/oauth/callback")
+        == "https://octop.example/api/auth/oauth/callback"
+    )

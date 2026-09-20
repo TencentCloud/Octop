@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Image, Button } from "antd";
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { builtinToolIcon } from "../../../utils/builtinToolIcons";
 import {
   collectToolMediaFromToolData,
   parseStructuredToolOutput,
@@ -128,6 +129,7 @@ export function DefaultToolRenderer({
     : isStreaming
     ? t("common.running", "Running")
     : t("common.pending", "Pending");
+  const ToolIcon = builtinToolIcon(toolName);
 
   return (
     <div className={styles.inlineToolBlock}>
@@ -137,8 +139,11 @@ export function DefaultToolRenderer({
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
       >
-        <span className={styles.inlineToolLabel}>
-          {t("chatUsage.tool", "Tool")}
+        <span
+          className={styles.inlineToolIcon}
+          aria-label={t("chatUsage.tool", "Tool")}
+        >
+          <ToolIcon size={14} strokeWidth={2.2} aria-hidden />
         </span>
         <code className={styles.inlineToolName}>
           {resolveToolLabel(toolName, displayNameProp, displayName)}

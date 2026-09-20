@@ -66,7 +66,10 @@ from octop.infra.db.repos.audit import ACTOR_SYSTEM
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.skills.presentation import apply_skill_presentation, localize_skill_summary
 from octop.infra.skills.skill_package_store import SkillPackageStore
-from octop.infra.skills.workspace_catalog import list_workspace_skill_summaries
+from octop.infra.skills.workspace_catalog import (
+    list_workspace_skill_summaries,
+    repair_workspace_skill_manifests,
+)
 from octop.infra.utils.locale import Locale
 from octop.infra.utils.ulid import new_short_id
 
@@ -346,6 +349,9 @@ class AgentManager:
         self._team_processor: Any | None = None
         self._harness_manager: HarnessAgentManager | None = None
         self._lock = asyncio.Lock()
+        # Serialize start/reload per agent so parallel provider reloads cannot
+        # double-register the same harness id ("already exists in the registry").
+        self._agent_lifecycle_locks: dict[str, asyncio.Lock] = {}
         self._active_invocations: dict[str, int] = {}
         self._invocation_waiters: dict[str, int] = {}
         self._history_backfills: dict[str, asyncio.Event] = {}
@@ -746,15 +752,35 @@ class AgentManager:
                 raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
             await self._start_agent(row, init_workspace=False)
 
+    def _lifecycle_lock_for(self, agent_id: str) -> asyncio.Lock:
+        lock = self._agent_lifecycle_locks.get(agent_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._agent_lifecycle_locks[agent_id] = lock
+        return lock
+
+    @staticmethod
+    def _is_already_registered_error(exc: BaseException) -> bool:
+        return "already exists in the registry" in str(exc)
+
+    def _harness_agent_or_none(self, agent_id: str) -> HarnessAgent | None:
+        if self._harness_manager is None:
+            return None
+        try:
+            return self._harness_manager.get_agent(agent_id).agent
+        except KeyError:
+            return None
+
     async def stop(self, agent_id: str) -> None:
         """Unload agent from harness runtime and persist ``last_state=stopped``."""
         async with self._lock:
             row = self._repos.agent_repo.get(agent_id)
             if row is None:
                 raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-            await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
-            await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
-            self._repos.agent_repo.set_state(agent_id, "stopped", error=None)
+            async with self._lifecycle_lock_for(agent_id):
+                await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
+                await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
+                self._repos.agent_repo.set_state(agent_id, "stopped", error=None)
 
     def _quiesce_harness_memory(self, agent_id: str) -> None:
         """Stop memory GC before the harness closes the SQLite backend.
@@ -1993,21 +2019,65 @@ class AgentManager:
 
         agent = self.get_agent(agent_id)
         cfg = self.get_config(agent_id)
+        workspace_dir = self.resolve_workspace_dir(agent_id)
+        repaired = repair_workspace_skill_manifests(workspace_dir)
+        if repaired:
+            logger.warning(
+                "repaired invalid UTF-8 skill manifests for agent %s: %s",
+                agent_id,
+                ", ".join(repaired),
+            )
+
         try:
             harness_rows = list(await agent.list_skill_summaries())
-        except (OSError, PermissionError) as exc:
+        except (OSError, PermissionError, UnicodeDecodeError, UnicodeError) as exc:
             logger.warning(
                 "harness list_skill_summaries failed for agent %s; using workspace fallback: %s",
                 agent_id,
                 exc,
             )
-            harness_rows = []
-            workspace_dir = self.resolve_workspace_dir(agent_id)
-            harness_rows.extend(
-                list_workspace_skill_summaries(
-                    workspace_dir,
-                    skills_disabled=skills_disabled_set(cfg),
-                )
+            harness_rows = list_workspace_skill_summaries(
+                workspace_dir,
+                skills_disabled=skills_disabled_set(cfg),
+            )
+        except ExceptionGroup as exc:
+            # Starlette/anyio may wrap a single UnicodeDecodeError in a group.
+            if not any(
+                isinstance(inner, (OSError, PermissionError, UnicodeDecodeError, UnicodeError))
+                for inner in exc.exceptions
+            ):
+                raise
+            logger.warning(
+                "harness list_skill_summaries failed for agent %s; using workspace fallback: %s",
+                agent_id,
+                exc,
+            )
+            harness_rows = list_workspace_skill_summaries(
+                workspace_dir,
+                skills_disabled=skills_disabled_set(cfg),
+            )
+        # Surface unrepairable manifests that harness silently skipped.
+        present = {
+            str(row.get("slug") or "").strip()
+            for row in harness_rows
+            if str(row.get("slug") or "").strip()
+        }
+        for row in list_workspace_skill_summaries(
+            workspace_dir,
+            skills_disabled=skills_disabled_set(cfg),
+            include_corrupt=True,
+        ):
+            if not row.get("corrupt"):
+                continue
+            slug = str(row.get("slug") or "").strip()
+            if not slug or slug in present:
+                continue
+            harness_rows.append(row)
+            logger.warning(
+                "agent %s skill %s skipped: %s",
+                agent_id,
+                slug,
+                row.get("error") or "corrupt",
             )
         from harness_agent.skills import catalog as harness_skill_catalog  # noqa: PLC0415
 
@@ -2178,27 +2248,46 @@ class AgentManager:
         if self._harness_manager.shared_factory is None:
             self._repos.agent_repo.set_state(row.agent_id, "failed", error=NO_MODELS_CONFIGURED)
             return None
-        try:
-            cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
-            entry = await self._harness_manager.acreate_agent(
-                cfg,
-                agent_id=row.agent_id,
-                metadata=metadata,
-                tags=tags,
-                init_workspace=init_workspace,
-            )
-            await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
-            self._repos.agent_repo.set_state(row.agent_id, "running")
-            logger.info("Agent %s (%s) started", row.agent_id, row.name)
-            return entry.agent
-        except Exception as exc:
-            logger.exception("Failed to start agent %s", row.agent_id)
-            self._repos.agent_repo.set_state(
-                row.agent_id,
-                "failed",
-                error=format_agent_start_error(exc),
-            )
-            return None
+        async with self._lifecycle_lock_for(row.agent_id):
+            existing = self._harness_agent_or_none(row.agent_id)
+            if existing is not None:
+                # Idempotent: a concurrent reload/boot may have already registered.
+                self._repos.agent_repo.set_state(row.agent_id, "running", error=None)
+                logger.info(
+                    "Agent %s (%s) already in harness registry — skip create",
+                    row.agent_id,
+                    row.name,
+                )
+                return existing
+            try:
+                cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
+                entry = await self._harness_manager.acreate_agent(
+                    cfg,
+                    agent_id=row.agent_id,
+                    metadata=metadata,
+                    tags=tags,
+                    init_workspace=init_workspace,
+                )
+                await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
+                self._repos.agent_repo.set_state(row.agent_id, "running", error=None)
+                logger.info("Agent %s (%s) started", row.agent_id, row.name)
+                return entry.agent
+            except Exception as exc:
+                recovered = self._harness_agent_or_none(row.agent_id)
+                if recovered is not None and self._is_already_registered_error(exc):
+                    self._repos.agent_repo.set_state(row.agent_id, "running", error=None)
+                    logger.warning(
+                        "Agent %s create raced with another loader; using existing registry entry",
+                        row.agent_id,
+                    )
+                    return recovered
+                logger.exception("Failed to start agent %s", row.agent_id)
+                self._repos.agent_repo.set_state(
+                    row.agent_id,
+                    "failed",
+                    error=format_agent_start_error(exc),
+                )
+                return None
 
     async def _post_start_agent(
         self,
@@ -2462,31 +2551,40 @@ class AgentManager:
 
     async def _reload_agent(self, agent_id: str) -> None:
         assert self._harness_manager is not None
-        self._bootstrap_graph_refresh_pending.discard(agent_id)
-        row = self._repos.agent_repo.get(agent_id)
-        if not row or not row.enabled or row.last_state == "stopped":
-            await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
-            await self._harness_manager.aremove_agent(agent_id)
-            return
-        if self._harness_manager.shared_factory is None:
-            return
-        try:
-            cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
-            entry = await self._harness_manager.arebuild_agent(
-                agent_id,
-                cfg,
-                metadata=metadata,
-                tags=tags,
-            )
-            await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
-            self._repos.agent_repo.set_state(agent_id, "running", error=None)
-        except Exception as exc:
-            logger.exception("Background reload failed for agent %s", agent_id)
-            self._repos.agent_repo.set_state(
-                agent_id,
-                "failed",
-                error=format_agent_start_error(exc),
-            )
+        async with self._lifecycle_lock_for(agent_id):
+            self._bootstrap_graph_refresh_pending.discard(agent_id)
+            row = self._repos.agent_repo.get(agent_id)
+            if not row or not row.enabled or row.last_state == "stopped":
+                await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
+                await self._harness_manager.aremove_agent(agent_id)
+                return
+            if self._harness_manager.shared_factory is None:
+                return
+            try:
+                cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
+                entry = await self._harness_manager.arebuild_agent(
+                    agent_id,
+                    cfg,
+                    metadata=metadata,
+                    tags=tags,
+                )
+                await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
+                self._repos.agent_repo.set_state(agent_id, "running", error=None)
+            except Exception as exc:
+                recovered = self._harness_agent_or_none(agent_id)
+                if recovered is not None and self._is_already_registered_error(exc):
+                    self._repos.agent_repo.set_state(agent_id, "running", error=None)
+                    logger.warning(
+                        "Agent %s reload raced; keeping existing registry entry",
+                        agent_id,
+                    )
+                    return
+                logger.exception("Background reload failed for agent %s", agent_id)
+                self._repos.agent_repo.set_state(
+                    agent_id,
+                    "failed",
+                    error=format_agent_start_error(exc),
+                )
 
     def _schedule_reload(self, agent_id: str) -> None:
         """Queue a background harness reload; coalesces rapid successive updates."""

@@ -200,19 +200,29 @@ const FIELD_ICON_PROPS = {
   style: { color: "var(--fn-text-tertiary)" },
 };
 
-function policyPayload(values: PolicyFormValues): {
+function policyPayload(
+  values: PolicyFormValues,
+  options: { workspaceRootAllowed: boolean },
+): {
   workspace_root_dir: string | null;
   token_quota: number | null;
 } {
   return {
-    workspace_root_dir: values.limit_workspace_root
-      ? values.workspace_root_dir?.trim() || null
-      : null,
+    workspace_root_dir:
+      options.workspaceRootAllowed && values.limit_workspace_root
+        ? values.workspace_root_dir?.trim() || null
+        : null,
     token_quota: values.limit_token_quota ? values.token_quota ?? null : null,
   };
 }
 
-function ResourcePolicyFields({ fsTreeRoot }: { fsTreeRoot: string }) {
+function ResourcePolicyFields({
+  fsTreeRoot,
+  workspaceRootAllowed,
+}: {
+  fsTreeRoot: string;
+  workspaceRootAllowed: boolean;
+}) {
   const { t } = useTranslation();
   return (
     <div className={`${styles.createSection} ${styles.policySection}`}>
@@ -221,37 +231,43 @@ function ResourcePolicyFields({ fsTreeRoot }: { fsTreeRoot: string }) {
       </div>
       <Form.Item
         label={t("adminUsers.policyWorkspaceRoot")}
-        extra={t("adminUsers.policyWorkspaceRootHint", {
-          localShell: t("experts.backendModes.localShell"),
-          filesystem: t("experts.backendModes.filesystem"),
-        })}
+        extra={
+          workspaceRootAllowed
+            ? t("adminUsers.policyWorkspaceRootHint", {
+                localShell: t("experts.backendModes.localShell"),
+                filesystem: t("experts.backendModes.filesystem"),
+              })
+            : t("adminUsers.policyWorkspaceRootContainerHint")
+        }
       >
         <Form.Item name="limit_workspace_root" valuePropName="checked" noStyle>
-          <Switch />
+          <Switch disabled={!workspaceRootAllowed} />
         </Form.Item>
       </Form.Item>
-      <Form.Item
-        noStyle
-        shouldUpdate={(prev, cur) =>
-          prev.limit_workspace_root !== cur.limit_workspace_root
-        }
-      >
-        {({ getFieldValue }) =>
-          getFieldValue("limit_workspace_root") ? (
-            <Form.Item
-              name="workspace_root_dir"
-              rules={[
-                {
-                  required: true,
-                  message: t("adminUsers.policyWorkspaceRootRequired"),
-                },
-              ]}
-            >
-              <RootDirSelect treeRoot={fsTreeRoot} />
-            </Form.Item>
-          ) : null
-        }
-      </Form.Item>
+      {workspaceRootAllowed ? (
+        <Form.Item
+          noStyle
+          shouldUpdate={(prev, cur) =>
+            prev.limit_workspace_root !== cur.limit_workspace_root
+          }
+        >
+          {({ getFieldValue }) =>
+            getFieldValue("limit_workspace_root") ? (
+              <Form.Item
+                name="workspace_root_dir"
+                rules={[
+                  {
+                    required: true,
+                    message: t("adminUsers.policyWorkspaceRootRequired"),
+                  },
+                ]}
+              >
+                <RootDirSelect treeRoot={fsTreeRoot} />
+              </Form.Item>
+            ) : null
+          }
+        </Form.Item>
+      ) : null}
       <Form.Item
         label={t("adminUsers.policyTokenQuota")}
         extra={t("adminUsers.policyTokenQuotaHint")}
@@ -888,6 +904,7 @@ export default function UsersListPanel() {
   const { viewMode, setViewMode, showCardView } = useCardTableView("table");
   const [permCatalog, setPermCatalog] = useState<PermissionCatalogItem[]>([]);
   const [fsTreeRoot, setFsTreeRoot] = useState(HOST_FS_ROOT);
+  const [workspaceRootAllowed, setWorkspaceRootAllowed] = useState(true);
 
   const permLabelByKey = useMemo(() => {
     const map = new Map<string, string>();
@@ -1053,8 +1070,14 @@ export default function UsersListPanel() {
       .then(setPermCatalog)
       .catch(() => setPermCatalog([]));
     fetchFilesystemDefaults()
-      .then((defaults) => setFsTreeRoot(defaults.tree_root))
-      .catch(() => setFsTreeRoot(HOST_FS_ROOT));
+      .then((defaults) => {
+        setFsTreeRoot(defaults.tree_root);
+        setWorkspaceRootAllowed(!defaults.in_container);
+      })
+      .catch(() => {
+        setFsTreeRoot(HOST_FS_ROOT);
+        setWorkspaceRootAllowed(true);
+      });
   }, [refreshAll]);
 
   const onCreate = async (values: CreateValues) => {
@@ -1069,7 +1092,7 @@ export default function UsersListPanel() {
           password: values.password,
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
-          ...policyPayload(values),
+          ...policyPayload(values, { workspaceRootAllowed }),
         }),
       });
       message.success(
@@ -1111,8 +1134,12 @@ export default function UsersListPanel() {
       email: row.email ?? "",
       role: row.role,
       permissions: [...(row.permissions ?? [])],
-      limit_workspace_root: Boolean(row.workspace_root_dir),
-      workspace_root_dir: row.workspace_root_dir ?? undefined,
+      limit_workspace_root: workspaceRootAllowed
+        ? Boolean(row.workspace_root_dir)
+        : false,
+      workspace_root_dir: workspaceRootAllowed
+        ? row.workspace_root_dir ?? undefined
+        : undefined,
       limit_token_quota: row.token_quota != null,
       token_quota: row.token_quota ?? undefined,
     });
@@ -1156,7 +1183,7 @@ export default function UsersListPanel() {
           email: values.email?.trim() || null,
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
-          ...policyPayload(values),
+          ...policyPayload(values, { workspaceRootAllowed }),
         }),
       });
       setEditTarget(null);
@@ -1732,7 +1759,10 @@ export default function UsersListPanel() {
             </Form.Item>
           </div>
 
-          <ResourcePolicyFields fsTreeRoot={fsTreeRoot} />
+          <ResourcePolicyFields
+            fsTreeRoot={fsTreeRoot}
+            workspaceRootAllowed={workspaceRootAllowed}
+          />
         </Form>
       </Drawer>
 
@@ -1865,7 +1895,10 @@ export default function UsersListPanel() {
             </Form.Item>
           </div>
 
-          <ResourcePolicyFields fsTreeRoot={fsTreeRoot} />
+          <ResourcePolicyFields
+            fsTreeRoot={fsTreeRoot}
+            workspaceRootAllowed={workspaceRootAllowed}
+          />
         </Form>
       </Drawer>
 

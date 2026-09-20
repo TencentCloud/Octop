@@ -57,25 +57,27 @@
   left: 50%;
   z-index: 20;
 
-  /* Base appearance — more prominent jump affordance */
+  /* Quiet secondary affordance — readable but not competing with messages */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 9px 18px 9px 14px;
-  background: var(--fn-bg-elevated, var(--fn-bg-primary));
-  border: 1px solid color-mix(in srgb, var(--fn-color-brand) 35%, transparent);
+  gap: 4px;
+  padding: 6px 12px 6px 10px;
+  background: color-mix(
+    in srgb,
+    var(--fn-bg-elevated, var(--fn-bg-primary)) 88%,
+    transparent
+  );
+  border: 1px solid var(--fn-border-secondary, var(--fn-card-border-normal));
   border-radius: 999px;
-  color: var(--fn-text-brand);
-  font-size: 13px;
-  font-weight: 600;
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  box-shadow:
-    0 6px 20px rgba(0, 0, 0, 0.12),
-    0 2px 8px color-mix(in srgb, var(--fn-color-brand) 16%, transparent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(8px);
   white-space: nowrap;
 
-  /* Smooth transitions for hover and visibility changes */
   transition:
     background var(--fn-transition-fast),
     color var(--fn-transition-fast),
@@ -85,24 +87,17 @@
     transform 0.22s ease,
     visibility 0.22s;
 
-  /* Visible state — default is visible so the initial fadeIn animation plays */
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   visibility: visible;
   pointer-events: auto;
 
   &:hover {
-    background: color-mix(
-      in srgb,
-      var(--fn-color-brand) 8%,
-      var(--fn-bg-elevated, var(--fn-bg-primary))
-    );
-    color: var(--fn-text-brand);
-    border-color: color-mix(in srgb, var(--fn-color-brand) 55%, transparent);
-    box-shadow:
-      0 8px 24px rgba(0, 0, 0, 0.14),
-      0 3px 10px color-mix(in srgb, var(--fn-color-brand) 22%, transparent);
-    transform: translateX(-50%) translateY(-2px);
+    background: var(--fn-bg-elevated, var(--fn-bg-primary));
+    color: var(--fn-text-primary);
+    border-color: var(--fn-border-primary, var(--fn-card-border-normal));
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+    transform: translateX(-50%) translateY(-1px);
   }
 
   &:active {
@@ -135,7 +130,7 @@
 @keyframes scrollBtnEnter {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(12px) scale(0.88);
+    transform: translateX(-50%) translateY(8px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -184,7 +179,8 @@
 }
 
 /* ---------- Message bubbles ---------- */
-/* 3 columns: expert avatar | composer-aligned text | user avatar */
+/* Desktop: 3 columns — expert avatar | composer-aligned text | user avatar.
+   Mobile (≤767): only the active side keeps a slot (see overrides below). */
 .chatMsgColumns() {
   display: grid;
   grid-template-columns:
@@ -215,6 +211,9 @@
 
 .turnInset {
   .chatMsgColumns();
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 
   > * {
     grid-column: 2;
@@ -397,10 +396,6 @@
 
   &:hover .msgCopyBtn {
     opacity: 1;
-  }
-
-  @media (max-width: 767px) {
-    max-width: min(95%, calc(100vw - 60px));
   }
 }
 
@@ -589,13 +584,28 @@
   }
 }
 
-/* Unified bottom waiting state — fixed slot for the whole stream. */
+/* Unified bottom waiting state — fixed slot for the whole stream.
+   Keep width tied to the message column: a flex slot + turnInset grid can
+   resolve to the grid's preferred max (avatar gutters + 960px) after the
+   session sidebar opens/closes and the chatMain width reflows. */
 .generatingSlot {
   min-height: 36px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   display: flex;
   align-items: center;
   padding: 4px 4px 8px;
   box-sizing: border-box;
+  overflow: hidden;
+
+  > * {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
 }
 
 .generatingIndicator {
@@ -603,6 +613,9 @@
   align-items: center;
   gap: 6px;
   padding: 4px 0;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .generatingText {
@@ -645,17 +658,13 @@
   }
 }
 
-.inlineToolLabel {
+.inlineToolIcon {
   display: inline-flex;
   align-items: center;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
-  color: var(--fn-text-brand);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  justify-content: center;
   flex-shrink: 0;
+  color: var(--fn-text-tertiary);
+  line-height: 0;
 }
 
 .inlineToolName {
@@ -786,11 +795,67 @@
   }
 }
 
+/* Mobile: drop the unused opposite avatar track so the text column gains ~44px.
+   Two-column grids (not 0-width third tracks) so row `gap` does not still reserve space.
+   Placed after all `.chatMsgColumns()` call sites so these overrides win the cascade.
+   Keep column-gap: 0 so thinking / tools / answer share the same content left edge
+   (themeOverrides used to set .messageBubble { gap: 10px } only on reply rows). */
+@media (max-width: 767px) {
+  .assistantBubble,
+  .processSummaryRow,
+  .turnInset {
+    grid-template-columns: var(--chat-msg-avatar-slot, 44px) minmax(0, 1fr);
+    column-gap: 0;
+
+    .avatarCol {
+      grid-column: 1;
+    }
+
+    .bubbleContent,
+    .processSummary {
+      grid-column: 2;
+      justify-self: stretch;
+      width: 100%;
+      min-width: 0;
+    }
+  }
+
+  .assistantBubble {
+    /* Beat themeOverrides `.messageBubble { gap: 10px }` — that gap only on the
+       answer row shifted it right of the thinking box by 10px. */
+    gap: 0;
+  }
+
+  .turnInset > * {
+    grid-column: 2;
+  }
+
+  .userBubble {
+    grid-template-columns: minmax(0, 1fr) var(--chat-msg-avatar-slot, 44px);
+
+    .bubbleContent {
+      grid-column: 1;
+    }
+
+    .avatarCol {
+      grid-column: 2;
+    }
+  }
+
+  .userBubbleWithTags {
+    .userComposerTags {
+      grid-column: 1;
+    }
+  }
+}
+
 .processSummary {
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
   align-items: stretch;
+  width: 100%;
   max-width: 100%;
+  box-sizing: border-box;
   padding: 8px 12px;
   border-radius: 10px;
   border: none;
@@ -980,7 +1045,11 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  align-self: flex-start;
+  /* Grid child of .turnInset — default stretch fills the message column;
+     keep the chip hug its label (same idea as .messageFileCard). */
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
   margin-top: 6px;
   padding: 8px 14px;
   border: 1px solid color-mix(in srgb, var(--fn-color-brand) 22%, transparent);

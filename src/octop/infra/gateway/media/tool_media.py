@@ -49,7 +49,9 @@ _PLAIN_IMAGE_PATH_RE = re.compile(
     re.IGNORECASE,
 )
 _OUTBOUND_IMAGE_PATH_RE = re.compile(
-    r"([^\s\"'()]+/outbound/[^\s\"'()]+\.(?:png|jpe?g|gif|webp|bmp|svg))",
+    # Only try at token boundaries: retrying at every character of a long URL
+    # or encoded tool result makes a failed search quadratic.
+    r"(?<![^\s\"'()])([^\s\"'()]+/outbound/[^\s\"'()]+\.(?:png|jpe?g|gif|webp|bmp|svg))",
     re.IGNORECASE,
 )
 

@@ -105,6 +105,8 @@ interface SkillSummary {
   kind?: "builtin" | "workspace";
   emoji?: string;
   icon_url?: string;
+  corrupt?: boolean;
+  error?: string;
 }
 
 interface SubagentSummary {
@@ -337,7 +339,21 @@ function EditAgentDrawerBody({
 
           void request<SkillSummary[]>(`/agents/${agent.agent_id}/skills`)
             .then((skills) => {
-              if (!cancelled) setAgentSkills(workspaceSkills(skills));
+              if (cancelled) return;
+              const list = skills || [];
+              const corrupt = list.filter((skill) => skill.corrupt);
+              if (corrupt.length > 0) {
+                message.warning(
+                  t("skills.corruptSkipped", {
+                    slugs: corrupt
+                      .map((skill) => skill.slug ?? skill.name)
+                      .join(", "),
+                  }),
+                );
+              }
+              setAgentSkills(
+                workspaceSkills(list.filter((skill) => !skill.corrupt)),
+              );
             })
             .catch(() => {
               if (!cancelled) setAgentSkills([]);
@@ -361,7 +377,7 @@ function EditAgentDrawerBody({
     return () => {
       cancelled = true;
     };
-  }, [agent.agent_id, agent.state, form, t]);
+  }, [agent.agent_id, agent.state, form, message, t]);
 
   const handleSave = useCallback(async () => {
     const values = await form.validateFields();

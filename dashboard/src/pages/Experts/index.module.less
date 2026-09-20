@@ -9,7 +9,8 @@
 .cardGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  row-gap: 16px;
+  column-gap: 12px;
   padding: 20px 0 40px;
 
   @media (max-width: 640px) {
@@ -372,6 +373,15 @@
   overflow: hidden;
 }
 
+.agentCardPortrait {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--fn-border, #e2e8f0) 80%, transparent);
+}
+
 .agentCardTitleBlock {
   flex: 1;
   min-width: 0;
@@ -425,10 +435,13 @@
   color: var(--fn-text-secondary);
   line-height: 1.5;
   min-height: 2.4em;
+  max-height: 3em;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .agentCardErrorWrap {
@@ -1321,21 +1334,27 @@
   overscroll-behavior: contain;
 }
 
-.catalogDrawerRoot {
+/* Bounded drawer height so catalog children can scroll (desktop + mobile). */
+.catalogDrawerFlex {
   :global {
-    .ant-drawer-content-wrapper {
-      width: 100% !important;
-      max-width: 100vw !important;
-    }
-
     .ant-drawer-content {
       display: flex;
       flex-direction: column;
+      height: 100%;
     }
 
     .ant-drawer-body {
       flex: 1;
       min-height: 0;
+    }
+  }
+}
+
+.catalogDrawerRoot {
+  :global {
+    .ant-drawer-content-wrapper {
+      width: 100% !important;
+      max-width: 100vw !important;
     }
   }
 }
@@ -1400,7 +1419,8 @@
 .catalogGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  row-gap: 16px;
+  column-gap: 12px;
   padding-top: 4px;
   width: 100%;
   min-width: 0;

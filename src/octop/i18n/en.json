@@ -374,6 +374,8 @@
     "PUBLISHED_EXPERT_SLUG_TAKEN": "Published expert slug {slug} already exists.",
     "PUBLISHED_EXPERT_ALREADY_EXISTS": "This agent is already published as “{name}”. Refresh the published template instead.",
     "OIDC_BAD_REQUEST": "Invalid OIDC request: {detail}",
+    "SSO_IDENTITY_TAKEN": "This login is already linked to another Octop account.",
+    "SSO_UNBIND_REQUIRES_PASSWORD": "Set a password before unlinking single sign-on.",
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
     "DESKTOP_SESSION_LIMIT": "Too many concurrent remote desktop streams (max {limit}). Close other connections and try again.",
@@ -399,6 +401,7 @@
     "INVITE_REVOKED": "This invite code has been revoked.",
     "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later.",
     "WORKSPACE_ROOT_RESTRICTED": "The selected storage root is outside the allowed directory for this account.",
+    "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({used}/{quota}).",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
@@ -518,7 +521,8 @@
     "write_env_file": "Write env file",
     "ask_user_question": "Ask the user",
     "generate_image": "Generate image",
-    "generate_video": "Generate video"
+    "generate_video": "Generate video",
+    "bilibili_search_anime": "Search Bilibili anime"
   },
   "skills": {
     "pdf": "PDF",
@@ -533,7 +537,8 @@
     "stock-info": "Stock Info",
     "cvm-ai-doctor": "CVM AI Doctor",
     "tencentcloud-infra": "Tencent Cloud Infra",
-    "publisher-multi-platform": "Multi-platform Publisher"
+    "publisher-multi-platform": "Multi-platform Publisher",
+    "docker-management": "Docker Management"
   },
   "channel": {
     "tool_hint_start": "🔧 Calling tool: {tool_name}",

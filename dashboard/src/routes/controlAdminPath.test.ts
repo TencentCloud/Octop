@@ -33,7 +33,6 @@ describe("pathPermissionKeys", () => {
     ]);
     expect(pathPermissionKeys("/remote-phone")).toEqual([...PERM.mobile]);
     expect(pathPermissionKeys("/acp")).toBe("admin");
-    expect(pathPermissionKeys("/personalization/acp")).toBe("admin");
   });
 
   it("keeps sso on users page, not advanced", () => {

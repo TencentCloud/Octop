@@ -1,5 +1,4 @@
 import { useTranslation } from "react-i18next";
-import { useIsMobile } from "../../../hooks/useIsMobile";
 import SubagentManager from "./SubagentManager";
 import CatalogDrawer from "./CatalogDrawer";
 
@@ -21,7 +20,6 @@ export default function SubagentCatalogDrawer({
   onInstalled,
 }: SubagentCatalogDrawerProps) {
   const { t } = useTranslation();
-  const isMobile = useIsMobile();
 
   return (
     <CatalogDrawer
@@ -30,13 +28,29 @@ export default function SubagentCatalogDrawer({
       onClose={onClose}
       mobileBodyPadding={0}
     >
-      <SubagentManager
-        agentId={agentId}
-        agentState={agentState}
-        installedSlugs={installedSlugs}
-        onInstalled={onInstalled}
-        fillHeight={isMobile}
-      />
+      {/*
+        Flex column + overflow:hidden so fillHeight SubagentManager gets a
+        bounded height and owns scrolling. A plain overflow:auto shell left the
+        inner catalogDrawerMobile unconstrained; overscroll-behavior:contain then
+        ate wheel events and desktop scroll appeared broken.
+      */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        <SubagentManager
+          agentId={agentId}
+          agentState={agentState}
+          installedSlugs={installedSlugs}
+          onInstalled={onInstalled}
+          fillHeight
+        />
+      </div>
     </CatalogDrawer>
   );
 }

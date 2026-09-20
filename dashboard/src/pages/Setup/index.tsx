@@ -8,7 +8,9 @@ import { storeUiLocale, type UiLocale } from "../../utils/locale";
 
 import { authApi } from "../../api/modules/auth";
 import { preferencesApi } from "../../api/modules/preferences";
+import BootOfflinePanel from "../../components/BootOfflinePanel";
 import { useTheme } from "../../context/ThemeContext";
+import { isNetworkFetchError } from "../../utils/networkError";
 import DatabaseStep from "./steps/DatabaseStep";
 import PasswordStep from "./steps/PasswordStep";
 import AdminStep from "./steps/AdminStep";
@@ -33,6 +35,8 @@ export default function SetupPage() {
   const { isDark } = useTheme();
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
+  const [offline, setOffline] = useState(false);
+  const [statusRetryKey, setStatusRetryKey] = useState(0);
   const [passwordRequired, setPasswordRequired] = useState(true);
   const [current, setCurrentRaw] = useState<number>(STEP_PASSWORD);
   const [adminCreds, setAdminCreds] = useState<{
@@ -65,6 +69,8 @@ export default function SetupPage() {
 
   useEffect(() => {
     let cancelled = false;
+    setOffline(false);
+    setChecking(true);
     authApi
       .getAuthStatus()
       .then(async (status) => {
@@ -110,7 +116,14 @@ export default function SetupPage() {
               setChecking(false);
               return;
             }
-          } catch {
+          } catch (err) {
+            if (isNetworkFetchError(err)) {
+              if (!cancelled) {
+                setOffline(true);
+                setChecking(false);
+              }
+              return;
+            }
             /* fall through */
           }
         }
@@ -128,13 +141,16 @@ export default function SetupPage() {
         }
         if (!cancelled) setChecking(false);
       })
-      .catch(() => {
-        if (!cancelled) setChecking(false);
+      .catch((err) => {
+        if (cancelled) return;
+        void err;
+        setOffline(true);
+        setChecking(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [navigate, goToStep, ensureWizardToken]);
+  }, [navigate, goToStep, ensureWizardToken, statusRetryKey]);
 
   const handlePasswordVerified = () => {
     goToStep(STEP_DATABASE);
@@ -161,6 +177,16 @@ export default function SetupPage() {
     wizardSession.clearToken();
     goToStep(STEP_PASSWORD);
   };
+
+  if (offline) {
+    return (
+      <BootOfflinePanel
+        onRetry={() => {
+          setStatusRetryKey((k) => k + 1);
+        }}
+      />
+    );
+  }
 
   if (checking) {
     return (

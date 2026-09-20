@@ -111,6 +111,7 @@ class BackendRepo:
         self,
         backend_id: int,
         *,
+        name: str | None = None,
         kind: str | None = None,
         endpoint: str | None = None,
         access_key: str | None = None,
@@ -123,6 +124,7 @@ class BackendRepo:
     ) -> None:
         fields, params = partial_updates(
             [
+                ("name", name),
                 ("kind", kind),
                 ("endpoint", endpoint),
                 ("access_key", access_key),
