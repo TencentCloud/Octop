@@ -115,7 +115,7 @@ yarn add your-package
 
 ## 贡献
 
-参见 [CONTRIBUTING.md](CONTRIBUTING.md)
+参见 CONTRIBUTING.md。
 
 ## 许可证
 
