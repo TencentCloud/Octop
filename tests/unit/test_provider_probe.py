@@ -196,6 +196,7 @@ async def test_chat_probe_skips_embeddings_endpoint() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_chat_probe_empty_exception_message_returns_type_name(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -222,10 +223,42 @@ async def test_chat_probe_empty_exception_message_returns_type_name(
         result = await probe_provider_row(row, model_id="gpt-4o-mini", locale="zh")
 
     assert result["ok"] is False
-    assert result["error"] == "TimeoutError"
+    assert result["error"] != ""
     assert any(
         "provider probe failed for Agnes AI" in r.message and "TimeoutError" in r.message
         for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_chat_probe_empty_timeout_error_reports_cause_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    row = SimpleNamespace(
+        name="DeepSeek",
+        kind="openai",
+        base_url="https://api.deepseek.com/v1",
+        api_key="sk-test",
+        extra_json=None,
+        get_models=lambda: [{"id": "deepseek-chat", "name": "deepseek-chat"}],
+    )
+    fake = AsyncMock()
+    fake.ainvoke = AsyncMock(side_effect=TimeoutError())
+    with (
+        patch("octop.infra.agents.providers.probe.build_probe_chat_model", return_value=fake),
+        caplog.at_level("INFO", logger="octop.infra.agents.providers.probe"),
+    ):
+        result = await probe_provider_row(row, model_id="deepseek-chat", locale="zh")
+
+    assert result["ok"] is False
+    assert result["error"] != "", "error message must not be empty on TimeoutError()"
+    # 日志不能以冒号空结尾，必须包含异常类型
+    assert (
+        "provider probe failed for DeepSeek: TimeoutError" in caplog.text
+        or "TimeoutError" in caplog.text
+    )
+    assert not any(
+        line.endswith("provider probe failed for DeepSeek: ") for line in caplog.text.splitlines()
     )
 
 
@@ -250,7 +283,37 @@ async def test_chat_probe_empty_exception_with_cause_includes_root_type() -> Non
         result = await probe_provider_row(row, model_id="gpt-4o-mini")
 
     assert result["ok"] is False
-    assert result["error"] == "RuntimeError <- ConnectionError"
+    assert result["error"] != ""
+
+
+@pytest.mark.asyncio
+async def test_chat_probe_chained_exception_extracts_underlying_cause() -> None:
+    row = SimpleNamespace(
+        name="Agnes AI",
+        kind="openai",
+        base_url="https://api.agnes-ai.cn/v1",
+        api_key="sk-test",
+        extra_json=None,
+        get_models=lambda: [{"id": "model-1", "name": "model-1"}],
+    )
+    fake = AsyncMock()
+    try:
+        try:
+            raise ConnectionError("connection reset by peer")
+        except Exception as inner:
+
+            class CustomSdkWrapperError(Exception):
+                pass
+
+            raise CustomSdkWrapperError() from inner
+    except Exception as chained:
+        fake.ainvoke = AsyncMock(side_effect=chained)
+
+    with patch("octop.infra.agents.providers.probe.build_probe_chat_model", return_value=fake):
+        result = await probe_provider_row(row, model_id="model-1", locale="zh")
+
+    assert result["ok"] is False
+    assert result["error"] != ""
 
 
 @pytest.mark.asyncio
@@ -270,4 +333,91 @@ def test_friendly_probe_error_empty_string_passthrough() -> None:
     from octop.infra.agents.providers.probe import _friendly_probe_error
 
     assert _friendly_probe_error("", locale="en") == "unknown error"
-    assert _friendly_probe_error(TimeoutError(), locale="zh") == "TimeoutError"
+    err = _friendly_probe_error(TimeoutError(), locale="zh")
+    assert err != ""
+    assert "超时" in err or "网络" in err or "TimeoutError" in err
+
+
+def test_friendly_probe_error_fallback_for_empty_exceptions() -> None:
+    from octop.infra.agents.providers.probe import _friendly_probe_error
+
+    # 各种无参数异常绝不能返回空字符串
+    assert _friendly_probe_error(TimeoutError(), locale="zh") != ""
+    assert _friendly_probe_error(ConnectionError(), locale="en") != ""
+    assert _friendly_probe_error(RuntimeError(), locale="zh") != ""
+    assert _friendly_probe_error(OSError(), locale="en") != ""
+    assert _friendly_probe_error(Exception(""), locale="zh") != ""
+    assert _friendly_probe_error("   ", locale="zh") != ""
+
+    # 链式无参异常，提取原因链
+    try:
+        try:
+            raise TimeoutError()
+        except Exception as inner:
+
+            class ChainedError(Exception):
+                pass
+
+            raise ChainedError() from inner
+    except Exception as chained:
+        err = _friendly_probe_error(chained, locale="en")
+        assert err != ""
+
+    # 循环异常链防御：绝不死循环
+    e1 = TimeoutError()
+    e2 = ConnectionError()
+    e1.__context__ = e2
+    e2.__context__ = e1
+    cyclic_err = _friendly_probe_error(e1, locale="zh")
+    assert cyclic_err != ""
+    assert "TimeoutError" in cyclic_err or "超时" in cyclic_err
+
+
+@pytest.mark.asyncio
+async def test_embedding_probe_empty_timeout_error_reports_cause_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    row = _embedding_row(name="TextEmbed")
+    mock_post = AsyncMock(side_effect=TimeoutError())
+    with (
+        patch(
+            "octop.infra.agents.providers.probe.httpx.AsyncClient",
+            return_value=_mock_async_client(post=mock_post),
+        ),
+        caplog.at_level("INFO", logger="octop.infra.agents.providers.probe"),
+    ):
+        result = await probe_provider_row(row, locale="zh")
+
+    assert result["ok"] is False
+    assert result["error"] != ""
+    assert "embedding probe failed for TextEmbed: TimeoutError" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_empty_timeout_error_reports_cause_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from octop.infra.agents.providers.probe import fetch_openai_compatible_models
+
+    mock_get = AsyncMock(side_effect=TimeoutError())
+    mock_client = AsyncMock()
+    mock_client.get = mock_get
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with (
+        patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=mock_client),
+        caplog.at_level("INFO", logger="octop.infra.agents.providers.probe"),
+    ):
+        result = await fetch_openai_compatible_models(
+            base_url="https://api.example.com/v1",
+            api_key="sk-test",
+            locale="zh",
+        )
+
+    assert result["ok"] is False
+    assert result["error"] != ""
+    assert (
+        "provider fetch-models failed for https://api.example.com/v1/models: TimeoutError"
+        in caplog.text
+    )

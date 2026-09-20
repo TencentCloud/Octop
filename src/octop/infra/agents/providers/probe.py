@@ -150,12 +150,42 @@ def _embeddings_url(base_url: str | None) -> str:
     return f"{root}/embeddings"
 
 
+def _format_probe_exception(exc: BaseException | str) -> str:
+    """Format an exception for logging without losing its type or cause on empty messages."""
+    if isinstance(exc, str):
+        return exc.strip() or "unknown error"
+    exc_type = type(exc).__name__
+    msg = str(exc).strip()
+    cause = getattr(exc, "__cause__", None)
+    if cause is None and not getattr(exc, "__suppress_context__", False):
+        cause = getattr(exc, "__context__", None)
+    if cause is exc or not isinstance(cause, BaseException):
+        cause = None
+
+    if msg:
+        if cause:
+            c_type = type(cause).__name__
+            c_msg = str(cause).strip()
+            if c_msg and c_msg not in msg:
+                return f"{exc_type}: {msg} (caused by {c_type}: {c_msg})"
+        return f"{exc_type}: {msg}" if exc_type not in msg else msg
+
+    if cause:
+        c_type = type(cause).__name__
+        c_msg = str(cause).strip()
+        if c_msg:
+            return f"{exc_type} (caused by {c_type}: {c_msg})"
+        return f"{exc_type} (caused by {c_type})"
+    return exc_type
+
+
 def _friendly_probe_error(exc: BaseException | str, *, locale: str) -> str:
     """Map raw provider exceptions / HTTP bodies to localized guidance when known."""
-    from octop.i18n.domains.stream import exception_display_message, stream_error_message
+    from octop.i18n.domains.stream import stream_error_message
 
-    raw = exception_display_message(exc)
-    return stream_error_message(raw, locale) or raw
+    raw = _format_probe_exception(exc)
+    localized = stream_error_message(raw, locale)
+    return localized or raw
 
 
 async def _probe_embedding_endpoint(
@@ -176,11 +206,11 @@ async def _probe_embedding_endpoint(
             )
     except Exception as exc:
         logger.info(
-            "embedding probe failed for %s: %r (%s)",
+            "embedding probe failed for %s: %s",
             getattr(row, "name", "?"),
-            exc,
-            type(exc).__name__,
+            _format_probe_exception(exc),
         )
+        logger.debug("embedding probe failed traceback", exc_info=True)
         return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
 
     if response.status_code >= 400:
@@ -245,11 +275,11 @@ async def probe_provider_row(
         result = await asyncio.wait_for(chat.ainvoke("ping"), timeout=30.0)
     except Exception as exc:
         logger.info(
-            "provider probe failed for %s: %r (%s)",
+            "provider probe failed for %s: %s",
             getattr(row, "name", "?"),
-            exc,
-            type(exc).__name__,
+            _format_probe_exception(exc),
         )
+        logger.debug("provider probe failed traceback", exc_info=True)
         return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
     latency_ms = int((time.perf_counter() - started) * 1000)
     _ = getattr(result, "content", None)
@@ -279,11 +309,11 @@ async def fetch_openai_compatible_models(
             response = await client.get(url, headers=headers)
     except Exception as exc:
         logger.info(
-            "provider fetch-models failed for %s: %r (%s)",
+            "provider fetch-models failed for %s: %s",
             url,
-            exc,
-            type(exc).__name__,
+            _format_probe_exception(exc),
         )
+        logger.debug("provider fetch-models failed traceback", exc_info=True)
         return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
 
     if response.status_code >= 400:

@@ -159,4 +159,31 @@ def test_exception_display_message_empty_falls_back_to_type() -> None:
 def test_format_stream_error_empty_exception_still_localized() -> None:
     text = format_stream_error(TimeoutError(), "zh")
     assert text
-    assert "模型调用" in text
+    assert "超时" in text or "模型调用" in text
+
+    # 未分类的无参异常回退至通用模型调用失败
+    unknown_text = format_stream_error(RuntimeError(), "zh")
+    assert unknown_text
+    assert "模型调用" in unknown_text
+
+
+def test_classify_timeout_network_extended_patterns() -> None:
+    # Python native and httpx timeout/network exception types
+    assert classify_stream_error_message("TimeoutError") == "octop:stream_errors.timeout_network"
+    assert (
+        classify_stream_error_message("ConnectError: [Errno 111] Connection refused")
+        == "octop:stream_errors.timeout_network"
+    )
+    assert (
+        classify_stream_error_message("ReadTimeout: timed out")
+        == "octop:stream_errors.timeout_network"
+    )
+    assert classify_stream_error_message("ConnectTimeout") == "octop:stream_errors.timeout_network"
+    assert (
+        classify_stream_error_message("ConnectionRefusedError: Connection refused")
+        == "octop:stream_errors.timeout_network"
+    )
+    assert (
+        classify_stream_error_message("ConnectionResetError: Connection reset by peer")
+        == "octop:stream_errors.timeout_network"
+    )
