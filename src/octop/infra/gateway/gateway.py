@@ -465,6 +465,8 @@ class Gateway:
         session: SessionRow,
         agent_id: str,
         text: str,
+        *,
+        thread_id: str | None = None,
     ) -> None:
         """Fan out a toast payload to the owner's dashboard notification sockets."""
         if not text.strip():
@@ -477,7 +479,7 @@ class Gateway:
             {
                 "type": "dashboard_push",
                 "agent_id": agent_id,
-                "thread_id": session.thread_id,
+                "thread_id": thread_id or session.thread_id,
                 "text": text,
                 "agent_name": agent_name,
             },

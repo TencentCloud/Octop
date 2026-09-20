@@ -19,6 +19,7 @@
 - 无网络或后端不可达时，启动页展示明确错误与重试，而不再白屏 (#696)
 - iOS PWA 顶栏/侧栏避让状态栏：`env(safe-area-inset-top)` 垫高移动端 Header 与抽屉品牌行（#664）
 - 定时任务空状态提示词：workspace 缺省时回退到专家目录模板 / 名称默认，与 welcome 共用解析 (#651)
+- 后台协同（`ask_agent(mode="background")`）完成后，源 Agent 的转述回复现在写入原始会话的可见历史并推送 Dashboard 通知，不再只涨未读数；按事件中的源 thread_id 投递，重复回调按 inbox_id 去重 (#834)
 
 ## [1.0.1] - 2026-09-18
 

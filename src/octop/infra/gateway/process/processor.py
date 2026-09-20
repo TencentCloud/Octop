@@ -44,7 +44,11 @@ from octop.infra.gateway.process.harness_request import (
     build_content_from_message,
     build_harness_request,
 )
-from octop.infra.gateway.process.history_projection import TurnHistoryTracker, message_inputs
+from octop.infra.gateway.process.history_projection import (
+    TurnHistoryTracker,
+    message_input,
+    message_inputs,
+)
 from octop.infra.gateway.process.message_keys import (
     resolve_user_id_for_message,
     sanitize_im_metadata,
@@ -496,9 +500,25 @@ class GlobalProcessor:
             await self._deliver_team_text(session, sk, text)
             return
 
-        await self._deliver_team_text(session, sk, event.reply_text or "(empty)")
+        await self._deliver_team_text(
+            session,
+            sk,
+            event.reply_text or "(empty)",
+            agent_id=event.source_agent_id,
+            thread_id=event.source_thread_id,
+            message_id=f"team-{event.inbox_id}",
+        )
 
-    async def _deliver_team_text(self, session: SessionRow, session_key: str, text: str) -> None:
+    async def _deliver_team_text(
+        self,
+        session: SessionRow,
+        session_key: str,
+        text: str,
+        *,
+        agent_id: str | None = None,
+        thread_id: str | None = None,
+        message_id: str | None = None,
+    ) -> None:
         if session.channel_id and self._gateway is not None:
             await self._gateway.push_text(
                 session.channel_type,
@@ -507,8 +527,39 @@ class GlobalProcessor:
                 text,
             )
             return
+        # Deliver into the thread the reply belongs to (the one the background
+        # task ran against), not the session's current thread, which may have
+        # moved on while the task was queued.
+        target = thread_id if thread_id and self._thread_registry.get_thread(thread_id) else None
+        target = target or session.thread_id
         self._thread_registry.increment_unread(session_key)
-        self._thread_registry.touch_last_active(session.thread_id)
+        self._thread_registry.touch_last_active(target)
+        self._project_team_reply(target, text, message_id)
+        if self._gateway is not None and agent_id is not None:
+            try:
+                await self._gateway.notify_dashboard_push(session, agent_id, text, thread_id=target)
+            except Exception:
+                logger.warning(
+                    "failed to notify dashboard for team reply thread=%s",
+                    target,
+                    exc_info=True,
+                )
+
+    def _project_team_reply(self, thread_id: str, text: str, message_id: str | None) -> None:
+        """Persist a background reply into the thread's visible history."""
+        if self._thread_message_repo is None:
+            return
+        item = message_input(AIMessage(content=text, id=message_id))
+        if item is None:
+            return
+        try:
+            self._thread_message_repo.append_if_ready(thread_id, [item])
+        except Exception:
+            logger.warning(
+                "failed to append team reply projection for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
 
     def _peer_display_name(self, agent_id: str) -> str:
         row = self._agent_manager.get_row(agent_id)

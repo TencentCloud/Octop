@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from harness_agent.teams.inbox import InboxMessage
@@ -13,6 +13,7 @@ from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.sessions import SessionRepo
+from octop.infra.db.repos.thread_messages import ThreadMessageRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.gateway.process.processor import GlobalProcessor
@@ -44,6 +45,8 @@ def processor_env(tmp_path: Path) -> dict[str, object]:
 
     gw = Gateway(agent_manager=agent_manager, repos=repos)
     gw._channel_manager = MagicMock()
+    gw._ws_hub = MagicMock()
+    gw._ws_hub.push_to_user = AsyncMock()
 
     parent_sk = ThreadRegistry.dashboard_key(agent_id="parent", user_id=1)
     gw.thread_registry._threads.insert(
@@ -71,8 +74,14 @@ def processor_env(tmp_path: Path) -> dict[str, object]:
         connector_repo=repos.connector_repo,
         dispatcher=SlashDispatcher(),
         gateway=gw,
+        thread_message_repo=ThreadMessageRepo(db),
     )
-    return {"processor": processor, "gateway": gw, "parent_sk": parent_sk}
+    return {
+        "processor": processor,
+        "gateway": gw,
+        "parent_sk": parent_sk,
+        "thread_messages": ThreadMessageRepo(db),
+    }
 
 
 def test_compose_followup_uses_peer_display_name(processor_env: dict) -> None:
@@ -112,6 +121,101 @@ async def test_on_reply_increments_unread_on_dashboard(processor_env: dict) -> N
     session = processor_env["gateway"].thread_registry.get_session(parent_sk)  # type: ignore[attr-defined]
     assert session is not None
     assert session.unread_count == 1
+
+
+@pytest.mark.asyncio
+async def test_on_reply_projects_background_reply_into_history(
+    processor_env: dict,
+) -> None:
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    thread_messages = processor_env["thread_messages"]
+    parent_sk = processor_env["parent_sk"]
+
+    await processor.on_reply(
+        ReplyEvent(
+            inbox_id="job-1",
+            status="done",
+            source_agent_id="parent",
+            source_thread_id="thr_parent",
+            target_agent_id="child",
+            user_id=1,
+            reply_text="final synthesized reply",
+            metadata={"session_key": parent_sk},
+        )
+    )
+
+    rows = thread_messages.range_rows("thr_parent", 0, 100)  # type: ignore[attr-defined]
+    assert [r.role for r in rows] == ["ai"]
+    assert "final synthesized reply" in rows[0].message_json
+
+    push = gateway._ws_hub.push_to_user  # type: ignore[attr-defined]
+    push.assert_awaited_once()
+    payload = push.await_args.args[1]
+    assert payload["type"] == "dashboard_push"
+    assert payload["thread_id"] == "thr_parent"
+    assert payload["agent_id"] == "parent"
+    assert payload["text"] == "final synthesized reply"
+
+
+@pytest.mark.asyncio
+async def test_on_reply_is_idempotent_per_inbox(processor_env: dict) -> None:
+    processor = processor_env["processor"]
+    thread_messages = processor_env["thread_messages"]
+    parent_sk = processor_env["parent_sk"]
+
+    for _ in range(2):
+        await processor.on_reply(
+            ReplyEvent(
+                inbox_id="job-1",
+                status="done",
+                source_agent_id="parent",
+                source_thread_id="thr_parent",
+                target_agent_id="child",
+                user_id=1,
+                reply_text="final synthesized reply",
+                metadata={"session_key": parent_sk},
+            )
+        )
+
+    assert thread_messages.head("thr_parent") == 1  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_on_reply_binds_to_source_thread_not_current_session(
+    processor_env: dict,
+) -> None:
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    thread_messages = processor_env["thread_messages"]
+    parent_sk = processor_env["parent_sk"]
+
+    # The user moved on to a new thread while the background task ran.
+    current = await gateway.thread_registry.reset(
+        agent_id="parent",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        channel_subject_id="1",
+    )
+    assert current != "thr_parent"
+
+    await processor.on_reply(
+        ReplyEvent(
+            inbox_id="job-1",
+            status="done",
+            source_agent_id="parent",
+            source_thread_id="thr_parent",
+            target_agent_id="child",
+            user_id=1,
+            reply_text="final synthesized reply",
+            metadata={"session_key": parent_sk},
+        )
+    )
+
+    assert thread_messages.head("thr_parent") == 1  # type: ignore[attr-defined]
+    assert thread_messages.head(current) == 0  # type: ignore[attr-defined]
+    payload = gateway._ws_hub.push_to_user.await_args.args[1]  # type: ignore[attr-defined]
+    assert payload["thread_id"] == "thr_parent"
 
 
 @pytest.mark.asyncio
