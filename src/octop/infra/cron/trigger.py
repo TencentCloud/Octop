@@ -50,17 +50,25 @@ def _unix_day_of_week(expression: str) -> str:
     return ",".join(translated)
 
 
-def _cron_trigger_from_unix_crontab(expression: str) -> CronTrigger:
+def _cron_trigger_from_unix_crontab(expression: str, *, timezone: str | None = None) -> CronTrigger:
     """Build a trigger whose weekday field follows Unix crontab semantics."""
     fields = expression.split()
     if len(fields) != 5:
         raise ValueError(f"Wrong number of fields; got {len(fields)}, expected 5")
     fields[4] = _unix_day_of_week(fields[4])
-    return CronTrigger.from_crontab(" ".join(fields))
+    return CronTrigger.from_crontab(" ".join(fields), timezone=timezone)
 
 
-def build_trigger(spec: str) -> BaseTrigger:
-    """Parse 'cron:<expr>' / 'interval:<seconds>' / 'date:<ISO>'."""
+def build_trigger(spec: str, *, timezone: str | None = None) -> BaseTrigger:
+    """Parse 'cron:<expr>' / 'interval:<seconds>' / 'date:<ISO>'.
+
+    ``timezone`` carries the configured server timezone (``config.default_timezone``) into
+    wall-clock specs. APScheduler only injects the scheduler timezone when a *string* trigger
+    spec is handed to ``add_job()``; a pre-built trigger keeps the zone it was constructed
+    with, and ``CronTrigger`` falls back to the host OS zone. Callers that schedule the built
+    trigger must therefore forward the server timezone here, otherwise ``cron:`` jobs fire at
+    the host's local wall-clock time instead of the configured one.
+    """
     if ":" not in spec:
         raise OctopError(ErrorCode.CRON_TRIGGER_INVALID, f"trigger spec missing kind: {spec!r}")
     kind, _, value = spec.partition(":")
@@ -78,7 +86,7 @@ def build_trigger(spec: str) -> BaseTrigger:
                 raise ValueError(f"interval seconds must be a positive integer, got {seconds}")
             return IntervalTrigger(seconds=seconds)
         if kind == "cron":
-            return _cron_trigger_from_unix_crontab(value)
+            return _cron_trigger_from_unix_crontab(value, timezone=timezone)
         if kind == "date":
             return DateTrigger(run_date=dt.datetime.fromisoformat(value))
     except (ValueError, TypeError) as exc:
