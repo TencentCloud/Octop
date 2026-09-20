@@ -5,6 +5,7 @@ import Markdown from "../../../components/Markdown/LazyMarkdown";
 import type { AssistantTurnSplit } from "../utils/messageContent";
 import { countProcessStats } from "../utils/messageContent";
 import { ToolDetailsInline } from "./MessageBubble";
+import { useCollapseThinking } from "../hooks/useCollapseThinking";
 import styles from "../index.module.less";
 
 interface AssistantProcessSummaryProps {
@@ -31,21 +32,27 @@ function AssistantProcessSummary({
   agentId = null,
 }: AssistantProcessSummaryProps) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(isStreaming);
+  const [collapseThinking] = useCollapseThinking();
+  const [expanded, setExpanded] = useState(isStreaming && !collapseThinking);
   const prevStreaming = useRef(isStreaming);
+  const prevCollapseThinking = useRef(collapseThinking);
   const { toolCount, thinkingCount } = useMemo(
     () => countProcessStats(statsSplit ?? split),
     [statsSplit, split],
   );
 
-  // Follow the stream: expand while generating, collapse once the turn ends.
-  // Manual toggles hold until the next streaming transition; history renders
-  // with isStreaming=false and therefore stays collapsed.
+  // Manual toggles hold until streaming or the display preference changes.
+  // History stays collapsed, and generation respects the saved preference.
   useEffect(() => {
-    if (prevStreaming.current === isStreaming) return;
+    if (
+      prevStreaming.current === isStreaming &&
+      prevCollapseThinking.current === collapseThinking
+    )
+      return;
     prevStreaming.current = isStreaming;
-    setExpanded(isStreaming);
-  }, [isStreaming]);
+    prevCollapseThinking.current = collapseThinking;
+    setExpanded(isStreaming && !collapseThinking);
+  }, [isStreaming, collapseThinking]);
 
   if (toolCount === 0 && thinkingCount === 0) return null;
 

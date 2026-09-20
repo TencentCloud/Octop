@@ -24,6 +24,7 @@ from octop.infra.connectors.catalog import (
 from octop.infra.connectors.gateway.protocol import handle_mcp_request
 from octop.infra.connectors.gateway.registry import probe_gateway_credentials
 from octop.infra.connectors.oauth.discovery import discover_oauth_from_mcp_url
+from octop.infra.errors import OctopError
 from octop.infra.utils.ssrf_guard import UnsafeOutboundUrl, safe_request
 
 logger = logging.getLogger(__name__)
@@ -500,8 +501,15 @@ async def probe_custom_mcp_server(spec: dict[str, Any]) -> dict[str, Any]:
 
     try:
         normalized = normalize_server_spec("probe", spec)
+    except OctopError as exc:
+        return {
+            "ok": False,
+            "error": exc.message,
+            "error_code": exc.code.value,
+            "error_type": "validation",
+        }
     except ValueError as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": str(exc), "error_type": "validation"}
 
     connection = harness_spec_for_server(normalized)
     transport = str(connection.get("transport") or "")

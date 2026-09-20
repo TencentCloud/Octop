@@ -16,7 +16,7 @@ from octop.api.routers.chat.sse import format_sse
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
     default_welcome_payload,
-    normalize_task_examples_for_display,
+    display_task_examples_for_agent,
     parse_task_examples,
     read_workspace_manifest_data,
     welcome_payload_from_manifest_data,
@@ -71,14 +71,14 @@ async def get_chat_welcome(
 
     workspace = registry.workspace_for_agent(agent_id)
     payload: dict[str, Any] | None = None
-    task_examples = None
+    parsed_examples = None
     if workspace is not None:
         manifest = await read_workspace_manifest_data(workspace)
         if manifest is not None:
             welcome = welcome_payload_from_manifest_data(manifest)
             if welcome_payload_has_content(welcome):
                 payload = welcome
-            task_examples = normalize_task_examples_for_display(parse_task_examples(manifest))
+            parsed_examples = parse_task_examples(manifest)
 
     row = registry.get_row(agent_id)
     if payload is None:
@@ -87,6 +87,11 @@ async def get_chat_welcome(
     db_welcome = welcome_from_row(row) if row is not None else None
     if db_welcome is not None:
         payload = {**payload, "welcome_message": {"zh": db_welcome, "en": db_welcome}}
+    task_examples = display_task_examples_for_agent(
+        parsed=parsed_examples,
+        catalog=catalog,
+        row=row,
+    )
     return {**payload, "task_examples": task_examples}
 
 
