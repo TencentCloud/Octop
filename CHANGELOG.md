@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 新增
+- 新增博查（Bocha）网络搜索插件（#923）：`plugins/bocha-search/` 提供 `bocha_search` 工具（国内直连、Bing 授权结果 + AI 摘要），API Key 在「工具管理」按 Agent 配置；支持 `freshness` 时间过滤与 1–50 条结果
+
 ### 变更
 - 编辑对端专家时模型、知识库、连接器走对端隧道；抽屉标题显示对端标识
 - 云端协同卡片标题去掉重复的对端用户名
