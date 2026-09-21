@@ -1,0 +1,7 @@
+id: bocha-search
+version: 0.1.0
+name: Bocha Web Search
+description: Bocha AI web search (kind=tool) — China-direct bocha_search tool with per-agent API key
+icon: "🔎"
+kind: tool
+entry: main.py
