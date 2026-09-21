@@ -175,8 +175,10 @@ async def test_restart_desktop_process_checkpoints_sqlite_wal(
             class Ctx:
                 def __enter__(_self):
                     return FakeConn()
+
                 def __exit__(_self, *args):
                     return None
+
             return Ctx()
 
         def close(self) -> None:
@@ -188,8 +190,18 @@ async def test_restart_desktop_process_checkpoints_sqlite_wal(
     class FakeServer:
         services = FakeServices()
 
-    monkeypatch.setattr(update_router, "os", type("os", (), {"execv": lambda _self, p, a: exec_args.append((p, a))})())
-    monkeypatch.setattr(update_router, "sys", type("sys", (), {"executable": "/bin/python", "argv": ["octop", "run"], "orig_argv": None})())
+    monkeypatch.setattr(
+        update_router,
+        "os",
+        type("os", (), {"execv": lambda _self, p, a: exec_args.append((p, a))})(),
+    )
+    monkeypatch.setattr(
+        update_router,
+        "sys",
+        type(
+            "sys", (), {"executable": "/bin/python", "argv": ["octop", "run"], "orig_argv": None}
+        )(),
+    )
     monkeypatch.setattr(update_router.time, "sleep", lambda _s: None)
 
     update_router._restart_desktop_process(FakeServer())
@@ -214,8 +226,10 @@ async def test_restart_desktop_process_swallows_checkpoint_errors(
             class Ctx:
                 def __enter__(_self):
                     raise RuntimeError("db busy")
+
                 def __exit__(_self, *args):
                     return None
+
             return Ctx()
 
         def close(self) -> None:
@@ -227,8 +241,18 @@ async def test_restart_desktop_process_swallows_checkpoint_errors(
     class FakeServer:
         services = FakeServices()
 
-    monkeypatch.setattr(update_router, "os", type("os", (), {"execv": lambda _self, p, a: exec_args.append((p, a))})())
-    monkeypatch.setattr(update_router, "sys", type("sys", (), {"executable": "/bin/python", "argv": ["octop", "run"], "orig_argv": None})())
+    monkeypatch.setattr(
+        update_router,
+        "os",
+        type("os", (), {"execv": lambda _self, p, a: exec_args.append((p, a))})(),
+    )
+    monkeypatch.setattr(
+        update_router,
+        "sys",
+        type(
+            "sys", (), {"executable": "/bin/python", "argv": ["octop", "run"], "orig_argv": None}
+        )(),
+    )
     monkeypatch.setattr(update_router.time, "sleep", lambda _s: None)
 
     update_router._restart_desktop_process(FakeServer())
