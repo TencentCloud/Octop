@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -661,3 +663,64 @@ def test_v14_to_v15_adds_sso_provider_kind_without_rebuilding(tmp_path: Path) ->
     assert row["extra"] == "{}"
     assert "idx_sso_providers_kind" in indexes
     assert int(bound) == int(provider_id)
+
+
+def _scratch(pool: SqlitePool) -> None:
+    with pool.connect() as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS scratch (k TEXT PRIMARY KEY)")
+
+
+def _competitor(path: Path, *, timeout_ms: int) -> sqlite3.Connection:
+    conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
+    conn.execute(f"PRAGMA busy_timeout = {timeout_ms}")
+    return conn
+
+
+def test_transaction_takes_the_write_lock_up_front(db: SqlitePool, tmp_path: Path) -> None:
+    """A competing writer must not be able to commit in the middle of our transaction.
+
+    With a deferred ``BEGIN`` the write lock is only taken at the first write, so a second
+    connection (``octop run --workers N``, or a CLI run against a running server) commits in
+    between; our own write is then rejected with SQLITE_BUSY_SNAPSHOT, which the 5s busy
+    timeout cannot wait out.
+    """
+    _scratch(db)
+    competitor = _competitor(tmp_path / "octop.db", timeout_ms=100)
+    try:
+        with db.transaction() as conn:
+            conn.execute("SELECT COUNT(*) FROM scratch")  # read first: the trap
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                competitor.execute("BEGIN IMMEDIATE")
+    finally:
+        competitor.close()
+
+
+def test_transaction_completes_while_a_competing_writer_waits(
+    db: SqlitePool, tmp_path: Path
+) -> None:
+    """A read-then-write transaction must survive a competing writer instead of aborting."""
+    _scratch(db)
+    competitor = _competitor(tmp_path / "octop.db", timeout_ms=5000)
+    failures: list[Exception] = []
+
+    def compete() -> None:
+        try:
+            competitor.execute("BEGIN IMMEDIATE")
+            competitor.execute("INSERT INTO scratch VALUES('competitor')")
+            competitor.execute("COMMIT")
+        except Exception as exc:  # pragma: no cover - only reached on a regression
+            failures.append(exc)
+
+    with db.transaction() as conn:
+        conn.execute("SELECT COUNT(*) FROM scratch")
+        thread = threading.Thread(target=compete)
+        thread.start()
+        time.sleep(0.2)  # the competitor commits here unless our transaction holds the lock
+        conn.execute("INSERT INTO scratch VALUES('ours')")
+    thread.join(timeout=5)
+
+    assert failures == []
+    with db.connect() as conn:
+        keys = {row["k"] for row in conn.execute("SELECT k FROM scratch").fetchall()}
+    assert keys == {"competitor", "ours"}
+    competitor.close()
