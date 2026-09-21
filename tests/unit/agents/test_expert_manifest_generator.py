@@ -359,3 +359,45 @@ def test_normalize_manifest_assets_keeps_at_most_six_task_examples() -> None:
         f"每天「0{idx}:00」跑第 {idx} 项巡检" for idx in range(1, 7)
     ]
     assert len(assets["task_examples"]["en"]) == 6
+
+
+def test_collect_skill_context_reads_frontmatter_like_every_other_reader(tmp_path) -> None:
+    """Skill metadata must go through the shared frontmatter parser.
+
+    The private copy in this module only recognised a literal ``---\\n`` first line
+    and split every line on ``:``. Two shapes that the shared parser handles
+    therefore reached the generator prompt as a skill without a description:
+
+    * a folded block scalar (``description: >-``), which collapsed to the literal
+      ``'>-'`` — exactly the style the bundled expert skills use;
+    * a file whose frontmatter fence is preceded by an HTML comment, which hid the
+      whole block and left the raw ``---`` fence inside the excerpt.
+    """
+    from octop.infra.agents.experts.manifest_generator import collect_skill_context
+
+    expert_dir = tmp_path / "expert"
+    (expert_dir / "skills" / "folded").mkdir(parents=True)
+    (expert_dir / "skills" / "folded" / "SKILL.md").write_text(
+        "---\nname: Folded\ndescription: >-\n  Line one\n  line two.\n---\n# Body\n",
+        encoding="utf-8",
+    )
+    (expert_dir / "skills" / "commented").mkdir(parents=True)
+    (expert_dir / "skills" / "commented" / "SKILL.md").write_text(
+        "<!-- generated -->\n---\nname: Commented\ndescription: After comment\n---\n# Body\n",
+        encoding="utf-8",
+    )
+
+    context = {
+        item["slug"]: item
+        for item in collect_skill_context(
+            expert_dir,
+            skill_slugs=["commented"],
+            main_skill_slug="folded",
+        )
+    }
+
+    assert context["folded"]["name"] == "Folded"
+    assert context["folded"]["description"] == "Line one line two."
+    assert context["commented"]["name"] == "Commented"
+    assert context["commented"]["description"] == "After comment"
+    assert "---" not in context["commented"]["excerpt"]
