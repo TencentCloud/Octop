@@ -821,7 +821,9 @@ class GlobalProcessor:
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
         except Exception as exc:
-            await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
+            await self._record_stream_error(
+                user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
+            )
             message, error_code = _stream_error(exc, locale)
             if error_code:
                 message = f"[{error_code}] {message}"
@@ -1044,7 +1046,9 @@ class GlobalProcessor:
                 yield _maybe_stamp_team_host(chunk, agent_id, team_host)
             stream_ok = True
         except Exception as exc:
-            await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
+            await self._record_stream_error(
+                user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
+            )
             message, error_code = _stream_error(exc, locale)
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
@@ -1106,7 +1110,9 @@ class GlobalProcessor:
                 yield _maybe_stamp_team_host(chunk, agent_id, team_host)
             completed = True
         except Exception as exc:
-            await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
+            await self._record_stream_error(
+                user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
+            )
             locale = resolve_user_locale(
                 user_repo=self._user_repo,
                 user_id=user_id,
@@ -1329,7 +1335,9 @@ class GlobalProcessor:
             return None
         return merged
 
-    async def _record_stream_error(self, *, user_id: int, agent_id: str, exc: Exception) -> None:
+    async def _record_stream_error(
+        self, *, user_id: int, agent_id: str, thread_id: str, exc: Exception
+    ) -> None:
         from octop.infra.metrics import METRICS as _M  # noqa: PLC0415
 
         _M.inc("stream_errors_total")
@@ -1342,6 +1350,23 @@ class GlobalProcessor:
             target=agent_id,
             payload=str(exc),
         )
+        self._mark_trajectory_turn_failed(thread_id=thread_id, agent_id=agent_id, exc=exc)
+
+    def _mark_trajectory_turn_failed(
+        self, *, thread_id: str, agent_id: str, exc: Exception
+    ) -> None:
+        """Record the turn's terminal failure so operators can tell "done" from "broke"."""
+        service = self._trajectory_service
+        if service is None or not self._agent_trajectory_enabled(agent_id):
+            return
+        mark = getattr(service, "mark_turn_failed", None)
+        if not callable(mark):
+            return
+        reason = str(exc) or type(exc).__name__
+        try:
+            mark(thread_id, reason=reason)
+        except Exception:
+            logger.exception("trajectory mark_turn_failed failed thread=%s", thread_id)
 
     def _touch_thread_after_turn(self, thread_id: str, title_source: str | None) -> None:
         self._thread_registry.touch_last_active(thread_id)

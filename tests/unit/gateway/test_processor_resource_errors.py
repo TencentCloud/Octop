@@ -33,6 +33,9 @@ def test_stream_error_preserves_resource_error_code() -> None:
 
 def _processor_with_stream(
     stream: Callable[..., AsyncIterator[dict[str, Any]]],
+    *,
+    trajectory_service: Any | None = None,
+    mock_stream_error: bool = True,
 ) -> tuple[GlobalProcessor, InboundMessage, list[list[Any]]]:
     appended: list[list[Any]] = []
 
@@ -65,8 +68,10 @@ def _processor_with_stream(
         usage_repo=None,
         gateway=None,
         thread_message_repo=thread_message_repo,
+        trajectory_service=trajectory_service,
     )
-    processor._record_stream_error = AsyncMock()
+    if mock_stream_error:
+        processor._record_stream_error = AsyncMock()
     msg = InboundMessage(
         channel_id=WS_CHANNEL_ID,
         channel_type="dashboard",
@@ -130,3 +135,43 @@ async def test_iter_turn_chunks_persists_partial_when_cancelled() -> None:
     texts = [_wire_text(item) for item in appended[0]]
     assert any("continue this" in text for text in texts)
     assert "partial answer" in texts
+
+
+@pytest.mark.asyncio
+async def test_stream_failure_marks_the_trajectory_turn_failed() -> None:
+    """The turn's terminal state must be machine-readable, not only an audit row."""
+
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        raise RuntimeError("stream died mid-turn")
+        yield {}  # pragma: no cover
+
+    trajectory = MagicMock()
+    processor, msg, _appended = _processor_with_stream(
+        stream, trajectory_service=trajectory, mock_stream_error=False
+    )
+
+    _ = [chunk async for chunk in processor.iter_turn_chunks(msg)]
+
+    trajectory.mark_turn_failed.assert_called_once_with("thread-1", reason="stream died mid-turn")
+
+
+@pytest.mark.asyncio
+async def test_stream_failure_reason_falls_back_to_the_exception_type() -> None:
+    """A blank ``str(exc)`` must not erase the reason (see issue #766)."""
+
+    class Blank(Exception):
+        def __str__(self) -> str:
+            return ""
+
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        raise Blank()
+        yield {}  # pragma: no cover
+
+    trajectory = MagicMock()
+    processor, msg, _appended = _processor_with_stream(
+        stream, trajectory_service=trajectory, mock_stream_error=False
+    )
+
+    _ = [chunk async for chunk in processor.iter_turn_chunks(msg)]
+
+    trajectory.mark_turn_failed.assert_called_once_with("thread-1", reason="Blank")

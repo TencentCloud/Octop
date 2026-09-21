@@ -76,6 +76,32 @@ class TrajectoryService:
         """Record an uncommitted trajectory flush for the archive status."""
         self._store.record_failure(thread_id)
 
+    def mark_turn_failed(self, thread_id: str, *, reason: str) -> None:
+        """Flag the current turn as failed so ``is_error`` is not always 0.
+
+        A turn that dies mid-flight (stream drop, recursion limit, provider failure) otherwise
+        leaves no trace, so operators cannot tell "finished" from "broke". The turn's own event
+        carries the terminal state instead of a new event kind, which keeps the archive's
+        ``has_kind("system")`` bookkeeping and the dashboard lanes unchanged.
+        """
+        state = self._inflight.get(thread_id)
+        target = state.assistant if state is not None else None
+        if target is None:
+            # Failed before any output, or already finalized: mark the latest stored event.
+            latest = self._store.list_before(thread_id, before_seq=None, limit=1, kinds=None)
+            target = latest[0] if latest else None
+        if target is None:
+            return
+        marked = replace(
+            target,
+            is_error=True,
+            payload={**target.payload, "reason": reason, "turn_status": "failed"},
+        )
+        try:
+            self._upsert(marked, final=True)
+        except Exception:
+            logger.exception("trajectory mark_turn_failed failed thread=%s", thread_id)
+
     def replace_store(self, store: TrajectoryStore) -> None:
         """Point append/list at a rebound control-plane pool."""
         self._store = store
