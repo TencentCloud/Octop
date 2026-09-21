@@ -9,6 +9,7 @@ import {
   Globe,
   FilePen,
   Terminal,
+  FolderOpen,
   Activity,
 } from "lucide-react";
 import { Alert, Button, Tooltip } from "antd";
@@ -387,6 +388,7 @@ function ChatPageInner() {
     openKnowledgeCitation,
     openBrowserTab,
     toggleBrowserPanel,
+    toggleWorkspacePanel,
     toggleTerminalPanel,
     openToolUiTab,
     focusToolUiTab,
@@ -1120,6 +1122,19 @@ function ChatPageInner() {
                     </button>
                     <button
                       className={styles.menuBtn}
+                      onClick={toggleWorkspacePanel}
+                      disabled={!agentChatReady}
+                      title={
+                        agentChatReady
+                          ? t("chat.openWorkspace", "工作区")
+                          : t("workspace.requiresRunning")
+                      }
+                      aria-label={t("chat.openWorkspace", "工作区")}
+                    >
+                      <FolderOpen size={18} strokeWidth={1.8} />
+                    </button>
+                    <button
+                      className={styles.menuBtn}
                       onClick={() => void handleToggleBrowserPanel()}
                       title={t("chat.openBrowser")}
                       aria-label={t("chat.openBrowser")}
@@ -1278,6 +1293,27 @@ function ChatPageInner() {
                             aria-label={profileOpenLabel}
                           >
                             <ProfileIcon size={20} strokeWidth={2.1} />
+                          </button>
+                        </span>
+                      </Tooltip>
+                      <Tooltip
+                        title={
+                          agentChatReady
+                            ? t("chat.openWorkspace", "工作区")
+                            : t("workspace.requiresRunning")
+                        }
+                        mouseEnterDelay={0.35}
+                        placement="left"
+                      >
+                        <span className={styles.chatFloatBtnWrap}>
+                          <button
+                            type="button"
+                            className={styles.chatFloatBtn}
+                            disabled={!agentChatReady}
+                            onClick={toggleWorkspacePanel}
+                            aria-label={t("chat.openWorkspace", "工作区")}
+                          >
+                            <FolderOpen size={20} strokeWidth={2.1} />
                           </button>
                         </span>
                       </Tooltip>
