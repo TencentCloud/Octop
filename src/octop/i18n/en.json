@@ -622,7 +622,7 @@
     "auth": "Model authentication failed. Check that the API key under Settings → Models is correct and still valid.",
     "insufficient_balance": "The model provider rejected this request due to insufficient balance or quota. Top up or upgrade the plan for this API key, then try again.",
     "context_length": "This conversation is too long for the model's context window. Start a new chat, or shorten the history and try again.",
-    "recursion_limit": "The agent hit its max iteration / recursion limit before finishing. Open Configuration and raise Max Iterations, then try again.",
+    "recursion_limit": "The agent hit its max iteration / recursion limit before finishing. Open Configuration and raise Max Iterations, then try again — the limit counts internal steps, and one tool call typically costs about 7-14 of them, so set it well above the number of tool calls you expect.",
     "timeout_network": "Connecting to the model timed out or the network failed. Check your network and retry. If you use a proxy or self-hosted endpoint, confirm it is reachable.",
     "provider_unavailable": "The model provider is temporarily unavailable. Retry later, or switch to another model.",
     "model_call_failed": "The model call failed after several retries. Wait a moment and retry. If it keeps failing, check the model settings or switch models."
