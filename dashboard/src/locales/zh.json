@@ -3237,7 +3237,7 @@
     "title": "运行配置",
     "description": "配置智能体运行参数",
     "maxIters": "最大迭代次数",
-    "maxItersTooltip": "ReAct 智能体的最大推理-行动迭代次数",
+    "maxItersTooltip": "映射为 LangGraph 的 recursion_limit（单轮中包括模型调用、路由决策和工具调度等所有图超步累计上限，非纯工具调用次数）",
     "maxItersPlaceholder": "请输入最大迭代次数",
     "maxItersRequired": "最大迭代次数为必填项",
     "maxItersMin": "最大迭代次数必须大于等于 1",
