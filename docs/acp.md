@@ -46,7 +46,7 @@ Install the CLI on the host where `octop run` executes, ensure it is on `PATH` (
 
 ### `acp_runner` tool workflow
 
-```
+```text
 action=list              → enabled runners and session state
 action=start             → new session: runner + message (+ optional cwd)
 action=message           → continue session
