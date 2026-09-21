@@ -54,7 +54,6 @@ import ChatInput, { type ChatInputHandle } from "./components/ChatInput";
 import WelcomeScreen from "./components/WelcomeScreen";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
 import AgentProfileDrawer from "../../components/AgentProfileDrawer";
-import WorkspaceDrawer from "../Agent/Workspace/components/WorkspaceDrawer";
 import TrajectoryDrawer from "./components/TrajectoryDrawer";
 import { useExpertChatWelcome } from "./hooks/useExpertQuickCards";
 import { useSkills } from "../Agent/Skills/useSkills";
@@ -251,7 +250,6 @@ function ChatPageInner() {
   const chatSubagents = useChatSubagents(
     chatSkillCatalogAgentId(resolvedAgentId, agentChatReady, agentsLoading),
   );
-  const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const [trajectoryDrawerOpen, setTrajectoryDrawerOpen] = useState(false);
   const [turnRailVisible, setTurnRailVisible] = useState(false);
   const {
@@ -293,7 +291,6 @@ function ChatPageInner() {
     }
     setAgentProfileOpen(false);
     setProfileAgentId(null);
-    setWorkspaceDrawerOpen(false);
     setTrajectoryDrawerOpen(false);
   }, [resolvedAgentId]);
 
@@ -389,6 +386,7 @@ function ChatPageInner() {
     openKnowledgeCitation,
     openBrowserTab,
     toggleBrowserPanel,
+    toggleWorkspacePanel,
     toggleTerminalPanel,
     openToolUiTab,
     focusToolUiTab,
@@ -1112,7 +1110,7 @@ function ChatPageInner() {
                     </button>
                     <button
                       className={styles.menuBtn}
-                      onClick={() => setWorkspaceDrawerOpen(true)}
+                      onClick={toggleWorkspacePanel}
                       disabled={!agentChatReady}
                       title={
                         agentChatReady
@@ -1123,6 +1121,30 @@ function ChatPageInner() {
                     >
                       <FolderOpen size={18} strokeWidth={1.8} />
                     </button>
+                    <button
+                      className={styles.menuBtn}
+                      onClick={() => void handleToggleBrowserPanel()}
+                      title={t("chat.openBrowser")}
+                      aria-label={t("chat.openBrowser")}
+                    >
+                      <Globe size={18} strokeWidth={1.8} />
+                    </button>
+                    {!sharedExpertViewer && panelFilePaths.length > 0 && (
+                      <button
+                        className={styles.menuBtn}
+                        onClick={() => openFileList()}
+                        title={t("chat.modifiedFiles", {
+                          count: panelFilePaths.length,
+                          defaultValue: "已修改文件（{{count}}）",
+                        })}
+                        aria-label={t("chat.modifiedFiles", {
+                          count: panelFilePaths.length,
+                          defaultValue: "已修改文件（{{count}}）",
+                        })}
+                      >
+                        <FilePen size={18} strokeWidth={1.8} />
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1225,13 +1247,9 @@ function ChatPageInner() {
                     onAcpPermissionSelect={handleAcpPermissionSelect}
                     onHitlDecision={handleHitlDecision}
                     onTurnRailVisibilityChange={setTurnRailVisible}
-                    onOpenBrowser={
-                      hasBrowserTool && !isMobile ? openBrowserTab : undefined
-                    }
+                    onOpenBrowser={hasBrowserTool ? openBrowserTab : undefined}
                     onEditFile={
-                      !sharedExpertViewer &&
-                      panelFilePaths.length > 0 &&
-                      !isMobile
+                      !sharedExpertViewer && panelFilePaths.length > 0
                         ? openFileList
                         : undefined
                     }
@@ -1243,7 +1261,6 @@ function ChatPageInner() {
             {!isMobile &&
               !dockOpen &&
               !agentProfileOpen &&
-              !workspaceDrawerOpen &&
               !trajectoryDrawerOpen && (
                 <div className={styles.chatFloatActions}>
                   {/* PWA install first when available — same column as browser / experts. */}
@@ -1280,7 +1297,7 @@ function ChatPageInner() {
                             type="button"
                             className={styles.chatFloatBtn}
                             disabled={!agentChatReady}
-                            onClick={() => setWorkspaceDrawerOpen(true)}
+                            onClick={toggleWorkspacePanel}
                             aria-label={t("chat.openWorkspace", "工作区")}
                           >
                             <FolderOpen size={20} strokeWidth={2.1} />
@@ -1507,22 +1524,15 @@ function ChatPageInner() {
           />
 
           {!sharedExpertViewer && (
-            <>
-              <AgentProfileDrawer
-                open={agentProfileOpen}
-                agent={profileAgent}
-                isMobile={isMobile}
-                onClose={() => {
-                  setAgentProfileOpen(false);
-                  setProfileAgentId(null);
-                }}
-              />
-              <WorkspaceDrawer
-                agentId={resolvedAgentId ?? ""}
-                open={workspaceDrawerOpen}
-                onClose={() => setWorkspaceDrawerOpen(false)}
-              />
-            </>
+            <AgentProfileDrawer
+              open={agentProfileOpen}
+              agent={profileAgent}
+              isMobile={isMobile}
+              onClose={() => {
+                setAgentProfileOpen(false);
+                setProfileAgentId(null);
+              }}
+            />
           )}
           {trajectoryEnabled && (
             <TrajectoryDrawer
