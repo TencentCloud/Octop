@@ -31,6 +31,12 @@ _PROVIDER_ID_KEY = "knowledge_ocr_provider_id"
 _LOCAL_PACKAGES = ("rapidocr>=3.4,<4", "onnxruntime>=1.17", "pymupdf>=1.24")
 _LOCAL_SPEC = PackageInstallSpec(packages=_LOCAL_PACKAGES, extra_fallback="knowledge-ocr")
 _PDF_SPEC = PackageInstallSpec(packages=("pymupdf>=1.24",), extra_fallback="knowledge-ocr")
+# The OCR settings request installs dependencies inline, so it must not sit on the
+# 600s-per-command default: with the uv/pip and octop[knowledge-ocr] fallbacks a
+# blocked network would hold the request for tens of minutes with no feedback.
+# Bound each installer command instead, so the settings call fails with the
+# localized prerequisites error in minutes and the dashboard can show it.
+OCR_INSTALL_TIMEOUT_SEC = 180
 _OCR_PROMPT = (
     "Transcribe all visible text in this image exactly. Preserve reading order, headings, "
     "lists, and table rows. Return only the transcription, without commentary."
@@ -117,7 +123,7 @@ def pdf_ocr_deps_available() -> bool:
     return True
 
 
-def ensure_ocr_deps(*, backend: str) -> str:
+def ensure_ocr_deps(*, backend: str, timeout: int = OCR_INSTALL_TIMEOUT_SEC) -> str:
     if backend == "onnx":
         if local_ocr_deps_available():
             return "ready"
@@ -125,6 +131,7 @@ def ensure_ocr_deps(*, backend: str) -> str:
             _LOCAL_SPEC,
             is_satisfied=local_ocr_deps_available,
             import_modules=("rapidocr", "onnxruntime", "pymupdf"),
+            timeout=timeout,
         )
         if not local_ocr_deps_available():
             raise RuntimeError("Local OCR components were installed but could not be loaded")
@@ -135,15 +142,18 @@ def ensure_ocr_deps(*, backend: str) -> str:
         _PDF_SPEC,
         is_satisfied=pdf_ocr_deps_available,
         import_modules=("pymupdf",),
+        timeout=timeout,
     )
     if not pdf_ocr_deps_available():
         raise RuntimeError("PDF OCR components were installed but could not be loaded")
     return outcome
 
 
-async def ensure_ocr_deps_async(*, backend: str) -> str:
+async def ensure_ocr_deps_async(*, backend: str, timeout: int = OCR_INSTALL_TIMEOUT_SEC) -> str:
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, lambda: ensure_ocr_deps(backend=backend))
+    return await loop.run_in_executor(
+        None, lambda: ensure_ocr_deps(backend=backend, timeout=timeout)
+    )
 
 
 def _provider_for_config(provider_repo: Any, config: OcrConfig) -> Any | None:

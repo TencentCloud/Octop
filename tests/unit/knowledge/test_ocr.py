@@ -40,6 +40,49 @@ def test_set_local_ocr_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     }
 
 
+def test_ensure_ocr_deps_bounds_install_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The settings request must not sit on the 600s default while a blocked network stalls.
+
+    A blocked PyPI otherwise holds the OCR settings request for tens of minutes
+    (600s per installer command, times the uv/pip and octop[knowledge-ocr]
+    fallbacks) and the dashboard spinner never resolves (#892).
+    """
+    seen: dict[str, int] = {}
+
+    def fake_install(spec: object, *, timeout: int = 0, **kwargs: object) -> str:
+        seen["timeout"] = timeout
+        raise RuntimeError("Could not install optional Python components automatically.")
+
+    monkeypatch.setattr(ocr, "local_ocr_deps_available", lambda: False)
+    monkeypatch.setattr(ocr, "pdf_ocr_deps_available", lambda: False)
+    monkeypatch.setattr(ocr, "install_packages", fake_install)
+
+    for backend in ("onnx", "remote"):
+        with pytest.raises(RuntimeError, match="Could not install"):
+            ocr.ensure_ocr_deps(backend=backend)
+        assert seen["timeout"] == ocr.OCR_INSTALL_TIMEOUT_SEC
+
+    assert ocr.OCR_INSTALL_TIMEOUT_SEC < 600
+
+
+async def test_ensure_ocr_deps_async_bounds_install_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, int] = {}
+    state = {"ready": False}
+
+    def fake_install(spec: object, *, timeout: int = 0, **kwargs: object) -> str:
+        seen["timeout"] = timeout
+        state["ready"] = True
+        return "installed"
+
+    monkeypatch.setattr(ocr, "pdf_ocr_deps_available", lambda: state["ready"])
+    monkeypatch.setattr(ocr, "install_packages", fake_install)
+
+    assert await ocr.ensure_ocr_deps_async(backend="remote") == "installed"
+    assert seen["timeout"] == ocr.OCR_INSTALL_TIMEOUT_SEC
+
+
 def test_remote_ocr_requires_image_capable_model() -> None:
     provider = SimpleNamespace(
         enabled=True,
