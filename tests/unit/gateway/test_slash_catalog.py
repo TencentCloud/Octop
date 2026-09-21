@@ -20,6 +20,10 @@ def test_alias_resolves_to_primary_spec():
     assert spec_for("clear").name == "new"  # type: ignore[union-attr]
     assert spec_for("topics") is not None
     assert spec_for("topics").name == "list"  # type: ignore[union-attr]
+    assert spec_for("ask") is not None
+    assert spec_for("ask").name == "mode"  # type: ignore[union-attr]
+    assert spec_for("plan").name == "mode"  # type: ignore[union-attr]
+    assert spec_for("craft").name == "mode"  # type: ignore[union-attr]
 
 
 def test_dispatcher_registers_all_catalog_commands():

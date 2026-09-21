@@ -1414,6 +1414,13 @@ def _sqlite_references_threads(db: DatabasePool, table: str) -> bool:
     return any(str(row["table"]) == "threads" for row in rows)
 
 
+def _ensure_thread_conversation_mode_schema(db: DatabasePool) -> None:
+    if not _table_exists(db, "threads"):
+        return
+    _ensure_column(db, "threads", "conversation_mode", "TEXT")
+    _ensure_column(db, "threads", "pending_plan_path", "TEXT")
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -1433,6 +1440,7 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
         _ensure_column(db, "threads", "reasoning_mode", "TEXT")
         _ensure_column(db, "threads", "reasoning_effort", "TEXT")
         _ensure_column(db, "threads", "artifacts", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_thread_conversation_mode_schema(db)
     if _table_exists(db, "agents"):
         _ensure_column(db, "agents", "is_shared", "INTEGER NOT NULL DEFAULT 0")
         _ensure_agent_profile_columns(db)
@@ -1496,6 +1504,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_sso_provider_kind_schema(db)
             if max_version >= 16:
                 _ensure_agent_teams_schema(db)
+            if max_version >= 17:
+                _ensure_thread_conversation_mode_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -1536,6 +1546,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_sso_provider_kind_schema(db)
     if max_version >= 16:
         _ensure_agent_teams_schema(db)
+    if max_version >= 17:
+        _ensure_thread_conversation_mode_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -1574,6 +1586,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     Version 15 adds pluggable SSO provider ``kind`` / ``extra`` and
     multi-identity ``user_sso_identities``.
     Version 16 adds ``agents.kind`` so team hosts can be listed.
+    Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1684,6 +1697,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 17:
+        _ensure_thread_conversation_mode_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -1726,5 +1744,6 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_connectors_v13_schema(db)
     _ensure_user_policy_schema(db)
     _ensure_agent_teams_schema(db)
+    _ensure_thread_conversation_mode_schema(db)
     _ensure_agent_profile_columns(db)
     _ensure_sso_provider_kind_schema(db)

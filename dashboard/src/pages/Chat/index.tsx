@@ -9,13 +9,12 @@ import {
   Globe,
   FilePen,
   Terminal,
-  FolderOpen,
   Activity,
 } from "lucide-react";
 import { Alert, Button, Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 import { showConfirmModal } from "../../utils/confirmModal";
-
+import PlanReadyCard from "./components/PlanReadyCard";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { userCan } from "../../utils/permissions";
@@ -54,7 +53,6 @@ import ChatInput, { type ChatInputHandle } from "./components/ChatInput";
 import WelcomeScreen from "./components/WelcomeScreen";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
 import AgentProfileDrawer from "../../components/AgentProfileDrawer";
-import WorkspaceDrawer from "../Agent/Workspace/components/WorkspaceDrawer";
 import TrajectoryDrawer from "./components/TrajectoryDrawer";
 import { useExpertChatWelcome } from "./hooks/useExpertQuickCards";
 import { useSkills } from "../Agent/Skills/useSkills";
@@ -251,7 +249,6 @@ function ChatPageInner() {
   const chatSubagents = useChatSubagents(
     chatSkillCatalogAgentId(resolvedAgentId, agentChatReady, agentsLoading),
   );
-  const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const [trajectoryDrawerOpen, setTrajectoryDrawerOpen] = useState(false);
   const [turnRailVisible, setTurnRailVisible] = useState(false);
   const {
@@ -293,7 +290,6 @@ function ChatPageInner() {
     }
     setAgentProfileOpen(false);
     setProfileAgentId(null);
-    setWorkspaceDrawerOpen(false);
     setTrajectoryDrawerOpen(false);
   }, [resolvedAgentId]);
 
@@ -339,6 +335,7 @@ function ChatPageInner() {
     historyRefreshing,
     historyHydrated,
     contextUsage,
+    pendingPlanPath,
     sendMessage,
     editAndResend,
     cancelStream,
@@ -473,6 +470,8 @@ function ChatPageInner() {
     reasoningMode,
     reasoningEffort,
     handleReasoningChange,
+    conversationMode,
+    handleConversationModeChange,
     handleConnectorsChange,
     handleKnowledgeBaseIdsChange,
   } = useChatComposerResources(
@@ -481,6 +480,7 @@ function ChatPageInner() {
     composerSession?.modelRef,
     composerSession?.reasoningMode,
     composerSession?.reasoningEffort,
+    composerSession?.conversationMode,
   );
 
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
@@ -588,6 +588,7 @@ function ChatPageInner() {
     selectedKnowledgeBaseIds,
     reasoningMode,
     reasoningEffort,
+    conversationMode,
     defaultModel: activeAgent?.default_model ?? null,
     sendMessage,
     createSession,
@@ -743,8 +744,14 @@ function ChatPageInner() {
       if (ev.action === "switch_agent" && ev.agent_id) {
         navigateToAgent(ev.agent_id);
       }
+      if (
+        ev.action === "set_conversation_mode" &&
+        (ev.mode === "ask" || ev.mode === "plan" || ev.mode === "craft")
+      ) {
+        handleConversationModeChange(ev.mode);
+      }
     });
-  }, [navigateToAgent]);
+  }, [navigateToAgent, handleConversationModeChange]);
 
   const handlePromptClick = useCallback(
     (text: string, options?: { prefill?: boolean }) => {
@@ -1112,17 +1119,28 @@ function ChatPageInner() {
                     </button>
                     <button
                       className={styles.menuBtn}
-                      onClick={() => setWorkspaceDrawerOpen(true)}
-                      disabled={!agentChatReady}
-                      title={
-                        agentChatReady
-                          ? t("chat.openWorkspace", "工作区")
-                          : t("workspace.requiresRunning")
-                      }
-                      aria-label={t("chat.openWorkspace", "工作区")}
+                      onClick={() => void handleToggleBrowserPanel()}
+                      title={t("chat.openBrowser")}
+                      aria-label={t("chat.openBrowser")}
                     >
-                      <FolderOpen size={18} strokeWidth={1.8} />
+                      <Globe size={18} strokeWidth={1.8} />
                     </button>
+                    {!sharedExpertViewer && panelFilePaths.length > 0 && (
+                      <button
+                        className={styles.menuBtn}
+                        onClick={() => openFileList()}
+                        title={t("chat.modifiedFiles", {
+                          count: panelFilePaths.length,
+                          defaultValue: "已修改文件（{{count}}）",
+                        })}
+                        aria-label={t("chat.modifiedFiles", {
+                          count: panelFilePaths.length,
+                          defaultValue: "已修改文件（{{count}}）",
+                        })}
+                      >
+                        <FilePen size={18} strokeWidth={1.8} />
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1225,13 +1243,9 @@ function ChatPageInner() {
                     onAcpPermissionSelect={handleAcpPermissionSelect}
                     onHitlDecision={handleHitlDecision}
                     onTurnRailVisibilityChange={setTurnRailVisible}
-                    onOpenBrowser={
-                      hasBrowserTool && !isMobile ? openBrowserTab : undefined
-                    }
+                    onOpenBrowser={hasBrowserTool ? openBrowserTab : undefined}
                     onEditFile={
-                      !sharedExpertViewer &&
-                      panelFilePaths.length > 0 &&
-                      !isMobile
+                      !sharedExpertViewer && panelFilePaths.length > 0
                         ? openFileList
                         : undefined
                     }
@@ -1243,7 +1257,6 @@ function ChatPageInner() {
             {!isMobile &&
               !dockOpen &&
               !agentProfileOpen &&
-              !workspaceDrawerOpen &&
               !trajectoryDrawerOpen && (
                 <div className={styles.chatFloatActions}>
                   {/* PWA install first when available — same column as browser / experts. */}
@@ -1263,27 +1276,6 @@ function ChatPageInner() {
                             aria-label={profileOpenLabel}
                           >
                             <ProfileIcon size={20} strokeWidth={2.1} />
-                          </button>
-                        </span>
-                      </Tooltip>
-                      <Tooltip
-                        title={
-                          agentChatReady
-                            ? t("chat.openWorkspace", "工作区")
-                            : t("workspace.requiresRunning")
-                        }
-                        mouseEnterDelay={0.35}
-                        placement="left"
-                      >
-                        <span className={styles.chatFloatBtnWrap}>
-                          <button
-                            type="button"
-                            className={styles.chatFloatBtn}
-                            disabled={!agentChatReady}
-                            onClick={() => setWorkspaceDrawerOpen(true)}
-                            aria-label={t("chat.openWorkspace", "工作区")}
-                          >
-                            <FolderOpen size={20} strokeWidth={2.1} />
                           </button>
                         </span>
                       </Tooltip>
@@ -1435,6 +1427,28 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
+            {conversationMode === "plan" && pendingPlanPath ? (
+              <div className={styles.askQuestionDock}>
+                <div className={styles.askQuestionDockInner}>
+                  <PlanReadyCard
+                    path={pendingPlanPath}
+                    onExecute={() => {
+                      const path = pendingPlanPath;
+                      if (activeThreadId) {
+                        chatStore.setPendingPlanPath(activeThreadId, null);
+                      }
+                      handleConversationModeChange("craft", { persist: false });
+                      wrappedHandleSend(
+                        t("chat.conversationMode.executeUtterance", { path }),
+                        undefined,
+                        { conversationMode: "craft" },
+                      );
+                    }}
+                    onKeepEditing={() => chatInputRef.current?.focusComposer()}
+                  />
+                </div>
+              </div>
+            ) : null}
             <ChatInput
               ref={chatInputRef}
               onSend={wrappedHandleSend}
@@ -1457,6 +1471,8 @@ function ChatPageInner() {
               reasoningMode={reasoningMode}
               reasoningEffort={reasoningEffort}
               onReasoningChange={handleReasoningChange}
+              conversationMode={conversationMode}
+              onConversationModeChange={handleConversationModeChange}
               availableConnectors={isTeamChat ? undefined : chatConnectors}
               selectedConnectors={isTeamChat ? [] : selectedConnectors}
               onConnectorsChange={
@@ -1507,22 +1523,15 @@ function ChatPageInner() {
           />
 
           {!sharedExpertViewer && (
-            <>
-              <AgentProfileDrawer
-                open={agentProfileOpen}
-                agent={profileAgent}
-                isMobile={isMobile}
-                onClose={() => {
-                  setAgentProfileOpen(false);
-                  setProfileAgentId(null);
-                }}
-              />
-              <WorkspaceDrawer
-                agentId={resolvedAgentId ?? ""}
-                open={workspaceDrawerOpen}
-                onClose={() => setWorkspaceDrawerOpen(false)}
-              />
-            </>
+            <AgentProfileDrawer
+              open={agentProfileOpen}
+              agent={profileAgent}
+              isMobile={isMobile}
+              onClose={() => {
+                setAgentProfileOpen(false);
+                setProfileAgentId(null);
+              }}
+            />
           )}
           {trajectoryEnabled && (
             <TrajectoryDrawer
