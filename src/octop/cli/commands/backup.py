@@ -167,7 +167,11 @@ def restore(
     owner_user_id: int | None,
     yes: bool,
 ) -> None:
-    """Restore from a backup archive. Stop ``octop run`` first for a clean restore."""
+    """Restore from a backup archive. Stop ``octop run`` first for a clean restore.
+
+    When the backup includes chats, this restores the versioned history archive
+    (``history_v2.sqlite`` and its marker) together with the main database.
+    """
     if not yes:
         click.confirm(
             "This overwrites the database and local workspaces. Continue?",

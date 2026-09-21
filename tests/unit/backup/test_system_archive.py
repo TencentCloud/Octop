@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 import tarfile
@@ -1475,4 +1476,50 @@ def test_restore_history_in_use_reports_actionable_error(
 
     assert not (layout.root / "history_v2.sqlite.restore-partial").exists()
     assert _history_bodies(layout) == ["live"]
+    pool.close()
+
+
+def test_restore_history_replace_retries_a_transient_lock(
+    layout: PathLayout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows indexers/scanners hold the archive briefly; a retry must not fail the restore."""
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    _write_history(layout, ["from-backup"])
+    archive = tmp_path / "chats.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_chats=True,
+    )
+    _write_history(layout, ["live"])
+
+    real_replace = os.replace
+    calls = {"n": 0}
+
+    def flaky_replace(src: object, dst: object) -> None:
+        if str(dst).endswith("history_v2.sqlite"):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise PermissionError(5, "Access is denied")
+        real_replace(src, dst)
+
+    monkeypatch.setattr("octop.infra.backup.system_archive.os.replace", flaky_replace)
+
+    result = restore_system_backup(
+        archive,
+        paths=layout,
+        pool=pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+        allow_versioned_history=True,
+    )
+
+    assert result["history_restored"] is True
+    assert calls["n"] >= 2
+    assert _history_bodies(layout) == ["from-backup"]
+    assert not (layout.root / "history_v2.sqlite.restore-partial").exists()
     pool.close()

@@ -9,6 +9,7 @@ import os
 import shutil
 import tarfile
 import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,11 @@ _MANIFEST_NAME = "manifest.json"
 _SQLITE_DB_ARC = f"{_DB_DIR}/octop.db"
 _PG_DUMP_ARC = f"{_DB_DIR}/octop.dump"
 _MIGRATION_VERSION_SUFFIX = "-migrated-from-lightclaw"
+
+# Windows refuses os.replace() while the destination has an open handle; retry briefly before
+# falling back to moving the existing archive aside (see _install_archive_file).
+_REPLACE_ATTEMPTS = 3
+_REPLACE_RETRY_DELAY_S = 0.05
 
 # Align with workspace zip export; keep backups smaller / faster.
 _SKIP_DIR_NAMES = frozenset(
@@ -432,15 +438,7 @@ def _install_versioned_history(extracted: Path, paths: PathLayout) -> bool:
     partial = dest.with_name(f"{dest.name}.restore-partial")
     try:
         shutil.copy2(src, partial)
-        try:
-            os.replace(partial, dest)
-        except PermissionError as exc:
-            # Windows refuses to replace a file that still has an open handle (WinError 5);
-            # the usual cause is a running server that still holds the archive open.
-            raise OctopError(
-                ErrorCode.SLASH_BAD_ARGS,
-                "the versioned history archive is in use; stop the server and retry the restore",
-            ) from exc
+        _install_archive_file(partial, dest)
     except Exception:
         partial.unlink(missing_ok=True)
         raise
@@ -450,11 +448,34 @@ def _install_versioned_history(extracted: Path, paths: PathLayout) -> bool:
         marker_partial = marker_dest.with_name(f"{marker_dest.name}.restore-partial")
         try:
             shutil.copy2(marker_src, marker_partial)
-            os.replace(marker_partial, marker_dest)
+            _install_archive_file(marker_partial, marker_dest)
         except Exception:
             marker_partial.unlink(missing_ok=True)
             raise
     return True
+
+
+def _install_archive_file(partial: Path, dest: Path) -> None:
+    """Move *partial* onto *dest*, retrying Windows' transient "file in use" failures.
+
+    Windows raises ``PermissionError`` (WinError 5) while the destination still has an open
+    handle — usually an indexer or virus scanner holding it for a moment, sometimes a server
+    that was not stopped. Retry briefly, then fail with an actionable message: a permanently
+    locked archive cannot be replaced by *any* strategy (unlinking it is blocked by the same
+    handle, and dropping the live archive to make room would lose history), so the previous
+    archive stays in place and the caller decides when to retry.
+    """
+    for remaining in range(_REPLACE_ATTEMPTS, 0, -1):
+        try:
+            os.replace(partial, dest)
+            return
+        except PermissionError as exc:
+            if remaining == 1:
+                raise OctopError(
+                    ErrorCode.SLASH_BAD_ARGS,
+                    "the versioned history archive is in use; stop the server and retry the restore",
+                ) from exc
+            time.sleep(_REPLACE_RETRY_DELAY_S)
 
 
 def restore_system_backup(
