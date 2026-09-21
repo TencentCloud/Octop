@@ -3157,12 +3157,17 @@
         "hcaptcha": "hCaptcha",
         "recaptcha": "reCAPTCHA v2",
         "recaptcha-v3": "reCAPTCHA v3",
-        "tencent": "Tencent Cloud Captcha"
+        "tencent": "Tencent Cloud Captcha",
+        "geetest-v4": "GeeTest v4"
       },
       "fields": {
         "tencent": {
           "siteKey": "CaptchaAppId",
           "secret": "AppSecretKey"
+        },
+        "geetest-v4": {
+          "siteKey": "Captcha ID (captcha_id)",
+          "secret": "Captcha Key (captcha_key)"
         }
       }
     },

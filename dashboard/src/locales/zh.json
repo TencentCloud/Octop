@@ -3154,12 +3154,17 @@
         "hcaptcha": "hCaptcha",
         "recaptcha": "reCAPTCHA v2",
         "recaptcha-v3": "reCAPTCHA v3",
-        "tencent": "腾讯云验证码"
+        "tencent": "腾讯云验证码",
+        "geetest-v4": "极验行为验证 v4"
       },
       "fields": {
         "tencent": {
           "siteKey": "CaptchaAppId",
           "secret": "AppSecretKey"
+        },
+        "geetest-v4": {
+          "siteKey": "验证 ID（captcha_id）",
+          "secret": "验证 Key（captcha_key）"
         }
       }
     },
