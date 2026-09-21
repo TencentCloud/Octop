@@ -308,5 +308,14 @@ def group_specs_by_category(
 
 
 def channel_origin(channel_type: str) -> str:
-    """Map gateway channel type to slash command *origin* filter."""
-    return "ui" if channel_type == "dashboard" else channel_type
+    """Map gateway channel type to slash command *origin* filter.
+
+    Only the dashboard and the CLI are distinct surfaces; every connector type
+    (feishu, telegram, …) and the ``unknown`` fallback is IM, so anything else
+    has to resolve against the ``im`` origin or IM-only commands vanish.
+    """
+    if channel_type == "dashboard":
+        return "ui"
+    if channel_type == "cli":
+        return "cli"
+    return "im"
