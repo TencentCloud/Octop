@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 赛况插件的 `league` 参数此前两个分支同值，传任何联赛都返回英超；现按 TheSportsDB 联赛 ID 透传、无法识别的名称明确报错（不再假装是英超），未赛场次的比分也不再显示成 `None - None`
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
