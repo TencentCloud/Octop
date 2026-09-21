@@ -56,14 +56,7 @@ def parse_document(path: Path, *, ocr: OcrExtractor | None = None) -> str:
     if suffix == ".docx":
         return _parse_docx(path)
     if suffix == ".pptx":
-        from pptx import Presentation
-
-        return "\n".join(
-            shape.text
-            for slide in Presentation(str(path)).slides
-            for shape in slide.shapes
-            if hasattr(shape, "text") and shape.text
-        )
+        return _parse_pptx(path)
     if suffix in {".xlsx", ".xlsm"}:
         return _parse_xlsx(path)
     if suffix == ".xls":
@@ -152,6 +145,38 @@ def _docx_alt_chunk_text(element: Any, part: Any) -> str:
         nested = Document(io.BytesIO(blob))
         return _docx_body_text(nested.element.body, nested.part)
     return ""
+
+
+def _parse_pptx(path: Path) -> str:
+    from pptx import Presentation
+
+    def _extract_shape_text(shape: Any) -> list[str]:
+        texts: list[str] = []
+        if getattr(shape, "has_table", False):
+            for row in shape.table.rows:
+                row_texts = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                if row_texts:
+                    texts.append(" | ".join(row_texts))
+        elif getattr(shape, "has_text_frame", False) or hasattr(shape, "text"):
+            text = getattr(shape, "text", "")
+            if text and text.strip():
+                texts.append(text.strip())
+        if getattr(shape, "shape_type", None) == 6 or hasattr(
+            shape, "shapes"
+        ):  # MSO_SHAPE_TYPE.GROUP
+            try:
+                for sub_shape in shape.shapes:
+                    texts.extend(_extract_shape_text(sub_shape))
+            except Exception:
+                pass
+        return texts
+
+    presentation = Presentation(str(path))
+    lines: list[str] = []
+    for slide in presentation.slides:
+        for shape in slide.shapes:
+            lines.extend(_extract_shape_text(shape))
+    return "\n".join(line for line in lines if line)
 
 
 def _parse_html(path: Path) -> str:
