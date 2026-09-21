@@ -162,11 +162,15 @@ because each request is a one-shot continuation.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`    | `/agents/{id}/chat/sessions` | owner | `[{id, thread_id, title, archived, last_active, unread, ...}]` |
+| `GET`    | `/agents/{id}/threads` | owner | `[{thread_id, title, channel_type, session_key, last_active, created_at, is_active, has_messages, pinned, model_ref, reasoning_mode, reasoning_effort, artifacts, turn_active}]` |
+| `GET`    | `/agents/{id}/threads/{thread_id}/history` | owner | paginated message history; `turn_active` tells a reconnecting client whether to re-`subscribe` over the chat WebSocket |
+| `POST`   | `/agents/{id}/threads/{thread_id}/read` | owner | `204` (clears unread badge for this thread) |
+| `POST`   | `/agents/{id}/threads/{thread_id}/fork` | owner | `201` (fork thread from a specific assistant message) |
+| `GET`    | `/agents/{id}/chat/sessions` | owner | `[{id, thread_id, title, archived, last_active, unread, ...}]` (legacy alias) |
 | `POST`   | `/agents/{id}/chat/sessions` | owner | body `{session_key?}` → `{thread_id, session_key}` |
 | `PATCH`  | `/agents/{id}/chat/sessions/{thread_id}` | owner | body `{title?, pinned?}` → updated row |
 | `DELETE` | `/agents/{id}/chat/sessions/{thread_id}` | owner | `204` (archives the active row) |
-| `GET`    | `/agents/{id}/chat/sessions/{thread_id}/history` | owner | paginated message history; `turn_active` tells a reconnecting client whether to re-`subscribe` over the chat WebSocket |
+| `GET`    | `/agents/{id}/chat/sessions/{thread_id}/history` | owner | paginated message history (legacy alias) |
 
 ### Trajectory ledger
 
