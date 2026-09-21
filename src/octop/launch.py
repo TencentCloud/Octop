@@ -144,9 +144,14 @@ async def run_foreground(
         )
         servers.append(uvicorn.Server(single_config))
 
+    from octop.infra.agents.memory_slim_control import MemorySlimControl
+
+    memory_control = MemorySlimControl(srv)
     try:
+        await memory_control.start()
         await asyncio.gather(*(_serve(s) for s in servers))
     finally:
+        await memory_control.close()
         await _cancel_background_task(bwrap_task)
         await srv.stop()
 

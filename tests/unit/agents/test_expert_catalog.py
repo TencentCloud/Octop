@@ -232,6 +232,19 @@ def test_expert_prompt_files_metadata_only(tmp_path: Path) -> None:
     assert skill_body.startswith("# Skill")
 
 
+def test_bundled_default_expert_only_has_agents_md() -> None:
+    from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
+
+    catalog = ExpertCatalog(default_library_root())
+    catalog.refresh()
+    expert = catalog.get("default")
+    assert expert is not None
+    assert expert.prompt_files == ["AGENTS.md"]
+    assert expert.files == ["AGENTS.md"]
+    names = {item["name"] for item in catalog.read_file_contents("default")}
+    assert names == {"AGENTS.md"}
+
+
 def test_bundled_office_automation_discovers_skills() -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 

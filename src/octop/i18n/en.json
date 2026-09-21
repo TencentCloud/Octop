@@ -293,7 +293,23 @@
       "exit": {
         "label": "Exit",
         "description": "End the CLI session"
+      },
+      "memory": {
+        "label": "Memory maintenance",
+        "description": "Back up and slim memory databases, or check maintenance progress."
       }
+    },
+    "memory": {
+      "usage": "Usage: /memory slim (explain the purpose and impact), /memory slim --all (list your eligible running agents), /memory status (progress). Viewing the explanation does not pause chat.",
+      "accepted": "Confirmed maintenance for {count} agents. The host will back up, deduplicate, and reclaim space sequentially while preserving history and memories. All chats for the agent currently being maintained pause sending and resume automatically afterward. The page shows phases and elapsed time; you can use another agent that is not under maintenance. Closing the page does not stop the batch. Use /memory status for results after sending resumes.",
+      "idle": "No maintenance record for this agent. Use /memory slim to start.",
+      "summary": "Latest maintenance: {completed}/{total} agents completed.",
+      "queued": "Waiting for the previous agent.",
+      "skipped": "Not started: batch stopped.",
+      "failure_hint": "See server logs for details; the batch will not retry automatically.",
+      "trusted_chat": "Use /memory in the signed-in Octop dashboard or local CLI chat. IM senders do not yet have verified maintenance permissions.",
+      "preview": "This optional maintenance reclaims disk space by deduplicating stored context, preserving chat history and memories. Savings depend on how much data is duplicated.\n\nA backup needs extra disk space. During maintenance, sending is paused in all chats for the affected agent and resumes automatically afterward. Large databases may take a long time; there is no reliable duration estimate. Run this when you can leave the agent idle.\n\nCurrently eligible targets: {count} (maintenance has not started):",
+      "confirm_hint": "To start now, send `{command}`. Without confirmation, you can keep chatting. Eligible targets are checked again when you confirm."
     }
   },
   "connector": {
@@ -722,6 +738,39 @@
       "UnauthorizedOperation": "This Tencent Cloud account is not authorized for this voice API.",
       "RequestLimitExceeded": "Tencent Cloud rate-limited this request. Retry in a moment."
     }
+  },
+  "memory_slim": {
+    "waiting": "Waiting for the current task to finish…",
+    "backing_up": "Backing up memory…",
+    "deduplicating": "Deduplicating historical context…",
+    "compacting": "Compacting the memory database…",
+    "done": "Memory maintenance completed; conversations resumed.",
+    "failed": "Memory maintenance failed; conversations unblocked.",
+    "result": "Database: {before} -> {after} MiB; backup: {backup}",
+    "unavailable": "Cannot connect to a running compatible Octop, or control connection lost: {detail}",
+    "busy": "A memory maintenance job is already running.",
+    "not_ready": "Octop runtime is not ready.",
+    "upgrade": "The loaded harness-memory package does not provide live maintenance. Install the matching version or load the local source, then restart Octop.",
+    "wait_timeout": "The agent remained busy for 120 seconds; no migration was started.",
+    "incompatible": "Live maintenance requires a compatible SQLite checkpointer; upgrade and restart Octop.",
+    "interrupted": "Maintenance interrupted.",
+    "error_detail": "Maintenance failed: {detail}",
+    "agents": "Agents eligible for online maintenance (running, compatible SQLite memory):",
+    "no_agents": "No eligible SQLite agents. This command currently supports running SQLite agents with memory enabled and compatible packages. PostgreSQL maintenance is not integrated yet; this does not mean PostgreSQL needs no maintenance. No maintenance was performed, and you can continue chatting.",
+    "choose": "Choose the number to maintain (Ctrl+C to exit)",
+    "agent_required": "JSON mode never selects automatically. Copy an agent_id from the list and add --agent ID.",
+    "target": "Maintaining agent: {agent_id}",
+    "elapsed": "Elapsed: {seconds}s",
+    "scanned": "Scanned: {scanned}/{total}",
+    "all_conflict": "--all cannot be combined with --agent or OCTOP_AGENT.",
+    "batch_target": "[{index}/{total}] Maintaining: {name} [{agent_id}]",
+    "batch_stopped": "Batch stopped: {agent_id} did not confirm completion; {completed} completed, {remaining} not started. Reason: {detail}",
+    "batch_done": "Batch complete: {total} agents maintained.",
+    "forbidden": "You can only maintain or inspect memory for agents owned by your signed-in user.",
+    "backend_unsupported": "This agent uses {backend} memory. This command only maintains SQLite files and does not apply to this database. No maintenance was started.",
+    "memory_disabled": "This agent has no memory enabled, so there is no database to maintain. No maintenance was started.",
+    "agent_not_running": "This agent is not running or failed to start. Start it successfully before maintenance. No maintenance was started.",
+    "postgres_unsupported": "This agent uses {backend} memory. PostgreSQL can also accumulate duplicate data or storage bloat and may need maintenance based on its actual usage. This command does not yet support PostgreSQL slimming; it currently supports SQLite only. No maintenance was performed, and you can continue chatting."
   },
   "teams": {
     "peer_thread_title": "From team {name}",

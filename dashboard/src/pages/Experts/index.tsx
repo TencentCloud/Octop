@@ -60,6 +60,7 @@ import AgentExpertsTable from "./components/AgentExpertsTable";
 import ExpertMarketTab from "./components/ExpertMarketTab";
 import { OctopEmptyMascot } from "../../components/EmptyState";
 import { isOwnedExpert, ownedExperts } from "../../utils/sharedExpert";
+import { apiErrorMessage } from "../../utils/apiError";
 import styles from "./index.module.less";
 
 type TabKey = "my" | "teams" | "library" | "market";
@@ -306,6 +307,20 @@ export default function ExpertsPage() {
     [refreshAgents],
   );
 
+  const [defaultCreating, setDefaultCreating] = useState(false);
+
+  const openDefaultCreate = useCallback(async () => {
+    setDefaultCreating(true);
+    try {
+      const expert = await request<ExpertSummary>("/experts/default");
+      setCreateSource({ kind: "builtin", expert });
+    } catch (err: unknown) {
+      message.error(apiErrorMessage(err, t("experts.createFailed"), t));
+    } finally {
+      setDefaultCreating(false);
+    }
+  }, [t]);
+
   const openExpertLibrary = useCallback(() => {
     setActiveTab("library");
   }, []);
@@ -348,6 +363,15 @@ export default function ExpertsPage() {
           </div>
           <div className={styles.emptyActions}>
             {refreshButton}
+            <button
+              className={styles.toolbarBtnPrimary}
+              type="button"
+              disabled={defaultCreating}
+              onClick={() => void openDefaultCreate()}
+            >
+              <Plus size={14} />
+              {t("experts.newExpert")}
+            </button>
             <button className={styles.emptyAction} onClick={openExpertLibrary}>
               {t("experts.goToLibrary")}
             </button>
@@ -389,6 +413,15 @@ export default function ExpertsPage() {
               ]}
             />
             {refreshButton}
+            <button
+              className={styles.toolbarBtnPrimary}
+              type="button"
+              disabled={defaultCreating}
+              onClick={() => void openDefaultCreate()}
+            >
+              <Plus size={14} />
+              {t("experts.newExpert")}
+            </button>
             <button className={styles.toolbarBtn} onClick={openExpertLibrary}>
               {t("experts.addFromLibrary")}
             </button>
@@ -443,8 +476,10 @@ export default function ExpertsPage() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    defaultCreating,
     expertAgents,
     newAgentId,
+    openDefaultCreate,
     openExpertLibrary,
     publishedByAgentId,
     refreshButton,

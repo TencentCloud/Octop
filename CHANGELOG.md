@@ -8,6 +8,7 @@
 
 ### 新增
 
+- 登录验证码新增极验行为验 v4（#870）：设置页配置 captcha_id / captcha_key，登录弹窗完成验证，服务端按官方协议 HMAC-SHA256 签名后到 gcaptcha4 二次校验（form-urlencoded，仅 result=success 放行）
 - 对话支持默认折叠思考与工具过程（浏览器本地偏好）(#718)
 - 对话中可隐藏不常用的共享专家（浏览器本地偏好）(#589)
 
@@ -17,7 +18,7 @@
 - `date:` 定时触发与 `cron:` 一样使用 `default_timezone`，裸 ISO 时间不再回落宿主系统时区
 - HITL resume 流失败时将 pending 标为 `expired`（不再像成功批准），避免错误状态误导排查
 - SQLite 写事务改用 `BEGIN IMMEDIATE`：多 worker（`octop run --workers N`）或 CLI 与服务并发写入时，先读后写的事务不再因快照过期而立即报 `database is locked`
-- 登录页补充忘记密码说明：本机执行 `octop user passwd <用户名>`，或请管理员重置（#869）
+- 登录页「忘记密码」改为按需展开：优先提示联系管理员，本机 CLI 重置作为次要说明（#869）
 - iOS PWA 状态栏不再虚化遮挡内容：顶栏改为不透明、去掉 backdrop-filter；登录页与设置向导补 `safe-area-inset` 内边距（#874）
 - 知识库纯文本/Markdown/CSV 在 UTF-8 失败时回退 GB18030，避免 Windows GBK 文档被替换成乱码后入库
 - Dashboard 保存 Agent 运行参数后立即刷新当前 Agent 上下文，避免重置按钮和聊天页继续使用旧值

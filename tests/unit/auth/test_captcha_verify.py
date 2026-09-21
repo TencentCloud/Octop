@@ -60,8 +60,12 @@ class _Siteverify(BaseHTTPRequestHandler):
         # Always drain the body — form posts (reCAPTCHA) leave unread bytes
         # otherwise, which flaky-breaks the next keep-alive request on Windows.
         raw_body = self.rfile.read(length) if length else b""
-        if raw_body and (self.headers.get("Content-Type") or "").startswith("application/json"):
+        ctype = self.headers.get("Content-Type") or ""
+        if raw_body and ctype.startswith("application/json"):
             type(self).last_body = json.loads(raw_body)
+        elif raw_body and ctype.startswith("application/x-www-form-urlencoded"):
+            type(self).last_body = {k: v[0] for k, v in parse_qs(raw_body.decode("utf-8")).items()}
+        type(self).last_query = parse_qs(urlparse(self.path).query)
         self._reply()
 
     def do_GET(self) -> None:
@@ -92,7 +96,7 @@ def siteverify() -> tuple[str, type[_Siteverify]]:
 @pytest.fixture(autouse=True)
 def _clear_test_urls() -> None:
     yield
-    for slug in ("turnstile", "hcaptcha", "recaptcha", "recaptcha-v3", "tencent"):
+    for slug in ("turnstile", "hcaptcha", "recaptcha", "recaptcha-v3", "tencent", "geetest-v4"):
         set_test_siteverify_url(slug, None)
 
 
@@ -205,3 +209,54 @@ async def test_tencent_malformed_token_fails_before_http(
         await ensure_captcha(_effective("tencent"), "no-randstr")
     assert exc.value.code is ErrorCode.CAPTCHA_FAILED
     assert handler.last_query == {}
+
+
+@pytest.mark.asyncio
+async def test_geetest_posts_signed_form_and_passes(
+    siteverify: tuple[str, type[_Siteverify]],
+) -> None:
+    import hashlib
+    import hmac as hmac_mod
+
+    url, handler = siteverify
+    set_test_siteverify_url("geetest-v4", url)
+    handler.payload = {"result": "success", "reason": ""}
+    token = json.dumps(
+        {
+            "lot_number": "lot-9",
+            "captcha_output": "out-9",
+            "pass_token": "pt-9",
+            "gen_time": "2026-09-20T12:00:00",
+        }
+    )
+    await ensure_captcha(_effective("geetest-v4", site_key="gt-id", secret="gt-key"), token)
+    # NOTE: captcha_id query is pinned in the provider unit test — the test
+    # seam swaps the whole URL, so it never reaches the mock server.
+    expected_sign = hmac_mod.new(b"gt-key", b"lot-9", hashlib.sha256).hexdigest()
+    assert handler.last_body == {
+        "lot_number": "lot-9",
+        "captcha_output": "out-9",
+        "pass_token": "pt-9",
+        "gen_time": "2026-09-20T12:00:00",
+        "sign_token": expected_sign,
+    }
+
+
+@pytest.mark.asyncio
+async def test_geetest_fail_result_rejected(
+    siteverify: tuple[str, type[_Siteverify]],
+) -> None:
+    url, handler = siteverify
+    set_test_siteverify_url("geetest-v4", url)
+    handler.payload = {"result": "fail", "reason": "pass_token expire"}
+    token = json.dumps(
+        {
+            "lot_number": "lot-9",
+            "captcha_output": "out-9",
+            "pass_token": "pt-9",
+            "gen_time": "2026-09-20T12:00:00",
+        }
+    )
+    with pytest.raises(OctopError) as exc:
+        await ensure_captcha(_effective("geetest-v4", site_key="gt-id", secret="gt-key"), token)
+    assert exc.value.code is ErrorCode.CAPTCHA_FAILED

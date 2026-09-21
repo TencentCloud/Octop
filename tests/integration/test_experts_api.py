@@ -34,9 +34,8 @@ async def test_get_expert_includes_prompt_files(env: Any) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["id"] == "default"
-    assert body["files"]
-    assert isinstance(body["prompt_files"], list)
-    assert body["prompt_files"]
+    assert body["files"] == ["AGENTS.md"]
+    assert body["prompt_files"] == ["AGENTS.md"]
 
 
 async def test_get_unknown_expert_404(env: Any) -> None:
@@ -77,6 +76,74 @@ async def test_create_agent_from_expert(env: Any) -> None:
     detail_row = (await c.get(f"/api/agents/{new_id}", headers=auth)).json()
     assert detail_row["name"] == "default-bot"
     assert detail_row.get("system_prompt") in (None, "")
+
+
+async def test_create_agent_from_expert_applies_file_overrides(env: Any) -> None:
+    c, srv, auth = env
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "prompt-edited-bot",
+            "file_overrides": [{"name": "AGENTS.md", "content": "custom agents guide"}],
+            "omit_files": ["skills/does-not-exist"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["agent_id"]
+    workspace = srv.app_runtime.agent_registry.workspace_for_agent(agent_id)
+    if workspace is None:
+        pytest.skip("workspace not available before bootstrap")
+    text = await workspace.aread_text("AGENTS.md")
+    assert text == "custom agents guide"
+
+
+async def test_create_agent_from_expert_copies_full_skill_dir(env: Any) -> None:
+    c, srv, auth = env
+    source = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "copy-skill-src"},
+    )
+    assert source.status_code == 201, source.text
+    src_id = source.json()["agent_id"]
+    src_ws = srv.app_runtime.agent_registry.workspace_for_agent(src_id)
+    if src_ws is None:
+        pytest.skip("workspace not available before bootstrap")
+    await src_ws.aupload_many(
+        [
+            ("skills/pack-demo/SKILL.md", b"---\nname: pack-demo\n---\n# Pack\n"),
+            ("skills/pack-demo/refs/note.md", b"keep me"),
+        ]
+    )
+
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "copy-skill-dest",
+            "copy_skills": [{"agent_id": src_id, "slug": "pack-demo"}],
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json().get("copy_skill_errors") in (None, [])
+    dest_ws = srv.app_runtime.agent_registry.workspace_for_agent(created.json()["agent_id"])
+    if dest_ws is None:
+        pytest.skip("workspace not available before bootstrap")
+    assert await dest_ws.aread_text("skills/pack-demo/refs/note.md") == "keep me"
+
+
+async def test_create_agent_from_expert_rejects_unsafe_override_path(env: Any) -> None:
+    c, _srv, auth = env
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "unsafe-override-bot",
+            "file_overrides": [{"name": "../secret", "content": "nope"}],
+        },
+    )
+    assert created.status_code == 400, created.text
 
 
 async def test_create_agent_from_expert_duplicate_name_409(env: Any) -> None:
@@ -251,7 +318,8 @@ async def test_get_expert_includes_file_contents(env: Any) -> None:
     body = r.json()
     assert "file_contents" in body
     assert isinstance(body["file_contents"], list)
-    assert len(body["file_contents"]) > 0
+    names = {item["name"] for item in body["file_contents"]}
+    assert names == {"AGENTS.md"}
     first = body["file_contents"][0]
     assert "name" in first and "content" in first
     assert isinstance(first["content"], str) and first["content"]

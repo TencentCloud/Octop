@@ -60,6 +60,9 @@ class SkillHubMarketAgentCreateOptions:
     top_p: float | None = None
     max_tokens: int | None = None
     enable_trajectory: bool = True
+    workspace_patch: Any = None
+    composer_copies: tuple[tuple[str, Any], ...] = ()
+    composer_report: Any = None
 
 
 @dataclass(frozen=True)
@@ -325,7 +328,30 @@ async def create_agent_from_skillhub_skillset(
         mcp_servers=options.mcp_servers,
     )
     registry = server.app_runtime.agent_registry
-    row = await registry.create(spec, defer_bootstrap=True)
+
+    async def apply_patch(_row: Any, workspace: Any) -> None:
+        from octop.infra.agents.experts.composer_files import (
+            ComposerWorkspacePatch,
+            apply_composer_workspace_patch,
+        )
+
+        patch = options.workspace_patch
+        await apply_composer_workspace_patch(
+            workspace,
+            patch if patch is not None else ComposerWorkspacePatch(),
+            copies=options.composer_copies,
+            report=options.composer_report,
+        )
+
+    patch = options.workspace_patch
+    need_apply = (patch is not None and not getattr(patch, "is_empty", lambda: True)()) or bool(
+        options.composer_copies
+    )
+    row = await registry.create(
+        spec,
+        defer_bootstrap=True,
+        workspace_initializer=apply_patch if need_apply else None,
+    )
 
     workspace = registry.workspace_for_agent(row.agent_id)
     if workspace is not None and portrait_url:

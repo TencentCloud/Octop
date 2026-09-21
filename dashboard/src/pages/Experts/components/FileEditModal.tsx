@@ -11,11 +11,14 @@ const MonacoEditor = lazy(() => import("@monaco-editor/react"));
 
 interface FileEditModalProps {
   open: boolean;
-  agentId: string;
+  agentId?: string;
   /** Workspace path, e.g. "/SOUL.md" */
   filePath: string | null;
+  /** When set, edit this value in memory instead of loading from the workspace. */
+  localValue?: string;
   onClose: () => void;
   onSaved: () => void;
+  onLocalSave?: (content: string) => void;
 }
 
 function fileEditDrawerWidth(): number {
@@ -27,8 +30,10 @@ export default function FileEditModal({
   open,
   agentId,
   filePath,
+  localValue,
   onClose,
   onSaved,
+  onLocalSave,
 }: FileEditModalProps) {
   const { t } = useTranslation();
   const [value, setValue] = useState<string>("");
@@ -36,7 +41,13 @@ export default function FileEditModal({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!open || !agentId || !filePath) return;
+    if (!open || !filePath) return;
+    if (onLocalSave) {
+      setValue(localValue ?? "");
+      setLoading(false);
+      return;
+    }
+    if (!agentId) return;
     let cancelled = false;
     setLoading(true);
     setValue("");
@@ -61,12 +72,20 @@ export default function FileEditModal({
     return () => {
       cancelled = true;
     };
-  }, [open, agentId, filePath]);
+  }, [open, agentId, filePath, localValue, onLocalSave]);
 
   const handleSave = async () => {
     if (!filePath) return;
-    setSaving(true);
     const filename = filePath.replace(/^\//, "");
+    if (onLocalSave) {
+      onLocalSave(value);
+      message.success(t("experts.fileSaved", { filename }));
+      onSaved();
+      onClose();
+      return;
+    }
+    if (!agentId) return;
+    setSaving(true);
     try {
       await request(
         withFromWorkspace(

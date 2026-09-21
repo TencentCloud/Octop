@@ -135,6 +135,76 @@ function tencentPopupToken(
   });
 }
 
+type GeeTest4Init = (
+  options: Record<string, unknown>,
+  callback: (captcha: {
+    onReady: (cb: () => void) => void;
+    onSuccess: (cb: () => void) => void;
+    onError: (cb: () => void) => void;
+    onClose: (cb: () => void) => void;
+    showCaptcha: () => void;
+    getValidate: () =>
+      | {
+          lot_number: string;
+          captcha_output: string;
+          pass_token: string;
+          gen_time: string;
+        }
+      | false
+      | undefined;
+  }) => void,
+) => void;
+
+/** GeeTest v4 bind-mode popup: token = JSON of getValidate() for the server. */
+function geetestPopupToken(
+  siteKey: string,
+  hl: string,
+): Promise<string | undefined> {
+  const init = (window as unknown as Record<string, unknown>).initGeetest4 as
+    | GeeTest4Init
+    | undefined;
+  if (!init) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (token?: string) => {
+      if (!settled) {
+        settled = true;
+        resolve(token);
+      }
+    };
+    try {
+      init(
+        {
+          captchaId: siteKey,
+          product: "bind",
+          protocol: "https://",
+          language: hl.startsWith("zh") ? "zho" : "eng",
+        },
+        (captcha) => {
+          captcha.onSuccess(() => {
+            const validate = captcha.getValidate();
+            done(
+              validate && validate.captcha_output
+                ? JSON.stringify({
+                    lot_number: validate.lot_number,
+                    captcha_output: validate.captcha_output,
+                    pass_token: validate.pass_token,
+                    gen_time: validate.gen_time,
+                  })
+                : undefined,
+            );
+          });
+          captcha.onError(() => done(undefined));
+          captcha.onClose(() => done(undefined));
+          captcha.onReady(() => captcha.showCaptcha());
+        },
+      );
+    } catch {
+      done(undefined);
+    }
+  });
+}
+
 const CaptchaField = forwardRef<CaptchaFieldHandle, CaptchaFieldProps>(
   function CaptchaField(
     {
@@ -240,7 +310,9 @@ const CaptchaField = forwardRef<CaptchaFieldHandle, CaptchaFieldProps>(
           }
           if (adapter.mode === "popup") {
             if (!config.site_key) return undefined;
-            return tencentPopupToken(config.site_key, hl);
+            return adapter.slug === "geetest-v4"
+              ? geetestPopupToken(config.site_key, hl)
+              : tencentPopupToken(config.site_key, hl);
           }
           const api = vendorGlobal(adapter.globalName);
           const siteKey = config.site_key;

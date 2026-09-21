@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -26,13 +27,20 @@ vi.mock("./CaptchaField", () => ({
 import LoginPage from "./index";
 
 describe("Login forgot-password hint", () => {
-  it("tells locked-out operators how to reset via CLI", () => {
+  it("keeps the CLI reset tip collapsed until asked", async () => {
+    const user = userEvent.setup();
     render(
       <MemoryRouter>
         <LoginPage />
       </MemoryRouter>,
     );
+
+    expect(screen.queryByTestId("login-forgot-password")).toBeNull();
+
+    await user.click(screen.getByTestId("login-forgot-password-toggle"));
+
     const hint = screen.getByTestId("login-forgot-password");
     expect(hint.textContent).toMatch(/octop user passwd/);
+    expect(hint.textContent).toMatch(/Users|用户/);
   });
 });

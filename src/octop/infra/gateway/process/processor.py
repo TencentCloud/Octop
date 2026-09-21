@@ -18,7 +18,7 @@ from harness_gateway.models import (
     MessageEventType,
     TextContent,
 )
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.profile import parse_config_json
@@ -66,6 +66,7 @@ from octop.infra.gateway.process.stream_project import (
     project_stream,
 )
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
+from octop.infra.gateway.slash.catalog import spec_for
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.parser import parse_slash
 from octop.infra.gateway.slash.runner import try_handle_slash
@@ -1415,7 +1416,7 @@ class GlobalProcessor:
         command: str,
         response_lines: list[str],
     ) -> None:
-        """Persist slash input/output via harness checkpoint, same as cron text."""
+        """Save slash history, honoring the command's checkpoint persistence policy."""
         turn_id = new_ulid()
         response = "\n".join(response_lines).strip()
         canonical: list[HumanMessage | AIMessage] = [
@@ -1423,16 +1424,21 @@ class GlobalProcessor:
         ]
         if response:
             canonical.append(AIMessage(content=response, id=f"slash:{turn_id}:assistant"))
-        try:
-            harness = self._agent_manager.get_agent(agent_id)
-            appended = await harness.aappend_messages(thread_id, canonical)
-        except Exception:
-            logger.warning(
-                "failed to append slash checkpoint for thread=%s",
-                thread_id,
-                exc_info=True,
-            )
-            return
+        parsed = parse_slash(command)
+        spec = spec_for(parsed.name) if parsed is not None else None
+        if spec is not None and not spec.persist_checkpoint:
+            appended: list[BaseMessage] = list(canonical)
+        else:
+            try:
+                harness = self._agent_manager.get_agent(agent_id)
+                appended = await harness.aappend_messages(thread_id, canonical)
+            except Exception:
+                logger.warning(
+                    "failed to append slash checkpoint for thread=%s",
+                    thread_id,
+                    exc_info=True,
+                )
+                return
         if self._thread_message_repo is None:
             return
         try:

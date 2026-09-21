@@ -293,7 +293,23 @@
       "exit": {
         "label": "退出",
         "description": "结束 CLI 会话"
+      },
+      "memory": {
+        "label": "记忆库整理",
+        "description": "备份并瘦身记忆库，或查看整理进度。"
       }
+    },
+    "memory": {
+      "usage": "用法：/memory slim（先了解作用和影响）、/memory slim --all（查看自己的全部在线候选）、/memory status（查看整理进度）。查看说明不会暂停聊天。",
+      "accepted": "已确认整理 {count} 个智能体。后台将依次备份、合并重复数据、回收空间，保留聊天记录和记忆。轮到某个智能体时，其所有会话暂停发送；完成后自动恢复。页面会显示阶段和耗时，可切换到其他未维护的智能体。关闭页面后批次仍会继续，恢复后可用 /memory status 查看结果。",
+      "idle": "暂无当前智能体的整理记录。可用 /memory slim 发起整理。",
+      "summary": "最近一次整理：已完成 {completed}/{total} 个。",
+      "queued": "等待前一个智能体整理完成。",
+      "skipped": "未执行：批次已停止。",
+      "failure_hint": "详情请查看服务日志；批次不会自动重试。",
+      "trusted_chat": "请在登录后的 Octop 网页聊天框或本地 CLI 对话中使用 /memory。IM 发送者尚未绑定可验证的维护权限。",
+      "preview": "这是一次可选的磁盘空间整理：合并重复存储的上下文，保留聊天记录和记忆。收益取决于重复数据量。\n\n整理前会创建备份，需要额外磁盘空间；开始后，该智能体的所有会话会暂停发送，完成后自动恢复。大库可能耗时较久，目前无法可靠预估时间。建议在暂时不用它时执行。\n\n当前符合条件的目标共 {count} 个（尚未开始整理）：",
+      "confirm_hint": "确认现在整理，请发送 `{command}`。不发送确认命令即可继续聊天。确认执行时会重新核对当前符合条件的目标。"
     }
   },
   "connector": {
@@ -722,6 +738,39 @@
       "UnauthorizedOperation": "当前腾讯云账号没有该语音接口的访问权限。",
       "RequestLimitExceeded": "腾讯云请求过于频繁，请稍后再试。"
     }
+  },
+  "memory_slim": {
+    "waiting": "等待当前任务结束…",
+    "backing_up": "正在备份记忆库…",
+    "deduplicating": "正在去重历史上下文…",
+    "compacting": "正在压缩记忆库…",
+    "done": "记忆库整理完成，已恢复对话。",
+    "failed": "记忆库整理失败，已解除对话等待。",
+    "result": "数据库：{before} → {after} MiB；备份：{backup}",
+    "unavailable": "无法连接正在运行的新版 Octop，或控制连接中断：{detail}",
+    "busy": "已有记忆库整理任务正在进行。",
+    "not_ready": "Octop 运行环境尚未准备好。",
+    "upgrade": "当前加载的 harness-memory 未提供在线整理接口。请安装配套版本或加载本地源码后重启 Octop。",
+    "wait_timeout": "智能体持续繁忙超过 120 秒，本次未开始迁移。",
+    "incompatible": "在线整理仅支持兼容的新版本 SQLite checkpointer，请更新并重启 Octop。",
+    "interrupted": "整理被中断。",
+    "error_detail": "整理失败：{detail}",
+    "agents": "可在线整理的智能体（已运行且使用兼容的 SQLite 记忆库）：",
+    "no_agents": "没有可在线整理的 SQLite 智能体。此命令目前仅支持已运行、已启用记忆且版本兼容的 SQLite 智能体；PostgreSQL 整理尚未接入，并不表示 PG 无需维护。本次未执行任何整理，聊天可继续。",
+    "choose": "输入要整理的编号（Ctrl+C 退出）",
+    "agent_required": "JSON 模式不会自动选择，请从列表复制 agent_id 并添加 --agent ID。",
+    "target": "本次整理智能体：{agent_id}",
+    "elapsed": "已用时 {seconds} 秒",
+    "scanned": "已扫描 {scanned}/{total} 条",
+    "all_conflict": "--all 不能与 --agent 或 OCTOP_AGENT 同时使用。",
+    "batch_target": "[{index}/{total}] 正在整理：{name} [{agent_id}]",
+    "batch_stopped": "批量整理已停止：{agent_id} 未确认完成；已完成 {completed} 个，另有 {remaining} 个未执行。原因：{detail}",
+    "batch_done": "批量整理完成，共完成 {total} 个智能体。",
+    "forbidden": "只能整理或查看属于当前登录用户的智能体记忆库。",
+    "backend_unsupported": "当前智能体使用 {backend} 记忆库；此命令仅整理 SQLite 文件，不适用于当前数据库。本次未执行整理。",
+    "memory_disabled": "当前智能体没有启用记忆库，因此没有可整理的数据库。本次未执行整理。",
+    "agent_not_running": "当前智能体尚未启动或启动失败，请先启动成功后再整理。本次未执行整理。",
+    "postgres_unsupported": "当前智能体使用 {backend} 记忆库。PostgreSQL 也可能出现重复数据或空间膨胀，需要根据实际占用评估整理方式；本命令目前尚未支持 PostgreSQL 瘦身，仅支持 SQLite。本次未执行任何整理，聊天可继续。"
   },
   "teams": {
     "peer_thread_title": "来自团队 {name}",
