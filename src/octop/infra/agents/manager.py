@@ -25,6 +25,7 @@ from octop.infra.agents.langfuse import LangfuseSettings, LangfuseSettingsStore
 from octop.infra.agents.media_generation import (
     MediaGenerationSettings,
     MediaGenerationSettingsStore,
+    MediaProviderUpdate,
 )
 from octop.infra.agents.memory_backend import memory_backend_from_agent_config
 from octop.infra.agents.memory_slim import MemorySlimCoordinator
@@ -1771,20 +1772,16 @@ class AgentManager:
         self,
         *,
         enabled: bool,
-        image_enabled: bool,
-        video_enabled: bool,
-        image_model: str,
-        video_model: str,
-        api_key: str | None = None,
+        providers: list[MediaProviderUpdate],
+        default_image_provider: str | None,
+        default_video_provider: str | None,
     ) -> MediaGenerationSettings:
         """Persist media settings and rebuild running harness agents."""
         view = self._media_generation.save(
             enabled=enabled,
-            image_enabled=image_enabled,
-            video_enabled=video_enabled,
-            image_model=image_model,
-            video_model=video_model,
-            api_key=api_key,
+            providers=providers,
+            default_image_provider=default_image_provider,
+            default_video_provider=default_video_provider,
         )
         await self.reload_all()
         return view
