@@ -1289,18 +1289,27 @@ def _write_history(paths: PathLayout, bodies: list[str]) -> None:
     (paths.root / "history_v2.required").write_text(
         "History archive required; do not remove independently.\n", encoding="utf-8"
     )
-    with sqlite3.connect(paths.root / "history_v2.sqlite") as conn:
+    # Close explicitly: `with sqlite3.connect(...)` only commits/rolls back, and a lingering
+    # handle makes os.replace() fail on Windows (WinError 5) when the restore installs history.
+    conn = sqlite3.connect(paths.root / "history_v2.sqlite")
+    try:
         conn.execute("CREATE TABLE IF NOT EXISTS segments (thread_id TEXT, seq INTEGER, body TEXT)")
         conn.execute("DELETE FROM segments")
         conn.executemany(
             "INSERT INTO segments VALUES ('thr_1', ?, ?)",
             list(enumerate(bodies, start=1)),
         )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _history_bodies(paths: PathLayout) -> list[str]:
-    with sqlite3.connect(paths.root / "history_v2.sqlite") as conn:
+    conn = sqlite3.connect(paths.root / "history_v2.sqlite")
+    try:
         return [row[0] for row in conn.execute("SELECT body FROM segments ORDER BY seq")]
+    finally:
+        conn.close()
 
 
 def test_restore_refuses_versioned_history_on_the_live_server_path(
@@ -1417,6 +1426,44 @@ def test_restore_history_install_failure_leaves_live_archive_intact(
     monkeypatch.setattr(shutil, "copy2", failing_copy2)
 
     with pytest.raises(OSError, match="no space left"):
+        restore_system_backup(
+            archive,
+            paths=layout,
+            pool=pool,
+            db_config=DatabaseConfig(),
+            restore_config=False,
+            allow_versioned_history=True,
+        )
+
+    assert not (layout.root / "history_v2.sqlite.restore-partial").exists()
+    assert _history_bodies(layout) == ["live"]
+    pool.close()
+
+
+def test_restore_history_in_use_reports_actionable_error(
+    layout: PathLayout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows blocks replacing a file with an open handle; report it as 'stop the server'."""
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    _write_history(layout, ["from-backup"])
+    archive = tmp_path / "chats.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_chats=True,
+    )
+    _write_history(layout, ["live"])
+
+    def locked_replace(src: object, dst: object) -> None:
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr("octop.infra.backup.system_archive.os.replace", locked_replace)
+
+    with pytest.raises(OctopError, match="in use; stop the server"):
         restore_system_backup(
             archive,
             paths=layout,

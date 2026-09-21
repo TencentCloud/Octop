@@ -432,7 +432,15 @@ def _install_versioned_history(extracted: Path, paths: PathLayout) -> bool:
     partial = dest.with_name(f"{dest.name}.restore-partial")
     try:
         shutil.copy2(src, partial)
-        os.replace(partial, dest)
+        try:
+            os.replace(partial, dest)
+        except PermissionError as exc:
+            # Windows refuses to replace a file that still has an open handle (WinError 5);
+            # the usual cause is a running server that still holds the archive open.
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "the versioned history archive is in use; stop the server and retry the restore",
+            ) from exc
     except Exception:
         partial.unlink(missing_ok=True)
         raise
