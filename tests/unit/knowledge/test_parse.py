@@ -201,7 +201,13 @@ def test_parse_csv_xlsx_and_xls(tmp_path: Path) -> None:
     assert parse_document(xls) == "# Q1\nitem\tqty\napple\t2"
 
 
-def test_parse_html_json_and_plain_variants(tmp_path: Path) -> None:
+def test_parse_csv_large_cell(tmp_path: Path) -> None:
+    csv_path = tmp_path / "large.csv"
+    # Create a cell larger than standard 128KB default
+    large_text = "x" * 200_000
+    csv_path.write_text(f"col\n{large_text}\n", encoding="utf-8")
+    parsed = parse_document(csv_path)
+    assert f"# large\ncol\n{large_text}" == parsed
     html = tmp_path / "page.html"
     html.write_text(
         "<html><head><style>p{color:red}</style></head>"
