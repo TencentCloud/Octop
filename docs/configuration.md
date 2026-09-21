@@ -49,6 +49,14 @@ Per-agent secrets belong in `{workspace}/.env` or, for new agents,
 `{workspace}/.octop/.env` (also writable via the `write_env_file` tool).
 That file is excluded from published-expert snapshots.
 
+### Agent runtime configuration persistence
+
+Agent runtime parameters configured via the dashboard (such as `max_iters`,
+`max_input_length`, `temperature`, `top_p`, and `max_tokens`) are stored in the
+control-plane database (`agents.config_json`). They are updated immediately upon
+saving via `PATCH /api/agents/{id}` and persisted directly to the database
+before hot-reloading the running agent instance.
+
 The root can be overridden with `OCTOP_HOME` (absolute path). Most
 sub-paths are exposed as properties on `PathLayout` in
 `octop.infra.utils.paths`.
