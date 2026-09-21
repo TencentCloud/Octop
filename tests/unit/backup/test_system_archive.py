@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 import tarfile
 from io import BytesIO
@@ -1281,4 +1282,150 @@ def test_refuse_cross_engine_restore(layout: PathLayout, tmp_path: Path) -> None
             db_config=DatabaseConfig(),
         )
     assert excinfo.value.code == ErrorCode.BACKUP_DRIVER_MISMATCH
+    pool.close()
+
+
+def _write_history(paths: PathLayout, bodies: list[str]) -> None:
+    (paths.root / "history_v2.required").write_text(
+        "History archive required; do not remove independently.\n", encoding="utf-8"
+    )
+    with sqlite3.connect(paths.root / "history_v2.sqlite") as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS segments (thread_id TEXT, seq INTEGER, body TEXT)")
+        conn.execute("DELETE FROM segments")
+        conn.executemany(
+            "INSERT INTO segments VALUES ('thr_1', ?, ?)",
+            list(enumerate(bodies, start=1)),
+        )
+
+
+def _history_bodies(paths: PathLayout) -> list[str]:
+    with sqlite3.connect(paths.root / "history_v2.sqlite") as conn:
+        return [row[0] for row in conn.execute("SELECT body FROM segments ORDER BY seq")]
+
+
+def test_restore_refuses_versioned_history_on_the_live_server_path(
+    layout: PathLayout, tmp_path: Path
+) -> None:
+    """The HTTP endpoint runs inside the live server, so it must keep refusing."""
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    _write_history(layout, ["hello"])
+    archive = tmp_path / "chats.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_chats=True,
+    )
+
+    with pytest.raises(OctopError, match="offline restore"):
+        restore_system_backup(archive, paths=layout, pool=pool, db_config=DatabaseConfig())
+    pool.close()
+
+
+def test_restore_replaces_versioned_history_when_offline(
+    layout: PathLayout, tmp_path: Path
+) -> None:
+    """`octop backup restore` is the offline path, so it may replace the history archive."""
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    _write_history(layout, ["hello", "world"])
+    archive = tmp_path / "chats.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_chats=True,
+    )
+    _write_history(layout, ["STALE"])
+    assert _history_bodies(layout) == ["STALE"]
+
+    result = restore_system_backup(
+        archive,
+        paths=layout,
+        pool=pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+        allow_versioned_history=True,
+    )
+
+    assert result["history_restored"] is True
+    assert _history_bodies(layout) == ["hello", "world"]
+    pool.close()
+
+
+def test_restore_keeps_live_history_when_archive_has_none(
+    layout: PathLayout, tmp_path: Path
+) -> None:
+    """A backup without chats must not clobber the history that is still live."""
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    _write_history(layout, ["hello"])
+    archive = tmp_path / "nochats.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_chats=False,
+    )
+
+    result = restore_system_backup(
+        archive,
+        paths=layout,
+        pool=pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+        allow_versioned_history=True,
+    )
+
+    assert result["history_restored"] is False
+    assert _history_bodies(layout) == ["hello"]
+    pool.close()
+
+
+def test_restore_history_install_failure_leaves_live_archive_intact(
+    layout: PathLayout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed history install must not leave a partial file or clobber the live archive."""
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    _write_history(layout, ["from-backup"])
+    archive = tmp_path / "chats.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_chats=True,
+    )
+    _write_history(layout, ["live"])
+
+    real_copy2 = shutil.copy2
+
+    def failing_copy2(src: object, dst: object, *args: object, **kwargs: object) -> object:
+        if str(dst).endswith(".restore-partial"):
+            raise OSError("no space left on device")
+        return real_copy2(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copy2", failing_copy2)
+
+    with pytest.raises(OSError, match="no space left"):
+        restore_system_backup(
+            archive,
+            paths=layout,
+            pool=pool,
+            db_config=DatabaseConfig(),
+            restore_config=False,
+            allow_versioned_history=True,
+        )
+
+    assert not (layout.root / "history_v2.sqlite.restore-partial").exists()
+    assert _history_bodies(layout) == ["live"]
     pool.close()

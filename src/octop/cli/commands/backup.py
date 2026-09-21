@@ -183,6 +183,9 @@ def restore(
         db_config=config.database,
         restore_config=not no_config,
         owner_user_id=owner_user_id,
+        # This command is the offline path (its help text asks for the server to be stopped),
+        # so it may replace history_v2.sqlite; the HTTP endpoint still refuses.
+        allow_versioned_history=True,
     )
     db.close()
     click.echo(f"restored: {result}")

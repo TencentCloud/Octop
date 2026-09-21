@@ -416,6 +416,39 @@ def _replace_tree_from_archive(extracted: Path, dest: Path, arc_name: str) -> in
     return count
 
 
+def _install_versioned_history(extracted: Path, paths: PathLayout) -> bool:
+    """Install ``history_v2.sqlite`` from a restored archive; return whether it was replaced.
+
+    Written to a sibling temp file and moved into place so an interrupted restore cannot
+    leave a half-written history archive next to a fully restored database. When the archive
+    carries no history (``include_chats=False`` backups), the live archive is left untouched
+    so it stays consistent with the preserved chat rows.
+    """
+    src = extracted / "history" / "history_v2.sqlite"
+    if not src.is_file():
+        return False
+    paths.root.mkdir(parents=True, exist_ok=True)
+    dest = paths.root / "history_v2.sqlite"
+    partial = dest.with_name(f"{dest.name}.restore-partial")
+    try:
+        shutil.copy2(src, partial)
+        os.replace(partial, dest)
+    except Exception:
+        partial.unlink(missing_ok=True)
+        raise
+    marker_src = extracted / "history" / "history_v2.required"
+    if marker_src.is_file():
+        marker_dest = paths.root / "history_v2.required"
+        marker_partial = marker_dest.with_name(f"{marker_dest.name}.restore-partial")
+        try:
+            shutil.copy2(marker_src, marker_partial)
+            os.replace(marker_partial, marker_dest)
+        except Exception:
+            marker_partial.unlink(missing_ok=True)
+            raise
+    return True
+
+
 def restore_system_backup(
     source: Path | bytes,
     *,
@@ -425,6 +458,7 @@ def restore_system_backup(
     restore_config: bool = True,
     preserve_users: bool | None = None,
     owner_user_id: int | None = None,
+    allow_versioned_history: bool = False,
 ) -> dict[str, Any]:
     """Restore database, workspaces, and optional config from a tar.gz archive.
 
@@ -445,6 +479,11 @@ def restore_system_backup(
     For LightClaw migration archives, ``owner_user_id`` (typically the admin
     performing the restore) receives all imported ``user_id`` ownership. When
     omitted, the first preserved admin (else first preserved user) is used.
+
+    ``allow_versioned_history`` opts an *offline* restore (``octop backup restore``, which
+    already requires the server to be stopped) into replacing ``history_v2.sqlite`` as well.
+    The default stays ``False`` because the HTTP endpoint runs inside a live server whose
+    history archive is open; that caller keeps getting a refusal instead of a torn archive.
     """
     with tempfile.TemporaryDirectory() as tmp:
         extracted = Path(tmp) / "extracted"
@@ -454,10 +493,12 @@ def restore_system_backup(
             (paths.root / "history_v2.required").exists()
             or (paths.root / "history_v2.sqlite").exists()
             or (extracted / "history/history_v2.sqlite").exists()
-        ):
+        ) and not allow_versioned_history:
             raise OctopError(
                 ErrorCode.SLASH_BAD_ARGS,
-                "Versioned history requires a coordinated offline restore; no database was changed",
+                "Versioned history requires an offline restore: stop the server and run "
+                "`octop backup restore`, or use the HTTP endpoint only when the instance has "
+                "no versioned history. No database was changed.",
             )
         is_migration = _is_migration_backup(manifest)
 
@@ -633,6 +674,7 @@ def restore_system_backup(
         preserved_chat_rows, skipped_chat_rows = (
             restore_preserved_chats(pool, saved_chats) if saved_chats is not None else (0, 0)
         )
+        history_restored = _install_versioned_history(extracted, paths)
         schema_version = _current_version(pool)
 
     result: dict[str, Any] = {
@@ -645,6 +687,7 @@ def restore_system_backup(
         "knowledge_files": restored_knowledge_files,
         "restore_config": restore_config,
         "chats_restored": manifest.includes_chats,
+        "history_restored": history_restored,
         "preserved_chat_rows": preserved_chat_rows,
         "skipped_chat_rows": skipped_chat_rows,
         "users_preserved": effective_preserve_users,
