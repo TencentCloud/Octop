@@ -673,7 +673,7 @@ def test_start_service_launchd_bootstraps_when_unloaded(
 
         # First kickstart fails because the service is not loaded; second succeeds.
         if (
-            args[:2] == ["kickstart", "-k"]
+            args[:2] == ("kickstart", "-k")
             and len([c for c in calls if c[1][:2] == ["kickstart", "-k"]]) == 1
         ):
             _Proc.returncode = 1
