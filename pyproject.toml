@@ -47,9 +47,6 @@ dependencies = [
     "xlrd>=2.0.1",
 ]
 
-[tool.uv.sources]
-orcakit-harness-agent = { path = "../harness-agent", editable = true }
-
 [project.optional-dependencies]
 # PEP 621 extras — kept so `pip install -e ".[dev]"` keeps working for
 # legacy / CI flows. `uv sync` reads `[dependency-groups].dev` below.
