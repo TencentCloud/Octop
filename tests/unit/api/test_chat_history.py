@@ -215,14 +215,18 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
         "list_threads must not touch harness"
     )
     server.app_runtime.gateway.thread_registry = thread_registry
-
+    ws_hub = MagicMock()
+    ws_hub.is_turn_active.side_effect = lambda tid: tid == "thr_used"
+    server.app_runtime.gateway.ws_hub = ws_hub
     user = MagicMock(id=1, is_admin=False)
 
     out = await history_mod.list_threads("agt_1", limit=10, user=user, server=server)
 
     assert len(out) == 2
     assert out[0]["has_messages"] is False
+    assert out[0]["turn_active"] is False
     assert out[1]["has_messages"] is True
+    assert out[1]["turn_active"] is True
 
 
 @pytest.mark.asyncio

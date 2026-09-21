@@ -102,6 +102,7 @@ async def list_threads(
     """List conversation threads for an agent, including which thread is active for this user."""
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     thread_registry = server.app_runtime.gateway.thread_registry
+    ws_hub = server.app_runtime.gateway.ws_hub
     effective_uid = as_user if as_user is not None else user.id
     rows = thread_registry.list_threads(agent_id=agent_id, user_id=effective_uid, limit=limit)
     bound = thread_registry.get_bound_thread_id(
@@ -123,6 +124,7 @@ async def list_threads(
             "reasoning_mode": r.reasoning_mode,
             "reasoning_effort": r.reasoning_effort,
             "artifacts": artifacts_for_response(r.artifacts, workspace_dir),
+            "turn_active": ws_hub.is_turn_active(r.thread_id),
         }
         for r in rows
     ]

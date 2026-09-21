@@ -16,6 +16,7 @@ export interface OctopThread {
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
   artifacts?: string[];
+  turn_active?: boolean;
 }
 
 export interface OctopThreadHistory {
