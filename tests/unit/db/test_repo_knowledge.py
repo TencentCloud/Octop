@@ -346,3 +346,39 @@ def test_create_document_zero_max_means_unlimited(repo: KnowledgeRepo, owner_id:
             max_documents=kb.max_documents,
         )
     assert repo.get_base(kb.id).doc_count == 150  # type: ignore[union-attr]
+
+
+def _folder_with_doc(repo: KnowledgeRepo, kb_id: str, folder: str, doc: str) -> tuple[str, str]:
+    folder_id = repo.ensure_folder(kb_id, folder).id
+    doc_id = repo.create_document(
+        kb_id=kb_id,
+        filename=doc.split("/")[-1],
+        path=doc,
+        content_type="text/plain",
+        byte_size=1,
+    ).id
+    return folder_id, doc_id
+
+
+def test_delete_folder_does_not_match_like_wildcards(repo: KnowledgeRepo, owner_id: int) -> None:
+    """``_`` in a folder name is a LIKE wildcard, so ``a_b`` used to delete ``axb/...`` too."""
+    kb = repo.create_base(owner_user_id=owner_id, name="Wildcards")
+    target, _ = _folder_with_doc(repo, kb.id, "a_b", "a_b/keep.txt")
+    _, survivor = _folder_with_doc(repo, kb.id, "axb", "axb/survive.txt")
+
+    removed = repo.delete_document(target)
+
+    assert {row.path for row in removed} == {"a_b", "a_b/keep.txt"}
+    assert repo.get_document(survivor) is not None
+
+
+def test_delete_folder_is_case_sensitive(repo: KnowledgeRepo, owner_id: int) -> None:
+    """SQLite's LIKE is case-insensitive (PostgreSQL's is not); folder deletes must agree."""
+    kb = repo.create_base(owner_user_id=owner_id, name="Case")
+    target, _ = _folder_with_doc(repo, kb.id, "Docs", "Docs/upper.txt")
+    _, survivor = _folder_with_doc(repo, kb.id, "docs", "docs/lower.txt")
+
+    removed = repo.delete_document(target)
+
+    assert {row.path for row in removed} == {"Docs", "Docs/upper.txt"}
+    assert repo.get_document(survivor) is not None
