@@ -25,7 +25,7 @@ def _search(
     path = quote(query.strip(), safe="")
     resp = client.get(
         f"https://api.bgm.tv/search/subject/{path}",
-        params={"type": subject_type, "responseGroup": "small", "max_results": limit},
+        params={"type": subject_type, "responseGroup": "large", "max_results": limit},
     )
     if resp.status_code == 404:
         return []
