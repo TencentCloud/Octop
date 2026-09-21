@@ -11,6 +11,7 @@ interface WelcomePromptDto {
   prompt: LocalizedText;
   color?: string;
   icon_name?: string | null;
+  expert?: string;
 }
 
 function mapQuickPrompts(
@@ -23,6 +24,7 @@ function mapQuickPrompts(
     prompt: pickLocale(p.prompt, locale),
     color: p.color || "#e8f4ff",
     icon_name: p.icon_name ?? null,
+    expertName: p.expert?.trim() || undefined,
   }));
 }
 
@@ -31,7 +33,7 @@ export function useExpertChatWelcome(agent: OctopAgent | null): {
   welcomeSuffix: string | null;
 } {
   const { i18n } = useTranslation();
-  const [quickCards, setQuickCards] = useState<WelcomeQuickCard[]>([]);
+  const [fetchedCards, setFetchedCards] = useState<WelcomeQuickCard[]>([]);
   const [welcomeSuffix, setWelcomeSuffix] = useState<string | null>(null);
 
   useEffect(() => {
@@ -39,7 +41,7 @@ export function useExpertChatWelcome(agent: OctopAgent | null): {
     const locale: "zh" | "en" = i18n.language.startsWith("zh") ? "zh" : "en";
     const agentId = agent?.agent_id;
     if (!agentId) {
-      setQuickCards([]);
+      setFetchedCards([]);
       setWelcomeSuffix(null);
       return;
     }
@@ -48,7 +50,7 @@ export function useExpertChatWelcome(agent: OctopAgent | null): {
       .welcome(agentId)
       .then((data) => {
         if (cancelled) return;
-        setQuickCards(mapQuickPrompts(data.quick_prompts, locale));
+        setFetchedCards(mapQuickPrompts(data.quick_prompts, locale));
         setWelcomeSuffix(
           pickLocale(data.welcome_message, locale, { crossFallback: false }) ||
             null,
@@ -56,7 +58,7 @@ export function useExpertChatWelcome(agent: OctopAgent | null): {
       })
       .catch(() => {
         if (!cancelled) {
-          setQuickCards([]);
+          setFetchedCards([]);
           setWelcomeSuffix(null);
         }
       });
@@ -66,5 +68,5 @@ export function useExpertChatWelcome(agent: OctopAgent | null): {
     };
   }, [agent?.agent_id, i18n.language]);
 
-  return { quickCards, welcomeSuffix };
+  return { quickCards: fetchedCards, welcomeSuffix };
 }

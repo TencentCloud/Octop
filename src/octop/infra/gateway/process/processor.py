@@ -1,4 +1,4 @@
-"""GlobalProcessor — harness-gateway MessageProcessor + TeamProcessor."""
+"""GlobalProcessor — harness-gateway MessageProcessor; team room lives on TeamManager."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from harness_agent.slash import SlashSink
 from harness_agent.teams.inbox import InboxMessage
-from harness_agent.teams.processor import ReplyEvent, default_compose_followup
-from harness_agent.teams.util import PeerCall, PeerSession, derive_peer_thread_id
+from harness_agent.teams.processor import ReplyEvent
+from harness_agent.teams.util import PeerCall, PeerSession
 from harness_gateway.models import (
     InboundMessage,
     MessageEvent,
@@ -23,6 +23,13 @@ from langchain_core.messages import AIMessage, HumanMessage
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.profile import parse_config_json
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
+from octop.infra.agents.teams import is_team_agent
+from octop.infra.agents.teams.team_manager import (
+    TeamManager,
+)
+from octop.infra.agents.teams.team_manager import (
+    stamp_team_host_chunk as _maybe_stamp_team_host,
+)
 from octop.infra.errors import OctopError
 from octop.infra.gateway.hitl.coordinator import (
     HitlAnswerOutcome,
@@ -44,7 +51,10 @@ from octop.infra.gateway.process.harness_request import (
     build_content_from_message,
     build_harness_request,
 )
-from octop.infra.gateway.process.history_projection import TurnHistoryTracker, message_inputs
+from octop.infra.gateway.process.history_projection import (
+    TurnHistoryTracker,
+    message_inputs,
+)
 from octop.infra.gateway.process.message_keys import (
     resolve_user_id_for_message,
     sanitize_im_metadata,
@@ -73,7 +83,6 @@ if TYPE_CHECKING:
     from octop.infra.db.repos.agents import AgentRepo
     from octop.infra.db.repos.audit import AuditRepo
     from octop.infra.db.repos.connectors import ConnectorRepo
-    from octop.infra.db.repos.sessions import SessionRow
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.gateway.slash.dispatcher import SlashDispatcher
     from octop.infra.gateway.threads import ThreadRegistry
@@ -145,6 +154,13 @@ class GlobalProcessor:
         self._hitl = hitl or HitlChannelCoordinator()
         self._trajectory_service = trajectory_service
         self._history_archive = history_archive
+        self.teams = TeamManager(
+            agent_manager=agent_manager,
+            thread_registry=thread_registry,
+            user_repo=user_repo,
+            thread_message_repo=thread_message_repo,
+            gateway=gateway,
+        )
 
     async def _begin_history(
         self, agent_id: str, thread_id: str, request: dict[str, Any], *, resume: bool = False
@@ -216,6 +232,7 @@ class GlobalProcessor:
     def replace_thread_message_repo(self, repo: Any) -> None:
         """Rebind projection writes after a control-plane restore."""
         self._thread_message_repo = repo
+        self.teams.replace_thread_message_repo(repo)
 
     def _agent_trajectory_enabled(self, agent_id: str, row: Any | None = None) -> bool:
         if self._trajectory_service is None:
@@ -406,32 +423,10 @@ class GlobalProcessor:
             out.append(name)
         return out
 
-    # -- TeamProcessor (harness inbox async peer collaboration) ----------------
+    # -- TeamProcessor (delegates to TeamManager) ------------------------------
 
     async def prepare_peer_session(self, call: PeerCall) -> PeerSession | None:
-        """Map an ``ask_agent`` call onto the callee's threads row (no inbound gateway)."""
-        thread_id = (
-            derive_peer_thread_id(call.source_thread_id, call.to_agent_id)
-            if call.source_thread_id
-            else None
-        )
-        session_key = None
-        if call.source_session_key:
-            session_key = self._thread_registry.peer_session_key(
-                call.source_session_key, call.to_agent_id
-            )
-        uid = _octop_user_id(call.user_id)
-        if thread_id and session_key and uid is not None:
-            parts = session_key.split(":", 3)
-            channel_type = parts[1] if len(parts) == 4 else "dashboard"
-            self._thread_registry.ensure_thread(
-                thread_id=thread_id,
-                agent_id=call.to_agent_id,
-                user_id=uid,
-                channel_type=channel_type,
-                session_key=session_key,
-            )
-        return PeerSession(thread_id=thread_id, session_key=session_key)
+        return await self.teams.prepare_peer_session(call)
 
     async def record_peer_turn(
         self,
@@ -439,29 +434,7 @@ class GlobalProcessor:
         thread_id: str,
         result: dict[str, Any],
     ) -> None:
-        """Touch the callee thread and project history after a peer ``call``."""
-        if not thread_id:
-            return
-        self._touch_thread_after_turn(thread_id, call.message)
-        if self._thread_message_repo is None:
-            return
-        messages = result.get("messages")
-        if not isinstance(messages, list) or not messages:
-            return
-        visible = _peer_turn_messages(messages)
-        if not visible:
-            return
-        try:
-            self._thread_message_repo.append_if_ready(
-                thread_id,
-                message_inputs(visible, dedupe_missing_ids=True),
-            )
-        except Exception:
-            logger.warning(
-                "failed to append peer history projection for thread=%s",
-                thread_id,
-                exc_info=True,
-            )
+        await self.teams.record_peer_turn(call, thread_id, result)
 
     def compose_followup(
         self,
@@ -470,49 +443,10 @@ class GlobalProcessor:
         result_text: str | None,
         error_text: str | None,
     ) -> str:
-        prompt = default_compose_followup(msg, result_text=result_text, error_text=error_text)
-        child_name = self._peer_display_name(msg.target_agent_id)
-        if child_name and child_name != msg.target_agent_id[-6:]:
-            return prompt.replace(
-                f"agent {msg.target_agent_id}",
-                f"agent {child_name}",
-                1,
-            )
-        return prompt
+        return self.teams.compose_followup(msg, result_text=result_text, error_text=error_text)
 
     async def on_reply(self, event: ReplyEvent) -> None:
-        session_key = event.metadata.get("session_key")
-        if not isinstance(session_key, str) or not session_key.strip():
-            logger.warning("team reply %s: missing session_key", event.inbox_id)
-            return
-        sk = session_key.strip()
-        session = self._thread_registry.get_session(sk)
-        if session is None:
-            logger.warning("team reply %s: session %r not found", event.inbox_id, sk)
-            return
-
-        if event.status != "done":
-            text = event.error_text or "Background task did not complete."
-            await self._deliver_team_text(session, sk, text)
-            return
-
-        await self._deliver_team_text(session, sk, event.reply_text or "(empty)")
-
-    async def _deliver_team_text(self, session: SessionRow, session_key: str, text: str) -> None:
-        if session.channel_id and self._gateway is not None:
-            await self._gateway.push_text(
-                session.channel_type,
-                session.channel_id,
-                session.to_channel_subject(),
-                text,
-            )
-            return
-        self._thread_registry.increment_unread(session_key)
-        self._thread_registry.touch_last_active(session.thread_id)
-
-    def _peer_display_name(self, agent_id: str) -> str:
-        row = self._agent_manager.get_row(agent_id)
-        return row.name if row is not None else agent_id[-6:]
+        await self.teams.on_reply(event)
 
     def _slash_ctx(
         self,
@@ -844,6 +778,7 @@ class GlobalProcessor:
             model=model_ref,
             message_kwargs=message_kwargs,
         )
+        self.teams.stamp_host_runtime(request, agent_id)
         self._attach_turn_knowledge_config(
             request,
             user_id=user_id,
@@ -941,6 +876,7 @@ class GlobalProcessor:
             return
 
         agent_row = self._agent_repo.get(agent_id)
+        team_host = is_team_agent(agent_row)
         traj_on = self._agent_trajectory_enabled(agent_id, agent_row)
         user_id = resolve_user_id_for_message(
             msg,
@@ -981,10 +917,18 @@ class GlobalProcessor:
             )
             self._touch_thread_after_turn(thread_id, msg.text)
             for line in slash_lines:
-                yield {"type": "token", "content": f"{line}\n"}
+                yield _maybe_stamp_team_host(
+                    {"type": "token", "content": f"{line}\n"},
+                    agent_id,
+                    team_host,
+                )
             for action in slash_actions:
-                yield {"type": "slash_action", **action}
-            yield {"type": "done"}
+                yield _maybe_stamp_team_host(
+                    {"type": "slash_action", **action},
+                    agent_id,
+                    team_host,
+                )
+            yield _maybe_stamp_team_host({"type": "done"}, agent_id, team_host)
             return
 
         locale = resolve_user_locale(
@@ -1081,7 +1025,7 @@ class GlobalProcessor:
                             agent_id=agent_id,
                             workspace=harness_workspace,
                         ):
-                            yield att
+                            yield _maybe_stamp_team_host(att, agent_id, team_host)
                     else:
                         chunk = enrich_tool_result_for_dashboard(
                             chunk,
@@ -1094,17 +1038,17 @@ class GlobalProcessor:
                     agent_id=agent_id,
                     user_id=user_id,
                 )
-                yield chunk
+                yield _maybe_stamp_team_host(chunk, agent_id, team_host)
             stream_ok = True
         except Exception as exc:
             await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
             message, error_code = _stream_error(exc, locale)
-            payload = {"type": "error", "message": message}
+            payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
             history_tracker.observe(payload)
             persist_failed_turn = True
-            yield payload
+            yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
             if persist_failed_turn or not stream_ok:
@@ -1122,7 +1066,7 @@ class GlobalProcessor:
                 usage=usage_tracker.usage,
             )
             await self._record_turn_history(thread_id, history_tracker)
-        yield {"type": "done"}
+        yield _maybe_stamp_team_host({"type": "done"}, agent_id, team_host)
 
     async def iter_hitl_resume_chunks(
         self,
@@ -1138,6 +1082,7 @@ class GlobalProcessor:
         completed = False
         persist_failed_turn = False
         traj_on = self._agent_trajectory_enabled(agent_id)
+        team_host = is_team_agent(self._agent_manager.get_row(agent_id))
         try:
             async for chunk in self._agent_manager.resume_hitl(
                 agent_id,
@@ -1155,7 +1100,7 @@ class GlobalProcessor:
                     chunk=chunk,
                     enabled=traj_on,
                 )
-                yield chunk
+                yield _maybe_stamp_team_host(chunk, agent_id, team_host)
             completed = True
         except Exception as exc:
             await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
@@ -1165,12 +1110,12 @@ class GlobalProcessor:
                 channel_type="dashboard",
             )
             message, error_code = _stream_error(exc, locale)
-            payload = {"type": "error", "message": message}
+            payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
             history_tracker.observe(payload)
             persist_failed_turn = True
-            yield payload
+            yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
             if persist_failed_turn or not completed:
@@ -1285,6 +1230,7 @@ class GlobalProcessor:
             message_kwargs=message_kwargs or None,
             reasoning_overrides=reasoning_overrides,
         )
+        self.teams.stamp_host_runtime(request, agent_id)
         self._attach_turn_knowledge_config(
             request,
             user_id=user_id,
@@ -1346,13 +1292,19 @@ class GlobalProcessor:
         client sees a clear MCP load error. IM ingress uses ``False`` so a
         flaky connector does not abort the whole message turn.
         """
+        from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
         from octop.infra.errors import ErrorCode, OctopError  # noqa: PLC0415
 
+        # Team hosts only dispatch — never attach MCP tools.
+        if is_team_agent(self._agent_manager.get_row(agent_id)):
+            return None
+
+        extra_defaults = self._agent_manager.default_mcp_servers(agent_id)
         merged = self._agent_manager.merge_turn_mcp_servers(
             user_id,
             explicit,
             apply_defaults=apply_defaults,
-            extra_defaults=self._agent_manager.default_mcp_servers(agent_id),
+            extra_defaults=extra_defaults,
         )
         if not merged:
             return None
@@ -1492,39 +1444,6 @@ class GlobalProcessor:
                 thread_id,
                 exc_info=True,
             )
-
-
-def _octop_user_id(user_id: str | int) -> int | None:
-    if isinstance(user_id, int):
-        return user_id if user_id > 0 else None
-    if isinstance(user_id, str) and user_id.isdigit():
-        uid = int(user_id)
-        return uid if uid > 0 else None
-    return None
-
-
-def _peer_turn_messages(messages: list[Any]) -> list[Any]:
-    """This turn's user prompt and final assistant reply (skip prior thread history)."""
-    trigger: Any | None = None
-    final_ai: Any | None = None
-    for msg in messages:
-        role = ""
-        if isinstance(msg, dict):
-            role = str(msg.get("role") or msg.get("type") or "").lower()
-            tool_calls = msg.get("tool_calls")
-        else:
-            role = str(getattr(msg, "type", None) or getattr(msg, "role", "") or "").lower()
-            tool_calls = getattr(msg, "tool_calls", None)
-        if role in ("human", "user"):
-            trigger = msg
-        if role in ("ai", "assistant") and not tool_calls:
-            final_ai = msg
-    out: list[Any] = []
-    if trigger is not None:
-        out.append(trigger)
-    if final_ai is not None:
-        out.append(final_ai)
-    return out
 
 
 def _mcp_server_names(raw: Any) -> list[str] | None:

@@ -13,6 +13,7 @@ import {
 import { showConfirmModal } from "../../../utils/confirmModal";
 import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";
+import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
 import { DESKTOP_DRAG_REGION_CLASS } from "../../../utils/desktopChrome";
 import { useCollapseThinking } from "../hooks/useCollapseThinking";
@@ -26,6 +27,7 @@ interface ChatTitleBarProps {
   onDelete: (id: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
+  isTeam?: boolean;
 }
 
 export default function ChatTitleBar({
@@ -37,6 +39,7 @@ export default function ChatTitleBar({
   onDelete,
   forkDisabled,
   forkDisabledHint,
+  isTeam = false,
 }: ChatTitleBarProps) {
   const { t } = useTranslation();
   const [collapseThinking, setCollapseThinking] = useCollapseThinking();
@@ -160,6 +163,7 @@ export default function ChatTitleBar({
             <h1 className={styles.chatTitleText} title={title}>
               {title}
             </h1>
+            <TeamChatBadge show={isTeam} />
             {session.pinned ? (
               <Pin
                 size={13}

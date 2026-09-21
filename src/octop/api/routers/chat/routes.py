@@ -23,6 +23,8 @@ from octop.infra.agents.experts.catalog import (
     welcome_payload_has_content,
 )
 from octop.infra.agents.profile import welcome_from_row
+from octop.infra.agents.teams import is_team_agent
+from octop.infra.agents.teams.welcome import team_host_welcome_payload
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
@@ -63,11 +65,18 @@ async def get_chat_welcome(
     1. Agent row ``welcome_message`` (instance-owned; set at create/edit).
     2. Agent workspace ``.octop/manifest.json`` (seeded at create; quick cards + fallback copy).
     3. Default quick cards (``general-assistant`` or a small built-in set).
+
+    Team hosts keep the team intro and show members' own quick cards — the host
+    is not turned into cards.
     """
     assert_agent_access(server, agent_id, user)
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry
     catalog = server.expert_catalog
+    row = registry.get_row(agent_id)
+    if is_team_agent(row):
+        team_payload = await team_host_welcome_payload(row, registry, catalog)
+        return {**team_payload, "task_examples": None}
 
     workspace = registry.workspace_for_agent(agent_id)
     payload: dict[str, Any] | None = None
@@ -80,7 +89,6 @@ async def get_chat_welcome(
                 payload = welcome
             parsed_examples = parse_task_examples(manifest)
 
-    row = registry.get_row(agent_id)
     if payload is None:
         payload = default_welcome_payload(catalog)
 

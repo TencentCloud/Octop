@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
-import { iconForName } from "../../Experts/components/iconForName";
+import { ExpertIcon } from "../../Experts/components/iconForName";
 import { pastelIconBackground } from "../../../utils/pastelIconBackground";
+import { expertMentionToken, withExpertMention } from "../utils/expertMention";
 import type { WelcomeQuickCard } from "./WelcomeScreen";
 import styles from "../index.module.less";
 
@@ -9,7 +10,7 @@ interface WelcomeQuickCardsProps {
   showToggle: boolean;
   expanded: boolean;
   onToggle: () => void;
-  onPromptClick: (text: string) => void;
+  onPromptClick: (text: string, options?: { prefill?: boolean }) => void;
   sectionTitleRef: React.Ref<HTMLSpanElement>;
 }
 
@@ -31,29 +32,50 @@ export default function WelcomeQuickCards({
         {t("chatWelcome.promptSectionTitle")}
       </span>
       <div className={styles.quickCards}>
-        {cards.map((card, i) => (
-          <button
-            key={`${card.title}-${i}`}
-            type="button"
-            className={styles.quickCard}
-            style={{ animationDelay: `${i * 40}ms` }}
-            onClick={() => onPromptClick(card.prompt)}
-          >
-            <div
-              className={styles.quickCardIcon}
-              style={{
-                background: pastelIconBackground(card.color, i),
-                color: "rgba(15,23,42,0.55)",
-              }}
+        {cards.map((card, i) => {
+          const mention = card.expertName
+            ? expertMentionToken(card.expertName)
+            : "";
+          return (
+            <button
+              key={`${card.expertName ?? ""}-${card.title}-${i}`}
+              type="button"
+              className={styles.quickCard}
+              style={{ animationDelay: `${i * 40}ms` }}
+              onClick={() =>
+                onPromptClick(
+                  card.expertName
+                    ? withExpertMention(card.prompt, card.expertName)
+                    : card.prompt,
+                  { prefill: Boolean(card.expertName) },
+                )
+              }
             >
-              {iconForName(card.icon_name, 18)}
-            </div>
-            <div className={styles.quickCardBody}>
-              <span className={styles.quickCardTitle}>{card.title}</span>
-              <span className={styles.quickCardDesc}>{card.description}</span>
-            </div>
-          </button>
-        ))}
+              <div
+                className={styles.quickCardIcon}
+                style={{
+                  background: pastelIconBackground(card.color, i),
+                  color: "rgba(15,23,42,0.55)",
+                }}
+              >
+                <ExpertIcon
+                  iconUrl={card.icon_url}
+                  iconName={card.icon_name}
+                  size={18}
+                />
+              </div>
+              <div className={styles.quickCardBody}>
+                <span className={styles.quickCardTitleRow}>
+                  <span className={styles.quickCardTitle}>{card.title}</span>
+                  {mention ? (
+                    <span className={styles.quickCardExpert}>{mention}</span>
+                  ) : null}
+                </span>
+                <span className={styles.quickCardDesc}>{card.description}</span>
+              </div>
+            </button>
+          );
+        })}
       </div>
       {showToggle && (
         <button

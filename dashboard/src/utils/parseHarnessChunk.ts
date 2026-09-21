@@ -15,11 +15,20 @@ export interface TokenChunk {
   node: string;
   /** Streamed text fragment. Concatenate with prior tokens of the same node. */
   content: string;
+  /** Team-room speaker (`agent` on the wire is an alias). */
+  agent_id?: string;
+  agent?: string;
+  /** Full member turn replay — replace/merge instead of appending fragments. */
+  team_snapshot?: boolean;
+  /** Host wrap-up after members finish — start a new bubble, do not continue dispatch. */
+  team_wrapup?: boolean;
 }
 
 export interface ReasoningChunk {
   type: "reasoning";
   content: string;
+  /** Team-room speaker when this reasoning was fanned in from another agent. */
+  agent_id?: string;
 }
 
 export interface ToolCallChunk {
@@ -34,6 +43,8 @@ export interface ToolCallChunk {
   args?: string;
   /** Index inside a multi-tool call sequence. */
   index?: number;
+  /** Team-room speaker when this tool call was fanned in from another agent. */
+  agent_id?: string;
 }
 
 export interface ToolResultChunk {
@@ -41,6 +52,8 @@ export interface ToolResultChunk {
   node: string;
   /** Tool output messages — opaque to the parser; renderers project to UI. */
   messages: unknown[];
+  /** Team-room speaker when this tool result was fanned in from another agent. */
+  agent_id?: string;
 }
 
 export interface StateUpdateChunk {
@@ -69,12 +82,17 @@ export interface UsageChunk {
 
 export interface DoneChunk {
   type: "done";
+  /** Team-room speaker; omitted on the host turn's own done frame. */
+  agent_id?: string;
+  /** Seal only the wrap-up bubble — do not finish the dispatch turn. */
+  team_wrapup?: boolean;
 }
 
 export interface ErrorChunk {
   type: "error";
   message: string;
   error_code?: string;
+  agent_id?: string;
 }
 
 export interface HitlRequiredChunk {
@@ -96,6 +114,7 @@ export interface AttachmentChunk {
   mime_type?: string;
   kind?: string;
   filename?: string;
+  agent_id?: string;
 }
 
 export type HarnessChunk =
@@ -147,6 +166,7 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
   const obj = raw as Record<string, unknown>;
   const t = obj.type;
   if (typeof t !== "string") return null;
+  const agentId = optionalAgentId(obj);
 
   switch (t) {
     case "token":
@@ -154,11 +174,15 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
         type: "token",
         node: typeof obj.node === "string" ? obj.node : "agent",
         content: typeof obj.content === "string" ? obj.content : "",
+        agent_id: agentId,
+        team_snapshot: obj.team_snapshot === true,
+        team_wrapup: obj.team_wrapup === true,
       };
     case "reasoning":
       return {
         type: "reasoning",
         content: typeof obj.content === "string" ? obj.content : "",
+        agent_id: agentId,
       };
     case "usage":
       return {
@@ -187,12 +211,14 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
             : undefined,
         args: typeof obj.args === "string" ? obj.args : undefined,
         index: typeof obj.index === "number" ? obj.index : undefined,
+        agent_id: agentId,
       };
     case "tool_result":
       return {
         type: "tool_result",
         node: typeof obj.node === "string" ? obj.node : "tool",
         messages: Array.isArray(obj.messages) ? obj.messages : [],
+        agent_id: agentId,
       };
     case "state_update":
       return {
@@ -203,7 +229,11 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
     case "state_snapshot":
       return { type: "state_snapshot", data: obj.data };
     case "done":
-      return { type: "done" };
+      return {
+        type: "done",
+        agent_id: agentId,
+        team_wrapup: obj.team_wrapup === true,
+      };
     case "error":
       return {
         type: "error",
@@ -211,6 +241,7 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
           typeof obj.message === "string" ? obj.message : "unknown error",
         error_code:
           typeof obj.error_code === "string" ? obj.error_code : undefined,
+        agent_id: agentId,
       };
     case "hitl_required":
       return {
@@ -226,7 +257,7 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
       return {
         type: "slash_action",
         action: typeof obj.action === "string" ? obj.action : "",
-        agent_id: typeof obj.agent_id === "string" ? obj.agent_id : undefined,
+        agent_id: agentId,
       };
     case "attachment":
       return {
@@ -239,10 +270,33 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
           typeof obj.mime_type === "string" ? obj.mime_type : undefined,
         kind: typeof obj.kind === "string" ? obj.kind : undefined,
         filename: typeof obj.filename === "string" ? obj.filename : undefined,
+        agent_id: agentId,
       };
     default:
       // Forward-compatible: keep the unrecognized payload around so
       // a debug toggle can render it instead of dropping it.
       return { type: "custom", data: raw };
   }
+}
+
+/** Speaker id on a live stream frame. Accepts ``agent_id``, ``agent``,
+ *  and history's ``speaker_agent_id``. Ignores the LangGraph node name
+ *  ``agent`` so ``{"node":"agent"}`` is never treated as a speaker. */
+export function streamSpeakerId(
+  chunk: object | null | undefined,
+): string | undefined {
+  if (!chunk || typeof chunk !== "object") return undefined;
+  return optionalAgentId(chunk as Record<string, unknown>);
+}
+
+function optionalAgentId(obj: Record<string, unknown>): string | undefined {
+  for (const key of ["agent_id", "agent", "speaker_agent_id"] as const) {
+    const raw = obj[key];
+    if (typeof raw !== "string") continue;
+    const value = raw.trim();
+    if (!value) continue;
+    if (key === "agent" && value === "agent") continue;
+    return value;
+  }
+  return undefined;
 }

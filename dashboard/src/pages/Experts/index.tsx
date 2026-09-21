@@ -27,11 +27,15 @@ import {
   GraduationCap,
   LayoutGrid,
   List,
+  Plus,
   RefreshCw,
   Store,
+  Users,
 } from "lucide-react";
 import PageShell from "../../layouts/PageShell";
 import TabLabel from "../../components/TabLabel";
+import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { request } from "../../api/request";
 import {
   publishedExpertsApi,
@@ -48,14 +52,17 @@ import EditAgentDrawer from "./components/EditAgentDrawer";
 import CreateFromExpertDrawer, {
   type CreateFromTemplateSource,
 } from "./components/CreateFromExpertDrawer";
+import TeamDrawer from "./components/TeamDrawer";
+import type { TeamRecord } from "../../api/modules/teams";
+import { TeamCard } from "./components/TeamCard";
 import { PublishedExpertCard } from "./components/PublishedExpertCard";
 import AgentExpertsTable from "./components/AgentExpertsTable";
 import ExpertMarketTab from "./components/ExpertMarketTab";
 import { OctopEmptyMascot } from "../../components/EmptyState";
-import { ownedExperts } from "../../utils/sharedExpert";
+import { isOwnedExpert, ownedExperts } from "../../utils/sharedExpert";
 import styles from "./index.module.less";
 
-type TabKey = "my" | "library" | "market";
+type TabKey = "my" | "teams" | "library" | "market";
 type ViewMode = "card" | "table";
 const VIEW_STORAGE_KEY = "octop:experts-view";
 
@@ -93,6 +100,7 @@ function installedExpertIdsFromAgents(
 export default function ExpertsPage() {
   const { t, i18n } = useTranslation();
   const lang: "zh" | "en" = i18n.language?.startsWith("zh") ? "zh" : "en";
+  const isMobile = useIsMobile();
   const { agents, refresh: refreshAgents } = useAgent();
   const currentUser = useCurrentUser();
 
@@ -196,6 +204,22 @@ export default function ExpertsPage() {
   // ── Local agent state (extends AgentContext for optimistic updates) ──
   const ownedAgents = useMemo(() => ownedExperts(agents), [agents]);
   const [localAgents, setLocalAgents] = useState<OctopAgent[]>(ownedAgents);
+  const expertAgents = useMemo(
+    () => localAgents.filter((item) => item.kind !== "team"),
+    [localAgents],
+  );
+  const teamAgents = useMemo(
+    () => localAgents.filter((item) => item.kind === "team"),
+    [localAgents],
+  );
+  const pickableExperts = useMemo(
+    () =>
+      agents.filter(
+        (item) =>
+          item.kind !== "team" && (isOwnedExpert(item) || item.is_shared),
+      ),
+    [agents],
+  );
   const [newAgentId, setNewAgentId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -208,13 +232,30 @@ export default function ExpertsPage() {
     );
   }, []);
 
-  const handleDeleted = (agentId: string) => {
-    setLocalAgents((prev) => prev.filter((a) => a.agent_id !== agentId));
-    void refreshAgents();
-  };
+  const handleDeleted = useCallback(
+    (agentId: string) => {
+      setLocalAgents((prev) =>
+        prev
+          .filter((item) => item.agent_id !== agentId)
+          .map((item) =>
+            item.kind === "team" && item.member_ids?.includes(agentId)
+              ? {
+                  ...item,
+                  member_ids: item.member_ids.filter((id) => id !== agentId),
+                }
+              : item,
+          ),
+      );
+      void refreshAgents();
+    },
+    [refreshAgents],
+  );
 
   // ── Edit Drawer ────────────────────────────────────────────────
   const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
+  const [teamDrawer, setTeamDrawer] = useState<
+    { mode: "create" } | { mode: "edit"; team: OctopAgent } | null
+  >(null);
 
   const handleEditSaved = useCallback(
     (
@@ -297,7 +338,7 @@ export default function ExpertsPage() {
   // ── Render helpers ─────────────────────────────────────────────
 
   const myExpertsContent = useMemo(() => {
-    if (localAgents.length === 0) {
+    if (expertAgents.length === 0) {
       return (
         <div className={styles.emptyState}>
           <OctopEmptyMascot />
@@ -319,7 +360,7 @@ export default function ExpertsPage() {
       <>
         <div className={styles.gridToolbar}>
           <span className={styles.gridCount}>
-            {t("experts.totalAgents", { count: localAgents.length })}
+            {t("experts.totalAgents", { count: expertAgents.length })}
           </span>
           <div className={styles.gridToolbarRight}>
             <Segmented
@@ -355,7 +396,7 @@ export default function ExpertsPage() {
         </div>
         {showCardView ? (
           <div className={styles.cardGrid}>
-            {localAgents.map((agent) => (
+            {expertAgents.map((agent) => (
               <div
                 key={agent.agent_id}
                 className={
@@ -386,13 +427,13 @@ export default function ExpertsPage() {
           </div>
         ) : (
           <AgentExpertsTable
-            agents={localAgents}
+            agents={expertAgents}
             publishedByAgentId={publishedByAgentId}
             onPublishedChange={() => {
               void refreshPublishedExperts();
             }}
             onEdit={(id) =>
-              setEditAgent(localAgents.find((a) => a.agent_id === id) ?? null)
+              setEditAgent(expertAgents.find((a) => a.agent_id === id) ?? null)
             }
             onDeleted={handleDeleted}
             onStateChange={handleStateChange}
@@ -402,7 +443,7 @@ export default function ExpertsPage() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    localAgents,
+    expertAgents,
     newAgentId,
     openExpertLibrary,
     publishedByAgentId,
@@ -410,6 +451,93 @@ export default function ExpertsPage() {
     refreshPublishedExperts,
     showCardView,
     t,
+  ]);
+
+  const teamsContent = useMemo(() => {
+    if (teamAgents.length === 0) {
+      const canCreate = pickableExperts.length >= 2;
+      return (
+        <div
+          className={`${styles.emptyLayout}${
+            isMobile ? ` ${styles.emptyLayoutMobile}` : ""
+          }`}
+        >
+          <StreamSetupGuide
+            className={styles.emptyGuide}
+            wide
+            icon={
+              <OctopEmptyMascot size={120} className={styles.setupMascot} />
+            }
+            title={t("experts.teams.emptyGuideTitle")}
+            description={t("experts.teams.emptyGuideDesc")}
+            steps={[
+              {
+                label: t("experts.teams.emptyGuideStepWhat"),
+                detail: t("experts.teams.emptyGuideStepWhatDetail"),
+              },
+              {
+                label: t("experts.teams.emptyGuideStepHow"),
+                detail: t("experts.teams.emptyGuideStepHowDetail"),
+              },
+              {
+                label: t("experts.teams.emptyGuideStepChat"),
+                detail: t("experts.teams.emptyGuideStepChatDetail"),
+              },
+            ]}
+            primaryAction={{
+              label: t("experts.teams.create"),
+              onClick: () => setTeamDrawer({ mode: "create" }),
+              icon: <Plus size={14} />,
+              disabled: !canCreate,
+              title: canCreate ? undefined : t("experts.teams.membersMin"),
+            }}
+          />
+        </div>
+      );
+    }
+    return (
+      <>
+        <div className={styles.gridToolbar}>
+          <span className={styles.gridCount}>
+            {t("experts.teams.total", { count: teamAgents.length })}
+          </span>
+          <div className={styles.gridToolbarRight}>
+            {refreshButton}
+            <button
+              className={styles.toolbarBtn}
+              type="button"
+              onClick={() => setTeamDrawer({ mode: "create" })}
+            >
+              {t("experts.teams.create")}
+            </button>
+          </div>
+        </div>
+        <div className={styles.cardGrid}>
+          {teamAgents.map((agent) => (
+            <div key={agent.agent_id}>
+              <TeamCard
+                agent={agent}
+                experts={pickableExperts}
+                onEdit={(id) => {
+                  const row = teamAgents.find((item) => item.agent_id === id);
+                  if (row) setTeamDrawer({ mode: "edit", team: row });
+                }}
+                onDeleted={handleDeleted}
+                onStateChange={handleStateChange}
+              />
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }, [
+    handleDeleted,
+    handleStateChange,
+    isMobile,
+    pickableExperts,
+    refreshButton,
+    t,
+    teamAgents,
   ]);
 
   const libraryContent = useMemo(() => {
@@ -540,6 +668,18 @@ export default function ExpertsPage() {
             children: myExpertsContent,
           },
           {
+            key: "teams",
+            label: (
+              <TabLabel icon={Users}>
+                {t("experts.myTeams")}
+                <span className={styles.tabBetaBadge}>
+                  {t("experts.teams.betaBadge")}
+                </span>
+              </TabLabel>
+            ),
+            children: teamsContent,
+          },
+          {
             key: "library",
             label: (
               <TabLabel icon={BookOpen}>{t("experts.expertLibrary")}</TabLabel>
@@ -569,6 +709,36 @@ export default function ExpertsPage() {
         lang={lang}
         onClose={() => setCreateSource(null)}
         onCreated={handleCreated}
+      />
+
+      <TeamDrawer
+        open={!!teamDrawer}
+        mode={teamDrawer?.mode ?? "create"}
+        team={teamDrawer?.mode === "edit" ? teamDrawer.team : null}
+        experts={pickableExperts}
+        onClose={() => setTeamDrawer(null)}
+        onSaved={(saved: TeamRecord) => {
+          setTeamDrawer(null);
+          setActiveTab("teams");
+          setLocalAgents((prev) =>
+            prev.map((item) =>
+              item.agent_id === saved.agent_id
+                ? {
+                    ...item,
+                    name: saved.name,
+                    description: saved.description ?? null,
+                    default_model: saved.default_model ?? null,
+                    color: saved.color ?? item.color,
+                    icon_name: saved.icon_name ?? item.icon_name,
+                    welcome_message:
+                      saved.welcome_message ?? item.welcome_message,
+                    member_ids: saved.member_ids,
+                  }
+                : item,
+            ),
+          );
+          void refreshAgents({ silent: true, force: true });
+        }}
       />
     </PageShell.FillTabs>
   );

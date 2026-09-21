@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from octop.infra.agents.teams.service import HOST_TOOLS_ALLOWED, HOST_TOOLS_DISABLED
 from octop.infra.agents.tool_catalog import (
     BUILTIN_TOOL_CATALOG,
     CRITICAL_TOOLS,
@@ -11,6 +12,15 @@ from octop.infra.agents.tool_catalog import (
     plugin_tools_disabled_names,
     tools_disabled_set,
 )
+
+
+def test_team_host_tools_are_dispatch_only() -> None:
+    names = {e.name for e in BUILTIN_TOOL_CATALOG}
+    assert names >= HOST_TOOLS_ALLOWED
+    assert names - HOST_TOOLS_ALLOWED == HOST_TOOLS_DISABLED
+    assert "ask_agent" in HOST_TOOLS_ALLOWED
+    assert "write_file" in HOST_TOOLS_DISABLED
+    assert "task" in HOST_TOOLS_DISABLED
 
 
 def test_critical_tools_are_in_catalog() -> None:

@@ -12,13 +12,18 @@ import { request } from "../api/request";
 import { withFromWorkspace } from "../utils/fromWorkspace";
 import type { OctopAgent } from "../context/AgentContext";
 import { isAgentChatReady } from "../utils/agentError";
+import { isTeamAgent } from "../utils/teamAgent";
 import {
   listAgentSubagents,
   type AgentSubagentSummary,
 } from "../api/modules/subagents";
+import { teamsApi, type TeamMemberSummary } from "../api/modules/teams";
 import MbtiPersonaTag from "./MbtiPersonaTag";
 import { CopyableResourceId } from "./CopyableResourceId";
-import { metaForFile } from "../pages/Experts/components/iconForName";
+import {
+  ExpertIcon,
+  metaForFile,
+} from "../pages/Experts/components/iconForName";
 import { fetchConfigMdFiles } from "../pages/Experts/components/expertFileGroups";
 import { useSkillDisplayName } from "../pages/Agent/Skills/skillDisplayNames";
 import { DEFAULT_SKILL_EMOJI } from "../pages/Agent/Skills/skillMarkdown";
@@ -115,6 +120,7 @@ export default function AgentProfileDrawer({
   const [workspaceFiles, setWorkspaceFiles] = useState<string[]>([]);
   const [agentSkills, setAgentSkills] = useState<SkillSummary[]>([]);
   const [subagents, setSubagents] = useState<AgentSubagentSummary[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMemberSummary[]>([]);
   const [viewingFile, setViewingFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState("");
   const [fileLoading, setFileLoading] = useState(false);
@@ -145,14 +151,40 @@ export default function AgentProfileDrawer({
     setWorkspaceFiles([]);
     setAgentSkills([]);
     setSubagents([]);
+    setTeamMembers([]);
     setViewingFile(null);
     setFileContent("");
 
     const load = async () => {
       try {
-        const ag = await request<AgentDetail>(`/agents/${agent.agent_id}`);
+        if (isTeamAgent(agent)) {
+          try {
+            const team = await teamsApi.get(agent.agent_id);
+            if (cancelled) return;
+            setDetail({
+              name: team.name,
+              description: team.description ?? null,
+            });
+            setTeamMembers(team.members);
+          } catch {
+            if (cancelled) return;
+            setDetail({
+              name: agent.name,
+              description: agent.description ?? null,
+            });
+            setTeamMembers(
+              (agent.member_ids ?? []).map((id) => ({
+                agent_id: id,
+                name: id,
+              })),
+            );
+          }
+        } else {
+          const ag = await request<AgentDetail>(`/agents/${agent.agent_id}`);
+          if (cancelled) return;
+          setDetail(ag);
+        }
         if (cancelled) return;
-        setDetail(ag);
         setLoading(false);
 
         if (isAgentChatReady(agent.state)) {
@@ -168,21 +200,23 @@ export default function AgentProfileDrawer({
               if (!cancelled) setFilesLoading(false);
             });
 
-          void request<SkillSummary[]>(`/agents/${agent.agent_id}/skills`)
-            .then((skills) => {
-              if (!cancelled) setAgentSkills(workspaceSkills(skills));
-            })
-            .catch(() => {
-              if (!cancelled) setAgentSkills([]);
-            });
+          if (!isTeamAgent(agent)) {
+            void request<SkillSummary[]>(`/agents/${agent.agent_id}/skills`)
+              .then((skills) => {
+                if (!cancelled) setAgentSkills(workspaceSkills(skills));
+              })
+              .catch(() => {
+                if (!cancelled) setAgentSkills([]);
+              });
 
-          void listAgentSubagents(agent.agent_id)
-            .then((rows) => {
-              if (!cancelled) setSubagents(rows);
-            })
-            .catch(() => {
-              if (!cancelled) setSubagents([]);
-            });
+            void listAgentSubagents(agent.agent_id)
+              .then((rows) => {
+                if (!cancelled) setSubagents(rows);
+              })
+              .catch(() => {
+                if (!cancelled) setSubagents([]);
+              });
+          }
         }
       } catch {
         if (!cancelled) setLoading(false);
@@ -272,6 +306,8 @@ export default function AgentProfileDrawer({
       return null;
     }
 
+    const isTeam = isTeamAgent(agent);
+
     return (
       <>
         <div className={expertStyles.drawerSection}>
@@ -281,9 +317,11 @@ export default function AgentProfileDrawer({
           <div className={styles.nameRow}>
             <div className={styles.name}>{detail?.name ?? agent.name}</div>
             <CopyableResourceId
-              label={t("experts.agentId")}
+              label={isTeam ? t("experts.teamId") : t("experts.agentId")}
               value={agent.agent_id}
-              copyTitle={t("experts.copyAgentId")}
+              copyTitle={
+                isTeam ? t("experts.copyTeamId") : t("experts.copyAgentId")
+              }
               className={styles.agentId}
             />
           </div>
@@ -300,21 +338,93 @@ export default function AgentProfileDrawer({
               agent.description ||
               t("chat.agentNoDescription")}
           </p>
-          <div
-            style={{
-              marginTop: 10,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              flexWrap: "wrap",
-            }}
-          >
-            <span style={{ fontSize: 12, color: "var(--fn-text-tertiary)" }}>
-              {t("experts.table.persona")}
-            </span>
-            <MbtiPersonaTag value={agent.persona_mbti} />
-          </div>
+          {isTeam ? (
+            <p
+              style={{
+                margin: "10px 0 0",
+                fontSize: 12,
+                lineHeight: 1.5,
+                color: "var(--fn-text-tertiary)",
+              }}
+            >
+              {t("chat.teamProfile.hostNote")}
+            </p>
+          ) : (
+            <div
+              style={{
+                marginTop: 10,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <span style={{ fontSize: 12, color: "var(--fn-text-tertiary)" }}>
+                {t("experts.table.persona")}
+              </span>
+              <MbtiPersonaTag value={agent.persona_mbti} />
+            </div>
+          )}
         </div>
+
+        {isTeam ? (
+          <div className={expertStyles.drawerSection}>
+            <div className={expertStyles.drawerSectionTitle}>
+              {t("chat.teamProfile.members")}
+              {teamMembers.length > 0
+                ? ` · ${t("chat.teamProfile.memberCount", {
+                    count: teamMembers.length,
+                  })}`
+                : ""}
+            </div>
+            <div className={expertStyles.fileList}>
+              {teamMembers.length === 0 ? (
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "var(--fn-text-tertiary)",
+                    padding: "8px 0",
+                  }}
+                >
+                  {t("chat.teamProfile.emptyMembers")}
+                </div>
+              ) : (
+                teamMembers.map((member) => {
+                  const accent = member.color || "#0d9488";
+                  const stateKey = member.state || "unknown";
+                  return (
+                    <ProfileEntityCard
+                      key={member.agent_id}
+                      icon={
+                        <div
+                          className={expertStyles.fileIcon}
+                          style={{
+                            color: accent,
+                            background: `${accent}1a`,
+                          }}
+                        >
+                          <ExpertIcon
+                            iconUrl={member.icon_url}
+                            iconName={member.icon_name}
+                            size={16}
+                          />
+                        </div>
+                      }
+                      title={member.name}
+                      trailing={
+                        <span className={expertStyles.fileHint}>
+                          {t(`common.agentState.${stateKey}`, {
+                            defaultValue: stateKey,
+                          })}
+                        </span>
+                      }
+                    />
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ) : null}
 
         <div className={expertStyles.drawerSection}>
           <Collapse
@@ -415,189 +525,198 @@ export default function AgentProfileDrawer({
           />
         </div>
 
-        <div className={expertStyles.drawerSection}>
-          <Collapse
-            ghost
-            className={expertStyles.drawerCollapse}
-            defaultActiveKey={["skills"]}
-            items={[
-              {
-                key: "skills",
-                label: (
-                  <div className={styles.sectionTitleRow}>
-                    <div className={expertStyles.drawerSectionTitle}>
-                      {t("experts.skillFilesTitle", {
-                        count: agentSkills.length,
-                      })}
-                    </div>
-                    <button
-                      type="button"
-                      className={styles.viewMoreLink}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSkillCatalogOpen(true);
-                      }}
-                    >
-                      {t("common.viewMore")}
-                    </button>
-                  </div>
-                ),
-                children: (
-                  <>
-                    <p
-                      style={{
-                        fontSize: 12,
-                        color: "var(--fn-text-tertiary)",
-                        margin: "0 0 8px",
-                      }}
-                    >
-                      {t("experts.skillFilesHint")}
-                    </p>
-                    <div className={expertStyles.fileList}>
-                      {agentSkills.length === 0 ? (
-                        <div
-                          style={{
-                            fontSize: 13,
-                            color: "var(--fn-text-tertiary)",
-                            padding: "8px 0",
+        {!isTeam ? (
+          <>
+            <div className={expertStyles.drawerSection}>
+              <Collapse
+                ghost
+                className={expertStyles.drawerCollapse}
+                defaultActiveKey={["skills"]}
+                items={[
+                  {
+                    key: "skills",
+                    label: (
+                      <div className={styles.sectionTitleRow}>
+                        <div className={expertStyles.drawerSectionTitle}>
+                          {t("experts.skillFilesTitle", {
+                            count: agentSkills.length,
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          className={styles.viewMoreLink}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSkillCatalogOpen(true);
                           }}
                         >
-                          {t("experts.noSkillFiles")}
+                          {t("common.viewMore")}
+                        </button>
+                      </div>
+                    ),
+                    children: (
+                      <>
+                        <p
+                          style={{
+                            fontSize: 12,
+                            color: "var(--fn-text-tertiary)",
+                            margin: "0 0 8px",
+                          }}
+                        >
+                          {t("experts.skillFilesHint")}
+                        </p>
+                        <div className={expertStyles.fileList}>
+                          {agentSkills.length === 0 ? (
+                            <div
+                              style={{
+                                fontSize: 13,
+                                color: "var(--fn-text-tertiary)",
+                                padding: "8px 0",
+                              }}
+                            >
+                              {t("experts.noSkillFiles")}
+                            </div>
+                          ) : (
+                            agentSkills.map((skill) => {
+                              const iconUrl = skill.icon_url?.trim();
+                              const label = skillDisplayName(skill);
+                              return (
+                                <ProfileEntityCard
+                                  key={skill.slug ?? skill.name}
+                                  icon={
+                                    <div
+                                      className={expertStyles.fileIcon}
+                                      style={skillIconStyle(Boolean(iconUrl))}
+                                    >
+                                      {iconUrl ? (
+                                        <img
+                                          src={iconUrl}
+                                          alt={label}
+                                          className={expertStyles.fileIconImg}
+                                        />
+                                      ) : (
+                                        skill.emoji?.trim() ||
+                                        DEFAULT_SKILL_EMOJI
+                                      )}
+                                    </div>
+                                  }
+                                  title={label}
+                                  trailing={
+                                    <span className={expertStyles.fileHint}>
+                                      {skill.enabled === false
+                                        ? t("common.disabled")
+                                        : t("common.enabled")}
+                                    </span>
+                                  }
+                                  description={skill.description}
+                                />
+                              );
+                            })
+                          )}
                         </div>
-                      ) : (
-                        agentSkills.map((skill) => {
-                          const iconUrl = skill.icon_url?.trim();
-                          const label = skillDisplayName(skill);
-                          return (
-                            <ProfileEntityCard
-                              key={skill.slug ?? skill.name}
-                              icon={
-                                <div
-                                  className={expertStyles.fileIcon}
-                                  style={skillIconStyle(Boolean(iconUrl))}
-                                >
-                                  {iconUrl ? (
-                                    <img
-                                      src={iconUrl}
-                                      alt={label}
-                                      className={expertStyles.fileIconImg}
-                                    />
-                                  ) : (
-                                    skill.emoji?.trim() || DEFAULT_SKILL_EMOJI
-                                  )}
-                                </div>
-                              }
-                              title={label}
-                              trailing={
-                                <span className={expertStyles.fileHint}>
-                                  {skill.enabled === false
-                                    ? t("common.disabled")
-                                    : t("common.enabled")}
-                                </span>
-                              }
-                              description={skill.description}
-                            />
-                          );
-                        })
-                      )}
-                    </div>
-                  </>
-                ),
-              },
-            ]}
-          />
-        </div>
+                      </>
+                    ),
+                  },
+                ]}
+              />
+            </div>
 
-        <div className={expertStyles.drawerSection}>
-          <Collapse
-            ghost
-            className={expertStyles.drawerCollapse}
-            defaultActiveKey={["subagents"]}
-            items={[
-              {
-                key: "subagents",
-                label: (
-                  <div className={styles.sectionTitleRow}>
-                    <div className={expertStyles.drawerSectionTitle}>
-                      {t("experts.subagentFilesTitle", {
-                        count: subagents.length,
-                      })}
-                    </div>
-                    <button
-                      type="button"
-                      className={styles.viewMoreLink}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSubagentCatalogOpen(true);
-                      }}
-                    >
-                      {t("common.viewMore")}
-                    </button>
-                  </div>
-                ),
-                children: (
-                  <>
-                    <p
-                      style={{
-                        fontSize: 12,
-                        color: "var(--fn-text-tertiary)",
-                        margin: "0 0 8px",
-                      }}
-                    >
-                      {t("experts.subagentFilesHint")}
-                    </p>
-                    <div className={expertStyles.fileList}>
-                      {subagents.length === 0 ? (
-                        <div
-                          style={{
-                            fontSize: 13,
-                            color: "var(--fn-text-tertiary)",
-                            padding: "8px 0",
+            <div className={expertStyles.drawerSection}>
+              <Collapse
+                ghost
+                className={expertStyles.drawerCollapse}
+                defaultActiveKey={["subagents"]}
+                items={[
+                  {
+                    key: "subagents",
+                    label: (
+                      <div className={styles.sectionTitleRow}>
+                        <div className={expertStyles.drawerSectionTitle}>
+                          {t("experts.subagentFilesTitle", {
+                            count: subagents.length,
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          className={styles.viewMoreLink}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSubagentCatalogOpen(true);
                           }}
                         >
-                          {t("experts.noSubagentFiles")}
+                          {t("common.viewMore")}
+                        </button>
+                      </div>
+                    ),
+                    children: (
+                      <>
+                        <p
+                          style={{
+                            fontSize: 12,
+                            color: "var(--fn-text-tertiary)",
+                            margin: "0 0 8px",
+                          }}
+                        >
+                          {t("experts.subagentFilesHint")}
+                        </p>
+                        <div className={expertStyles.fileList}>
+                          {subagents.length === 0 ? (
+                            <div
+                              style={{
+                                fontSize: 13,
+                                color: "var(--fn-text-tertiary)",
+                                padding: "8px 0",
+                              }}
+                            >
+                              {t("experts.noSubagentFiles")}
+                            </div>
+                          ) : (
+                            subagents.map((sub) => (
+                              <ProfileEntityCard
+                                key={sub.slug}
+                                icon={
+                                  <div
+                                    className={expertStyles.fileIcon}
+                                    style={subagentAccentIconStyle(
+                                      resolveSubagentAccent(sub.color),
+                                    )}
+                                  >
+                                    {sub.emoji ?? "🤖"}
+                                  </div>
+                                }
+                                title={sub.name}
+                                trailing={
+                                  <Tag
+                                    color="blue"
+                                    style={{
+                                      margin: 0,
+                                      fontSize: 11,
+                                      lineHeight: "18px",
+                                    }}
+                                  >
+                                    {sub.slug}
+                                  </Tag>
+                                }
+                                description={sub.description}
+                              />
+                            ))
+                          )}
                         </div>
-                      ) : (
-                        subagents.map((sub) => (
-                          <ProfileEntityCard
-                            key={sub.slug}
-                            icon={
-                              <div
-                                className={expertStyles.fileIcon}
-                                style={subagentAccentIconStyle(
-                                  resolveSubagentAccent(sub.color),
-                                )}
-                              >
-                                {sub.emoji ?? "🤖"}
-                              </div>
-                            }
-                            title={sub.name}
-                            trailing={
-                              <Tag
-                                color="blue"
-                                style={{
-                                  margin: 0,
-                                  fontSize: 11,
-                                  lineHeight: "18px",
-                                }}
-                              >
-                                {sub.slug}
-                              </Tag>
-                            }
-                            description={sub.description}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </>
-                ),
-              },
-            ]}
-          />
-        </div>
+                      </>
+                    ),
+                  },
+                ]}
+              />
+            </div>
+          </>
+        ) : null}
       </>
     );
   };
+
+  const profileTitle = isTeamAgent(agent)
+    ? t("chat.agentProfile.titleTeam")
+    : t("chat.agentProfile.title");
 
   const mobileTitle =
     viewingFile !== null ? (
@@ -610,7 +729,7 @@ export default function AgentProfileDrawer({
         <span>{displayName(viewingFile)}</span>
       </button>
     ) : (
-      t("chat.agentProfile.title")
+      profileTitle
     );
 
   if (isMobile) {
@@ -630,19 +749,23 @@ export default function AgentProfileDrawer({
           {viewingFile ? renderFileContent() : renderProfileContent()}
         </Drawer>
 
-        <SkillCatalogDrawer
-          agentId={agent?.agent_id ?? ""}
-          open={skillCatalogOpen}
-          onClose={() => setSkillCatalogOpen(false)}
-        />
-        <SubagentCatalogDrawer
-          agentId={agent?.agent_id ?? ""}
-          agentState={agent?.state ?? "stopped"}
-          open={subagentCatalogOpen}
-          installedSlugs={installedSlugs}
-          onClose={() => setSubagentCatalogOpen(false)}
-          onInstalled={() => void reloadSubagents()}
-        />
+        {!isTeamAgent(agent) ? (
+          <>
+            <SkillCatalogDrawer
+              agentId={agent?.agent_id ?? ""}
+              open={skillCatalogOpen}
+              onClose={() => setSkillCatalogOpen(false)}
+            />
+            <SubagentCatalogDrawer
+              agentId={agent?.agent_id ?? ""}
+              agentState={agent?.state ?? "stopped"}
+              open={subagentCatalogOpen}
+              installedSlugs={installedSlugs}
+              onClose={() => setSubagentCatalogOpen(false)}
+              onInstalled={() => void reloadSubagents()}
+            />
+          </>
+        ) : null}
         <WorkspaceDrawer
           agentId={agent?.agent_id ?? ""}
           open={workspaceDrawerOpen}
@@ -656,7 +779,7 @@ export default function AgentProfileDrawer({
     <>
       <Drawer
         open={open}
-        title={t("chat.agentProfile.title")}
+        title={profileTitle}
         width={420}
         onClose={onClose}
         destroyOnHidden
@@ -674,19 +797,23 @@ export default function AgentProfileDrawer({
         {renderFileContent()}
       </Drawer>
 
-      <SkillCatalogDrawer
-        agentId={agent?.agent_id ?? ""}
-        open={skillCatalogOpen}
-        onClose={() => setSkillCatalogOpen(false)}
-      />
-      <SubagentCatalogDrawer
-        agentId={agent?.agent_id ?? ""}
-        agentState={agent?.state ?? "stopped"}
-        open={subagentCatalogOpen}
-        installedSlugs={installedSlugs}
-        onClose={() => setSubagentCatalogOpen(false)}
-        onInstalled={() => void reloadSubagents()}
-      />
+      {!isTeamAgent(agent) ? (
+        <>
+          <SkillCatalogDrawer
+            agentId={agent?.agent_id ?? ""}
+            open={skillCatalogOpen}
+            onClose={() => setSkillCatalogOpen(false)}
+          />
+          <SubagentCatalogDrawer
+            agentId={agent?.agent_id ?? ""}
+            agentState={agent?.state ?? "stopped"}
+            open={subagentCatalogOpen}
+            installedSlugs={installedSlugs}
+            onClose={() => setSubagentCatalogOpen(false)}
+            onInstalled={() => void reloadSubagents()}
+          />
+        </>
+      ) : null}
       <WorkspaceDrawer
         agentId={agent?.agent_id ?? ""}
         open={workspaceDrawerOpen}

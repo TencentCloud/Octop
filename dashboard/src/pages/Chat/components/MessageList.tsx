@@ -292,8 +292,8 @@ export default function MessageList(props: MessageListProps) {
   const prevGroupCountRef = useRef(0);
 
   const messageGroups = useMemo(
-    () => groupConsecutiveAssistantMessages(messages),
-    [messages],
+    () => groupConsecutiveAssistantMessages(messages, agentId ?? undefined),
+    [messages, agentId],
   );
 
   const useVirtual =

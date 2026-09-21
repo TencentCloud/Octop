@@ -150,6 +150,42 @@ async def test_deliver_agent_merges_default_open_when_empty() -> None:
 
 
 @pytest.mark.asyncio
+async def test_deliver_agent_skips_default_open_mcp_for_team_host() -> None:
+    session = _dashboard_session()
+    agent_row = MagicMock()
+    agent_row.default_model = None
+    agent_row.kind = "team"
+
+    async def _stream(_aid: str, request: dict):
+        assert "mcp_servers" not in request
+        yield {"type": "token", "content": "ok"}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=["always__1"])
+    agent_manager.default_mcp_servers = MagicMock(return_value=["always__1"])
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=agent_row)
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=MagicMock(),
+    )
+    await service.deliver(_command(mcp_servers=("picked__1",)))
+
+    agent_manager.merge_turn_mcp_servers.assert_not_called()
+    agent_manager.prepare_chat_mcp.assert_not_awaited()
+    gateway.push_session_text.assert_awaited()
+
+
+@pytest.mark.asyncio
 async def test_deliver_agent_explicit_mcp_overrides_defaults() -> None:
     session = _dashboard_session()
     agent_row = MagicMock()

@@ -11,6 +11,7 @@ from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
 from octop.api.deps import current_user, get_server
 from octop.i18n.domains.tools import tool_display_name
 from octop.infra.agents.plugin_tool_defaults import merge_plugins_tool_settings
+from octop.infra.agents.teams import HOST_TOOLS_ALLOWED, is_team_agent
 from octop.infra.agents.tool_catalog import (
     BUILTIN_TOOL_CATALOG,
     CRITICAL_TOOLS,
@@ -175,10 +176,17 @@ async def get_tool_settings(
     agent_cfg = server.app_runtime.agent_registry.get_config(agent_id)
     disabled = set(normalize_tools_disabled(agent_cfg.get("tools_disabled")))
     mobile_enabled = bool(server.config is not None and server.config.capabilities.mobile.enabled)
+    team_host = is_team_agent(row)
 
     tools: list[ToolSettingsItem] = []
-    for entry in BUILTIN_TOOL_CATALOG:
-        disableable = entry.name not in CRITICAL_TOOLS
+    catalog = (
+        tuple(entry for entry in BUILTIN_TOOL_CATALOG if entry.name in HOST_TOOLS_ALLOWED)
+        if team_host
+        else BUILTIN_TOOL_CATALOG
+    )
+    for entry in catalog:
+        allowed = not team_host or entry.name in HOST_TOOLS_ALLOWED
+        disableable = (not team_host) and entry.name not in CRITICAL_TOOLS
         tools.append(
             ToolSettingsItem(
                 name=entry.name,
@@ -186,9 +194,10 @@ async def get_tool_settings(
                 category=entry.category,
                 label=tool_display_name(entry.name, locale),
                 description=None,
-                enabled=entry.name not in disabled if disableable else True,
+                enabled=allowed and (entry.name not in disabled if disableable else True),
                 disableable=disableable,
-                available=builtin_tool_available(
+                available=allowed
+                and builtin_tool_available(
                     entry.name,
                     agent_cfg=agent_cfg,
                     mobile_enabled=mobile_enabled,
@@ -217,6 +226,12 @@ async def put_tool_settings(
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
+
+    if is_team_agent(row):
+        raise HTTPException(
+            status_code=400,
+            detail="team host tools are fixed to member dispatch",
+        )
 
     registry = server.app_runtime.agent_registry
     await registry.persist_tools_disabled(agent_id, set(body.disabled_builtin))
@@ -253,6 +268,11 @@ async def patch_tool_setting(
         raise HTTPException(status_code=400, detail="tool name is required")
 
     registry = server.app_runtime.agent_registry
+    if is_team_agent(row):
+        raise HTTPException(
+            status_code=400,
+            detail="team host tools are fixed to member dispatch",
+        )
     if body.source == "builtin":
         if name in CRITICAL_TOOLS:
             raise HTTPException(

@@ -46,6 +46,10 @@ import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useAgent } from "../../../context/AgentContext";
 import {
+  isTeamAgent,
+  isTeamHostSpeaker as isTeamHostSpeakerId,
+} from "../../../utils/teamAgent";
+import {
   accountDisplayName,
   accountInitials,
 } from "../utils/accountDisplayName";
@@ -545,12 +549,23 @@ function MessageBubble({
   const serverTimezone = useServerTimezone();
   const user = useCurrentUser();
   const { agents, activeAgent } = useAgent();
+  const speakerId = message.speakerAgentId || agentId;
   const expert = useMemo(
     () =>
-      (agentId && agents.find((item) => item.agent_id === agentId)) ||
+      (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
       activeAgent,
-    [agentId, agents, activeAgent],
+    [speakerId, agents, activeAgent],
   );
+  const isTeamRoom = isTeamAgent(activeAgent);
+  const isTeamHostSpeaker = isTeamHostSpeakerId(
+    isTeamRoom,
+    message.speakerAgentId,
+    activeAgent?.agent_id,
+  );
+  const avatarTooltip = isTeamHostSpeaker
+    ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
+    : expert?.name;
+  const avatarProfileId = isTeamHostSpeaker ? activeAgent?.agent_id : speakerId;
   const userName = accountDisplayName(user);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -743,6 +758,8 @@ function MessageBubble({
       color={expert.color}
       iconName={expert.icon_name}
       iconUrl={expert.icon_url}
+      tooltip={avatarTooltip}
+      profileAgentId={avatarProfileId}
     />
   ) : null;
 

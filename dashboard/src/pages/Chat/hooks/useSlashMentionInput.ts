@@ -239,7 +239,12 @@ export function useSlashMentionInput({
   );
 
   const slashPickerGroups = useMemo(
-    () => groupSlashByCategory(slashMenuItems, locale),
+    () =>
+      groupSlashByCategory(
+        // Skills have a dedicated picker; omit that group from shortcuts.
+        slashMenuItems.filter((item) => item.spec.category !== "skills"),
+        locale,
+      ),
     [slashMenuItems, locale],
   );
 

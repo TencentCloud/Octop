@@ -79,6 +79,8 @@ interface ChatInputProps {
   onStopBrowserRecording?: () => void;
   onReplayBrowserRecording?: () => void;
   isStreaming: boolean;
+  /** Team room: send immediately even while members (or the host) are still talking. */
+  isTeam?: boolean;
   disabled?: boolean;
   /** Pre-fill the input with this text on mount (e.g. navigated from another page). */
   initialText?: string;
@@ -138,6 +140,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onStopBrowserRecording,
       onReplayBrowserRecording,
       isStreaming,
+      isTeam = false,
       disabled,
       initialText = "",
       onComposerCleared,
@@ -490,7 +493,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const ta = textareaRef.current;
       const prevHeight = ta ? ta.getBoundingClientRect().height : 0;
 
-      if (isStreaming) {
+      if (isStreaming && !isTeam) {
         if (!onQueue) return;
         const result = onQueue({
           text: wireText,
@@ -523,6 +526,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onQueue,
       disabled,
       isStreaming,
+      isTeam,
       matchSlashCommand,
       runSlashCommand,
       resetComposerAfterSubmit,

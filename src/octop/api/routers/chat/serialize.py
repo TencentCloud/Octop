@@ -1005,6 +1005,11 @@ def _serialize_history_message(
         code = additional_kwargs.get(STREAM_ERROR_CODE_KEY)
         if code:
             entry["error_code"] = str(code)
+    speaker = additional_kwargs.get("speaker_agent_id")
+    if isinstance(speaker, str) and speaker.strip():
+        entry["agent_id"] = speaker.strip()
+    if additional_kwargs.get("team_wrapup"):
+        entry["team_wrapup"] = True
     return _apply_history_timestamp(entry, msg, fallback_created_at)
 
 

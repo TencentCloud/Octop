@@ -62,30 +62,65 @@ export interface AssistantTurnSplit {
   answerMessage: ChatMessage | null;
 }
 
+function joinAnswerParts(parts: string[]): string {
+  let out = "";
+  for (const part of parts) {
+    if (!part) continue;
+    if (!out) {
+      out = part;
+      continue;
+    }
+    if (part === out || out.endsWith(part)) continue;
+    if (part.startsWith(out) || part.endsWith(out)) {
+      out = part.length > out.length ? part : out;
+      continue;
+    }
+    const needSpace =
+      !/\s$/u.test(out) &&
+      !/^\s/u.test(part) &&
+      !/^[，。！？、,.!?;:]/u.test(part);
+    out += needSpace ? ` ${part}` : part;
+  }
+  return out;
+}
+
+/** True when a completed tool sits between two visible text bubbles (1:1 ReAct). */
+function hasCompletedToolBetweenTexts(messages: ChatMessage[]): boolean {
+  let sawText = false;
+  let sawToolAfterText = false;
+  for (const msg of messages) {
+    const { textContent } = deriveMessageContent(msg);
+    if (msg.toolData?.output && sawText) {
+      sawToolAfterText = true;
+    }
+    if (!msg.toolData && textContent.trim() && sawToolAfterText) {
+      return true;
+    }
+    if (!msg.toolData && textContent.trim()) {
+      sawText = true;
+    }
+  }
+  return false;
+}
+
 export function splitAssistantTurn(
   messages: ChatMessage[],
 ): AssistantTurnSplit {
-  let answerIdx = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const { textContent } = deriveMessageContent(messages[i]);
-    if (textContent.trim()) {
-      answerIdx = i;
-      break;
-    }
-  }
-
   const tools: ChatMessage[] = [];
   const thinkings: ThinkingProcessItem[] = [];
   const processSteps: ProcessStep[] = [];
+  const textParts: string[] = [];
+  let answerTemplate: ChatMessage | null = null;
+  let answerStreaming = false;
 
-  const pushMessageSteps = (msg: ChatMessage, thinkingStreaming = false) => {
-    const { thinkingParts } = deriveMessageContent(msg);
+  for (const msg of messages) {
+    const { thinkingParts, textContent } = deriveMessageContent(msg);
     const thinkingContent = thinkingParts.join("").trim();
     if (thinkingContent) {
       const item: ThinkingProcessItem = {
         messageId: msg.id,
         content: thinkingContent,
-        isStreaming: thinkingStreaming,
+        isStreaming: msg.status === "streaming" && !textContent.trim(),
       };
       thinkings.push(item);
       processSteps.push({ kind: "thinking", item });
@@ -93,26 +128,34 @@ export function splitAssistantTurn(
     if (msg.toolData) {
       tools.push(msg);
       processSteps.push({ kind: "tool", message: msg });
+      continue;
     }
-  };
-
-  if (answerIdx === -1) {
-    for (const msg of messages) {
-      pushMessageSteps(msg, msg.status === "streaming");
+    if (textContent.trim()) {
+      textParts.push(textContent);
+      answerTemplate = msg;
+      answerStreaming = msg.status === "streaming";
     }
-    return { tools, thinkings, processSteps, answerMessage: null };
   }
 
-  for (let i = 0; i < answerIdx; i++) {
-    pushMessageSteps(messages[i]);
-  }
-
-  const answerMessage = messages[answerIdx];
-  pushMessageSteps(
-    answerMessage,
-    answerMessage.status === "streaming" &&
-      !deriveMessageContent(answerMessage).textContent.trim(),
-  );
+  // 1:1 ReAct (text → tool → conclusion) keeps the last bubble as the answer.
+  // Join only team fragments of the same speaker that were split across bubbles.
+  const joinFragments =
+    textParts.length > 1 &&
+    (messages.some((item) => item.teamWrapup) ||
+      !hasCompletedToolBetweenTexts(messages));
+  const answerMessage =
+    answerTemplate && textParts.length > 0
+      ? {
+          ...answerTemplate,
+          content: joinFragments
+            ? joinAnswerParts(textParts)
+            : textParts[textParts.length - 1],
+          contentBlocks: undefined,
+          status: answerStreaming
+            ? ("streaming" as const)
+            : answerTemplate.status,
+        }
+      : null;
 
   return { tools, thinkings, processSteps, answerMessage };
 }

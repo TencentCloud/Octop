@@ -28,6 +28,8 @@ export interface OctopThreadHistory {
     timestamp?: number;
     status?: string;
     error_code?: string;
+    agent_id?: string;
+    team_wrapup?: boolean;
   }>;
   pinned?: boolean;
   model_ref?: string | null;

@@ -337,6 +337,7 @@
     "PROVIDER_NOT_VISIBLE": "Provider is not visible.",
     "PROVIDER_REFERENCED": "Provider is in use and cannot be removed.",
     "PROVIDER_LOCAL_PROTECTED": "Local runtime providers cannot be deleted.",
+    "CODEX_OAUTH_START_FAILED": "Could not start ChatGPT sign-in. Check the server connection to auth.openai.com and try again.",
     "STORAGE_BACKEND_NAME_TAKEN": "Storage backend name is already in use.",
     "STORAGE_BACKEND_REFERENCED": "Storage backend is in use and cannot be removed.",
     "STORAGE_BACKEND_DEPS_FAILED": "Could not install optional components for this storage backend. Check network access and retry.",
@@ -407,7 +408,12 @@
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({used}/{quota}).",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
-    "CONFIG_FILE_CORRUPT": "Cannot update {path}: the file is not valid JSON ({detail}). Fix the syntax and retry — no settings were changed."
+    "CONFIG_FILE_CORRUPT": "Cannot update {path}: the file is not valid JSON ({detail}). Fix the syntax and retry — no settings were changed.",
+    "TEAM_NOT_FOUND": "Team not found.",
+    "TEAM_MEMBERS_TOO_FEW": "A team needs at least two members.",
+    "TEAM_MEMBER_INVALID": "The selected roster is not valid.",
+    "TEAM_MEMBER_BUSY": "This expert has an in-flight team job. Wait until it finishes.",
+    "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -506,9 +512,9 @@
     "cronjob_delete": "Delete cron job",
     "cronjob_run_now": "Run cron job now",
     "search_knowledge": "Search knowledge base",
-    "agent_list": "List agents",
-    "ask_agent": "Ask agent",
-    "call_agent": "Call agent",
+    "agent_list": "List experts",
+    "ask_agent": "Ask expert",
+    "call_agent": "Call expert",
     "acp_runner": "ACP external agent",
     "browser_use": "Use browser",
     "browser_control": "Browser control",
@@ -716,5 +722,12 @@
       "UnauthorizedOperation": "This Tencent Cloud account is not authorized for this voice API.",
       "RequestLimitExceeded": "Tencent Cloud rate-limited this request. Retry in a moment."
     }
+  },
+  "teams": {
+    "peer_thread_title": "From team {name}",
+    "followup_done": "[system wake-up, not a new user question]\nTeam member {name} finished. Their answer is already on the group timeline.\nTask: {task}\n\nDo not restate their answer. Do not say you have assigned someone or ask the user to wait. Do not call ask_agent for the same task again. If more work is needed, dispatch the next member. If the team is done, write at most three short wrap-up sentences.",
+    "followup_failed": "[system wake-up, not a new user question]\nTeam member {name} failed.\nTask: {task}\nError: {error}\n\nBriefly tell the user it failed and either dispatch someone else or close the turn. Do not announce another assignment. Do not invent a substitute answer.",
+    "speaker_user": "User",
+    "dispatch_with_history": "Here is the current group-chat transcript. Use it as context.\n\n{history}\n\n---\nYour task:\n{task}"
   }
 }

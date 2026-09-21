@@ -8,6 +8,8 @@ import AssistantProcessSummary from "./AssistantProcessSummary";
 import { ToolDetailsInline } from "./MessageBubble";
 import { ExpertMessageAvatar } from "./MessageSender";
 import { useAgent } from "../../../context/AgentContext";
+import { isTeamAgent, isTeamHostSpeaker } from "../../../utils/teamAgent";
+import { useTranslation } from "react-i18next";
 import styles from "../index.module.less";
 
 interface TurnProcessBlocksProps {
@@ -34,10 +36,23 @@ export function TurnProcessBlocks({
   agentId,
   showAvatar = false,
 }: TurnProcessBlocksProps) {
+  const { t } = useTranslation();
   const { agents, activeAgent } = useAgent();
+  const isTeamRoom = isTeamAgent(activeAgent);
+  const hostSpeaker = isTeamHostSpeaker(
+    isTeamRoom,
+    agentId,
+    activeAgent?.agent_id,
+  );
   const expert =
     (agentId && agents.find((item) => item.agent_id === agentId)) ||
-    activeAgent;
+    (!isTeamRoom || hostSpeaker ? activeAgent : undefined);
+  const avatarTooltip = hostSpeaker
+    ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
+    : expert?.name || undefined;
+  const avatarProfileId = hostSpeaker
+    ? activeAgent?.agent_id
+    : agentId || undefined;
   const rendererVersion = useToolRendererVersion();
   const { pinned, folded } = useMemo(
     () => partitionPinnedTools(split),
@@ -52,13 +67,15 @@ export function TurnProcessBlocks({
     <>
       {showFold ? (
         <div className={styles.processSummaryRow}>
-          {showAvatar && expert ? (
+          {showAvatar && (expert || avatarProfileId) ? (
             <div className={styles.avatarCol}>
               <ExpertMessageAvatar
-                name={expert.name}
-                color={expert.color}
-                iconName={expert.icon_name}
-                iconUrl={expert.icon_url}
+                name={expert?.name || avatarProfileId}
+                color={expert?.color}
+                iconName={expert?.icon_name}
+                iconUrl={expert?.icon_url}
+                tooltip={avatarTooltip}
+                profileAgentId={avatarProfileId}
               />
             </div>
           ) : null}

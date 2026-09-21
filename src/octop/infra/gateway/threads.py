@@ -46,6 +46,30 @@ class ThreadRegistry:
         )
 
     @staticmethod
+    def peer_room_session_key(
+        source_session_key: str,
+        agent_id: str,
+        *,
+        room_thread_id: str,
+        group: bool,
+    ) -> str | None:
+        """Session for a peer thread that must not collide with the callee's 1:1 DM."""
+        parts = source_session_key.split(":", 3)
+        if len(parts) != 4:
+            return None
+        _src_agent, channel_type, subject_id, _chat = parts
+        room = room_thread_id.strip()
+        if not channel_type or not subject_id or not room:
+            return None
+        kind = "team" if group else "peer"
+        return ThreadRegistry.make_key(
+            agent_id=agent_id,
+            channel_type=channel_type,
+            channel_subject_id=subject_id,
+            channel_chat_type=f"{kind}:{room}",
+        )
+
+    @staticmethod
     def dashboard_key(*, agent_id: str, user_id: int) -> str:
         return ThreadRegistry.make_key(
             agent_id=agent_id,
@@ -122,14 +146,14 @@ class ThreadRegistry:
             channel_chat_type=channel_chat_type,
         )
         row = self._sessions.get(session_key)
-        if row is not None:
+        if row is not None and self._threads.get(row.thread_id) is not None:
             self._refresh_session_if_needed(
                 row, channel_id=channel_id, channel_metadata=channel_metadata
             )
             return row.thread_id
         async with self._lock:
             row = self._sessions.get(session_key)
-            if row is not None:
+            if row is not None and self._threads.get(row.thread_id) is not None:
                 self._refresh_session_if_needed(
                     row, channel_id=channel_id, channel_metadata=channel_metadata
                 )
@@ -178,10 +202,13 @@ class ThreadRegistry:
             if row.agent_id != agent_id:
                 msg = f"session {session_key!r} belongs to agent {row.agent_id!r}, not {agent_id!r}"
                 raise ValueError(msg)
-            self._refresh_session_if_needed(
-                row, channel_id=channel_channel_id, channel_metadata=channel_metadata
-            )
-            return row.thread_id
+            if self._threads.get(row.thread_id) is not None:
+                self._refresh_session_if_needed(
+                    row, channel_id=channel_channel_id, channel_metadata=channel_metadata
+                )
+                return row.thread_id
+            # Bound thread was deleted: fall through so get_or_create rebinds
+            # this session to a fresh thread instead of returning a dead id.
         parts = session_key.split(":", 3)
         subject_id = parts[2] if len(parts) >= 3 else str(user_id)
         return await self.get_or_create(
@@ -195,8 +222,15 @@ class ThreadRegistry:
         )
 
     def get_bound_thread_id(self, session_key: str) -> str | None:
+        """Return the live thread bound to *session_key*, or None when unbound.
+
+        A session whose thread was deleted reads as unbound so callers fall
+        back to the create path instead of writing turns to a dead thread.
+        """
         row = self._sessions.get(session_key)
-        return row.thread_id if row else None
+        if row is None or self._threads.get(row.thread_id) is None:
+            return None
+        return row.thread_id
 
     def get_session(self, session_key: str) -> SessionRow | None:
         return self._sessions.get(session_key)
@@ -406,6 +440,7 @@ class ThreadRegistry:
 
     def delete_thread(self, thread_id: str) -> None:
         self._threads.delete(thread_id)
+        self._sessions.delete_for_thread(thread_id)
 
     def increment_unread(self, session_key: str, *, delta: int = 1) -> None:
         self._sessions.increment_unread(session_key, delta=delta)

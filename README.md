@@ -24,13 +24,13 @@
 </p>
 
 <p align="center">
-  <a href="#-highlights">Highlights</a> ·
-  <a href="#-overview">Overview</a> ·
-  <a href="#-core-technology">Core Technology</a> ·
-  <a href="#-features">Features</a> ·
-  <a href="#-roadmap">Roadmap</a> ·
-  <a href="#-quick-start">Quick Start</a> ·
-  <a href="#-contents">Contents</a>
+  <a href="#highlights">Highlights</a> ·
+  <a href="#overview">Overview</a> ·
+  <a href="#core-technology">Core Technology</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#roadmap">Roadmap</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#contents">Contents</a>
 </p>
 
 <p align="center">
@@ -288,29 +288,29 @@ See [`.env.example`](.env.example) for the full list.
 
 ## 📑 Contents
 
-- [Highlights](#-highlights)
-- [Overview](#-overview)
-- [Core Technology](#-core-technology)
-- [Features](#-features)
-- [Roadmap](#-roadmap)
-- [Quick Start](#-quick-start)
+- [Highlights](#highlights)
+- [Overview](#overview)
+- [Core Technology](#core-technology)
+- [Features](#features)
+- [Roadmap](#roadmap)
+- [Quick Start](#quick-start)
 - **Deploy & Use**
-  - [Install options](#-install-options)
-  - [Configuration](#-configuration)
-  - [CLI reference](#-cli-reference)
-  - [Web dashboard](#-web-dashboard)
-  - [Data directory](#-data-directory)
+  - [Install options](#install-options)
+  - [Configuration](#configuration)
+  - [CLI reference](#cli-reference)
+  - [Web dashboard](#web-dashboard)
+  - [Data directory](#data-directory)
 - **Architecture & Dev**
-  - [Architecture](#-architecture)
-  - [Project layout](#-project-layout)
-  - [Development](#-development)
+  - [Architecture](#architecture)
+  - [Project layout](#project-layout)
+  - [Development](#development)
 - **Project Info**
-  - [Security & privacy](#-security--privacy)
-  - [Contributing](#-contributing)
-  - [Changelog](#-changelog)
-  - [Related projects](#-related-projects)
-  - [WeCom customer group](#-wecom-customer-group-cn)
-  - [License](#-license)
+  - [Security & privacy](#security--privacy)
+  - [Contributing](#contributing)
+  - [Changelog](#changelog)
+  - [Related projects](#related-projects)
+  - [WeCom customer group](#wecom-customer-group-cn)
+  - [License](#license)
 
 ## 📦 Install options
 

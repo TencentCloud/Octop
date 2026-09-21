@@ -23,6 +23,7 @@ import { ExpertIcon } from "../../Experts/components/iconForName";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import SessionChannelIcon from "./SessionChannelIcon";
 import SharedExpertHint from "./SharedExpertHint";
+import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
 
 function AgentUnreadBadge({ count }: { count: number }) {
@@ -300,6 +301,7 @@ function ActiveAgentCard({
           <div className={styles.agentCardNameRow}>
             <div className={styles.agentNameCluster}>
               <div className={styles.agentCardName}>{agent.name}</div>
+              <TeamChatBadge agent={agent} />
               <SharedExpertHint agent={agent} />
             </div>
             <AgentUnreadBadge count={agent.unread_count ?? 0} />
@@ -438,6 +440,7 @@ function InactiveAgentRow({
           <div className={styles.agentRowNameRow}>
             <div className={styles.agentNameCluster}>
               <div className={styles.agentRowName}>{agent.name}</div>
+              <TeamChatBadge agent={agent} />
               <SharedExpertHint agent={agent} />
             </div>
             <AgentUnreadBadge count={agent.unread_count ?? 0} />

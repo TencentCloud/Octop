@@ -22,6 +22,7 @@ import { sortSessions, toSession, type Session } from "../hooks/useSessions";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent, onStreamEvent } from "../hooks/chatStore";
 import SharedExpertHint from "./SharedExpertHint";
+import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
 
 /** Default preview size per expert in minimal nav (matches session page size). */
@@ -562,6 +563,7 @@ export default function MinimalAgentSessionNav({
               >
                 <span className={styles.agentNameCluster}>
                   <span className={styles.minimalAgentName}>{agent.name}</span>
+                  <TeamChatBadge agent={agent} />
                   <SharedExpertHint agent={agent} />
                 </span>
                 <AgentUnreadBadge count={agent.unread_count ?? 0} />

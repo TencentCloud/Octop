@@ -337,6 +337,7 @@
     "PROVIDER_NOT_VISIBLE": "提供商不可见。",
     "PROVIDER_REFERENCED": "提供商正在使用中，无法删除。",
     "PROVIDER_LOCAL_PROTECTED": "本地提供商无法删除。",
+    "CODEX_OAUTH_START_FAILED": "无法启动 ChatGPT 登录。请检查服务器到 auth.openai.com 的连接后重试。",
     "STORAGE_BACKEND_NAME_TAKEN": "存储后端名称已被占用。",
     "STORAGE_BACKEND_REFERENCED": "存储后端正在使用中，无法删除。",
     "STORAGE_BACKEND_DEPS_FAILED": "无法安装此后端所需的可选组件。请检查网络后重试。",
@@ -407,7 +408,12 @@
     "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{used}/{quota}）。",
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
     "CAPTCHA_FAILED": "验证码校验失败，请重试。",
-    "CONFIG_FILE_CORRUPT": "无法更新 {path}：该文件不是合法 JSON（{detail}）。请修正语法后重试；现有配置未被改动。"
+    "CONFIG_FILE_CORRUPT": "无法更新 {path}：该文件不是合法 JSON（{detail}）。请修正语法后重试；现有配置未被改动。",
+    "TEAM_NOT_FOUND": "未找到该团队。",
+    "TEAM_MEMBERS_TOO_FEW": "团队至少需要两名成员。",
+    "TEAM_MEMBER_INVALID": "当前选中的编制无效。",
+    "TEAM_MEMBER_BUSY": "该专家有进行中的团队任务，请等结束后再改编制或删除。",
+    "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
@@ -506,9 +512,9 @@
     "cronjob_delete": "删除定时任务",
     "cronjob_run_now": "立即执行定时任务",
     "search_knowledge": "检索知识库",
-    "agent_list": "列出 Agent",
-    "ask_agent": "咨询 Agent",
-    "call_agent": "调用 Agent",
+    "agent_list": "列出专家",
+    "ask_agent": "咨询专家",
+    "call_agent": "调用专家",
     "acp_runner": "ACP 外部 Agent",
     "browser_use": "使用浏览器",
     "browser_control": "浏览器控制",
@@ -716,5 +722,12 @@
       "UnauthorizedOperation": "当前腾讯云账号没有该语音接口的访问权限。",
       "RequestLimitExceeded": "腾讯云请求过于频繁，请稍后再试。"
     }
+  },
+  "teams": {
+    "peer_thread_title": "来自团队 {name}",
+    "followup_done": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 已完成。对方正文已经出现在群聊时间线上。\n任务：{task}\n\n不要复述成员全文。不要再说「已安排 / 稍等片刻 / 交给谁来回答」，不要再次 ask_agent 同一任务。若还要继续，再派下一位；若可以收工，最多三句短总结。",
+    "followup_failed": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 失败。\n任务：{task}\n错误：{error}\n\n简要告知用户失败，并决定改派别人或收工。不要再说「已安排 / 稍等」，不要编造替代答案。",
+    "speaker_user": "用户",
+    "dispatch_with_history": "以下是当前群聊记录，请结合上下文完成任务。\n\n{history}\n\n---\n本次任务：\n{task}"
   }
 }

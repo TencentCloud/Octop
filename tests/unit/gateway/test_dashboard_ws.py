@@ -103,6 +103,21 @@ async def test_ws_hub_push_to_user_with_no_subscribers_is_noop() -> None:
     await hub.push_to_user(99, {"type": "dashboard_push", "text": "nobody"})
 
 
+def test_ws_hub_has_subscribers() -> None:
+    hub = WebSocketHub()
+
+    async def capture(_frame: dict[str, Any]) -> None:
+        return
+
+    assert hub.has_subscribers("thread-1") is False
+    hub.register("a", capture)
+    assert hub.has_subscribers("thread-1") is False
+    hub.subscribe("thread-1", "a")
+    assert hub.has_subscribers("thread-1") is True
+    hub.unregister("a")
+    assert hub.has_subscribers("thread-1") is False
+
+
 @pytest.mark.asyncio
 async def test_ws_hub_subscribe_push_to_thread_fans_out() -> None:
     hub = WebSocketHub()

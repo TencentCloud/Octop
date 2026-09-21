@@ -28,6 +28,7 @@ import {
 } from "../utils/pendingAttachKnowledgeBase";
 import { withDefaultOpenKnowledgeBases } from "../utils/withDefaultOpenKnowledgeBases";
 import { isPendingThread } from "./useSessions";
+import { isTeamAgent } from "../../../utils/teamAgent";
 
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
@@ -40,7 +41,8 @@ export function useChatComposerResources(
   const currentUserId = user?.id ?? null;
   const { agents } = useAgent();
   const expert = agents.find((item) => item.agent_id === resolvedAgentId);
-  const expertMcpServers = expert?.mcp_servers;
+  const teamHost = isTeamAgent(expert);
+  const expertMcpServers = teamHost ? [] : expert?.mcp_servers;
   const expertKnowledgeBaseIds = expert?.knowledge_base_ids;
   const expertMcpKey = (expertMcpServers ?? []).join("\0");
   const expertKbKey = (expertKnowledgeBaseIds ?? []).join("\0");
@@ -150,6 +152,11 @@ export function useChatComposerResources(
   ]);
 
   useEffect(() => {
+    if (teamHost) {
+      setSelectedConnectors([]);
+      setChatConnectors([]);
+      return;
+    }
     let cancelled = false;
     const loadConnectors = () => {
       void connectorsApi.listInstances().then((instances) => {
@@ -199,9 +206,14 @@ export function useChatComposerResources(
       window.removeEventListener("focus", onFocus);
       window.removeEventListener(CONNECTORS_CHANGED_EVENT, loadConnectors);
     };
-  }, [resolvedAgentId, currentUserId, isNewSession, expertMcpKey]);
+  }, [resolvedAgentId, currentUserId, isNewSession, expertMcpKey, teamHost]);
 
   useEffect(() => {
+    if (teamHost) {
+      setSelectedKnowledgeBaseIds([]);
+      setChatKnowledgeBases(undefined);
+      return;
+    }
     let cancelled = false;
     const pendingId = peekPendingAttachKnowledgeBaseId();
     if (isNewSession && !composerTouchedRef.current) {
@@ -263,7 +275,7 @@ export function useChatComposerResources(
     return () => {
       cancelled = true;
     };
-  }, [resolvedAgentId, currentUserId, isNewSession, expertKbKey]);
+  }, [resolvedAgentId, currentUserId, isNewSession, expertKbKey, teamHost]);
 
   useEffect(() => {
     let cancelled = false;
@@ -325,20 +337,28 @@ export function useChatComposerResources(
 
   const handleConnectorsChange = useCallback(
     (names: string[]) => {
+      if (teamHost) {
+        setSelectedConnectors([]);
+        return;
+      }
       composerTouchedRef.current = true;
       setSelectedConnectors(names);
       if (resolvedAgentId) saveConnectors(resolvedAgentId, names);
     },
-    [resolvedAgentId],
+    [resolvedAgentId, teamHost],
   );
 
   const handleKnowledgeBaseIdsChange = useCallback(
     (ids: string[]) => {
+      if (teamHost) {
+        setSelectedKnowledgeBaseIds([]);
+        return;
+      }
       composerTouchedRef.current = true;
       setSelectedKnowledgeBaseIds(ids);
       if (resolvedAgentId) saveKnowledgeBaseIds(resolvedAgentId, ids);
     },
-    [resolvedAgentId],
+    [resolvedAgentId, teamHost],
   );
 
   const handleModelChange = useCallback(

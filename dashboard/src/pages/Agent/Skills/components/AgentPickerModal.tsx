@@ -3,7 +3,7 @@ import { Modal, List, Avatar, Empty } from "antd";
 import { useTranslation } from "react-i18next";
 import { useAgent } from "../../../../context/AgentContext";
 import type { OctopAgent } from "../../../../context/AgentContext";
-import { ownedExperts } from "../../../../utils/sharedExpert";
+import { ownedSoloExperts } from "../../../../utils/sharedExpert";
 
 interface AgentPickerModalProps {
   open: boolean;
@@ -18,7 +18,7 @@ export default function AgentPickerModal({
 }: AgentPickerModalProps) {
   const { t } = useTranslation();
   const { agents } = useAgent();
-  const selectable = ownedExperts(agents);
+  const selectable = ownedSoloExperts(agents);
 
   return (
     <Modal

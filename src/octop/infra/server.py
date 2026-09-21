@@ -453,7 +453,7 @@ class OctopServer:
         install_auto_backup_job(cron_mgr, server=self)
 
         registry.set_cron_manager(cron_mgr)
-        registry.set_team_processor(gateway.processor)
+        registry.set_team_processor(gateway.processor.teams)
 
         care_service = ProactiveCareService(
             gateway=gateway,

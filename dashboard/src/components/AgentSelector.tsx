@@ -2,7 +2,7 @@ import { Select, Spin } from "antd";
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAgent, type OctopAgent } from "../context/AgentContext";
-import { ownedExperts } from "../utils/sharedExpert";
+import { ownedSoloExperts } from "../utils/sharedExpert";
 import { ExpertIcon } from "../pages/Experts/components/iconForName";
 import styles from "./AgentSelector.module.less";
 
@@ -79,7 +79,7 @@ export default function AgentSelector({
 }: AgentSelectorProps) {
   const { t } = useTranslation();
   const { agents, activeAgentId, setActiveAgent, loading } = useAgent();
-  const selectable = useMemo(() => ownedExperts(agents), [agents]);
+  const selectable = useMemo(() => ownedSoloExperts(agents), [agents]);
 
   useEffect(() => {
     if (loading || selectable.length === 0) return;
