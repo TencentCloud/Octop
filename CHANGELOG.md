@@ -11,6 +11,7 @@
 - 登录验证码新增极验行为验 v4（#870）：设置页配置 captcha_id / captcha_key，登录弹窗完成验证，服务端按官方协议 HMAC-SHA256 签名后到 gcaptcha4 二次校验（form-urlencoded，仅 result=success 放行）
 - 对话支持默认折叠思考与工具过程（浏览器本地偏好）(#718)
 - 对话中可隐藏不常用的共享专家（浏览器本地偏好）(#589)
+- 线程列表接口 `GET /agents/{id}/threads` 逐项返回 `turn_active`，与单会话历史接口一致，前端可区分哪条会话有任务正在执行 (#804)
 
 ### 修复
 
