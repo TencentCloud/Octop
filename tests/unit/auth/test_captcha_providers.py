@@ -36,6 +36,12 @@ def test_parse_slug_aliases_tencent() -> None:
     assert parse_slug("tcaptcha") == "tencent"
 
 
+def test_parse_slug_aliases_geetest_v4() -> None:
+    assert parse_slug("geetest") == "geetest-v4"
+    assert parse_slug("geetest4") == "geetest-v4"
+    assert parse_slug("gt4") == "geetest-v4"
+
+
 def test_parse_slug_recaptcha_stays_v2() -> None:
     assert parse_slug("recaptcha") == "recaptcha"
 
@@ -53,6 +59,7 @@ def test_list_providers_is_builtin_registration_order() -> None:
         "turnstile",
         "hcaptcha",
         "recaptcha-v3",
+        "geetest-v4",
     ]
 
 
@@ -164,3 +171,75 @@ def test_tencent_interpret_rejects_api_error_envelope() -> None:
             {"Response": {"Error": {"Code": "UnauthorizedOperation", "Message": "nope"}}},
             min_score=0.5,
         )
+
+
+def _geetest() -> Any:
+    provider = get_provider("geetest-v4")
+    assert provider is not None
+    return provider
+
+
+def _gt_token(**overrides: str) -> str:
+    payload = {
+        "lot_number": "4dc3cfc2cdff448cad8d13107198d473",
+        "captcha_output": "validate-output",
+        "pass_token": "pass-token",
+        "gen_time": "2026-09-20T12:00:00",
+    }
+    payload.update(overrides)
+    import json
+
+    return json.dumps(payload)
+
+
+def test_geetest_verify_call_signs_lot_number() -> None:
+    import hashlib
+    import hmac
+
+    call = _geetest().verify_call(
+        site_key="captcha-id-1",
+        secret="captcha-key-1",
+        token=_gt_token(),
+        client_ip="127.0.0.1",
+    )
+    assert call.method == "POST"
+    assert call.url == "https://gcaptcha4.geetest.com/validate?captcha_id=captcha-id-1"
+    expected = hmac.new(
+        b"captcha-key-1", b"4dc3cfc2cdff448cad8d13107198d473", hashlib.sha256
+    ).hexdigest()
+    assert call.data == {
+        "lot_number": "4dc3cfc2cdff448cad8d13107198d473",
+        "captcha_output": "validate-output",
+        "pass_token": "pass-token",
+        "gen_time": "2026-09-20T12:00:00",
+        "sign_token": expected,
+    }
+    assert call.json_body is None  # form-urlencoded per vendor contract
+
+
+def test_geetest_verify_call_rejects_non_json_token() -> None:
+    with pytest.raises(OctopError) as exc:
+        _geetest().verify_call(site_key="id", secret="key", token="not-json", client_ip="")
+    assert exc.value.code == ErrorCode.CAPTCHA_FAILED
+
+
+def test_geetest_verify_call_rejects_missing_fields() -> None:
+    with pytest.raises(OctopError):
+        _geetest().verify_call(
+            site_key="id",
+            secret="key",
+            token=_gt_token(pass_token=""),
+            client_ip="",
+        )
+
+
+def test_geetest_interpret_result_success_only() -> None:
+    provider = _geetest()
+    provider.interpret({"result": "success", "reason": ""}, min_score=0.5)
+    for body in (
+        {"result": "fail", "reason": "pass_token expire"},
+        {"status": "error", "code": "-50005", "msg": "illegal gen_time"},
+        {},
+    ):
+        with pytest.raises(OctopError):
+            provider.interpret(body, min_score=0.5)

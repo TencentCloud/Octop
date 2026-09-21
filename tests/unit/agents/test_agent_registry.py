@@ -154,10 +154,9 @@ async def test_boot_skips_disabled_agents(tmp_path: Path, monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_shutdown_clears_harness_manager(tmp_path: Path) -> None:
-    """shutdown() calls harness_manager.close() and drops the manager reference."""
+    """shutdown() awaits harness_manager.aclose() and drops the manager reference."""
     services = _make_services(tmp_path)
     fake_hm = _make_fake_hm()
-    fake_hm.close = MagicMock()
     registry = _make_registry(services, fake_hm=fake_hm)
 
     await registry.create(AgentCreateSpec(name="a"))
@@ -165,7 +164,8 @@ async def test_shutdown_clears_harness_manager(tmp_path: Path) -> None:
 
     await registry.shutdown()
 
-    fake_hm.close.assert_called_once()
+    fake_hm.aclose.assert_awaited_once()
+    fake_hm.close.assert_not_called()
     assert registry._harness_manager is None
 
 
@@ -180,16 +180,30 @@ async def test_shutdown_idempotent(tmp_path: Path, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_shutdown_calls_close_when_available(tmp_path: Path) -> None:
-    """shutdown() calls harness_manager.close() if the method exists."""
+async def test_shutdown_waits_for_async_close(tmp_path: Path) -> None:
+    """The manager stays attached until its async cleanup completes."""
     services = _make_services(tmp_path)
     fake_hm = _make_fake_hm()
-    fake_hm.close = MagicMock()
     registry = _make_registry(services, fake_hm=fake_hm)
 
-    await registry.shutdown()
+    entered, release = asyncio.Event(), asyncio.Event()
 
-    fake_hm.close.assert_called_once()
+    async def close_agents() -> None:
+        entered.set()
+        await release.wait()
+
+    fake_hm.aclose.side_effect = close_agents
+    closing = asyncio.create_task(registry.shutdown())
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        assert not closing.done()
+        assert registry._harness_manager is fake_hm
+    finally:
+        release.set()
+        await closing
+
+    fake_hm.aclose.assert_awaited_once()
+    assert registry._harness_manager is None
 
 
 # ---------------------------------------------------------------------------

@@ -34,6 +34,9 @@ Adding a vendor: one provider dataclass here + one ``register()`` call in
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -189,6 +192,64 @@ class _RecaptchaV3Provider:
 
 
 @dataclass(frozen=True)
+class _GeetestV4Provider:
+    """GeeTest v4 (行为验 4.0) second validation.
+
+    The login token carries the frontend ``getValidate()`` result as a JSON
+    object string (``lot_number`` / ``captcha_output`` / ``pass_token`` /
+    ``gen_time``); ``site_key`` is the captcha_id and ``secret`` is the
+    captcha_key. The siteverify call is signed with
+    HMAC-SHA256(captcha_key, lot_number) and posted as form fields to
+    ``gcaptcha4.geetest.com/validate?captcha_id=<id>`` — only ``result ==
+    "success"`` passes. https://docs.geetest.com/gt4/apirefer/api/server
+    """
+
+    slug: str = "geetest-v4"
+    requires_token: bool = True
+    siteverify_url: str | None = "https://gcaptcha4.geetest.com/validate"
+    requires_score: bool = False
+    aliases: tuple[str, ...] = ("geetest", "geetest4", "gt4")
+    listed: bool = True
+
+    def verify_call(
+        self,
+        *,
+        site_key: str,
+        secret: str,
+        token: str,
+        client_ip: str,
+        cam_id: str = "",
+        cam_key: str = "",
+    ) -> VerifyCall:
+        del client_ip, cam_id, cam_key
+        try:
+            payload = json.loads(token)
+        except ValueError:
+            raise _failed() from None
+        if not isinstance(payload, dict):
+            raise _failed()
+        fields: dict[str, str] = {}
+        for name in ("lot_number", "captcha_output", "pass_token", "gen_time"):
+            value = str(payload.get(name) or "").strip()
+            if not value:
+                raise _failed()
+            fields[name] = value
+        sign_token = hmac.new(
+            secret.encode(), fields["lot_number"].encode(), digestmod=hashlib.sha256
+        ).hexdigest()
+        return VerifyCall(
+            method="POST",
+            url=f"{self.siteverify_url}?captcha_id={site_key}",
+            data={**fields, "sign_token": sign_token},
+        )
+
+    def interpret(self, body: dict[str, Any], *, min_score: float) -> None:
+        del min_score
+        if body.get("result") != "success":
+            raise _failed()
+
+
+@dataclass(frozen=True)
 class _TencentProvider:
     """Tencent Cloud Captcha ticket check (DescribeCaptchaResult, API 3.0).
 
@@ -301,6 +362,7 @@ _RECAPTCHA = _FormPostProvider(
 )
 _RECAPTCHA_V3 = _RecaptchaV3Provider()
 _TENCENT = _TencentProvider()
+_GEETEST_V4 = _GeetestV4Provider()
 _SLIDER = _SliderProvider()
 
 _REGISTRY: dict[str, CaptchaProvider] = {}
@@ -343,7 +405,15 @@ def parse_slug(raw: str) -> str:
 
 
 def _register_builtins() -> None:
-    for provider in (_SLIDER, _TENCENT, _TURNSTILE, _HCAPTCHA, _RECAPTCHA, _RECAPTCHA_V3):
+    for provider in (
+        _SLIDER,
+        _TENCENT,
+        _TURNSTILE,
+        _HCAPTCHA,
+        _RECAPTCHA,
+        _RECAPTCHA_V3,
+        _GEETEST_V4,
+    ):
         register(provider)
 
 
@@ -352,3 +422,4 @@ _check_c: CaptchaProvider = _TURNSTILE
 _check_d: CaptchaProvider = _HCAPTCHA
 _check_e: CaptchaProvider = _RECAPTCHA
 _check_f: CaptchaProvider = _RECAPTCHA_V3
+_check_g: CaptchaProvider = _GEETEST_V4

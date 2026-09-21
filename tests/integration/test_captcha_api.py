@@ -271,6 +271,7 @@ async def test_admin_captcha_get_put_and_null_delete(env: Any) -> None:
         "turnstile",
         "hcaptcha",
         "recaptcha-v3",
+        "geetest-v4",
     ]
     assert body["source"] in {"settings", "env"}
     assert body["v3_min_score"] == 0.5

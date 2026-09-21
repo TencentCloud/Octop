@@ -392,7 +392,15 @@ OpenAI-compatible APIs, DashScope (Qwen), Ollama, and other presets — configur
 | `octop plugin` | Install and manage third-party plugins |
 | `octop backup` | Export / restore backups |
 | `octop clean` | Remove CLI state or wipe `~/.octop/` |
+| `octop memory list` | List running agents eligible for memory maintenance; no database changes. |
+| `octop memory slim [--agent ID]` | Back up and slim SQLite memory through the running host; uses the selected agent or prompts by number. Shows terminal and dashboard progress. [Details](docs/memory-slim.md) |
+| `octop memory slim --all` | Sequentially maintain all eligible running agents, with per-agent progress; stops on the first failure. |
 | `octop update` | Check for and install updates |
+
+In signed-in dashboard or local CLI chat, `/memory slim` explains maintenance for the current agent;
+`/memory slim --all` lists your eligible agents. Add `--confirm` to start after reviewing the impact.
+Use `/memory status` for progress/results. Chat stays available until maintenance is confirmed and begins.
+External IM maintenance requires verified sender permissions and is not enabled yet.
 
 Full reference: **[docs/cli.md](docs/cli.md)**.
 

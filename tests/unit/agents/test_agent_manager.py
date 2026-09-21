@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import threading
 from collections.abc import AsyncIterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -701,6 +702,49 @@ async def test_boot_passes_process_log_dir_to_harness_manager(manager: AgentMana
         assert hm._log_dir == manager.paths.logs_dir.resolve()
     finally:
         await manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_drains_sqlite_worker_before_returning(manager: AgentManager) -> None:
+    """Real checkpoint cleanup must finish before the caller can close its loop."""
+    _seed_test_provider(manager)
+    await manager.boot()
+    agent_id = manager._repos.agent_repo.create(
+        agent_id="CLOSE1", user_id=None, name="close-test", config_json=json.dumps(_MEMORY_OFF)
+    )
+    row = manager._repos.agent_repo.get(agent_id)
+    assert row is not None
+    agent = await manager._start_agent(row)
+    assert agent is not None
+    await agent.checkpointer.setup()
+    conn = agent.checkpointer.conn
+    entered, release = threading.Event(), threading.Event()
+
+    def pending_operation() -> None:
+        entered.set()
+        assert release.wait(10)
+
+    pending = asyncio.create_task(conn._execute(pending_operation))
+    closing = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        closing = asyncio.create_task(manager.shutdown())
+        await asyncio.sleep(0.05)
+        assert not closing.done(), "shutdown returned with SQLite work still pending"
+        release.set()
+        await asyncio.wait_for(asyncio.gather(pending, closing), timeout=5)
+        assert conn._connection is None
+        await asyncio.to_thread(conn._thread.join, 5)
+        assert not conn._thread.is_alive()
+        assert manager._harness_manager is None
+    finally:
+        release.set()
+        await pending
+        if closing is not None:
+            await closing
+        else:
+            await manager.shutdown()
+        await asyncio.to_thread(conn._thread.join, 5)
 
 
 def test_build_harness_config_enables_bootstrap_for_expert_template(manager: AgentManager) -> None:

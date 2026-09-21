@@ -94,6 +94,12 @@ def _bootstrap_pending_for(server: Any, agent_id: str) -> bool:
 
 def _memory_maintenance_status(server: Any, agent_id: str) -> dict[str, Any] | None:
     """Phase snapshot while this agent's SQLite is being slimmed. None if idle/unloaded."""
+    runtime = server.app_runtime
+    coordinator = runtime.agent_registry.memory_slim if runtime is not None else None
+    if coordinator is not None:
+        current = coordinator.status(agent_id)
+        if isinstance(current, dict):
+            return current
     try:
         agent = server.app_runtime.agent_registry.get_agent(agent_id)
     except OctopError:
