@@ -88,7 +88,7 @@ cli/ ──► launch.py ──► api/ + infra/
 | `octop.i18n` | Locale JSON + `tr()` + per-namespace helpers | `infra/utils/locale`, stdlib | `api/`, `cli/`, `dashboard/` |
 | `octop.launch` | Wire `OctopServer`, `build_app`, uvicorn for `octop run` | `infra/`, `api/` | business logic; must not be imported by `infra/` |
 | `infra/utils/` | Pure helpers (paths, ulid, env files, Ollama) | stdlib, third-party | any other `infra/*` domain code |
-| `infra/db/repos/` | One repo per table — SQL only | `infra/db/_base`, `infra/utils/` | `agents/`, `gateway/`, `api/`, orchestration |
+| `infra/db/repos/` | One repo per table — SQL only | `infra/db/repos/_base`, `infra/utils/` | `agents/`, `gateway/`, `api/`, orchestration |
 | `infra/` (domain) | Business logic & orchestration | `infra/utils/`, `infra/db/`, `octop.config`, peer `infra/*` subpackages, `infra/errors`, `infra/metrics` | `api/`, `cli/`, `launch.py`, `dashboard/` |
 | `api/` | HTTP: routing, auth, SSE, OpenAPI | `infra/`, `octop.config`, sibling `api/*` | `cli/`, `launch.py`; no business rules that belong in `infra/` |
 | `cli/` | Terminal UX | `infra/`, `octop.config`, `launch.py`, sibling `cli/*` | `api/`; domain logic duplicated from `infra/` |
@@ -112,7 +112,7 @@ cli/ ──► launch.py ──► api/ + infra/
 | `infra/connectors/` | Connector catalog, OAuth, MCP gateway, credential crypto | `api/routers/connectors.py`, `internal_mcp.py`, `agents/manager.py` (MCP assembly) |
 | `infra/cron/` | Cron jobs, triggers, agent tool hooks | `server.py`, `api/routers/cron.py` |
 | `infra/db/` | `SqlitePool`, migrations, `RepoBundle` / `SharedServices` in `services.py` | all domain code needing persistence |
-| `infra/gateway/` | IM ingress (`processor.py`), threads, slash commands (`slash/`), bot setup (`bot_creators/`) | `server.py`, `api/routers/chat.py`, `channels.py` |
+| `infra/gateway/` | IM ingress (`process/processor.py`), threads, slash commands (`slash/`), bot setup (`bot_creators/`) | `server.py`, `api/routers/chat/`, `channels.py` |
 | `infra/history/` | Versioned message archive, trajectory, turn projection (`projection.py`) | `gateway/`, `api/routers/chat`, `cron/`, `agents/teams` |
 | `infra/setup/` | First-run wizard, system service install, TLS / Let's Encrypt | `server.py`, `launch.py`, `api/routers/setup.py`, `api/routers/tls.py` |
 | `infra/skills/` | Skill packages, SkillHub HTTP client (`skillhub_market`, `skillhub_common`) | `api/routers/skills.py`, `agents/experts` |
@@ -137,7 +137,7 @@ Only `launch.py` may import both `infra/server` and `api/app` in the same module
 | `api/deps.py` | JWT extraction, `current_user`, `get_server` | agent lifecycle, cron logic |
 | `api/middleware/` | JWT gate, setup lockdown | business validation beyond auth/setup |
 | `api/openapi_meta.py` | Scalar tags, API intro text | route handlers |
-| `api/errors.py` | Map `OctopError` → HTTP status + JSON | new error semantics (add to `infra/errors.py`) |
+| `api/app.py` `_install_exception_handlers()` | Map `OctopError` → HTTP status + JSON | new error semantics (add to `infra/errors.py`) |
 | `api/routers/` | One resource per module; Pydantic request/response models | persistence, harness calls — delegate to `infra/` |
 | `api/routers/browser/` | Browser session/stream/harness HTTP surface | Playwright logic (stays in harness or helpers here only as glue) |
 
@@ -146,15 +146,15 @@ Only `launch.py` may import both `infra/server` and `api/app` in the same module
 | Path | Owns |
 |------|------|
 | `cli/main.py` | Click entry, command registration |
-| `cli/*_cmd.py` | User-facing subcommands |
+| `cli/commands/*.py` | User-facing subcommands |
 | `cli/support/db.py` | Offline DB (`open_cli_services`) |
 | `cli/support/offline_ops.py` | Local CRUD via repos (thin wrappers) |
 | `cli/support/embedded_ops.py` | Short-lived `OctopServer` for runtime ops |
 | `cli/support/acting.py` | Resolve `--user` / pinned defaults / agent owner |
 | `cli/support/ctx.py` | Root `--user` / `--agent` / `--json` resolution |
 | `cli/support/state.py` | Pinned `default_user` / `default_agent` in `cli_state.json` |
-| `cli/run_cmd.py` | `octop run` — delegates to `launch.run_foreground_blocking` |
-| `cli/init_cmd.py`, `cli/backup_cmd.py` | Local DB bootstrap / backup via `infra/db` |
+| `cli/commands/run.py` | `octop run` — delegates to `launch.run_foreground_blocking` |
+| `cli/commands/init.py`, `cli/commands/backup.py` | Local DB bootstrap / backup via `infra/db` |
 
 **CLI transport layers** (pick one per command; domain rules live in `infra/`, not duplicated in `cli/`):
 
@@ -222,7 +222,7 @@ New agents additionally keep system-scoped files under `{workspace}/.octop/` (e.
 
 **Database:** SQLite and PostgreSQL share one schema. Add or change tables via a numbered pair
 `infra/db/migrations/00N_description.sql` **and** `00N_description.pg.sql`, then bump the
-version assertion in `tests/unit/db/test_db_pool.py` (currently `v == 7`). Rebuilds that SQLite
+version assertion in `tests/unit/db/test_db_pool.py` (currently `v == 16`). Rebuilds that SQLite
 cannot express as `ALTER` live in `infra/db/migrate.py` helpers and must stay idempotent.
 
 Unreleased schema work on `develop` **folds into the current unreleased `00N`**, not a new
@@ -343,7 +343,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
   - `octop.utils.*` → `octop.infra.utils.*` (or `octop.infra.metrics` for metrics)
   - `octop.errors` / `octop.server` / `octop.shared` → `octop.infra.errors` / `octop.infra.server` / `octop.infra.db.services`
 - Do not import `api/` from `infra/` or `cli/` — use `launch.py` to wire HTTP serving.
-- Do not put domain logic in `api/routers/` or `cli/*_cmd.py` when it belongs in `infra/`.
+- Do not put domain logic in `api/routers/` or `cli/commands/*.py` when it belongs in `infra/`.
 - Do not import `infra/db/repos/*` from routers — use `server.services.*_repo` via `infra/` services or managers.
 - Do not write bare `pytest` — always `uv run pytest`.
 - Do not edit `src/octop/dashboard/` directly — build artifact; source is `dashboard/`.
@@ -356,9 +356,9 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | How does auth work? | `api/deps.py`, `api/middleware/jwt_auth.py`, `api/routers/auth.py` |
 | Setup wizard (password file, tokens) | `infra/setup/`, `api/routers/setup.py` |
 | TLS / Let's Encrypt | `infra/setup/tls/`, `api/routers/tls.py` |
-| `octop run` boot sequence | `launch.py`, `cli/run_cmd.py` |
-| How is a message processed? | `infra/gateway/processor.py` → harness agent |
-| How are agents started/stopped? | `infra/agents/manager.py` |
+| `octop run` boot sequence | `launch.py`, `cli/commands/run.py` |
+| How is a message processed? | `infra/gateway/process/processor.py` → harness agent |
+| How are agents started/stopped? | `infra/agents/manager.py` (`AgentManager.start`, `HarnessAgentManager`) |
 | How does cron work? | `infra/cron/manager.py`, `infra/cron/job.py` |
 | What DB tables exist? | `infra/db/migrations/` + `infra/db/repos/` |
 | What env vars are supported? | `config.py` |
