@@ -14,6 +14,7 @@
 
 ### 修复
 
+- 同一线程的回合执行改为按 (agent, thread) 串行：HITL resume 与普通回合（Dashboard/IM/cron/团队）此前可并发驱动同一 LangGraph checkpoint，交错写入会污染会话状态；现统一在 `AgentManager` 收口串行 (#782)
 - `date:` 定时触发与 `cron:` 一样使用 `default_timezone`，裸 ISO 时间不再回落宿主系统时区
 - HITL resume 流失败时将 pending 标为 `expired`（不再像成功批准），避免错误状态误导排查
 - SQLite 写事务改用 `BEGIN IMMEDIATE`：多 worker（`octop run --workers N`）或 CLI 与服务并发写入时，先读后写的事务不再因快照过期而立即报 `database is locked`
