@@ -45,7 +45,9 @@ vi.mock("../hooks/useChatAttachments", () => ({
 }));
 
 vi.mock("../hooks/chatStore", () => ({
-  readInputDraft: () => "",
+  consumePendingPrefillAttachments: () => [],
+  readInputDraft: (agentId: string) =>
+    agentId === "agent-2" ? "target expert draft" : "",
   writeInputDraft: vi.fn(),
 }));
 
@@ -235,6 +237,25 @@ describe("ChatInput prefill clear-on-send", () => {
     );
 
     expect(textarea.value).toBe("");
+  });
+
+  it("restores the target agent draft instead of carrying stale prefill", () => {
+    const props = {
+      onSend: vi.fn(),
+      onCancel: vi.fn(),
+      onNewChat: vi.fn(),
+      isStreaming: false,
+      initialText: "previous expert prompt",
+      threadId: null,
+    };
+    const { rerender } = render(<ChatInput {...props} agentId="agent-1" />);
+
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("previous expert prompt");
+
+    rerender(<ChatInput {...props} agentId="agent-2" />);
+
+    expect(textarea.value).toBe("target expert draft");
   });
 
   it("sends immediately in a team room while a turn is still streaming", () => {

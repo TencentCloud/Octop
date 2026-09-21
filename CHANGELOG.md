@@ -14,6 +14,7 @@
 
 ### 修复
 
+- 切换专家或会话时，聊天输入框不再沿用上一专家的一次性预填提示词，改为恢复目标专家/会话的草稿（#363）
 - `date:` 定时触发与 `cron:` 一样使用 `default_timezone`，裸 ISO 时间不再回落宿主系统时区
 - HITL resume 流失败时将 pending 标为 `expired`（不再像成功批准），避免错误状态误导排查
 - SQLite 写事务改用 `BEGIN IMMEDIATE`：多 worker（`octop run --workers N`）或 CLI 与服务并发写入时，先读后写的事务不再因快照过期而立即报 `database is locked`
