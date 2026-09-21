@@ -70,7 +70,11 @@ from octop.infra.gateway.slash.catalog import spec_for
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.parser import parse_slash
 from octop.infra.gateway.slash.runner import try_handle_slash
-from octop.infra.history.trajectory.settings import agent_trajectory_enabled
+from octop.infra.history.trajectory.settings import (
+    SUMMARY_MAX_CHARS,
+    agent_trajectory_enabled,
+    clip_text,
+)
 from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
@@ -95,6 +99,18 @@ def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
     if isinstance(exc, OctopError):
         return exc.localized_message(locale), exc.code.value
     return format_stream_error(exc, locale), None
+
+
+def _turn_error_reason(payload: dict[str, Any], *, source: str) -> dict[str, Any]:
+    """Terminal-event reason payload for a failed turn (clipped for the log)."""
+    reason: dict[str, Any] = {"reason": source}
+    code = payload.get("error_code")
+    if code:
+        reason["error_code"] = str(code)
+    message = str(payload.get("message") or "").strip()
+    if message:
+        reason["message"] = clip_text(message, SUMMARY_MAX_CHARS)
+    return reason
 
 
 class _MessageEventSink(SlashSink):
@@ -273,6 +289,8 @@ class GlobalProcessor:
         thread_id: str,
         usage: dict[str, Any] | None = None,
         enabled: bool | None = None,
+        outcome: str = "done",
+        reason: dict[str, Any] | None = None,
     ) -> None:
         if enabled is False:
             return
@@ -280,7 +298,7 @@ class GlobalProcessor:
         if service is None:
             return
         try:
-            service.finish_turn(thread_id, usage)
+            service.finish_turn(thread_id, usage, outcome=outcome, reason=reason)
         except Exception:
             record_failure = getattr(service, "record_failure", None)
             if callable(record_failure):
@@ -985,6 +1003,8 @@ class GlobalProcessor:
 
         stream_ok = False
         persist_failed_turn = False
+        turn_error: dict[str, Any] | None = None
+        stream_error: dict[str, Any] | None = None
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         usage_tracker = UsageTracker()
 
@@ -1001,6 +1021,8 @@ class GlobalProcessor:
                     chunk=chunk,
                     enabled=traj_on,
                 )
+                if chunk.get("type") == "error" and turn_error is None:
+                    turn_error = _turn_error_reason(chunk, source="error_chunk")
                 if chunk.get("type") == "hitl_required":
                     request_payload = chunk.get("request")
                     if isinstance(request_payload, dict):
@@ -1051,9 +1073,27 @@ class GlobalProcessor:
                 payload["error_code"] = error_code
             history_tracker.observe(payload)
             persist_failed_turn = True
+            stream_error = _turn_error_reason(payload, source="stream_error")
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
-            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
+            outcome: str
+            reason: dict[str, Any] | None
+            if stream_error is not None:
+                outcome, reason = "failed", stream_error
+            elif turn_error is not None:
+                outcome, reason = "failed", turn_error
+            elif not stream_ok:
+                # Cancelled / disconnected without a harness error frame.
+                outcome, reason = "interrupted", None
+            else:
+                outcome, reason = "done", None
+            self._finish_trajectory(
+                thread_id=thread_id,
+                usage=usage_tracker.usage,
+                enabled=traj_on,
+                outcome=outcome,
+                reason=reason,
+            )
             if persist_failed_turn or not stream_ok:
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
@@ -1084,6 +1124,8 @@ class GlobalProcessor:
         history_tracker = await self._begin_history(agent_id, thread_id, {}, resume=True)
         completed = False
         persist_failed_turn = False
+        turn_error: dict[str, Any] | None = None
+        stream_error: dict[str, Any] | None = None
         traj_on = self._agent_trajectory_enabled(agent_id)
         team_host = is_team_agent(self._agent_manager.get_row(agent_id))
         try:
@@ -1103,6 +1145,8 @@ class GlobalProcessor:
                     chunk=chunk,
                     enabled=traj_on,
                 )
+                if chunk.get("type") == "error" and turn_error is None:
+                    turn_error = _turn_error_reason(chunk, source="error_chunk")
                 yield _maybe_stamp_team_host(chunk, agent_id, team_host)
             completed = True
         except Exception as exc:
@@ -1118,9 +1162,26 @@ class GlobalProcessor:
                 payload["error_code"] = error_code
             history_tracker.observe(payload)
             persist_failed_turn = True
+            stream_error = _turn_error_reason(payload, source="stream_error")
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
-            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
+            outcome: str
+            reason: dict[str, Any] | None
+            if stream_error is not None:
+                outcome, reason = "failed", stream_error
+            elif turn_error is not None:
+                outcome, reason = "failed", turn_error
+            elif not completed:
+                outcome, reason = "interrupted", None
+            else:
+                outcome, reason = "done", None
+            self._finish_trajectory(
+                thread_id=thread_id,
+                usage=usage_tracker.usage,
+                enabled=traj_on,
+                outcome=outcome,
+                reason=reason,
+            )
             if persist_failed_turn or not completed:
                 await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
             else:

@@ -12,7 +12,11 @@ from typing import Any
 from octop.infra.history.trajectory.live import TrajectoryLiveBus
 from octop.infra.history.trajectory.metrics import TrajectoryMetrics, aggregate_metrics
 from octop.infra.history.trajectory.projector import project_harness_chunk
-from octop.infra.history.trajectory.settings import TRAJECTORY_RETENTION_USER_TURNS
+from octop.infra.history.trajectory.settings import (
+    SUMMARY_MAX_CHARS,
+    TRAJECTORY_RETENTION_USER_TURNS,
+    clip_text,
+)
 from octop.infra.history.trajectory.store import TrajectoryStore
 from octop.infra.history.trajectory.types import TrajectoryEvent
 
@@ -34,6 +38,8 @@ class _ThreadInFlight:
     turn_seq: int = 0
     next_seq: int | None = None
     system_seen: bool | None = None
+    #: Agent of the observed events, reused by turn-terminal events.
+    agent_id: str | None = None
     last_publish_at: dict[str, float] = field(default_factory=dict)
 
 
@@ -134,11 +140,27 @@ class TrajectoryService:
         self._metrics_cache.pop(thread_id, None)
         return self._store.delete_for_thread(thread_id)
 
-    def finish_turn(self, thread_id: str, usage: dict[str, Any] | None = None) -> None:
-        """Persist final in-flight snapshots and release per-turn aggregation state."""
+    def finish_turn(
+        self,
+        thread_id: str,
+        usage: dict[str, Any] | None = None,
+        *,
+        outcome: str = "done",
+        reason: dict[str, Any] | None = None,
+    ) -> None:
+        """Persist final in-flight snapshots and release per-turn aggregation state.
+
+        ``outcome`` is ``"done"`` (default) or an abnormal terminal state
+        (``"failed"`` / ``"interrupted"``). Abnormal outcomes append a
+        ``turn_end`` system event with ``is_error`` set so the trajectory log
+        can tell finished turns from failed or interrupted ones; done turns
+        stay implicit and are closed by the next user event.
+        """
         state = self._inflight.get(thread_id)
         if state is None:
             return
+        turn_id = state.turn_id
+        agent_id = state.agent_id
         if state.assistant is not None:
             assistant = state.assistant
             if usage:
@@ -161,10 +183,60 @@ class TrajectoryService:
         state.tool_call_only = False
         state.last_publish_at.clear()
         self._prune_retention(thread_id)
+        if outcome != "done" and agent_id is not None:
+            self._commit_turn_end(
+                thread_id,
+                agent_id=agent_id,
+                turn_id=turn_id,
+                outcome=outcome,
+                reason=reason,
+            )
+
+    def _commit_turn_end(
+        self,
+        thread_id: str,
+        *,
+        agent_id: str,
+        turn_id: str | None,
+        outcome: str,
+        reason: dict[str, Any] | None,
+    ) -> None:
+        """Append the terminal event for an abnormally ended turn.
+
+        Uses the ``system`` kind (label ``turn_end``) so the dashboard renders
+        it without changes. Safe for ``system_seen``: the SYSTEM prompt row is
+        always captured at turn start, strictly before any turn end.
+        """
+        detail = str((reason or {}).get("message") or "").strip()
+        payload: dict[str, Any] = {"label": "turn_end", "status": outcome}
+        if reason:
+            payload.update(reason)
+        if detail:
+            payload["content"] = clip_text(detail, SUMMARY_MAX_CHARS)
+        self._commit_new(
+            TrajectoryEvent(
+                event_id="",
+                thread_id=thread_id,
+                agent_id=agent_id,
+                seq=0,
+                ts=time.time(),
+                kind="system",
+                turn_id=turn_id,
+                request_seq=None,
+                is_error=True,
+                summary=clip_text(
+                    f"turn {outcome}: {detail}" if detail else f"turn {outcome}",
+                    SUMMARY_MAX_CHARS,
+                ),
+                payload=payload,
+            )
+        )
 
     def _with_thread_defaults(self, event: TrajectoryEvent) -> TrajectoryEvent:
         """Fill wall-clock ``ts`` and a stable ``turn_id`` when harness omits them."""
         state = self._inflight.setdefault(event.thread_id, _ThreadInFlight())
+        if state.agent_id is None:
+            state.agent_id = event.agent_id
         ts = event.ts if event.ts > 0 else time.time()
         turn_id = event.turn_id
         if not turn_id:

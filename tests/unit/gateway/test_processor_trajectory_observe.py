@@ -26,12 +26,21 @@ class _RecordingService:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, dict[str, Any]]] = []
         self.finished: list[tuple[str, dict[str, Any] | None]] = []
+        self.outcomes: list[tuple[str, str, dict[str, Any] | None]] = []
 
     def observe_chunk(self, agent_id: str, thread_id: str, chunk: dict[str, Any]) -> None:
         self.calls.append((agent_id, thread_id, chunk))
 
-    def finish_turn(self, thread_id: str, usage: dict[str, Any] | None = None) -> None:
+    def finish_turn(
+        self,
+        thread_id: str,
+        usage: dict[str, Any] | None = None,
+        *,
+        outcome: str = "done",
+        reason: dict[str, Any] | None = None,
+    ) -> None:
         self.finished.append((thread_id, usage))
+        self.outcomes.append((thread_id, outcome, reason))
 
 
 class _BoomService:
@@ -118,6 +127,7 @@ async def test_iter_turn_chunks_observes_user_before_stream() -> None:
     assert service.calls[0][0] == "agent-1"
     assert service.calls[0][1] == "thread-1"
     assert service.finished == [("thread-1", None)]
+    assert service.outcomes == [("thread-1", "done", None)]
 
 
 @pytest.mark.asyncio
@@ -156,6 +166,7 @@ async def test_iter_turn_chunks_finishes_trajectory_when_cancelled() -> None:
         _ = [chunk async for chunk in processor.iter_turn_chunks(_dashboard_msg())]
 
     assert service.finished == [("thread-1", None)]
+    assert service.outcomes == [("thread-1", "interrupted", None)]
 
 
 @pytest.mark.asyncio
@@ -169,3 +180,53 @@ async def test_iter_turn_chunks_skips_observe_when_trajectory_disabled() -> None
     assert chunks[-1]["type"] == "done"
     assert service.calls == []
     assert service.finished == []
+
+
+@pytest.mark.asyncio
+async def test_iter_turn_chunks_records_failed_outcome_on_stream_error() -> None:
+    service = _RecordingService()
+    processor = _processor(trajectory_service=service)
+
+    async def broken_stream(*_args: object, **_kwargs: object):
+        yield {"type": "token", "content": "partial"}
+        raise RuntimeError("provider down")
+
+    processor._agent_manager.stream = broken_stream  # noqa: SLF001
+
+    chunks = [c async for c in processor.iter_turn_chunks(_dashboard_msg())]
+
+    assert any(c.get("type") == "error" for c in chunks)
+    thread_id, outcome, reason = service.outcomes[0]
+    assert thread_id == "thread-1"
+    assert outcome == "failed"
+    assert reason is not None and reason["reason"] == "stream_error"
+    assert reason.get("message")
+
+
+@pytest.mark.asyncio
+async def test_iter_turn_chunks_records_failed_outcome_on_error_chunk() -> None:
+    service = _RecordingService()
+    processor = _processor(trajectory_service=service)
+
+    async def error_chunk_stream(*_args: object, **_kwargs: object):
+        yield {"type": "token", "content": "working"}
+        yield {
+            "type": "error",
+            "message": "已达到最大迭代次数",
+            "error_code": "AGENT_MAX_ITERS",
+        }
+
+    processor._agent_manager.stream = error_chunk_stream  # noqa: SLF001
+
+    chunks = [c async for c in processor.iter_turn_chunks(_dashboard_msg())]
+
+    assert any(c.get("type") == "error" for c in chunks)
+    assert chunks[-1]["type"] == "done"
+    thread_id, outcome, reason = service.outcomes[0]
+    assert thread_id == "thread-1"
+    assert outcome == "failed"
+    assert reason == {
+        "reason": "error_chunk",
+        "error_code": "AGENT_MAX_ITERS",
+        "message": "已达到最大迭代次数",
+    }

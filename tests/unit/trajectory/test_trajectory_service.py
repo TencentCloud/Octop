@@ -361,3 +361,68 @@ def test_list_from_seq_returns_inclusive_tail(tmp_path: Path) -> None:
     assert len(page) == 2
     replay = service.list_from_seq("T1", from_seq=page[1].seq, limit=10)
     assert [event.seq for event in replay] == [page[1].seq]
+
+
+def test_finish_turn_records_turn_end_on_failure(tmp_path: Path) -> None:
+    service, bus = _service(tmp_path)
+    service.observe_chunk("A1", "T1", {"type": "user", "content": "hello"})
+    service.observe_chunk("A1", "T1", {"type": "token", "content": "partial"})
+    queue = bus.subscribe("T1")
+
+    service.finish_turn(
+        "T1",
+        {"input_tokens": 3},
+        outcome="failed",
+        reason={"reason": "stream_error", "message": "boom"},
+    )
+
+    events = service.list_events("T1", before_seq=None, limit=10, kinds=None)
+    assert [event.kind for event in events] == ["user", "assistant", "system"]
+    terminal = events[-1]
+    assert terminal.is_error is True
+    assert terminal.turn_id == events[0].turn_id
+    assert terminal.agent_id == "A1"
+    assert terminal.payload["label"] == "turn_end"
+    assert terminal.payload["status"] == "failed"
+    assert terminal.payload["reason"] == "stream_error"
+    assert terminal.payload["message"] == "boom"
+    assert "turn failed" in terminal.summary
+    # usage flush still lands on the assistant row
+    assert events[1].payload.get("input_tokens") == 3
+    published = []
+    while not queue.empty():
+        published.append(queue.get_nowait())
+    assert published[-1]["payload"]["label"] == "turn_end"
+    assert published[-1]["is_error"] is True
+
+
+def test_finish_turn_records_turn_end_on_interrupt(tmp_path: Path) -> None:
+    service, _bus = _service(tmp_path)
+    service.observe_chunk("A1", "T1", {"type": "user", "content": "hello"})
+
+    service.finish_turn("T1", outcome="interrupted")
+
+    events = service.list_events("T1", before_seq=None, limit=10, kinds=None)
+    terminal = events[-1]
+    assert terminal.kind == "system"
+    assert terminal.is_error is True
+    assert terminal.payload["status"] == "interrupted"
+    assert terminal.summary == "turn interrupted"
+
+
+def test_finish_turn_done_records_no_terminal_event(tmp_path: Path) -> None:
+    service, _bus = _service(tmp_path)
+    service.observe_chunk("A1", "T1", {"type": "user", "content": "hello"})
+
+    service.finish_turn("T1", {"input_tokens": 1})
+
+    events = service.list_events("T1", before_seq=None, limit=10, kinds=None)
+    assert [event.kind for event in events] == ["user"]
+
+
+def test_finish_turn_turn_end_without_observed_state_is_noop(tmp_path: Path) -> None:
+    service, _bus = _service(tmp_path)
+
+    service.finish_turn("T1", outcome="failed", reason={"reason": "stream_error"})
+
+    assert service.list_events("T1", before_seq=None, limit=10, kinds=None) == []
