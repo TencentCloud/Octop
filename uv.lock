@@ -2612,7 +2612,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
     { name = "openpyxl", specifier = ">=3.1" },
-    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=1.0.12" },
+    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=1.0.13" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.40" },
@@ -2835,7 +2835,7 @@ wheels = [
 
 [[package]]
 name = "orcakit-harness-agent"
-version = "1.0.12"
+version = "1.0.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2853,9 +2853,9 @@ dependencies = [
     { name = "mcp" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/65/8810983d51d161c39056c6cb8b09dd0102c12eba901da1c52dfd1daa1ad5/orcakit_harness_agent-1.0.12.tar.gz", hash = "sha256:f47153eae38a99cc1c4f9256da66f5097a04071b891c454d0a1debf7dddc7741", size = 1224296, upload-time = "2026-09-20T11:58:33.223Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/3d/b7e7c0dc451db9a7739b871f9ec477eda4e556c7fc9cfe637b21820416c2/orcakit_harness_agent-1.0.13.tar.gz", hash = "sha256:143ab47781c2a60aa4f2cbecea98a9b99867c3e9d52672fc02ef4eb70b526086", size = 1239332, upload-time = "2026-09-21T11:50:31.422Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/bd/92de2bef920dce06cc31c0d5c7fa140f23f52c86f79d64fac88fff0fc73d/orcakit_harness_agent-1.0.12-py3-none-any.whl", hash = "sha256:420a6d4f37ba7318f62d44aee1bf05417d990fc4f6b30d480d55b6d1033f4d7b", size = 1453071, upload-time = "2026-09-20T11:58:30.39Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/47/fc440eed84113d0bcb14733970fd4e9437704ef80809fcf299274a7e316d/orcakit_harness_agent-1.0.13-py3-none-any.whl", hash = "sha256:96aed274ed8526a7f6d8f471ff2b114f20824726f40daa0d1b98b585ceb67e75", size = 1472923, upload-time = "2026-09-21T11:50:26.802Z" },
 ]
 
 [package.optional-dependencies]
