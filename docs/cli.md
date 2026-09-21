@@ -478,7 +478,7 @@ Commands:
 $ octop completion show bash   # dump a shell snippet
 $ octop completion install     # append to ~/.zshrc / ~/.bashrc
 $ octop version                # print the installed octop version
-```text
+```
 
 ## CLI state file
 
