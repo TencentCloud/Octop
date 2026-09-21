@@ -36,7 +36,7 @@ ask_agent mode=sync
 
 ask_agent mode=background
   → TeamManager.submit_peer → inbox worker → GlobalProcessor.on_reply
-```
+```text
 
 ## 相关文件
 
