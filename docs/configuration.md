@@ -78,7 +78,9 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
     "host": "127.0.0.1",
     "port": 5432,
     "database": "octop",
-    "user": "octop"
+    "user": "octop",
+    "password": null,
+    "url": null
   },
   "tls": {
     "enabled": false,
