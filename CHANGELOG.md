@@ -15,6 +15,7 @@
 ### 修复
 
 - `date:` 定时触发与 `cron:` 一样使用 `default_timezone`，裸 ISO 时间不再回落宿主系统时区
+- `cron:` 在「日」与「星期」两栏同时受限时按 Unix crontab 取并集（任一命中即触发），不再要求两者同时成立：`0 9 13 * fri` 此前只在「13 号且恰为周五」触发，现每月 13 号与各周五都会触发
 - HITL resume 流失败时将 pending 标为 `expired`（不再像成功批准），避免错误状态误导排查
 - SQLite 写事务改用 `BEGIN IMMEDIATE`：多 worker（`octop run --workers N`）或 CLI 与服务并发写入时，先读后写的事务不再因快照过期而立即报 `database is locked`
 - 登录页「忘记密码」改为按需展开：优先提示联系管理员，本机 CLI 重置作为次要说明（#869）
