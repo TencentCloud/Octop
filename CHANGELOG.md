@@ -16,6 +16,7 @@
 
 - `date:` 定时触发与 `cron:` 一样使用 `default_timezone`，裸 ISO 时间不再回落宿主系统时区
 - HITL resume 流失败时将 pending 标为 `expired`（不再像成功批准），避免错误状态误导排查
+- `bash docker/docker_build.sh` 在 macOS 自带 bash 3.2 上按默认环境变量直接中止（`line 54: BUILD_ARGS[@]: unbound variable`）：`set -u` 下空数组展开算未定义，只有恰好配了 `PIP_INDEX_URL` 等镜像变量时才跑得通；现按仓库内已有写法（`scripts/install.sh`、`desktop/portable/package.sh`）加空数组守卫
 - SQLite 写事务改用 `BEGIN IMMEDIATE`：多 worker（`octop run --workers N`）或 CLI 与服务并发写入时，先读后写的事务不再因快照过期而立即报 `database is locked`
 - 登录页「忘记密码」改为按需展开：优先提示联系管理员，本机 CLI 重置作为次要说明（#869）
 - iOS PWA 状态栏不再虚化遮挡内容：顶栏改为不透明、去掉 backdrop-filter；登录页与设置向导补 `safe-area-inset` 内边距（#874）
