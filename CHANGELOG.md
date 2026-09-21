@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- `cron:` 在「日」与「星期」两栏同时受限时按 Unix crontab 取并集（任一命中即触发），不再要求两者同时成立：`0 9 13 * fri` 此前只在「13 号且恰为周五」触发，现每月 13 号与各周五都会触发
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
