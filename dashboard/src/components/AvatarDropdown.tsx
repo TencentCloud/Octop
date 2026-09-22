@@ -51,6 +51,7 @@ import wecomIcon from "../assets/channels/wecom.svg";
 import styles from "./AvatarDropdown.module.less";
 
 const GITHUB_URL = "https://github.com/TencentCloud/Octop";
+const HELP_FEEDBACK_URL = "https://octop.cloud";
 const APP_OAUTH_KINDS = new Set(["feishu", "dingtalk", "wecom"]);
 
 function oauthProviderIcon(kind: string): ReactNode {
@@ -358,7 +359,7 @@ export default function AvatarDropdown({
 
       <a
         className={styles.menuItem}
-        href="https://tencentcloud.github.io/Octop/"
+        href={HELP_FEEDBACK_URL}
         target="_blank"
         rel="noopener noreferrer"
         onClick={() => setMenuOpen(false)}

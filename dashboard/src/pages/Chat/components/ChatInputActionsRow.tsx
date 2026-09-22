@@ -41,6 +41,7 @@ import ExpertPickerPopover from "./ExpertPickerPopover";
 import SubagentPickerPopover from "./SubagentPickerPopover";
 import ConnectorPickerPopover from "./ConnectorPickerPopover";
 import KnowledgePickerPopover from "./KnowledgePickerPopover";
+import ConversationModePicker from "./ConversationModePicker";
 import SlashCommandMenu from "./SlashCommandMenu";
 import type { SlashMenuGroup } from "../../../utils/slashCategories";
 import type { SlashMenuItem } from "../hooks/useSlashMentionInput";
@@ -98,6 +99,8 @@ interface ChatInputActionsRowProps {
     mode: "auto" | "enabled" | "disabled",
     effort: string | null,
   ) => void;
+  conversationMode?: "ask" | "plan" | "craft";
+  onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -152,6 +155,8 @@ export default function ChatInputActionsRow({
   reasoningMode = "auto",
   reasoningEffort = null,
   onReasoningChange,
+  conversationMode = "craft",
+  onConversationModeChange,
   availableConnectors,
   selectedConnectors = [],
   onConnectorsChange,
@@ -226,18 +231,25 @@ export default function ChatInputActionsRow({
   );
   const reasoningCapability = selectedModelInfo?.reasoning_config;
   const reasoningIsStatusOnly = reasoningCapability?.adapter === "status_only";
+  const allowWriteTools = conversationMode === "craft";
   const showConnectorPicker = Boolean(
-    availableConnectors && onConnectorsChange,
+    allowWriteTools && availableConnectors && onConnectorsChange,
   );
   const showKnowledgePicker = Boolean(
     availableKnowledgeBases && onKnowledgeBaseIdsChange,
   );
-  const showSkillPicker = Boolean(availableSkills && onInsertSkillCommand);
+  const showSkillPicker = Boolean(
+    allowWriteTools && availableSkills && onInsertSkillCommand,
+  );
   const showExpertPicker = Boolean(
-    availableExperts && onInsertExpertMention && availableExperts.length > 0,
+    allowWriteTools &&
+      availableExperts &&
+      onInsertExpertMention &&
+      availableExperts.length > 0,
   );
   const showSubagentPicker = Boolean(
-    availableSubagents &&
+    allowWriteTools &&
+      availableSubagents &&
       onInsertSubagentMention &&
       availableSubagents.length > 0,
   );
@@ -766,6 +778,13 @@ export default function ChatInputActionsRow({
 
       return (
         <>
+          {onConversationModeChange && (
+            <ConversationModePicker
+              compact
+              conversationMode={conversationMode}
+              onChange={onConversationModeChange}
+            />
+          )}
           {showModelPicker &&
             (isMobile ? (
               modelButton
@@ -851,6 +870,12 @@ export default function ChatInputActionsRow({
 
     return (
       <>
+        {onConversationModeChange && (
+          <ConversationModePicker
+            conversationMode={conversationMode}
+            onChange={onConversationModeChange}
+          />
+        )}
         {showModelPicker && (
           <Popover
             trigger="click"

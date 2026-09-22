@@ -30,6 +30,7 @@ import { resolveBrowserProfile } from "../../../utils/browserProfile";
 import type { DockTab, DockTabId } from "../hooks/useChatDockPanel";
 import { dockFileBasename } from "../utils/dockFilePath";
 import styles from "../index.module.less";
+import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import ChatDockFileList from "./ChatDockFileList";
 import FilePanelContent from "./FilePanelContent";
 import KnowledgeCitationPanelContent from "./KnowledgeCitationPanelContent";
@@ -61,7 +62,7 @@ interface ChatDockPanelProps {
 }
 
 /**
- * Tabbed dock shell: file list + per-file viewers + browser + terminal.
+ * Tabbed dock shell: workspace / file list / file viewers / browser / terminal.
  * Bodies stay mounted after first open so streams / editors survive tab switches.
  */
 const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
@@ -83,6 +84,9 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
 }) => {
   const { t } = useTranslation();
   const currentUser = useCurrentUser();
+  const [workspaceMounted, setWorkspaceMounted] = useState(
+    openTabs.some((tab) => tab.kind === "workspace"),
+  );
   const [browserMounted, setBrowserMounted] = useState(
     openTabs.some((tab) => tab.kind === "browser"),
   );
@@ -114,8 +118,10 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   >({});
 
   useEffect(() => {
+    const hasWorkspace = openTabs.some((tab) => tab.kind === "workspace");
     const hasBrowser = openTabs.some((tab) => tab.kind === "browser");
     const hasTerminal = openTabs.some((tab) => tab.kind === "terminal");
+    setWorkspaceMounted(hasWorkspace);
     setBrowserMounted(hasBrowser);
     setTerminalMounted(hasTerminal);
     const openFilePaths = new Set(
@@ -252,6 +258,11 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             <>
               <FolderOpen size={16} strokeWidth={2} aria-hidden />
               <span>{t("chat.dockFileList", "文件变更")}</span>
+            </>
+          ) : tab.kind === "workspace" ? (
+            <>
+              <FolderOpen size={16} strokeWidth={2} aria-hidden />
+              <span>{t("chat.openWorkspace", "工作区")}</span>
             </>
           ) : tab.kind === "browser" ? (
             <>
@@ -404,6 +415,23 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             </div>
           );
         })}
+
+        {workspaceMounted && (
+          <div
+            className={styles.dockTabBody}
+            hidden={activeTab?.kind !== "workspace"}
+            style={{
+              display: activeTab?.kind === "workspace" ? "flex" : "none",
+            }}
+          >
+            <WorkspaceDrawer
+              agentId={agentId}
+              open
+              onClose={() => onCloseTab("workspace")}
+              embedded
+            />
+          </div>
+        )}
 
         {browserMounted && (
           <div
