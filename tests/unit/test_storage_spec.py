@@ -146,6 +146,36 @@ def test_row_to_backend_spec_docker() -> None:
     }
 
 
+def test_row_to_backend_spec_postgres_encodes_credentials() -> None:
+    from urllib.parse import unquote, urlsplit
+
+    row = BackendRow(
+        id=1,
+        name="pg",
+        kind="postgres",
+        endpoint="db.internal",
+        access_key="octop_app",
+        secret_key="p@ss/w#rd",
+        bucket="mydb",
+        region=None,
+        config_json="{}",
+        note=None,
+        enabled=1,
+        created_at=0,
+        updated_at=0,
+    )
+    spec = row_to_backend_spec(row)
+    assert spec == {
+        "type": "postgres",
+        "connection_string": "postgresql://octop_app:p%40ss%2Fw%23rd@db.internal/mydb",
+    }
+    # The credentials must not move the authority/path boundary of the libpq URL.
+    parsed = urlsplit(spec["connection_string"])
+    assert parsed.hostname == "db.internal"
+    assert parsed.path == "/mydb"
+    assert unquote(parsed.password or "") == "p@ss/w#rd"
+
+
 def test_enrich_docker_backend_spec_defaults() -> None:
     from octop.infra.backend.docker_spec import (
         docker_spec_previewable,
