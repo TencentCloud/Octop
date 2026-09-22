@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import re
+from html import escape
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -665,3 +669,88 @@ async def test_custom_mcp_oauth_start_unified(env):
     call_kwargs = mocked_start.await_args.kwargs
     assert call_kwargs["target"] == {"type": "custom_mcp", "server_name": "oauth-srv"}
     assert call_kwargs["mcp_url"] == "https://mcp.example.com/mcp"
+
+
+@pytest.mark.parametrize(
+    ("redirect_after", "expected_path"),
+    [
+        ("/connectors", "/connectors"),
+        ("/connectors?tab=custom&empty=#oauth", "/connectors"),
+        ("/connectors?oauth_state=stale", "/connectors"),
+        ("/x'+alert(document.cookie)+'", "/x'+alert(document.cookie)+'"),
+        ("/</script><script>alert(1)</script>", "/</script><script>alert(1)</script>"),
+        ("https://attacker.example", "/connectors"),
+        ("//attacker.example", "/connectors"),
+        ("/\\attacker.example", "/connectors"),
+        ("/\n/attacker.example", "/connectors"),
+        ("/\r/attacker.example", "/connectors"),
+        ("/\t/attacker.example", "/connectors"),
+        ("javascript:alert(1)", "/connectors"),
+    ],
+)
+async def test_oauth_callback_safely_renders_stored_redirect(env, redirect_after, expected_path):
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state=state_id,
+        user_id=user_id,
+        kind="notion",
+        code_verifier="verifier",
+        redirect_after=redirect_after,
+    )
+    with patch(
+        "octop.api.routers.connectors.exchange_oauth_code",
+        new_callable=AsyncMock,
+        return_value={"access_token": "test-token"},
+    ):
+        response = await c.get(
+            "/api/connectors/oauth/callback", params={"code": "code", "state": state_id}
+        )
+    assert response.status_code == 200
+    # A tag payload must stay inside one JSON string, not create another script.
+    assert response.text.count("<script>") == response.text.count("</script>") == 1
+    assignment = re.search(r"window.location.href = (.*);", response.text)
+    assert assignment is not None
+    target = urlsplit(json.loads(assignment.group(1)))
+    assert not target.scheme and not target.netloc
+    assert target.path == expected_path
+    query = parse_qs(target.query, keep_blank_values=True)
+    assert query["oauth_state"] == [state_id]
+    if "tab=custom" in redirect_after:
+        assert query["tab"] == ["custom"]
+        assert query["empty"] == [""]
+        assert target.fragment == "oauth"
+    assert "}, window.location.origin);" in response.text
+    pending = await c.get(f"/api/connectors/oauth/pending/{state_id}", headers=auth)
+    assert pending.status_code == 200
+    assert pending.json()["tokens"]["access_token"] == "test-token"
+
+
+@pytest.mark.parametrize("exchange_error", [False, True])
+async def test_oauth_callback_escapes_error_html(env, exchange_error):
+    c, srv, auth, _ = env
+    payload = '<img src=x onerror="alert(1)">'
+    user_id = await resolve_user_id(c, auth, "admin")
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state=state_id,
+        user_id=user_id,
+        kind="notion",
+        code_verifier="verifier",
+        redirect_after="/connectors",
+    )
+    with patch(
+        "octop.api.routers.connectors.exchange_oauth_code",
+        new_callable=AsyncMock,
+        side_effect=ValueError(payload),
+    ):
+        response = await c.get(
+            "/api/connectors/oauth/callback",
+            params={"code": "code", "state": state_id} if exchange_error else {"error": payload},
+        )
+    assert response.status_code == 400
+    assert payload not in response.text
+    assert escape(payload) in response.text
