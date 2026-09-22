@@ -906,18 +906,6 @@ export default function RemoteBrowserPage({
     [aiPanelHeight, aiPanelWidth, isMobile],
   );
 
-  const handleCanvasKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLCanvasElement>) => {
-      e.preventDefault();
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        sendEvent({ type: "type", text: e.key });
-      } else {
-        sendEvent({ type: "keydown", key: e.key });
-      }
-    },
-    [sendEvent],
-  );
-
   // --- Skill recording guide ---
   const [browserRecording, setBrowserRecording] = useState(false);
   const [browserRecordingId, setBrowserRecordingId] = useState<string | null>(
@@ -1462,7 +1450,6 @@ export default function RemoteBrowserPage({
                       onOpenControls={openControlsDrawer}
                     />
                   }
-                  onCanvasKeyDown={handleCanvasKeyDown}
                   onFrameReadyChange={handleFrameReadyChange}
                 />
               </>
