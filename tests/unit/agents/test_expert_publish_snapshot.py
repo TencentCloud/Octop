@@ -432,3 +432,33 @@ async def test_export_snapshot_builds_manifest_from_publish_metadata(tmp_path: P
         "color": "#123456",
         "prompt_files": ["SOUL.md"],
     }
+
+
+@pytest.mark.asyncio
+async def test_export_snapshot_keeps_public_portrait_url(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source = _workspace(source_dir)
+    await source.aupload_many([("SOUL.md", b"# Source soul")])
+    metadata = PublishedExpertSnapshotMeta(
+        name="Scene Expert",
+        description="Uses a bundled portrait",
+        icon_name="heart",
+        color=None,
+        label_zh="场景专家",
+        label_en="Scene Expert",
+        welcome_message_zh="",
+        welcome_message_en="",
+        icon_url="/experts/avatars/scene-healthcare.svg",
+    )
+
+    destination = tmp_path / "scene-expert"
+    await export_agent_workspace_to_dir(
+        workspace=source,
+        dest=destination,
+        metadata=metadata,
+        manifest_id="scene-expert",
+    )
+
+    manifest = json.loads((destination / MANIFEST_FILENAME).read_text(encoding="utf-8"))
+    assert manifest["icon_url"] == "/experts/avatars/scene-healthcare.svg"

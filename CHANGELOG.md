@@ -15,6 +15,7 @@
 ### 修复
 
 - 知识库检索的引用标记只列出真正进入上下文的文档：此前被 `char_budget` 截掉的命中仍会出现在 dashboard 展示的引用里，指向模型没看到过的来源
+- 发布专家时保留源专家的公开头像（内置 SVG 或远程肖像）；仅上传过自定义图片时才走快照头像接口，不再发布后只剩默认图标
 - `date:` 定时触发与 `cron:` 一样使用 `default_timezone`，裸 ISO 时间不再回落宿主系统时区
 - HITL resume 流失败时将 pending 标为 `expired`（不再像成功批准），避免错误状态误导排查
 - SQLite 写事务改用 `BEGIN IMMEDIATE`：多 worker（`octop run --workers N`）或 CLI 与服务并发写入时，先读后写的事务不再因快照过期而立即报 `database is locked`
