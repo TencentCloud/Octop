@@ -36,6 +36,28 @@ def env_file_path(root: Path) -> Path:
     return root / "env"
 
 
+def _closing_quote_index(value: str, quote: str) -> int:
+    """Index of the quote that terminates *value*, or ``-1`` when it is unterminated.
+
+    ``format_env_file`` escapes backslash and double quote inside the double-quoted values
+    it writes, so an escaped ``\\"`` must not be taken for the closing delimiter: a
+    multi-line value containing a quote (a pasted JSON credential, say) would otherwise be
+    cut short at its first inner quote. Single-quoted values only come from hand-written
+    files and carry no escaping convention, so there every quote terminates.
+    """
+    index = 1
+    length = len(value)
+    while index < length:
+        char = value[index]
+        if char == quote:
+            return index
+        if quote == '"' and char == "\\":
+            index += 2
+            continue
+        index += 1
+    return -1
+
+
 def parse_env_text(text: str) -> dict[str, str]:
     out: dict[str, str] = {}
     lines = text.splitlines()
@@ -58,10 +80,11 @@ def parse_env_text(text: str) -> dict[str, str]:
         # breaks raw, so a multi-line value has to be read back across lines. Only a value with
         # an *unterminated* quote continues onto the next line; a value that already contains a
         # closing quote (or no quote at all) is left alone, so a malformed entry cannot swallow
-        # the rest of the file.
-        if value[:1] in {'"', "'"} and value[0] not in value[1:]:
+        # the rest of the file. "Closing" means an unescaped quote: the escaped ``\"`` sequences
+        # format_env_file writes for inner quotes must not end the value early.
+        if value[:1] in {'"', "'"} and _closing_quote_index(value, value[0]) < 0:
             quote = value[0]
-            while index < len(lines) and quote not in value[1:]:
+            while index < len(lines) and _closing_quote_index(value, quote) < 0:
                 value = f"{value}\n{lines[index]}"
                 index += 1
             value = value.strip()
