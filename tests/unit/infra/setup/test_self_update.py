@@ -98,7 +98,11 @@ def _fake_windows_scripts(tmp_path: Path) -> Path:
     return script_dir
 
 
-def test_stash_console_scripts_is_noop_off_windows(tmp_path: Path) -> None:
+def test_stash_console_scripts_is_noop_off_windows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("octop.infra.setup.self_update._is_windows", lambda: False)
     script_dir = _fake_windows_scripts(tmp_path)
     assert stash_console_scripts(str(script_dir / "python.exe")) == []
     assert (script_dir / "octop.exe").exists()
