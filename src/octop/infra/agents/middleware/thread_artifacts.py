@@ -227,6 +227,39 @@ class ThreadArtifactsMiddleware(AgentMiddleware[Any, Any]):
                 thread_id,
                 exc_info=True,
             )
+        self._maybe_record_pending_plan(thread_id, paths)
+
+    def _maybe_record_pending_plan(self, thread_id: str, paths: Sequence[str]) -> None:
+        from octop.infra.agents.conversation_mode import (  # noqa: PLC0415
+            parse_conversation_mode,
+            plan_relpath_from_artifact,
+        )
+
+        try:
+            configurable = dict(get_config().get("configurable") or {})
+        except RuntimeError:
+            return
+        mode = parse_conversation_mode(configurable.get("conversation_mode"))
+        if mode != "plan":
+            return
+        rel = ""
+        for path in paths:
+            rel = plan_relpath_from_artifact(path)
+            if rel:
+                break
+        if not rel:
+            return
+        setter = getattr(self._threads, "update_composer", None)
+        if setter is None:
+            return
+        try:
+            setter(thread_id, pending_plan_path=rel)
+        except Exception:
+            logger.warning(
+                "Failed to record pending plan for %s",
+                thread_id,
+                exc_info=True,
+            )
 
 
 def _dedupe_paths(paths: Sequence[str], workspace_dir: Path | None) -> list[str]:

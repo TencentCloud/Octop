@@ -86,6 +86,8 @@ export interface DoneChunk {
   agent_id?: string;
   /** Seal only the wrap-up bubble — do not finish the dispatch turn. */
   team_wrapup?: boolean;
+  conversation_mode?: "ask" | "plan" | "craft";
+  pending_plan_path?: string | null;
 }
 
 export interface ErrorChunk {
@@ -104,6 +106,7 @@ export interface SlashActionChunk {
   type: "slash_action";
   action: string;
   agent_id?: string;
+  mode?: string;
 }
 
 export interface AttachmentChunk {
@@ -233,6 +236,18 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
         type: "done",
         agent_id: agentId,
         team_wrapup: obj.team_wrapup === true,
+        conversation_mode:
+          obj.conversation_mode === "ask" ||
+          obj.conversation_mode === "plan" ||
+          obj.conversation_mode === "craft"
+            ? obj.conversation_mode
+            : undefined,
+        pending_plan_path:
+          typeof obj.pending_plan_path === "string"
+            ? obj.pending_plan_path
+            : obj.pending_plan_path === null
+            ? null
+            : undefined,
       };
     case "error":
       return {
@@ -258,6 +273,7 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
         type: "slash_action",
         action: typeof obj.action === "string" ? obj.action : "",
         agent_id: agentId,
+        mode: typeof obj.mode === "string" ? obj.mode : undefined,
       };
     case "attachment":
       return {

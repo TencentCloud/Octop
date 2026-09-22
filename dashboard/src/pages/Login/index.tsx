@@ -75,6 +75,7 @@ export default function LoginPage() {
   const [ssoLoadingKind, setSsoLoadingKind] = useState<string | null>(null);
   const [captchaReady, setCaptchaReady] = useState(false);
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const [showForgotHelp, setShowForgotHelp] = useState(false);
   const [captcha, setCaptcha] = useState<PublicCaptchaConfig>({
     provider: "slider",
   });
@@ -317,22 +318,74 @@ export default function LoginPage() {
           {t("login.submit")}
         </Button>
 
-        <p
-          data-testid="login-forgot-password"
+        <div
           style={{
-            margin: 0,
-            fontSize: 13,
-            lineHeight: 1.6,
-            color: "var(--fn-text-tertiary)",
-            textAlign: "center",
             width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 8,
           }}
         >
-          {t(
-            "login.forgotPasswordHint",
-            "Forgot the password? On the Octop host run octop user passwd <username>, or ask an administrator to reset it.",
-          )}
-        </p>
+          <button
+            type="button"
+            data-testid="login-forgot-password-toggle"
+            onClick={() => setShowForgotHelp((open) => !open)}
+            style={{
+              margin: 0,
+              padding: 0,
+              border: "none",
+              background: "none",
+              cursor: "pointer",
+              fontSize: 13,
+              lineHeight: 1.5,
+              color: "var(--fn-text-tertiary)",
+            }}
+          >
+            {t("login.forgotPassword", "Forgot password?")}
+          </button>
+          {showForgotHelp ? (
+            <div
+              data-testid="login-forgot-password"
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "var(--fn-bg-secondary)",
+                border: "1px solid var(--fn-border-primary)",
+                color: "var(--fn-text-secondary)",
+                fontSize: 12,
+                lineHeight: 1.6,
+                textAlign: "left",
+              }}
+            >
+              <p style={{ margin: 0 }}>
+                {t(
+                  "login.forgotPasswordHelp",
+                  "Ask an administrator to reset it under Users. If you manage this Octop host, you can also run:",
+                )}
+              </p>
+              <code
+                style={{
+                  display: "block",
+                  marginTop: 8,
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  background: "var(--fn-bg-primary)",
+                  fontFamily:
+                    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                  fontSize: 12,
+                  wordBreak: "break-all",
+                }}
+              >
+                {t(
+                  "login.forgotPasswordCommand",
+                  "octop user passwd <username>",
+                )}
+              </code>
+            </div>
+          ) : null}
+        </div>
 
         {providers.length > 0 && (
           <>

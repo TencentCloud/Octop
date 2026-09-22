@@ -1156,8 +1156,22 @@
       "pruning": "正在清理过期记忆…",
       "compacting": "正在压缩记忆库…",
       "hintQueued": "其他智能体正在整理磁盘，本库排队中。现在仍可对话；轮到本库时会暂停发送。",
-      "hintBlocking": "整理期间此智能体暂时无法发送消息，完成后会自动恢复。",
-      "elapsed": "已进行 {{seconds}}s"
+      "hintBlocking": "正在回收重复数据占用的磁盘空间，聊天记录和记忆会保留。此智能体的所有会话暂时暂停发送，结束后自动恢复；可切换到其他未维护的智能体。",
+      "elapsed": "已进行 {{seconds}}s",
+      "waiting": "等待当前任务结束…",
+      "backing_up": "正在备份记忆库…",
+      "deduplicating": "正在去重历史上下文…",
+      "hintWaiting": "等待当前任务完成后开始整理，不会强行中断对话。",
+      "scanned": "已处理 {{count}} / {{total}} 条快照",
+      "longRunning": "大库或磁盘繁忙时可能耗时较久，目前无法可靠预估剩余时间。关闭页面后仍会继续，请勿反复执行整理命令。",
+      "connectionLost": "暂时无法获取最新状态，正在重试；下方信息可能已过时。请先确认服务连接，不要重复发起整理。",
+      "done": "记忆库整理完成，已恢复使用",
+      "failed": "整理未完成，已恢复使用",
+      "skipped": "本次未执行整理，可以继续使用",
+      "hint_done": "现在可以继续发送消息。输入 /memory status 可查看大小变化和备份结果。",
+      "hint_failed": "发送已恢复，不会自动重试。可用 /memory status 查看状态；排查原因后再决定是否整理。",
+      "hint_skipped": "前面的任务失败或服务正在关闭，后续整理已停止。",
+      "dismiss": "知道了"
     },
     "historyMigration": {
       "title": "升级完成：还有 {{count}} 个旧会话需要优化",
@@ -1209,6 +1223,20 @@
     "reasoningDisabled": "关闭",
     "reasoningEffort": "思考强度",
     "reasoningAlways": "始终推理",
+    "conversationMode": {
+      "ask": "Ask模式",
+      "plan": "Plan模式",
+      "craft": "Craft模式",
+      "picker": "对话模式",
+      "askHint": "只读：可阅读文件与联网检索，不能改文件或使用技能。",
+      "planHint": "只读探索，并把计划写入工作区 plans/*.md。",
+      "craftHint": "完整权限，可使用工具、技能与连接器。",
+      "planReadyTitle": "计划已写好",
+      "planReadyBody": "已保存到 {{path}}。确认后按计划执行，或继续改计划。",
+      "execute": "按计划执行",
+      "executeUtterance": "请按 {{path}} 执行",
+      "keepEditing": "继续改计划"
+    },
     "errorOccurred": "出现错误",
     "imageLoadFailed": "图片加载失败",
     "mediaLoadFailed": "无法加载媒体",
@@ -3154,12 +3182,17 @@
         "hcaptcha": "hCaptcha",
         "recaptcha": "reCAPTCHA v2",
         "recaptcha-v3": "reCAPTCHA v3",
-        "tencent": "腾讯云验证码"
+        "tencent": "腾讯云验证码",
+        "geetest-v4": "极验行为验证 v4"
       },
       "fields": {
         "tencent": {
           "siteKey": "CaptchaAppId",
           "secret": "AppSecretKey"
+        },
+        "geetest-v4": {
+          "siteKey": "验证 ID（captcha_id）",
+          "secret": "验证 Key（captcha_key）"
         }
       }
     },
@@ -4788,7 +4821,9 @@
     "username": "用户名或邮箱",
     "password": "密码",
     "submit": "登录",
-    "forgotPasswordHint": "忘记密码？在 Octop 主机执行 octop user passwd <用户名>，或请管理员在用户页重置。",
+    "forgotPassword": "忘记密码？",
+    "forgotPasswordHelp": "请联系管理员在「用户」页为你重置。若你负责维护本机，也可在服务器上执行：",
+    "forgotPasswordCommand": "octop user passwd <用户名>",
     "failed": "登录失败",
     "slideHint": "拖动滑块到最右侧完成验证",
     "slideVerified": "验证通过",

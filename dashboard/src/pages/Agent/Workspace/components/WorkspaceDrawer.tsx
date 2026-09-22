@@ -251,12 +251,15 @@ interface WorkspaceDrawerProps {
   agentId: string;
   open: boolean;
   onClose: () => void;
+  /** Render as a dock/tab body instead of a standalone Ant Design Drawer. */
+  embedded?: boolean;
 }
 
 export default function WorkspaceDrawer({
   agentId,
   open,
   onClose,
+  embedded = false,
 }: WorkspaceDrawerProps) {
   const { t } = useTranslation();
   const { modal, message } = App.useApp();
@@ -1078,9 +1081,11 @@ export default function WorkspaceDrawer({
 
   const drawerTitle = (
     <div className={styles.drawerTitleRow}>
-      <span className={styles.drawerTitleText}>
-        {t("pageShell.workspace.title")}
-      </span>
+      {!embedded && (
+        <span className={styles.drawerTitleText}>
+          {t("pageShell.workspace.title")}
+        </span>
+      )}
       <Space size={isMobile ? 4 : 8} className={styles.drawerTitleActions}>
         <Tooltip
           title={
@@ -1146,22 +1151,8 @@ export default function WorkspaceDrawer({
     </div>
   );
 
-  return (
-    <Drawer
-      title={drawerTitle}
-      open={open}
-      onClose={onClose}
-      width={isMobile ? "100%" : "80vw"}
-      styles={{
-        body: {
-          padding: 0,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        },
-      }}
-      destroyOnHidden
-    >
+  const workspaceBody = (
+    <>
       <Modal
         title={t("workspace.archiveImportTitle")}
         open={archiveImportOpen}
@@ -1551,6 +1542,35 @@ export default function WorkspaceDrawer({
           )}
         </div>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className={styles.embeddedRoot}>
+        <div className={styles.embeddedHeader}>{drawerTitle}</div>
+        <div className={styles.embeddedBody}>{workspaceBody}</div>
+      </div>
+    );
+  }
+
+  return (
+    <Drawer
+      title={drawerTitle}
+      open={open}
+      onClose={onClose}
+      width={isMobile ? "100%" : "80vw"}
+      styles={{
+        body: {
+          padding: "0 12px 0 0",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        },
+      }}
+      destroyOnHidden
+    >
+      {workspaceBody}
     </Drawer>
   );
 }

@@ -347,6 +347,27 @@ async def test_published_list_exposes_snapshot_avatar(
     assert got.headers["content-type"].startswith("image/png")
 
 
+async def test_published_list_keeps_public_portrait_without_upload(
+    env: tuple[Any, Any, dict[str, str]],
+) -> None:
+    client, server, owner_auth, peer_auth, source_agent_id = await _owner_and_peer(env)
+    portrait = "/experts/avatars/scene-healthcare.svg"
+    server.services.agent_repo.update_config(source_agent_id, icon_url=portrait)
+
+    published = await client.post(
+        f"/api/agents/{source_agent_id}/publish-expert",
+        headers=owner_auth,
+        json={"name": "Portrait published"},
+    )
+    assert published.status_code == 201, published.text
+    assert published.json()["icon_url"] == portrait
+
+    listed = await client.get("/api/experts/published", headers=peer_auth)
+    assert listed.status_code == 200, listed.text
+    row = next(item for item in listed.json() if item["id"] == published.json()["id"])
+    assert row["icon_url"] == portrait
+
+
 async def test_creator_can_refresh_published_expert(
     env: tuple[Any, Any, dict[str, str]],
 ) -> None:

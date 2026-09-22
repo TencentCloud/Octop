@@ -714,7 +714,9 @@ async function loadThreadHistory(
   const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE } = await import(
     "../../../api/modules/octopThreads"
   );
-  const { syncSessionArtifacts } = await import("./useSessions");
+  const { syncSessionArtifacts, syncSessionConversationMode } = await import(
+    "./useSessions"
+  );
   const limit = params.limit ?? CHAT_HISTORY_PAGE_SIZE;
   const offset = params.offset ?? 0;
   const history = await octopThreadsApi.history(agentId, threadId, {
@@ -730,6 +732,12 @@ async function loadThreadHistory(
     : [];
   if (offset === 0) {
     syncSessionArtifacts(threadId, artifacts);
+    syncSessionConversationMode(
+      threadId,
+      history.conversation_mode,
+      history.pending_plan_path,
+    );
+    chatStore.setPendingPlanPath(threadId, history.pending_plan_path);
   }
   const messages = injectPendingHitlMessage(
     convertHistoryMessages(
@@ -812,6 +820,7 @@ export function useChat(
     historyHasMore,
     historyLoadingMore,
     historyHydrated,
+    pendingPlanPath,
   } = useSyncExternalStore(subscribeStore, getStoreSnapshot);
 
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -845,6 +854,7 @@ export function useChat(
       composerContext?: UserComposerContext,
       reasoningMode?: "auto" | "enabled" | "disabled",
       reasoningEffort?: string | null,
+      conversationMode?: "ask" | "plan" | "craft" | null,
     ) => {
       const key = storeKey || stableSessionId;
 
@@ -877,6 +887,7 @@ export function useChat(
         targetAgentIds,
         reasoningMode,
         reasoningEffort,
+        conversationMode,
       );
     },
     [stableSessionId],
@@ -1155,6 +1166,7 @@ export function useChat(
     historyLoadingMore,
     historyRefreshing,
     historyHydrated,
+    pendingPlanPath,
     sendMessage,
     editAndResend,
     cancelStream,

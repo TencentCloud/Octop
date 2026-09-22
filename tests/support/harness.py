@@ -139,6 +139,7 @@ def build_harness_manager_mock(
         _remove(agent_id)
 
     mock_manager = MagicMock()
+    mock_manager.aclose = AsyncMock()
     mock_manager.create_agent.side_effect = _create
     mock_manager.acreate_agent = AsyncMock(side_effect=_acreate)
     mock_manager.arebuild_agent = AsyncMock(side_effect=_arebuild)
