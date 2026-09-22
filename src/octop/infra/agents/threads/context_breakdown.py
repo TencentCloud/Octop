@@ -65,6 +65,8 @@ def _usage_to_breakdown(usage: Any, *, fallback_max_tokens: int) -> ContextBreak
 def _usage_has_segments(usage: Any) -> bool:
     if usage is None:
         return False
+    if getattr(usage, "source", None) == "model_request":
+        return True
     used = int(getattr(usage, "used_tokens", 0) or 0)
     inp = int(getattr(usage, "input_tokens", 0) or 0)
     raw = getattr(usage, "segments", None) or {}

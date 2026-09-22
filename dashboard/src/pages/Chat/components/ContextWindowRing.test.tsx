@@ -130,3 +130,49 @@ describe("ContextWindowRing", () => {
     );
   });
 });
+
+it("refreshes a cached snapshot when the turn's usage changes", async () => {
+  contextUsage.mockReset();
+  contextUsage
+    .mockResolvedValueOnce({
+      max_tokens: 100_000,
+      used_tokens: 20_000,
+      available: true,
+      segments: [],
+    })
+    .mockResolvedValueOnce({
+      max_tokens: 100_000,
+      used_tokens: 40_000,
+      available: true,
+      segments: [],
+    });
+  const { rerender } = render(
+    <ContextWindowRing
+      usedTokens={30_000}
+      maxTokens={100_000}
+      agentId="agent"
+      threadId="thread"
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "20",
+    ),
+  );
+  rerender(
+    <ContextWindowRing
+      usedTokens={50_000}
+      maxTokens={100_000}
+      agentId="agent"
+      threadId="thread"
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "40",
+    ),
+  );
+  expect(contextUsage).toHaveBeenCalledTimes(2);
+});
