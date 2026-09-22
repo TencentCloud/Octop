@@ -55,7 +55,7 @@ describe("<ConnectorCard />", () => {
     );
 
     expect(container.querySelector("img")?.getAttribute("src")).toContain(
-      "data:image/svg+xml",
+      "openalex.svg",
     );
   });
 });
