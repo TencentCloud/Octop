@@ -77,6 +77,9 @@ def create(
     except OctopError as exc:
         fail_octop(exc)
     click.echo(_json.dumps(row, indent=2))
+    from octop.cli.support.runtime_probe import warn_if_server_running
+
+    warn_if_server_running()
 
 
 @provider.command("delete")
@@ -90,6 +93,9 @@ def delete(provider_id: str) -> None:
     except OctopError as exc:
         fail_octop(exc)
     click.echo("deleted")
+    from octop.cli.support.runtime_probe import warn_if_server_running
+
+    warn_if_server_running()
 
 
 @provider.command("test")

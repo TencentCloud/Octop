@@ -81,7 +81,9 @@ def create_job(
     except OctopError as exc:
         fail_octop(exc)
     click.echo(_json.dumps(row, indent=2))
-    click.echo("hint: restart `octop run` to load new cron jobs into the running server.")
+    from octop.cli.support.runtime_probe import warn_if_server_running
+
+    warn_if_server_running()
 
 
 @cron.command("delete")
@@ -99,6 +101,9 @@ def delete_job(agent_id: str | None, cron_id: str, as_user: str | None) -> None:
     except OctopError as exc:
         fail_octop(exc)
     click.echo("deleted")
+    from octop.cli.support.runtime_probe import warn_if_server_running
+
+    warn_if_server_running()
 
 
 @cron.command("run-now")

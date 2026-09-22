@@ -578,6 +578,9 @@
     "publisher-multi-platform": "多平台发布",
     "docker-management": "Docker 管理"
   },
+  "cli": {
+    "restart_hint": "octop run 正在运行（{url}），本变更需重启后生效。"
+  },
   "channel": {
     "tool_hint_start": "🔧 正在调用工具：{tool_name}",
     "tool_hint_end": "✅ {tool_name} 已完成",
@@ -645,7 +648,8 @@
     "recursion_limit": "智能体已达到最大迭代次数（递归上限），任务尚未完成。请前往「运行配置」调高「最大迭代次数」后重试。",
     "timeout_network": "连接模型服务超时或网络异常。请检查网络后重试；若使用代理或自建服务，请确认其可达。",
     "provider_unavailable": "模型服务暂时不可用。请稍后重试，或切换其他模型。",
-    "model_call_failed": "模型调用多次重试后仍失败。请稍后重试；若持续失败，请检查模型配置或更换模型。"
+    "model_call_failed": "模型调用多次重试后仍失败。请稍后重试；若持续失败，请检查模型配置或更换模型。",
+    "cause_suffix": "原因：{cause}"
   },
   "attachment": {
     "header": "[附件] {filename}",
