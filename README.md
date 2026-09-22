@@ -371,6 +371,7 @@ OpenAI-compatible APIs, DashScope (Qwen), Ollama, and other presets — configur
 | **DingTalk** | App Key, App Secret |
 | **QQ** | Bot AppID, Token |
 | **Telegram** | Bot Token |
+| **Discord** | Bot Token; all accessible channels allowed by default, optional channel/DM allowlists; [setup and testing](docs/discord-channel.md) |
 | **WeCom** | Corp ID, Agent Secret |
 | **Web Dashboard** | Enabled by default |
 

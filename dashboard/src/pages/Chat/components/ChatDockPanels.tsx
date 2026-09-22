@@ -2,7 +2,7 @@ import type { PanelMode } from "../../../components/BrowserWorkspace";
 import type { DisplayEnvironment } from "../../../api/types/browser";
 import type { DockTab, DockTabId } from "../hooks/useChatDockPanel";
 import styles from "../index.module.less";
-import ChatDockPanel from "./ChatDockPanel";
+import ChatDockPanel, { type ChatDockAddTabHandlers } from "./ChatDockPanel";
 
 interface ChatDockPanelsProps {
   isMobile: boolean;
@@ -26,6 +26,7 @@ interface ChatDockPanelsProps {
     e: React.PointerEvent,
     direction: "horizontal" | "vertical",
   ) => void;
+  addTab?: ChatDockAddTabHandlers;
 }
 
 /**
@@ -57,6 +58,7 @@ export default function ChatDockPanels({
   onModeChange,
   onClose,
   onResizeStart,
+  addTab,
 }: ChatDockPanelsProps) {
   const keepAlive = openTabs.length > 0;
   const visible = dockOpen && keepAlive;
@@ -91,6 +93,7 @@ export default function ChatDockPanels({
       threadId={threadId}
       isStreamingTurn={isStreamingTurn}
       surfaceVisible={visible}
+      addTab={addTab}
     />
   );
 

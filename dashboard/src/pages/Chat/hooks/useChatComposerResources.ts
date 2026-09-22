@@ -27,8 +27,23 @@ import {
   peekPendingAttachKnowledgeBaseId,
 } from "../utils/pendingAttachKnowledgeBase";
 import { withDefaultOpenKnowledgeBases } from "../utils/withDefaultOpenKnowledgeBases";
-import { isPendingThread } from "./useSessions";
+import {
+  isPendingThread,
+  syncSessionConversationMode,
+  syncSessionHitlPolicy,
+} from "./useSessions";
 import { isTeamAgent } from "../../../utils/teamAgent";
+import * as chatStore from "./chatStore";
+import {
+  DEFAULT_CONVERSATION_MODE,
+  parseConversationMode,
+  type ConversationMode,
+} from "../utils/conversationMode";
+import {
+  DEFAULT_HITL_SESSION_POLICY,
+  parseHitlSessionPolicy,
+  type HitlSessionPolicy,
+} from "../utils/hitlSessionPolicy";
 
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
@@ -36,6 +51,8 @@ export function useChatComposerResources(
   stickyModel?: string | null,
   stickyReasoningMode?: "auto" | "enabled" | "disabled" | null,
   stickyReasoningEffort?: string | null,
+  stickyConversationMode?: ConversationMode | null,
+  stickyHitlPolicy?: HitlSessionPolicy | null,
 ) {
   const user = useCurrentUser();
   const currentUserId = user?.id ?? null;
@@ -77,6 +94,12 @@ export function useChatComposerResources(
     "auto" | "enabled" | "disabled"
   >("auto");
   const [reasoningEffort, setReasoningEffort] = useState<string | null>(null);
+  const [conversationMode, setConversationMode] = useState<ConversationMode>(
+    DEFAULT_CONVERSATION_MODE,
+  );
+  const [hitlPolicy, setHitlPolicy] = useState<HitlSessionPolicy>(
+    DEFAULT_HITL_SESSION_POLICY,
+  );
   const [conversationOverrides, setConversationOverrides] = useState<
     Record<
       string,
@@ -150,6 +173,22 @@ export function useChatComposerResources(
     availableModels,
     conversationOverrides,
   ]);
+
+  useEffect(() => {
+    setConversationMode(
+      isNewSession
+        ? DEFAULT_CONVERSATION_MODE
+        : parseConversationMode(stickyConversationMode),
+    );
+  }, [isNewSession, stickyConversationMode, activeThreadId]);
+
+  useEffect(() => {
+    setHitlPolicy(
+      isNewSession
+        ? DEFAULT_HITL_SESSION_POLICY
+        : parseHitlSessionPolicy(stickyHitlPolicy),
+    );
+  }, [isNewSession, stickyHitlPolicy, activeThreadId]);
 
   useEffect(() => {
     if (teamHost) {
@@ -425,12 +464,61 @@ export function useChatComposerResources(
     [activeThreadId, resolvedAgentId, selectedModel],
   );
 
+  const handleConversationModeChange = useCallback(
+    (mode: ConversationMode, options?: { persist?: boolean }) => {
+      setConversationMode(mode);
+      if (activeThreadId) {
+        syncSessionConversationMode(
+          activeThreadId,
+          mode,
+          chatStore.getSnapshot(activeThreadId).pendingPlanPath,
+        );
+      }
+      if (
+        (options?.persist ?? true) &&
+        resolvedAgentId &&
+        activeThreadId &&
+        !isPendingThread(activeThreadId)
+      ) {
+        void octopThreadsApi.patch(resolvedAgentId, activeThreadId, {
+          conversation_mode: mode,
+        });
+      }
+    },
+    [activeThreadId, resolvedAgentId],
+  );
+
+  const handleHitlPolicyChange = useCallback(
+    (policy: HitlSessionPolicy, options?: { persist?: boolean }) => {
+      const next = parseHitlSessionPolicy(policy);
+      setHitlPolicy(next);
+      if (activeThreadId) {
+        syncSessionHitlPolicy(activeThreadId, next);
+      }
+      if (
+        (options?.persist ?? true) &&
+        resolvedAgentId &&
+        activeThreadId &&
+        !isPendingThread(activeThreadId)
+      ) {
+        void octopThreadsApi.patch(resolvedAgentId, activeThreadId, {
+          hitl_policy: next,
+        });
+      }
+    },
+    [activeThreadId, resolvedAgentId],
+  );
+
   return {
     selectedModel,
     setSelectedModel: handleModelChange,
     reasoningMode,
     reasoningEffort,
     handleReasoningChange,
+    conversationMode,
+    handleConversationModeChange,
+    hitlPolicy,
+    handleHitlPolicyChange,
     selectedConnectors,
     selectedKnowledgeBaseIds,
     chatConnectors,

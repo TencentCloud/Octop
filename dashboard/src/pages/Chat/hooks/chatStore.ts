@@ -252,6 +252,7 @@ const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
   historyLoadingMore: false,
   historyNextOffset: 0,
   historyHydrated: false,
+  pendingPlanPath: null,
 });
 
 const sessionStates = new Map<string, SessionStreamState>();
@@ -278,6 +279,7 @@ export type SlashActionEvent = {
   action: string;
   agent_id?: string;
   sessionId?: string;
+  mode?: string;
 };
 type ToolEventListener = (event: ToolEvent) => void;
 type StreamEventListener = (event: StreamEvent) => void;
@@ -381,6 +383,7 @@ function buildSnapshot(state: SessionStreamState): SessionSnapshot {
     historyNextOffset: state.historyNextOffset,
     historyNextCursor: state.historyNextCursor,
     historyHydrated: state.historyHydrated,
+    pendingPlanPath: state.pendingPlanPath ?? null,
   };
 }
 
@@ -403,6 +406,7 @@ function getOrCreate(sessionId: string): SessionStreamState {
       historyLoadingMore: false,
       historyHydrated: false,
       historyStale: false,
+      pendingPlanPath: null,
       listeners: new Set(),
       _snapshot: EMPTY_SNAPSHOT,
       roomAgentId: undefined,
@@ -572,6 +576,18 @@ export function getSnapshot(sessionId: string): SessionSnapshot {
   const state = sessionStates.get(sessionId);
   if (!state) return EMPTY_SNAPSHOT;
   return state._snapshot;
+}
+
+/** Remember or clear the pending plan file for the PlanReady card. */
+export function setPendingPlanPath(
+  sessionId: string,
+  path: string | null | undefined,
+): void {
+  const state = getOrCreate(sessionId);
+  const next = (path || "").trim() || null;
+  if ((state.pendingPlanPath ?? null) === next) return;
+  state.pendingPlanPath = next;
+  notify(state);
 }
 
 /** Directly set messages for a session (e.g. from loadHistory). */
@@ -1109,6 +1125,13 @@ function handleHarnessChunk(
       closeToolCall(state, chunk.messages, sessionId, speaker);
       break;
     case "done":
+      if (!chunk.team_wrapup) {
+        const pending =
+          typeof chunk.pending_plan_path === "string"
+            ? chunk.pending_plan_path.trim()
+            : "";
+        state.pendingPlanPath = pending || null;
+      }
       if (Boolean(chunk.team_wrapup)) {
         finalizeWrapupMessages(state, speaker);
         break;
@@ -1135,6 +1158,7 @@ function handleHarnessChunk(
         action: chunk.action,
         agent_id: chunk.agent_id,
         sessionId,
+        mode: chunk.mode,
       });
       break;
     case "attachment": {
@@ -1995,10 +2019,21 @@ function parseHitlRequest(raw: Record<string, unknown>) {
 function resolveHitlPending(
   state: SessionStreamState,
   status: "approved" | "rejected",
+  policy?: { mode: string; tools?: string[] },
 ): void {
-  state.messages = state.messages.map((m) =>
-    m.hitlData ? { ...m, hitlData: { ...m.hitlData, status } } : m,
-  );
+  const resolution =
+    status === "rejected"
+      ? undefined
+      : policy?.mode === "allow_all"
+      ? "allow_all"
+      : policy?.mode === "allow_tools"
+      ? "allow_tool"
+      : "approve";
+  state.messages = state.messages.map((m) => {
+    const hitl = m.hitlData;
+    if (!hitl || (hitl.status ?? "pending") !== "pending") return m;
+    return { ...m, hitlData: { ...hitl, status, resolution } };
+  });
 }
 
 function handleHitlRequired(
@@ -2323,6 +2358,8 @@ async function sendTurnWebSocket(
   onStreamEnd?: () => void,
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
+  conversationMode?: "ask" | "plan" | "craft" | null,
+  hitlPolicy?: { mode: string; tools?: string[] } | null,
 ): Promise<boolean> {
   const state = getOrCreate(sessionId);
   const resolvedThreadId = (threadId || sessionId).trim();
@@ -2402,6 +2439,8 @@ async function sendTurnWebSocket(
       }
       if (reasoningMode) payload.reasoning_mode = reasoningMode;
       if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
+      if (conversationMode) payload.conversation_mode = conversationMode;
+      if (hitlPolicy) payload.hitl_policy = hitlPolicy;
       ws.send(JSON.stringify(payload));
     };
 
@@ -2534,6 +2573,8 @@ export async function sendTurn(
   targetAgentIds?: string[] | null,
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
+  conversationMode?: "ask" | "plan" | "craft" | null,
+  hitlPolicy?: { mode: string; tools?: string[] } | null,
 ): Promise<void> {
   const state = getOrCreate(sessionId);
   rememberRoomAgent(state, agentId);
@@ -2620,6 +2661,8 @@ export async function sendTurn(
     onStreamEnd,
     reasoningMode,
     reasoningEffort,
+    conversationMode,
+    hitlPolicy,
   );
   if (!wsOk) {
     state.messages = [
@@ -2688,6 +2731,7 @@ export async function resumeHitl(
   decisions: Array<{ type: string; message?: string }>,
   onStreamEnd?: () => void,
   dismissed = false,
+  hitlPolicy?: { mode: string; tools?: string[] },
 ): Promise<void> {
   const state = getOrCreate(sessionId);
   state.abortController?.abort();
@@ -2695,7 +2739,7 @@ export async function resumeHitl(
     dismissed || decisions.some((d) => d.type === "reject")
       ? "rejected"
       : "approved";
-  resolveHitlPending(state, hitlStatus);
+  resolveHitlPending(state, hitlStatus, hitlPolicy);
   beginStream(state, sessionId);
   notify(state);
   emitStreamEvent({ kind: "streamStart", sessionId });
@@ -2733,7 +2777,11 @@ export async function resumeHitl(
     const res = await fetch(getApiUrl(`/agents/${agentId}/chat/hitl/resume`), {
       method: "POST",
       headers,
-      body: JSON.stringify({ thread_id: threadId, decisions }),
+      body: JSON.stringify({
+        thread_id: threadId,
+        decisions,
+        ...(hitlPolicy ? { hitl_policy: hitlPolicy } : {}),
+      }),
       signal: controller.signal,
     });
     if (!res.ok) {

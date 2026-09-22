@@ -250,3 +250,19 @@ def test_threads_empty_new_sorts_above_older_active(repos):
     )
     rows = threads.list_by_agent(agent_id="a1", limit=10)
     assert [r.thread_id for r in rows] == ["thr_empty_new", "thr_older_active"]
+
+
+def test_threads_hitl_policy_roundtrip(repos):
+    _sessions, threads = repos
+    sk = ThreadRegistry.make_key(agent_id="a1", channel_type="dashboard", channel_subject_id="1")
+    threads.insert(
+        thread_id="thr_hitl",
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=sk,
+    )
+    threads.update_composer(thread_id="thr_hitl", hitl_policy='{"mode":"allow_all"}')
+    row = threads.get("thr_hitl")
+    assert row is not None
+    assert row.hitl_policy == '{"mode":"allow_all"}'
