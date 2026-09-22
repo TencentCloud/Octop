@@ -151,20 +151,38 @@ def read_snapshot_avatar(snapshot_dir: Path) -> tuple[bytes, str] | None:
     return None
 
 
+def public_portrait_icon_url(stored: str | None) -> str | None:
+    """Keep a public portrait URL; drop local agent-avatar API paths.
+
+    Publishing stores uploaded rasters in the snapshot. Bundled
+    ``/experts/avatars/*.svg`` and http(s) portraits are not workspace files,
+    so they must be remembered separately or the published card falls back to
+    a Lucide icon.
+    """
+    text = str(stored or "").strip()
+    if not text:
+        return None
+    path = text.split("?", 1)[0]
+    if path.startswith("/api/agents/") and path.endswith("/avatar"):
+        return None
+    return text
+
+
 def display_published_expert_icon_url(
     *,
     expert_id: str,
     snapshot_dir: Path,
     updated_at: str | int | None = None,
+    fallback_icon_url: str | None = None,
 ) -> str | None:
-    """Public ``icon_url`` when the published snapshot contains an avatar file."""
-    if read_snapshot_avatar(snapshot_dir) is None:
-        return None
-    local = published_expert_avatar_api_path(expert_id)
-    version = str(updated_at or "").strip()
-    if not version:
-        return local
-    return f"{local}?v={version}"
+    """Public ``icon_url``: snapshot raster first, else a stored public portrait."""
+    if read_snapshot_avatar(snapshot_dir) is not None:
+        local = published_expert_avatar_api_path(expert_id)
+        version = str(updated_at or "").strip()
+        if not version:
+            return local
+        return f"{local}?v={version}"
+    return public_portrait_icon_url(fallback_icon_url)
 
 
 async def bind_workspace_avatar_icon_url(

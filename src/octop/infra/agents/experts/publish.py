@@ -73,6 +73,7 @@ class PublishedExpertSnapshotMeta:
     welcome_message_en: str
     quick_prompts: tuple[dict[str, Any], ...] = ()
     task_examples: dict[str, list[str]] | None = None
+    icon_url: str | None = None
 
 
 def assert_can_mutate_published(row: PublishedExpertRow, user: User) -> None:
@@ -219,6 +220,8 @@ def _manifest_from_metadata(
         data["prompt_files"] = prompt_files
     if metadata.icon_name:
         data["icon_name"] = metadata.icon_name
+    if metadata.icon_url:
+        data["icon_url"] = metadata.icon_url
     if metadata.color:
         data["color"] = metadata.color
     if metadata.quick_prompts:
