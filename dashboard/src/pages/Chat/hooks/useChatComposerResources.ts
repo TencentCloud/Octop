@@ -73,7 +73,6 @@ export function useChatComposerResources(
   const [availableModels, setAvailableModels] = useState<ResolvedModel[]>([]);
   const [activeModelRef, setActiveModelRef] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
-  const [preferredModel, setPreferredModel] = useState<string | null>(null);
   const [modelReasoning, setModelReasoning] = useState<
     Record<
       string,
@@ -116,16 +115,8 @@ export function useChatComposerResources(
     const local = activeThreadId
       ? conversationOverrides[activeThreadId]
       : undefined;
-    setSelectedModel(
-      local ? local.model : stickyModel || preferredModel || null,
-    );
-  }, [
-    resolvedAgentId,
-    activeThreadId,
-    stickyModel,
-    preferredModel,
-    conversationOverrides,
-  ]);
+    setSelectedModel(local ? local.model : stickyModel || null);
+  }, [resolvedAgentId, activeThreadId, stickyModel, conversationOverrides]);
 
   useEffect(() => {
     const defaults = selectedModel ? modelReasoning[selectedModel] : undefined;
@@ -322,7 +313,6 @@ export function useChatComposerResources(
       .get()
       .then((preferences) => {
         if (cancelled) return;
-        setPreferredModel(preferences.preferred_model || null);
         setModelReasoning(preferences.model_reasoning || {});
       })
       .catch(() => undefined);
