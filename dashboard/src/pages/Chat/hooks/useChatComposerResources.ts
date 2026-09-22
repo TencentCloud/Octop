@@ -15,8 +15,10 @@ import { useAgent } from "../../../context/AgentContext";
 import { activeModelToRef } from "./useChatContextWindow";
 import {
   hasSavedConnectors,
+  loadKnowledgeBaseDraft,
   loadSavedConnectors,
   saveConnectors,
+  saveKnowledgeBaseDraft,
   hasSavedKnowledgeBaseIds,
   loadSavedKnowledgeBaseIds,
   saveKnowledgeBaseIds,
@@ -39,6 +41,7 @@ import {
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
   activeThreadId?: string | null,
+  threadKbKey?: string | null,
   stickyModel?: string | null,
   stickyReasoningMode?: "auto" | "enabled" | "disabled" | null,
   stickyReasoningEffort?: string | null,
@@ -54,6 +57,10 @@ export function useChatComposerResources(
   const expertMcpKey = (expertMcpServers ?? []).join("\0");
   const expertKbKey = (expertKnowledgeBaseIds ?? []).join("\0");
   const isNewSession = !activeThreadId || isPendingThread(activeThreadId);
+  const knowledgeBaseDraftKey =
+    currentUserId != null && resolvedAgentId && activeThreadId && !isNewSession
+      ? JSON.stringify([currentUserId, resolvedAgentId, activeThreadId])
+      : null;
   const composerTouchedRef = useRef(false);
   const [selectedConnectors, setSelectedConnectors] = useState<string[]>([]);
   const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<
@@ -108,8 +115,8 @@ export function useChatComposerResources(
   }, [resolvedAgentId]);
 
   useEffect(() => {
-    if (isNewSession) composerTouchedRef.current = false;
-  }, [isNewSession]);
+    composerTouchedRef.current = false;
+  }, [activeThreadId, currentUserId, isNewSession]);
 
   // Auto = omit turn model; backend applies the expert default.
   useEffect(() => {
@@ -263,28 +270,27 @@ export function useChatComposerResources(
             (expertKnowledgeBaseIds ?? []).filter((id) => allowed.has(id)),
           );
           setSelectedKnowledgeBaseIds((previous) => {
-            const base = resolveInitialConnectors({
-              // resolver is selection-generic (string ids)
-              prev: previous,
-              saved: resolvedAgentId
-                ? loadSavedKnowledgeBaseIds(resolvedAgentId)
-                : [],
-              hasSaved: resolvedAgentId
-                ? hasSavedKnowledgeBaseIds(resolvedAgentId)
-                : false,
-              defaults,
-              allowed,
-              ignorePrev: isNewSession && !composerTouchedRef.current,
-              ignoreSaved: isNewSession,
-              preferPrev: composerTouchedRef.current,
-            });
-            return pendingId &&
-              allowed.has(pendingId) &&
-              !base.includes(pendingId)
-              ? [...base, pendingId]
-              : base;
+            if (composerTouchedRef.current) {
+              return pendingId &&
+                allowed.has(pendingId) &&
+                !previous.includes(pendingId)
+                ? [...previous, pendingId]
+                : previous;
+            }
+            if (isNewSession) {
+              return withDefaultOpenKnowledgeBases(
+                pendingId && allowed.has(pendingId) ? [pendingId] : [],
+                defaults,
+              );
+            }
+            // Existing threads restore via threadKbKey / the per-tab draft /
+            // saved per-agent prefs in the draft effect below.
+            return previous;
           });
-          if (pendingId) consumePendingAttachKnowledgeBaseId();
+          // Existing threads consume the pending attachment when restoring history.
+          if (pendingId && (isNewSession || composerTouchedRef.current)) {
+            consumePendingAttachKnowledgeBaseId();
+          }
         });
       })
       .catch(() => {
@@ -294,6 +300,76 @@ export function useChatComposerResources(
       cancelled = true;
     };
   }, [resolvedAgentId, currentUserId, isNewSession, expertKbKey, teamHost]);
+
+  useEffect(() => {
+    if (isNewSession) return;
+    const draft = knowledgeBaseDraftKey
+      ? loadKnowledgeBaseDraft(knowledgeBaseDraftKey)
+      : null;
+    // Once a user message records the draft, history becomes authoritative again.
+    if (
+      knowledgeBaseDraftKey &&
+      draft &&
+      threadKbKey != null &&
+      draft.join("\0") === threadKbKey
+    ) {
+      saveKnowledgeBaseDraft(knowledgeBaseDraftKey, null);
+    }
+    if (composerTouchedRef.current) return;
+    if (!chatKnowledgeBases) {
+      setSelectedKnowledgeBaseIds(draft ?? []);
+      return;
+    }
+    if (threadKbKey === undefined && draft === null) {
+      // Wait for history before treating an existing thread as empty.
+      setSelectedKnowledgeBaseIds([]);
+      return;
+    }
+
+    const allowed = new Set(chatKnowledgeBases.map((base) => base.id));
+    const ids = (
+      draft ??
+      (threadKbKey != null
+        ? threadKbKey.split("\0")
+        : // No user message recorded yet: fall back to the per-agent saved
+          // preference, else owned/expert defaults.
+          resolveInitialConnectors({
+            // resolver is selection-generic (string ids)
+            prev: [],
+            saved: resolvedAgentId
+              ? loadSavedKnowledgeBaseIds(resolvedAgentId)
+              : [],
+            hasSaved: resolvedAgentId
+              ? hasSavedKnowledgeBaseIds(resolvedAgentId)
+              : false,
+            defaults: withDefaultOpenKnowledgeBases(
+              chatKnowledgeBases
+                .filter(
+                  (base) =>
+                    base.default_open && base.owner_user_id === currentUserId,
+                )
+                .map((base) => base.id),
+              expertKbKey.split("\0").filter((id) => allowed.has(id)),
+            ),
+            allowed,
+          }))
+    ).filter((id) => allowed.has(id));
+    const pendingId = consumePendingAttachKnowledgeBaseId();
+    if (pendingId && allowed.has(pendingId) && !ids.includes(pendingId)) {
+      ids.push(pendingId);
+      if (knowledgeBaseDraftKey)
+        saveKnowledgeBaseDraft(knowledgeBaseDraftKey, ids);
+    }
+    setSelectedKnowledgeBaseIds(ids);
+  }, [
+    activeThreadId,
+    threadKbKey,
+    chatKnowledgeBases,
+    isNewSession,
+    currentUserId,
+    expertKbKey,
+    knowledgeBaseDraftKey,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -368,15 +444,16 @@ export function useChatComposerResources(
 
   const handleKnowledgeBaseIdsChange = useCallback(
     (ids: string[]) => {
-      if (teamHost) {
-        setSelectedKnowledgeBaseIds([]);
-        return;
-      }
       composerTouchedRef.current = true;
       setSelectedKnowledgeBaseIds(ids);
-      if (resolvedAgentId) saveKnowledgeBaseIds(resolvedAgentId, ids);
+      if (knowledgeBaseDraftKey)
+        saveKnowledgeBaseDraft(knowledgeBaseDraftKey, ids);
+      // Only remember non-empty selections per agent; an explicit empty is a
+      // per-tab draft choice and should not hide defaults in other threads.
+      if (resolvedAgentId && ids.length)
+        saveKnowledgeBaseIds(resolvedAgentId, ids);
     },
-    [resolvedAgentId, teamHost],
+    [resolvedAgentId, teamHost, knowledgeBaseDraftKey],
   );
 
   const handleModelChange = useCallback(

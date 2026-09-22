@@ -32,6 +32,7 @@ def build_composer_context(
     target_agent_ids: list[str] | None,
     model_ref: str | None,
     default_model: str | None,
+    knowledge_base_ids: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """Snapshot of per-turn composer selections for history display chips.
 
@@ -46,6 +47,8 @@ def build_composer_context(
         ctx["connectors"] = list(mcp_servers)
     if skills:
         ctx["skills"] = list(skills)
+    if knowledge_base_ids is not None:
+        ctx["knowledgeBaseIds"] = list(knowledge_base_ids)
     if target_agent_ids:
         ctx["targetAgents"] = [str(x) for x in target_agent_ids]
     model = (model_ref or "").strip()
