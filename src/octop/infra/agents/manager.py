@@ -377,6 +377,7 @@ class AgentManager:
         # one thread interleave LangGraph checkpoint writes.
         self._thread_execution_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._active_invocations: dict[str, int] = {}
+        self._stream_cancellations: dict[tuple[str, str], set[asyncio.Event]] = {}
         self._invocation_waiters: dict[str, int] = {}
         self._history_backfills: dict[str, asyncio.Event] = {}
         self._reload_dirty: set[str] = set()
@@ -1214,11 +1215,22 @@ class AgentManager:
             self._active_invocations.pop(agent_id, None)
 
     @asynccontextmanager
-    async def _track_invocation(self, agent_id: str) -> AsyncIterator[None]:
+    async def _track_invocation(
+        self, agent_id: str, thread_id: str | None = None
+    ) -> AsyncIterator[asyncio.Event]:
         await self._begin_invocation(agent_id)
+        cancelled = asyncio.Event()
+        key = (agent_id, thread_id) if thread_id else None
+        if key is not None:
+            self._stream_cancellations.setdefault(key, set()).add(cancelled)
         try:
-            yield
+            yield cancelled
         finally:
+            if key is not None:
+                active = self._stream_cancellations[key]
+                active.discard(cancelled)
+                if not active:
+                    del self._stream_cancellations[key]
             self._end_invocation(agent_id)
 
     async def stream(self, agent_id: str, request: dict[str, Any]) -> AsyncIterator[Any]:
@@ -1229,13 +1241,15 @@ class AgentManager:
         thread_id = str(request.get("thread_id") or "")
         async with (
             self._thread_execution_lock(agent_id, thread_id),
-            self._track_invocation(agent_id),
+            self._track_invocation(agent_id, thread_id) as cancelled,
         ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
             with hitl_thread_scope(thread_id_from_request(req)):
                 async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
                     yield chunk
+            if cancelled.is_set():
+                yield {"type": "octop_stream_cancelled"}
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
@@ -1263,7 +1277,7 @@ class AgentManager:
             raise self._unavailable_error(agent_id)
         async with (
             self._thread_execution_lock(agent_id, thread_id),
-            self._track_invocation(agent_id),
+            self._track_invocation(agent_id, thread_id) as cancelled,
         ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             with hitl_thread_scope(thread_id):
@@ -1271,12 +1285,16 @@ class AgentManager:
                     agent_id, thread_id, decisions
                 ):
                     yield chunk
+            if cancelled.is_set():
+                yield {"type": "octop_stream_cancelled"}
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     def cancel_stream(self, agent_id: str, thread_id: str) -> None:
         """Signal octop-harness to stop the active stream for *(agent_id, thread_id)*."""
         if self._harness_manager is not None:
             self._harness_manager.cancel(agent_id, thread_id)
+            for cancelled in self._stream_cancellations.get((agent_id, thread_id), ()):
+                cancelled.set()
 
     def get_thread_model(self, agent_id: str, thread_id: str) -> str | None:
         if self._harness_manager is None:

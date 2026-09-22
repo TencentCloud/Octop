@@ -2170,3 +2170,46 @@ async def test_stream_and_resume_hitl_serialize_per_thread(
     await turn
     await resume
     assert peak == 1
+
+
+@pytest.mark.parametrize("resume", [False, True])
+@pytest.mark.parametrize("ending", ["cancel", "error", "close", "normal"])
+async def test_stream_cancellation_belongs_only_to_active_invocation(manager, resume, ending):
+
+    async def harness_stream(*_args, **_kwargs):
+        yield {"type": "token", "content": "partial"}
+        if ending == "error":
+            raise ValueError("stream failed")
+
+    harness = MagicMock()
+    harness.stream = harness.resume_hitl = harness_stream
+    manager._harness_manager = harness
+
+    def invoke(thread_id="t"):
+        return (
+            manager.resume_hitl("a", thread_id, [])
+            if resume
+            else manager.stream("a", {"thread_id": thread_id})
+        )
+
+    # An idle stop must neither accumulate keys nor cancel the next turn.
+    manager.cancel_stream("a", "t")
+    assert not manager._stream_cancellations
+    stream = invoke()
+    assert (await anext(stream))["content"] == "partial"
+    if ending == "close":
+        await stream.aclose()
+    elif ending == "error":
+        with pytest.raises(ValueError, match="stream failed"):
+            await anext(stream)
+    elif ending == "cancel":
+        other = invoke("other")
+        await anext(other)
+        manager.cancel_stream("a", "t")
+        assert [chunk async for chunk in other] == []
+        assert [chunk async for chunk in stream] == [{"type": "octop_stream_cancelled"}]
+        assert [chunk async for chunk in invoke()] == [{"type": "token", "content": "partial"}]
+    else:
+        assert [chunk async for chunk in stream] == []
+    assert not manager._stream_cancellations
+    assert not manager._active_invocations
