@@ -617,7 +617,8 @@
   },
   "cron": {
     "history": {
-      "executed": "任务{cron_id} :{name} 执行."
+      "executed": "任务{cron_id} :{name} 执行.",
+      "failed": "自动化任务 {cron_id}「{name}」执行失败。请在 Octop 中打开自动化任务，查看错误详情后重试。"
     }
   },
   "agents": {

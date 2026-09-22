@@ -11,8 +11,16 @@ from langchain_core.messages import AIMessage, HumanMessage
 from octop.i18n import tr
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.gateway.process import build_harness_request
-from octop.infra.gateway.process.history_projection import TurnHistoryTracker, message_inputs
-from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
+from octop.infra.gateway.process.history_projection import (
+    TurnHistoryTracker,
+    live_message_inputs,
+    message_inputs,
+)
+from octop.infra.gateway.process.message_keys import (
+    COMPOSER_CTX_KEY,
+    STREAM_ERROR_FLAG,
+    build_composer_context,
+)
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
@@ -75,10 +83,14 @@ class CronDeliveryService:
                 raise ValueError(
                     f"session {command.session_key!r} does not belong to user {command.user_id!r}"
                 )
-            if command.task_type == "text":
-                await self._deliver_text(command, session)
-            else:
-                await self._deliver_agent(command, session)
+            try:
+                if command.task_type == "text":
+                    await self._deliver_text(command, session)
+                else:
+                    await self._deliver_agent(command, session)
+            except Exception:
+                await self._record_failure(command, session)
+                raise
 
         await self._gateway.run_in_session(
             command.agent_id,
@@ -168,6 +180,60 @@ class CronDeliveryService:
             title_source=command.prompt,
         )
         await self._notify_best_effort(session, command.agent_id, outbound)
+
+    async def _record_failure(
+        self,
+        command: CronDeliveryCommand,
+        session: SessionRow,
+    ) -> None:
+        """Deliver a safe failure notice and persist it for dashboard history."""
+        locale = resolve_user_locale(
+            user_repo=self._repos.user_repo,
+            user_id=session.user_id,
+            channel_type=session.channel_type,
+        )
+        text = tr(
+            "cron.history.failed",
+            locale,
+            cron_id=command.cron_id,
+            name=command.cron_name,
+        )
+        message = AIMessage(
+            content=text,
+            id=f"cron:{new_ulid()}:error",
+            additional_kwargs={STREAM_ERROR_FLAG: True},
+        )
+        if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD:
+            projected = live_message_inputs([message], dedupe_missing_ids=True)
+            try:
+                harness = self._agent_manager.get_agent(command.agent_id)
+                appended = await harness.aappend_messages(session.thread_id, [message])
+                projected = message_inputs(appended, dedupe_missing_ids=True) or projected
+            except Exception:
+                logger.warning(
+                    "failed to append cron failure checkpoint for thread=%s",
+                    session.thread_id,
+                    exc_info=True,
+                )
+            self._project_best_effort(session.thread_id, projected)
+        try:
+            await self._gateway.push_session_text(
+                session,
+                text,
+                title_source=command.prompt,
+            )
+        except Exception:
+            if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD:
+                # History is already durable; keep its metadata visible even
+                # when the live dashboard push itself is unavailable.
+                self._gateway.thread_registry.touch_last_active(session.thread_id)
+                self._gateway.thread_registry.set_title_if_null(session.thread_id, command.prompt)
+            logger.warning(
+                "failed to push cron failure for thread=%s",
+                session.thread_id,
+                exc_info=True,
+            )
+        await self._notify_best_effort(session, command.agent_id, text)
 
     async def _build_agent_request(
         self,
