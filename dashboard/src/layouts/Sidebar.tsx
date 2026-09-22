@@ -395,7 +395,9 @@ export default function Sidebar({
   const showChatRailExpand = !isMinimal && !chatSidebarOpen;
 
   const isRailCollapsed = collapsed && !isMobile;
-  const wordmarkSrc = isDark ? "/logo_horizontal_white.png" : "/logo_horizontal_dark.png";
+  const wordmarkSrc = isDark
+    ? "/logo_horizontal_white.png"
+    : "/logo_horizontal_dark.png";
 
   const selectMinimalPane = useCallback(
     (pane: MinimalNavPane, opts?: { expand?: boolean }) => {
@@ -627,7 +629,6 @@ export default function Sidebar({
           height: "auto",
           width: EXPANDED_WIDTH,
           boxSizing: "border-box",
-          paddingTop: "env(safe-area-inset-top, 0px)",
           paddingLeft: "env(safe-area-inset-left, 0px)",
           background: "var(--fn-sidebar-bg)",
           borderRight: "1px solid var(--fn-sidebar-border)",

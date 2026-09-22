@@ -181,8 +181,8 @@ export default function MainLayout() {
           style={{
             height: "100%",
             boxSizing: "border-box",
-            /* iOS PWA: notch / landscape sides. Bottom is handled per-surface. */
-            paddingTop: "env(safe-area-inset-top, 0px)",
+            /* iOS PWA landscape sides. Top is owned by Header (#664/#746),
+               bottom is handled per-surface. */
             paddingLeft: "env(safe-area-inset-left, 0px)",
             paddingRight: "env(safe-area-inset-right, 0px)",
             display: "flex",

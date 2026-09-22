@@ -231,9 +231,6 @@ export default function LoginPage() {
           "max(24px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px))",
         background: "var(--fn-bg-layout)",
         transition: "background var(--fn-transition)",
-        boxSizing: "border-box",
-        padding:
-          "max(24px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px))",
       }}
     >
       <div
@@ -253,7 +250,9 @@ export default function LoginPage() {
         }}
       >
         <img
-          src={isDark ? "/logo_horizontal_white.png" : "/logo_horizontal_dark.png"}
+          src={
+            isDark ? "/logo_horizontal_white.png" : "/logo_horizontal_dark.png"
+          }
           alt="Octop"
           style={{
             height: 48,
