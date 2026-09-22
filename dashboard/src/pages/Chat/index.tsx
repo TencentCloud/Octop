@@ -72,6 +72,7 @@ import {
 } from "../../utils/sharedExpert";
 import { isTeamAgent } from "../../utils/teamAgent";
 import ChatDockPanels from "./components/ChatDockPanels";
+import type { ChatDockAddTabHandlers } from "./components/ChatDockPanel";
 import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
 import { ChatAgentProfileProvider } from "./ChatAgentProfileContext";
 import {
@@ -386,7 +387,9 @@ function ChatPageInner() {
     openFileList,
     openFileAt,
     openKnowledgeCitation,
+    openWorkspaceTab,
     openBrowserTab,
+    openTerminalTab,
     toggleBrowserPanel,
     toggleWorkspacePanel,
     toggleTerminalPanel,
@@ -397,38 +400,72 @@ function ChatPageInner() {
   } = useChatDockPanel(isMobile, resolvedAgentId);
 
   const chromeCheckInFlightRef = useRef(false);
-  const handleToggleBrowserPanel = useCallback(async () => {
-    // A live session means Chrome is already running — skip the probe.
-    if (browserSessionId) {
-      toggleBrowserPanel();
-      return;
-    }
-    if (chromeCheckInFlightRef.current) return;
-    chromeCheckInFlightRef.current = true;
-    try {
-      const env = await browserApi.checkEnvStatus();
-      if (shouldJumpToChromeInstall(env)) {
-        showConfirmModal(
-          {
-            title: t("browserWorkspace.chromeMissingTitle"),
-            content: t("browserWorkspace.chromeMissingJumpToInstall"),
-            okText: t("common.confirm"),
-            cancelText: t("common.cancel"),
-            onOk: () => {
-              navigate(WORKBENCH_BROWSER_PATH);
-            },
-          },
-          { isMobile },
-        );
-        return;
+  const ensureChromeThen = useCallback(
+    async (then: () => void) => {
+      // A live session means Chrome is already running — skip the probe.
+      if (!browserSessionId) {
+        if (chromeCheckInFlightRef.current) return;
+        chromeCheckInFlightRef.current = true;
+        try {
+          const env = await browserApi.checkEnvStatus();
+          if (shouldJumpToChromeInstall(env)) {
+            showConfirmModal(
+              {
+                title: t("browserWorkspace.chromeMissingTitle"),
+                content: t("browserWorkspace.chromeMissingJumpToInstall"),
+                okText: t("common.confirm"),
+                cancelText: t("common.cancel"),
+                onOk: () => {
+                  navigate(WORKBENCH_BROWSER_PATH);
+                },
+              },
+              { isMobile },
+            );
+            return;
+          }
+        } catch {
+          // Probe failed — keep the existing open-panel behavior.
+        } finally {
+          chromeCheckInFlightRef.current = false;
+        }
       }
-    } catch {
-      // Probe failed — keep the existing open-panel behavior.
-    } finally {
-      chromeCheckInFlightRef.current = false;
+      then();
+    },
+    [browserSessionId, isMobile, navigate, t],
+  );
+
+  const handleToggleBrowserPanel = useCallback(() => {
+    void ensureChromeThen(toggleBrowserPanel);
+  }, [ensureChromeThen, toggleBrowserPanel]);
+
+  const handleOpenBrowserTab = useCallback(() => {
+    void ensureChromeThen(openBrowserTab);
+  }, [ensureChromeThen, openBrowserTab]);
+
+  const dockAddTab = useMemo((): ChatDockAddTabHandlers => {
+    const handlers: ChatDockAddTabHandlers = {
+      onOpenBrowser: handleOpenBrowserTab,
+    };
+    if (!sharedExpertViewer) {
+      handlers.onOpenWorkspace = openWorkspaceTab;
+      handlers.workspaceDisabled = !agentChatReady;
+      handlers.workspaceDisabledHint = t("workspace.requiresRunning");
+      handlers.onOpenFiles = openFileList;
     }
-    toggleBrowserPanel();
-  }, [browserSessionId, isMobile, navigate, t, toggleBrowserPanel]);
+    if (canTerminal) {
+      handlers.onOpenTerminal = openTerminalTab;
+    }
+    return handlers;
+  }, [
+    agentChatReady,
+    canTerminal,
+    handleOpenBrowserTab,
+    openFileList,
+    openTerminalTab,
+    openWorkspaceTab,
+    sharedExpertViewer,
+    t,
+  ]);
 
   const closeToolUiPanel = useCallback(
     (callId: string) => {
@@ -1558,6 +1595,7 @@ function ChatPageInner() {
             onModeChange={handleDockModeChange}
             onClose={handleDockClose}
             onResizeStart={dockHandleResizeStart}
+            addTab={dockAddTab}
           />
 
           {!sharedExpertViewer && (

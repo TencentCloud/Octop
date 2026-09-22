@@ -1480,6 +1480,7 @@
     "citationDeepLinkFailed": "未找到该知识库文档",
     "citationScrollTop": "回到顶部",
     "dockFileList": "文件变更",
+    "dockAddTab": "添加面板",
     "expertSharedBadge": "共享",
     "dockFileListEmpty": "暂无工具生成或发送的文件",
     "dockFileListCount": "{{count}} 个文件",

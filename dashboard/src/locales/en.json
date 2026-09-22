@@ -1480,6 +1480,7 @@
     "citationDeepLinkFailed": "Could not find that knowledge document",
     "citationScrollTop": "Back to top",
     "dockFileList": "File changes",
+    "dockAddTab": "Add panel",
     "expertSharedBadge": "Shared",
     "dockFileListEmpty": "No files from tools yet",
     "dockFileListCount": "{{count}} files",
