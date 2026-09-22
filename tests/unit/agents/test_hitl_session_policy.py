@@ -122,7 +122,8 @@ async def test_resume_hitl_binds_thread_scope() -> None:
             yield {}
 
     manager = AgentManager.__new__(AgentManager)
-    manager._harness_manager = SimpleNamespace(resume_hitl=fake_resume)
+    manager._harness_manager = SimpleNamespace(resume_hitl=fake_resume, shared_factory=None)
+    manager._providers = SimpleNamespace(build_harness_configs=lambda: [])
     manager._history_backfills = {}
     manager._invocation_waiters = {}
     manager._active_invocations = {}

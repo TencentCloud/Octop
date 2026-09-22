@@ -1212,6 +1212,28 @@ class AgentManager:
         finally:
             self._end_invocation(agent_id)
 
+    async def _reconcile_providers_from_db(self) -> None:
+        """Apply provider rows this process never saw written.
+
+        ``octop provider create/delete`` edits the same database with no channel
+        back to a running server, and :meth:`boot` builds the harness model
+        factory once, so a request can pass the DB-side model check and then fail
+        to resolve the same ref from the factory (#952). Only a real diff
+        re-registers providers, since that is what evicts cached chat models; a
+        server that booted without any usable provider has no factory at all, and
+        this is what builds one.
+        """
+        harness_manager = self._harness_manager
+        if harness_manager is None:
+            return
+        providers = self._providers.build_harness_configs()
+        factory = harness_manager.shared_factory
+        if factory is not None:
+            stored = {cfg.id: cfg for cfg in providers}
+            if stored == {cfg.id: cfg for cfg in factory.provider_configs()}:
+                return
+        sync_providers_to_harness(harness_manager, providers, shared_factory=factory)
+
     async def stream(self, agent_id: str, request: dict[str, Any]) -> AsyncIterator[Any]:
         """Stream harness chunks (Langfuse tracing handled inside harness-agent)."""
         if self._harness_manager is None:
@@ -1222,6 +1244,7 @@ class AgentManager:
             self._thread_execution_lock(agent_id, thread_id),
             self._track_invocation(agent_id),
         ):
+            await self._reconcile_providers_from_db()
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
             with hitl_thread_scope(thread_id_from_request(req)):
@@ -1234,6 +1257,7 @@ class AgentManager:
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
         async with self._track_invocation(agent_id):
+            await self._reconcile_providers_from_db()
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
             with hitl_thread_scope(thread_id_from_request(req)):
@@ -1256,6 +1280,7 @@ class AgentManager:
             self._thread_execution_lock(agent_id, thread_id),
             self._track_invocation(agent_id),
         ):
+            await self._reconcile_providers_from_db()
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             with hitl_thread_scope(thread_id):
                 async for chunk in self._harness_manager.resume_hitl(

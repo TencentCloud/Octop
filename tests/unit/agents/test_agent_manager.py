@@ -2158,7 +2158,9 @@ async def test_stream_and_resume_hitl_serialize_per_thread(
         inside -= 1
         yield {"type": "token", "content": "resumed"}
 
-    manager._harness_manager = SimpleNamespace(stream=_stream, resume_hitl=_resume)
+    manager._harness_manager = SimpleNamespace(
+        stream=_stream, resume_hitl=_resume, shared_factory=None
+    )
 
     turn = asyncio.create_task(_collect_async(manager.stream("01AGENT", {"thread_id": "thr-1"})))
     await entered.wait()

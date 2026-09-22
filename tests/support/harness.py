@@ -29,19 +29,38 @@ def _sync_fake_skill_dirs(agent: FakeHarnessAgent, config: Any) -> None:
     agent.config.skill_package_roots = roots or None
 
 
+class FakeSharedModelFactory:
+    """Provider registry half of harness's shared model factory.
+
+    Octop reads ``provider_configs()`` to detect config drift, so the fake has to
+    answer it with the same snapshot semantics as the real factory.
+    """
+
+    def __init__(self) -> None:
+        self._providers: dict[str, Any] = {}
+
+    def provider_configs(self) -> list[Any]:
+        return list(self._providers.values())
+
+
 def _wire_add_provider(mock_manager: MagicMock) -> None:
     def _add_provider(provider: Any) -> None:
         mock_manager._providers.append(provider)
         if mock_manager._shared_factory is None:
-            factory = MagicMock()
-            factory._providers = {provider.id: provider}
+            factory = FakeSharedModelFactory()
             mock_manager._shared_factory = factory
             mock_manager.shared_factory = factory
         else:
-            mock_manager._shared_factory._providers[provider.id] = provider
+            factory = mock_manager._shared_factory
+        factory._providers[provider.id] = provider
+
+    def _remove_provider(provider_id: str) -> None:
+        factory = mock_manager._shared_factory
+        if factory is not None:
+            factory._providers.pop(provider_id, None)
 
     mock_manager.add_provider = MagicMock(side_effect=_add_provider)
-    mock_manager.remove_provider = MagicMock()
+    mock_manager.remove_provider = MagicMock(side_effect=_remove_provider)
 
 
 def build_harness_manager_mock(
