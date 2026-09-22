@@ -128,3 +128,26 @@ def test_quoted_value_with_inner_quote_does_not_swallow_following_lines() -> Non
     text = 'MALFORMED="abc"def\nNEXT=1\n'
 
     assert parse_env_text(text) == {"MALFORMED": '"abc"def', "NEXT": "1"}
+
+
+def test_utf8_bom_env_file_loads_every_key(tmp_path: Path) -> None:
+    """A BOM must not swallow the first entry (Windows editors write one)."""
+    path = tmp_path / "env"
+    path.write_bytes("\ufeffCAPTCHA_SECRET=alpha\nTAVILY_API_KEY=tvly-abc\n".encode("utf-8"))
+
+    assert load_env_file(path) == {"CAPTCHA_SECRET": "alpha", "TAVILY_API_KEY": "tvly-abc"}
+
+
+def test_utf8_bom_env_file_survives_a_round_trip_save(tmp_path: Path) -> None:
+    """Settings rewrites the whole list it read back, so a dropped key is deleted for good.
+
+    Mirrors ``PUT /api/envs``: ``load_env_file`` → edit one value → ``save_env_file``.
+    """
+    path = tmp_path / "env"
+    path.write_bytes("\ufeffCAPTCHA_SECRET=alpha\nTAVILY_API_KEY=tvly-abc\n".encode("utf-8"))
+
+    values = load_env_file(path)
+    values["TAVILY_API_KEY"] = "tvly-edited"
+    save_env_file(path, values)
+
+    assert load_env_file(path) == {"CAPTCHA_SECRET": "alpha", "TAVILY_API_KEY": "tvly-edited"}
