@@ -879,6 +879,7 @@ export function ProviderConfigModal({
         kind: "openai",
         api_key: apiKey,
         base_url: draftBaseUrl || provider.base_url,
+        name: provider.name,
       });
       if (!result.ok) {
         message.error(
