@@ -28,7 +28,7 @@ _INT_FORMAT = "#,##0"
 def _zoneinfo(timezone: str) -> ZoneInfo:
     try:
         return ZoneInfo(timezone)
-    except ZoneInfoNotFoundError:
+    except (ZoneInfoNotFoundError, ValueError):
         return ZoneInfo("UTC")
 
 

@@ -17,6 +17,7 @@
 ### 修复
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
+- 保存个人偏好里的时区时，路径形式的值（如 `/etc/localtime`、`./Asia/Shanghai`）不再返回 500：`zoneinfo` 对绝对路径与含 `..` 的键抛 `ValueError`（`ZoneInfoNotFoundError` 才是 `KeyError` 子类），现与未知时区一样按 400 提示「timezone must be a valid IANA timezone」
 
 ## [1.0.2b6] - 2026-10-04
 
