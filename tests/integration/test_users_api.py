@@ -405,3 +405,83 @@ async def test_admin_can_set_max_agents_and_block_create(env):
         json={"name": "expert-three"},
     )
     assert third.status_code == 201, third.text
+
+
+async def _user_id_by_name(c, auth, username: str) -> int:
+    listed = (await c.get("/api/users", headers=auth)).json()
+    return next(int(u["id"]) for u in listed if u["username"] == username)
+
+
+async def test_delegated_user_manager_cannot_promote_self(env):
+    """``users`` delegates user management; it must not mint administrators."""
+    from tests.support.auth import create_user
+
+    c, srv, auth = env
+    helper_auth = await create_user(c, auth, username="helper_self", permissions=["users"])
+    me = (await c.get("/api/auth/me", headers=helper_auth)).json()
+
+    r = await c.patch(f"/api/users/{me['id']}", headers=helper_auth, json={"role": "admin"})
+    assert r.status_code == 403, r.text
+    assert str(srv.user_manager.get_row(me["id"]).role) == "user"
+
+
+async def test_delegated_user_manager_cannot_promote_others(env):
+    from tests.support.auth import create_user
+
+    c, srv, auth = env
+    await create_user(c, auth, username="peer_to_promote")
+    helper_auth = await create_user(c, auth, username="helper_peer", permissions=["users"])
+    peer_id = await _user_id_by_name(c, auth, "peer_to_promote")
+
+    r = await c.patch(f"/api/users/{peer_id}", headers=helper_auth, json={"role": "admin"})
+    assert r.status_code == 403, r.text
+    assert str(srv.user_manager.get_row(peer_id).role) == "user"
+
+
+async def test_delegated_user_manager_cannot_take_over_admin_account(env):
+    """Resetting an administrator's password is an admin login; delegation must not allow it."""
+    from tests.support.auth import create_user
+
+    c, _srv, auth = env
+    admin_id = (await c.get("/api/auth/me", headers=auth)).json()["id"]
+    helper_auth = await create_user(c, auth, username="helper_takeover", permissions=["users"])
+
+    r = await c.post(
+        f"/api/users/{admin_id}/reset-password",
+        headers=helper_auth,
+        json={"new_password": "EvilPass123"},
+    )
+    assert r.status_code == 403, r.text
+
+    r = await c.delete(f"/api/users/{admin_id}", headers=helper_auth)
+    assert r.status_code == 403, r.text
+
+
+async def test_delegated_user_manager_still_edits_regular_users(env):
+    """The dashboard sends ``role`` on every save; a no-op write must keep working."""
+    from tests.support.auth import create_user
+
+    c, _srv, auth = env
+    await create_user(c, auth, username="peer_editable")
+    helper_auth = await create_user(c, auth, username="helper_edit", permissions=["users"])
+    peer_id = await _user_id_by_name(c, auth, "peer_editable")
+
+    r = await c.patch(
+        f"/api/users/{peer_id}",
+        headers=helper_auth,
+        json={"display_name": "Renamed by helper", "role": "user", "permissions": []},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["display_name"] == "Renamed by helper"
+
+
+async def test_admin_can_still_promote_regular_user(env):
+    from tests.support.auth import create_user
+
+    c, srv, auth = env
+    await create_user(c, auth, username="peer_admin")
+    peer_id = await _user_id_by_name(c, auth, "peer_admin")
+
+    r = await c.patch(f"/api/users/{peer_id}", headers=auth, json={"role": "admin"})
+    assert r.status_code == 200, r.text
+    assert str(srv.user_manager.get_row(peer_id).role) == "admin"
