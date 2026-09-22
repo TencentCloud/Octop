@@ -10,6 +10,7 @@ import type {
   TokenUsage,
   CallEntry,
 } from "../../../api/types";
+import type { HitlSessionPolicy } from "../../../api/types/hitl";
 import * as chatStore from "./chatStore";
 import { shouldBlockHistoryRefresh } from "./wsResumeGate";
 import {
@@ -714,9 +715,11 @@ async function loadThreadHistory(
   const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE } = await import(
     "../../../api/modules/octopThreads"
   );
-  const { syncSessionArtifacts, syncSessionConversationMode } = await import(
-    "./useSessions"
-  );
+  const {
+    syncSessionArtifacts,
+    syncSessionConversationMode,
+    syncSessionHitlPolicy,
+  } = await import("./useSessions");
   const limit = params.limit ?? CHAT_HISTORY_PAGE_SIZE;
   const offset = params.offset ?? 0;
   const history = await octopThreadsApi.history(agentId, threadId, {
@@ -737,6 +740,7 @@ async function loadThreadHistory(
       history.conversation_mode,
       history.pending_plan_path,
     );
+    syncSessionHitlPolicy(threadId, history.hitl_policy);
     chatStore.setPendingPlanPath(threadId, history.pending_plan_path);
   }
   const messages = injectPendingHitlMessage(
@@ -855,6 +859,7 @@ export function useChat(
       reasoningMode?: "auto" | "enabled" | "disabled",
       reasoningEffort?: string | null,
       conversationMode?: "ask" | "plan" | "craft" | null,
+      hitlPolicy?: HitlSessionPolicy | null,
     ) => {
       const key = storeKey || stableSessionId;
 
@@ -888,6 +893,7 @@ export function useChat(
         reasoningMode,
         reasoningEffort,
         conversationMode,
+        hitlPolicy,
       );
     },
     [stableSessionId],
@@ -1134,6 +1140,7 @@ export function useChat(
       decisions: Array<{ type: string; message?: string }>,
       storeKey?: string,
       dismissed?: boolean,
+      hitlPolicy?: HitlSessionPolicy,
     ) => {
       if (!agentId) return;
       const key = storeKey || stableSessionId;
@@ -1149,6 +1156,7 @@ export function useChat(
           void refreshHistory(threadId);
         },
         dismissed,
+        hitlPolicy,
       );
     },
     [agentId, stableSessionId, refreshHistory],

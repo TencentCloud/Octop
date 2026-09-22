@@ -53,7 +53,11 @@ import {
   accountDisplayName,
   accountInitials,
 } from "../utils/accountDisplayName";
-import { extractAskQuestions, isAskHitl } from "../../../api/types/hitl";
+import {
+  extractAskQuestions,
+  isAskHitl,
+  type HitlDecisionHandler,
+} from "../../../api/types/hitl";
 import styles from "../index.module.less";
 import {
   DefaultToolRenderer,
@@ -82,9 +86,7 @@ interface MessageBubbleProps {
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
-  onHitlDecision?: (
-    decisions: Array<{ type: string; message?: string }>,
-  ) => void;
+  onHitlDecision?: HitlDecisionHandler;
 
   /** When true, the outer bubble uses reduced spacing (part of a group). */
   compact?: boolean;
@@ -662,6 +664,7 @@ function MessageBubble({
           <HitlApprovalCard
             actions={actions}
             status={hitlStatus}
+            resolution={message.hitlData.resolution}
             onDecision={onHitlDecision}
           />
         </div>

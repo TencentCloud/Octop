@@ -1804,6 +1804,48 @@ async def test_update_config_json_cannot_change_system_files_path(
 
 
 @pytest.mark.asyncio
+async def test_update_config_json_cannot_move_the_workspace(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``workspace_dir`` is an internal layout knob too; a partial update must not move it.
+
+    Rewriting it silently relocates the agent's workspace: a scoped or container agent then
+    resolves to the classic layout and loses sight of its skills, sessions and generated files.
+    """
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    row = await manager.create(AgentCreateSpec(name="wsdir-fixed"), defer_bootstrap=True)
+    monkeypatch.setattr(manager, "_schedule_reload", lambda _aid: None)
+    scoped = str(manager.paths.root / "sandbox-root" / "ws" / row.agent_id)
+    # An agent created against a scoped/container root stores that workspace in its config.
+    manager._repos.agent_repo.update_config(  # noqa: SLF001
+        agent_id=row.agent_id,
+        config_json=json.dumps({**manager.get_config(row.agent_id), "workspace_dir": scoped}),
+    )
+    assert manager.get_config(row.agent_id).get("workspace_dir") == scoped
+
+    # A third-party PATCH that only carries the fields it manages.
+    await manager.update_config_json(row.agent_id, json.dumps({"foo": 1}))
+
+    assert manager.get_config(row.agent_id).get("workspace_dir") == scoped
+    assert manager.resolve_workspace_dir(row.agent_id) == Path(scoped)
+
+
+@pytest.mark.asyncio
+async def test_internal_persist_can_still_set_the_workspace(manager: AgentManager) -> None:
+    """The internal writer must keep writing ``workspace_dir`` (no over-pinning)."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    row = await manager.create(AgentCreateSpec(name="wsdir-internal"), defer_bootstrap=True)
+    other = str(manager.paths.root / "other-ws" / row.agent_id)
+    cfg = manager.get_config(row.agent_id)
+    cfg["workspace_dir"] = other
+    manager.persist_harness_config(row.agent_id, cfg)
+
+    assert manager.get_config(row.agent_id).get("workspace_dir") == other
+
+
+@pytest.mark.asyncio
 async def test_reload_agent_does_not_block_event_loop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

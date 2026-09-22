@@ -2350,6 +2350,12 @@
   transform: scale(1.1);
 }
 
+.colorOption:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
 .colorOptionActive {
   border-color: var(--fn-color-brand);
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.2);
@@ -2380,6 +2386,11 @@
 .iconOption:hover {
   border-color: var(--fn-color-brand);
   background: var(--fn-sidebar-item-hover);
+}
+
+.iconOption:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* "无图标" 按钮：文字宽度自适应，避免溢出固定 28px 的图标框 */

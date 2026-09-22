@@ -12,13 +12,11 @@ describe("ConversationModePicker", () => {
   it("selects a mode from the menu", async () => {
     const onChange = vi.fn();
     render(
-      <ConversationModePicker
-        compact
-        conversationMode="craft"
-        onChange={onChange}
-      />,
+      <ConversationModePicker conversationMode="craft" onChange={onChange} />,
     );
-    fireEvent.click(screen.getByTestId("conversation-mode-picker"));
+    const trigger = screen.getByTestId("conversation-mode-picker");
+    expect(trigger).not.toHaveTextContent("chat.conversationMode.craft");
+    fireEvent.click(trigger);
     const plan = await screen.findByText("chat.conversationMode.plan");
     expect(plan.closest("button")).toHaveTextContent(
       "chat.conversationMode.planHint",

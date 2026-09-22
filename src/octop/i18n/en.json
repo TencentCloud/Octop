@@ -602,7 +602,13 @@
         "sk": "SK",
         "agent_id": "Agent ID",
         "host": "Broker Host"
-      }
+      },
+      "discord_invalid_token": "Discord rejected the Bot Token. Reset it on the Bot page and update the configuration.",
+      "discord_intents_required": "Enable Message Content Intent on the Discord application Bot page.",
+      "discord_connect_timeout": "Discord connection timed out. Check the network and HTTP proxy settings.",
+      "discord_connection_failed": "Discord connection failed. Check the network, proxy and bot configuration.",
+      "discord_disconnected": "Discord is disconnected or reconnecting.",
+      "discord_proxy_auth_invalid": "Proxy authentication must use user:password."
     }
   },
   "threads": {
