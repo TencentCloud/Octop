@@ -6,6 +6,7 @@ import getpass
 import json
 import os
 import shutil
+import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -264,6 +265,59 @@ def test_start_service_restarts_systemd_when_apply_unit(
     calls.clear()
     service_mod.start_service(runtime, apply_unit=False)
     assert calls == [["start", "octop"]]
+
+
+def _fake_launchctl(
+    monkeypatch: pytest.MonkeyPatch,
+    results: dict[tuple[str, ...], int],
+) -> list[tuple[str, ...]]:
+    calls: list[tuple[str, ...]] = []
+
+    def _run(_scope: str, *args: str) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        return subprocess.CompletedProcess(list(args), results.get(args, 0), stdout="", stderr="")
+
+    monkeypatch.setattr(service_mod, "_launchctl_run", _run)
+    monkeypatch.setattr(service_mod, "_wait_for_startup", lambda: None)
+    return calls
+
+
+def test_start_service_launchd_kickstarts_without_probing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = replace(_runtime(tmp_path), mode="launchd")
+    calls = _fake_launchctl(monkeypatch, {})
+
+    service_mod.start_service(runtime)
+    assert calls == [("kickstart", "-k", launchd_domain(runtime.scope))]
+
+
+def test_start_service_launchd_bootstraps_after_stop(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = replace(_runtime(tmp_path), mode="launchd")
+    domain = launchd_domain(runtime.scope)
+    # `service stop` bootouts the label, so kickstart and print both fail.
+    calls = _fake_launchctl(
+        monkeypatch,
+        {("kickstart", "-k", domain): 113, ("print", domain): 113},
+    )
+
+    service_mod.start_service(runtime)
+    assert [c[0] for c in calls] == ["kickstart", "print", "bootstrap"]
+    assert calls[2][1] == launchd_bootstrap_target(runtime.scope)
+
+
+def test_start_service_launchd_reports_kickstart_failure_when_loaded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = replace(_runtime(tmp_path), mode="launchd")
+    domain = launchd_domain(runtime.scope)
+    calls = _fake_launchctl(monkeypatch, {("kickstart", "-k", domain): 113, ("print", domain): 0})
+
+    with pytest.raises(RuntimeError, match="start failed"):
+        service_mod.start_service(runtime)
+    assert [c[0] for c in calls] == ["kickstart", "print"]
 
 
 def test_restart_service_refreshes_unit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -745,6 +745,11 @@ def _wait_for_startup() -> None:
     time.sleep(_STARTUP_GRACE_SECONDS)
 
 
+def _launchd_is_loaded(scope: ServiceScope) -> bool:
+    """Report whether the service label is currently loaded in its launchd domain."""
+    return _launchctl_run(scope, "print", launchd_domain(scope)).returncode == 0
+
+
 def start_service(runtime: ServiceRuntime, *, apply_unit: bool = False) -> None:
     """Start the service.
 
@@ -757,6 +762,13 @@ def start_service(runtime: ServiceRuntime, *, apply_unit: bool = False) -> None:
         proc = _systemd_run(runtime, verb, SERVICE_NAME)
     else:
         proc = _launchctl_run(runtime.scope, "kickstart", "-k", launchd_domain(runtime.scope))
+        if proc.returncode != 0 and not _launchd_is_loaded(runtime.scope):
+            # `service stop` bootouts the label, so `kickstart` has nothing to
+            # bounce: load the plist back from disk first, like restart_service
+            # does after its own bootout.
+            _launchd_bootstrap(runtime)
+            _wait_for_startup()
+            return
     _cmd_ok(proc, "start failed")
     _wait_for_startup()
 
