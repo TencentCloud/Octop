@@ -38,35 +38,17 @@ function ModeGlyph({ mode }: { mode: ConversationMode }) {
 }
 
 interface ConversationModePickerProps {
-  compact?: boolean;
   conversationMode: ConversationMode;
   onChange: (mode: ConversationMode) => void;
 }
 
 export default function ConversationModePicker({
-  compact = false,
   conversationMode,
   onChange,
 }: ConversationModePickerProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-
-  const trigger = (
-    <button
-      className={`${styles.secondaryBtn} ${
-        compact ? "" : styles.modelPickerBtn
-      } ${conversationMode !== "craft" ? styles.secondaryBtnModelActive : ""}`}
-      type="button"
-      data-testid="conversation-mode-picker"
-    >
-      <ModeGlyph mode={conversationMode} />
-      {!compact && (
-        <span className={styles.modelPickerLabel}>
-          {t(`chat.conversationMode.${conversationMode}`)}
-        </span>
-      )}
-    </button>
-  );
+  const modeLabel = t(`chat.conversationMode.${conversationMode}`);
 
   return (
     <Popover
@@ -99,16 +81,18 @@ export default function ConversationModePicker({
         </div>
       }
     >
-      {compact ? (
-        trigger
-      ) : (
-        <Tooltip
-          title={t("chat.conversationMode.picker")}
-          mouseEnterDelay={0.4}
+      <Tooltip title={modeLabel} mouseEnterDelay={0.4}>
+        <button
+          className={`${styles.secondaryBtn} ${
+            conversationMode !== "craft" ? styles.secondaryBtnModelActive : ""
+          }`}
+          type="button"
+          aria-label={`${t("chat.conversationMode.picker")}: ${modeLabel}`}
+          data-testid="conversation-mode-picker"
         >
-          {trigger}
-        </Tooltip>
-      )}
+          <ModeGlyph mode={conversationMode} />
+        </button>
+      </Tooltip>
     </Popover>
   );
 }
