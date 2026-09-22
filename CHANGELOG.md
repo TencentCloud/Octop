@@ -15,7 +15,9 @@
 ### 修复
 
 - 知识库检索的引用标记只列出真正进入上下文的文档：此前被 `char_budget` 截掉的命中仍会出现在 dashboard 展示的引用里，指向模型没看到过的来源
+- 聊天输入框对话模式与模型按钮改为仅显示图标（选中项放到 tooltip），模型选择弹框补上提供商 logo
 - 发布专家时保留源专家的公开头像（内置 SVG 或远程肖像）；仅上传过自定义图片时才走快照头像接口，不再发布后只剩默认图标
+- 专家清单生成读取技能元数据改用共享 frontmatter 解析器：模块内自带的解析只认首行 `---` 并按 `:` 逐行切分，导致 `description: >-` 折叠块被当成字面量 `'>-'`、前导 HTML 注释会让整段 frontmatter 失效——技能描述以空值/错值进入生成提示词，进而写坏专家清单的 `description` 与 `welcome_message`
 - `date:` 定时触发与 `cron:` 一样使用 `default_timezone`，裸 ISO 时间不再回落宿主系统时区
 - HITL resume 流失败时将 pending 标为 `expired`（不再像成功批准），避免错误状态误导排查
 - SQLite 写事务改用 `BEGIN IMMEDIATE`：多 worker（`octop run --workers N`）或 CLI 与服务并发写入时，先读后写的事务不再因快照过期而立即报 `database is locked`
