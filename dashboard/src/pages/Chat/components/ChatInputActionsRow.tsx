@@ -23,6 +23,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Route,
 } from "lucide-react";
 import { Tooltip, Popover, Drawer } from "antd";
 import type { ResolvedModel } from "../../../api/types";
@@ -483,7 +484,7 @@ export default function ChatInputActionsRow({
               }}
             >
               <span className={styles.modelMenuTitle}>
-                <Sparkles size={16} aria-hidden />
+                <Route size={16} aria-hidden />
                 <span className={styles.modelMenuLabel}>
                   {t("chat.modelAuto", "Auto")}
                 </span>
