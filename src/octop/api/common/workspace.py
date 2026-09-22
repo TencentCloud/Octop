@@ -94,6 +94,10 @@ def workspace_api_path(raw: str) -> str:
     text = raw.strip().replace("\\", "/")
     if not text or text == "/":
         return "."
+    # 拒绝路径穿越段（2026-09-07 修复：原只 lstrip("/")，`..` 段透传给后端
+    # 触发 500 噪音；对齐 host_dirs/knowledge relpath 的既有拒绝纪律）。
+    if any(seg == ".." for seg in text.split("/")):
+        raise OctopError(ErrorCode.FORBIDDEN, f"path traversal not allowed: {raw!r}")
     return text.lstrip("/")
 
 
