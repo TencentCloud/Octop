@@ -104,6 +104,20 @@ _AGENT_STATES_NEEDING_MODEL_RELOAD = frozenset({"failed", "created"})
 
 _HARNESS_AGENT_CONFIG_FIELDS = frozenset(item.name for item in fields(HarnessAgentConfig))
 
+# Repairing dangling tool calls re-emits the patched history through LangGraph's
+# ``messages`` stream, so those tokens are checkpoint state, not this turn's
+# answer. Their node name is the only marker the harness protocol exposes.
+_HISTORY_REPLAY_NODES = frozenset({"PatchToolCallsMiddleware.before_agent"})
+
+
+def _is_history_replay(chunk: Any) -> bool:
+    """Whether a streamed chunk is patched history replayed as fresh output."""
+    return (
+        isinstance(chunk, dict)
+        and chunk.get("type") in ("token", "reasoning")
+        and chunk.get("node") in _HISTORY_REPLAY_NODES
+    )
+
 
 def _memory_namespace(agent_id: str) -> str:
     return f"{_MEMORY_NS_PREFIX}{agent_id}"
@@ -1226,6 +1240,8 @@ class AgentManager:
             req = self._prepare_stream_request(agent_id, request)
             with hitl_thread_scope(thread_id_from_request(req)):
                 async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
+                    if _is_history_replay(chunk):
+                        continue
                     yield chunk
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 

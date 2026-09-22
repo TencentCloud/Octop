@@ -971,6 +971,66 @@ async def test_stream_applies_bootstrap_refresh_after_turn(manager: AgentManager
 
 
 @pytest.mark.asyncio
+async def test_stream_drops_history_repair_replay(manager: AgentManager) -> None:
+    """#850: patched history is checkpoint state, not this turn's streamed answer."""
+    agent_id = "AGT_REPLAY"
+    harness_manager = MagicMock()
+
+    async def fake_stream(*_args: Any, **_kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+        yield {
+            "type": "token",
+            "node": "PatchToolCallsMiddleware.before_agent",
+            "content": "OLD_REPLY",
+        }
+        yield {
+            "type": "reasoning",
+            "node": "PatchToolCallsMiddleware.before_agent",
+            "content": "OLD_REASONING",
+        }
+        yield {
+            "type": "state_update",
+            "node": "PatchToolCallsMiddleware.before_agent",
+            "data": {"messages": []},
+        }
+        yield {"type": "token", "node": "model", "content": "NEW_REPLY"}
+
+    harness_manager.stream = fake_stream
+    harness_manager.get_agent.return_value = MagicMock(agent=MagicMock())
+    manager._harness_manager = harness_manager
+
+    chunks = [chunk async for chunk in manager.stream(agent_id, {"thread_id": "thr1"})]
+
+    # only the repair node's model-output chunks are dropped; state chunks stay
+    # so the dangling tool call is still repaired.
+    assert chunks == [
+        {
+            "type": "state_update",
+            "node": "PatchToolCallsMiddleware.before_agent",
+            "data": {"messages": []},
+        },
+        {"type": "token", "node": "model", "content": "NEW_REPLY"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stream_keeps_model_that_repeats_earlier_text(manager: AgentManager) -> None:
+    """A model may legitimately quote its own earlier answer — never filter by content."""
+    agent_id = "AGT_QUOTE"
+    harness_manager = MagicMock()
+
+    async def fake_stream(*_args: Any, **_kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "node": "model", "content": "OLD_REPLY"}
+
+    harness_manager.stream = fake_stream
+    harness_manager.get_agent.return_value = MagicMock(agent=MagicMock())
+    manager._harness_manager = harness_manager
+
+    chunks = [chunk async for chunk in manager.stream(agent_id, {"thread_id": "thr1"})]
+
+    assert chunks == [{"type": "token", "node": "model", "content": "OLD_REPLY"}]
+
+
+@pytest.mark.asyncio
 async def test_history_backfill_refuses_while_agent_stream_is_active(
     manager: AgentManager,
 ) -> None:
