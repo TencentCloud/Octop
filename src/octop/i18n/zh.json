@@ -393,6 +393,7 @@
     "VOICE_KIND_UNSUPPORTED": "不支持的语音提供商。",
     "VOICE_CAPABILITY_MISMATCH": "语音能力不匹配。",
     "VOICE_PROVIDER_DISABLED": "语音提供商已禁用。",
+    "VOICE_REALTIME_UNAVAILABLE": "实时语音识别不可用，请检查腾讯云语音配置。",
     "INTERNAL_ERROR": "服务器内部错误。",
     "TLS_NOT_ELIGIBLE": "当前服务器配置不支持 TLS 证书申请。",
     "TLS_ISSUE_IN_PROGRESS": "已有证书申请任务正在进行。",
@@ -742,6 +743,18 @@
       "tencent_credentials": "腾讯云需要填写 secret_id 和 secret_key",
       "http_status": "服务商返回 HTTP {status}",
       "network_error": "网络错误：{name}"
+    },
+    "realtime": {
+      "error_4002": "实时语音识别鉴权失败，请检查 SecretId / SecretKey。",
+      "error_4003": "当前腾讯云账号尚未开通实时语音识别服务。",
+      "error_4004": "腾讯云实时语音识别的资源包额度已耗尽。",
+      "error_4005": "腾讯云账号已欠费停服，请充值后重试。",
+      "error_4006": "实时语音识别并发数超限，请稍后再试。",
+      "error_4007": "音频解码失败，请检查麦克风输入。",
+      "error_4008": "音频发送超时，请保持网络稳定。",
+      "error_4009": "实时语音识别连接已断开。",
+      "error_5000": "腾讯云服务暂时不可用，请重试。",
+      "error_unknown": "实时语音识别失败，请稍后重试。"
     },
     "tencent": {
       "AuthFailure": {

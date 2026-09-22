@@ -9,7 +9,7 @@ from typing import Any
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.voice_providers import VoiceProviderRepo, VoiceProviderRow
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.voice import adapters
+from octop.infra.voice import adapters, realtime
 from octop.infra.voice.presets import is_builtin_preset
 
 
@@ -88,6 +88,35 @@ class VoiceManager:
         name = provider_name or self.get_active()["tts"]
         kind = self.resolve(name).kind
         return "audio/wav" if kind == "mimo" else "audio/mpeg"
+
+    def realtime_stt_config(self) -> realtime.RealtimeConfig | None:
+        """Credentials for streaming STT, or ``None`` when it is not available.
+
+        Streaming only applies to Tencent Cloud, requires the ``realtime_stt``
+        switch on that provider row plus an ``app_id``, and is ignored unless the
+        provider is the active STT service.
+        """
+        try:
+            resolved = self.resolve(self.get_active()["stt"])
+        except OctopError:
+            return None
+        if resolved.kind != "tencent" or resolved.row is None:
+            return None
+        extra = resolved.row.get_extra()
+        if not extra.get("realtime_stt"):
+            return None
+        app_id = str(extra.get("app_id") or "").strip()
+        if not app_id:
+            return None
+        try:
+            secret_id, secret_key = adapters.parse_tencent_credentials(resolved.row)
+        except ValueError:
+            return None
+        return realtime.RealtimeConfig(
+            app_id=app_id,
+            secret_id=secret_id,
+            secret_key=secret_key,
+        )
 
     async def transcribe(
         self,

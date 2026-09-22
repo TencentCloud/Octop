@@ -38,7 +38,7 @@ class BrowserOnlyError(Exception):
     """Raised when the active provider must run in the browser."""
 
 
-def _parse_tencent_credentials(row: VoiceProviderRow) -> tuple[str, str]:
+def parse_tencent_credentials(row: VoiceProviderRow) -> tuple[str, str]:
     extra = row.get_extra()
     secret_id = extra.get("secret_id") or ""
     secret_key = extra.get("secret_key") or ""
@@ -163,7 +163,7 @@ async def transcribe_tencent(
     mime: str,
     language: str,
 ) -> STTResult:
-    secret_id, secret_key = _parse_tencent_credentials(row)
+    secret_id, secret_key = parse_tencent_credentials(row)
     extra = row.get_extra()
     eng = str(extra.get("eng_service_type") or "16k_zh")
     if language.lower().startswith("en"):
@@ -209,7 +209,7 @@ async def synthesize_tencent(
     voice_id: str | None,
     speed: float,
 ) -> AsyncIterator[bytes]:
-    secret_id, secret_key = _parse_tencent_credentials(row)
+    secret_id, secret_key = parse_tencent_credentials(row)
     extra = row.get_extra()
     voice_type = int(voice_id or extra.get("voice_type") or 101001)
     payload: dict[str, Any] = {
@@ -477,7 +477,7 @@ def _missing_credentials(row: VoiceProviderRow, kind: str, *, locale: str = "en"
     """Probe-time credential check; returns an error message when incomplete."""
     if kind == "tencent":
         try:
-            _parse_tencent_credentials(row)
+            parse_tencent_credentials(row)
         except ValueError:
             return voice_credentials_error(kind, locale)
         return None
