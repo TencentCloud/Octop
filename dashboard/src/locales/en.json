@@ -3932,6 +3932,7 @@
       "subtitle": "Pick an MBTI type or take a 3-minute test to unlock a unique personality!",
       "takeTest": "Take the test",
       "listSummary": "{{total}} personalities available, selected「{{selected}}」",
+      "listSummaryUnset": "{{total}} personalities available, none selected",
       "dimensions": "Dimensions",
       "behavior": "Behavior Profile",
       "applyType": "I choose you!",

@@ -4062,6 +4062,7 @@
       "subtitle": "选一个 MBTI 人格类型，或花 3 分钟做个测试，让 TA 拥有独一无二的性格！",
       "takeTest": "测一测",
       "listSummary": "当前有（{{total}}）个人格，已选中「{{selected}}」",
+      "listSummaryUnset": "当前有（{{total}}）个人格，尚未选择人格",
       "dimensions": "四维光谱",
       "behavior": "行为图鉴",
       "applyType": "就决定是你了！",
