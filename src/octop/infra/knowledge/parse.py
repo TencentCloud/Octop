@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import csv
 import io
 import json
@@ -75,12 +76,17 @@ _TEXT_ENCODINGS = ("utf-8-sig", "gb18030")
 
 
 def _read_text(path: Path) -> str:
-    """Decode a knowledge text file, preferring UTF-8 then GB18030 (GBK).
+    """Honor Unicode BOMs, otherwise prefer UTF-8 then GB18030 (GBK).
 
     ``errors='replace'`` on UTF-8 used to swallow GBK Windows documents as
     mojibake, so retrieval never saw the original Chinese text.
     """
     data = path.read_bytes()
+    # UTF-32 LE starts with the UTF-16 LE BOM, so check the longer BOM first.
+    if data.startswith((codecs.BOM_UTF32_LE, codecs.BOM_UTF32_BE)):
+        return data.decode("utf-32", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+    if data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return data.decode("utf-16", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
     for encoding in _TEXT_ENCODINGS:
         try:
             text = data.decode(encoding)

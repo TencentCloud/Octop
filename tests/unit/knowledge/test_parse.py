@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import io
 import zipfile
 from pathlib import Path
@@ -82,6 +83,32 @@ def test_parse_utf8_plain_text_still_preferred(tmp_path: Path) -> None:
     path = tmp_path / "notes.txt"
     path.write_text("café", encoding="utf-8")
     assert parse_document(path) == "café"
+
+
+@pytest.mark.parametrize(
+    ("encoding", "bom"),
+    [
+        ("utf-16-le", codecs.BOM_UTF16_LE),
+        ("utf-16-be", codecs.BOM_UTF16_BE),
+        ("utf-32-le", codecs.BOM_UTF32_LE),
+        ("utf-32-be", codecs.BOM_UTF32_BE),
+    ],
+)
+@pytest.mark.parametrize(
+    ("filename", "content", "expected"),
+    [
+        ("notes.txt", "知识库 café\r\n第二行\r", "知识库 café\n第二行\n"),
+        ("sales.tsv", "名称\t数量\r\n苹果\t2\r\n", "# sales\n名称\t数量\n苹果\t2"),
+        ("data.json", '{"名称":"苹果"}', '{\n  "名称": "苹果"\n}'),
+    ],
+)
+def test_parse_unicode_bom_documents(
+    tmp_path: Path, encoding: str, bom: bytes, filename: str, content: str, expected: str
+) -> None:
+    path = tmp_path / filename
+    path.write_bytes(bom + content.encode(encoding))
+
+    assert parse_document(path) == expected
 
 
 def test_parse_pdf_docx_and_pptx(tmp_path: Path) -> None:
