@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
 from octop.config import OctopConfig
@@ -1221,6 +1222,87 @@ def test_build_harness_config_without_default_model(manager: AgentManager) -> No
     assert cfg.name == "agent_01AGENT"
     assert cfg.system_prompt is None
     assert cfg.backend == _expected_default_backend(manager, "01AGENT")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_type", [TypeError, httpx.ReadTimeout])
+async def test_model_retry_exhaustion_fails_background_job(
+    manager: AgentManager, failure_type: type[Exception]
+) -> None:
+    from langchain.agents.middleware import ModelRetryMiddleware
+    from langchain_core.messages import AIMessage
+    from octop_harness.teams.inbox import HarnessAgentInboxManager, InboxMessage
+    from octop_harness.teams.processor import default_compose_followup
+
+    cfg = manager._build_harness_config(_row())
+    retries = [m for m in cfg.middleware or [] if isinstance(m, ModelRetryMiddleware)]
+    assert len(retries) == 1
+    assert not cfg.model_retry_enabled  # Do not nest the harness's continue-on-error retry.
+    retry = retries[0]
+    assert retry.max_retries == cfg.model_retry_max_retries
+    assert retry.initial_delay == cfg.model_retry_initial_delay
+    assert retry.max_delay == cfg.model_retry_max_delay
+    retry.initial_delay = 0
+    failure = failure_type("provider unavailable")
+    attempts = 0
+
+    async def fail(request: Any) -> Any:
+        nonlocal attempts
+        attempts += 1
+        raise failure
+
+    async def target(msg: Any) -> dict[str, Any]:
+        response = await retry.awrap_model_call(None, fail)
+        return {"messages": response.result}
+
+    # The same model call fails explicitly for direct callers, with its cause intact.
+    with pytest.raises(RuntimeError) as raised:
+        await target(None)
+    assert raised.value.__cause__ is failure
+    assert attempts == cfg.model_retry_max_retries + 1
+    attempts = 0
+
+    source = AsyncMock(return_value={"messages": [AIMessage(content="failure relayed")]})
+    processor = SimpleNamespace(
+        compose_followup=MagicMock(side_effect=default_compose_followup),
+        on_reply=AsyncMock(),
+    )
+    inbox = HarnessAgentInboxManager(call_agent=source, processor=processor, invoke_target=target)
+    msg = InboxMessage(
+        id="retry-failure",
+        target_agent_id="B",
+        source_agent_id="A",
+        source_thread_id="thread",
+        message="test",
+        user_id=1,
+    )
+    await inbox._process(msg)
+    assert attempts == cfg.model_retry_max_retries + 1
+    assert msg.status == "failed"
+    event = processor.on_reply.call_args.args[0]
+    assert event.status == "failed"
+    assert "provider unavailable" in event.error_text
+    assert processor.compose_followup.call_args.kwargs["result_text"] is None
+    assert processor.compose_followup.call_args.kwargs["error_text"] == event.error_text
+
+
+def test_model_retry_sync_failure_and_recovery(manager: AgentManager) -> None:
+    from langchain.agents.middleware import ModelResponse, ModelRetryMiddleware
+    from langchain_core.messages import AIMessage
+
+    cfg = manager._build_harness_config(_row())
+    retry = next(m for m in cfg.middleware or [] if isinstance(m, ModelRetryMiddleware))
+    retry.initial_delay = 0
+    failure = TypeError("model failed")
+    handler = MagicMock(side_effect=failure)
+    with pytest.raises(RuntimeError) as raised:
+        retry.wrap_model_call(None, handler)
+    assert raised.value.__cause__ is failure
+    assert handler.call_count == cfg.model_retry_max_retries + 1
+    response = ModelResponse(result=[AIMessage(content="recovered")])
+    handler = MagicMock(side_effect=[failure, response])
+    assert retry.wrap_model_call(None, handler) is response
+    assert handler.call_count == 2
 
 
 def test_build_harness_config_auto_expert_falls_back_to_first_model(
