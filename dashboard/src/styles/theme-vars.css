@@ -135,8 +135,8 @@ html[data-theme="light"] {
 
   /* ---- Header ---- */
   --fn-header-height: 56px;
-  --fn-header-bg: rgba(255, 255, 255, 0.95);
-  --fn-header-blur: 12px;
+  --fn-header-bg: #ffffff;
+  --fn-header-blur: 0px;
 
   /* Chat conversation title + dock (browser/file) chrome — keep in sync */
   --fn-chat-chrome-height: 57px;
@@ -285,8 +285,8 @@ html[data-theme="dark"] {
 
   /* ---- Header ---- */
   --fn-header-height: 56px;
-  --fn-header-bg: rgba(14, 14, 14, 0.9);
-  --fn-header-blur: 12px;
+  --fn-header-bg: #0e0e0e;
+  --fn-header-blur: 0px;
   --fn-chat-chrome-height: 57px;
   --fn-chat-divider: var(--fn-border-primary);
   --fn-chat-chrome-divider-inset: 8px;

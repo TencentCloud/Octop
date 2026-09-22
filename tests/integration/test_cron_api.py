@@ -175,11 +175,16 @@ async def test_cron_settings_returns_timezone(env: Any) -> None:
     assert r.json() == {"timezone": "Asia/Shanghai"}
 
 
-async def test_cron_examples_missing_field_is_null(env: Any) -> None:
+async def test_cron_examples_missing_field_uses_name_defaults(env: Any) -> None:
     c, _srv, alice_auth, _bob_auth, aid = env
     r = await c.get(f"/api/agents/{aid}/cron/examples", headers=alice_auth)
     assert r.status_code == 200, r.text
-    assert r.json() == {"task_examples": None}
+    examples = r.json()["task_examples"]
+    assert examples is not None
+    assert len(examples["zh"]) == 6
+    assert "bot" in examples["zh"][0]
+    assert len(examples["en"]) == 6
+    assert "bot" in examples["en"][0]
 
 
 async def test_cron_examples_reads_workspace_manifest(env: Any) -> None:

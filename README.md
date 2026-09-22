@@ -24,13 +24,13 @@
 </p>
 
 <p align="center">
-  <a href="#-highlights">Highlights</a> ·
-  <a href="#-overview">Overview</a> ·
-  <a href="#-core-technology">Core Technology</a> ·
-  <a href="#-features">Features</a> ·
-  <a href="#-roadmap">Roadmap</a> ·
-  <a href="#-quick-start">Quick Start</a> ·
-  <a href="#-contents">Contents</a>
+  <a href="#highlights">Highlights</a> ·
+  <a href="#overview">Overview</a> ·
+  <a href="#core-technology">Core Technology</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#roadmap">Roadmap</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#contents">Contents</a>
 </p>
 
 <p align="center">
@@ -41,7 +41,7 @@
 
 **Octop** is an open-source, self-hosted AI assistant. It's not just a tool — it's a digital life form that can operate in parallel. Through its multi-agent architecture, it builds an intelligent environment that is both independent and collaborative for teams, families, and individuals. Best of all, it runs entirely on your machine — the fully self-hosted design means privacy is never a compromise, while single-process startup makes the powerful web console, CLI, and IM integrations readily accessible.
 
-Chat through the Web Dashboard, Feishu, DingTalk, QQ, Discord, WeCom, or programmatic HTTP/SSE/WebSocket. Extend capabilities with the **expert library**, **Connectors** (OAuth + MCP), and **ACP** integration for IDE workflows.
+Chat through the Web Dashboard, Feishu, DingTalk, QQ, Telegram, WeCom, or programmatic HTTP/SSE/WebSocket. Extend capabilities with the **expert library**, **Connectors** (OAuth + MCP), and **ACP** integration for IDE workflows.
 
 ## ✨ Highlights
 
@@ -63,7 +63,7 @@ Chat through the Web Dashboard, Feishu, DingTalk, QQ, Discord, WeCom, or program
 
 ## 📌 Overview
 
-Octop is a self-hosted AI assistant platform for households and small teams. It runs a single process that serves a web dashboard, a CLI, IM channels (Feishu, DingTalk, QQ, Discord, WeCom, and more), and cron automation — all sharing one control-plane database under `~/.octop/` (SQLite by default; PostgreSQL optional).
+Octop is a self-hosted AI assistant platform for households and small teams. It runs a single process that serves a web dashboard, a CLI, IM channels (Feishu, DingTalk, QQ, Telegram, WeCom, and more), and cron automation — all sharing one control-plane database under `~/.octop/` (SQLite by default; PostgreSQL optional).
 
 > Octop's design goal: keep every conversation, workspace, and credential on your own machine, while giving each user a personal team of specialized agents they can switch between per task.
 
@@ -116,7 +116,7 @@ Instead of an external queue or message broker, Octop routes every surface — W
 - Workspace backends: local disk, COS, S3, and other remote stores
 
 ### Channels & automation
-- IM channels: Feishu, DingTalk, QQ, Discord, WeCom, and more
+- IM channels: Feishu, DingTalk, QQ, Telegram, WeCom, and more
 - Proactive cron jobs with natural-language and slash-command triggers
 - Unified message processing across Web UI, IM, and cron surfaces
 
@@ -288,29 +288,29 @@ See [`.env.example`](.env.example) for the full list.
 
 ## 📑 Contents
 
-- [Highlights](#-highlights)
-- [Overview](#-overview)
-- [Core Technology](#-core-technology)
-- [Features](#-features)
-- [Roadmap](#-roadmap)
-- [Quick Start](#-quick-start)
+- [Highlights](#highlights)
+- [Overview](#overview)
+- [Core Technology](#core-technology)
+- [Features](#features)
+- [Roadmap](#roadmap)
+- [Quick Start](#quick-start)
 - **Deploy & Use**
-  - [Install options](#-install-options)
-  - [Configuration](#-configuration)
-  - [CLI reference](#-cli-reference)
-  - [Web dashboard](#-web-dashboard)
-  - [Data directory](#-data-directory)
+  - [Install options](#install-options)
+  - [Configuration](#configuration)
+  - [CLI reference](#cli-reference)
+  - [Web dashboard](#web-dashboard)
+  - [Data directory](#data-directory)
 - **Architecture & Dev**
-  - [Architecture](#-architecture)
-  - [Project layout](#-project-layout)
-  - [Development](#-development)
+  - [Architecture](#architecture)
+  - [Project layout](#project-layout)
+  - [Development](#development)
 - **Project Info**
-  - [Security & privacy](#-security--privacy)
-  - [Contributing](#-contributing)
-  - [Changelog](#-changelog)
-  - [Related projects](#-related-projects)
-  - [WeCom customer group](#-wecom-customer-group-cn)
-  - [License](#-license)
+  - [Security & privacy](#security--privacy)
+  - [Contributing](#contributing)
+  - [Changelog](#changelog)
+  - [Related projects](#related-projects)
+  - [WeCom customer group](#wecom-customer-group-cn)
+  - [License](#license)
 
 ## 📦 Install options
 
@@ -370,7 +370,7 @@ OpenAI-compatible APIs, DashScope (Qwen), Ollama, and other presets — configur
 | **Feishu** | App ID, App Secret |
 | **DingTalk** | App Key, App Secret |
 | **QQ** | Bot AppID, Token |
-| **Discord** | Bot Token |
+| **Telegram** | Bot Token |
 | **WeCom** | Corp ID, Agent Secret |
 | **Web Dashboard** | Enabled by default |
 
@@ -392,7 +392,15 @@ OpenAI-compatible APIs, DashScope (Qwen), Ollama, and other presets — configur
 | `octop plugin` | Install and manage third-party plugins |
 | `octop backup` | Export / restore backups |
 | `octop clean` | Remove CLI state or wipe `~/.octop/` |
+| `octop memory list` | List running agents eligible for memory maintenance; no database changes. |
+| `octop memory slim [--agent ID]` | Back up and slim SQLite memory through the running host; uses the selected agent or prompts by number. Shows terminal and dashboard progress. [Details](docs/memory-slim.md) |
+| `octop memory slim --all` | Sequentially maintain all eligible running agents, with per-agent progress; stops on the first failure. |
 | `octop update` | Check for and install updates |
+
+In signed-in dashboard or local CLI chat, `/memory slim` explains maintenance for the current agent;
+`/memory slim --all` lists your eligible agents. Add `--confirm` to start after reviewing the impact.
+Use `/memory status` for progress/results. Chat stays available until maintenance is confirmed and begins.
+External IM maintenance requires verified sender permissions and is not enabled yet.
 
 Full reference: **[docs/cli.md](docs/cli.md)**.
 

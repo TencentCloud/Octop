@@ -149,21 +149,40 @@
   white-space: nowrap;
 }
 
-.desc {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--fn-text-secondary);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-word;
-}
-
 .cardAction {
   flex-shrink: 0;
   display: flex;
   align-items: center;
+}
+
+/* Plugin tools — nested under Admin plugin cards */
+
+.pluginIdChip {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--fn-text-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pluginToolList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.pluginToolTitle {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--fn-text-primary);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 :global(html[data-theme="dark"]) {

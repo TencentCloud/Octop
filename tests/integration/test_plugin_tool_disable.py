@@ -76,7 +76,10 @@ async def test_disable_plugin_tool_via_admin_plugins_api(env_with_provider: Any)
 
     settings = await client.get(f"/api/agents/{aid}/tool-settings", headers=auth)
     assert settings.status_code == 200, settings.text
-    assert all(t["source"] == "builtin" for t in settings.json()["tools"])
+    plugin_tools = [t for t in settings.json()["tools"] if t["source"] == "plugin"]
+    echo_settings = next(t for t in plugin_tools if t["name"] == "echo_message")
+    assert echo_settings["plugin_id"] == "echo-tool"
+    assert echo_settings["enabled"] is False
 
 
 async def test_disable_plugin_tool_via_expert_tool_settings(env_with_provider: Any) -> None:

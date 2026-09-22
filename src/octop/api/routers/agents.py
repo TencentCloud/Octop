@@ -94,6 +94,12 @@ def _bootstrap_pending_for(server: Any, agent_id: str) -> bool:
 
 def _memory_maintenance_status(server: Any, agent_id: str) -> dict[str, Any] | None:
     """Phase snapshot while this agent's SQLite is being slimmed. None if idle/unloaded."""
+    runtime = server.app_runtime
+    coordinator = runtime.agent_registry.memory_slim if runtime is not None else None
+    if coordinator is not None:
+        current = coordinator.status(agent_id)
+        if isinstance(current, dict):
+            return current
     try:
         agent = server.app_runtime.agent_registry.get_agent(agent_id)
     except OctopError:
@@ -121,12 +127,22 @@ def _owner_username(server: Any, row: Any) -> str | None:
     return owner.username if owner is not None else None
 
 
+def _agent_icon_url(row: Any, cfg: dict[str, Any]) -> str | None:
+    stored = row.icon_url or cfg.get("icon_url")
+    if getattr(row, "kind", None) != "team":
+        return stored
+    from octop.infra.agents.teams import team_icon_url  # noqa: PLC0415
+
+    return team_icon_url(stored)
+
+
 def _row_dict(
     row: Any,
     *,
     viewer_user_id: int | None = None,
     owner_username: str | None = None,
     bootstrap_pending: bool | None = None,
+    server: Any | None = None,
 ) -> dict[str, Any]:
     cfg = parse_config_json(row.config_json)
     public_cfg = {
@@ -159,20 +175,32 @@ def _row_dict(
         "icon_name": row.icon_name or cfg.get("icon_name"),
         "icon_url": display_agent_icon_url(
             agent_id=row.agent_id,
-            stored=row.icon_url or cfg.get("icon_url"),
+            stored=_agent_icon_url(row, cfg),
             updated_at=getattr(row, "updated_at", None),
         ),
         "color": row.color or cfg.get("color"),
         "skill_package_ids": packages,
         "knowledge_base_ids": id_list_from_row(row, "knowledge_base_ids"),
-        "mcp_servers": id_list_from_row(row, "mcp_servers"),
+        "mcp_servers": (
+            []
+            if (getattr(row, "kind", None) or "expert") == "team"
+            else id_list_from_row(row, "mcp_servers")
+        ),
         "published_expert_id": row.published_expert_id,
         "welcome_message": welcome_from_row(row),
         "is_shared": bool(int(getattr(row, "is_shared", 0) or 0)),
         "is_owner": row.user_id is not None and row.user_id == viewer_user_id,
         "owner_username": owner_username,
+        "kind": getattr(row, "kind", None) or "expert",
         **agent_runtime_values(cfg),
     }
+    if payload["kind"] == "team":
+        registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
+        teams = getattr(registry, "teams", None)
+        if teams is not None:
+            payload["member_ids"] = teams.visible_member_ids(row.agent_id)
+        else:
+            payload["member_ids"] = []
     if bootstrap_pending is not None:
         payload["bootstrap_pending"] = bootstrap_pending
     return payload
@@ -216,6 +244,7 @@ async def list_agents(
                 viewer_user_id=user.id,
                 owner_username=username_by_id.get(r.user_id) if r.user_id is not None else None,
                 bootstrap_pending=_bootstrap_pending_for(server, r.agent_id),
+                server=server,
             )
             for r in rows
         ]
@@ -242,6 +271,7 @@ async def list_agents(
                     shared_owner_username_by_id.get(r.user_id) if r.user_id is not None else None
                 ),
                 bootstrap_pending=_bootstrap_pending_for(server, r.agent_id),
+                server=server,
             )
             for r in rows
         ],
@@ -302,6 +332,7 @@ async def create_agent(
         viewer_user_id=user.id,
         owner_username=user.username,
         bootstrap_pending=_bootstrap_pending_for(server, row.agent_id),
+        server=server,
     )
 
 
@@ -337,6 +368,7 @@ async def get_agent(
         viewer_user_id=user.id,
         owner_username=_owner_username(server, row),
         bootstrap_pending=_bootstrap_pending_for(server, agent_id),
+        server=server,
     )
 
 
@@ -407,6 +439,7 @@ async def patch_agent(
         viewer_user_id=user.id,
         owner_username=user.username,
         bootstrap_pending=_bootstrap_pending_for(server, agent_id),
+        server=server,
     )
 
 

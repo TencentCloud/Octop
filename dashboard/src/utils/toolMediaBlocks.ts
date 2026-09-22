@@ -34,6 +34,13 @@ export function needsAuthBlobFetch(url: string): boolean {
   if (/^\/api\/experts\/published\/[^/]+\/avatar$/.test(path)) return true;
   if (/^\/api\/agents\/[^/]+\/media\/preview$/.test(path)) return true;
   if (/^\/api\/agents\/[^/]+\/workspace\/download$/.test(path)) return true;
+  if (
+    /^\/api\/plugins\/(?:market\/)?[^/]+\/ui\/.+\.(svg|png|jpe?g|webp|gif)$/i.test(
+      path,
+    )
+  ) {
+    return true;
+  }
   return false;
 }
 

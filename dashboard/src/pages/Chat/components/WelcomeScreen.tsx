@@ -25,14 +25,17 @@ export interface WelcomeQuickCard {
   prompt: string;
   color: string;
   icon_name?: string | null;
+  icon_url?: string | null;
+  expertName?: string;
 }
 
 interface WelcomeScreenProps {
-  onPromptClick: (text: string) => void;
+  onPromptClick: (text: string, options?: { prefill?: boolean }) => void;
   agentName?: string | null;
   welcomeSuffix?: string | null;
   quickCards: WelcomeQuickCard[];
   hideMascot?: boolean;
+  isTeam?: boolean;
 }
 
 export default function WelcomeScreen({
@@ -41,6 +44,7 @@ export default function WelcomeScreen({
   welcomeSuffix,
   quickCards,
   hideMascot = false,
+  isTeam = false,
 }: WelcomeScreenProps) {
   const { t } = useTranslation();
   const [mascotSrc, setMascotSrc] = useState(MASCOT_PEEK);
@@ -85,11 +89,21 @@ export default function WelcomeScreen({
               }}
             />
           )}
-          <h1 className={styles.welcomeTitle}>{t("chatWelcome.greeting")}</h1>
+          <h1 className={styles.welcomeTitle}>
+            {isTeam ? t("chatWelcome.teamHeading") : t("chatWelcome.greeting")}
+          </h1>
           <p className={styles.welcomeSubtitle}>
-            {agentName ? (
+            {isTeam ? (
+              <span className={styles.welcomeSubtitleText}>
+                {welcomeSuffix ?? t("chatWelcome.descriptionWithTeamSuffix")}
+              </span>
+            ) : agentName ? (
               <>
-                <span className={styles.welcomeAgentMention}>@{agentName}</span>
+                <span className={styles.welcomeAgentLine}>
+                  <span className={styles.welcomeAgentMention}>
+                    @{agentName}
+                  </span>
+                </span>
                 <span className={styles.welcomeSubtitleText}>
                   {welcomeSuffix ?? t("chatWelcome.descriptionWithAgentSuffix")}
                 </span>

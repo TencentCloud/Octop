@@ -71,8 +71,24 @@ def parse_document(path: Path, *, ocr: OcrExtractor | None = None) -> str:
     raise ValueError(f"unsupported knowledge document extension: {suffix or '(none)'}")
 
 
+_TEXT_ENCODINGS = ("utf-8-sig", "gb18030")
+
+
 def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig", errors="replace")
+    """Decode a knowledge text file, preferring UTF-8 then GB18030 (GBK).
+
+    ``errors='replace'`` on UTF-8 used to swallow GBK Windows documents as
+    mojibake, so retrieval never saw the original Chinese text.
+    """
+    data = path.read_bytes()
+    for encoding in _TEXT_ENCODINGS:
+        try:
+            text = data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        else:
+            return text.replace("\r\n", "\n").replace("\r", "\n")
+    return data.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _parse_json(path: Path) -> str:

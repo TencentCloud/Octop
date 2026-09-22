@@ -72,6 +72,30 @@ describe("history token usage", () => {
     );
   });
 
+  it("keeps a team member speaker on the history bubble", () => {
+    const messages = convertHistoryMessages([
+      { role: "user", content: "ask the doctor", id: "u1" },
+      { role: "assistant", content: "I will ask", id: "h1" },
+      {
+        role: "assistant",
+        content: "please rest",
+        id: "m1",
+        agent_id: "doctor",
+      },
+      {
+        role: "assistant",
+        content: "that is the wrap-up",
+        id: "w1",
+        agent_id: "host",
+        team_wrapup: true,
+      },
+    ]);
+    expect(messages[1]?.speakerAgentId).toBeUndefined();
+    expect(messages[2]?.speakerAgentId).toBe("doctor");
+    expect(messages[3]?.teamWrapup).toBe(true);
+    expect(messages[3]?.speakerAgentId).toBe("host");
+  });
+
   it("maps persisted stream errors to assistant error bubbles", () => {
     const messages = convertHistoryMessages([
       { role: "user", content: "continue this", id: "u1" },

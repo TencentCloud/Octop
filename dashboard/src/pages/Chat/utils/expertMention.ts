@@ -11,6 +11,21 @@ export function expertMentionToken(name: string): string {
   return token ? `@${token}` : "";
 }
 
+/** Put ``@Name`` in front of a welcome-card prompt for the composer. */
+export function withExpertMention(prompt: string, name: string): string {
+  const token = expertMentionToken(name);
+  const body = prompt.trim();
+  if (!token) return body;
+  if (
+    textHasExpertMention(body, name) ||
+    body.startsWith(`${token} `) ||
+    body === token
+  ) {
+    return body;
+  }
+  return body ? `${token} ${body}` : `${token} `;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

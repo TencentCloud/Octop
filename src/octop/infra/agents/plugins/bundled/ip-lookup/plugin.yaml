@@ -1,0 +1,13 @@
+id: ip-lookup
+version: 0.1.0
+name: IP 查询
+description: 查询 IP 归属地与 ISP 信息
+icon: icon.svg
+group: tools
+kind: tool
+entry: main.py
+requires:
+  - httpx>=0.27
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

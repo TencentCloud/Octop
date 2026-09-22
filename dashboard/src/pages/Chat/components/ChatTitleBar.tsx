@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Dropdown } from "antd";
+import { Dropdown, Switch } from "antd";
 import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
 import {
@@ -13,8 +13,10 @@ import {
 import { showConfirmModal } from "../../../utils/confirmModal";
 import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";
+import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
 import { DESKTOP_DRAG_REGION_CLASS } from "../../../utils/desktopChrome";
+import { useCollapseThinking } from "../hooks/useCollapseThinking";
 
 interface ChatTitleBarProps {
   session: Session;
@@ -25,6 +27,7 @@ interface ChatTitleBarProps {
   onDelete: (id: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
+  isTeam?: boolean;
 }
 
 export default function ChatTitleBar({
@@ -36,8 +39,10 @@ export default function ChatTitleBar({
   onDelete,
   forkDisabled,
   forkDisabledHint,
+  isTeam = false,
 }: ChatTitleBarProps) {
   const { t } = useTranslation();
+  const [collapseThinking, setCollapseThinking] = useCollapseThinking();
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -65,6 +70,21 @@ export default function ChatTitleBar({
 
   const menuItems: MenuProps["items"] = useMemo(
     () => [
+      {
+        key: "collapse-thinking",
+        label: t("chat.collapseThinking"),
+        title: t("chat.collapseThinkingHint"),
+        icon: (
+          <Switch
+            size="small"
+            checked={collapseThinking}
+            tabIndex={-1}
+            aria-label={t("chat.collapseThinking")}
+          />
+        ),
+        onClick: () => setCollapseThinking(!collapseThinking),
+      },
+      { type: "divider" },
       {
         key: "pin",
         label: session.pinned
@@ -100,6 +120,8 @@ export default function ChatTitleBar({
       },
     ],
     [
+      collapseThinking,
+      setCollapseThinking,
       session.id,
       session.pinned,
       onPin,
@@ -141,6 +163,7 @@ export default function ChatTitleBar({
             <h1 className={styles.chatTitleText} title={title}>
               {title}
             </h1>
+            <TeamChatBadge show={isTeam} />
             {session.pinned ? (
               <Pin
                 size={13}

@@ -2,8 +2,8 @@ import { Select, Spin } from "antd";
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAgent, type OctopAgent } from "../context/AgentContext";
-import { ownedExperts } from "../utils/sharedExpert";
-import { iconForName } from "../pages/Experts/components/iconForName";
+import { ownedSoloExperts } from "../utils/sharedExpert";
+import { ExpertIcon } from "../pages/Experts/components/iconForName";
 import styles from "./AgentSelector.module.less";
 
 interface AgentSelectorProps {
@@ -18,6 +18,29 @@ function agentAccent(agent: OctopAgent): string {
   const cfg = agent.config ?? {};
   const fromConfig = typeof cfg.color === "string" ? cfg.color : null;
   return agent.color || fromConfig || "#2563eb";
+}
+
+function AgentIcon({
+  agent,
+  size,
+  className,
+  style,
+}: {
+  agent: OctopAgent;
+  size: number;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const photo = Boolean(agent.icon_url?.trim());
+  return (
+    <span className={className} style={style}>
+      <ExpertIcon
+        iconUrl={agent.icon_url}
+        iconName={agent.icon_name}
+        size={photo ? size : Math.max(12, Math.round(size * 0.55))}
+      />
+    </span>
+  );
 }
 
 function AgentChip({
@@ -38,9 +61,7 @@ function AgentChip({
       onClick={() => onSelect(agent.agent_id)}
       title={agent.description ?? agent.name}
     >
-      <span className={styles.chipIcon}>
-        {iconForName(agent.icon_name, 12)}
-      </span>
+      <AgentIcon agent={agent} size={16} className={styles.chipIcon} />
       <span className={styles.chipName}>{agent.name}</span>
       <span className={styles.stateDot} data-state={agent.state} />
     </button>
@@ -58,7 +79,7 @@ export default function AgentSelector({
 }: AgentSelectorProps) {
   const { t } = useTranslation();
   const { agents, activeAgentId, setActiveAgent, loading } = useAgent();
-  const selectable = useMemo(() => ownedExperts(agents), [agents]);
+  const selectable = useMemo(() => ownedSoloExperts(agents), [agents]);
 
   useEffect(() => {
     if (loading || selectable.length === 0) return;
@@ -120,9 +141,12 @@ export default function AgentSelector({
               value: agent.agent_id,
               label: (
                 <span className={styles.optionRow}>
-                  <span className={styles.optionIcon} style={{ color: accent }}>
-                    {iconForName(agent.icon_name, 12)}
-                  </span>
+                  <AgentIcon
+                    agent={agent}
+                    size={14}
+                    className={styles.optionIcon}
+                    style={{ color: accent }}
+                  />
                   <span className={styles.chipName}>{agent.name}</span>
                 </span>
               ),
@@ -135,9 +159,12 @@ export default function AgentSelector({
             const accent = agentAccent(agent);
             return (
               <div className={styles.optionRowMulti}>
-                <span className={styles.optionIcon} style={{ color: accent }}>
-                  {iconForName(agent.icon_name, 12)}
-                </span>
+                <AgentIcon
+                  agent={agent}
+                  size={14}
+                  className={styles.optionIcon}
+                  style={{ color: accent }}
+                />
                 <div className={styles.optionMeta}>
                   <div className={styles.optionName}>{agent.name}</div>
                   {agent.description ? (

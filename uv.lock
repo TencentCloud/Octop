@@ -1370,11 +1370,11 @@ wheels = [
 
 [[package]]
 name = "harness-memory"
-version = "0.9.10"
+version = "0.9.11"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ab/07/9adef1b44381cc83f91bcb83780d504e2986baefee5a16c967d08b929c92/harness_memory-0.9.10.tar.gz", hash = "sha256:d732ebd81e0fce44b3263f42e967895dec53d1bf7ac0efb10e7477b5920fde84", size = 1159326, upload-time = "2026-09-08T03:49:33.118Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/cc/6dbe35a4917e3edf378223e61f03a021ce48be45d6320a260d4a46af0ef6/harness_memory-0.9.11.tar.gz", hash = "sha256:b03dfa7d5543455da858732ab5edcbd7875cbfcb219b0306a56ae920ba4b8e78", size = 1189418, upload-time = "2026-09-20T09:26:41.438Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/d0/01dbdb8cf4cd3d349cc4a5c999fcf22767456d7634d965faad8a2d9ae034/harness_memory-0.9.10-py3-none-any.whl", hash = "sha256:352446508c7398a2798cc4017365b48c855bbcfd08fe2eee57dd2a6756713559", size = 366482, upload-time = "2026-09-08T03:49:30.897Z" },
+    { url = "https://files.pythonhosted.org/packages/87/82/8a0c5c6624d4bc845449f76823ce424c13802a32629fe4590cc903727d7b/harness_memory-0.9.11-py3-none-any.whl", hash = "sha256:65bb58689c537b6f9adef2b6a19b711dff226833318205ab21b7724fceb93c8f", size = 370616, upload-time = "2026-09-20T09:26:36.915Z" },
 ]
 
 [[package]]
@@ -2600,7 +2600,7 @@ requires-dist = [
     { name = "fastembed", marker = "extra == 'local-embedding'", specifier = ">=0.4" },
     { name = "harness-browser", specifier = ">=0.7.9" },
     { name = "harness-gateway", specifier = ">=0.9.8" },
-    { name = "harness-memory", specifier = ">=0.9.10" },
+    { name = "harness-memory", specifier = ">=0.9.11" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "huggingface-hub", marker = "extra == 'local-embedding'", specifier = ">=0.20" },
     { name = "josepy", specifier = ">=2.2.0" },
@@ -2612,7 +2612,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
     { name = "openpyxl", specifier = ">=3.1" },
-    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=1.0.11" },
+    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=1.0.12" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.40" },
@@ -2835,7 +2835,7 @@ wheels = [
 
 [[package]]
 name = "orcakit-harness-agent"
-version = "1.0.11"
+version = "1.0.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2853,9 +2853,9 @@ dependencies = [
     { name = "mcp" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d6/6e/f7f45fc50e4cfc7f2f1e82bf48fe0d8e24cceb207085cede9887bf265087/orcakit_harness_agent-1.0.11.tar.gz", hash = "sha256:4f1c86302fb7bfb25044f7f9c7ed0742a5e80587b436c6a93f3aca9e8acfa175", size = 1217872, upload-time = "2026-09-18T14:28:16.882Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/65/8810983d51d161c39056c6cb8b09dd0102c12eba901da1c52dfd1daa1ad5/orcakit_harness_agent-1.0.12.tar.gz", hash = "sha256:f47153eae38a99cc1c4f9256da66f5097a04071b891c454d0a1debf7dddc7741", size = 1224296, upload-time = "2026-09-20T11:58:33.223Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/2d/f4b11fe48496097ef5067b9eb2783f34bf8515e995126f3b87087420070e/orcakit_harness_agent-1.0.11-py3-none-any.whl", hash = "sha256:9cc849646047c66e7e92419603887a7f98534e768978f890bafde971cc0c38c6", size = 1447101, upload-time = "2026-09-18T14:28:12.404Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/bd/92de2bef920dce06cc31c0d5c7fa140f23f52c86f79d64fac88fff0fc73d/orcakit_harness_agent-1.0.12-py3-none-any.whl", hash = "sha256:420a6d4f37ba7318f62d44aee1bf05417d990fc4f6b30d480d55b6d1033f4d7b", size = 1453071, upload-time = "2026-09-20T11:58:30.39Z" },
 ]
 
 [package.optional-dependencies]

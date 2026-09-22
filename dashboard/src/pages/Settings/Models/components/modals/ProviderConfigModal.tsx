@@ -1,5 +1,6 @@
 /**
- * ProviderConfigModal — edit existing provider + manage models + Ollama support.
+ * ProviderConfigModal — edit existing provider + manage models + Ollama support
+ * (right-side drawer).
  *
  * Extends the original octop ProviderConfigModal with:
  *   - Embedded ModelListEditor for per-model enable/disable/add/delete
@@ -11,6 +12,7 @@ import {
   App,
   Button,
   Divider,
+  Drawer,
   Form,
   Input,
   Modal,
@@ -921,11 +923,12 @@ export function ProviderConfigModal({
   };
 
   return (
-    <Modal
+    <Drawer
       title={t("models.configureProviderTitle", { name: provider.name })}
       open={open}
-      onCancel={onClose}
+      onClose={onClose}
       width={600}
+      placement="right"
       destroyOnHidden
       footer={
         <div className={styles.modalFooter}>
@@ -1222,6 +1225,6 @@ export function ProviderConfigModal({
           </Form>
         </>
       )}
-    </Modal>
+    </Drawer>
   );
 }

@@ -31,6 +31,7 @@ from octop.infra.providers.codex_apply import (
 )
 from octop.infra.providers.codex_oauth import (
     DEVICE_POLL_TIMEOUT_S,
+    CodexOAuthDeviceCodeError,
     exchange_device_code,
     get_valid_access_token,
     poll_device_token,
@@ -403,7 +404,18 @@ async def codex_oauth_start(
     user: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    info = await asyncio.to_thread(request_device_code)
+    try:
+        info = await asyncio.to_thread(request_device_code)
+    except CodexOAuthDeviceCodeError as exc:
+        logger.warning("Codex device OAuth start failed: %s", exc.reason)
+        details: dict[str, Any] = {"reason": exc.reason}
+        if exc.upstream_status is not None:
+            details["upstream_status"] = exc.upstream_status
+        raise OctopError(
+            ErrorCode.CODEX_OAUTH_START_FAILED,
+            "codex device OAuth start failed",
+            details=details,
+        ) from exc
     state_id = new_ulid()
     server.services.settings_repo.set(
         f"codex_oauth.pending.{state_id}",

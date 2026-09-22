@@ -3,19 +3,23 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import {
-  Database,
-  HardDrive,
-  Server,
-  Folder,
-  Terminal,
-  Globe,
-  Archive,
-  Package,
-  Container,
-  Box,
-} from "lucide-react";
+import { getStorageLogo } from "../../../assets/storage";
 import { request } from "../../../api/request";
+
+function storageBrandIcon(kind: string): ReactNode {
+  const src = getStorageLogo(kind);
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      width={36}
+      height={36}
+      draggable={false}
+      style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }}
+    />
+  );
+}
 
 export interface StorageBackendRow {
   id: number;
@@ -75,7 +79,7 @@ export interface StorageTypeDef {
   descKey: string;
   /** accent color for the card */
   color: string;
-  /** lucide-react icon node */
+  /** Brand / figurative icon node */
   icon: ReactNode;
   /** ordered list of form fields relevant to this type */
   fields: StorageFieldDef[];
@@ -87,7 +91,7 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     nameKey: "storage.kindCos",
     descKey: "storage.descCos",
     color: "#0052d9",
-    icon: <Package size={20} />,
+    icon: storageBrandIcon("cos"),
     fields: [
       {
         key: "access_key",
@@ -127,7 +131,7 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     nameKey: "storage.kindS3",
     descKey: "storage.descS3",
     color: "#ff9900",
-    icon: <Archive size={20} />,
+    icon: storageBrandIcon("s3"),
     fields: [
       {
         key: "access_key",
@@ -166,7 +170,7 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     nameKey: "storage.kindOss",
     descKey: "storage.descOss",
     color: "#ff6a00",
-    icon: <HardDrive size={20} />,
+    icon: storageBrandIcon("oss"),
     fields: [
       {
         key: "access_key",
@@ -204,8 +208,8 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     kind: "obs",
     nameKey: "storage.kindObs",
     descKey: "storage.descObs",
-    color: "#c7000b",
-    icon: <Server size={20} />,
+    color: "#cf0a2c",
+    icon: storageBrandIcon("obs"),
     fields: [
       {
         key: "access_key",
@@ -244,7 +248,7 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     nameKey: "storage.kindFilesystem",
     descKey: "storage.descFilesystem",
     color: "#52c41a",
-    icon: <Folder size={20} />,
+    icon: storageBrandIcon("filesystem"),
     fields: [
       {
         key: "bucket",
@@ -260,7 +264,7 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     nameKey: "storage.kindShell",
     descKey: "storage.descShell",
     color: "#722ed1",
-    icon: <Terminal size={20} />,
+    icon: storageBrandIcon("shell"),
     fields: [
       {
         key: "bucket",
@@ -277,7 +281,7 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     nameKey: "storage.kindDocker",
     descKey: "storage.descDocker",
     color: "#2496ed",
-    icon: <Container size={20} />,
+    icon: storageBrandIcon("docker"),
     fields: [
       {
         key: "bucket",
@@ -293,7 +297,7 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     nameKey: "storage.kindOpensandbox",
     descKey: "storage.descOpensandbox",
     color: "#0f766e",
-    icon: <Box size={20} />,
+    icon: storageBrandIcon("opensandbox"),
     fields: [
       {
         key: "bucket",
@@ -325,7 +329,7 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     nameKey: "storage.kindPostgres",
     descKey: "storage.descPostgres",
     color: "#336791",
-    icon: <Database size={20} />,
+    icon: storageBrandIcon("postgres"),
     fields: [
       {
         key: "endpoint",
@@ -368,7 +372,7 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     nameKey: "storage.kindCustom",
     descKey: "storage.descCustom",
     color: "#8c8c8c",
-    icon: <Globe size={20} />,
+    icon: storageBrandIcon("custom"),
     fields: [
       {
         key: "endpoint",

@@ -27,6 +27,7 @@ from octop.infra.agents.media_generation import (
     MediaGenerationSettingsStore,
 )
 from octop.infra.agents.memory_backend import memory_backend_from_agent_config
+from octop.infra.agents.memory_slim import MemorySlimCoordinator
 from octop.infra.agents.profile import (
     dump_id_list,
     dump_skill_package_ids,
@@ -298,6 +299,8 @@ class AgentCreateSpec:
     mcp_servers: list[str] | None = None
     runtime_config: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
+    kind: str = "expert"
+    member_ids: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -347,8 +350,20 @@ class AgentManager:
         self._cron_manager: CronManager | None = None
         self._proactive_scheduler: ProactiveCareScheduler | None = None
         self._team_processor: Any | None = None
+        from octop.infra.agents.teams import TeamJobTracker, TeamService
+
+        self._team_jobs = TeamJobTracker()
+        self._teams = TeamService(
+            repos,
+            self._team_jobs,
+            workspace_for=self.workspace_for_agent,
+        )
         self._harness_manager: HarnessAgentManager | None = None
+        self.memory_slim = MemorySlimCoordinator(self)
         self._lock = asyncio.Lock()
+        # Serialize start/reload per agent so parallel provider reloads cannot
+        # double-register the same harness id ("already exists in the registry").
+        self._agent_lifecycle_locks: dict[str, asyncio.Lock] = {}
         self._active_invocations: dict[str, int] = {}
         self._invocation_waiters: dict[str, int] = {}
         self._history_backfills: dict[str, asyncio.Event] = {}
@@ -423,6 +438,12 @@ class AgentManager:
     def set_team_processor(self, team_processor: Any | None) -> None:
         """Attach harness TeamProcessor (GlobalProcessor); required before boot()."""
         self._team_processor = team_processor
+        if self._harness_manager is not None:
+            self._install_team_host_dispatch()
+
+    @property
+    def teams(self) -> Any:
+        return self._teams
 
     async def boot(self) -> None:
         self._tool_guard_rules.ensure_seeded()
@@ -441,6 +462,7 @@ class AgentManager:
                 after = getattr(proc, "record_peer_turn", None)
                 if prepare is not None or after is not None:
                     self._harness_manager.team.bind_peer_session(prepare=prepare, after=after)
+            self._install_team_host_dispatch()
             self._harness_manager.set_security_policy(self._security.harness_policy())
 
         rows = self._repos.agent_repo.list_all(include_disabled=False)
@@ -450,12 +472,14 @@ class AgentManager:
             await self._start_agent(row)
 
     async def shutdown(self) -> None:
+        await self.memory_slim.close()
         async with self._lock:
             if self._harness_manager:
                 try:
-                    self._harness_manager.close()
+                    # Drain SQLite workers before the owning event loop can close.
+                    await self._harness_manager.aclose()
                 except Exception:
-                    logger.exception("harness_manager.close() failed")
+                    logger.exception("harness_manager.aclose() failed")
                 self._harness_manager = None
 
     # ------------------------------------------------------------------
@@ -553,6 +577,11 @@ class AgentManager:
             # be user-configurable. New agents always use the default prefix.
             config.pop("system_files_path", None)
             config["system_files_path"] = DEFAULT_SYSTEM_FILES_PATH
+            if spec.is_shared and spec.kind == "team":
+                raise OctopError(
+                    ErrorCode.TEAM_NOT_SHAREABLE,
+                    "teams cannot be shared",
+                )
             profile = extract_profile_from_config(config)
             config = strip_profile_config(config)
             package_ids_json = (
@@ -565,11 +594,13 @@ class AgentManager:
                 if spec.knowledge_base_ids is not None
                 else profile.get("knowledge_base_ids")
             )
-            mcp_servers_json = (
-                dump_id_list(spec.mcp_servers)
-                if spec.mcp_servers is not None
-                else profile.get("mcp_servers")
-            )
+            if spec.kind == "team":
+                mcp_servers_json: str | None = dump_id_list([])
+            elif spec.mcp_servers is not None:
+                mcp_servers_json = dump_id_list(spec.mcp_servers)
+            else:
+                raw_mcp = profile.get("mcp_servers")
+                mcp_servers_json = raw_mcp if isinstance(raw_mcp, str) else None
             self._repos.agent_repo.create(
                 agent_id=agent_id,
                 user_id=spec.user_id,
@@ -593,6 +624,7 @@ class AgentManager:
                 ),
                 knowledge_base_ids=knowledge_ids_json,
                 mcp_servers=mcp_servers_json,
+                kind=spec.kind if spec.kind in {"expert", "team"} else "expert",
             )
             row = self._repos.agent_repo.get(agent_id)
             assert row is not None
@@ -600,13 +632,29 @@ class AgentManager:
                 self._repos.agent_repo.set_shared(agent_id, True)
                 row = self._repos.agent_repo.get(agent_id)
                 assert row is not None
-            if spec.template_name:
+            if spec.kind == "team":
+                from octop.infra.agents.teams.service import seed_team_template
+
+                try:
+                    workspace = self._backend_workspace_for_row(row)
+                    await seed_team_template(
+                        workspace,
+                        member_ids=list(spec.member_ids or []),
+                    )
+                except Exception:
+                    await self._abort_incomplete_create(agent_id)
+                    raise
+            elif spec.template_name:
                 await self._seed_expert_template(row, spec.template_name)
             if workspace_initializer is not None:
-                workspace = self._backend_workspace_for_row(row)
-                await workspace_initializer(row, workspace)
-                row = self._repos.agent_repo.get(agent_id)
-                assert row is not None
+                try:
+                    workspace = self._backend_workspace_for_row(row)
+                    await workspace_initializer(row, workspace)
+                    row = self._repos.agent_repo.get(agent_id)
+                    assert row is not None
+                except Exception:
+                    await self._abort_incomplete_create(agent_id)
+                    raise
             if defer_bootstrap:
                 self._repos.agent_repo.set_state(agent_id, "starting")
                 row = self._repos.agent_repo.get(agent_id)
@@ -616,8 +664,22 @@ class AgentManager:
                     name=f"bootstrap-agent-{agent_id}",
                 )
             else:
-                agent = await self._start_agent(row, init_workspace=True)
-                if agent is not None and spec.template_name:
+                try:
+                    agent = await self._start_agent(row, init_workspace=True)
+                except Exception:
+                    if spec.kind == "team":
+                        await self._abort_incomplete_create(agent_id)
+                    raise
+                if agent is not None and spec.kind == "team":
+                    if self._spec_is_opensandbox(self._backend_spec_for_row(row)):
+                        from octop.infra.agents.teams.service import seed_team_template
+
+                        workspace = self._backend_workspace_for_row(row)
+                        await seed_team_template(
+                            workspace,
+                            member_ids=list(spec.member_ids or []),
+                        )
+                elif agent is not None and spec.template_name:
                     if self._spec_is_opensandbox(self._backend_spec_for_row(row)):
                         await self._seed_expert_template(row, spec.template_name)
                     reload = getattr(agent, "reload_subagents", None)
@@ -629,6 +691,24 @@ class AgentManager:
             if self._proactive_scheduler is not None:
                 self._proactive_scheduler.ensure_scheduled(agent_id)
             return row
+
+    async def _abort_incomplete_create(self, agent_id: str) -> None:
+        """Best-effort rollback after a failed create. Caller holds ``_lock``."""
+        try:
+            if self._harness_manager is not None:
+                await self._harness_manager.aremove_agent(agent_id)
+        except Exception:
+            logger.exception("abort team create: harness remove failed for %s", agent_id)
+        try:
+            workspace_dir = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
+            if await asyncio.to_thread(workspace_dir.exists):
+                await asyncio.to_thread(shutil.rmtree, workspace_dir)
+        except OSError:
+            logger.exception("abort team create: rmtree failed for %s", agent_id)
+        try:
+            self._repos.agent_repo.delete(agent_id)
+        except Exception:
+            logger.exception("abort team create: db delete failed for %s", agent_id)
 
     def _preserve_system_files_path(self, agent_id: str, cfg: dict[str, Any]) -> dict[str, Any]:
         """Keep ``system_files_path`` as an internal layout control.
@@ -704,6 +784,13 @@ class AgentManager:
 
     async def set_shared(self, agent_id: str, shared: bool) -> AgentRow:
         """Persist whether other users may access this agent."""
+        existing = self._repos.agent_repo.get(agent_id)
+        if existing is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        from octop.infra.agents.teams import is_team_agent
+
+        if shared and is_team_agent(existing):
+            raise OctopError(ErrorCode.TEAM_NOT_SHAREABLE, "teams cannot be shared")
         self._repos.agent_repo.set_shared(agent_id, shared)
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
@@ -726,8 +813,17 @@ class AgentManager:
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        self._teams.assert_can_delete_agent(agent_id)
+        from octop.infra.agents.teams import is_team_agent
+
+        affected_teams: list[str] = []
         workspace_dir = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
         async with self._lock:
+            if not is_team_agent(row):
+                try:
+                    affected_teams = self._teams.drop_member(agent_id)
+                except Exception:
+                    logger.exception("failed to drop deleted expert %s from team rosters", agent_id)
             await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
             await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
         self._plugin_tool_labels.pop(agent_id, None)
@@ -740,6 +836,11 @@ class AgentManager:
         if self._proactive_scheduler is not None:
             self._proactive_scheduler.cancel(agent_id)
         self._repos.audit_repo.write(actor=ACTOR_SYSTEM, action="agent.delete", target=agent_id)
+        for team_id in affected_teams:
+            try:
+                await self.reload(team_id)
+            except Exception:
+                logger.exception("failed to reload team %s after dropping %s", team_id, agent_id)
 
     async def start(self, agent_id: str) -> None:
         """Load agent into harness runtime (no-op config merge)."""
@@ -749,15 +850,35 @@ class AgentManager:
                 raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
             await self._start_agent(row, init_workspace=False)
 
+    def _lifecycle_lock_for(self, agent_id: str) -> asyncio.Lock:
+        lock = self._agent_lifecycle_locks.get(agent_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._agent_lifecycle_locks[agent_id] = lock
+        return lock
+
+    @staticmethod
+    def _is_already_registered_error(exc: BaseException) -> bool:
+        return "already exists in the registry" in str(exc)
+
+    def _harness_agent_or_none(self, agent_id: str) -> HarnessAgent | None:
+        if self._harness_manager is None:
+            return None
+        try:
+            return self._harness_manager.get_agent(agent_id).agent
+        except KeyError:
+            return None
+
     async def stop(self, agent_id: str) -> None:
         """Unload agent from harness runtime and persist ``last_state=stopped``."""
         async with self._lock:
             row = self._repos.agent_repo.get(agent_id)
             if row is None:
                 raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-            await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
-            await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
-            self._repos.agent_repo.set_state(agent_id, "stopped", error=None)
+            async with self._lifecycle_lock_for(agent_id):
+                await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
+                await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
+                self._repos.agent_repo.set_state(agent_id, "stopped", error=None)
 
     def _quiesce_harness_memory(self, agent_id: str) -> None:
         """Stop memory GC before the harness closes the SQLite backend.
@@ -902,6 +1023,11 @@ class AgentManager:
 
     def is_bootstrapped(self, agent_id: str) -> bool:
         """Whether onboarding has completed for a running agent."""
+        from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
+
+        # Team hosts skip BOOTSTRAP.md; they are ready as soon as the row exists.
+        if is_team_agent(self.get_row(agent_id)):
+            return True
         try:
             return self.get_agent(agent_id).is_bootstrapped()
         except OctopError:
@@ -1226,8 +1352,10 @@ class AgentManager:
         connector_user_id: int | None = None,
     ) -> None:
         """Refresh connector OAuth tokens and reload harness MCP tool registrations."""
+        from octop.infra.agents.teams import is_team_agent
+
         row = self.get_row(agent_id)
-        if row is None:
+        if row is None or is_team_agent(row):
             return
         uid = self._connector_uid_for(row, connector_user_id=connector_user_id)
         if uid is None:
@@ -1388,8 +1516,10 @@ class AgentManager:
 
     def default_mcp_servers(self, agent_id: str) -> list[str]:
         """Composer MCP servers selected on the expert for new sessions."""
+        from octop.infra.agents.teams import is_team_agent
+
         row = self._repos.agent_repo.get(agent_id)
-        if row is None:
+        if row is None or is_team_agent(row):
             return []
         return id_list_from_row(row, "mcp_servers")
 
@@ -1415,6 +1545,10 @@ class AgentManager:
         Returns server names that still have no loaded tools after reload/retry.
         """
         if not names:
+            return []
+        from octop.infra.agents.teams import is_team_agent
+
+        if is_team_agent(self.get_row(agent_id)):
             return []
         agent = self.get_agent(agent_id)
         row = self.get_row(agent_id)
@@ -1599,6 +1733,8 @@ class AgentManager:
                     agent_id,
                     inst.mcp_server_name,
                 )
+        for name in server_names:
+            agent.config.mcp_server_configs.setdefault(name, {})
         inject_missing_gateway_tools(
             agent,
             svc=self._connector_svc,
@@ -1607,8 +1743,6 @@ class AgentManager:
             agent_id=agent_id,
             mcp_server_configs=agent.config.mcp_server_configs,
         )
-        for name in server_names:
-            agent.config.mcp_server_configs.setdefault(name, {})
 
     # ------------------------------------------------------------------
     # Settings persistence — push global policy into harness runtime
@@ -1891,9 +2025,14 @@ class AgentManager:
 
     def persist_mcp_servers(self, agent_id: str, mcp_servers: list[str]) -> None:
         """Persist composer connector defaults without reloading harness."""
+        from octop.infra.agents.teams import is_team_agent
+
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        if is_team_agent(row):
+            self._repos.agent_repo.update_config(agent_id, mcp_servers=dump_id_list([]))
+            return
         normalized = (
             self.validate_mcp_servers(row.user_id, mcp_servers)
             if row.user_id is not None
@@ -2160,10 +2299,31 @@ class AgentManager:
         if callable(setter):
             setter(disabled)
 
+    def strip_team_host_runtime_tools(self, agent_id: str) -> None:
+        """Drop leftover MCP / connector tools on a running team host."""
+        from octop.infra.agents.teams import is_team_agent
+
+        if not is_team_agent(self.get_row(agent_id)):
+            return
+        try:
+            agent = self.get_agent(agent_id)
+        except OctopError:
+            return
+        configs = getattr(agent.config, "mcp_server_configs", None)
+        mcp_tools = getattr(agent, "_mcp_tools", None)
+        if configs:
+            agent.config.mcp_server_configs = {}
+        if mcp_tools:
+            replace = getattr(agent, "replace_mcp_tools", None)
+            if callable(replace):
+                replace([])
+        self.sync_effective_tools_disabled(agent_id)
+
     def sync_effective_tools_disabled(self, agent_id: str) -> None:
         """Hot-sync builtin + plugin denylist derived from current agent config."""
         from harness_agent.plugins import PluginRegistry
 
+        from octop.infra.agents.teams import host_tools_disabled, is_team_agent
         from octop.infra.agents.tool_catalog import effective_tools_disabled
 
         cfg = self.get_config(agent_id)
@@ -2171,14 +2331,14 @@ class AgentManager:
             self._plugin_manager.global_enabled_map() if self._plugin_manager is not None else {}
         )
         registered = [(reg.plugin_id, reg.name) for reg in PluginRegistry().all_tools()]
-        self.sync_tools_disabled(
-            agent_id,
-            effective_tools_disabled(
-                cfg,
-                registered_plugin_tools=registered,
-                global_plugins=global_plugins,
-            ),
+        disabled = effective_tools_disabled(
+            cfg,
+            registered_plugin_tools=registered,
+            global_plugins=global_plugins,
         )
+        if is_team_agent(self.get_row(agent_id)):
+            disabled = set(host_tools_disabled(disabled))
+        self.sync_tools_disabled(agent_id, disabled)
 
     # ------------------------------------------------------------------
     # Internal — validation
@@ -2225,27 +2385,51 @@ class AgentManager:
         if self._harness_manager.shared_factory is None:
             self._repos.agent_repo.set_state(row.agent_id, "failed", error=NO_MODELS_CONFIGURED)
             return None
-        try:
-            cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
-            entry = await self._harness_manager.acreate_agent(
-                cfg,
-                agent_id=row.agent_id,
-                metadata=metadata,
-                tags=tags,
-                init_workspace=init_workspace,
-            )
-            await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
-            self._repos.agent_repo.set_state(row.agent_id, "running")
-            logger.info("Agent %s (%s) started", row.agent_id, row.name)
-            return entry.agent
-        except Exception as exc:
-            logger.exception("Failed to start agent %s", row.agent_id)
-            self._repos.agent_repo.set_state(
-                row.agent_id,
-                "failed",
-                error=format_agent_start_error(exc),
-            )
-            return None
+        async with self._lifecycle_lock_for(row.agent_id):
+            existing = self._harness_agent_or_none(row.agent_id)
+            if existing is not None:
+                # Idempotent: a concurrent reload/boot may have already registered.
+                self._repos.agent_repo.set_state(row.agent_id, "running", error=None)
+                logger.info(
+                    "Agent %s (%s) already in harness registry — skip create",
+                    row.agent_id,
+                    row.name,
+                )
+                return existing
+            try:
+                from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
+
+                cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
+                # Team hosts already have AGENTS/SOUL/MEMORY from seed_team_template.
+                # Never let harness copy builtin skills just to strip them later.
+                seed_workspace = init_workspace and not is_team_agent(row)
+                entry = await self._harness_manager.acreate_agent(
+                    cfg,
+                    agent_id=row.agent_id,
+                    metadata=metadata,
+                    tags=tags,
+                    init_workspace=seed_workspace,
+                )
+                await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
+                self._repos.agent_repo.set_state(row.agent_id, "running", error=None)
+                logger.info("Agent %s (%s) started", row.agent_id, row.name)
+                return entry.agent
+            except Exception as exc:
+                recovered = self._harness_agent_or_none(row.agent_id)
+                if recovered is not None and self._is_already_registered_error(exc):
+                    self._repos.agent_repo.set_state(row.agent_id, "running", error=None)
+                    logger.warning(
+                        "Agent %s create raced with another loader; using existing registry entry",
+                        row.agent_id,
+                    )
+                    return recovered
+                logger.exception("Failed to start agent %s", row.agent_id)
+                self._repos.agent_repo.set_state(
+                    row.agent_id,
+                    "failed",
+                    error=format_agent_start_error(exc),
+                )
+                return None
 
     async def _post_start_agent(
         self,
@@ -2255,8 +2439,11 @@ class AgentManager:
         *,
         user_display: str = "User",
     ) -> None:
+        from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
+
+        team_host = is_team_agent(row)
         uid = self._connector_uid_for(row)
-        if uid is not None:
+        if uid is not None and not team_host:
             inject_missing_gateway_tools(
                 agent,
                 svc=self._connector_svc,
@@ -2265,6 +2452,8 @@ class AgentManager:
                 agent_id=row.agent_id,
                 mcp_server_configs=cfg.mcp_server_configs,
             )
+        if team_host:
+            self.strip_team_host_runtime_tools(row.agent_id)
         tool_set: frozenset[str] = getattr(agent, "_mcp_tool_name_set", frozenset())
         logger.info(
             "Agent %s started with mcp_servers=%s mcp_tool_count=%d tools_sample=%s",
@@ -2273,35 +2462,36 @@ class AgentManager:
             len(tool_set),
             sorted(tool_set)[:8],
         )
-        ws = agent.workspace
-        try:
-            from octop.infra.agents.builtin_skills import (  # noqa: PLC0415
-                sync_octop_builtin_skills,
-            )
+        if not team_host:
+            ws = agent.workspace
+            try:
+                from octop.infra.agents.builtin_skills import (  # noqa: PLC0415
+                    sync_octop_builtin_skills,
+                )
 
-            synced_skills = await sync_octop_builtin_skills(ws)
-            logger.info(
-                "Agent %s: synced Octop built-in skills=%s",
-                row.agent_id,
-                synced_skills,
-            )
-        except Exception:
-            logger.warning(
-                "Agent %s: failed to sync Octop built-in skills",
-                row.agent_id,
-                exc_info=True,
-            )
-        if self._plugin_manager is not None:
-            agent_plugins = self.get_config(row.agent_id).get("plugins")
-            await asyncio.to_thread(
-                self._plugin_manager.sync_skills_to_workspace,
-                ws,
-                agent_plugins=agent_plugins,
-            )
+                synced_skills = await sync_octop_builtin_skills(ws)
+                logger.info(
+                    "Agent %s: synced Octop built-in skills=%s",
+                    row.agent_id,
+                    synced_skills,
+                )
+            except Exception:
+                logger.warning(
+                    "Agent %s: failed to sync Octop built-in skills",
+                    row.agent_id,
+                    exc_info=True,
+                )
+            if self._plugin_manager is not None:
+                agent_plugins = self.get_config(row.agent_id).get("plugins")
+                await asyncio.to_thread(
+                    self._plugin_manager.sync_skills_to_workspace,
+                    ws,
+                    agent_plugins=agent_plugins,
+                )
 
         # Patch config when bootstrap finishes, but defer graph recompile until
         # the in-flight turn has fully drained (sync _init_graph mid-stream segfaults).
-        if not agent.is_bootstrapped():
+        if not team_host and not agent.is_bootstrapped():
             agent_id = row.agent_id
 
             def _on_bootstrap_complete() -> None:
@@ -2509,31 +2699,40 @@ class AgentManager:
 
     async def _reload_agent(self, agent_id: str) -> None:
         assert self._harness_manager is not None
-        self._bootstrap_graph_refresh_pending.discard(agent_id)
-        row = self._repos.agent_repo.get(agent_id)
-        if not row or not row.enabled or row.last_state == "stopped":
-            await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
-            await self._harness_manager.aremove_agent(agent_id)
-            return
-        if self._harness_manager.shared_factory is None:
-            return
-        try:
-            cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
-            entry = await self._harness_manager.arebuild_agent(
-                agent_id,
-                cfg,
-                metadata=metadata,
-                tags=tags,
-            )
-            await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
-            self._repos.agent_repo.set_state(agent_id, "running", error=None)
-        except Exception as exc:
-            logger.exception("Background reload failed for agent %s", agent_id)
-            self._repos.agent_repo.set_state(
-                agent_id,
-                "failed",
-                error=format_agent_start_error(exc),
-            )
+        async with self._lifecycle_lock_for(agent_id):
+            self._bootstrap_graph_refresh_pending.discard(agent_id)
+            row = self._repos.agent_repo.get(agent_id)
+            if not row or not row.enabled or row.last_state == "stopped":
+                await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
+                await self._harness_manager.aremove_agent(agent_id)
+                return
+            if self._harness_manager.shared_factory is None:
+                return
+            try:
+                cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
+                entry = await self._harness_manager.arebuild_agent(
+                    agent_id,
+                    cfg,
+                    metadata=metadata,
+                    tags=tags,
+                )
+                await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
+                self._repos.agent_repo.set_state(agent_id, "running", error=None)
+            except Exception as exc:
+                recovered = self._harness_agent_or_none(agent_id)
+                if recovered is not None and self._is_already_registered_error(exc):
+                    self._repos.agent_repo.set_state(agent_id, "running", error=None)
+                    logger.warning(
+                        "Agent %s reload raced; keeping existing registry entry",
+                        agent_id,
+                    )
+                    return
+                logger.exception("Background reload failed for agent %s", agent_id)
+                self._repos.agent_repo.set_state(
+                    agent_id,
+                    "failed",
+                    error=format_agent_start_error(exc),
+                )
 
     def _schedule_reload(self, agent_id: str) -> None:
         """Queue a background harness reload; coalesces rapid successive updates."""
@@ -2586,11 +2785,14 @@ class AgentManager:
         metadata: dict[str, Any] = {
             "user_id": row.user_id,
             "description": row.description,
+            "display_name": row.name,
             "icon": row.icon,
             "template_name": row.template_name,
         }
         self._apply_peer_profile_metadata(metadata, row.agent_id, row.description)
         tags: list[str] = []
+        if getattr(row, "kind", None) == "team":
+            tags.append("team")
         if row.template_name:
             tags.append(row.template_name)
         return cfg, metadata, tags, user_display
@@ -2599,6 +2801,8 @@ class AgentManager:
         """Re-read description / guidance cards into a running registry entry."""
         row = self._repos.agent_repo.get(entry.agent_id)
         row_desc = row.description if row is not None else None
+        if row is not None and str(row.name or "").strip():
+            entry.metadata["display_name"] = row.name
         self._apply_peer_profile_metadata(entry.metadata, entry.agent_id, row_desc)
 
     def _apply_peer_profile_metadata(
@@ -2712,8 +2916,12 @@ class AgentManager:
             allow_ephemeral_remote=self._spec_is_opensandbox(backend),
         )
 
+        from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
+
+        team_host = is_team_agent(row)
+
         cron_tools: list[Any] | None = None
-        if self._cron_manager is not None:
+        if not team_host and self._cron_manager is not None:
             from octop.infra.cron.tools import build_cronjob_tools  # noqa: PLC0415
 
             cron_tools = build_cronjob_tools(self._cron_manager)
@@ -2722,16 +2930,18 @@ class AgentManager:
 
         from octop.infra.knowledge.tools import build_knowledge_tools  # noqa: PLC0415
 
-        knowledge_tools = build_knowledge_tools(
-            SimpleNamespace(
-                knowledge_repo=self._repos.knowledge_repo,
-                settings_repo=self._repos.settings_repo,
-                provider_repo=self._repos.provider_repo,
+        knowledge_tools: list[Any] = []
+        if not team_host:
+            knowledge_tools = build_knowledge_tools(
+                SimpleNamespace(
+                    knowledge_repo=self._repos.knowledge_repo,
+                    settings_repo=self._repos.settings_repo,
+                    provider_repo=self._repos.provider_repo,
+                )
             )
-        )
 
         mobile_tools: list[Any] = []
-        if self._config.capabilities.mobile.enabled:
+        if not team_host and self._config.capabilities.mobile.enabled:
             from octop.infra.mobile.tools import build_mobile_tools  # noqa: PLC0415
 
             mobile_tools = build_mobile_tools(
@@ -2754,18 +2964,23 @@ class AgentManager:
         agent_plugins = cfg.get("plugins")
         agent_plugins_map = agent_plugins if isinstance(agent_plugins, dict) else {}
         effective_plugins = dict(global_plugins)
-        for plugin in PluginRegistry().list_plugins():
-            if not agent_plugin_enabled(agent_plugins_map, plugin.manifest.id):
+        plugin_tools: list[Any] = []
+        if not team_host:
+            for plugin in PluginRegistry().list_plugins():
+                if not agent_plugin_enabled(agent_plugins_map, plugin.manifest.id):
+                    effective_plugins[plugin.manifest.id] = False
+            mount_plugins = expand_plugin_tools_default_on(
+                agent_plugins_map,
+                registered_tools=registered,
+                global_plugins=effective_plugins,
+            )
+            plugin_tools = build_plugin_tools(
+                agent_plugins=mount_plugins,
+                global_plugins=effective_plugins,
+            )
+        else:
+            for plugin in PluginRegistry().list_plugins():
                 effective_plugins[plugin.manifest.id] = False
-        mount_plugins = expand_plugin_tools_default_on(
-            agent_plugins_map,
-            registered_tools=registered,
-            global_plugins=effective_plugins,
-        )
-        plugin_tools = build_plugin_tools(
-            agent_plugins=mount_plugins,
-            global_plugins=effective_plugins,
-        )
         # Plugin authors may register tools with non-ASCII (e.g. Chinese) names,
         # which strict LLM tool-name APIs reject. Rewrite them to legal names
         # before binding, keeping the original in the description. Config keys
@@ -2837,70 +3052,78 @@ class AgentManager:
         acp_raw: dict[str, Any] = acp_section if isinstance(acp_section, dict) else {}
         from harness_agent.acp.models import ACPConfig
 
-        acp_user_id = row.user_id
-        if acp_user_id is None:
-            acp_user_id = self._connector_user_override.get(row.agent_id)
-        runners_dict = (
-            self._acp_settings.load_runners(acp_user_id) if acp_user_id is not None else {}
-        )
-        acp_config = ACPConfig.from_dict({"runners": runners_dict})
+        if team_host:
+            acp_raw = {}
+            acp_config = ACPConfig.from_dict({"runners": {}})
+        else:
+            acp_user_id = row.user_id
+            if acp_user_id is None:
+                acp_user_id = self._connector_user_override.get(row.agent_id)
+            runners_dict = (
+                self._acp_settings.load_runners(acp_user_id) if acp_user_id is not None else {}
+            )
+            acp_config = ACPConfig.from_dict({"runners": runners_dict})
 
         system_prompt = row.system_prompt
         memory: tuple[str, ...] | None = None
-        if not bootstrap_marker_exists(ws):
+        if not team_host and not bootstrap_marker_exists(ws):
             system_prompt = None
             memory = ()
 
-        uid = self._connector_uid_for(row)
         mcp_server_configs: dict[str, Any] = {}
-        if uid is not None:
-            mcp_server_configs = build_mcp_server_configs_for_user(
-                svc=self._connector_svc,
-                connector_repo=self._repos.connector_repo,
-                user_id=uid,
-                agent_id=row.agent_id,
-                agent_user_id=row.user_id,
-                config=self._config,
-            )
-        elif row.user_id is None:
-            logger.warning(
-                "_build_harness_config agent=%s agent.user_id=NULL and no connector_user_override — "
-                "mcp_server_configs will be empty (shared agent needs chat user id)",
-                row.agent_id,
+        if not team_host:
+            uid = self._connector_uid_for(row)
+            if uid is not None:
+                mcp_server_configs = build_mcp_server_configs_for_user(
+                    svc=self._connector_svc,
+                    connector_repo=self._repos.connector_repo,
+                    user_id=uid,
+                    agent_id=row.agent_id,
+                    agent_user_id=row.user_id,
+                    config=self._config,
+                )
+            elif row.user_id is None:
+                logger.warning(
+                    "_build_harness_config agent=%s agent.user_id=NULL and no "
+                    "connector_user_override — mcp_server_configs will be empty "
+                    "(shared agent needs chat user id)",
+                    row.agent_id,
+                )
+
+            from octop.infra.utils.env_file import (  # noqa: PLC0415
+                env_file_path,
+                load_env_file,
+                overlay_stdio_mcp_configs,
             )
 
-        from octop.infra.utils.env_file import (  # noqa: PLC0415
-            env_file_path,
-            load_env_file,
-            overlay_stdio_mcp_configs,
-        )
-
-        mcp_server_configs = overlay_stdio_mcp_configs(
-            mcp_server_configs,
-            load_env_file(env_file_path(self._paths.root)),
-        )
-
-        configured_skill_dirs = self._normalize_skills_dir_config(cfg.get("skills"))
-        package_skill_dirs = (
-            self._resolve_skill_package_dirs(row.agent_id)
-            if self._backend_supports_host_skill_packages(
-                backend,
-                workspace_dir=workspace_dir,
+            mcp_server_configs = overlay_stdio_mcp_configs(
+                mcp_server_configs,
+                load_env_file(env_file_path(self._paths.root)),
             )
-            else []
-        )
-        skill_dirs = configured_skill_dirs + package_skill_dirs
+
+        skill_dirs: list[str] = []
         plugin_skills_disabled: set[str] = set()
-        if self._plugin_manager is not None:
-            for plugin_item in self._plugin_manager.list_installed():
-                plugin_id = str(plugin_item.get("id") or "")
-                if plugin_id and (
-                    plugin_item.get("enabled", True) is False
-                    or not agent_plugin_enabled(agent_plugins_map, plugin_id)
-                ):
-                    plugin_skills_disabled.update(
-                        self._plugin_manager.plugin_skill_names(plugin_id)
-                    )
+        if not team_host:
+            configured_skill_dirs = self._normalize_skills_dir_config(cfg.get("skills"))
+            package_skill_dirs = (
+                self._resolve_skill_package_dirs(row.agent_id)
+                if self._backend_supports_host_skill_packages(
+                    backend,
+                    workspace_dir=workspace_dir,
+                )
+                else []
+            )
+            skill_dirs = configured_skill_dirs + package_skill_dirs
+            if self._plugin_manager is not None:
+                for plugin_item in self._plugin_manager.list_installed():
+                    plugin_id = str(plugin_item.get("id") or "")
+                    if plugin_id and (
+                        plugin_item.get("enabled", True) is False
+                        or not agent_plugin_enabled(agent_plugins_map, plugin_id)
+                    ):
+                        plugin_skills_disabled.update(
+                            self._plugin_manager.plugin_skill_names(plugin_id)
+                        )
 
         from octop.infra.agents.execute_env import inject_agent_execute_env  # noqa: PLC0415
 
@@ -2934,7 +3157,7 @@ class AgentManager:
             mcp_server_configs=mcp_server_configs,
             tools=merged_tools or None,
             middleware=agent_middleware or None,
-            bootstrap_enabled=True,
+            bootstrap_enabled=not team_host,
             acp_runners=acp_config.runners,
             acp_delegate_enabled=bool(acp_raw.get("tool_enabled", False)),
             skills_disabled=frozenset(skills_disabled_set(cfg) | plugin_skills_disabled),
@@ -2946,17 +3169,72 @@ class AgentManager:
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
         )
         if "tools_disabled" in _HARNESS_AGENT_CONFIG_FIELDS:
+            from octop.infra.agents.teams import host_tools_disabled
             from octop.infra.agents.tool_catalog import effective_tools_disabled
 
-            harness_cfg.tools_disabled = frozenset(
-                effective_tools_disabled(
-                    cfg,
-                    registered_plugin_tools=registered,
-                    global_plugins=global_plugins,
-                )
+            disabled = effective_tools_disabled(
+                cfg,
+                registered_plugin_tools=registered,
+                global_plugins=global_plugins,
             )
+            if team_host:
+                disabled = set(host_tools_disabled(disabled))
+            harness_cfg.tools_disabled = frozenset(disabled)
         applied = policy.apply_to_config(harness_cfg)
+        applied = self._apply_team_host_config(applied, row)
         return replace(
             applied,
             tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),
         )
+
+    def _install_team_host_dispatch(self) -> None:
+        """Team hosts always enqueue inbox work, even on harness 1.0.8 (default sync)."""
+        from octop.infra.agents.teams import is_team_agent
+        from octop.infra.agents.teams.team_manager import wire_host_dispatch
+
+        team = getattr(self._harness_manager, "team", None)
+        if team is None:
+            return
+        proc = self._team_processor
+        room = getattr(proc, "teams", proc)
+        installer = getattr(room, "install_host_dispatch", None)
+        if callable(installer):
+            installer(team)
+            return
+        wire_host_dispatch(
+            team,
+            is_team=lambda agent_id: is_team_agent(self.get_row(agent_id)),
+            stream_peer=getattr(room, "stream_peer_to_room", None)
+            or getattr(proc, "stream_team_peer_to_room", None),
+            stream_host=getattr(room, "stream_host_followup_to_room", None),
+            take_prompt=getattr(room, "take_peer_prompt", None)
+            or getattr(proc, "take_team_peer_prompt", None),
+        )
+
+    def _apply_team_host_config(self, cfg: HarnessAgentConfig, row: Any) -> HarnessAgentConfig:
+        from octop.infra.agents.teams import host_tools_disabled, is_team_agent
+
+        if not is_team_agent(row):
+            if "peer_invoke_mode" in _HARNESS_AGENT_CONFIG_FIELDS:
+                return replace(cfg, peer_invoke_mode="sync")
+            return cfg
+        updates: dict[str, Any] = {}
+        if "tools_disabled" in _HARNESS_AGENT_CONFIG_FIELDS:
+            updates["tools_disabled"] = host_tools_disabled(
+                frozenset(getattr(cfg, "tools_disabled", ()) or ())
+            )
+        if "team_peers" in _HARNESS_AGENT_CONFIG_FIELDS:
+            updates["team_peers"] = tuple(self._teams.member_ids(row.agent_id))
+        if "peer_invoke_mode" in _HARNESS_AGENT_CONFIG_FIELDS:
+            updates["peer_invoke_mode"] = "async"
+        if "mcp_server_configs" in _HARNESS_AGENT_CONFIG_FIELDS:
+            updates["mcp_server_configs"] = {}
+        if "skills_dir" in _HARNESS_AGENT_CONFIG_FIELDS:
+            updates["skills_dir"] = None
+        if "tools" in _HARNESS_AGENT_CONFIG_FIELDS:
+            updates["tools"] = None
+        if "subagents_auto_load" in _HARNESS_AGENT_CONFIG_FIELDS:
+            updates["subagents_auto_load"] = False
+        if "bootstrap_enabled" in _HARNESS_AGENT_CONFIG_FIELDS:
+            updates["bootstrap_enabled"] = False
+        return replace(cfg, **updates) if updates else cfg

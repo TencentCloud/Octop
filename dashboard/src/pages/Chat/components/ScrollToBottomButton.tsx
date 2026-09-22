@@ -83,7 +83,7 @@ export default function ScrollToBottomButton({
       aria-hidden={!actuallyVisible}
       tabIndex={actuallyVisible ? 0 : -1}
     >
-      <ChevronDown size={16} strokeWidth={2.5} aria-hidden />
+      <ChevronDown size={14} strokeWidth={2} aria-hidden />
       <span>{label}</span>
     </button>
   );

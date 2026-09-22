@@ -45,6 +45,7 @@ import {
   Utensils,
   Coffee,
   ShoppingBag,
+  Users,
 } from "lucide-react";
 import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import { needsAuthBlobFetch } from "../../../utils/toolMediaBlocks";
@@ -54,6 +55,7 @@ const iconMap: Record<string, (size: number) => ReactNode> = {
   globe: (size) => <Globe size={size} />,
   "book-open": (size) => <BookOpen size={size} />,
   user: (size) => <User size={size} />,
+  users: (size) => <Users size={size} />,
   rocket: (size) => <Rocket size={size} />,
   fingerprint: (size) => <Fingerprint size={size} />,
   "file-text": (size) => <FileText size={size} />,

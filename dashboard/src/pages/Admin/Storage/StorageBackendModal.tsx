@@ -180,7 +180,10 @@ export function StorageBackendDrawer({
         body.config_json = JSON.stringify(cfg);
       }
 
-      const backendName = isEdit ? editing!.name : values.name.trim();
+      const backendName = values.name.trim();
+      if (isEdit) {
+        body.name = backendName;
+      }
 
       let backendId: number | undefined = isEdit ? editing!.id : undefined;
 
@@ -406,16 +409,14 @@ export function StorageBackendDrawer({
           }
         }}
       >
-        {/* Name — create only */}
-        {!isEdit && (
-          <Form.Item
-            name="name"
-            label={t("storage.nameLabel")}
-            rules={[{ required: true, message: t("storage.pleaseEnterName") }]}
-          >
-            <Input placeholder={t("storage.namePlaceholder")} />
-          </Form.Item>
-        )}
+        {/* Name */}
+        <Form.Item
+          name="name"
+          label={t("storage.nameLabel")}
+          rules={[{ required: true, message: t("storage.pleaseEnterName") }]}
+        >
+          <Input placeholder={t("storage.namePlaceholder")} />
+        </Form.Item>
 
         {/* Kind selector — locked when editing or presetKind provided */}
         <Form.Item

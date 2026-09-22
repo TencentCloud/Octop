@@ -27,7 +27,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages
 from octop.infra.history.service import HistoryArchive
-from octop.infra.trajectory.service import TrajectoryService
+from octop.infra.history.trajectory.service import TrajectoryService
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
@@ -137,6 +137,8 @@ async def list_threads(
             "model_ref": r.model_ref,
             "reasoning_mode": r.reasoning_mode,
             "reasoning_effort": r.reasoning_effort,
+            "conversation_mode": r.conversation_mode or "craft",
+            "pending_plan_path": r.pending_plan_path,
             "folder": r.folder,
             "tags": list(r.tags),
             "artifacts": artifacts_for_response(r.artifacts, workspace_dir),
@@ -425,6 +427,8 @@ async def get_thread_history(
         "turn_active": server.app_runtime.gateway.ws_hub.is_turn_active(thread_id),
         "hitl_pending": hitl_pending,
         "artifacts": artifacts_for_response(row.artifacts, workspace_dir),
+        "conversation_mode": row.conversation_mode or "craft",
+        "pending_plan_path": row.pending_plan_path,
     }
 
 
@@ -548,7 +552,12 @@ async def patch_thread(
 ) -> dict[str, Any]:
     """Update sidebar metadata or sticky composer settings for a thread."""
     row = _require_thread(server, agent_id, thread_id, user, as_user)
-    composer_fields = {"model_ref", "reasoning_mode", "reasoning_effort"}
+    composer_fields = {
+        "model_ref",
+        "reasoning_mode",
+        "reasoning_effort",
+        "conversation_mode",
+    }
     if (
         body.title is None
         and body.pinned is None
@@ -563,6 +572,8 @@ async def patch_thread(
             "model_ref": row.model_ref,
             "reasoning_mode": row.reasoning_mode,
             "reasoning_effort": row.reasoning_effort,
+            "conversation_mode": row.conversation_mode or "craft",
+            "pending_plan_path": row.pending_plan_path,
             "folder": row.folder,
             "tags": list(row.tags),
         }
@@ -578,6 +589,8 @@ async def patch_thread(
     model_ref: str | None | object = ...
     reasoning_mode: str | None | object = ...
     reasoning_effort: str | None | object = ...
+    conversation_mode: str | None | object = ...
+    pending_plan_path: str | None | object = ...
     if "model_ref" in body.model_fields_set:
         model_ref = (body.model_ref or "").strip() or None
         if (
@@ -592,11 +605,15 @@ async def patch_thread(
         reasoning_mode = body.reasoning_mode
     if "reasoning_effort" in body.model_fields_set:
         reasoning_effort = (body.reasoning_effort or "").strip().lower() or None
+    if "conversation_mode" in body.model_fields_set:
+        conversation_mode = body.conversation_mode or "craft"
     registry.update_composer(
         thread_id,
         model_ref=model_ref,
         reasoning_mode=reasoning_mode,
         reasoning_effort=reasoning_effort,
+        conversation_mode=conversation_mode,
+        pending_plan_path=pending_plan_path,
     )
     updated = registry.get_thread(thread_id)
     assert updated is not None
@@ -607,6 +624,8 @@ async def patch_thread(
         "model_ref": updated.model_ref,
         "reasoning_mode": updated.reasoning_mode,
         "reasoning_effort": updated.reasoning_effort,
+        "conversation_mode": updated.conversation_mode or "craft",
+        "pending_plan_path": updated.pending_plan_path,
         "folder": updated.folder,
         "tags": list(updated.tags),
     }

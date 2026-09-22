@@ -11,9 +11,11 @@ from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
 from octop.api.deps import current_user, get_server
 from octop.i18n.domains.tools import tool_display_name
 from octop.infra.agents.plugin_tool_defaults import merge_plugins_tool_settings
+from octop.infra.agents.teams import HOST_TOOLS_ALLOWED, is_team_agent
 from octop.infra.agents.tool_catalog import (
     BUILTIN_TOOL_CATALOG,
     CRITICAL_TOOLS,
+    agent_plugin_enabled,
     builtin_tool_available,
     normalize_tools_disabled,
 )
@@ -34,6 +36,8 @@ class ToolSettingsItem(BaseModel):
     disableable: bool
     available: bool = True
     plugin_id: str | None = None
+    plugin_name: str | None = None
+    plugin_icon: str | None = None
 
 
 class ToolSettingsResponse(BaseModel):
@@ -60,9 +64,100 @@ class ToolSettingPatchBody(BaseModel):
     plugin_id: str | None = None
 
 
+def _plugin_manager(server: OctopServer) -> Any:
+    mgr = server.plugin_manager
+    if mgr is None:
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "plugin manager not initialized")
+    return mgr
+
+
+def _plugin_tool_label(
+    name: str,
+    locale: str,
+    *,
+    description: str | None = None,
+) -> str:
+    """Prefer i18n / original CJK name / short description over raw tool id."""
+    labeled = tool_display_name(name, locale)
+    if labeled != name:
+        return labeled
+    if description:
+        from octop.infra.agents.plugin_tool_names import (  # noqa: PLC0415
+            extract_original_plugin_label,
+        )
+
+        original = extract_original_plugin_label(description)
+        if original:
+            return original
+        # Drop a leading ``[原名: …]`` if present, then take the first phrase.
+        rest = description
+        if rest.startswith("[原名:"):
+            close = rest.find("]")
+            if close >= 0:
+                rest = rest[close + 1 :].strip()
+        phrase = rest.split("，", 1)[0].split(",", 1)[0].split("。", 1)[0]
+        phrase = phrase.split("!", 1)[0].split("?", 1)[0].split("\n", 1)[0].strip()
+        if 2 <= len(phrase) <= 36:
+            return phrase
+    return name
+
+
+def _list_plugin_tool_items(
+    server: OctopServer,
+    agent_cfg: dict[str, Any],
+    *,
+    locale: str,
+) -> list[ToolSettingsItem]:
+    """Plugin tools for Personalization → Tools → 插件工具 (and Experts)."""
+    mgr = _plugin_manager(server)
+    raw_plugins = agent_cfg.get("plugins")
+    plugins_cfg: dict[str, Any] = raw_plugins if isinstance(raw_plugins, dict) else {}
+    items: list[ToolSettingsItem] = []
+    for plugin in mgr.list_installed():
+        if plugin.get("error"):
+            continue
+        plugin_id = str(plugin["id"])
+        plugin_name = str(plugin.get("name") or plugin_id).strip() or plugin_id
+        raw_icon = plugin.get("icon")
+        plugin_icon = (
+            str(raw_icon).strip() if isinstance(raw_icon, str) and raw_icon.strip() else None
+        )
+        globally_on = plugin.get("enabled", True) is not False
+        agent_on = agent_plugin_enabled(agent_cfg, plugin_id)
+        for tool in plugin.get("tools") or []:
+            name = str(tool["name"])
+            tool_cfg: dict[str, Any] = {}
+            plugin_entry = plugins_cfg.get(plugin_id)
+            if isinstance(plugin_entry, dict):
+                tools_map = plugin_entry.get("tools")
+                if isinstance(tools_map, dict):
+                    raw_tool = tools_map.get(name)
+                    if isinstance(raw_tool, dict):
+                        tool_cfg = raw_tool
+            raw_desc = tool.get("description")
+            desc = str(raw_desc).strip() if isinstance(raw_desc, str) and raw_desc.strip() else None
+            enabled = bool(tool_cfg.get("enabled")) if tool_cfg and "enabled" in tool_cfg else True
+            items.append(
+                ToolSettingsItem(
+                    name=name,
+                    source="plugin",
+                    category="plugin",
+                    label=_plugin_tool_label(name, locale, description=desc),
+                    description=desc,
+                    enabled=enabled,
+                    disableable=True,
+                    available=globally_on and agent_on,
+                    plugin_id=plugin_id,
+                    plugin_name=plugin_name,
+                    plugin_icon=plugin_icon,
+                )
+            )
+    return items
+
+
 @router.get(
     "/{agent_id}/tool-settings",
-    summary="List built-in tools with enable state",
+    summary="List built-in and plugin tools with enable state",
     response_model=ToolSettingsResponse,
 )
 async def get_tool_settings(
@@ -81,10 +176,17 @@ async def get_tool_settings(
     agent_cfg = server.app_runtime.agent_registry.get_config(agent_id)
     disabled = set(normalize_tools_disabled(agent_cfg.get("tools_disabled")))
     mobile_enabled = bool(server.config is not None and server.config.capabilities.mobile.enabled)
+    team_host = is_team_agent(row)
 
     tools: list[ToolSettingsItem] = []
-    for entry in BUILTIN_TOOL_CATALOG:
-        disableable = entry.name not in CRITICAL_TOOLS
+    catalog = (
+        tuple(entry for entry in BUILTIN_TOOL_CATALOG if entry.name in HOST_TOOLS_ALLOWED)
+        if team_host
+        else BUILTIN_TOOL_CATALOG
+    )
+    for entry in catalog:
+        allowed = not team_host or entry.name in HOST_TOOLS_ALLOWED
+        disableable = (not team_host) and entry.name not in CRITICAL_TOOLS
         tools.append(
             ToolSettingsItem(
                 name=entry.name,
@@ -92,9 +194,10 @@ async def get_tool_settings(
                 category=entry.category,
                 label=tool_display_name(entry.name, locale),
                 description=None,
-                enabled=entry.name not in disabled if disableable else True,
+                enabled=allowed and (entry.name not in disabled if disableable else True),
                 disableable=disableable,
-                available=builtin_tool_available(
+                available=allowed
+                and builtin_tool_available(
                     entry.name,
                     agent_cfg=agent_cfg,
                     mobile_enabled=mobile_enabled,
@@ -102,6 +205,7 @@ async def get_tool_settings(
                 plugin_id=None,
             )
         )
+    tools.extend(_list_plugin_tool_items(server, agent_cfg, locale=locale))
     return ToolSettingsResponse(tools=tools)
 
 
@@ -122,6 +226,12 @@ async def put_tool_settings(
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
+
+    if is_team_agent(row):
+        raise HTTPException(
+            status_code=400,
+            detail="team host tools are fixed to member dispatch",
+        )
 
     registry = server.app_runtime.agent_registry
     await registry.persist_tools_disabled(agent_id, set(body.disabled_builtin))
@@ -158,6 +268,11 @@ async def patch_tool_setting(
         raise HTTPException(status_code=400, detail="tool name is required")
 
     registry = server.app_runtime.agent_registry
+    if is_team_agent(row):
+        raise HTTPException(
+            status_code=400,
+            detail="team host tools are fixed to member dispatch",
+        )
     if body.source == "builtin":
         if name in CRITICAL_TOOLS:
             raise HTTPException(

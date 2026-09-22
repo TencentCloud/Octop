@@ -55,22 +55,22 @@ Step 1 (DB迁移)
 
 | 文件 | 内容 |
 |------|------|
-| `src/octop/infra/db/migrations/016_thread_organization.sql` | SQLite 版 |
-| `src/octop/infra/db/migrations/016_thread_organization.pg.sql` | PostgreSQL 版 |
+| `src/octop/infra/db/migrations/018_thread_organization.sql` | SQLite 版 |
+| `src/octop/infra/db/migrations/018_thread_organization.pg.sql` | PostgreSQL 版 |
 
-### SQL（SQLite `016_thread_organization.sql`）
+### SQL（SQLite `018_thread_organization.sql`）
 
 ```sql
--- v16: thread organization (folder + tags)
+-- v18: thread organization (folder + tags)
 ALTER TABLE threads ADD COLUMN folder TEXT;
 ALTER TABLE threads ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
 CREATE INDEX idx_threads_folder ON threads(agent_id, user_id, folder);
 ```
 
-### SQL（PostgreSQL `016_thread_organization.pg.sql`）
+### SQL（PostgreSQL `018_thread_organization.pg.sql`）
 
 ```sql
--- v16: thread organization (folder + tags)
+-- v18: thread organization (folder + tags)
 ALTER TABLE threads ADD COLUMN folder TEXT;
 ALTER TABLE threads ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
 CREATE INDEX idx_threads_folder ON threads(agent_id, user_id, folder);

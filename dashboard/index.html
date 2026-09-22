@@ -139,6 +139,18 @@
     -->
     <script>
       (function () {
+        // Chromium 91 and earlier do not provide this ES2022 API, while some
+        // dashboard dependencies call it. Run before any ESM chunks evaluate.
+        if (typeof Object.hasOwn !== "function") {
+          Object.defineProperty(Object, "hasOwn", {
+            value: function hasOwn(object, property) {
+              return Object.prototype.hasOwnProperty.call(object, property);
+            },
+            configurable: true,
+            writable: true,
+          });
+        }
+
         var KEY = "octop:chunk-reload";
         // Firefox fires error on <link rel="modulepreload"> for /assets/*.js
         // even when the file is fine; treating those as stale chunks caused

@@ -143,6 +143,18 @@ def test_format_stream_error_unknown_falls_back_to_localized() -> None:
     assert "model call failed" in text
 
 
+def test_format_stream_error_passes_through_send_file_failures() -> None:
+    msg = (
+        "send_file_to_user: no such file: "
+        "/home/octop/.octop/agents/CS6ZRF/.octop/generated/expense_stats/x.xlsx"
+    )
+    assert format_stream_error(msg, "zh") == msg
+    assert format_stream_error(FileNotFoundError(msg), "en") == msg
+    assert "模型调用" not in format_stream_error(msg, "zh")
+    # Generic missing-file noise must still fall back to the model-failure copy.
+    assert "model call failed" in format_stream_error("FileNotFoundError: config.json", "en")
+
+
 def test_exception_display_message_empty_falls_back_to_type() -> None:
     assert exception_display_message(TimeoutError()) == "TimeoutError"
     assert exception_display_message(RuntimeError()) == "RuntimeError"

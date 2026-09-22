@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { AggregationColor } from "antd/es/color-picker/color";
 import {
   DEFAULT_CUSTOM_COLOR,
+  DEFAULT_PALETTE,
   PALETTE_SWATCH,
   VALID_PALETTES,
   type ThemePalette,
@@ -11,8 +12,8 @@ import styles from "./PaletteSwitcher.module.less";
 
 interface ExpertColorPickerProps {
   /** Curated palette key, or an arbitrary hex string for a custom color. */
-  value: string;
-  onChange: (value: string) => void;
+  value?: string;
+  onChange?: (value: string) => void;
 }
 
 function isCurated(value: string): value is ThemePalette {
@@ -29,12 +30,13 @@ export default function ExpertColorPicker({
   onChange,
 }: ExpertColorPickerProps) {
   const { t } = useTranslation();
-  const curated = isCurated(value);
+  const resolved = value?.trim() ? value : DEFAULT_PALETTE;
+  const curated = isCurated(resolved);
 
   return (
     <div className={styles.picker} role="group" aria-label={t("experts.color")}>
       {VALID_PALETTES.map((key) => {
-        const active = value === key;
+        const active = resolved === key;
         const label = t(`header.palette.${key}`);
         return (
           <Tooltip key={key} title={label} mouseEnterDelay={0.35}>
@@ -43,7 +45,7 @@ export default function ExpertColorPicker({
               className={`${styles.option} ${active ? styles.active : ""}`}
               aria-label={label}
               aria-pressed={active}
-              onClick={() => onChange(key)}
+              onClick={() => onChange?.(key)}
             >
               <span
                 className={styles.swatch}
@@ -62,22 +64,22 @@ export default function ExpertColorPicker({
           role="button"
         >
           <ColorPicker
-            value={curated ? PALETTE_SWATCH[value] : value}
+            value={curated ? PALETTE_SWATCH[resolved] : resolved}
             onChangeComplete={(color: AggregationColor) => {
-              onChange(color.toHexString());
+              onChange?.(color.toHexString());
             }}
             disabledAlpha
           >
             <span
               className={`${styles.swatch} ${styles.customSwatch}`}
-              style={!curated ? { backgroundColor: value } : undefined}
+              style={!curated ? { backgroundColor: resolved } : undefined}
               aria-hidden
             />
           </ColorPicker>
         </span>
       </Tooltip>
-      {!curated && value !== DEFAULT_CUSTOM_COLOR && (
-        <span className={styles.customHex}>{value.toUpperCase()}</span>
+      {!curated && resolved !== DEFAULT_CUSTOM_COLOR && (
+        <span className={styles.customHex}>{resolved.toUpperCase()}</span>
       )}
     </div>
   );

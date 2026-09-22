@@ -111,6 +111,16 @@
       "cleared": "Model override cleared.",
       "set": "Model for this thread → {model}."
     },
+    "mode": {
+      "current": "Current mode: {mode}",
+      "set": "Mode for this thread → {mode}.",
+      "usage": "Usage: /mode ask | plan | craft  (aliases: /ask /plan /craft)",
+      "labels": {
+        "ask": "Ask mode (read-only)",
+        "plan": "Plan mode",
+        "craft": "Craft mode"
+      }
+    },
     "compact": {
       "done": "Model context compacted (thread `{short}`): summarized {count} older message(s), kept the recent tail.\n\nChat history is unchanged; from the next turn the model only sees the summary plus recent messages.",
       "done_offload": "Model context compacted (thread `{short}`): summarized {count} older message(s), kept the recent tail.\n\n- Saved: `{path}`\n- Chat history is unchanged; from the next turn the model only sees the summary plus recent messages.",
@@ -214,6 +224,10 @@
         "label": "Model",
         "description": "Show, set, or reset the model override for this thread"
       },
+      "mode": {
+        "label": "Conversation mode",
+        "description": "Switch Ask mode (read-only), Plan mode (write plans/*.md), or Craft mode"
+      },
       "new": {
         "label": "New chat",
         "description": "Clear context and start a new conversation thread"
@@ -293,7 +307,23 @@
       "exit": {
         "label": "Exit",
         "description": "End the CLI session"
+      },
+      "memory": {
+        "label": "Memory maintenance",
+        "description": "Back up and slim memory databases, or check maintenance progress."
       }
+    },
+    "memory": {
+      "usage": "Usage: /memory slim (explain the purpose and impact), /memory slim --all (list your eligible running agents), /memory status (progress). Viewing the explanation does not pause chat.",
+      "accepted": "Confirmed maintenance for {count} agents. The host will back up, deduplicate, and reclaim space sequentially while preserving history and memories. All chats for the agent currently being maintained pause sending and resume automatically afterward. The page shows phases and elapsed time; you can use another agent that is not under maintenance. Closing the page does not stop the batch. Use /memory status for results after sending resumes.",
+      "idle": "No maintenance record for this agent. Use /memory slim to start.",
+      "summary": "Latest maintenance: {completed}/{total} agents completed.",
+      "queued": "Waiting for the previous agent.",
+      "skipped": "Not started: batch stopped.",
+      "failure_hint": "See server logs for details; the batch will not retry automatically.",
+      "trusted_chat": "Use /memory in the signed-in Octop dashboard or local CLI chat. IM senders do not yet have verified maintenance permissions.",
+      "preview": "This optional maintenance reclaims disk space by deduplicating stored context, preserving chat history and memories. Savings depend on how much data is duplicated.\n\nA backup needs extra disk space. During maintenance, sending is paused in all chats for the affected agent and resumes automatically afterward. Large databases may take a long time; there is no reliable duration estimate. Run this when you can leave the agent idle.\n\nCurrently eligible targets: {count} (maintenance has not started):",
+      "confirm_hint": "To start now, send `{command}`. Without confirmation, you can keep chatting. Eligible targets are checked again when you confirm."
     }
   },
   "connector": {
@@ -337,6 +367,7 @@
     "PROVIDER_NOT_VISIBLE": "Provider is not visible.",
     "PROVIDER_REFERENCED": "Provider is in use and cannot be removed.",
     "PROVIDER_LOCAL_PROTECTED": "Local runtime providers cannot be deleted.",
+    "CODEX_OAUTH_START_FAILED": "Could not start ChatGPT sign-in. Check the server connection to auth.openai.com and try again.",
     "STORAGE_BACKEND_NAME_TAKEN": "Storage backend name is already in use.",
     "STORAGE_BACKEND_REFERENCED": "Storage backend is in use and cannot be removed.",
     "STORAGE_BACKEND_DEPS_FAILED": "Could not install optional components for this storage backend. Check network access and retry.",
@@ -347,6 +378,8 @@
     "CONNECTOR_NAME_TAKEN": "This connector name is already in use. Please choose another.",
     "CONNECTOR_INVALID_CREDENTIALS": "Invalid connector credentials.",
     "CONNECTOR_OAUTH_HTTPS_REQUIRED": "Octop is currently being accessed over public HTTP, but Notion OAuth callbacks require HTTPS. Use HTTPS, or access Octop locally through localhost or 127.0.0.1.",
+    "CONNECTOR_MCP_URL_INVALID": "Invalid MCP server URL: {reason}",
+    "CONNECTOR_MCP_HTTPS_REQUIRED": "Public MCP server URLs must use HTTPS. Local and LAN addresses may use HTTP.",
     "CONNECTOR_KIND_UNSUPPORTED": "Unsupported connector type.",
     "CONNECTOR_NOT_BOUND": "Connector is not bound to this agent.",
     "CONNECTOR_ALREADY_BOUND": "Connector is already bound.",
@@ -405,7 +438,12 @@
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({used}/{quota}).",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
-    "CONFIG_FILE_CORRUPT": "Cannot update {path}: the file is not valid JSON ({detail}). Fix the syntax and retry — no settings were changed."
+    "CONFIG_FILE_CORRUPT": "Cannot update {path}: the file is not valid JSON ({detail}). Fix the syntax and retry — no settings were changed.",
+    "TEAM_NOT_FOUND": "Team not found.",
+    "TEAM_MEMBERS_TOO_FEW": "A team needs at least two members.",
+    "TEAM_MEMBER_INVALID": "The selected roster is not valid.",
+    "TEAM_MEMBER_BUSY": "This expert has an in-flight team job. Wait until it finishes.",
+    "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -469,7 +507,7 @@
         "fail_mismatch": "{domain} resolves to {resolved_ips}; expected {public_ip}"
       },
       "public_ip": {
-        "fail": "Could not determine this host's public IP (check outbound HTTPS)"
+        "fail": "Could not determine this host's public IP (check outbound network, or cloud metadata access)"
       }
     },
     "preflight_failed_summary": "One or more preflight checks failed"
@@ -504,9 +542,9 @@
     "cronjob_delete": "Delete cron job",
     "cronjob_run_now": "Run cron job now",
     "search_knowledge": "Search knowledge base",
-    "agent_list": "List agents",
-    "ask_agent": "Ask agent",
-    "call_agent": "Call agent",
+    "agent_list": "List experts",
+    "ask_agent": "Ask expert",
+    "call_agent": "Call expert",
     "acp_runner": "ACP external agent",
     "browser_use": "Use browser",
     "browser_control": "Browser control",
@@ -521,7 +559,8 @@
     "write_env_file": "Write env file",
     "ask_user_question": "Ask the user",
     "generate_image": "Generate image",
-    "generate_video": "Generate video"
+    "generate_video": "Generate video",
+    "bilibili_search_anime": "Search Bilibili anime"
   },
   "skills": {
     "pdf": "PDF",
@@ -713,5 +752,49 @@
       "UnauthorizedOperation": "This Tencent Cloud account is not authorized for this voice API.",
       "RequestLimitExceeded": "Tencent Cloud rate-limited this request. Retry in a moment."
     }
+  },
+  "memory_slim": {
+    "waiting": "Waiting for the current task to finish…",
+    "backing_up": "Backing up memory…",
+    "deduplicating": "Deduplicating historical context…",
+    "compacting": "Compacting the memory database…",
+    "done": "Memory maintenance completed; conversations resumed.",
+    "failed": "Memory maintenance failed; conversations unblocked.",
+    "result": "Database: {before} -> {after} MiB; backup: {backup}",
+    "unavailable": "Cannot connect to a running compatible Octop, or control connection lost: {detail}",
+    "busy": "A memory maintenance job is already running.",
+    "not_ready": "Octop runtime is not ready.",
+    "upgrade": "The loaded harness-memory package does not provide live maintenance. Install the matching version or load the local source, then restart Octop.",
+    "wait_timeout": "The agent remained busy for 120 seconds; no migration was started.",
+    "incompatible": "Live maintenance requires a compatible SQLite checkpointer; upgrade and restart Octop.",
+    "interrupted": "Maintenance interrupted.",
+    "error_detail": "Maintenance failed: {detail}",
+    "agents": "Agents eligible for online maintenance (running, compatible SQLite memory):",
+    "no_agents": "No eligible SQLite agents. This command currently supports running SQLite agents with memory enabled and compatible packages. PostgreSQL maintenance is not integrated yet; this does not mean PostgreSQL needs no maintenance. No maintenance was performed, and you can continue chatting.",
+    "choose": "Choose the number to maintain (Ctrl+C to exit)",
+    "agent_required": "JSON mode never selects automatically. Copy an agent_id from the list and add --agent ID.",
+    "target": "Maintaining agent: {agent_id}",
+    "elapsed": "Elapsed: {seconds}s",
+    "scanned": "Scanned: {scanned}/{total}",
+    "all_conflict": "--all cannot be combined with --agent or OCTOP_AGENT.",
+    "batch_target": "[{index}/{total}] Maintaining: {name} [{agent_id}]",
+    "batch_stopped": "Batch stopped: {agent_id} did not confirm completion; {completed} completed, {remaining} not started. Reason: {detail}",
+    "batch_done": "Batch complete: {total} agents maintained.",
+    "forbidden": "You can only maintain or inspect memory for agents owned by your signed-in user.",
+    "backend_unsupported": "This agent uses {backend} memory. This command only maintains SQLite files and does not apply to this database. No maintenance was started.",
+    "memory_disabled": "This agent has no memory enabled, so there is no database to maintain. No maintenance was started.",
+    "agent_not_running": "This agent is not running or failed to start. Start it successfully before maintenance. No maintenance was started.",
+    "postgres_unsupported": "This agent uses {backend} memory. PostgreSQL can also accumulate duplicate data or storage bloat and may need maintenance based on its actual usage. This command does not yet support PostgreSQL slimming; it currently supports SQLite only. No maintenance was performed, and you can continue chatting."
+  },
+  "teams": {
+    "peer_thread_title": "From team {name}",
+    "followup_done": "[system wake-up, not a new user question]\nTeam member {name} finished. Their answer is already on the group timeline.\nTask: {task}\n\nDo not restate their answer. Do not say you have assigned someone or ask the user to wait. Do not call ask_agent for the same task again. If more work is needed, dispatch the next member. If the team is done, write at most three short wrap-up sentences.",
+    "followup_failed": "[system wake-up, not a new user question]\nTeam member {name} failed.\nTask: {task}\nError: {error}\n\nBriefly tell the user it failed and either dispatch someone else or close the turn. Do not announce another assignment. Do not invent a substitute answer.",
+    "speaker_user": "User",
+    "dispatch_with_history": "Here is the current group-chat transcript. Use it as context.\n\n{history}\n\n---\nYour task:\n{task}"
+  },
+  "conversation_mode": {
+    "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",
+    "execute": "Execute {path}"
   }
 }

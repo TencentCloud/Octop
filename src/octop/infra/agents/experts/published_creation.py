@@ -12,7 +12,10 @@ from typing import Any, cast
 
 from psycopg import IntegrityError as PsycopgIntegrityError
 
-from octop.infra.agents.avatar import bind_workspace_avatar_icon_url
+from octop.infra.agents.avatar import (
+    bind_workspace_avatar_icon_url,
+    public_portrait_icon_url,
+)
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
     parse_task_examples,
@@ -29,7 +32,7 @@ from octop.infra.agents.experts.publish import (
 from octop.infra.agents.manager import AgentCreateSpec
 from octop.infra.db.repos.published_experts import PublishedExpertRow
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.trajectory.settings import apply_enable_trajectory
+from octop.infra.history.trajectory.settings import apply_enable_trajectory
 from octop.infra.users.identity import User
 from octop.infra.utils.ulid import new_ulid
 
@@ -50,6 +53,9 @@ class PublishedExpertInstallOptions:
     welcome_message: str | None = None
     runtime_config: dict[str, Any] | None = None
     enable_trajectory: bool = True
+    workspace_patch: Any = None
+    composer_copies: tuple[tuple[str, Any], ...] = ()
+    composer_report: Any = None
 
 
 def _snapshot_dir(services: Any, expert_id: str) -> Path:
@@ -127,11 +133,13 @@ def _snapshot_meta(
     welcome_message_en: str = "",
     quick_prompts: tuple[dict[str, Any], ...] = (),
     task_examples: dict[str, list[str]] | None = None,
+    icon_url: str | None = None,
 ) -> PublishedExpertSnapshotMeta:
     return PublishedExpertSnapshotMeta(
         name=name,
         description=description,
         icon_name=(getattr(source, "icon_name", None) or source.icon or None),
+        icon_url=public_portrait_icon_url(icon_url),
         color=color,
         label_zh=name,
         label_en=name,
@@ -188,6 +196,7 @@ async def publish_agent_expert(
     )
     color = _agent_color(registry, source.agent_id) or ""
     icon_name = getattr(source, "icon_name", None) or source.icon or ""
+    source_icon_url = public_portrait_icon_url(getattr(source, "icon_url", None))
     try:
         await export_agent_workspace_to_dir(
             workspace=workspace,
@@ -197,6 +206,7 @@ async def publish_agent_expert(
                 name=name,
                 description=resolved_description,
                 color=color or None,
+                icon_url=source_icon_url,
                 welcome_message_zh=welcome_message_zh,
                 welcome_message_en=welcome_message_en,
                 quick_prompts=resolved_quick_prompts,
@@ -252,6 +262,7 @@ async def refresh_published_expert(
 
     color = _agent_color(registry, source.agent_id) or ""
     icon_name = getattr(source, "icon_name", None) or source.icon or ""
+    source_icon_url = public_portrait_icon_url(getattr(source, "icon_url", None))
     snapshot_dir = _snapshot_dir(services, row.id)
     existing_manifest = await asyncio.to_thread(_read_snapshot_manifest, snapshot_dir)
     existing_welcome_zh, existing_welcome_en = _manifest_welcome(existing_manifest)
@@ -286,6 +297,7 @@ async def refresh_published_expert(
             welcome_message_en=resolved_welcome_en,
             quick_prompts=resolved_quick_prompts,
             task_examples=resolved_task_examples,
+            icon_url=source_icon_url,
         ),
         manifest_id=row.slug,
     )
@@ -346,6 +358,19 @@ async def install_published_expert(
     async def seed_snapshot(created_row: Any, workspace: Any) -> None:
         await seed_expert_directory(expert_dir=snapshot_dir, workspace=workspace)
         await bind_workspace_avatar_icon_url(registry, created_row.agent_id, workspace)
+        patch = options.workspace_patch
+        if patch is not None or options.composer_copies:
+            from octop.infra.agents.experts.composer_files import (
+                ComposerWorkspacePatch,
+                apply_composer_workspace_patch,
+            )
+
+            await apply_composer_workspace_patch(
+                workspace,
+                patch if patch is not None else ComposerWorkspacePatch(),
+                copies=options.composer_copies,
+                report=options.composer_report,
+            )
 
     created = await registry.create(
         AgentCreateSpec(

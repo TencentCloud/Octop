@@ -325,6 +325,27 @@ Commands:
   rotate-jwt-secret    Rotate the JWT secret directly via the local DB.
 ```
 
+## `octop captcha`
+
+Login captcha maintenance against the local database. Works fully offline
+(edits the SQLite settings row directly) — the escape hatch for when a
+misconfigured captcha provider (wrong keys, unreachable vendor, hostname
+not allowlisted) locks everyone out of the dashboard, since the settings
+UI itself requires login to reach.
+
+```
+Usage: octop captcha [OPTIONS] COMMAND [ARGS]...
+
+  Login captcha maintenance against the local database.
+
+Commands:
+  reset    Clear stored captcha settings so login falls back to the slider default.
+```
+
+Boot-env captcha (`OCTOP_CAPTCHA_*`) is not touched by `reset` — unset
+those in the environment file if they are the actual lockout cause.
+Restart `octop run` (if already running) for the change to apply.
+
 ## `octop backup`
 
 Export and restore Octop backups. Works fully offline.

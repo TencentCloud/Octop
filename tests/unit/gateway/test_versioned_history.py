@@ -22,9 +22,9 @@ from octop.infra.gateway.process.history_projection import message_inputs
 from octop.infra.history.recorder import RecordingTracker
 from octop.infra.history.service import HistoryArchive
 from octop.infra.history.store import HistoryStore
-from octop.infra.history.trajectory import ArchiveTrajectoryStore
-from octop.infra.trajectory.live import TrajectoryLiveBus
-from octop.infra.trajectory.service import TrajectoryService
+from octop.infra.history.trajectory.live import TrajectoryLiveBus
+from octop.infra.history.trajectory.service import TrajectoryService
+from octop.infra.history.trajectory_compat import ArchiveTrajectoryStore
 
 
 @pytest.fixture

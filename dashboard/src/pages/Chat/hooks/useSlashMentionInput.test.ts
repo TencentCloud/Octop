@@ -66,6 +66,15 @@ describe("useSlashMentionInput skills", () => {
     expect(skillItem?.label).toBe("Web Search");
     expect(skillItem?.spec.usage).toBe("✦ Web Search <task>");
     expect(skillItem?.spec.category).toBe("skills");
+    // Shortcut popover keeps slash commands only; skills use the skill picker.
+    expect(
+      result.current.slashPickerGroups.map((group) => group.category),
+    ).toEqual(["core"]);
+    expect(
+      result.current.slashPickerGroups.flatMap((group) =>
+        group.items.map((item) => item.command),
+      ),
+    ).toEqual(["/stop"]);
   });
 });
 

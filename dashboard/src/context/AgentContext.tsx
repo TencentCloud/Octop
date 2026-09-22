@@ -59,6 +59,11 @@ export interface OctopAgent {
   unread_count?: number;
   /** True while BOOTSTRAP.md onboarding has not written ``.bootstrapped`` yet. */
   bootstrap_pending?: boolean;
+  /** ``expert`` (default) or ``team`` host. */
+  kind?: "expert" | "team" | string;
+  /** Member agent ids when ``kind === "team"``. */
+  member_ids?: string[];
+  welcome_message?: string | null;
 }
 
 interface AgentContextValue {
@@ -116,6 +121,12 @@ export function selectEnabledExperts(
   const pinnedActive = agents.find((a) => a.agent_id === resolvedAgentId);
   if (!pinnedActive) return enabled;
   return [pinnedActive, ...enabled];
+}
+
+function sameMemberIds(left?: string[], right?: string[]): boolean {
+  const a = left ?? [];
+  const b = right ?? [];
+  return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
 /**
@@ -226,7 +237,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
                 a.name === b.name &&
                 a.icon === b.icon &&
                 a.icon_name === b.icon_name &&
-                a.color === b.color
+                a.color === b.color &&
+                a.kind === b.kind &&
+                sameMemberIds(a.member_ids, b.member_ids)
               );
             })
           ) {

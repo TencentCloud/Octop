@@ -263,15 +263,24 @@
 }
 
 .mobileTitle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   font-size: 15px;
   font-weight: 600;
   color: var(--fn-text-primary);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   flex: 1;
   text-align: center;
   padding: 0 8px;
+}
+
+.mobileTitleText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .mobileHeaderRight {

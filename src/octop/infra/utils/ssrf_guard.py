@@ -17,6 +17,37 @@ class UnsafeOutboundUrl(ValueError):
     """Raised when a URL must not be fetched server-side."""
 
 
+# Hostnames that never refer to a public Internet endpoint (Docker Desktop, etc.).
+_LOCAL_HOSTNAMES = frozenset(
+    {
+        "localhost",
+        "host.docker.internal",
+        "gateway.docker.internal",
+    }
+)
+_LOCAL_HOST_SUFFIXES = (".local", ".localhost", ".internal")
+
+
+def is_private_or_local_host(host: str) -> bool:
+    """True for loopback / RFC1918 / link-local literals and well-known local names.
+
+    Used by MCP connector URL validation so self-hosted LAN endpoints are allowed
+    without weakening the outbound SSRF guard used for OAuth / provider probes.
+    """
+    normalized = host.lower().rstrip(".")
+    if not normalized:
+        return False
+    if normalized in _LOCAL_HOSTNAMES:
+        return True
+    if normalized.endswith(_LOCAL_HOST_SUFFIXES):
+        return True
+    try:
+        addr = ipaddress.ip_address(normalized)
+    except ValueError:
+        return False
+    return addr.is_loopback or addr.is_private or addr.is_link_local
+
+
 def _parse_https_host(url: str) -> tuple[str, int | None]:
     parsed = urlparse(url)
     if parsed.scheme != "https":

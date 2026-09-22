@@ -67,6 +67,7 @@ from octop.infra.skills.skill_transfer import (
     SkillTransferNotFound,
     copy_package_skills_to_workspace,
     copy_workspace_skill_to_package,
+    copy_workspace_skill_to_workspace,
 )
 from octop.infra.utils.locale import Locale, resolve_request_locale
 
@@ -476,6 +477,12 @@ class SkillPackageMountBody(BaseModel):
 class CopyPackageSkillsBody(BaseModel):
     skill_slugs: list[str]
     overwrite: bool = False
+
+
+class CopyWorkspaceSkillBody(BaseModel):
+    source_agent_id: str
+    slug: str
+    overwrite: bool = True
 
 
 class PushSkillToPackageBody(BaseModel):
@@ -891,6 +898,45 @@ class _AgentWorkspaceInstallTarget:
         await _persist_disabled(self._server, self._agent_id, disabled)
 
 
+@router.post(
+    "/agents/{agent_id}/skills/copy",
+    status_code=201,
+    summary="Copy a workspace skill from another agent",
+)
+async def copy_skill_from_agent(
+    agent_id: str,
+    body: CopyWorkspaceSkillBody,
+    request: Request,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    dest = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    require_agent_owner_row(body.source_agent_id, user=user, as_user=as_user, server=server)
+    assert server.app_runtime is not None
+    source = server.app_runtime.agent_registry.workspace_for_agent(body.source_agent_id)
+    if source is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "source workspace not found")
+    locale = resolve_request_locale(request)
+    try:
+        slug = validate_skill_slug(body.slug)
+        copied_identity_keys = set(await _skill_disable_keys(dest, slug))
+        copied = await copy_workspace_skill_to_workspace(
+            source=source,
+            destination=dest.workspace,
+            slug=slug,
+            overwrite=body.overwrite,
+        )
+    except SkillPackageError as exc:
+        raise _skill_transfer_error(exc, locale=locale) from exc
+    copied_identity_keys.update(await _skill_disable_keys(dest, copied))
+    disabled = _disabled_set(dest.config)
+    if disabled.intersection(copied_identity_keys):
+        disabled.difference_update(copied_identity_keys)
+        await _persist_disabled(server, agent_id, disabled)
+    return {"slug": copied, "copied": True}
+
+
 @router.post("/agents/{agent_id}/skills/import", status_code=201)
 async def import_skill_from_url(
     agent_id: str,
@@ -1210,27 +1256,12 @@ def _parse_skillhub_search_output(text: str) -> list[dict[str, Any]]:
     return results
 
 
-@router.get("/agents/{agent_id}/skills/hub/search")
-async def hub_search_skills(
-    agent_id: str,
-    request: Request,
-    q: str = "",
-    limit: int = 50,
-    as_user: int | None = None,
-    user: Any = Depends(current_user),
-    server: Any = Depends(get_server),
-) -> list[dict[str, Any]]:
-    """Search Tencent SkillHub over HTTP, with CLI compatibility fallback.
+_RANKING_TYPES = {"all", "hot", "featured", "newest", "recommended", "trending", "paid"}
 
-    The agent_id param is accepted for auth/routing symmetry with
-    the install endpoint but is not used for the search itself.
-    """
+
+async def _hub_search(request: Request, *, q: str, limit: int) -> list[dict[str, Any]]:
     from fastapi import HTTPException  # noqa: PLC0415
 
-    # Verify the agent exists and belongs to this user. The skillhub CLI
-    # runs globally, so we only need an existence/ownership check here —
-    # the agent need not be running (unlike chat/workspace endpoints).
-    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     locale = resolve_request_locale(request)
     query = q.strip() or "a"
     effective_limit = max(1, min(limit, 100))
@@ -1265,7 +1296,61 @@ async def hub_search_skills(
     return _parse_skillhub_search_output(stdout)
 
 
-_RANKING_TYPES = {"all", "hot", "featured", "newest", "recommended", "trending", "paid"}
+async def _hub_rankings(ranking_type: str) -> dict[str, Any]:
+    from fastapi import HTTPException  # noqa: PLC0415
+
+    rtype = ranking_type if ranking_type in _RANKING_TYPES else "all"
+    from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
+        SkillHubMarketError,
+        SkillHubMarketTimeout,
+        fetch_skillhub_rankings,
+    )
+
+    try:
+        return await fetch_skillhub_rankings(rtype)
+    except SkillHubMarketTimeout as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except SkillHubMarketError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/skills/hub/search", summary="Search SkillHub without an agent")
+async def hub_search_skills_global(
+    request: Request,
+    q: str = "",
+    limit: int = 50,
+    _user: Any = Depends(current_user),
+) -> list[dict[str, Any]]:
+    """Browse SkillHub while composing a new expert (no agent exists yet)."""
+    return await _hub_search(request, q=q, limit=limit)
+
+
+@router.get("/skills/hub/rankings", summary="SkillHub rankings without an agent")
+async def hub_rankings_global(
+    type: str = "all",
+    _user: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """Browse SkillHub rankings while composing a new expert."""
+    return await _hub_rankings(type)
+
+
+@router.get("/agents/{agent_id}/skills/hub/search")
+async def hub_search_skills(
+    agent_id: str,
+    request: Request,
+    q: str = "",
+    limit: int = 50,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> list[dict[str, Any]]:
+    """Search Tencent SkillHub over HTTP, with CLI compatibility fallback.
+
+    The agent_id param is accepted for auth/routing symmetry with
+    the install endpoint but is not used for the search itself.
+    """
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    return await _hub_search(request, q=q, limit=limit)
 
 
 @router.get("/agents/{agent_id}/skills/hub/rankings")
@@ -1285,23 +1370,8 @@ async def hub_rankings(
     env var, else https://api.skillhub.cn. The agent_id is accepted for
     auth/routing symmetry with search/install; rankings are global.
     """
-    from fastapi import HTTPException  # noqa: PLC0415
-
     require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
-
-    rtype = type if type in _RANKING_TYPES else "all"
-    from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
-        SkillHubMarketError,
-        SkillHubMarketTimeout,
-        fetch_skillhub_rankings,
-    )
-
-    try:
-        return await fetch_skillhub_rankings(rtype)
-    except SkillHubMarketTimeout as exc:
-        raise HTTPException(status_code=504, detail=str(exc)) from exc
-    except SkillHubMarketError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return await _hub_rankings(type)
 
 
 @router.post("/agents/{agent_id}/skills/hub/install", status_code=201)

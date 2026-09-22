@@ -578,8 +578,17 @@ def inject_missing_gateway_tools(
     logger = logging.getLogger(__name__)
     tool_set = mcp_tool_names(getattr(agent, "_mcp_tools", []))
     extra: list[Any] = []
+    wanted = {str(name) for name in mcp_server_configs if str(name).strip()}
+    if not wanted:
+        logger.info(
+            "gateway MCP injection skipped for agent %s: no mcp_server_configs",
+            agent_id,
+        )
+        return
     for inst, entry, creds in _iter_active_connectors(svc, connector_repo, user_id):
         if entry.mcp_mode != "gateway":
+            continue
+        if inst.mcp_server_name not in wanted:
             continue
         if any(str(t).startswith(f"{inst.mcp_server_name}_") for t in tool_set):
             continue

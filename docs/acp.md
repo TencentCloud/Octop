@@ -46,7 +46,7 @@ Install the CLI on the host where `octop run` executes, ensure it is on `PATH` (
 
 ### `acp_runner` tool workflow
 
-```
+```text
 action=list              → enabled runners and session state
 action=start             → new session: runner + message (+ optional cwd)
 action=message           → continue session
@@ -58,7 +58,7 @@ action=close             → end session
 Example user message:
 
 ```text
-请用 acp_runner：action=start, runner=opencode, message=在 workspace 里找 README 并总结。
+Use acp_runner: action=start, runner=opencode, message=find the README in the workspace and summarize it.
 ```
 
 Permission prompts from the external agent appear in chat; pick an option or instruct the agent to call `action=respond` with the option id.

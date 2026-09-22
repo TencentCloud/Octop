@@ -17,6 +17,8 @@ export interface OctopThread {
   reasoning_effort?: string | null;
   folder?: string | null;
   tags?: string[];
+  conversation_mode?: "ask" | "plan" | "craft" | null;
+  pending_plan_path?: string | null;
   artifacts?: string[];
 }
 
@@ -30,11 +32,15 @@ export interface OctopThreadHistory {
     timestamp?: number;
     status?: string;
     error_code?: string;
+    agent_id?: string;
+    team_wrapup?: boolean;
   }>;
   pinned?: boolean;
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
+  conversation_mode?: "ask" | "plan" | "craft" | null;
+  pending_plan_path?: string | null;
   has_more?: boolean;
   limit?: number;
   offset?: number;
@@ -58,6 +64,7 @@ export interface OctopThreadPatch {
   reasoning_effort?: string | null;
   folder?: string | null;
   tags?: string[];
+  conversation_mode?: "ask" | "plan" | "craft" | null;
 }
 
 export type ContextUsageSegmentKey =
@@ -200,6 +207,8 @@ export const octopThreadsApi = {
       reasoning_effort?: string | null;
       folder?: string | null;
       tags?: string[];
+      conversation_mode?: "ask" | "plan" | "craft" | null;
+      pending_plan_path?: string | null;
     }>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
         threadId,

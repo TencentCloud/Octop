@@ -162,7 +162,29 @@ class HitlPendingStore:
         rows.sort(key=lambda r: r.created_at, reverse=True)
         return rows
 
-    def mark_resolved(self, pending_id: str, status: Literal["approved", "rejected"]) -> None:
+    def expire_pending_for_thread(
+        self,
+        thread_id: str,
+        *,
+        agent_id: str,
+        user_id: int | None = None,
+    ) -> None:
+        """Drop leftover dashboard pauses so history reload cannot reinject them."""
+        self._gc()
+        for record in self._records.values():
+            if record.thread_id != thread_id or record.status != "pending":
+                continue
+            if record.agent_id != agent_id:
+                continue
+            if user_id is not None and record.user_id != user_id:
+                continue
+            record.status = "expired"
+
+    def mark_resolved(
+        self,
+        pending_id: str,
+        status: Literal["approved", "rejected", "expired"],
+    ) -> None:
         record = self._records.get(pending_id)
         if record is not None:
             record.status = status

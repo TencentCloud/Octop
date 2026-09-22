@@ -97,7 +97,7 @@ source ~/.bashrc  # Bash
 
 安装脚本会把 `octop` 命令放入 `~/.octop/bin` 并加入 PATH，并在 `~/.octop/venv` 创建隔离环境；**不会改动系统 Python**。
 
-> **可选附加组件**：安装脚本支持通过 `--extras` 追加能力，例如浏览器自动化 `--extras browser`、飞书通道 `--extras channels-feishu`；也可用 `--version` 指定版本、`--mirror <url>` 使用国内 PyPI 镜像。更多选项见 [scripts/README.md](scripts/README.md)。
+> **可选附加组件**：安装脚本支持通过 `--extras` 追加能力，例如浏览器自动化 `--extras browser`、飞书通道 `--extras channels-feishu`；也可用 `--version` 指定版本、`--mirror <url>` 使用国内 PyPI 镜像。更多选项见 [scripts/README.md](../scripts/README.md)。
 
 ### 2.3 验证安装
 
@@ -124,7 +124,7 @@ docker run -d \
   octop:latest
 ```
 
-完整环境变量见 [.env.example](.env.example)：
+完整环境变量见 [.env.example](../.env.example)：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
@@ -361,7 +361,7 @@ Octop 支持两个方向的 ACP 集成：
    - 控制台 → **ACP**：配置 Runner（按用户全局）。
    - 为 Agent 启用 `acp_runner`，然后在对话中委派。
 
-完整配置见 [docs/acp.md](docs/acp.md)。
+完整配置见 [docs/acp.md](acp.md)。
 
 ### 5.8 设置（用户 / 安全 / TLS / 系统）
 
@@ -370,7 +370,7 @@ Octop 支持两个方向的 ACP 集成：
 - **TLS**：配置 HTTPS（自签或 Let's Encrypt）。
 - **系统**：监听地址 / 端口、日志级别、定时任务时区等。
 
-> 手动编辑配置文件：运行时参数保存在 `~/.octop/config.json`，可用环境变量覆盖（如 `OCTOP_PORT`、`OCTOP_BIND_HOST`）。详见 [docs/configuration.md](docs/configuration.md)。
+> 手动编辑配置文件：运行时参数保存在 `~/.octop/config.json`，可用环境变量覆盖（如 `OCTOP_PORT`、`OCTOP_BIND_HOST`）。详见 [docs/configuration.md](configuration.md)。
 
 ![图 5.6 — 设置页面](assets/use-06-settings.png)
 
@@ -408,7 +408,7 @@ Octop 支持两个方向的 ACP 集成：
 | `octop backup` | 导出 / 恢复备份 |
 | `octop update` | 检查并安装更新 |
 
-完整参考见 [docs/cli.md](docs/cli.md)。
+完整参考见 [docs/cli.md](cli.md)。
 
 ---
 

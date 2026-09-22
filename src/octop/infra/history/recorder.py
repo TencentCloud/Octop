@@ -23,7 +23,7 @@ from octop.infra.gateway.process.message_keys import (
 )
 from octop.infra.history.service import HistoryArchive
 from octop.infra.history.store import dumps
-from octop.infra.trajectory.projector import _tool_result_fields
+from octop.infra.history.trajectory.projector import _tool_result_fields
 
 
 def _live_wire(message: Any) -> dict[str, Any] | None:

@@ -128,6 +128,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {"name": "mbti", "description": "MBTI persona presets applied to agent personality."},
     {"name": "experts", "description": "Bundled expert templates for creating specialized agents."},
+    {
+        "name": "teams",
+        "description": "Expert teams: roster, create/edit, and member dispatch.",
+    },
     {"name": "workspace", "description": "Agent workspace file tree: list, read, write, upload."},
     {"name": "agent_files", "description": "Agent-owned configuration files (SOUL.md, skills, …)."},
     {"name": "usage", "description": "Token usage summaries for billing and dashboards."},

@@ -8,6 +8,7 @@ interface MemoryCatalogDrawerProps {
   agentId: string;
   open: boolean;
   onClose: () => void;
+  title?: string;
 }
 
 /** Experts modal embedding the full Memory surface. */
@@ -15,13 +16,14 @@ export default function MemoryCatalogDrawer({
   agentId,
   open,
   onClose,
+  title,
 }: MemoryCatalogDrawerProps) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
 
   return (
     <CatalogDrawer
-      title={t("pageShell.memory.title")}
+      title={title ?? t("pageShell.memory.title")}
       open={open}
       onClose={onClose}
     >

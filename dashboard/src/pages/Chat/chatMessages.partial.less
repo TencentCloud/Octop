@@ -57,25 +57,27 @@
   left: 50%;
   z-index: 20;
 
-  /* Base appearance — more prominent jump affordance */
+  /* Quiet secondary affordance — readable but not competing with messages */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 9px 18px 9px 14px;
-  background: var(--fn-bg-elevated, var(--fn-bg-primary));
-  border: 1px solid color-mix(in srgb, var(--fn-color-brand) 35%, transparent);
+  gap: 4px;
+  padding: 6px 12px 6px 10px;
+  background: color-mix(
+    in srgb,
+    var(--fn-bg-elevated, var(--fn-bg-primary)) 88%,
+    transparent
+  );
+  border: 1px solid var(--fn-border-secondary, var(--fn-card-border-normal));
   border-radius: 999px;
-  color: var(--fn-text-brand);
-  font-size: 13px;
-  font-weight: 600;
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  box-shadow:
-    0 6px 20px rgba(0, 0, 0, 0.12),
-    0 2px 8px color-mix(in srgb, var(--fn-color-brand) 16%, transparent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(8px);
   white-space: nowrap;
 
-  /* Smooth transitions for hover and visibility changes */
   transition:
     background var(--fn-transition-fast),
     color var(--fn-transition-fast),
@@ -85,24 +87,17 @@
     transform 0.22s ease,
     visibility 0.22s;
 
-  /* Visible state — default is visible so the initial fadeIn animation plays */
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   visibility: visible;
   pointer-events: auto;
 
   &:hover {
-    background: color-mix(
-      in srgb,
-      var(--fn-color-brand) 8%,
-      var(--fn-bg-elevated, var(--fn-bg-primary))
-    );
-    color: var(--fn-text-brand);
-    border-color: color-mix(in srgb, var(--fn-color-brand) 55%, transparent);
-    box-shadow:
-      0 8px 24px rgba(0, 0, 0, 0.14),
-      0 3px 10px color-mix(in srgb, var(--fn-color-brand) 22%, transparent);
-    transform: translateX(-50%) translateY(-2px);
+    background: var(--fn-bg-elevated, var(--fn-bg-primary));
+    color: var(--fn-text-primary);
+    border-color: var(--fn-border-primary, var(--fn-card-border-normal));
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+    transform: translateX(-50%) translateY(-1px);
   }
 
   &:active {
@@ -135,7 +130,7 @@
 @keyframes scrollBtnEnter {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(12px) scale(0.88);
+    transform: translateX(-50%) translateY(8px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -663,17 +658,13 @@
   }
 }
 
-.inlineToolLabel {
+.inlineToolIcon {
   display: inline-flex;
   align-items: center;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
-  color: var(--fn-text-brand);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  justify-content: center;
   flex-shrink: 0;
+  color: var(--fn-text-tertiary);
+  line-height: 0;
 }
 
 .inlineToolName {

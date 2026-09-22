@@ -46,6 +46,7 @@ class AgentRow:
     welcome_message: str | None = None
     knowledge_base_ids: str | None = None
     mcp_servers: str | None = None
+    kind: str = "expert"
 
     @classmethod
     def from_row(cls, r: DbRow) -> AgentRow:
@@ -53,6 +54,13 @@ class AgentRow:
             is_shared = int(r["is_shared"])
         except KeyError:
             is_shared = 0
+        try:
+            kind_raw = r["kind"]
+        except (KeyError, IndexError):
+            kind_raw = None
+        kind = str(kind_raw).strip() if kind_raw else "expert"
+        if kind not in {"expert", "team"}:
+            kind = "expert"
         return cls(
             id=r["id"],
             agent_id=r["agent_id"],
@@ -79,6 +87,7 @@ class AgentRow:
             welcome_message=_opt_str(r, "welcome_message"),
             knowledge_base_ids=_opt_str(r, "knowledge_base_ids"),
             mcp_servers=_opt_str(r, "mcp_servers"),
+            kind=kind,
         )
 
 
@@ -107,16 +116,18 @@ class AgentRepo:
         welcome_message: str | None = None,
         knowledge_base_ids: str | None = None,
         mcp_servers: str | None = None,
+        kind: str = "expert",
     ) -> str:
         ts = now_ts()
+        agent_kind = kind if kind in {"expert", "team"} else "expert"
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO agents(agent_id, user_id, name, description, "
                 "persona_mbti, default_model, system_prompt, enabled, config_json, icon, "
                 "template_name, color, icon_name, icon_url, skill_package_ids, "
                 "published_expert_id, welcome_message, knowledge_base_ids, mcp_servers, "
-                "created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "kind, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     agent_id,
                     user_id,
@@ -136,6 +147,7 @@ class AgentRepo:
                     welcome_message,
                     knowledge_base_ids,
                     mcp_servers,
+                    agent_kind,
                     ts,
                     ts,
                 ),

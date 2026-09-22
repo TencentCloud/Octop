@@ -200,16 +200,32 @@ def test_weknora_catalog_and_credentials():
 
 
 def test_weknora_rejects_non_https_remote_url():
-    with pytest.raises(ValueError, match="non-local url must use https"):
+    from octop.infra.errors import ErrorCode, OctopError
+
+    with pytest.raises(OctopError) as exc:
         validate_create_credentials(
             "weknora",
             {"base_url": "http://weknora.example.com", "api_key": "sk-secret"},
         )
+    assert exc.value.code is ErrorCode.CONNECTOR_MCP_HTTPS_REQUIRED
     with pytest.raises(ValueError, match="query string or fragment"):
         validate_create_credentials(
             "weknora",
             {"base_url": "https://weknora.example.com?token=secret"},
         )
+
+
+def test_weknora_allows_lan_http_base_url():
+    payload = validate_create_credentials(
+        "weknora",
+        {
+            "base_url": "http://10.0.0.5:8080/",
+            "api_key": "sk-secret",
+            "tenant_id": "tenant-1",
+            "knowledge_base_ids": "kb-1",
+        },
+    )
+    assert payload["base_url"] == "http://10.0.0.5:8080/api/v1"
 
 
 def test_dify_builds_streamable_http_spec():

@@ -570,6 +570,72 @@ def default_task_examples(label_zh: str, label_en: str) -> dict[str, list[str]]:
     }
 
 
+def resolve_display_task_examples(
+    *,
+    parsed: dict[str, list[str]] | None,
+    catalog: ExpertCatalog | None = None,
+    template_name: str | None = None,
+    label_zh: str = "",
+    label_en: str = "",
+) -> dict[str, list[str]]:
+    """Workspace field, then catalog template, then name-based defaults (never null).
+
+    Explicit empty lists in the workspace stay empty (hide suggestion cards).
+    Missing field falls through so different experts no longer share one i18n set.
+    """
+    if parsed is not None:
+        normalized = normalize_task_examples_for_display(parsed)
+        return normalized if normalized is not None else {"zh": [], "en": []}
+    if catalog is not None and template_name:
+        expert = catalog.get(template_name)
+        summary_examples = (
+            getattr(expert.summary, "task_examples", None) if expert is not None else None
+        )
+        if summary_examples is not None:
+            normalized = normalize_task_examples_for_display(summary_examples)
+            if normalized is not None:
+                return normalized
+    zh = (label_zh or label_en or "助手").strip() or "助手"
+    en = (label_en or label_zh or "Assistant").strip() or "Assistant"
+    return normalize_task_examples_for_display(default_task_examples(zh, en)) or {
+        "zh": [],
+        "en": [],
+    }
+
+
+def display_task_examples_for_agent(
+    *,
+    parsed: dict[str, list[str]] | None,
+    catalog: ExpertCatalog | None = None,
+    row: Any | None = None,
+) -> dict[str, list[str]]:
+    """Apply :func:`resolve_display_task_examples` using labels from an agent row."""
+    name = str(getattr(row, "name", "") or "").strip() if row is not None else ""
+    template = (
+        str(getattr(row, "template_name", None) or "").strip() or None if row is not None else None
+    )
+    return resolve_display_task_examples(
+        parsed=parsed,
+        catalog=catalog,
+        template_name=template,
+        label_zh=name,
+        label_en=name,
+    )
+
+
+async def resolve_agent_display_task_examples(
+    *,
+    workspace: BackendWorkspace | None,
+    row: Any | None,
+    catalog: ExpertCatalog | None = None,
+) -> dict[str, list[str]]:
+    """Load workspace ``task_examples``, then catalog / name fallbacks."""
+    parsed = (
+        await read_workspace_manifest_task_examples(workspace) if workspace is not None else None
+    )
+    return display_task_examples_for_agent(parsed=parsed, catalog=catalog, row=row)
+
+
 def normalize_task_examples_for_display(
     parsed: dict[str, list[str]] | None,
 ) -> dict[str, list[str]] | None:

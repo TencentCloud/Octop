@@ -100,6 +100,8 @@ class ThreadRow:
     artifacts: tuple[str, ...] = field(default_factory=tuple)
     folder: str | None = None
     tags: tuple[str, ...] = field(default_factory=tuple)
+    conversation_mode: str | None = None
+    pending_plan_path: str | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> ThreadRow:
@@ -115,6 +117,14 @@ class ThreadRow:
             folder = r["folder"]
         except (KeyError, IndexError):
             folder = None
+        try:
+            conversation_mode = r["conversation_mode"]
+        except (KeyError, IndexError):
+            conversation_mode = None
+        try:
+            pending_plan_path = r["pending_plan_path"]
+        except (KeyError, IndexError):
+            pending_plan_path = None
         return cls(
             id=r["id"],
             thread_id=r["thread_id"],
@@ -132,6 +142,8 @@ class ThreadRow:
             artifacts=tuple(parse_thread_artifacts(raw_artifacts)),
             folder=str(folder) if folder else None,
             tags=parse_thread_tags(raw_tags),
+            conversation_mode=str(conversation_mode) if conversation_mode else None,
+            pending_plan_path=str(pending_plan_path) if pending_plan_path else None,
         )
 
 
@@ -385,6 +397,8 @@ class ThreadRepo:
         model_ref: str | None | object = ...,
         reasoning_mode: str | None | object = ...,
         reasoning_effort: str | None | object = ...,
+        conversation_mode: str | None | object = ...,
+        pending_plan_path: str | None | object = ...,
     ) -> None:
         fields: list[str] = []
         params: list[object] = []
@@ -392,6 +406,8 @@ class ThreadRepo:
             ("model_ref", model_ref),
             ("reasoning_mode", reasoning_mode),
             ("reasoning_effort", reasoning_effort),
+            ("conversation_mode", conversation_mode),
+            ("pending_plan_path", pending_plan_path),
         ):
             if value is ...:
                 continue

@@ -42,6 +42,16 @@ export interface InstallPublishedExpertBody {
   top_p?: number | null;
   max_tokens?: number | null;
   enable_trajectory?: boolean;
+  file_overrides?: { name: string; content: string }[];
+  omit_files?: string[];
+  hub_skills?: {
+    skill_name: string;
+    display_name?: string;
+    icon_url?: string;
+    label?: { zh?: string; en?: string };
+    summary?: { zh?: string; en?: string };
+  }[];
+  copy_skills?: { agent_id: string; slug: string }[];
 }
 
 export interface InstalledPublishedExpert {
@@ -51,6 +61,8 @@ export interface InstalledPublishedExpert {
   state: string;
   published_expert_id: string;
   bootstrap_pending: boolean;
+  hub_skill_errors?: string[];
+  copy_skill_errors?: string[];
 }
 
 const publishedPath = (expertId: string) =>

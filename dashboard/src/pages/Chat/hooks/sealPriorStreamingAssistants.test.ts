@@ -56,4 +56,25 @@ describe("sealPriorStreamingAssistants", () => {
     ];
     expect(sealPriorStreamingAssistants(input)).toBe(input);
   });
+
+  it("does not seal the host when a member bubble starts", () => {
+    const input = [
+      msg({
+        id: "host",
+        role: "assistant",
+        content: "asking",
+        status: "streaming",
+      }),
+      msg({
+        id: "member",
+        role: "assistant",
+        content: "labs",
+        status: "streaming",
+        speakerAgentId: "doctor",
+      }),
+    ];
+    const out = sealPriorStreamingAssistants(input, "doctor");
+    expect(out[0].status).toBe("streaming");
+    expect(out[1].status).toBe("done");
+  });
 });

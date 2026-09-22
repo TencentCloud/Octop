@@ -29,6 +29,33 @@ vi.mock("../api/request", () => ({
   }),
 }));
 
+vi.mock("../api/modules/teams", () => ({
+  teamsApi: {
+    get: vi.fn(async () => ({
+      team_id: "team-1",
+      agent_id: "team-1",
+      name: "Research crew",
+      description: "Team description",
+      kind: "team",
+      member_ids: ["writer-1", "analyst-1"],
+      members: [
+        {
+          agent_id: "writer-1",
+          name: "Writer",
+          color: "#f43f5e",
+          state: "running",
+        },
+        {
+          agent_id: "analyst-1",
+          name: "Analyst",
+          color: "#0d9488",
+          state: "stopped",
+        },
+      ],
+    })),
+  },
+}));
+
 vi.mock("../api/modules/subagents", () => ({
   listAgentSubagents: vi.fn(async () => [
     {
@@ -161,5 +188,33 @@ describe("AgentProfileDrawer sections", () => {
     expect(subHeader).toContainElement(subId);
     expect(subHeader).not.toContainElement(subDesc);
     expect(subHeader?.nextElementSibling).toBe(subDesc);
+  });
+
+  it("shows team members instead of host persona and skills", async () => {
+    const team = {
+      agent_id: "team-1",
+      name: "Research crew",
+      state: "running",
+      kind: "team",
+      member_ids: ["writer-1", "analyst-1"],
+    } as OctopAgent;
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AgentProfileDrawer open agent={team} onClose={vi.fn()} />
+      </I18nextProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Writer")).toBeInTheDocument();
+      expect(screen.getByText("Analyst")).toBeInTheDocument();
+      expect(screen.getByText("SOUL.md")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("chat.agentProfile.titleTeam")).toBeInTheDocument();
+    expect(screen.getByText("chat.teamProfile.hostNote")).toBeInTheDocument();
+    expect(screen.queryByText("experts.table.persona")).not.toBeInTheDocument();
+    expect(screen.queryByText("Demo skill")).not.toBeInTheDocument();
+    expect(screen.queryByText("Demo subagent")).not.toBeInTheDocument();
   });
 });

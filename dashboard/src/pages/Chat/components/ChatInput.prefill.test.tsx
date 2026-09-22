@@ -236,4 +236,26 @@ describe("ChatInput prefill clear-on-send", () => {
 
     expect(textarea.value).toBe("");
   });
+
+  it("sends immediately in a team room while a turn is still streaming", () => {
+    const onSend = vi.fn();
+    const onQueue = vi.fn();
+    render(
+      <ChatInput
+        onSend={onSend}
+        onQueue={onQueue}
+        onCancel={vi.fn()}
+        onNewChat={vi.fn()}
+        isStreaming
+        isTeam
+        agentId="team-1"
+        threadId="thread-1"
+      />,
+    );
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "second question" } });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    expect(onSend).toHaveBeenCalledWith("second question", undefined);
+    expect(onQueue).not.toHaveBeenCalled();
+  });
 });

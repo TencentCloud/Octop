@@ -16,13 +16,15 @@ from octop.api.routers.chat.sse import format_sse
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
     default_welcome_payload,
-    normalize_task_examples_for_display,
+    display_task_examples_for_agent,
     parse_task_examples,
     read_workspace_manifest_data,
     welcome_payload_from_manifest_data,
     welcome_payload_has_content,
 )
 from octop.infra.agents.profile import welcome_from_row
+from octop.infra.agents.teams import is_team_agent
+from octop.infra.agents.teams.welcome import team_host_welcome_payload
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
@@ -63,30 +65,41 @@ async def get_chat_welcome(
     1. Agent row ``welcome_message`` (instance-owned; set at create/edit).
     2. Agent workspace ``.octop/manifest.json`` (seeded at create; quick cards + fallback copy).
     3. Default quick cards (``general-assistant`` or a small built-in set).
+
+    Team hosts keep the team intro and show members' own quick cards — the host
+    is not turned into cards.
     """
     assert_agent_access(server, agent_id, user)
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry
     catalog = server.expert_catalog
+    row = registry.get_row(agent_id)
+    if is_team_agent(row):
+        team_payload = await team_host_welcome_payload(row, registry, catalog)
+        return {**team_payload, "task_examples": None}
 
     workspace = registry.workspace_for_agent(agent_id)
     payload: dict[str, Any] | None = None
-    task_examples = None
+    parsed_examples = None
     if workspace is not None:
         manifest = await read_workspace_manifest_data(workspace)
         if manifest is not None:
             welcome = welcome_payload_from_manifest_data(manifest)
             if welcome_payload_has_content(welcome):
                 payload = welcome
-            task_examples = normalize_task_examples_for_display(parse_task_examples(manifest))
+            parsed_examples = parse_task_examples(manifest)
 
-    row = registry.get_row(agent_id)
     if payload is None:
         payload = default_welcome_payload(catalog)
 
     db_welcome = welcome_from_row(row) if row is not None else None
     if db_welcome is not None:
         payload = {**payload, "welcome_message": {"zh": db_welcome, "en": db_welcome}}
+    task_examples = display_task_examples_for_agent(
+        parsed=parsed_examples,
+        catalog=catalog,
+        row=row,
+    )
     return {**payload, "task_examples": task_examples}
 
 
@@ -118,6 +131,13 @@ async def iter_dashboard_hitl_resume_sse(
         channel_type=channel_type,
     )
     disconnected = False
+    # Clear the in-memory pause before the (possibly long) resume stream so
+    # history reload cannot reinject the same card while the turn continues.
+    if pending is not None:
+        hitl_coordinator.store.mark_resolved(
+            pending.pending_id,
+            "rejected" if rejected else "approved",
+        )
     try:
         async for chunk in processor.iter_hitl_resume_chunks(
             agent_id=agent_id,
@@ -133,14 +153,13 @@ async def iter_dashboard_hitl_resume_sse(
                     hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
             if not disconnected:
                 yield format_sse("chunk", chunk)
-        if pending is not None:
-            hitl_coordinator.store.mark_resolved(
-                pending.pending_id,
-                "rejected" if rejected else "approved",
-            )
         if not disconnected:
             yield format_sse("chunk", {"type": "done"})
     except Exception as exc:
+        # Resume failed after we cleared the pause for reinject safety — do not
+        # leave the record looking like a successful approve/reject.
+        if pending is not None:
+            hitl_coordinator.store.mark_resolved(pending.pending_id, "expired")
         yield format_sse(
             "chunk",
             {"type": "error", "message": format_stream_error(exc, locale)},

@@ -24,13 +24,13 @@
 </p>
 
 <p align="center">
-  <a href="#-概述">概述</a> ·
-  <a href="#-亮点">亮点</a> ·
-  <a href="#-核心技术">核心技术</a> ·
-  <a href="#-功能特性">功能特性</a> ·
-  <a href="#-规划">规划</a> ·
-  <a href="#-快速开始">快速开始</a>·
-  <a href="#-目录">目录</a>
+  <a href="#概述">概述</a> ·
+  <a href="#亮点">亮点</a> ·
+  <a href="#核心技术">核心技术</a> ·
+  <a href="#功能特性">功能特性</a> ·
+  <a href="#规划">规划</a> ·
+  <a href="#快速开始">快速开始</a>·
+  <a href="#目录">目录</a>
 </p>
 
 <p align="center">
@@ -43,7 +43,7 @@
 
 **Octop** 是一个开源、自托管的 AI 助手。它不仅是工具，更是可并行运作的数字生命体。通过多 Agent 架构，它为团队、家庭和个人构建了既独立又协作的智能环境。并且这一切都运行在你的机器上——完全自托管的设计让隐私不再是妥协，而单进程启动的便捷性，则让强大的 Web 控制台、CLI 与 IM 集成触手可及。
 
-借助飞书、钉钉、QQ、Discord、企业微信或 HTTP/SSE/WebSocket API 与任意 Agent 对话；通过**专家库**一键创建专业角色，通过 **Connector**（OAuth + MCP）接入外部服务，通过 **ACP** 与 IDE / 终端 AI 工具双向协作。
+借助飞书、钉钉、QQ、Telegram、企业微信或 HTTP/SSE/WebSocket API 与任意 Agent 对话；通过**专家库**一键创建专业角色，通过 **Connector**（OAuth + MCP）接入外部服务，通过 **ACP** 与 IDE / 终端 AI 工具双向协作。
 
 > Octop 的设计目标：让每一次对话、工作区与凭据都留在你自己的机器上，同时为每个用户配备一组可按场景切换的专业 Agent。
 
@@ -116,7 +116,7 @@ Octop 不依赖外部消息队列或中间件，而是通过进程内的 `Harnes
 - 工作区后端：本地磁盘、COS、S3 及其他远程存储
 
 ### 通道与自动化
-- IM 通道：飞书、钉钉、QQ、Discord、企业微信等
+- IM 通道：飞书、钉钉、QQ、Telegram、企业微信等
 - 主动定时任务，支持自然语言和斜杠命令触发
 - Web UI、IM、定时任务共用同一套消息处理链路
 
@@ -234,7 +234,15 @@ pip install octop
 uv sync --extra local-embedding
 ```
 
-### 2. 启动
+### 2. 初始化
+
+```bash
+octop init
+```
+
+交互式向导会在 `~/.octop/` 下创建 SQLite 数据库、JWT 密钥，并引导你设置首个管理员账号。
+
+### 3. 启动
 
 ```bash
 # 前台运行（API + Web 控制台）
@@ -281,31 +289,31 @@ docker run -d \
 
 ## 📑 目录
 
-- [亮点](#-亮点)
-- [概述](#-概述)
-- [核心技术](#-核心技术)
-- [功能特性](#-功能特性)
-- [规划](#-规划)
-- [快速开始](#-快速开始)
+- [亮点](#亮点)
+- [概述](#概述)
+- [核心技术](#核心技术)
+- [功能特性](#功能特性)
+- [规划](#规划)
+- [快速开始](#快速开始)
 - **部署与使用**
-  - [安装方式](#-安装方式)
-  - [配置](#-配置)
-  - [CLI 参考](#-cli-参考)
-  - [Web 控制台](#-web-控制台)
-  - [数据目录](#-数据目录)
+  - [安装方式](#安装方式)
+  - [配置](#配置)
+  - [CLI 参考](#cli-参考)
+  - [Web 控制台](#web-控制台)
+  - [数据目录](#数据目录)
 - **架构与开发**
-  - [架构](#-架构)
-  - [项目结构](#-项目结构)
-  - [开发](#-开发)
+  - [架构](#架构)
+  - [项目结构](#项目结构)
+  - [开发](#开发)
 - **项目信息**
-  - [安全与隐私](#-安全与隐私)
-  - [参与贡献](#-参与贡献)
-  - [更新日志](#-更新日志)
-  - [相关项目](#-相关项目)
-  - [客户企业微信群](#-客户企业微信群)
-  - [许可证](#-许可证)
+  - [安全与隐私](#安全与隐私)
+  - [参与贡献](#参与贡献)
+  - [更新日志](#更新日志)
+  - [相关项目](#相关项目)
+  - [客户企业微信群](#客户企业微信群)
+  - [许可证](#许可证)
 
-### 📦 安装方式
+## 📦 安装方式
 
 | 方式 | 平台 | 说明 |
 |------|------|------|
@@ -328,7 +336,7 @@ octop update          # 获取并安装最新版 Octop，若已注册系统服�
 
 数据库结构会在下次启动时自动迁移；仅当设置向导提示需要迁移时才运行 `octop init`。跨版本升级前请务必先备份（`octop backup`）。
 
-### ⚙️ 配置
+## ⚙️ 配置
 
 所有运行时数据存放在 `~/.octop/`。可通过 CLI 管理，也可直接编辑文件。
 
@@ -363,11 +371,11 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 | **飞书** | App ID、App Secret |
 | **钉钉** | App Key、App Secret |
 | **QQ** | Bot AppID、Token |
-| **Discord** | Bot Token |
+| **Telegram** | Bot Token |
 | **企业微信** | Corp ID、Agent Secret |
 | **Web 控制台** | 默认启用 |
 
-### 📖 CLI 参考
+## 📖 CLI 参考
 
 | 命令 | 说明 |
 |------|------|
@@ -389,7 +397,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 
 完整参考：**[docs/cli.md](docs/cli.md)**。
 
-### 🖥️ Web 控制台
+## 🖥️ Web 控制台
 
 `octop run` 启动后访问 **http://127.0.0.1:8088**。
 
@@ -409,7 +417,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 
 交互式 API 文档：**http://127.0.0.1:8088/api/docs**（默认关闭 — 在 `config.json` 中设置 `"enable_api_docs": true` 开启）
 
-### 📁 数据目录
+## 📁 数据目录
 
 ```
 ~/.octop/                          ← 安装与数据根目录
@@ -427,7 +435,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 
 环境变量与 `config.json` 详见 [docs/configuration.md](docs/configuration.md)。
 
-### 🏗️ 架构
+## 🏗️ 架构
 
 ```
 OctopServer
@@ -448,7 +456,7 @@ OctopServer
 
 详见 [docs/architecture.md](docs/architecture.md)、[docs/adr/001-single-process-model.md](docs/adr/001-single-process-model.md) 与 [docs/adr/002-database-backends.md](docs/adr/002-database-backends.md)。
 
-### 📁 项目结构
+## 📁 项目结构
 
 ```
 src/octop/
@@ -465,7 +473,7 @@ docker/        Docker Compose、入口脚本、构建与部署脚本
 tests/         unit/ + integration/
 ```
 
-### 🛠️ 开发
+## 🛠️ 开发
 
 **前置条件：** Python 3.12+、Node 18+、[uv](https://docs.astral.sh/uv/)
 
@@ -483,7 +491,7 @@ cd dashboard && npx tsc -b
 单独执行：`make test`、`make lint`、`make typecheck`、`make format`。
 
 
-### 🔒 安全与隐私
+## 🔒 安全与隐私
 
 - **本地优先**：配置、对话、工作区与凭证均存储在 `~/.octop/`。
 - **多用户隔离**：JWT 认证，按用户隔离 Agent 与工作区。
@@ -491,7 +499,7 @@ cd dashboard && npx tsc -b
 - **工具护栏**：可在 `~/.octop/security/tool_guard/` 编辑 Shell 命令规则。
 - **无厂商锁定**：可自由切换 LLM 供应商、存储后端与 IM 通道。
 
-### 🤝 参与贡献
+## 🤝 参与贡献
 
 欢迎贡献代码：
 
@@ -504,11 +512,11 @@ cd dashboard && npx tsc -b
 
 模块边界与编码规范见 [AGENTS.md](AGENTS.md)。
 
-### 📋 更新日志
+## 📋 更新日志
 
 详见 [CHANGELOG.md](CHANGELOG.md)。
 
-### 🔗 相关项目
+## 🔗 相关项目
 
 | 项目 | 描述 |
 |------|------|
@@ -519,7 +527,7 @@ cd dashboard && npx tsc -b
 
 > 这些 `harness-*` 项目正在筹备开源中，仓库地址将在发布后补充。
 
-### 💬 客户企业微信群
+## 💬 客户企业微信群
 
 如需加入客户企业微信服务群，请扫码：
 
@@ -529,11 +537,11 @@ cd dashboard && npx tsc -b
 
 > 请扫码进入工作群，如有任何疑问或需求，请直接联系群管理员对接处理。
 
-### 📄 许可证
+## 📄 许可证
 
 本项目采用 [MIT License](LICENSE)。
 
-### ✨ 贡献者
+## ✨ 贡献者
 
 感谢所有贡献者：
 

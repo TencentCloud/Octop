@@ -1,8 +1,9 @@
 id: fortune
-version: 0.2.0
+version: 0.2.2
 name: 抽签运势
 description: 掷骰子、今日运势与抽签，在聊天中展示结果卡片
-icon: "🔮"
+icon: icon.svg
+group: fun
 kind: tool
 entry: main.py
 ui:

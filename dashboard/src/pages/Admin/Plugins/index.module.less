@@ -3,6 +3,20 @@
   min-width: 0;
 }
 
+.emptyWithAction {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.emptyHint {
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  max-width: 360px;
+  line-height: 1.5;
+}
+
 .guide {
   margin-bottom: 16px;
   background: var(--fn-bg-layout, var(--fn-bg-secondary));
@@ -59,6 +73,27 @@
   margin-bottom: 16px;
 }
 
+.groupTabsWrap {
+  margin-bottom: 14px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+
+.groupTabs {
+  width: 100%;
+  min-width: max-content;
+
+  :global(.ant-segmented-item) {
+    min-width: 4.5em;
+  }
+
+  :global(.ant-segmented-item-label) {
+    font-weight: 500;
+    white-space: nowrap;
+  }
+}
+
 .toolbarLeft {
   display: flex;
   align-items: center;
@@ -78,6 +113,28 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.marketToolbarRight {
+  flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+
+  @media (max-width: 640px) {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+}
+
+.marketSearch {
+  width: 280px;
+  min-width: 0;
+
+  @media (max-width: 640px) {
+    width: auto;
+    flex: 1 1 0;
+  }
 }
 
 .viewModeLabel {
@@ -153,6 +210,10 @@
   opacity: 0.7;
 }
 
+.cardInstalled {
+  border-color: var(--fn-border-success, #b7eb8f);
+}
+
 .cardBody {
   display: flex;
   flex-direction: column;
@@ -188,11 +249,50 @@
   white-space: nowrap;
 }
 
-.cardChips {
+.cardMetaRow {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cardMeta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fn-text-tertiary, var(--fn-text-secondary));
+}
+
+.cardMetaItem {
+  max-width: 9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardMetaSep {
+  margin: 0 6px;
+  opacity: 0.4;
+  user-select: none;
+}
+
+.cardChips {
+  display: inline-flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+
+  :global(.ant-tag),
+  :global(.octop-ant-tag) {
+    margin: 0 !important;
+    line-height: 18px;
+    padding-inline: 6px;
+    font-size: 12px;
+  }
 }
 
 .cardDesc {
@@ -339,6 +439,14 @@
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+
+  :global(.ant-tag),
+  :global(.octop-ant-tag) {
+    margin: 0 !important;
+    line-height: 18px;
+    padding-inline: 6px;
+    font-size: 12px;
+  }
 }
 
 .drawerEnableRow {

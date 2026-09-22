@@ -125,7 +125,7 @@ export function isLocalPreset(preset: ProviderPreset): boolean {
   return LOCAL_PRESET_IDS.has(preset.id);
 }
 
-/** Overseas / global cloud presets hidden behind "more providers" on admin Models. */
+/** Presets / groups hidden behind "更多模型提供商" on admin Models (and setup). */
 const OVERSEAS_PRESET_IDS = new Set([
   "openai",
   "openai-codex",
@@ -135,13 +135,24 @@ const OVERSEAS_PRESET_IDS = new Set([
   "openrouter",
 ]);
 
+/** Brand groups that belong in the collapsed "more providers" section. */
+const MORE_PROVIDER_GROUPS = new Set(["opencode"]);
+
 export function isOverseasPreset(preset: ProviderPreset): boolean {
-  return OVERSEAS_PRESET_IDS.has(preset.id);
+  if (OVERSEAS_PRESET_IDS.has(preset.id)) return true;
+  if (
+    preset.provider_group &&
+    MORE_PROVIDER_GROUPS.has(preset.provider_group)
+  ) {
+    return true;
+  }
+  return preset.id === "opencode" || preset.id.startsWith("opencode-");
 }
 
 /**
  * Split cloud presets into default-visible (domestic / already configured)
- * and overseas presets shown only after "更多模型提供商".
+ * and collapsed presets shown only after "更多模型提供商"
+ * (overseas clouds + OpenCode).
  */
 export function partitionCloudPresets(
   cloudPresets: ProviderPreset[],

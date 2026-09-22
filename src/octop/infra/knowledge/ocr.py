@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
+import re
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -17,6 +19,8 @@ from octop.infra.agents.providers.model_flags import is_chat_eligible_model, is_
 from octop.infra.agents.providers.probe import build_probe_chat_model
 from octop.infra.utils.llm_text import llm_text_content
 from octop.infra.utils.runtime_packages import PackageInstallSpec, install_packages
+
+logger = logging.getLogger(__name__)
 
 OCR_IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 
@@ -31,6 +35,32 @@ _OCR_PROMPT = (
     "Transcribe all visible text in this image exactly. Preserve reading order, headings, "
     "lists, and table rows. Return only the transcription, without commentary."
 )
+
+# A remote vision model that never received the image answers with a refusal such as
+# "No image was attached. Please upload an image.". That is not source text: indexing it
+# poisons the knowledge base and still marks the document ready. Refusals are short and
+# addressed to the caller, so require both a short answer and a refusal phrasing; a real
+# page that merely mentions uploading an image stays well above the length bound.
+_OCR_REFUSAL_MAX_CHARS = 400
+_OCR_REFUSAL_RE = re.compile(
+    r"no image (?:was |is |has been )?(?:attached|provided|found|received|included)"
+    r"|(?:don'?t|do not|can'?t|cannot|unable to|didn'?t) "
+    r"(?:see|find|detect|receive|locate)[^.\n]{0,30}(?:image|picture|photo|scan|attachment)"
+    r"|please (?:attach|upload|provide|send|share)[^.\n]{0,40}"
+    r"(?:image|picture|photo|scan|attachment|file)"
+    r"|未(?:收到|看到|检测到|获取到)[^。\n]{0,10}(?:图片|图像|照片|附件)"
+    r"|请(?:上传|提供|重新上传|发送)[^。\n]{0,10}(?:图片|图像|照片|附件|文件)",
+    re.IGNORECASE,
+)
+
+
+def _is_no_image_refusal(text: str) -> bool:
+    """Return ``True`` when OCR output is the model asking for an image, not a transcription."""
+    stripped = text.strip()
+    if not stripped or len(stripped) > _OCR_REFUSAL_MAX_CHARS:
+        return False
+    return _OCR_REFUSAL_RE.search(stripped) is not None
+
 
 _local_engine: Any | None = None
 _local_engine_lock = threading.Lock()
@@ -297,6 +327,15 @@ class _RemoteOcr:
                 ]
             )
             text = llm_text_content(self._model.invoke([message]))
-            if text:
-                parts.append(text)
+            if not text:
+                continue
+            if _is_no_image_refusal(text):
+                # Indexing a refusal would mark the document ready with junk chunks; an empty
+                # result instead fails the document with "no extractable text".
+                logger.warning(
+                    "remote OCR returned a no-image refusal for %s; treating the page as empty",
+                    path.name,
+                )
+                continue
+            parts.append(text)
         return "\n\n".join(parts)

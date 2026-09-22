@@ -174,28 +174,33 @@ class CronDeliveryService:
         command: CronDeliveryCommand,
         session: SessionRow,
     ) -> dict[str, Any]:
-        servers = [name.strip() for name in command.mcp_servers if name.strip()]
-        extra_defaults = self._agent_manager.default_mcp_servers(command.agent_id)
-        if servers:
-            servers = (
-                self._agent_manager.merge_turn_mcp_servers(
-                    session.user_id,
-                    servers,
-                    apply_defaults=False,
-                    extra_defaults=extra_defaults,
-                )
-                or []
-            )
+        from octop.infra.agents.teams import is_team_agent
+
+        if is_team_agent(self._agent_manager.get_row(command.agent_id)):
+            servers: list[str] = []
         else:
-            servers = (
-                self._agent_manager.merge_turn_mcp_servers(
-                    session.user_id,
-                    None,
-                    apply_defaults=True,
-                    extra_defaults=extra_defaults,
+            servers = [name.strip() for name in command.mcp_servers if name.strip()]
+            extra_defaults = self._agent_manager.default_mcp_servers(command.agent_id)
+            if servers:
+                servers = (
+                    self._agent_manager.merge_turn_mcp_servers(
+                        session.user_id,
+                        servers,
+                        apply_defaults=False,
+                        extra_defaults=extra_defaults,
+                    )
+                    or []
                 )
-                or []
-            )
+            else:
+                servers = (
+                    self._agent_manager.merge_turn_mcp_servers(
+                        session.user_id,
+                        None,
+                        apply_defaults=True,
+                        extra_defaults=extra_defaults,
+                    )
+                    or []
+                )
         if servers:
             failed = await self._agent_manager.prepare_chat_mcp(
                 command.agent_id,

@@ -38,6 +38,7 @@ class StorageBackendCreateBody(BaseModel):
 
 
 class StorageBackendPatchBody(BaseModel):
+    name: str | None = None
     kind: str | None = None
     endpoint: str | None = None
     access_key: str | None = None
@@ -131,8 +132,38 @@ async def patch_storage_backend(
     next_kind = (body.kind or row.kind or "").lower()
     if body.enabled is True:
         _ensure_opensandbox_sdk(next_kind)
+
+    new_name: str | None = None
+    if body.name is not None:
+        candidate = body.name.strip()
+        if candidate and candidate != row.name:
+            taken = server.services.storage_backend_repo.get_by_name(candidate)
+            if taken is not None and taken.id != backend_id:
+                raise OctopError(
+                    ErrorCode.STORAGE_BACKEND_NAME_TAKEN,
+                    f"name {candidate!r} already exists",
+                )
+            new_name = candidate
+
+    if new_name is not None:
+        from octop.infra.backend.resolver import (  # noqa: PLC0415
+            rewrite_named_storage_backend_refs,
+        )
+
+        assert server.app_runtime is not None
+        registry = server.app_runtime.agent_registry
+        for ref in registry.find_agents_using_storage_backend(row.name):
+            cfg = dict(registry.get_config(ref["agent_id"]))
+            cfg["backend"] = rewrite_named_storage_backend_refs(
+                cfg.get("backend"),
+                old=row.name,
+                new=new_name,
+            )
+            registry.persist_harness_config(ref["agent_id"], cfg)
+
     server.services.storage_backend_repo.update(
         backend_id,
+        name=new_name,
         kind=body.kind,
         endpoint=body.endpoint,
         access_key=body.access_key,

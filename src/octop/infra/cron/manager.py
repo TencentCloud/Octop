@@ -237,7 +237,7 @@ class CronManager:
         if not row.enabled:
             return
         try:
-            trigger = build_trigger(row.trigger)
+            trigger = build_trigger(row.trigger, timezone=self._timezone)
         except OctopError:
             logger.warning(
                 "CronJob %s has invalid trigger %r; skipping schedule",
@@ -289,7 +289,7 @@ class CronManager:
 
     def schedule_system_job(self, job_id: str, *, trigger: str, func: Any) -> None:
         """Register a process-level job that is not stored in the cron DB."""
-        built = build_trigger(trigger)
+        built = build_trigger(trigger, timezone=self._timezone)
         self._system_job_ids.add(job_id)
         self._scheduler.add_job(
             func,

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -97,7 +99,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
         sso_indexes = {
             r["name"] for r in conn.execute("PRAGMA index_list(sso_providers)").fetchall()
         }
-    assert v == 16
+    assert v == 18
     assert "login_failed_count" in cols
     assert "login_locked_until" in cols
     assert "preferences_json" in cols
@@ -105,6 +107,8 @@ def test_run_migrations_idempotent(db: SqlitePool):
     assert "workspace_root_dir" not in cols
     assert "token_quota" not in cols
     assert "user_policies" in table_names
+    assert "agent_team_members" not in table_names
+    assert "kind" in agent_cols
     assert {"email", "sso_provider_id", "sso_subject"}.issubset(cols)
     assert {"kind", "extra"}.issubset(sso_cols)
     assert "idx_sso_providers_kind" in sso_indexes
@@ -117,8 +121,16 @@ def test_run_migrations_idempotent(db: SqlitePool):
     assert "name" in cron_cols
     assert "shared" in connector_cols
     assert "idx_connectors_user_display_name" in connector_indexes
-    assert {"model_ref", "reasoning_mode", "reasoning_effort", "artifacts"}.issubset(thread_cols)
-    assert {"folder", "tags"}.issubset(thread_cols)
+    assert {
+        "model_ref",
+        "reasoning_mode",
+        "reasoning_effort",
+        "artifacts",
+        "conversation_mode",
+        "pending_plan_path",
+        "folder",
+        "tags",
+    }.issubset(thread_cols)
     assert {
         "color",
         "icon_name",
@@ -170,7 +182,7 @@ def test_migration_002_idempotent_when_column_already_present(tmp_path: Path) ->
     with pool.connect() as conn:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert v == 16
+    assert v == 18
     assert "mcp_servers" in cron_cols
     assert "skill_packages" in {
         r["name"]
@@ -307,7 +319,7 @@ def test_stuck_version_6_without_permissions_column_is_repaired(tmp_path: Path) 
     with pool.connect() as conn:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
-    assert version == 16
+    assert version == 18
     assert "permissions" in cols
 
 
@@ -332,7 +344,7 @@ def test_schema_v10_without_projection_tables_is_repaired(tmp_path: Path) -> Non
         }
         kb_cols = {r["name"] for r in conn.execute("PRAGMA table_info(knowledge_bases)").fetchall()}
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert version == 16
+    assert version == 18
     assert {"thread_messages", "thread_history_projection", "trajectory_events"}.issubset(
         table_names
     )
@@ -367,7 +379,7 @@ def test_ahead_of_max_schema_version_clamps_to_max(tmp_path: Path) -> None:
             r["name"]
             for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
-    assert version == 16
+    assert version == 18
     assert "skill_package_id" in pkg_cols
     assert "published_expert_id" in pub_cols
     assert "user_invites" in invite_tables
@@ -450,7 +462,7 @@ def test_pre_squash_schema_version_clamped_and_knowledge_tables_filled(
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
-    assert version == 16
+    assert version == 18
     assert "permissions" in user_cols
     assert {
         "published_experts",
@@ -624,7 +636,7 @@ def test_v7_sqlite_sql_upgrades_legacy_text_pks(tmp_path: Path) -> None:
     assert doc["filename"] == "a.md"
 
 
-def test_v14_to_v16_adds_sso_provider_kind_without_rebuilding(tmp_path: Path) -> None:
+def test_v14_to_v15_adds_sso_provider_kind_without_rebuilding(tmp_path: Path) -> None:
     pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     with pool.connect() as conn:
@@ -656,7 +668,7 @@ def test_v14_to_v16_adds_sso_provider_kind_without_rebuilding(tmp_path: Path) ->
         bound = conn.execute(
             "SELECT sso_provider_id FROM users WHERE username = 'sso-admin'"
         ).fetchone()[0]
-    assert version == 16
+    assert version == 18
     assert int(row["id"]) == int(provider_id)
     assert row["kind"] == "oidc"
     assert row["extra"] == "{}"
@@ -664,14 +676,14 @@ def test_v14_to_v16_adds_sso_provider_kind_without_rebuilding(tmp_path: Path) ->
     assert int(bound) == int(provider_id)
 
 
-def test_v15_to_v16_adds_thread_organization_without_rebuilding(tmp_path: Path) -> None:
+def test_v17_to_v18_adds_thread_organization_without_rebuilding(tmp_path: Path) -> None:
     pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     with pool.connect() as conn:
         conn.execute("DROP INDEX IF EXISTS idx_threads_folder")
         conn.execute("ALTER TABLE threads DROP COLUMN tags")
         conn.execute("ALTER TABLE threads DROP COLUMN folder")
-        conn.execute("UPDATE _schema_version SET version = 15")
+        conn.execute("UPDATE _schema_version SET version = 17")
         conn.execute(
             """
             INSERT INTO users(
@@ -699,8 +711,69 @@ def test_v15_to_v16_adds_thread_organization_without_rebuilding(tmp_path: Path) 
         version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         row = conn.execute("SELECT thread_id, folder, tags FROM threads").fetchone()
         indexes = {r["name"] for r in conn.execute("PRAGMA index_list(threads)").fetchall()}
-    assert version == 16
+    assert version == 18
     assert row["thread_id"] == "t-1"
     assert row["folder"] is None
     assert row["tags"] == "[]"
     assert "idx_threads_folder" in indexes
+
+
+def _scratch(pool: SqlitePool) -> None:
+    with pool.connect() as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS scratch (k TEXT PRIMARY KEY)")
+
+
+def _competitor(path: Path, *, timeout_ms: int) -> sqlite3.Connection:
+    conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
+    conn.execute(f"PRAGMA busy_timeout = {timeout_ms}")
+    return conn
+
+
+def test_transaction_takes_the_write_lock_up_front(db: SqlitePool, tmp_path: Path) -> None:
+    """A competing writer must not be able to commit in the middle of our transaction.
+
+    With a deferred ``BEGIN`` the write lock is only taken at the first write, so a second
+    connection (``octop run --workers N``, or a CLI run against a running server) commits in
+    between; our own write is then rejected with SQLITE_BUSY_SNAPSHOT, which the 5s busy
+    timeout cannot wait out.
+    """
+    _scratch(db)
+    competitor = _competitor(tmp_path / "octop.db", timeout_ms=100)
+    try:
+        with db.transaction() as conn:
+            conn.execute("SELECT COUNT(*) FROM scratch")  # read first: the trap
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                competitor.execute("BEGIN IMMEDIATE")
+    finally:
+        competitor.close()
+
+
+def test_transaction_completes_while_a_competing_writer_waits(
+    db: SqlitePool, tmp_path: Path
+) -> None:
+    """A read-then-write transaction must survive a competing writer instead of aborting."""
+    _scratch(db)
+    competitor = _competitor(tmp_path / "octop.db", timeout_ms=5000)
+    failures: list[Exception] = []
+
+    def compete() -> None:
+        try:
+            competitor.execute("BEGIN IMMEDIATE")
+            competitor.execute("INSERT INTO scratch VALUES('competitor')")
+            competitor.execute("COMMIT")
+        except Exception as exc:  # pragma: no cover - only reached on a regression
+            failures.append(exc)
+
+    with db.transaction() as conn:
+        conn.execute("SELECT COUNT(*) FROM scratch")
+        thread = threading.Thread(target=compete)
+        thread.start()
+        time.sleep(0.2)  # the competitor commits here unless our transaction holds the lock
+        conn.execute("INSERT INTO scratch VALUES('ours')")
+    thread.join(timeout=5)
+
+    assert failures == []
+    with db.connect() as conn:
+        keys = {row["k"] for row in conn.execute("SELECT k FROM scratch").fetchall()}
+    assert keys == {"competitor", "ours"}
+    competitor.close()
