@@ -192,6 +192,9 @@ class _HTMLTextParser(HTMLParser):
             "ol",
         }
     )
+    # Minified tables have no whitespace between cells; without a separator
+    # ``<td>Hello</td><td>World</td>`` becomes the token ``HelloWorld``.
+    _CELL = frozenset({"td", "th"})
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -202,7 +205,12 @@ class _HTMLTextParser(HTMLParser):
         if tag in self._SKIP:
             self._skip += 1
             return
-        if not self._skip and tag in self._BLOCK:
+        if self._skip:
+            return
+        if tag in self._CELL:
+            self._parts.append("\t")
+            return
+        if tag in self._BLOCK:
             self._parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
@@ -210,7 +218,12 @@ class _HTMLTextParser(HTMLParser):
             if self._skip:
                 self._skip -= 1
             return
-        if not self._skip and tag in self._BLOCK:
+        if self._skip:
+            return
+        if tag in self._CELL:
+            self._parts.append("\t")
+            return
+        if tag in self._BLOCK:
             self._parts.append("\n")
 
     def handle_data(self, data: str) -> None:
