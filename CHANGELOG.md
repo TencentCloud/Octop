@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 用户取消的 Dashboard / IM / HITL 回合在新旧历史格式中均记录为 `interrupted`，保留部分回复；取消标记仅属于当前活动回合，结束后清理
 - 模型调用重试耗尽后保留异常及失败状态，不再把错误转换成正常回答；后台委派正确标记为 failed 并携带错误原因，避免源专家把失败当作已完成任务（#839）
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
 
