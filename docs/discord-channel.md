@@ -1,19 +1,20 @@
 # Discord 通道：本地验收与配置
 
-当前开发版支持私聊、服务器文字频道、已有线程、文本/图片/附件、正在输入提示、长回复自动分段。
+支持私聊、服务器文字频道、已有线程、文本/图片/附件、正在输入提示、长回复自动分段。
 
-## 1. 启动开发版
+## 1. 安装依赖并启动
 
-这次同时修改了 Octop 与相邻的 harness-im-bridge 仓库。Discord 适配器还未发布到 PyPI；普通 `uv run` 会按锁文件重新安装旧版网关。已提供本地启动脚本：
+Discord 适配器已随 `harness-gateway 0.9.9` 发布。Octop 要求 `harness-gateway>=0.9.9`，可直接使用发布包，无需克隆相邻网关仓库：
 
 ```sh
 cd Octop
-bash scripts/run-discord-local.sh
+uv sync --locked --extra dev
+uv run octop run
 ```
 
-脚本把相邻网关仓库安装为可编辑依赖，再用 `uv run --no-sync octop run` 启动。可在脚本后追加原有 `octop run` 参数。先停止占用同一服务端口的旧进程；不要同时启动两个使用同一 Bot Token 的实例。
+可在 `uv run octop run` 后追加原有启动参数。先停止占用同一服务端口的旧进程；不要同时启动两个使用同一 Bot Token 的实例。
 
-此脚本使用已有 `.venv`，不改变 Octop 的正式发布依赖与锁文件。发布此功能时应先发布新版 harness-gateway，再更新 Octop 的版本约束和锁文件。
+仅在联调相邻 `harness-im-bridge` 源码时使用 `bash scripts/run-discord-local.sh`；该脚本会覆盖发布包为本地可编辑依赖。恢复发布包时重新运行 `uv sync --locked --extra dev`。
 
 ## 2. 填写位置
 

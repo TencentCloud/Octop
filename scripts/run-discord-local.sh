@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the local Discord implementation before the gateway package is published.
+# Run Octop against the sibling gateway source for local development.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 bridge_dir="$(cd ../harness-im-bridge && pwd)"
@@ -21,5 +21,5 @@ PY
 then
   uv pip install --python .venv/bin/python --no-deps --editable "$bridge_dir"
 fi
-# A normal uv run would replace the unpublished editable gateway with the PyPI lock.
+# A normal uv run would replace the editable gateway with the locked PyPI release.
 exec uv run --no-sync octop run "$@"
