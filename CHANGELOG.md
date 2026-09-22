@@ -22,6 +22,7 @@
 - iOS PWA 状态栏不再虚化遮挡内容：顶栏改为不透明、去掉 backdrop-filter；登录页与设置向导补 `safe-area-inset` 内边距（#874）
 - 知识库纯文本/Markdown/CSV 在 UTF-8 失败时回退 GB18030，避免 Windows GBK 文档被替换成乱码后入库
 - Dashboard 保存 Agent 运行参数后立即刷新当前 Agent 上下文，避免重置按钮和聊天页继续使用旧值
+- 自定义 Cron session_key 现在持久化线程绑定，重启或 CLI run-now 后仍可正常投递 (#947)
 - Dashboard `ask_user_question` 卡片不再在刷新/切会话后重复弹出：HITL pending 在恢复开始即标记完成，新回合会作废遗留提问，历史重注入按 `pending_id` 幂等去重 (#782)
 - 远程 OCR 返回「未收到图片 / 请上传图片」等拒绝提示时不再当作正文入库（此前会被向量化、文档仍标记 ready），现按无可提取文本处理
 - 环境变量值含换行（如粘贴的多行密钥）时，保存后再读取会被截断并残留引号；现按引号跨行读回，保证「写入 → 读取」往返保真
