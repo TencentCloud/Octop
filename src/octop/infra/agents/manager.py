@@ -710,11 +710,23 @@ class AgentManager:
         except Exception:
             logger.exception("abort team create: db delete failed for %s", agent_id)
 
-    def _preserve_system_files_path(self, agent_id: str, cfg: dict[str, Any]) -> dict[str, Any]:
-        """Keep ``system_files_path`` as an internal layout control.
+    def _preserve_internal_layout(
+        self,
+        agent_id: str,
+        cfg: dict[str, Any],
+        *,
+        pin_workspace_dir: bool = False,
+    ) -> dict[str, Any]:
+        """Keep the internal layout keys that user-facing config updates must not rewrite.
 
-        User-facing config updates must not introduce, remove, or rewrite the
-        stored prefix. Legacy agents without the key stay on the root layout.
+        ``system_files_path`` stays exactly as stored: a legacy agent without it keeps the root
+        layout, so a value a client invents is dropped.
+
+        ``pin_workspace_dir`` additionally pins ``workspace_dir`` to the stored value. User-facing
+        updates need it — rewriting the directory silently relocates the agent's workspace, so a
+        scoped or container agent would resolve to the classic layout and lose sight of its
+        skills, sessions and generated files. Internal persists do not: the resolver and the
+        create path must still be able to write it.
         """
         out = dict(cfg)
         row = self._repos.agent_repo.get(agent_id)
@@ -723,6 +735,8 @@ class AgentManager:
             out["system_files_path"] = current_raw["system_files_path"]
         else:
             out.pop("system_files_path", None)
+        if pin_workspace_dir and "workspace_dir" in current_raw:
+            out["workspace_dir"] = current_raw["workspace_dir"]
         return out
 
     async def update(self, agent_id: str, **kwargs: Any) -> AgentRow:
@@ -750,7 +764,9 @@ class AgentManager:
             parsed_profile_cfg = parse_config_json(
                 kwargs["config_json"] if isinstance(kwargs["config_json"], str) else None
             )
-            parsed_profile_cfg = self._preserve_system_files_path(agent_id, parsed_profile_cfg)
+            parsed_profile_cfg = self._preserve_internal_layout(
+                agent_id, parsed_profile_cfg, pin_workspace_dir=True
+            )
             owner_row = self._repos.agent_repo.get(agent_id)
             if owner_row is not None and owner_row.user_id is not None:
                 from octop.infra.users.resource_policy import raise_if_backend_outside_user_root
@@ -985,7 +1001,7 @@ class AgentManager:
         still only live in the dict, copy them onto empty columns so a later overlay
         does not drop mounts.
         """
-        cfg = self._preserve_system_files_path(agent_id, cfg)
+        cfg = self._preserve_internal_layout(agent_id, cfg)
         lifted = extract_profile_from_config(cfg)
         row = self._repos.agent_repo.get(agent_id)
         kwargs: dict[str, Any] = {"config_json": dumps_config(cfg)}
@@ -1836,7 +1852,9 @@ class AgentManager:
 
     async def update_config_json(self, agent_id: str, config_json: str) -> AgentRow:
         """Patch ``config_json`` and reload the harness runtime in the background."""
-        parsed = self._preserve_system_files_path(agent_id, parse_config_json(config_json))
+        parsed = self._preserve_internal_layout(
+            agent_id, parse_config_json(config_json), pin_workspace_dir=True
+        )
         lifted = extract_profile_from_config(parsed)
         self._repos.agent_repo.update_config(
             agent_id,
