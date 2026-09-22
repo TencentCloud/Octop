@@ -5167,6 +5167,7 @@
     "chromeMissingJumpToInstall": "Go to Workbench → Browser to install?"
   },
   "browserViewer": {
+    "keyboardInput": "Remote browser keyboard input",
     "goBack": "Go back",
     "goForward": "Go forward",
     "reload": "Reload",
