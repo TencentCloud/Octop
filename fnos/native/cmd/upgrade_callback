@@ -34,7 +34,7 @@ if [ -n "$ADMIN_PASS" ]; then
     octop_render_config_wizard "$WIZARD_TEMPLATE" "$WIZARD_DIR" "$ADMIN_USER" "$ADMIN_PASS"
     # 回落备份缺失时按 .env 重建（存在则不动，尊重用户在 Web 内改过的密码）
     if [ -d "$DATA_DIR" ] && [ ! -f "${DATA_DIR}/octop-login.txt" ]; then
-        octop_write_login_file "$DATA_DIR" "$ADMIN_USER" "$ADMIN_PASS" 8089
+        octop_write_login_file "$DATA_DIR" "$ADMIN_USER" "$ADMIN_PASS" "$(octop_effective_port "$ENV_FILE" 8089)"
     fi
 fi
 

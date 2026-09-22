@@ -31,7 +31,7 @@ octop skills --help     # 技能管理
 octop backup --help     # 备份/恢复
 ```
 
-> 注意：不要手动执行 `octop run`（会与飞牛应用中心托管的服务实例抢 8089 端口）；Web 服务一律由应用中心启停。
+> 注意：不要手动执行 `octop run`（会与飞牛应用中心托管的服务实例抢同一个服务端口，默认 `8089`）；Web 服务一律由应用中心启停。
 
 ## 两种安装包
 
@@ -44,6 +44,7 @@ octop backup --help     # 备份/恢复
 
 - **Docker 版**实现为 FnOS `docker-project`：包体只含 `docker-compose.yaml` 与向导配置，运行时由飞牛从 GHCR 拉取镜像。镜像已内置 `desktop` 桌面控制与前端；Playwright Chromium 不预装，可在控制台按需安装。
 - **本地版**实现为 FnOS 原生 `app`：包内自带独立 Python 3.12 运行时、Octop 核心依赖、前端构建产物，以及 `data-share` 共享数据目录，直接以进程方式运行，不依赖 Docker。
+- **服务端口**：Docker 版 `8088`（宿主映射写在 `docker-compose.yaml` 里），本地版 `8089`。安装 / 卸载只会清理**本应用自己**的残留进程，不会去杀占用这两个端口的第三方服务（见下方「改端口」）。
 
 > 两款包随正式版一起挂在 **`v*` GitHub Release** 上（例如 [v0.9.31](https://github.com/TencentCloud/Octop/releases/latest)）：`Octop-fnos-docker-<ver>.fpk` / `Octop-fnos-native-<ver>.fpk`。
 
@@ -107,7 +108,9 @@ bash scripts/build-fpk.sh native     # 仅本地版      → dist/Octop-fnos-nat
    - 想用 Docker 跑、主机已装 Docker → 选 `Octop-fnos-docker-<version>.fpk`
    - 不想依赖 Docker、希望自带运行时原生运行 → 选 `Octop-fnos-native-<version>.fpk`
 2. 安装向导中设置管理员账号/密码、日志级别、LLM 密钥（可选）。
-3. 安装完成后桌面出现「Octop AI 助手」图标，浏览器打开 `http://<设备IP>:8088`。
+3. 安装完成后桌面出现「Octop AI 助手」图标，浏览器打开对应端口：Docker 版 `http://<设备IP>:8088`，本地版 `http://<设备IP>:8089`。
 4. Docker 版镜像首次会从 GHCR `ghcr.io/tencentcloud/octop:latest` 拉取；请确保该包为 Public（首次推送后可在 GitHub Packages 设置）。本地版无需联网拉镜像。Playwright Chromium 不预装，需要远程浏览器时在控制台按需安装。
 
-> 服务端口固定为 `8088`（飞牛端口映射与桌面图标均据此）。`desktop` 桌面控制已在镜像中默认安装。
+> 服务端口：Docker 版固定 `8088`（宿主映射写在包内 `docker-compose.yaml`，飞牛端口映射与桌面图标均据此），`desktop` 桌面控制已在镜像中默认安装。
+>
+> 本地版默认 `8089`。**改端口**：若该端口已被其它服务占用，SSH 编辑应用 `var` 目录下的 `.env`，把 `OCTOP_PORT` 改为空闲端口后在应用中心重启服务即可（服务与 `cmd/main` 都按该值走，应用「设置」窗口保存时也不会再覆盖它）；改端口后请用 `http://<设备IP>:<OCTOP_PORT>` 访问 —— 桌面图标与「打开」按钮的端口取自包内 `manifest` / `ui/config` 的固定值，不会跟着 `.env` 变，需要手动收藏新地址。

@@ -9,13 +9,49 @@
 set -u
 
 # ---------------------------------------------------------------------------
-# 释放 Octop 端口（8088=Docker 版，8089=本地版）并清理本应用残留进程。
-# 仅清理：(1) 占用 Octop 端口的进程；(2) 本安装目录（TRIM_APPDEST）下的
-# octop 服务进程。不使用宽泛的 `pgrep -f octop`，避免误杀其它用户/其它
-# 安装路径下的同名进程。
+# 取某个 PID 的命令行（用于判断进程归属）：优先 /proc，其次 ps；都拿不到时
+# 返回空，由调用方按「归属未知」处理。
+# ---------------------------------------------------------------------------
+octop_proc_cmdline() {
+    local pid="$1" cmd=""
+    if [ -r "/proc/$pid/cmdline" ]; then
+        cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)" || cmd=""
+    fi
+    if [ -z "$cmd" ]; then
+        cmd="$(ps -p "$pid" -o args= 2>/dev/null)" || cmd=""
+    fi
+    printf '%s' "$cmd"
+}
+
+# 该 PID 是否属于本应用的 Octop 进程：命令行含本安装目录（TRIM_APPDEST），
+# 或就是 Octop 服务入口 `python -m octop.cli.main`。宁可漏清残留，也不误杀
+# 别人的服务，所以命令行取不到时一律判为「非本应用」。
+octop_is_own_pid() {
+    local pid="$1" appdir="$2" cmd
+    [ -n "$pid" ] || return 1
+    cmd="$(octop_proc_cmdline "$pid")"
+    [ -n "$cmd" ] || return 1
+    case "$cmd" in
+        *"octop.cli.main"*) return 0 ;;
+    esac
+    [ -n "$appdir" ] || return 1
+    case "$cmd" in
+        *"$appdir"*) return 0 ;;
+    esac
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# 释放 Octop 端口（8088=Docker 版，8089=本地版）上的本应用残留进程。
+# 仅清理：(1) 命令行指向本安装目录 / Octop 服务入口的端口占用进程；
+# (2) 本安装目录（TRIM_APPDEST）下的 octop 服务进程。端口被第三方进程占用时
+# （例如把 8089 映射出去的 docker-proxy）不动它、只记一条日志：安装或卸载
+# 一个应用不应静默杀掉机器上其它正在运行的服务（issue #985）。
+# 不使用宽泛的 `pgrep -f octop`，避免误杀其它用户/其它安装路径下的同名进程。
 # ---------------------------------------------------------------------------
 free_octop_ports() {
-    local port pid pids pat appdir
+    local port pid pids pat appdir owned foreign
+    appdir="${TRIM_APPDEST:-/var/apps/octop-native}"
     for port in 8088 8089; do
         pids="$(ss -ltnp 2>/dev/null | grep -E "[:.]${port}([[:space:]]|$)" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u)" || true
         if [ -z "$pids" ] && command -v fuser >/dev/null 2>&1; then
@@ -24,24 +60,32 @@ free_octop_ports() {
         if [ -z "$pids" ] && command -v lsof >/dev/null 2>&1; then
             pids="$(lsof -ti tcp:"$port" 2>/dev/null)" || true
         fi
+        owned=""
+        foreign=""
         for pid in $pids; do
             [ -n "$pid" ] || continue
-            if kill -TERM "$pid" 2>/dev/null; then
-                echo "[octop] 已发送 TERM 给占用 ${port} 的进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+            if octop_is_own_pid "$pid" "$appdir"; then
+                owned="${owned:+$owned }$pid"
+                echo "[octop] 清理本应用占用 ${port} 的残留进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+                kill -TERM "$pid" 2>/dev/null || true
+            else
+                foreign="${foreign:+$foreign,}$pid"
             fi
         done
+        if [ -n "$foreign" ]; then
+            echo "[octop] 端口 ${port} 由非本应用进程占用（pid=${foreign}），已保留该进程、未做清理。请把 Octop 改用其它空闲端口后重启服务（本地版：应用 var 目录下 .env 的 OCTOP_PORT；Docker 版：包内 docker-compose.yaml 的端口映射）。" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+        fi
+        [ -n "$owned" ] || continue
         sleep 1
-        for pid in $pids; do
-            [ -n "$pid" ] || continue
+        for pid in $owned; do
             if kill -0 "$pid" 2>/dev/null; then
                 kill -KILL "$pid" 2>/dev/null || true
-                echo "[octop] 已强制 KILL 占用 ${port} 的进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+                echo "[octop] 已强制 KILL 本应用残留进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
             fi
         done
     done
 
     # 兜底：只按本安装目录精确匹配，防止误杀其它实例。
-    appdir="${TRIM_APPDEST:-/var/apps/octop-native}"
     for pat in "$appdir/bin/octop" "$appdir/app/bin/octop"; do
         pids="$(pgrep -f -- "$pat" 2>/dev/null | tr '\n' ' ')" || true
         [ -z "$pids" ] && continue
@@ -224,6 +268,24 @@ octop_env_set() {
         printf '%s=%s\n' "$key" "$value" > "$file"
     fi
     chmod 600 "$file" 2>/dev/null || true
+}
+
+# 应用实际使用的服务端口：以 .env 里的 OCTOP_PORT 为准（用户可能自行改过），
+# 缺失或非法时回落到包默认端口。$2 = 包默认端口（本地版 8089 / Docker 版 8088）。
+octop_effective_port() {
+    local file="$1" default="${2:-8089}" port
+    port="$(octop_env_get "$file" OCTOP_PORT)"
+    case "$port" in
+        ''|*[!0-9]*)
+            printf '%s' "$default"
+            return 0
+            ;;
+    esac
+    if [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
+        printf '%s' "$port"
+    else
+        printf '%s' "$default"
+    fi
 }
 
 # 管理员凭据回落保存（数据目录 octop-login.txt，永久保留、只随密码修改刷新）。
