@@ -101,11 +101,26 @@
   flex: 1;
   min-width: 0;
   align-items: center;
+  gap: 8px;
   padding: 8px 6px 8px 10px;
   border: none;
   background: transparent;
   cursor: pointer;
   text-align: left;
+}
+
+.modelMenuTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modelMenuIcon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  object-fit: contain;
 }
 
 .modelMenuReasoning {
@@ -157,6 +172,7 @@
 }
 
 .modelMenuHint {
+  padding-left: 24px;
   font-size: 11px;
   color: var(--fn-text-tertiary);
 }
@@ -750,24 +766,6 @@
     background: var(--fn-bg-hover, rgba(0, 0, 0, 0.03));
     color: var(--fn-text-primary);
   }
-}
-
-.modelPickerBtn {
-  max-width: 220px;
-}
-
-.modelPickerLabel {
-  font-size: 11px;
-  margin-left: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 170px;
-}
-
-.modelPickerReasoningLabel {
-  color: currentColor;
-  opacity: 0.78;
 }
 
 .mobilePickerDrawer {
