@@ -27,7 +27,10 @@ from octop.infra.agents.media_generation import (
     MediaGenerationSettingsStore,
     MediaProviderUpdate,
 )
-from octop.infra.agents.memory_backend import memory_backend_from_agent_config
+from octop.infra.agents.memory_backend import (
+    delete_thread_from_storage,
+    memory_backend_from_agent_config,
+)
 from octop.infra.agents.memory_slim import MemorySlimCoordinator
 from octop.infra.agents.profile import (
     dump_id_list,
@@ -1129,7 +1132,7 @@ class AgentManager:
         return OctopError(ErrorCode.AGENT_NOT_RUNNING, f"agent {agent_id!r} not running")
 
     async def delete_thread_checkpoint(self, agent_id: str, thread_id: str) -> bool:
-        """Best-effort delete of a thread's actual conversation data.
+        """Delete a thread's actual conversation data.
 
         Octop's own ``thread_registry`` only tracks UI metadata (title,
         pinned, last_active) — the real message content lives in the
@@ -1140,23 +1143,42 @@ class AgentManager:
         leaves the thread visible/retryable instead of orphaning data
         with no remaining handle to it.
 
-        Returns ``True`` when checkpoint data was actually deleted,
-        ``False`` when there was nothing to delete (agent not currently
-        running, or no checkpointer configured for it) — both are normal,
-        expected states, not errors.
+        A live agent owns the checkpointer connection and handles deletion
+        directly. Stopped agents are deleted through the same configured
+        storage backend without starting the agent. Returns ``False`` only
+        when no local checkpoint store exists.
         """
         try:
             harness = self.get_agent(agent_id)
         except OctopError:
-            logger.warning(
-                "delete_thread_checkpoint: agent %r not running; skipping checkpoint cleanup for thread %r",
-                agent_id,
-                thread_id,
+            row = self.get_row(agent_id)
+            if row is None:
+                raise OctopError(
+                    ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found"
+                ) from None
+            cfg = self.get_config(agent_id)
+            from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
+                workspace_dir_from_config,
             )
-            return False
+
+            workspace_dir = workspace_dir_from_config(
+                cfg,
+                paths=self._paths,
+                agent_id=agent_id,
+                ensure=False,
+            )
+            return await delete_thread_from_storage(
+                agent_id=agent_id,
+                thread_id=thread_id,
+                cfg=cfg,
+                octop_config=self._config,
+                workspace_dir=workspace_dir,
+            )
         adelete = getattr(harness, "adelete_thread", None)
         if adelete is None:
-            return False
+            raise NotImplementedError(
+                f"harness agent {agent_id!r} does not support thread deletion"
+            )
         return bool(await adelete(thread_id))
 
     # ------------------------------------------------------------------

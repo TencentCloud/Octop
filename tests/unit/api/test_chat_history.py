@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, call
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from langchain_core.messages import HumanMessage
@@ -223,6 +223,28 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
     assert len(out) == 2
     assert out[0]["has_messages"] is False
     assert out[1]["has_messages"] is True
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_keeps_metadata_when_checkpoint_delete_fails() -> None:
+    server = MagicMock()
+    user = MagicMock(id=1, is_admin=False)
+    server.app_runtime.agent_registry.get_row.return_value = MagicMock(user_id=1, is_shared=0)
+    server.app_runtime.agent_registry.delete_thread_checkpoint = AsyncMock(
+        side_effect=RuntimeError("checkpoint unavailable")
+    )
+    registry = server.app_runtime.gateway.thread_registry
+    registry.get_thread.return_value = MagicMock(agent_id="agt_1", user_id=1)
+
+    with pytest.raises(RuntimeError, match="checkpoint unavailable"):
+        await history_mod.delete_thread(
+            "agt_1",
+            "thr_1",
+            user=user,
+            server=server,
+        )
+
+    registry.delete_thread.assert_not_called()
 
 
 @pytest.mark.asyncio

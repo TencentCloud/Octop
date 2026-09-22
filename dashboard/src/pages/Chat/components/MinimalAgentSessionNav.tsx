@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
+import { message as antMessage } from "@/utils/antdMessage";
 import {
   Pencil,
   MoreHorizontal,
@@ -18,6 +19,7 @@ import { ExpertIcon } from "../../Experts/components/iconForName";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { isAgentChatReady } from "../../../utils/agentError";
+import { apiErrorMessage } from "../../../utils/apiError";
 import { sortSessions, toSession, type Session } from "../hooks/useSessions";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent, onStreamEvent } from "../hooks/chatStore";
@@ -456,11 +458,12 @@ export default function MinimalAgentSessionNav({
       try {
         await octopThreadsApi.delete(agentId, sessionId);
         patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
-      } catch {
-        /* ignore */
+        antMessage.success(t("chat.deleteSuccess"));
+      } catch (error) {
+        antMessage.error(apiErrorMessage(error, t("chat.deleteFailed"), t));
       }
     },
-    [activeAgentId, onDeleteActive, patchLocal],
+    [activeAgentId, onDeleteActive, patchLocal, t],
   );
 
   const handleRename = useCallback(
