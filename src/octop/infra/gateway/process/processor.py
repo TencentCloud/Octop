@@ -874,6 +874,12 @@ class GlobalProcessor:
                     )
         finally:
             if persist_failed_turn or (not stream_ok and not hitl_paused):
+                if not persist_failed_turn:
+                    # Cancelled (stop button, client disconnect, shutdown): the stream never
+                    # raised through except Exception, so the terminal state is recorded here.
+                    self._mark_trajectory_turn_failed(
+                        thread_id=thread_id, agent_id=agent_id, reason="interrupted"
+                    )
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
                 )
@@ -1085,6 +1091,12 @@ class GlobalProcessor:
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
             if persist_failed_turn or not stream_ok:
+                if not persist_failed_turn:
+                    # Cancelled (stop button, client disconnect, shutdown): the stream never
+                    # raised through except Exception, so the terminal state is recorded here.
+                    self._mark_trajectory_turn_failed(
+                        thread_id=thread_id, agent_id=agent_id, reason="interrupted"
+                    )
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
                 )
@@ -1154,6 +1166,12 @@ class GlobalProcessor:
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
             if persist_failed_turn or not completed:
+                if not persist_failed_turn:
+                    # Cancelled (stop button, client disconnect, shutdown): the stream never
+                    # raised through except Exception, so the terminal state is recorded here.
+                    self._mark_trajectory_turn_failed(
+                        thread_id=thread_id, agent_id=agent_id, reason="interrupted"
+                    )
                 await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
             else:
                 await self._finish_history(history_tracker, completed=completed)
@@ -1471,19 +1489,24 @@ class GlobalProcessor:
             target=agent_id,
             payload=str(exc),
         )
-        self._mark_trajectory_turn_failed(thread_id=thread_id, agent_id=agent_id, exc=exc)
+        self._mark_trajectory_turn_failed(
+            thread_id=thread_id,
+            agent_id=agent_id,
+            reason=str(exc) or type(exc).__name__,
+        )
 
-    def _mark_trajectory_turn_failed(
-        self, *, thread_id: str, agent_id: str, exc: Exception
-    ) -> None:
-        """Record the turn's terminal failure so operators can tell "done" from "broke"."""
+    def _mark_trajectory_turn_failed(self, *, thread_id: str, agent_id: str, reason: str) -> None:
+        """Record the turn's terminal state so operators can tell "done" from "broke".
+
+        Called for both an error (``reason`` from the exception) and a cancellation, which
+        never raises through ``except Exception`` but still leaves a half-finished turn.
+        """
         service = self._trajectory_service
         if service is None or not self._agent_trajectory_enabled(agent_id):
             return
         mark = getattr(service, "mark_turn_failed", None)
         if not callable(mark):
             return
-        reason = str(exc) or type(exc).__name__
         try:
             mark(thread_id, reason=reason)
         except Exception:

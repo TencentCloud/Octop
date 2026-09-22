@@ -175,3 +175,26 @@ async def test_stream_failure_reason_falls_back_to_the_exception_type() -> None:
     _ = [chunk async for chunk in processor.iter_turn_chunks(msg)]
 
     trajectory.mark_turn_failed.assert_called_once_with("thread-1", reason="Blank")
+
+
+@pytest.mark.asyncio
+async def test_cancelled_turn_marks_the_trajectory_failed() -> None:
+    """A cancelled turn (stop button / client disconnect) must leave a terminal state too.
+
+    Cancellation is a ``BaseException`` in 3.8+, so it never reaches the ``except Exception``
+    branch even though the turn is left half-finished.
+    """
+
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "content": "partial answer"}
+        raise asyncio.CancelledError
+
+    trajectory = MagicMock()
+    processor, msg, _appended = _processor_with_stream(
+        stream, trajectory_service=trajectory, mock_stream_error=False
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        _ = [chunk async for chunk in processor.iter_turn_chunks(msg)]
+
+    trajectory.mark_turn_failed.assert_called_once_with("thread-1", reason="interrupted")
