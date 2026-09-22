@@ -257,3 +257,16 @@ async def test_live_harness_missing_ignores_query_hint() -> None:
     assert result.available is False
     assert result.used_tokens == 0
     assert result.segments["conversation"] == 0
+
+
+@pytest.mark.asyncio
+async def test_verified_zero_snapshot_is_available() -> None:
+    result = await compute_context_breakdown(
+        _registry(_usage(used=0, segments={}, source="model_request")),
+        agent_id="agt",
+        thread_id="t1",
+        max_tokens=128_000,
+        input_tokens=30_000,
+    )
+    assert result.available is True
+    assert result.used_tokens == 0
