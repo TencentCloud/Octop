@@ -14,7 +14,8 @@
 
 ### 修复
 
-- 回合因掉流 / 递归上限 / 供应商错误中断、或被取消（停止按钮 / 客户端断开）时，轨迹事件会写入 `is_error` 与失败原因（`turn_status` / `reason`）（此前 `trajectory_events.is_error` 恒为 0，运维无法区分「做完」与「断了」）
+- 回合因掉流 / 递归上限 / 供应商错误中断、或被取消（停止按钮 / 客户端断开）时，轨迹事件会写入 `is_error` 与失败原因（`turn_status` / `reason`）
+- 发布专家时保留源专家的公开头像（内置 SVG 或远程肖像）；仅上传过自定义图片时才走快照头像接口，不再发布后只剩默认图标
 - `date:` 定时触发与 `cron:` 一样使用 `default_timezone`，裸 ISO 时间不再回落宿主系统时区
 - HITL resume 流失败时将 pending 标为 `expired`（不再像成功批准），避免错误状态误导排查
 - SQLite 写事务改用 `BEGIN IMMEDIATE`：多 worker（`octop run --workers N`）或 CLI 与服务并发写入时，先读后写的事务不再因快照过期而立即报 `database is locked`
