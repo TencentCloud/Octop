@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 保存个人偏好里的时区时，路径形式的值（如 `/etc/localtime`、`./Asia/Shanghai`）不再返回 500：`zoneinfo` 对绝对路径与含 `..` 的键抛 `ValueError`（`ZoneInfoNotFoundError` 才是 `KeyError` 子类），现与未知时区一样按 400 提示「timezone must be a valid IANA timezone」
 
 ### 修复
 - 云端协同对端专家的模型、连接器、知识库和对话模式会显示在本端输入框上方
