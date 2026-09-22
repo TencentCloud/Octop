@@ -15,6 +15,7 @@
 ### 修复
 
 - 通过 API 更新 agent 配置时不再丢掉 `workspace_dir`：此前只提交部分字段的 PATCH 会让工作区回退到默认布局，scoped / 容器 agent 因而看不到原有的 skills、会话与产出文件
+- 发布专家时保留源专家的公开头像（内置 SVG 或远程肖像）；仅上传过自定义图片时才走快照头像接口，不再发布后只剩默认图标
 - `date:` 定时触发与 `cron:` 一样使用 `default_timezone`，裸 ISO 时间不再回落宿主系统时区
 - HITL resume 流失败时将 pending 标为 `expired`（不再像成功批准），避免错误状态误导排查
 - SQLite 写事务改用 `BEGIN IMMEDIATE`：多 worker（`octop run --workers N`）或 CLI 与服务并发写入时，先读后写的事务不再因快照过期而立即报 `database is locked`
