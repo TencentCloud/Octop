@@ -42,9 +42,11 @@ import SubagentPickerPopover from "./SubagentPickerPopover";
 import ConnectorPickerPopover from "./ConnectorPickerPopover";
 import KnowledgePickerPopover from "./KnowledgePickerPopover";
 import ConversationModePicker from "./ConversationModePicker";
+import HitlPolicyPicker from "./HitlPolicyPicker";
 import SlashCommandMenu from "./SlashCommandMenu";
 import type { SlashMenuGroup } from "../../../utils/slashCategories";
 import type { SlashMenuItem } from "../hooks/useSlashMentionInput";
+import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import { SHORTCUT_ICON_TONE_CLASS } from "../utils/slashShortcutStyles";
 import { isSttAvailable } from "../../../hooks/useVoiceInput";
 import { resolveTurnModelOverride } from "../utils/chatMessages";
@@ -116,6 +118,8 @@ interface ChatInputActionsRowProps {
   ) => void;
   conversationMode?: "ask" | "plan" | "craft";
   onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
+  hitlPolicy?: HitlSessionPolicy;
+  onHitlPolicyChange?: (policy: HitlSessionPolicy) => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -172,6 +176,8 @@ export default function ChatInputActionsRow({
   onReasoningChange,
   conversationMode = "craft",
   onConversationModeChange,
+  hitlPolicy,
+  onHitlPolicyChange,
   availableConnectors,
   selectedConnectors = [],
   onConnectorsChange,
@@ -826,6 +832,12 @@ export default function ChatInputActionsRow({
               onChange={onConversationModeChange}
             />
           )}
+          {onHitlPolicyChange && (
+            <HitlPolicyPicker
+              policy={hitlPolicy ?? { mode: "ask" }}
+              onChange={onHitlPolicyChange}
+            />
+          )}
           {showModelPicker &&
             (isMobile ? (
               modelButton
@@ -915,6 +927,12 @@ export default function ChatInputActionsRow({
           <ConversationModePicker
             conversationMode={conversationMode}
             onChange={onConversationModeChange}
+          />
+        )}
+        {onHitlPolicyChange && (
+          <HitlPolicyPicker
+            policy={hitlPolicy ?? { mode: "ask" }}
+            onChange={onHitlPolicyChange}
           />
         )}
         {showModelPicker && (

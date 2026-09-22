@@ -133,6 +133,7 @@ class Gateway:
         )
         if self._processor is not None:
             self._processor.replace_thread_message_repo(repos.thread_message_repo)
+            self._processor.hitl_coordinator.session_policies.replace_repo(repos.thread_repo)
 
     @property
     def ws_hub(self) -> WebSocketHub:

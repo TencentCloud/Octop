@@ -69,6 +69,7 @@ class ThreadRow:
     artifacts: tuple[str, ...] = field(default_factory=tuple)
     conversation_mode: str | None = None
     pending_plan_path: str | None = None
+    hitl_policy: str | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> ThreadRow:
@@ -84,6 +85,10 @@ class ThreadRow:
             pending_plan_path = r["pending_plan_path"]
         except (KeyError, IndexError):
             pending_plan_path = None
+        try:
+            hitl_policy = r["hitl_policy"]
+        except (KeyError, IndexError):
+            hitl_policy = None
         return cls(
             id=r["id"],
             thread_id=r["thread_id"],
@@ -101,6 +106,7 @@ class ThreadRow:
             artifacts=tuple(parse_thread_artifacts(raw_artifacts)),
             conversation_mode=str(conversation_mode) if conversation_mode else None,
             pending_plan_path=str(pending_plan_path) if pending_plan_path else None,
+            hitl_policy=str(hitl_policy) if hitl_policy else None,
         )
 
 
@@ -275,6 +281,7 @@ class ThreadRepo:
         reasoning_effort: str | None | object = ...,
         conversation_mode: str | None | object = ...,
         pending_plan_path: str | None | object = ...,
+        hitl_policy: str | None | object = ...,
     ) -> None:
         fields: list[str] = []
         params: list[object] = []
@@ -284,6 +291,7 @@ class ThreadRepo:
             ("reasoning_effort", reasoning_effort),
             ("conversation_mode", conversation_mode),
             ("pending_plan_path", pending_plan_path),
+            ("hitl_policy", hitl_policy),
         ):
             if value is ...:
                 continue

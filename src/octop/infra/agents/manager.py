@@ -48,6 +48,12 @@ from octop.infra.agents.runtime_limits import (
     resolve_context_max_tokens as config_context_max_tokens,
 )
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
+from octop.infra.agents.security.hitl_session import (
+    HitlSessionPolicyStore,
+    apply_session_bypass,
+    hitl_thread_scope,
+    thread_id_from_request,
+)
 from octop.infra.backend.docker_spec import (
     enrich_docker_backend_spec,
     inject_docker_global_environment,
@@ -350,6 +356,7 @@ class AgentManager:
         self._cron_manager: CronManager | None = None
         self._proactive_scheduler: ProactiveCareScheduler | None = None
         self._team_processor: Any | None = None
+        self._hitl_session_store: HitlSessionPolicyStore | None = None
         from octop.infra.agents.teams import TeamJobTracker, TeamService
 
         self._team_jobs = TeamJobTracker()
@@ -440,6 +447,10 @@ class AgentManager:
         self._team_processor = team_processor
         if self._harness_manager is not None:
             self._install_team_host_dispatch()
+
+    def set_hitl_session_store(self, store: HitlSessionPolicyStore | None) -> None:
+        """Attach the thread-scoped HITL bypass store (set before boot())."""
+        self._hitl_session_store = store
 
     @property
     def teams(self) -> Any:
@@ -1179,8 +1190,9 @@ class AgentManager:
         async with self._track_invocation(agent_id):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
-            async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
-                yield chunk
+            with hitl_thread_scope(thread_id_from_request(req)):
+                async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
+                    yield chunk
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
@@ -1190,7 +1202,8 @@ class AgentManager:
         async with self._track_invocation(agent_id):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
-            result = await self._harness_manager.call(agent_id, cast(Any, req))
+            with hitl_thread_scope(thread_id_from_request(req)):
+                result = await self._harness_manager.call(agent_id, cast(Any, req))
             self._apply_pending_bootstrap_graph_refresh(agent_id)
         if not isinstance(result, dict):
             return {"result": result}
@@ -1207,8 +1220,11 @@ class AgentManager:
             raise self._unavailable_error(agent_id)
         async with self._track_invocation(agent_id):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
-            async for chunk in self._harness_manager.resume_hitl(agent_id, thread_id, decisions):
-                yield chunk
+            with hitl_thread_scope(thread_id):
+                async for chunk in self._harness_manager.resume_hitl(
+                    agent_id, thread_id, decisions
+                ):
+                    yield chunk
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     def cancel_stream(self, agent_id: str, thread_id: str) -> None:
@@ -3182,6 +3198,9 @@ class AgentManager:
             harness_cfg.tools_disabled = frozenset(disabled)
         applied = policy.apply_to_config(harness_cfg)
         applied = self._apply_team_host_config(applied, row)
+        interrupt_on = apply_session_bypass(applied.interrupt_on, self._hitl_session_store)
+        if interrupt_on is not applied.interrupt_on:
+            applied = replace(applied, interrupt_on=interrupt_on)
         return replace(
             applied,
             tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),
