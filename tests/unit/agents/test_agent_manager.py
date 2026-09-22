@@ -1853,6 +1853,53 @@ async def test_internal_persist_can_still_set_the_workspace(manager: AgentManage
 
 
 @pytest.mark.asyncio
+async def test_partial_config_update_keeps_sandbox_backend(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``config`` update that omits ``backend`` must not silently de-sandbox the agent."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    row = await manager.create(
+        AgentCreateSpec(
+            name="sandboxed",
+            config={"backend": {"type": "docker", "image": "octop/sandbox:1"}, **_MEMORY_OFF},
+        ),
+        defer_bootstrap=True,
+    )
+    monkeypatch.setattr(manager, "_schedule_reload", lambda _aid: None)
+    assert manager.get_config(row.agent_id)["backend"]["type"] == "docker"
+
+    await manager.update(row.agent_id, config_json=json.dumps({"model": "gpt-4o-mini"}))
+
+    assert manager.get_config(row.agent_id)["backend"] == {
+        "type": "docker",
+        "image": "octop/sandbox:1",
+    }
+
+
+@pytest.mark.asyncio
+async def test_explicit_null_backend_resets_to_default_backend(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``backend: null`` is how a client drops a stored backend on purpose."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    row = await manager.create(
+        AgentCreateSpec(
+            name="sandboxed",
+            config={"backend": {"type": "docker", "image": "octop/sandbox:1"}, **_MEMORY_OFF},
+        ),
+        defer_bootstrap=True,
+    )
+    monkeypatch.setattr(manager, "_schedule_reload", lambda _aid: None)
+
+    await manager.update(row.agent_id, config_json=json.dumps({"backend": None}))
+
+    assert "backend" not in manager.get_config(row.agent_id)
+    assert manager.resolved_backend_spec(row.agent_id)["type"] == "local_shell"
+
+
+@pytest.mark.asyncio
 async def test_reload_agent_does_not_block_event_loop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

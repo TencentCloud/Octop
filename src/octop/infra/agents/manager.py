@@ -766,6 +766,25 @@ class AgentManager:
             out["workspace_dir"] = current_raw["workspace_dir"]
         return out
 
+    def _preserve_backend_spec(self, agent_id: str, cfg: dict[str, Any]) -> dict[str, Any]:
+        """Keep the stored ``backend`` when an update omits the key.
+
+        A ``config`` update that carries only the keys its caller changed would
+        otherwise drop the sandbox spec, and an agent without ``backend`` resolves
+        to :func:`~octop.infra.backend.resolver.default_agent_backend_spec` —
+        host-rooted on POSIX. Send ``backend: null`` to reset deliberately.
+        """
+        out = dict(cfg)
+        if "backend" not in out:
+            row = self._repos.agent_repo.get(agent_id)
+            stored = parse_config_json(row.config_json) if row and row.config_json else {}
+            if "backend" in stored:
+                out["backend"] = stored["backend"]
+            return out
+        if out["backend"] is None:
+            del out["backend"]
+        return out
+
     async def update(self, agent_id: str, **kwargs: Any) -> AgentRow:
         """Update agent config in DB and reload harness agent in the background."""
         runtime_updates = {
@@ -803,6 +822,9 @@ class AgentManager:
                     owner_row.user_id,
                     parsed_profile_cfg.get("backend"),
                 )
+            # Runs after the policy check: an omitted ``backend`` is not a new value,
+            # so restoring it must not make an unrelated edit fail.
+            parsed_profile_cfg = self._preserve_backend_spec(agent_id, parsed_profile_cfg)
             lifted = extract_profile_from_config(parsed_profile_cfg)
             kwargs["config_json"] = dumps_config(parsed_profile_cfg)
             for key, value in lifted.items():

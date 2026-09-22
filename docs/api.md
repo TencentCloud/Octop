@@ -120,7 +120,7 @@ does not set these headers itself.
 | `GET`    | `/agents` | user | `[{id, agent_id, name, persona_mbti, state, unread_count, ...}]` |
 | `POST`   | `/agents` | user | body `{name, persona_mbti?, default_model?, system_prompt?, description?, icon?, template_name?, config?}` → `201` |
 | `GET`    | `/agents/{id}` | owner | full agent row |
-| `PATCH`  | `/agents/{id}` | owner | body subset of create body |
+| `PATCH`  | `/agents/{id}` | owner | body subset of create body。`config` 整体替换存储值，唯一例外是省略 `backend` 时保留原值（显式传 `null` 才重置为默认后端） |
 | `DELETE` | `/agents/{id}` | owner | `204` |
 | `POST`   | `/agents/{id}/start` | owner | `204` |
 | `POST`   | `/agents/{id}/stop` | owner | `204` |

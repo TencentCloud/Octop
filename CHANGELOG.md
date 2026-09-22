@@ -22,6 +22,7 @@
 
 - `wiki_summary` 的 `lang` 不再被拼进请求主机名：此前传 `evil.com#` 会真的向 `https://evil.com` 发请求（`localhost:8443/` 则打本机端口），并把对方返回的摘要回显进聊天；现只接受 `zh` / `en` / `zh-classical` 这类裸子域标签，其余按「语言代码无效」返回错误卡片
 - 登录验证码的 `OCTOP_CAPTCHA_V3_MIN_SCORE` 只按 `float()` 解析，未校验取值：填成 `nan` 时 `score < nan` 恒为 `False`，`recaptcha-v3` 的分数门槛被静默关闭（机器分 0.0 也能登录），负数同样放行，`inf`/大于 1 则把所有登录锁死。现按该参数已有的「不可用即回落默认值」规则处理，只接受 `0`–`1` 内的有限数值
+- `PATCH /agents/{id}` 只带部分 `config` 键时不再丢掉已存储的 `backend`：此前该字段按整体替换写库，客户端省略 `backend` 会让 docker/远程沙箱静默回退为默认后端（POSIX 上是宿主根目录执行）；现按「未提交即保持原值」处理，显式传 `"backend": null` 才会重置为默认（#957）
 
 ## [1.0.2b2] - 2026-09-23
 

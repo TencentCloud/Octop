@@ -64,6 +64,34 @@ async def test_agent_runtime_fields_are_first_class_api_fields(env):
     assert "temperature" not in updated["config"]
 
 
+async def test_partial_config_patch_keeps_backend(env):
+    """A PATCH whose ``config`` omits ``backend`` keeps the agent's sandbox (#957)."""
+    c, _, auth = env
+    r = await c.post(
+        "/api/agents",
+        headers=auth,
+        json={
+            "name": "sandboxed",
+            "config": {"backend": {"type": "docker", "image": "octop/sandbox:1"}},
+        },
+    )
+    assert r.status_code == 201
+    agent_id = r.json()["agent_id"]
+    assert r.json()["config"]["backend"]["type"] == "docker"
+
+    r = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={"config": {"model": "gpt-4o-mini"}},
+    )
+    assert r.status_code == 200
+    assert r.json()["config"]["backend"] == {"type": "docker", "image": "octop/sandbox:1"}
+
+    r = await c.patch(f"/api/agents/{agent_id}", headers=auth, json={"config": {"backend": None}})
+    assert r.status_code == 200
+    assert "backend" not in r.json()["config"]
+
+
 async def test_create_keeps_legacy_runtime_values_from_config(env):
     c, _, auth = env
     r = await c.post(
