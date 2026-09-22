@@ -76,8 +76,12 @@ class TrajectoryService:
         """Record an uncommitted trajectory flush for the archive status."""
         self._store.record_failure(thread_id)
 
-    def mark_turn_failed(self, thread_id: str, *, reason: str) -> None:
+    def mark_turn_failed(self, thread_id: str, *, reason: str, status: str = "failed") -> None:
         """Flag the current turn as failed so ``is_error`` is not always 0.
+
+        ``status`` distinguishes a failure from an ``interrupted`` turn (client disconnect or
+        stop button), which is a different terminal state for operators.
+
 
         A turn that dies mid-flight (stream drop, recursion limit, provider failure) otherwise
         leaves no trace, so operators cannot tell "finished" from "broke". The turn's own event
@@ -95,7 +99,7 @@ class TrajectoryService:
         marked = replace(
             target,
             is_error=True,
-            payload={**target.payload, "reason": reason, "turn_status": "failed"},
+            payload={**target.payload, "reason": reason, "turn_status": status},
         )
         try:
             self._upsert(marked, final=True)

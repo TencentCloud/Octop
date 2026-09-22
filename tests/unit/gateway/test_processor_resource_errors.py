@@ -152,7 +152,9 @@ async def test_stream_failure_marks_the_trajectory_turn_failed() -> None:
 
     _ = [chunk async for chunk in processor.iter_turn_chunks(msg)]
 
-    trajectory.mark_turn_failed.assert_called_once_with("thread-1", reason="stream died mid-turn")
+    trajectory.mark_turn_failed.assert_called_once_with(
+        "thread-1", reason="stream died mid-turn", status="failed"
+    )
 
 
 @pytest.mark.asyncio
@@ -174,7 +176,7 @@ async def test_stream_failure_reason_falls_back_to_the_exception_type() -> None:
 
     _ = [chunk async for chunk in processor.iter_turn_chunks(msg)]
 
-    trajectory.mark_turn_failed.assert_called_once_with("thread-1", reason="Blank")
+    trajectory.mark_turn_failed.assert_called_once_with("thread-1", reason="Blank", status="failed")
 
 
 @pytest.mark.asyncio
@@ -197,4 +199,35 @@ async def test_cancelled_turn_marks_the_trajectory_failed() -> None:
     with pytest.raises(asyncio.CancelledError):
         _ = [chunk async for chunk in processor.iter_turn_chunks(msg)]
 
-    trajectory.mark_turn_failed.assert_called_once_with("thread-1", reason="interrupted")
+    trajectory.mark_turn_failed.assert_called_once_with(
+        "thread-1", reason="interrupted", status="interrupted"
+    )
+
+
+@pytest.mark.asyncio
+async def test_iter_turn_chunks_records_failed_outcome_on_error_chunk() -> None:
+    """A harness failure reported as an error chunk must still leave a terminal state.
+
+    The recursion limit does not raise: the chunk carries ``type: "error"`` and the stream then
+    ends normally, so neither the exception branch nor the cancellation hook fires.
+    """
+
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "content": "partial"}
+        yield {
+            "type": "error",
+            "error_code": "AGENT_MAX_ITERS",
+            "message": "智能体已达到最大迭代次数（递归上限），任务尚未完成",
+        }
+
+    trajectory = MagicMock()
+    processor, msg, _appended = _processor_with_stream(
+        stream, trajectory_service=trajectory, mock_stream_error=False
+    )
+
+    _ = [chunk async for chunk in processor.iter_turn_chunks(msg)]
+
+    reason = trajectory.mark_turn_failed.call_args.kwargs["reason"]
+    assert "AGENT_MAX_ITERS" in reason
+    assert "递归上限" in reason
+    trajectory.mark_turn_failed.assert_called_once_with("thread-1", reason=reason, status="failed")

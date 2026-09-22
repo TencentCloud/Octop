@@ -815,6 +815,7 @@ class GlobalProcessor:
         stream_ok = False
         hitl_paused = False
         persist_failed_turn = False
+        turn_error: str | None = None
         usage_tracker = UsageTracker()
         history_tracker = await self._begin_history(agent_id, thread_id, request)
         projection_state = StreamProjectionState()
@@ -873,13 +874,15 @@ class GlobalProcessor:
                         content=[TextContent(text=hint)],
                     )
         finally:
+            self._mark_failed_turn(
+                thread_id=thread_id,
+                agent_id=agent_id,
+                recorded_exception=persist_failed_turn,
+                turn_error=turn_error,
+                finished=stream_ok,
+                hitl_paused=hitl_paused,
+            )
             if persist_failed_turn or (not stream_ok and not hitl_paused):
-                if not persist_failed_turn:
-                    # Cancelled (stop button, client disconnect, shutdown): the stream never
-                    # raised through except Exception, so the terminal state is recorded here.
-                    self._mark_trajectory_turn_failed(
-                        thread_id=thread_id, agent_id=agent_id, reason="interrupted"
-                    )
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
                 )
@@ -1019,11 +1022,19 @@ class GlobalProcessor:
 
         stream_ok = False
         persist_failed_turn = False
+        turn_error: str | None = None
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         usage_tracker = UsageTracker()
 
         try:
             async for chunk in self._agent_manager.stream(agent_id, request):
+                if chunk.get("type") == "error" and turn_error is None:
+                    # Harness-reported failure (e.g. the recursion limit): it arrives as an error
+                    # chunk and the stream then ends normally, so keep the first one for the
+                    # turn's terminal state.
+                    detail = str(chunk.get("message") or "").strip()[:240]
+                    code = str(chunk.get("error_code") or "").strip()
+                    turn_error = ": ".join(part for part in (code, detail) if part) or "error"
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
                 from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
@@ -1090,13 +1101,14 @@ class GlobalProcessor:
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
+            self._mark_failed_turn(
+                thread_id=thread_id,
+                agent_id=agent_id,
+                recorded_exception=persist_failed_turn,
+                turn_error=turn_error,
+                finished=stream_ok,
+            )
             if persist_failed_turn or not stream_ok:
-                if not persist_failed_turn:
-                    # Cancelled (stop button, client disconnect, shutdown): the stream never
-                    # raised through except Exception, so the terminal state is recorded here.
-                    self._mark_trajectory_turn_failed(
-                        thread_id=thread_id, agent_id=agent_id, reason="interrupted"
-                    )
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
                 )
@@ -1126,6 +1138,7 @@ class GlobalProcessor:
         history_tracker = await self._begin_history(agent_id, thread_id, {}, resume=True)
         completed = False
         persist_failed_turn = False
+        turn_error: str | None = None
         traj_on = self._agent_trajectory_enabled(agent_id)
         team_host = is_team_agent(self._agent_manager.get_row(agent_id))
         try:
@@ -1134,6 +1147,13 @@ class GlobalProcessor:
                 thread_id,
                 decisions,
             ):
+                if chunk.get("type") == "error" and turn_error is None:
+                    # Harness-reported failure (e.g. the recursion limit): it arrives as an error
+                    # chunk and the stream then ends normally, so keep the first one for the
+                    # turn's terminal state.
+                    detail = str(chunk.get("message") or "").strip()[:240]
+                    code = str(chunk.get("error_code") or "").strip()
+                    turn_error = ": ".join(part for part in (code, detail) if part) or "error"
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
                 from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
@@ -1165,13 +1185,14 @@ class GlobalProcessor:
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
+            self._mark_failed_turn(
+                thread_id=thread_id,
+                agent_id=agent_id,
+                recorded_exception=persist_failed_turn,
+                turn_error=turn_error,
+                finished=completed,
+            )
             if persist_failed_turn or not completed:
-                if not persist_failed_turn:
-                    # Cancelled (stop button, client disconnect, shutdown): the stream never
-                    # raised through except Exception, so the terminal state is recorded here.
-                    self._mark_trajectory_turn_failed(
-                        thread_id=thread_id, agent_id=agent_id, reason="interrupted"
-                    )
                 await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
             else:
                 await self._finish_history(history_tracker, completed=completed)
@@ -1495,7 +1516,41 @@ class GlobalProcessor:
             reason=str(exc) or type(exc).__name__,
         )
 
-    def _mark_trajectory_turn_failed(self, *, thread_id: str, agent_id: str, reason: str) -> None:
+    def _mark_failed_turn(
+        self,
+        *,
+        thread_id: str,
+        agent_id: str,
+        recorded_exception: bool,
+        turn_error: str | None,
+        finished: bool,
+        hitl_paused: bool = False,
+    ) -> None:
+        """Record the turn's terminal state: exception reason, error chunk, or cancellation.
+
+        A harness failure that arrives as an ``error`` chunk (for example the recursion limit)
+        ends the stream normally, so nothing raises and no ``except`` branch runs; without this
+        the turn would look finished.
+        """
+        if recorded_exception:
+            return  # _record_stream_error already marked it with the exception's reason
+        if turn_error is not None:
+            self._mark_trajectory_turn_failed(
+                thread_id=thread_id, agent_id=agent_id, reason=turn_error
+            )
+            return
+        if finished or hitl_paused:
+            return
+        self._mark_trajectory_turn_failed(
+            thread_id=thread_id,
+            agent_id=agent_id,
+            reason="interrupted",
+            status="interrupted",
+        )
+
+    def _mark_trajectory_turn_failed(
+        self, *, thread_id: str, agent_id: str, reason: str, status: str = "failed"
+    ) -> None:
         """Record the turn's terminal state so operators can tell "done" from "broke".
 
         Called for both an error (``reason`` from the exception) and a cancellation, which
@@ -1508,7 +1563,7 @@ class GlobalProcessor:
         if not callable(mark):
             return
         try:
-            mark(thread_id, reason=reason)
+            mark(thread_id, reason=reason, status=status)
         except Exception:
             logger.exception("trajectory mark_turn_failed failed thread=%s", thread_id)
 
