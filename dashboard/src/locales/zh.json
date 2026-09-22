@@ -2416,7 +2416,13 @@
     "rawConfigTooltip": "渠道特定配置 — 详见 harness-gateway 文档",
     "getCredentials": "前往获取凭据",
     "channelSettingsNamed": "{{kind}} 频道设置",
-    "deleteConfirmTitle": "删除频道「{{name}}」？"
+    "deleteConfirmTitle": "删除频道「{{name}}」？",
+    "discordAllowedChannels": "允许的频道 ID（逗号或换行分隔）",
+    "discordAllowedUsers": "允许私聊的用户 ID（逗号或换行分隔）",
+    "discordInvalidIds": "请输入数字 ID，用逗号或换行分隔。",
+    "discordAllowAllChannels": "允许所有可访问频道",
+    "discordAllowAllChannelsHelp": "默认开启，无需填写频道 ID。关闭后仅响应下方指定频道；频道内仍需 @机器人。",
+    "discordSetupHelp": "在 Discord Bot 页面开启 Message Content Intent，并邀请机器人加入服务器。默认允许机器人有权限访问的所有服务器文字频道，频道内需 @机器人。私聊仅允许下方填写的用户 ID，留空则不接收私聊。"
   },
   "tokenUsage": {
     "title": "Token 消耗统计",
