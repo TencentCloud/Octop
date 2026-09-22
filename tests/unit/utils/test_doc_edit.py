@@ -105,6 +105,15 @@ def test_round_trip_preserves_structure() -> None:
     assert "- Item one" in markdown
 
 
+def test_round_trip_keeps_escaped_pipe_inside_a_cell() -> None:
+    # An escaped pipe is cell content, not a column boundary: the table has to
+    # stay two columns wide, and saving it again must not degrade it further.
+    markdown = "| name | value |\n| --- | --- |\n| a | b\\|c |\n"
+    rebuilt = DocxDocConverter.to_markdown(DocxDocConverter.from_markdown(markdown))
+    assert rebuilt == "| name | value |\n| --- | --- |\n| a | b\\|c |"
+    assert DocxDocConverter.to_markdown(DocxDocConverter.from_markdown(rebuilt)) == rebuilt
+
+
 def test_to_markdown_empty_file_is_empty_document() -> None:
     assert DocxDocConverter.to_markdown(b"") == ""
     assert DocxDocConverter.to_markdown(b"   \n\t ") == ""
