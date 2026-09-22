@@ -43,6 +43,7 @@ import {
 } from "../../api/modules/publishedExperts";
 import { useAgent } from "../../context/AgentContext";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useExpertVisibility } from "../../hooks/useExpertVisibility";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import type { OctopAgent } from "../../context/AgentContext";
 import { AgentCard } from "./components/AgentCard";
@@ -58,6 +59,7 @@ import { TeamCard } from "./components/TeamCard";
 import { PublishedExpertCard } from "./components/PublishedExpertCard";
 import AgentExpertsTable from "./components/AgentExpertsTable";
 import ExpertMarketTab from "./components/ExpertMarketTab";
+import ExpertVisibilityMenu from "./components/ExpertVisibilityMenu";
 import { OctopEmptyMascot } from "../../components/EmptyState";
 import { isOwnedExpert, ownedExperts } from "../../utils/sharedExpert";
 import { apiErrorMessage } from "../../utils/apiError";
@@ -104,6 +106,12 @@ export default function ExpertsPage() {
   const isMobile = useIsMobile();
   const { agents, refresh: refreshAgents } = useAgent();
   const currentUser = useCurrentUser();
+  const { hideBuiltinExperts, hideMarket } = useExpertVisibility();
+  const isAdmin = currentUser?.role === "admin";
+  // Admins always see every tab; non-admin users lose the built-in expert
+  // library / SkillHub market when an admin hides them (#719).
+  const showLibrary = isAdmin || !hideBuiltinExperts;
+  const showMarket = isAdmin || !hideMarket;
 
   const canManagePublished = useCallback(
     (expert: PublishedExpert) =>
@@ -114,6 +122,11 @@ export default function ExpertsPage() {
 
   // ── Tab state ──────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabKey>("my");
+  // Fall back to "my" when the currently selected tab becomes hidden (#719).
+  useEffect(() => {
+    if (activeTab === "library" && !showLibrary) setActiveTab("my");
+    else if (activeTab === "market" && !showMarket) setActiveTab("my");
+  }, [activeTab, showLibrary, showMarket]);
   const { viewMode, setViewMode, showCardView } = useCardTableView(
     loadViewMode(),
   );
@@ -694,6 +707,9 @@ export default function ExpertsPage() {
       <Tabs
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as TabKey)}
+        tabBarExtraContent={
+          isAdmin ? { right: <ExpertVisibilityMenu /> } : undefined
+        }
         items={[
           {
             key: "my",
@@ -714,20 +730,32 @@ export default function ExpertsPage() {
             ),
             children: teamsContent,
           },
-          {
-            key: "library",
-            label: (
-              <TabLabel icon={BookOpen}>{t("experts.expertLibrary")}</TabLabel>
-            ),
-            children: libraryContent,
-          },
-          {
-            key: "market",
-            label: (
-              <TabLabel icon={Store}>{t("experts.expertMarket")}</TabLabel>
-            ),
-            children: marketContent,
-          },
+          ...(showLibrary
+            ? [
+                {
+                  key: "library",
+                  label: (
+                    <TabLabel icon={BookOpen}>
+                      {t("experts.expertLibrary")}
+                    </TabLabel>
+                  ),
+                  children: libraryContent,
+                },
+              ]
+            : []),
+          ...(showMarket
+            ? [
+                {
+                  key: "market",
+                  label: (
+                    <TabLabel icon={Store}>
+                      {t("experts.expertMarket")}
+                    </TabLabel>
+                  ),
+                  children: marketContent,
+                },
+              ]
+            : []),
         ]}
       />
 

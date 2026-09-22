@@ -749,6 +749,14 @@
     "totalLibrary": "{{count}} built-in expert(s)",
     "totalMarket": "{{count}} market expert(s)",
     "addFromLibrary": "+ Add from Built-in",
+    "visibility": {
+      "trigger": "Visibility",
+      "hint": "When hidden, non-admin users no longer see the tab. Admins always see it.",
+      "hideBuiltin": "Hide built-in experts",
+      "hideMarket": "Hide expert market",
+      "saved": "Visibility updated",
+      "saveFailed": "Failed to update visibility"
+    },
     "newExpert": "New expert",
     "emptyMyExperts": "No experts yet",
     "emptyMyExpertsHint": "Create a new expert, or pick a template from Built-in Experts or the Expert Market.",
