@@ -63,8 +63,15 @@ export default function ContextWindowRing({
   const connectorKey = selectedConnectors?.join(",") ?? "";
 
   const cacheKey = useMemo(
-    () => [agentId ?? "", threadId ?? "", String(max), connectorKey].join("|"),
-    [agentId, threadId, max, connectorKey],
+    () =>
+      [
+        agentId ?? "",
+        threadId ?? "",
+        String(max),
+        connectorKey,
+        String(usedTokens),
+      ].join("|"),
+    [agentId, threadId, max, connectorKey, usedTokens],
   );
   currentCacheKeyRef.current = cacheKey;
 
