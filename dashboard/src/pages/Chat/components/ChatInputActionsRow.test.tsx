@@ -51,12 +51,18 @@ describe("ChatInputActionsRow compact pickers", () => {
       .querySelector("svg.lucide-cpu")
       ?.closest("button");
     expect(modelButton).not.toBeNull();
+    expect(modelButton).not.toHaveTextContent("Auto");
+    expect(modelButton).not.toHaveTextContent("Compact Model");
+    expect(modelButton).not.toHaveTextContent("compact-model");
 
     fireEvent.click(modelButton!);
 
     await waitFor(() => {
       expect(document.querySelector(".ant-popover")).toBeInTheDocument();
     });
+    const popover = document.querySelector(".ant-popover");
+    expect(popover?.querySelector("svg.lucide-sparkles")).not.toBeNull();
+    expect(popover?.querySelector("img")).not.toBeNull();
     expect(document.querySelector(".ant-drawer-content")).toBeNull();
   });
 });
