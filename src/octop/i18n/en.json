@@ -111,6 +111,16 @@
       "cleared": "Model override cleared.",
       "set": "Model for this thread → {model}."
     },
+    "mode": {
+      "current": "Current mode: {mode}",
+      "set": "Mode for this thread → {mode}.",
+      "usage": "Usage: /mode ask | plan | craft  (aliases: /ask /plan /craft)",
+      "labels": {
+        "ask": "Ask mode (read-only)",
+        "plan": "Plan mode",
+        "craft": "Craft mode"
+      }
+    },
     "compact": {
       "done": "Model context compacted (thread `{short}`): summarized {count} older message(s), kept the recent tail.\n\nChat history is unchanged; from the next turn the model only sees the summary plus recent messages.",
       "done_offload": "Model context compacted (thread `{short}`): summarized {count} older message(s), kept the recent tail.\n\n- Saved: `{path}`\n- Chat history is unchanged; from the next turn the model only sees the summary plus recent messages.",
@@ -213,6 +223,10 @@
       "model": {
         "label": "Model",
         "description": "Show, set, or reset the model override for this thread"
+      },
+      "mode": {
+        "label": "Conversation mode",
+        "description": "Switch Ask mode (read-only), Plan mode (write plans/*.md), or Craft mode"
       },
       "new": {
         "label": "New chat",
@@ -778,5 +792,9 @@
     "followup_failed": "[system wake-up, not a new user question]\nTeam member {name} failed.\nTask: {task}\nError: {error}\n\nBriefly tell the user it failed and either dispatch someone else or close the turn. Do not announce another assignment. Do not invent a substitute answer.",
     "speaker_user": "User",
     "dispatch_with_history": "Here is the current group-chat transcript. Use it as context.\n\n{history}\n\n---\nYour task:\n{task}"
+  },
+  "conversation_mode": {
+    "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",
+    "execute": "Execute {path}"
   }
 }
