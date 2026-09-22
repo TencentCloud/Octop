@@ -4,6 +4,7 @@ from __future__ import annotations
 
 # command name -> (relative module path, attribute name, short help)
 COMMANDS: dict[str, tuple[str, str, str]] = {
+    "memory": (".commands.memory", "memory", "Live memory maintenance (backup and slim)."),
     "init": (".commands.init", "init", "Bootstrap an Octop server install."),
     "run": (".commands.run", "run", "Run octop-server in the foreground."),
     "service": (

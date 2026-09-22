@@ -18,7 +18,7 @@ from harness_gateway.models import (
     MessageEventType,
     TextContent,
 )
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.profile import parse_config_json
@@ -66,6 +66,7 @@ from octop.infra.gateway.process.stream_project import (
     project_stream,
 )
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
+from octop.infra.gateway.slash.catalog import spec_for
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.parser import parse_slash
 from octop.infra.gateway.slash.runner import try_handle_slash
@@ -94,6 +95,20 @@ def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
     if isinstance(exc, OctopError):
         return exc.localized_message(locale), exc.code.value
     return format_stream_error(exc, locale), None
+
+
+def _overwrite_last_user_text(request: dict[str, Any], text: str) -> None:
+    """Replace the latest user-turn body without rebuilding the harness request."""
+    messages = request.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return
+    last = messages[-1]
+    if isinstance(last, dict):
+        last["content"] = text
+        return
+    extra = getattr(last, "additional_kwargs", None)
+    kwargs = dict(extra) if isinstance(extra, dict) else {}
+    messages[-1] = HumanMessage(content=text, additional_kwargs=kwargs)
 
 
 class _MessageEventSink(SlashSink):
@@ -787,8 +802,14 @@ class GlobalProcessor:
             locale=locale,
             agent_id=agent_id,
         )
-        if mcp_servers:
-            request["mcp_servers"] = mcp_servers
+        request = self._stamp_turn_conversation_mode(
+            request,
+            thread_id=thread_id,
+            meta=None,
+            user_text=msg.text,
+            mcp_servers=mcp_servers,
+            locale=locale,
+        )
 
         yield MessageEvent.typing()
         stream_ok = False
@@ -843,6 +864,12 @@ class GlobalProcessor:
                     usage=usage_tracker.usage,
                 )
                 await self._record_turn_history(thread_id, history_tracker)
+                hint = self._plan_ready_hint(thread_id, locale)
+                if hint:
+                    yield MessageEvent(
+                        type=MessageEventType.MESSAGE,
+                        content=[TextContent(text=hint)],
+                    )
         finally:
             if persist_failed_turn or (not stream_ok and not hitl_paused):
                 await self._persist_incomplete_turn(
@@ -1068,7 +1095,7 @@ class GlobalProcessor:
                 usage=usage_tracker.usage,
             )
             await self._record_turn_history(thread_id, history_tracker)
-        yield _maybe_stamp_team_host({"type": "done"}, agent_id, team_host)
+        yield _maybe_stamp_team_host(self._done_chunk(thread_id), agent_id, team_host)
 
     async def iter_hitl_resume_chunks(
         self,
@@ -1248,7 +1275,102 @@ class GlobalProcessor:
             request["mcp_servers"] = mcp_servers
         if "skills" in meta:
             request["skills"] = meta["skills"]
+        return self._stamp_turn_conversation_mode(
+            request,
+            thread_id=thread_id,
+            meta=meta,
+            user_text=msg.text,
+            mcp_servers=mcp_servers,
+            locale=locale,
+        )
+
+    def _sync_and_resolve_conversation_mode(
+        self,
+        thread_id: str,
+        *,
+        meta: dict[str, Any] | None,
+        user_text: str,
+    ) -> tuple[Any, str | None]:
+        from octop.infra.agents.conversation_mode import (
+            is_plan_execute_utterance,
+            parse_conversation_mode,
+            resolve_conversation_mode,
+        )
+
+        thread = self._thread_registry.get_thread(thread_id)
+        thread_mode = thread.conversation_mode if thread is not None else None
+        pending = (thread.pending_plan_path if thread is not None else None) or ""
+        explicit = (meta or {}).get("conversation_mode")
+        sticky = parse_conversation_mode(thread_mode)
+        if pending and sticky == "plan" and is_plan_execute_utterance(user_text):
+            self._thread_registry.update_composer(
+                thread_id,
+                conversation_mode="craft",
+                pending_plan_path=None,
+            )
+            return "craft", pending
+        mode = resolve_conversation_mode(explicit=explicit, thread_mode=thread_mode)
+        if isinstance(explicit, str) and explicit in ("ask", "plan", "craft"):
+            self._thread_registry.update_composer(
+                thread_id,
+                conversation_mode=explicit,
+            )
+        return mode, None
+
+    def _stamp_turn_conversation_mode(
+        self,
+        request: dict[str, Any],
+        *,
+        thread_id: str,
+        meta: dict[str, Any] | None,
+        user_text: str,
+        mcp_servers: list[str] | None,
+        locale: str,
+    ) -> dict[str, Any]:
+        from octop.infra.agents.conversation_mode import execute_user_message
+
+        mode, execute_path = self._sync_and_resolve_conversation_mode(
+            thread_id, meta=meta, user_text=user_text
+        )
+        if execute_path:
+            _overwrite_last_user_text(request, execute_user_message(execute_path, locale))
+        self._attach_conversation_mode(request, mode)
+        if mode in ("ask", "plan"):
+            request.pop("mcp_servers", None)
+            request["skills"] = []
+        elif mcp_servers:
+            request["mcp_servers"] = mcp_servers
         return request
+
+    def _attach_conversation_mode(self, request: dict[str, Any], mode: Any) -> None:
+        from octop.infra.agents.conversation_mode import stamp_conversation_mode
+
+        stamp_conversation_mode(request, mode)
+
+    def _done_chunk(self, thread_id: str) -> dict[str, Any]:
+        payload: dict[str, Any] = {"type": "done"}
+        thread = self._thread_registry.get_thread(thread_id)
+        if thread is None:
+            return payload
+        if thread.conversation_mode:
+            payload["conversation_mode"] = thread.conversation_mode
+        if thread.pending_plan_path:
+            payload["pending_plan_path"] = thread.pending_plan_path
+        return payload
+
+    def _plan_ready_hint(self, thread_id: str, locale: str) -> str:
+        from octop.i18n import tr
+        from octop.infra.agents.conversation_mode import parse_conversation_mode
+
+        thread = self._thread_registry.get_thread(thread_id)
+        if thread is None:
+            return ""
+        if parse_conversation_mode(thread.conversation_mode) != "plan":
+            return ""
+        path = (thread.pending_plan_path or "").strip()
+        if not path:
+            return ""
+        return tr("conversation_mode.plan_ready", locale, path=path)
 
     def _attach_turn_knowledge_config(
         self,
@@ -1415,7 +1537,7 @@ class GlobalProcessor:
         command: str,
         response_lines: list[str],
     ) -> None:
-        """Persist slash input/output via harness checkpoint, same as cron text."""
+        """Save slash history, honoring the command's checkpoint persistence policy."""
         turn_id = new_ulid()
         response = "\n".join(response_lines).strip()
         canonical: list[HumanMessage | AIMessage] = [
@@ -1423,16 +1545,21 @@ class GlobalProcessor:
         ]
         if response:
             canonical.append(AIMessage(content=response, id=f"slash:{turn_id}:assistant"))
-        try:
-            harness = self._agent_manager.get_agent(agent_id)
-            appended = await harness.aappend_messages(thread_id, canonical)
-        except Exception:
-            logger.warning(
-                "failed to append slash checkpoint for thread=%s",
-                thread_id,
-                exc_info=True,
-            )
-            return
+        parsed = parse_slash(command)
+        spec = spec_for(parsed.name) if parsed is not None else None
+        if spec is not None and not spec.persist_checkpoint:
+            appended: list[BaseMessage] = list(canonical)
+        else:
+            try:
+                harness = self._agent_manager.get_agent(agent_id)
+                appended = await harness.aappend_messages(thread_id, canonical)
+            except Exception:
+                logger.warning(
+                    "failed to append slash checkpoint for thread=%s",
+                    thread_id,
+                    exc_info=True,
+                )
+                return
         if self._thread_message_repo is None:
             return
         try:

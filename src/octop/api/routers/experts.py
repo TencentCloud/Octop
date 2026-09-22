@@ -12,6 +12,7 @@ POST /api/experts/hub/{slug}/install → create agent from market expert
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Response
@@ -23,6 +24,7 @@ from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.avatar import (
     display_published_expert_icon_url,
+    public_portrait_icon_url,
     read_snapshot_avatar,
 )
 from octop.infra.agents.experts.catalog import (
@@ -412,6 +414,21 @@ def _published_creator_username(server: Any, created_by: str) -> str | None:
     return user.username if user is not None else None
 
 
+def _published_manifest_icon_url(snapshot_dir: Any) -> str | None:
+    manifest_path = snapshot_dir / MANIFEST_FILENAME
+    if not manifest_path.is_file():
+        return None
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return public_portrait_icon_url(
+        data.get("icon_url") if isinstance(data.get("icon_url"), str) else None
+    )
+
+
 def _published_summary_dict(row: Any, server: Any) -> dict[str, Any]:
     snapshot_dir = _published_snapshot_dir(server, row.id)
     return {
@@ -427,6 +444,7 @@ def _published_summary_dict(row: Any, server: Any) -> dict[str, Any]:
             expert_id=row.id,
             snapshot_dir=snapshot_dir,
             updated_at=row.updated_at,
+            fallback_icon_url=_published_manifest_icon_url(snapshot_dir),
         ),
         "color": row.color or None,
         "created_at": row.created_at,

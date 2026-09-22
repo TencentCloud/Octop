@@ -16,6 +16,8 @@ export interface Session {
   modelRef?: string | null;
   reasoningMode?: "auto" | "enabled" | "disabled" | null;
   reasoningEffort?: string | null;
+  conversationMode?: "ask" | "plan" | "craft" | null;
+  pendingPlanPath?: string | null;
   artifacts?: string[];
 }
 
@@ -34,6 +36,8 @@ export function toSession(row: {
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
+  conversation_mode?: "ask" | "plan" | "craft" | null;
+  pending_plan_path?: string | null;
   artifacts?: string[] | null;
 }): Session {
   const hasActivity =
@@ -57,6 +61,8 @@ export function toSession(row: {
     modelRef: row.model_ref ?? null,
     reasoningMode: row.reasoning_mode ?? null,
     reasoningEffort: row.reasoning_effort ?? null,
+    conversationMode: row.conversation_mode ?? null,
+    pendingPlanPath: row.pending_plan_path ?? null,
     artifacts: Array.isArray(row.artifacts)
       ? row.artifacts.filter(
           (path): path is string =>
@@ -107,6 +113,31 @@ export function markPendingThread(threadId: string) {
 
 export function clearPendingThread(threadId: string) {
   _pendingThreadIds.delete(threadId);
+}
+
+/** Patch conversation-mode fields for one thread in the module session store. */
+export function syncSessionConversationMode(
+  threadId: string,
+  conversationMode: "ask" | "plan" | "craft" | null | undefined,
+  pendingPlanPath: string | null | undefined,
+) {
+  if (!threadId) return;
+  const mode = conversationMode ?? null;
+  const path = (pendingPlanPath || "").trim() || null;
+  setModuleSessions((prev) => {
+    const idx = prev.findIndex((s) => s.id === threadId);
+    if (idx < 0) return prev;
+    const current = prev[idx];
+    if (
+      (current.conversationMode ?? null) === mode &&
+      (current.pendingPlanPath ?? null) === path
+    ) {
+      return prev;
+    }
+    const next = [...prev];
+    next[idx] = { ...current, conversationMode: mode, pendingPlanPath: path };
+    return next;
+  });
 }
 
 /** Patch artifacts for one thread in the module session store. */

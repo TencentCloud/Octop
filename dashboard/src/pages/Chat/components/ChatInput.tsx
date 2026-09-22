@@ -60,6 +60,7 @@ import styles from "../index.module.less";
 export interface ChatInputHandle {
   setPrefillText: (text: string) => void;
   setPrefillComposer: (text: string, attachments?: ChatAttachment[]) => void;
+  focusComposer: () => void;
 }
 
 interface ChatInputProps {
@@ -95,6 +96,8 @@ interface ChatInputProps {
     mode: "auto" | "enabled" | "disabled",
     effort: string | null,
   ) => void;
+  conversationMode?: "ask" | "plan" | "craft";
+  onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -150,6 +153,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       reasoningMode = "auto",
       reasoningEffort = null,
       onReasoningChange,
+      conversationMode = "craft",
+      onConversationModeChange,
       availableConnectors,
       selectedConnectors = [],
       onConnectorsChange,
@@ -266,6 +271,12 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               el.setSelectionRange(el.value.length, el.value.length);
             }
           }, 50);
+        },
+        focusComposer: () => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(el.value.length, el.value.length);
         },
       }),
       [clearAttachments, restoreAttachments],
@@ -849,6 +860,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             reasoningMode={reasoningMode}
             reasoningEffort={reasoningEffort}
             onReasoningChange={onReasoningChange}
+            conversationMode={conversationMode}
+            onConversationModeChange={onConversationModeChange}
             defaultModel={defaultModel}
             availableConnectors={availableConnectors}
             selectedConnectors={selectedConnectors}

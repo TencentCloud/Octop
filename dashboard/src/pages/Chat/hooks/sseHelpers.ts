@@ -117,6 +117,7 @@ export interface SessionStreamState {
   roomAgentId?: string;
   /** Team host room — listen-only sockets and ask_agent continue stay on. */
   isTeamRoom?: boolean;
+  pendingPlanPath?: string | null;
 }
 
 /** Read-only snapshot shape exposed via ``chatStore.getSnapshot``. */
@@ -131,4 +132,5 @@ export interface SessionSnapshot {
   historyNextOffset: number;
   historyNextCursor?: string | null;
   historyHydrated: boolean;
+  pendingPlanPath?: string | null;
 }

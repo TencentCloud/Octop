@@ -43,6 +43,47 @@ async def test_export_and_merge_import(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_export_includes_hidden_and_runtime_dirs(tmp_path: Path) -> None:
+    """Workspace zip must pack the full tree, including ``.octop`` and ``outbound``.
+
+    ``aglob("**/*")`` skips dotfiles, which previously left archives with only a
+    handful of root markdown files.
+    """
+    home = tmp_path / "home"
+    workspace_dir = home / ".octop" / "workspaces" / "AGT1"
+    (workspace_dir / "outbound" / "shots").mkdir(parents=True)
+    (workspace_dir / "inbound").mkdir(parents=True)
+    (workspace_dir / ".octop" / "sessions").mkdir(parents=True)
+    (workspace_dir / ".octop" / "skills" / "demo").mkdir(parents=True)
+
+    (workspace_dir / "SOUL.md").write_bytes(b"soul")
+    (workspace_dir / ".env").write_bytes(b"KEY=1")
+    (workspace_dir / "outbound" / "shots" / "a.png").write_bytes(b"png")
+    (workspace_dir / "inbound" / "upload.txt").write_bytes(b"up")
+    (workspace_dir / ".octop" / "sessions" / "state.db").write_bytes(b"db")
+    (workspace_dir / ".octop" / "skills" / "demo" / "SKILL.md").write_bytes(b"skill")
+    (workspace_dir / ".git" / "objects").mkdir(parents=True)
+    (workspace_dir / ".git" / "objects" / "pack").write_bytes(b"skip-me")
+
+    backend = resolve_backend(
+        {"type": "filesystem", "root_dir": str(home), "virtual_mode": True},
+        workspace_dir=workspace_dir,
+    )
+    workspace = BackendWorkspace(backend, workspace_dir, system_files_path=".octop")
+
+    blob = await export_workspace_zip(workspace)
+    with zipfile.ZipFile(io.BytesIO(blob), "r") as zf:
+        names = set(zf.namelist())
+        assert zf.read("SOUL.md") == b"soul"
+        assert zf.read(".env") == b"KEY=1"
+        assert zf.read("outbound/shots/a.png") == b"png"
+        assert zf.read("inbound/upload.txt") == b"up"
+        assert zf.read(".octop/sessions/state.db") == b"db"
+        assert zf.read(".octop/skills/demo/SKILL.md") == b"skill"
+    assert ".git/objects/pack" not in names
+
+
+@pytest.mark.asyncio
 async def test_replace_clears_local_dir(tmp_path: Path) -> None:
     ws = tmp_path / "ws"
     ws.mkdir()
@@ -92,11 +133,10 @@ async def test_export_ignores_same_named_file_at_backend_root(tmp_path: Path) ->
 
 @pytest.mark.asyncio
 async def test_replace_import_keeps_system_state(tmp_path: Path) -> None:
-    """``replace`` must not delete state an archive can never carry.
+    """``replace`` must not wipe hidden state absent from older archives.
 
-    Hidden paths are outside the export glob, so ``.octop`` (sessions / skills /
-    auth) is absent from every archive; clearing it on replace destroyed data that
-    the import could not restore.
+    New exports include ``.octop``, but clearing it on replace would still destroy
+    sessions/auth when the uploaded zip is an older archive that omitted them.
     """
     ws = tmp_path / "ws"
     (ws / ".octop" / "sessions").mkdir(parents=True)
@@ -175,3 +215,25 @@ async def test_export_reads_remote_backend_over_stale_local_copy(tmp_path: Path)
     blob = await export_workspace_zip(workspace)
     with zipfile.ZipFile(io.BytesIO(blob), "r") as zf:
         assert zf.read("AGENTS.md") == b"remote AGENTS.md"
+
+
+@pytest.mark.asyncio
+async def test_export_mountless_includes_hidden_via_aglob(tmp_path: Path) -> None:
+    """Mountless backends without ``als`` still pack hidden paths via aglob fallback."""
+    workspace = BackendWorkspace(
+        _MountlessBackend(
+            {
+                "/SOUL.md": b"soul",
+                "/.octop/sessions/x.db": b"db",
+                "/outbound/a.txt": b"out",
+            }
+        ),
+        tmp_path,
+    )
+
+    blob = await export_workspace_zip(workspace)
+    with zipfile.ZipFile(io.BytesIO(blob), "r") as zf:
+        names = set(zf.namelist())
+        assert names == {"SOUL.md", ".octop/sessions/x.db", "outbound/a.txt"}
+        assert zf.read(".octop/sessions/x.db") == b"db"
+        assert zf.read("outbound/a.txt") == b"out"

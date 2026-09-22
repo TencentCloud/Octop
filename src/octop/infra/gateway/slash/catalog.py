@@ -29,6 +29,8 @@ class SlashCommandSpec:
     origins: frozenset[Origin] = frozenset({"all"})
     client_action: ClientAction = "none"
     hidden: bool = False
+    persist_checkpoint: bool = True
+    """Whether command input/output also enters the agent's checkpoint history."""
 
     @property
     def command(self) -> str:
@@ -88,6 +90,14 @@ CATALOG: tuple[SlashCommandSpec, ...] = (
         category="core",
     ),
     SlashCommandSpec(
+        name="mode",
+        aliases=("ask", "plan", "craft"),
+        usage="/mode [ask|plan|craft]",
+        icon="MessagesSquare",
+        tone="violet",
+        category="core",
+    ),
+    SlashCommandSpec(
         name="new",
         aliases=("clear",),
         usage="/new [title]",
@@ -102,6 +112,16 @@ CATALOG: tuple[SlashCommandSpec, ...] = (
         icon="Archive",
         tone="violet",
         category="core",
+    ),
+    SlashCommandSpec(
+        name="memory",
+        usage="/memory slim [--all] [--confirm] | status",
+        # Replies must remain available while the checkpoint database is maintained.
+        persist_checkpoint=False,
+        icon="Database",
+        tone="violet",
+        category="system",
+        origins=frozenset({"ui", "cli"}),
     ),
     SlashCommandSpec(
         name="stop",
