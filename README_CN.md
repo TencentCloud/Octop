@@ -202,9 +202,11 @@ source ~/.bashrc  # Bash
 # 浏览器自动化（Playwright Chromium）
 curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash -s -- --extras browser
 
-# 飞书通道支持
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash -s -- --extras channels-feishu
+# 知识库 OCR（RapidOCR + onnxruntime）
+curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash -s -- --extras knowledge-ocr
 ```
+
+可选附加组件只有 wheel 声明的这几个：`browser`、`desktop`、`local-embedding`、`knowledge-ocr`。IM 通道无需附加组件——飞书 SDK（`lark-oapi`）已随基础安装提供。
 
 完整安装选项见 [scripts/README.md](scripts/README.md)（`--version`、`--from-source`、`--mirror` 及 Windows 参数）。
 
