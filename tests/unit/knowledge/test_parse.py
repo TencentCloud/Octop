@@ -201,6 +201,30 @@ def test_parse_csv_xlsx_and_xls(tmp_path: Path) -> None:
     assert parse_document(xls) == "# Q1\nitem\tqty\napple\t2"
 
 
+def test_parse_html_table_cells_are_not_glued(tmp_path: Path) -> None:
+    """Minified HTML tables have no whitespace between ``td``/``th``.
+
+    The extractor used to emit ``HelloWorld`` / ``Qty2``, so knowledge search
+    never saw the original cell tokens.
+    """
+    path = tmp_path / "grid.html"
+    path.write_text(
+        "<html><body><table>"
+        "<tr><td>Hello</td><td>World</td></tr>"
+        "<tr><th>Qty</th><td>2</td></tr>"
+        "</table></body></html>",
+        encoding="utf-8",
+    )
+
+    text = parse_document(path)
+    assert "HelloWorld" not in text
+    assert "Qty2" not in text
+    assert "Hello" in text
+    assert "World" in text
+    lines = [line for line in text.splitlines() if line]
+    assert lines == ["Hello World", "Qty 2"]
+
+
 def test_parse_html_json_and_plain_variants(tmp_path: Path) -> None:
     html = tmp_path / "page.html"
     html.write_text(
