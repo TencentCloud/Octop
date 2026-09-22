@@ -479,6 +479,216 @@
   }
 }
 
+/* Tag filter: quick chips + popover filter button below the session search box. */
+.tagFilterRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  flex-shrink: 0;
+  margin: 0 0 10px;
+  padding: 1px 2px;
+}
+
+.tagFilterBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+
+  &:hover {
+    background: color-mix(in srgb, var(--fn-text-primary) 4%, transparent);
+    color: var(--fn-text-primary);
+  }
+}
+
+.tagFilterBtnActive {
+  border-color: color-mix(in srgb, var(--fn-color-brand) 55%, transparent);
+  background: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
+  color: var(--fn-color-brand);
+
+  &:hover {
+    background: color-mix(in srgb, var(--fn-color-brand) 16%, transparent);
+    color: var(--fn-color-brand);
+  }
+}
+
+.tagFilterBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--fn-color-brand);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.tagFilterPopover {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.tagFilterPopoverList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.tagFilterOption {
+  display: flex;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--fn-text-primary) 4%, transparent);
+  }
+}
+
+.tagFilterClear {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fn-color-brand);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+
+  &:disabled {
+    color: var(--fn-text-tertiary);
+    cursor: not-allowed;
+  }
+}
+
+.tagFilterChip {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+
+  &:hover {
+    background: color-mix(in srgb, var(--fn-text-primary) 4%, transparent);
+    color: var(--fn-text-primary);
+  }
+}
+
+.tagFilterChipActive {
+  border-color: color-mix(in srgb, var(--fn-color-brand) 55%, transparent);
+  background: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
+  color: var(--fn-color-brand);
+
+  &:hover {
+    background: color-mix(in srgb, var(--fn-color-brand) 16%, transparent);
+    color: var(--fn-color-brand);
+  }
+}
+
+/* Folder-grouped session sections. */
+.folderSection {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 2px;
+}
+
+.folderSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+
+  &:hover {
+    background: color-mix(in srgb, var(--fn-text-primary) 4%, transparent);
+    color: var(--fn-text-primary);
+  }
+}
+
+.folderSectionChevron {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.folderSectionIcon {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.folderSectionName {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folderSectionCount {
+  flex-shrink: 0;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--fn-text-primary) 7%, transparent);
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.folderSectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 /* legacy agent group — kept for compatibility */
 .agentGroup {
   display: none;

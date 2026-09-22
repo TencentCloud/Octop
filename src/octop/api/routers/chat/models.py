@@ -157,6 +157,13 @@ class RenameThreadBody(BaseModel):
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = None
+    folder: str | None = None
+    tags: list[str] | None = None
+
+
+class OrganizeThreadBody(BaseModel):
+    folder: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 class HitlResumeBody(BaseModel):

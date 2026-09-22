@@ -665,6 +665,10 @@
       "badge": "Shared",
       "fromOwner": "Shared expert · from {{name}}"
     },
+    "autoThreadTags": {
+      "label": "Automatic thread tags",
+      "hint": "After the first successful reply in a new chat, use one additional model call to create thread tags. Disabled by default."
+    },
     "published": {
       "title": "Publish template",
       "badge": "Published",
@@ -1288,6 +1292,22 @@
     "resizeSidebar": "Resize sidebar",
     "expandHistorySidebar": "Show conversation history",
     "collapseHistorySidebar": "Hide conversation history",
+    "folders": {
+      "title": "Folders",
+      "ungrouped": "Ungrouped",
+      "newFolder": "New Folder",
+      "moveTo": "Move to Folder",
+      "rename": "Rename Folder",
+      "delete": "Delete Folder"
+    },
+    "tags": {
+      "title": "Tags",
+      "addTag": "Add Tag",
+      "removeTag": "Remove Tag",
+      "filterByTag": "Filter by Tag",
+      "clearFilter": "Clear filter",
+      "noTags": "No tags"
+    },
     "teamBadge": "Team",
     "teamHostHover": "[{{name}}] Host",
     "agentProfile": {

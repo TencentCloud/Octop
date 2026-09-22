@@ -95,15 +95,30 @@ def _require_thread(
 async def list_threads(
     agent_id: str,
     limit: int = 50,
+    folder: str | None = None,
+    tag: str | None = None,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """List conversation threads for an agent, including which thread is active for this user."""
+    """List conversation threads for an agent, including which thread is active for this user.
+
+    ``folder`` filters by folder name (empty string = threads without a folder);
+    ``tag`` filters to threads carrying that tag.
+    """
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     thread_registry = server.app_runtime.gateway.thread_registry
     effective_uid = as_user if as_user is not None else user.id
-    rows = thread_registry.list_threads(agent_id=agent_id, user_id=effective_uid, limit=limit)
+    if tag is not None:
+        rows = thread_registry.list_threads_by_tag(
+            agent_id=agent_id, user_id=effective_uid, tag=tag, limit=limit
+        )
+    elif folder is not None:
+        rows = thread_registry.list_threads_by_folder(
+            agent_id=agent_id, user_id=effective_uid, folder=folder or None, limit=limit
+        )
+    else:
+        rows = thread_registry.list_threads(agent_id=agent_id, user_id=effective_uid, limit=limit)
     bound = thread_registry.get_bound_thread_id(
         ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=effective_uid)
     )
@@ -124,10 +139,44 @@ async def list_threads(
             "reasoning_effort": r.reasoning_effort,
             "conversation_mode": r.conversation_mode or "craft",
             "pending_plan_path": r.pending_plan_path,
+            "folder": r.folder,
+            "tags": list(r.tags),
             "artifacts": artifacts_for_response(r.artifacts, workspace_dir),
         }
         for r in rows
     ]
+
+
+@router.get("/agents/{agent_id}/thread-folders", summary="List thread folders")
+async def list_thread_folders(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Return distinct non-empty folder names across the user's threads for an agent."""
+    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    effective_uid = as_user if as_user is not None else user.id
+    folders = server.app_runtime.gateway.thread_registry.list_folders(
+        agent_id=agent_id, user_id=effective_uid
+    )
+    return {"folders": folders}
+
+
+@router.get("/agents/{agent_id}/thread-tags", summary="List thread tags")
+async def list_thread_tags(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Return distinct tags across the user's threads for an agent."""
+    require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+    effective_uid = as_user if as_user is not None else user.id
+    tags = server.app_runtime.gateway.thread_registry.list_tags(
+        agent_id=agent_id, user_id=effective_uid
+    )
+    return {"tags": tags}
 
 
 @router.get(
@@ -512,6 +561,8 @@ async def patch_thread(
     if (
         body.title is None
         and body.pinned is None
+        and body.tags is None
+        and "folder" not in body.model_fields_set
         and not body.model_fields_set.intersection(composer_fields)
     ):
         return {
@@ -523,12 +574,18 @@ async def patch_thread(
             "reasoning_effort": row.reasoning_effort,
             "conversation_mode": row.conversation_mode or "craft",
             "pending_plan_path": row.pending_plan_path,
+            "folder": row.folder,
+            "tags": list(row.tags),
         }
     registry = server.app_runtime.gateway.thread_registry
     if body.title is not None:
         registry.update_title(thread_id, body.title)
     if body.pinned is not None:
         registry.set_pinned(thread_id, body.pinned)
+    if "folder" in body.model_fields_set:
+        registry.set_folder(thread_id, (body.folder or "").strip() or None)
+    if body.tags is not None:
+        registry.set_tags(thread_id, body.tags)
     model_ref: str | None | object = ...
     reasoning_mode: str | None | object = ...
     reasoning_effort: str | None | object = ...
@@ -569,6 +626,8 @@ async def patch_thread(
         "reasoning_effort": updated.reasoning_effort,
         "conversation_mode": updated.conversation_mode or "craft",
         "pending_plan_path": updated.pending_plan_path,
+        "folder": updated.folder,
+        "tags": list(updated.tags),
     }
 
 

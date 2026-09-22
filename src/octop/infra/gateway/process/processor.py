@@ -21,6 +21,7 @@ from harness_gateway.models import (
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from octop.i18n.domains.stream import format_stream_error
+from octop.infra.agents.auto_tag import AutoTagger
 from octop.infra.agents.profile import parse_config_json
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.agents.teams import is_team_agent
@@ -91,6 +92,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _log_auto_tag_task_failure(thread_id: str, task: asyncio.Task[None]) -> None:
+    """Retrieve exceptions so a failed auto-tag never logs 'never retrieved'."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.info("auto-tag task failed: thread_id=%s exc=%s", thread_id, exc)
+
+
 def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
     if isinstance(exc, OctopError):
         return exc.localized_message(locale), exc.code.value
@@ -146,6 +156,7 @@ class GlobalProcessor:
         hitl: HitlChannelCoordinator | None = None,
         trajectory_service: Any | None = None,
         history_archive: Any | None = None,
+        auto_tagger: AutoTagger | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._thread_registry = thread_registry
@@ -169,6 +180,7 @@ class GlobalProcessor:
         self._hitl = hitl or HitlChannelCoordinator()
         self._trajectory_service = trajectory_service
         self._history_archive = history_archive
+        self._auto_tagger = auto_tagger
         self.teams = TeamManager(
             agent_manager=agent_manager,
             thread_registry=thread_registry,
@@ -1465,9 +1477,36 @@ class GlobalProcessor:
         )
 
     def _touch_thread_after_turn(self, thread_id: str, title_source: str | None) -> None:
+        row = self._thread_registry.get_thread(thread_id)
+        # The dashboard pre-writes the title via PATCH, so a title None→set
+        # transition cannot signal "first turn". last_active=0 means "no turn
+        # completed yet"; read it before touching to catch the first one.
+        first_turn = row is not None and row.last_active == 0
         self._thread_registry.touch_last_active(thread_id)
         if title_source:
             self._thread_registry.set_title_if_null(thread_id, title_source)
+        if first_turn:
+            self._schedule_auto_tag(row, thread_id, title_source)
+
+    def _schedule_auto_tag(self, row: Any, thread_id: str, title_source: str | None) -> None:
+        """Fire-and-forget auto-tag for the first completed turn of a thread."""
+        if self._auto_tagger is None or row is None or row.tags:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        title = row.title or title_source or ""
+        task = loop.create_task(
+            self._auto_tagger.maybe_tag_thread(
+                agent_id=row.agent_id,
+                user_id=row.user_id,
+                thread_id=thread_id,
+                title=title,
+                first_message=title_source or "",
+            )
+        )
+        task.add_done_callback(lambda t: _log_auto_tag_task_failure(thread_id, t))
 
     def _record_turn_usage(
         self,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from typing import Any
 
 from octop.infra.db.repos.sessions import SessionRepo, SessionRow
@@ -361,6 +362,30 @@ class ThreadRegistry:
 
     def set_pinned(self, thread_id: str, pinned: bool) -> None:
         self._threads.set_pinned(thread_id, pinned)
+
+    def set_folder(self, thread_id: str, folder: str | None) -> None:
+        self._threads.set_folder(thread_id, folder)
+
+    def set_tags(self, thread_id: str, tags: Sequence[str]) -> None:
+        self._threads.set_tags(thread_id, tags)
+
+    def list_folders(self, *, agent_id: str, user_id: int) -> list[str]:
+        return self._threads.list_folders(agent_id=agent_id, user_id=user_id)
+
+    def list_tags(self, *, agent_id: str, user_id: int) -> list[str]:
+        return self._threads.list_tags(agent_id=agent_id, user_id=user_id)
+
+    def list_threads_by_folder(
+        self, *, agent_id: str, user_id: int, folder: str | None, limit: int = 50
+    ) -> list[ThreadRow]:
+        return self._threads.list_by_folder(
+            agent_id=agent_id, user_id=user_id, folder=folder, limit=limit
+        )
+
+    def list_threads_by_tag(
+        self, *, agent_id: str, user_id: int, tag: str, limit: int = 50
+    ) -> list[ThreadRow]:
+        return self._threads.list_by_tag(agent_id=agent_id, user_id=user_id, tag=tag, limit=limit)
 
     def update_composer(
         self,
