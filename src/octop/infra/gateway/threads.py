@@ -371,6 +371,7 @@ class ThreadRegistry:
         reasoning_effort: str | None | object = ...,
         conversation_mode: str | None | object = ...,
         pending_plan_path: str | None | object = ...,
+        hitl_policy: str | None | object = ...,
     ) -> None:
         self._threads.update_composer(
             thread_id,
@@ -379,6 +380,7 @@ class ThreadRegistry:
             reasoning_effort=reasoning_effort,
             conversation_mode=conversation_mode,
             pending_plan_path=pending_plan_path,
+            hitl_policy=hitl_policy,
         )
 
     def touch_last_active(self, thread_id: str) -> None:

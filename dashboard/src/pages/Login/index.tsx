@@ -22,6 +22,7 @@ import dingtalkIcon from "../../assets/channels/dingtalk.svg";
 import wecomIcon from "../../assets/channels/wecom.svg";
 import googleIcon from "../../assets/providers/google.svg";
 import CaptchaField, { type CaptchaFieldHandle } from "./CaptchaField";
+import ForgotPasswordModal from "./ForgotPasswordModal";
 import { type PublicCaptchaConfig } from "./captchaAdapters";
 
 function providerLabel(
@@ -330,7 +331,7 @@ export default function LoginPage() {
           <button
             type="button"
             data-testid="login-forgot-password-toggle"
-            onClick={() => setShowForgotHelp((open) => !open)}
+            onClick={() => setShowForgotHelp(true)}
             style={{
               margin: 0,
               padding: 0,
@@ -344,47 +345,10 @@ export default function LoginPage() {
           >
             {t("login.forgotPassword", "Forgot password?")}
           </button>
-          {showForgotHelp ? (
-            <div
-              data-testid="login-forgot-password"
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 10,
-                background: "var(--fn-bg-secondary)",
-                border: "1px solid var(--fn-border-primary)",
-                color: "var(--fn-text-secondary)",
-                fontSize: 12,
-                lineHeight: 1.6,
-                textAlign: "left",
-              }}
-            >
-              <p style={{ margin: 0 }}>
-                {t(
-                  "login.forgotPasswordHelp",
-                  "Ask an administrator to reset it under Users. If you manage this Octop host, you can also run:",
-                )}
-              </p>
-              <code
-                style={{
-                  display: "block",
-                  marginTop: 8,
-                  padding: "6px 8px",
-                  borderRadius: 6,
-                  background: "var(--fn-bg-primary)",
-                  fontFamily:
-                    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                  fontSize: 12,
-                  wordBreak: "break-all",
-                }}
-              >
-                {t(
-                  "login.forgotPasswordCommand",
-                  "octop user passwd <username>",
-                )}
-              </code>
-            </div>
-          ) : null}
+          <ForgotPasswordModal
+            open={showForgotHelp}
+            onClose={() => setShowForgotHelp(false)}
+          />
         </div>
 
         {providers.length > 0 && (

@@ -211,6 +211,9 @@ async def resume_hitl(
         if reason is not None:
             raise HTTPException(status_code=400, detail=reason)
 
+    if body.hitl_policy is not None:
+        hitl_coordinator.session_policies.set(body.thread_id, body.hitl_policy.model_dump())
+
     async def gen() -> AsyncIterator[str]:
         async for frame in iter_dashboard_hitl_resume_sse(
             processor=processor,

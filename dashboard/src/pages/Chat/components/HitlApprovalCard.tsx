@@ -1,7 +1,10 @@
-import { ShieldAlert } from "lucide-react";
+import { ChevronDown, ShieldAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Dropdown } from "antd";
 import type { HitlActionRequest } from "../../../api/types/hitl";
 import { useToolDisplayNames } from "../hooks/toolDisplayNames";
+import type { HitlRequestResolution } from "../hooks/sseHelpers";
+import type { HitlDecisionHandler } from "../utils/hitlSessionPolicy";
 import {
   summarizeHitlAction,
   type HitlTranslate,
@@ -11,17 +14,45 @@ import styles from "./HitlApprovalCard.module.less";
 export interface HitlApprovalCardProps {
   actions: HitlActionRequest[];
   status: "pending" | "approved" | "rejected";
-  onDecision?: (decisions: Array<{ type: string; message?: string }>) => void;
+  resolution?: HitlRequestResolution;
+  onDecision?: HitlDecisionHandler;
+}
+
+function uniqueToolNames(actions: HitlActionRequest[]): string[] {
+  return [
+    ...new Set(
+      actions
+        .map((action) => action.name.trim())
+        .filter((name) => name.length > 0),
+    ),
+  ];
 }
 
 export default function HitlApprovalCard({
   actions,
   status,
+  resolution,
   onDecision,
 }: HitlApprovalCardProps) {
   const { t } = useTranslation();
   const toolLabelOf = useToolDisplayNames();
   const interactive = status === "pending" && Boolean(onDecision);
+  const toolNames = uniqueToolNames(actions);
+  const allowToolsLabel =
+    toolNames.length > 1
+      ? t("chat.hitl.allowTools", "Allow these tools for this chat")
+      : t("chat.hitl.allowTool", "Allow this tool for this chat");
+
+  const resolvedLabel =
+    status === "rejected"
+      ? t("chat.hitl.rejectedLabel", "Rejected")
+      : resolution === "allow_all"
+      ? t("chat.hitl.allowedAll", "Allowed all for this chat")
+      : resolution === "allow_tool"
+      ? toolNames.length > 1
+        ? t("chat.hitl.allowedTools", "Allowed these tools for this chat")
+        : t("chat.hitl.allowedTool", "Allowed this tool for this chat")
+      : t("chat.hitl.approved", "Approved");
 
   return (
     <div className={styles.card} role="status">
@@ -73,6 +104,39 @@ export default function HitlApprovalCard({
           >
             {t("chat.hitl.approve", "Approve")}
           </button>
+          <Dropdown
+            trigger={["click"]}
+            menu={{
+              items: [
+                { key: "allow_tools", label: allowToolsLabel },
+                {
+                  key: "allow_all",
+                  label: t("chat.hitl.allowAll", "Allow all for this chat"),
+                },
+              ],
+              onClick: ({ key }) => {
+                if (key === "allow_all") {
+                  onDecision?.(
+                    actions.map(() => ({ type: "approve" })),
+                    { mode: "allow_all" },
+                  );
+                  return;
+                }
+                onDecision?.(
+                  actions.map(() => ({ type: "approve" })),
+                  { mode: "allow_tools", tools: toolNames },
+                );
+              },
+            }}
+          >
+            <button
+              type="button"
+              className={`${styles.actionButton} ${styles.secondaryAction}`}
+            >
+              {t("chat.hitl.allowMenu", "Allow")}
+              <ChevronDown size={14} />
+            </button>
+          </Dropdown>
           <button
             type="button"
             className={`${styles.actionButton} ${styles.dangerAction}`}
@@ -94,9 +158,7 @@ export default function HitlApprovalCard({
             status === "approved" ? styles.approved : styles.rejected
           }`}
         >
-          {status === "approved"
-            ? t("chat.hitl.approved", "Approved")
-            : t("chat.hitl.rejectedLabel", "Rejected")}
+          {resolvedLabel}
         </div>
       ) : null}
     </div>

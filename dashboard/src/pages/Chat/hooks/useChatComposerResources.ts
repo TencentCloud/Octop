@@ -27,7 +27,11 @@ import {
   peekPendingAttachKnowledgeBaseId,
 } from "../utils/pendingAttachKnowledgeBase";
 import { withDefaultOpenKnowledgeBases } from "../utils/withDefaultOpenKnowledgeBases";
-import { isPendingThread, syncSessionConversationMode } from "./useSessions";
+import {
+  isPendingThread,
+  syncSessionConversationMode,
+  syncSessionHitlPolicy,
+} from "./useSessions";
 import { isTeamAgent } from "../../../utils/teamAgent";
 import * as chatStore from "./chatStore";
 import {
@@ -35,6 +39,11 @@ import {
   parseConversationMode,
   type ConversationMode,
 } from "../utils/conversationMode";
+import {
+  DEFAULT_HITL_SESSION_POLICY,
+  parseHitlSessionPolicy,
+  type HitlSessionPolicy,
+} from "../utils/hitlSessionPolicy";
 
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
@@ -43,6 +52,7 @@ export function useChatComposerResources(
   stickyReasoningMode?: "auto" | "enabled" | "disabled" | null,
   stickyReasoningEffort?: string | null,
   stickyConversationMode?: ConversationMode | null,
+  stickyHitlPolicy?: HitlSessionPolicy | null,
 ) {
   const user = useCurrentUser();
   const currentUserId = user?.id ?? null;
@@ -86,6 +96,9 @@ export function useChatComposerResources(
   const [reasoningEffort, setReasoningEffort] = useState<string | null>(null);
   const [conversationMode, setConversationMode] = useState<ConversationMode>(
     DEFAULT_CONVERSATION_MODE,
+  );
+  const [hitlPolicy, setHitlPolicy] = useState<HitlSessionPolicy>(
+    DEFAULT_HITL_SESSION_POLICY,
   );
   const [conversationOverrides, setConversationOverrides] = useState<
     Record<
@@ -168,6 +181,14 @@ export function useChatComposerResources(
         : parseConversationMode(stickyConversationMode),
     );
   }, [isNewSession, stickyConversationMode, activeThreadId]);
+
+  useEffect(() => {
+    setHitlPolicy(
+      isNewSession
+        ? DEFAULT_HITL_SESSION_POLICY
+        : parseHitlSessionPolicy(stickyHitlPolicy),
+    );
+  }, [isNewSession, stickyHitlPolicy, activeThreadId]);
 
   useEffect(() => {
     if (teamHost) {
@@ -467,6 +488,27 @@ export function useChatComposerResources(
     [activeThreadId, resolvedAgentId],
   );
 
+  const handleHitlPolicyChange = useCallback(
+    (policy: HitlSessionPolicy, options?: { persist?: boolean }) => {
+      const next = parseHitlSessionPolicy(policy);
+      setHitlPolicy(next);
+      if (activeThreadId) {
+        syncSessionHitlPolicy(activeThreadId, next);
+      }
+      if (
+        (options?.persist ?? true) &&
+        resolvedAgentId &&
+        activeThreadId &&
+        !isPendingThread(activeThreadId)
+      ) {
+        void octopThreadsApi.patch(resolvedAgentId, activeThreadId, {
+          hitl_policy: next,
+        });
+      }
+    },
+    [activeThreadId, resolvedAgentId],
+  );
+
   return {
     selectedModel,
     setSelectedModel: handleModelChange,
@@ -475,6 +517,8 @@ export function useChatComposerResources(
     handleReasoningChange,
     conversationMode,
     handleConversationModeChange,
+    hitlPolicy,
+    handleHitlPolicyChange,
     selectedConnectors,
     selectedKnowledgeBaseIds,
     chatConnectors,

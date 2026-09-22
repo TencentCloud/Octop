@@ -19,11 +19,16 @@ import type {
   WelcomeManifestSnapshot,
   WelcomeManifestStatus,
 } from "./welcomeManifest";
+import { normalizeQuickPrompts } from "./welcomeManifest";
 
 export type { QuickPrompt, WelcomeConfigData };
 
 interface WelcomeConfigProps {
-  agentId: string;
+  /** When set, load cards from the live agent workspace. */
+  agentId?: string;
+  /** Create-drawer seed; ignored when agentId is set. */
+  initialPrompts?: QuickPrompt[];
+  disabled?: boolean;
 }
 
 const defaultQuickPrompt: QuickPrompt = {
@@ -70,13 +75,19 @@ export interface WelcomeConfigRef {
 }
 
 const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
-  ({ agentId }, ref) => {
+  ({ agentId, initialPrompts, disabled = false }, ref) => {
     const { t, i18n } = useTranslation();
-    const [status, setStatus] = useState<WelcomeManifestStatus>("loading");
+    const [status, setStatus] = useState<WelcomeManifestStatus>(() =>
+      agentId ? "loading" : "ready",
+    );
     const [dirty, setDirty] = useState(false);
-    const [quickPrompts, setQuickPrompts] = useState<QuickPrompt[]>([]);
+    const [quickPrompts, setQuickPrompts] = useState<QuickPrompt[]>(() =>
+      agentId ? [] : normalizeQuickPrompts(initialPrompts),
+    );
     const currentLang = i18n.language.startsWith("zh") ? "zh" : "en";
-    const markDirty = () => setDirty(true);
+    const markDirty = () => {
+      if (!disabled) setDirty(true);
+    };
 
     const snapshotData = useMemo(
       (): WelcomeConfigData => ({
@@ -98,28 +109,15 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
     );
 
     const loadConfig = useCallback(async () => {
+      if (!agentId) {
+        setStatus("ready");
+        return;
+      }
       setStatus("loading");
       setDirty(false);
       try {
         const data = await agentChatApi.welcome(agentId);
-        setQuickPrompts(
-          (data.quick_prompts || []).map((p) => ({
-            title: {
-              zh: p.title?.zh ?? "",
-              en: p.title?.en ?? "",
-            },
-            description: {
-              zh: p.description?.zh ?? "",
-              en: p.description?.en ?? "",
-            },
-            prompt: {
-              zh: p.prompt?.zh ?? "",
-              en: p.prompt?.en ?? "",
-            },
-            color: p.color || "#e8f4ff",
-            icon_name: p.icon_name ?? null,
-          })),
-        );
+        setQuickPrompts(normalizeQuickPrompts(data.quick_prompts));
         setStatus("ready");
       } catch {
         setQuickPrompts([]);
@@ -128,15 +126,22 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
     }, [agentId]);
 
     useEffect(() => {
-      loadConfig();
+      void loadConfig();
     }, [loadConfig]);
 
+    useEffect(() => {
+      if (agentId || dirty) return;
+      setQuickPrompts(normalizeQuickPrompts(initialPrompts));
+    }, [agentId, dirty, initialPrompts]);
+
     const addQuickPrompt = () => {
+      if (disabled) return;
       markDirty();
       setQuickPrompts([...quickPrompts, { ...defaultQuickPrompt }]);
     };
 
     const removeQuickPrompt = (index: number) => {
+      if (disabled) return;
       markDirty();
       setQuickPrompts(quickPrompts.filter((_, i) => i !== index));
     };
@@ -146,6 +151,7 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
       field: "color" | "icon_name",
       value: string | null,
     ) => {
+      if (disabled) return;
       markDirty();
       const newPrompts = [...quickPrompts];
       newPrompts[index] = { ...newPrompts[index], [field]: value };
@@ -158,6 +164,7 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
       lang: "zh" | "en",
       value: string,
     ) => {
+      if (disabled) return;
       markDirty();
       const newPrompts = [...quickPrompts];
       const currentField = newPrompts[index][field];
@@ -186,6 +193,7 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                 <Button
                   type="dashed"
                   icon={<PlusOutlined />}
+                  disabled={disabled}
                   onClick={addQuickPrompt}
                 >
                   {t("experts.addQuickPrompt")}
@@ -203,6 +211,7 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                         type="text"
                         danger
                         icon={<DeleteOutlined />}
+                        disabled={disabled}
                         onClick={() => removeQuickPrompt(index)}
                       />
                     </div>
@@ -213,6 +222,7 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                           <label>{t("experts.quickPromptTitle")}</label>
                           <Input
                             value={prompt.title[currentLang]}
+                            disabled={disabled}
                             onChange={(e) =>
                               updateLocalizedField(
                                 index,
@@ -230,6 +240,7 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                           <label>{t("experts.quickPromptDescription")}</label>
                           <Input
                             value={prompt.description[currentLang]}
+                            disabled={disabled}
                             onChange={(e) =>
                               updateLocalizedField(
                                 index,
@@ -250,6 +261,7 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                           <label>{t("experts.quickPromptContent")}</label>
                           <Input.TextArea
                             value={prompt.prompt[currentLang]}
+                            disabled={disabled}
                             onChange={(e) =>
                               updateLocalizedField(
                                 index,
@@ -274,6 +286,7 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                               <button
                                 key={color}
                                 type="button"
+                                disabled={disabled}
                                 className={
                                   styles.colorOption +
                                   (prompt.color === color
@@ -293,6 +306,7 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                           <div className={styles.iconPicker}>
                             <button
                               type="button"
+                              disabled={disabled}
                               className={
                                 styles.iconOption +
                                 " " +
@@ -311,6 +325,7 @@ const WelcomeConfig = forwardRef<WelcomeConfigRef, WelcomeConfigProps>(
                               <button
                                 key={icon}
                                 type="button"
+                                disabled={disabled}
                                 className={
                                   styles.iconOption +
                                   (prompt.icon_name === icon
