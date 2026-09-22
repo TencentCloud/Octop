@@ -30,6 +30,7 @@ async def test_catalog(env):
     assert "figma" not in kinds
     assert "baidu-netdisk" not in kinds
     for kind in (
+        "openalex",
         "tencent-meeting",
         "tencent-lexiang",
         "notion",
@@ -59,6 +60,28 @@ async def test_catalog(env):
     assert weiyun["mcp_mode"] == "remote"
     assert weiyun["category"] == "office"
     assert weiyun.get("quick_auth_url") == "https://www.weiyun.com/act/openclaw"
+    openalex = next(e for e in r.json() if e["kind"] == "openalex")
+    assert openalex == {
+        "kind": "openalex",
+        "name": "OpenAlex",
+        "description": "官方 MCP：检索学术文献、引文、研究实体与统计分析",
+        "auth_kind": "oauth2",
+        "doc_url": "https://help.openalex.org/access/connector/",
+        "icon": "openalex",
+        "color": "#1f6feb",
+        "phase": "available",
+        "mcp_mode": "remote",
+        "category": "knowledge",
+        "quick_auth_url": None,
+        "login_url": None,
+        "guide_url": "https://help.openalex.org/access/connector/",
+        "manual_url": "https://help.openalex.org/access/connector/",
+        "auth_hint": "点击「一键授权」登录 OpenAlex；查询将使用你自己的 API Key 与每日预算。",
+        "oauth_mode": "dynamic",
+        "oauth_ready": True,
+        "credential_fields": [],
+        "supports_quick_auth": True,
+    }
 
 
 async def test_create_tencent_instance(env):
