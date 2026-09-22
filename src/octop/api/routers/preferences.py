@@ -153,7 +153,9 @@ async def patch_preferences(
                 raise OctopError(ErrorCode.SLASH_BAD_ARGS, "timezone cannot be empty")
             try:
                 ZoneInfo(trimmed)
-            except ZoneInfoNotFoundError:
+            except (ZoneInfoNotFoundError, ValueError):
+                # ``ValueError`` is what ``zoneinfo`` raises for keys it refuses to resolve at all
+                # (absolute paths, ``..``); only ``ZoneInfoNotFoundError`` is a KeyError.
                 raise OctopError(
                     ErrorCode.SLASH_BAD_ARGS,
                     "timezone must be a valid IANA timezone",
