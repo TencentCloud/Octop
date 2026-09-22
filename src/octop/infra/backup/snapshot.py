@@ -12,16 +12,24 @@ from octop.infra.db.repos._base import now_ts
 
 _JWT_SECRET_KEY = "jwt"
 
-# Tables that carry a ``user_id`` ownership column (001_initial schema).
-_OWNERSHIP_TABLES = (
-    "agents",
-    "channels",
-    "cron_jobs",
-    "sessions",
-    "threads",
-    "connectors",
-    "connector_oauth_states",
-    "usage_log",
+# User-owned content tables as ``(table, ownership column)`` pairs. Every one of
+# these FKs its column to ``users(id) ON DELETE CASCADE``, so a row still pointing
+# at a pruned user is destroyed with it. The column is not always ``user_id`` —
+# ``knowledge_bases`` uses ``owner_user_id``.
+#
+# ``user_sso_identities`` / ``user_invites.created_by`` are account linkage for the
+# pruned users themselves, and ``user_policies`` is keyed ``UNIQUE(user_id, name)``;
+# folding those onto one owner is a separate call and can collide, so they stay out.
+_OWNERSHIP_TABLES: tuple[tuple[str, str], ...] = (
+    ("agents", "user_id"),
+    ("channels", "user_id"),
+    ("cron_jobs", "user_id"),
+    ("sessions", "user_id"),
+    ("threads", "user_id"),
+    ("connectors", "user_id"),
+    ("connector_oauth_states", "user_id"),
+    ("usage_log", "user_id"),
+    ("knowledge_bases", "owner_user_id"),
 )
 
 
@@ -232,6 +240,9 @@ def _patch_channel_metadata(raw: object, *, old_uid: int, new_uid: int) -> str |
 def remap_ownership_to_user(pool: DatabasePool, owner_user_id: int) -> dict[str, int]:
     """Reassign all user-scoped rows to *owner_user_id* (LightClaw migration import).
 
+    Walks ``_OWNERSHIP_TABLES``; the ownership column is ``user_id`` except for
+    ``knowledge_bases.owner_user_id``.
+
     Also rewrites dashboard/cli ``session_key`` / ``channel_subject_id`` and
     patches ``channel_metadata.user_id`` when they encode the old Octop user id.
 
@@ -244,13 +255,13 @@ def remap_ownership_to_user(pool: DatabasePool, owner_user_id: int) -> dict[str,
     rewritten_keys = 0
     with pool.transaction() as conn:
         old_ids: set[int] = set()
-        for table in _OWNERSHIP_TABLES:
+        for table, column in _OWNERSHIP_TABLES:
             if not _table_exists(conn, table, dialect=dialect):
                 continue
-            if not _table_has_column(conn, table, "user_id", dialect=dialect):
+            if not _table_has_column(conn, table, column, dialect=dialect):
                 continue
             rows = conn.execute(
-                f"SELECT DISTINCT user_id FROM {table} WHERE user_id IS NOT NULL"
+                f"SELECT DISTINCT {column} FROM {table} WHERE {column} IS NOT NULL"
             ).fetchall()
             for row in rows:
                 old_ids.add(int(row[0]))
@@ -259,13 +270,13 @@ def remap_ownership_to_user(pool: DatabasePool, owner_user_id: int) -> dict[str,
             return {"tables": 0, "old_user_ids": 0, "session_keys": 0}
 
         for old_uid in sorted(old_ids):
-            for table in _OWNERSHIP_TABLES:
+            for table, column in _OWNERSHIP_TABLES:
                 if not _table_exists(conn, table, dialect=dialect):
                     continue
-                if not _table_has_column(conn, table, "user_id", dialect=dialect):
+                if not _table_has_column(conn, table, column, dialect=dialect):
                     continue
                 conn.execute(
-                    f"UPDATE {table} SET user_id = ? WHERE user_id = ?",
+                    f"UPDATE {table} SET {column} = ? WHERE {column} = ?",
                     (owner_user_id, old_uid),
                 )
                 remapped_tables += 1

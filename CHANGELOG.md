@@ -19,6 +19,7 @@
 
 - `wiki_summary` 的 `lang` 不再被拼进请求主机名：此前传 `evil.com#` 会真的向 `https://evil.com` 发请求（`localhost:8443/` 则打本机端口），并把对方返回的摘要回显进聊天；现只接受 `zh` / `en` / `zh-classical` 这类裸子域标签，其余按「语言代码无效」返回错误卡片
 - 登录验证码的 `OCTOP_CAPTCHA_V3_MIN_SCORE` 只按 `float()` 解析，未校验取值：填成 `nan` 时 `score < nan` 恒为 `False`，`recaptcha-v3` 的分数门槛被静默关闭（机器分 0.0 也能登录），负数同样放行，`inf`/大于 1 则把所有登录锁死。现按该参数已有的「不可用即回落默认值」规则处理，只接受 `0`–`1` 内的有限数值
+- LightClaw 迁移导入不再连带删掉导入的知识库：ownership 重映射的表清单只认 `user_id` 列，而 `knowledge_bases` 用的是 `owner_user_id`，于是这一步照样返回「已重映射 8 张表」却漏掉了知识库；紧接着清理备份占位用户时，`ON DELETE CASCADE` 把知识库连同其下全部 `knowledge_documents` 一起删除——语料文件已经还原到磁盘，库里却再也查不到。现改为按 (表, 列) 遍历，导入的内容统一归到执行恢复的管理员名下
 
 ## [1.0.2b2] - 2026-09-23
 
