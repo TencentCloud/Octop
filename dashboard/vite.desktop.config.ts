@@ -48,7 +48,10 @@ export default defineConfig({
     },
   },
   server: {
-    host: "localhost",
+    // Wails' dev asset proxy dials the IPv4 loopback explicitly, so the dev
+    // server must bind 127.0.0.1 rather than the "localhost" name (which
+    // resolves to ::1 only on macOS and leaves the WebView blank).
+    host: "127.0.0.1",
     port: Number(process.env.WAILS_VITE_PORT || 9245),
     strictPort: true,
   },

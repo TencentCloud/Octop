@@ -13,13 +13,11 @@ tasks:
 
   install:frontend:deps:
     summary: Installs dashboard npm deps for the desktop shell
-    dir: ..
     cmds:
       - npm --prefix ../../dashboard install
 
   build:frontend:
     summary: Builds the Wails loading/settings shell from dashboard
-    dir: ..
     cmds:
       - test -f assets/index.html && echo "using existing desktop shell assets" || npm --prefix ../../dashboard run build:desktop-shell
 
@@ -70,7 +68,6 @@ tasks:
 
   dev:frontend:
     summary: Serves the desktop shell via Vite for Wails dev mode
-    dir: ..
     deps:
       - task: install:frontend:deps
     cmds:
