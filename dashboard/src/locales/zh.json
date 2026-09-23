@@ -4485,6 +4485,7 @@
     "chromeMissingJumpToInstall": "即将跳转「工作区-浏览器」进行安装"
   },
   "browserViewer": {
+    "keyboardInput": "远程浏览器键盘输入",
     "goBack": "后退",
     "goForward": "前进",
     "reload": "刷新",
