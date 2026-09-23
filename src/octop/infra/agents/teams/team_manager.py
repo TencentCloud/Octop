@@ -266,6 +266,7 @@ class TeamManager:
                 str(session.session_key),
                 text,
                 speaker_id=speaker,
+                room_thread_id=room,
             )
             return
         if session is not None:
@@ -979,6 +980,18 @@ class TeamManager:
         checker = getattr(hub, "has_subscribers", None)
         return bool(callable(checker) and checker(thread_id))
 
+    def _delivery_thread_id(self, session: SessionRow, room_thread_id: str | None) -> str:
+        """Thread the wrap-up belongs to: the room the ask came from, else the live one.
+
+        ``session.thread_id`` tracks the conversation the user is *currently* in,
+        so a background reply that finishes after they switch threads would land
+        in a thread where the question was never asked.
+        """
+        room = (room_thread_id or "").strip()
+        if room and self._thread_registry.get_thread(room) is not None:
+            return room
+        return session.thread_id
+
     async def _deliver_text(
         self,
         session: SessionRow,
@@ -986,18 +999,23 @@ class TeamManager:
         text: str,
         *,
         speaker_id: str | None = None,
+        room_thread_id: str | None = None,
     ) -> None:
         if self._thread_registry.is_im_session(session):
             await self._push_session_channel(session, text)
             return
+        thread_id = self._delivery_thread_id(session, room_thread_id)
         await self._publish_room_text(
-            session.thread_id,
+            thread_id,
             speaker_id or session.agent_id,
             text,
         )
-        if not self._thread_is_watched(session.thread_id):
+        # ``unread_count`` lives on the session row and is cleared by its current
+        # ``thread_id``, so a badge raised for a different thread can never be
+        # read away — only count it when the reply really lands in that thread.
+        if thread_id == session.thread_id and not self._thread_is_watched(thread_id):
             self._thread_registry.increment_unread(session_key)
-        self._thread_registry.touch_last_active(session.thread_id)
+        self._thread_registry.touch_last_active(thread_id)
 
     def _display_name(self, agent_id: str) -> str:
         row = self._agent_manager.get_row(agent_id)
