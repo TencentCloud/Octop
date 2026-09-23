@@ -110,7 +110,8 @@ async def _persist_agent_tool_enabled(
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         backend = registry._backend_spec_for_row(row)
-        if registry._backend_blocks_acp_outbound(backend):
+        workspace_dir = registry.resolve_workspace_dir(agent_id)
+        if registry._backend_blocks_acp_outbound(backend, workspace_dir=workspace_dir):
             raise OctopError(
                 ErrorCode.ACP_BACKEND_UNSUPPORTED,
                 "outbound acp_runner is unavailable under a directory sandbox",

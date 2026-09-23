@@ -1989,11 +1989,17 @@ class AgentManager:
             return False
 
     @staticmethod
-    def _backend_blocks_acp_outbound(spec: Any) -> bool:
+    def _backend_blocks_acp_outbound(
+        spec: Any,
+        *,
+        workspace_dir: Path | None = None,
+    ) -> bool:
         """True when outbound ``acp_runner`` would bypass the directory sandbox.
 
-        Host-rooted local backends (``/``, ``\\``, or empty) are allowed; scoped
-        ``root_dir`` (bwrap) and non-local backends are blocked. Inbound
+        Host-rooted local backends (``/``, ``\\``, or empty) are allowed. The
+        agent workspace root is also allowed — Windows rewrites ``root_dir='/'``
+        to the workspace, and that is still a host-local backend, not a project
+        jail. Scoped project roots and non-local backends are blocked. Inbound
         ``octop acp`` is unaffected.
         """
         if not isinstance(spec, dict):
@@ -2002,7 +2008,15 @@ class AgentManager:
         if kind not in {"local_shell", "filesystem"}:
             return True
         root_dir = str(spec.get("root_dir") or "").strip()
-        return root_dir not in {"", "/", "\\"}
+        if root_dir in {"", "/", "\\"}:
+            return False
+        if workspace_dir is not None:
+            try:
+                if Path(root_dir).resolve() == Path(workspace_dir).resolve():
+                    return False
+            except OSError:
+                pass
+        return True
 
     async def persist_skill_package_ids(self, agent_id: str, package_ids: list[str]) -> None:
         """Persist package ids after validation and hot-sync a running agent.
@@ -3228,7 +3242,10 @@ class AgentManager:
             acp_runners=acp_config.runners,
             acp_delegate_enabled=(
                 bool(acp_raw.get("tool_enabled", False))
-                and not self._backend_blocks_acp_outbound(backend)
+                and not self._backend_blocks_acp_outbound(
+                    backend,
+                    workspace_dir=workspace_dir,
+                )
             ),
             skills_disabled=frozenset(skills_disabled_set(cfg) | plugin_skills_disabled),
             skills_dir=skill_dirs or None,

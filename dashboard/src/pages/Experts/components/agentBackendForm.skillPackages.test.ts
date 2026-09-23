@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  blocksAcpOutbound,
   blocksAcpOutboundFromConfig,
   isHostRootDir,
   normalizeRootDir,
@@ -96,6 +97,13 @@ describe("skill package backend gates", () => {
     expect(
       blocksAcpOutboundFromConfig({
         backend: { type: "local_shell", root_dir: "", virtual_mode: true },
+      }),
+    ).toBe(false);
+    expect(
+      blocksAcpOutbound({
+        backendChoice: "local_shell",
+        rootDir: "/tmp/agents/main",
+        workspaceDir: "/tmp/agents/main",
       }),
     ).toBe(false);
     expect(

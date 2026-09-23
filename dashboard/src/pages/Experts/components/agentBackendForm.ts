@@ -133,28 +133,40 @@ export function supportsHostSkillPackagesFromConfig(
  * Whether outbound ``acp_runner`` should be blocked for this backend.
  *
  * Scoped ``root_dir`` enables the Linux bwrap jail; host-spawned ACP runners
- * would bypass it. Non-local backends are treated the same. Inbound
- * ``octop acp`` (IDE → this agent) is unaffected.
+ * would bypass it. Host root ``/`` and the agent workspace root are allowed
+ * (Windows defaults to the workspace). Non-local backends are blocked.
+ * Inbound ``octop acp`` (IDE → this agent) is unaffected.
  */
 export function blocksAcpOutbound(options: {
   backendChoice: string;
   rootDir?: string | null;
+  workspaceDir?: string | null;
 }): boolean {
   const choice = options.backendChoice;
   if (choice !== "local_shell" && choice !== "filesystem") {
     return true;
   }
-  return !isHostRootDir(options.rootDir);
+  if (isHostRootDir(options.rootDir)) {
+    return false;
+  }
+  const root = normalizeRootDir(options.rootDir);
+  const workspace = normalizeRootDir(options.workspaceDir);
+  if (options.workspaceDir?.trim() && workspace !== "/" && root === workspace) {
+    return false;
+  }
+  return true;
 }
 
 /** Detect outbound-ACP block from an agent ``config`` blob. */
 export function blocksAcpOutboundFromConfig(
   config: Record<string, unknown> | null | undefined,
+  workspaceDir?: string | null,
 ): boolean {
   const parsed = parseBackendSpec(config?.backend);
   return blocksAcpOutbound({
     backendChoice: parsed.backendChoice,
     rootDir: parsed.rootDir,
+    workspaceDir,
   });
 }
 
