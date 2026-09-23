@@ -26,6 +26,10 @@ from octop.infra.db.repos._base import UNSET
 
 logger = logging.getLogger(__name__)
 
+# Large enough that APScheduler always submits a trigger; CronJob.run decides
+# whether to execute or record an overlap skip (#1014).
+_MAX_JOB_INSTANCES = 1_000_000
+
 
 @dataclass
 class CronCreateSpec:
@@ -258,6 +262,10 @@ class CronManager:
             id=row.cron_id,
             replace_existing=True,
             misfire_grace_time=60,
+            # Overlap serialization lives in CronJob.run (records a visible
+            # skipped_overlap); the default max_instances=1 would drop the
+            # overlapping trigger silently before run() ever sees it (#1014).
+            max_instances=_MAX_JOB_INSTANCES,
         )
 
     def _unschedule(self, cron_id: str) -> None:

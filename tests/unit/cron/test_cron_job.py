@@ -170,3 +170,81 @@ async def test_from_row_reads_persisted_session_key(setup) -> None:
     assert job._task_type == "agent"
     assert job._name == row.name
     assert job._user_id == 1
+
+
+# ---------------------------------------------------------------------------
+# overlap skip visibility (#1014)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_skips_and_records_when_overlap(setup) -> None:
+    """A second execution while one is in flight records skipped_overlap."""
+    import asyncio
+
+    cron_repo, audit, cid, session_key = setup
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_deliver(command: object) -> None:
+        started.set()
+        await release.wait()
+
+    delivery = MagicMock()
+    delivery.deliver = AsyncMock(side_effect=slow_deliver)
+    job = _job(
+        cron_repo=cron_repo,
+        audit=audit,
+        cid=cid,
+        session_key=session_key,
+        delivery_service=delivery,
+    )
+
+    from octop.infra.metrics import METRICS
+
+    before = METRICS.snapshot()["cron_skipped_overlap_total"]
+    first = asyncio.create_task(job.run())
+    await started.wait()
+
+    await job.run()  # overlaps the in-flight execution
+
+    assert cron_repo.get(cid).last_status == "skipped_overlap"
+    assert METRICS.snapshot()["cron_skipped_overlap_total"] == before + 1
+    assert [a.target for a in audit.query(action="cron.run_skipped_overlap")] == [cid]
+    delivery.deliver.assert_called_once()
+
+    release.set()
+    await first
+    assert cron_repo.get(cid).last_status == "ok"
+
+
+@pytest.mark.asyncio
+async def test_run_slot_released_after_completion(setup) -> None:
+    """Sequential executions both run; the slot is freed on success and error."""
+    cron_repo, audit, cid, session_key = setup
+
+    delivery_ok = MagicMock()
+    delivery_ok.deliver = AsyncMock()
+    job = _job(
+        cron_repo=cron_repo,
+        audit=audit,
+        cid=cid,
+        session_key=session_key,
+        delivery_service=delivery_ok,
+    )
+    await job.run()
+    await job.run()
+    assert delivery_ok.deliver.await_count == 2
+    assert cron_repo.get(cid).last_status == "ok"
+
+    async def boom(command: object) -> None:
+        raise RuntimeError("x")
+
+    delivery_err = MagicMock()
+    delivery_err.deliver = AsyncMock(side_effect=boom)
+    job._delivery_service = delivery_err
+    await job.run()
+    assert cron_repo.get(cid).last_status == "error"
+
+    await job.run()  # slot was released despite the error
+    assert delivery_err.deliver.await_count == 2

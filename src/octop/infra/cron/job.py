@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from octop.infra.cron.delivery import CronDeliveryCommand
 from octop.infra.cron.task_type import normalize_cron_task_type
@@ -19,6 +19,15 @@ logger = logging.getLogger(__name__)
 
 
 class CronJob:
+    """APScheduler callable with status and audit bookkeeping.
+
+    Executions are serialized per cron id across instances (scheduled runs and
+    manual ``run-now`` share the slot): an overlapping trigger is recorded as
+    ``skipped_overlap`` instead of being dropped silently (#1014).
+    """
+
+    _in_flight: ClassVar[set[str]] = set()
+
     def __init__(
         self,
         *,
@@ -76,6 +85,34 @@ class CronJob:
         )
 
     async def run(self, *, raise_on_error: bool = False) -> None:
+        from octop.infra.metrics import METRICS  # noqa: PLC0415
+
+        if self._cron_id in CronJob._in_flight:
+            METRICS.inc("cron_skipped_overlap_total")
+            self._cron_repo.set_run_status(
+                self._cron_id,
+                ts=int(time.time()),
+                status="skipped_overlap",
+                error="previous run still in progress",
+            )
+            self._audit_repo.write(
+                actor=ACTOR_SYSTEM,
+                action="cron.run_skipped_overlap",
+                target=self._cron_id,
+            )
+            logger.warning(
+                "CronJob %s skipped: previous run still in progress "
+                "(runtime exceeds the schedule interval)",
+                self._cron_id,
+            )
+            return
+        CronJob._in_flight.add(self._cron_id)
+        try:
+            await self._run_exclusive(raise_on_error=raise_on_error)
+        finally:
+            CronJob._in_flight.discard(self._cron_id)
+
+    async def _run_exclusive(self, *, raise_on_error: bool) -> None:
         from octop.infra.metrics import METRICS  # noqa: PLC0415
 
         METRICS.inc("cron_runs_total")
