@@ -1035,6 +1035,7 @@ export function useChat(
         refreshInFlightRef.current ||
         historyRefreshing ||
         historyLoading ||
+        snap.historyLoadingMore ||
         shouldBlockHistoryRefresh({
           isStreaming: snap.isStreaming,
           hasLiveSocket: chatStore.hasLiveSocket(key),
@@ -1052,29 +1053,59 @@ export function useChat(
       setHistoryRefreshing(true);
 
       try {
-        const {
-          messages: latest,
-          hasMore,
-          nextOffset,
-          nextCursor,
-        } = await loadThreadHistory(agentId, key, { offset: 0 });
+        let loaded = await loadThreadHistory(agentId, key, { offset: 0 });
+        while (loaded.projectionLoading && loadGenRef.current === gen) {
+          await new Promise((resolve) =>
+            window.setTimeout(
+              resolve,
+              Math.max(500, Math.min(loaded.retryAfterMs, 5000)),
+            ),
+          );
+          if (loadGenRef.current !== gen) return;
+          const current = chatStore.getSnapshot(key);
+          if (
+            current.messages !== snap.messages ||
+            shouldBlockHistoryRefresh({
+              isStreaming: current.isStreaming,
+              hasLiveSocket: chatStore.hasLiveSocket(key),
+            })
+          ) {
+            return;
+          }
+          loaded = await loadThreadHistory(agentId, key, { offset: 0 });
+        }
         // Stale after a concurrent loadHistory / newer refresh — drop apply only.
         if (loadGenRef.current !== gen) return;
+        const current = chatStore.getSnapshot(key);
+        // A stream/push/load-more may update the local tail while the request is
+        // in flight. Never replace that newer state with an older server page;
+        // the user can refresh again after the live update settles.
+        if (
+          current.messages !== snap.messages ||
+          shouldBlockHistoryRefresh({
+            isStreaming: current.isStreaming,
+            hasLiveSocket: chatStore.hasLiveSocket(key),
+          })
+        ) {
+          return;
+        }
+
+        const { messages: latest, hasMore, nextOffset, nextCursor } = loaded;
 
         // Keep older pages the user already scrolled in; replace the overlapping
         // latest-page window with the server copy so truncated WS turns heal.
         const latestIds = new Set(latest.map((m) => m.id));
-        const firstOverlap = snap.messages.findIndex((m) =>
+        const firstOverlap = current.messages.findIndex((m) =>
           latestIds.has(m.id),
         );
         const olderPrefix =
-          firstOverlap > 0 ? snap.messages.slice(0, firstOverlap) : [];
+          firstOverlap > 0 ? current.messages.slice(0, firstOverlap) : [];
         chatStore.setHistoryPage(key, [...olderPrefix, ...latest], {
-          hasMore: olderPrefix.length > 0 ? snap.historyHasMore : hasMore,
+          hasMore: olderPrefix.length > 0 ? current.historyHasMore : hasMore,
           nextOffset:
-            olderPrefix.length > 0 ? snap.historyNextOffset : nextOffset,
+            olderPrefix.length > 0 ? current.historyNextOffset : nextOffset,
           nextCursor:
-            olderPrefix.length > 0 ? snap.historyNextCursor : nextCursor,
+            olderPrefix.length > 0 ? current.historyNextCursor : nextCursor,
         });
         setHistoryError(false);
       } catch {
