@@ -15,7 +15,7 @@ import {
 import { Alert, Button, Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 import { showConfirmModal } from "../../utils/confirmModal";
-
+import PlanReadyCard from "./components/PlanReadyCard";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { userCan } from "../../utils/permissions";
@@ -36,6 +36,8 @@ import { useChatNavigation } from "./hooks/useChatNavigation";
 import { useChatSessionActions } from "./hooks/useChatSessionActions";
 
 import { useChatComposerResources } from "./hooks/useChatComposerResources";
+import type { HitlSessionPolicy } from "./utils/hitlSessionPolicy";
+import { mergeAllowTools } from "./utils/hitlSessionPolicy";
 import { useChatContextWindow } from "./hooks/useChatContextWindow";
 import { useBrowserToolDetection } from "./hooks/useBrowserToolDetection";
 import { useSkillRecordingWorkflow } from "./hooks/useSkillRecordingWorkflow";
@@ -54,7 +56,6 @@ import ChatInput, { type ChatInputHandle } from "./components/ChatInput";
 import WelcomeScreen from "./components/WelcomeScreen";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
 import AgentProfileDrawer from "../../components/AgentProfileDrawer";
-import WorkspaceDrawer from "../Agent/Workspace/components/WorkspaceDrawer";
 import TrajectoryDrawer from "./components/TrajectoryDrawer";
 import { useExpertChatWelcome } from "./hooks/useExpertQuickCards";
 import { useSkills } from "../Agent/Skills/useSkills";
@@ -73,6 +74,7 @@ import {
 } from "../../utils/sharedExpert";
 import { isTeamAgent } from "../../utils/teamAgent";
 import ChatDockPanels from "./components/ChatDockPanels";
+import type { ChatDockAddTabHandlers } from "./components/ChatDockPanel";
 import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
 import { ChatAgentProfileProvider } from "./ChatAgentProfileContext";
 import {
@@ -84,7 +86,11 @@ import ChatTitleBar from "./components/ChatTitleBar";
 import TeamChatBadge from "./components/TeamChatBadge";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import AskQuestionCard from "./components/AskQuestionCard";
-import { findPendingAsk, hasPendingHitl } from "./utils/pendingHitl";
+import {
+  findPendingApproval,
+  findPendingAsk,
+  hasPendingHitl,
+} from "./utils/pendingHitl";
 import { isAgentChatReady } from "../../utils/agentError";
 import { useMemoryMaintenance } from "./hooks/useMemoryMaintenance";
 import MemoryMaintenanceBanner from "./components/MemoryMaintenanceBanner";
@@ -252,7 +258,6 @@ function ChatPageInner() {
   const chatSubagents = useChatSubagents(
     chatSkillCatalogAgentId(resolvedAgentId, agentChatReady, agentsLoading),
   );
-  const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const [trajectoryDrawerOpen, setTrajectoryDrawerOpen] = useState(false);
   const [turnRailVisible, setTurnRailVisible] = useState(false);
   const {
@@ -294,7 +299,6 @@ function ChatPageInner() {
     }
     setAgentProfileOpen(false);
     setProfileAgentId(null);
-    setWorkspaceDrawerOpen(false);
     setTrajectoryDrawerOpen(false);
   }, [resolvedAgentId]);
 
@@ -340,6 +344,7 @@ function ChatPageInner() {
     historyRefreshing,
     historyHydrated,
     contextUsage,
+    pendingPlanPath,
     sendMessage,
     editAndResend,
     cancelStream,
@@ -388,8 +393,11 @@ function ChatPageInner() {
     openFileList,
     openFileAt,
     openKnowledgeCitation,
+    openWorkspaceTab,
     openBrowserTab,
+    openTerminalTab,
     toggleBrowserPanel,
+    toggleWorkspacePanel,
     toggleTerminalPanel,
     openToolUiTab,
     focusToolUiTab,
@@ -398,38 +406,72 @@ function ChatPageInner() {
   } = useChatDockPanel(isMobile, resolvedAgentId);
 
   const chromeCheckInFlightRef = useRef(false);
-  const handleToggleBrowserPanel = useCallback(async () => {
-    // A live session means Chrome is already running — skip the probe.
-    if (browserSessionId) {
-      toggleBrowserPanel();
-      return;
-    }
-    if (chromeCheckInFlightRef.current) return;
-    chromeCheckInFlightRef.current = true;
-    try {
-      const env = await browserApi.checkEnvStatus();
-      if (shouldJumpToChromeInstall(env)) {
-        showConfirmModal(
-          {
-            title: t("browserWorkspace.chromeMissingTitle"),
-            content: t("browserWorkspace.chromeMissingJumpToInstall"),
-            okText: t("common.confirm"),
-            cancelText: t("common.cancel"),
-            onOk: () => {
-              navigate(WORKBENCH_BROWSER_PATH);
-            },
-          },
-          { isMobile },
-        );
-        return;
+  const ensureChromeThen = useCallback(
+    async (then: () => void) => {
+      // A live session means Chrome is already running — skip the probe.
+      if (!browserSessionId) {
+        if (chromeCheckInFlightRef.current) return;
+        chromeCheckInFlightRef.current = true;
+        try {
+          const env = await browserApi.checkEnvStatus();
+          if (shouldJumpToChromeInstall(env)) {
+            showConfirmModal(
+              {
+                title: t("browserWorkspace.chromeMissingTitle"),
+                content: t("browserWorkspace.chromeMissingJumpToInstall"),
+                okText: t("common.confirm"),
+                cancelText: t("common.cancel"),
+                onOk: () => {
+                  navigate(WORKBENCH_BROWSER_PATH);
+                },
+              },
+              { isMobile },
+            );
+            return;
+          }
+        } catch {
+          // Probe failed — keep the existing open-panel behavior.
+        } finally {
+          chromeCheckInFlightRef.current = false;
+        }
       }
-    } catch {
-      // Probe failed — keep the existing open-panel behavior.
-    } finally {
-      chromeCheckInFlightRef.current = false;
+      then();
+    },
+    [browserSessionId, isMobile, navigate, t],
+  );
+
+  const handleToggleBrowserPanel = useCallback(() => {
+    void ensureChromeThen(toggleBrowserPanel);
+  }, [ensureChromeThen, toggleBrowserPanel]);
+
+  const handleOpenBrowserTab = useCallback(() => {
+    void ensureChromeThen(openBrowserTab);
+  }, [ensureChromeThen, openBrowserTab]);
+
+  const dockAddTab = useMemo((): ChatDockAddTabHandlers => {
+    const handlers: ChatDockAddTabHandlers = {
+      onOpenBrowser: handleOpenBrowserTab,
+    };
+    if (!sharedExpertViewer) {
+      handlers.onOpenWorkspace = openWorkspaceTab;
+      handlers.workspaceDisabled = !agentChatReady;
+      handlers.workspaceDisabledHint = t("workspace.requiresRunning");
+      handlers.onOpenFiles = openFileList;
     }
-    toggleBrowserPanel();
-  }, [browserSessionId, isMobile, navigate, t, toggleBrowserPanel]);
+    if (canTerminal) {
+      handlers.onOpenTerminal = openTerminalTab;
+    }
+    return handlers;
+  }, [
+    agentChatReady,
+    canTerminal,
+    handleOpenBrowserTab,
+    openFileList,
+    openTerminalTab,
+    openWorkspaceTab,
+    sharedExpertViewer,
+    t,
+  ]);
 
   const closeToolUiPanel = useCallback(
     (callId: string) => {
@@ -474,6 +516,10 @@ function ChatPageInner() {
     reasoningMode,
     reasoningEffort,
     handleReasoningChange,
+    conversationMode,
+    handleConversationModeChange,
+    hitlPolicy,
+    handleHitlPolicyChange,
     handleConnectorsChange,
     handleKnowledgeBaseIdsChange,
   } = useChatComposerResources(
@@ -482,6 +528,8 @@ function ChatPageInner() {
     composerSession?.modelRef,
     composerSession?.reasoningMode,
     composerSession?.reasoningEffort,
+    composerSession?.conversationMode,
+    composerSession?.hitlPolicy,
   );
 
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
@@ -589,6 +637,8 @@ function ChatPageInner() {
     selectedKnowledgeBaseIds,
     reasoningMode,
     reasoningEffort,
+    conversationMode,
+    hitlPolicy,
     defaultModel: activeAgent?.default_model ?? null,
     sendMessage,
     createSession,
@@ -744,8 +794,14 @@ function ChatPageInner() {
       if (ev.action === "switch_agent" && ev.agent_id) {
         navigateToAgent(ev.agent_id);
       }
+      if (
+        ev.action === "set_conversation_mode" &&
+        (ev.mode === "ask" || ev.mode === "plan" || ev.mode === "craft")
+      ) {
+        handleConversationModeChange(ev.mode);
+      }
     });
-  }, [navigateToAgent]);
+  }, [navigateToAgent, handleConversationModeChange]);
 
   const handlePromptClick = useCallback(
     (text: string, options?: { prefill?: boolean }) => {
@@ -769,10 +825,38 @@ function ChatPageInner() {
   );
 
   const handleHitlDecision = useCallback(
-    (decisions: Array<{ type: string; message?: string }>) => {
+    (
+      decisions: Array<{ type: string; message?: string }>,
+      policy?: HitlSessionPolicy,
+    ) => {
+      if (policy) {
+        const next =
+          policy.mode === "allow_tools"
+            ? mergeAllowTools(hitlPolicy, policy.tools ?? [])
+            : policy;
+        handleHitlPolicyChange(next, { persist: false });
+        resumeHitl(decisions, activeThreadId ?? undefined, undefined, next);
+        return;
+      }
       resumeHitl(decisions, activeThreadId ?? undefined);
     },
-    [resumeHitl, activeThreadId],
+    [resumeHitl, activeThreadId, handleHitlPolicyChange, hitlPolicy],
+  );
+
+  const handleComposerHitlPolicyChange = useCallback(
+    (policy: HitlSessionPolicy) => {
+      const pending =
+        policy.mode === "allow_all" ? findPendingApproval(messages) : null;
+      handleHitlPolicyChange(policy, { persist: !pending });
+      if (!pending) return;
+      resumeHitl(
+        pending.actions.map(() => ({ type: "approve" })),
+        activeThreadId ?? undefined,
+        undefined,
+        policy,
+      );
+    },
+    [handleHitlPolicyChange, messages, resumeHitl, activeThreadId],
   );
 
   /** Close an ask pause without answering: ``respond`` is the only decision
@@ -1113,7 +1197,7 @@ function ChatPageInner() {
                     </button>
                     <button
                       className={styles.menuBtn}
-                      onClick={() => setWorkspaceDrawerOpen(true)}
+                      onClick={toggleWorkspacePanel}
                       disabled={!agentChatReady}
                       title={
                         agentChatReady
@@ -1124,6 +1208,30 @@ function ChatPageInner() {
                     >
                       <FolderOpen size={18} strokeWidth={1.8} />
                     </button>
+                    <button
+                      className={styles.menuBtn}
+                      onClick={() => void handleToggleBrowserPanel()}
+                      title={t("chat.openBrowser")}
+                      aria-label={t("chat.openBrowser")}
+                    >
+                      <Globe size={18} strokeWidth={1.8} />
+                    </button>
+                    {!sharedExpertViewer && panelFilePaths.length > 0 && (
+                      <button
+                        className={styles.menuBtn}
+                        onClick={() => openFileList()}
+                        title={t("chat.modifiedFiles", {
+                          count: panelFilePaths.length,
+                          defaultValue: "已修改文件（{{count}}）",
+                        })}
+                        aria-label={t("chat.modifiedFiles", {
+                          count: panelFilePaths.length,
+                          defaultValue: "已修改文件（{{count}}）",
+                        })}
+                      >
+                        <FilePen size={18} strokeWidth={1.8} />
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1227,13 +1335,9 @@ function ChatPageInner() {
                     onAcpPermissionSelect={handleAcpPermissionSelect}
                     onHitlDecision={handleHitlDecision}
                     onTurnRailVisibilityChange={setTurnRailVisible}
-                    onOpenBrowser={
-                      hasBrowserTool && !isMobile ? openBrowserTab : undefined
-                    }
+                    onOpenBrowser={hasBrowserTool ? openBrowserTab : undefined}
                     onEditFile={
-                      !sharedExpertViewer &&
-                      panelFilePaths.length > 0 &&
-                      !isMobile
+                      !sharedExpertViewer && panelFilePaths.length > 0
                         ? openFileList
                         : undefined
                     }
@@ -1245,7 +1349,6 @@ function ChatPageInner() {
             {!isMobile &&
               !dockOpen &&
               !agentProfileOpen &&
-              !workspaceDrawerOpen &&
               !trajectoryDrawerOpen && (
                 <div className={styles.chatFloatActions}>
                   {/* PWA install first when available — same column as browser / experts. */}
@@ -1282,7 +1385,7 @@ function ChatPageInner() {
                             type="button"
                             className={styles.chatFloatBtn}
                             disabled={!agentChatReady}
-                            onClick={() => setWorkspaceDrawerOpen(true)}
+                            onClick={toggleWorkspacePanel}
                             aria-label={t("chat.openWorkspace", "工作区")}
                           >
                             <FolderOpen size={20} strokeWidth={2.1} />
@@ -1437,6 +1540,28 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
+            {conversationMode === "plan" && pendingPlanPath ? (
+              <div className={styles.askQuestionDock}>
+                <div className={styles.askQuestionDockInner}>
+                  <PlanReadyCard
+                    path={pendingPlanPath}
+                    onExecute={() => {
+                      const path = pendingPlanPath;
+                      if (activeThreadId) {
+                        chatStore.setPendingPlanPath(activeThreadId, null);
+                      }
+                      handleConversationModeChange("craft", { persist: false });
+                      wrappedHandleSend(
+                        t("chat.conversationMode.executeUtterance", { path }),
+                        undefined,
+                        { conversationMode: "craft" },
+                      );
+                    }}
+                    onKeepEditing={() => chatInputRef.current?.focusComposer()}
+                  />
+                </div>
+              </div>
+            ) : null}
             <ChatInput
               ref={chatInputRef}
               onSend={wrappedHandleSend}
@@ -1459,6 +1584,10 @@ function ChatPageInner() {
               reasoningMode={reasoningMode}
               reasoningEffort={reasoningEffort}
               onReasoningChange={handleReasoningChange}
+              conversationMode={conversationMode}
+              onConversationModeChange={handleConversationModeChange}
+              hitlPolicy={hitlPolicy}
+              onHitlPolicyChange={handleComposerHitlPolicyChange}
               availableConnectors={isTeamChat ? undefined : chatConnectors}
               selectedConnectors={isTeamChat ? [] : selectedConnectors}
               onConnectorsChange={
@@ -1506,25 +1635,19 @@ function ChatPageInner() {
             onModeChange={handleDockModeChange}
             onClose={handleDockClose}
             onResizeStart={dockHandleResizeStart}
+            addTab={dockAddTab}
           />
 
           {!sharedExpertViewer && (
-            <>
-              <AgentProfileDrawer
-                open={agentProfileOpen}
-                agent={profileAgent}
-                isMobile={isMobile}
-                onClose={() => {
-                  setAgentProfileOpen(false);
-                  setProfileAgentId(null);
-                }}
-              />
-              <WorkspaceDrawer
-                agentId={resolvedAgentId ?? ""}
-                open={workspaceDrawerOpen}
-                onClose={() => setWorkspaceDrawerOpen(false)}
-              />
-            </>
+            <AgentProfileDrawer
+              open={agentProfileOpen}
+              agent={profileAgent}
+              isMobile={isMobile}
+              onClose={() => {
+                setAgentProfileOpen(false);
+                setProfileAgentId(null);
+              }}
+            />
           )}
           {trajectoryEnabled && (
             <TrajectoryDrawer

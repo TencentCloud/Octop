@@ -372,6 +372,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 | **钉钉** | App Key、App Secret |
 | **QQ** | Bot AppID、Token |
 | **Telegram** | Bot Token |
+| **Discord** | Bot Token；默认允许所有可访问频道，可配置频道/私聊用户允许列表；[配置与验收](docs/discord-channel.md) |
 | **企业微信** | Corp ID、Agent Secret |
 | **Web 控制台** | 默认启用 |
 

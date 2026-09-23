@@ -1,0 +1,12 @@
+# Local toolchain pins. Versions follow CI / Docker, not the host default.
+#
+# python 3.12  — CI matrix, Makefile `uv venv --python 3.12`
+# node 20      — docker/Dockerfile, release.yml, fnos-build-fpk.yml
+#                 (octop-desktop.yml uses 24; dashboard/lockfile follow 20)
+# npm 10       — bundled with Node 20; explicit so `npm ci` does not drift
+# uv           — Makefile / pyproject package manager
+[tools]
+python = "3.12"
+node = "20"
+npm = "10"
+uv = "latest"
