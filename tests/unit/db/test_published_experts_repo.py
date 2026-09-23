@@ -114,8 +114,10 @@ def test_legacy_text_pk_published_experts_keep_public_id(tmp_path: Path) -> None
     pool = SqlitePool(tmp_path / "octop.db")
     migrations = Path(__file__).resolve().parents[3] / "src/octop/infra/db/migrations"
     with pool.connect() as conn:
-        conn.executescript((migrations / "001_initial.sql").read_text())
-        conn.executescript((migrations / "005_shared_experts_sso_knowledge.sql").read_text())
+        conn.executescript((migrations / "001_initial.sql").read_text(encoding="utf-8"))
+        conn.executescript(
+            (migrations / "005_shared_experts_sso_knowledge.sql").read_text(encoding="utf-8")
+        )
         conn.execute(
             "INSERT INTO published_experts("
             "id, slug, name, description, created_by, source_agent_id, "
