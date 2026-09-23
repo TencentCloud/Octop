@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDesktopTextLooksUpLocaleWithEnglishDefault(t *testing.T) {
 	if got := desktopText(LocaleZH, copyStatusReady); got != "Octop 已就绪" {
@@ -27,5 +30,22 @@ func TestDesktopTextFormatsArgs(t *testing.T) {
 	want := "Local data version 0.9.33 is newer than this App version 0.9.32. The App version is too old; install version 0.9.33 or later."
 	if got != want {
 		t.Fatalf("format: %s", got)
+	}
+}
+
+func TestDesktopTextPortGuards(t *testing.T) {
+	zhBusy := desktopText(LocaleZH, copyErrorPortInUse, 8088)
+	if !strings.Contains(zhBusy, "8088") || !strings.Contains(zhBusy, "客户端设置") {
+		t.Fatalf("zh port in use: %s", zhBusy)
+	}
+	enBusy := desktopText(LocaleEN, copyErrorPortInUse, 8088)
+	if !strings.Contains(enBusy, "8088") || !strings.Contains(enBusy, "already in use") {
+		t.Fatalf("en port in use: %s", enBusy)
+	}
+	if got := desktopText(LocaleZH, copyErrorForeignService, "http://127.0.0.1:9"); !strings.Contains(got, "http://127.0.0.1:9") {
+		t.Fatalf("zh foreign service: %s", got)
+	}
+	if got := desktopText(LocaleEN, copyErrorDevServerForeign, "http://127.0.0.1:9245"); !strings.Contains(got, "not the Octop shell") {
+		t.Fatalf("en dev server: %s", got)
 	}
 }

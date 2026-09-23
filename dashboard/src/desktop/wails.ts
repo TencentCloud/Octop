@@ -35,14 +35,23 @@ export async function callApp<T>(name: string, ...args: unknown[]): Promise<T> {
   return rt.Call.ByName("main.App." + name, ...args) as Promise<T>;
 }
 
-export function statusTextFromEvent(ev: unknown): string {
-  if (typeof ev === "string") return ev;
+export type DesktopStatus = { text: string; error: boolean };
+
+/** Reads the desktop:status payload: `{ message, error }` in the event data. */
+export function statusFromEvent(ev: unknown): DesktopStatus {
+  if (typeof ev === "string") return { text: ev, error: false };
   if (ev && typeof ev === "object") {
     const rec = ev as { data?: unknown; payload?: unknown };
-    if (typeof rec.data === "string") return rec.data;
-    if (typeof rec.payload === "string") return rec.payload;
+    const raw = rec.data ?? rec.payload ?? ev;
+    if (typeof raw === "string") return { text: raw, error: false };
+    if (raw && typeof raw === "object") {
+      const payload = raw as { message?: unknown; error?: unknown };
+      if (typeof payload.message === "string") {
+        return { text: payload.message, error: payload.error === true };
+      }
+    }
   }
-  return String(ev);
+  return { text: String(ev), error: false };
 }
 
 export function isStuckStatus(text: string): boolean {
@@ -50,11 +59,11 @@ export function isStuckStatus(text: string): boolean {
 }
 
 export async function onDesktopStatus(
-  callback: (text: string) => void,
+  callback: (status: DesktopStatus) => void,
 ): Promise<void> {
   const rt = await loadWailsRuntime();
   if (!rt) return;
   rt.Events.On("desktop:status", (ev: unknown) => {
-    callback(statusTextFromEvent(ev));
+    callback(statusFromEvent(ev));
   });
 }

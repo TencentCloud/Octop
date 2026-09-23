@@ -16,6 +16,7 @@ import {
   isStuckStatus,
   onDesktopStatus,
   type DesktopSettings,
+  type DesktopStatus,
 } from "./wails";
 
 const SETTINGS_INSET = "36px";
@@ -37,9 +38,10 @@ function asSettings(raw: DesktopSettings): DesktopSettings {
 export default function ShellApp() {
   const settingsMode = isSettingsMode();
   const chromeStyle = resolveDesktopChromeStyle();
-  const [status, setStatus] = useState(() =>
-    i18n.t("desktopShell.statusWait", "Starting, please wait…"),
-  );
+  const [status, setStatus] = useState<DesktopStatus>(() => ({
+    text: i18n.t("desktopShell.statusWait", "Starting, please wait…"),
+    error: false,
+  }));
   const [settings, setSettings] = useState<DesktopSettings | null>(null);
   const [saveError, setSaveError] = useState("");
 
@@ -70,16 +72,17 @@ export default function ShellApp() {
         setSettings(loaded);
         await applyDesktopLocale(loaded.locale as UiLocale);
         if (!cancelled) {
-          setStatus(
-            i18n.t("desktopShell.statusWait", "Starting, please wait…"),
-          );
+          setStatus({
+            text: i18n.t("desktopShell.statusWait", "Starting, please wait…"),
+            error: false,
+          });
         }
       } catch {
         if (!cancelled) setSettings(asSettings({} as DesktopSettings));
       }
       if (cancelled) return;
-      await onDesktopStatus((text) => {
-        if (!cancelled) setStatus(text);
+      await onDesktopStatus((next) => {
+        if (!cancelled) setStatus(next);
       });
       if (!settingsMode) {
         try {
@@ -132,7 +135,10 @@ export default function ShellApp() {
           />
         ) : null
       ) : (
-        <LoadingPage status={status} stuck={isStuckStatus(status)} />
+        <LoadingPage
+          status={status.text}
+          stuck={status.error || isStuckStatus(status.text)}
+        />
       )}
     </>
   );

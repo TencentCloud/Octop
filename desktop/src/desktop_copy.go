@@ -16,6 +16,9 @@ const (
 	copyErrorAppTooOld         = "error.app_too_old"
 	copyErrorBackupFailed      = "error.backup_failed"
 	copyErrorUpgradeFailed     = "error.upgrade_failed"
+	copyErrorPortInUse         = "error.port_in_use"
+	copyErrorForeignService    = "error.foreign_service"
+	copyErrorDevServerForeign  = "error.dev_server_foreign"
 	copyWait1Minute            = "wait.1_minute"
 	copyWaitNMinutes           = "wait.n_minutes"
 	copyWait1Second            = "wait.1_second"
@@ -40,6 +43,9 @@ var desktopCopy = map[Locale]map[string]string{
 		copyErrorAppTooOld:         "Local data version %s is newer than this App version %s. The App version is too old; install version %s or later.",
 		copyErrorBackupFailed:      "Database backup failed before upgrade; the current version was preserved",
 		copyErrorUpgradeFailed:     "Desktop runtime upgrade failed; the current version was preserved",
+		copyErrorPortInUse:         "Port %d is already in use, by another Octop instance or a different program. Close it, or set a different port in the desktop settings.",
+		copyErrorForeignService:    "Something other than Octop is answering at %s. Refusing to load it; close the program using that port and try again.",
+		copyErrorDevServerForeign:  "The desktop dev server at %s is not the Octop shell page — another program is using that port. Stop it and run wails3 dev again.",
 		copyWait1Minute:            "1 minute",
 		copyWaitNMinutes:           "%d minutes",
 		copyWait1Second:            "1 second",
@@ -62,6 +68,9 @@ var desktopCopy = map[Locale]map[string]string{
 		copyErrorAppTooOld:         "本地数据版本 %s 高于当前 App 版本 %s。App 版本过低，请安装 %s 或更高版本。",
 		copyErrorBackupFailed:      "升级前数据库备份失败，已保留当前版本",
 		copyErrorUpgradeFailed:     "客户端运行环境升级失败，已保留当前版本",
+		copyErrorPortInUse:         "端口 %d 已被占用，通常是另一个 Octop 实例或其他程序。请先关闭它，或在客户端设置中改用其他端口。",
+		copyErrorForeignService:    "%s 上应答的不是 Octop，已拒绝加载。请关闭占用该端口的程序后重试。",
+		copyErrorDevServerForeign:  "桌面端开发服务器 %s 返回的不是 Octop 壳页面，该端口被其他程序占用。请先停止该程序，再重新运行 wails3 dev。",
 		copyWait1Minute:            "1 分钟",
 		copyWaitNMinutes:           "%d 分钟",
 		copyWait1Second:            "1 秒",

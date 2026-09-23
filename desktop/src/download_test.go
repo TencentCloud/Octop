@@ -403,11 +403,29 @@ func TestFormatHealthWaitErrorUsesServiceNotReadyHintOn5xx(t *testing.T) {
 
 func TestWaitHealthSucceedsOnOK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true,"started_at":1700000000,"db":true}`))
 	}))
 	t.Cleanup(srv.Close)
 	if err := waitHealth(LocaleZH, srv.URL, time.Second); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWaitHealthRejectsForeignServerOnThePort(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<!doctype html><html><body>some other app</body></html>`))
+	}))
+	t.Cleanup(srv.Close)
+	start := time.Now()
+	err := waitHealth(LocaleEN, srv.URL, 30*time.Second)
+	if err == nil {
+		t.Fatal("a foreign server must not be treated as Octop")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("should fail fast instead of waiting for the timeout: %s", elapsed)
+	}
+	if !strings.Contains(err.Error(), "Refusing to load") {
+		t.Fatalf("unexpected message: %v", err)
 	}
 }
 

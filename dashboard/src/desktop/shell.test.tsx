@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LoadingPage from "./LoadingPage";
 import SettingsPage from "./SettingsPage";
-import { isStuckStatus } from "./wails";
+import { isStuckStatus, statusFromEvent } from "./wails";
 
 describe("desktop shell", () => {
   it("renders loading progress and status at the bottom of the card", () => {
@@ -57,5 +57,25 @@ describe("desktop shell", () => {
       true,
     );
     expect(isStuckStatus("正在启动 Octop 服务…")).toBe(false);
+  });
+
+  it("reads the error flag from desktop:status events", () => {
+    expect(statusFromEvent("Connecting to Octop…")).toEqual({
+      text: "Connecting to Octop…",
+      error: false,
+    });
+    expect(statusFromEvent({ data: "Connecting to Octop…" })).toEqual({
+      text: "Connecting to Octop…",
+      error: false,
+    });
+    expect(
+      statusFromEvent({
+        data: { message: "端口 8088 已被占用", error: true },
+      }),
+    ).toEqual({ text: "端口 8088 已被占用", error: true });
+    expect(statusFromEvent({ data: { message: "Octop is ready" } })).toEqual({
+      text: "Octop is ready",
+      error: false,
+    });
   });
 });

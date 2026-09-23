@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -371,21 +370,25 @@ func unzipGreenFiles(files []*zip.File, dest string) error {
 
 func waitHealth(locale Locale, base string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	url := strings.TrimRight(base, "/") + "/api/health"
 	var lastErr error
 	var lastStatus int
 	for time.Now().Before(deadline) {
-		resp, err := http.Get(url)
-		if err == nil {
-			lastStatus = resp.StatusCode
-			lastErr = nil
-			resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 500 {
-				return nil
-			}
-		} else {
-			lastErr = err
-			lastStatus = 0
+		status, octop, err := probeHealth(base)
+		lastStatus, lastErr = status, err
+		switch {
+		case err != nil:
+			// Nothing answers yet; the service may still be starting.
+		case status >= 500:
+			// Octop itself answers 5xx while it is still coming up.
+		case octop:
+			return nil
+		default:
+			// Some other program owns the port; waiting cannot fix that, and
+			// handing it the window would show a stranger's UI as Octop.
+			return fmt.Errorf(
+				"%s",
+				desktopText(locale, copyErrorForeignService, strings.TrimRight(base, "/")),
+			)
 		}
 		time.Sleep(400 * time.Millisecond)
 	}

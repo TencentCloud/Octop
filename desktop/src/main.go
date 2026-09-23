@@ -42,6 +42,17 @@ type App struct {
 
 	bootOnce sync.Once
 	bootFn   func()
+
+	statusMu sync.Mutex
+	status   desktopStatus
+}
+
+// desktopStatus is the desktop:status payload. The shell page switches its
+// loading panel into the error state from the flag instead of pattern-matching
+// localized copy.
+type desktopStatus struct {
+	Message string `json:"message"`
+	Error   bool   `json:"error"`
 }
 
 func (a *App) ServiceName() string { return "desktop" }
@@ -156,17 +167,41 @@ func jsonString(s string) string {
 	return string(b)
 }
 
-func (a *App) setStatus(msg string) {
+func (a *App) setStatus(msg string) { a.emitStatus(msg, false) }
+
+func (a *App) setError(msg string) { a.emitStatus(msg, true) }
+
+func (a *App) emitStatus(msg string, isError bool) {
+	a.statusMu.Lock()
+	a.status = desktopStatus{Message: msg, Error: isError}
+	a.statusMu.Unlock()
 	if a.app == nil {
 		return
 	}
-	a.app.Event.Emit("desktop:status", msg)
+	a.app.Event.Emit("desktop:status", map[string]any{"message": msg, "error": isError})
+}
+
+// replayStatus re-sends the last status. The page subscribes when it is ready,
+// so a status emitted by the bootReadyFallback timer before that would otherwise
+// be dropped, leaving startup errors invisible.
+func (a *App) replayStatus() {
+	a.statusMu.Lock()
+	status := a.status
+	a.statusMu.Unlock()
+	if status.Message == "" || a.app == nil {
+		return
+	}
+	a.app.Event.Emit(
+		"desktop:status",
+		map[string]any{"message": status.Message, "error": status.Error},
+	)
 }
 
 // BootReady is called by the loading page once it subscribes to desktop:status.
 // Emitting before that drops the message, which hides startup errors and leaves
 // the page stuck on its initial "starting" text.
 func (a *App) BootReady() {
+	a.replayStatus()
 	a.startBoot()
 }
 
@@ -188,7 +223,7 @@ func (a *App) boot() {
 	if url := os.Getenv("OCTOP_DESKTOP_URL"); url != "" {
 		a.setStatus(desktopText(locale, copyStatusConnecting))
 		if err := waitHealth(locale, url, 60*time.Second); err != nil {
-			a.setStatus(err.Error())
+			a.setError(err.Error())
 			return
 		}
 		a.showDashboard(url)
@@ -197,23 +232,29 @@ func (a *App) boot() {
 	s := a.store.get()
 	a.setStatus(desktopText(locale, copyStatusCheckingRuntime))
 	if err := ensurePortable(locale, a.setStatus); err != nil {
-		a.setStatus(err.Error())
+		a.setError(err.Error())
 		return
 	}
 	root := portableDir()
+	// Whatever already listens on the port would answer the health probe and
+	// then be shown in the window; refuse to start instead.
+	if portBusy(s.Port) {
+		a.setError(desktopText(locale, copyErrorPortInUse, s.Port))
+		return
+	}
 	a.mu.Lock()
 	stopOctop(a.cmd)
 	cmd, err := startOctop(root, s.Port)
 	a.cmd = cmd
 	a.mu.Unlock()
 	if err != nil {
-		a.setStatus(err.Error())
+		a.setError(err.Error())
 		return
 	}
 	base := dashboardURL(s.Port)
 	a.setStatus(desktopText(locale, copyStatusStartingService))
 	if err := waitHealth(locale, base, 2*time.Minute); err != nil {
-		a.setStatus(err.Error())
+		a.setError(err.Error())
 		return
 	}
 	a.showDashboard(base)
@@ -312,6 +353,12 @@ func (a *App) requestQuit() {
 
 func main() {
 	store := &settingsStore{cur: loadSettings()}
+	if err := verifyShellDevServer(
+		os.Getenv("FRONTEND_DEVSERVER_URL"),
+		store.get().Locale,
+	); err != nil {
+		log.Fatal(err)
+	}
 	api := &App{
 		store: store,
 		sleep: &sleepGuard{},
