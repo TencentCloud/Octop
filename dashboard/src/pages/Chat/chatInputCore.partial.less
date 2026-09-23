@@ -47,8 +47,7 @@
     /* Shell now paints under the home indicator. Keep buttons above it
        (or above the keyboard); do not add both. */
     padding-bottom: calc(
-      6px +
-        max(env(safe-area-inset-bottom, 0px), var(--keyboard-offset, 0px))
+      6px + max(env(safe-area-inset-bottom, 0px), var(--keyboard-offset, 0px))
     );
     transition: padding-bottom 0.15s ease;
   }
