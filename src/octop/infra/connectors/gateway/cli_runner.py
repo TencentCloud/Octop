@@ -39,7 +39,13 @@ def run_cli(
             argv,
             input=stdin_text,
             capture_output=True,
+            # Connector CLIs are Node programs that write UTF-8. With text=True and no
+            # codec, the parent decodes with the ANSI code page instead: on cp936
+            # Windows the reader thread raises UnicodeDecodeError, stdout arrives as
+            # None and every call silently degrades to the "{}" branch below.
             text=True,
+            encoding="utf-8",
+            errors="replace",
             env=dict(env) if env is not None else None,
             timeout=timeout_s,
             cwd=cwd,
