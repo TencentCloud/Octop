@@ -122,6 +122,9 @@ def create(
     except OctopError as exc:
         raise click.ClickException(exc.message) from exc
     click.echo(_json.dumps(data, indent=2))
+    from octop.cli.support.runtime_probe import warn_if_server_running
+
+    warn_if_server_running()
 
 
 @channel.command("patch")
@@ -161,6 +164,9 @@ def patch_channel(
     except OctopError as exc:
         raise click.ClickException(exc.message) from exc
     click.echo(_json.dumps(data, indent=2))
+    from octop.cli.support.runtime_probe import warn_if_server_running
+
+    warn_if_server_running()
 
 
 @channel.command("delete")
@@ -179,6 +185,9 @@ def delete(agent_id: str | None, channel_id: str, as_user: str | None) -> None:
     except OctopError as exc:
         raise click.ClickException(exc.message) from exc
     click.echo("deleted")
+    from octop.cli.support.runtime_probe import warn_if_server_running
+
+    warn_if_server_running()
 
 
 @channel.command("test")

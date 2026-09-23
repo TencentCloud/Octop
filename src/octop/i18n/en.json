@@ -578,6 +578,9 @@
     "publisher-multi-platform": "Multi-platform Publisher",
     "docker-management": "Docker Management"
   },
+  "cli": {
+    "restart_hint": "octop run is live at {url}; restart it for this CLI change to take effect."
+  },
   "channel": {
     "tool_hint_start": "🔧 Calling tool: {tool_name}",
     "tool_hint_end": "✅ {tool_name} done",
@@ -645,7 +648,8 @@
     "recursion_limit": "The agent hit its max iteration / recursion limit before finishing. Open Configuration and raise Max Iterations, then try again.",
     "timeout_network": "Connecting to the model timed out or the network failed. Check your network and retry. If you use a proxy or self-hosted endpoint, confirm it is reachable.",
     "provider_unavailable": "The model provider is temporarily unavailable. Retry later, or switch to another model.",
-    "model_call_failed": "The model call failed after several retries. Wait a moment and retry. If it keeps failing, check the model settings or switch models."
+    "model_call_failed": "The model call failed after several retries. Wait a moment and retry. If it keeps failing, check the model settings or switch models.",
+    "cause_suffix": "Cause: {cause}"
   },
   "attachment": {
     "header": "[Attachment] {filename}",

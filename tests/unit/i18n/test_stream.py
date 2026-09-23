@@ -109,7 +109,9 @@ def test_format_stream_error_zh_guidance() -> None:
     )
     text = format_stream_error(msg, "zh")
     assert "重试" in text
-    assert "StreamChunkTimeoutError" not in text
+    # Localized guidance first line, original cause appended (#952).
+    assert "原因：" in text
+    assert "StreamChunkTimeoutError" in text
     assert "LANGCHAIN" not in text
 
 
@@ -117,8 +119,8 @@ def test_format_insufficient_balance_zh() -> None:
     msg = "Error code: 402 - {'error': {'message': 'Insufficient Balance'}}"
     text = format_stream_error(msg, "zh")
     assert "余额" in text or "额度" in text
-    assert "402" not in text
-    assert "Insufficient Balance" not in text
+    assert "原因：" in text
+    assert "Insufficient Balance" in text
 
 
 def test_format_recursion_limit_zh_guides_to_config() -> None:
@@ -130,7 +132,7 @@ def test_format_recursion_limit_zh_guides_to_config() -> None:
     assert "运行配置" in text
     assert "最大迭代次数" in text
     assert "GRAPH_RECURSION_LIMIT" not in text
-    assert "recursion_limit" not in text
+    assert "recursion_limit" in text
 
 
 def test_stream_error_message_octop_key() -> None:
@@ -139,8 +141,9 @@ def test_stream_error_message_octop_key() -> None:
 
 def test_format_stream_error_unknown_falls_back_to_localized() -> None:
     text = format_stream_error("disk full", "en")
-    assert "disk full" not in text
     assert "model call failed" in text
+    # The unknown original error is preserved as the appended cause (#952).
+    assert "disk full" in text
 
 
 def test_format_stream_error_passes_through_send_file_failures() -> None:
@@ -172,3 +175,46 @@ def test_format_stream_error_empty_exception_still_localized() -> None:
     text = format_stream_error(TimeoutError(), "zh")
     assert text
     assert "模型调用" in text
+
+
+def test_format_stream_error_appends_root_cause_for_model_not_found() -> None:
+    out = format_stream_error(
+        ValueError("Model 'deepseek/deepseek-flash' not found or disabled"), "zh"
+    )
+    assert "模型调用" in out
+    assert "原因：" in out
+    assert "deepseek/deepseek-flash" in out
+
+
+def test_format_stream_error_appends_cause_for_classified_auth() -> None:
+    out = format_stream_error(
+        RuntimeError("Error code: 401 - Incorrect API key provided: sk-abcdef1234567890"),
+        "zh",
+    )
+    assert "原因：" in out
+    assert "sk-abcdef1234567890" not in out
+    assert "sk-***" in out
+
+
+def test_format_stream_error_en_cause_suffix() -> None:
+    out = format_stream_error("Error code: 402 - Insufficient Balance", "en")
+    assert "\nCause: " in out
+    assert "Insufficient Balance" in out
+
+
+def test_format_stream_error_redacts_bearer_tokens() -> None:
+    out = format_stream_error("HTTP 500 upstream rejected Bearer abcdef1234567890", "en")
+    assert "abcdef1234567890" not in out
+    assert "Bearer ***" in out
+
+
+def test_format_stream_error_clips_long_cause() -> None:
+    out = format_stream_error("x" * 5000, "en")
+    assert len(out) < 450
+
+
+def test_format_stream_error_skips_cause_when_it_matches_guidance() -> None:
+    from octop.i18n import tr
+
+    guidance = tr("stream_errors.model_call_failed", "zh")
+    assert format_stream_error(guidance, "zh") == guidance

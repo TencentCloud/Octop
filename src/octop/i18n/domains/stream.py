@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from octop.i18n.loader import lookup, tr
 from octop.infra.utils.locale import Locale
 
@@ -191,12 +193,38 @@ def format_stream_error(exc: BaseException | str, locale: str | Locale = "en") -
     """Classify an exception or raw message; fall back to a generic localized message.
 
     Tool / path failures (e.g. ``send_file_to_user`` missing file) pass through so
-    the UI does not mislabel them as a model-call outage.
+    the UI does not mislabel them as a model-call outage. When a message *is*
+    replaced by localized guidance, the original cause is appended (secrets
+    redacted, clipped) so users can tell which provider/model failed (#952).
     """
     message = exception_display_message(exc)
     classified = classify_stream_error_message(message)
     if classified is not None:
-        return tr(classified.removeprefix(_PREFIX), locale)
+        return _with_cause(tr(classified.removeprefix(_PREFIX), locale), message, locale)
     if _looks_like_send_file_tool_error(message):
         return message
-    return tr(MODEL_CALL_FAILED.removeprefix(_PREFIX), locale)
+    return _with_cause(tr(MODEL_CALL_FAILED.removeprefix(_PREFIX), locale), message, locale)
+
+
+_CAUSE_CLIP = 300
+_SECRET_PATTERNS = (
+    re.compile(r"sk-[A-Za-z0-9_-]{8,}"),
+    re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._-]{8,}"),
+)
+
+
+def _redact_secrets(text: str) -> str:
+    redacted = _SECRET_PATTERNS[0].sub("sk-***", text)
+    return _SECRET_PATTERNS[1].sub(r"\1***", redacted)
+
+
+def _with_cause(guidance: str, message: str, locale: str | Locale) -> str:
+    """Append the redacted original message to localized guidance.
+
+    The guidance replaces the provider's own wording; without the appended
+    cause, users cannot tell which provider/model actually failed.
+    """
+    cause = _redact_secrets(message.strip())[:_CAUSE_CLIP].strip()
+    if not cause or cause == guidance:
+        return guidance
+    return f"{guidance}\n{tr('stream_errors.cause_suffix', locale, cause=cause)}"
