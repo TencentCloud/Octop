@@ -26,10 +26,12 @@ PROVIDER_UNAVAILABLE = f"{_PREFIX}stream_errors.provider_unavailable"
 MODEL_CALL_FAILED = f"{_PREFIX}stream_errors.model_call_failed"
 PATH_OUTSIDE_ROOT = f"{_PREFIX}stream_errors.path_outside_root"
 INVALID_REQUEST = f"{_PREFIX}stream_errors.invalid_request"
+EMPTY_RESPONSE = f"{_PREFIX}stream_errors.empty_response"
 
 __all__ = [
     "AUTH",
     "CONTEXT_LENGTH",
+    "EMPTY_RESPONSE",
     "INSUFFICIENT_BALANCE",
     "INVALID_REQUEST",
     "MODEL_CALL_FAILED",
@@ -106,6 +108,9 @@ def classify_stream_error_message(message: str) -> str | None:
     # Tool / backend path jail — must not look like a model-provider outage.
     if "outside root directory" in lower or "path traversal not allowed" in lower:
         return PATH_OUTSIDE_ROOT
+
+    if "emptymodelresponse" in compact:
+        return EMPTY_RESPONSE
 
     if (
         "streamchunktimeouterror" in compact
