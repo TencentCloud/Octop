@@ -6,7 +6,9 @@ through ``agent.workspace`` backed by ``local_shell`` on the agent dir.
 
 from __future__ import annotations
 
+import os
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,6 +16,12 @@ from docx import Document
 
 # Workspace UI semantics: leading '/' is relative to agent workspace.
 FROM_WORKSPACE = {"from_workspace": "true"}
+
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX host absolute paths")
+
+# Denied host-absolute paths: POSIX system roots are denied on every platform
+# and Windows system dirs on Windows (see ``is_allowed_host_download_abs_path``).
+DENIED_HOST_PATHS = ["/etc/hosts", "/proc/self/cmdline", "C:/Windows/win.ini"]
 
 
 def _sample_docx_bytes() -> bytes:
@@ -132,6 +140,70 @@ async def test_read_missing_file_404(env: Any) -> None:
         headers=auth,
     )
     assert r.status_code == 404
+
+
+# --- host-absolute path policy ----------------------------------------------
+
+
+@pytest.mark.parametrize("denied", DENIED_HOST_PATHS)
+async def test_read_denied_host_path_forbidden(env: Any, denied: str) -> None:
+    """Read must not be more permissive than download for the same host path."""
+    c, _srv, auth, aid = env
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/file",
+        params={"path": denied},
+        headers=auth,
+    )
+    assert r.status_code == 403, r.text
+
+
+@pytest.mark.parametrize("denied", DENIED_HOST_PATHS)
+async def test_download_denied_host_path_forbidden(env: Any, denied: str) -> None:
+    c, _srv, auth, aid = env
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/download",
+        params={"path": denied},
+        headers=auth,
+    )
+    assert r.status_code == 403, r.text
+
+
+@pytest.mark.parametrize("denied", DENIED_HOST_PATHS)
+async def test_grep_denied_host_path_forbidden(env: Any, denied: str) -> None:
+    c, _srv, auth, aid = env
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/grep",
+        params={"pattern": "root", "path": denied},
+        headers=auth,
+    )
+    assert r.status_code == 403, r.text
+
+
+@pytest.mark.parametrize("denied", ["/etc", "/proc"])
+async def test_list_tree_denied_host_path_forbidden(env: Any, denied: str) -> None:
+    c, _srv, auth, aid = env
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/tree",
+        params={"path": denied},
+        headers=auth,
+    )
+    assert r.status_code == 403, r.text
+
+
+@posix_only
+async def test_read_host_absolute_outside_workspace_allowed(env: Any, tmp_path: Path) -> None:
+    """Host-absolute tool output outside the workspace stays readable."""
+    c, _srv, auth, aid = env
+    host_file = tmp_path / "tool-output.txt"
+    host_file.write_text("host payload", encoding="utf-8")
+
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/file",
+        params={"path": host_file.as_posix()},
+        headers=auth,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["content"] == "host payload"
 
 
 # --- upload + download ------------------------------------------------------
