@@ -16,10 +16,12 @@ RECURSION_LIMIT = f"{_PREFIX}stream_errors.recursion_limit"
 TIMEOUT_NETWORK = f"{_PREFIX}stream_errors.timeout_network"
 PROVIDER_UNAVAILABLE = f"{_PREFIX}stream_errors.provider_unavailable"
 MODEL_CALL_FAILED = f"{_PREFIX}stream_errors.model_call_failed"
+EMPTY_RESPONSE = f"{_PREFIX}stream_errors.empty_response"
 
 __all__ = [
     "AUTH",
     "CONTEXT_LENGTH",
+    "EMPTY_RESPONSE",
     "INSUFFICIENT_BALANCE",
     "MODEL_CALL_FAILED",
     "PROVIDER_UNAVAILABLE",
@@ -62,6 +64,9 @@ def classify_stream_error_message(message: str) -> str | None:
         return None
     lower = msg.lower()
     compact = lower.replace("_", "").replace(" ", "")
+
+    if "emptymodelresponse" in compact:
+        return EMPTY_RESPONSE
 
     if (
         "streamchunktimeouterror" in compact

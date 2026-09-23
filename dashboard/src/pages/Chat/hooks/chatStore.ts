@@ -1180,7 +1180,14 @@ function handleHarnessChunk(
         speaker,
         sessionHostAgentId(state, sessionId),
       );
-      const targetIdx = toolIdx >= 0 ? toolIdx : textIdx;
+      let targetIdx = toolIdx >= 0 ? toolIdx : textIdx;
+      if (chunk.source === "model") {
+        // A model image belongs to this answer, never a previous turn or tool.
+        const userIdx = state.messages
+          .map((message) => message.role)
+          .lastIndexOf("user");
+        targetIdx = textIdx > userIdx && textIdx > toolIdx ? textIdx : -1;
+      }
       const attachment = {
         url: displayUrl,
         kind: (kindRaw === "image" ? "image" : "file") as "image" | "file",
@@ -1965,6 +1972,7 @@ function finalizeStreamingMessages(
   if (state.runUsage && isRoomHostSpeaker(speaker, hostId)) {
     for (let index = state.messages.length - 1; index >= 0; index -= 1) {
       const message = state.messages[index];
+      if (message.role === "user") break;
       if (message.role !== "assistant" || message.toolData) continue;
       if (
         !speakerMatchesFinalize(

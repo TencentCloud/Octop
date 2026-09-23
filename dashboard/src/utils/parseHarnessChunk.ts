@@ -111,6 +111,7 @@ export interface SlashActionChunk {
 
 export interface AttachmentChunk {
   type: "attachment";
+  source?: "model";
   url?: string;
   preview_url?: string;
   data?: string;
@@ -278,6 +279,7 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
     case "attachment":
       return {
         type: "attachment",
+        source: obj.source === "model" ? "model" : undefined,
         url: typeof obj.url === "string" ? obj.url : undefined,
         preview_url:
           typeof obj.preview_url === "string" ? obj.preview_url : undefined,

@@ -31,6 +31,20 @@ def test_stream_error_preserves_resource_error_code() -> None:
     assert "12/10" in message
 
 
+@pytest.mark.asyncio
+async def test_empty_model_response_is_visible_and_persisted() -> None:
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "usage", "usage": {"input_tokens": 12, "output_tokens": 3}}
+        raise ValueError("EmptyModelResponse: no content, images or tool calls")
+
+    processor, msg, appended = _processor_with_stream(stream)
+    chunks = [chunk async for chunk in processor.iter_turn_chunks(msg)]
+    error = next(chunk for chunk in chunks if chunk["type"] == "error")
+    assert "空回复" in error["message"] or "no text" in error["message"]
+    assert chunks[-1]["type"] == "done"
+    assert any(error["message"] in _wire_text(item) for item in appended[0])
+
+
 def _processor_with_stream(
     stream: Callable[..., AsyncIterator[dict[str, Any]]],
 ) -> tuple[GlobalProcessor, InboundMessage, list[list[Any]]]:
