@@ -42,6 +42,34 @@ function TitleBar() {
 describe("thinking display preference", () => {
   beforeEach(() => localStorage.clear());
 
+  it("keeps the scroll position when the user opens a long thinking block", () => {
+    let scrollTop = 42;
+    const onManualProcessExpand = vi.fn(() => {
+      scrollTop = 333;
+    });
+    const { container } = render(
+      <div data-chat-message-scroller="">
+        <AssistantProcessSummary
+          split={thinkingSplit()}
+          onManualProcessExpand={onManualProcessExpand}
+        />
+      </div>,
+    );
+    Object.defineProperty(container.firstElementChild, "scrollTop", {
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = value;
+      },
+    });
+
+    const toggle = screen.getByRole("button");
+    fireEvent.click(toggle);
+    expect(onManualProcessExpand).toHaveBeenCalledOnce();
+    expect(scrollTop).toBe(42);
+    fireEvent.click(toggle);
+    expect(onManualProcessExpand).toHaveBeenCalledOnce();
+  });
+
   it("keeps the existing default: expand while streaming, collapse on completion", () => {
     const split = thinkingSplit();
     const { rerender } = render(

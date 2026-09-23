@@ -878,10 +878,8 @@
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 8px 12px;
-  border-radius: 10px;
   border: none;
-  background: rgba(15, 23, 42, 0.025);
+  background: transparent;
 }
 
 /* Mobile: same gutter on every row, assistant copy uses the empty right
@@ -1166,10 +1164,12 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
-  padding: 0;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 8px 12px;
   border: none;
-  background: transparent;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.025);
   color: var(--fn-text-tertiary);
   font-size: 13px;
   line-height: 1.4;
@@ -1183,7 +1183,6 @@
 }
 
 .processSummaryText {
-  flex: 1;
   min-width: 0;
 }
 
@@ -1198,9 +1197,10 @@
 }
 
 .processSummaryBody {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.025);
   display: flex;
   flex-direction: column;
   gap: 8px;

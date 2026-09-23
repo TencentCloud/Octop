@@ -1,4 +1,11 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
@@ -20,6 +27,7 @@ interface AssistantProcessSummaryProps {
   onAcpPermissionSelect?: (message: string) => void;
   hideToolMedia?: boolean;
   agentId?: string | null;
+  onManualProcessExpand?: () => void;
 }
 
 /** Foldable thinking + plain tools only (no rich plugin UI). */
@@ -30,12 +38,17 @@ function AssistantProcessSummary({
   onAcpPermissionSelect,
   hideToolMedia = false,
   agentId = null,
+  onManualProcessExpand,
 }: AssistantProcessSummaryProps) {
   const { t } = useTranslation();
   const [collapseThinking] = useCollapseThinking();
   const [expanded, setExpanded] = useState(isStreaming && !collapseThinking);
   const prevStreaming = useRef(isStreaming);
   const prevCollapseThinking = useRef(collapseThinking);
+  const scrollBeforeExpand = useRef<{
+    scroller: HTMLElement;
+    top: number;
+  } | null>(null);
   const { toolCount, thinkingCount } = useMemo(
     () => countProcessStats(statsSplit ?? split),
     [statsSplit, split],
@@ -53,6 +66,17 @@ function AssistantProcessSummary({
     prevCollapseThinking.current = collapseThinking;
     setExpanded(isStreaming && !collapseThinking);
   }, [isStreaming, collapseThinking]);
+
+  useLayoutEffect(() => {
+    const position = scrollBeforeExpand.current;
+    if (!position || !expanded) return;
+    scrollBeforeExpand.current = null;
+    position.scroller.scrollTop = position.top;
+    const frame = requestAnimationFrame(() => {
+      position.scroller.scrollTop = position.top;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [expanded]);
 
   if (toolCount === 0 && thinkingCount === 0) return null;
 
@@ -78,7 +102,21 @@ function AssistantProcessSummary({
       <button
         type="button"
         className={styles.processSummaryToggle}
-        onClick={() => setExpanded((v) => !v)}
+        onClick={(event) => {
+          if (!expanded) {
+            const scroller = event.currentTarget.closest<HTMLElement>(
+              '[data-chat-message-scroller=""]',
+            );
+            if (scroller) {
+              scrollBeforeExpand.current = {
+                scroller,
+                top: scroller.scrollTop,
+              };
+            }
+            onManualProcessExpand?.();
+          }
+          setExpanded((v) => !v);
+        }}
         aria-expanded={expanded}
       >
         <span className={styles.processSummaryText}>{summaryText}</span>
