@@ -3,7 +3,6 @@ import { Menu as MenuIcon } from "lucide-react";
 import PwaInstallPrompt from "../components/PwaInstallPrompt";
 import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
-import { useTheme } from "../context/ThemeContext";
 import { typeSize } from "../utils/mobileTypeScale";
 
 const { Header: AntHeader } = Layout;
@@ -20,9 +19,6 @@ interface HeaderProps {
  * Desktop GitHub / theme controls moved into the account popover.
  */
 export default function Header({ onToggle, isMobile }: HeaderProps) {
-  const { isDark } = useTheme();
-  const mobileLogoSrc = isDark ? "/logo_name_dark.png" : "/logo_name.png";
-
   if (!isMobile) return null;
 
   return (
@@ -69,7 +65,7 @@ export default function Header({ onToggle, isMobile }: HeaderProps) {
           </button>
         )}
         <img
-          src={mobileLogoSrc}
+          src="/pwa-512.png"
           alt="octop"
           style={{
             height: 36,

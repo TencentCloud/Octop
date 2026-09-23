@@ -8,7 +8,6 @@ import { storeUiLocale, type UiLocale } from "../../utils/locale";
 
 import { authApi } from "../../api/modules/auth";
 import { preferencesApi } from "../../api/modules/preferences";
-import { useTheme } from "../../context/ThemeContext";
 import DatabaseStep from "./steps/DatabaseStep";
 import PasswordStep from "./steps/PasswordStep";
 import AdminStep from "./steps/AdminStep";
@@ -30,7 +29,6 @@ const { Text } = Typography;
 
 export default function SetupPage() {
   const { t, i18n } = useTranslation();
-  const { isDark } = useTheme();
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
   const [passwordRequired, setPasswordRequired] = useState(true);
@@ -228,7 +226,7 @@ export default function SetupPage() {
           <div className={styles.wizardHeaderTop}>
             <div className={styles.wizardHeaderBrand}>
               <img
-                src={isDark ? "/logo_name_dark.png" : "/logo_name.png"}
+                src="/pwa-512.png"
                 alt="Octop"
                 className={styles.wizardHeaderLogo}
               />

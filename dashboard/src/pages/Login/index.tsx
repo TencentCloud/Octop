@@ -10,7 +10,6 @@ import { authApi, type OauthProviderStatus } from "../../api/modules/auth";
 import { apiErrorMessage } from "../../utils/apiError";
 import { refreshServerLabels } from "../../i18n";
 import { applyUserLocale, applyGuestLocale } from "../../utils/locale";
-import { useTheme } from "../../context/ThemeContext";
 import {
   isSsoPopup,
   isSsoPopupMessage,
@@ -65,7 +64,6 @@ function providerIcon(provider: OauthProviderStatus): ReactNode {
 
 export default function LoginPage() {
   const { t } = useTranslation();
-  const { isDark } = useTheme();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [username, setUsername] = useState("");
@@ -245,10 +243,10 @@ export default function LoginPage() {
         }}
       >
         <img
-          src={isDark ? "/logo_name_dark.png" : "/logo_name.png"}
+          src="/pwa-512.png"
           alt="Octop"
           style={{
-            height: 48,
+            height: 64,
             width: "auto",
             maxWidth: 260,
             objectFit: "contain",
