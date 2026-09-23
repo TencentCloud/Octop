@@ -13,6 +13,13 @@ _MAX_DECISIONS = 16
 _MAX_DECISION_MESSAGE_CHARS = 8000
 
 
+class HitlSessionPolicyBody(BaseModel):
+    """Dashboard chat bypass for tool approval (does not change global HITL)."""
+
+    mode: Literal["ask", "allow_all", "allow_tools"] = "ask"
+    tools: list[str] = Field(default_factory=list)
+
+
 class ChatTurnBody(BaseModel):
     """User turn payload — same fields for WebSocket ``user_turn`` and legacy HTTP bodies."""
 
@@ -49,6 +56,10 @@ class ChatTurnBody(BaseModel):
     conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
         default=None,
         description="Turn permission mode: ask (read-only), plan (write plans/*.md), craft (default).",
+    )
+    hitl_policy: HitlSessionPolicyBody | None = Field(
+        default=None,
+        description="Thread-scoped tool-approval bypass for this turn (does not change global HITL).",
     )
     target_agent_ids: list[str] | None = Field(
         default=None,
@@ -94,6 +105,9 @@ class ChatTurnBody(BaseModel):
             conversation_mode=payload.get("conversation_mode")
             if payload.get("conversation_mode") in ("ask", "plan", "craft")
             else None,
+            hitl_policy=payload.get("hitl_policy")
+            if isinstance(payload.get("hitl_policy"), dict)
+            else None,
             target_agent_ids=(
                 [str(x) for x in payload["target_agent_ids"]]
                 if isinstance(payload.get("target_agent_ids"), list)
@@ -115,6 +129,7 @@ class UserTurnWsFrame(BaseModel):
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = None
+    hitl_policy: HitlSessionPolicyBody | None = None
     mcp_servers: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     skills: list[str] | None = None
@@ -157,6 +172,7 @@ class RenameThreadBody(BaseModel):
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = None
+    hitl_policy: HitlSessionPolicyBody | None = None
 
 
 class HitlResumeBody(BaseModel):
@@ -170,6 +186,10 @@ class HitlResumeBody(BaseModel):
             '[{"type": "reject", "message": "..."}] or '
             '[{"type": "respond", "message": "<answer>"}].'
         ),
+    )
+    hitl_policy: HitlSessionPolicyBody | None = Field(
+        default=None,
+        description="Optional thread-scoped tool-approval bypass applied before resume.",
     )
 
     @field_validator("decisions")

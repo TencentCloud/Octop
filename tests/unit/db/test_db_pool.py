@@ -128,6 +128,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
         "artifacts",
         "conversation_mode",
         "pending_plan_path",
+        "hitl_policy",
     }.issubset(thread_cols)
     assert {
         "color",

@@ -106,7 +106,7 @@ def delete_job(agent_id: str | None, cron_id: str, as_user: str | None) -> None:
 @click.option("--agent", "agent_id", default=None)
 @click.option("--user", "as_user", default=None)
 def run_now(agent_id: str | None, cron_id: str, as_user: str | None) -> None:
-    """Trigger a cron job immediately (embedded server)."""
+    """Run a cron job to completion (embedded server)."""
     from octop.cli.support.embedded_ops import cron_run_now
     from octop.cli.support.offline_ops import resolve_cron_user_id
 
@@ -116,4 +116,6 @@ def run_now(agent_id: str | None, cron_id: str, as_user: str | None) -> None:
         cron_run_now(aid, cron_id)
     except OctopError as exc:
         fail_octop(exc)
+    except Exception as exc:
+        raise click.ClickException(str(exc) or type(exc).__name__) from exc
     click.echo("ok")

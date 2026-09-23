@@ -22,6 +22,7 @@ from harness_agent.backends.workspace import BackendWorkspace
 
 from octop.infra.agents.manager import AgentCreateSpec
 from octop.infra.agents.workspace_dir import DEFAULT_SYSTEM_FILES_PATH
+from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
 
@@ -377,6 +378,45 @@ async def read_workspace_manifest_task_examples(
     if data is None:
         return None
     return parse_task_examples(data)
+
+
+def _quick_prompts_have_content(prompt: ExpertQuickPrompt) -> bool:
+    return bool(prompt.title_zh or prompt.title_en or prompt.prompt_zh or prompt.prompt_en)
+
+
+async def apply_workspace_quick_prompts(
+    workspace: BackendWorkspace,
+    quick_prompts: list[dict[str, Any]],
+) -> None:
+    """Merge installer-owned quick-start cards into workspace ``.octop/manifest.json``.
+
+    Missing file starts from ``{}``. Invalid JSON is refused so a hand-edited
+    manifest is not clobbered during create.
+    """
+    text = await read_workspace_manifest_text(workspace)
+    existing: dict[str, Any] = {}
+    if text is not None and str(text).strip():
+        try:
+            parsed: object = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "workspace manifest.json is not valid JSON",
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "workspace manifest.json is not a JSON object",
+            )
+        existing = parsed
+    parsed_prompts = _parse_quick_prompts({"quick_prompts": list(quick_prompts)})
+    existing["quick_prompts"] = [
+        _quick_prompt_api_dict(prompt)
+        for prompt in parsed_prompts
+        if _quick_prompts_have_content(prompt)
+    ]
+    payload = json.dumps(existing, ensure_ascii=False, indent=2).encode("utf-8")
+    await workspace.aupload_many([(WORKSPACE_MANIFEST_PATH, payload)])
 
 
 def read_text_file_contents(expert_dir: Path, paths: list[str]) -> list[dict[str, str]]:

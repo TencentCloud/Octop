@@ -1,9 +1,25 @@
 import { useEffect } from "react";
 
+/** Home-indicator / browser chrome is ~34–50px; real keyboards are 200px+. */
+export const KEYBOARD_GAP_THRESHOLD_PX = 80;
+
 function isPwa(): boolean {
   if (window.matchMedia("(display-mode: standalone)").matches) return true;
   const nav = navigator as Navigator & { standalone?: boolean };
   return nav.standalone === true;
+}
+
+/**
+ * VisualViewport leftover after subtracting offsetTop. Tiny gaps are the
+ * iOS home indicator, not a keyboard — those must stay 0 or CSS that also
+ * adds `env(safe-area-inset-bottom)` will paint two empty bands.
+ */
+export function measureKeyboardOffset(
+  innerHeight: number,
+  viewport: Pick<VisualViewport, "height" | "offsetTop">,
+): number {
+  const raw = Math.max(0, innerHeight - viewport.height - viewport.offsetTop);
+  return raw > KEYBOARD_GAP_THRESHOLD_PX ? Math.round(raw) : 0;
 }
 
 /**
@@ -16,10 +32,7 @@ export function useKeyboardOffset() {
     if (!vv) return;
 
     const update = () => {
-      const keyboardHeight = Math.max(
-        0,
-        window.innerHeight - vv.height - vv.offsetTop,
-      );
+      const keyboardHeight = measureKeyboardOffset(window.innerHeight, vv);
       document.documentElement.style.setProperty(
         "--keyboard-offset",
         `${keyboardHeight}px`,

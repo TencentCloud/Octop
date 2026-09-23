@@ -23,6 +23,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Route,
 } from "lucide-react";
 import { Tooltip, Popover, Drawer } from "antd";
 import type { ResolvedModel } from "../../../api/types";
@@ -33,8 +34,8 @@ import type { AgentSubagentSummary } from "../../../api/modules/subagents";
 import {
   modelOptionLabel,
   modelOptionValue,
-  modelShortLabel,
 } from "../../../utils/modelOptions";
+import { customProviderLogo, getProviderLogo } from "../../../assets/providers";
 import ContextWindowRing from "./ContextWindowRing";
 import SkillPickerPopover from "./SkillPickerPopover";
 import ExpertPickerPopover from "./ExpertPickerPopover";
@@ -42,9 +43,11 @@ import SubagentPickerPopover from "./SubagentPickerPopover";
 import ConnectorPickerPopover from "./ConnectorPickerPopover";
 import KnowledgePickerPopover from "./KnowledgePickerPopover";
 import ConversationModePicker from "./ConversationModePicker";
+import HitlPolicyPicker from "./HitlPolicyPicker";
 import SlashCommandMenu from "./SlashCommandMenu";
 import type { SlashMenuGroup } from "../../../utils/slashCategories";
 import type { SlashMenuItem } from "../hooks/useSlashMentionInput";
+import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import { SHORTCUT_ICON_TONE_CLASS } from "../utils/slashShortcutStyles";
 import { isSttAvailable } from "../../../hooks/useVoiceInput";
 import { resolveTurnModelOverride } from "../utils/chatMessages";
@@ -65,6 +68,21 @@ type CompactPickerKey =
   | "expert"
   | "subagent"
   | "shortcut";
+
+function resolveModelLogo(model: {
+  provider_name: string;
+  provider_kind: string;
+}): string {
+  const name = model.provider_name;
+  const slug = name.toLowerCase().replace(/\s+/g, "-");
+  return (
+    getProviderLogo(name) ??
+    getProviderLogo(name.toLowerCase()) ??
+    getProviderLogo(slug) ??
+    getProviderLogo(model.provider_kind) ??
+    customProviderLogo
+  );
+}
 
 // These browser APIs never change at runtime — compute once.
 const _sttAvailable = isSttAvailable();
@@ -101,6 +119,8 @@ interface ChatInputActionsRowProps {
   ) => void;
   conversationMode?: "ask" | "plan" | "craft";
   onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
+  hitlPolicy?: HitlSessionPolicy;
+  onHitlPolicyChange?: (policy: HitlSessionPolicy) => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -157,6 +177,8 @@ export default function ChatInputActionsRow({
   onReasoningChange,
   conversationMode = "craft",
   onConversationModeChange,
+  hitlPolicy,
+  onHitlPolicyChange,
   availableConnectors,
   selectedConnectors = [],
   onConnectorsChange,
@@ -328,6 +350,24 @@ export default function ChatInputActionsRow({
       ? t("chat.reasoningEnabled", "开启")
       : t("chat.reasoningDisabled", "关闭");
 
+  const selectedModelTriggerLabel = selectedModel
+    ? modelOptionLabel(
+        availableModels?.find((m) => modelOptionValue(m) === selectedModel) ?? {
+          provider_name: selectedModel.split("/")[0] || "",
+          model: selectedModel.split("/").slice(1).join("/") || selectedModel,
+        },
+      )
+    : t("chat.selectModel", "Select model");
+  const selectedModelReasoningHint =
+    selectedModel && reasoningCapability
+      ? reasoningIsStatusOnly
+        ? t("chat.reasoningAlways", "始终推理")
+        : reasoningEffort || reasoningModeLabel(reasoningMode)
+      : null;
+  const modelTriggerTitle = selectedModelReasoningHint
+    ? `${selectedModelTriggerLabel} · ${selectedModelReasoningHint}`
+    : selectedModelTriggerLabel;
+
   const reasoningSummary = (model: ResolvedModel, active: boolean) => {
     const capability = model.reasoning_config;
     if (!capability) return null;
@@ -443,8 +483,11 @@ export default function ChatInputActionsRow({
                 setModelPickerOpen(false);
               }}
             >
-              <span className={styles.modelMenuLabel}>
-                {t("chat.modelAuto", "Auto")}
+              <span className={styles.modelMenuTitle}>
+                <Route size={16} aria-hidden />
+                <span className={styles.modelMenuLabel}>
+                  {t("chat.modelAuto", "Auto")}
+                </span>
               </span>
               <span className={styles.modelMenuHint}>
                 {t("chat.modelAutoHint", "Use agent default")}
@@ -471,6 +514,11 @@ export default function ChatInputActionsRow({
                       setModelPickerOpen(false);
                     }}
                   >
+                    <img
+                      src={resolveModelLogo(model)}
+                      alt=""
+                      className={styles.modelMenuIcon}
+                    />
                     <span className={styles.modelMenuLabel}>
                       {modelOptionLabel(model)}
                     </span>
@@ -756,6 +804,7 @@ export default function ChatInputActionsRow({
               : ""
           }`}
           type="button"
+          aria-label={modelTriggerTitle}
           onClick={isMobile ? () => setCompactPicker("model") : undefined}
         >
           <Cpu size={16} />
@@ -780,9 +829,14 @@ export default function ChatInputActionsRow({
         <>
           {onConversationModeChange && (
             <ConversationModePicker
-              compact
               conversationMode={conversationMode}
               onChange={onConversationModeChange}
+            />
+          )}
+          {onHitlPolicyChange && (
+            <HitlPolicyPicker
+              policy={hitlPolicy ?? { mode: "ask" }}
+              onChange={onHitlPolicyChange}
             />
           )}
           {showModelPicker &&
@@ -876,6 +930,12 @@ export default function ChatInputActionsRow({
             onChange={onConversationModeChange}
           />
         )}
+        {onHitlPolicyChange && (
+          <HitlPolicyPicker
+            policy={hitlPolicy ?? { mode: "ask" }}
+            onChange={onHitlPolicyChange}
+          />
+        )}
         {showModelPicker && (
           <Popover
             trigger="click"
@@ -888,46 +948,17 @@ export default function ChatInputActionsRow({
             overlayClassName={styles.modelPopover}
             content={modelMenu}
           >
-            <Tooltip
-              title={
-                selectedModel
-                  ? modelOptionLabel(
-                      availableModels!.find(
-                        (m) => modelOptionValue(m) === selectedModel,
-                      ) ?? {
-                        provider_name: selectedModel.split("/")[0] || "",
-                        model:
-                          selectedModel.split("/").slice(1).join("/") ||
-                          selectedModel,
-                      },
-                    )
-                  : t("chat.selectModel", "Select model")
-              }
-              mouseEnterDelay={0.4}
-            >
+            <Tooltip title={modelTriggerTitle} mouseEnterDelay={0.4}>
               <button
-                className={`${styles.secondaryBtn} ${styles.modelPickerBtn} ${
+                className={`${styles.secondaryBtn} ${
                   modelOverride || reasoningMode !== "auto" || reasoningEffort
                     ? styles.secondaryBtnModelActive
                     : ""
                 }`}
                 type="button"
+                aria-label={modelTriggerTitle}
               >
                 <Cpu size={16} />
-                <span className={styles.modelPickerLabel}>
-                  {selectedModel
-                    ? modelShortLabel(selectedModel)
-                    : t("chat.modelAuto", "Auto")}
-                  {selectedModel && reasoningCapability && (
-                    <span className={styles.modelPickerReasoningLabel}>
-                      {` · ${
-                        reasoningIsStatusOnly
-                          ? t("chat.reasoningAlways", "始终推理")
-                          : reasoningEffort || reasoningModeLabel(reasoningMode)
-                      }`}
-                    </span>
-                  )}
-                </span>
               </button>
             </Tooltip>
           </Popover>

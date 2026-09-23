@@ -217,13 +217,17 @@ class CronManager:
             self._repos.audit_repo.write(actor=ACTOR_SYSTEM, action="cron.delete", target=cron_id)
             logger.info("CronJob %s deleted", cron_id)
 
-    async def run_now(self, cron_id: str) -> None:
+    async def run_now(self, cron_id: str, *, wait: bool = False) -> None:
+        """Trigger a run; embedded callers wait for bookkeeping and receive failures."""
         row = self._repos.cron_repo.get(cron_id)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
         job = self._make_job(row)
-        asyncio.ensure_future(job.run())
         logger.info("CronJob %s triggered manually", cron_id)
+        if wait:
+            await job.run(raise_on_error=True)
+        else:
+            asyncio.ensure_future(job.run())
 
     def _make_job(self, row: Any) -> CronJob:
         return CronJob.from_row(

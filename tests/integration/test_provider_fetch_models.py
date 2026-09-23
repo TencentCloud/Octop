@@ -65,3 +65,4 @@ async def test_admin_fetch_models_success(env: Any) -> None:
     kwargs = mocked.await_args.kwargs
     assert kwargs["api_key"] == "sk-test"
     assert kwargs["base_url"] == "https://api.example.com/v1"
+    assert kwargs["provider_name"] is None

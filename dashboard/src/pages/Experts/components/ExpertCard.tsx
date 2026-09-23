@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { CheckCircle } from "lucide-react";
 import { pickLocale } from "../../../utils/localizedText";
 import { ExpertIcon, resolveExpertAvatarUrl } from "./iconForName";
+import type { QuickPrompt } from "./welcomeManifest";
 import styles from "../index.module.less";
 
 export interface ExpertSummary {
@@ -11,6 +12,7 @@ export interface ExpertSummary {
   label: { zh?: string; en?: string };
   description: { zh?: string; en?: string };
   welcome_message?: { zh?: string; en?: string };
+  quick_prompts?: QuickPrompt[];
   icon_name?: string | null;
   icon_url?: string | null;
   color?: string | null;

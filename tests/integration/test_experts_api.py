@@ -98,6 +98,44 @@ async def test_create_agent_from_expert_applies_file_overrides(env: Any) -> None
     assert text == "custom agents guide"
 
 
+async def test_create_agent_from_expert_applies_quick_prompts(env: Any) -> None:
+    c, srv, auth = env
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "page-config-bot",
+            "quick_prompts": [
+                {
+                    "title": {"zh": "创建卡", "en": "Create card"},
+                    "description": {"zh": "描述", "en": "Desc"},
+                    "prompt": {"zh": "请开始", "en": "Start"},
+                    "color": "#fff7ed",
+                    "icon_name": "zap",
+                }
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["agent_id"]
+    workspace = srv.app_runtime.agent_registry.workspace_for_agent(agent_id)
+    if workspace is None:
+        pytest.skip("workspace not available before bootstrap")
+    from octop.infra.agents.experts.catalog import (
+        WORKSPACE_MANIFEST_PATH,
+        read_workspace_manifest_data,
+    )
+
+    data = await read_workspace_manifest_data(workspace)
+    assert data is not None
+    assert data.get("quick_prompts")
+    assert data["quick_prompts"][0]["title"]["zh"] == "创建卡"
+    # Seeded template keys must survive a page-config overlay.
+    text = await workspace.aread_text(WORKSPACE_MANIFEST_PATH)
+    assert text is not None
+    assert "创建卡" in text
+
+
 async def test_create_agent_from_expert_copies_full_skill_dir(env: Any) -> None:
     c, srv, auth = env
     source = await c.post(
