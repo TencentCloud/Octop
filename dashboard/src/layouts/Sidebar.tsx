@@ -395,7 +395,9 @@ export default function Sidebar({
   const showChatRailExpand = !isMinimal && !chatSidebarOpen;
 
   const isRailCollapsed = collapsed && !isMobile;
-  const wordmarkSrc = isDark ? "/logo_name_dark.png" : "/logo_name.png";
+  const wordmarkSrc = isDark
+    ? "/logo_horizontal_white.png"
+    : "/logo_horizontal_dark.png";
 
   const selectMinimalPane = useCallback(
     (pane: MinimalNavPane, opts?: { expand?: boolean }) => {
@@ -622,9 +624,12 @@ export default function Sidebar({
         style={{
           position: "fixed",
           top: 0,
+          bottom: 0,
           left: 0,
-          height: "100dvh",
+          height: "auto",
           width: EXPANDED_WIDTH,
+          boxSizing: "border-box",
+          paddingLeft: "env(safe-area-inset-left, 0px)",
           background: "var(--fn-sidebar-bg)",
           borderRight: "1px solid var(--fn-sidebar-border)",
           zIndex: 100,

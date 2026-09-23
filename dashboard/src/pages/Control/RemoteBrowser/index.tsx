@@ -1474,12 +1474,8 @@ export default function RemoteBrowserPage({
                   renderViewportUninstallProgress()
                 ) : (
                   <StreamSetupGuide
-                    icon={
-                      <OctopEmptyMascot
-                        size={120}
-                        className={styles.setupMascot}
-                      />
-                    }
+                    plain
+                    icon={<OctopEmptyMascot />}
                     title={
                       envReady
                         ? t("remoteBrowser.startBrowserTitle", "启动远程浏览器")

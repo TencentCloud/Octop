@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from octop.infra.setup.self_update import (
+    UpgradeResult,
     build_upgrade_command,
     is_newer,
     is_prerelease,
     parse_version,
     pick_latest_versions,
+    restore_console_scripts,
+    run_upgrade,
+    stash_console_scripts,
 )
 
 
@@ -80,3 +86,85 @@ def test_build_upgrade_command_pins_stable_without_pre(
     assert pip_cmd is not None
     assert "octop==0.9.33" in pip_cmd
     assert "--pre" not in pip_cmd
+
+
+def _fake_windows_scripts(tmp_path: Path) -> Path:
+    script_dir = tmp_path / "Scripts"
+    script_dir.mkdir()
+    (script_dir / "python.exe").write_text("python")
+    (script_dir / "octop.exe").write_text("launcher")
+    (script_dir / "octop.exe.octop-old").write_text("leftover")
+    (script_dir / "pip.exe").write_text("pip")
+    return script_dir
+
+
+def test_stash_console_scripts_is_noop_off_windows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("octop.infra.setup.self_update._is_windows", lambda: False)
+    script_dir = _fake_windows_scripts(tmp_path)
+    assert stash_console_scripts(str(script_dir / "python.exe")) == []
+    assert (script_dir / "octop.exe").exists()
+
+
+def test_stash_console_scripts_moves_launcher_and_purges_leftovers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("octop.infra.setup.self_update._is_windows", lambda: True)
+    script_dir = _fake_windows_scripts(tmp_path)
+
+    moved = stash_console_scripts(str(script_dir / "python.exe"))
+
+    assert moved == [(script_dir / "octop.exe", script_dir / "octop.exe.octop-old")]
+    assert not (script_dir / "octop.exe").exists()
+    # The leftover from an earlier upgrade is gone, replaced by the new stash.
+    assert (script_dir / "octop.exe.octop-old").read_text() == "launcher"
+    assert (script_dir / "pip.exe").exists()
+
+
+def test_restore_console_scripts_puts_launcher_back(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("octop.infra.setup.self_update._is_windows", lambda: True)
+    script_dir = _fake_windows_scripts(tmp_path)
+    moved = stash_console_scripts(str(script_dir / "python.exe"))
+
+    restore_console_scripts(moved)
+
+    assert (script_dir / "octop.exe").read_text() == "launcher"
+    assert not (script_dir / "octop.exe.octop-old").exists()
+
+
+@pytest.mark.parametrize("success", [True, False])
+def test_run_upgrade_restores_launcher_only_on_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    success: bool,
+) -> None:
+    monkeypatch.setattr("octop.infra.setup.self_update._is_windows", lambda: True)
+    monkeypatch.delenv("OCTOP_FPK_SITE_PACKAGES", raising=False)
+    script_dir = _fake_windows_scripts(tmp_path)
+    monkeypatch.setattr(
+        "octop.infra.setup.self_update.resolve_venv_python",
+        lambda: str(script_dir / "python.exe"),
+    )
+
+    def fake_upgrade(**_kwargs: object) -> UpgradeResult:
+        # The installer only succeeds because the locked launcher moved aside.
+        assert not (script_dir / "octop.exe").exists()
+        if success:
+            (script_dir / "octop.exe").write_text("new launcher")
+            return UpgradeResult(success=True, installed_version="1.0.1")
+        return UpgradeResult(success=False, error="upgrade failed on all mirrors")
+
+    monkeypatch.setattr("octop.infra.setup.self_update._run_managed_upgrade", fake_upgrade)
+
+    result = run_upgrade()
+
+    assert result.success is success
+    expected = "new launcher" if success else "launcher"
+    assert (script_dir / "octop.exe").read_text() == expected
+    assert not (script_dir / "octop.exe.octop-old").exists()
