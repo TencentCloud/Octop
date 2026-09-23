@@ -19,6 +19,7 @@
 
 - `wiki_summary` 的 `lang` 不再被拼进请求主机名：此前传 `evil.com#` 会真的向 `https://evil.com` 发请求（`localhost:8443/` 则打本机端口），并把对方返回的摘要回显进聊天；现只接受 `zh` / `en` / `zh-classical` 这类裸子域标签，其余按「语言代码无效」返回错误卡片
 - 登录验证码的 `OCTOP_CAPTCHA_V3_MIN_SCORE` 只按 `float()` 解析，未校验取值：填成 `nan` 时 `score < nan` 恒为 `False`，`recaptcha-v3` 的分数门槛被静默关闭（机器分 0.0 也能登录），负数同样放行，`inf`/大于 1 则把所有登录锁死。现按该参数已有的「不可用即回落默认值」规则处理，只接受 `0`–`1` 内的有限数值
+- 测试套件在中文 Windows（ANSI 代码页 936）上不再因平台默认编码读迁移 SQL 而报 `UnicodeDecodeError`：读 `src/octop/infra/db/migrations/*.sql` 的 22 处 `read_text()` 统一显式按 UTF-8 解码，与 `migrate.py` 的既有写法一致
 
 ## [1.0.2b2] - 2026-09-23
 

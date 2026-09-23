@@ -154,7 +154,7 @@ def test_repair_legacy_schema_ensures_columns(tmp_path: Path) -> None:
             (
                 Path(__file__).resolve().parents[3]
                 / "src/octop/infra/db/migrations/001_initial.sql"
-            ).read_text()
+            ).read_text(encoding="utf-8")
         )
         # Simulate a schema version ahead of what the columns reflect
         conn.execute("UPDATE _schema_version SET version = 2")
@@ -174,7 +174,7 @@ def test_migration_002_idempotent_when_column_already_present(tmp_path: Path) ->
             (
                 Path(__file__).resolve().parents[3]
                 / "src/octop/infra/db/migrations/001_initial.sql"
-            ).read_text()
+            ).read_text(encoding="utf-8")
         )
         conn.execute("ALTER TABLE cron_jobs ADD COLUMN mcp_servers TEXT NOT NULL DEFAULT '[]'")
     run_migrations(pool)
@@ -197,7 +197,7 @@ def test_migration_005_preserves_populated_users_and_constraints(tmp_path: Path)
         Path(__file__).resolve().parents[3] / "src/octop/infra/db/migrations/001_initial.sql"
     )
     with pool.connect() as conn:
-        conn.executescript(initial_migration.read_text())
+        conn.executescript(initial_migration.read_text(encoding="utf-8"))
         conn.execute("UPDATE _schema_version SET version = 4")
         conn.execute(
             """
@@ -311,7 +311,7 @@ def test_stuck_version_6_without_permissions_column_is_repaired(tmp_path: Path) 
             (
                 Path(__file__).resolve().parents[3]
                 / "src/octop/infra/db/migrations/001_initial.sql"
-            ).read_text()
+            ).read_text(encoding="utf-8")
         )
         conn.execute("UPDATE _schema_version SET version = 6")
     run_migrations(pool)
@@ -331,7 +331,7 @@ def test_schema_v10_without_projection_tables_is_repaired(tmp_path: Path) -> Non
             (
                 Path(__file__).resolve().parents[3]
                 / "src/octop/infra/db/migrations/001_initial.sql"
-            ).read_text()
+            ).read_text(encoding="utf-8")
         )
         conn.execute("UPDATE _schema_version SET version = 10")
     run_migrations(pool)
@@ -364,7 +364,7 @@ def test_ahead_of_max_schema_version_clamps_to_max(tmp_path: Path) -> None:
             (
                 Path(__file__).resolve().parents[3]
                 / "src/octop/infra/db/migrations/001_initial.sql"
-            ).read_text()
+            ).read_text(encoding="utf-8")
         )
         conn.execute("UPDATE _schema_version SET version = 8")
     run_migrations(pool)
@@ -392,7 +392,7 @@ def test_current_watermark_repairs_pre_v13_connectors_schema(tmp_path: Path) -> 
             (
                 Path(__file__).resolve().parents[3]
                 / "src/octop/infra/db/migrations/001_initial.sql"
-            ).read_text()
+            ).read_text(encoding="utf-8")
         )
         conn.execute("UPDATE _schema_version SET version = 13")
         conn.execute(
@@ -445,7 +445,7 @@ def test_pre_squash_schema_version_clamped_and_knowledge_tables_filled(
             (
                 Path(__file__).resolve().parents[3]
                 / "src/octop/infra/db/migrations/001_initial.sql"
-            ).read_text()
+            ).read_text(encoding="utf-8")
         )
         # Simulate a develop DB whose recorded version is ahead of the
         # consolidated max, so reconcile clamps and repairs knowledge tables.
@@ -609,7 +609,9 @@ def test_v7_sqlite_sql_upgrades_legacy_text_pks(tmp_path: Path) -> None:
             "id, kb_id, filename, content_type, byte_size, created_at, updated_at) "
             "VALUES ('doc1', 'kb1', 'a.md', 'text/markdown', 1, 1, 1)"
         )
-        conn.executescript((migrations / "007_resource_identity_and_profile.sql").read_text())
+        conn.executescript(
+            (migrations / "007_resource_identity_and_profile.sql").read_text(encoding="utf-8")
+        )
 
     with pool.connect() as conn:
         version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
