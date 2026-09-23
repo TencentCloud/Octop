@@ -8,6 +8,7 @@ import feishuCli from "./feishu-cli.png";
 import fliggy from "./fliggy.png";
 import meituanTravel from "./meituan-travel.png";
 import notion from "./notion.png";
+import openalex from "./openalex.svg";
 import qcc from "./qcc.png";
 import qqMail from "./qq-mail.png";
 import qqMusic from "./qq-music.png";
@@ -40,6 +41,7 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   "tencent-lexiang": tencentLexiang,
   "tencent-meeting": tencentMeeting,
   notion,
+  openalex,
   qcc,
   dida365: dida365,
   dify,
