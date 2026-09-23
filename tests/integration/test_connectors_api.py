@@ -46,6 +46,7 @@ async def test_catalog(env):
         "meituan-travel",
         "didi",
         "yuandian",
+        "qcc",
     ):
         entry = next(e for e in r.json() if e["kind"] == kind)
         assert entry["phase"] == "available", kind
@@ -59,6 +60,11 @@ async def test_catalog(env):
     assert weiyun["mcp_mode"] == "remote"
     assert weiyun["category"] == "office"
     assert weiyun.get("quick_auth_url") == "https://www.weiyun.com/act/openclaw"
+    qcc = next(e for e in r.json() if e["kind"] == "qcc")
+    assert qcc["auth_kind"] == "oauth2"
+    assert qcc["oauth_mode"] == "dynamic"
+    assert qcc["oauth_ready"] is True
+    assert qcc["category"] == "professional"
 
 
 async def test_create_tencent_instance(env):
