@@ -32,7 +32,8 @@ TMP="$(mktemp -d "$ROOT/.buildtmp.XXXXXX")"
 cleanup() { rm -rf "$TMP" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-VER="$(grep -m1 '^version' "$ROOT/pyproject.toml" | sed -E 's/.*"([0-9][0-9.]*[0-9])".*/\1/')"
+VER="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p' \
+  "$ROOT/pyproject.toml" | head -1)"
 [ -n "$VER" ] || { echo "无法从 pyproject.toml 解析版本"; exit 1; }
 echo "[build-fpk] Octop 版本: $VER"
 
