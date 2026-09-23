@@ -645,10 +645,71 @@ def test_start_service_launchd_user_does_not_use_sudo(
 
     start_service = service_mod.start_service
     start_service(runtime)
-    scope_passed, args = captured[0]
+    scope_passed, args = captured[-1]
     assert scope_passed == "user"
     assert args[:2] == ["kickstart", "-k"]
     assert args[2] == launchd_domain("user")
+    # No step may escalate out of the user domain (that would need sudo).
+    assert {scope for scope, _ in captured} == {"user"}
+
+
+def test_start_service_launchd_bootstraps_before_kickstart(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression (#838): ``start`` after ``stop`` must re-bootstrap first.
+
+    ``stop`` unloads the agent with ``bootout``, while ``kickstart`` only acts
+    on a service launchd already knows about.  Without a preceding bootstrap,
+    ``octop service stop && octop service start`` died with
+    "Could not find service in domain for port".
+    """
+    runtime = replace(_runtime(tmp_path), mode="launchd", scope="user")
+    calls: list[list[str]] = []
+
+    def _fake_launchctl_run(scope: str, *args: str) -> object:
+        calls.append(list(args))
+
+        class _Proc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return _Proc()
+
+    monkeypatch.setattr(service_mod, "_launchctl_run", _fake_launchctl_run)
+    monkeypatch.setattr(service_mod, "_wait_for_startup", lambda: None)
+
+    service_mod.start_service(runtime)
+
+    verbs = [args[0] for args in calls]
+    assert "bootstrap" in verbs, "start must reload the plist after a bootout"
+    assert "kickstart" in verbs
+    assert verbs.index("bootstrap") < verbs.index("kickstart"), (
+        "bootstrap must precede kickstart, otherwise launchd cannot find the service"
+    )
+
+
+def test_start_service_systemd_never_touches_launchctl(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The launchd re-bootstrap must stay on the launchd branch."""
+    runtime = _runtime(tmp_path)  # mode="systemd"
+    launchctl_calls: list[object] = []
+
+    monkeypatch.setattr(
+        service_mod,
+        "_systemd_run",
+        lambda rt, *a: type("_P", (), {"returncode": 0, "stdout": "", "stderr": ""})(),
+    )
+    monkeypatch.setattr(
+        service_mod,
+        "_launchctl_run",
+        lambda *a, **k: launchctl_calls.append(a),
+    )
+    monkeypatch.setattr(service_mod, "_wait_for_startup", lambda: None)
+
+    service_mod.start_service(runtime)
+    assert not launchctl_calls
 
 
 def test_restart_service_waits_for_startup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -756,6 +756,11 @@ def start_service(runtime: ServiceRuntime, *, apply_unit: bool = False) -> None:
         verb = "restart" if apply_unit else "start"
         proc = _systemd_run(runtime, verb, SERVICE_NAME)
     else:
+        # `stop` boots the service out of the domain, and `kickstart` only acts
+        # on a service launchd already knows about — so reload the plist first
+        # or `start` after `stop` fails with "Could not find service".
+        # `_launchd_bootstrap` tolerates the already-loaded case.
+        _launchd_bootstrap(runtime)
         proc = _launchctl_run(runtime.scope, "kickstart", "-k", launchd_domain(runtime.scope))
     _cmd_ok(proc, "start failed")
     _wait_for_startup()
