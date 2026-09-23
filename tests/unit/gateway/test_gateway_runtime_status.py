@@ -175,3 +175,39 @@ async def test_probe_weixin_without_token_fails_before_start(tmp_path: Path) -> 
     result = await gw._probe_row(row, locale="zh")
     assert result["ok"] is False
     assert "Token" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_unregister_agent_channels_drops_live_bots(tmp_path: Path) -> None:
+    """Issue #801: a deleted agent's live channels must stop serving."""
+    gw = _make_gateway(tmp_path)
+    remove_channel = AsyncMock()
+    gw._channel_manager = MagicMock()
+    gw._channel_manager.remove_channel = remove_channel
+    gw._set_runtime_status("ch1", connected=True)
+    gw._set_runtime_status("ch2", connected=True)
+    gw._repos.channel_repo.list_by_agent = MagicMock(  # type: ignore[method-assign]
+        return_value=[_fake_row("ch1"), _fake_row("ch2")],
+    )
+
+    await gw.unregister_agent_channels("agent1")
+
+    gw._repos.channel_repo.list_by_agent.assert_called_once_with("agent1")
+    assert remove_channel.await_count == 2
+    assert sorted(call.args[0] for call in remove_channel.await_args_list) == ["ch1", "ch2"]
+    assert gw.get_runtime_status("ch1") is None
+    assert gw.get_runtime_status("ch2") is None
+
+
+@pytest.mark.asyncio
+async def test_unregister_agent_channels_skips_lookup_without_channel_manager(
+    tmp_path: Path,
+) -> None:
+    """No live channel manager means no live bots to tear down."""
+    gw = _make_gateway(tmp_path)
+    gw._channel_manager = None
+    gw._repos.channel_repo.list_by_agent = MagicMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("must not query channels when nothing is live"),
+    )
+
+    await gw.unregister_agent_channels("agent1")

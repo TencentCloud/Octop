@@ -388,6 +388,25 @@ class Gateway:
         await self._unregister(channel_id)
         self._runtime_status.pop(channel_id, None)
 
+    async def unregister_agent_channels(self, agent_id: str) -> None:
+        """Drop live IM channels bound to *agent_id* without touching the DB.
+
+        Deleting an agent cascades its ``channels`` rows away, but the live
+        channel instances stay registered with the channel manager and keep
+        polling their platform. Inbound messages are then routed to an agent
+        that no longer exists, which surfaced as an opaque
+        "An error occurred while processing your message." until the operator
+        disabled and re-enabled the channel (issue #801).
+
+        Call this *before* the agent row is removed so the channel ids can
+        still be read from the DB.
+        """
+        if not self._channel_manager:
+            return
+        for row in self._repos.channel_repo.list_by_agent(agent_id):
+            await self._unregister(row.channel_id)
+            self._runtime_status.pop(row.channel_id, None)
+
     def require_session(self, agent_id: str, session_key: str) -> SessionRow:
         """Return a session after validating its owning agent."""
         session = self._thread_registry.get_session(session_key)
