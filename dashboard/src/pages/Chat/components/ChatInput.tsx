@@ -333,7 +333,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       userHasEditedRef.current = false;
       ignoreInitialTextRef.current = null;
       prevInitialTextRef.current = "";
-      setText(initialText || readInputDraft(agentId, threadId));
+      setText(readInputDraft(agentId, threadId));
       const pendingAttachments = consumePendingPrefillAttachments();
       if (pendingAttachments.length > 0) {
         restoreAttachments(pendingAttachments);

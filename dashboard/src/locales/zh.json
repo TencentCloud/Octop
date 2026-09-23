@@ -3433,7 +3433,8 @@
   },
   "chatWelcome": {
     "greeting": "嗨！你专属的智能伙伴来啦～",
-    "teamHeading": "#管理团队",
+    "teamHeading": "#{{name}}",
+    "teamNameFallback": "团队",
     "mascotSwitchHint": "点一下换个表情～",
     "descriptionWithAgentSuffix": "无论工作还是生活，说出你的想法",
     "descriptionWithTeamSuffix": "这是一个专家团队，成员会一起回答你的问题",

@@ -3436,7 +3436,8 @@
   },
   "chatWelcome": {
     "greeting": "Hi! Your personal AI sidekick is here",
-    "teamHeading": "#Manage team",
+    "teamHeading": "#{{name}}",
+    "teamNameFallback": "Team",
     "mascotSwitchHint": "Tap to switch the mascot",
     "descriptionWithAgentSuffix": "— share what's on your mind, work or life",
     "descriptionWithTeamSuffix": "— an expert team that answers together",
