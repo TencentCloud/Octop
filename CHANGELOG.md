@@ -15,6 +15,7 @@
 
 ### 修复
 
+- macOS：`octop service stop` 后再 `octop service start` 不再报 `Could not find service`——stop 的 bootout 会卸载 launchd 标签，start 现在会探测加载状态并回退 `bootstrap` 重新加载（#1007）
 - 个性化 → MBTI：从未配置过人格的 Agent 进入页面时，顶部统计行不再出现空的引号（`已选中「」`），改为「当前有（N）个人格，尚未选择人格」；已配置但人格目录里查不到的代码退回显示代码本身，不再渲染成空字符串（#973）
 - 通过 API 更新 agent 配置时不再丢掉 `workspace_dir`：此前只提交部分字段的 PATCH 会让工作区回退到默认布局，scoped / 容器 agent 因而看不到原有的 skills、会话与产出文件
 - 聊天输入框对话模式与模型按钮改为仅显示图标（选中项放到 tooltip），模型选择弹框补上提供商 logo

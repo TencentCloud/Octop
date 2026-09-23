@@ -651,6 +651,66 @@ def test_start_service_launchd_user_does_not_use_sudo(
     assert args[2] == launchd_domain("user")
 
 
+def test_start_service_launchd_bootstraps_when_the_label_is_not_loaded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`service stop` (bootout) unloads the label, so a later `service start`
+    must bootstrap it again instead of failing the kickstart (issue #1007)."""
+    runtime = replace(_runtime(tmp_path), mode="launchd", scope="user")
+    captured: list[list[str]] = []
+    bootstraps = 0
+
+    def _fake_launchctl_run(scope: str, *args: str) -> object:
+        captured.append(list(args))
+
+        class _Proc:
+            returncode = 0 if args[0] == "bootstrap" else 1
+            stdout = ""
+            stderr = ""
+
+        return _Proc()
+
+    def _fake_bootstrap(rt: object) -> None:
+        nonlocal bootstraps
+        bootstraps += 1
+
+    monkeypatch.setattr(service_mod, "_launchctl_run", _fake_launchctl_run)
+    monkeypatch.setattr(service_mod, "_launchd_bootstrap", _fake_bootstrap)
+    monkeypatch.setattr(service_mod, "_wait_for_startup", lambda: None)
+
+    service_mod.start_service(runtime)
+
+    assert [args[0] for args in captured] == ["kickstart", "print"]
+    assert bootstraps == 1
+
+
+def test_start_service_launchd_raises_when_a_loaded_label_still_fails_to_start(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A kickstart failure on a loaded label is a real error, not a reload."""
+    runtime = replace(_runtime(tmp_path), mode="launchd", scope="user")
+    captured: list[list[str]] = []
+
+    def _fake_launchctl_run(scope: str, *args: str) -> object:
+        captured.append(list(args))
+
+        class _Proc:
+            # kickstart fails, but the label is loaded (print succeeds).
+            returncode = 0 if args[0] == "print" else 1
+            stdout = ""
+            stderr = ""
+
+        return _Proc()
+
+    monkeypatch.setattr(service_mod, "_launchctl_run", _fake_launchctl_run)
+    monkeypatch.setattr(service_mod, "_wait_for_startup", lambda: None)
+
+    with pytest.raises(RuntimeError, match="start failed"):
+        service_mod.start_service(runtime)
+
+    assert [args[0] for args in captured] == ["kickstart", "print"]
+
+
 def test_restart_service_waits_for_startup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """restart must apply the same startup grace as start, otherwise the
     health probe races the new process."""

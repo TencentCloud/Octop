@@ -751,12 +751,22 @@ def start_service(runtime: ServiceRuntime, *, apply_unit: bool = False) -> None:
     When ``apply_unit`` is true (a unit or LimitNOFILE drop-in was just
     written), systemd ``start`` is a no-op if the process is already running,
     so bounce with ``restart`` so the new directives take effect.
+
+    On launchd, ``kickstart`` only works while the label is loaded, and
+    ``stop`` (``bootout``) unloads it — so fall back to ``bootstrap`` when the
+    label is not in the domain, the way ``restart`` already recovers.
     """
     if runtime.mode == "systemd":
         verb = "restart" if apply_unit else "start"
         proc = _systemd_run(runtime, verb, SERVICE_NAME)
     else:
         proc = _launchctl_run(runtime.scope, "kickstart", "-k", launchd_domain(runtime.scope))
+        if proc.returncode != 0:
+            loaded = _launchctl_run(runtime.scope, "print", launchd_domain(runtime.scope))
+            if loaded.returncode != 0:
+                _launchd_bootstrap(runtime)
+                _wait_for_startup()
+                return
     _cmd_ok(proc, "start failed")
     _wait_for_startup()
 
