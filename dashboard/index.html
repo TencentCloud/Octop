@@ -31,6 +31,54 @@
     <link rel="manifest" href="/manifest.json" />
     <title>Octop</title>
     <!--
+      Resolve dashboard theme before first paint. Must stay a classic script:
+      the splash CSS keys off html[data-theme], not prefers-color-scheme,
+      so a stored "light" preference wins over an OS dark setting.
+      Storage shape matches appearanceStorage.ts (THEME_STORAGE_KEY = "theme").
+    -->
+    <script id="octop-boot-theme">
+      (function () {
+        var KEY = "theme";
+        var mode = "light";
+        function systemDark() {
+          try {
+            return window.matchMedia("(prefers-color-scheme: dark)").matches;
+          } catch (e) {
+            return false;
+          }
+        }
+        try {
+          var raw = localStorage.getItem(KEY);
+          var pref = "system";
+          if (raw === "light" || raw === "dark" || raw === "system") {
+            pref = raw;
+          } else if (raw) {
+            var parsed = JSON.parse(raw);
+            if (
+              parsed &&
+              (parsed.preference === "light" ||
+                parsed.preference === "dark" ||
+                parsed.preference === "system")
+            ) {
+              pref = parsed.preference;
+            }
+          }
+          if (pref === "dark" || (pref === "system" && systemDark())) {
+            mode = "dark";
+          }
+        } catch (e) {
+          if (systemDark()) mode = "dark";
+        }
+        document.documentElement.setAttribute("data-theme", mode);
+        var themeColor = mode === "dark" ? "#1a1c28" : "#ffffff";
+        var metas = document.querySelectorAll('meta[name="theme-color"]');
+        for (var i = 0; i < metas.length; i++) {
+          metas[i].setAttribute("content", themeColor);
+          metas[i].removeAttribute("media");
+        }
+      })();
+    </script>
+    <!--
       First-paint boot splash: visible before JS chunks parse. React.createRoot
       replaces #root contents on mount, so this disappears automatically.
     -->
@@ -43,7 +91,7 @@
       }
       #root {
         min-height: 100%;
-        min-height: 100dvh;
+        min-height: 100lvh;
       }
       #octop-boot {
         /* fixed + inset: always viewport-centered before app CSS sets #root height */
@@ -56,22 +104,23 @@
         align-items: center;
         justify-content: center;
         gap: 20px;
-        padding: 24px;
+        padding: max(24px, env(safe-area-inset-top, 0px))
+          max(24px, env(safe-area-inset-right, 0px))
+          max(24px, env(safe-area-inset-bottom, 0px))
+          max(24px, env(safe-area-inset-left, 0px));
         margin: 0;
         background: #f7f8fa;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
           "Noto Sans SC", sans-serif;
         color: #8b8fa3;
       }
-      @media (prefers-color-scheme: dark) {
-        html,
-        body {
-          background: #12141c;
-        }
-        #octop-boot {
-          background: #12141c;
-          color: rgba(255, 255, 255, 0.55);
-        }
+      html[data-theme="dark"],
+      html[data-theme="dark"] body {
+        background: #12141c;
+      }
+      html[data-theme="dark"] #octop-boot {
+        background: #12141c;
+        color: rgba(255, 255, 255, 0.55);
       }
       #octop-boot-mark {
         position: relative;
@@ -88,13 +137,11 @@
         border-top-color: #e85d75;
         animation: octop-boot-spin 0.85s linear infinite;
       }
-      @media (prefers-color-scheme: dark) {
-        #octop-boot-ring {
-          border-color: rgba(240, 139, 154, 0.22);
-          border-top-color: #f08b9a;
-        }
+      html[data-theme="dark"] #octop-boot-ring {
+        border-color: rgba(240, 139, 154, 0.22);
+        border-top-color: #f08b9a;
       }
-      #octop-boot-logo {
+      .octop-boot-logo {
         position: absolute;
         inset: 14px;
         width: 60px;
@@ -103,6 +150,15 @@
         object-fit: contain;
         display: block;
         animation: octop-boot-breathe 1.6s ease-in-out infinite;
+      }
+      .octop-boot-logo--dark {
+        display: none;
+      }
+      html[data-theme="dark"] .octop-boot-logo--light {
+        display: none;
+      }
+      html[data-theme="dark"] .octop-boot-logo--dark {
+        display: block;
       }
       #octop-boot-text {
         font-size: 14px;
@@ -128,7 +184,7 @@
       }
       @media (prefers-reduced-motion: reduce) {
         #octop-boot-ring,
-        #octop-boot-logo {
+        .octop-boot-logo {
           animation: none;
         }
       }
@@ -222,8 +278,15 @@
         <div id="octop-boot-mark" aria-hidden="true">
           <div id="octop-boot-ring"></div>
           <img
-            id="octop-boot-logo"
-            src="/logo.svg"
+            class="octop-boot-logo octop-boot-logo--light"
+            src="/logo_vertical_dark.svg"
+            alt=""
+            width="60"
+            height="60"
+          />
+          <img
+            class="octop-boot-logo octop-boot-logo--dark"
+            src="/logo_vertical_white.svg"
             alt=""
             width="60"
             height="60"

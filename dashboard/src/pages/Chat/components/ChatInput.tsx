@@ -54,6 +54,7 @@ import type {
   EnqueueChatItemInput,
   QueuedChatItem,
 } from "../hooks/useChatMessageQueue";
+import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import styles from "../index.module.less";
 
 /** Imperative handle exposed via ref for programmatic text injection. */
@@ -98,6 +99,8 @@ interface ChatInputProps {
   ) => void;
   conversationMode?: "ask" | "plan" | "craft";
   onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
+  hitlPolicy?: HitlSessionPolicy;
+  onHitlPolicyChange?: (policy: HitlSessionPolicy) => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -155,6 +158,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onReasoningChange,
       conversationMode = "craft",
       onConversationModeChange,
+      hitlPolicy,
+      onHitlPolicyChange,
       availableConnectors,
       selectedConnectors = [],
       onConnectorsChange,
@@ -862,6 +867,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onReasoningChange={onReasoningChange}
             conversationMode={conversationMode}
             onConversationModeChange={onConversationModeChange}
+            hitlPolicy={hitlPolicy}
+            onHitlPolicyChange={onHitlPolicyChange}
             defaultModel={defaultModel}
             availableConnectors={availableConnectors}
             selectedConnectors={selectedConnectors}

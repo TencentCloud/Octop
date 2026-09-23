@@ -9,10 +9,7 @@ from typing import TYPE_CHECKING, Any
 from harness_agent.config import ModelConfig, ProviderConfig
 
 from octop.infra.agents.providers.model_flags import is_chat_eligible_model, is_vision_model
-from octop.infra.agents.providers.opencode_session import (
-    OPENCODE_SESSION_HEADER,
-    is_opencode_go_base_url,
-)
+from octop.infra.agents.providers.opencode_session import session_header_for_provider
 from octop.infra.agents.providers.reasoning import reasoning_capability
 
 if TYPE_CHECKING:
@@ -160,9 +157,7 @@ class ProviderStore:
                     name=row.name,
                     models=models,
                     headers=headers,
-                    session_header=(
-                        OPENCODE_SESSION_HEADER if is_opencode_go_base_url(row.base_url) else None
-                    ),
+                    session_header=session_header_for_provider(row.name, row.base_url),
                 )
             )
         return out

@@ -602,7 +602,13 @@
         "sk": "SK",
         "agent_id": "Agent ID",
         "host": "Broker Host"
-      }
+      },
+      "discord_invalid_token": "Discord Bot Token 无效，请在 Bot 页面重新生成并更新。",
+      "discord_intents_required": "请在 Discord 应用的 Bot 页面开启 Message Content Intent。",
+      "discord_connect_timeout": "Discord 连接超时，请检查网络与 HTTP 代理设置。",
+      "discord_connection_failed": "Discord 连接失败，请检查网络、代理和机器人配置。",
+      "discord_disconnected": "Discord 尚未连接或正在重连。",
+      "discord_proxy_auth_invalid": "代理认证格式应为 user:password。"
     }
   },
   "threads": {

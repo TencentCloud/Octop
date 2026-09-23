@@ -109,6 +109,7 @@ export function PresetProviderModal({
         kind: "openai",
         api_key: key,
         base_url: values.base_url?.trim() || preset.base_url,
+        name: preset.id,
       });
       if (!result.ok) {
         message.error(

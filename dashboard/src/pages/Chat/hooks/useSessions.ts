@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
+import type { HitlSessionPolicy } from "../../../api/types/hitl";
 import * as chatStore from "./chatStore";
 import { onSessionEvent } from "./chatStore";
 import { formatThreadTitle } from "../utils/threadTitle";
+import { parseHitlSessionPolicy } from "../utils/hitlSessionPolicy";
 
 export interface Session {
   id: string;
@@ -18,6 +20,7 @@ export interface Session {
   reasoningEffort?: string | null;
   conversationMode?: "ask" | "plan" | "craft" | null;
   pendingPlanPath?: string | null;
+  hitlPolicy?: HitlSessionPolicy | null;
   artifacts?: string[];
 }
 
@@ -38,6 +41,7 @@ export function toSession(row: {
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
   pending_plan_path?: string | null;
+  hitl_policy?: HitlSessionPolicy | null;
   artifacts?: string[] | null;
 }): Session {
   const hasActivity =
@@ -63,6 +67,9 @@ export function toSession(row: {
     reasoningEffort: row.reasoning_effort ?? null,
     conversationMode: row.conversation_mode ?? null,
     pendingPlanPath: row.pending_plan_path ?? null,
+    hitlPolicy: row.hitl_policy
+      ? parseHitlSessionPolicy(row.hitl_policy)
+      : null,
     artifacts: Array.isArray(row.artifacts)
       ? row.artifacts.filter(
           (path): path is string =>
@@ -113,6 +120,31 @@ export function markPendingThread(threadId: string) {
 
 export function clearPendingThread(threadId: string) {
   _pendingThreadIds.delete(threadId);
+}
+
+/** Patch HITL bypass for one thread in the module session store. */
+export function syncSessionHitlPolicy(
+  threadId: string,
+  policy: HitlSessionPolicy | null | undefined,
+) {
+  if (!threadId) return;
+  const nextPolicy = policy ? parseHitlSessionPolicy(policy) : null;
+  setModuleSessions((prev) => {
+    const idx = prev.findIndex((s) => s.id === threadId);
+    if (idx < 0) return prev;
+    const current = prev[idx];
+    const currentPolicy = current.hitlPolicy ?? null;
+    if (
+      (currentPolicy?.mode ?? "ask") === (nextPolicy?.mode ?? "ask") &&
+      JSON.stringify(currentPolicy?.tools ?? []) ===
+        JSON.stringify(nextPolicy?.tools ?? [])
+    ) {
+      return prev;
+    }
+    const next = [...prev];
+    next[idx] = { ...current, hitlPolicy: nextPolicy };
+    return next;
+  });
 }
 
 /** Patch conversation-mode fields for one thread in the module session store. */

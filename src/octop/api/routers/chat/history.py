@@ -21,6 +21,7 @@ from octop.api.routers.chat.serialize import (
 )
 from octop.infra.agents.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
 from octop.infra.agents.middleware.thread_artifacts import artifacts_for_response
+from octop.infra.agents.security.hitl_session import parse_hitl_session_policy
 from octop.infra.agents.thread_fork import fork_dashboard_thread
 from octop.infra.agents.workspace_dir import agent_facing_workspace_dir_from_config
 from octop.infra.errors import ErrorCode, OctopError
@@ -37,6 +38,10 @@ logger = logging.getLogger(__name__)
 def _agent_is_busy(server: Any, agent_id: str) -> bool:
     checker = getattr(server.app_runtime.agent_registry, "is_agent_active", None)
     return callable(checker) and checker(agent_id) is True
+
+
+def _hitl_policy_payload(row: Any) -> dict[str, Any]:
+    return parse_hitl_session_policy(getattr(row, "hitl_policy", None)).to_dict()
 
 
 def _history_migration_payload(server: Any, *, agent_id: str, user_id: int) -> dict[str, Any]:
@@ -124,6 +129,7 @@ async def list_threads(
             "reasoning_effort": r.reasoning_effort,
             "conversation_mode": r.conversation_mode or "craft",
             "pending_plan_path": r.pending_plan_path,
+            "hitl_policy": _hitl_policy_payload(r),
             "artifacts": artifacts_for_response(r.artifacts, workspace_dir),
         }
         for r in rows
@@ -380,6 +386,7 @@ async def get_thread_history(
         "artifacts": artifacts_for_response(row.artifacts, workspace_dir),
         "conversation_mode": row.conversation_mode or "craft",
         "pending_plan_path": row.pending_plan_path,
+        "hitl_policy": _hitl_policy_payload(row),
     }
 
 
@@ -508,6 +515,7 @@ async def patch_thread(
         "reasoning_mode",
         "reasoning_effort",
         "conversation_mode",
+        "hitl_policy",
     }
     if (
         body.title is None
@@ -523,6 +531,7 @@ async def patch_thread(
             "reasoning_effort": row.reasoning_effort,
             "conversation_mode": row.conversation_mode or "craft",
             "pending_plan_path": row.pending_plan_path,
+            "hitl_policy": _hitl_policy_payload(row),
         }
     registry = server.app_runtime.gateway.thread_registry
     if body.title is not None:
@@ -550,6 +559,14 @@ async def patch_thread(
         reasoning_effort = (body.reasoning_effort or "").strip().lower() or None
     if "conversation_mode" in body.model_fields_set:
         conversation_mode = body.conversation_mode or "craft"
+    if "hitl_policy" in body.model_fields_set:
+        policy = parse_hitl_session_policy(
+            body.hitl_policy.model_dump() if body.hitl_policy is not None else None
+        )
+        server.app_runtime.gateway.processor.hitl_coordinator.session_policies.set(
+            thread_id,
+            policy,
+        )
     registry.update_composer(
         thread_id,
         model_ref=model_ref,
@@ -569,6 +586,7 @@ async def patch_thread(
         "reasoning_effort": updated.reasoning_effort,
         "conversation_mode": updated.conversation_mode or "craft",
         "pending_plan_path": updated.pending_plan_path,
+        "hitl_policy": _hitl_policy_payload(updated),
     }
 
 

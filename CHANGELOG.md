@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [1.0.2b1] - 2026-09-22
+
 ### 新增
 
 - 登录验证码新增极验行为验 v4（#870）：设置页配置 captcha_id / captcha_key，登录弹窗完成验证，服务端按官方协议 HMAC-SHA256 签名后到 gcaptcha4 二次校验（form-urlencoded，仅 result=success 放行）
@@ -38,6 +40,21 @@
 - 无网络或后端不可达时，启动页展示明确错误与重试，而不再白屏 (#696)
 - iOS PWA 顶栏/侧栏避让状态栏：`env(safe-area-inset-top)` 垫高移动端 Header 与抽屉品牌行（#664）
 - 定时任务空状态提示词：workspace 缺省时回退到专家目录模板 / 名称默认，与 welcome 共用解析 (#651)
+- 对话 Ask / Plan / Craft 模式，以及折叠思考与工具过程
+- 生成模型多厂商管理与图片/视频独立路由（火山方舟、百炼、MiniMax）
+- 插件市场；专家团队宿主；Discord 渠道
+- 登录极验行为验 v4；按专家记忆知识库/连接器选择，可隐藏不常用共享专家
+
+### 修复
+
+- Windows 自升级：`octop.exe` 运行中也可完成升级
+- 同一线程回合串行，避免 HITL 与普通回合交错污染会话
+- agent 配置 PATCH 不再丢掉 `workspace_dir`；cron / 系统任务按时区触发
+- iOS PWA 状态栏与 safe-area；无网络启动错误提示；旧版 Chromium 启动兼容
+
+### 变更
+
+- 升级 harness-agent 至 1.0.14；Dashboard 空状态与聊天输入交互微调
 
 ## [1.0.1] - 2026-09-18
 

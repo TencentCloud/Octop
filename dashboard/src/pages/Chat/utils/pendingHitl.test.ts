@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../hooks/sseHelpers";
-import { findPendingAsk, hasPendingHitl } from "./pendingHitl";
+import {
+  findPendingApproval,
+  findPendingAsk,
+  hasPendingHitl,
+} from "./pendingHitl";
 
 function msg(
   partial: Partial<ChatMessage> & Pick<ChatMessage, "id" | "role">,
@@ -80,6 +84,42 @@ describe("pendingHitl", () => {
     ]);
     expect(ask?.messageId).toBe("ask");
     expect(ask?.questions[0]?.question).toBe("Which DB?");
+  });
+
+  it("finds the latest pending tool approval and skips questions", () => {
+    const pending = findPendingApproval([
+      msg({
+        id: "old",
+        role: "assistant",
+        hitlData: {
+          action_requests: [{ name: "write_file", args: {} }],
+          status: "approved",
+        },
+      }),
+      msg({
+        id: "ask",
+        role: "assistant",
+        hitlData: {
+          action_requests: [
+            {
+              name: "ask_user_question",
+              args: { questions: [{ question: "Which DB?" }] },
+            },
+          ],
+          status: "pending",
+        },
+      }),
+      msg({
+        id: "tool",
+        role: "assistant",
+        hitlData: {
+          action_requests: [{ name: "execute", args: { command: "ls" } }],
+          status: "pending",
+        },
+      }),
+    ]);
+    expect(pending?.messageId).toBe("tool");
+    expect(pending?.actions[0]?.name).toBe("execute");
   });
 
   it("ignores ask pauses without parseable questions", () => {
