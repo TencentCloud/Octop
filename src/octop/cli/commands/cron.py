@@ -56,6 +56,13 @@ def list_jobs(agent_id: str | None, as_user: str | None) -> None:
 @click.option("--prompt", required=True)
 @click.option("--fresh-thread", is_flag=True, default=False)
 @click.option("--task-type", default="agent")
+@click.option(
+    "--token-budget-24h",
+    "token_budget_24h",
+    type=int,
+    default=None,
+    help="Optional 24h token budget; the job auto-disables when exceeded.",
+)
 def create_job(
     agent_id: str | None,
     as_user: str | None,
@@ -63,6 +70,7 @@ def create_job(
     prompt: str,
     fresh_thread: bool,
     task_type: str,
+    token_budget_24h: int | None,
 ) -> None:
     """Create a cron job."""
     from octop.cli.support.offline_ops import create_cron_offline, resolve_cron_user_id
@@ -77,6 +85,7 @@ def create_job(
             prompt=prompt,
             fresh_thread=fresh_thread,
             task_type=task_type,
+            token_budget_24h=token_budget_24h,
         )
     except OctopError as exc:
         fail_octop(exc)

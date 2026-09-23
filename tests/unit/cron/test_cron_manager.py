@@ -722,3 +722,73 @@ async def test_schedule_replaces_existing_job(tmp_path: Path) -> None:
 
     mgr._scheduler.remove_job.assert_called_with(cid)
     mgr._scheduler.add_job.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# overlap skip visibility (#1014)
+# ---------------------------------------------------------------------------
+
+
+def test_schedule_submits_every_trigger_for_guard(tmp_path: Path) -> None:
+    """_schedule raises max_instances so CronJob.run sees (and records) overlaps."""
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    cid = _cron_id()
+    services.repos.cron_repo.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger="interval:60",
+        prompt="hello",
+        session_key=_cron_session_key(aid, cid),
+    )
+    row = services.repos.cron_repo.get(cid)
+    assert row is not None
+
+    mgr._schedule(row)
+
+    kwargs = mgr._scheduler.add_job.call_args.kwargs
+    assert kwargs["max_instances"] >= 1_000_000
+
+
+@pytest.mark.asyncio
+async def test_overlap_guard_spans_job_instances(tmp_path: Path) -> None:
+    """A run-now / scheduled overlap shares one slot per cron id."""
+    import asyncio
+
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    cid = _cron_id()
+    services.repos.cron_repo.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger="interval:60",
+        prompt="hello",
+        session_key=_cron_session_key(aid, cid),
+    )
+    row = services.repos.cron_repo.get(cid)
+    assert row is not None
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_deliver(command: object) -> None:
+        started.set()
+        await release.wait()
+
+    mgr._delivery_service = MagicMock()
+    mgr._delivery_service.deliver = AsyncMock(side_effect=slow_deliver)
+
+    first = asyncio.create_task(mgr._make_job(row).run())
+    await started.wait()
+    await mgr._make_job(row).run()  # fresh instance, same cron id -> overlap
+    assert services.repos.cron_repo.get(cid).last_status == "skipped_overlap"
+    audits = services.repos.audit_repo.query(action="cron.run_skipped_overlap", limit=10)
+    assert [a.target for a in audits] == [cid]
+
+    release.set()
+    await first
+    assert services.repos.cron_repo.get(cid).last_status == "ok"

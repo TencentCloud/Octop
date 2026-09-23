@@ -64,10 +64,16 @@ class CronDeliveryService:
         """Retarget projection and locale lookups after a control-plane swap."""
         self._repos = repos
 
-    async def deliver(self, command: CronDeliveryCommand) -> None:
-        """Run one delivery under the target channel session lock."""
+    async def deliver(self, command: CronDeliveryCommand) -> int:
+        """Run one delivery under the target channel session lock.
+
+        Returns the run's total token count (0 for text deliveries) so callers
+        can apply per-cron token budgets (#1014).
+        """
+        run_tokens = 0
 
         async def _locked() -> None:
+            nonlocal run_tokens
             if command.fresh_thread:
                 await self._gateway.thread_registry.reset_by_session_key(command.session_key)
             session = self._gateway.require_session(command.agent_id, command.session_key)
@@ -78,13 +84,14 @@ class CronDeliveryService:
             if command.task_type == "text":
                 await self._deliver_text(command, session)
             else:
-                await self._deliver_agent(command, session)
+                run_tokens = await self._deliver_agent(command, session)
 
         await self._gateway.run_in_session(
             command.agent_id,
             command.session_key,
             _locked,
         )
+        return run_tokens
 
     async def _deliver_text(
         self,
@@ -133,7 +140,7 @@ class CronDeliveryService:
         self,
         command: CronDeliveryCommand,
         session: SessionRow,
-    ) -> None:
+    ) -> int:
         request = await self._build_agent_request(command, session)
         tracker = TurnHistoryTracker.from_request(request)
         usage = UsageTracker()
@@ -168,6 +175,8 @@ class CronDeliveryService:
             title_source=command.prompt,
         )
         await self._notify_best_effort(session, command.agent_id, outbound)
+        usage_dict = usage.usage or {}
+        return int(usage_dict.get("total_tokens") or 0)
 
     async def _build_agent_request(
         self,

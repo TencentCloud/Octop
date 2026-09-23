@@ -8,6 +8,7 @@
 
 ### 新增
 
+- 定时任务支持可选的 24 小时 token 预算（`token_budget_24h`，API / CLI `--token-budget-24h`）：按任务累计运行 token，窗口内超出预算即自动停用并记录 `budget_exceeded` 状态与 audit，防止高频 agent 型任务拖垮共享 provider（#1014 第二期；窗口为固定 24h 锚点制，默认关闭）
 - 生成模型设置新增统一厂商管理与图片/视频独立路由，支持火山方舟、阿里云百炼和 MiniMax 多实例配置。
 - 登录验证码新增极验行为验 v4（#870）：设置页配置 captcha_id / captcha_key，登录弹窗完成验证，服务端按官方协议 HMAC-SHA256 签名后到 gcaptcha4 二次校验（form-urlencoded，仅 result=success 放行）
 - 对话支持默认折叠思考与工具过程（浏览器本地偏好）(#718)
@@ -15,6 +16,7 @@
 
 ### 修复
 
+- 定时任务重叠触发不再静默丢失：APScheduler 原以 max_instances=1 直接丢弃「上一次运行还没结束」的下一次触发（用户只看到长运行、看不到被跳过的运行），现由 CronJob 按 cron_id 串行并把跳过记录为 `skipped_overlap`（last_status + audit + 指标 + 日志），手动 `run-now` 与调度运行共用同一串行槽（#1014 第一期）
 - 个性化 → MBTI：从未配置过人格的 Agent 进入页面时，顶部统计行不再出现空的引号（`已选中「」`），改为「当前有（N）个人格，尚未选择人格」；已配置但人格目录里查不到的代码退回显示代码本身，不再渲染成空字符串（#973）
 - 通过 API 更新 agent 配置时不再丢掉 `workspace_dir`：此前只提交部分字段的 PATCH 会让工作区回退到默认布局，scoped / 容器 agent 因而看不到原有的 skills、会话与产出文件
 - 聊天输入框对话模式与模型按钮改为仅显示图标（选中项放到 tooltip），模型选择弹框补上提供商 logo

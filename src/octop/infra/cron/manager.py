@@ -26,6 +26,10 @@ from octop.infra.db.repos._base import UNSET
 
 logger = logging.getLogger(__name__)
 
+# Large enough that APScheduler always submits a trigger; CronJob.run decides
+# whether to execute or record an overlap skip (#1014).
+_MAX_JOB_INSTANCES = 1_000_000
+
 
 @dataclass
 class CronCreateSpec:
@@ -43,6 +47,7 @@ class CronCreateSpec:
     task_type: str = "agent"
     mcp_servers: list[str] = field(default_factory=list)
     enabled: bool = True
+    token_budget_24h: int | None = None
     meta: dict[str, Any] = field(default_factory=dict)
     username: str | None = None
 
@@ -129,6 +134,7 @@ class CronManager:
                 task_type=normalize_cron_task_type(spec.task_type),
                 mcp_servers=list(spec.mcp_servers or []),
                 enabled=spec.enabled,
+                token_budget_24h=spec.token_budget_24h,
             )
             row = self._repos.cron_repo.get(spec.cron_id)
             assert row is not None
@@ -175,6 +181,7 @@ class CronManager:
         task_type: str | None = None,
         model: str | None | object = UNSET,
         mcp_servers: list[str] | None | object = UNSET,
+        token_budget_24h: int | None | object = UNSET,
     ) -> CronJobRow:
         if trigger is not None:
             build_trigger(trigger)
@@ -199,6 +206,10 @@ class CronManager:
             if mcp_servers is not UNSET:
                 repo_kwargs["mcp_servers"] = (
                     list(mcp_servers) if isinstance(mcp_servers, list) else []
+                )
+            if token_budget_24h is not UNSET:
+                repo_kwargs["token_budget_24h"] = (
+                    int(token_budget_24h) if isinstance(token_budget_24h, int) else None
                 )
             self._repos.cron_repo.update(cron_id, **repo_kwargs)
             row = self._repos.cron_repo.get(cron_id)
@@ -235,7 +246,12 @@ class CronManager:
             delivery_service=self._delivery_service,
             cron_repo=self._repos.cron_repo,
             audit_repo=self._repos.audit_repo,
+            on_budget_exceeded=self._on_cron_budget_exceeded,
         )
+
+    def _on_cron_budget_exceeded(self, cron_id: str) -> None:
+        """Drop the schedule of a job the repo just disabled for over-budget."""
+        self._unschedule(cron_id)
 
     def _schedule(self, row: Any) -> None:
         if not row.enabled:
@@ -258,6 +274,10 @@ class CronManager:
             id=row.cron_id,
             replace_existing=True,
             misfire_grace_time=60,
+            # Overlap serialization lives in CronJob.run (records a visible
+            # skipped_overlap); the default max_instances=1 would drop the
+            # overlapping trigger silently before run() ever sees it (#1014).
+            max_instances=_MAX_JOB_INSTANCES,
         )
 
     def _unschedule(self, cron_id: str) -> None:

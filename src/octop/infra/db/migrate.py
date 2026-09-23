@@ -1422,6 +1422,14 @@ def _ensure_thread_conversation_mode_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "hitl_policy", "TEXT")
 
 
+def _ensure_cron_token_budget_schema(db: DatabasePool) -> None:
+    if not _table_exists(db, "cron_jobs"):
+        return
+    _ensure_column(db, "cron_jobs", "token_budget_24h", "INTEGER")
+    _ensure_column(db, "cron_jobs", "budget_tokens_used", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, "cron_jobs", "budget_window_started_at", "INTEGER")
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -1700,6 +1708,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         return
     if version == 17:
         _ensure_thread_conversation_mode_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
+    if version == 18:
+        _ensure_cron_token_budget_schema(db)
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return

@@ -12,6 +12,8 @@ class Metrics:
     stream_errors_total: int = 0
     cron_runs_total: int = 0
     cron_errors_total: int = 0
+    cron_skipped_overlap_total: int = 0
+    cron_budget_exceeded_total: int = 0
     agent_active: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
@@ -30,6 +32,8 @@ class Metrics:
                 "stream_errors_total": self.stream_errors_total,
                 "cron_runs_total": self.cron_runs_total,
                 "cron_errors_total": self.cron_errors_total,
+                "cron_skipped_overlap_total": self.cron_skipped_overlap_total,
+                "cron_budget_exceeded_total": self.cron_budget_exceeded_total,
                 "agent_active": self.agent_active,
             }
 
