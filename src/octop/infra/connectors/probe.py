@@ -404,6 +404,11 @@ async def probe_connector(
             return {"ok": False, "error": "请填写 API Key"}
         return await probe_youdao_note(api_key)
 
+    if entry.kind == "qcc":
+        from octop.infra.connectors.qcc import probe
+
+        return await probe(str(cred_payload.get("access_token") or ""))
+
     spec = build_http_mcp_spec(
         entry=entry,
         instance_id=instance_id,

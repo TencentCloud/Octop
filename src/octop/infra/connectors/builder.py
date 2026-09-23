@@ -82,6 +82,8 @@ def build_http_mcp_spec(
     creds: dict[str, Any],
     config: OctopConfig,
 ) -> dict[str, Any]:
+    if entry.kind == "qcc":
+        return _build_gateway_spec(entry, instance_id, creds, config)
     if entry.mcp_mode == "remote":
         return _build_remote_spec(entry, creds)
     return _build_gateway_spec(entry, instance_id, creds, config)

@@ -24,19 +24,17 @@ async def test_qcc_credentials_build_and_probe(monkeypatch: pytest.MonkeyPatch) 
     entry = get_mcp_oauth_remote("qcc")
     assert entry is not None
     creds = validate_create_credentials("qcc", {"access_token": "test-qcc-token"})
+    creds["internal_token"] = "local-gateway-token"
     spec = build_http_mcp_spec(
         entry=entry, instance_id="qcc-test", creds=creds, config=OctopConfig()
     )
-    assert spec["url"] == RESOURCE
-    assert spec["headers"] == {
-        "Accept": "application/json, text/event-stream",
-        "Authorization": "Bearer test-qcc-token",
-    }
-    probe = AsyncMock(return_value={"ok": True, "tools": [{"name": "get_change_records"}]})
-    monkeypatch.setattr("octop.infra.connectors.probe.probe_streamable_http_mcp", probe)
+    assert "/api/internal/mcp/qcc/qcc-test?token=local-gateway-token" in spec["url"]
+    assert "test-qcc-token" not in str(spec)
+    probe = AsyncMock(return_value={"ok": True, "tools": []})
+    monkeypatch.setattr("octop.infra.connectors.qcc.probe", probe)
     result = await probe_connector(entry, creds, instance_id="qcc-test", config=OctopConfig())
     assert result["ok"] is True
-    probe.assert_awaited_once_with(RESOURCE, spec["headers"], kind="qcc")
+    probe.assert_awaited_once_with("test-qcc-token")
 
 
 @pytest.mark.asyncio

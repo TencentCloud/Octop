@@ -363,7 +363,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
     ConnectorCatalogEntry(
         kind="qcc",
         name="企查查",
-        description="企查查官方企业信息 MCP：查询企业工商、股东、实际控制人、工商变更与年报等信息",
+        description="一次授权接入企查查五类 MCP：企业数据、风险数据、知识产权、经营信息与董监高信息",
         auth_kind="oauth2",
         doc_url="https://agent.qcc.com/",
         icon="qcc",

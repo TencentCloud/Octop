@@ -671,3 +671,63 @@ async def test_custom_mcp_oauth_start_unified(env):
     call_kwargs = mocked_start.await_args.kwargs
     assert call_kwargs["target"] == {"type": "custom_mcp", "server_name": "oauth-srv"}
     assert call_kwargs["mcp_url"] == "https://mcp.example.com/mcp"
+
+
+async def test_qcc_gateway_auth_five_resources_and_disconnect(env, monkeypatch):
+    import time
+
+    from octop.api.routers.internal_mcp import _service
+    from octop.infra.connectors import qcc
+
+    c, srv, auth, _ = env
+    created = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "qcc",
+            "display_name": "QCC",
+            "credentials": {
+                "access_token": "synthetic",
+                "refresh_token": "synthetic-refresh",
+                "oauth_client_id": "client",
+                "expires_at": int(time.time()) + 3600,
+            },
+        },
+    )
+    assert created.status_code == 201
+    instance_id = created.json()["instance_id"]
+    svc = _service(srv)
+    token = svc.decrypt(instance_id)["internal_token"]
+    path = f"/api/internal/mcp/qcc/{instance_id}"
+    request = AsyncMock(
+        return_value={"tools": [{"name": "lookup", "inputSchema": {"type": "object"}}]}
+    )
+    monkeypatch.setattr(qcc, "request_resource", request)
+    bad = await c.post(path, params={"token": "wrong"}, json={"id": 1, "method": "tools/list"})
+    assert bad.status_code == 401
+    request.assert_not_awaited()
+    listed = await c.post(path, params={"token": token}, json={"id": 1, "method": "tools/list"})
+    assert listed.status_code == 200
+    assert {t["name"] for t in listed.json()["result"]["tools"]} == {
+        f"{r}__lookup" for r in qcc.RESOURCES
+    }
+    other = await create_user(c, auth, username="qcc_reader")
+    denied = await c.delete(f"/api/connector-instances/{instance_id}", headers=other)
+    assert denied.status_code == 403
+    revoke = AsyncMock()
+    monkeypatch.setattr(qcc, "revoke", revoke)
+    deleted = await c.delete(f"/api/connector-instances/{instance_id}", headers=auth)
+    assert deleted.status_code == 204
+    revoke.assert_awaited_once()
+    gone = await c.post(path, params={"token": token}, json={"id": 2, "method": "tools/list"})
+    assert gone.status_code == 404
+
+
+async def test_qcc_disconnect_api_docs(tmp_octop_home):
+    write_octop_config(tmp_octop_home, enable_api_docs=True)
+    async with octop_client(tmp_octop_home) as (c, _):
+        assert (await c.get("/api/docs")).status_code == 200
+        schema = (await c.get("/api/openapi.json")).json()
+        operation = schema["paths"]["/api/connector-instances/{instance_id}"]["delete"]
+        assert operation["summary"] == "Delete connector"
+        assert "five resources" in operation["description"]
