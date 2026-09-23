@@ -126,6 +126,7 @@
   padding: 0 15px;
   border: 1px solid transparent;
   border-radius: var(--fn-radius-md);
+  gap: 4px;
   font: inherit;
   font-size: 13px;
   font-weight: 500;
@@ -145,6 +146,18 @@
   &:focus-visible {
     outline: 2px solid var(--fn-color-brand);
     outline-offset: 2px;
+  }
+}
+
+.secondaryAction {
+  color: var(--fn-text-primary);
+  background: var(--fn-bg-primary);
+  border-color: var(--fn-border-primary);
+
+  &:hover:not(:disabled) {
+    background: var(--fn-bg-secondary, var(--fn-bg-tertiary));
+    border-color: var(--fn-color-brand);
+    color: var(--fn-color-brand);
   }
 }
 

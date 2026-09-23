@@ -211,6 +211,9 @@ async def resume_hitl(
         if reason is not None:
             raise HTTPException(status_code=400, detail=reason)
 
+    if body.hitl_policy is not None:
+        hitl_coordinator.session_policies.set(body.thread_id, body.hitl_policy.model_dump())
+
     async def gen() -> AsyncIterator[str]:
         async for frame in iter_dashboard_hitl_resume_sse(
             processor=processor,
@@ -265,9 +268,9 @@ async def polish_prompt(
         )
     except TimeoutError:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request timed out") from None
-    except Exception as exc:
+    except Exception:
         logger.exception("polish failed agent=%s model=%s", agent_id, model_ref)
-        raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request failed") from None
 
     if not polished:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "model returned empty polish result")

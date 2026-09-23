@@ -46,7 +46,7 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
 
     protocol = KIND_TO_PROTOCOL.get(row.kind, row.kind)
     base_url = row.base_url or "https://api.openai.com/v1"
-    headers = ensure_opencode_session_header(base_url, provider_headers(row))
+    headers = ensure_opencode_session_header(row.name, provider_headers(row), base_url=base_url)
     models = row.get_models() if hasattr(row, "get_models") else []
     mid = model_id or (models[0]["id"] if models else "gpt-4o-mini")
     entry = next((m for m in models if m.get("id") == mid), None)
@@ -165,7 +165,11 @@ async def _probe_embedding_endpoint(
     started = time.perf_counter()
     url = _embeddings_url(getattr(row, "base_url", None))
     headers: dict[str, str] = {"Authorization": f"Bearer {getattr(row, 'api_key', None) or ''}"}
-    extra = ensure_opencode_session_header(getattr(row, "base_url", None), provider_headers(row))
+    extra = ensure_opencode_session_header(
+        getattr(row, "name", None),
+        provider_headers(row),
+        base_url=getattr(row, "base_url", None),
+    )
     headers.update(extra)
     try:
         async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
@@ -267,11 +271,12 @@ async def fetch_openai_compatible_models(
     api_key: str,
     extra_headers: dict[str, str] | None = None,
     locale: str = "en",
+    provider_name: str | None = None,
 ) -> dict[str, Any]:
     """List models via OpenAI-compatible ``GET {base}/models``."""
     url = _models_list_url(base_url)
     headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"}
-    extra_headers = ensure_opencode_session_header(base_url, extra_headers)
+    extra_headers = ensure_opencode_session_header(provider_name, extra_headers, base_url=base_url)
     if extra_headers:
         headers.update(extra_headers)
     try:

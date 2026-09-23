@@ -140,6 +140,14 @@
   gap: 4px;
   min-width: 0;
   max-width: 100%;
+}
+
+.dockTabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
@@ -207,6 +215,28 @@
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
+
+  &:hover {
+    color: var(--fn-text-primary);
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
+  }
+}
+
+.dockTabAdd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
 
   &:hover {
     color: var(--fn-text-primary);

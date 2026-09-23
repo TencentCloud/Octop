@@ -163,6 +163,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
         // signature and no start/stop churn happens behind the save.
         enabled: true,
         ...DEFAULT_CHANNEL_DISPLAY_CONFIG,
+        ...(kind === "discord" ? { allow_all_channels: true } : {}),
         ...(kind === "qq"
           ? { group_context: { ...DEFAULT_QQ_GROUP_CONTEXT_CONFIG } }
           : {}),
@@ -202,7 +203,13 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
           ) {
             continue;
           }
-          if (row.kind === "qq" && k === "group_context") {
+          if (
+            row.kind === "discord" &&
+            (k === "allowed_channel_ids" || k === "allowed_user_ids") &&
+            Array.isArray(v)
+          ) {
+            formCfg[k] = v.join("\n");
+          } else if (row.kind === "qq" && k === "group_context") {
             formCfg[k] = normalizeQqGroupContextConfig(v);
           } else if (typeof v === "string") formCfg[k] = v;
           else if (typeof v === "number" || typeof v === "boolean")
@@ -232,6 +239,9 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
               ? cfg.show_tool_hints
               : DEFAULT_CHANNEL_DISPLAY_CONFIG.show_tool_hints,
           ...formCfg,
+          ...(row.kind === "discord"
+            ? { allow_all_channels: cfg.allow_all_channels !== false }
+            : {}),
           __raw_config: JSON.stringify(cfg, null, 2),
         };
         setDrawerInitialValues(next);

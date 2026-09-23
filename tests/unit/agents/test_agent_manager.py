@@ -2116,3 +2116,50 @@ def test_refresh_peer_entry_clears_empty_cards(manager: AgentManager) -> None:
     entry.metadata = {"quick_prompts": [{"title": "old"}]}
     manager._refresh_peer_entry(entry)
     assert "quick_prompts" not in entry.metadata
+
+
+async def test_stream_and_resume_hitl_serialize_per_thread(
+    manager: AgentManager,
+) -> None:
+    """A turn and a HITL resume on one thread must not overlap inside harness.
+
+    Dashboard turns are serialized per thread by the channel debounce lock, but
+    ``POST /chat/hitl/resume`` drives the same checkpoint without it — so a
+    resume must still exclude an in-flight turn on the same thread.
+    """
+    peak = 0
+    inside = 0
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _stream(agent_id: str, request: dict[str, Any], **_kw: Any) -> AsyncIterator[Any]:
+        nonlocal peak, inside
+        inside += 1
+        peak = max(peak, inside)
+        entered.set()
+        await release.wait()
+        inside -= 1
+        yield {"type": "token", "content": "ok"}
+
+    async def _resume(
+        agent_id: str, thread_id: str, decisions: list[Any], **_kw: Any
+    ) -> AsyncIterator[Any]:
+        nonlocal peak, inside
+        inside += 1
+        peak = max(peak, inside)
+        await release.wait()
+        inside -= 1
+        yield {"type": "token", "content": "resumed"}
+
+    manager._harness_manager = SimpleNamespace(stream=_stream, resume_hitl=_resume)
+
+    turn = asyncio.create_task(_collect_async(manager.stream("01AGENT", {"thread_id": "thr-1"})))
+    await entered.wait()
+    resume = asyncio.create_task(
+        _collect_async(manager.resume_hitl("01AGENT", "thr-1", [{"type": "approve"}]))
+    )
+    await asyncio.sleep(0.05)
+    release.set()
+    await turn
+    await resume
+    assert peak == 1

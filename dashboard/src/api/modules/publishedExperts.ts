@@ -14,6 +14,13 @@ export interface PublishedExpert {
   created_at: string;
   updated_at: string;
   welcome_message?: { zh?: string; en?: string };
+  quick_prompts?: {
+    title?: { zh?: string; en?: string };
+    description?: { zh?: string; en?: string };
+    prompt?: { zh?: string; en?: string };
+    color?: string;
+    icon_name?: string | null;
+  }[];
 }
 
 export interface PublishExpertBody {
@@ -52,6 +59,13 @@ export interface InstallPublishedExpertBody {
     summary?: { zh?: string; en?: string };
   }[];
   copy_skills?: { agent_id: string; slug: string }[];
+  quick_prompts?: {
+    title: { zh?: string; en?: string };
+    description: { zh?: string; en?: string };
+    prompt: { zh?: string; en?: string };
+    color?: string;
+    icon_name?: string | null;
+  }[];
 }
 
 export interface InstalledPublishedExpert {

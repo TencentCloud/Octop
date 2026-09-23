@@ -141,7 +141,7 @@
 .messageListInner {
   overflow-anchor: none;
   --chat-column-max: 960px;
-  --chat-msg-avatar-slot: 44px;
+  --chat-msg-avatar-slot: 48px;
   /* Full list width; each row centers a 960px text track + avatar gutters
      so history and live turns share the same column as the composer. */
   box-sizing: border-box;
@@ -149,6 +149,12 @@
   min-width: 280px;
   margin: 0 auto;
   padding-inline: var(--chat-column-pad-x, 24px);
+
+  @media (max-width: 767px) {
+    --chat-column-pad-x: var(--chat-column-pad-x-narrow, 12px);
+    --chat-msg-avatar-slot: 36px;
+    --chat-msg-gutter: var(--chat-column-pad-x-narrow, 12px);
+  }
 }
 
 .messageListLoading {
@@ -184,8 +190,9 @@
 .chatMsgColumns() {
   display: grid;
   grid-template-columns:
-    var(--chat-msg-avatar-slot, 44px) minmax(0, var(--chat-column-max, 960px))
-    var(--chat-msg-avatar-slot, 44px);
+    var(--chat-msg-avatar-slot, 48px) minmax(0, var(--chat-column-max, 960px))
+    var(--chat-msg-avatar-slot, 48px);
+  column-gap: var(--chat-msg-gutter, 0px);
   justify-content: center;
   width: 100%;
 }
@@ -366,7 +373,6 @@
 .avatarCol {
   display: flex;
   justify-content: center;
-  padding-top: 2px;
   min-width: 0;
 }
 
@@ -782,30 +788,45 @@
 /* ---------- Assistant turn process summary (tools + thinking) ---------- */
 .processSummaryRow {
   .chatMsgColumns();
+  /* Offset the 36px avatar so it centers on the original fold header
+     (8+8 padding + 13px/1.4 toggle). Do not stretch the bar to 36px. */
+  --chat-process-header-height: calc(16px + 13px * 1.4);
+  --chat-process-avatar-size: 36px;
   align-items: start;
   max-width: 100%;
 
   .avatarCol {
     grid-column: 1;
     justify-self: center;
+    align-items: center;
+    margin-top: calc(
+      (var(--chat-process-header-height) - var(--chat-process-avatar-size)) / 2
+    );
+
+    .msgSender,
+    .msgSenderBtn {
+      padding-top: 0;
+    }
   }
 
   .processSummary {
     grid-column: 2;
+    justify-self: center;
+    align-self: center;
   }
 }
 
 /* Mobile: drop the unused opposite avatar track so the text column gains ~44px.
    Two-column grids (not 0-width third tracks) so row `gap` does not still reserve space.
    Placed after all `.chatMsgColumns()` call sites so these overrides win the cascade.
-   Keep column-gap: 0 so thinking / tools / answer share the same content left edge
-   (themeOverrides used to set .messageBubble { gap: 10px } only on reply rows). */
+   Avatar↔bubble gutter matches the left inset (--chat-msg-gutter). Apply it on
+   every assistant row so thinking / tools / answer share the same left edge. */
 @media (max-width: 767px) {
   .assistantBubble,
   .processSummaryRow,
   .turnInset {
     grid-template-columns: var(--chat-msg-avatar-slot, 44px) minmax(0, 1fr);
-    column-gap: 0;
+    column-gap: var(--chat-msg-gutter);
 
     .avatarCol {
       grid-column: 1;
@@ -821,9 +842,10 @@
   }
 
   .assistantBubble {
-    /* Beat themeOverrides `.messageBubble { gap: 10px }` — that gap only on the
-       answer row shifted it right of the thinking box by 10px. */
-    gap: 0;
+    /* Beat themeOverrides `.messageBubble { gap }` so the answer row does not
+       pick up a different column-gap than processSummaryRow. */
+    column-gap: var(--chat-msg-gutter);
+    row-gap: 0;
   }
 
   .turnInset > * {
@@ -860,6 +882,31 @@
   border-radius: 10px;
   border: none;
   background: rgba(15, 23, 42, 0.025);
+}
+
+/* Mobile: same gutter on every row, assistant copy uses the empty right
+   avatar slot so replies are not a narrow center column. */
+@media (max-width: 767px) {
+  .messageList {
+    scrollbar-gutter: auto;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      width: 0;
+      display: none;
+    }
+  }
+
+  .assistantBubble .bubbleContent,
+  .processSummaryRow .processSummary,
+  .turnInset > * {
+    grid-column: 2 / -1;
+  }
+
+  .processSummary {
+    /* Match .assistantText inline padding so the fold lines up with the card. */
+    padding-inline: 14px;
+  }
 }
 
 .pinnedToolResults {

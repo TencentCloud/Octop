@@ -10,6 +10,7 @@ from typing import Any, Literal
 from octop.infra.agents.avatar import materialize_remote_icon_url
 from octop.infra.agents.experts.catalog import (
     WORKSPACE_MANIFEST_PATH,
+    apply_workspace_quick_prompts,
     build_create_spec_from_expert,
 )
 from octop.infra.agents.experts.manifest_generator import (
@@ -63,6 +64,7 @@ class SkillHubMarketAgentCreateOptions:
     workspace_patch: Any = None
     composer_copies: tuple[tuple[str, Any], ...] = ()
     composer_report: Any = None
+    quick_prompts: list[dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True)
@@ -269,8 +271,10 @@ async def create_agent_from_skillhub_skillset(
             kind=SkillHubMarketErrorKind.PACKAGE_INVALID,
         )
 
+    customized_prompts = options.quick_prompts is not None
     can_enrich = (
-        _resolve_generator_llm(
+        not customized_prompts
+        and _resolve_generator_llm(
             server=server,
             requested_model=options.default_model,
             slug=item.slug,
@@ -336,16 +340,24 @@ async def create_agent_from_skillhub_skillset(
         )
 
         patch = options.workspace_patch
-        await apply_composer_workspace_patch(
-            workspace,
-            patch if patch is not None else ComposerWorkspacePatch(),
-            copies=options.composer_copies,
-            report=options.composer_report,
-        )
+        need_composer = (
+            patch is not None and not getattr(patch, "is_empty", lambda: True)()
+        ) or bool(options.composer_copies)
+        if need_composer:
+            await apply_composer_workspace_patch(
+                workspace,
+                patch if patch is not None else ComposerWorkspacePatch(),
+                copies=options.composer_copies,
+                report=options.composer_report,
+            )
+        if options.quick_prompts is not None:
+            await apply_workspace_quick_prompts(workspace, options.quick_prompts)
 
     patch = options.workspace_patch
-    need_apply = (patch is not None and not getattr(patch, "is_empty", lambda: True)()) or bool(
-        options.composer_copies
+    need_apply = (
+        (patch is not None and not getattr(patch, "is_empty", lambda: True)())
+        or bool(options.composer_copies)
+        or options.quick_prompts is not None
     )
     row = await registry.create(
         spec,

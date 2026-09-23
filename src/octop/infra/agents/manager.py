@@ -49,6 +49,12 @@ from octop.infra.agents.runtime_limits import (
     resolve_context_max_tokens as config_context_max_tokens,
 )
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
+from octop.infra.agents.security.hitl_session import (
+    HitlSessionPolicyStore,
+    apply_session_bypass,
+    hitl_thread_scope,
+    thread_id_from_request,
+)
 from octop.infra.backend.docker_spec import (
     enrich_docker_backend_spec,
     inject_docker_global_environment,
@@ -351,6 +357,7 @@ class AgentManager:
         self._cron_manager: CronManager | None = None
         self._proactive_scheduler: ProactiveCareScheduler | None = None
         self._team_processor: Any | None = None
+        self._hitl_session_store: HitlSessionPolicyStore | None = None
         from octop.infra.agents.teams import TeamJobTracker, TeamService
 
         self._team_jobs = TeamJobTracker()
@@ -365,6 +372,11 @@ class AgentManager:
         # Serialize start/reload per agent so parallel provider reloads cannot
         # double-register the same harness id ("already exists in the registry").
         self._agent_lifecycle_locks: dict[str, asyncio.Lock] = {}
+        # Serialize harness execution per thread. Dashboard turns are queued by
+        # the channel debounce lock, but POST /chat/hitl/resume (and cron)
+        # drive the same checkpoint without it — two concurrent executions on
+        # one thread interleave LangGraph checkpoint writes.
+        self._thread_execution_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._active_invocations: dict[str, int] = {}
         self._invocation_waiters: dict[str, int] = {}
         self._history_backfills: dict[str, asyncio.Event] = {}
@@ -441,6 +453,10 @@ class AgentManager:
         self._team_processor = team_processor
         if self._harness_manager is not None:
             self._install_team_host_dispatch()
+
+    def set_hitl_session_store(self, store: HitlSessionPolicyStore | None) -> None:
+        """Attach the thread-scoped HITL bypass store (set before boot())."""
+        self._hitl_session_store = store
 
     @property
     def teams(self) -> Any:
@@ -874,6 +890,14 @@ class AgentManager:
             self._agent_lifecycle_locks[agent_id] = lock
         return lock
 
+    def _thread_execution_lock(self, agent_id: str, thread_id: str) -> asyncio.Lock:
+        key = (agent_id, thread_id)
+        lock = self._thread_execution_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._thread_execution_locks[key] = lock
+        return lock
+
     @staticmethod
     def _is_already_registered_error(exc: BaseException) -> bool:
         return "already exists in the registry" in str(exc)
@@ -1193,11 +1217,16 @@ class AgentManager:
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
 
-        async with self._track_invocation(agent_id):
+        thread_id = str(request.get("thread_id") or "")
+        async with (
+            self._thread_execution_lock(agent_id, thread_id),
+            self._track_invocation(agent_id),
+        ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
-            async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
-                yield chunk
+            with hitl_thread_scope(thread_id_from_request(req)):
+                async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
+                    yield chunk
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
@@ -1207,7 +1236,8 @@ class AgentManager:
         async with self._track_invocation(agent_id):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
-            result = await self._harness_manager.call(agent_id, cast(Any, req))
+            with hitl_thread_scope(thread_id_from_request(req)):
+                result = await self._harness_manager.call(agent_id, cast(Any, req))
             self._apply_pending_bootstrap_graph_refresh(agent_id)
         if not isinstance(result, dict):
             return {"result": result}
@@ -1222,10 +1252,16 @@ class AgentManager:
         """Resume a paused HITL interrupt for *thread_id*."""
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
-        async with self._track_invocation(agent_id):
+        async with (
+            self._thread_execution_lock(agent_id, thread_id),
+            self._track_invocation(agent_id),
+        ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
-            async for chunk in self._harness_manager.resume_hitl(agent_id, thread_id, decisions):
-                yield chunk
+            with hitl_thread_scope(thread_id):
+                async for chunk in self._harness_manager.resume_hitl(
+                    agent_id, thread_id, decisions
+                ):
+                    yield chunk
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     def cancel_stream(self, agent_id: str, thread_id: str) -> None:
@@ -3197,6 +3233,9 @@ class AgentManager:
             harness_cfg.tools_disabled = frozenset(disabled)
         applied = policy.apply_to_config(harness_cfg)
         applied = self._apply_team_host_config(applied, row)
+        interrupt_on = apply_session_bypass(applied.interrupt_on, self._hitl_session_store)
+        if interrupt_on is not applied.interrupt_on:
+            applied = replace(applied, interrupt_on=interrupt_on)
         return replace(
             applied,
             tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),
