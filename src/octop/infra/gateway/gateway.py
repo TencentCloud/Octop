@@ -440,10 +440,7 @@ class Gateway:
             self._resolve_push_subject(session),
             text,
         )
-        if session.channel_type in (
-            ThreadRegistry.CHANNEL_DASHBOARD,
-            ThreadRegistry.CHANNEL_CLI,
-        ):
+        if ThreadRegistry.is_virtual_channel(session.channel_type):
             self._bump_virtual_session(session, title_source or text)
 
     @staticmethod
@@ -461,10 +458,7 @@ class Gateway:
     def _resolve_push_subject(self, session: SessionRow) -> ChannelSubject:
         """Build ChannelSubject from session; IM routing enrichment is in harness-gateway."""
         subject = session.to_channel_subject()
-        if session.channel_type not in (
-            ThreadRegistry.CHANNEL_DASHBOARD,
-            ThreadRegistry.CHANNEL_CLI,
-        ):
+        if not ThreadRegistry.is_virtual_channel(session.channel_type):
             return subject
         metadata = dict(subject.metadata or {})
         metadata["thread_id"] = session.thread_id
