@@ -10,6 +10,8 @@
  * Contract under test:
  *   - create drawer opens with the enable switch ON
  *   - saving a new channel sends exactly one POST (no PATCH churn)
+ *   - editing a row whose config carries a legacy ``enabled`` keeps the
+ *     row's boolean on save
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -210,11 +212,14 @@ describe("<ChannelsPanel /> create-flow default", () => {
     const [, init] = api.mock.calls.find(
       ([, i]) => (i as RequestInit | undefined)?.method === "POST",
     ) as [string, RequestInit];
-    expect(JSON.parse(String(init.body))).toEqual({
+    const body = JSON.parse(String(init.body));
+    expect(body).toEqual({
       kind: "telegram",
       name: "telegram",
       config: expect.objectContaining({ bot_token: "123456:ABC-token" }),
     });
+    // Regression: the enable toggle must live at the top level, never inside config (#774)
+    expect(body.config).not.toHaveProperty("enabled");
   });
 
   it("still honors a deliberate opt-out: unchecking fires the alignment PATCH", async () => {
@@ -237,5 +242,58 @@ describe("<ChannelsPanel /> create-flow default", () => {
         JSON.stringify({ enabled: false }),
       );
     });
+  });
+});
+
+describe("<ChannelsPanel /> edit-flow read-back", () => {
+  // A pre-fix save leaked the toggle into the config blob as the *string*
+  // "false". Reopening that row used to read it back over the row's real
+  // boolean, so the next save disabled the channel (#774).
+  const legacyRow = {
+    id: "c1",
+    agent_id: "ag1",
+    kind: "telegram",
+    name: "telegram",
+    enabled: true,
+  };
+  const legacyDetail = {
+    ...legacyRow,
+    config: { bot_token: "123456:ABC-token", enabled: "false" },
+  };
+
+  beforeEach(() => {
+    api.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") return legacyRow;
+      if (String(url).endsWith("/channels/c1")) return legacyDetail;
+      return [legacyRow];
+    });
+  });
+
+  it("saves an edited channel with the row's boolean, not config's legacy string", async () => {
+    render(<ChannelsPanel agentId="ag1" />);
+
+    // A configured collapsed kind stays visible, so the row can be opened
+    // without expanding the catalogue first.
+    const card = (await screen.findAllByText("channels.label_telegram"))[0];
+    await userEvent.click(card);
+    const sw = await screen.findByLabelText("channels.enableChannel");
+    await waitFor(() => {
+      expect(sw.getAttribute("aria-checked")).toBe("true");
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+
+    await waitFor(() => {
+      const patch = api.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PATCH",
+      );
+      expect(patch).toBeDefined();
+    });
+    const [, init] = api.mock.calls.find(
+      ([, i]) => (i as RequestInit | undefined)?.method === "PATCH",
+    ) as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(body.enabled).toBe(true);
+    expect(body.config).not.toHaveProperty("enabled");
   });
 });
