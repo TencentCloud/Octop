@@ -173,6 +173,7 @@ def test_apply_team_host_config_forces_async_ask_agent(manager: AgentManager) ->
     assert "ask_agent" not in disabled
     assert "agent_list" not in disabled
     assert out.bootstrap_enabled is False
+    assert "Host dispatch" in (out.system_prompt or "") or "主持人调度" in (out.system_prompt or "")
 
 
 def test_apply_expert_config_forces_sync_ask_agent(manager: AgentManager) -> None:
@@ -390,7 +391,7 @@ async def test_install_async_dispatch_streams_non_team_inbox(manager: AgentManag
 
 
 @pytest.mark.asyncio
-async def test_install_team_host_enrich_uses_user_question(manager: AgentManager) -> None:
+async def test_install_team_host_enrich_uses_host_assignment(manager: AgentManager) -> None:
     from langchain_core.messages import HumanMessage, SystemMessage
 
     team = MagicMock()
@@ -402,15 +403,19 @@ async def test_install_team_host_enrich_uses_user_question(manager: AgentManager
     manager._harness_manager = SimpleNamespace(team=team)
     manager._team_processor = SimpleNamespace(
         take_team_peer_prompt=MagicMock(
-            return_value=("我最近总失眠", "以下是当前群聊记录\n\n用户: 我最近总失眠")
+            return_value=(
+                "请给出可执行的睡眠建议，聚焦作息而不是诊断",
+                "[团队派工，不是用户在直接问你]\n用户: 我最近总失眠",
+            )
         ),
     )
     manager._install_team_host_dispatch()
-    req = SimpleNamespace(thread_id="t~child", messages="请给出睡眠建议")
+    req = SimpleNamespace(thread_id="t~child", messages="我最近总失眠")
     out = await team._enrich_request("child", req)
     assert isinstance(out.messages[0], SystemMessage)
     assert isinstance(out.messages[1], HumanMessage)
-    assert out.messages[1].content == "我最近总失眠"
+    assert out.messages[1].content == "请给出可执行的睡眠建议，聚焦作息而不是诊断"
+    assert "团队派工" in out.messages[0].content
 
 
 @pytest.mark.asyncio
@@ -769,7 +774,9 @@ def test_build_harness_config_disables_bootstrap_for_team_host(manager: AgentMan
     )
     cfg = manager._build_harness_config(row)
     assert cfg.bootstrap_enabled is False
-    assert cfg.system_prompt == "Team coordinator prompt"
+    assert cfg.system_prompt is not None
+    assert cfg.system_prompt.startswith("Team coordinator prompt")
+    assert "主持人调度" in cfg.system_prompt or "Host dispatch" in cfg.system_prompt
     assert cfg.memory is None
     assert cfg.skills_dir is None
 

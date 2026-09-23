@@ -404,6 +404,7 @@
     "SKILL_PACKAGE_NOT_FOUND": "未找到技能包。",
     "SKILL_PACKAGE_NAME_TAKEN": "技能包 {name} 已存在。",
     "SKILL_PACKAGE_BACKEND_UNSUPPORTED": "技能包目前仅支持「本地完整环境（文件系统+指令执行）」或「本地文件系统（不能执行指令）」，且存储根目录须为 /（POSIX）或专家的工作区根目录（Windows 默认）。",
+    "ACP_BACKEND_UNSUPPORTED": "当前专家已启用沙箱环境，无法调用外部 Runner。通过 IDE / octop acp 接入不受影响。",
     "PUBLISHED_EXPERT_SLUG_TAKEN": "已存在发布专家 slug：{slug}。",
     "PUBLISHED_EXPERT_ALREADY_EXISTS": "该专家已发布为「{name}」，请改为刷新已发布模板。",
     "OIDC_BAD_REQUEST": "OIDC 请求无效：{detail}",
@@ -797,7 +798,10 @@
     "followup_done": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 已完成。对方正文已经出现在群聊时间线上。\n任务：{task}\n\n不要复述成员全文。不要再说「已安排 / 稍等片刻 / 交给谁来回答」，不要再次 ask_agent 同一任务。若还要继续，再派下一位；若可以收工，最多三句短总结。",
     "followup_failed": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 失败。\n任务：{task}\n错误：{error}\n\n简要告知用户失败，并决定改派别人或收工。不要再说「已安排 / 稍等」，不要编造替代答案。",
     "speaker_user": "用户",
-    "dispatch_with_history": "以下是当前群聊记录，请结合上下文完成任务。\n\n{history}\n\n---\n本次任务：\n{task}"
+    "channel_line": "{name}: {text}",
+    "host_briefing": "[主持人调度，不是让你代答]\n用户消息先到你这里。先消化意图、范围、约束和交付物；缺关键信息就先问一句，不要空派。专业工作必须改写成给该成员的任务说明书后再 ask_agent：写清目标、范围、交付格式和必要上下文，禁止原样转发用户原话。不同成员给不同任务。寒暄或澄清自己短答。ask_agent 返回后不要重复「已安排 / 稍等」。若当前是成员完成或失败的系统唤醒，按唤醒说明收口或改派，不要重复同一任务。",
+    "member_briefing": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。",
+    "member_briefing_with_history": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。下面的群聊记录只作背景。\n\n{history}"
   },
   "conversation_mode": {
     "plan_ready": "计划已写入 `{path}`。回复「按计划执行」开始执行，或继续改计划。",
