@@ -18,6 +18,15 @@ class ThreadRegistry:
     CHAT_TYPE_DM = "dm"
     CHAT_TYPE_GROUP = "group"
 
+    @classmethod
+    def is_virtual_channel(cls, channel_type: str) -> bool:
+        """Dashboard and CLI are in-process; they are not IM outbound targets."""
+        return channel_type in {cls.CHANNEL_DASHBOARD, cls.CHANNEL_CLI}
+
+    @classmethod
+    def is_im_session(cls, session: SessionRow) -> bool:
+        return bool(session.channel_id) and not cls.is_virtual_channel(session.channel_type)
+
     @staticmethod
     def make_key(
         *,
@@ -234,6 +243,17 @@ class ThreadRegistry:
 
     def get_session(self, session_key: str) -> SessionRow | None:
         return self._sessions.get(session_key)
+
+    def sessions_for_thread(self, thread_id: str) -> list[SessionRow]:
+        """Return every session still bound to *thread_id*."""
+        tid = str(thread_id or "").strip()
+        if not tid:
+            return []
+        return self._sessions.list_by_thread(tid)
+
+    def im_sessions_for_thread(self, thread_id: str) -> list[SessionRow]:
+        """IM sessions bound to *thread_id* (excludes dashboard / CLI)."""
+        return [row for row in self.sessions_for_thread(thread_id) if self.is_im_session(row)]
 
     async def rebind(self, *, session_key: str, thread_id: str, agent_id: str) -> None:
         row = self._threads.get(thread_id)
