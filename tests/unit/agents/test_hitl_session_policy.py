@@ -123,6 +123,7 @@ async def test_resume_hitl_binds_thread_scope() -> None:
     manager._history_backfills = {}
     manager._invocation_waiters = {}
     manager._active_invocations = {}
+    manager._thread_execution_locks = {}
     manager._bootstrap_graph_refresh_pending = set()
 
     chunks = [item async for item in manager.resume_hitl("agt", "thr_live", [{"type": "approve"}])]

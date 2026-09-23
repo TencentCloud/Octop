@@ -372,6 +372,11 @@ class AgentManager:
         # Serialize start/reload per agent so parallel provider reloads cannot
         # double-register the same harness id ("already exists in the registry").
         self._agent_lifecycle_locks: dict[str, asyncio.Lock] = {}
+        # Serialize harness execution per thread. Dashboard turns are queued by
+        # the channel debounce lock, but POST /chat/hitl/resume (and cron)
+        # drive the same checkpoint without it — two concurrent executions on
+        # one thread interleave LangGraph checkpoint writes.
+        self._thread_execution_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._active_invocations: dict[str, int] = {}
         self._invocation_waiters: dict[str, int] = {}
         self._history_backfills: dict[str, asyncio.Event] = {}
@@ -885,6 +890,14 @@ class AgentManager:
             self._agent_lifecycle_locks[agent_id] = lock
         return lock
 
+    def _thread_execution_lock(self, agent_id: str, thread_id: str) -> asyncio.Lock:
+        key = (agent_id, thread_id)
+        lock = self._thread_execution_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._thread_execution_locks[key] = lock
+        return lock
+
     @staticmethod
     def _is_already_registered_error(exc: BaseException) -> bool:
         return "already exists in the registry" in str(exc)
@@ -1204,7 +1217,11 @@ class AgentManager:
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
 
-        async with self._track_invocation(agent_id):
+        thread_id = str(request.get("thread_id") or "")
+        async with (
+            self._thread_execution_lock(agent_id, thread_id),
+            self._track_invocation(agent_id),
+        ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
             with hitl_thread_scope(thread_id_from_request(req)):
@@ -1235,7 +1252,10 @@ class AgentManager:
         """Resume a paused HITL interrupt for *thread_id*."""
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
-        async with self._track_invocation(agent_id):
+        async with (
+            self._thread_execution_lock(agent_id, thread_id),
+            self._track_invocation(agent_id),
+        ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             with hitl_thread_scope(thread_id):
                 async for chunk in self._harness_manager.resume_hitl(

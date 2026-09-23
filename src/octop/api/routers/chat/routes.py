@@ -268,9 +268,9 @@ async def polish_prompt(
         )
     except TimeoutError:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request timed out") from None
-    except Exception as exc:
+    except Exception:
         logger.exception("polish failed agent=%s model=%s", agent_id, model_ref)
-        raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request failed") from None
 
     if not polished:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "model returned empty polish result")
