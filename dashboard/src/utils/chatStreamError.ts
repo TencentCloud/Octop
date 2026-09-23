@@ -157,8 +157,42 @@ export function classifyChatStreamError(
   return null;
 }
 
+/**
+ * True only when the message reads like a bare error envelope.
+ *
+ * `classifyChatStreamError` keyword-matches raw upstream error strings, but
+ * `finalizeStreamingMessages` feeds it arbitrary assistant answers: a long
+ * troubleshooting reply that merely quotes error keywords ("401",
+ * "insufficient_quota", "欠费", …) must not be flipped into an error bubble
+ * (its original text gets replaced by the localized guidance). Real error
+ * envelopes are short and unadorned; conversational answers that quote them
+ * are not — guard on shape first, then classify.
+ */
 export function isChatStreamError(message: string | null | undefined): boolean {
-  return classifyChatStreamError(message) !== null;
+  if (typeof message !== "string") return false;
+  const text = message.trim();
+  // Error envelopes (raw upstream error strings and localized
+  // `stream_errors.*` sentences) are short.
+  if (!text || text.length > 600) return false;
+  // Markdown structure means a composed answer, not an error string.
+  if (
+    text.includes("```") ||
+    text.includes("**") ||
+    text.includes("`") ||
+    text.includes("\n#") ||
+    text.includes("\n|")
+  ) {
+    return false;
+  }
+  // Free-form CJK prose counts as an error only when it starts like one of
+  // the localized error sentences ("模型服务…", "⚠ …", "agent error:" …).
+  if (
+    /[\u4e00-\u9fff]/.test(text) &&
+    !/^(模型|对话|智能体|连接|⚠|agent error:|error:)/i.test(text)
+  ) {
+    return false;
+  }
+  return classifyChatStreamError(text) !== null;
 }
 
 /** Localized guidance for known failures; otherwise the original text. */

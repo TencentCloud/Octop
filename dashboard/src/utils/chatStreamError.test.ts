@@ -82,3 +82,67 @@ describe("classifyChatStreamError", () => {
     );
   });
 });
+
+const troubleshootingAnswer = [
+  "# 故障分析报告",
+  "",
+  "**背景**：服务端 finish_reason=stop、error audit 0 条。",
+  "报错文案只是 keyword 分类：正文含 `401` / `invalid_api_key` 会显示 auth 文案，",
+  "含 `402` / `insufficient_quota` / `欠费` / `余额不足` / `账户余额` 会显示额度文案。",
+  "| 现象 | 真相 |",
+  "|---|---|",
+  "| 发 continue 就能续跑 | 下一条回答不含 keyword 就不误判 |",
+  "",
+  "**结论**：这是 content 扫描的 false positive。",
+].join("\n");
+
+// Regression tests for #1074: normal answers that merely mention error
+// keywords must not be flipped into error bubbles by the content sniffer.
+describe("isChatStreamError false-positive guard (#1074)", () => {
+  it("does not flip a long troubleshooting answer that quotes error keywords", () => {
+    expect(isChatStreamError(troubleshootingAnswer)).toBe(false);
+  });
+
+  it("does not flag markdown-formatted replies", () => {
+    expect(isChatStreamError("**表格** 里提到 `insufficient_quota` 和欠费")).toBe(
+      false,
+    );
+  });
+
+  it("does not flag free-form CJK prose that merely mentions a keyword", () => {
+    expect(isChatStreamError("欠费问题已经排查过了，不是这个原因")).toBe(false);
+    expect(
+      isChatStreamError("401 invalid_api_key 之类的问题都修好了，见下文分析"),
+    ).toBe(false);
+  });
+
+  it("does not flag over-long content", () => {
+    expect(isChatStreamError(`${"a".repeat(601)} 余额不足`)).toBe(false);
+  });
+
+  it("leaves quoted keywords in short echo replies alone", () => {
+    expect(
+      isChatStreamError('"账户余额欠费，insufficient_quota，error code: 402"'),
+    ).toBe(false);
+  });
+
+  it("leaves localized i18n sentences delivered as content alone", () => {
+    expect(
+      isChatStreamError(
+        "模型服务返回余额或额度不足。请为该 API Key 对应的账户充值或升级套餐后再试。",
+      ),
+    ).toBe(false);
+  });
+
+  it("still classifies raw upstream error strings", () => {
+    expect(
+      isChatStreamError(
+        "Error code: 402 - {'error': {'message': 'insufficient_quota'}}",
+      ),
+    ).toBe(true);
+    expect(isChatStreamError("error: connection error while posting")).toBe(
+      true,
+    );
+    expect(isChatStreamError("no streaming chunk received")).toBe(true);
+  });
+});

@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 修复
+
+- Dashboard：正常回答只要引用报错关键词就被整条误判成报错（`isChatStreamError` 对正文的 keyword false positive）
+
 ## [1.0.2b2] - 2026-09-23
 
 ### 新增
