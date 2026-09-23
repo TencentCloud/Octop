@@ -4,6 +4,8 @@ import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
 import {
   MoreVertical,
+  Archive,
+  ArchiveRestore,
   Pin,
   PinOff,
   Pencil,
@@ -24,6 +26,7 @@ interface ChatTitleBarProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
+  onArchive: (id: string, archived: boolean) => void;
   onDelete: (id: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
@@ -36,6 +39,7 @@ export default function ChatTitleBar({
   onRename,
   onPin,
   onFork,
+  onArchive,
   onDelete,
   forkDisabled,
   forkDisabledHint,
@@ -102,6 +106,18 @@ export default function ChatTitleBar({
         onClick: () => onFork(session.id),
       },
       {
+        key: "archive",
+        label: session.archived
+          ? t("chat.restoreConversation")
+          : t("chat.archiveConversation"),
+        icon: session.archived ? (
+          <ArchiveRestore size={14} />
+        ) : (
+          <Archive size={14} />
+        ),
+        onClick: () => onArchive(session.id, !session.archived),
+      },
+      {
         key: "delete",
         label: t("common.delete"),
         icon: <Trash2 size={14} />,
@@ -126,7 +142,9 @@ export default function ChatTitleBar({
       session.pinned,
       onPin,
       onFork,
+      onArchive,
       onDelete,
+      session.archived,
       forkDisabled,
       forkDisabledHint,
       t,

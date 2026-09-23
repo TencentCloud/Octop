@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 对话支持可恢复归档：默认列表隐藏已归档线程，可切换归档视图并恢复，消息与历史数据不会删除（#980）
+
 ### 变更
 - 运行时依赖改为 `octop-harness[all]` / `octop-gateway` / `octop-memory` / `octop-browser` 1.0.0（原 `orcakit-harness-agent` / `harness-*`）；文档、UI 文案与生成路径同步改为 `octop-*`（`~/.harness-browser` 仅作迁移/拒绝源）
 

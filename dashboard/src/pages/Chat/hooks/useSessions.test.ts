@@ -9,13 +9,14 @@ import {
 } from "./useSessions";
 
 const listMock = vi.fn();
+const patchMock = vi.fn();
 
 vi.mock("../../../api/modules/octopThreads", () => ({
   octopThreadsApi: {
     list: (...args: unknown[]) => listMock(...args),
     create: vi.fn(),
     delete: vi.fn(),
-    patch: vi.fn(),
+    patch: (...args: unknown[]) => patchMock(...args),
     rename: vi.fn(),
     rebind: vi.fn(),
   },
@@ -80,6 +81,7 @@ describe("useSessions agent switch", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     listMock.mockReset();
+    patchMock.mockReset();
   });
 
   afterEach(() => {
@@ -165,5 +167,46 @@ describe("useSessions agent switch", () => {
     });
     expect(probe).toBe("found");
     expect(listMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("switches between current and archived server-side lists", async () => {
+    listMock.mockImplementation(
+      async (_agentId: string, _limit: number, archived: boolean) =>
+        archived
+          ? [{ ...threadRow("thr_archived"), archived: true }]
+          : [threadRow("thr_current")],
+    );
+    const { result } = renderHook(() => useSessions("agent-new"));
+    await waitFor(() => {
+      expect(result.current.sessions.map((s) => s.id)).toEqual(["thr_current"]);
+    });
+
+    act(() => result.current.setShowArchived(true));
+
+    await waitFor(() => {
+      expect(result.current.sessions.map((s) => s.id)).toEqual([
+        "thr_archived",
+      ]);
+    });
+    expect(listMock).toHaveBeenLastCalledWith("agent-new", 11, true);
+    expect(result.current.sessions[0].archived).toBe(true);
+  });
+
+  it("archives a thread and removes it from the current view", async () => {
+    listMock.mockResolvedValue([threadRow("thr_current")]);
+    patchMock.mockResolvedValue({ archived: true });
+    const { result } = renderHook(() => useSessions("agent-new"));
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1));
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.archiveSession("thr_current", true);
+    });
+
+    expect(ok).toBe(true);
+    expect(patchMock).toHaveBeenCalledWith("agent-new", "thr_current", {
+      archived: true,
+    });
+    expect(result.current.sessions).toEqual([]);
   });
 });
