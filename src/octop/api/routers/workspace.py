@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
@@ -107,6 +108,29 @@ def _workspace_io_path(path: str, *, from_workspace: bool = False) -> str:
     return workspace_api_path(raw)
 
 
+def _assert_host_path_allowed(
+    io_path: str,
+    *,
+    workspace: Path,
+    raw_path: str,
+    operation: str,
+) -> None:
+    """Reject host-absolute I/O outside the download allowlist.
+
+    Read endpoints must not be more permissive than ``download_file``: a
+    host-absolute path that is denied for download must not be readable,
+    greppable or listable either. Workspace-relative paths are unaffected.
+    """
+    if is_host_absolute_path(io_path) and not is_allowed_host_download_abs_path(
+        io_path,
+        workspace=workspace,
+    ):
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            f"cannot {operation} {raw_path!r}: path not allowed",
+        )
+
+
 _FROM_WORKSPACE_DESC = (
     "When true, leading '/' paths are workspace-relative (workspace UI). "
     "When false (default), leading '/' is host-absolute."
@@ -130,6 +154,7 @@ async def list_tree(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    _assert_host_path_allowed(io_path, workspace=ws.workspace_dir, raw_path=path, operation="list")
     result = await ws.als(io_path)
     if result is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot list {path!r}")
@@ -162,7 +187,9 @@ async def read_file(
 ) -> dict[str, Any]:
     """Read a UTF-8 text file."""
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
-    content = await ws.aread_text(_workspace_io_path(path, from_workspace=from_workspace))
+    io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    _assert_host_path_allowed(io_path, workspace=ws.workspace_dir, raw_path=path, operation="read")
+    content = await ws.aread_text(io_path)
     if content is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot read {path!r}")
     return {"path": path, "content": coerce_read_content(content)}
@@ -343,12 +370,9 @@ async def download_file(
     """
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
-    if is_host_absolute_path(io_path) and not is_allowed_host_download_abs_path(
-        io_path,
-        workspace=ws.workspace_dir,
-    ):
-        raise OctopError(ErrorCode.FORBIDDEN, f"cannot download {path!r}: path not allowed")
-
+    _assert_host_path_allowed(
+        io_path, workspace=ws.workspace_dir, raw_path=path, operation="download"
+    )
     try:
         file_blob = await ws.adownload_bytes(io_path)
     except PermissionError as exc:
@@ -377,6 +401,7 @@ async def read_doc(
     converter = _ensure_editable_doc(path)
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    _assert_host_path_allowed(io_path, workspace=ws.workspace_dir, raw_path=path, operation="read")
     try:
         blob = await ws.adownload_bytes(io_path)
     except PermissionError as exc:
@@ -469,6 +494,7 @@ async def glob_files(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
     root = _workspace_io_path(path, from_workspace=from_workspace)
+    _assert_host_path_allowed(root, workspace=ws.workspace_dir, raw_path=path, operation="glob")
     if pattern in ("**/*.md", "*.md") and root == ".":
         ls_result = await ws.als(".")
         if ls_result is None:
@@ -503,7 +529,9 @@ async def grep_files(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
-    result = await ws.agrep(pattern, _workspace_io_path(path, from_workspace=from_workspace))
+    io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    _assert_host_path_allowed(io_path, workspace=ws.workspace_dir, raw_path=path, operation="grep")
+    result = await ws.agrep(pattern, io_path)
     if result is None:
         raise OctopError(ErrorCode.NOT_FOUND, "grep failed")
     matches = getattr(result, "matches", None) or []

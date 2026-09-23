@@ -319,6 +319,17 @@ _DENIED_WIN_DOWNLOAD_PREFIXES = (
 )
 
 
+def _is_denied_host_root(norm: str, prefixes: tuple[str, ...]) -> bool:
+    """True when *norm* is a denied system root itself, or a path under one.
+
+    ``prefixes`` carry a trailing slash, so a bare root (``/etc``, ``c:/windows``)
+    would otherwise slip through — yet the root directory is exactly what the
+    deny list is meant to keep out of reach (see ``infra/utils/host_dirs.py``,
+    which denies the bare root too).
+    """
+    return any(norm == prefix.rstrip("/") or norm.startswith(prefix) for prefix in prefixes)
+
+
 def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
     """Allow host-absolute download when under workspace / agents / temp, or
     non-system user paths (e.g. Desktop tool outputs). Deny OS system roots.
@@ -337,7 +348,7 @@ def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
     if (
         raw_norm.startswith("/")
         and not (len(raw_norm) >= 3 and raw_norm[2] == ":")
-        and any(raw_norm.lower().startswith(prefix) for prefix in _DENIED_HOST_DOWNLOAD_PREFIXES)
+        and _is_denied_host_root(raw_norm.lower(), _DENIED_HOST_DOWNLOAD_PREFIXES)
     ):
         return False
 
@@ -361,12 +372,12 @@ def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
     if is_allowed_host_temp_path(resolved):
         return True
 
-    if any(norm.startswith(prefix) for prefix in _DENIED_HOST_DOWNLOAD_PREFIXES):
+    if _is_denied_host_root(norm, _DENIED_HOST_DOWNLOAD_PREFIXES):
         return False
     win_denied = (
         len(norm) >= 2
         and norm[1] == ":"
-        and any(norm.startswith(prefix) for prefix in _DENIED_WIN_DOWNLOAD_PREFIXES)
+        and _is_denied_host_root(norm, _DENIED_WIN_DOWNLOAD_PREFIXES)
     )
     return not win_denied
 
