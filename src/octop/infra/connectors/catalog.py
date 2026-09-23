@@ -363,7 +363,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
     ConnectorCatalogEntry(
         kind="qcc",
         name="企查查",
-        description="一次授权接入企查查五类 MCP：企业数据、风险数据、知识产权、经营信息与董监高信息",
+        description="请用系统浏览器授权；一次接入企查查五类 MCP：企业数据、风险数据、知识产权、经营信息与董监高信息",
         auth_kind="oauth2",
         doc_url="https://agent.qcc.com/",
         icon="qcc",
@@ -372,7 +372,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         mcp_mode="remote",
         category="professional",
         guide_url="https://agent.qcc.com/",
-        auth_hint="点击「一键授权」登录企查查并授权，无需手动复制 API Key；查询范围与额度以企查查账户权限为准",
+        auth_hint="请用系统浏览器授权：在 Chrome 等系统浏览器打开当前 Octop Web 地址，再点击「一键授权」。桌面内嵌窗口可能无法完成回调；无需复制 API Key，查询范围与额度以企查查账户权限为准",
         oauth_issuer="https://agent.qcc.com",
         mcp_url="https://agent.qcc.com/mcp/company/stream",
         oauth_resource="https://agent.qcc.com/mcp/company/stream",

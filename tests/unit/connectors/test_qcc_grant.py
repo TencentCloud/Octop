@@ -388,3 +388,36 @@ async def test_concurrent_401_requests_share_rotated_token(grant, monkeypatch):
     )
     assert all(result == {"content": []} for result in results)
     refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_other_remote_oauth_keeps_refresh_and_direct_transport(grant, monkeypatch):
+    from octop.infra.connectors.builder import build_http_mcp_spec
+    from octop.infra.connectors.catalog import get_mcp_oauth_remote
+
+    _, repo, svc = grant
+    repo.create(
+        instance_id="other",
+        user_id=1,
+        kind="openalex",
+        display_name="OpenAlex",
+        mcp_server_name="openalex__other",
+    )
+    svc.encrypt_and_store(
+        instance_id="other",
+        payload={"access_token": "old", "refresh_token": "refresh", "expires_at": 1},
+    )
+    qcc_refresh = AsyncMock(side_effect=AssertionError("QCC path must not handle OpenAlex"))
+    monkeypatch.setattr(svc, "_fresh_qcc", qcc_refresh)
+    refresh = AsyncMock(return_value={"access_token": "new", "expires_at": int(time.time()) + 3600})
+    monkeypatch.setattr("octop.infra.connectors.service.refresh_oauth_credentials", refresh)
+    creds = await svc.ensure_fresh_credentials("other", "openalex")
+    assert creds["access_token"] == "new"
+    assert "internal_token" not in creds
+    assert refresh.await_args.kwargs["kind"] == "openalex"
+    qcc_refresh.assert_not_awaited()
+    entry = get_mcp_oauth_remote("openalex")
+    assert entry is not None
+    spec = build_http_mcp_spec(entry=entry, instance_id="other", creds=creds, config=OctopConfig())
+    assert spec["url"] == entry.mcp_url
+    assert spec["headers"]["Authorization"] == "Bearer new"

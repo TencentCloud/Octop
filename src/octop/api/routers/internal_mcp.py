@@ -56,7 +56,7 @@ async def internal_mcp_post(
     server: Any = Depends(get_server),
 ) -> Response:
     inst = server.services.repos.connector_repo.get(instance_id)
-    if inst is None or inst.kind != kind or inst.status != "active":
+    if inst is None or inst.kind != kind or (kind == "qcc" and inst.status != "active"):
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, "instance not found")
 
     svc = _service(server)

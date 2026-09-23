@@ -843,3 +843,34 @@ async def test_oauth_callback_escapes_error_html(env, exchange_error):
     assert response.status_code == 400
     assert payload not in response.text
     assert escape(payload) in response.text
+
+
+@pytest.mark.parametrize("kind", ["qcc", "qq-mail"])
+@pytest.mark.parametrize("status", ["active", "disabled"])
+async def test_gateway_status_guard_is_qcc_only(env, kind, status):
+    from octop.api.routers.internal_mcp import _service
+
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    repo = srv.services.repos.connector_repo
+    instance_id = new_ulid()
+    repo.create(
+        instance_id=instance_id,
+        user_id=user_id,
+        kind=kind,
+        display_name=kind,
+        mcp_server_name=f"{kind}__status",
+    )
+    svc = _service(srv)
+    svc.encrypt_and_store(instance_id=instance_id, payload={"internal_token": "synthetic-internal"})
+    repo.update_status(instance_id, status)
+    response = await c.post(
+        f"/api/internal/mcp/{kind}/{instance_id}",
+        params={"token": "synthetic-internal"},
+        json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+    )
+    if kind == "qcc" and status != "active":
+        assert response.status_code == 404
+    else:
+        assert response.status_code == 200
+        assert response.json()["result"] == {}
