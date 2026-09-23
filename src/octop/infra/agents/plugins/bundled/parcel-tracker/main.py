@@ -43,6 +43,9 @@ def _detect_company(number: str) -> str:
     return ""
 
 
+_NO_RESULT_CONTEXT = "查无结果"
+
+
 def _query(company: str, number: str) -> list[dict[str, Any]]:
     with _client() as client:
         resp = client.get(
@@ -62,6 +65,11 @@ def _query(company: str, number: str) -> list[dict[str, Any]]:
                 "status": str(row.get("status") or payload.get("status") or ""),
             },
         )
+    # For a number the carrier has nothing for, the free endpoint still answers
+    # HTTP 200 / status "200" with one placeholder row instead of an empty
+    # ``data``; treating it as a trace hides the fallback link from the user.
+    if len(traces) == 1 and traces[0]["context"] == _NO_RESULT_CONTEXT:
+        return []
     return traces
 
 
