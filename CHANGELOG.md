@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 修复
+
+- `octop completion install` 不再解码 rc 文件判断是否已安装，UTF-8/GBK 等非系统编码保存的 rc 文件也能正常写入（#1062）
+
 ## [1.0.2b1] - 2026-09-22
 
 ### 新增
