@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from octop.config import OctopConfig
@@ -52,6 +53,38 @@ async def test_qcc_credentials_build_and_probe(monkeypatch: pytest.MonkeyPatch) 
     result = await probe_connector(entry, creds, instance_id="qcc-test", config=OctopConfig())
     assert result["ok"] is True
     probe.assert_awaited_once_with("test-qcc-token")
+
+
+@pytest.mark.parametrize(
+    ("bind_host", "expected_host"),
+    [
+        ("127.0.0.1", "127.0.0.1"),
+        ("0.0.0.0", "127.0.0.1"),
+        ("::", "127.0.0.1"),
+        ("::1", "::1"),
+        ("2001:db8::5", "2001:db8::5"),
+    ],
+)
+def test_internal_mcp_url_stays_parseable_for_ipv6_bind_host(
+    bind_host: str,
+    expected_host: str,
+) -> None:
+    """``bind_host`` reaches uvicorn verbatim and uvicorn binds any address
+    containing ``:`` as ``AF_INET6``, so an IPv6 literal has to keep working here."""
+    entry = get_catalog_entry("qcc")
+    assert entry is not None
+    spec = build_http_mcp_spec(
+        entry=entry,
+        instance_id="qcc-test",
+        creds={"internal_token": "tok"},
+        config=OctopConfig(bind_host=bind_host, port=8088),
+    )
+    url = httpx.URL(spec["url"])
+    assert url.host == expected_host
+    assert url.port == 8088
+    assert url.path == "/api/internal/mcp/qcc/qcc-test"
+    if ":" in expected_host:
+        assert f"[{expected_host}]" in spec["url"]
 
 
 def test_qcc_harness_config_uses_http_not_inprocess_gateway(tmp_path: Path) -> None:

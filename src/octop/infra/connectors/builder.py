@@ -18,6 +18,7 @@ from octop.infra.connectors.catalog import (
 from octop.infra.connectors.custom_mcp import validate_mcp_http_url
 from octop.infra.connectors.mail_servers import resolve_mail_servers
 from octop.infra.utils.ulid import new_ulid
+from octop.infra.utils.url import format_host_for_url
 
 # MCP Streamable HTTP transport (Notion, etc.) requires both content types.
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
@@ -66,7 +67,8 @@ def internal_mcp_url(
     instance_id: str,
     internal_token: str,
 ) -> str:
-    host = config.bind_host if config.bind_host not in ("0.0.0.0", "::") else "127.0.0.1"
+    bind_host = config.bind_host if config.bind_host not in ("0.0.0.0", "::") else "127.0.0.1"
+    host = format_host_for_url(bind_host)
     token_q = quote(internal_token, safe="")
     return (
         f"http://{host}:{config.port}/api/internal/mcp/{gateway_kind}/{instance_id}?token={token_q}"
