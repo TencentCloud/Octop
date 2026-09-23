@@ -34,6 +34,17 @@ def _service(server: Any) -> ConnectorService:
     )
 
 
+def _require_active_instance(server: Any, kind: str, instance_id: str) -> None:
+    """Reject unknown / foreign-kind / turned-off instances, identically for POST, GET, DELETE.
+
+    ``internal_token`` lives in the credential blob and survives ``update_status()``,
+    so a disabled connector is only really closed when every verb checks the status.
+    """
+    inst = server.services.repos.connector_repo.get(instance_id)
+    if inst is None or inst.kind != kind or inst.status != "active":
+        raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, "instance not found")
+
+
 def _negotiate_initialize_result(body: dict[str, Any], resp: dict[str, Any]) -> dict[str, Any]:
     if body.get("method") != "initialize":
         return resp
@@ -55,9 +66,7 @@ async def internal_mcp_post(
     token: str = Query(...),
     server: Any = Depends(get_server),
 ) -> Response:
-    inst = server.services.repos.connector_repo.get(instance_id)
-    if inst is None or inst.kind != kind or inst.status != "active":
-        raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, "instance not found")
+    _require_active_instance(server, kind, instance_id)
 
     svc = _service(server)
     creds = svc.verify_internal_token(instance_id, token)
@@ -105,9 +114,7 @@ async def internal_mcp_get(
     server: Any = Depends(get_server),
 ) -> Response:
     """Streamable HTTP clients open a long-lived GET SSE channel after initialize."""
-    inst = server.services.repos.connector_repo.get(instance_id)
-    if inst is None or inst.kind != kind:
-        raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, "instance not found")
+    _require_active_instance(server, kind, instance_id)
 
     svc = _service(server)
     creds = svc.verify_internal_token(instance_id, token)
@@ -141,9 +148,7 @@ async def internal_mcp_delete(
     server: Any = Depends(get_server),
 ) -> Response:
     """Streamable HTTP clients may DELETE to end a session."""
-    inst = server.services.repos.connector_repo.get(instance_id)
-    if inst is None or inst.kind != kind:
-        raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, "instance not found")
+    _require_active_instance(server, kind, instance_id)
     svc = _service(server)
     if svc.verify_internal_token(instance_id, token) is None:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid internal token")
