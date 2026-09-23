@@ -187,6 +187,7 @@ def create_cron_offline(
     prompt: str,
     fresh_thread: bool = False,
     task_type: str = "agent",
+    token_budget_24h: int | None = None,
     home: Path | None = None,
 ) -> dict[str, Any]:
     build_trigger(trigger)
@@ -211,6 +212,7 @@ def create_cron_offline(
             fresh_thread=fresh_thread,
             model=None,
             task_type=normalize_cron_task_type(task_type),
+            token_budget_24h=token_budget_24h,
         )
         row = svc.cron_repo.get(cron_id)
         assert row is not None

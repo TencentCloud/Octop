@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, ClassVar
 
 from octop.infra.cron.delivery import CronDeliveryCommand
@@ -44,6 +45,7 @@ class CronJob:
         delivery_service: CronDeliveryService,
         cron_repo: CronJobRepo,
         audit_repo: AuditRepo,
+        on_budget_exceeded: Callable[[str], None] | None = None,
     ) -> None:
         self._cron_id = cron_id
         self._name = name
@@ -58,6 +60,7 @@ class CronJob:
         self._delivery_service = delivery_service
         self._cron_repo = cron_repo
         self._audit_repo = audit_repo
+        self._on_budget_exceeded = on_budget_exceeded
 
     @classmethod
     def from_row(
@@ -67,6 +70,7 @@ class CronJob:
         delivery_service: CronDeliveryService,
         cron_repo: CronJobRepo,
         audit_repo: AuditRepo,
+        on_budget_exceeded: Callable[[str], None] | None = None,
     ) -> CronJob:
         return cls(
             cron_id=row.cron_id,
@@ -82,6 +86,7 @@ class CronJob:
             delivery_service=delivery_service,
             cron_repo=cron_repo,
             audit_repo=audit_repo,
+            on_budget_exceeded=on_budget_exceeded,
         )
 
     async def run(self, *, raise_on_error: bool = False) -> None:
@@ -119,7 +124,7 @@ class CronJob:
         ts = int(time.time())
 
         try:
-            await self._delivery_service.deliver(
+            run_tokens = await self._delivery_service.deliver(
                 CronDeliveryCommand(
                     cron_id=self._cron_id,
                     cron_name=self._name,
@@ -153,3 +158,24 @@ class CronJob:
             action="cron.run_ok",
             target=self._cron_id,
         )
+        if run_tokens and self._cron_repo.apply_token_budget(self._cron_id, run_tokens=run_tokens):
+            METRICS.inc("cron_budget_exceeded_total")
+            self._cron_repo.set_run_status(
+                self._cron_id,
+                ts=ts,
+                status="budget_exceeded",
+                error="24h token budget exceeded; job disabled",
+            )
+            self._audit_repo.write(
+                actor=ACTOR_SYSTEM,
+                action="cron.budget_exceeded",
+                target=self._cron_id,
+                payload=f"run={run_tokens} tokens; budget window exceeded",
+            )
+            logger.warning(
+                "CronJob %s disabled: 24h token budget exceeded (last run %d tokens)",
+                self._cron_id,
+                run_tokens,
+            )
+            if self._on_budget_exceeded is not None:
+                self._on_budget_exceeded(self._cron_id)

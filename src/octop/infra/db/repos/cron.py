@@ -79,6 +79,9 @@ class CronJobRow:
     last_run_at: int | None
     last_status: str | None
     last_error: str | None
+    token_budget_24h: int | None
+    budget_tokens_used: int
+    budget_window_started_at: int | None
     created_at: int
     updated_at: int
 
@@ -101,6 +104,9 @@ class CronJobRow:
             last_run_at=r["last_run_at"],
             last_status=r["last_status"],
             last_error=r["last_error"],
+            token_budget_24h=r["token_budget_24h"],
+            budget_tokens_used=r["budget_tokens_used"],
+            budget_window_started_at=r["budget_window_started_at"],
             created_at=r["created_at"],
             updated_at=r["updated_at"],
         )
@@ -119,6 +125,8 @@ class CronJobRow:
             "mcp_servers": list(self.mcp_servers),
             "last_run_at": self.last_run_at,
             "last_status": self.last_status,
+            "token_budget_24h": self.token_budget_24h,
+            "budget_tokens_used": self.budget_tokens_used,
         }
         if include_agent:
             out["agent_id"] = self.agent_id
@@ -145,14 +153,15 @@ class CronJobRepo:
         mcp_servers: list[str] | None = None,
         enabled: bool = True,
         name: str | None = None,
+        token_budget_24h: int | None = None,
     ) -> str:
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO cron_jobs(cron_id, name, agent_id, user_id, schedule_spec, prompt, "
                 "session_key, model, fresh_thread, task_type, mcp_servers, enabled, "
-                "created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "token_budget_24h, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     cron_id,
                     (name or "").strip() or default_cron_name(prompt, cron_id),
@@ -166,6 +175,7 @@ class CronJobRepo:
                     task_type,
                     _encode_mcp_servers(mcp_servers),
                     bool_int(enabled),
+                    token_budget_24h,
                     ts,
                     ts,
                 ),
@@ -220,6 +230,51 @@ class CronJobRepo:
                 (ts, status, error, now_ts(), cron_id),
             )
 
+    def apply_token_budget(
+        self,
+        cron_id: str,
+        *,
+        run_tokens: int,
+        window_seconds: int = 86_400,
+    ) -> bool:
+        """Add one run's tokens to the 24h window; disable the job when over budget.
+
+        The window is anchored at the first counted run and restarts whenever it
+        has expired — a fixed 24h window, not a strict rolling one. Jobs without
+        a budget are left untouched (no writes). Returns True when the budget
+        was exceeded and the row was disabled.
+        """
+        now = now_ts()
+        with self._db.transaction() as conn:
+            row = conn.execute(
+                "SELECT token_budget_24h, budget_tokens_used, budget_window_started_at "
+                "FROM cron_jobs WHERE cron_id = ?",
+                (cron_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            budget = row["token_budget_24h"]
+            if budget is None or int(budget) <= 0:
+                return False
+            window_start = row["budget_window_started_at"]
+            used = int(row["budget_tokens_used"] or 0)
+            if window_start is None or now - int(window_start) >= window_seconds:
+                window_start = now
+                used = 0
+            used += max(0, int(run_tokens))
+            fields = "budget_tokens_used = ?, budget_window_started_at = ?"
+            params: list[object] = [used, window_start]
+            tripped = used > int(budget)
+            if tripped:
+                fields += ", enabled = 0, updated_at = ?"
+                params.append(now)
+            params.append(cron_id)
+            conn.execute(
+                f"UPDATE cron_jobs SET {fields} WHERE cron_id = ?",
+                params,
+            )
+            return tripped
+
     def update(
         self,
         cron_id: str,
@@ -233,6 +288,7 @@ class CronJobRepo:
         task_type: CronTaskType | None = None,
         model: str | None | object = UNSET,
         mcp_servers: list[str] | None | object = UNSET,
+        token_budget_24h: int | None | object = UNSET,
     ) -> None:
         fields, params = partial_updates(
             [
@@ -254,6 +310,9 @@ class CronJobRepo:
             params.append(
                 _encode_mcp_servers(mcp_servers if isinstance(mcp_servers, list) else None)
             )
+        if token_budget_24h is not UNSET:
+            fields.append("token_budget_24h = ?")
+            params.append(int(token_budget_24h) if isinstance(token_budget_24h, int) else None)
         if enabled is not None:
             fields.append("enabled = ?")
             params.append(bool_int(enabled))

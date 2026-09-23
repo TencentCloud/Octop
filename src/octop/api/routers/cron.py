@@ -32,6 +32,11 @@ class CronCreateBody(BaseModel):
     model: str | None = None
     task_type: str = "text"
     mcp_servers: list[str] = Field(default_factory=list)
+    token_budget_24h: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optional 24h token budget; the job auto-disables when exceeded (#1014).",
+    )
 
 
 class CronPatchBody(BaseModel):
@@ -44,6 +49,11 @@ class CronPatchBody(BaseModel):
     model: str | None = None
     task_type: str | None = None
     mcp_servers: list[str] | None = None
+    token_budget_24h: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optional 24h token budget; the job auto-disables when exceeded (#1014).",
+    )
 
 
 class CronExamplesResponse(BaseModel):
@@ -148,6 +158,7 @@ async def create_cron(
         model=(body.model or "").strip() or None,
         task_type=normalize_cron_task_type(body.task_type),
         mcp_servers=mcp_servers,
+        token_budget_24h=body.token_budget_24h,
         username=user.username,
     )
     row = await _get_cron_manager(server).create(spec)
@@ -211,6 +222,11 @@ async def patch_cron(
         enabled=int(body.enabled) if body.enabled is not None else None,
         task_type=normalize_cron_task_type(body.task_type) if body.task_type is not None else None,
         **({"model": (body.model or "").strip() or None} if "model" in patch_fields else {}),
+        **(
+            {"token_budget_24h": body.token_budget_24h}
+            if "token_budget_24h" in patch_fields
+            else {}
+        ),
         mcp_servers=mcp_arg,
     )
     return cast(dict[str, Any], row.to_public_dict(include_agent=True))

@@ -8,6 +8,7 @@
 
 ### 新增
 
+- 定时任务支持可选的 24 小时 token 预算（`token_budget_24h`，API / CLI `--token-budget-24h`）：按任务累计运行 token，窗口内超出预算即自动停用并记录 `budget_exceeded` 状态与 audit，防止高频 agent 型任务拖垮共享 provider（#1014 第二期；窗口为固定 24h 锚点制，默认关闭）
 - 生成模型设置新增统一厂商管理与图片/视频独立路由，支持火山方舟、阿里云百炼和 MiniMax 多实例配置。
 - 登录验证码新增极验行为验 v4（#870）：设置页配置 captcha_id / captcha_key，登录弹窗完成验证，服务端按官方协议 HMAC-SHA256 签名后到 gcaptcha4 二次校验（form-urlencoded，仅 result=success 放行）
 - 对话支持默认折叠思考与工具过程（浏览器本地偏好）(#718)
