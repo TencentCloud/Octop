@@ -48,7 +48,7 @@ def install(shell: str | None, rc_file: str | None) -> None:
     rc_path.parent.mkdir(parents=True, exist_ok=True)
     snippet = _EVAL_TEMPLATE[sh]
 
-    existing = rc_path.read_text() if rc_path.exists() else ""
+    existing = rc_path.read_text(encoding="utf-8", errors="replace") if rc_path.exists() else ""
     if "_OCTOP_COMPLETE" in existing:
         click.echo(f"already installed in {rc_path}")
         return
