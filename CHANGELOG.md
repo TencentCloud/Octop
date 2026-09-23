@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 快递单号查不到轨迹时，快递100 会返回一条「查无结果」占位记录；`track_parcel` 不再把它当作最新轨迹播报，改为按原约定提示暂无轨迹并附网页查询链接
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
