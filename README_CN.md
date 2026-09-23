@@ -495,7 +495,7 @@ cd dashboard && npx tsc -b
 ## 🔒 安全与隐私
 
 - **本地优先**：配置、对话、工作区与凭证均存储在 `~/.octop/`。
-- **多用户隔离**：JWT 认证，按用户隔离 Agent 与工作区。
+- **应用层多用户隔离**：JWT 认证与所有权检查隔离用户的 Agent 与数据；共享实例不等于 OS/容器隔离，互不信任的用户应使用独立实例或沙箱 backend。详见[架构说明](docs/architecture.md#application-level-multi-user-isolation)。
 - **敏感信息脱敏与工具审批**：离开工作区前自动脱敏敏感数据；高风险工具或 Shell 命令需依据护栏规则显式审批。
 - **工具护栏**：可在 `~/.octop/security/tool_guard/` 编辑 Shell 命令规则。
 - **无厂商锁定**：可自由切换 LLM 供应商、存储后端与 IM 通道。

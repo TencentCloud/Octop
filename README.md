@@ -501,7 +501,10 @@ Individual targets: `make test`, `make lint`, `make typecheck`, `make format`.
 ## 🔒 Security & privacy
 
 - **Local-first**: Config, chats, workspaces, and credentials live under `~/.octop/` on your machine.
-- **Multi-user isolation**: JWT auth with per-user agents and workspaces.
+- **Application-level multi-user isolation**: JWT auth and ownership checks
+  separate users' agents and data. A shared instance is not an OS/container
+  boundary; use separate instances or sandboxed backends for mutually
+  untrusted users. See [Architecture](docs/architecture.md#application-level-multi-user-isolation).
 - **PII redaction & tool approval**: sensitive data is redacted before it leaves the workspace, and risky tools or shell commands require explicit approval under the guardrail rules.
 - **Tool guardrails**: User-editable shell command rules under `~/.octop/security/tool_guard/`.
 - **No vendor lock-in**: Swap LLM providers, storage backends, and channels without rewriting agents.
