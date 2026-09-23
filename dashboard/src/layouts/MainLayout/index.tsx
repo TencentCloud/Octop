@@ -179,10 +179,17 @@ export default function MainLayout() {
       <BackupOperationProvider>
         <div
           style={{
-            height: "100dvh",
+            height: "100%",
+            boxSizing: "border-box",
+            /* iOS PWA landscape sides. Top is owned by Header (#664/#746),
+               bottom is handled per-surface. */
+            paddingLeft: "env(safe-area-inset-left, 0px)",
+            paddingRight: "env(safe-area-inset-right, 0px)",
             display: "flex",
             flexDirection: "row",
-            background: "var(--fn-bg-layout)",
+            background: isChatRoute
+              ? "var(--fn-bg-elevated, #fff)"
+              : "var(--fn-bg-primary)",
             transition: "background var(--fn-transition)",
             overflow: "hidden",
           }}
@@ -278,7 +285,9 @@ export default function MainLayout() {
               <Content
                 className="page-container"
                 style={{
-                  background: "var(--fn-bg-layout)",
+                  background: isChatRoute
+                    ? "var(--fn-bg-elevated, #fff)"
+                    : "var(--fn-bg-layout)",
                   transition: "background var(--fn-transition)",
                   flex: 1,
                   overflow: "hidden",

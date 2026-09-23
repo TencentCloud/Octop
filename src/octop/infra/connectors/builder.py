@@ -11,7 +11,9 @@ from octop.config import OctopConfig
 from octop.infra.connectors.catalog import (
     ConnectorCatalogEntry,
     get_catalog_entry,
+    is_inprocess_gateway,
     is_mcp_oauth_remote,
+    uses_internal_http_mcp,
 )
 from octop.infra.connectors.custom_mcp import validate_mcp_http_url
 from octop.infra.connectors.mail_servers import resolve_mail_servers
@@ -245,7 +247,7 @@ def validate_create_credentials(
             out["oauth_client_secret"] = str(credentials["oauth_client_secret"])
         if credentials.get("openid"):
             out["openid"] = str(credentials["openid"])
-        if entry.mcp_mode == "gateway":
+        if is_inprocess_gateway(entry) or uses_internal_http_mcp(entry):
             out["internal_token"] = new_internal_token()
         return out
 
@@ -493,7 +495,7 @@ def build_mcp_server_configs_for_user(
         )
     for inst, entry, creds in _iter_active_connectors(svc, connector_repo, user_id):
         try:
-            if entry.mcp_mode == "gateway":
+            if is_inprocess_gateway(entry):
                 # Name-only placeholder: harness skips specs without ``transport``;
                 # tools are injected in-process in AgentManager._post_start_agent.
                 configs[inst.mcp_server_name] = {}
@@ -543,18 +545,18 @@ def build_mcp_server_configs_for_user(
 
 
 def gateway_mcp_server_names(*, connector_repo: Any, user_id: int) -> set[str]:
-    """MCP server names of *user_id*'s active gateway-mode connector instances.
+    """MCP server names of in-process gateway connectors for *user_id*.
 
-    Gateway connectors carry no HTTP transport: their tools are built in-process
-    from stored credentials, so callers can attach them to a live agent instead
-    of rebuilding it.
+    ``mcp_mode=gateway`` has no HTTP transport: tools are injected from Python
+    adapters. ``internal`` aggregators (e.g. QCC) are not included — harness
+    loads those via ``/api/internal/mcp``.
     """
     names: set[str] = set()
     for inst in connector_repo.list_visible(user_id):
         if inst.status != "active":
             continue
         entry = get_catalog_entry(inst.kind)
-        if entry is not None and entry.mcp_mode == "gateway":
+        if entry is not None and is_inprocess_gateway(entry):
             names.add(inst.mcp_server_name)
     return names
 
@@ -586,7 +588,7 @@ def inject_missing_gateway_tools(
         )
         return
     for inst, entry, creds in _iter_active_connectors(svc, connector_repo, user_id):
-        if entry.mcp_mode != "gateway":
+        if not is_inprocess_gateway(entry):
             continue
         if inst.mcp_server_name not in wanted:
             continue
@@ -606,7 +608,7 @@ def inject_missing_gateway_tools(
             for inst in connector_repo.list_visible(user_id)
             if inst.status == "active"
             and (entry := get_catalog_entry(inst.kind)) is not None
-            and entry.mcp_mode == "gateway"
+            and is_inprocess_gateway(entry)
         ]
         http_loaded = [
             n for n in gateway_names if any(str(t).startswith(f"{n}_") for t in tool_set)

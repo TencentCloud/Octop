@@ -44,10 +44,21 @@ def test_stamp_info_json_copies_and_sets_version(tmp_path: Path) -> None:
     dest = tmp_path / "info.generated.json"
     stamp_version.stamp_info_json(src, dest, "1.2.3")
     data = json.loads(dest.read_text(encoding="utf-8"))
-    assert data["fixed"]["file_version"] == "1.2.3"
+    assert data["fixed"]["file_version"] == "1.2.3.0"
     assert data["info"]["0000"]["ProductVersion"] == "1.2.3"
     original = json.loads(src.read_text(encoding="utf-8"))
     assert original["info"]["0000"]["CompanyName"] == data["info"]["0000"]["CompanyName"]
+
+
+def test_stamp_info_json_pep440_prerelease_keeps_display(tmp_path: Path) -> None:
+    src = (
+        Path(__file__).resolve().parents[3] / "desktop" / "src" / "build" / "windows" / "info.json"
+    )
+    dest = tmp_path / "info.generated.json"
+    stamp_version.stamp_info_json(src, dest, "1.0.2b1")
+    data = json.loads(dest.read_text(encoding="utf-8"))
+    assert data["fixed"]["file_version"] == "1.0.2.0"
+    assert data["info"]["0000"]["ProductVersion"] == "1.0.2b1"
 
 
 def test_stamp_info_json_dev_keeps_source_version(tmp_path: Path) -> None:
@@ -67,6 +78,14 @@ def test_four_part_version_pads_semver() -> None:
     assert stamp_version.four_part_version("dev") is None
 
 
+def test_four_part_version_pep440_prerelease() -> None:
+    assert stamp_version.four_part_version("1.0.2b1") == "1.0.2.0"
+    assert stamp_version.four_part_version("1.0.2rc1") == "1.0.2.0"
+    assert stamp_version.four_part_version("1.0.2a1") == "1.0.2.0"
+    assert stamp_version.four_part_version("1.0.2.post1") == "1.0.2.0"
+    assert stamp_version.four_part_version("1.0.2.dev1") == "1.0.2.0"
+
+
 def test_stamp_manifest_sets_octop_identity_only(tmp_path: Path) -> None:
     src = (
         Path(__file__).resolve().parents[3]
@@ -81,3 +100,34 @@ def test_stamp_manifest_sets_octop_identity_only(tmp_path: Path) -> None:
     text = dest.read_text(encoding="utf-8")
     assert 'name="com.tencent.octop" version="1.2.3.0"' in text
     assert 'name="Microsoft.Windows.Common-Controls" version="6.0.0.0"' in text
+
+
+def test_stamp_manifest_pep440_prerelease(tmp_path: Path) -> None:
+    src = (
+        Path(__file__).resolve().parents[3]
+        / "desktop"
+        / "src"
+        / "build"
+        / "windows"
+        / "wails.exe.manifest"
+    )
+    dest = tmp_path / "wails.exe.generated.manifest"
+    stamp_version.stamp_manifest(src, dest, "1.0.2b1")
+    text = dest.read_text(encoding="utf-8")
+    assert 'name="com.tencent.octop" version="1.0.2.0"' in text
+
+
+def test_write_nsis_defines_pep440(tmp_path: Path) -> None:
+    dest = tmp_path / "version_defines.nsh"
+    stamp_version.write_nsis_defines(dest, "1.0.2b1")
+    text = dest.read_text(encoding="utf-8")
+    assert '!define INFO_PRODUCTVERSION "1.0.2b1"' in text
+    assert '!define INFO_FILEVERSION "1.0.2.0"' in text
+
+
+def test_write_nsis_defines_dev(tmp_path: Path) -> None:
+    dest = tmp_path / "version_defines.nsh"
+    stamp_version.write_nsis_defines(dest, "dev")
+    text = dest.read_text(encoding="utf-8")
+    assert '!define INFO_PRODUCTVERSION "dev"' in text
+    assert '!define INFO_FILEVERSION "0.0.0.0"' in text

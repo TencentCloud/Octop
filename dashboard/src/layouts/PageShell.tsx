@@ -101,6 +101,17 @@ function PageShell({
   const contentPad = isMobile ? 12 : 24;
   /** Fill layout, or mobile path-tabs that must stay pinned above the body. */
   const pinBody = Boolean(fill || (isMobile && pathTabs));
+  /**
+   * iOS PWA home-indicator band. When the content area scrolls, the inset
+   * belongs at the end of the scrollport so it is only spent once the user
+   * reaches the bottom; a fixed outer pad would waste it on every screen.
+   * Pinned bodies cannot scroll clear of the indicator, so they keep it
+   * outside the card.
+   */
+  const safeBottom = "env(safe-area-inset-bottom, 0px)";
+  const outerPadBottom = pinBody
+    ? `calc(${outerPad}px + ${safeBottom})`
+    : `${outerPad}px`;
 
   const titleActions =
     !isMobile && pathTabs ? (
@@ -119,7 +130,7 @@ function PageShell({
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        padding: `${outerPadTop}px ${outerPad}px ${outerPad}px`,
+        padding: `${outerPadTop}px ${outerPad}px ${outerPadBottom}`,
         boxSizing: "border-box",
         overflow: "hidden",
       }}
@@ -178,6 +189,9 @@ function PageShell({
           background: "var(--fn-bg-container, var(--fn-bg-elevated))",
           borderRadius: 8,
           padding: contentPad,
+          paddingBottom: pinBody
+            ? contentPad
+            : `calc(${contentPad}px + ${safeBottom})`,
           // Mobile: never create a page-level horizontal scrollbar; wide
           // tables scroll via antd scroll.x inside their own wrapper.
           overflowX: pinBody || isMobile ? "hidden" : "auto",
