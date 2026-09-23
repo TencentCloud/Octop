@@ -48,20 +48,30 @@ def is_private_or_local_host(host: str) -> bool:
     return addr.is_loopback or addr.is_private or addr.is_link_local
 
 
-def _parse_https_host(url: str) -> tuple[str, int | None]:
+def _parse_url_host(url: str, *, schemes: frozenset[str]) -> tuple[str, int | None]:
     parsed = urlparse(url)
-    if parsed.scheme != "https":
-        raise UnsafeOutboundUrl("only https URLs are allowed")
+    if parsed.scheme not in schemes:
+        allowed = "/".join(sorted(schemes))
+        raise UnsafeOutboundUrl(f"only {allowed} URLs are allowed")
     host = parsed.hostname
     if not host:
         raise UnsafeOutboundUrl("missing hostname")
     return host.lower().rstrip("."), parsed.port
 
 
+def _parse_https_host(url: str) -> tuple[str, int | None]:
+    return _parse_url_host(url, schemes=frozenset({"https"}))
+
+
+def _parse_http_host(url: str) -> tuple[str, int | None]:
+    return _parse_url_host(url, schemes=frozenset({"http", "https"}))
+
+
 def _check_ip_not_private(ip_str: str) -> None:
     addr = ipaddress.ip_address(ip_str)
     if (
-        addr.is_private
+        not addr.is_global
+        or addr.is_private
         or addr.is_loopback
         or addr.is_link_local
         or addr.is_reserved
@@ -70,12 +80,22 @@ def _check_ip_not_private(ip_str: str) -> None:
         raise UnsafeOutboundUrl("private or reserved IP addresses are not allowed")
 
 
-def _check_ip_literal(host: str) -> None:
+def _check_host_not_local_or_private(host: str, *, field: str) -> None:
     try:
         ipaddress.ip_address(host)
     except ValueError:
+        if is_private_or_local_host(host):
+            raise UnsafeOutboundUrl(f"{field}: private or local hosts are not allowed") from None
         return
     _check_ip_not_private(host)
+
+
+def _check_resolved_infos(infos: list[tuple[typing.Any, ...]], *, host: str) -> str:
+    if not infos:
+        raise UnsafeOutboundUrl(f"cannot resolve hostname {host!r}")
+    for info in infos:
+        _check_resolved_ip(str(info[4][0]))
+    return str(infos[0][4][0])
 
 
 def _check_resolved_ip(ip_str: str) -> None:
@@ -102,15 +122,27 @@ def host_allowed_for_issuer(host: str, issuer: str) -> bool:
 def validate_https_url(url: str, *, field: str = "url") -> str:
     """Reject non-https URLs and literal private/reserved IPs."""
     host, _ = _parse_https_host(url)
-    if host == "localhost":
-        raise UnsafeOutboundUrl(f"{field}: localhost is not allowed")
-    _check_ip_literal(host)
+    _check_host_not_local_or_private(host, field=field)
     return url
 
 
 async def validate_https_url_resolved(url: str, *, field: str = "url") -> str:
     """Also resolve DNS and reject private/reserved addresses."""
     validate_https_url(url, field=field)
+    await _resolve_validated_ip(url)
+    return url
+
+
+def validate_http_url(url: str, *, field: str = "url") -> str:
+    """Reject non-HTTP(S) URLs and literal private/local targets."""
+    host, _ = _parse_http_host(url)
+    _check_host_not_local_or_private(host, field=field)
+    return url
+
+
+async def validate_http_url_resolved(url: str, *, field: str = "url") -> str:
+    """Validate an HTTP(S) URL and reject hosts resolving to non-public IPs."""
+    validate_http_url(url, field=field)
     await _resolve_validated_ip(url)
     return url
 
@@ -122,22 +154,19 @@ async def _resolve_validated_ip(url: str) -> str:
     resolved address is private/reserved.  The caller should pin the returned
     IP for the actual connection to defeat DNS-rebinding (TOCTOU).
     """
-    host, port = _parse_https_host(url)
+    host, port = _parse_http_host(url)
+    default_port = 80 if urlparse(url).scheme == "http" else 443
     loop = asyncio.get_running_loop()
     try:
         infos = await loop.getaddrinfo(
             host,
-            port or 443,
+            port or default_port,
             type=socket.SOCK_STREAM,
             proto=socket.IPPROTO_TCP,
         )
     except socket.gaierror as exc:
         raise UnsafeOutboundUrl(f"cannot resolve hostname {host!r}") from exc
-    if not infos:
-        raise UnsafeOutboundUrl(f"cannot resolve hostname {host!r}")
-    for info in infos:
-        _check_resolved_ip(info[4][0])
-    return infos[0][4][0]
+    return _check_resolved_infos(infos, host=host)
 
 
 class _PinnedNetworkBackend(AutoBackend):
