@@ -550,6 +550,112 @@ async def test_patch_custom_mcp_server_default_open_only(env):
     assert "default_open" not in patch_off.json()["servers"]["linear"]
 
 
+async def test_saved_custom_mcp_probe_refreshes_tool_cache(env):
+    c, srv, auth, _ = env
+    server = {
+        "transport": "streamable_http",
+        "url": "https://mcp.example.com/mcp",
+    }
+    put = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=auth,
+        json={"servers": {"refresh-me": server}},
+    )
+    assert put.status_code == 200
+    user_id = await resolve_user_id(c, auth, "admin")
+
+    with (
+        patch(
+            "octop.api.routers.connectors.probe_custom_mcp_server",
+            new_callable=AsyncMock,
+            return_value={"ok": True, "tool_count": 1, "tools": [{"name": "a", "description": ""}]},
+        ),
+        patch("octop.api.routers.connectors._schedule_connector_reload") as schedule_reload,
+    ):
+        probe = await c.post(
+            "/api/connectors/custom-mcp/test",
+            headers=auth,
+            json={"server": server},
+        )
+
+    assert probe.status_code == 200
+    schedule_reload.assert_called_once_with(srv, user_id, all_users=False)
+
+
+async def test_unsaved_custom_mcp_probe_does_not_refresh_tool_cache(env):
+    c, _, auth, _ = env
+    server = {
+        "transport": "streamable_http",
+        "url": "https://mcp.example.com/mcp",
+    }
+    put = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=auth,
+        json={"servers": {"saved": server}},
+    )
+    assert put.status_code == 200
+
+    with (
+        patch(
+            "octop.api.routers.connectors.probe_custom_mcp_server",
+            new_callable=AsyncMock,
+            return_value={"ok": True, "tool_count": 1, "tools": [{"name": "a", "description": ""}]},
+        ),
+        patch("octop.api.routers.connectors._schedule_connector_reload") as schedule_reload,
+    ):
+        probe = await c.post(
+            "/api/connectors/custom-mcp/test",
+            headers=auth,
+            json={
+                "server": {
+                    "transport": "streamable_http",
+                    "url": "https://mcp.example.com/unsaved",
+                }
+            },
+        )
+
+    assert probe.status_code == 200
+    schedule_reload.assert_not_called()
+
+
+async def test_shared_custom_mcp_probe_refreshes_all_tool_caches(env):
+    c, srv, auth, _ = env
+    server = {
+        "transport": "streamable_http",
+        "url": "https://mcp.example.com/mcp",
+        "shared": True,
+    }
+    put = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=auth,
+        json={"servers": {"shared-refresh": server}},
+    )
+    assert put.status_code == 200
+    user_id = await resolve_user_id(c, auth, "admin")
+
+    with (
+        patch(
+            "octop.api.routers.connectors.probe_custom_mcp_server",
+            new_callable=AsyncMock,
+            return_value={"ok": True, "tool_count": 1, "tools": [{"name": "a", "description": ""}]},
+        ),
+        patch.object(
+            srv.app_runtime.agent_registry,
+            "invalidate_mcp_tool_cache",
+        ) as invalidate_cache,
+        patch("octop.api.routers.connectors._schedule_connector_reload") as schedule_reload,
+    ):
+        probe = await c.post(
+            "/api/connectors/custom-mcp/test",
+            headers=auth,
+            json={"server": server},
+        )
+
+    assert probe.status_code == 200
+    invalidate_cache.assert_called_once_with()
+    schedule_reload.assert_called_once_with(srv, user_id, all_users=True)
+
+
 async def test_shared_custom_mcp_is_visible_with_collision_safe_name(env):
     c, _, admin_auth, _ = env
     put = await c.put(

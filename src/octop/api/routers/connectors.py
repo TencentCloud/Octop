@@ -31,6 +31,7 @@ from octop.infra.connectors.catalog import (
 from octop.infra.connectors.custom_mcp import (
     CUSTOM_MCP_KIND,
     is_custom_mcp_kind,
+    normalize_server_spec,
     oauth_configured,
     parse_synthetic_instance_id,
     redact_servers_for_api,
@@ -46,6 +47,7 @@ from octop.infra.connectors.gateway.cli_install import (
     install_connector_cli,
 )
 from octop.infra.connectors.gateway.feishu_user_auth import live_user_auth_preview
+from octop.infra.connectors.mcp_tool_cache import fingerprint_mcp_spec
 from octop.infra.connectors.oauth import (
     auth_info_for_kind,
     delete_oauth_ctx,
@@ -199,6 +201,25 @@ def _resolve_custom_mcp_url(svc: ConnectorService, user_id: int, server_name: st
     if not mcp_url:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "server url is required")
     return mcp_url
+
+
+def _saved_custom_mcp_name_for_probe(
+    svc: ConnectorService,
+    user_id: int,
+    probe_spec: dict[str, Any],
+) -> str | None:
+    """Resolve an inline probe spec to a saved custom MCP server, if unchanged."""
+    try:
+        normalized = normalize_server_spec("probe", probe_spec)
+    except (OctopError, ValueError):
+        return None
+    probe_fingerprint = fingerprint_mcp_spec(normalized)
+    for name, saved_spec in svc.get_custom_servers(user_id).items():
+        if not isinstance(saved_spec, dict):
+            continue
+        if fingerprint_mcp_spec(saved_spec) == probe_fingerprint:
+            return name
+    return None
 
 
 async def _begin_oauth_flow(
@@ -615,6 +636,9 @@ async def test_custom_mcp(
             "provide name or server spec to probe",
         )
     result = await probe_custom_mcp_server(spec)
+    refresh_name = (
+        body.name if body.server is None else _saved_custom_mcp_name_for_probe(svc, user.id, spec)
+    )
     if body.name:
         try:
             if result.get("oauth", {}).get("available") and not oauth_configured(spec):
@@ -623,6 +647,12 @@ async def test_custom_mcp(
                 svc.note_custom_server_oauth_required(user.id, body.name, required=False)
         except KeyError:
             pass
+    if result.get("ok") and refresh_name:
+        refresh_spec = svc.get_custom_servers(user.id).get(refresh_name)
+        shared = isinstance(refresh_spec, dict) and refresh_spec.get("shared") is True
+        if shared:
+            server.app_runtime.agent_registry.invalidate_mcp_tool_cache()
+        _schedule_connector_reload(server, user.id, all_users=shared)
     return result
 
 
