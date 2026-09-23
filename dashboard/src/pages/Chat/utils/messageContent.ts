@@ -130,7 +130,7 @@ export function splitAssistantTurn(
       processSteps.push({ kind: "tool", message: msg });
       continue;
     }
-    if (textContent.trim()) {
+    if (textContent.trim() || msg.attachments?.length) {
       textParts.push(textContent);
       answerTemplate = msg;
       answerStreaming = msg.status === "streaming";

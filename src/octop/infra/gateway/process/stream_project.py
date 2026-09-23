@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from harness_gateway.media import MediaBackend
-from harness_gateway.models import MessageEvent
+from harness_gateway.models import ImageContent, MessageEvent, MessageEventType
 
 from octop.i18n import channel_tool_hint_end, channel_tool_hint_start, tool_display_name
 from octop.infra.gateway.hitl.format import format_hitl_card
@@ -184,6 +185,17 @@ async def _project_chunks(
             ):
                 tool_state.tool_started.add(idx_key)
                 yield _tool_start(tool_state.tool_name_buf[idx_key])
+
+        elif ctype == "attachment" and chunk.get("source") == "model":
+            part = ImageContent(url=chunk["url"], mime_type=chunk.get("mime_type"))
+            if chunk.get("path") and harness_workspace is not None:
+                raw = await harness_workspace.adownload_bytes(chunk["path"])
+                if raw is None:
+                    raise FileNotFoundError(chunk["path"])
+                part = ImageContent(
+                    data=base64.b64encode(raw).decode("ascii"), mime_type=chunk.get("mime_type")
+                )
+            yield MessageEvent(type=MessageEventType.MESSAGE, content=[part])
 
         elif ctype == "tool_result":
             final_name = (
