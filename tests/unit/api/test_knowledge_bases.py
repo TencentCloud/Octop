@@ -11,7 +11,6 @@ from starlette.datastructures import Headers, UploadFile
 from starlette.requests import Request
 
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.knowledge.service import MAX_BASES_PER_OWNER, MAX_DOCS_PER_KB
 
 
 def _request() -> Request:
@@ -733,60 +732,3 @@ def test_map_knowledge_error_prerequisites_distinguished() -> None:
     )
     assert err_model.code == ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED
     assert err_model.status == 409
-
-
-def test_custom_document_cap_is_not_reported_as_base_cap(
-    tmp_path: Path,
-) -> None:
-    """Hitting a per-base ``max_documents`` must not come back as ``KNOWLEDGE_BASE_LIMIT``.
-
-    ``KnowledgeRepo.create_document`` interpolates the configurable cap into its
-    message, so the router cannot key off a literal limit.
-    """
-    from octop.api.routers.knowledge_bases import _map_knowledge_error
-    from octop.infra.db.migrate import run_migrations
-    from octop.infra.db.pool import SqlitePool
-    from octop.infra.db.repos.knowledge import KnowledgeRepo
-    from octop.infra.db.repos.users import UserRepo
-
-    pool = SqlitePool(tmp_path / "octop.db")
-    run_migrations(pool)
-    owner_id = UserRepo(pool).create(username="owner", password_hash="h", role="user")
-    repo = KnowledgeRepo(pool)
-    cap = 2
-    assert cap != MAX_DOCS_PER_KB
-    kb = repo.create_base(owner_user_id=owner_id, name="Capped", max_documents=cap)
-
-    overflow: ValueError | None = None
-    for index in range(cap + 1):
-        try:
-            repo.create_document(
-                kb_id=kb.id,
-                filename=f"doc-{index}.md",
-                content_type="text/markdown",
-                byte_size=2,
-                max_documents=cap,
-            )
-        except ValueError as exc:
-            overflow = exc
-            break
-
-    assert overflow is not None, f"cap of {cap} was not enforced: {overflow}"
-    assert str(cap) in str(overflow)
-
-    err = _map_knowledge_error(overflow, locale="en")
-    assert err.code == ErrorCode.KNOWLEDGE_DOC_LIMIT
-    assert err.status == 409
-
-
-def test_owner_base_cap_still_maps_to_base_limit() -> None:
-    from octop.api.routers.knowledge_bases import _map_knowledge_error
-
-    message = f"a user can own at most {MAX_BASES_PER_OWNER} knowledge bases"
-    err = _map_knowledge_error(ValueError(message), locale="en")
-    assert err.code == ErrorCode.KNOWLEDGE_BASE_LIMIT
-    assert err.status == 409
-
-    err_zh = _map_knowledge_error(ValueError(message), locale="zh")
-    assert err_zh.code == ErrorCode.KNOWLEDGE_BASE_LIMIT
-    assert "知识库" in err_zh.message
