@@ -42,6 +42,10 @@ def snapshot_env(environ: Mapping[str, str] | None = None) -> CaptchaEnv:
         v3_min_score = float(score_raw) if score_raw else _DEFAULT_V3_MIN_SCORE
     except ValueError:
         v3_min_score = _DEFAULT_V3_MIN_SCORE
+    # recaptcha-v3 scores are in [0, 1]: outside it the gate is either silently off
+    # (``score < nan`` is always False) or locked shut, so fall back like an unparsable value.
+    if not 0.0 <= v3_min_score <= 1.0:
+        v3_min_score = _DEFAULT_V3_MIN_SCORE
     return CaptchaEnv(
         provider=provider,
         site_key=(src.get("OCTOP_CAPTCHA_SITE_KEY") or "").strip(),
