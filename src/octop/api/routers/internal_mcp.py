@@ -56,7 +56,7 @@ async def internal_mcp_post(
     server: Any = Depends(get_server),
 ) -> Response:
     inst = server.services.repos.connector_repo.get(instance_id)
-    if inst is None or inst.kind != kind:
+    if inst is None or inst.kind != kind or inst.status != "active":
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, "instance not found")
 
     svc = _service(server)
@@ -79,7 +79,10 @@ async def internal_mcp_post(
     if method == "initialize":
         session_id = secrets.token_urlsafe(16)
 
-    resp = await asyncio.to_thread(handle_mcp_request, kind=kind, creds=creds, body=body)
+    if kind == "qcc":
+        resp = await svc.handle_qcc_request(instance_id, body)
+    else:
+        resp = await asyncio.to_thread(handle_mcp_request, kind=kind, creds=creds, body=body)
     if not resp:
         return Response(status_code=202)
 

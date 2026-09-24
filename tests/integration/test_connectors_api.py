@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import re
+from html import escape
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -30,6 +34,7 @@ async def test_catalog(env):
     assert "figma" not in kinds
     assert "baidu-netdisk" not in kinds
     for kind in (
+        "openalex",
         "tencent-meeting",
         "tencent-lexiang",
         "notion",
@@ -46,6 +51,7 @@ async def test_catalog(env):
         "meituan-travel",
         "didi",
         "yuandian",
+        "qcc",
     ):
         entry = next(e for e in r.json() if e["kind"] == kind)
         assert entry["phase"] == "available", kind
@@ -59,6 +65,34 @@ async def test_catalog(env):
     assert weiyun["mcp_mode"] == "remote"
     assert weiyun["category"] == "office"
     assert weiyun.get("quick_auth_url") == "https://www.weiyun.com/act/openclaw"
+    qcc = next(e for e in r.json() if e["kind"] == "qcc")
+    assert qcc["auth_kind"] == "api_key"
+    assert qcc["mcp_mode"] == "internal"
+    assert qcc["oauth_mode"] is None
+    assert qcc["oauth_ready"] is False
+    assert qcc["category"] == "professional"
+    openalex = next(e for e in r.json() if e["kind"] == "openalex")
+    assert openalex == {
+        "kind": "openalex",
+        "name": "OpenAlex",
+        "description": "官方 MCP：检索学术文献、引文、研究实体与统计分析",
+        "auth_kind": "oauth2",
+        "doc_url": "https://help.openalex.org/access/connector/",
+        "icon": "openalex",
+        "color": "#1f6feb",
+        "phase": "available",
+        "mcp_mode": "remote",
+        "category": "knowledge",
+        "quick_auth_url": None,
+        "login_url": None,
+        "guide_url": "https://help.openalex.org/access/connector/",
+        "manual_url": "https://help.openalex.org/access/connector/",
+        "auth_hint": "点击「一键授权」登录 OpenAlex（桌面端请用系统浏览器）；查询将使用你自己的 API Key 与每日预算。",
+        "oauth_mode": "dynamic",
+        "oauth_ready": True,
+        "credential_fields": [],
+        "supports_quick_auth": True,
+    }
 
 
 async def test_create_tencent_instance(env):
@@ -665,3 +699,128 @@ async def test_custom_mcp_oauth_start_unified(env):
     call_kwargs = mocked_start.await_args.kwargs
     assert call_kwargs["target"] == {"type": "custom_mcp", "server_name": "oauth-srv"}
     assert call_kwargs["mcp_url"] == "https://mcp.example.com/mcp"
+
+
+async def test_qcc_gateway_auth_five_resources_and_disconnect(env, monkeypatch):
+    from octop.api.routers.internal_mcp import _service
+    from octop.infra.connectors import qcc
+
+    c, srv, auth, _ = env
+    created = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "qcc",
+            "display_name": "QCC",
+            "credentials": {"api_key": "synthetic"},
+        },
+    )
+    assert created.status_code == 201
+    instance_id = created.json()["instance_id"]
+    svc = _service(srv)
+    token = svc.decrypt(instance_id)["internal_token"]
+    path = f"/api/internal/mcp/qcc/{instance_id}"
+    request = AsyncMock(
+        return_value={"tools": [{"name": "lookup", "inputSchema": {"type": "object"}}]}
+    )
+    monkeypatch.setattr(qcc, "request_resource", request)
+    bad = await c.post(path, params={"token": "wrong"}, json={"id": 1, "method": "tools/list"})
+    assert bad.status_code == 401
+    request.assert_not_awaited()
+    listed = await c.post(path, params={"token": token}, json={"id": 1, "method": "tools/list"})
+    assert listed.status_code == 200
+    assert {t["name"] for t in listed.json()["result"]["tools"]} == {
+        f"{r}__lookup" for r in qcc.RESOURCES
+    }
+    other = await create_user(c, auth, username="qcc_reader")
+    denied = await c.delete(f"/api/connector-instances/{instance_id}", headers=other)
+    assert denied.status_code == 403
+    deleted = await c.delete(f"/api/connector-instances/{instance_id}", headers=auth)
+    assert deleted.status_code == 204
+    gone = await c.post(path, params={"token": token}, json={"id": 2, "method": "tools/list"})
+    assert gone.status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("redirect_after", "expected_path"),
+    [
+        ("/connectors", "/connectors"),
+        ("/connectors?tab=custom&empty=#oauth", "/connectors"),
+        ("/connectors?oauth_state=stale", "/connectors"),
+        ("/x'+alert(document.cookie)+'", "/x'+alert(document.cookie)+'"),
+        ("/</script><script>alert(1)</script>", "/</script><script>alert(1)</script>"),
+        ("https://attacker.example", "/connectors"),
+        ("//attacker.example", "/connectors"),
+        ("/\\attacker.example", "/connectors"),
+        ("/\n/attacker.example", "/connectors"),
+        ("/\r/attacker.example", "/connectors"),
+        ("/\t/attacker.example", "/connectors"),
+        ("javascript:alert(1)", "/connectors"),
+    ],
+)
+async def test_oauth_callback_safely_renders_stored_redirect(env, redirect_after, expected_path):
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state=state_id,
+        user_id=user_id,
+        kind="notion",
+        code_verifier="verifier",
+        redirect_after=redirect_after,
+    )
+    with patch(
+        "octop.api.routers.connectors.exchange_oauth_code",
+        new_callable=AsyncMock,
+        return_value={"access_token": "test-token"},
+    ):
+        response = await c.get(
+            "/api/connectors/oauth/callback", params={"code": "code", "state": state_id}
+        )
+    assert response.status_code == 200
+    # A tag payload must stay inside one JSON string, not create another script.
+    assert response.text.count("<script>") == response.text.count("</script>") == 1
+    assignment = re.search(r"window.location.href = (.*);", response.text)
+    assert assignment is not None
+    target = urlsplit(json.loads(assignment.group(1)))
+    assert not target.scheme and not target.netloc
+    assert target.path == expected_path
+    query = parse_qs(target.query, keep_blank_values=True)
+    assert query["oauth_state"] == [state_id]
+    if "tab=custom" in redirect_after:
+        assert query["tab"] == ["custom"]
+        assert query["empty"] == [""]
+        assert target.fragment == "oauth"
+    assert "}, window.location.origin);" in response.text
+    pending = await c.get(f"/api/connectors/oauth/pending/{state_id}", headers=auth)
+    assert pending.status_code == 200
+    assert pending.json()["tokens"]["access_token"] == "test-token"
+
+
+@pytest.mark.parametrize("exchange_error", [False, True])
+async def test_oauth_callback_escapes_error_html(env, exchange_error):
+    c, srv, auth, _ = env
+    payload = '<img src=x onerror="alert(1)">'
+    user_id = await resolve_user_id(c, auth, "admin")
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state=state_id,
+        user_id=user_id,
+        kind="notion",
+        code_verifier="verifier",
+        redirect_after="/connectors",
+    )
+    with patch(
+        "octop.api.routers.connectors.exchange_oauth_code",
+        new_callable=AsyncMock,
+        side_effect=ValueError(payload),
+    ):
+        response = await c.get(
+            "/api/connectors/oauth/callback",
+            params={"code": "code", "state": state_id} if exchange_error else {"error": payload},
+        )
+    assert response.status_code == 400
+    assert payload not in response.text
+    assert escape(payload) in response.text

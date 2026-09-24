@@ -86,6 +86,7 @@ export interface CreateMarketExpertBody {
     summary?: { zh?: string; en?: string };
   }[];
   copy_skills?: { agent_id: string; slug: string }[];
+  quick_prompts?: ExpertMarketQuickPrompt[];
 }
 
 function hubListPath(query: string, scene: string): string {

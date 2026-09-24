@@ -25,6 +25,7 @@ from octop.infra.agents.langfuse import LangfuseSettings, LangfuseSettingsStore
 from octop.infra.agents.media_generation import (
     MediaGenerationSettings,
     MediaGenerationSettingsStore,
+    MediaProviderUpdate,
 )
 from octop.infra.agents.memory_backend import memory_backend_from_agent_config
 from octop.infra.agents.memory_slim import MemorySlimCoordinator
@@ -48,6 +49,12 @@ from octop.infra.agents.runtime_limits import (
     resolve_context_max_tokens as config_context_max_tokens,
 )
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
+from octop.infra.agents.security.hitl_session import (
+    HitlSessionPolicyStore,
+    apply_session_bypass,
+    hitl_thread_scope,
+    thread_id_from_request,
+)
 from octop.infra.backend.docker_spec import (
     enrich_docker_backend_spec,
     inject_docker_global_environment,
@@ -350,6 +357,7 @@ class AgentManager:
         self._cron_manager: CronManager | None = None
         self._proactive_scheduler: ProactiveCareScheduler | None = None
         self._team_processor: Any | None = None
+        self._hitl_session_store: HitlSessionPolicyStore | None = None
         from octop.infra.agents.teams import TeamJobTracker, TeamService
 
         self._team_jobs = TeamJobTracker()
@@ -364,6 +372,11 @@ class AgentManager:
         # Serialize start/reload per agent so parallel provider reloads cannot
         # double-register the same harness id ("already exists in the registry").
         self._agent_lifecycle_locks: dict[str, asyncio.Lock] = {}
+        # Serialize harness execution per thread. Dashboard turns are queued by
+        # the channel debounce lock, but POST /chat/hitl/resume (and cron)
+        # drive the same checkpoint without it — two concurrent executions on
+        # one thread interleave LangGraph checkpoint writes.
+        self._thread_execution_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._active_invocations: dict[str, int] = {}
         self._invocation_waiters: dict[str, int] = {}
         self._history_backfills: dict[str, asyncio.Event] = {}
@@ -440,6 +453,10 @@ class AgentManager:
         self._team_processor = team_processor
         if self._harness_manager is not None:
             self._install_team_host_dispatch()
+
+    def set_hitl_session_store(self, store: HitlSessionPolicyStore | None) -> None:
+        """Attach the thread-scoped HITL bypass store (set before boot())."""
+        self._hitl_session_store = store
 
     @property
     def teams(self) -> Any:
@@ -710,11 +727,23 @@ class AgentManager:
         except Exception:
             logger.exception("abort team create: db delete failed for %s", agent_id)
 
-    def _preserve_system_files_path(self, agent_id: str, cfg: dict[str, Any]) -> dict[str, Any]:
-        """Keep ``system_files_path`` as an internal layout control.
+    def _preserve_internal_layout(
+        self,
+        agent_id: str,
+        cfg: dict[str, Any],
+        *,
+        pin_workspace_dir: bool = False,
+    ) -> dict[str, Any]:
+        """Keep the internal layout keys that user-facing config updates must not rewrite.
 
-        User-facing config updates must not introduce, remove, or rewrite the
-        stored prefix. Legacy agents without the key stay on the root layout.
+        ``system_files_path`` stays exactly as stored: a legacy agent without it keeps the root
+        layout, so a value a client invents is dropped.
+
+        ``pin_workspace_dir`` additionally pins ``workspace_dir`` to the stored value. User-facing
+        updates need it — rewriting the directory silently relocates the agent's workspace, so a
+        scoped or container agent would resolve to the classic layout and lose sight of its
+        skills, sessions and generated files. Internal persists do not: the resolver and the
+        create path must still be able to write it.
         """
         out = dict(cfg)
         row = self._repos.agent_repo.get(agent_id)
@@ -723,6 +752,8 @@ class AgentManager:
             out["system_files_path"] = current_raw["system_files_path"]
         else:
             out.pop("system_files_path", None)
+        if pin_workspace_dir and "workspace_dir" in current_raw:
+            out["workspace_dir"] = current_raw["workspace_dir"]
         return out
 
     async def update(self, agent_id: str, **kwargs: Any) -> AgentRow:
@@ -750,7 +781,9 @@ class AgentManager:
             parsed_profile_cfg = parse_config_json(
                 kwargs["config_json"] if isinstance(kwargs["config_json"], str) else None
             )
-            parsed_profile_cfg = self._preserve_system_files_path(agent_id, parsed_profile_cfg)
+            parsed_profile_cfg = self._preserve_internal_layout(
+                agent_id, parsed_profile_cfg, pin_workspace_dir=True
+            )
             owner_row = self._repos.agent_repo.get(agent_id)
             if owner_row is not None and owner_row.user_id is not None:
                 from octop.infra.users.resource_policy import raise_if_backend_outside_user_root
@@ -855,6 +888,14 @@ class AgentManager:
         if lock is None:
             lock = asyncio.Lock()
             self._agent_lifecycle_locks[agent_id] = lock
+        return lock
+
+    def _thread_execution_lock(self, agent_id: str, thread_id: str) -> asyncio.Lock:
+        key = (agent_id, thread_id)
+        lock = self._thread_execution_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._thread_execution_locks[key] = lock
         return lock
 
     @staticmethod
@@ -985,7 +1026,7 @@ class AgentManager:
         still only live in the dict, copy them onto empty columns so a later overlay
         does not drop mounts.
         """
-        cfg = self._preserve_system_files_path(agent_id, cfg)
+        cfg = self._preserve_internal_layout(agent_id, cfg)
         lifted = extract_profile_from_config(cfg)
         row = self._repos.agent_repo.get(agent_id)
         kwargs: dict[str, Any] = {"config_json": dumps_config(cfg)}
@@ -1176,11 +1217,16 @@ class AgentManager:
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
 
-        async with self._track_invocation(agent_id):
+        thread_id = str(request.get("thread_id") or "")
+        async with (
+            self._thread_execution_lock(agent_id, thread_id),
+            self._track_invocation(agent_id),
+        ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
-            async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
-                yield chunk
+            with hitl_thread_scope(thread_id_from_request(req)):
+                async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
+                    yield chunk
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
@@ -1190,7 +1236,8 @@ class AgentManager:
         async with self._track_invocation(agent_id):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
-            result = await self._harness_manager.call(agent_id, cast(Any, req))
+            with hitl_thread_scope(thread_id_from_request(req)):
+                result = await self._harness_manager.call(agent_id, cast(Any, req))
             self._apply_pending_bootstrap_graph_refresh(agent_id)
         if not isinstance(result, dict):
             return {"result": result}
@@ -1205,10 +1252,16 @@ class AgentManager:
         """Resume a paused HITL interrupt for *thread_id*."""
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
-        async with self._track_invocation(agent_id):
+        async with (
+            self._thread_execution_lock(agent_id, thread_id),
+            self._track_invocation(agent_id),
+        ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
-            async for chunk in self._harness_manager.resume_hitl(agent_id, thread_id, decisions):
-                yield chunk
+            with hitl_thread_scope(thread_id):
+                async for chunk in self._harness_manager.resume_hitl(
+                    agent_id, thread_id, decisions
+                ):
+                    yield chunk
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     def cancel_stream(self, agent_id: str, thread_id: str) -> None:
@@ -1771,20 +1824,16 @@ class AgentManager:
         self,
         *,
         enabled: bool,
-        image_enabled: bool,
-        video_enabled: bool,
-        image_model: str,
-        video_model: str,
-        api_key: str | None = None,
+        providers: list[MediaProviderUpdate],
+        default_image_provider: str | None,
+        default_video_provider: str | None,
     ) -> MediaGenerationSettings:
         """Persist media settings and rebuild running harness agents."""
         view = self._media_generation.save(
             enabled=enabled,
-            image_enabled=image_enabled,
-            video_enabled=video_enabled,
-            image_model=image_model,
-            video_model=video_model,
-            api_key=api_key,
+            providers=providers,
+            default_image_provider=default_image_provider,
+            default_video_provider=default_video_provider,
         )
         await self.reload_all()
         return view
@@ -1836,7 +1885,9 @@ class AgentManager:
 
     async def update_config_json(self, agent_id: str, config_json: str) -> AgentRow:
         """Patch ``config_json`` and reload the harness runtime in the background."""
-        parsed = self._preserve_system_files_path(agent_id, parse_config_json(config_json))
+        parsed = self._preserve_internal_layout(
+            agent_id, parse_config_json(config_json), pin_workspace_dir=True
+        )
         lifted = extract_profile_from_config(parsed)
         self._repos.agent_repo.update_config(
             agent_id,
@@ -1936,6 +1987,36 @@ class AgentManager:
             return Path(root_dir).resolve() == Path(workspace_dir).resolve()
         except OSError:
             return False
+
+    @staticmethod
+    def _backend_blocks_acp_outbound(
+        spec: Any,
+        *,
+        workspace_dir: Path | None = None,
+    ) -> bool:
+        """True when outbound ``acp_runner`` would bypass the directory sandbox.
+
+        Host-rooted local backends (``/``, ``\\``, or empty) are allowed. The
+        agent workspace root is also allowed — Windows rewrites ``root_dir='/'``
+        to the workspace, and that is still a host-local backend, not a project
+        jail. Scoped project roots and non-local backends are blocked. Inbound
+        ``octop acp`` is unaffected.
+        """
+        if not isinstance(spec, dict):
+            return True
+        kind = str(spec.get("type") or "").lower()
+        if kind not in {"local_shell", "filesystem"}:
+            return True
+        root_dir = str(spec.get("root_dir") or "").strip()
+        if root_dir in {"", "/", "\\"}:
+            return False
+        if workspace_dir is not None:
+            try:
+                if Path(root_dir).resolve() == Path(workspace_dir).resolve():
+                    return False
+            except OSError:
+                pass
+        return True
 
     async def persist_skill_package_ids(self, agent_id: str, package_ids: list[str]) -> None:
         """Persist package ids after validation and hot-sync a running agent.
@@ -3159,7 +3240,13 @@ class AgentManager:
             middleware=agent_middleware or None,
             bootstrap_enabled=not team_host,
             acp_runners=acp_config.runners,
-            acp_delegate_enabled=bool(acp_raw.get("tool_enabled", False)),
+            acp_delegate_enabled=(
+                bool(acp_raw.get("tool_enabled", False))
+                and not self._backend_blocks_acp_outbound(
+                    backend,
+                    workspace_dir=workspace_dir,
+                )
+            ),
             skills_disabled=frozenset(skills_disabled_set(cfg) | plugin_skills_disabled),
             skills_dir=skill_dirs or None,
             default_timezone=self._config.default_timezone,
@@ -3182,6 +3269,9 @@ class AgentManager:
             harness_cfg.tools_disabled = frozenset(disabled)
         applied = policy.apply_to_config(harness_cfg)
         applied = self._apply_team_host_config(applied, row)
+        interrupt_on = apply_session_bypass(applied.interrupt_on, self._hitl_session_store)
+        if interrupt_on is not applied.interrupt_on:
+            applied = replace(applied, interrupt_on=interrupt_on)
         return replace(
             applied,
             tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),
@@ -3212,7 +3302,7 @@ class AgentManager:
         )
 
     def _apply_team_host_config(self, cfg: HarnessAgentConfig, row: Any) -> HarnessAgentConfig:
-        from octop.infra.agents.teams import host_tools_disabled, is_team_agent
+        from octop.infra.agents.teams import host_system_prompt, host_tools_disabled, is_team_agent
 
         if not is_team_agent(row):
             if "peer_invoke_mode" in _HARNESS_AGENT_CONFIG_FIELDS:
@@ -3237,4 +3327,6 @@ class AgentManager:
             updates["subagents_auto_load"] = False
         if "bootstrap_enabled" in _HARNESS_AGENT_CONFIG_FIELDS:
             updates["bootstrap_enabled"] = False
+        if "system_prompt" in _HARNESS_AGENT_CONFIG_FIELDS:
+            updates["system_prompt"] = host_system_prompt(row, self._repos.user_repo)
         return replace(cfg, **updates) if updates else cfg

@@ -1,4 +1,4 @@
-import type { HitlPendingPayload } from "../types/hitl";
+import type { HitlPendingPayload, HitlSessionPolicy } from "../types/hitl";
 import { request } from "../request";
 
 export interface OctopThread {
@@ -17,6 +17,7 @@ export interface OctopThread {
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
   pending_plan_path?: string | null;
+  hitl_policy?: HitlSessionPolicy | null;
   artifacts?: string[];
 }
 
@@ -39,6 +40,7 @@ export interface OctopThreadHistory {
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
   pending_plan_path?: string | null;
+  hitl_policy?: HitlSessionPolicy | null;
   has_more?: boolean;
   limit?: number;
   offset?: number;
@@ -61,6 +63,7 @@ export interface OctopThreadPatch {
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
+  hitl_policy?: HitlSessionPolicy | null;
 }
 
 export type ContextUsageSegmentKey =
@@ -180,6 +183,7 @@ export const octopThreadsApi = {
       reasoning_effort?: string | null;
       conversation_mode?: "ask" | "plan" | "craft" | null;
       pending_plan_path?: string | null;
+      hitl_policy?: HitlSessionPolicy | null;
     }>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
         threadId,

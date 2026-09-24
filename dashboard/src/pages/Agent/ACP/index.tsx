@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, Empty, Form, Switch } from "antd";
+import { Alert, App, Button, Empty, Form, Switch, Tooltip } from "antd";
 
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
@@ -10,6 +10,7 @@ import {
   type ACPRunnerConfig,
 } from "../../../api/types/acp";
 import { useAgent } from "../../../context/AgentContext";
+import { blocksAcpOutboundFromConfig } from "../../Experts/components/agentBackendForm";
 import { ACPCard } from "./components/ACPCard";
 import {
   ACPDrawer,
@@ -26,7 +27,7 @@ const EMPTY_RUNNERS: Record<string, ACPRunnerConfig> = {};
 export function ACPPanel() {
   const { t } = useTranslation();
   const { modal, message } = App.useApp();
-  const { activeAgentId } = useAgent();
+  const { activeAgentId, agents } = useAgent();
   const [runners, setRunners] =
     useState<Record<string, ACPRunnerConfig>>(EMPTY_RUNNERS);
   const [toolEnabled, setToolEnabled] = useState(false);
@@ -41,6 +42,14 @@ export function ACPPanel() {
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
   const activeAgentIdRef = useRef(activeAgentId);
+
+  const activeAgent = useMemo(
+    () => agents.find((row) => row.agent_id === activeAgentId) ?? null,
+    [agents, activeAgentId],
+  );
+  const outboundBlocked = blocksAcpOutboundFromConfig(
+    activeAgent?.config ?? null,
+  );
 
   useEffect(() => {
     activeAgentIdRef.current = activeAgentId;
@@ -145,6 +154,7 @@ export function ACPPanel() {
   const handleToolToggle = async (checked: boolean) => {
     const agentId = activeAgentIdRef.current;
     if (!agentId || toolLoading) return;
+    if (checked && outboundBlocked) return;
     setToolToggleLoading(true);
     try {
       await persistToolEnabled(agentId, checked);
@@ -157,7 +167,8 @@ export function ACPPanel() {
   };
 
   const handleToggleEnabled = async (runnerKey: string, checked: boolean) => {
-    if (runnersLoading) return;
+    // Runners are account-global; only block *enabling* under sandbox.
+    if (runnersLoading || (outboundBlocked && checked)) return;
     const runner = runners[runnerKey];
     if (!runner) return;
     if (!runner.command?.trim() && checked) {
@@ -249,14 +260,25 @@ export function ACPPanel() {
     });
   };
 
+  const toolToggleDisabled =
+    !activeAgentId || toolLoading || (outboundBlocked && !toolEnabled);
+
   const toolSwitch = (
-    <Switch
-      key={activeAgentId ?? "none"}
-      checked={toolEnabled}
-      loading={toolLoading || toolToggleLoading}
-      disabled={!activeAgentId || toolLoading}
-      onChange={handleToolToggle}
-    />
+    <Tooltip
+      title={
+        activeAgentId && outboundBlocked && !toolEnabled
+          ? t("acp.outboundBlockedTooltip")
+          : undefined
+      }
+    >
+      <Switch
+        key={activeAgentId ?? "none"}
+        checked={toolEnabled}
+        loading={toolLoading || toolToggleLoading}
+        disabled={toolToggleDisabled}
+        onChange={handleToolToggle}
+      />
+    </Tooltip>
   );
 
   return (
@@ -271,6 +293,15 @@ export function ACPPanel() {
         </Button>
       </div>
 
+      {activeAgentId && outboundBlocked ? (
+        <Alert
+          type="info"
+          showIcon
+          className={styles.outboundBlockedAlert}
+          message={t("acp.outboundBlockedHint")}
+        />
+      ) : null}
+
       {runnersLoading && cards.length === 0 ? (
         <CardSkeleton count={4} />
       ) : (
@@ -282,6 +313,7 @@ export function ACPPanel() {
               config={cfg}
               isHover={hoverKey === key}
               toggleLoading={toggleLoadingKey === key}
+              interactionDisabled={outboundBlocked}
               onClick={() => openEdit(key)}
               onMouseEnter={() => setHoverKey(key)}
               onMouseLeave={() => setHoverKey(null)}
@@ -299,7 +331,14 @@ export function ACPPanel() {
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         ) : (
-          <div className={styles.toolToggle}>
+          <div
+            className={[
+              styles.toolToggle,
+              outboundBlocked && !toolEnabled ? styles.toolToggleDisabled : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
             <span>{t("acp.toolEnabled")}</span>
             {toolSwitch}
           </div>

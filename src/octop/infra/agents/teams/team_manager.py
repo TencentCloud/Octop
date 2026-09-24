@@ -35,7 +35,7 @@ from octop.infra.gateway.process.history_projection import (
     live_message_inputs,
     message_inputs,
 )
-from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.locale import DEFAULT_LOCALE, resolve_user_locale
 from octop.infra.utils.ulid import new_ulid
 
 if TYPE_CHECKING:
@@ -66,6 +66,19 @@ _STREAM_SPEAKER_TYPES = frozenset(
 )
 
 
+def host_system_prompt(row: Any, user_repo: Any) -> str:
+    """Runtime host briefing, appended to any custom ``system_prompt``."""
+    uid = getattr(row, "user_id", None)
+    locale = (
+        resolve_user_locale(user_repo=user_repo, user_id=uid)
+        if isinstance(uid, int) and uid > 0
+        else DEFAULT_LOCALE
+    )
+    briefing = tr("teams.host_briefing", locale)
+    custom = str(getattr(row, "system_prompt", None) or "").strip()
+    return f"{custom}\n\n{briefing}".strip() if custom else briefing
+
+
 class TeamManager:
     """Octop-side team room. Harness still owns ``ask_agent`` / inbox."""
 
@@ -92,7 +105,7 @@ class TeamManager:
     # -- ask_agent session (member page) -------------------------------------
 
     async def prepare_peer_session(self, call: PeerCall) -> PeerSession | None:
-        """Open the member thread and stash the user-visible question."""
+        """Open the member thread and stash the host's rewritten assignment."""
         thread_id = (
             derive_peer_thread_id(call.source_thread_id, call.to_agent_id)
             if call.source_thread_id
@@ -105,7 +118,7 @@ class TeamManager:
         question = ""
         dispatch_message = None
         if group:
-            question = await self._visible_user_prompt(call)
+            question = await self._assignment_text(call)
             dispatch_message = await self._dispatch_message(call, uid)
             if thread_id and (question or dispatch_message):
                 self.stash_peer_prompt(
@@ -169,10 +182,7 @@ class TeamManager:
             messages = result.get("messages")
             visible = _peer_turn_messages(messages) if isinstance(messages, list) else []
             visible = [msg for msg in visible if _message_role(msg) not in {"human", "user"}]
-            if self._is_group_dispatch(call):
-                prompt = await self._visible_user_prompt(call)
-            else:
-                prompt = str(call.message or "").strip()
+            prompt = await self._assignment_text(call)
             if prompt:
                 visible = [
                     HumanMessage(
@@ -212,10 +222,7 @@ class TeamManager:
     ) -> str:
         _ = result_text
         child_name = self._display_name(msg.target_agent_id)
-        uid = _octop_user_id(msg.user_id)
-        locale = (
-            resolve_user_locale(user_repo=self._user_repo, user_id=uid) if uid is not None else "en"
-        )
+        locale = self._locale_for(_octop_user_id(msg.user_id))
         if error_text:
             return tr(
                 "teams.followup_failed",
@@ -234,28 +241,37 @@ class TeamManager:
     async def on_reply(self, event: ReplyEvent) -> None:
         self._end_job_from_reply(event)
         room = str(event.source_thread_id or "").strip()
-        if self._take_live_host_reply(room) and event.status == "done":
-            if room:
-                self._thread_registry.touch_last_active(room)
-            return
+        speaker = event.source_agent_id
         text = (
             event.error_text or "Background task did not complete."
             if event.status != "done"
             else (event.reply_text or "(empty)")
         )
-        session_key = event.metadata.get("session_key")
-        if isinstance(session_key, str) and session_key.strip():
-            session = self._thread_registry.get_session(session_key.strip())
-            if session is not None:
-                await self._deliver_text(
-                    session,
-                    session_key.strip(),
-                    text,
-                    speaker_id=event.source_agent_id,
-                )
-                return
         if room:
-            await self._publish_room_text(room, event.source_agent_id, text)
+            await self._push_room_to_channels(room, speaker, text, prefix_speaker=False)
+        live_ws = self._take_live_host_reply(room) and event.status == "done"
+        if live_ws:
+            if room:
+                self._thread_registry.touch_last_active(room)
+            return
+        session_key = event.metadata.get("session_key")
+        session = (
+            self._thread_registry.get_session(session_key.strip())
+            if isinstance(session_key, str) and session_key.strip()
+            else None
+        )
+        if session is not None and not self._thread_registry.is_im_session(session):
+            await self._deliver_text(
+                session,
+                str(session.session_key),
+                text,
+                speaker_id=speaker,
+            )
+            return
+        if session is not None:
+            return
+        if room:
+            await self._publish_room_text(room, speaker, text)
             self._thread_registry.touch_last_active(room)
             return
         logger.warning("team reply %s: no room to publish", event.inbox_id)
@@ -426,16 +442,13 @@ class TeamManager:
                     speaker,
                     exc_info=True,
                 )
-        if live_streamed:
-            return
         room = str(call.source_thread_id or "").strip()
+        text = _assistant_text(final)
         if not room:
             return
-        await self._push_room_snapshot(
-            room,
-            speaker,
-            _assistant_text(final),
-        )
+        await self._push_room_to_channels(room, speaker, text)
+        if not live_streamed:
+            await self._push_room_snapshot(room, speaker, text)
 
     def stamp_host_runtime(self, request: dict[str, Any], agent_id: str) -> None:
         """Force the host turn onto async ``ask_agent`` (inbox), not sync."""
@@ -593,25 +606,34 @@ class TeamManager:
                 exc_info=True,
             )
 
+    async def _assignment_text(self, call: PeerCall) -> str:
+        """Host-rewritten task; fall back to the last room user line if empty."""
+        text = str(call.message or "").strip()
+        if text:
+            return text
+        if self._is_group_dispatch(call):
+            return await self._visible_user_prompt(call)
+        return ""
+
+    def _locale_for(self, user_id: int | None) -> str:
+        if user_id is None:
+            return DEFAULT_LOCALE
+        return resolve_user_locale(user_repo=self._user_repo, user_id=user_id)
+
     async def _dispatch_message(self, call: PeerCall, user_id: int | None) -> str:
-        locale = (
-            resolve_user_locale(user_repo=self._user_repo, user_id=user_id)
-            if user_id is not None
-            else "en"
-        )
+        locale = self._locale_for(user_id)
         transcript = await self._room_transcript(
             call.source_thread_id,
             call.from_agent_id,
             locale,
         )
-        if not transcript:
-            return call.message
-        return tr(
-            "teams.dispatch_with_history",
-            locale,
-            history=transcript,
-            task=call.message,
-        )
+        if transcript:
+            return tr(
+                "teams.member_briefing_with_history",
+                locale,
+                history=transcript,
+            )
+        return tr("teams.member_briefing", locale)
 
     async def _visible_user_prompt(self, call: PeerCall) -> str:
         last = await self._last_room_user_text(call.source_thread_id, call.from_agent_id)
@@ -695,11 +717,11 @@ class TeamManager:
         if not text or _is_team_system_prompt(text):
             return None
         if role in {"human", "user"}:
-            return f"{tr('teams.speaker_user', locale)}: {text}"
+            return self._channel_line(locale, tr("teams.speaker_user", locale), text)
         if role not in {"ai", "assistant"}:
             return None
         speaker = _projected_speaker(row) or host_id
-        return f"{self._display_name(speaker)}: {text}"
+        return self._channel_line(locale, self._display_name(speaker), text)
 
     async def _history(self, agent_id: str, thread_id: str | None) -> list[Any]:
         if not thread_id:
@@ -732,7 +754,7 @@ class TeamManager:
         if not text:
             return None
         if role in {"human", "user"}:
-            return f"{tr('teams.speaker_user', locale)}: {text}"
+            return self._channel_line(locale, tr("teams.speaker_user", locale), text)
         if role not in {"ai", "assistant"}:
             return None
         kwargs = (
@@ -741,13 +763,16 @@ class TeamManager:
             else getattr(msg, "additional_kwargs", None)
         ) or {}
         speaker = str(kwargs.get("speaker_agent_id") or host_id)
-        return f"{self._display_name(speaker)}: {text}"
+        return self._channel_line(locale, self._display_name(speaker), text)
+
+    def _channel_line(self, locale: str, name: str, text: str) -> str:
+        return tr("teams.channel_line", locale, name=name, text=text)
 
     def _title_member_thread(self, call: PeerCall, thread_id: str, user_id: int) -> None:
         host = self._agent_manager.get_row(call.from_agent_id)
         if not is_team_agent(host):
             return
-        locale = resolve_user_locale(user_repo=self._user_repo, user_id=user_id)
+        locale = self._locale_for(user_id)
         title = tr(
             "teams.peer_thread_title", locale, name=host.name if host else call.from_agent_id
         )
@@ -851,6 +876,53 @@ class TeamManager:
                 exc_info=True,
             )
 
+    async def _push_session_channel(self, session: SessionRow, text: str) -> None:
+        if self._gateway is None:
+            return
+        await self._gateway.push_text(
+            session.channel_type,
+            session.channel_id,
+            session.to_channel_subject(),
+            text,
+        )
+
+    async def _push_room_to_channels(
+        self,
+        thread_id: str,
+        speaker_id: str,
+        text: str,
+        *,
+        prefix_speaker: bool = True,
+    ) -> None:
+        """Push a finished room bubble to IM sessions bound to this thread.
+
+        Dashboard / CLI already receive the room WebSocket stream. Channels only
+        see the host's inbound turn unless we deliver member (and wrap-up) text
+        here as a complete outbound message.
+        """
+        body = (text or "").strip()
+        if not thread_id or not body or self._gateway is None:
+            return
+        for session in self._thread_registry.im_sessions_for_thread(thread_id):
+            outbound = (
+                self._channel_line(
+                    self._locale_for(int(session.user_id)),
+                    self._display_name(speaker_id),
+                    body,
+                )
+                if prefix_speaker
+                else body
+            )
+            try:
+                await self._push_session_channel(session, outbound)
+            except Exception:
+                logger.warning(
+                    "failed to push team speech to channel thread=%s speaker=%s",
+                    thread_id,
+                    speaker_id,
+                    exc_info=True,
+                )
+
     async def _publish_room_text(self, thread_id: str, speaker_id: str, text: str) -> None:
         body = (text or "").strip()
         if not thread_id or not body:
@@ -915,13 +987,8 @@ class TeamManager:
         *,
         speaker_id: str | None = None,
     ) -> None:
-        if session.channel_id and self._gateway is not None:
-            await self._gateway.push_text(
-                session.channel_type,
-                session.channel_id,
-                session.to_channel_subject(),
-                text,
-            )
+        if self._thread_registry.is_im_session(session):
+            await self._push_session_channel(session, text)
             return
         await self._publish_room_text(
             session.thread_id,
@@ -1003,9 +1070,13 @@ def _is_team_system_prompt(text: str) -> bool:
         (
             "[团队成员",
             "[系统唤醒",
+            "[团队派工",
+            "[主持人调度",
             "[team member",
             "[system wake-up",
             "[background task",
+            "[Team assignment",
+            "[Host dispatch",
             "以下是当前群聊记录",
             "Here is the current group-chat transcript",
         )
@@ -1465,6 +1536,7 @@ def wire_host_dispatch(
 
 __all__ = [
     "TeamManager",
+    "host_system_prompt",
     "stamp_stream_speaker",
     "stamp_team_host_chunk",
     "wire_host_dispatch",

@@ -33,7 +33,7 @@ export type ChannelKey =
 
 /**
  * Channel kinds backed by Octop ``ChannelKind`` / harness-gateway ``BUILTIN_CHANNELS``.
- * ``dashboard`` / ``agentchat`` / ``discord`` are intentionally omitted until implemented.
+ * ``dashboard`` / ``agentchat`` are intentionally omitted until implemented.
  */
 export const CHANNEL_KEYS: ChannelKey[] = [
   "weixin",
@@ -43,12 +43,13 @@ export const CHANNEL_KEYS: ChannelKey[] = [
   "yuanbao",
   "dingtalk",
   "telegram",
+  "discord",
   "xiaoyi",
   "mqtt",
 ];
 
 /** Overseas / less-common kinds hidden behind "更多通道" until expanded. */
-const COLLAPSED_CHANNEL_KEYS = new Set<ChannelKey>(["telegram"]);
+const COLLAPSED_CHANNEL_KEYS = new Set<ChannelKey>(["telegram", "discord"]);
 
 export function isCollapsedChannelKey(key: ChannelKey): boolean {
   return COLLAPSED_CHANNEL_KEYS.has(key);
@@ -167,11 +168,13 @@ export interface ChannelField {
   /** Visible label (Chinese; falls back when no i18n key). */
   label: string;
   /** Antd input type. */
-  type?: "text" | "password" | "textarea" | "json";
+  type?: "text" | "password" | "textarea" | "json" | "switch";
   /** Placeholder for the input. */
   placeholder?: string;
   /** True when the field is required at create time. */
   required?: boolean;
+  /** Optional i18n key for help beneath the control. */
+  helpKey?: string;
 }
 
 export const QQ_GROUP_VISIBILITIES = [
@@ -316,6 +319,22 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
   discord: [
     { name: "bot_token", label: "Bot Token", type: "password", required: true },
     {
+      name: "allow_all_channels",
+      label: "channels.discordAllowAllChannels",
+      type: "switch",
+      helpKey: "channels.discordAllowAllChannelsHelp",
+    },
+    {
+      name: "allowed_channel_ids",
+      label: "channels.discordAllowedChannels",
+      type: "textarea",
+    },
+    {
+      name: "allowed_user_ids",
+      label: "channels.discordAllowedUsers",
+      type: "textarea",
+    },
+    {
       name: "http_proxy",
       label: "HTTP Proxy",
       placeholder: "http://127.0.0.1:18118",
@@ -323,6 +342,7 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
     {
       name: "http_proxy_auth",
       label: "HTTP Proxy Auth",
+      type: "password",
       placeholder: "user:password",
     },
   ],
@@ -422,6 +442,18 @@ export function normalizeChannelFieldValue(
   fieldName: string,
   value: unknown,
 ): unknown {
+  if (fieldName === "allowed_channel_ids" || fieldName === "allowed_user_ids") {
+    const entries = Array.isArray(value)
+      ? value
+      : String(value ?? "")
+          .trim()
+          .split(/[,\s]+/)
+          .filter(Boolean);
+    if (entries.some((entry) => !/^\d+$/.test(String(entry)))) {
+      throw new Error("Invalid Discord ID");
+    }
+    return [...new Set(entries.map(String))];
+  }
   if (fieldName !== "group_context") return value;
   return normalizeQqGroupContextConfig(value);
 }

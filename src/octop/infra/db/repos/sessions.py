@@ -210,6 +210,15 @@ class SessionRepo:
                 (agent_id, user_id),
             )
 
+    def list_by_thread(self, thread_id: str) -> list[SessionRow]:
+        """Sessions currently bound to *thread_id* (dashboard, CLI, and IM)."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM sessions WHERE thread_id = ? ORDER BY updated_at DESC",
+                (thread_id,),
+            ).fetchall()
+        return [SessionRow.from_row(r) for r in rows]
+
     def list_by_agent(self, agent_id: str, *, limit: int = 20) -> list[SessionRow]:
         """Query all sessions for an agent, ordered by most-recent activity (descending).
 

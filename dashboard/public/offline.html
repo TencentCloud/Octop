@@ -24,7 +24,10 @@
       }
       .container {
         text-align: center;
-        padding: 40px 24px;
+        padding: max(40px, env(safe-area-inset-top, 0px))
+          max(24px, env(safe-area-inset-right, 0px))
+          max(40px, env(safe-area-inset-bottom, 0px))
+          max(24px, env(safe-area-inset-left, 0px));
         max-width: 360px;
       }
       .logo {
@@ -65,7 +68,7 @@
   </head>
   <body>
     <div class="container">
-      <img src="logo.svg" alt="Octop" class="logo" />
+      <img src="logo_vertical_white.svg" alt="Octop" class="logo" />
       <h1>当前处于离线状态</h1>
       <p>无法连接到 Octop 服务端。<br />请检查网络连接后重试。</p>
       <button onclick="location.reload()">重新连接</button>

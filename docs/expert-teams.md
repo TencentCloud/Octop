@@ -49,7 +49,7 @@
 | | 专家 (`kind=expert`) | 团队主持人 (`kind=team`) |
 |--|--|--|
 | 工作区 / checkpoint / 记忆 | 有 | 有（团队记忆根） |
-| 系统提示 | 专家模板 | 隐藏调度模板（用户不可见专家库） |
+| 系统提示 | 专家模板 | 隐藏调度模板 + 运行时「先消化再改写」约束（用户不可见专家库） |
 | 工具 | 干活用的全套 | 轻量 + `agent_list` + 异步 `ask_agent` |
 | 可见 peer | 默认同用户其它专家 | 仅 `team_peers` = 团队成员 |
 | 通道 | 可绑（1:1） | 可绑（团队入口） |
@@ -93,7 +93,7 @@ inbox 按 callee 并发：同一成员串行，不同成员并行；主持人回
 
 回叫闭环保持现状：inbox 完成后平台再叫醒主持人（`compose_followup`），不是成员自己调主持人。团队主持人的回叫提示要求判收工、不复述成员已上墙的正文。收口走房间 stream（与成员直播同一条 WS），不再整段 `team_snapshot`。
 
-成员被团队派工时，请求级覆盖 `peer_invoke_mode=sync` 且 `team_peers` 收窄为同事，禁止再异步往群里拉人。派工正文会附上主持人房间的可见群聊记录（用户 / 主持人 / 已上墙成员），成员 checkpoint 仍是 `主thread~成员id`。
+成员被团队派工时，请求级覆盖 `peer_invoke_mode=sync` 且 `team_peers` 收窄为同事，禁止再异步往群里拉人。成员收到的 Human 是主持人改写后的任务说明书，不是用户原话；群聊记录（用户 / 主持人 / 已上墙成员）只作为 System 背景。成员 checkpoint 仍是 `主thread~成员id`。主持人系统提示会要求先消化再改写，禁止原样转发。
 
 ### Octop 主持人装配
 
@@ -123,7 +123,7 @@ conversation_id = 主持人 thread_id
 - 成员自己的会话列表多一条 thread（派生 id），标题「来自团队 {name}」；session_key 为 `team:{房间thread}`，不占用成员 1:1 的 `dm` 会话
 - `@` 列表在团队聊天里收窄为成员；只作提示，不预调用
 
-房间 WS 逐 token 转播成员回复；fan-in 只在未 live 推送时补一条 snapshot。流式帧用 `agent` / `agent_id` 标识说话人。
+房间 WS 逐 token 转播成员回复；fan-in 只在未 live 推送时补一条 snapshot。流式帧用 `agent` / `agent_id` 标识说话人。IM 通道看不到房间 WS：成员收口后会再推一条带说话人姓名的完整消息；主持人收口在 Dashboard 已直播时也会补推到通道。
 
 ## HTTP
 

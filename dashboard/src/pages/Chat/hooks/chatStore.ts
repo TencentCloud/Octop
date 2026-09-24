@@ -2019,10 +2019,21 @@ function parseHitlRequest(raw: Record<string, unknown>) {
 function resolveHitlPending(
   state: SessionStreamState,
   status: "approved" | "rejected",
+  policy?: { mode: string; tools?: string[] },
 ): void {
-  state.messages = state.messages.map((m) =>
-    m.hitlData ? { ...m, hitlData: { ...m.hitlData, status } } : m,
-  );
+  const resolution =
+    status === "rejected"
+      ? undefined
+      : policy?.mode === "allow_all"
+      ? "allow_all"
+      : policy?.mode === "allow_tools"
+      ? "allow_tool"
+      : "approve";
+  state.messages = state.messages.map((m) => {
+    const hitl = m.hitlData;
+    if (!hitl || (hitl.status ?? "pending") !== "pending") return m;
+    return { ...m, hitlData: { ...hitl, status, resolution } };
+  });
 }
 
 function handleHitlRequired(
@@ -2348,6 +2359,7 @@ async function sendTurnWebSocket(
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
   conversationMode?: "ask" | "plan" | "craft" | null,
+  hitlPolicy?: { mode: string; tools?: string[] } | null,
 ): Promise<boolean> {
   const state = getOrCreate(sessionId);
   const resolvedThreadId = (threadId || sessionId).trim();
@@ -2428,6 +2440,7 @@ async function sendTurnWebSocket(
       if (reasoningMode) payload.reasoning_mode = reasoningMode;
       if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
       if (conversationMode) payload.conversation_mode = conversationMode;
+      if (hitlPolicy) payload.hitl_policy = hitlPolicy;
       ws.send(JSON.stringify(payload));
     };
 
@@ -2561,6 +2574,7 @@ export async function sendTurn(
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
   conversationMode?: "ask" | "plan" | "craft" | null,
+  hitlPolicy?: { mode: string; tools?: string[] } | null,
 ): Promise<void> {
   const state = getOrCreate(sessionId);
   rememberRoomAgent(state, agentId);
@@ -2648,6 +2662,7 @@ export async function sendTurn(
     reasoningMode,
     reasoningEffort,
     conversationMode,
+    hitlPolicy,
   );
   if (!wsOk) {
     state.messages = [
@@ -2716,6 +2731,7 @@ export async function resumeHitl(
   decisions: Array<{ type: string; message?: string }>,
   onStreamEnd?: () => void,
   dismissed = false,
+  hitlPolicy?: { mode: string; tools?: string[] },
 ): Promise<void> {
   const state = getOrCreate(sessionId);
   state.abortController?.abort();
@@ -2723,7 +2739,7 @@ export async function resumeHitl(
     dismissed || decisions.some((d) => d.type === "reject")
       ? "rejected"
       : "approved";
-  resolveHitlPending(state, hitlStatus);
+  resolveHitlPending(state, hitlStatus, hitlPolicy);
   beginStream(state, sessionId);
   notify(state);
   emitStreamEvent({ kind: "streamStart", sessionId });
@@ -2761,7 +2777,11 @@ export async function resumeHitl(
     const res = await fetch(getApiUrl(`/agents/${agentId}/chat/hitl/resume`), {
       method: "POST",
       headers,
-      body: JSON.stringify({ thread_id: threadId, decisions }),
+      body: JSON.stringify({
+        thread_id: threadId,
+        decisions,
+        ...(hitlPolicy ? { hitl_policy: hitlPolicy } : {}),
+      }),
       signal: controller.signal,
     });
     if (!res.ok) {
