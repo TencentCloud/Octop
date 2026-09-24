@@ -147,7 +147,7 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_CAPTCHA_SECRET` | string | empty | Siteverify secret (Tencent: AppSecretKey; never logged; `GET /api/envs` redacts it) |
 | `OCTOP_CAPTCHA_CAM_SECRET_ID` | string | empty | Tencent only: CAM API SecretId signing `DescribeCaptchaResult`; required when the env snapshot is `tencent` |
 | `OCTOP_CAPTCHA_CAM_SECRET_KEY` | string | empty | Tencent only: CAM API SecretKey; never logged; `GET /api/envs` redacts it |
-| `OCTOP_CAPTCHA_V3_MIN_SCORE` | float | `0.5` | Minimum `recaptcha-v3` score; admin UI is read-only |
+| `OCTOP_CAPTCHA_V3_MIN_SCORE` | float | `0.5` | Minimum `recaptcha-v3` score, in the provider's `0`–`1` range; values outside it (including `nan` / `inf`) fall back to the default, same as an unparsable one; admin UI is read-only |
 | `OCTOP_DEFAULT_TIMEZONE` | IANA tz | `Asia/Shanghai` | Default timezone for display, scheduling, and harness (`cron_timezone` / `OCTOP_CRON_TIMEZONE` still accepted) |
 | `OCTOP_CORS_ORIGINS` | comma-sep list | empty | Permitted CORS origins for the dashboard / external callers |
 | `OCTOP_ENABLE_DASHBOARD` | bool | `true` | Serve the built React SPA at `/` |

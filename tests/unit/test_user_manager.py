@@ -470,3 +470,63 @@ async def test_boot_loads_users(tmp_path: Path):
         assert not hasattr(user, "agent_manager") or True  # just verify no crash
     finally:
         await manager.shutdown_all()
+
+
+async def _two_workers(tmp_path: Path) -> tuple[UserManager, UserManager]:
+    """Two ``UserManager``s over one DB file = ``octop run --workers 2``."""
+    paths = PathLayout(tmp_path / ".octop")
+    paths.ensure_root()
+    run_migrations(SqlitePool(paths.db))
+    workers = []
+    for _ in range(2):
+        services = build_shared_services(db=SqlitePool(paths.db), paths=paths, config=OctopConfig())
+        workers.append(UserManager(services))
+    return workers[0], workers[1]
+
+
+async def test_set_role_visible_to_other_worker(tmp_path: Path):
+    """A revoked admin must stop being admin on the worker that did not serve the call."""
+    writer, other = await _two_workers(tmp_path)
+    created = await writer.create(username="alice", password="TestPass12", role=Role.ADMIN)
+    await other.boot()
+    assert other.get_by_id(created.id).role is Role.ADMIN
+
+    await writer.set_role("alice", Role.USER)
+    assert writer.get_by_id(created.id).role is Role.USER
+    assert other.get_by_id(created.id).role is Role.USER
+    assert other.get_by_id(created.id).is_admin is False
+
+
+async def test_disable_revokes_other_worker(tmp_path: Path):
+    """A disabled user must stop resolving by id on every worker, not just this one."""
+    writer, other = await _two_workers(tmp_path)
+    created = await writer.create(username="bob", password="TestPass12", role=Role.ADMIN)
+    await other.boot()
+    assert other.get_by_id(created.id) is not None
+
+    await writer.disable("bob")
+    assert writer.get_by_id(created.id) is None
+    assert other.get_by_id(created.id) is None
+
+
+async def test_remove_revokes_other_worker(tmp_path: Path):
+    """A deleted user must stop resolving by id on every worker."""
+    writer, other = await _two_workers(tmp_path)
+    created = await writer.create(username="carol", password="TestPass12", role=Role.ADMIN)
+    await other.boot()
+    assert other.get_by_id(created.id) is not None
+
+    await writer.remove("carol")
+    assert other.get_by_id(created.id) is None
+
+
+async def test_authenticate_returns_the_stored_role(tmp_path: Path):
+    """Login must hand back the row's role, not this worker's earlier copy."""
+    writer, other = await _two_workers(tmp_path)
+    await writer.create(username="dave", password="TestPass12", role=Role.USER)
+    await other.boot()
+    await writer.set_role("dave", Role.ADMIN)
+
+    logged_in = await other.authenticate("dave", "TestPass12")
+    assert logged_in is not None
+    assert logged_in.role is Role.ADMIN
