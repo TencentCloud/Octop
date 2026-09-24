@@ -1756,6 +1756,16 @@ function extractToolResultOutput(messages: unknown[]): string {
   return "";
 }
 
+/** First non-null ToolMessage ``artifact`` in a tool_result frame, if any. */
+function extractToolResultArtifact(messages: unknown[]): unknown {
+  for (const raw of messages) {
+    if (!raw || typeof raw !== "object") continue;
+    const artifact = (raw as Record<string, unknown>).artifact;
+    if (artifact !== undefined && artifact !== null) return artifact;
+  }
+  return undefined;
+}
+
 function closeToolCall(
   state: SessionStreamState,
   messages: unknown[],
@@ -1815,6 +1825,7 @@ function closeToolCall(
   if (toolIdx < 0) return;
   const target = state.messages[toolIdx];
   const output = extractToolResultOutput(messages);
+  const artifact = extractToolResultArtifact(messages);
   const explicitToolError = messages.some(
     (raw) =>
       raw !== null &&
@@ -1841,6 +1852,7 @@ function closeToolCall(
         ...(target.toolData ?? {}),
         output,
         errorCode,
+        ...(artifact != null ? { artifact } : {}),
       },
     },
     ...state.messages.slice(toolIdx + 1),

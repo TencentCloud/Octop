@@ -940,6 +940,9 @@ def _serialize_history_message(
             "name": str(_msg_attr(msg, "name") or ""),
             "output": output,
         }
+        artifact = _msg_attr(msg, "artifact")
+        if artifact is not None:
+            result_block["artifact"] = artifact
         if _msg_attr(msg, "status") == "error":
             result_block["error_code"] = "tool_error"
         blocks = [result_block]

@@ -18,6 +18,12 @@ export interface ToolCallData {
   callId?: string;
   arguments?: string;
   output?: string;
+  /**
+   * Offloaded ``octop_ui`` payload. When the backend strips a large ``data``
+   * field from the tool output (envelope carries ``data_ref: "artifact"``),
+   * the full payload lands here — never in the model's context.
+   */
+  artifact?: unknown;
   errorCode?: string;
   returnCode?: number;
   /** Owning plugin id when known (from tool index / SSE). */

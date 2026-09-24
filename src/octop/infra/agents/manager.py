@@ -3062,6 +3062,7 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
         from octop.infra.agents.middleware.token_quota import TokenQuotaMiddleware
@@ -3074,6 +3075,9 @@ class AgentManager:
         # BinaryReadGuard stays Octop-specific (inbound/attachment product policy).
         # ThreadArtifacts writes workspace paths onto threads after successful tools.
         # WorkspaceImageMaterialize expands path-only vision refs at model-call time.
+        # OctopUiOffload stays innermost so every outer middleware observes the
+        # slimmed content consistently; it only touches octop_ui plugin envelopes,
+        # disjoint from the file-tool results ThreadArtifacts cares about.
         agent_middleware: list[Any] = [
             *plugin_middleware,
             TokenQuotaMiddleware(
@@ -3089,6 +3093,7 @@ class AgentManager:
                 thread_repo=self._repos.thread_repo,
                 workspace_dir=harness_workspace,
             ),
+            OctopUiOffloadMiddleware(),
         ]
 
         merged_tools: list[Any] = []
