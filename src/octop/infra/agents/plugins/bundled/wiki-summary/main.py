@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 _UA = "Octop-wiki-summary/0.1.0"
 

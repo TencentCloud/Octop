@@ -9,7 +9,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from harness_gateway.models import ChannelSubject, InboundMessage, TextContent
+from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
 
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.process.history_projection import _wire_text

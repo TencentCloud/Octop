@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
-from harness_agent.backends import resolve_backend
-from harness_agent.backends.workspace import BackendWorkspace
+from octop_harness.backends import resolve_backend
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.infra.backend.resolver import default_agent_backend_spec
 from octop.infra.gateway.media.backend_files import (
@@ -414,7 +414,7 @@ def test_dashboard_media_url_uses_path_agent_id() -> None:
 async def test_resolve_preview_keeps_host_absolute_screenshot() -> None:
     """Browser screenshots under agent outbound/ must load via absolute path."""
     from deepagents.backends.local_shell import LocalShellBackend
-    from harness_agent.backends.workspace import BackendWorkspace
+    from octop_harness.backends.workspace import BackendWorkspace
 
     from octop.infra.gateway.media.backend_files import resolve_preview_payload
 

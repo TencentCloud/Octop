@@ -10,8 +10,8 @@ from typing import Any
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
-from harness_agent.backends import resolve_backend
-from harness_agent.backends.workspace import BackendWorkspace
+from octop_harness.backends import resolve_backend
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
 
