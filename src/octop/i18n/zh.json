@@ -377,7 +377,7 @@
     "CONNECTOR_NOT_FOUND": "未找到连接器。",
     "CONNECTOR_NAME_TAKEN": "该连接器名称已被使用，请换一个名称。",
     "CONNECTOR_INVALID_CREDENTIALS": "连接器凭证无效。",
-    "CONNECTOR_OAUTH_HTTPS_REQUIRED": "当前通过公网 HTTP 访问 Octop，Notion 授权回调地址需要 HTTPS。请改用 HTTPS，或通过 localhost、127.0.0.1 在本机访问 Octop。",
+    "CONNECTOR_OAUTH_HTTPS_REQUIRED": "当前通过公网 HTTP 访问 Octop，MCP OAuth 授权回调地址需要 HTTPS。请改用 HTTPS，或通过 localhost、127.0.0.1 在本机访问 Octop。",
     "CONNECTOR_MCP_URL_INVALID": "MCP 服务地址无效：{reason}",
     "CONNECTOR_MCP_HTTPS_REQUIRED": "公网 MCP 服务地址必须使用 HTTPS。本机与局域网地址可以使用 HTTP。",
     "CONNECTOR_KIND_UNSUPPORTED": "不支持的连接器类型。",

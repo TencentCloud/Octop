@@ -899,7 +899,13 @@ async def delete_instance(
             cli_creds = {"instance_id": instance_id}
         else:
             cli_creds = {**cli_creds, "instance_id": instance_id}
-    repo.delete(instance_id)
+    if inst.kind == "qcc":
+        try:
+            await _connector_service(server).disconnect_qcc(instance_id)
+        except ValueError as exc:
+            raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
+    else:
+        repo.delete(instance_id)
     if cli_creds is not None:
         cleanup_creds_cli_dirs(inst.kind, cli_creds)
     _schedule_connector_reload(server, user_id, all_users=inst.shared)

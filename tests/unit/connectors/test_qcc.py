@@ -1,4 +1,4 @@
-"""QCC catalog integration with API Key and the internal HTTP aggregator."""
+"""QCC catalog integration with OAuth and the internal HTTP aggregator."""
 
 from __future__ import annotations
 
@@ -36,9 +36,11 @@ async def test_qcc_credentials_build_and_probe(monkeypatch: pytest.MonkeyPatch) 
     assert entry.mcp_mode == "internal"
     assert uses_internal_http_mcp(entry)
     assert not is_inprocess_gateway(entry)
-    assert get_mcp_oauth_remote("qcc") is None
-    creds = validate_create_credentials("qcc", {"api_key": "test-qcc-token"})
-    assert creds["api_key"] == "test-qcc-token"
+    assert get_mcp_oauth_remote("qcc") is entry
+    creds = validate_create_credentials(
+        "qcc", {"access_token": "test-qcc-token", "oauth_client_id": "client"}
+    )
+    assert creds["access_token"] == "test-qcc-token"
     assert creds["internal_token"]
     creds["internal_token"] = "local-gateway-token"
     spec = build_http_mcp_spec(
@@ -54,7 +56,10 @@ async def test_qcc_credentials_build_and_probe(monkeypatch: pytest.MonkeyPatch) 
     probe.assert_awaited_once_with("test-qcc-token")
 
 
-def test_qcc_harness_config_uses_http_not_inprocess_gateway(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "payload", [{"api_key": "k"}, {"access_token": "a", "oauth_client_id": "client"}]
+)
+def test_qcc_harness_config_uses_http_not_inprocess_gateway(tmp_path: Path, payload: dict) -> None:
     pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     with pool.transaction() as conn:
@@ -75,7 +80,7 @@ def test_qcc_harness_config_uses_http_not_inprocess_gateway(tmp_path: Path) -> N
         settings_repo=SettingsRepo(pool),
         config=OctopConfig(),
     )
-    svc.encrypt_and_store(instance_id="qcc1", payload={"api_key": "k", "internal_token": "tok"})
+    svc.encrypt_and_store(instance_id="qcc1", payload={**payload, "internal_token": "tok"})
     configs = build_mcp_server_configs_for_user(
         svc=svc,
         connector_repo=repo,

@@ -230,6 +230,16 @@ def validate_create_credentials(
             raise ValueError("token is required")
         return {"token": token}
 
+    # Preserve credentials submitted by older QCC clients during migration.
+    if kind == "qcc" and credentials.get("api_key") and not credentials.get("access_token"):
+        api_key = str(credentials["api_key"]).strip()
+        if not api_key:
+            raise ValueError("api_key is required")
+        return {
+            "api_key": api_key,
+            "internal_token": new_internal_token(),
+        }
+
     if entry.auth_kind == "oauth2":
         access_token = str(
             credentials.get("access_token") or credentials.get("token") or ""
