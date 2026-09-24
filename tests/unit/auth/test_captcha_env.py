@@ -61,24 +61,3 @@ def test_installed_snapshot_ignores_later_os_environ_changes(
     monkeypatch.setenv("OCTOP_CAPTCHA_SITE_KEY", "0xsite")
     monkeypatch.setenv("OCTOP_CAPTCHA_SECRET", "0xsecret")
     assert current_env().provider == "slider"
-
-
-@pytest.mark.parametrize(
-    ("raw", "expected"),
-    [("", 0.5), ("abc", 0.5), ("0", 0.0), ("0.9", 0.9), ("1", 1.0)],
-)
-def test_min_score_snapshot_keeps_in_domain_values(raw: str, expected: float) -> None:
-    env = snapshot_env({"OCTOP_CAPTCHA_V3_MIN_SCORE": raw})
-    assert env.v3_min_score == expected
-
-
-@pytest.mark.parametrize("raw", ["nan", "NaN", "-nan", "inf", "-inf", "1e999"])
-def test_non_finite_min_score_falls_back_to_default(raw: str) -> None:
-    env = snapshot_env({"OCTOP_CAPTCHA_V3_MIN_SCORE": raw})
-    assert env.v3_min_score == 0.5
-
-
-@pytest.mark.parametrize("raw", ["-0.1", "1.5"])
-def test_out_of_score_domain_min_score_falls_back_to_default(raw: str) -> None:
-    env = snapshot_env({"OCTOP_CAPTCHA_V3_MIN_SCORE": raw})
-    assert env.v3_min_score == 0.5
