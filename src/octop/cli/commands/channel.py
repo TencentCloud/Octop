@@ -146,11 +146,17 @@ def patch_channel(
         raise click.ClickException(
             "nothing to patch; pass --name, --enabled/--disabled, or --config"
         )
-    from octop.cli.support.offline_ops import patch_channel_offline
+    from octop.cli.support.offline_ops import get_channel_offline, patch_channel_offline
     from octop.infra.errors import OctopError
 
     config = _parse_json_object("config", config_json) if config_json is not None else None
     try:
+        if config is not None:
+            # --config patches the stored JSON: merge so unrelated keys (e.g.
+            # credentials) survive, matching the channel-bind flows elsewhere in
+            # this file.
+            existing = get_channel_offline(aid, channel_id)
+            config = {**existing.get("config", {}), **config}
         data = patch_channel_offline(
             aid,
             channel_id,

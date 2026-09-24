@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 修复
+
+- CLI `channel patch --config` 改为与已存 `config_json` 合并：原先整体替换会静默丢弃 `app_id`/`secret` 等凭证，渠道重启后无法启动（#1134）
+
 ## [1.0.2b2] - 2026-09-23
 
 ### 新增
