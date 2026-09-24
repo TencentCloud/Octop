@@ -126,6 +126,7 @@ async def test_attachment_frame_virtual_mode_uses_download_url() -> None:
             "type": "tool_result",
             "messages": [
                 {
+                    "name": "desktop_screenshot",
                     "content": json.dumps(
                         {
                             "type": "image",
@@ -177,6 +178,7 @@ async def test_attachment_frame_uses_workspace_download_url() -> None:
             "type": "tool_result",
             "messages": [
                 {
+                    "name": "desktop_screenshot",
                     "content": json.dumps(
                         {
                             "type": "image",
@@ -235,6 +237,7 @@ async def test_enrich_send_file_dict_content() -> None:
             "type": "tool_result",
             "messages": [
                 {
+                    "name": "send_file_to_user",
                     "content": {
                         "type": "image",
                         "source": {
@@ -319,6 +322,7 @@ async def test_enrich_send_file_keeps_absolute_path_without_copy() -> None:
             "type": "tool_result",
             "messages": [
                 {
+                    "name": "send_file_to_user",
                     "content": {
                         "type": "file",
                         "source": {
@@ -363,6 +367,7 @@ async def test_enrich_send_file_rewrites_path_to_dashboard_api() -> None:
             "type": "tool_result",
             "messages": [
                 {
+                    "name": "send_file_to_user",
                     "content": {
                         "type": "file",
                         "source": {
@@ -469,3 +474,225 @@ def test_plain_text_image_scan_handles_long_web_output() -> None:
     started = time.perf_counter()
     assert enrich_tool_output_string_sync(text, agent_id="A1") == text
     assert time.perf_counter() - started < 1.0
+
+
+def test_is_media_push_tool_allowlist() -> None:
+    from octop.infra.gateway.media.tool_media import is_media_push_tool
+
+    assert is_media_push_tool("send_file_to_user")
+    assert is_media_push_tool("namespace/desktop_screenshot")
+    assert is_media_push_tool("mobile_screenshot")
+    assert is_media_push_tool("generate_image")
+    assert not is_media_push_tool("write_file")
+    assert not is_media_push_tool("read_file")
+    assert not is_media_push_tool("browser_use")
+    assert not is_media_push_tool(None)
+
+
+@pytest.mark.asyncio
+async def test_attachment_frames_skip_non_delivery_tools() -> None:
+    """write_file / read_file media-shaped results must not push to the user."""
+    with tempfile.TemporaryDirectory() as ws:
+        workspace = _workspace(ws)
+        await workspace.aupload_bytes(f"{OUTBOUND_DIR}/old.png", b"PNG")
+        media = {
+            "type": "image",
+            "source": {
+                "type": "url",
+                "url": f"file://{ws}/{OUTBOUND_DIR}/old.png",
+                "media_type": "image/png",
+            },
+            "filename": "old.png",
+        }
+        for tool_name in ("write_file", "read_file", "web_fetch"):
+            chunk = {
+                "type": "tool_result",
+                "messages": [{"name": tool_name, "content": media}],
+            }
+            frames = [
+                f
+                async for f in attachment_frames_from_tool_result(
+                    chunk,
+                    agent_id="agent-1",
+                    workspace=workspace,
+                )
+            ]
+            assert frames == [], tool_name
+
+
+@pytest.mark.asyncio
+async def test_plain_text_media_invent_only_for_delivery_tools() -> None:
+    with tempfile.TemporaryDirectory() as ws:
+        shots = Path(ws) / "outbound" / "screenshots"
+        shots.mkdir(parents=True)
+        png = shots / "shot.png"
+        png.write_bytes(b"\x89PNG\r\n")
+        workspace = _workspace(ws)
+        text = f"Screenshot saved to {png}"
+
+        write_chunk = {
+            "type": "tool_result",
+            "messages": [{"name": "write_file", "content": text}],
+        }
+        write_enriched = await enrich_tool_result_with_backend(
+            write_chunk,
+            agent_id="A1",
+            workspace=workspace,
+        )
+        assert write_enriched["messages"][0]["content"] == text
+
+        shot_chunk = {
+            "type": "tool_result",
+            "messages": [{"name": "desktop_screenshot", "content": text}],
+        }
+        shot_enriched = await enrich_tool_result_with_backend(
+            shot_chunk,
+            agent_id="A1",
+            workspace=workspace,
+        )
+        content = shot_enriched["messages"][0]["content"]
+        assert content != text
+        frames = [
+            f
+            async for f in attachment_frames_from_tool_result(
+                shot_enriched,
+                agent_id="A1",
+                workspace=workspace,
+            )
+        ]
+        assert len(frames) == 1
+        assert frames[0]["kind"] == "image"
+
+
+def test_dedup_tool_result_messages_skips_replayed_ids() -> None:
+    from octop.infra.gateway.media.tool_media import dedup_tool_result_messages
+
+    emitted: set[str] = set()
+    first = {
+        "type": "tool_result",
+        "messages": [
+            {"tool_call_id": "c1", "name": "send_file_to_user", "content": "a"},
+            {"tool_call_id": "c2", "name": "write_file", "content": "b"},
+        ],
+    }
+    kept = dedup_tool_result_messages(first, emitted)
+    assert kept is not None
+    assert len(kept["messages"]) == 2
+    assert emitted == {"c1", "c2"}
+
+    replay = {
+        "type": "tool_result",
+        "messages": [
+            {"tool_call_id": "c1", "name": "send_file_to_user", "content": "a"},
+            {"tool_call_id": "c3", "name": "send_file_to_user", "content": "c"},
+        ],
+    }
+    kept2 = dedup_tool_result_messages(replay, emitted)
+    assert kept2 is not None
+    assert [m["tool_call_id"] for m in kept2["messages"]] == ["c3"]
+    assert emitted == {"c1", "c2", "c3"}
+
+    assert dedup_tool_result_messages(first, emitted) is None
+
+
+@pytest.mark.asyncio
+async def test_iter_dashboard_attachment_frames_requires_live_tool_call() -> None:
+    """Historical Overwrite dumps before any tool_call_chunk must not push."""
+    from octop.infra.gateway.media.tool_media import iter_dashboard_attachment_frames
+
+    with tempfile.TemporaryDirectory() as ws:
+        workspace = _workspace(ws)
+        await workspace.aupload_bytes(f"{OUTBOUND_DIR}/prior.png", b"PNG")
+        chunk = {
+            "type": "tool_result",
+            "messages": [
+                {
+                    "tool_call_id": "old-1",
+                    "name": "send_file_to_user",
+                    "content": {
+                        "type": "image",
+                        "source": {
+                            "type": "url",
+                            "url": f"file://{ws}/{OUTBOUND_DIR}/prior.png",
+                            "media_type": "image/png",
+                        },
+                        "filename": "prior.png",
+                        "path": f"{OUTBOUND_DIR}/prior.png",
+                    },
+                },
+            ],
+        }
+        emitted_ids: set[str] = set()
+        emitted_keys: set[str] = set()
+        frames = [
+            f
+            async for f in iter_dashboard_attachment_frames(
+                chunk,
+                agent_id="agent-1",
+                workspace=workspace,
+                saw_tool_call=False,
+                emitted_media_ids=emitted_ids,
+                emitted_attachment_keys=emitted_keys,
+            )
+        ]
+        assert frames == []
+        assert emitted_ids == set()
+
+        frames_live = [
+            f
+            async for f in iter_dashboard_attachment_frames(
+                chunk,
+                agent_id="agent-1",
+                workspace=workspace,
+                saw_tool_call=True,
+                emitted_media_ids=emitted_ids,
+                emitted_attachment_keys=emitted_keys,
+            )
+        ]
+        assert len(frames_live) == 1
+        assert emitted_ids == {"old-1"}
+
+        # Same path via a new tool_call_id must not push again.
+        replay = {
+            "type": "tool_result",
+            "messages": [
+                {
+                    "tool_call_id": "new-2",
+                    "name": "send_file_to_user",
+                    "content": {
+                        "type": "image",
+                        "source": {
+                            "type": "url",
+                            "url": f"file://{ws}/{OUTBOUND_DIR}/prior.png",
+                            "media_type": "image/png",
+                        },
+                        "filename": "prior.png",
+                        "path": f"{OUTBOUND_DIR}/prior.png",
+                    },
+                },
+            ],
+        }
+        frames_dup_path = [
+            f
+            async for f in iter_dashboard_attachment_frames(
+                replay,
+                agent_id="agent-1",
+                workspace=workspace,
+                saw_tool_call=True,
+                emitted_media_ids=emitted_ids,
+                emitted_attachment_keys=emitted_keys,
+            )
+        ]
+        assert frames_dup_path == []
+
+
+def test_attachment_frame_dedup_key_prefers_path() -> None:
+    from octop.infra.gateway.media.tool_media import attachment_frame_dedup_key
+
+    assert (
+        attachment_frame_dedup_key(
+            {"path": "outbound/a.png", "preview_url": "/api/x", "url": "/api/y"}
+        )
+        == "path:outbound/a.png"
+    )
+    assert attachment_frame_dedup_key({"preview_url": "/api/x"}) == "url:/api/x"
