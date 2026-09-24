@@ -694,8 +694,9 @@ export default function KnowledgeBasesPage() {
     : 0;
   const atBaseLimit = ownedBaseCount >= limits.max_bases_per_owner;
   const fileCount = documents.filter((document) => !document.is_dir).length;
-  const isAtDocumentLimit =
-    fileCount >= (selected?.max_documents ?? limits.max_docs_per_kb);
+  // Per-base document limit: 0 means unlimited (see field description).
+  const kbDocLimit = selected?.max_documents ?? limits.max_docs_per_kb;
+  const isAtDocumentLimit = kbDocLimit > 0 && fileCount >= kbDocLimit;
   const folderEntries = documents
     .filter((document) =>
       isDirectKnowledgeChild(document.path || document.filename, currentFolder),
@@ -1288,7 +1289,7 @@ export default function KnowledgeBasesPage() {
     if (!selected || !files || !usable || isAtDocumentLimit) return;
     const remaining = Math.max(
       0,
-      (selected?.max_documents ?? limits.max_docs_per_kb) - fileCount,
+      kbDocLimit > 0 ? kbDocLimit - fileCount : Number.MAX_SAFE_INTEGER,
     );
     const incoming = Array.from(files);
     const matched = incoming.filter((file) =>
