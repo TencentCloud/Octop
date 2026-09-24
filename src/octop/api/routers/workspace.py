@@ -179,7 +179,6 @@ async def write_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Overwrite ``path`` with ``body.content`` (text)."""
-    _assert_workspace_mutable(path)
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
@@ -311,11 +310,10 @@ async def upload_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Upload a binary file via multipart ``file=@...``."""
-    target = path or f"/{file.filename or 'upload.bin'}"
-    _assert_workspace_mutable(target)
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    target = path or f"/{file.filename or 'upload.bin'}"
     data = await file.read()
     try:
         await ws.aupload_bytes(

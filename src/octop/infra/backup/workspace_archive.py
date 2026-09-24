@@ -12,11 +12,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from octop_harness.backends.utils import materialize_storage_path
 
-from octop.infra.agents.builtin_skills import (
-    OCTOP_BUILTIN_SKILLS_ROOT,
-    is_octop_builtin_skills_path,
-)
-
 if TYPE_CHECKING:
     from octop_harness.backends.workspace import BackendWorkspace
 
@@ -250,15 +245,7 @@ async def import_workspace_zip(
             "replace mode cleared only the local harness workspace; remote-only files may remain"
         )
 
-    # ``DELETE`` / ``move`` refuse this prefix, so writing it from an archive would
-    # leave entries the user cannot remove; the files Octop owns are re-seeded on
-    # every agent start anyway.
-    pairs = [(rel, blob) for rel, blob in entries if not is_octop_builtin_skills_path(rel)]
-    skipped = len(entries) - len(pairs)
-    if skipped:
-        warnings.append(
-            f"skipped {skipped} {OCTOP_BUILTIN_SKILLS_ROOT!r} entry/entries (owned by Octop)"
-        )
+    pairs = [(rel_path, blob) for rel_path, blob in entries]
     if pairs:
         await workspace.aupload_many(pairs)
 
