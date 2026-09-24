@@ -475,9 +475,9 @@ Commands:
 ## `octop completion` / `octop version`
 
 ```text
-$ octop completion show bash   # dump a shell snippet
-$ octop completion install     # append to ~/.zshrc / ~/.bashrc
-$ octop version                # print the installed octop version
+$ octop completion show --shell bash   # dump a shell snippet
+$ octop completion install             # append to ~/.zshrc / ~/.bashrc
+$ octop version                        # print the installed octop version
 ```
 
 ## CLI state file
@@ -486,14 +486,14 @@ $ octop version                # print the installed octop version
 
 ```json
 {
-  "base_url": "http://127.0.0.1:8088",
-  "token": null,
   "default_user": null,
   "default_agent": null
 }
 ```
 
 The path is exposed as `octop.cli.support.state.default_state_path()`
-and can be overridden via `OCTOP_HOME`. Delete the file to log out
-the CLI without hitting the server. The dashboard and HTTP callers
-do not share this file — they manage their own tokens.
+and can be overridden via `OCTOP_HOME`. The file holds only these two
+pinned defaults — no base URL and no credentials — so deleting it just
+unpins the default user and agent. The CLI has no `octop user login`; it
+trusts local filesystem access to `~/.octop`. The dashboard and HTTP
+callers do not share this file — they manage their own tokens.
