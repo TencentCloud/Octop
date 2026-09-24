@@ -49,7 +49,7 @@ func TestVerifyShellDevServerAcceptsShellPage(t *testing.T) {
 		_, _ = w.Write([]byte(`<html><head><meta name="octop-desktop-shell" content="1" /></head></html>`))
 	}))
 	t.Cleanup(shell.Close)
-	if err := verifyShellDevServer(shell.URL, LocaleEN); err != nil {
+	if err := verifyShellDevServer(shell.URL); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -59,7 +59,7 @@ func TestVerifyShellDevServerRejectsForeignPage(t *testing.T) {
 		_, _ = w.Write([]byte(`<!doctype html><html><body>some other app</body></html>`))
 	}))
 	t.Cleanup(foreign.Close)
-	err := verifyShellDevServer(foreign.URL, LocaleEN)
+	err := verifyShellDevServer(foreign.URL)
 	if err == nil {
 		t.Fatal("a foreign dev server must not be rendered")
 	}
@@ -69,7 +69,7 @@ func TestVerifyShellDevServerRejectsForeignPage(t *testing.T) {
 }
 
 func TestVerifyShellDevServerIgnoresUnsetURL(t *testing.T) {
-	if err := verifyShellDevServer("  ", LocaleEN); err != nil {
+	if err := verifyShellDevServer("  "); err != nil {
 		t.Fatal(err)
 	}
 }

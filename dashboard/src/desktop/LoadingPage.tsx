@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import peek from "./assets/octop-mascot-peek.webp";
 import typeMascot from "./assets/octop-mascot-type.webp";
+import { statusText } from "./statusText";
+import type { DesktopStatus } from "./wails";
 import styles from "./LoadingPage.module.less";
 
 const MASCOT_IMAGES = [peek, typeMascot];
@@ -12,13 +14,14 @@ function nextMascot(current: string): string {
 }
 
 interface LoadingPageProps {
-  status: string;
-  stuck: boolean;
+  status: DesktopStatus;
 }
 
-export default function LoadingPage({ status, stuck }: LoadingPageProps) {
+export default function LoadingPage({ status }: LoadingPageProps) {
   const { t } = useTranslation();
   const [mascot, setMascot] = useState(() => nextMascot(""));
+  const stuck = status.level === "error";
+  const text = statusText(t, status);
 
   return (
     <div
@@ -49,7 +52,7 @@ export default function LoadingPage({ status, stuck }: LoadingPageProps) {
             <span className={styles.barFill} />
           </div>
           <p className={styles.status} data-testid="status">
-            {status}
+            {text}
           </p>
         </div>
       </div>

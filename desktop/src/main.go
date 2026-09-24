@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -45,14 +46,6 @@ type App struct {
 
 	statusMu sync.Mutex
 	status   desktopStatus
-}
-
-// desktopStatus is the desktop:status payload. The shell page switches its
-// loading panel into the error state from the flag instead of pattern-matching
-// localized copy.
-type desktopStatus struct {
-	Message string `json:"message"`
-	Error   bool   `json:"error"`
 }
 
 func (a *App) ServiceName() string { return "desktop" }
@@ -167,18 +160,36 @@ func jsonString(s string) string {
 	return string(b)
 }
 
-func (a *App) setStatus(msg string) { a.emitStatus(msg, false) }
+// setStatus reports progress; setError reports a failure the page should show as
+// an error. Both take a status code (status_codes.go) plus the args its copy
+// interpolates; the page renders the text through i18next.
+func (a *App) setStatus(code string, args map[string]any) {
+	a.emitStatus(statusLevelProgress, code, args)
+}
 
-func (a *App) setError(msg string) { a.emitStatus(msg, true) }
+func (a *App) setError(code string, args map[string]any) {
+	a.emitStatus(statusLevelError, code, args)
+}
 
-func (a *App) emitStatus(msg string, isError bool) {
+// setFault reports a failure from the boot helpers. Faults keep their code and
+// args; anything else (I/O diagnostics) reports under a generic code.
+func (a *App) setFault(err error) {
+	var fault *desktopFault
+	if errors.As(err, &fault) {
+		a.emitStatus(statusLevelError, fault.code, fault.args)
+		return
+	}
+	a.emitStatus(statusLevelError, codeErrorUnexpected, map[string]any{"error": err.Error()})
+}
+
+func (a *App) emitStatus(level, code string, args map[string]any) {
 	a.statusMu.Lock()
-	a.status = desktopStatus{Message: msg, Error: isError}
+	a.status = desktopStatus{Code: code, Level: level, Args: args}
 	a.statusMu.Unlock()
 	if a.app == nil {
 		return
 	}
-	a.app.Event.Emit("desktop:status", map[string]any{"message": msg, "error": isError})
+	a.app.Event.Emit("desktop:status", a.status)
 }
 
 // replayStatus re-sends the last status. The page subscribes when it is ready,
@@ -188,13 +199,10 @@ func (a *App) replayStatus() {
 	a.statusMu.Lock()
 	status := a.status
 	a.statusMu.Unlock()
-	if status.Message == "" || a.app == nil {
+	if status.Code == "" || a.app == nil {
 		return
 	}
-	a.app.Event.Emit(
-		"desktop:status",
-		map[string]any{"message": status.Message, "error": status.Error},
-	)
+	a.app.Event.Emit("desktop:status", status)
 }
 
 // BootReady is called by the loading page once it subscribes to desktop:status.
@@ -216,30 +224,26 @@ func (a *App) startBoot() {
 }
 
 func (a *App) boot() {
-	locale := LocaleEN
-	if a.store != nil {
-		locale = a.store.get().Locale
-	}
 	if url := os.Getenv("OCTOP_DESKTOP_URL"); url != "" {
-		a.setStatus(desktopText(locale, copyStatusConnecting))
-		if err := waitHealth(locale, url, 60*time.Second); err != nil {
-			a.setError(err.Error())
+		a.setStatus(codeStatusConnecting, nil)
+		if err := waitHealth(url, 60*time.Second); err != nil {
+			a.setFault(err)
 			return
 		}
 		a.showDashboard(url)
 		return
 	}
 	s := a.store.get()
-	a.setStatus(desktopText(locale, copyStatusCheckingRuntime))
-	if err := ensurePortable(locale, a.setStatus); err != nil {
-		a.setError(err.Error())
+	a.setStatus(codeStatusCheckingRuntime, nil)
+	if err := ensurePortable(a.setStatus); err != nil {
+		a.setFault(err)
 		return
 	}
 	root := portableDir()
 	// Whatever already listens on the port would answer the health probe and
 	// then be shown in the window; refuse to start instead.
 	if portBusy(s.Port) {
-		a.setError(desktopText(locale, copyErrorPortInUse, s.Port))
+		a.setError(codeErrorPortInUse, map[string]any{"port": s.Port})
 		return
 	}
 	a.mu.Lock()
@@ -248,13 +252,13 @@ func (a *App) boot() {
 	a.cmd = cmd
 	a.mu.Unlock()
 	if err != nil {
-		a.setError(err.Error())
+		a.setError(codeErrorStartFailed, map[string]any{"error": err.Error()})
 		return
 	}
 	base := dashboardURL(s.Port)
-	a.setStatus(desktopText(locale, copyStatusStartingService))
-	if err := waitHealth(locale, base, 2*time.Minute); err != nil {
-		a.setError(err.Error())
+	a.setStatus(codeStatusStartingService, nil)
+	if err := waitHealth(base, 2*time.Minute); err != nil {
+		a.setFault(err)
 		return
 	}
 	a.showDashboard(base)
@@ -271,7 +275,7 @@ func (a *App) showDashboard(base string) {
 		time.Sleep(800 * time.Millisecond)
 		a.applyDashboardPrefs(s)
 	}()
-	a.setStatus(desktopText(s.Locale, copyStatusReady))
+	a.setStatus(codeStatusReady, nil)
 }
 
 func (a *App) hideToTray() {
@@ -353,10 +357,7 @@ func (a *App) requestQuit() {
 
 func main() {
 	store := &settingsStore{cur: loadSettings()}
-	if err := verifyShellDevServer(
-		os.Getenv("FRONTEND_DEVSERVER_URL"),
-		store.get().Locale,
-	); err != nil {
+	if err := verifyShellDevServer(os.Getenv("FRONTEND_DEVSERVER_URL")); err != nil {
 		log.Fatal(err)
 	}
 	api := &App{

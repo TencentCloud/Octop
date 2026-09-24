@@ -13,7 +13,37 @@
     "close": "Close"
   },
   "desktopShell": {
-    "statusWait": "Starting, please wait…",
+    "status": {
+      "wait": "Starting, please wait…",
+      "connecting": "Connecting to Octop…",
+      "checking_runtime": "Checking the runtime…",
+      "starting_service": "Starting the Octop service…",
+      "ready": "Octop is ready",
+      "using_runtime": "Using the existing runtime…",
+      "backup_database": "Desktop update {{version}} found. Backing up the database…",
+      "updating_runtime": "Updating the bundled runtime…",
+      "first_extract": "First launch: unpacking the bundled runtime…",
+      "update_failed_keep": "Runtime update failed; using the existing runtime…"
+    },
+    "error": {
+      "unexpected": "Something went wrong: {{error}}",
+      "port_in_use": "Port {{port}} is already in use, by another Octop instance or a different program. Close it, or set a different port in the desktop settings.",
+      "foreign_service": "Something other than Octop is answering at {{addr}}. Refusing to load it; close the program using that port and try again.",
+      "app_too_old": "Local data version {{currentVersion}} is newer than this App version {{appVersion}}. The App version is too old; install version {{requiredVersion}} or later.",
+      "backup_failed": "Database backup failed before upgrade; the current version was preserved",
+      "start_failed": "Could not start the bundled Octop service: {{error}}"
+    },
+    "health": {
+      "not_ready_5xx": "Octop did not become ready within {{wait}} ({{addr}}). The service responded but is not ready yet. Try again, or check the terminal logs.",
+      "not_ready_connect": "Octop did not become ready within {{wait}} ({{addr}}). Could not connect — make sure Octop is running.",
+      "not_ready": "Octop did not become ready within {{wait}} ({{addr}}). Make sure Octop is running at this address, or check the terminal logs."
+    },
+    "wait": {
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes",
+      "seconds_one": "{{count}} second",
+      "seconds_other": "{{count}} seconds"
+    },
     "loadingHint": "Checking the runtime. This may take a few minutes.",
     "settingsTitle": "Octop Settings",
     "settingsSubtitle": "Desktop preferences",

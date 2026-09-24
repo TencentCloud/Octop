@@ -35,27 +35,41 @@ export async function callApp<T>(name: string, ...args: unknown[]): Promise<T> {
   return rt.Call.ByName("main.App." + name, ...args) as Promise<T>;
 }
 
-export type DesktopStatus = { text: string; error: boolean };
+export type ShellStatusLevel = "progress" | "error";
 
-/** Reads the desktop:status payload: `{ message, error }` in the event data. */
+/** Copy key (see the Go shell's status_codes.go) plus its interpolation args. */
+export type DesktopStatus = {
+  code: string;
+  level: ShellStatusLevel;
+  args: Record<string, unknown>;
+};
+
+/** Reads the `{ code, level, args }` payload the shell sends. */
 export function statusFromEvent(ev: unknown): DesktopStatus {
-  if (typeof ev === "string") return { text: ev, error: false };
-  if (ev && typeof ev === "object") {
-    const rec = ev as { data?: unknown; payload?: unknown };
-    const raw = rec.data ?? rec.payload ?? ev;
-    if (typeof raw === "string") return { text: raw, error: false };
-    if (raw && typeof raw === "object") {
-      const payload = raw as { message?: unknown; error?: unknown };
-      if (typeof payload.message === "string") {
-        return { text: payload.message, error: payload.error === true };
-      }
+  const raw =
+    ev && typeof ev === "object"
+      ? (ev as { data?: unknown; payload?: unknown }).data ??
+        (ev as { payload?: unknown }).payload ??
+        ev
+      : ev;
+  if (raw && typeof raw === "object") {
+    const payload = raw as {
+      code?: unknown;
+      level?: unknown;
+      args?: unknown;
+    };
+    if (typeof payload.code === "string") {
+      return {
+        code: payload.code,
+        level: payload.level === "error" ? "error" : "progress",
+        args:
+          payload.args && typeof payload.args === "object"
+            ? (payload.args as Record<string, unknown>)
+            : {},
+      };
     }
   }
-  return { text: String(ev), error: false };
-}
-
-export function isStuckStatus(text: string): boolean {
-  return /未就绪|did not become ready|无法连接|Could not connect/.test(text);
+  return { code: "", level: "progress", args: {} };
 }
 
 export async function onDesktopStatus(

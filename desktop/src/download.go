@@ -33,36 +33,37 @@ func pythonExe(root string) string {
 	return filepath.Join(root, "runtime", "bin", "python3")
 }
 
-func ensurePortable(locale Locale, status func(string)) error {
+func ensurePortable(status func(code string, args map[string]any)) error {
 	root := portableDir()
 	if launchReady(root) {
 		currentVersion := installedPackageVersion(root)
 		bundledVersion, err := bundledPortableVersion()
 		if err != nil || bundledVersion == "" {
-			status(desktopText(locale, copyStatusUsingRuntime))
+			status(codeStatusUsingRuntime, nil)
 			return nil
 		}
 		if currentVersion != "" && compareVersions(currentVersion, bundledVersion) > 0 {
-			return fmt.Errorf(
-				"%s",
-				desktopText(locale, copyErrorAppTooOld, currentVersion, bundledVersion, currentVersion),
-			)
+			return newDesktopFault(codeErrorAppTooOld, map[string]any{
+				"currentVersion":  currentVersion,
+				"appVersion":      bundledVersion,
+				"requiredVersion": currentVersion,
+			})
 		}
 		if currentVersion != "" && compareVersions(bundledVersion, currentVersion) == 0 {
-			status(desktopText(locale, copyStatusUsingRuntime))
+			status(codeStatusUsingRuntime, nil)
 			return nil
 		}
-		status(desktopText(locale, copyStatusBackupDatabase, bundledVersion))
+		status(codeStatusBackupDatabase, map[string]any{"version": bundledVersion})
 		if _, err := backupSQLiteBeforeUpgrade(root, currentVersion, bundledVersion); err != nil {
-			return fmt.Errorf("%s: %w", desktopText(locale, copyErrorBackupFailed), err)
+			return newDesktopFault(codeErrorBackupFailed, nil).withCause(err)
 		}
-		status(desktopText(locale, copyStatusUpdatingRuntime))
+		status(codeStatusUpdatingRuntime, nil)
 	} else {
-		status(desktopText(locale, copyStatusFirstExtract))
+		status(codeStatusFirstExtract, nil)
 	}
 	if err := replacePortable(root); err != nil {
 		if launchReady(root) {
-			status(desktopText(locale, copyStatusUpdateFailedKeep))
+			status(codeStatusUpdateFailedKeep, nil)
 			return nil
 		}
 		return err
@@ -368,7 +369,7 @@ func unzipGreenFiles(files []*zip.File, dest string) error {
 	return nil
 }
 
-func waitHealth(locale Locale, base string, timeout time.Duration) error {
+func waitHealth(base string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	var lastErr error
 	var lastStatus int
@@ -385,47 +386,32 @@ func waitHealth(locale Locale, base string, timeout time.Duration) error {
 		default:
 			// Some other program owns the port; waiting cannot fix that, and
 			// handing it the window would show a stranger's UI as Octop.
-			return fmt.Errorf(
-				"%s",
-				desktopText(locale, copyErrorForeignService, strings.TrimRight(base, "/")),
-			)
+			return newDesktopFault(codeErrorForeignService, map[string]any{
+				"addr": strings.TrimRight(base, "/"),
+			})
 		}
 		time.Sleep(400 * time.Millisecond)
 	}
-	return formatHealthWaitError(locale, base, timeout, lastErr, lastStatus)
+	return formatHealthWaitError(base, timeout, lastErr, lastStatus)
 }
 
-func formatWaitDuration(locale Locale, d time.Duration) string {
-	sec := int(d.Round(time.Second) / time.Second)
-	if sec < 1 {
-		sec = 1
+// formatHealthWaitError reports why the health probe gave up. The copy renders
+// the timeout itself: the page turns `seconds` into "1 minute" / "1 分钟".
+func formatHealthWaitError(base string, timeout time.Duration, lastErr error, lastStatus int) error {
+	seconds := int(timeout.Round(time.Second) / time.Second)
+	if seconds < 1 {
+		seconds = 1
 	}
-	minutes := sec%60 == 0
-	n := sec
-	if minutes {
-		n = sec / 60
+	args := map[string]any{
+		"addr":    strings.TrimRight(base, "/"),
+		"seconds": seconds,
 	}
-	switch {
-	case minutes && n == 1:
-		return desktopText(locale, copyWait1Minute)
-	case minutes:
-		return desktopText(locale, copyWaitNMinutes, n)
-	case n == 1:
-		return desktopText(locale, copyWait1Second)
-	default:
-		return desktopText(locale, copyWaitNSeconds, n)
-	}
-}
-
-func formatHealthWaitError(locale Locale, base string, timeout time.Duration, lastErr error, lastStatus int) error {
-	addr := strings.TrimRight(base, "/")
-	wait := formatWaitDuration(locale, timeout)
 	switch {
 	case lastStatus >= 500:
-		return fmt.Errorf("%s", desktopText(locale, copyHealthNotReady5xx, wait, addr))
+		return newDesktopFault(codeHealthNotReady5xx, args)
 	case lastErr != nil:
-		return fmt.Errorf("%s", desktopText(locale, copyHealthNotReadyConnect, wait, addr))
+		return newDesktopFault(codeHealthNotReadyConnect, args)
 	default:
-		return fmt.Errorf("%s", desktopText(locale, copyHealthNotReady, wait, addr))
+		return newDesktopFault(codeHealthNotReady, args)
 	}
 }

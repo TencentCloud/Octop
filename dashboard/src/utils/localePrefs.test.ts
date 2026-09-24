@@ -5,6 +5,7 @@ import {
   resolveInitialLocale,
   speechLocaleFromUi,
   storeUiLocale,
+  syncDocumentLang,
   UI_LOCALE_STORAGE_KEY,
 } from "./localePrefs";
 
@@ -48,5 +49,12 @@ describe("localePrefs", () => {
     expect(speechLocaleFromUi("en")).toBe("en-US");
     expect(speechLocaleFromUi("en-US")).toBe("en-US");
     expect(speechLocaleFromUi(null)).toBe("zh-CN");
+  });
+
+  it("syncDocumentLang writes the html lang the shell resolved", () => {
+    syncDocumentLang("zh");
+    expect(document.documentElement.lang).toBe("zh-CN");
+    syncDocumentLang("en");
+    expect(document.documentElement.lang).toBe("en");
   });
 });

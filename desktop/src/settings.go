@@ -26,7 +26,7 @@ type Settings struct {
 
 func defaultSettings() Settings {
 	return Settings{
-		Locale:         LocaleEN,
+		Locale:         systemLocale(),
 		Autostart:      false,
 		MinimizeToTray: true,
 		PreventSleep:   false,
@@ -75,7 +75,9 @@ func loadSettings() Settings {
 	if s.Port == 0 {
 		s.Port = 8088
 	}
-	if s.Locale != LocaleZH {
+	if s.Locale == "" {
+		s.Locale = systemLocale()
+	} else if s.Locale != LocaleZH {
 		s.Locale = LocaleEN
 	}
 	return s

@@ -7,13 +7,12 @@ import {
   WINDOW_CONTROLS_INSET,
 } from "../utils/desktopChrome";
 import { normalizeUiLocale, type UiLocale } from "../utils/localePrefs";
-import i18n, { applyDesktopLocale } from "./i18n";
+import { applyDesktopLocale } from "./i18n";
 import LoadingPage from "./LoadingPage";
 import SettingsPage from "./SettingsPage";
 import chrome from "./chrome.module.less";
 import {
   callApp,
-  isStuckStatus,
   onDesktopStatus,
   type DesktopSettings,
   type DesktopStatus,
@@ -39,8 +38,9 @@ export default function ShellApp() {
   const settingsMode = isSettingsMode();
   const chromeStyle = resolveDesktopChromeStyle();
   const [status, setStatus] = useState<DesktopStatus>(() => ({
-    text: i18n.t("desktopShell.statusWait", "Starting, please wait…"),
-    error: false,
+    code: "status.wait",
+    level: "progress",
+    args: {},
   }));
   const [settings, setSettings] = useState<DesktopSettings | null>(null);
   const [saveError, setSaveError] = useState("");
@@ -73,8 +73,9 @@ export default function ShellApp() {
         await applyDesktopLocale(loaded.locale as UiLocale);
         if (!cancelled) {
           setStatus({
-            text: i18n.t("desktopShell.statusWait", "Starting, please wait…"),
-            error: false,
+            code: "status.wait",
+            level: "progress",
+            args: {},
           });
         }
       } catch {
@@ -135,10 +136,7 @@ export default function ShellApp() {
           />
         ) : null
       ) : (
-        <LoadingPage
-          status={status.text}
-          stuck={status.error || isStuckStatus(status.text)}
-        />
+        <LoadingPage status={status} />
       )}
     </>
   );

@@ -28,7 +28,7 @@ func TestEnsurePortableUsesEmbeddedPackage(t *testing.T) {
 	embeddedPortable = data
 	t.Cleanup(func() { embeddedPortable = prev })
 
-	if err := ensurePortable(LocaleZH, func(string) {}); err != nil {
+	if err := ensurePortable(func(string, map[string]any) {}); err != nil {
 		t.Fatal(err)
 	}
 	if !launchReady(portableDir()) {
@@ -45,8 +45,8 @@ func TestEnsurePortableUsesBundledPackage(t *testing.T) {
 	writeTestGreenZip(t, zipPath, "1.0.0")
 
 	var statuses []string
-	err := ensurePortable(LocaleZH, func(status string) {
-		statuses = append(statuses, status)
+	err := ensurePortable(func(key string, _ map[string]any) {
+		statuses = append(statuses, key)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestEnsurePortableUsesBundledPackage(t *testing.T) {
 	if !launchReady(portableDir()) {
 		t.Fatal("local package was not extracted into the portable directory")
 	}
-	if len(statuses) == 0 || statuses[0] != "首次启动，正在解压内置运行环境…" {
+	if len(statuses) == 0 || statuses[0] != codeStatusFirstExtract {
 		t.Fatalf("unexpected statuses: %v", statuses)
 	}
 	if _, err := os.Stat(zipPath); err != nil {
@@ -81,7 +81,7 @@ func TestEnsurePortableReplacesOlderRuntime(t *testing.T) {
 	writeTestGreenZip(t, newZip, "0.9.32")
 	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
 	var statuses []string
-	if err := ensurePortable(LocaleZH, func(status string) { statuses = append(statuses, status) }); err != nil {
+	if err := ensurePortable(func(key string, _ map[string]any) { statuses = append(statuses, key) }); err != nil {
 		t.Fatal(err)
 	}
 
@@ -92,8 +92,8 @@ func TestEnsurePortableReplacesOlderRuntime(t *testing.T) {
 		t.Fatalf("old runtime was not replaced: %v", err)
 	}
 	if len(statuses) < 2 ||
-		statuses[0] != "发现客户端新版 0.9.32，正在备份数据库…" ||
-		statuses[1] != "正在更新内置运行环境…" {
+		statuses[0] != codeStatusBackupDatabase ||
+		statuses[1] != codeStatusUpdatingRuntime {
 		t.Fatalf("unexpected statuses: %v", statuses)
 	}
 }
@@ -126,7 +126,7 @@ func TestEnsurePortableUpgradesBundledVersionAfterDatabaseBackup(t *testing.T) {
 	}
 	t.Cleanup(func() { runSQLiteBackup = previousBackup })
 
-	if err := ensurePortable(LocaleZH, func(string) {}); err != nil {
+	if err := ensurePortable(func(string, map[string]any) {}); err != nil {
 		t.Fatal(err)
 	}
 	if got := portableVersion(root); got != "0.9.32" {
@@ -159,7 +159,7 @@ func TestEnsurePortableKeepsRuntimeWhenDatabaseBackupFails(t *testing.T) {
 	runSQLiteBackup = func(_, _, _ string) error { return errors.New("backup unavailable") }
 	t.Cleanup(func() { runSQLiteBackup = previousBackup })
 
-	if err := ensurePortable(LocaleZH, func(string) {}); err == nil {
+	if err := ensurePortable(func(string, map[string]any) {}); err == nil {
 		t.Fatal("backup failure should abort the runtime upgrade")
 	}
 	if got := portableVersion(root); got != "0.9.29" {
@@ -185,13 +185,21 @@ func TestEnsurePortableRejectsAppOlderThanLocalData(t *testing.T) {
 	oldZip := filepath.Join(t.TempDir(), "old.zip")
 	writeTestGreenZip(t, oldZip, "0.9.32")
 	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", oldZip)
-	err := ensurePortable(LocaleZH, func(string) {})
+	err := ensurePortable(func(string, map[string]any) {})
 	if err == nil {
 		t.Fatal("older App should be rejected")
 	}
-	want := "本地数据版本 0.9.33 高于当前 App 版本 0.9.32。App 版本过低，请安装 0.9.33 或更高版本。"
-	if err.Error() != want {
-		t.Fatalf("error = %q, want %q", err, want)
+	fault, ok := err.(*desktopFault)
+	if !ok {
+		t.Fatalf("error should carry a status code: %v", err)
+	}
+	if fault.code != codeErrorAppTooOld {
+		t.Fatalf("code = %q", fault.code)
+	}
+	if fault.args["currentVersion"] != "0.9.33" ||
+		fault.args["appVersion"] != "0.9.32" ||
+		fault.args["requiredVersion"] != "0.9.33" {
+		t.Fatalf("args = %v", fault.args)
 	}
 
 	if got := portableVersion(root); got != "0.9.33" {
@@ -223,13 +231,21 @@ func TestEnsurePortableComparesPackageMetadataNotVersionTxt(t *testing.T) {
 	newZip := filepath.Join(t.TempDir(), "new.zip")
 	writeTestGreenZip(t, newZip, "0.9.32")
 	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
-	err := ensurePortable(LocaleZH, func(string) {})
+	err := ensurePortable(func(string, map[string]any) {})
 	if err == nil {
 		t.Fatal("older App should be rejected based on METADATA")
 	}
-	want := "本地数据版本 0.9.33 高于当前 App 版本 0.9.32。App 版本过低，请安装 0.9.33 或更高版本。"
-	if err.Error() != want {
-		t.Fatalf("error = %q, want %q", err, want)
+	fault, ok := err.(*desktopFault)
+	if !ok {
+		t.Fatalf("error should carry a status code: %v", err)
+	}
+	if fault.code != codeErrorAppTooOld {
+		t.Fatalf("code = %q", fault.code)
+	}
+	if fault.args["currentVersion"] != "0.9.33" ||
+		fault.args["appVersion"] != "0.9.32" ||
+		fault.args["requiredVersion"] != "0.9.33" {
+		t.Fatalf("args = %v", fault.args)
 	}
 	if got := installedPackageVersion(root); got != "0.9.33" {
 		t.Fatalf("METADATA version = %q, want 0.9.33", got)
@@ -251,7 +267,7 @@ func TestEnsurePortableKeepsCurrentRuntimeWhenReplacementIsInvalid(t *testing.T)
 	writeMetadataOnlyZip(t, invalidZip, "0.9.32")
 	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", invalidZip)
 	var statuses []string
-	if err := ensurePortable(LocaleZH, func(status string) { statuses = append(statuses, status) }); err != nil {
+	if err := ensurePortable(func(key string, _ map[string]any) { statuses = append(statuses, key) }); err != nil {
 		t.Fatalf("existing runtime should still boot after a failed replacement: %v", err)
 	}
 
@@ -261,7 +277,7 @@ func TestEnsurePortableKeepsCurrentRuntimeWhenReplacementIsInvalid(t *testing.T)
 	if got := portableVersion(root); got != "0.9.31" {
 		t.Fatalf("portable version = %q, want 0.9.31", got)
 	}
-	if len(statuses) == 0 || statuses[len(statuses)-1] != "更新内置运行环境失败，继续使用已有运行环境…" {
+	if len(statuses) == 0 || statuses[len(statuses)-1] != codeStatusUpdateFailedKeep {
 		t.Fatalf("unexpected statuses: %v", statuses)
 	}
 }
@@ -286,7 +302,7 @@ func TestEnsurePortableReplacesLegacyRuntimeWithoutVersionFiles(t *testing.T) {
 	newZip := filepath.Join(t.TempDir(), "new.zip")
 	writeTestGreenZip(t, newZip, "0.9.32")
 	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
-	if err := ensurePortable(LocaleZH, func(string) {}); err != nil {
+	if err := ensurePortable(func(string, map[string]any) {}); err != nil {
 		t.Fatal(err)
 	}
 	if got := portableVersion(root); got != "0.9.32" {
@@ -349,55 +365,37 @@ func TestLaunchReadyRejectsFlattenedPythonSymlink(t *testing.T) {
 	}
 }
 
-func TestFormatHealthWaitErrorIsActionableChinese(t *testing.T) {
-	err := formatHealthWaitError(LocaleZH, "http://127.0.0.1:8088/", time.Minute, errors.New("connection refused"), 0)
-	if err == nil {
-		t.Fatal("expected an error")
+// The shell renders health copy from these codes; the page-side wording is
+// covered by dashboard/src/desktop tests.
+func TestFormatHealthWaitErrorCarriesCodeAndArgs(t *testing.T) {
+	refused := faultFromError(
+		t,
+		formatHealthWaitError("http://127.0.0.1:8088/", time.Minute, errors.New("connection refused"), 0),
+	)
+	if refused.code != codeHealthNotReadyConnect {
+		t.Fatalf("code = %q", refused.code)
 	}
-	msg := err.Error()
-	for _, needle := range []string{
-		"Octop 服务未在",
-		"1 分钟",
-		"http://127.0.0.1:8088",
-		"请确认",
-	} {
-		if !strings.Contains(msg, needle) {
-			t.Fatalf("friendly health error missing %q: %s", needle, msg)
-		}
+	if refused.args["addr"] != "http://127.0.0.1:8088" || refused.args["seconds"] != 60 {
+		t.Fatalf("args = %v", refused.args)
 	}
-	if strings.Contains(msg, "/api/health") {
-		t.Fatalf("user-facing status should not expose the health path: %s", msg)
-	}
-	if strings.Contains(msg, "did not become healthy") {
-		t.Fatalf("should not use the old English diagnostic: %s", msg)
-	}
-}
 
-func TestFormatHealthWaitErrorUsesEnglishWhenLocaleIsEn(t *testing.T) {
-	msg := formatHealthWaitError(LocaleEN, "http://127.0.0.1:8088", time.Minute, errors.New("connection refused"), 0).Error()
-	for _, needle := range []string{
-		"Octop did not become ready within",
-		"1 minute",
-		"http://127.0.0.1:8088",
-		"make sure Octop is running",
-	} {
-		if !strings.Contains(msg, needle) {
-			t.Fatalf("English health error missing %q: %s", needle, msg)
-		}
+	starting := faultFromError(
+		t,
+		formatHealthWaitError("http://127.0.0.1:8088", 2*time.Minute, nil, 503),
+	)
+	if starting.code != codeHealthNotReady5xx || starting.args["seconds"] != 120 {
+		t.Fatalf("5xx fault = %+v", starting)
 	}
-	if strings.Contains(msg, "服务未在") || strings.Contains(msg, "请确认") {
-		t.Fatalf("English locale should not use Chinese splash copy: %s", msg)
-	}
-}
 
-func TestFormatHealthWaitErrorUsesServiceNotReadyHintOn5xx(t *testing.T) {
-	zh := formatHealthWaitError(LocaleZH, "http://127.0.0.1:8088", 2*time.Minute, nil, 503).Error()
-	if !strings.Contains(zh, "2 分钟") || !strings.Contains(zh, "尚未就绪") {
-		t.Fatalf("zh 5xx hint: %s", zh)
+	generic := faultFromError(
+		t,
+		formatHealthWaitError("http://127.0.0.1:8088", time.Minute, nil, 200),
+	)
+	if generic.code != codeHealthNotReady {
+		t.Fatalf("generic fault = %+v", generic)
 	}
-	en := formatHealthWaitError(LocaleEN, "http://127.0.0.1:8088", 2*time.Minute, nil, 503).Error()
-	if !strings.Contains(en, "2 minutes") || !strings.Contains(en, "not ready yet") {
-		t.Fatalf("en 5xx hint: %s", en)
+	if strings.Contains(generic.Error(), "/api/health") {
+		t.Fatalf("diagnostic should not expose the health path: %s", generic.Error())
 	}
 }
 
@@ -406,7 +404,7 @@ func TestWaitHealthSucceedsOnOK(t *testing.T) {
 		_, _ = w.Write([]byte(`{"ok":true,"started_at":1700000000,"db":true}`))
 	}))
 	t.Cleanup(srv.Close)
-	if err := waitHealth(LocaleZH, srv.URL, time.Second); err != nil {
+	if err := waitHealth(srv.URL, time.Second); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -417,29 +415,40 @@ func TestWaitHealthRejectsForeignServerOnThePort(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	start := time.Now()
-	err := waitHealth(LocaleEN, srv.URL, 30*time.Second)
+	err := waitHealth(srv.URL, 30*time.Second)
 	if err == nil {
 		t.Fatal("a foreign server must not be treated as Octop")
 	}
 	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Fatalf("should fail fast instead of waiting for the timeout: %s", elapsed)
 	}
-	if !strings.Contains(err.Error(), "Refusing to load") {
-		t.Fatalf("unexpected message: %v", err)
+	fault := faultFromError(t, err)
+	if fault.code != codeErrorForeignService || fault.args["addr"] != srv.URL {
+		t.Fatalf("fault = %+v", fault)
 	}
 }
 
 func TestWaitHealthTimesOutWithFriendlyMessage(t *testing.T) {
-	err := waitHealth(LocaleEN, "http://127.0.0.1:1", 50*time.Millisecond)
+	err := waitHealth("http://127.0.0.1:1", 50*time.Millisecond)
 	if err == nil {
 		t.Fatal("closed port should time out")
 	}
-	if strings.Contains(err.Error(), "did not become healthy") {
-		t.Fatalf("should not use the old English diagnostic: %s", err)
+	fault := faultFromError(t, err)
+	if fault.code != codeHealthNotReadyConnect {
+		t.Fatalf("timeout should report the connect hint: %+v", fault)
 	}
-	if !strings.Contains(err.Error(), "Octop did not become ready within") {
-		t.Fatalf("timeout should follow the desktop locale: %s", err)
+	if fault.args["addr"] != "http://127.0.0.1:1" || fault.args["seconds"] != 1 {
+		t.Fatalf("args = %v", fault.args)
 	}
+}
+
+func faultFromError(t *testing.T, err error) *desktopFault {
+	t.Helper()
+	var fault *desktopFault
+	if !errors.As(err, &fault) {
+		t.Fatalf("expected a status fault, got %v", err)
+	}
+	return fault
 }
 
 func writeTestGreenZip(t *testing.T, path, version string) {

@@ -3,11 +3,19 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LoadingPage from "./LoadingPage";
 import SettingsPage from "./SettingsPage";
-import { isStuckStatus, statusFromEvent } from "./wails";
+import { statusFromEvent } from "./wails";
 
 describe("desktop shell", () => {
   it("renders loading progress and status at the bottom of the card", () => {
-    render(<LoadingPage status="Starting Octop…" stuck={false} />);
+    render(
+      <LoadingPage
+        status={{
+          code: "status.connecting",
+          level: "progress",
+          args: {},
+        }}
+      />,
+    );
     const card = screen.getByTestId("loading-card");
     const footer = screen.getByTestId("loading-footer");
     const bar = screen.getByTestId("loading-bar");
@@ -21,7 +29,15 @@ describe("desktop shell", () => {
   });
 
   it("marks the loading panel when startup is stuck", () => {
-    render(<LoadingPage status="Could not connect" stuck />);
+    render(
+      <LoadingPage
+        status={{
+          code: "health.not_ready_connect",
+          level: "error",
+          args: { addr: "http://127.0.0.1:8088", seconds: 60 },
+        }}
+      />,
+    );
     expect(screen.getByTestId("loading-panel")).toHaveAttribute(
       "data-stuck",
       "1",
@@ -52,30 +68,33 @@ describe("desktop shell", () => {
     );
   });
 
-  it("detects stuck backend status copy", () => {
-    expect(isStuckStatus("Octop did not become ready within 1 minute")).toBe(
-      true,
-    );
-    expect(isStuckStatus("正在启动 Octop 服务…")).toBe(false);
-  });
-
-  it("reads the error flag from desktop:status events", () => {
-    expect(statusFromEvent("Connecting to Octop…")).toEqual({
-      text: "Connecting to Octop…",
-      error: false,
-    });
-    expect(statusFromEvent({ data: "Connecting to Octop…" })).toEqual({
-      text: "Connecting to Octop…",
-      error: false,
+  it("reads code, level and args from desktop:status events", () => {
+    expect(
+      statusFromEvent({
+        data: {
+          code: "error.port_in_use",
+          level: "error",
+          args: { port: 8088 },
+        },
+      }),
+    ).toEqual({
+      code: "error.port_in_use",
+      level: "error",
+      args: { port: 8088 },
     });
     expect(
       statusFromEvent({
-        data: { message: "端口 8088 已被占用", error: true },
+        data: { code: "status.ready", level: "progress" },
       }),
-    ).toEqual({ text: "端口 8088 已被占用", error: true });
-    expect(statusFromEvent({ data: { message: "Octop is ready" } })).toEqual({
-      text: "Octop is ready",
-      error: false,
+    ).toEqual({
+      code: "status.ready",
+      level: "progress",
+      args: {},
+    });
+    expect(statusFromEvent({ data: {} })).toEqual({
+      code: "",
+      level: "progress",
+      args: {},
     });
   });
 });

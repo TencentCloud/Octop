@@ -75,7 +75,11 @@ func portBusy(port int) bool {
 // verifyShellDevServer fails when the Wails dev server is not serving our shell
 // page. Another program holding the Vite port would otherwise render its own UI
 // inside the desktop window, and the settings/loading bridge would be gone.
-func verifyShellDevServer(rawURL string, locale Locale) error {
+//
+// The message is a developer diagnostic printed to the terminal: this path only
+// runs under `wails3 dev`, and the page that would show localized copy is the
+// stranger's page we are refusing to render.
+func verifyShellDevServer(rawURL string) error {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return nil
@@ -94,7 +98,10 @@ func verifyShellDevServer(rawURL string, locale Locale) error {
 			case strings.Contains(string(body), devShellMarker):
 				return nil
 			default:
-				return fmt.Errorf("%s", desktopText(locale, copyErrorDevServerForeign, rawURL))
+				return fmt.Errorf(
+					"desktop dev server %s is not the Octop shell page: another program is using that port. Stop it and run wails3 dev again",
+					rawURL,
+				)
 			}
 		} else {
 			lastErr = err
