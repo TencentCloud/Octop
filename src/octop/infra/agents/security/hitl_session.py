@@ -150,41 +150,35 @@ def current_hitl_thread_id() -> str | None:
 
 
 class HitlSessionPolicyStore:
-    """Thread bypass policy, read from ``threads.hitl_policy`` on every check.
-
-    The row is the only state a wired store keeps: ``octop run --workers N``
-    (and a CLI run beside a running server) share one database, so a
-    process-local read-through cache would keep auto-approving tool calls after
-    another process revoked the bypass — and hide one another process granted.
-    ``_unpersisted`` is the storage for a store built without a repo (nothing
-    to read back from), never a cache of persisted rows.
-    """
+    """In-memory cache of thread bypass policy, persisted on ``threads.hitl_policy``."""
 
     def __init__(self, threads_repo: ThreadRepo | None = None) -> None:
         self._repo = threads_repo
-        self._unpersisted: dict[str, HitlSessionPolicy] = {}
+        self._cache: dict[str, HitlSessionPolicy] = {}
 
     def replace_repo(self, threads_repo: ThreadRepo | None) -> None:
         self._repo = threads_repo
-        self._unpersisted.clear()
+        self._cache.clear()
 
     def get(self, thread_id: str) -> HitlSessionPolicy:
         tid = (thread_id or "").strip()
         if not tid:
             return HitlSessionPolicy()
-        if self._repo is None:
-            return self._unpersisted.get(tid) or HitlSessionPolicy()
-        return self._load(tid)
+        cached = self._cache.get(tid)
+        if cached is not None:
+            return cached
+        policy = self._load(tid)
+        self._cache[tid] = policy
+        return policy
 
     def set(self, thread_id: str, policy: HitlSessionPolicy | object) -> HitlSessionPolicy:
         tid = (thread_id or "").strip()
         resolved = parse_hitl_session_policy(policy)
         if not tid:
             return resolved
+        self._cache[tid] = resolved
         repo = self._repo
-        if repo is None:
-            self._unpersisted[tid] = resolved
-        else:
+        if repo is not None:
             repo.update_composer(tid, hitl_policy=resolved.to_json())
         return resolved
 
