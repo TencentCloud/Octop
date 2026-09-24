@@ -17,6 +17,12 @@
 | [`demo-turn-logger`](./demo-turn-logger/) | `hook` | 注册 `AgentMiddleware`，在模型调用前后打日志 |
 | [`demo-ui-card`](./demo-ui-card/) | `tool` + `ui/` | 后端返回 `octop_ui` JSON；前端在聊天页渲染可交互卡片 |
 
+## 社区插件
+
+| 目录 | `kind` | 作用 |
+|------|--------|------|
+| [`nong-gateway`](./nong-gateway/) | `hook` | 元宝 / Kimi 群聊桥：一个机器人绑一个专家，mention 门控（默认拒绝）、防互答死循环（滤机器人消息 + 群策略）、本地可检索账本。运行时接管，不改 Octop 一行源码。完整文档与研发历程见 [angri450/nong-gateway-plugin](https://github.com/angri450/nong-gateway-plugin)。 |
+
 ## 目录约定
 
 每个插件是一个文件夹，至少包含：

@@ -24,6 +24,7 @@
 - 登录验证码新增极验行为验 v4（#870）：设置页配置 captcha_id / captcha_key，登录弹窗完成验证，服务端按官方协议 HMAC-SHA256 签名后到 gcaptcha4 二次校验（form-urlencoded，仅 result=success 放行）
 - 对话支持默认折叠思考与工具过程（浏览器本地偏好）(#718)
 - 对话中可隐藏不常用的共享专家（浏览器本地偏好）(#589)
+- 新增社区插件 `nong-gateway`：元宝 / Kimi 群聊桥，一个机器人绑一个专家，mention 门控、防互答死循环、本地可检索账本（见 `plugins/nong-gateway/`）
 
 ### 修复
 
