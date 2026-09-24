@@ -120,3 +120,31 @@ async def test_dashboard_mode_switch_keeps_pending_plan() -> None:
         "thr",
         conversation_mode="ask",
     )
+
+
+@pytest.mark.asyncio
+async def test_dashboard_turn_applies_hitl_policy() -> None:
+    processor = _processor(
+        thread=SimpleNamespace(
+            conversation_mode="craft",
+            pending_plan_path=None,
+            model_ref=None,
+        )
+    )
+    msg = InboundMessage(
+        channel_id="ws",
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="hello")],
+        metadata={"hitl_policy": {"mode": "allow_all"}},
+    )
+    await processor._build_dashboard_request(
+        msg,
+        agent_id="agent-1",
+        user_id=1,
+        session_key="sk",
+        thread_id="thr",
+        meta={"hitl_policy": {"mode": "allow_all"}},
+    )
+    assert processor.hitl_coordinator.session_policies.get("thr").mode == "allow_all"

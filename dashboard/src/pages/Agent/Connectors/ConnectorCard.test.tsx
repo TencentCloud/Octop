@@ -41,4 +41,21 @@ describe("<ConnectorCard />", () => {
     const title = screen.getByText(LONG_NAME);
     expect(title.className).toContain("typography-ellipsis");
   });
+
+  it("renders the OpenAlex catalog logo instead of the generic MCP fallback", () => {
+    const { container } = render(
+      <ConnectorCard
+        entry={makeEntry({
+          kind: "openalex",
+          name: "OpenAlex",
+          icon: "openalex",
+        })}
+        onConfigure={() => undefined}
+      />,
+    );
+
+    expect(container.querySelector("img")?.getAttribute("src")).toContain(
+      "openalex.svg",
+    );
+  });
 });

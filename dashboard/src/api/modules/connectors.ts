@@ -18,7 +18,7 @@ export interface ConnectorCatalogEntry {
   icon: string;
   color: string;
   phase: "available" | "coming_soon";
-  mcp_mode: "remote" | "gateway";
+  mcp_mode: "remote" | "gateway" | "internal";
   category: ConnectorCategory;
   quick_auth_url?: string | null;
   login_url?: string | null;

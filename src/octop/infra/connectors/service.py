@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from octop.config import OctopConfig
-from octop.infra.connectors.builder import build_http_mcp_spec, mcp_server_name
-from octop.infra.connectors.catalog import get_catalog_entry
+from octop.infra.connectors import qcc
+from octop.infra.connectors.builder import build_http_mcp_spec, mcp_server_name, new_internal_token
+from octop.infra.connectors.catalog import get_catalog_entry, uses_internal_http_mcp
 from octop.infra.connectors.crypto import decrypt_credentials, encrypt_credentials
 from octop.infra.connectors.custom_mcp import (
     CUSTOM_MCP_DISPLAY_NAME,
@@ -111,6 +112,20 @@ class ConnectorService:
         payload: dict[str, Any],
     ) -> None:
         stored = dict(payload)
+        row = self._repo.get(instance_id)
+        if row is not None:
+            entry = get_catalog_entry(row.kind)
+            if entry is not None and uses_internal_http_mcp(entry):
+                existing = (
+                    decrypt_credentials(self._secret_repo, row.credential_blob)
+                    if row.credential_blob
+                    else {}
+                )
+                stored["internal_token"] = (
+                    existing.get("internal_token")
+                    or stored.get("internal_token")
+                    or new_internal_token()
+                )
         stored["instance_id"] = instance_id
         expires_at = stored.get("expires_at")
         exp = int(expires_at) if expires_at is not None else None
@@ -122,6 +137,11 @@ class ConnectorService:
         instance_id: str,
         kind: str,
     ) -> dict[str, Any]:
+        if kind == "qcc":
+            row = self._repo.get(instance_id)
+            if row is None or row.kind != "qcc" or row.status != "active":
+                return {}
+            return self.decrypt(instance_id)
         creds = self.decrypt(instance_id)
         entry = get_catalog_entry(kind)
         if entry is None or entry.auth_kind != "oauth2":
@@ -143,6 +163,58 @@ class ConnectorService:
         creds.update(refreshed)
         self.encrypt_and_store(instance_id=instance_id, payload=creds)
         return creds
+
+    async def _qcc_request(
+        self, instance_id: str, resource: str, method: str, params: dict[str, Any]
+    ) -> dict[str, Any]:
+        creds = await self.ensure_fresh_credentials(instance_id, "qcc")
+        token = qcc.bearer_token(creds)
+        if not token:
+            raise ValueError("QCC connector is disconnected")
+        return await qcc.request_resource(resource, token, method, params)
+
+    async def handle_qcc_request(self, instance_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        from octop.infra.connectors.gateway.protocol import handle_mcp_request
+
+        method = body.get("method")
+        if method not in ("tools/list", "tools/call"):
+            return handle_mcp_request(kind="qcc", creds={}, body=body)
+        try:
+            if method == "tools/list":
+                listed = await asyncio.gather(
+                    *[
+                        self._qcc_request(instance_id, resource, "tools/list", {})
+                        for resource in qcc.RESOURCES
+                    ],
+                    return_exceptions=True,
+                )
+                tools: list[dict[str, Any]] = []
+                for resource, item in zip(qcc.RESOURCES, listed, strict=True):
+                    if isinstance(item, BaseException):
+                        continue
+                    tools.extend(qcc.namespace_tools(resource, item))
+                if not tools:
+                    raise ValueError("QCC MCP request failed; check API Key or try again")
+                result: dict[str, Any] = {"tools": tools}
+            else:
+                params = dict(body.get("params") or {})
+                resource, sep, name = str(params.get("name") or "").partition("__")
+                if not sep or resource not in qcc.RESOURCES or not name:
+                    raise ValueError("Unknown QCC tool")
+                result = await self._qcc_request(
+                    instance_id, resource, "tools/call", {**params, "name": name}
+                )
+            return {"jsonrpc": "2.0", "id": body.get("id"), "result": result}
+        except Exception:
+            # Upstream exceptions may include credential-bearing request details.
+            return {
+                "jsonrpc": "2.0",
+                "id": body.get("id"),
+                "error": {
+                    "code": -32603,
+                    "message": "QCC MCP request failed; check API Key or try again",
+                },
+            }
 
     def reserved_builtin_mcp_names(self, user_id: int) -> set[str]:
         names: set[str] = set()
