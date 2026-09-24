@@ -37,6 +37,7 @@ import {
 } from "../../../utils/modelOptions";
 import { customProviderLogo, getProviderLogo } from "../../../assets/providers";
 import ContextWindowRing from "./ContextWindowRing";
+import TokenCounter from "./TokenCounter";
 import SkillPickerPopover from "./SkillPickerPopover";
 import ExpertPickerPopover from "./ExpertPickerPopover";
 import SubagentPickerPopover from "./SubagentPickerPopover";
@@ -1179,6 +1180,7 @@ export default function ChatInputActionsRow({
     <div ref={actionsRowRef} className={styles.actionsRow}>
       <div className={styles.secondaryActions}>{renderSecondaryActions()}</div>
       <div className={styles.inputActions}>
+        <TokenCounter text={text} sessionId={threadId} />
         <ContextWindowRing
           usedTokens={contextUsedTokens}
           maxTokens={contextMaxTokens}
