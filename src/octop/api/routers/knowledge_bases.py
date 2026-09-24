@@ -223,9 +223,7 @@ def _map_knowledge_error(
             )
         ):
             return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED, locale)
-    if "support at most" in text:
-        # ``KnowledgeRepo.create_document`` embeds the per-base ``max_documents``,
-        # which is user-configurable — never match on a literal limit here.
+    if "at most 100" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_DOC_LIMIT, locale)
     if "document size exceeds" in text:
         max_mb = _max_upload_mb(server) if server is not None else DEFAULT_MAX_UPLOAD_MB
@@ -235,9 +233,7 @@ def _map_knowledge_error(
             details={"max_mb": max_mb},
             max_mb=max_mb,
         )
-    if "can own at most" in text:
-        # Distinct from the document-limit wording above, which also mentions
-        # "knowledge bases" ("knowledge bases support at most N documents").
+    if "at most" in text and "knowledge bases" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_BASE_LIMIT, locale)
     if "unsupported knowledge document content type" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_UNSUPPORTED_TYPE, locale)
