@@ -16,12 +16,14 @@ RECURSION_LIMIT = f"{_PREFIX}stream_errors.recursion_limit"
 TIMEOUT_NETWORK = f"{_PREFIX}stream_errors.timeout_network"
 PROVIDER_UNAVAILABLE = f"{_PREFIX}stream_errors.provider_unavailable"
 MODEL_CALL_FAILED = f"{_PREFIX}stream_errors.model_call_failed"
+PATH_OUTSIDE_ROOT = f"{_PREFIX}stream_errors.path_outside_root"
 
 __all__ = [
     "AUTH",
     "CONTEXT_LENGTH",
     "INSUFFICIENT_BALANCE",
     "MODEL_CALL_FAILED",
+    "PATH_OUTSIDE_ROOT",
     "PROVIDER_UNAVAILABLE",
     "RATE_LIMIT",
     "RECURSION_LIMIT",
@@ -62,6 +64,10 @@ def classify_stream_error_message(message: str) -> str | None:
         return None
     lower = msg.lower()
     compact = lower.replace("_", "").replace(" ", "")
+
+    # Tool / backend path jail — must not look like a model-provider outage.
+    if "outside root directory" in lower or "path traversal not allowed" in lower:
+        return PATH_OUTSIDE_ROOT
 
     if (
         "streamchunktimeouterror" in compact
