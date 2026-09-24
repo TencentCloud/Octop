@@ -52,7 +52,7 @@ Chat through the Web Dashboard, Feishu, DingTalk, QQ, Telegram, WeCom, or progra
 | 🔒 | **Security built-in** | JWT multi-user isolation, tool approval, shell command guardrails, and PII redaction — data stays local |
 | 🔌 | **Connector ecosystem** | Tencent suite (Docs, Weibo trends, News, …); OAuth and MCP gateway extend resource boundaries |
 | 💾 | **Pluggable backends** | Local disk, Docker containers, PostgreSQL, or COS/S3 — AI operates inside isolated boundaries |
-| 🧠 | **Portable memory** | Powered by harness-memory; memory migrates with the workspace |
+| 🧠 | **Portable memory** | Powered by [octop-memory](https://github.com/TencentCloud/octop-memory); memory migrates with the workspace |
 | 📚 | **Knowledge base** | RAG over your documents; semantic retrieval grounds agent answers in your private corpus |
 | 🧩 | **Plugins** | Extend Octop with third-party plugins; bundled plugins are seeded and toggled on demand |
 | ↔️ | **ACP bidirectional** | `octop acp` for IDE/terminal AI; delegate to OpenCode / Claude Code with permission gates |
@@ -85,20 +85,20 @@ Octop is a self-hosted AI assistant platform for households and small teams. It 
 |-------|-----------|
 | **Language** | Python 3.12+ |
 | **Web framework** | FastAPI + uvicorn |
-| **Agent runtime** | harness-agent |
-| **Gateway** | harness-gateway |
+| **Agent runtime** | [octop-harness](https://github.com/TencentCloud/octop-harness) |
+| **Gateway** | [octop-gateway](https://github.com/TencentCloud/octop-gateway) |
 | **Control plane DB** | SQLite (WAL, default) or PostgreSQL (optional) |
 | **Frontend** | React 18 + TypeScript + Vite + Ant Design |
 | **Scheduling** | APScheduler |
 | **ACP** | agent-client-protocol |
 | **Build / quality** | hatchling · ruff · mypy · pytest |
 
-Octop is built on the Harness stack — a set of focused runtimes that Octop composes into one process:
+Octop is built on the Octop Harness stack — a set of focused runtimes that Octop composes into one process:
 
-- **harness-agent** — Agent runtime: model routing, tools, skills, and conversation checkpointing.
-- **harness-gateway** — multi-platform IM channel bridge that normalizes incoming messages into a single processing pipeline.
-- **harness-memory** — hierarchical recall with full-text search, so an agent's memory travels with its workspace.
-- **harness-browser** — CDP-based browser automation with persistent profiles for web tasks.
+- **[octop-harness](https://github.com/TencentCloud/octop-harness)** — Agent runtime: model routing, tools, skills, and conversation checkpointing.
+- **[octop-gateway](https://github.com/TencentCloud/octop-gateway)** — multi-platform IM channel bridge that normalizes incoming messages into a single processing pipeline.
+- **[octop-memory](https://github.com/TencentCloud/octop-memory)** — hierarchical recall with full-text search, so an agent's memory travels with its workspace.
+- **[octop-browser](https://github.com/TencentCloud/octop-browser)** — CDP-based browser automation with persistent profiles for web tasks.
 
 Instead of an external queue or message broker, Octop routes every surface — Web UI, IM, and cron — through one in-process `HarnessProcessor`. The result is a single, restart-safe process whose entire state is rebuilt from the control-plane database on boot (local SQLite by default; PostgreSQL optional).
 
@@ -453,9 +453,9 @@ OctopServer
  ├─ UserManager
  │   └─ HarnessAgentManager (per user)
  │       └─ AgentRuntime (per agent)
- │           ├─ HarnessAgent      Agent runtime (harness-agent)
+ │           ├─ HarnessAgent      Agent runtime (octop-harness)
  │           ├─ HarnessProcessor  IM / UI / cron entry point
- │           ├─ ChannelManager    IM connections (harness-gateway)
+ │           ├─ ChannelManager    IM connections (octop-gateway)
  │           └─ CronManager       APScheduler
  └─ FastAPI app (uvicorn)
 ```
@@ -527,12 +527,10 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 | Project | Description |
 |---------|-------------|
-| harness-agent | Agent runtime — model routing, tools, skills, checkpointing |
-| harness-gateway | Multi-platform IM channel bridge |
-| harness-memory | Hierarchical recall and FTS search |
-| harness-browser | CDP browser automation with persistent profiles |
-
-> These `harness-*` projects are being prepared for open-sourcing; repository links will be added once they are published.
+| [octop-harness](https://github.com/TencentCloud/octop-harness) | Agent runtime — model routing, tools, skills, checkpointing |
+| [octop-gateway](https://github.com/TencentCloud/octop-gateway) | Multi-platform IM channel bridge |
+| [octop-memory](https://github.com/TencentCloud/octop-memory) | Hierarchical recall and FTS search |
+| [octop-browser](https://github.com/TencentCloud/octop-browser) | CDP browser automation with persistent profiles |
 
 ## 💬 WeCom Customer Group (CN)
 
