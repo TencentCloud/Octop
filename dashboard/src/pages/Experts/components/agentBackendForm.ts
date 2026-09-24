@@ -77,11 +77,16 @@ export interface RootDirProbeResult {
 export function normalizeRootDir(rootDir?: string | null): string {
   const trimmed = (rootDir ?? "").trim();
   if (!trimmed || trimmed === "\\" || trimmed === "/") return "/";
-  return trimmed.replace(/\/+$/, "") || "/";
+  // Strip trailing POSIX or Windows separators (so ``C:/`` → ``C:``).
+  const stripped = trimmed.replace(/[/\\]+$/, "");
+  return stripped || "/";
 }
 
+/** True for POSIX ``/`` or a Windows drive root such as ``C:/`` / ``C:``. */
 export function isHostRootDir(rootDir?: string | null): boolean {
-  return normalizeRootDir(rootDir) === "/";
+  const normalized = normalizeRootDir(rootDir);
+  if (normalized === "/") return true;
+  return /^[A-Za-z]:$/.test(normalized);
 }
 
 /**
