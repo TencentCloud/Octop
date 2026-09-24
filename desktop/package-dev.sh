@@ -49,7 +49,7 @@ fi
 echo "starting octop --reload on port ${PORT}"
 (
   cd "$REPO"
-  exec env OCTOP_DESKTOP=1 uv run octop run --reload --host 127.0.0.1 --port "$PORT"
+  exec env OCTOP_DESKTOP=1 uv run octop run --reload --port "$PORT"
 ) &
 octop_pid=$!
 
