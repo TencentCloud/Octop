@@ -354,6 +354,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | Question | Location |
 |----------|----------|
 | How does auth work? | `api/deps.py`, `api/middleware/jwt_auth.py`, `api/routers/auth.py` |
+| LDAP (directory) login | `infra/auth/ldap/`, `api/routers/auth_ldap.py`; config row is `sso_providers.kind='ldap'`; guide: `docs/ldap.md` |
 | Setup wizard (password file, tokens) | `infra/setup/`, `api/routers/setup.py` |
 | TLS / Let's Encrypt | `infra/setup/tls/`, `api/routers/tls.py` |
 | `octop run` boot sequence | `launch.py`, `cli/run_cmd.py` |
