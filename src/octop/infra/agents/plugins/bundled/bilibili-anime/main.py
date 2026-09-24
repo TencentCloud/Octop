@@ -26,6 +26,12 @@ _HEADERS = {
     "Origin": "https://www.bilibili.com",
     "Accept": "application/json, text/plain, */*",
 }
+# harness-agent depends on deepagents 0.7.9, which replaces a tool result with a
+# filesystem stub once it exceeds 4 * 20_000 characters. The in-chat player reads
+# this JSON inline, so that stub means the card never renders (#1032).
+_MAX_RESULT_CHARS = 60_000
+_TEXT_RESERVE_CHARS = 800
+_DESC_MAX_CHARS = 120
 
 
 def _strip_html(text: str) -> str:
@@ -135,11 +141,119 @@ def _fetch_episodes(season_id: int) -> list[dict[str, Any]]:
     return out
 
 
+def _clip(text: str, limit: int) -> str:
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def _compact_episode(episode: dict[str, Any]) -> dict[str, Any]:
+    """Keep the fields the in-chat player reads; drop ids the card does not use."""
+    compact: dict[str, Any] = {
+        "index": episode["index"],
+        "title": episode["title"],
+        "label": episode["label"],
+        "bvid": episode["bvid"],
+    }
+    if episode.get("aid") is not None:
+        compact["aid"] = episode["aid"]
+    if episode.get("cid") is not None:
+        compact["cid"] = episode["cid"]
+    return compact
+
+
+def _season_card(item: dict[str, Any], episodes: list[dict[str, Any]]) -> dict[str, Any]:
+    card: dict[str, Any] = {
+        "season_id": item["season_id"],
+        "title": item.get("title") or "",
+        "url": item.get("url") or "",
+        "episodes": episodes,
+    }
+    index_show = str(item.get("index_show") or "").strip()
+    if index_show:
+        card["index_show"] = index_show
+    desc = _clip(str(item.get("desc") or ""), _DESC_MAX_CHARS)
+    if desc:
+        card["desc"] = desc
+    return card
+
+
+def _payload_chars(keyword: str, seasons: list[dict[str, Any]]) -> int:
+    payload = {
+        "octop_ui": {"renderer": "bilibili_player", "version": 1},
+        "data": {
+            "keyword": keyword,
+            "results": seasons,
+            "selected_season_id": seasons[0]["season_id"] if seasons else None,
+            "current_episode": 1,
+        },
+        "text": "x" * _TEXT_RESERVE_CHARS,
+    }
+    return len(json.dumps(payload, ensure_ascii=False))
+
+
+def _fits(keyword: str, seasons: list[dict[str, Any]]) -> bool:
+    return _payload_chars(keyword, seasons) <= _MAX_RESULT_CHARS
+
+
+def _fit_episode_prefix(
+    keyword: str,
+    accepted: list[dict[str, Any]],
+    card: dict[str, Any],
+    episodes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    lo = 0
+    hi = len(episodes)
+    best = 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        trial = {
+            **card,
+            "episodes": episodes[:mid],
+            "episode_total": len(episodes),
+            "episodes_truncated": True,
+        }
+        if _fits(keyword, [*accepted, trial]):
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return episodes[:best]
+
+
+def _result_text(
+    keyword: str,
+    found: int,
+    playable: list[dict[str, Any]],
+    omitted: list[str],
+) -> str:
+    if found == 0:
+        return f"未找到与「{keyword}」相关的番剧。"
+    text = f"找到 {found} 部与「{keyword}」相关的番剧。"
+    if not playable:
+        return text + " 分集列表过长，未能展开播放器。"
+    top = playable[0]
+    total = int(top.get("episode_total") or len(top.get("episodes") or []))
+    shown = len(top.get("episodes") or [])
+    title = str(top.get("title") or "")
+    if title:
+        text += f" 默认选中《{title}》，共 {total} 集。"
+    if top.get("episodes_truncated"):
+        text += f" 播放器先载入前 {shown} 集。"
+    if len(playable) > 1:
+        text += f" 另有 {len(playable) - 1} 部可在播放器中切换。"
+    if omitted:
+        text += " 未展开分集：" + "、".join(omitted) + "。"
+    return text
+
+
 async def bilibili_search_anime(keyword: str, max_seasons: int = 5) -> str:
     """Search Bilibili bangumi (anime) by keyword and return playable episode lists.
 
     The Dashboard renders an in-chat player with season switching and episode
-    navigation (official Bilibili iframe player).
+    navigation (official Bilibili iframe player). Episode lists are capped so the
+    tool result stays inline instead of being evicted to a file.
     """
     keyword = (keyword or "").strip()
     if not keyword:
@@ -166,32 +280,53 @@ async def bilibili_search_anime(keyword: str, max_seasons: int = 5) -> str:
         )
 
     limit = max(1, min(int(max_seasons or 5), 8))
+    playable: list[dict[str, Any]] = []
+    omitted: list[str] = []
+    stop = False
     for item in results[:limit]:
+        title = str(item.get("title") or item["season_id"])
+        if stop:
+            omitted.append(title)
+            continue
         try:
-            item["episodes"] = _fetch_episodes(int(item["season_id"]))
+            episodes = [_compact_episode(ep) for ep in _fetch_episodes(int(item["season_id"]))]
+            error = ""
         except Exception as exc:
             logger.warning("season %s episodes failed: %s", item.get("season_id"), exc)
-            item["episodes"] = []
-            item["episodes_error"] = str(exc)
+            episodes = []
+            error = str(exc)
+        card = _season_card(item, episodes)
+        if error:
+            card["episodes_error"] = error
+        if _fits(keyword, [*playable, card]):
+            playable.append(card)
+            continue
+        included_partial = False
+        if not playable and episodes:
+            fitted = _fit_episode_prefix(keyword, playable, card, episodes)
+            truncated = {
+                **card,
+                "episodes": fitted,
+                "episode_total": len(episodes),
+                "episodes_truncated": True,
+            }
+            if fitted and _fits(keyword, [truncated]):
+                playable.append(truncated)
+                included_partial = True
+        if not included_partial:
+            omitted.append(title)
+        stop = True
 
-    selected = results[0]["season_id"] if results else None
-    text = (
-        f"找到 {len(results)} 部与「{keyword}」相关的番剧。"
-        if results
-        else f"未找到与「{keyword}」相关的番剧。"
-    )
-    if results and results[0].get("episodes"):
-        text += f" 默认选中《{results[0]['title']}》，共 {len(results[0]['episodes'])} 集。"
-
+    selected = playable[0]["season_id"] if playable else None
     payload = {
         "octop_ui": {"renderer": "bilibili_player", "version": 1},
         "data": {
             "keyword": keyword,
-            "results": results[:limit],
+            "results": playable,
             "selected_season_id": selected,
             "current_episode": 1,
         },
-        "text": text,
+        "text": _result_text(keyword, len(results), playable, omitted),
     }
     return json.dumps(payload, ensure_ascii=False)
 
@@ -203,5 +338,6 @@ def setup(ctx: PluginContext) -> None:
         description=(
             "在哔哩哔哩搜索番剧/动漫，并在聊天中渲染可播放的分集播放器。"
             "参数 keyword 为番剧名（如「葬送的芙莉莲」「进击的巨人」）。"
+            "长剧集只展开最相关、放得进一次工具结果的分集，避免结果被截成文件。"
         ),
     )
