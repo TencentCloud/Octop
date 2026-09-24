@@ -21,6 +21,7 @@ from octop.infra.gateway.media.backend_files import (
     file_url_to_abs_path,
     is_host_absolute_path,
 )
+from octop.infra.gateway.media.tool_media import tool_name_base
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ ARTIFACT_TOOL_BASES = frozenset(
         "send_file",
         "send_file_to_user",
         "desktop_screenshot",
+        "mobile_screenshot",
     }
 )
 
@@ -53,12 +55,6 @@ _REL_DIR_RE = re.compile(
 
 class ArtifactThreadStore(Protocol):
     def append_artifacts(self, thread_id: str, paths: Sequence[str]) -> None: ...
-
-
-def tool_name_base(name: str) -> str:
-    trimmed = (name or "").strip()
-    slash = trimmed.rfind("/")
-    return trimmed[slash + 1 :] if slash >= 0 else trimmed
 
 
 def is_artifact_tool_name(name: str | None) -> bool:

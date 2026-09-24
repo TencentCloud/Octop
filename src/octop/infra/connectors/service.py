@@ -51,9 +51,6 @@ logger = logging.getLogger(__name__)
 
 _OAUTH_REFRESH_SKEW_SEC = 120
 
-
-_OAUTH_REFRESH_SKEW_SEC = 120
-
 # Shared only within one process and application repository.
 _QCC_LOCKS: WeakKeyDictionary[ConnectorRepo, dict[str, asyncio.Lock]] = WeakKeyDictionary()
 
