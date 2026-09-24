@@ -187,9 +187,9 @@ Control-plane `database` and agent memory are separate layers. Defaults:
 - Control plane SQLite → agent memory stays `{workspace}/memory.sqlite`
   (or `{workspace}/.octop/memory.sqlite` for new agents).
 - Control plane PostgreSQL → agent memory **defaults to the same DSN**
-  (harness-memory per-agent PG schema `agent_<id>`). Runtime also needs
+  (octop-memory per-agent PG schema `agent_<id>`). Runtime also needs
   ``langgraph-checkpoint-postgres`` (pulled in via
-  ``harness-memory[langgraph-postgres]``) so LangGraph checkpoints work.
+  ``octop-memory[langgraph-postgres]``) so LangGraph checkpoints work.
   To keep file memory while the control plane is PG, set on the agent:
 
 ```json
