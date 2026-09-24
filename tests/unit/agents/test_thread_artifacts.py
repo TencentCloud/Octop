@@ -45,6 +45,7 @@ def test_is_artifact_tool_name() -> None:
     assert is_artifact_tool_name("write_file")
     assert is_artifact_tool_name("ns/edit_file")
     assert is_artifact_tool_name("desktop_screenshot")
+    assert is_artifact_tool_name("mobile_screenshot")
     assert is_artifact_tool_name("send_file_to_user")
     assert not is_artifact_tool_name("browser_screenshot")
     assert not is_artifact_tool_name("read_file")
