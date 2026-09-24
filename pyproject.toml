@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "octop"
-version = "1.0.2b1"
+version = "1.0.2b2"
 description = "Smarter self-hosted AI assistant for multiple users and agents, built on harness-agent"
 readme = "README.md"
 license = { text = "MIT" }

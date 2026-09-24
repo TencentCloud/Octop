@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  blocksAcpOutbound,
+  blocksAcpOutboundFromConfig,
   isHostRootDir,
   normalizeRootDir,
   supportsHostSkillPackages,
@@ -84,5 +86,39 @@ describe("skill package backend gates", () => {
         },
       }),
     ).toBe(false);
+  });
+
+  it("blocks outbound acp_runner under directory sandbox", () => {
+    expect(
+      blocksAcpOutboundFromConfig({
+        backend: { type: "local_shell", root_dir: "/", virtual_mode: true },
+      }),
+    ).toBe(false);
+    expect(
+      blocksAcpOutboundFromConfig({
+        backend: { type: "local_shell", root_dir: "", virtual_mode: true },
+      }),
+    ).toBe(false);
+    expect(
+      blocksAcpOutbound({
+        backendChoice: "local_shell",
+        rootDir: "/tmp/agents/main",
+        workspaceDir: "/tmp/agents/main",
+      }),
+    ).toBe(false);
+    expect(
+      blocksAcpOutboundFromConfig({
+        backend: {
+          type: "local_shell",
+          root_dir: "/tmp/project",
+          virtual_mode: true,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      blocksAcpOutboundFromConfig({
+        backend: { type: "named", name: "my_docker_sandbox" },
+      }),
+    ).toBe(true);
   });
 });
