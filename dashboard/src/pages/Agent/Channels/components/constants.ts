@@ -32,7 +32,7 @@ export type ChannelKey =
   | "octopbot";
 
 /**
- * Channel kinds backed by Octop ``ChannelKind`` / harness-gateway ``BUILTIN_CHANNELS``.
+ * Channel kinds backed by Octop ``ChannelKind`` / octop-gateway ``BUILTIN_CHANNELS``.
  * ``dashboard`` / ``agentchat`` are intentionally omitted until implemented.
  */
 export const CHANNEL_KEYS: ChannelKey[] = [
@@ -271,7 +271,7 @@ export function normalizeQqGroupContextConfig(
 /**
  * Per-kind config field schema. Drives ``ChannelDrawer``'s manual config
  * form. Kinds not listed here fall back to a JSON textarea so any
- * harness-gateway channel still works without UI changes.
+ * octop-gateway channel still works without UI changes.
  */
 export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
   feishu: [
@@ -417,7 +417,7 @@ export const CHANNEL_DISPLAY_CONFIG_KEYS = [
   "c2c_streaming",
 ] as const;
 
-/** Default per-channel display settings (harness-gateway ChannelConfig). */
+/** Default per-channel display settings (octop-gateway ChannelConfig). */
 export const DEFAULT_CHANNEL_DISPLAY_CONFIG = {
   response_mode: "stream" as const,
   show_thinking: false,

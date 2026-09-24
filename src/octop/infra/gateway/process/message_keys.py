@@ -1,17 +1,17 @@
-"""Derive session keys and user ids from harness-gateway InboundMessage."""
+"""Derive session keys and user ids from octop-gateway InboundMessage."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from harness_gateway.models import ImageContent, InboundMessage
+from octop_gateway.models import ImageContent, InboundMessage
 
 from octop.infra.gateway.threads import ThreadRegistry
 
 # Persisted on HumanMessage.additional_kwargs for dashboard history UI.
 COMPOSER_CTX_KEY = "octop_composer_context"
 INBOUND_ATTACHMENTS_KEY = "octop_inbound_attachments"
-# Must match harness_agent.messages.CHECKPOINT_TS_KEY (epoch-ms).
+# Must match octop_harness.messages.CHECKPOINT_TS_KEY (epoch-ms).
 CHECKPOINT_TS_KEY = "checkpoint_ts"
 # Persisted on AIMessage.additional_kwargs when a stream fails mid-turn.
 STREAM_ERROR_FLAG = "octop_stream_error"
@@ -56,8 +56,8 @@ def build_composer_context(
 
 
 try:
-    from harness_gateway.push_routing import EPHEMERAL_PUSH_META
-except ImportError:  # pragma: no cover - older harness-gateway
+    from octop_gateway.push_routing import EPHEMERAL_PUSH_META
+except ImportError:  # pragma: no cover - older octop-gateway
     EPHEMERAL_PUSH_META = frozenset(
         {
             "msg_id",
