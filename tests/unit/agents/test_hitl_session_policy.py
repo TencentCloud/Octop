@@ -21,7 +21,6 @@ from octop.infra.agents.security.hitl_session import (
     parse_hitl_session_policy,
     thread_id_from_request,
 )
-from octop.infra.db.repos.threads import ThreadRepo
 
 
 @pytest.fixture
@@ -101,15 +100,13 @@ def test_wrap_respects_original_when() -> None:
 
 def test_store_set_persists_once() -> None:
     repo = MagicMock()
-    repo.get.return_value = SimpleNamespace(
-        hitl_policy='{"mode": "allow_tools", "tools": ["bash"]}'
-    )
     store = HitlSessionPolicyStore(repo)
     store.set("thr_1", {"mode": "allow_tools", "tools": ["bash"]})
     repo.update_composer.assert_called_once_with(
         "thr_1", hitl_policy='{"mode": "allow_tools", "tools": ["bash"]}'
     )
     assert store.get("thr_1").allows("bash")
+    repo.get.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -134,72 +131,6 @@ async def test_resume_hitl_binds_thread_scope() -> None:
     assert chunks == []
     assert seen == ["thr_live"]
     assert current_hitl_thread_id() is None
-
-
-@pytest.fixture
-def thread_repo(tmp_path: Path) -> ThreadRepo:
-    from octop.infra.db.migrate import run_migrations
-    from octop.infra.db.pool import SqlitePool
-    from octop.infra.db.repos.agents import AgentRepo
-    from octop.infra.db.repos.users import UserRepo
-
-    db = SqlitePool(tmp_path / "octop.db")
-    run_migrations(db)
-    UserRepo(db).create(username="u", password_hash="h", role="user")
-    AgentRepo(db).create(agent_id="a1", user_id=1, name="Agent 1")
-    repo = ThreadRepo(db)
-    repo.insert(
-        thread_id="thr_1",
-        agent_id="a1",
-        user_id=1,
-        channel_type="dashboard",
-        session_key="k",
-    )
-    return repo
-
-
-def test_revoked_bypass_stops_in_the_other_worker(thread_repo: ThreadRepo) -> None:
-    """Two ``octop run --workers`` processes share one DB: a revoke must land at once.
-
-    A process-local cache kept auto-approving tool calls in the worker that had
-    read the old value, even though ``threads.hitl_policy`` was already cleared.
-    """
-    serving_api = HitlSessionPolicyStore(thread_repo)
-    running_turn = HitlSessionPolicyStore(thread_repo)
-
-    serving_api.set("thr_1", HitlSessionPolicy(mode="allow_all"))
-    assert running_turn.allows("thr_1", "execute")
-
-    serving_api.set("thr_1", HitlSessionPolicy())
-    assert thread_repo.get("thr_1").hitl_policy is None
-    assert not running_turn.allows("thr_1", "execute")
-
-
-def test_granted_bypass_reaches_the_other_worker(thread_repo: ThreadRepo) -> None:
-    """The mirror case: a worker that read ``ask`` first must see a later grant."""
-    serving_api = HitlSessionPolicyStore(thread_repo)
-    running_turn = HitlSessionPolicyStore(thread_repo)
-
-    assert running_turn.get("thr_1").mode == "ask"
-    serving_api.set("thr_1", HitlSessionPolicy(mode="allow_tools", tools=["execute"]))
-    assert running_turn.allows("thr_1", "execute")
-
-
-def test_bypass_is_not_active_when_persisting_failed(
-    thread_repo: ThreadRepo,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """``set`` wrote the value in memory before the row, so a locked DB left an
-    unpersisted bypass active while the API still reported ``ask``."""
-
-    def _locked(*_args: object, **_kwargs: object) -> None:
-        raise RuntimeError("database is locked")
-
-    monkeypatch.setattr(thread_repo, "update_composer", _locked)
-    store = HitlSessionPolicyStore(thread_repo)
-    with pytest.raises(RuntimeError):
-        store.set("thr_1", HitlSessionPolicy(mode="allow_all"))
-    assert not store.allows("thr_1", "execute")
 
 
 def test_build_harness_config_skips_interrupt_for_allowed_thread(

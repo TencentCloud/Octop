@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Request
 
 from octop.api.common.agent import require_agent_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
@@ -15,7 +15,6 @@ from octop.api.deps import current_user, get_server
 from octop.api.routers.chat.models import ForkThreadBody, RebindSessionBody, RenameThreadBody
 from octop.api.routers.chat.serialize import (
     HISTORY_DEFAULT_LIMIT,
-    HISTORY_MAX_LIMIT,
     _backfill_thread_projection,
     _clamp_history_limit,
     _load_projected_thread_messages,
@@ -100,12 +99,7 @@ def _require_thread(
 @router.get("/agents/{agent_id}/threads", summary="List threads")
 async def list_threads(
     agent_id: str,
-    limit: int = Query(
-        default=50,
-        ge=1,
-        le=HISTORY_MAX_LIMIT,
-        description=f"Maximum threads to return, between 1 and {HISTORY_MAX_LIMIT}.",
-    ),
+    limit: int = 50,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),

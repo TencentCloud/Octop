@@ -16,6 +16,10 @@ describe("skill package backend gates", () => {
     expect(normalizeRootDir("/tmp/project/")).toBe("/tmp/project");
     expect(isHostRootDir("/")).toBe(true);
     expect(isHostRootDir("/tmp/project")).toBe(false);
+    expect(isHostRootDir("C:/")).toBe(true);
+    expect(isHostRootDir("C:\\")).toBe(true);
+    expect(isHostRootDir("D:")).toBe(true);
+    expect(isHostRootDir("C:/Users")).toBe(false);
   });
 
   it("allows local backends with host root", () => {
