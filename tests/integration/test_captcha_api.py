@@ -9,7 +9,8 @@ from typing import Any
 
 import pytest
 
-from octop.infra.auth.captcha import set_test_siteverify_url
+from octop.infra.auth.captcha import config as captcha_config
+from octop.infra.auth.captcha import set_test_siteverify_url, snapshot_env
 from octop.infra.auth.captcha.store import SETTINGS_KEY
 from octop.infra.auth.sso.crypto import encrypt_secret
 from tests.support.auth import bootstrap_admin
@@ -56,6 +57,7 @@ def siteverify() -> tuple[str, type[_Siteverify]]:
     server.server_close()
     set_test_siteverify_url("turnstile", None)
     set_test_siteverify_url("tencent", None)
+    set_test_siteverify_url("recaptcha-v3", None)
 
 
 @pytest.fixture
@@ -147,6 +149,37 @@ async def test_captcha_fail_does_not_increment_lockout(client: Any, siteverify: 
     row = srv.services.user_repo.get_by_username("alice")
     assert row is not None
     assert int(row.login_failed_count or 0) == 0
+
+
+async def test_recaptcha_v3_gate_still_rejects_bot_score_when_env_is_unusable(
+    client: Any,
+    siteverify: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-numeric ``OCTOP_CAPTCHA_V3_MIN_SCORE`` must not disable the score gate."""
+    url, handler = siteverify
+    set_test_siteverify_url("recaptcha-v3", url)
+    handler.payload = {"success": True, "score": 0.0, "action": "login"}
+    monkeypatch.setattr(
+        captcha_config,
+        "_INSTALLED",
+        snapshot_env(
+            {
+                "OCTOP_CAPTCHA_PROVIDER": "recaptcha-v3",
+                "OCTOP_CAPTCHA_SITE_KEY": "0xsite",
+                "OCTOP_CAPTCHA_SECRET": "test-secret",
+                "OCTOP_CAPTCHA_V3_MIN_SCORE": "nan",
+            }
+        ),
+    )
+    c, _, home = client
+    await bootstrap_admin(c, home, username="alice", password="TestPass12")
+    r = await c.post(
+        "/api/auth/login",
+        json={"username": "alice", "password": "TestPass12", "captcha_token": "bot-token"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "CAPTCHA_FAILED"
 
 
 async def test_tencent_login_mocked_ok_returns_jwt(client: Any, siteverify: Any) -> None:
