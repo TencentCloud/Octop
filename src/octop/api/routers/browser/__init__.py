@@ -1,4 +1,4 @@
-"""Browser routers — env/install, harness-browser, record/replay, WS screencast."""
+"""Browser routers — env/install, octop-browser, record/replay, WS screencast."""
 
 from __future__ import annotations
 

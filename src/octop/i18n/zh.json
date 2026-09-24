@@ -773,7 +773,7 @@
     "unavailable": "无法连接正在运行的新版 Octop，或控制连接中断：{detail}",
     "busy": "已有记忆库整理任务正在进行。",
     "not_ready": "Octop 运行环境尚未准备好。",
-    "upgrade": "当前加载的 harness-memory 未提供在线整理接口。请安装配套版本或加载本地源码后重启 Octop。",
+    "upgrade": "当前加载的 octop-memory 未提供在线整理接口。请安装配套版本或加载本地源码后重启 Octop。",
     "wait_timeout": "智能体持续繁忙超过 120 秒，本次未开始迁移。",
     "incompatible": "在线整理仅支持兼容的新版本 SQLite checkpointer，请更新并重启 Octop。",
     "interrupted": "整理被中断。",
