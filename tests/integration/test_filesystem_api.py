@@ -111,11 +111,11 @@ async def test_filesystem_defaults_for_admin(
     r = await client.get("/api/filesystem/defaults", headers=auth)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["home"] == home.resolve().as_posix()
-    assert body["default_root_dir"] == home.resolve().as_posix()
-    assert body["allow_outside_home"] is True
-    assert body["tree_root"] == host_fs_tree_root(allow_outside_home=True)
+    assert body["default_root_dir"] == host_fs_tree_root()
+    assert body["tree_root"] == host_fs_tree_root()
     assert body["in_container"] is False
+    assert "home" not in body
+    assert "allow_outside_home" not in body
 
 
 @pytest.mark.asyncio
@@ -135,11 +135,11 @@ async def test_filesystem_defaults_in_container(
     r = await client.get("/api/filesystem/defaults", headers=auth)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["home"] == home.resolve().as_posix()
-    assert body["default_root_dir"] == host_fs_tree_root(allow_outside_home=True)
-    assert body["allow_outside_home"] is True
-    assert body["tree_root"] == host_fs_tree_root(allow_outside_home=True)
+    assert body["default_root_dir"] == host_fs_tree_root()
+    assert body["tree_root"] == host_fs_tree_root()
     assert body["in_container"] is True
+    assert "home" not in body
+    assert "allow_outside_home" not in body
 
 
 @pytest.mark.asyncio
@@ -164,10 +164,11 @@ async def test_non_admin_can_list_outside_home(
     defaults = await client.get("/api/filesystem/defaults", headers=user_auth)
     assert defaults.status_code == 200, defaults.text
     body = defaults.json()
-    assert body["allow_outside_home"] is True
-    assert body["default_root_dir"] == home.resolve().as_posix()
-    assert body["tree_root"] == host_fs_tree_root(allow_outside_home=True)
+    assert body["default_root_dir"] == host_fs_tree_root()
+    assert body["tree_root"] == host_fs_tree_root()
     assert body["in_container"] is False
+    assert "home" not in body
+    assert "allow_outside_home" not in body
 
     listed = await client.get(
         f"/api/filesystem/dirs?path={outside.as_posix()}",
@@ -338,7 +339,8 @@ async def test_filesystem_respects_user_workspace_root(
     body = defaults.json()
     assert body["tree_root"] == jail.resolve().as_posix()
     assert body["default_root_dir"] == jail.resolve().as_posix()
-    assert body["allow_outside_home"] is False
+    assert "home" not in body
+    assert "allow_outside_home" not in body
 
     inside = await client.get(
         f"/api/filesystem/dirs?path={nested.as_posix()}",
