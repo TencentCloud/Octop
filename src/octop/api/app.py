@@ -277,6 +277,24 @@ def build_app(server: OctopServer) -> FastAPI:
             ],
         )
 
+    # 专家记忆 MCP server（对外暴露，独立 token 鉴权，未配置 OCTOP_MEMORY_MCP_TOKEN 时不挂载）
+    from octop.infra.agents.memory_mcp import mount_memory_mcp
+
+    memory_mcp_managers = mount_memory_mcp(app, server)
+    if memory_mcp_managers:
+        from collections.abc import AsyncIterator
+        from contextlib import AsyncExitStack, asynccontextmanager
+
+        @asynccontextmanager
+        async def _memory_mcp_lifespan(application: FastAPI) -> AsyncIterator[None]:
+            # streamable_http_app 的 task group 依赖 lifespan，挂载后须手动并入
+            async with AsyncExitStack() as stack:
+                for mgr in memory_mcp_managers:
+                    await stack.enter_async_context(mgr.run())
+                yield
+
+        app.router.lifespan_context = _memory_mcp_lifespan
+
     if enable_api_docs:
 
         @app.get("/api/docs", include_in_schema=False)
