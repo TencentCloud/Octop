@@ -10,6 +10,7 @@
  * Endpoints (all require admin role; backend returns 403 otherwise):
  *   GET    /api/users
  *   POST   /api/users
+ *   POST   /api/users/batch
  *   PATCH  /api/users/{id}
  *   POST   /api/users/{id}/reset-password
  *   DELETE /api/users/{id}
@@ -43,6 +44,7 @@ import {
   ChevronRight,
   CircleHelp,
   Clock,
+  Coins,
   IdCard,
   KeyRound,
   LayoutGrid,
@@ -52,6 +54,8 @@ import {
   LockOpen,
   Pencil,
   Plus,
+  Power,
+  PowerOff,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -59,6 +63,7 @@ import {
   User,
   UserRound,
   Mail,
+  X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
@@ -96,6 +101,7 @@ interface UserRow {
   permissions?: string[];
   workspace_root_dir?: string | null;
   token_quota?: number | null;
+  max_agents?: number | null;
 }
 
 interface PermissionCatalogItem {
@@ -116,6 +122,8 @@ interface PolicyFormValues {
   workspace_root_dir?: string;
   limit_token_quota?: boolean;
   token_quota?: number | null;
+  limit_max_agents?: boolean;
+  max_agents?: number | null;
 }
 
 interface CreateValues extends PolicyFormValues {
@@ -174,6 +182,8 @@ interface UserCardGridProps {
   agentsLoading: boolean;
   currentUserId: number | null;
   permLabelByKey: Map<string, string>;
+  selectedIds: number[];
+  onToggleSelect: (id: number, checked: boolean) => void;
   onTogglePatch: (
     row: UserRow,
     patch: Partial<Pick<UserRow, "role" | "disabled" | "permissions">>,
@@ -184,6 +194,35 @@ interface UserCardGridProps {
   onDelete: (row: UserRow) => Promise<void>;
   onUnlockLogin: (row: UserRow) => Promise<void>;
   nowSec: number;
+}
+
+type BatchAction =
+  | "enable"
+  | "disable"
+  | "delete"
+  | "set_token_quota"
+  | "set_max_agents";
+
+interface BatchResponse {
+  action: BatchAction;
+  results: {
+    user_id: number;
+    ok: boolean;
+    error?: string | null;
+    code?: string | null;
+  }[];
+  succeeded: number;
+  failed: number;
+}
+
+interface BatchTokenFormValues {
+  limit_token_quota?: boolean;
+  token_quota?: number | null;
+}
+
+interface BatchMaxAgentsFormValues {
+  limit_max_agents?: boolean;
+  max_agents?: number | null;
 }
 
 function userInitials(displayName: string, username: string): string {
@@ -206,6 +245,7 @@ function policyPayload(
 ): {
   workspace_root_dir: string | null;
   token_quota: number | null;
+  max_agents: number | null;
 } {
   return {
     workspace_root_dir:
@@ -213,7 +253,131 @@ function policyPayload(
         ? values.workspace_root_dir?.trim() || null
         : null,
     token_quota: values.limit_token_quota ? values.token_quota ?? null : null,
+    max_agents: values.limit_max_agents ? values.max_agents ?? null : null,
   };
+}
+
+/** Common quotas admins pick — values are absolute token counts. */
+const TOKEN_QUOTA_PRESETS = [
+  1_000_000, 5_000_000, 10_000_000, 50_000_000, 100_000_000,
+] as const;
+
+const MAX_AGENTS_PRESETS = [1, 3, 5, 10, 20] as const;
+
+function formatMillionsLabel(tokens: number): string {
+  const millions = tokens / 1_000_000;
+  if (Number.isInteger(millions)) return String(millions);
+  return millions.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function formatTokenQuotaExact(tokens: number): string {
+  return tokens.toLocaleString("en-US");
+}
+
+interface TokenQuotaInputProps {
+  value?: number | null;
+  onChange?: (value: number | null) => void;
+}
+
+function TokenQuotaInput({ value, onChange }: TokenQuotaInputProps) {
+  const { t } = useTranslation();
+  const numeric =
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+
+  return (
+    <div className={styles.tokenQuotaField}>
+      <InputNumber
+        value={numeric ?? undefined}
+        onChange={(next) => onChange?.(typeof next === "number" ? next : null)}
+        min={0}
+        step={1_000_000}
+        style={{ width: "100%" }}
+        placeholder={t("adminUsers.policyTokenQuotaPlaceholder")}
+        formatter={(raw) =>
+          `${raw ?? ""}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+        }
+        parser={(raw) => {
+          const cleaned = (raw ?? "").replace(/,/g, "");
+          if (!cleaned) return undefined as unknown as number;
+          return Number(cleaned);
+        }}
+      />
+      <div className={styles.tokenQuotaPresets} role="group">
+        <span className={styles.tokenQuotaPresetsLabel}>
+          {t("adminUsers.policyTokenQuotaPresets")}
+        </span>
+        {TOKEN_QUOTA_PRESETS.map((preset) => {
+          const selected = numeric === preset;
+          return (
+            <button
+              key={preset}
+              type="button"
+              className={`${styles.tokenQuotaPreset} ${
+                selected ? styles.tokenQuotaPresetActive : ""
+              }`}
+              onClick={() => onChange?.(preset)}
+            >
+              {t("adminUsers.policyTokenQuotaPreset", {
+                millions: formatMillionsLabel(preset),
+              })}
+            </button>
+          );
+        })}
+      </div>
+      {numeric != null && numeric > 0 ? (
+        <div className={styles.tokenQuotaPreview}>
+          {t("adminUsers.policyTokenQuotaPreview", {
+            millions: formatMillionsLabel(numeric),
+            exact: formatTokenQuotaExact(numeric),
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface MaxAgentsInputProps {
+  value?: number | null;
+  onChange?: (value: number | null) => void;
+}
+
+function MaxAgentsInput({ value, onChange }: MaxAgentsInputProps) {
+  const { t } = useTranslation();
+  const numeric =
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+
+  return (
+    <div className={styles.tokenQuotaField}>
+      <InputNumber
+        value={numeric ?? undefined}
+        onChange={(next) => onChange?.(typeof next === "number" ? next : null)}
+        min={0}
+        step={1}
+        style={{ width: "100%" }}
+        placeholder={t("adminUsers.policyMaxAgentsPlaceholder")}
+      />
+      <div className={styles.tokenQuotaPresets} role="group">
+        <span className={styles.tokenQuotaPresetsLabel}>
+          {t("common.tokenCountPresets")}
+        </span>
+        {MAX_AGENTS_PRESETS.map((preset) => {
+          const selected = numeric === preset;
+          return (
+            <button
+              key={preset}
+              type="button"
+              className={`${styles.tokenQuotaPreset} ${
+                selected ? styles.tokenQuotaPresetActive : ""
+              }`}
+              onClick={() => onChange?.(preset)}
+            >
+              {preset}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function ResourcePolicyFields({
@@ -293,7 +457,37 @@ function ResourcePolicyFields({
                 },
               ]}
             >
-              <InputNumber min={0} step={1000} style={{ width: "100%" }} />
+              <TokenQuotaInput />
+            </Form.Item>
+          ) : null
+        }
+      </Form.Item>
+      <Form.Item
+        label={t("adminUsers.policyMaxAgents")}
+        extra={t("adminUsers.policyMaxAgentsHint")}
+      >
+        <Form.Item name="limit_max_agents" valuePropName="checked" noStyle>
+          <Switch />
+        </Form.Item>
+      </Form.Item>
+      <Form.Item
+        noStyle
+        shouldUpdate={(prev, cur) =>
+          prev.limit_max_agents !== cur.limit_max_agents
+        }
+      >
+        {({ getFieldValue }) =>
+          getFieldValue("limit_max_agents") ? (
+            <Form.Item
+              name="max_agents"
+              rules={[
+                {
+                  required: true,
+                  message: t("adminUsers.policyMaxAgentsRequired"),
+                },
+              ]}
+            >
+              <MaxAgentsInput />
             </Form.Item>
           ) : null
         }
@@ -581,6 +775,8 @@ function UserCardGrid({
   agentsLoading,
   currentUserId,
   permLabelByKey,
+  selectedIds,
+  onToggleSelect,
   onTogglePatch,
   onEdit,
   onShowAgents,
@@ -591,6 +787,7 @@ function UserCardGrid({
 }: UserCardGridProps) {
   const { t } = useTranslation();
   const timeZone = useServerTimezone();
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   if (loading && rows.length === 0) {
     return (
       <div className={styles.userGridLoading}>
@@ -606,6 +803,7 @@ function UserCardGrid({
       {rows.map((row) => {
         const agentCount = agentsByUserId.get(row.id)?.length ?? 0;
         const isSelf = row.id === currentUserId;
+        const selected = selectedSet.has(row.id);
         const displayName = row.display_name?.trim() || row.username;
         const remaining = lockRemainingSeconds(row, nowSec);
         const isLocked = remaining > 0;
@@ -626,6 +824,7 @@ function UserCardGrid({
             key={row.id}
             className={[
               styles.userCard,
+              selected ? styles.userCardSelected : "",
               isLocked ? styles.userCardLocked : "",
               row.disabled ? styles.userCardDisabled : "",
             ]
@@ -636,6 +835,14 @@ function UserCardGrid({
 
             <div className={styles.userCardInner}>
               <div className={styles.userCardHeader}>
+                <Checkbox
+                  checked={selected}
+                  onChange={(e) => onToggleSelect(row.id, e.target.checked)}
+                  className={styles.userCardSelect}
+                  aria-label={t("adminUsers.batchSelectUser", {
+                    username: row.username,
+                  })}
+                />
                 <div
                   className={`${styles.userCardAvatar} ${roleToneClass(
                     row.role,
@@ -901,6 +1108,12 @@ export default function UsersListPanel() {
   const [agentDrawerUser, setAgentDrawerUser] = useState<UserRow | null>(null);
   const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const [batchTokenOpen, setBatchTokenOpen] = useState(false);
+  const [batchTokenForm] = Form.useForm<BatchTokenFormValues>();
+  const [batchMaxAgentsOpen, setBatchMaxAgentsOpen] = useState(false);
+  const [batchMaxAgentsForm] = Form.useForm<BatchMaxAgentsFormValues>();
   const { viewMode, setViewMode, showCardView } = useCardTableView("table");
   const [permCatalog, setPermCatalog] = useState<PermissionCatalogItem[]>([]);
   const [fsTreeRoot, setFsTreeRoot] = useState(HOST_FS_ROOT);
@@ -977,6 +1190,39 @@ export default function UsersListPanel() {
     });
   }, [rows, searchQuery]);
 
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedVisibleCount = useMemo(
+    () => filteredRows.filter((row) => selectedIdSet.has(row.id)).length,
+    [filteredRows, selectedIdSet],
+  );
+
+  const clearSelection = useCallback(() => setSelectedIds([]), []);
+
+  const toggleSelectOne = useCallback((id: number, checked: boolean) => {
+    setSelectedIds((prev) => {
+      if (checked) {
+        return prev.includes(id) ? prev : [...prev, id];
+      }
+      return prev.filter((item) => item !== id);
+    });
+  }, []);
+
+  const setSelectAllVisible = useCallback(
+    (checked: boolean) => {
+      const visibleIds = filteredRows.map((row) => row.id);
+      setSelectedIds((prev) => {
+        if (checked) {
+          const next = new Set(prev);
+          for (const id of visibleIds) next.add(id);
+          return Array.from(next);
+        }
+        const drop = new Set(visibleIds);
+        return prev.filter((id) => !drop.has(id));
+      });
+    },
+    [filteredRows],
+  );
+
   const refreshUsers = useCallback(async () => {
     setLoading(true);
     try {
@@ -991,6 +1237,143 @@ export default function UsersListPanel() {
     }
   }, [t]);
 
+  const reportBatchResult = useCallback(
+    (body: BatchResponse) => {
+      if (body.failed === 0) {
+        message.success(
+          t("adminUsers.batchSuccess", {
+            count: body.succeeded,
+            action: t(`adminUsers.batchAction.${body.action}`),
+          }),
+        );
+        return;
+      }
+      if (body.succeeded === 0) {
+        message.error(
+          t("adminUsers.batchAllFailed", {
+            failed: body.failed,
+            action: t(`adminUsers.batchAction.${body.action}`),
+          }),
+        );
+        return;
+      }
+      message.warning(
+        t("adminUsers.batchPartial", {
+          succeeded: body.succeeded,
+          failed: body.failed,
+          action: t(`adminUsers.batchAction.${body.action}`),
+        }),
+      );
+    },
+    [t],
+  );
+
+  const runBatch = useCallback(
+    async (
+      action: BatchAction,
+      options?: {
+        token_quota?: number | null;
+        max_agents?: number | null;
+      },
+    ) => {
+      if (selectedIds.length === 0) return;
+      setBatchSubmitting(true);
+      try {
+        const body = await request<BatchResponse>("/users/batch", {
+          method: "POST",
+          body: JSON.stringify({
+            user_ids: selectedIds,
+            action,
+            ...(action === "set_token_quota"
+              ? { token_quota: options?.token_quota ?? null }
+              : {}),
+            ...(action === "set_max_agents"
+              ? { max_agents: options?.max_agents ?? null }
+              : {}),
+          }),
+        });
+        reportBatchResult(body);
+        clearSelection();
+        setBatchTokenOpen(false);
+        batchTokenForm.resetFields();
+        setBatchMaxAgentsOpen(false);
+        batchMaxAgentsForm.resetFields();
+        void refreshUsers();
+      } catch (err) {
+        message.error(
+          err instanceof Error ? err.message : t("adminUsers.batchFailed"),
+        );
+      } finally {
+        setBatchSubmitting(false);
+      }
+    },
+    [
+      selectedIds,
+      reportBatchResult,
+      clearSelection,
+      batchTokenForm,
+      batchMaxAgentsForm,
+      refreshUsers,
+      t,
+    ],
+  );
+
+  const confirmBatchAction = (
+    action: Extract<BatchAction, "enable" | "disable" | "delete">,
+  ) => {
+    if (selectedIds.length === 0) return;
+    const titles = {
+      enable: "adminUsers.batchEnableConfirm",
+      disable: "adminUsers.batchDisableConfirm",
+      delete: "adminUsers.batchDeleteConfirm",
+    } as const;
+    const hints = {
+      enable: "adminUsers.batchEnableHint",
+      disable: "adminUsers.batchDisableHint",
+      delete: "adminUsers.batchDeleteHint",
+    } as const;
+    const okLabels = {
+      enable: t("adminUsers.batchEnable"),
+      disable: t("adminUsers.batchDisable"),
+      delete: t("common.delete"),
+    } as const;
+    Modal.confirm({
+      title: t(titles[action], { count: selectedIds.length }),
+      content: t(hints[action]),
+      okType: action === "delete" ? "danger" : "primary",
+      okText: okLabels[action],
+      cancelText: t("common.cancel"),
+      onOk: () => runBatch(action),
+    });
+  };
+
+  const openBatchToken = () => {
+    batchTokenForm.setFieldsValue({
+      limit_token_quota: true,
+      token_quota: 10_000_000,
+    });
+    setBatchTokenOpen(true);
+  };
+
+  const submitBatchToken = async (values: BatchTokenFormValues) => {
+    await runBatch("set_token_quota", {
+      token_quota: values.limit_token_quota ? values.token_quota ?? null : null,
+    });
+  };
+
+  const openBatchMaxAgents = () => {
+    batchMaxAgentsForm.setFieldsValue({
+      limit_max_agents: true,
+      max_agents: 5,
+    });
+    setBatchMaxAgentsOpen(true);
+  };
+
+  const submitBatchMaxAgents = async (values: BatchMaxAgentsFormValues) => {
+    await runBatch("set_max_agents", {
+      max_agents: values.limit_max_agents ? values.max_agents ?? null : null,
+    });
+  };
   useEffect(() => {
     if (!hasLockedUser) return;
     const anyExpired = rows.some(
@@ -1123,6 +1506,8 @@ export default function UsersListPanel() {
       workspace_root_dir: undefined,
       limit_token_quota: false,
       token_quota: undefined,
+      limit_max_agents: false,
+      max_agents: undefined,
     });
     setCreateOpen(true);
   };
@@ -1142,6 +1527,8 @@ export default function UsersListPanel() {
         : undefined,
       limit_token_quota: row.token_quota != null,
       token_quota: row.token_quota ?? undefined,
+      limit_max_agents: row.max_agents != null,
+      max_agents: row.max_agents ?? undefined,
     });
   };
 
@@ -1247,14 +1634,32 @@ export default function UsersListPanel() {
       <div className={styles.pageTop}>
         <RoleLegend />
         <div className={expertStyles.gridToolbar}>
-          <Input
-            allowClear
-            prefix={<Search size={14} />}
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={t("adminUsers.searchPlaceholder")}
-            className={styles.userSearch}
-          />
+          <div className={styles.userSearchRow}>
+            {showCardView ? (
+              <Checkbox
+                checked={
+                  filteredRows.length > 0 &&
+                  selectedVisibleCount === filteredRows.length
+                }
+                indeterminate={
+                  selectedVisibleCount > 0 &&
+                  selectedVisibleCount < filteredRows.length
+                }
+                disabled={filteredRows.length === 0}
+                onChange={(e) => setSelectAllVisible(e.target.checked)}
+              >
+                {t("adminUsers.batchSelectAll")}
+              </Checkbox>
+            ) : null}
+            <Input
+              allowClear
+              prefix={<Search size={14} />}
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={t("adminUsers.searchPlaceholder")}
+              className={styles.userSearch}
+            />
+          </div>
           <div className={expertStyles.gridToolbarRight}>
             <Segmented
               size="small"
@@ -1304,6 +1709,66 @@ export default function UsersListPanel() {
         </div>
       </div>
 
+      {selectedIds.length > 0 ? (
+        <div className={styles.batchBar} role="toolbar">
+          <span className={styles.batchBarCount}>
+            {t("adminUsers.batchSelected", { count: selectedIds.length })}
+          </span>
+          <div className={styles.batchBarActions}>
+            <Button
+              size="small"
+              icon={<Power size={14} />}
+              loading={batchSubmitting}
+              onClick={() => confirmBatchAction("enable")}
+            >
+              {t("adminUsers.batchEnable")}
+            </Button>
+            <Button
+              size="small"
+              icon={<PowerOff size={14} />}
+              loading={batchSubmitting}
+              onClick={() => confirmBatchAction("disable")}
+            >
+              {t("adminUsers.batchDisable")}
+            </Button>
+            <Button
+              size="small"
+              icon={<Coins size={14} />}
+              loading={batchSubmitting}
+              onClick={openBatchToken}
+            >
+              {t("adminUsers.batchSetToken")}
+            </Button>
+            <Button
+              size="small"
+              icon={<Bot size={14} />}
+              loading={batchSubmitting}
+              onClick={openBatchMaxAgents}
+            >
+              {t("adminUsers.batchSetMaxAgents")}
+            </Button>
+            <Button
+              size="small"
+              danger
+              icon={<Trash2 size={14} />}
+              loading={batchSubmitting}
+              onClick={() => confirmBatchAction("delete")}
+            >
+              {t("common.delete")}
+            </Button>
+            <Button
+              size="small"
+              type="text"
+              icon={<X size={14} />}
+              onClick={clearSelection}
+              aria-label={t("adminUsers.batchClear")}
+            >
+              {t("adminUsers.batchClear")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {showCardView ? (
         <UserCardGrid
           rows={filteredRows}
@@ -1312,6 +1777,8 @@ export default function UsersListPanel() {
           agentsLoading={agentsLoading}
           currentUserId={currentUserId}
           permLabelByKey={permLabelByKey}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelectOne}
           onTogglePatch={togglePatch}
           onEdit={openEdit}
           onShowAgents={setAgentDrawerUser}
@@ -1333,6 +1800,11 @@ export default function UsersListPanel() {
           dataSource={filteredRows}
           pagination={false}
           scroll={{ x: 1360 }}
+          rowSelection={{
+            selectedRowKeys: selectedIds,
+            onChange: (keys) => setSelectedIds(keys.map((key) => Number(key))),
+            preserveSelectedRowKeys: true,
+          }}
           rowClassName={(row) =>
             [
               row.disabled ? styles.userTableRowDisabled : "",
@@ -1632,6 +2104,7 @@ export default function UsersListPanel() {
             permissions: [],
             limit_workspace_root: false,
             limit_token_quota: false,
+            limit_max_agents: false,
           }}
           className={styles.createUserForm}
         >
@@ -1969,6 +2442,118 @@ export default function UsersListPanel() {
                 />
               }
             />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={t("adminUsers.batchSetTokenTitle", {
+          count: selectedIds.length,
+        })}
+        open={batchTokenOpen}
+        onCancel={() => {
+          setBatchTokenOpen(false);
+          batchTokenForm.resetFields();
+        }}
+        onOk={() => batchTokenForm.submit()}
+        okText={t("common.confirm")}
+        cancelText={t("common.cancel")}
+        confirmLoading={batchSubmitting}
+        destroyOnHidden
+      >
+        <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
+          {t("adminUsers.batchSetTokenHint")}
+        </Text>
+        <Form<BatchTokenFormValues>
+          form={batchTokenForm}
+          layout="vertical"
+          onFinish={(values) => void submitBatchToken(values)}
+        >
+          <Form.Item
+            label={t("adminUsers.policyTokenQuota")}
+            extra={t("adminUsers.policyTokenQuotaHint")}
+          >
+            <Form.Item name="limit_token_quota" valuePropName="checked" noStyle>
+              <Switch />
+            </Form.Item>
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, cur) =>
+              prev.limit_token_quota !== cur.limit_token_quota
+            }
+          >
+            {({ getFieldValue }) =>
+              getFieldValue("limit_token_quota") ? (
+                <Form.Item
+                  name="token_quota"
+                  rules={[
+                    {
+                      required: true,
+                      message: t("adminUsers.policyTokenQuotaRequired"),
+                    },
+                  ]}
+                >
+                  <TokenQuotaInput />
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={t("adminUsers.batchSetMaxAgentsTitle", {
+          count: selectedIds.length,
+        })}
+        open={batchMaxAgentsOpen}
+        onCancel={() => {
+          setBatchMaxAgentsOpen(false);
+          batchMaxAgentsForm.resetFields();
+        }}
+        onOk={() => batchMaxAgentsForm.submit()}
+        okText={t("common.confirm")}
+        cancelText={t("common.cancel")}
+        confirmLoading={batchSubmitting}
+        destroyOnHidden
+      >
+        <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
+          {t("adminUsers.batchSetMaxAgentsHint")}
+        </Text>
+        <Form<BatchMaxAgentsFormValues>
+          form={batchMaxAgentsForm}
+          layout="vertical"
+          onFinish={(values) => void submitBatchMaxAgents(values)}
+        >
+          <Form.Item
+            label={t("adminUsers.policyMaxAgents")}
+            extra={t("adminUsers.policyMaxAgentsHint")}
+          >
+            <Form.Item name="limit_max_agents" valuePropName="checked" noStyle>
+              <Switch />
+            </Form.Item>
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, cur) =>
+              prev.limit_max_agents !== cur.limit_max_agents
+            }
+          >
+            {({ getFieldValue }) =>
+              getFieldValue("limit_max_agents") ? (
+                <Form.Item
+                  name="max_agents"
+                  rules={[
+                    {
+                      required: true,
+                      message: t("adminUsers.policyMaxAgentsRequired"),
+                    },
+                  ]}
+                >
+                  <MaxAgentsInput />
+                </Form.Item>
+              ) : null
+            }
           </Form.Item>
         </Form>
       </Modal>

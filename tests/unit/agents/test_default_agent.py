@@ -15,6 +15,7 @@ from octop.infra.agents.default_agent import (
 )
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.errors import OctopError
+from octop.infra.utils.host_dirs import host_fs_tree_root
 
 
 @pytest.fixture(scope="module")
@@ -50,10 +51,7 @@ async def test_bootstrap_skips_when_main_exists(catalog: ExpertCatalog) -> None:
     registry.create.assert_not_called()
 
 
-async def test_bootstrap_creates_general_assistant(
-    catalog: ExpertCatalog,
-    _isolated_user_home: Path,
-) -> None:
+async def test_bootstrap_creates_general_assistant(catalog: ExpertCatalog) -> None:
     registry = MagicMock()
     registry.get_row.return_value = None
     registry.list_agents.return_value = []
@@ -67,14 +65,11 @@ async def test_bootstrap_creates_general_assistant(
     assert spec.agent_id is None
     assert spec.template_name == DEFAULT_EXPERT_ID
     assert spec.config["backend"] == default_home_local_backend()
-    assert spec.config["backend"]["root_dir"] == _isolated_user_home.resolve().as_posix()
+    assert spec.config["backend"]["root_dir"] == host_fs_tree_root()
     assert registry.create.await_args.kwargs["defer_bootstrap"] is True
 
 
-async def test_bootstrap_main_uses_home_backend(
-    catalog: ExpertCatalog,
-    _isolated_user_home: Path,
-) -> None:
+async def test_bootstrap_main_uses_fs_root_backend(catalog: ExpertCatalog) -> None:
     registry = MagicMock()
     registry.get_row.return_value = None
     registry.list_agents.return_value = []
@@ -89,7 +84,27 @@ async def test_bootstrap_main_uses_home_backend(
 
     spec = registry.create.await_args.args[0]
     assert spec.config["backend"] == default_home_local_backend()
-    assert spec.config["backend"]["root_dir"] == _isolated_user_home.resolve().as_posix()
+    assert spec.config["backend"]["root_dir"] == host_fs_tree_root()
+
+
+async def test_bootstrap_respects_policy_root_dir(catalog: ExpertCatalog, tmp_path: Path) -> None:
+    registry = MagicMock()
+    registry.get_row.return_value = None
+    registry.list_agents.return_value = []
+    registry.create = AsyncMock(return_value=object())
+    jail = (tmp_path / "jail").resolve().as_posix()
+
+    await bootstrap_default_agent(
+        registry,
+        catalog,
+        user_id=1,
+        agent_id=None,
+        root_dir=jail,
+    )
+
+    spec = registry.create.await_args.args[0]
+    assert spec.config["backend"] == default_home_local_backend(root_dir=jail)
+    assert spec.config["backend"]["root_dir"] == jail
 
 
 async def test_bootstrap_requires_catalog() -> None:
