@@ -590,9 +590,19 @@ class AgentManager:
                 DEFAULT_SYSTEM_FILES_PATH,
                 seed_workspace_dir_on_create,
             )
-            from octop.infra.users.resource_policy import raise_if_backend_outside_user_root
+            from octop.infra.users.resource_policy import (
+                assert_agent_quota_available,
+                raise_if_backend_outside_user_root,
+            )
 
             if spec.user_id is not None:
+                kind = spec.kind if spec.kind in {"expert", "team"} else "expert"
+                if kind == "expert":
+                    assert_agent_quota_available(
+                        self._repos.user_policy_repo,
+                        self._repos.agent_repo,
+                        spec.user_id,
+                    )
                 raise_if_backend_outside_user_root(
                     self._repos.user_policy_repo,
                     spec.user_id,
