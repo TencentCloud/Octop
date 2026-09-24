@@ -696,3 +696,43 @@ def test_attachment_frame_dedup_key_prefers_path() -> None:
         == "path:outbound/a.png"
     )
     assert attachment_frame_dedup_key({"preview_url": "/api/x"}) == "url:/api/x"
+
+
+def test_history_tool_media_invent_image_only_for_delivery_tools() -> None:
+    """The reload path must apply the same delivery-tool gate as streaming.
+
+    ``MEDIA_PUSH_TOOL_BASES`` excludes ``write_file`` / ``read_file`` /
+    ``browser_use`` so their plain-text "saved to outbound/…" outputs are not
+    turned into image cards during a turn (see
+    :func:`test_plain_text_media_invent_only_for_delivery_tools`). History
+    projection re-reads the same stored strings, so without the gate a text-only
+    turn grows a phantom attachment the first time the thread is reloaded.
+    """
+    from octop.api.routers.chat.serialize import _enrich_history_tool_media
+
+    text = "Screenshot saved to /workspace/outbound/screenshots/shot.png"
+
+    def entry(tool_name: str) -> dict[str, object]:
+        return {
+            "role": "tool",
+            "content": [{"type": "tool_result", "id": "t1", "name": tool_name, "output": text}],
+        }
+
+    for tool_name in ("write_file", "read_file", "browser_use", ""):
+        out = _enrich_history_tool_media([entry(tool_name)], agent_id="A1")
+        blocks = out[0]["content"]
+        assert isinstance(blocks, list)
+        first = blocks[0]
+        assert isinstance(first, dict)
+        assert first["output"] == text, tool_name
+
+    out = _enrich_history_tool_media([entry("desktop_screenshot")], agent_id="A1")
+    blocks = out[0]["content"]
+    assert isinstance(blocks, list)
+    first = blocks[0]
+    assert isinstance(first, dict)
+    parsed = json.loads(str(first["output"]))
+    assert isinstance(parsed, list)
+    assert parsed[0]["type"] == "text"
+    assert parsed[0]["text"] == text
+    assert parsed[1]["type"] == "image"
