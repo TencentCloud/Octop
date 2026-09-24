@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from octop.infra.agents.workspace_dir import (
     agent_facing_workspace_dir_from_config,
     agent_facing_workspace_root,
@@ -83,6 +85,23 @@ def test_host_rooted_default_uses_octop_home(tmp_path: Path) -> None:
     host = seed_workspace_dir_on_create(cfg, paths=paths, agent_id="A1")
     assert cfg["workspace_dir"] == str(host)
     assert host == (tmp_path / ".octop" / "agents" / "A1").resolve()
+
+
+@pytest.mark.parametrize("root_dir", ["C:/", "C:\\", "D:", "d:/"])
+def test_windows_drive_root_is_host_sentinel(tmp_path: Path, root_dir: str) -> None:
+    """Drive roots must use OCTOP_HOME agents/, not {drive}/.octop/workspaces/."""
+    paths = PathLayout(tmp_path / ".octop")
+    cfg = {
+        "backend": {
+            "type": "local_shell",
+            "root_dir": root_dir,
+            "virtual_mode": True,
+        },
+    }
+    host = seed_workspace_dir_on_create(cfg, paths=paths, agent_id="WIN1")
+    assert cfg["workspace_dir"] == str(host)
+    assert host == (tmp_path / ".octop" / "agents" / "WIN1").resolve()
+    assert ".octop/workspaces" not in cfg["workspace_dir"].replace("\\", "/")
 
 
 def test_harness_workspace_keeps_absolute_persisted_value(tmp_path: Path) -> None:

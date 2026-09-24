@@ -42,13 +42,16 @@
   column-gap: 12px;
 }
 
-.emptyGuideMascot {
-  display: block;
-  width: 120px;
-  height: 120px;
-  object-fit: contain;
-  user-select: none;
-  -webkit-user-drag: none;
+.emptyLayout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.emptyGuide {
+  flex: 1;
 }
 
 /* ── Type Card (service catalog) ───────────────────────────────── */
