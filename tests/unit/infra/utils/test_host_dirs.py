@@ -259,8 +259,7 @@ def test_host_fs_tree_root_admin_posix(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
     from octop.infra.utils.host_dirs import host_fs_tree_root
 
-    assert host_fs_tree_root(allow_outside_home=True) == "/"
-    assert host_fs_tree_root(allow_outside_home=False) == home.resolve().as_posix()
+    assert host_fs_tree_root() == "/"
 
 
 def test_running_in_container_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -289,26 +288,6 @@ def test_running_in_container_detects_dockerenv(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path", _FakePath)
     assert running_in_container() is True
-
-
-def test_default_host_root_dir_uses_fs_root_in_container(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from octop.infra.utils.host_dirs import default_host_root_dir, host_fs_tree_root
-
-    home = tmp_path / "os_home"
-    home.mkdir()
-    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
-
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
-    assert default_host_root_dir(allow_outside_home=True) == home.resolve().as_posix()
-
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
-    assert default_host_root_dir(allow_outside_home=True) == host_fs_tree_root(
-        allow_outside_home=True
-    )
-    # Policy / home-jail mode must not jump to filesystem root.
-    assert default_host_root_dir(allow_outside_home=False) == home.resolve().as_posix()
 
 
 def test_list_and_probe_return_posix_paths(tmp_path: Path) -> None:

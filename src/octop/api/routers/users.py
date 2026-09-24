@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -13,6 +13,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.permissions import PERMISSIONS
 from octop.infra.users.resource_policy import (
+    normalize_max_agents,
     normalize_token_quota,
     normalize_workspace_root_dir,
     public_policy_fields,
@@ -20,6 +21,8 @@ from octop.infra.users.resource_policy import (
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
+
+UserBatchAction = Literal["enable", "disable", "delete", "set_token_quota", "set_max_agents"]
 
 
 class UserCreateBody(BaseModel):
@@ -31,6 +34,7 @@ class UserCreateBody(BaseModel):
     permissions: list[str] = Field(default_factory=list)
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
+    max_agents: int | None = Field(default=None, ge=0)
 
 
 class UserPatchBody(BaseModel):
@@ -41,10 +45,40 @@ class UserPatchBody(BaseModel):
     permissions: list[str] | None = None
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
+    max_agents: int | None = Field(default=None, ge=0)
 
 
 class ResetPasswordBody(BaseModel):
     new_password: str = Field(min_length=1, max_length=200)
+
+
+class UserBatchBody(BaseModel):
+    user_ids: list[int] = Field(min_length=1, max_length=500)
+    action: UserBatchAction
+    token_quota: int | None = Field(
+        default=None,
+        ge=0,
+        description="Used by set_token_quota. null clears the limit (unlimited).",
+    )
+    max_agents: int | None = Field(
+        default=None,
+        ge=0,
+        description="Used by set_max_agents. null clears the limit (unlimited).",
+    )
+
+
+class UserBatchItemResult(BaseModel):
+    user_id: int
+    ok: bool
+    error: str | None = None
+    code: str | None = None
+
+
+class UserBatchResponse(BaseModel):
+    action: UserBatchAction
+    results: list[UserBatchItemResult]
+    succeeded: int
+    failed: int
 
 
 def _row_to_dict(r: Any, policy: Any | None = None) -> dict[str, Any]:
@@ -77,6 +111,8 @@ def _policy_kwargs_from_body(body: UserCreateBody | UserPatchBody) -> dict[str, 
         policy_kwargs["workspace_root_dir"] = body.workspace_root_dir
     if "token_quota" in body.model_fields_set:
         policy_kwargs["token_quota"] = body.token_quota
+    if "max_agents" in body.model_fields_set:
+        policy_kwargs["max_agents"] = body.max_agents
     return policy_kwargs
 
 
@@ -168,6 +204,8 @@ async def create_user(
         normalize_workspace_root_dir(policy_kwargs["workspace_root_dir"])
     if "token_quota" in policy_kwargs:
         normalize_token_quota(policy_kwargs["token_quota"])
+    if "max_agents" in policy_kwargs:
+        normalize_max_agents(policy_kwargs["max_agents"])
     role = Role(body.role)
     user = await server.user_manager.create(
         username=body.username,
@@ -182,6 +220,114 @@ async def create_user(
     row = server.user_manager.get_row(user.id)
     assert row is not None
     return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id))
+
+
+def _batch_fail(user_id: int, *, code: str, error: str) -> UserBatchItemResult:
+    return UserBatchItemResult(user_id=user_id, ok=False, code=code, error=error)
+
+
+async def _batch_apply_one(
+    *,
+    server: Any,
+    actor: User,
+    user_id: int,
+    action: UserBatchAction,
+    token_quota: int | None,
+    max_agents: int | None,
+) -> UserBatchItemResult:
+    if action in ("disable", "delete") and user_id == actor.id:
+        return _batch_fail(
+            user_id,
+            code=ErrorCode.FORBIDDEN.value,
+            error="cannot apply this action to yourself",
+        )
+    row = server.user_manager.get_row(user_id)
+    if row is None:
+        return _batch_fail(
+            user_id,
+            code=ErrorCode.NOT_FOUND.value,
+            error="user not found",
+        )
+    try:
+        if action == "enable":
+            await server.user_manager.enable(row.username)
+        elif action == "disable":
+            await server.user_manager.disable(row.username)
+        elif action == "delete":
+            await server.user_manager.remove(row.username)
+        elif action == "set_token_quota":
+            await server.user_manager.set_resource_policy(
+                row.username,
+                token_quota=token_quota,
+            )
+        elif action == "set_max_agents":
+            await server.user_manager.set_resource_policy(
+                row.username,
+                max_agents=max_agents,
+            )
+        else:
+            return _batch_fail(
+                user_id,
+                code=ErrorCode.SLASH_BAD_ARGS.value,
+                error=f"unknown action: {action}",
+            )
+    except OctopError as exc:
+        return _batch_fail(
+            user_id,
+            code=exc.code.value,
+            error=exc.message,
+        )
+    return UserBatchItemResult(user_id=user_id, ok=True)
+
+
+@router.post(
+    "/batch",
+    summary="Batch enable, disable, delete, or set resource policies",
+    description=(
+        "Apply one action to many users. Per-user failures do not abort the batch. "
+        "Disable and delete skip the current actor. For set_token_quota / set_max_agents, "
+        "a null value clears the limit."
+    ),
+    response_model=UserBatchResponse,
+)
+async def batch_users(
+    body: UserBatchBody,
+    actor: Any = Depends(require_permission("users")),
+    server: Any = Depends(get_server),
+) -> UserBatchResponse:
+    if body.action == "set_token_quota":
+        normalize_token_quota(body.token_quota)
+    if body.action == "set_max_agents":
+        normalize_max_agents(body.max_agents)
+
+    # Preserve order while dropping duplicates.
+    seen: set[int] = set()
+    user_ids: list[int] = []
+    for uid in body.user_ids:
+        if uid in seen:
+            continue
+        seen.add(uid)
+        user_ids.append(uid)
+
+    results: list[UserBatchItemResult] = []
+    for user_id in user_ids:
+        results.append(
+            await _batch_apply_one(
+                server=server,
+                actor=actor,
+                user_id=user_id,
+                action=body.action,
+                token_quota=body.token_quota,
+                max_agents=body.max_agents,
+            )
+        )
+    succeeded = sum(1 for item in results if item.ok)
+    return UserBatchResponse(
+        action=body.action,
+        results=results,
+        succeeded=succeeded,
+        failed=len(results) - succeeded,
+    )
 
 
 @router.get("/{user_id}")
