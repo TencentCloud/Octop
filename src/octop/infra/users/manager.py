@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover - optional PostgreSQL driver
 
 from octop.infra.db.repos._base import UNSET
 from octop.infra.db.repos.audit import ACTOR_ADMIN
-from octop.infra.db.repos.users import UserRepo, UserRow
+from octop.infra.db.repos.users import UserRepo
 from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.email import normalize_email, parse_optional_email
@@ -79,17 +79,6 @@ def _is_unique_violation(exc: BaseException) -> bool:
     return pg_errors is not None and isinstance(exc, pg_errors.UniqueViolation)
 
 
-def _user_from_row(row: UserRow) -> User:
-    return User(
-        id=row.id,
-        username=row.username,
-        role=Role(row.role),
-        display_name=row.display_name,
-        locale=normalize_locale(row.locale),
-        permissions=list(row.permissions),
-    )
-
-
 class UserManager:
     """Owns the in-memory dict of ``User`` objects.
 
@@ -114,7 +103,15 @@ class UserManager:
     async def boot(self) -> None:
         async with self._lock:
             for row in self._services.user_repo.list(include_disabled=False):
-                self._users[row.username] = _user_from_row(row)
+                user = User(
+                    id=row.id,
+                    username=row.username,
+                    role=Role(row.role),
+                    display_name=row.display_name,
+                    locale=normalize_locale(row.locale),
+                    permissions=list(row.permissions),
+                )
+                self._users[row.username] = user
 
     async def shutdown_all(self) -> None:
         async with self._lock:
@@ -216,25 +213,10 @@ class UserManager:
         return self._users.get(username)
 
     def get_by_id(self, user_id: int) -> User | None:
-        """Resolve from the stored row, not this process's mirror.
-
-        Every authenticated request reads through here (``api/deps.py``), and
-        ``octop run --workers N`` / an offline ``octop user`` CLI write lets another
-        process change the row. ``disable`` and ``remove`` already clear the local
-        mirror, so this keeps single-worker behaviour and fixes the cross-process one.
-        """
-        row = self._services.user_repo.get(user_id)
-        if row is None or row.disabled:
-            self._evict_cached_id(user_id)
-            return None
-        user = _user_from_row(row)
-        self._users[row.username] = user
-        return user
-
-    def _evict_cached_id(self, user_id: int) -> None:
-        for username, cached in list(self._users.items()):
-            if cached.id == user_id:
-                del self._users[username]
+        for u in self._users.values():
+            if u.id == user_id:
+                return u
+        return None
 
     def get_row(self, user_id: int) -> Any:
         """Return the raw UserRow (includes disabled flag) for admin read operations."""
@@ -497,8 +479,17 @@ class UserManager:
                 )
             return None
         self._services.user_repo.clear_login_lockout(row.id)
-        user = _user_from_row(row)
-        self._users[row.username] = user
+        user = self._users.get(row.username)
+        if user is None:
+            user = User(
+                id=row.id,
+                username=row.username,
+                role=Role(row.role),
+                display_name=row.display_name,
+                locale=normalize_locale(row.locale),
+                permissions=list(row.permissions),
+            )
+            self._users[row.username] = user
         self._services.audit_repo.write(actor=row.username, action="auth.login")
         return user
 
