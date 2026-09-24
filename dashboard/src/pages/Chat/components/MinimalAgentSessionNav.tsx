@@ -20,7 +20,11 @@ import { showConfirmModal } from "../../../utils/confirmModal";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { sortSessions, toSession, type Session } from "../hooks/useSessions";
 import { formatThreadTitle } from "../utils/threadTitle";
-import { onSessionEvent, onStreamEvent } from "../hooks/chatStore";
+import {
+  getSnapshot,
+  onSessionEvent,
+  onSessionStoreChange,
+} from "../hooks/chatStore";
 import SharedExpertHint from "./SharedExpertHint";
 import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
@@ -68,6 +72,13 @@ interface MinimalAgentSessionNavProps {
   onFork: (id: string, agentId?: string | null) => void;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
+}
+
+function isSessionWorking(sessionId: string): boolean {
+  const { isStreaming, messages } = getSnapshot(sessionId);
+  return (
+    isStreaming || messages.some((message) => message.status === "streaming")
+  );
 }
 
 function AgentUnreadBadge({ count }: { count: number }) {
@@ -400,16 +411,24 @@ export default function MinimalAgentSessionNav({
     }));
   }, [activeAgentId, activeSessions]);
 
-  // Turns streamed by this browser tab keep running after the user navigates
-  // away, so the nav marks those threads as busy until the stream ends.
   useEffect(() => {
-    return onStreamEvent((event) => {
+    const next = new Set<string>();
+    for (const sessions of Object.values(byAgent)) {
+      for (const session of sessions) {
+        if (isSessionWorking(session.id)) next.add(session.id);
+      }
+    }
+    setWorkingIds(next);
+  }, [byAgent]);
+
+  useEffect(() => {
+    return onSessionStoreChange((sessionId) => {
       setWorkingIds((prev) => {
-        const busy = event.kind !== "streamEnd";
-        if (busy === prev.has(event.sessionId)) return prev;
+        const working = isSessionWorking(sessionId);
+        if (working === prev.has(sessionId)) return prev;
         const next = new Set(prev);
-        if (busy) next.add(event.sessionId);
-        else next.delete(event.sessionId);
+        if (working) next.add(sessionId);
+        else next.delete(sessionId);
         return next;
       });
     });

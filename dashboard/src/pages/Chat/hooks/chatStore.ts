@@ -256,6 +256,8 @@ const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
 });
 
 const sessionStates = new Map<string, SessionStreamState>();
+const sessionIdsByState = new WeakMap<SessionStreamState, string>();
+const sessionStoreListeners = new Set<(sessionId: string) => void>();
 /** Per-call samples let reconnects replace replayed usage instead of double-counting. */
 const usageSamplesByState = new WeakMap<
   SessionStreamState,
@@ -414,6 +416,7 @@ function getOrCreate(sessionId: string): SessionStreamState {
     };
     sessionStates.set(sessionId, state);
   }
+  sessionIdsByState.set(state, sessionId);
   return state;
 }
 
@@ -425,6 +428,15 @@ function notify(state: SessionStreamState) {
       fn();
     } catch {
       /* ignore */
+    }
+  }
+  const sessionId = sessionIdsByState.get(state);
+  if (!sessionId) return;
+  for (const fn of sessionStoreListeners) {
+    try {
+      fn(sessionId);
+    } catch (error) {
+      void error;
     }
   }
 }
@@ -568,6 +580,15 @@ export function subscribe(sessionId: string, listener: () => void): () => void {
   state.listeners.add(listener);
   return () => {
     state.listeners.delete(listener);
+  };
+}
+
+export function onSessionStoreChange(
+  listener: (sessionId: string) => void,
+): () => void {
+  sessionStoreListeners.add(listener);
+  return () => {
+    sessionStoreListeners.delete(listener);
   };
 }
 
@@ -858,6 +879,7 @@ export function renameSessionKey(oldId: string, newId: string) {
   const state = sessionStates.get(oldId);
   if (state && oldId !== newId) {
     sessionStates.set(newId, state);
+    sessionIdsByState.set(state, newId);
     // Move live socket + resume bookkeeping to the canonical thread id so
     // loadHistory / attachThread for *newId* still see the open stream.
     const live = liveSockets.get(oldId);
