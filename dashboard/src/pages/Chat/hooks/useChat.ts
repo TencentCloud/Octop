@@ -832,6 +832,12 @@ export function useChat(
   const loadGenRef = useRef(0);
   const loadMoreInFlightRef = useRef(false);
   const refreshInFlightRef = useRef(false);
+  const refreshScopeRef = useRef(0);
+  useEffect(() => {
+    return () => {
+      refreshScopeRef.current += 1;
+    };
+  }, [agentId, stableSessionId]);
 
   const attachAfterHistory = useCallback(
     (key: string, targetThreadId: string) => {
@@ -1049,17 +1055,47 @@ export function useChat(
       // Separate from loadGenRef: loadHistory may bump loadGen while we fetch.
       // Always clear the refreshing flag in finally so the footer cannot stick.
       const gen = ++loadGenRef.current;
+      const scope = refreshScopeRef.current;
       setHistoryRefreshing(true);
 
+      // 历史请求期间，流式输出、发送、清空或加载更早的消息都可能更新列表。
+      // 此时丢弃旧响应，避免覆盖较新的本地状态。
+      const canApply = () => {
+        const current = chatStore.getSnapshot(key);
+        return (
+          loadGenRef.current === gen &&
+          refreshScopeRef.current === scope &&
+          current.messages === snap.messages &&
+          !shouldBlockHistoryRefresh({
+            isStreaming: current.isStreaming,
+            hasLiveSocket: chatStore.hasLiveSocket(key),
+          })
+        );
+      };
+
       try {
-        const {
-          messages: latest,
-          hasMore,
-          nextOffset,
-          nextCursor,
-        } = await loadThreadHistory(agentId, key, { offset: 0 });
-        // Stale after a concurrent loadHistory / newer refresh — drop apply only.
-        if (loadGenRef.current !== gen) return;
+        let loaded = await loadThreadHistory(agentId, key, { offset: 0 });
+        // 历史投影尚未就绪时返回的空页不代表会话为空。
+        // 等待历史就绪后再替换，期间保留当前显示的消息。
+        while (loaded.projectionLoading && !loaded.turnActive && canApply()) {
+          await new Promise((resolve) =>
+            window.setTimeout(
+              resolve,
+              Math.max(500, Math.min(loaded.retryAfterMs, 5000)),
+            ),
+          );
+          if (!canApply()) return;
+          loaded = await loadThreadHistory(agentId, key, { offset: 0 });
+        }
+        if (!canApply()) return;
+        if (loaded.turnActive) {
+          // 运行中回合的历史可能落后于已显示的思考和工具调用内容。
+          // 恢复流连接，保留本地尾部消息，避免被不完整的历史覆盖。
+          attachAfterHistory(key, key);
+          setHistoryError(false);
+          return;
+        }
+        const { messages: latest, hasMore, nextOffset, nextCursor } = loaded;
 
         // Keep older pages the user already scrolled in; replace the overlapping
         // latest-page window with the server copy so truncated WS turns heal.
@@ -1078,7 +1114,7 @@ export function useChat(
         });
         setHistoryError(false);
       } catch {
-        if (loadGenRef.current === gen) {
+        if (canApply()) {
           failedHistoryOperation.current = "latest";
           setHistoryError(true);
         }
@@ -1087,7 +1123,13 @@ export function useChat(
         setHistoryRefreshing(false);
       }
     },
-    [agentId, stableSessionId, historyRefreshing, historyLoading],
+    [
+      agentId,
+      stableSessionId,
+      historyRefreshing,
+      historyLoading,
+      attachAfterHistory,
+    ],
   );
 
   const retryHistory = useCallback(async () => {
