@@ -54,6 +54,7 @@ export const USERS_TAB_PERMISSIONS = {
   wecom: "sso",
   dingtalk: "sso",
   oidc: "sso",
+  ldap: "sso",
 } as const;
 
 export const ADVANCED_TAB_PERMISSIONS = {

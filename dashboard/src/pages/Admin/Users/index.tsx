@@ -1,12 +1,13 @@
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Users } from "lucide-react";
+import { Network, Users } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import { TAB_ICON_SIZE } from "../../../components/TabLabel";
 import { TabPanelHeader } from "../../Settings/AdvancedSettings/TabPanelHeader";
 import UsersListPanel from "./UsersListPanel";
 import SsoPanel from "./SsoPanel";
+import LdapPanel from "./LdapPanel";
 import OauthProviderCard from "./OauthProviderCard";
 import { OAUTH_APP_PROVIDERS, type OauthAppKind } from "./oauthProviders";
 import ForbiddenPage from "../../../components/ForbiddenPage";
@@ -18,7 +19,7 @@ import dingtalkIcon from "../../../assets/channels/dingtalk.svg";
 import openidIcon from "../../../assets/providers/openid.svg";
 import styles from "./index.module.less";
 
-type TabKey = "local" | OauthAppKind | "oidc";
+type TabKey = "local" | OauthAppKind | "oidc" | "ldap";
 
 const OAUTH_BRAND_ICONS: Record<OauthAppKind, string> = {
   feishu: feishuIcon,
@@ -58,6 +59,11 @@ const TABS: TabBarItem<TabKey>[] = [
     labelKey: "adminUsers.tabOidc",
     icon: <BrandTabIcon src={openidIcon} />,
   },
+  {
+    key: "ldap",
+    labelKey: "adminUsers.tabLdap",
+    icon: Network,
+  },
 ];
 
 function parseTab(raw: string | null): TabKey {
@@ -65,7 +71,8 @@ function parseTab(raw: string | null): TabKey {
     raw === "feishu" ||
     raw === "wecom" ||
     raw === "dingtalk" ||
-    raw === "oidc"
+    raw === "oidc" ||
+    raw === "ldap"
   ) {
     return raw;
   }
@@ -115,6 +122,17 @@ export default function AdminUsersPage() {
           description={t("adminSso.oidcDesc")}
         />
         <SsoPanel />
+      </div>
+    );
+  } else if (activeTab === "ldap") {
+    body = (
+      <div className={styles.ssoPanel}>
+        <TabPanelHeader
+          icon={<Network size={22} />}
+          title={t("adminSso.ldapTitle")}
+          description={t("adminSso.ldapDesc")}
+        />
+        <LdapPanel />
       </div>
     );
   } else if (

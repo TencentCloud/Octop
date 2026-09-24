@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -10,8 +12,11 @@ from pydantic import BaseModel, Field
 from octop.api.deps import current_user, get_server, sign_token
 from octop.infra.auth.captcha import current_env, ensure_captcha, load_effective, public_config
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.email import normalize_email
 from octop.infra.users.permissions import effective_permissions
 from octop.infra.utils.locale import normalize_locale
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -89,11 +94,54 @@ def _client_ip(request: Request) -> str:
     return "unknown"
 
 
+def _has_local_password(server: Any, username: str) -> bool:
+    """True when the identifier belongs to an account with its own password."""
+    identifier = (username or "").strip()
+    if not identifier:
+        return False
+    repo = server.services.user_repo
+    row = repo.get_by_username(identifier)
+    if row is None:
+        email = normalize_email(identifier)
+        if email is not None:
+            row = repo.get_by_email(email)
+    return row is not None and bool(row.password_hash)
+
+
+async def _authenticate_ldap(server: Any, username: str, password: str) -> Any:
+    """Fall back to a directory bind when no local password matched.
+
+    A directory outage is reported only when the identifier is not a local
+    password account; otherwise the typo'd password is the likelier cause and
+    the caller's ordinary ``AUTH_FAILED`` is the truthful answer.
+    """
+    service = server.ldap_service
+    if not service.is_enabled():
+        return None
+    try:
+        identity = await asyncio.get_running_loop().run_in_executor(
+            None, service.directory_authenticate, username, password
+        )
+    except OctopError as exc:
+        if exc.code is ErrorCode.LDAP_UNAVAILABLE and _has_local_password(server, username):
+            logger.warning("LDAP unavailable; falling back to a local-password failure")
+            return None
+        raise
+    if identity is None:
+        server.services.audit_repo.write(actor=username, action="auth.ldap_failed", target=username)
+        return None
+    return await service.resolve_user(identity)
+
+
 @router.post("/login", summary="Sign in")
 async def login(
     body: LoginBody, request: Request, server: Any = Depends(get_server)
 ) -> dict[str, Any]:
-    """Exchange username (or email) and password for a JWT access token and user profile."""
+    """Exchange username (or email) and password for a JWT access token and user profile.
+
+    When no local password matches, the credentials are retried against the
+    configured LDAP directory.
+    """
     if server.user_manager.count() == 0:
         raise OctopError(ErrorCode.SETUP_REQUIRED, "initial admin not created")
     server.user_manager.raise_if_login_locked(body.username)
@@ -104,6 +152,8 @@ async def login(
     )
     await ensure_captcha(effective, body.captcha_token, _client_ip(request))
     user = await server.user_manager.authenticate(body.username, body.password)
+    if user is None:
+        user = await _authenticate_ldap(server, body.username, body.password)
     if user is None:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid credentials")
     secret = server.services.secret_repo.get("jwt")
