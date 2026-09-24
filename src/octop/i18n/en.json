@@ -404,6 +404,7 @@
     "SKILL_PACKAGE_NOT_FOUND": "Skill package not found.",
     "SKILL_PACKAGE_NAME_TAKEN": "Skill package {name} already exists.",
     "SKILL_PACKAGE_BACKEND_UNSUPPORTED": "Skill packages currently support only “Full local environment (filesystem + shell)” or “Local filesystem (no shell commands)”, with storage root / (POSIX) or the agent workspace root (Windows default).",
+    "ACP_BACKEND_UNSUPPORTED": "This agent has a sandbox enabled, so external runners can’t be used. Connecting via IDE / octop acp is unaffected.",
     "PUBLISHED_EXPERT_SLUG_TAKEN": "Published expert slug {slug} already exists.",
     "PUBLISHED_EXPERT_ALREADY_EXISTS": "This agent is already published as “{name}”. Refresh the published template instead.",
     "OIDC_BAD_REQUEST": "Invalid OIDC request: {detail}",
@@ -797,7 +798,10 @@
     "followup_done": "[system wake-up, not a new user question]\nTeam member {name} finished. Their answer is already on the group timeline.\nTask: {task}\n\nDo not restate their answer. Do not say you have assigned someone or ask the user to wait. Do not call ask_agent for the same task again. If more work is needed, dispatch the next member. If the team is done, write at most three short wrap-up sentences.",
     "followup_failed": "[system wake-up, not a new user question]\nTeam member {name} failed.\nTask: {task}\nError: {error}\n\nBriefly tell the user it failed and either dispatch someone else or close the turn. Do not announce another assignment. Do not invent a substitute answer.",
     "speaker_user": "User",
-    "dispatch_with_history": "Here is the current group-chat transcript. Use it as context.\n\n{history}\n\n---\nYour task:\n{task}"
+    "channel_line": "{name}: {text}",
+    "host_briefing": "[Host dispatch — do not do the work yourself]\nUser messages arrive here first. Digest intent, scope, constraints, and the deliverable; ask one clarifying question if a key fact is missing. For real work, rewrite a self-contained assignment for that member before ask_agent: goal, scope, delivery format, and needed context. Never paste the user's wording unchanged. Tailor each member's task. Answer greetings or clarifications yourself in one or two sentences. After ask_agent returns, do not repeat that you assigned someone. If this turn is a member-finished wake-up, wrap up or reassign per that notice — do not repeat the same task.",
+    "member_briefing": "[Team assignment, not a direct user question]\nYou are a member of this expert team. The host has already processed the user's request and assigned you this task. Do the work and deliver the result. Do not treat the user's original wording as a one-to-one question to you, and do not speak as the host.",
+    "member_briefing_with_history": "[Team assignment, not a direct user question]\nYou are a member of this expert team. The host has already processed the user's request and assigned you this task. Do the work and deliver the result. Do not treat the user's original wording as a one-to-one question to you, and do not speak as the host. The group transcript below is background only.\n\n{history}"
   },
   "conversation_mode": {
     "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",

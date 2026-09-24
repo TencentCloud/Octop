@@ -11,6 +11,8 @@ interface ACPCardProps {
   config: ACPRunnerConfig;
   isHover: boolean;
   toggleLoading?: boolean;
+  /** When true (e.g. current agent directory sandbox), runner enable is locked. */
+  interactionDisabled?: boolean;
   onClick: () => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
@@ -26,6 +28,7 @@ export function ACPCard({
   config,
   isHover,
   toggleLoading,
+  interactionDisabled = false,
   onClick,
   onMouseEnter,
   onMouseLeave,
@@ -42,16 +45,30 @@ export function ACPCard({
       });
   const configured = isConfigured(config);
   const icon = runnerIcon(runnerKey);
+  // Under sandbox, block turning runners on; still allow turning them off
+  // so account-global config is not stuck while viewing a jailed agent.
+  const switchDisabled =
+    (interactionDisabled && !config.enabled) ||
+    (!configured && !config.enabled);
 
   const cardClass = [
     styles.channelCard,
     config.enabled ? styles.enabled : styles.normal,
-    isHover ? styles.hover : "",
+    isHover && !interactionDisabled ? styles.hover : "",
+    interactionDisabled ? acpStyles.runnerCardDisabled : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   const renderStatusBadge = () => {
+    if (interactionDisabled) {
+      return (
+        <span className={`${styles.statusBadge} ${styles.statusInactive}`}>
+          <Plug size={14} />
+          {t("acp.runnerUnavailable")}
+        </span>
+      );
+    }
     if (config.enabled) {
       return (
         <span className={`${styles.statusBadge} ${styles.statusConnected}`}>
@@ -90,7 +107,9 @@ export function ACPCard({
         <div onClick={(e) => e.stopPropagation()}>
           <Tooltip
             title={
-              !configured && !config.enabled
+              interactionDisabled && !config.enabled
+                ? t("acp.outboundBlockedTooltip")
+                : !configured && !config.enabled
                 ? t("acp.clickCardToConfigure")
                 : undefined
             }
@@ -99,7 +118,7 @@ export function ACPCard({
               size="small"
               checked={config.enabled}
               loading={toggleLoading}
-              disabled={!configured && !config.enabled}
+              disabled={switchDisabled}
               onChange={(checked) => onToggleEnabled(runnerKey, checked)}
             />
           </Tooltip>
