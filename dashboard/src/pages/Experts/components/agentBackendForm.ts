@@ -19,9 +19,7 @@ export interface BackendOption {
 }
 
 export interface FilesystemDefaults {
-  home: string;
   default_root_dir: string;
-  allow_outside_home: boolean;
   tree_root: string;
   /** True when the Octop server process runs inside a container. */
   in_container?: boolean;
@@ -79,11 +77,16 @@ export interface RootDirProbeResult {
 export function normalizeRootDir(rootDir?: string | null): string {
   const trimmed = (rootDir ?? "").trim();
   if (!trimmed || trimmed === "\\" || trimmed === "/") return "/";
-  return trimmed.replace(/\/+$/, "") || "/";
+  // Strip trailing POSIX or Windows separators (so ``C:/`` → ``C:``).
+  const stripped = trimmed.replace(/[/\\]+$/, "");
+  return stripped || "/";
 }
 
+/** True for POSIX ``/`` or a Windows drive root such as ``C:/`` / ``C:``. */
 export function isHostRootDir(rootDir?: string | null): boolean {
-  return normalizeRootDir(rootDir) === "/";
+  const normalized = normalizeRootDir(rootDir);
+  if (normalized === "/") return true;
+  return /^[A-Za-z]:$/.test(normalized);
 }
 
 /**

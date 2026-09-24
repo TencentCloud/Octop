@@ -157,6 +157,7 @@ async def _bootstrap_default_agent(server: Any, *, user_id: int, locale: str = "
     from octop.infra.agents.default_agent import (
         SETUP_DEFAULT_AGENT_ID,
         bootstrap_default_agent,
+        user_policy_workspace_root,
     )
 
     if server.app_runtime is None:
@@ -167,6 +168,7 @@ async def _bootstrap_default_agent(server: Any, *, user_id: int, locale: str = "
         user_id=user_id,
         locale=locale,
         agent_id=SETUP_DEFAULT_AGENT_ID,
+        root_dir=user_policy_workspace_root(server, user_id),
     )
 
 
