@@ -36,6 +36,8 @@ DEFAULT_SYSTEM_FILES_PATH = ".octop"
 SCOPED_WORKSPACE_DIRNAME = "workspaces"
 
 _WINDOWS_HOST_PATH_RE = re.compile(r"^(?:[A-Za-z]:[/\\]|\\\\|//)")
+# Drive-letter root (C:/, C:\, D:) — Windows counterpart of POSIX ``/``.
+_WINDOWS_DRIVE_ROOT_RE = re.compile(r"^[A-Za-z]:[/\\]?$")
 
 
 def _running_on_windows() -> bool:
@@ -43,9 +45,19 @@ def _running_on_windows() -> bool:
 
 
 def _is_host_root_sentinel(root: str | Path | None) -> bool:
+    """True when *root* means the whole host filesystem (not a jail).
+
+    POSIX uses ``/``. Windows uses a drive root such as ``C:/`` (what
+    :func:`host_fs_tree_root` returns). Treating drive roots as scoped jails
+    would put default workspaces under ``{drive}/.octop/workspaces/…`` instead
+    of ``{OCTOP_HOME}/agents/<id>/``.
+    """
     if root is None:
         return True
-    return str(root).strip() in ("/", "\\", "")
+    text = str(root).strip()
+    if text in ("/", "\\", ""):
+        return True
+    return bool(_WINDOWS_DRIVE_ROOT_RE.match(text))
 
 
 def _is_windows_style_host_path(raw: str) -> bool:
