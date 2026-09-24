@@ -7,7 +7,7 @@ from typing import Any
 
 from harness_agent.mcp import mcp_args_model, sanitize_llm_tool_name
 
-from octop.infra.connectors.catalog import ConnectorCatalogEntry
+from octop.infra.connectors.catalog import ConnectorCatalogEntry, is_inprocess_gateway
 from octop.infra.connectors.gateway.protocol import handle_mcp_request
 from octop.infra.connectors.gateway.registry import mcp_tools_for_kind
 
@@ -23,7 +23,7 @@ def build_gateway_langchain_tools(
     from langchain_core.tools import StructuredTool
 
     del instance_id
-    if not isinstance(entry, ConnectorCatalogEntry) or entry.mcp_mode != "gateway":
+    if not isinstance(entry, ConnectorCatalogEntry) or not is_inprocess_gateway(entry):
         return []
     out: list[Any] = []
 

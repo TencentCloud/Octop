@@ -466,7 +466,8 @@ async def test_record_peer_turn_persists_room_user_question(processor_env: dict)
     inputs = member_calls[0].args[1]
     roles = [item.role for item in inputs]
     assert any(role in {"human", "user"} for role in roles)
-    assert any("我最近总失眠" in item.message_json for item in inputs)
+    assert any("请根据用户问题给出睡眠建议" in item.message_json for item in inputs)
+    assert all("我最近总失眠" not in item.message_json for item in inputs)
     room_calls = [
         call for call in repo.append_if_ready.call_args_list if call.args[0] == "thr_parent"
     ]
@@ -560,7 +561,7 @@ async def test_prepare_peer_session_creates_callee_thread_without_rebind(
 
 
 @pytest.mark.asyncio
-async def test_prepare_team_peer_seeds_user_question(processor_env: dict) -> None:
+async def test_prepare_team_peer_seeds_host_assignment(processor_env: dict) -> None:
     from harness_agent.teams.util import PeerCall
     from langchain_core.messages import HumanMessage
 
@@ -592,7 +593,8 @@ async def test_prepare_team_peer_seeds_user_question(processor_env: dict) -> Non
     repo.mark_projection.assert_called_with("thr_parent~child", "ready")
     seeded = repo.append_if_ready.call_args.args[1]
     assert seeded[0].role in {"human", "user"}
-    assert "我最近总失眠" in seeded[0].message_json
+    assert "请给出睡眠建议" in seeded[0].message_json
+    assert "我最近总失眠" not in seeded[0].message_json
     assert seeded[0].message_id.startswith("team-peer:thr_parent~child:")
     assert seeded[0].message_id.endswith(":human")
 
@@ -675,7 +677,8 @@ async def test_prepare_followup_seeds_new_user_question(processor_env: dict) -> 
         "team-peer:thr_parent~child:job-1:human",
         "team-peer:thr_parent~child:job-2:human",
     ]
-    assert all("请改成早睡建议" in item.message_json for item in seeded)
+    assert all("继续睡眠建议" in item.message_json for item in seeded)
+    assert all("请改成早睡建议" not in item.message_json for item in seeded)
     assert all("上一轮的问题" not in item.message_json for item in seeded)
 
 
@@ -743,14 +746,14 @@ async def test_prepare_team_dispatch_includes_room_history(
         )
     )
     assert prepared is not None
-    assert getattr(prepared, "message", None) in {None, "what is the market?"}
+    assert getattr(prepared, "message", None) == "survey market"
     pair = processor.teams.peek_peer_prompt("child", "thr_parent~child")
     assert pair is not None
     question, dispatch = pair
-    assert question == "what is the market?"
+    assert question == "survey market"
     assert "what is the market?" in dispatch
     assert "I will ask Researcher" in dispatch
-    assert "survey market" in dispatch
+    assert "Team assignment" in dispatch or "团队派工" in dispatch
     taken = processor.teams.take_peer_prompt("child", "thr_parent~child")
     assert taken == pair
     assert harness.aget_history.await_count >= 1
@@ -813,11 +816,11 @@ async def test_prepare_team_dispatch_uses_projected_member_speech(
     pair = processor.teams.peek_peer_prompt("other", "thr_parent~other")
     assert pair is not None
     question, dispatch = pair
-    assert question == "what is the market?"
+    assert question == "size the TAM"
     assert "TAM is 12B" in dispatch
     assert "Researcher" in dispatch
-    assert "size the TAM" in dispatch
-    assert harness.aget_history.await_count >= 1
+    assert "what is the market?" in dispatch
+    assert harness.aget_history.await_count == 0
 
 
 def test_stamp_team_host_runtime_forces_async(processor_env: dict) -> None:
@@ -1108,6 +1111,123 @@ async def test_fan_in_pushes_snapshot_when_not_live(processor_env: dict) -> None
     assert tokens[0].get("agent_id") == "child"
     assert tokens[0].get("agent") == "child"
     assert tokens[0].get("team_snapshot") is True
+
+
+def _bind_im_session(processor_env: dict, *, thread_id: str = "thr_parent") -> str:
+    registry = processor_env["gateway"].thread_registry
+    sk = registry.make_key(
+        agent_id="host",
+        channel_type="feishu",
+        channel_subject_id="ou_1",
+    )
+    registry.ensure_thread(
+        thread_id=thread_id,
+        agent_id="host",
+        user_id=1,
+        channel_type="feishu",
+        session_key=sk,
+    )
+    registry._sessions.upsert(
+        session_key=sk,
+        agent_id="host",
+        user_id=1,
+        channel_type="feishu",
+        chat_type="dm",
+        thread_id=thread_id,
+        channel_id="ch-feishu-1",
+    )
+    return sk
+
+
+@pytest.mark.asyncio
+async def test_fan_in_pushes_member_speech_to_im_channel(processor_env: dict) -> None:
+    from harness_agent.teams.util import PeerCall
+    from langchain_core.messages import AIMessage
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    _bind_im_session(processor_env)
+    pushed: list[tuple[str, str, str]] = []
+
+    async def capture_push(channel_type: str, channel_id: str, subject: object, text: str) -> None:
+        pushed.append((channel_type, channel_id, text))
+
+    gateway.push_text = capture_push  # type: ignore[method-assign]
+
+    await processor.teams.fan_in_peer_turn(
+        PeerCall(
+            from_agent_id="host",
+            to_agent_id="child",
+            user_id=1,
+            message="ask",
+            source_thread_id="thr_parent",
+            source_session_key=None,
+        ),
+        [AIMessage(content="TAM is 12B")],
+        live_streamed=True,
+    )
+    assert pushed == [("feishu", "ch-feishu-1", "Researcher: TAM is 12B")]
+
+
+@pytest.mark.asyncio
+async def test_fan_in_skips_dashboard_when_pushing_channels(processor_env: dict) -> None:
+    from harness_agent.teams.util import PeerCall
+    from langchain_core.messages import AIMessage
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    pushed: list[str] = []
+
+    async def capture_push(channel_type: str, channel_id: str, subject: object, text: str) -> None:
+        pushed.append(text)
+
+    gateway.push_text = capture_push  # type: ignore[method-assign]
+
+    await processor.teams.fan_in_peer_turn(
+        PeerCall(
+            from_agent_id="host",
+            to_agent_id="child",
+            user_id=1,
+            message="ask",
+            source_thread_id="thr_parent",
+            source_session_key=str(processor_env["parent_sk"]),
+        ),
+        [AIMessage(content="only for the wall")],
+        live_streamed=True,
+    )
+    assert pushed == []
+
+
+@pytest.mark.asyncio
+async def test_on_reply_live_wrapup_still_pushes_im(processor_env: dict) -> None:
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    processor.teams._live_host_replies.add("thr_parent")
+    _bind_im_session(processor_env)
+    pushed: list[str] = []
+
+    async def capture_push(channel_type: str, channel_id: str, subject: object, text: str) -> None:
+        pushed.append(text)
+
+    gateway.push_text = capture_push  # type: ignore[method-assign]
+
+    await processor.on_reply(
+        ReplyEvent(
+            inbox_id="job-live-im",
+            status="done",
+            source_agent_id="host",
+            source_thread_id="thr_parent",
+            target_agent_id="child",
+            user_id=1,
+            reply_text="可以收工。",
+            metadata={"session_key": processor_env["parent_sk"]},
+        )
+    )
+    assert pushed == ["可以收工。"]
+    assert "thr_parent" not in processor.teams._live_host_replies
 
 
 @pytest.mark.asyncio

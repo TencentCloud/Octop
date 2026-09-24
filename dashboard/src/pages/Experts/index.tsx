@@ -355,27 +355,46 @@ export default function ExpertsPage() {
   const myExpertsContent = useMemo(() => {
     if (expertAgents.length === 0) {
       return (
-        <div className={styles.emptyState}>
-          <OctopEmptyMascot />
-          <div className={styles.emptyTitle}>{t("experts.emptyMyExperts")}</div>
-          <div className={styles.emptyHint}>
-            {t("experts.emptyMyExpertsHint")}
-          </div>
-          <div className={styles.emptyActions}>
-            {refreshButton}
-            <button
-              className={styles.toolbarBtnPrimary}
-              type="button"
-              disabled={defaultCreating}
-              onClick={() => void openDefaultCreate()}
-            >
-              <Plus size={14} />
-              {t("experts.newExpert")}
-            </button>
-            <button className={styles.emptyAction} onClick={openExpertLibrary}>
-              {t("experts.goToLibrary")}
-            </button>
-          </div>
+        <div
+          className={`${styles.emptyLayout}${
+            isMobile ? ` ${styles.emptyLayoutMobile}` : ""
+          }`}
+        >
+          <StreamSetupGuide
+            className={styles.emptyGuide}
+            wide
+            plain
+            icon={<OctopEmptyMascot />}
+            title={t("experts.emptyGuideTitle")}
+            description={t("experts.emptyGuideDesc")}
+            steps={[
+              {
+                label: t("experts.emptyGuideStepWhat"),
+                detail: t("experts.emptyGuideStepWhatDetail"),
+              },
+              {
+                label: t("experts.emptyGuideStepHow"),
+                detail: t("experts.emptyGuideStepHowDetail"),
+              },
+              {
+                label: t("experts.emptyGuideStepTemplate"),
+                detail: t("experts.emptyGuideStepTemplateDetail"),
+              },
+            ]}
+            primaryAction={{
+              label: t("experts.newExpert"),
+              onClick: () => void openDefaultCreate(),
+              icon: <Plus size={14} />,
+              loading: defaultCreating,
+              disabled: defaultCreating,
+            }}
+            secondaryAction={{
+              label: t("experts.goToLibrary"),
+              onClick: openExpertLibrary,
+              icon: <BookOpen size={14} />,
+              type: "default",
+            }}
+          />
         </div>
       );
     }
@@ -478,6 +497,7 @@ export default function ExpertsPage() {
   }, [
     defaultCreating,
     expertAgents,
+    isMobile,
     newAgentId,
     openDefaultCreate,
     openExpertLibrary,
@@ -500,9 +520,8 @@ export default function ExpertsPage() {
           <StreamSetupGuide
             className={styles.emptyGuide}
             wide
-            icon={
-              <OctopEmptyMascot size={120} className={styles.setupMascot} />
-            }
+            plain
+            icon={<OctopEmptyMascot />}
             title={t("experts.teams.emptyGuideTitle")}
             description={t("experts.teams.emptyGuideDesc")}
             steps={[

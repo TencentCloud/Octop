@@ -1275,6 +1275,7 @@ class GlobalProcessor:
             request["mcp_servers"] = mcp_servers
         if "skills" in meta:
             request["skills"] = meta["skills"]
+        self._apply_turn_hitl_policy(thread_id, meta)
         return self._stamp_turn_conversation_mode(
             request,
             thread_id=thread_id,
@@ -1283,6 +1284,12 @@ class GlobalProcessor:
             mcp_servers=mcp_servers,
             locale=locale,
         )
+
+    def _apply_turn_hitl_policy(self, thread_id: str, meta: dict[str, Any] | None) -> None:
+        raw = (meta or {}).get("hitl_policy")
+        if raw is None:
+            return
+        self._hitl.session_policies.set(thread_id, raw)
 
     def _sync_and_resolve_conversation_mode(
         self,

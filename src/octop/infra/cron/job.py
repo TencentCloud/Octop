@@ -75,7 +75,7 @@ class CronJob:
             audit_repo=audit_repo,
         )
 
-    async def run(self) -> None:
+    async def run(self, *, raise_on_error: bool = False) -> None:
         from octop.infra.metrics import METRICS  # noqa: PLC0415
 
         METRICS.inc("cron_runs_total")
@@ -107,6 +107,8 @@ class CronJob:
                 target=self._cron_id,
                 payload=err,
             )
+            if raise_on_error:
+                raise
             return
         self._cron_repo.set_run_status(self._cron_id, ts=ts, status="ok", error=None)
         self._audit_repo.write(

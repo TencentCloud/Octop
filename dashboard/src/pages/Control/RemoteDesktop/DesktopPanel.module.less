@@ -20,15 +20,6 @@
   gap: 12px;
 }
 
-.setupMascot {
-  display: block;
-  width: 120px;
-  height: 120px;
-  object-fit: contain;
-  user-select: none;
-  -webkit-user-drag: none;
-}
-
 .roleGate {
   flex: 1;
   min-height: 240px;
@@ -130,12 +121,12 @@
   flex: 1;
   min-height: 240px;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   background: var(--fn-bg-secondary);
   border: 1px solid var(--fn-border-secondary);
   border-radius: 8px;
-  overflow: hidden;
+  overflow: auto;
   position: relative;
 }
 

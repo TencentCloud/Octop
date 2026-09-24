@@ -74,6 +74,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<ThemePreference>(() => {
     const stored = loadAppearanceOnBoot();
     document.documentElement.setAttribute("data-palette", stored.palette);
+    document.documentElement.setAttribute(
+      "data-theme",
+      resolveMode(stored.preference),
+    );
     return stored.preference;
   });
 
