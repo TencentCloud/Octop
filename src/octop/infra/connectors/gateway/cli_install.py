@@ -101,6 +101,51 @@ def _prefix_writable(prefix: str) -> bool:
         return False
 
 
+def _version_sort_key(name: str) -> tuple[int, ...]:
+    """Sort ``v20.11.1`` above ``v9.11.2`` — numeric, not lexicographic."""
+    digits = re.findall(r"\d+", name)
+    return tuple(int(part) for part in digits) if digits else (-1,)
+
+
+def _volta_home(home: Path) -> Path:
+    """Volta's install root: ``$VOLTA_HOME``, else ``%LOCALAPPDATA%\\Volta`` on
+    Windows, else ``~/.volta``."""
+    env_home = (os.environ.get("VOLTA_HOME") or "").strip()
+    if env_home:
+        return Path(env_home)
+    if os.name == "nt":
+        local_appdata = (os.environ.get("LOCALAPPDATA") or "").strip()
+        if local_appdata:
+            return Path(local_appdata) / "Volta"
+    return home / ".volta"
+
+
+def _node_bin_dirs() -> list[str]:
+    """Per-user node bin dirs that a non-login shell never puts on PATH.
+
+    Desktop launches (Finder / service manager) do not source the user's shell
+    profile, so version managers that rely on a shell hook (nvm, fnm, Volta) are
+    invisible to ``shutil.which`` even though npm is installed — the user then
+    sees "未找到 npm" (#712).
+
+    Only ``$HOME``-scoped dirs are returned. System prefixes such as
+    ``/usr/local/bin`` are already on a normal PATH, and prepending them would
+    reorder binary resolution for the whole process.
+    """
+    home = Path(os.path.expanduser("~"))
+    candidates: list[str] = []
+    # Version managers keep one bin dir per installed release; prefer the newest.
+    for versions_root in (home / ".nvm" / "versions" / "node", home / ".fnm" / "node-versions"):
+        with contextlib.suppress(OSError):
+            versions = sorted(versions_root.iterdir(), key=lambda p: _version_sort_key(p.name))
+            if versions:
+                # fnm nests the payload one level deeper: <version>/installation/bin
+                newest = versions[-1]
+                candidates += [str(newest / "bin"), str(newest / "installation" / "bin")]
+    candidates.append(str(_volta_home(home) / "bin"))
+    return candidates
+
+
 def ensure_cli_path() -> str:
     """Prepend the user-level npm global bin dir to the in-process PATH.
 
@@ -108,12 +153,21 @@ def ensure_cli_path() -> str:
     不可写，安装会降级到用户级目录（~/.npm-global）。这里确保该 bin 目录
     进入进程 PATH，使 ``shutil.which`` 与后续 CLI 子进程调用都能找到命令。
     目录不存在时不做任何修改，返回 bin 目录（可能为空串）。
+
+    桌面端从 Finder / 服务启动时不会加载登录 shell 的 profile，nvm / fnm /
+    Volta 的 bin 目录同样不在 PATH 中，一并补入（#712）。系统级 prefix
+    （如 ``/usr/local/bin``）本就在正常 PATH 上，前置会重排整个进程的
+    二进制解析顺序，故不纳入。
     """
     _, bin_dir = _user_npm_prefix()
-    if bin_dir and os.path.isdir(bin_dir):
+    # 优先级从高到低；倒序前置，使最终 PATH 顺序与优先级一致。用户级 prefix 必须
+    # 排在最前：降级安装的 CLI 要优先于 node 自带 bin 里的同名命令被找到。
+    for candidate in reversed([bin_dir, *_node_bin_dirs()]):
+        if not candidate or not os.path.isdir(candidate):
+            continue
         current = os.environ.get("PATH", "")
-        if bin_dir not in [part for part in current.split(os.pathsep) if part]:
-            os.environ["PATH"] = bin_dir + os.pathsep + current
+        if candidate not in [part for part in current.split(os.pathsep) if part]:
+            os.environ["PATH"] = candidate + os.pathsep + current
     return bin_dir
 
 
@@ -151,7 +205,10 @@ def install_connector_cli(kind: str) -> dict[str, Any]:
     if not npm:
         return _fail(
             status,
-            f"未找到 npm，请先在 Octop 主机安装 Node.js，然后执行：{status['install_command']}",
+            "未找到 npm。若尚未安装，请先在 Octop 主机安装 Node.js；"
+            "若已安装（如通过 nvm / fnm / Volta），说明其 bin 目录不在 Octop 进程的 PATH 中，"
+            "请从终端启动 Octop，或把该目录写入系统级 PATH 后重启 Octop，"
+            f"然后执行：{status['install_command']}",
         )
 
     # npm 全局目录（默认 /usr/local）不可写时（fnOS/容器内非 root 用户），

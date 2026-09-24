@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import pytest
@@ -42,6 +43,21 @@ def test_install_fails_without_npm(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "npm" in out["error"].lower()
     assert out["install_command"] == "npm install -g @wecom/cli"
     assert out["doc_url"]
+
+
+def test_npm_missing_error_mentions_path_when_already_installed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """装了 node 但从 Finder / 服务启动时 PATH 里没有，提示必须说明是 PATH 问题，
+    否则用户会去重装一个已经装好的 Node.js (#712)。"""
+
+    def _which(name: str) -> str | None:
+        return None
+
+    monkeypatch.setattr(cli_install.shutil, "which", _which)
+    out = cli_install.install_connector_cli("wecom-cli")
+    assert out["ok"] is False
+    assert "PATH" in out["error"]
 
 
 def test_install_runs_npm(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
@@ -189,16 +205,106 @@ def test_ensure_cli_path_injects_user_bin(monkeypatch: pytest.MonkeyPatch, tmp_p
     home = tmp_path / "home"
     user_prefix = str(home / ".npm-global")
     bin_dir = cli_install._prefix_bin_dir(user_prefix)
-    import os as _os
-
-    _os.makedirs(bin_dir, exist_ok=True)
+    os.makedirs(bin_dir, exist_ok=True)
     monkeypatch.setenv("HOME", str(home))
     # Windows 上 os.path.expanduser("~") 读 USERPROFILE，需一并覆盖以跨平台
     monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.setitem(cli_install.os.environ, "PATH", "/usr/bin")
     out = cli_install.ensure_cli_path()
     assert out == bin_dir
-    assert cli_install.os.environ["PATH"].startswith(bin_dir + _os.pathsep)
+    assert cli_install.os.environ["PATH"].startswith(bin_dir + os.pathsep)
     # 幂等：重复调用不重复追加
     cli_install.ensure_cli_path()
     assert cli_install.os.environ["PATH"].count(bin_dir) == 1
+
+
+def test_ensure_cli_path_injects_nvm_node_bin(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """桌面端从 Finder / 服务启动时没有 login shell，nvm 的 bin 目录不在 PATH 中，
+    npm 明明装了却报「未找到 npm」(#712)。"""
+    home = tmp_path / "home"
+    nvm_bin = home / ".nvm" / "versions" / "node" / "v20.11.1" / "bin"
+    os.makedirs(nvm_bin, exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setitem(cli_install.os.environ, "PATH", "/usr/bin")
+
+    cli_install.ensure_cli_path()
+
+    assert str(nvm_bin) in cli_install.os.environ["PATH"].split(os.pathsep)
+    # 幂等：重复调用不重复追加
+    cli_install.ensure_cli_path()
+    assert cli_install.os.environ["PATH"].count(str(nvm_bin)) == 1
+
+
+def test_ensure_cli_path_prefers_newest_nvm_version(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """装了多个 node 版本时取版本号最大的，而不是字典序（v9 < v10）。"""
+    home = tmp_path / "home"
+    versions_root = home / ".nvm" / "versions" / "node"
+    for version in ("v9.11.2", "v10.24.1", "v20.11.1"):
+        os.makedirs(versions_root / version / "bin", exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setitem(cli_install.os.environ, "PATH", "/usr/bin")
+
+    cli_install.ensure_cli_path()
+
+    entries = cli_install.os.environ["PATH"].split(os.pathsep)
+    assert str(versions_root / "v20.11.1" / "bin") in entries
+    assert str(versions_root / "v9.11.2" / "bin") not in entries
+
+
+def test_ensure_cli_path_keeps_user_prefix_ahead_of_node_dirs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """降级安装写到 ~/.npm-global，它必须排在 node 自带 bin 前面才能被找到。"""
+    home = tmp_path / "home"
+    user_bin = cli_install._prefix_bin_dir(str(home / ".npm-global"))
+    nvm_bin = home / ".nvm" / "versions" / "node" / "v20.11.1" / "bin"
+    os.makedirs(user_bin, exist_ok=True)
+    os.makedirs(nvm_bin, exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setitem(cli_install.os.environ, "PATH", "/usr/bin")
+
+    cli_install.ensure_cli_path()
+
+    entries = cli_install.os.environ["PATH"].split(os.pathsep)
+    assert entries.index(user_bin) < entries.index(str(nvm_bin))
+
+
+def test_ensure_cli_path_honours_volta_home_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """Volta 在 Windows 装到 %LOCALAPPDATA%\\Volta 而非 ~/.volta，且 VOLTA_HOME 优先。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    volta_home = tmp_path / "AppData" / "Local" / "Volta"
+    volta_bin = volta_home / "bin"
+    os.makedirs(volta_bin, exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("VOLTA_HOME", str(volta_home))
+    monkeypatch.setitem(cli_install.os.environ, "PATH", "/usr/bin")
+
+    cli_install.ensure_cli_path()
+
+    assert str(volta_bin) in cli_install.os.environ["PATH"].split(os.pathsep)
+
+
+def test_ensure_cli_path_skips_missing_node_dirs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """候选目录不存在时不得污染 PATH。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setitem(cli_install.os.environ, "PATH", "/usr/bin")
+
+    cli_install.ensure_cli_path()
+
+    assert cli_install.os.environ["PATH"] == "/usr/bin"
