@@ -168,6 +168,24 @@ class AgentRepo:
             rows = conn.execute(sql, (user_id,)).fetchall()
         return map_rows(rows, AgentRow)
 
+    def count_by_user(
+        self,
+        user_id: int,
+        *,
+        kind: str | None = None,
+        include_disabled: bool = True,
+    ) -> int:
+        sql = "SELECT COUNT(*) AS c FROM agents WHERE user_id = ?"
+        params: list[object] = [user_id]
+        if kind is not None:
+            sql += " AND kind = ?"
+            params.append(kind)
+        if not include_disabled:
+            sql += " AND enabled = 1"
+        with self._db.connect() as conn:
+            row = conn.execute(sql, params).fetchone()
+        return int(row["c"]) if row is not None else 0
+
     def list_all(self, *, include_disabled: bool = True) -> list[AgentRow]:
         sql = "SELECT * FROM agents"
         if not include_disabled:
