@@ -7,6 +7,7 @@ All desktop-client code lives here. This is **not** `src/octop/infra/desktop`
 |------|------|
 | [`portable/`](portable/) | Green zip packaging (was `scripts/green/`) |
 | [`src/`](src/) | Wails v3 shell: load bundled zip, spawn Octop, tray/settings |
+| [`../dashboard/src/desktop/`](../dashboard/src/desktop/) | Loading + settings UI (Vite entry `dashboard/desktop.html`) |
 | [`package-release.sh`](package-release.sh) | Native end-to-end portable + Wails release build |
 
 ## Data directory
@@ -69,6 +70,12 @@ cd desktop/src
 OCTOP_DESKTOP_URL=http://127.0.0.1:8088 wails3 dev
 ```
 
+The loading and settings windows are a second Vite entry in `dashboard/`
+(`desktop.html` → `src/desktop/`), built with `npm run build:desktop-shell`
+into `desktop/src/assets` for `go:embed`. `wails3 dev` runs that entry on
+port 9245. Ready Octop still replaces the WebView URL with the Python-hosted
+dashboard.
+
 Without `OCTOP_DESKTOP_URL`, first launch uses `~/.octop/portable/` if valid,
 otherwise extracts the matching zip shipped with the desktop package (embedded
 in the Windows and Linux binaries, under `Contents/Resources` on macOS). The
@@ -77,8 +84,10 @@ Wails shell never downloads Octop. For local runtime debugging, set
 On later launches, a newer bundled portable version replaces the extracted
 runtime after creating a consistent SQLite backup under `~/.octop/backups/`.
 The upgraded Octop process then applies the normal database migrations during
-startup. Newer extracted runtimes are never downgraded; PostgreSQL remains
-externally managed and is not copied by the desktop shell.
+startup. The shell compares `packages/octop-*.dist-info/METADATA` with the
+App's bundled zip: if the installed package is newer, startup stops and asks
+to install that version or later. PostgreSQL remains externally managed and is
+not copied by the desktop shell.
 
 GitHub Release names follow `Octop-<kind>-<os>-<arch>-<version>.<ext>`:
 
@@ -95,6 +104,26 @@ the shell sets `OCTOP_GREEN_PACKAGES`, so `octop update` upgrades the extracted
 `packages/` directory through Octop's existing `--target` logic.
 
 Linux also needs GTK4 + WebKitGTK 6 to link. macOS 12+.
+
+## Shell status protocol
+
+The shell window always renders the page embedded in the binary
+(`src/assets`, built from `dashboard/desktop.html`); it only navigates away once
+Octop itself is confirmed ready, so failures are shown on that local page.
+`main.App` pushes startup state over the `desktop:status` event:
+
+| Field | Meaning |
+|-------|---------|
+| `code` | Copy key from `src/status_codes.go`, e.g. `error.port_in_use`; the page renders `desktopShell.<code>`. |
+| `level` | `progress` or `error`; drives the loading panel state. New levels are additive. |
+| `args` | Values the copy interpolates, e.g. `{"port": 8088}`. |
+
+Shell copy lives only in `dashboard/src/locales/{en,zh}.json` (`desktopShell.*`)
+and the page renders it through i18next, so the Go side carries no user-facing
+text. To add an error: add the key to both bundles, add a code constant in
+`src/status_codes.go`, then call `a.setError(code, args)` — or return a
+`desktopFault` from a boot helper. `status_codes_test.go` fails when a code has
+no copy in one of the bundles.
 
 ## Icons
 

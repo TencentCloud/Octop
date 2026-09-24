@@ -31,6 +31,9 @@ func TestPortableVersionPrefersNewestPackageMetadata(t *testing.T) {
 	if got := portableVersion(root); got != "0.9.32" {
 		t.Fatalf("portable version = %q, want 0.9.32", got)
 	}
+	if got := installedPackageVersion(root); got != "0.9.32" {
+		t.Fatalf("METADATA version = %q, want 0.9.32", got)
+	}
 }
 
 func TestDesktopSQLitePathUsesConfiguredRelativePath(t *testing.T) {

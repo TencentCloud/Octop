@@ -1,0 +1,44 @@
+:root {
+  color-scheme: light;
+  --bg-primary: #ffffff;
+  --bg-layout: #f5f6f8;
+  --bg-secondary: #f7f8fa;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-tertiary: #9ca3af;
+  --border: #e5e7eb;
+  --brand: #e85d75;
+  --brand-hover: #d14a62;
+  --brand-soft: #fde8ec;
+  --on-brand: #ffffff;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --radius: 12px;
+  --window-controls-inset-end: 80px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
+    "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
+  margin: 0;
+  background: var(--bg-layout);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+html[data-mode="settings"],
+html[data-mode="settings"] body {
+  overflow: hidden;
+  height: 100%;
+  background: var(--bg-primary);
+  --window-controls-inset-end: 36px;
+}

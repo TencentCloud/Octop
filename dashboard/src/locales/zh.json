@@ -12,6 +12,50 @@
     "maximize": "最大化",
     "close": "关闭"
   },
+  "desktopShell": {
+    "status": {
+      "wait": "正在启动，请稍候…",
+      "connecting": "正在连接 Octop…",
+      "checking_runtime": "正在检查运行环境…",
+      "starting_service": "正在启动 Octop 服务…",
+      "ready": "Octop 已就绪",
+      "using_runtime": "正在使用已有运行环境…",
+      "backup_database": "发现客户端新版 {{version}}，正在备份数据库…",
+      "updating_runtime": "正在更新内置运行环境…",
+      "first_extract": "首次启动，正在解压内置运行环境…",
+      "update_failed_keep": "更新内置运行环境失败，继续使用已有运行环境…"
+    },
+    "error": {
+      "unexpected": "出错了：{{error}}",
+      "port_in_use": "端口 {{port}} 已被占用，通常是另一个 Octop 实例或其他程序。请先关闭它，或在客户端设置中改用其他端口。",
+      "foreign_service": "{{addr}} 上应答的不是 Octop，已拒绝加载。请关闭占用该端口的程序后重试。",
+      "app_too_old": "本地数据版本 {{currentVersion}} 高于当前 App 版本 {{appVersion}}。App 版本过低，请安装 {{requiredVersion}} 或更高版本。",
+      "backup_failed": "升级前数据库备份失败，已保留当前版本",
+      "start_failed": "无法启动内置 Octop 服务：{{error}}"
+    },
+    "health": {
+      "not_ready_5xx": "Octop 服务未在{{wait}}内就绪（{{addr}}）。服务已响应但尚未就绪，请稍后再试，或查看终端日志。",
+      "not_ready_connect": "Octop 服务未在{{wait}}内就绪（{{addr}}）。目前无法连接该地址，请确认 Octop 正在运行。",
+      "not_ready": "Octop 服务未在{{wait}}内就绪（{{addr}}）。请确认本机已启动 Octop，且地址、端口正确；也可查看终端日志。"
+    },
+    "wait": {
+      "minutes_other": "{{count}} 分钟",
+      "seconds_other": "{{count}} 秒"
+    },
+    "loadingHint": "正在检查运行环境，可能需要几分钟。",
+    "settingsTitle": "Octop 设置",
+    "settingsSubtitle": "桌面端偏好",
+    "lang": "语言",
+    "langHint": "选择偏好语言 / Choose your preferred language",
+    "autostart": "开机启动",
+    "autostartHint": "登录系统后自动启动",
+    "tray": "最小化到托盘",
+    "trayHint": "点击最小化时隐藏窗口并保留在系统托盘",
+    "sleep": "防止系统休眠",
+    "sleepHint": "应用运行期间阻止系统自动休眠",
+    "showMain": "显示 Octop",
+    "quit": "退出"
+  },
   "common": {
     "save": "保存",
     "saveSuccess": "保存成功",

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Marks this page as the Octop shell; Wails dev refuses to render a dev
+         server that does not serve it. -->
+    <meta name="octop-desktop-shell" content="1" />
+    <title>Octop</title>
+    <script>
+      document.documentElement.dataset.chrome = /Mac|iPhone|iPad/.test(
+        navigator.userAgent,
+      )
+        ? "mac"
+        : "windows";
+      document.documentElement.style.setProperty(
+        "--window-controls-inset-end",
+        document.documentElement.dataset.chrome === "mac" ? "80px" : "138px",
+      );
+      if (new URLSearchParams(location.search).get("settings") === "1") {
+        document.documentElement.dataset.mode = "settings";
+        document.documentElement.style.setProperty(
+          "--window-controls-inset-end",
+          "36px",
+        );
+      }
+    </script>
+    <script type="module" src="/wails/runtime.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/desktop/bootstrap.tsx"></script>
+  </body>
+</html>

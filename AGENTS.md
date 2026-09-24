@@ -175,9 +175,10 @@ No `octop user login` — CLI trusts local filesystem access to `~/.octop`. Pin 
 | `context/` | App-wide React context (agent, auth, …) | API calls without going through `api/` |
 | `layouts/`, `routes/` | Shell, sidebar, route table | business logic |
 | `locales/` | i18n strings | — |
+| `desktop/` | Wails loading/settings shell (`dashboard/desktop.html`) | `App.tsx`, antd, Octop HTTP |
 | `utils/` | Frontend pure helpers | API or server knowledge |
 
-Frontend talks to Octop **only** via `/api` HTTP — never import or assume Python module layout.
+Frontend talks to Octop **only** via `/api` HTTP — never import or assume Python module layout. The desktop shell is the exception: it runs from the Wails binary before Octop is up and calls `main.App.*` over the Wails bridge.
 
 ## 6. Run commands
 
