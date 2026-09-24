@@ -10,10 +10,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from harness_gateway.channel import ChannelCredentialsError
-from harness_gateway.channels import ChannelKind
-from harness_gateway.manager import ChannelManager
-from harness_gateway.models import ChannelSubject
+from octop_gateway.channel import ChannelCredentialsError
+from octop_gateway.channels import ChannelKind
+from octop_gateway.manager import ChannelManager
+from octop_gateway.models import ChannelSubject
 
 from octop.i18n import channel_probe_incomplete, channel_runtime_reason, tr
 from octop.infra.db.repos.channels import ChannelRow
@@ -93,7 +93,7 @@ async def _probe_processor(_msg: Any) -> Any:
 class Gateway:
     """Global AI interaction entry point.
 
-    Owns the harness-gateway ChannelManager. Routes IM messages
+    Owns the octop-gateway ChannelManager. Routes IM messages
     by ``InboundMessage.tenant_id`` (== agent ULID) via GlobalProcessor.
     """
 
@@ -475,7 +475,7 @@ class Gateway:
         return session.channel_id
 
     def _resolve_push_subject(self, session: SessionRow) -> ChannelSubject:
-        """Build ChannelSubject from session; IM routing enrichment is in harness-gateway."""
+        """Build ChannelSubject from session; IM routing enrichment is in octop-gateway."""
         subject = session.to_channel_subject()
         if not ThreadRegistry.is_virtual_channel(session.channel_type):
             return subject

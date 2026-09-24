@@ -41,8 +41,8 @@ def _is_codex_base_url(base_url: str | None) -> bool:
 
 def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
     """Construct a chat model from a provider row for probing."""
-    from harness_agent.config import ModelConfig, ProviderConfig
-    from harness_agent.llm.factory import build_chat_model
+    from octop_harness.config import ModelConfig, ProviderConfig
+    from octop_harness.llm.factory import build_chat_model
 
     protocol = KIND_TO_PROTOCOL.get(row.kind, row.kind)
     base_url = row.base_url or "https://api.openai.com/v1"
