@@ -22,7 +22,7 @@ from octop.infra.agents.providers.probe import (
 )
 from octop.infra.agents.providers.reasoning import reasoning_capability
 from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
-from octop.infra.agents.providers.store import clear_stale_pins_for_provider
+from octop.infra.agents.providers.store import clear_stale_pins_for_provider, resolve_model_ref
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.providers.codex_apply import (
     CODEX_PROVIDER_NAME,
@@ -168,8 +168,16 @@ async def get_active_model(
     _: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, str]:
-    """Return the globally preferred model (provider_name + model id)."""
+    """Return the globally preferred model (provider_name + model id).
+
+    Legacy ``active_model`` rows written with a numeric provider id are reported
+    canonicalized (by provider name) so the dashboard never shows a dangling ref.
+    """
     name, model = server.services.settings_repo.get_active_model()
+    if name and model:
+        resolved = resolve_model_ref(server.services.provider_repo, name, model)
+        if resolved is not None:
+            return {"provider_name": resolved[0], "model": resolved[1]}
     return {"provider_name": name, "model": model}
 
 
@@ -179,11 +187,23 @@ async def set_active_model(
     _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, str]:
-    """Set the globally preferred model used when no agent override applies."""
-    server.services.settings_repo.set_active_model(body.provider_name, body.model)
+    """Set the globally preferred model used when no agent override applies.
+
+    The provider may be given by name or numeric id; it is canonicalized to the
+    provider name and validated against enabled, usable models so an unusable
+    default can never be persisted silently.
+    """
+    resolved = resolve_model_ref(server.services.provider_repo, body.provider_name, body.model)
+    if resolved is None:
+        raise OctopError(
+            ErrorCode.NOT_FOUND,
+            f"no enabled, usable model {body.model!r} on provider {body.provider_name!r}",
+        )
+    provider_name, model = resolved
+    server.services.settings_repo.set_active_model(provider_name, model)
     if server.app_runtime is not None:
         await server.app_runtime.agent_registry.on_provider_changed(active_model_changed=True)
-    return {"provider_name": body.provider_name, "model": body.model}
+    return {"provider_name": provider_name, "model": model}
 
 
 @router.get("")

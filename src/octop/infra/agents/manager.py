@@ -1286,9 +1286,16 @@ class AgentManager:
         """Settings active model when usable, else the first enabled catalog model."""
         name, model_id = self._repos.settings_repo.get_active_model()
         if name and model_id:
-            ref = f"{name}/{model_id}"
-            if self._providers.is_model_ref_usable(ref):
-                return ref
+            raw_ref = f"{name}/{model_id}"
+            resolved = self._providers.canonical_model_ref(raw_ref)
+            if resolved is not None:
+                canonical = f"{resolved[0]}/{resolved[1]}"
+                if canonical != raw_ref:
+                    # Self-heal refs stored with a numeric provider id so the
+                    # dashboard and `octop models active` stop advertising a
+                    # dangling value.
+                    self._repos.settings_repo.set_active_model(*resolved)
+                return canonical
         return self._providers.resolve_first_model_ref()
 
     # ------------------------------------------------------------------

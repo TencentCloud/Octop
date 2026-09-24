@@ -404,9 +404,18 @@ def get_active_model_offline(*, home: Path | None = None) -> dict[str, str]:
 def set_active_model_offline(
     provider_name: str, model: str, *, home: Path | None = None
 ) -> dict[str, str]:
+    from octop.infra.agents.providers.store import resolve_model_ref
+
     with open_cli_services(home) as svc:
-        svc.settings_repo.set_active_model(provider_name, model)
-        return {"provider_name": provider_name, "model": model}
+        resolved = resolve_model_ref(svc.provider_repo, provider_name, model)
+        if resolved is None:
+            raise OctopError(
+                ErrorCode.NOT_FOUND,
+                f"no enabled, usable model {model!r} on provider {provider_name!r}",
+            )
+        canonical_name, canonical_model = resolved
+        svc.settings_repo.set_active_model(canonical_name, canonical_model)
+        return {"provider_name": canonical_name, "model": canonical_model}
 
 
 # ── Channels ─────────────────────────────────────────────────────────────────
