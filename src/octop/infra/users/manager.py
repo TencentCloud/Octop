@@ -542,10 +542,13 @@ class UserManager:
         *,
         workspace_root_dir: Any = UNSET,
         token_quota: Any = UNSET,
+        max_agents: Any = UNSET,
     ) -> None:
         from octop.infra.users.resource_policy import (
+            POLICY_MAX_AGENTS,
             POLICY_TOKEN_QUOTA,
             POLICY_WORKSPACE_ROOT_DIR,
+            normalize_max_agents,
             normalize_token_quota,
             normalize_workspace_root_dir,
         )
@@ -556,12 +559,16 @@ class UserManager:
         updates: dict[str, str | None] = {}
         root_arg: Any = UNSET
         quota_arg: Any = UNSET
+        max_agents_arg: Any = UNSET
         if workspace_root_dir is not UNSET:
             root_arg = normalize_workspace_root_dir(workspace_root_dir)
             updates[POLICY_WORKSPACE_ROOT_DIR] = root_arg
         if token_quota is not UNSET:
             quota_arg = normalize_token_quota(token_quota)
             updates[POLICY_TOKEN_QUOTA] = None if quota_arg is None else str(quota_arg)
+        if max_agents is not UNSET:
+            max_agents_arg = normalize_max_agents(max_agents)
+            updates[POLICY_MAX_AGENTS] = None if max_agents_arg is None else str(max_agents_arg)
         if not updates:
             return
         self._services.user_policy_repo.merge(row.id, updates)
@@ -579,12 +586,22 @@ class UserManager:
                 target=username,
                 payload=str(quota_arg) if quota_arg is not None else "",
             )
+        if max_agents is not UNSET:
+            self._services.audit_repo.write(
+                actor=ACTOR_ADMIN,
+                action="user.set_max_agents",
+                target=username,
+                payload=str(max_agents_arg) if max_agents_arg is not None else "",
+            )
 
     async def set_workspace_root_dir(self, username: str, workspace_root_dir: str | None) -> None:
         await self.set_resource_policy(username, workspace_root_dir=workspace_root_dir)
 
     async def set_token_quota(self, username: str, token_quota: int | None) -> None:
         await self.set_resource_policy(username, token_quota=token_quota)
+
+    async def set_max_agents(self, username: str, max_agents: int | None) -> None:
+        await self.set_resource_policy(username, max_agents=max_agents)
 
     async def set_role(self, username: str, role: Role) -> None:
         row = self._services.user_repo.get_by_username(username)
