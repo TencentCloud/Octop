@@ -377,6 +377,10 @@ class AgentManager:
         # drive the same checkpoint without it — two concurrent executions on
         # one thread interleave LangGraph checkpoint writes.
         self._thread_execution_locks: dict[tuple[str, str], asyncio.Lock] = {}
+        # Turns that have resolved (or are queued on) each lock. The entry is
+        # only dropped once this reaches zero, so a turn already waiting on
+        # ``acquire()`` never gets orphaned onto a fresh, idle lock.
+        self._thread_execution_lock_refs: dict[tuple[str, str], int] = {}
         self._active_invocations: dict[str, int] = {}
         self._invocation_waiters: dict[str, int] = {}
         self._history_backfills: dict[str, asyncio.Event] = {}
@@ -860,6 +864,7 @@ class AgentManager:
             await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
             await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
         self._plugin_tool_labels.pop(agent_id, None)
+        self._evict_idle_thread_locks(agent_id)
         try:
             if await asyncio.to_thread(workspace_dir.exists):
                 await asyncio.to_thread(shutil.rmtree, workspace_dir)
@@ -890,13 +895,49 @@ class AgentManager:
             self._agent_lifecycle_locks[agent_id] = lock
         return lock
 
-    def _thread_execution_lock(self, agent_id: str, thread_id: str) -> asyncio.Lock:
+    def _evict_idle_thread_locks(self, agent_id: str, thread_id: str | None = None) -> None:
+        """Drop thread execution locks for *agent_id* that nobody is holding or waiting on.
+
+        Called when an expert or a thread goes away. Entries with live turns are
+        deliberately kept: dropping one would let the next turn create a fresh,
+        idle lock for the same thread while an older turn is still queued on the
+        old one, which is the concurrent-checkpoint-write interleaving #960 removed.
+        """
+        for key in [
+            k
+            for k in self._thread_execution_locks
+            if k[0] == agent_id and (thread_id is None or k[1] == thread_id)
+        ]:
+            if self._thread_execution_lock_refs.get(key, 0) <= 0:
+                self._thread_execution_locks.pop(key, None)
+                self._thread_execution_lock_refs.pop(key, None)
+
+    @asynccontextmanager
+    async def _thread_execution_lock(
+        self, agent_id: str, thread_id: str
+    ) -> AsyncIterator[asyncio.Lock]:
+        """Serialize harness execution per thread, releasing the entry when idle.
+
+        Interest is registered synchronously before awaiting ``acquire()`` so a
+        second turn resolving the same key can never be handed a different lock
+        than the one the first turn is queued on.
+        """
         key = (agent_id, thread_id)
         lock = self._thread_execution_locks.get(key)
         if lock is None:
             lock = asyncio.Lock()
             self._thread_execution_locks[key] = lock
-        return lock
+        self._thread_execution_lock_refs[key] = self._thread_execution_lock_refs.get(key, 0) + 1
+        try:
+            async with lock:
+                yield lock
+        finally:
+            remaining = self._thread_execution_lock_refs.get(key, 0) - 1
+            if remaining > 0:
+                self._thread_execution_lock_refs[key] = remaining
+            else:
+                self._thread_execution_lock_refs.pop(key, None)
+                self._thread_execution_locks.pop(key, None)
 
     @staticmethod
     def _is_already_registered_error(exc: BaseException) -> bool:
@@ -1157,7 +1198,9 @@ class AgentManager:
         adelete = getattr(harness, "adelete_thread", None)
         if adelete is None:
             return False
-        return bool(await adelete(thread_id))
+        deleted = bool(await adelete(thread_id))
+        self._evict_idle_thread_locks(agent_id, thread_id)
+        return deleted
 
     # ------------------------------------------------------------------
     # Chat / invoke — stream, call, HITL, thread model overrides
