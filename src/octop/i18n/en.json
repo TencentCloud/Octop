@@ -393,6 +393,7 @@
     "VOICE_KIND_UNSUPPORTED": "Unsupported voice provider.",
     "VOICE_CAPABILITY_MISMATCH": "Voice capability does not match.",
     "VOICE_PROVIDER_DISABLED": "Voice provider is disabled.",
+    "VOICE_REALTIME_UNAVAILABLE": "Realtime speech recognition is unavailable. Check the Tencent Cloud voice settings.",
     "INTERNAL_ERROR": "Internal server error.",
     "TLS_NOT_ELIGIBLE": "TLS issuance is not available in the current server configuration.",
     "TLS_ISSUE_IN_PROGRESS": "A certificate issuance task is already running.",
@@ -745,6 +746,18 @@
       "tencent_credentials": "Tencent Cloud requires secret_id and secret_key",
       "http_status": "provider returned HTTP {status}",
       "network_error": "network error: {name}"
+    },
+    "realtime": {
+      "error_4002": "Realtime speech recognition authentication failed. Check the SecretId and SecretKey.",
+      "error_4003": "Realtime speech recognition is not enabled for this Tencent Cloud account.",
+      "error_4004": "The Tencent Cloud realtime speech recognition resource pack is exhausted.",
+      "error_4005": "The Tencent Cloud account is in arrears. Top up and retry.",
+      "error_4006": "Realtime speech recognition concurrency limit reached. Retry in a moment.",
+      "error_4007": "Audio decoding failed. Check the microphone input.",
+      "error_4008": "Audio upload timed out. Check the network connection.",
+      "error_4009": "The realtime speech recognition connection was closed.",
+      "error_5000": "The Tencent Cloud service is temporarily unavailable. Retry shortly.",
+      "error_unknown": "Realtime speech recognition failed. Retry in a moment."
     },
     "tencent": {
       "AuthFailure": {

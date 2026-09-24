@@ -17,6 +17,9 @@ vi.mock("../../../hooks/useVoiceInput", () => ({
   useVoiceInput: () => ({
     recording: false,
     transcribing: false,
+    realtime: false,
+    start: vi.fn(),
+    stop: vi.fn(),
     toggle: vi.fn(),
   }),
 }));
