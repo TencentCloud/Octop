@@ -2212,45 +2212,44 @@ export default function ConnectorsPage() {
             <Spin />
           </div>
         ) : instances.length === 0 ? (
-          <StreamSetupGuide
-            wide
-            icon={
-              <OctopEmptyMascot
-                size={120}
-                className={styles.emptyGuideMascot}
-              />
-            }
-            title={t("connectors.emptyGuideTitle")}
-            description={t("connectors.emptyGuideDesc")}
-            steps={[
-              {
-                label: t("connectors.emptyGuideStepWhat"),
-                detail: t("connectors.emptyGuideStepWhatDetail"),
-              },
-              {
-                label: t("connectors.emptyGuideStepHow"),
-                detail: t("connectors.emptyGuideStepHowDetail"),
-              },
-              {
-                label: t("connectors.emptyGuideStepShare"),
-                detail: t("connectors.emptyGuideStepShareDetail"),
-              },
-            ]}
-            primaryAction={{
-              label: t("connectors.emptyGuideBrowseBuiltin"),
-              onClick: () => setActiveTab("builtin"),
-              icon: <Plug size={14} />,
-            }}
-            secondaryAction={{
-              label: t("connectors.emptyGuideAddCustom"),
-              onClick: () => {
-                setCustomFocusServerName(null);
-                setActiveTab("custom");
-              },
-              icon: <Plus size={14} />,
-              type: "default",
-            }}
-          />
+          <div className={styles.emptyLayout}>
+            <StreamSetupGuide
+              className={styles.emptyGuide}
+              wide
+              plain
+              icon={<OctopEmptyMascot />}
+              title={t("connectors.emptyGuideTitle")}
+              description={t("connectors.emptyGuideDesc")}
+              steps={[
+                {
+                  label: t("connectors.emptyGuideStepWhat"),
+                  detail: t("connectors.emptyGuideStepWhatDetail"),
+                },
+                {
+                  label: t("connectors.emptyGuideStepHow"),
+                  detail: t("connectors.emptyGuideStepHowDetail"),
+                },
+                {
+                  label: t("connectors.emptyGuideStepShare"),
+                  detail: t("connectors.emptyGuideStepShareDetail"),
+                },
+              ]}
+              primaryAction={{
+                label: t("connectors.emptyGuideBrowseBuiltin"),
+                onClick: () => setActiveTab("builtin"),
+                icon: <Plug size={14} />,
+              }}
+              secondaryAction={{
+                label: t("connectors.emptyGuideAddCustom"),
+                onClick: () => {
+                  setCustomFocusServerName(null);
+                  setActiveTab("custom");
+                },
+                icon: <Plus size={14} />,
+                type: "default",
+              }}
+            />
+          </div>
         ) : (
           <>
             <div className={styles.listToolbar}>

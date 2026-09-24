@@ -245,3 +245,163 @@ async def test_admin_can_set_resource_policy(env, tmp_path, monkeypatch):
     assert r.status_code == 200
     assert r.json()["workspace_root_dir"] is None
     assert r.json()["token_quota"] is None
+
+
+async def test_batch_enable_disable_delete_and_token_quota(env):
+    c, _srv, auth = env
+    me = (await c.get("/api/auth/me", headers=auth)).json()
+
+    created_ids: list[int] = []
+    for name in ("batch_a", "batch_b", "batch_c"):
+        r = await c.post(
+            "/api/users",
+            headers=auth,
+            json={"username": name, "password": "TestPass12", "role": "user"},
+        )
+        assert r.status_code == 201, r.text
+        created_ids.append(r.json()["id"])
+
+    r = await c.post(
+        "/api/users/batch",
+        headers=auth,
+        json={"user_ids": created_ids, "action": "disable"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["action"] == "disable"
+    assert body["succeeded"] == 3
+    assert body["failed"] == 0
+    listed = {u["username"]: u for u in (await c.get("/api/users", headers=auth)).json()}
+    assert listed["batch_a"]["disabled"] is True
+    assert listed["batch_b"]["disabled"] is True
+
+    r = await c.post(
+        "/api/users/batch",
+        headers=auth,
+        json={"user_ids": created_ids[:2], "action": "enable"},
+    )
+    assert r.status_code == 200
+    assert r.json()["succeeded"] == 2
+    listed = {u["username"]: u for u in (await c.get("/api/users", headers=auth)).json()}
+    assert listed["batch_a"]["disabled"] is False
+    assert listed["batch_c"]["disabled"] is True
+
+    r = await c.post(
+        "/api/users/batch",
+        headers=auth,
+        json={
+            "user_ids": created_ids,
+            "action": "set_token_quota",
+            "token_quota": 10_000_000,
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["succeeded"] == 3
+    listed = {u["id"]: u for u in (await c.get("/api/users", headers=auth)).json()}
+    for uid in created_ids:
+        assert listed[uid]["token_quota"] == 10_000_000
+
+    r = await c.post(
+        "/api/users/batch",
+        headers=auth,
+        json={
+            "user_ids": [created_ids[0]],
+            "action": "set_token_quota",
+            "token_quota": None,
+        },
+    )
+    assert r.status_code == 200
+    listed = {u["id"]: u for u in (await c.get("/api/users", headers=auth)).json()}
+    assert listed[created_ids[0]]["token_quota"] is None
+
+    # Self is skipped for delete; others succeed.
+    r = await c.post(
+        "/api/users/batch",
+        headers=auth,
+        json={"user_ids": [me["id"], *created_ids], "action": "delete"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["succeeded"] == 3
+    assert body["failed"] == 1
+    self_result = next(item for item in body["results"] if item["user_id"] == me["id"])
+    assert self_result["ok"] is False
+    assert self_result["code"] == "FORBIDDEN"
+    listed = (await c.get("/api/users", headers=auth)).json()
+    usernames = {u["username"] for u in listed}
+    assert "batch_a" not in usernames
+    assert me["username"] in usernames
+
+
+async def test_batch_disable_skips_self(env):
+    c, _srv, auth = env
+    me = (await c.get("/api/auth/me", headers=auth)).json()
+    r = await c.post(
+        "/api/users",
+        headers=auth,
+        json={"username": "batch_other", "password": "TestPass12", "role": "user"},
+    )
+    other_id = r.json()["id"]
+
+    r = await c.post(
+        "/api/users/batch",
+        headers=auth,
+        json={"user_ids": [me["id"], other_id], "action": "disable"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["succeeded"] == 1
+    assert body["failed"] == 1
+    listed = {u["id"]: u for u in (await c.get("/api/users", headers=auth)).json()}
+    assert listed[me["id"]]["disabled"] is False
+    assert listed[other_id]["disabled"] is True
+
+
+async def test_admin_can_set_max_agents_and_block_create(env):
+    from tests.support.auth import TEST_PASSWORD, create_user
+
+    c, _srv, auth = env
+    user_auth = await create_user(c, auth, username="quota_user", password=TEST_PASSWORD)
+    listed = (await c.get("/api/users", headers=auth)).json()
+    uid = next(u["id"] for u in listed if u["username"] == "quota_user")
+
+    r = await c.patch(
+        f"/api/users/{uid}",
+        headers=auth,
+        json={"max_agents": 1},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["max_agents"] == 1
+
+    first = await c.post(
+        "/api/agents",
+        headers=user_auth,
+        json={"name": "expert-one"},
+    )
+    assert first.status_code == 201, first.text
+
+    second = await c.post(
+        "/api/agents",
+        headers=user_auth,
+        json={"name": "expert-two"},
+    )
+    assert second.status_code == 403, second.text
+    assert second.json()["error"]["code"] == "AGENT_QUOTA_EXCEEDED"
+    assert second.json()["error"]["details"] == {"used": 1, "quota": 1}
+
+    r = await c.post(
+        "/api/users/batch",
+        headers=auth,
+        json={"user_ids": [uid], "action": "set_max_agents", "max_agents": None},
+    )
+    assert r.status_code == 200
+    assert r.json()["succeeded"] == 1
+    listed = {u["id"]: u for u in (await c.get("/api/users", headers=auth)).json()}
+    assert listed[uid]["max_agents"] is None
+
+    third = await c.post(
+        "/api/agents",
+        headers=user_auth,
+        json={"name": "expert-three"},
+    )
+    assert third.status_code == 201, third.text

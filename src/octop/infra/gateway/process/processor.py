@@ -39,9 +39,9 @@ from octop.infra.gateway.hitl.coordinator import (
 )
 from octop.infra.gateway.media.attachment_hints import content_blocks_need_vision
 from octop.infra.gateway.media.tool_media import (
-    attachment_frames_from_tool_result,
     enrich_tool_result_for_dashboard,
     enrich_tool_result_with_backend,
+    iter_dashboard_attachment_frames,
 )
 from octop.infra.gateway.process.agent_resolve import (
     harness_workspace_for_agent,
@@ -1013,6 +1013,11 @@ class GlobalProcessor:
         persist_failed_turn = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         usage_tracker = UsageTracker()
+        # Align with IM stream_project: only push after a live tool_call this
+        # turn, then dedupe Overwrite replays and identical path/URL frames.
+        saw_tool_call = False
+        emitted_media_ids: set[str] = set()
+        emitted_attachment_keys: set[str] = set()
 
         try:
             async for chunk in self._agent_manager.stream(agent_id, request):
@@ -1042,6 +1047,8 @@ class GlobalProcessor:
                                 channel_type=channel_type,
                             ),
                         )
+                if chunk.get("type") == "tool_call_chunk":
+                    saw_tool_call = True
                 if chunk.get("type") == "tool_result":
                     if harness_workspace is not None:
                         chunk = await enrich_tool_result_with_backend(
@@ -1049,10 +1056,13 @@ class GlobalProcessor:
                             agent_id=agent_id,
                             workspace=harness_workspace,
                         )
-                        async for att in attachment_frames_from_tool_result(
+                        async for att in iter_dashboard_attachment_frames(
                             chunk,
                             agent_id=agent_id,
                             workspace=harness_workspace,
+                            saw_tool_call=saw_tool_call,
+                            emitted_media_ids=emitted_media_ids,
+                            emitted_attachment_keys=emitted_attachment_keys,
                         ):
                             yield _maybe_stamp_team_host(att, agent_id, team_host)
                     else:

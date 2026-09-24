@@ -83,6 +83,58 @@
   margin-bottom: 12px !important;
 }
 
+.tokenQuotaField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tokenQuotaPresets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.tokenQuotaPresetsLabel {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  margin-right: 2px;
+}
+
+.tokenQuotaPreset {
+  appearance: none;
+  border: 1px solid var(--fn-border-primary);
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-secondary);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    border-color: var(--fn-primary, #1677ff);
+    color: var(--fn-primary, #1677ff);
+  }
+}
+
+.tokenQuotaPresetActive {
+  border-color: var(--fn-primary, #1677ff);
+  color: var(--fn-primary, #1677ff);
+  background: color-mix(in srgb, var(--fn-primary, #1677ff) 10%, transparent);
+}
+
+.tokenQuotaPreview {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-text-tertiary);
+}
+
 .createUserPermItem {
   margin-bottom: 0 !important;
 }
@@ -388,6 +440,44 @@
   width: min(320px, 100%);
 }
 
+.userSearchRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.batchBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin: -4px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+  background: color-mix(
+    in srgb,
+    var(--fn-primary, #1677ff) 6%,
+    var(--fn-bg-primary)
+  );
+}
+
+.batchBarCount {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.batchBarActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Role legend: label + body, same type scale / line-height for alignment */
 .roleLegend {
   display: grid;
@@ -447,6 +537,17 @@
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
     transform: translateY(-2px);
   }
+}
+
+.userCardSelected {
+  border-color: var(--fn-primary, #1677ff);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--fn-primary, #1677ff) 35%, transparent);
+}
+
+.userCardSelect {
+  flex-shrink: 0;
+  margin-top: 4px;
 }
 
 .userCardLocked {
