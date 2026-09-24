@@ -102,12 +102,21 @@ def test_parse_pdf_docx_and_pptx(tmp_path: Path) -> None:
 
     pptx = tmp_path / "slides.pptx"
     presentation = Presentation()
-    presentation.slides.add_slide(presentation.slide_layouts[0]).shapes.title.text = "Slide title"
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    # Add a table
+    table_shape = slide.shapes.add_table(1, 2, 0, 0, 100, 100)
+    table_shape.table.cell(0, 0).text = "Col A"
+    table_shape.table.cell(0, 1).text = "Col B"
+    # Add a textbox
+    tb = slide.shapes.add_textbox(0, 0, 100, 100)
+    tb.text = "Slide title"
     presentation.save(pptx)
 
     assert parse_document(pdf) == ""
     assert parse_document(docx) == "Word notes"
-    assert parse_document(pptx) == "Slide title"
+    parsed_pptx = parse_document(pptx)
+    assert "Slide title" in parsed_pptx
+    assert "Col A | Col B" in parsed_pptx
 
 
 def test_parse_docx_reads_tables_content_controls_and_revisions(tmp_path: Path) -> None:
