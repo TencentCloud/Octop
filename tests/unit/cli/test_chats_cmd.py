@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from pathlib import Path
 
 import click
@@ -77,6 +79,9 @@ def test_chats_update_sends_title(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_delete_thread_offline_unbinds_session(tmp_octop_home: Path) -> None:
+    from harness_agent.memory.store import close_memory_resources
+    from harness_memory import Memory
+
     from octop.cli.support.db import open_cli_services
     from octop.cli.support.offline_ops import (
         create_thread_offline,
@@ -98,11 +103,48 @@ def test_delete_thread_offline_unbinds_session(tmp_octop_home: Path) -> None:
         uid = UserRepo(svc.db).get_by_username("alice")
         assert uid is not None
         user_id = int(uid.id)
-        AgentRepo(svc.db).create(agent_id="ag1", user_id=user_id, name="main")
+        workspace = tmp_octop_home / "agents" / "ag1"
+        system_dir = workspace / ".octop"
+        system_dir.mkdir(parents=True)
+        AgentRepo(svc.db).create(
+            agent_id="ag1",
+            user_id=user_id,
+            name="main",
+            config_json=json.dumps(
+                {"workspace_dir": str(workspace), "system_files_path": ".octop"}
+            ),
+        )
 
     created = create_thread_offline(agent_id="ag1", user_id=user_id, home=tmp_octop_home)
+    checkpoint_db = system_dir / "memory.sqlite"
+    memory = Memory(
+        namespace="agent_ag1",
+        backend="sqlite",
+        backend_config={"db_path": str(checkpoint_db)},
+    )
+    memory.put(
+        {"configurable": {"thread_id": created["thread_id"], "checkpoint_ns": ""}},
+        {
+            "v": 4,
+            "id": "00000000-0000-0000-0000-000000000001",
+            "ts": "2026-01-01T00:00:00+00:00",
+            "channel_values": {},
+            "channel_versions": {},
+            "versions_seen": {},
+            "updated_channels": [],
+        },
+        {},
+        {},
+    )
+    close_memory_resources(memory)
     delete_thread_offline("ag1", created["thread_id"], home=tmp_octop_home)
 
     with open_cli_services(home=tmp_octop_home) as svc:
         assert svc.thread_repo.get(created["thread_id"]) is None
         assert svc.session_repo.get(created["session_key"]) is None
+    with sqlite3.connect(checkpoint_db) as conn:
+        remaining = conn.execute(
+            "SELECT COUNT(*) FROM checkpoints WHERE thread_id = ?",
+            (created["thread_id"],),
+        ).fetchone()
+    assert remaining == (0,)

@@ -75,6 +75,7 @@ export default function MinimalRecordsHost() {
       try {
         await octopThreadsApi.delete(resolvedAgentId, sessionId);
         emitSessionEvent({ kind: "sessionDeleted", sessionId });
+        antMessage.success(t("chat.deleteSuccess"));
         if (pathThreadId === sessionId) {
           navigate(`/chat/${resolvedAgentId}`, { replace: true });
         }

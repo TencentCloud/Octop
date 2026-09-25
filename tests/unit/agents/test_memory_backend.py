@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 from octop.config import DatabaseConfig, OctopConfig
-from octop.infra.agents.memory_backend import memory_backend_from_agent_config, open_memory_kwargs
+from octop.infra.agents.memory_backend import (
+    delete_thread_from_storage,
+    memory_backend_from_agent_config,
+    open_memory_kwargs,
+)
 from octop.infra.errors import OctopError
 
 
@@ -116,6 +121,48 @@ def test_open_memory_kwargs_follows_postgresql_control_plane(tmp_path: Path) -> 
     assert backend == "postgres"
     assert backend_config is not None
     assert "dsn" in backend_config
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_from_stopped_agent_memory(tmp_path: Path) -> None:
+    from harness_agent.memory.store import close_memory_resources
+    from harness_memory import Memory
+
+    system_dir = tmp_path / ".octop"
+    system_dir.mkdir()
+    db_path = system_dir / "memory.sqlite"
+    memory = Memory(
+        namespace="agent_a1",
+        backend="sqlite",
+        backend_config={"db_path": str(db_path)},
+    )
+    config = {"configurable": {"thread_id": "thr_delete", "checkpoint_ns": ""}}
+    checkpoint = {
+        "v": 4,
+        "id": "00000000-0000-0000-0000-000000000001",
+        "ts": "2026-01-01T00:00:00+00:00",
+        "channel_values": {},
+        "channel_versions": {},
+        "versions_seen": {},
+        "updated_channels": [],
+    }
+    memory.put(config, checkpoint, {}, {})
+    close_memory_resources(memory)
+
+    deleted = await delete_thread_from_storage(
+        agent_id="a1",
+        thread_id="thr_delete",
+        cfg={"system_files_path": ".octop"},
+        octop_config=OctopConfig(),
+        workspace_dir=tmp_path,
+    )
+
+    assert deleted is True
+    with sqlite3.connect(db_path) as conn:
+        remaining = conn.execute(
+            "SELECT COUNT(*) FROM checkpoints WHERE thread_id = ?", ("thr_delete",)
+        ).fetchone()
+    assert remaining == (0,)
 
 
 def test_memory_db_path_prefers_existing_nested(tmp_path: Path) -> None:
