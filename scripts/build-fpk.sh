@@ -116,7 +116,10 @@ build_one() {
   [ -n "$SRC" ] || { echo "[build-fpk] 未找到 fnpack 产物"; return 1; }
 
   mv "$SRC" "$OUT/$OUTNAME"
-  echo "[build-fpk] 产物: $OUT/$OUTNAME ($(stat -c%s "$OUT/$OUTNAME") bytes)"
+  # BSD stat (macOS) has no -c; `wc -c <` works on both.
+  local SIZE
+  SIZE="$(wc -c < "$OUT/$OUTNAME" | tr -d '[:space:]')"
+  echo "[build-fpk] 产物: $OUT/$OUTNAME ($SIZE bytes)"
   echo "[build-fpk] 外层内容:"
   tar -tzf "$OUT/$OUTNAME"
 }
