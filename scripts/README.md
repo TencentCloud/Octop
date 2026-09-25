@@ -37,7 +37,7 @@ bash scripts/install.sh --extras browser,channels-feishu
 
 # 从本地源码安装（开发/离线）
 bash scripts/install.sh --from-source
-bash scripts/install.sh --from-source /path/to/orca
+bash scripts/install.sh --from-source /path/to/octop
 
 # 使用国内 PyPI 镜像加速依赖
 bash scripts/install.sh --mirror https://mirrors.cloud.tencent.com/pypi/simple
