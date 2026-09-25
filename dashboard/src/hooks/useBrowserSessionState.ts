@@ -91,7 +91,7 @@ export function useBrowserSessionState(
         }
       }
     } catch {
-      // harness-browser may be unavailable — ignore
+      // octop-browser may be unavailable — ignore
     }
   }, []);
 

@@ -17,7 +17,7 @@ from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.errors import ErrorCode, OctopError
 
 if TYPE_CHECKING:
-    from harness_agent import MediaGenerationConfig
+    from octop_harness import MediaGenerationConfig
 
 MediaProviderName = Literal["volcengine", "dashscope", "minimax"]
 MediaTestKind = Literal["image", "video"]
@@ -287,8 +287,8 @@ async def verify_media_model(
     kind: MediaTestKind,
 ) -> dict[str, object]:
     """Submit one provider-neutral model probe through the harness adapter."""
-    from harness_agent import MediaProviderConfig  # noqa: PLC0415
-    from harness_agent.media import (  # noqa: PLC0415
+    from octop_harness import MediaProviderConfig  # noqa: PLC0415
+    from octop_harness.media import (  # noqa: PLC0415
         ImageGenerationRequest,
         MediaGenerationError,
         VideoGenerationRequest,
@@ -571,7 +571,7 @@ class MediaGenerationSettingsStore:
         if not view.configured:
             return None
 
-        from harness_agent import (  # noqa: PLC0415
+        from octop_harness import (  # noqa: PLC0415
             MediaGenerationConfig,
             MediaProviderConfig,
         )
