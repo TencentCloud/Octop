@@ -79,9 +79,9 @@
 
 ## 运行时
 
-### harness-agent
+### octop-harness
 
-harness-agent 增加 `peer_invoke_mode: "sync" | "async" | "both"`（默认 `both`，保持旧行为）：
+octop-harness 增加 `peer_invoke_mode: "sync" | "async" | "both"`（默认 `both`，保持旧行为）：
 
 - `sync`：只注入同步 `ask_agent`
 - `async`：只注入异步派工（发完即返回）
