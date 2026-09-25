@@ -126,7 +126,7 @@
       "done_offload": "Model context compacted (thread `{short}`): summarized {count} older message(s), kept the recent tail.\n\n- Saved: `{path}`\n- Chat history is unchanged; from the next turn the model only sees the summary plus recent messages.",
       "nothing": "Nothing to compact on thread `{short}` (too short or already compact).",
       "no_thread": "No active thread.",
-      "unavailable": "Compact unavailable (agent not ready or harness too old).",
+      "unavailable": "Compact unavailable (agent not ready or octop-harness too old).",
       "failed": "Compact failed; check logs and retry.",
       "archived": " ({count} messages archived as {short})"
     },
@@ -773,7 +773,7 @@
     "unavailable": "Cannot connect to a running compatible Octop, or control connection lost: {detail}",
     "busy": "A memory maintenance job is already running.",
     "not_ready": "Octop runtime is not ready.",
-    "upgrade": "The loaded harness-memory package does not provide live maintenance. Install the matching version or load the local source, then restart Octop.",
+    "upgrade": "The loaded octop-memory package does not provide live maintenance. Install the matching version or load the local source, then restart Octop.",
     "wait_timeout": "The agent remained busy for 120 seconds; no migration was started.",
     "incompatible": "Live maintenance requires a compatible SQLite checkpointer; upgrade and restart Octop.",
     "interrupted": "Maintenance interrupted.",

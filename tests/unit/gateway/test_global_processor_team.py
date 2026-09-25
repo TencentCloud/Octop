@@ -7,8 +7,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from harness_agent.teams.inbox import InboxMessage
-from harness_agent.teams.processor import ReplyEvent
+from octop_harness.teams.inbox import InboxMessage
+from octop_harness.teams.processor import ReplyEvent
 
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -386,8 +386,8 @@ async def test_on_reply_falls_back_when_room_thread_is_gone(processor_env: dict)
 async def test_stream_host_followup_marks_live_and_persists(
     processor_env: dict,
 ) -> None:
-    from harness_agent.request import ChatRequest
     from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
 
     processor = processor_env["processor"]
     gateway = processor_env["gateway"]
@@ -440,7 +440,7 @@ async def test_stream_host_followup_waits_for_dispatch_turn(
 ) -> None:
     import asyncio
 
-    from harness_agent.request import ChatRequest
+    from octop_harness.request import ChatRequest
 
     processor = processor_env["processor"]
     gateway = processor_env["gateway"]
@@ -472,8 +472,8 @@ async def test_stream_host_followup_waits_for_dispatch_turn(
 async def test_stream_host_followup_unwatched_does_not_skip_snapshot(
     processor_env: dict,
 ) -> None:
-    from harness_agent.request import ChatRequest
     from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
 
     processor = processor_env["processor"]
     processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
@@ -503,8 +503,8 @@ async def test_stream_host_followup_unwatched_does_not_skip_snapshot(
 async def test_stream_host_followup_pushes_wrapup_when_no_tokens(
     processor_env: dict,
 ) -> None:
-    from harness_agent.request import ChatRequest
     from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
 
     processor = processor_env["processor"]
     gateway = processor_env["gateway"]
@@ -545,8 +545,8 @@ async def test_stream_host_followup_pushes_wrapup_when_no_tokens(
 
 @pytest.mark.asyncio
 async def test_record_peer_turn_persists_room_user_question(processor_env: dict) -> None:
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import AIMessage, HumanMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
@@ -595,8 +595,8 @@ async def test_record_peer_turn_persists_room_user_question(processor_env: dict)
 
 @pytest.mark.asyncio
 async def test_record_peer_turn_keeps_sync_ask_agent_message(processor_env: dict) -> None:
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import AIMessage, HumanMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     repo = MagicMock()
@@ -650,7 +650,7 @@ async def test_ensure_projection_leaves_pending_threads_with_history(
 async def test_prepare_peer_session_creates_callee_thread_without_rebind(
     processor_env: dict,
 ) -> None:
-    from harness_agent.teams.util import PeerCall
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     parent_sk = processor_env["parent_sk"]
@@ -676,8 +676,8 @@ async def test_prepare_peer_session_creates_callee_thread_without_rebind(
 
 @pytest.mark.asyncio
 async def test_prepare_team_peer_seeds_host_assignment(processor_env: dict) -> None:
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import HumanMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     parent_sk = processor_env["parent_sk"]
@@ -715,7 +715,7 @@ async def test_prepare_team_peer_seeds_host_assignment(processor_env: dict) -> N
 
 @pytest.mark.asyncio
 async def test_prepare_team_peer_uses_isolated_session_key(processor_env: dict) -> None:
-    from harness_agent.teams.util import PeerCall
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     parent_sk = processor_env["parent_sk"]
@@ -742,8 +742,8 @@ async def test_prepare_team_peer_uses_isolated_session_key(processor_env: dict) 
 
 @pytest.mark.asyncio
 async def test_prepare_followup_seeds_new_user_question(processor_env: dict) -> None:
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import HumanMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     parent_sk = processor_env["parent_sk"]
@@ -800,7 +800,7 @@ async def test_prepare_followup_seeds_new_user_question(processor_env: dict) -> 
 async def test_prepare_team_dispatch_tracks_job_and_forces_sync(
     processor_env: dict,
 ) -> None:
-    from harness_agent.teams.util import PeerCall
+    from octop_harness.teams.util import PeerCall
 
     from octop.infra.agents.teams import TeamJobTracker
 
@@ -834,8 +834,8 @@ async def test_prepare_team_dispatch_tracks_job_and_forces_sync(
 async def test_prepare_team_dispatch_includes_room_history(
     processor_env: dict,
 ) -> None:
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import AIMessage, HumanMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     parent_sk = processor_env["parent_sk"]
@@ -879,8 +879,8 @@ async def test_prepare_team_dispatch_uses_projected_member_speech(
 ) -> None:
     import json
 
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import AIMessage, HumanMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
@@ -961,8 +961,8 @@ def test_stamp_team_host_runtime_forces_async(processor_env: dict) -> None:
 
 @pytest.mark.asyncio
 async def test_stream_team_peer_relays_tokens_to_room(processor_env: dict) -> None:
-    from harness_agent.request import ChatRequest
     from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
 
     processor = processor_env["processor"]
     gateway = processor_env["gateway"]
@@ -1005,8 +1005,8 @@ async def test_stream_team_peer_relays_tokens_to_room(processor_env: dict) -> No
 async def test_stream_team_peer_relays_tokens_to_member_and_room(
     processor_env: dict,
 ) -> None:
-    from harness_agent.request import ChatRequest
     from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
 
     processor = processor_env["processor"]
     gateway = processor_env["gateway"]
@@ -1050,8 +1050,8 @@ async def test_stream_team_peer_relays_tokens_to_member_and_room(
 async def test_stream_team_peer_unwatched_is_not_live_streamed(
     processor_env: dict,
 ) -> None:
-    from harness_agent.request import ChatRequest
     from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
 
     processor = processor_env["processor"]
 
@@ -1073,8 +1073,8 @@ async def test_stream_team_peer_unwatched_is_not_live_streamed(
 
 @pytest.mark.asyncio
 async def test_stream_team_peer_relays_reasoning_and_tools(processor_env: dict) -> None:
-    from harness_agent.request import ChatRequest
     from langchain_core.messages import AIMessage, HumanMessage
+    from octop_harness.request import ChatRequest
 
     processor = processor_env["processor"]
     gateway = processor_env["gateway"]
@@ -1128,8 +1128,8 @@ async def test_stream_team_peer_relays_reasoning_and_tools(processor_env: dict) 
 async def test_fan_in_persists_member_turn_without_dispatch_prompt(
     processor_env: dict,
 ) -> None:
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import AIMessage, HumanMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
@@ -1162,8 +1162,8 @@ async def test_fan_in_persists_member_turn_without_dispatch_prompt(
 
 @pytest.mark.asyncio
 async def test_fan_in_skips_snapshot_after_live_stream(processor_env: dict) -> None:
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import AIMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     gateway = processor_env["gateway"]
@@ -1194,8 +1194,8 @@ async def test_fan_in_skips_snapshot_after_live_stream(processor_env: dict) -> N
 
 @pytest.mark.asyncio
 async def test_fan_in_pushes_snapshot_when_not_live(processor_env: dict) -> None:
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import AIMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     gateway = processor_env["gateway"]
@@ -1255,8 +1255,8 @@ def _bind_im_session(processor_env: dict, *, thread_id: str = "thr_parent") -> s
 
 @pytest.mark.asyncio
 async def test_fan_in_pushes_member_speech_to_im_channel(processor_env: dict) -> None:
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import AIMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     gateway = processor_env["gateway"]
@@ -1286,8 +1286,8 @@ async def test_fan_in_pushes_member_speech_to_im_channel(processor_env: dict) ->
 
 @pytest.mark.asyncio
 async def test_fan_in_skips_dashboard_when_pushing_channels(processor_env: dict) -> None:
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import AIMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     gateway = processor_env["gateway"]
@@ -1346,8 +1346,8 @@ async def test_on_reply_live_wrapup_still_pushes_im(processor_env: dict) -> None
 
 @pytest.mark.asyncio
 async def test_fan_in_async_non_team_writes_caller_room(processor_env: dict) -> None:
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import AIMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     repo = MagicMock()
@@ -1375,8 +1375,8 @@ async def test_fan_in_async_non_team_writes_caller_room(processor_env: dict) -> 
 
 @pytest.mark.asyncio
 async def test_fan_in_sync_non_team_skips_caller_room(processor_env: dict) -> None:
-    from harness_agent.teams.util import PeerCall
     from langchain_core.messages import AIMessage
+    from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
     repo = MagicMock()

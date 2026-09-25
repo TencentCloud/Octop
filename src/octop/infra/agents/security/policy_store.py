@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from harness_agent.security.models import SecurityPolicy
+from octop_harness.security.models import SecurityPolicy
 
 from octop.infra.db.repos.settings import SettingsRepo
 

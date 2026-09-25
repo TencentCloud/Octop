@@ -459,7 +459,7 @@ async def test_revised_state_message_keeps_latest_tool_metadata(archive):
 async def test_dashboard_processor_writes_only_new_archive(archive):
     from unittest.mock import AsyncMock, MagicMock
 
-    from harness_gateway.models import ChannelSubject, InboundMessage, TextContent
+    from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
 
     from octop.infra.gateway.process.processor import GlobalProcessor
     from octop.infra.gateway.slash.dispatcher import SlashDispatcher
@@ -623,7 +623,7 @@ def _committed_messages(archive):
 def _dashboard_with_chunks(archive, chunks):
     from unittest.mock import AsyncMock, MagicMock
 
-    from harness_gateway.models import ChannelSubject, InboundMessage, TextContent
+    from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
 
     from octop.infra.gateway.process.processor import GlobalProcessor
     from octop.infra.gateway.slash.dispatcher import SlashDispatcher
@@ -732,7 +732,7 @@ async def test_write_failure_does_not_deliver_or_retry_uncommitted_content(archi
 async def test_dashboard_error_keeps_partial_tokens_and_error(archive):
     from unittest.mock import AsyncMock, MagicMock
 
-    from harness_gateway.models import ChannelSubject, InboundMessage, TextContent
+    from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
 
     from octop.infra.gateway.process.processor import GlobalProcessor
     from octop.infra.gateway.slash.dispatcher import SlashDispatcher
