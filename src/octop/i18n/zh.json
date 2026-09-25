@@ -773,7 +773,7 @@
     "unavailable": "无法连接正在运行的新版 Octop，或控制连接中断：{detail}",
     "busy": "已有记忆库整理任务正在进行。",
     "not_ready": "Octop 运行环境尚未准备好。",
-    "upgrade": "当前加载的 harness-memory 未提供在线整理接口。请安装配套版本或加载本地源码后重启 Octop。",
+    "upgrade": "当前加载的 octop-memory 未提供在线整理接口。请安装配套版本或加载本地源码后重启 Octop。",
     "wait_timeout": "智能体持续繁忙超过 120 秒，本次未开始迁移。",
     "incompatible": "在线整理仅支持兼容的新版本 SQLite checkpointer，请更新并重启 Octop。",
     "interrupted": "整理被中断。",
@@ -797,7 +797,7 @@
   },
   "teams": {
     "peer_thread_title": "来自团队 {name}",
-    "followup_done": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 已完成。对方正文已经出现在群聊时间线上。\n任务：{task}\n\n不要复述成员全文。不要再说「已安排 / 稍等片刻 / 交给谁来回答」，不要再次 ask_agent 同一任务。若还要继续，再派下一位；若可以收工，最多三句短总结。",
+    "followup_done": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 已完成。对方正文已在群聊时间线上；你自己的对话上下文里没有这段，下面附带节选供收口参考。\n任务：{task}\n\n成员正文：\n{result}\n\n请依据成员正文决定下一步：不要整段复述，不要再说「已安排 / 稍等片刻 / 交给谁来回答」，不要再次 ask_agent 同一任务。若还要继续，再派下一位；若可以收工，最多三句短总结，并明确是否采纳其建议。",
     "followup_failed": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 失败。\n任务：{task}\n错误：{error}\n\n简要告知用户失败，并决定改派别人或收工。不要再说「已安排 / 稍等」，不要编造替代答案。",
     "speaker_user": "用户",
     "channel_line": "{name}: {text}",

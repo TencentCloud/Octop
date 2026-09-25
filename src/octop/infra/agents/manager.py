@@ -15,9 +15,9 @@ from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from harness_agent import HarnessAgent, HarnessAgentConfig, HarnessAgentManager
-from harness_agent.registry import AgentEntry
-from harness_agent.security.models import SecurityPolicy
+from octop_harness import HarnessAgent, HarnessAgentConfig, HarnessAgentManager
+from octop_harness.registry import AgentEntry
+from octop_harness.security.models import SecurityPolicy
 
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
 from octop.infra.agents.acp_settings import ACPSettingsStore
@@ -96,7 +96,7 @@ logger = logging.getLogger(__name__)
 # Bounded parallelism for awaited provider/active-model reload batches.
 _PROVIDER_RELOAD_CONCURRENCY = 6
 
-# harness-memory builds SQLite table names as ``{namespace}_*``. The namespace
+# octop-memory builds SQLite table names as ``{namespace}_*``. The namespace
 # must be a valid bare SQL identifier: start with a letter, only [A-Za-z0-9_].
 _MEMORY_NS_PREFIX = "agent_"
 
@@ -201,7 +201,7 @@ def _memory_extract_settings(
         ):
             out[dst] = float(val)
 
-    # orcakit-harness-agent 0.9.5 predates the interval trigger fields. Keep
+    # octop-harness 0.9.5 predates the interval trigger fields. Keep
     # hot reload working against that release and approximate interval mode
     # with its per-session idle watchdog until a newer harness is installed.
     if (
@@ -213,7 +213,7 @@ def _memory_extract_settings(
         if isinstance(interval, int | float) and not isinstance(interval, bool) and interval > 0:
             out["memory_extract_idle_seconds"] = float(interval)
         logger.warning(
-            "Installed harness-agent lacks interval memory extraction; "
+            "Installed octop-harness lacks interval memory extraction; "
             "falling back to the idle watchdog for this agent"
         )
     return out
@@ -329,7 +329,7 @@ class AgentManager:
       - CRUD: create / update / delete
       - Reads: get_row, list_*, get_config, resolve_user_agent
       - Runtime: get_agent, stream / call / HITL / thread model
-      - Hot-reload: reload*, on_provider_changed, reload_harness_agents
+      - Hot-reload: reload*, on_provider_changed, reload_octop_harnesss
       - Connectors: reload_connectors*, prepare_chat_mcp
       - Settings stores: langfuse, security, acp_settings, tool_guard_rules, providers
     """
@@ -867,7 +867,7 @@ class AgentManager:
                     affected_teams = self._teams.drop_member(agent_id)
                 except Exception:
                     logger.exception("failed to drop deleted expert %s from team rosters", agent_id)
-            await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
+            await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
             await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
         self._plugin_tool_labels.pop(agent_id, None)
         try:
@@ -912,7 +912,7 @@ class AgentManager:
     def _is_already_registered_error(exc: BaseException) -> bool:
         return "already exists in the registry" in str(exc)
 
-    def _harness_agent_or_none(self, agent_id: str) -> HarnessAgent | None:
+    def _octop_harness_or_none(self, agent_id: str) -> HarnessAgent | None:
         if self._harness_manager is None:
             return None
         try:
@@ -927,14 +927,14 @@ class AgentManager:
             if row is None:
                 raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
             async with self._lifecycle_lock_for(agent_id):
-                await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
+                await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
                 await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
                 self._repos.agent_repo.set_state(agent_id, "stopped", error=None)
 
-    def _quiesce_harness_memory(self, agent_id: str) -> None:
+    def _quiesce_octop_memory(self, agent_id: str) -> None:
         """Stop memory GC before the harness closes the SQLite backend.
 
-        ``harness-memory`` runs lifecycle GC on a daemon thread. Closing the
+        ``octop-memory`` runs lifecycle GC on a daemon thread. Closing the
         store while ``list_candidates`` is in flight segfaults (Linux live CI
         and Windows unit tests with a real HarnessAgentManager).
         """
@@ -1223,7 +1223,7 @@ class AgentManager:
             self._end_invocation(agent_id)
 
     async def stream(self, agent_id: str, request: dict[str, Any]) -> AsyncIterator[Any]:
-        """Stream harness chunks (Langfuse tracing handled inside harness-agent)."""
+        """Stream harness chunks (Langfuse tracing handled inside octop-harness)."""
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
 
@@ -1275,7 +1275,7 @@ class AgentManager:
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     def cancel_stream(self, agent_id: str, thread_id: str) -> None:
-        """Signal harness-agent to stop the active stream for *(agent_id, thread_id)*."""
+        """Signal octop-harness to stop the active stream for *(agent_id, thread_id)*."""
         if self._harness_manager is not None:
             self._harness_manager.cancel(agent_id, thread_id)
 
@@ -1316,7 +1316,7 @@ class AgentManager:
         ]
         await self._reload_agents(agent_ids)
 
-    def reload_harness_agents(self) -> None:
+    def reload_octop_harnesss(self) -> None:
         """Rebuild harness agents in place (e.g. after tool-guard rules changed on disk).
 
         Does not rebuild Octop-side agent config from the DB — use :meth:`reload` for that.
@@ -1507,7 +1507,7 @@ class AgentManager:
         spec: dict[str, Any],
     ) -> list[Any]:
         """Load custom MCP tools once per user/server/fingerprint; share across agents."""
-        from harness_agent.mcp import aload_mcp_tools
+        from octop_harness.mcp import aload_mcp_tools
 
         from octop.infra.connectors.mcp_tool_cache import (
             fingerprint_mcp_spec,
@@ -1708,7 +1708,7 @@ class AgentManager:
             )
             still_builtin = sorted(set(still_builtin))
             if still_builtin:
-                from harness_agent.mcp import aload_mcp_tools
+                from octop_harness.mcp import aload_mcp_tools
 
                 from octop.infra.utils.env_file import (
                     env_file_path,
@@ -2286,7 +2286,7 @@ class AgentManager:
                 slug,
                 row.get("error") or "corrupt",
             )
-        from harness_agent.skills import catalog as harness_skill_catalog  # noqa: PLC0415
+        from octop_harness.skills import catalog as harness_skill_catalog  # noqa: PLC0415
 
         if getattr(harness_skill_catalog, "SKILL_PRESENTATION_METADATA_VERSION", 0) < 1:
             workspace = getattr(agent, "workspace", None)
@@ -2366,7 +2366,7 @@ class AgentManager:
         return rows
 
     async def list_subagent_summaries(self, agent_id: str) -> list[dict[str, Any]]:
-        """Installed subagents for *agent_id* (delegates to harness-agent catalog)."""
+        """Installed subagents for *agent_id* (delegates to octop-harness catalog)."""
         agent = self.get_agent(agent_id)
         rows = [dict(row) for row in await agent.list_subagent_summaries()]
         await _fill_missing_subagent_colors(agent, rows)
@@ -2412,7 +2412,7 @@ class AgentManager:
 
     def sync_effective_tools_disabled(self, agent_id: str) -> None:
         """Hot-sync builtin + plugin denylist derived from current agent config."""
-        from harness_agent.plugins import PluginRegistry
+        from octop_harness.plugins import PluginRegistry
 
         from octop.infra.agents.teams import host_tools_disabled, is_team_agent
         from octop.infra.agents.tool_catalog import effective_tools_disabled
@@ -2477,7 +2477,7 @@ class AgentManager:
             self._repos.agent_repo.set_state(row.agent_id, "failed", error=NO_MODELS_CONFIGURED)
             return None
         async with self._lifecycle_lock_for(row.agent_id):
-            existing = self._harness_agent_or_none(row.agent_id)
+            existing = self._octop_harness_or_none(row.agent_id)
             if existing is not None:
                 # Idempotent: a concurrent reload/boot may have already registered.
                 self._repos.agent_repo.set_state(row.agent_id, "running", error=None)
@@ -2506,7 +2506,7 @@ class AgentManager:
                 logger.info("Agent %s (%s) started", row.agent_id, row.name)
                 return entry.agent
             except Exception as exc:
-                recovered = self._harness_agent_or_none(row.agent_id)
+                recovered = self._octop_harness_or_none(row.agent_id)
                 if recovered is not None and self._is_already_registered_error(exc):
                     self._repos.agent_repo.set_state(row.agent_id, "running", error=None)
                     logger.warning(
@@ -2689,8 +2689,8 @@ class AgentManager:
         allow_ephemeral_remote: bool = False,
     ) -> Any:
         """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""
-        from harness_agent.backends import resolve_backend  # noqa: PLC0415
-        from harness_agent.backends.workspace import BackendWorkspace  # noqa: PLC0415
+        from octop_harness.backends import resolve_backend  # noqa: PLC0415
+        from octop_harness.backends.workspace import BackendWorkspace  # noqa: PLC0415
 
         from octop.infra.agents.workspace_dir import system_files_path_from_config  # noqa: PLC0415
         from octop.infra.backend.opensandbox_deps import ensure_opensandbox_deps  # noqa: PLC0415
@@ -2794,7 +2794,7 @@ class AgentManager:
             self._bootstrap_graph_refresh_pending.discard(agent_id)
             row = self._repos.agent_repo.get(agent_id)
             if not row or not row.enabled or row.last_state == "stopped":
-                await asyncio.to_thread(self._quiesce_harness_memory, agent_id)
+                await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
                 await self._harness_manager.aremove_agent(agent_id)
                 return
             if self._harness_manager.shared_factory is None:
@@ -2810,7 +2810,7 @@ class AgentManager:
                 await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
                 self._repos.agent_repo.set_state(agent_id, "running", error=None)
             except Exception as exc:
-                recovered = self._harness_agent_or_none(agent_id)
+                recovered = self._octop_harness_or_none(agent_id)
                 if recovered is not None and self._is_already_registered_error(exc):
                     self._repos.agent_repo.set_state(agent_id, "running", error=None)
                     logger.warning(
@@ -2959,7 +2959,7 @@ class AgentManager:
         return row.user_id
 
     def _prepare_stream_request(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
-        from harness_agent.plugins import collect_plugin_tool_configs  # noqa: PLC0415
+        from octop_harness.plugins import collect_plugin_tool_configs  # noqa: PLC0415
 
         req = dict(request)
         if req.get("agent_id") is None:
@@ -2977,7 +2977,7 @@ class AgentManager:
 
     def _build_harness_config(self, row: AgentRow) -> HarnessAgentConfig:
         """Convert an AgentRow into a HarnessAgentConfig."""
-        from harness_agent.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
+        from octop_harness.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
 
         from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
             harness_workspace_path,
@@ -3041,7 +3041,7 @@ class AgentManager:
                 paths=self.paths,
             )
 
-        from harness_agent.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
+        from octop_harness.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
 
         from octop.infra.agents.plugin_tool_defaults import (  # noqa: PLC0415
             agent_plugin_enabled,
@@ -3110,7 +3110,7 @@ class AgentManager:
         )
         from octop.infra.knowledge.hint import KnowledgeSearchHintMiddleware
 
-        # FilesystemGuard + ModelSettings live in harness-agent (auto-mounted).
+        # FilesystemGuard + ModelSettings live in octop-harness (auto-mounted).
         # BinaryReadGuard stays Octop-specific (inbound/attachment product policy).
         # ThreadArtifacts writes workspace paths onto threads after successful tools.
         # WorkspaceImageMaterialize expands path-only vision refs at model-call time.
@@ -3128,6 +3128,7 @@ class AgentManager:
             ThreadArtifactsMiddleware(
                 thread_repo=self._repos.thread_repo,
                 workspace_dir=harness_workspace,
+                agent_id=row.agent_id,
             ),
         ]
 
@@ -3141,7 +3142,7 @@ class AgentManager:
 
         acp_section = cfg.get("acp")
         acp_raw: dict[str, Any] = acp_section if isinstance(acp_section, dict) else {}
-        from harness_agent.acp.models import ACPConfig
+        from octop_harness.acp.models import ACPConfig
 
         if team_host:
             acp_raw = {}

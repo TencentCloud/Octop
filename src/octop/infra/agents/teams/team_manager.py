@@ -18,25 +18,43 @@ from collections.abc import Callable
 from dataclasses import fields
 from typing import TYPE_CHECKING, Any
 
-from harness_agent.messages import extract_call_response
-from harness_agent.teams.inbox import InboxMessage
-from harness_agent.teams.processor import ReplyEvent
-from harness_agent.teams.util import (
+from langchain_core.messages import AIMessage, HumanMessage
+from octop_harness.messages import extract_call_response
+from octop_harness.teams.inbox import InboxMessage
+from octop_harness.teams.processor import ReplyEvent
+from octop_harness.teams.util import (
     PeerCall,
     PeerSession,
     build_one_shot_request,
     derive_peer_thread_id,
 )
-from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n import tr
 from octop.infra.agents.teams.service import is_team_agent
+from octop.infra.agents.thread_artifact import artifact_path_allowed, extract_artifact_paths
+from octop.infra.gateway.media.tool_media import tool_name_base
 from octop.infra.gateway.process.history_projection import (
     live_message_inputs,
     message_inputs,
 )
 from octop.infra.utils.locale import DEFAULT_LOCALE, resolve_user_locale
 from octop.infra.utils.ulid import new_ulid
+
+# Matches dashboard FILE_TOOL_NAMES — drives the "edited N files" history card.
+_EDIT_CARD_TOOL_BASES = frozenset(
+    {
+        "write_file",
+        "edit_file",
+        "send_file",
+        "send_file_to_user",
+    }
+)
+
+# Cap tool-result bodies on room/member projections so fan-in history stays lean.
+_HISTORY_TOOL_RESULT_MAX_CHARS = 4000
+_HISTORY_TOOL_RESULT_SUFFIX = "…"
+# Member answer excerpt injected into the host wrap-up wake-up prompt.
+_FOLLOWUP_RESULT_MAX_CHARS = 6000
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
@@ -180,8 +198,11 @@ class TeamManager:
             if self._thread_message_repo is None:
                 return
             messages = result.get("messages")
-            visible = _peer_turn_messages(messages) if isinstance(messages, list) else []
+            msg_list = messages if isinstance(messages, list) else []
+            edited = _edited_files_from_messages(msg_list)
+            visible = _peer_turn_messages(msg_list)
             visible = [msg for msg in visible if _message_role(msg) not in {"human", "user"}]
+            visible, _ = _apply_edited_files_stamp(visible, edited)
             prompt = await self._assignment_text(call)
             if prompt:
                 visible = [
@@ -197,7 +218,10 @@ class TeamManager:
             try:
                 self._thread_message_repo.append_if_ready(
                     thread_id,
-                    message_inputs(visible, dedupe_missing_ids=True),
+                    message_inputs(
+                        _history_projection_messages(visible),
+                        dedupe_missing_ids=True,
+                    ),
                 )
             except Exception:
                 logger.warning(
@@ -220,7 +244,6 @@ class TeamManager:
         result_text: str | None,
         error_text: str | None,
     ) -> str:
-        _ = result_text
         child_name = self._display_name(msg.target_agent_id)
         locale = self._locale_for(_octop_user_id(msg.user_id))
         if error_text:
@@ -231,11 +254,20 @@ class TeamManager:
                 task=msg.message,
                 error=error_text,
             )
+        # Member answers live on the room wall / peer checkpoint, not the host
+        # graph — inject a truncated excerpt so wrap-up can follow their advice.
+        result = _truncate_tool_result_text(
+            (result_text or "").strip(),
+            max_chars=_FOLLOWUP_RESULT_MAX_CHARS,
+        )
+        if not result:
+            result = "(empty)"
         return tr(
             "teams.followup_done",
             locale,
             name=child_name,
             task=msg.message,
+            result=result,
         )
 
     async def on_reply(self, event: ReplyEvent) -> None:
@@ -421,19 +453,23 @@ class TeamManager:
         *,
         live_streamed: bool = False,
     ) -> None:
-        """Persist the member's final bubble on the caller's room thread."""
+        """Persist the member's tool trail + final bubble on the caller's room thread."""
         if not self._is_group_dispatch(call):
             return
         speaker = call.to_agent_id
         stamped = [_with_speaker(msg, speaker) for msg in _room_peer_messages(visible)]
-        final = _final_room_assistant(stamped)
-        if final is None:
+        if not stamped:
             return
+        edited = _edited_files_from_messages(stamped)
+        stamped, final = _apply_edited_files_stamp(stamped, edited)
         if self._thread_message_repo is not None:
             try:
                 self._thread_message_repo.append_if_ready(
                     call.source_thread_id,
-                    live_message_inputs([final], dedupe_missing_ids=True),
+                    live_message_inputs(
+                        _history_projection_messages(stamped),
+                        dedupe_missing_ids=True,
+                    ),
                 )
             except Exception:
                 logger.warning(
@@ -443,8 +479,8 @@ class TeamManager:
                     exc_info=True,
                 )
         room = str(call.source_thread_id or "").strip()
-        text = _assistant_text(final)
-        if not room:
+        text = _assistant_text(final) if final is not None else ""
+        if not room or not text:
             return
         await self._push_room_to_channels(room, speaker, text)
         if not live_streamed:
@@ -1192,19 +1228,137 @@ def _final_room_assistant(messages: list[Any]) -> Any | None:
     return None
 
 
-def _with_speaker(msg: Any, agent_id: str) -> Any:
+def _apply_edited_files_stamp(
+    messages: list[Any],
+    edited: list[str],
+) -> tuple[list[Any], Any | None]:
+    """Stamp ``edited_files`` on the final text bubble, or last AI if tools-only."""
+    final = _final_room_assistant(messages)
+    if not edited:
+        return messages, final
+    target = final
+    if target is None:
+        for msg in reversed(messages):
+            if _message_is_assistant(msg):
+                target = msg
+                break
+    if target is None:
+        return messages, final
+    stamped_target = _with_edited_files(target, edited)
+    out = [stamped_target if msg is target else msg for msg in messages]
+    if final is None:
+        return out, None
+    return out, stamped_target if final is target else final
+
+
+def _truncate_tool_result_text(
+    text: str,
+    *,
+    max_chars: int = _HISTORY_TOOL_RESULT_MAX_CHARS,
+) -> str:
+    if len(text) <= max_chars:
+        return text
+    keep = max(max_chars - len(_HISTORY_TOOL_RESULT_SUFFIX), 0)
+    return text[:keep] + _HISTORY_TOOL_RESULT_SUFFIX
+
+
+def _truncate_tool_content(content: Any) -> Any:
+    if isinstance(content, str):
+        return _truncate_tool_result_text(content)
+    if isinstance(content, list):
+        out: list[Any] = []
+        changed = False
+        for block in content:
+            if isinstance(block, str):
+                new_block = _truncate_tool_result_text(block)
+                out.append(new_block)
+                changed = changed or new_block != block
+            elif isinstance(block, dict) and isinstance(block.get("text"), str):
+                text = str(block["text"])
+                new_text = _truncate_tool_result_text(text)
+                if new_text != text:
+                    out.append({**block, "text": new_text})
+                    changed = True
+                else:
+                    out.append(block)
+            else:
+                out.append(block)
+        return out if changed else content
+    return content
+
+
+def _replace_message_content(msg: Any, content: Any) -> Any:
+    if isinstance(msg, dict):
+        out = dict(msg)
+        out["content"] = content
+        return out
+    copy = getattr(msg, "model_copy", None)
+    if callable(copy):
+        try:
+            return copy(update={"content": content})
+        except Exception:
+            pass
+    try:
+        object.__setattr__(msg, "content", content)
+    except Exception:
+        msg.content = content
+    return msg
+
+
+def _history_projection_messages(messages: list[Any]) -> list[Any]:
+    """Truncate bulky ToolMessage bodies before writing team projections."""
+    out: list[Any] = []
+    for msg in messages:
+        if _message_role(msg) != "tool":
+            out.append(msg)
+            continue
+        content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+        truncated = _truncate_tool_content(content)
+        if truncated is content:
+            out.append(msg)
+            continue
+        out.append(_replace_message_content(msg, truncated))
+    return out
+
+
+def _edited_files_from_messages(messages: list[Any]) -> list[str]:
+    """Workspace paths from write/edit/send tool_calls in a peer turn."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for msg in messages:
+        tool_calls = _message_tool_calls(msg)
+        if not isinstance(tool_calls, list):
+            continue
+        for call in tool_calls:
+            if isinstance(call, dict):
+                name = str(call.get("name") or "")
+                args = call.get("args")
+            else:
+                name = str(getattr(call, "name", "") or "")
+                args = getattr(call, "args", None)
+            base = tool_name_base(name).lower()
+            if base not in _EDIT_CARD_TOOL_BASES:
+                continue
+            for path in extract_artifact_paths(tool_name=name, args=args):
+                key = path.replace("\\", "/").strip()
+                if not key or not artifact_path_allowed(key) or key in seen:
+                    continue
+                seen.add(key)
+                out.append(key)
+    return out
+
+
+def _patch_additional_kwargs(msg: Any, updates: dict[str, Any]) -> Any:
+    if not updates:
+        return msg
     if isinstance(msg, dict):
         kwargs = dict(msg.get("additional_kwargs") or {})
-        if kwargs.get("speaker_agent_id") == agent_id:
-            return msg
-        kwargs["speaker_agent_id"] = agent_id
+        kwargs.update(updates)
         out = dict(msg)
         out["additional_kwargs"] = kwargs
         return out
     kwargs = dict(getattr(msg, "additional_kwargs", None) or {})
-    if kwargs.get("speaker_agent_id") == agent_id:
-        return msg
-    kwargs["speaker_agent_id"] = agent_id
+    kwargs.update(updates)
     copy = getattr(msg, "model_copy", None)
     if callable(copy):
         try:
@@ -1216,6 +1370,24 @@ def _with_speaker(msg: Any, agent_id: str) -> Any:
     except Exception:
         msg.additional_kwargs = kwargs
     return msg
+
+
+def _with_speaker(msg: Any, agent_id: str) -> Any:
+    if isinstance(msg, dict):
+        kwargs = dict(msg.get("additional_kwargs") or {})
+        if kwargs.get("speaker_agent_id") == agent_id:
+            return msg
+    else:
+        kwargs = dict(getattr(msg, "additional_kwargs", None) or {})
+        if kwargs.get("speaker_agent_id") == agent_id:
+            return msg
+    return _patch_additional_kwargs(msg, {"speaker_agent_id": agent_id})
+
+
+def _with_edited_files(msg: Any, paths: list[str]) -> Any:
+    if not paths:
+        return msg
+    return _patch_additional_kwargs(msg, {"edited_files": list(paths)})
 
 
 def _ensure_reasoning(msg: Any, reasoning: str) -> None:
@@ -1263,25 +1435,27 @@ def _assistant_text(msg: Any) -> str:
 
 
 def _peer_turn_messages(messages: list[Any]) -> list[Any]:
-    trigger: Any | None = None
-    final_ai: Any | None = None
-    for msg in messages:
-        role = ""
-        if isinstance(msg, dict):
-            role = str(msg.get("role") or msg.get("type") or "").lower()
-            tool_calls = msg.get("tool_calls")
-        else:
-            role = str(getattr(msg, "type", None) or getattr(msg, "role", "") or "").lower()
-            tool_calls = getattr(msg, "tool_calls", None)
-        if role in ("human", "user"):
-            trigger = msg
-        if role in ("ai", "assistant") and not tool_calls:
-            final_ai = msg
+    """Last user turn for the member page: trigger + full assistant/tool trail.
+
+    Historically this kept only the final AI text, which dropped tool_calls
+    from both the member projection and (via fan-in) the room wall.
+    """
+    last_user = -1
+    for index, msg in enumerate(messages):
+        if _message_role(msg) in {"human", "user"}:
+            last_user = index
+    if last_user >= 0:
+        trigger = messages[last_user]
+        tail = messages[last_user + 1 :]
+    else:
+        trigger = None
+        tail = list(messages)
+    skip = {"system", "human", "user"}
+    trail = [msg for msg in tail if _message_role(msg) not in skip]
     out: list[Any] = []
     if trigger is not None:
         out.append(trigger)
-    if final_ai is not None:
-        out.append(final_ai)
+    out.extend(trail)
     return out
 
 

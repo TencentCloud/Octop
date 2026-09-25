@@ -10,6 +10,9 @@
 
 - 企查查内置连接器恢复一键 OAuth：保留 internal HTTP 工具加载及已有 API Key，支持五类资源共享刷新与远程解绑；注明系统浏览器及公网 HTTPS 回调要求。
 
+### 变更
+- 运行时依赖改为 `octop-harness[all]` / `octop-gateway` / `octop-memory` / `octop-browser` 1.0.0（原 `orcakit-harness-agent` / `harness-*`）；文档、UI 文案与生成路径同步改为 `octop-*`（`~/.harness-browser` 仅作迁移/拒绝源）
+
 ### 修复
 - 知识库文档数达到上限时不再答非所问：单库 `max_documents` 可配置之后，上传超限文档仍按字面量「at most 100」匹配错误文案，只有上限恰好是默认值 100 的库才报对，其余（如 2、500）会返回 409 `KNOWLEDGE_BASE_LIMIT`「每个用户最多可创建 20 个知识库」；现按两条报错各自的稳定措辞区分，超限一律正确返回 `KNOWLEDGE_DOC_LIMIT`
 - 知识库文档重命名保留存储键的文件后缀：改名去掉 `.pdf` 等后缀后，原文下载/预览会 404、删除也会留下孤儿文件；现按 `create_text_document` 的既有做法补回原后缀，目录改名不受影响 (#1107)
