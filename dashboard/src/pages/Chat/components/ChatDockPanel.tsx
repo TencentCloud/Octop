@@ -8,12 +8,15 @@ import React, {
   useState,
   type ReactNode,
 } from "react";
-import { Spin, Tooltip } from "antd";
+import { Dropdown, Spin, Tooltip } from "antd";
+import type { MenuProps } from "antd";
 import {
   BookOpen,
+  Check,
   FilePen,
   FolderOpen,
   Globe,
+  Plus,
   Puzzle,
   RefreshCw,
   Terminal,
@@ -23,7 +26,9 @@ import { useTranslation } from "react-i18next";
 import BrowserWorkspace, {
   type PanelMode,
 } from "../../../components/BrowserWorkspace";
-import ChatDockPanelShell from "../../../components/BrowserWorkspace/ChatDockPanelShell";
+import ChatDockPanelShell, {
+  CHAT_DOCK_POPUP_MENU_Z,
+} from "../../../components/BrowserWorkspace/ChatDockPanelShell";
 import type { DisplayEnvironment } from "../../../api/types/browser";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { resolveBrowserProfile } from "../../../utils/browserProfile";
@@ -38,18 +43,30 @@ import ChatDockToolUiContent from "./ChatDockToolUiContent";
 
 const TerminalPage = lazy(() => import("../../Control/Terminal"));
 
+export type ChatDockAddTabHandlers = {
+  onOpenWorkspace?: () => void;
+  onOpenBrowser?: () => void;
+  onOpenTerminal?: () => void;
+  onOpenFiles?: () => void;
+  workspaceDisabled?: boolean;
+  workspaceDisabledHint?: string;
+};
+
+type AddTabKey = "workspace" | "files" | "browser" | "terminal";
+
 interface ChatDockPanelProps {
   mode: PanelMode;
   onModeChange: (mode: PanelMode) => void;
   onClose: () => void;
   style?: React.CSSProperties;
   agentId: string;
-  filePaths: string[];
+  filePaths: Array<string | { path: string; agentId?: string }>;
+  agentNameById?: Record<string, string>;
   openTabs: DockTab[];
   activeTabId: DockTabId | null;
   onSelectTab: (id: DockTabId) => void;
   onCloseTab: (id: DockTabId) => void;
-  onOpenFile: (path: string) => void;
+  onOpenFile: (path: string, agentId?: string | null) => void;
   browserEnvironment?: DisplayEnvironment;
   threadId?: string | null;
   isStreamingTurn?: boolean;
@@ -59,7 +76,111 @@ interface ChatDockPanelProps {
    * fresh first visit.
    */
   surfaceVisible?: boolean;
+  /** Open workspace / browser / terminal / file-list tabs from the title-bar +. */
+  addTab?: ChatDockAddTabHandlers;
 }
+
+function hasOpenKind(tabs: readonly DockTab[], kind: DockTab["kind"]): boolean {
+  return tabs.some((tab) => tab.kind === kind);
+}
+
+/** Title-bar + control: open dock tabs that the float rail normally exposes. */
+const DockAddTabButton: React.FC<{
+  mode: PanelMode;
+  addTab: ChatDockAddTabHandlers;
+  openTabs: readonly DockTab[];
+  menuOpen: boolean;
+  onMenuOpenChange: (open: boolean) => void;
+}> = ({ mode, addTab, openTabs, menuOpen, onMenuOpenChange }) => {
+  const { t } = useTranslation();
+
+  const items: MenuProps["items"] = useMemo(() => {
+    const check = (kind: DockTab["kind"]) =>
+      hasOpenKind(openTabs, kind) ? <Check size={14} /> : undefined;
+    const next: NonNullable<MenuProps["items"]> = [];
+    if (addTab.onOpenWorkspace) {
+      next.push({
+        key: "workspace",
+        label: t("chat.openWorkspace", "工作区"),
+        icon: <FolderOpen size={14} />,
+        disabled: addTab.workspaceDisabled,
+        title: addTab.workspaceDisabled
+          ? addTab.workspaceDisabledHint
+          : undefined,
+        extra: check("workspace"),
+      });
+    }
+    if (addTab.onOpenFiles) {
+      next.push({
+        key: "files",
+        label: t("chat.dockFileList", "文件变更"),
+        icon: <FilePen size={14} />,
+        extra: check("files"),
+      });
+    }
+    if (addTab.onOpenBrowser) {
+      next.push({
+        key: "browser",
+        label: t("chat.remoteBrowserTitle", "远程浏览器"),
+        icon: <Globe size={14} />,
+        extra: check("browser"),
+      });
+    }
+    if (addTab.onOpenTerminal) {
+      next.push({
+        key: "terminal",
+        label: t("chat.dockTerminalTitle", "终端"),
+        icon: <Terminal size={14} />,
+        extra: check("terminal"),
+      });
+    }
+    return next;
+  }, [addTab, openTabs, t]);
+
+  const onClick = useCallback<NonNullable<MenuProps["onClick"]>>(
+    ({ key }) => {
+      const openers: Record<AddTabKey, (() => void) | undefined> = {
+        workspace: addTab.onOpenWorkspace,
+        files: addTab.onOpenFiles,
+        browser: addTab.onOpenBrowser,
+        terminal: addTab.onOpenTerminal,
+      };
+      openers[key as AddTabKey]?.();
+    },
+    [addTab],
+  );
+
+  if (!items?.length) return null;
+
+  const label = t("chat.dockAddTab", "添加面板");
+
+  return (
+    <Dropdown
+      menu={{ items, onClick }}
+      trigger={["click"]}
+      placement="bottomLeft"
+      getPopupContainer={() => document.body}
+      open={menuOpen}
+      onOpenChange={onMenuOpenChange}
+      overlayStyle={
+        mode === "popup" ? { zIndex: CHAT_DOCK_POPUP_MENU_Z } : undefined
+      }
+    >
+      <Tooltip title={label}>
+        <button
+          type="button"
+          className={styles.dockTabAdd}
+          onPointerDown={(e) => e.stopPropagation()}
+          aria-label={label}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+        >
+          <Plus size={14} strokeWidth={2} />
+        </button>
+      </Tooltip>
+    </Dropdown>
+  );
+};
 
 /**
  * Tabbed dock shell: workspace / file list / file viewers / browser / terminal.
@@ -72,6 +193,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   style,
   agentId,
   filePaths,
+  agentNameById,
   openTabs,
   activeTabId,
   onSelectTab,
@@ -81,9 +203,11 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   threadId = null,
   isStreamingTurn = false,
   surfaceVisible = true,
+  addTab,
 }) => {
   const { t } = useTranslation();
   const currentUser = useCurrentUser();
+  const [addTabMenuOpen, setAddTabMenuOpen] = useState(false);
   const [workspaceMounted, setWorkspaceMounted] = useState(
     openTabs.some((tab) => tab.kind === "workspace"),
   );
@@ -93,9 +217,9 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   const [terminalMounted, setTerminalMounted] = useState(
     openTabs.some((tab) => tab.kind === "terminal"),
   );
-  const [mountedFilePaths, setMountedFilePaths] = useState<string[]>(() =>
-    openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
-  );
+  const [mountedFileTabs, setMountedFileTabs] = useState<
+    Extract<DockTab, { kind: "file" }>[]
+  >(() => openTabs.filter((tab) => tab.kind === "file"));
   const [mountedKnowledgeTabs, setMountedKnowledgeTabs] = useState<
     Extract<DockTab, { kind: "knowledge" }>[]
   >(() => openTabs.filter((tab) => tab.kind === "knowledge"));
@@ -103,7 +227,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     () =>
       openTabs.filter((tab) => tab.kind === "toolUi").map((tab) => tab.callId),
   );
-  const [fileActionsByPath, setFileActionsByPath] = useState<
+  const [fileActionsById, setFileActionsById] = useState<
     Record<string, ReactNode>
   >({});
   const [knowledgeActionsById, setKnowledgeActionsById] = useState<
@@ -124,8 +248,13 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     setWorkspaceMounted(hasWorkspace);
     setBrowserMounted(hasBrowser);
     setTerminalMounted(hasTerminal);
-    const openFilePaths = new Set(
-      openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
+    const openFileById = new Map(
+      openTabs
+        .filter(
+          (tab): tab is Extract<DockTab, { kind: "file" }> =>
+            tab.kind === "file",
+        )
+        .map((tab) => [tab.id, tab]),
     );
     const openKnowledgeById = new Map(
       openTabs
@@ -138,12 +267,15 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     const openToolUiCallIds = new Set(
       openTabs.filter((tab) => tab.kind === "toolUi").map((tab) => tab.callId),
     );
-    setMountedFilePaths((prev) => {
-      const next = prev.filter((path) => openFilePaths.has(path));
-      let changed = next.length !== prev.length;
-      for (const path of openFilePaths) {
-        if (!next.includes(path)) {
-          next.push(path);
+    setMountedFileTabs((prev) => {
+      const next = prev
+        .filter((tab) => openFileById.has(tab.id))
+        .map((tab) => openFileById.get(tab.id) ?? tab);
+      let changed =
+        next.length !== prev.length || next.some((tab, i) => tab !== prev[i]);
+      for (const tab of openFileById.values()) {
+        if (!next.some((row) => row.id === tab.id)) {
+          next.push(tab);
           changed = true;
         }
       }
@@ -174,15 +306,15 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
       }
       return changed ? next : prev;
     });
-    setFileActionsByPath((prev) => {
+    setFileActionsById((prev) => {
       let changed = false;
       const next: Record<string, ReactNode> = {};
-      for (const path of Object.keys(prev)) {
-        if (openFilePaths.has(path)) {
-          next[path] = prev[path];
+      for (const id of Object.keys(prev)) {
+        if (openFileById.has(id)) {
+          next[id] = prev[id];
         } else {
           changed = true;
-          delete fileActionsHandlersRef.current[path];
+          delete fileActionsHandlersRef.current[id];
         }
       }
       return changed ? next : prev;
@@ -206,22 +338,22 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     browserRefreshRef.current = refresh;
   }, []);
 
-  const getFileActionsHandler = useCallback((path: string) => {
-    const existing = fileActionsHandlersRef.current[path];
+  const getFileActionsHandler = useCallback((tabId: string) => {
+    const existing = fileActionsHandlersRef.current[tabId];
     if (existing) return existing;
     const handler = (actions: ReactNode | null) => {
-      setFileActionsByPath((prev) => {
+      setFileActionsById((prev) => {
         if (actions == null) {
-          if (!(path in prev)) return prev;
+          if (!(tabId in prev)) return prev;
           const next = { ...prev };
-          delete next[path];
+          delete next[tabId];
           return next;
         }
-        if (prev[path] === actions) return prev;
-        return { ...prev, [path]: actions };
+        if (prev[tabId] === actions) return prev;
+        return { ...prev, [tabId]: actions };
       });
     };
-    fileActionsHandlersRef.current[path] = handler;
+    fileActionsHandlersRef.current[tabId] = handler;
     return handler;
   }, []);
 
@@ -250,82 +382,108 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   const terminalVisible = surfaceVisible && activeTab?.kind === "terminal";
 
   const tabBar = (
-    <div className={styles.dockTabBar} role="tablist">
-      {openTabs.map((tab) => {
-        const selected = tab.id === (activeTab?.id ?? null);
-        const label =
-          tab.kind === "files" ? (
-            <>
-              <FolderOpen size={16} strokeWidth={2} aria-hidden />
-              <span>{t("chat.dockFileList", "文件变更")}</span>
-            </>
-          ) : tab.kind === "workspace" ? (
-            <>
-              <FolderOpen size={16} strokeWidth={2} aria-hidden />
-              <span>{t("chat.openWorkspace", "工作区")}</span>
-            </>
-          ) : tab.kind === "browser" ? (
-            <>
-              <Globe size={16} strokeWidth={2} aria-hidden />
-              <span>{t("chat.remoteBrowserTitle", "远程浏览器")}</span>
-            </>
-          ) : tab.kind === "terminal" ? (
-            <>
-              <Terminal size={16} strokeWidth={2} aria-hidden />
-              <span>{t("chat.dockTerminalTitle", "终端")}</span>
-            </>
-          ) : tab.kind === "toolUi" ? (
-            <>
-              <Puzzle size={16} strokeWidth={2} aria-hidden />
-              <span title={tab.title ?? tab.toolName}>
-                {tab.title ??
-                  tab.toolName ??
-                  t("chat.dockToolUiTitle", "Plugin tool")}
-              </span>
-            </>
-          ) : tab.kind === "knowledge" ? (
-            <>
-              <BookOpen size={16} strokeWidth={2} aria-hidden />
-              <span title={tab.citation.filename}>
-                {tab.citation.filename || t("chat.citationPreview")}
-              </span>
-            </>
-          ) : (
-            <>
-              <FilePen size={16} strokeWidth={2} aria-hidden />
-              <span title={tab.path}>{dockFileBasename(tab.path)}</span>
-            </>
+    <div className={styles.dockTabBar}>
+      <div className={styles.dockTabs} role="tablist">
+        {openTabs.map((tab) => {
+          const selected = tab.id === (activeTab?.id ?? null);
+          const label =
+            tab.kind === "files" ? (
+              <>
+                <FolderOpen size={16} strokeWidth={2} aria-hidden />
+                <span>{t("chat.dockFileList", "文件变更")}</span>
+              </>
+            ) : tab.kind === "workspace" ? (
+              <>
+                <FolderOpen size={16} strokeWidth={2} aria-hidden />
+                <span>{t("chat.openWorkspace", "工作区")}</span>
+              </>
+            ) : tab.kind === "browser" ? (
+              <>
+                <Globe size={16} strokeWidth={2} aria-hidden />
+                <span>{t("chat.remoteBrowserTitle", "远程浏览器")}</span>
+              </>
+            ) : tab.kind === "terminal" ? (
+              <>
+                <Terminal size={16} strokeWidth={2} aria-hidden />
+                <span>{t("chat.dockTerminalTitle", "终端")}</span>
+              </>
+            ) : tab.kind === "toolUi" ? (
+              <>
+                <Puzzle size={16} strokeWidth={2} aria-hidden />
+                <span title={tab.title ?? tab.toolName}>
+                  {tab.title ??
+                    tab.toolName ??
+                    t("chat.dockToolUiTitle", "Plugin tool")}
+                </span>
+              </>
+            ) : tab.kind === "knowledge" ? (
+              <>
+                <BookOpen size={16} strokeWidth={2} aria-hidden />
+                <span title={tab.citation.filename}>
+                  {tab.citation.filename || t("chat.citationPreview")}
+                </span>
+              </>
+            ) : (
+              <>
+                <FilePen size={16} strokeWidth={2} aria-hidden />
+                <span
+                  title={
+                    tab.agentId && tab.agentId !== agentId
+                      ? `${tab.path} · ${
+                          agentNameById?.[tab.agentId] || tab.agentId
+                        }`
+                      : tab.path
+                  }
+                >
+                  {dockFileBasename(tab.path)}
+                  {tab.agentId &&
+                  tab.agentId !== agentId &&
+                  (agentNameById?.[tab.agentId] || tab.agentId)
+                    ? ` · ${agentNameById?.[tab.agentId] || tab.agentId}`
+                    : ""}
+                </span>
+              </>
+            );
+          return (
+            <div
+              key={tab.id}
+              className={`${styles.dockTab} ${
+                selected ? styles.dockTabActive : ""
+              }`}
+              role="tab"
+              aria-selected={selected}
+            >
+              <button
+                type="button"
+                className={styles.dockTabLabel}
+                onClick={() => onSelectTab(tab.id)}
+              >
+                {label}
+              </button>
+              <button
+                type="button"
+                className={styles.dockTabClose}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCloseTab(tab.id);
+                }}
+                aria-label={t("common.close", "关闭")}
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
+            </div>
           );
-        return (
-          <div
-            key={tab.id}
-            className={`${styles.dockTab} ${
-              selected ? styles.dockTabActive : ""
-            }`}
-            role="tab"
-            aria-selected={selected}
-          >
-            <button
-              type="button"
-              className={styles.dockTabLabel}
-              onClick={() => onSelectTab(tab.id)}
-            >
-              {label}
-            </button>
-            <button
-              type="button"
-              className={styles.dockTabClose}
-              onClick={(e) => {
-                e.stopPropagation();
-                onCloseTab(tab.id);
-              }}
-              aria-label={t("common.close", "关闭")}
-            >
-              <X size={12} strokeWidth={2} />
-            </button>
-          </div>
-        );
-      })}
+        })}
+      </div>
+      {addTab ? (
+        <DockAddTabButton
+          mode={mode}
+          addTab={addTab}
+          openTabs={openTabs}
+          menuOpen={addTabMenuOpen}
+          onMenuOpenChange={setAddTabMenuOpen}
+        />
+      ) : null}
     </div>
   );
 
@@ -345,13 +503,13 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
       );
     }
     if (activeTab?.kind === "file") {
-      return fileActionsByPath[activeTab.path] ?? null;
+      return fileActionsById[activeTab.id] ?? null;
     }
     if (activeTab?.kind === "knowledge") {
       return knowledgeActionsById[activeTab.id] ?? null;
     }
     return null;
-  }, [activeTab, fileActionsByPath, knowledgeActionsById, t]);
+  }, [activeTab, fileActionsById, knowledgeActionsById, t]);
 
   return (
     <ChatDockPanelShell
@@ -361,6 +519,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
       style={style}
       title={tabBar}
       toolbarActions={toolbarActions}
+      overlayMenuOpen={addTabMenuOpen}
     >
       <div className={styles.dockTabBodies}>
         {openTabs.some((tab) => tab.kind === "files") && (
@@ -374,25 +533,27 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             <ChatDockFileList
               agentId={agentId}
               filePaths={filePaths}
+              agentNameById={agentNameById}
               onOpenFile={onOpenFile}
             />
           </div>
         )}
 
-        {mountedFilePaths.map((path) => {
+        {mountedFileTabs.map((tab) => {
           const isActive =
-            activeTab?.kind === "file" && activeTab.path === path;
+            activeTab?.kind === "file" && activeTab.id === tab.id;
+          const fileAgent = tab.agentId || agentId;
           return (
             <div
-              key={path}
+              key={tab.id}
               className={styles.dockTabBody}
               hidden={!isActive}
               style={{ display: isActive ? "flex" : "none" }}
             >
               <FilePanelContent
-                agentId={agentId}
-                filePath={path}
-                onActionsChange={getFileActionsHandler(path)}
+                agentId={fileAgent}
+                filePath={tab.path}
+                onActionsChange={getFileActionsHandler(tab.id)}
               />
             </div>
           );

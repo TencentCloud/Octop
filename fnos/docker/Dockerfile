@@ -84,7 +84,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # 安装项目 + desktop 附加组件（Playwright Chromium 不预装，控制台可按需下载）
 # UV_INDEX_URL 首选阿里云镜像加速；UV_DEFAULT_INDEX 保留 PyPI 作为兜底，
-# 避免新发布的包（如 orcakit-harness-agent 0.9.16）尚未同步到镜像时构建失败。
+# 避免新发布的包（如 octop-harness 0.9.16）尚未同步到镜像时构建失败。
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv /app/.venv \
     && UV_DEFAULT_INDEX=https://pypi.org/simple \

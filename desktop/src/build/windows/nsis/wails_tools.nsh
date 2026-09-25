@@ -1,6 +1,7 @@
 # Shared NSIS helpers for the Octop desktop installer.
-# INFO_PRODUCTVERSION fallback for a local makensis without -D.
-# Release packaging passes -DINFO_PRODUCTVERSION from pyproject.toml.
+# INFO_PRODUCTVERSION: display string (pep440 OK, e.g. 1.0.2b1).
+# INFO_FILEVERSION: numeric X.X.X.X for VIProductVersion / VIFileVersion
+# (stamp_version.py four-part). Fallbacks below are for local makensis without -D.
 
 !include "x64.nsh"
 !include "WinVer.nsh"

@@ -8,47 +8,24 @@ from dataclasses import dataclass, field
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
+from octop.infra.utils.thread_artifact import (
+    MAX_THREAD_ARTIFACTS,
+    ThreadArtifact,
+    merge_thread_artifacts,
+    parse_thread_artifacts,
+    serialize_thread_artifacts,
+)
 
-MAX_THREAD_ARTIFACTS = 200
-
-
-def parse_thread_artifacts(raw: object) -> list[str]:
-    """Decode the threads.artifacts JSON column into unique non-empty paths."""
-    if raw is None:
-        return []
-    if isinstance(raw, (list, tuple)):
-        parsed: object = list(raw)
-    elif isinstance(raw, str):
-        text = raw.strip()
-        if not text:
-            return []
-        try:
-            parsed = json.loads(text)
-        except (ValueError, TypeError):
-            return []
-    else:
-        return []
-    if not isinstance(parsed, list):
-        return []
-    out: list[str] = []
-    seen: set[str] = set()
-    for item in parsed:
-        if not isinstance(item, str):
-            continue
-        path = item.strip()
-        if not path or path in seen:
-            continue
-        seen.add(path)
-        out.append(path)
-    return out
-
-
-def merge_thread_artifacts(existing: Sequence[str], incoming: Sequence[str]) -> list[str]:
-    """Append new paths, keeping insertion order and capping length."""
-    merged = parse_thread_artifacts([*existing, *incoming])
-    if len(merged) <= MAX_THREAD_ARTIFACTS:
-        return merged
-    return merged[-MAX_THREAD_ARTIFACTS:]
+__all__ = [
+    "MAX_THREAD_ARTIFACTS",
+    "ThreadArtifact",
+    "ThreadRepo",
+    "ThreadRow",
+    "clip_thread_title",
+    "merge_thread_artifacts",
+    "parse_thread_artifacts",
+    "serialize_thread_artifacts",
+]
 
 
 @dataclass(frozen=True)
@@ -66,9 +43,10 @@ class ThreadRow:
     model_ref: str | None = None
     reasoning_mode: str | None = None
     reasoning_effort: str | None = None
-    artifacts: tuple[str, ...] = field(default_factory=tuple)
+    artifacts: tuple[ThreadArtifact, ...] = field(default_factory=tuple)
     conversation_mode: str | None = None
     pending_plan_path: str | None = None
+    hitl_policy: str | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> ThreadRow:
@@ -84,6 +62,10 @@ class ThreadRow:
             pending_plan_path = r["pending_plan_path"]
         except (KeyError, IndexError):
             pending_plan_path = None
+        try:
+            hitl_policy = r["hitl_policy"]
+        except (KeyError, IndexError):
+            hitl_policy = None
         return cls(
             id=r["id"],
             thread_id=r["thread_id"],
@@ -101,6 +83,7 @@ class ThreadRow:
             artifacts=tuple(parse_thread_artifacts(raw_artifacts)),
             conversation_mode=str(conversation_mode) if conversation_mode else None,
             pending_plan_path=str(pending_plan_path) if pending_plan_path else None,
+            hitl_policy=str(hitl_policy) if hitl_policy else None,
         )
 
 
@@ -275,6 +258,7 @@ class ThreadRepo:
         reasoning_effort: str | None | object = ...,
         conversation_mode: str | None | object = ...,
         pending_plan_path: str | None | object = ...,
+        hitl_policy: str | None | object = ...,
     ) -> None:
         fields: list[str] = []
         params: list[object] = []
@@ -284,6 +268,7 @@ class ThreadRepo:
             ("reasoning_effort", reasoning_effort),
             ("conversation_mode", conversation_mode),
             ("pending_plan_path", pending_plan_path),
+            ("hitl_policy", hitl_policy),
         ):
             if value is ...:
                 continue
@@ -305,8 +290,19 @@ class ThreadRepo:
                 (now_ts(), thread_id),
             )
 
-    def append_artifacts(self, thread_id: str, paths: Sequence[str]) -> None:
-        incoming = [p.strip() for p in paths if isinstance(p, str) and p.strip()]
+    def append_artifacts(
+        self,
+        thread_id: str,
+        paths: Sequence[str],
+        *,
+        agent_id: str = "",
+    ) -> None:
+        aid = (agent_id or "").strip()
+        incoming = [
+            ThreadArtifact(path=p.strip(), agent_id=aid)
+            for p in paths
+            if isinstance(p, str) and p.strip()
+        ]
         if not incoming:
             return
         with self._db.transaction() as conn:
@@ -322,7 +318,10 @@ class ThreadRepo:
                 return
             conn.execute(
                 "UPDATE threads SET artifacts = ? WHERE thread_id = ?",
-                (json.dumps(merged, ensure_ascii=False), thread_id),
+                (
+                    json.dumps(serialize_thread_artifacts(merged), ensure_ascii=False),
+                    thread_id,
+                ),
             )
 
     def delete(self, thread_id: str) -> None:

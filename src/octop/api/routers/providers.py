@@ -96,6 +96,7 @@ class ProviderFetchModelsBody(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     extra_json: str | None = None
+    name: str | None = None
 
 
 def _is_codex_base_url(base_url: str | None) -> bool:
@@ -141,7 +142,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
 async def list_provider_presets(
     _: Any = Depends(current_user),
 ) -> list[dict[str, Any]]:
-    """Return built-in provider presets from harness-agent."""
+    """Return built-in provider presets from octop-harness."""
     return load_provider_presets()
 
 
@@ -347,6 +348,7 @@ async def admin_fetch_provider_models(
         api_key=api_key,
         extra_headers=provider_headers(draft) or None,
         locale=resolve_request_locale(request),
+        provider_name=(body.name or "").strip() or None,
     )
 
 

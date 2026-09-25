@@ -18,10 +18,12 @@ from octop.infra.agents.avatar import (
 )
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
+    apply_workspace_quick_prompts,
     parse_task_examples,
     read_workspace_manifest_task_examples,
     read_workspace_manifest_welcome,
     seed_expert_directory,
+    welcome_payload_from_manifest_data,
 )
 from octop.infra.agents.experts.publish import (
     PublishedExpertSnapshotMeta,
@@ -56,6 +58,7 @@ class PublishedExpertInstallOptions:
     workspace_patch: Any = None
     composer_copies: tuple[tuple[str, Any], ...] = ()
     composer_report: Any = None
+    quick_prompts: list[dict[str, Any]] | None = None
 
 
 def _snapshot_dir(services: Any, expert_id: str) -> Path:
@@ -159,6 +162,11 @@ def require_published_expert(services: Any, expert_id: str) -> PublishedExpertRo
 
 def snapshot_welcome_message(snapshot_dir: Path) -> tuple[str, str]:
     return _manifest_welcome(_read_snapshot_manifest(snapshot_dir))
+
+
+def snapshot_welcome_payload(snapshot_dir: Path) -> dict[str, Any]:
+    """Welcome copy + quick-start cards from a published snapshot manifest."""
+    return welcome_payload_from_manifest_data(_read_snapshot_manifest(snapshot_dir))
 
 
 async def publish_agent_expert(
@@ -371,6 +379,8 @@ async def install_published_expert(
                 copies=options.composer_copies,
                 report=options.composer_report,
             )
+        if options.quick_prompts is not None:
+            await apply_workspace_quick_prompts(workspace, options.quick_prompts)
 
     created = await registry.create(
         AgentCreateSpec(

@@ -30,10 +30,13 @@ export interface HitlActionRequest {
   description?: string;
 }
 
+export type HitlRequestResolution = "approve" | "allow_tool" | "allow_all";
+
 export interface HitlRequestData {
   action_requests: HitlActionRequest[];
   review_configs?: Array<{ action_name: string; allowed_decisions: string[] }>;
   status?: "pending" | "approved" | "rejected";
+  resolution?: HitlRequestResolution;
   pending_id?: string;
 }
 
@@ -79,6 +82,13 @@ export interface ChatMessage {
   speakerAgentId?: string;
   /** Host wrap-up after members — never continue the dispatch bubble. */
   teamWrapup?: boolean;
+  /**
+   * Workspace paths written/edited in this turn. Stamped on the final
+   * (or last file-tool) assistant bubble so the edit-file card still
+   * shows when process tools are collapsed; full tool trail is also
+   * persisted for the process panel.
+   */
+  editedFiles?: string[];
 }
 
 /** Per-session state held in the chat store's module-scoped Map. */

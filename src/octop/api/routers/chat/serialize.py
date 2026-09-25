@@ -37,7 +37,7 @@ _THINKING_CAPTURE_RE = re.compile(
 
 # Matches the lightweight placeholder that ``MediaOffloadMiddleware`` writes
 # into LangGraph state for already-offloaded inline images / audio. Format
-# (see harness_agent.middleware.media_offload._placeholder_text_block):
+# (see octop_harness.middleware.media_offload._placeholder_text_block):
 #   [<btype> offloaded: sha=<short_sha> path=<path> size=<n>B mime=<m>;
 #   use read_file to retrieve bytes]
 # We strip these on history serialization because the original bytes are
@@ -547,7 +547,11 @@ def _enrich_history_tool_media(
     *,
     agent_id: str,
 ) -> list[dict[str, Any]]:
-    """Attach preview URLs for tool media without disk I/O."""
+    """Attach preview URLs for tool media without disk I/O.
+
+    Prefer each entry's ``agent_id`` (team speaker) so member tool media
+    resolves against the producer workspace, not the room host.
+    """
     from octop.infra.gateway.media.tool_media import enrich_tool_output_string_sync  # noqa: PLC0415
 
     enriched: list[dict[str, Any]] = []
@@ -556,6 +560,8 @@ def _enrich_history_tool_media(
         if not isinstance(content, list):
             enriched.append(entry)
             continue
+        owner = entry.get("agent_id")
+        media_agent = owner.strip() if isinstance(owner, str) and owner.strip() else agent_id
         blocks: list[Any] = []
         changed = False
         for block in content:
@@ -566,7 +572,7 @@ def _enrich_history_tool_media(
             if not isinstance(output, str) or not output.strip():
                 blocks.append(block)
                 continue
-            new_output = enrich_tool_output_string_sync(output, agent_id=agent_id)
+            new_output = enrich_tool_output_string_sync(output, agent_id=media_agent)
             if new_output != output:
                 blocks.append({**block, "output": new_output})
                 changed = True
@@ -946,6 +952,9 @@ def _serialize_history_message(
         entry: dict[str, Any] = {"role": "tool", "content": blocks}
         if mid:
             entry["id"] = mid
+        speaker = additional_kwargs.get("speaker_agent_id")
+        if isinstance(speaker, str) and speaker.strip():
+            entry["agent_id"] = speaker.strip()
         return _apply_history_timestamp(entry, msg, fallback_created_at)
 
     content = _msg_attr(msg, "content", "")
@@ -1010,6 +1019,11 @@ def _serialize_history_message(
         entry["agent_id"] = speaker.strip()
     if additional_kwargs.get("team_wrapup"):
         entry["team_wrapup"] = True
+    edited = additional_kwargs.get("edited_files")
+    if isinstance(edited, list):
+        cleaned = [path.strip() for path in edited if isinstance(path, str) and path.strip()]
+        if cleaned:
+            entry["edited_files"] = cleaned
     return _apply_history_timestamp(entry, msg, fallback_created_at)
 
 

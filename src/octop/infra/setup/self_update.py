@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 _PACKAGE_NAME = "octop"
 _PYPI_URL = f"https://pypi.org/pypi/{_PACKAGE_NAME}/json"
 _GREEN_PACKAGES_ENV = "OCTOP_GREEN_PACKAGES"
+_STASH_SUFFIX = ".octop-old"
 
 _MIRRORS = [
     "https://mirrors.cloud.tencent.com/pypi/simple",
@@ -429,6 +430,67 @@ def build_upgrade_command(
     return cmd
 
 
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+def stash_console_scripts(python_exe: str) -> list[tuple[Path, Path]]:
+    """Rename the ``octop`` launchers next to *python_exe* out of the way.
+
+    Windows refuses to delete or overwrite the executable backing a running
+    process (``os error 32``), which makes pip and uv fail while rewriting
+    ``Scripts/octop.exe`` during ``octop update``. Renaming the file is still
+    permitted, so the installer gets a free path and the running process keeps
+    its handle. Returns the ``(original, stash)`` pairs that were moved.
+    """
+    if not _is_windows():
+        return []
+    script_dir = Path(python_exe).parent
+    _purge_stale_stashes(script_dir)
+    moved: list[tuple[Path, Path]] = []
+    for script in sorted(script_dir.glob(f"{_PACKAGE_NAME}*.exe")):
+        stash = script.with_name(script.name + _STASH_SUFFIX)
+        try:
+            script.replace(stash)
+        except OSError as exc:
+            logger.warning("could not move %s aside: %s", script, exc)
+            continue
+        moved.append((script, stash))
+    return moved
+
+
+def restore_console_scripts(moved: list[tuple[Path, Path]]) -> None:
+    """Put stashed launchers back after a failed upgrade."""
+    for original, stash in moved:
+        if original.exists() or not stash.exists():
+            continue
+        try:
+            stash.replace(original)
+        except OSError as exc:
+            logger.warning("could not restore %s: %s", original, exc)
+
+
+def discard_console_script_stashes(moved: list[tuple[Path, Path]]) -> None:
+    """Drop stashes after a successful upgrade, ignoring still-locked files."""
+    for _original, stash in moved:
+        _unlink_quietly(stash)
+
+
+def _purge_stale_stashes(script_dir: Path) -> None:
+    for stale in script_dir.glob(f"*{_STASH_SUFFIX}"):
+        _unlink_quietly(stale)
+
+
+def _unlink_quietly(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        # Still held by the running process — the next upgrade purges it.
+        logger.debug("could not remove %s: %s", path, exc)
+
+
 def get_installed_version(python_exe: str) -> str | None:
     try:
         result = subprocess.run(
@@ -521,7 +583,7 @@ def _run_fpk_upgrade(
     安装到该打包目录本身，重启服务后即加载新版，升级真正生效。
 
     与普通部署不同，FPK 首次在线升级需要从零解析并下载完整依赖树
-    （octop 依赖 orcakit-harness-agent 等大包），故超时显著放宽；且某镜像
+    （octop 依赖 octop-harness 等大包），故超时显著放宽；且某镜像
     可能滞后（装到同版本旧版），此时继续尝试下一个镜像，最后以 pypi.org
     兜底，避免「镜像有货但版本不新」导致升级假成功。
     """
@@ -553,7 +615,7 @@ def _run_fpk_upgrade(
         return result.returncode, snippet
 
     python_exe = sys.executable
-    installer = detect_installer()  # uv 优先：pip 对 orcakit-harness-agent[all] 依赖树解析会卡死
+    installer = detect_installer()  # uv 优先：pip 对 octop-harness[all] 依赖树解析会卡死
 
     def _build_cmd(index_url: str = "") -> list[str]:
         requirement = package_requirement(version)
@@ -631,6 +693,33 @@ def run_upgrade(
             allow_prerelease=allow_prerelease,
             version=version,
         )
+
+    # Windows keeps the running octop.exe locked (os error 32), so pip / uv
+    # cannot rewrite the console script. Renaming it is still allowed, so move
+    # the launchers aside first and restore them if the upgrade fails.
+    stashed = stash_console_scripts(resolve_venv_python())
+    try:
+        result = _run_managed_upgrade(
+            verbose=verbose,
+            allow_prerelease=allow_prerelease,
+            version=version,
+        )
+    except BaseException:
+        restore_console_scripts(stashed)
+        raise
+    if result.success:
+        discard_console_script_stashes(stashed)
+    else:
+        restore_console_scripts(stashed)
+    return result
+
+
+def _run_managed_upgrade(
+    *,
+    verbose: bool = False,
+    allow_prerelease: bool = False,
+    version: str | None = None,
+) -> UpgradeResult:
     installer = detect_installer()
     venv_python = resolve_venv_python()
     local_ver = get_local_version()

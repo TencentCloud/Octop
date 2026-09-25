@@ -6,7 +6,7 @@ import json
 import random
 from typing import Any
 
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 _WINS = (
     (0, 1, 2),

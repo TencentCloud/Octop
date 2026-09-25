@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from harness_agent.slash import SlashCommand, SlashSink
+from octop_harness.slash import SlashCommand, SlashSink
 
 from octop.i18n import tr as full_tr
 from octop.i18n.domains.slash import tr
@@ -50,7 +50,7 @@ async def cmd_memory(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink:
     lang = lang_of(ctx)
     # External IM user_id is the agent owner's persistence identity, NOT proof
     # that the sender is the owner. Do not authorize maintenance with that id.
-    if ctx.channel_type not in {ThreadRegistry.CHANNEL_DASHBOARD, ThreadRegistry.CHANNEL_CLI}:
+    if not ThreadRegistry.is_virtual_channel(ctx.channel_type):
         await sink.text(tr("memory.trusted_chat", lang))
         return
     user = ctx.user_repo.get(ctx.user_id) if ctx.user_repo is not None else None

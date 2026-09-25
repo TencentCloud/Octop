@@ -197,7 +197,10 @@ function messageUsesFileTool(msg: ChatMessage): boolean {
 
 /** True when this assistant turn invoked a workspace file write/edit tool. */
 export function turnUsedFileTool(split: AssistantTurnSplit): boolean {
-  return (split?.tools ?? []).some((msg) => messageUsesFileTool(msg));
+  if ((split?.tools ?? []).some((msg) => messageUsesFileTool(msg))) {
+    return true;
+  }
+  return (split?.answerMessage?.editedFiles?.length ?? 0) > 0;
 }
 
 /** Index of the most recent assistant turn that invoked a browser tool, or -1. */

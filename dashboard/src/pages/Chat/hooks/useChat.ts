@@ -10,6 +10,8 @@ import type {
   TokenUsage,
   CallEntry,
 } from "../../../api/types";
+import type { HitlSessionPolicy } from "../../../api/types/hitl";
+import type { ThreadArtifact } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
 import { shouldBlockHistoryRefresh } from "./wsResumeGate";
 import {
@@ -472,7 +474,14 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
         entry.speaker_agent_id.trim()
           ? entry.speaker_agent_id.trim()
           : undefined,
-      teamWrapup: Boolean((entry as { team_wrapup?: boolean }).team_wrapup),
+      teamWrapup: Boolean(entry.team_wrapup),
+      editedFiles: Array.isArray(entry.edited_files)
+        ? entry.edited_files
+            .filter(
+              (p): p is string => typeof p === "string" && p.trim().length > 0,
+            )
+            .map((p) => p.trim())
+        : undefined,
     };
   });
 
@@ -660,6 +669,7 @@ export function convertHistoryMessages(
     error_code?: string;
     agent_id?: string;
     team_wrapup?: boolean;
+    edited_files?: string[];
   }>,
   agentId?: string,
 ): ChatMessage[] {
@@ -687,6 +697,11 @@ export function convertHistoryMessages(
           ? message.agent_id.trim()
           : undefined,
       team_wrapup: message.team_wrapup === true,
+      edited_files: Array.isArray(message.edited_files)
+        ? message.edited_files.filter(
+            (p): p is string => typeof p === "string" && p.trim().length > 0,
+          )
+        : undefined,
     };
   });
   const converted = convertCallEntries(entries).filter(
@@ -707,16 +722,17 @@ async function loadThreadHistory(
   nextOffset: number;
   nextCursor: string | null;
   turnActive: boolean;
-  artifacts: string[];
+  artifacts: ThreadArtifact[];
   projectionLoading: boolean;
   retryAfterMs: number;
 }> {
-  const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE } = await import(
-    "../../../api/modules/octopThreads"
-  );
-  const { syncSessionArtifacts, syncSessionConversationMode } = await import(
-    "./useSessions"
-  );
+  const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE, normalizeThreadArtifacts } =
+    await import("../../../api/modules/octopThreads");
+  const {
+    syncSessionArtifacts,
+    syncSessionConversationMode,
+    syncSessionHitlPolicy,
+  } = await import("./useSessions");
   const limit = params.limit ?? CHAT_HISTORY_PAGE_SIZE;
   const offset = params.offset ?? 0;
   const history = await octopThreadsApi.history(agentId, threadId, {
@@ -724,12 +740,11 @@ async function loadThreadHistory(
     offset,
     cursor: params.cursor,
   });
-  const artifacts = Array.isArray(history.artifacts)
-    ? history.artifacts.filter(
-        (path): path is string =>
-          typeof path === "string" && path.trim().length > 0,
-      )
-    : [];
+  const artifacts = normalizeThreadArtifacts(
+    history.artifacts,
+    agentId,
+    history.artifact_refs,
+  );
   if (offset === 0) {
     syncSessionArtifacts(threadId, artifacts);
     syncSessionConversationMode(
@@ -737,6 +752,7 @@ async function loadThreadHistory(
       history.conversation_mode,
       history.pending_plan_path,
     );
+    syncSessionHitlPolicy(threadId, history.hitl_policy);
     chatStore.setPendingPlanPath(threadId, history.pending_plan_path);
   }
   const messages = injectPendingHitlMessage(
@@ -855,6 +871,7 @@ export function useChat(
       reasoningMode?: "auto" | "enabled" | "disabled",
       reasoningEffort?: string | null,
       conversationMode?: "ask" | "plan" | "craft" | null,
+      hitlPolicy?: HitlSessionPolicy | null,
     ) => {
       const key = storeKey || stableSessionId;
 
@@ -888,6 +905,7 @@ export function useChat(
         reasoningMode,
         reasoningEffort,
         conversationMode,
+        hitlPolicy,
       );
     },
     [stableSessionId],
@@ -1134,6 +1152,7 @@ export function useChat(
       decisions: Array<{ type: string; message?: string }>,
       storeKey?: string,
       dismissed?: boolean,
+      hitlPolicy?: HitlSessionPolicy,
     ) => {
       if (!agentId) return;
       const key = storeKey || stableSessionId;
@@ -1149,6 +1168,7 @@ export function useChat(
           void refreshHistory(threadId);
         },
         dismissed,
+        hitlPolicy,
       );
     },
     [agentId, stableSessionId, refreshHistory],
