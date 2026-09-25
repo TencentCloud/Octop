@@ -24,6 +24,7 @@ from octop.infra.gateway.history_backfill import HistoryBackfillQueue
 from octop.infra.gateway.process import media_backend_for_agent
 from octop.infra.gateway.process.processor import GlobalProcessor
 from octop.infra.gateway.process.response_mode import (
+    ChannelResponseMode,
     normalize_channel_response_mode,
     processor_for_response_mode,
     qq_channel_response_mode,
@@ -217,6 +218,11 @@ class Gateway:
         }
 
     async def boot(self) -> None:
+        from octop.infra.gateway.process.channel_thinking import (
+            install_channel_thinking_clean,
+        )
+
+        install_channel_thinking_clean()
         self._processor = GlobalProcessor(
             agent_manager=self._agent_manager,
             thread_registry=self._thread_registry,
@@ -537,8 +543,33 @@ class Gateway:
         subject: ChannelSubject,
         text: str,
     ) -> None:
-        """Proactively push text to an IM user via ChannelManager."""
-        await self._require_channel_manager().push_text(channel_id, subject, text)
+        """Proactively push text to an IM user via ChannelManager.
+
+        Applies the target channel's ``show_thinking`` flag so embedded
+        ``<think>`` / ``<thinking>`` tags never leak past the display switch
+        (team wrap-up and other push paths bypass the inbound event loop).
+        """
+        from octop.infra.utils.llm_text import prepare_channel_text
+
+        manager = self._require_channel_manager()
+        channel = manager.get_channel(channel_id)
+        # Match ChannelConstraints defaults when the live channel is missing.
+        show_thinking = False
+        thinking_template = "💭 Thinking: {content}"
+        if channel is not None:
+            constraints = channel.constraints
+            show_thinking = bool(constraints.show_thinking)
+            thinking_template = str(
+                getattr(constraints, "thinking_template", thinking_template) or thinking_template
+            )
+        cleaned = prepare_channel_text(
+            text,
+            show_thinking=show_thinking,
+            thinking_template=thinking_template,
+        )
+        if not cleaned:
+            return
+        await manager.push_text(channel_id, subject, cleaned)
 
     async def probe_channel(
         self, channel_id: str, *, locale: Locale = DEFAULT_LOCALE
@@ -653,11 +684,22 @@ class Gateway:
         if not self._channel_manager or not self._processor:
             return
         config = self._config_from_row(row)
-        response_mode = (
-            qq_channel_response_mode(config)
-            if row.kind == "qq"
-            else normalize_channel_response_mode(config.get("response_mode"))
-        )
+        from octop.infra.agents.teams.service import is_team_agent  # noqa: PLC0415
+
+        team_host = False
+        if self._agent_manager is not None:
+            try:
+                team_host = is_team_agent(self._agent_manager.get_row(row.agent_id))
+            except Exception:
+                team_host = False
+        if team_host:
+            # Team IM UX needs the host dispatch narration before ask_agent;
+            # invoke-mode collapse would drop it. Force stream for team hosts.
+            response_mode: ChannelResponseMode = "stream"
+        elif row.kind == "qq":
+            response_mode = qq_channel_response_mode(config)
+        else:
+            response_mode = normalize_channel_response_mode(config.get("response_mode"))
         processor = processor_for_response_mode(self._processor, response_mode)
         manager = self._require_channel_manager()
         await manager.add_channel(

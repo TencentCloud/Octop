@@ -92,7 +92,7 @@ describe("skill package backend gates", () => {
     ).toBe(false);
   });
 
-  it("blocks outbound acp_runner under directory sandbox", () => {
+  it("locks ACP runner UI under directory sandbox", () => {
     expect(
       blocksAcpOutboundFromConfig({
         backend: { type: "local_shell", root_dir: "/", virtual_mode: true },

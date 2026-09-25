@@ -2003,13 +2003,14 @@ class AgentManager:
         *,
         workspace_dir: Path | None = None,
     ) -> bool:
-        """True when outbound ``acp_runner`` would bypass the directory sandbox.
+        """True when a scoped directory sandbox is active for this backend.
 
-        Host-rooted local backends (``/``, ``\\``, or empty) are allowed. The
-        agent workspace root is also allowed — Windows rewrites ``root_dir='/'``
-        to the workspace, and that is still a host-local backend, not a project
-        jail. Scoped project roots and non-local backends are blocked. Inbound
-        ``octop acp`` is unaffected.
+        Used by the dashboard ACP page (via the mirrored TS helper) to lock
+        runner enable/edit while viewing a jailed agent. Host-rooted local
+        backends (``/``, ``\\``, or empty) and the agent workspace root are
+        not treated as a jail. Non-local backends count as blocked for that
+        UI. Inbound ``octop acp`` and the per-agent ``acp_runner`` tool toggle
+        are unaffected.
         """
         if not isinstance(spec, dict):
             return True
@@ -3257,13 +3258,7 @@ class AgentManager:
             middleware=agent_middleware or None,
             bootstrap_enabled=not team_host,
             acp_runners=acp_config.runners,
-            acp_delegate_enabled=(
-                bool(acp_raw.get("tool_enabled", False))
-                and not self._backend_blocks_acp_outbound(
-                    backend,
-                    workspace_dir=workspace_dir,
-                )
-            ),
+            acp_delegate_enabled=bool(acp_raw.get("tool_enabled", False)),
             skills_disabled=frozenset(skills_disabled_set(cfg) | plugin_skills_disabled),
             skills_dir=skill_dirs or None,
             default_timezone=self._config.default_timezone,

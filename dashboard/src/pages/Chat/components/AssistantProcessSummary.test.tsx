@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantTurnSplit } from "../utils/messageContent";
+import type { ChatMessage } from "../hooks/useChat";
 import AssistantProcessSummary from "./AssistantProcessSummary";
 import ChatTitleBar from "./ChatTitleBar";
 
@@ -16,6 +17,23 @@ function thinkingSplit(content = "Thinking content"): AssistantTurnSplit {
     tools: [],
     thinkings: [item],
     processSteps: [{ kind: "thinking", item }],
+    answerMessage: null,
+  };
+}
+
+function runningToolSplit(name = "read_file"): AssistantTurnSplit {
+  const message: ChatMessage = {
+    id: "tool-1",
+    role: "assistant",
+    content: "",
+    status: "streaming",
+    timestamp: Date.now(),
+    toolData: { name, arguments: "{}" },
+  };
+  return {
+    tools: [message],
+    thinkings: [],
+    processSteps: [{ kind: "tool", message }],
     answerMessage: null,
   };
 }
@@ -50,6 +68,35 @@ describe("thinking display preference", () => {
     expect(screen.getByText("Thinking content")).toBeInTheDocument();
     rerender(<AssistantProcessSummary split={split} isStreaming={false} />);
     expect(screen.queryByText("Thinking content")).not.toBeInTheDocument();
+  });
+
+  it("shows a live hint while a tool is running", () => {
+    render(<AssistantProcessSummary split={runningToolSplit()} isStreaming />);
+    expect(
+      screen.getByText(/正在调用 read_file|Calling read_file/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button")).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("shows an organizing hint between tool rounds", () => {
+    const message: ChatMessage = {
+      id: "tool-done",
+      role: "assistant",
+      content: "",
+      status: "done",
+      timestamp: Date.now(),
+      toolData: { name: "read_file", arguments: "{}", output: "ok" },
+    };
+    const split: AssistantTurnSplit = {
+      tools: [message],
+      thinkings: [],
+      processSteps: [{ kind: "tool", message }],
+      answerMessage: null,
+    };
+    render(<AssistantProcessSummary split={split} isStreaming />);
+    expect(
+      screen.getByText(/整理结果中|Organizing results/),
+    ).toBeInTheDocument();
   });
 
   it("saves the menu choice and applies it to mounted panels and later visits", async () => {

@@ -61,7 +61,7 @@ export function ACPCard({
     .join(" ");
 
   const renderStatusBadge = () => {
-    if (interactionDisabled) {
+    if (interactionDisabled && !config.enabled) {
       return (
         <span className={`${styles.statusBadge} ${styles.statusInactive}`}>
           <Plug size={14} />
@@ -88,7 +88,7 @@ export function ACPCard({
   return (
     <div
       className={cardClass}
-      onClick={onClick}
+      onClick={interactionDisabled ? undefined : onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >

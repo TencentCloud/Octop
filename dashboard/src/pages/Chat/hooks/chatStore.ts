@@ -150,6 +150,7 @@ function sealInFlightAssistantMessages(state: SessionStreamState): void {
   state.messages = state.messages.map((m) =>
     m.status === "streaming" ? { ...m, status: "done" as const } : m,
   );
+  clearAllLiveSpeakers(state);
 }
 
 // ── Pending prefill text ──────────────────────────────────────────────────
@@ -253,6 +254,7 @@ const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
   historyNextOffset: 0,
   historyHydrated: false,
   pendingPlanPath: null,
+  liveSpeakers: [] as string[],
 });
 
 const sessionStates = new Map<string, SessionStreamState>();
@@ -384,7 +386,36 @@ function buildSnapshot(state: SessionStreamState): SessionSnapshot {
     historyNextCursor: state.historyNextCursor,
     historyHydrated: state.historyHydrated,
     pendingPlanPath: state.pendingPlanPath ?? null,
+    liveSpeakers: [...state.liveSpeakers].sort(),
   };
+}
+
+function speakerLiveKey(speaker?: string): string {
+  return (speaker || "").trim();
+}
+
+/** Mark a speaker as still generating (survives tool gaps until ``done``). */
+function markSpeakerLive(state: SessionStreamState, speaker?: string): void {
+  const key = speakerLiveKey(speaker);
+  state.liveSpeakers.add(key);
+  // Unlabeled host frames also light up the room id so stamped host groups match.
+  if (!key) {
+    const host = state.roomAgentId?.trim();
+    if (host) state.liveSpeakers.add(host);
+  }
+}
+
+function clearSpeakerLive(state: SessionStreamState, speaker?: string): void {
+  const key = speakerLiveKey(speaker);
+  state.liveSpeakers.delete(key);
+  if (!key) {
+    const host = state.roomAgentId?.trim();
+    if (host) state.liveSpeakers.delete(host);
+  }
+}
+
+function clearAllLiveSpeakers(state: SessionStreamState): void {
+  state.liveSpeakers.clear();
 }
 
 function getOrCreate(sessionId: string): SessionStreamState {
@@ -411,6 +442,7 @@ function getOrCreate(sessionId: string): SessionStreamState {
       _snapshot: EMPTY_SNAPSHOT,
       roomAgentId: undefined,
       isTeamRoom: false,
+      liveSpeakers: new Set(),
     };
     sessionStates.set(sessionId, state);
   }
@@ -430,12 +462,15 @@ function notify(state: SessionStreamState) {
 }
 
 function beginStream(state: SessionStreamState, sessionId: string): void {
+  clearAllLiveSpeakers(state);
   state.thinkingStartedAt = Date.now();
   state.isStreaming = true;
   touchStreamActivity(sessionId);
 }
 
 function clearStreamingFlags(state: SessionStreamState): void {
+  // Do not clear liveSpeakers — team members may keep generating after the
+  // host turn unlocks the composer; process panels key off liveSpeakers.
   state.isStreaming = false;
   state.thinkingStartedAt = null;
 }
@@ -744,6 +779,7 @@ export function clearMessages(sessionId: string) {
   if (alreadyEmpty) return;
   state.messages = [];
   clearStreamingFlags(state);
+  clearAllLiveSpeakers(state);
   state.runUsage = null;
   usageSamplesByState.delete(state);
   state.streamMsg = "";
@@ -1104,6 +1140,7 @@ function handleHarnessChunk(
   }
   switch (chunk.type) {
     case "token":
+      markSpeakerLive(state, speaker);
       appendStreamingToken(
         state,
         chunk.content,
@@ -1113,15 +1150,19 @@ function handleHarnessChunk(
       );
       break;
     case "reasoning":
+      markSpeakerLive(state, speaker);
       appendStreamingReasoning(state, chunk.content, speaker);
       break;
     case "usage":
       applyUsageChunk(state, chunk);
       break;
     case "tool_call_chunk":
+      markSpeakerLive(state, speaker);
       upsertToolCall(state, chunk, sessionId, speaker);
       break;
     case "tool_result":
+      // Keep the speaker live across the tool→next-token gap.
+      markSpeakerLive(state, speaker);
       closeToolCall(state, chunk.messages, sessionId, speaker);
       break;
     case "done":
@@ -1134,6 +1175,7 @@ function handleHarnessChunk(
       }
       if (Boolean(chunk.team_wrapup)) {
         finalizeWrapupMessages(state, speaker);
+        clearSpeakerLive(state, speaker);
         break;
       }
       finalizeStreamingMessages(
@@ -1141,6 +1183,7 @@ function handleHarnessChunk(
         speaker,
         sessionHostAgentId(state, sessionId),
       );
+      clearSpeakerLive(state, speaker);
       // Host done always frees the composer. Member bubbles may still stream.
       if (!speaker || (!hasStreamingMessages(state) && state.isStreaming)) {
         clearStreamingFlags(state);
@@ -2054,6 +2097,7 @@ function handleHitlRequired(
 ): void {
   finalizeStreamingMessages(state);
   clearStreamingFlags(state);
+  clearAllLiveSpeakers(state);
   state.messages = [
     ...state.messages,
     {

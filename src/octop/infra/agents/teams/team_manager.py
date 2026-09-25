@@ -160,6 +160,12 @@ class TeamManager:
                     call.source_session_key, call.to_agent_id
                 )
         self._track_job(call, begin=True)
+        if group and call.source_thread_id:
+            await self._notify_channel_dispatched(
+                str(call.source_thread_id),
+                call.to_agent_id,
+                uid,
+            )
         if thread_id and session_key and uid is not None:
             parts = session_key.split(":", 3)
             channel_type = parts[1] if len(parts) >= 2 else "dashboard"
@@ -280,7 +286,7 @@ class TeamManager:
             else (event.reply_text or "(empty)")
         )
         if room:
-            await self._push_room_to_channels(room, speaker, text, prefix_speaker=False)
+            await self._push_room_to_channels(room, speaker, text, wrapup=True)
         live_ws = self._take_live_host_reply(room) and event.status == "done"
         if live_ws:
             if room:
@@ -929,6 +935,7 @@ class TeamManager:
         text: str,
         *,
         prefix_speaker: bool = True,
+        wrapup: bool = False,
     ) -> None:
         """Push a finished room bubble to IM sessions bound to this thread.
 
@@ -940,15 +947,17 @@ class TeamManager:
         if not thread_id or not body or self._gateway is None:
             return
         for session in self._thread_registry.im_sessions_for_thread(thread_id):
-            outbound = (
-                self._channel_line(
-                    self._locale_for(int(session.user_id)),
+            locale = self._locale_for(int(session.user_id))
+            if wrapup:
+                outbound = tr("teams.channel_wrapup", locale, text=body)
+            elif prefix_speaker:
+                outbound = self._channel_line(
+                    locale,
                     self._display_name(speaker_id),
                     body,
                 )
-                if prefix_speaker
-                else body
-            )
+            else:
+                outbound = body
             try:
                 await self._push_session_channel(session, outbound)
             except Exception:
@@ -956,6 +965,30 @@ class TeamManager:
                     "failed to push team speech to channel thread=%s speaker=%s",
                     thread_id,
                     speaker_id,
+                    exc_info=True,
+                )
+
+    async def _notify_channel_dispatched(
+        self,
+        thread_id: str,
+        member_id: str,
+        user_id: int | None,
+    ) -> None:
+        """Tell IM users a member was assigned — fills the silence before results."""
+        body_thread = (thread_id or "").strip()
+        if not body_thread or self._gateway is None:
+            return
+        name = self._display_name(member_id)
+        for session in self._thread_registry.im_sessions_for_thread(body_thread):
+            locale = self._locale_for(int(session.user_id))
+            text = tr("teams.channel_dispatched", locale, name=name)
+            try:
+                await self._push_session_channel(session, text)
+            except Exception:
+                logger.warning(
+                    "failed to push team dispatch notice thread=%s member=%s",
+                    body_thread,
+                    member_id,
                     exc_info=True,
                 )
 

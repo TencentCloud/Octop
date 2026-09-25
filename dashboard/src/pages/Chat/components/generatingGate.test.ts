@@ -17,6 +17,15 @@ describe("shouldShowGenerating", () => {
       false,
     );
   });
+
+  it("stays true for late team members after the host unlocks the composer", () => {
+    expect(
+      shouldShowGenerating({
+        isStreaming: false,
+        hasLiveSpeakers: true,
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("chatGeneratingPhase", () => {
@@ -27,7 +36,11 @@ describe("chatGeneratingPhase", () => {
         loading: false,
         lastMessageRole: "user",
       }),
-    ).toEqual({ showFooter: true, showElapsed: true });
+    ).toEqual({
+      showFooter: true,
+      showElapsed: true,
+      membersOnly: false,
+    });
   });
 
   it("hides elapsed once an assistant bubble exists", () => {
@@ -36,7 +49,11 @@ describe("chatGeneratingPhase", () => {
         isStreaming: true,
         lastMessageRole: "assistant",
       }),
-    ).toEqual({ showFooter: true, showElapsed: false });
+    ).toEqual({
+      showFooter: true,
+      showElapsed: false,
+      membersOnly: false,
+    });
   });
 
   it("hides footer during initial history load", () => {
@@ -46,6 +63,24 @@ describe("chatGeneratingPhase", () => {
         loading: true,
         lastMessageRole: "user",
       }),
-    ).toEqual({ showFooter: false, showElapsed: false });
+    ).toEqual({
+      showFooter: false,
+      showElapsed: false,
+      membersOnly: false,
+    });
+  });
+
+  it("shows a members-only footer without cancel-phase elapsed", () => {
+    expect(
+      chatGeneratingPhase({
+        isStreaming: false,
+        hasLiveSpeakers: true,
+        lastMessageRole: "assistant",
+      }),
+    ).toEqual({
+      showFooter: true,
+      showElapsed: false,
+      membersOnly: true,
+    });
   });
 });

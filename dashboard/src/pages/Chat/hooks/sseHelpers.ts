@@ -134,6 +134,12 @@ export interface SessionStreamState {
   /** Team host room — listen-only sockets and ask_agent continue stay on. */
   isTeamRoom?: boolean;
   pendingPlanPath?: string | null;
+  /**
+   * Speakers that still own an open generation (token / tool / reasoning)
+   * until their ``done`` frame. Empty string = unlabeled host. Keeps process
+   * panels open across tool gaps after the composer has unlocked.
+   */
+  liveSpeakers: Set<string>;
 }
 
 /** Read-only snapshot shape exposed via ``chatStore.getSnapshot``. */
@@ -149,4 +155,6 @@ export interface SessionSnapshot {
   historyNextCursor?: string | null;
   historyHydrated: boolean;
   pendingPlanPath?: string | null;
+  /** Sorted speaker keys still generating (see SessionStreamState.liveSpeakers). */
+  liveSpeakers: string[];
 }

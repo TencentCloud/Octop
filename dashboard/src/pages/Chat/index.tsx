@@ -345,6 +345,7 @@ function ChatPageInner() {
     historyHydrated,
     contextUsage,
     pendingPlanPath,
+    liveSpeakers,
     sendMessage,
     editAndResend,
     cancelStream,
@@ -1313,7 +1314,7 @@ function ChatPageInner() {
                   welcomeSuffix={welcomeSuffix}
                   quickCards={expertQuickCards}
                   onPromptClick={handlePromptClick}
-                  hideMascot={isStreaming}
+                  hideMascot={isStreaming || liveSpeakers.length > 0}
                   isTeam={isTeamChat}
                 />
               ) : (
@@ -1338,9 +1339,9 @@ function ChatPageInner() {
                     onLoadMoreHistory={loadMoreHistory}
                     onRefreshHistory={refreshHistory}
                     isStreaming={isStreaming}
+                    liveSpeakers={liveSpeakers}
                     thinkingStartedAt={thinkingStartedAt}
                     sessionKey={activeThreadId ?? undefined}
-                    onCancel={cancelStream}
                     onRegenerate={handleRegenerate}
                     onEditUserMessage={handleEditUserMessage}
                     onForkAssistantMessage={handleForkAssistantMessage}

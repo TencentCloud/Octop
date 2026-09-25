@@ -98,6 +98,8 @@ async def _project_chunks(
         return MessageEvent.tool_start(
             label,
             tool_hint_text=channel_tool_hint_start(label, loc),
+            # Raw tool id for invoke-collapse / team channel UX (label is localized).
+            tool_key=raw,
         )
 
     def _tool_end(raw: str) -> MessageEvent:

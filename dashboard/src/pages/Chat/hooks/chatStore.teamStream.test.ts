@@ -701,4 +701,51 @@ describe("team member live stream", () => {
     expect(member[0]?.content).toBe("please rest");
     expect(member[0]?.status).toBe("done");
   });
+
+  it("keeps a member live across tool gaps after the host unlocks the composer", () => {
+    ingestHarnessChunk(SESSION, { type: "token", content: "dispatch" });
+    ingestHarnessChunk(SESSION, { type: "done" });
+    expect(getSnapshot(SESSION).isStreaming).toBe(false);
+
+    ingestHarnessChunk(SESSION, {
+      type: "token",
+      content: "我先查一下",
+      agent_id: "doctor",
+    });
+    expect(getSnapshot(SESSION).liveSpeakers).toContain("doctor");
+
+    ingestHarnessChunk(SESSION, {
+      type: "tool_call_chunk",
+      index: 0,
+      id: "read-1",
+      name: "read_file",
+      args: "{}",
+      agent_id: "doctor",
+    });
+    ingestHarnessChunk(SESSION, {
+      type: "tool_result",
+      messages: [{ tool_call_id: "read-1", content: "labs ok" }],
+      agent_id: "doctor",
+    });
+
+    const afterTool = getSnapshot(SESSION);
+    expect(afterTool.isStreaming).toBe(false);
+    expect(afterTool.liveSpeakers).toContain("doctor");
+    expect(
+      afterTool.messages.some(
+        (item) =>
+          item.speakerAgentId === "doctor" && item.status === "streaming",
+      ),
+    ).toBe(false);
+
+    ingestHarnessChunk(SESSION, {
+      type: "token",
+      content: "结论如下",
+      agent_id: "doctor",
+    });
+    expect(getSnapshot(SESSION).liveSpeakers).toContain("doctor");
+
+    ingestHarnessChunk(SESSION, { type: "done", agent_id: "doctor" });
+    expect(getSnapshot(SESSION).liveSpeakers).not.toContain("doctor");
+  });
 });

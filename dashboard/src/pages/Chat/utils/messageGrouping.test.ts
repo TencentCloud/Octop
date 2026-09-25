@@ -270,6 +270,24 @@ describe("groupConsecutiveAssistantMessages", () => {
     expect(split.answerMessage?.content).toBe("please rest");
   });
 
+  it("keeps member narration across tool rounds in the answer", () => {
+    const split = splitAssistantTurn([
+      msg("assistant", "m1", {
+        content: "我先查一下资料",
+        speakerAgentId: "doctor",
+      }),
+      msg("assistant", "tool", {
+        speakerAgentId: "doctor",
+        toolData: { name: "read_file", arguments: "{}", output: "ok" },
+      }),
+      msg("assistant", "m2", {
+        content: "结论如下",
+        speakerAgentId: "doctor",
+      }),
+    ]);
+    expect(split.answerMessage?.content).toBe("我先查一下资料 结论如下");
+  });
+
   it("keeps a 1:1 ReAct conclusion as the answer", () => {
     const split = splitAssistantTurn([
       msg("assistant", "host1", { content: "I will ask" }),

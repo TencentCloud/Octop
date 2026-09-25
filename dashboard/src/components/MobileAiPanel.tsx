@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { Button, Spin, Tooltip } from "antd";
-import { Bot, Send, X } from "lucide-react";
+import { Bot, Send, Square, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { OctopAgent } from "../context/AgentContext";
 import AgentSelector from "./AgentSelector";
@@ -183,7 +183,6 @@ export default function MobileAiPanel({
             messages={messages}
             isStreaming={isStreaming}
             sessionKey={threadId ?? undefined}
-            onCancel={cancelStream}
           />
         )}
       </div>
@@ -212,11 +211,15 @@ export default function MobileAiPanel({
           <button
             type="button"
             className={styles.sendBtn}
-            disabled={!inputValue.trim() || isStreaming || booting}
-            onClick={handleSend}
-            title={t("terminal.ai.send", "发送")}
+            disabled={isStreaming ? booting : !inputValue.trim() || booting}
+            onClick={isStreaming ? cancelStream : handleSend}
+            title={
+              isStreaming
+                ? t("chat.stop", "停止")
+                : t("terminal.ai.send", "发送")
+            }
           >
-            <Send size={16} />
+            {isStreaming ? <Square size={16} /> : <Send size={16} />}
           </button>
         </div>
       </div>
