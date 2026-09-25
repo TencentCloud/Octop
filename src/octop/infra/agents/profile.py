@@ -1,6 +1,6 @@
 """Agent profile fields stored on ``agents`` rather than in ``config_json``.
 
-``config_json`` keeps harness-agent interaction keys (backend, plugins, memory,
+``config_json`` keeps octop-harness interaction keys (backend, plugins, memory,
 skills, heartbeat, runtime knobs). Display / catalog metadata lives on columns.
 """
 
