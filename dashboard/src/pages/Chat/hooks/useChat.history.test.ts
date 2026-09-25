@@ -7,11 +7,108 @@ import { useChat } from "./useChat";
 const thread = "versioned-history-test";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   chatStore.removeSession(thread);
 });
 
 describe("history failures", () => {
+  it("does not replace messages updated while a latest-page refresh is in flight", async () => {
+    chatStore.setHistoryPage(
+      thread,
+      [
+        {
+          id: "assistant",
+          role: "assistant",
+          content: "partial reasoning",
+          timestamp: 1,
+        },
+      ],
+      { hasMore: false, nextOffset: 25, nextCursor: null },
+    );
+    let resolveHistory!: (value: {
+      thread_id: string;
+      messages: Array<{ id: string; role: "assistant"; content: string }>;
+      has_more: boolean;
+    }) => void;
+    vi.spyOn(octopThreadsApi, "history").mockReturnValue(
+      new Promise((resolve) => {
+        resolveHistory = resolve;
+      }),
+    );
+    const { result } = renderHook(() => useChat(thread, "agent"));
+
+    let refresh!: Promise<void>;
+    act(() => {
+      refresh = result.current.refreshHistory();
+    });
+    act(() => {
+      chatStore.setMessages(thread, [
+        {
+          id: "assistant",
+          role: "assistant",
+          content: "new live reasoning",
+          timestamp: 2,
+        },
+      ]);
+    });
+    await act(async () => {
+      resolveHistory({
+        thread_id: thread,
+        messages: [
+          { id: "assistant", role: "assistant", content: "stale history" },
+        ],
+        has_more: false,
+      });
+      await refresh;
+    });
+
+    expect(chatStore.getSnapshot(thread).messages[0].content).toBe(
+      "new live reasoning",
+    );
+  });
+
+  it("waits for a ready history projection before replacing the latest page", async () => {
+    vi.useFakeTimers();
+    chatStore.setHistoryPage(
+      thread,
+      [{ id: "old", role: "assistant", content: "keep", timestamp: 1 }],
+      { hasMore: false, nextOffset: 25, nextCursor: null },
+    );
+    const history = vi
+      .spyOn(octopThreadsApi, "history")
+      .mockResolvedValueOnce({
+        thread_id: thread,
+        messages: [],
+        has_more: false,
+        history_loading: true,
+        history_retry_after_ms: 500,
+      })
+      .mockResolvedValueOnce({
+        thread_id: thread,
+        messages: [
+          { id: "ready", role: "assistant", content: "ready history" },
+        ],
+        has_more: false,
+        history_loading: false,
+      });
+    const { result } = renderHook(() => useChat(thread, "agent"));
+
+    let refresh!: Promise<void>;
+    act(() => {
+      refresh = result.current.refreshHistory();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+      await refresh;
+    });
+
+    expect(history).toHaveBeenCalledTimes(2);
+    expect(chatStore.getSnapshot(thread).messages[0].content).toBe(
+      "ready history",
+    );
+  });
+
   it("keeps a loaded conversation and its cursor when refreshing fails", async () => {
     chatStore.setHistoryPage(
       thread,
