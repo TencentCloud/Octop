@@ -5,7 +5,7 @@ Harness ``build_plugin_tools`` historically required an explicit
 opposite: once a plugin is globally enabled, its tools are available unless
 the agent opts out with ``enabled: false``.
 
-Until ``orcakit-harness-agent`` ships matching defaults, Octop expands the
+Until ``octop-harness`` ships matching defaults, Octop expands the
 agent plugins map before calling ``build_plugin_tools``.
 """
 

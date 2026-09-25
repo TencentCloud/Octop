@@ -6,8 +6,23 @@
 
 ## [Unreleased]
 
+### 变更
+- 运行时依赖改为 `octop-harness[all]` / `octop-gateway` / `octop-memory` / `octop-browser` 1.0.0（原 `orcakit-harness-agent` / `harness-*`）；文档、UI 文案与生成路径同步改为 `octop-*`（`~/.harness-browser` 仅作迁移/拒绝源）
+
 ### 修复
 - 连接器 CLI（lark-cli / wecom-cli / npm）的子进程输出改为显式按 UTF-8 解码：此前 `text=True` 跟随系统 ANSI 代码页，中文 Windows（cp936）上读线程抛 `UnicodeDecodeError` 后 stdout 变成 `None`，工具调用静默返回空 `{}`、登录状态被误判为「未登录」，界面上没有任何报错
+- 知识库文档数达到上限时不再答非所问：单库 `max_documents` 可配置之后，上传超限文档仍按字面量「at most 100」匹配错误文案，只有上限恰好是默认值 100 的库才报对，其余（如 2、500）会返回 409 `KNOWLEDGE_BASE_LIMIT`「每个用户最多可创建 20 个知识库」；现按两条报错各自的稳定措辞区分，超限一律正确返回 `KNOWLEDGE_DOC_LIMIT`
+- 知识库文档重命名保留存储键的文件后缀：改名去掉 `.pdf` 等后缀后，原文下载/预览会 404、删除也会留下孤儿文件；现按 `create_text_document` 的既有做法补回原后缀，目录改名不受影响 (#1107)
+- 会话列表接口 `GET /api/agents/{id}/threads` 的 `limit` 增加 1–200 边界（与消息分页沿用同一上限）：此前负数会被 SQLite 解释成「不限制」，一次返回该用户的全部会话，`limit=0` 又返回空列表；越界请求现在统一拒绝
+
+- 填写 IPv6 字面量地址的 MCP / OAuth 端点此前无法连通：出站请求固定 IP 时会把 URL 重建为 httpx 无法解析的形式（`InvalidURL`），同时丢弃路径参数；现按原样保留两者
+- 会话级 HITL「跳过审批」不再按进程缓存：`octop run --workers N`（或 CLI 与服务并发）时，另一个进程里撤销的跳过仍会持续自动放行工具调用，新授予的也可能不生效；改为每次判定都以 `threads.hitl_policy` 为准
+- 用户角色与禁用/删除状态改为按请求读库：多 worker（`octop run --workers N`）或 CLI 离线改写同一 SQLite 时，在另一个进程里被降级、禁用或删除的用户立即失效（#1102）
+- 导入工作区 zip 时跳过 Octop 自有的 `_builtin_skills/` 条目：该前缀不允许删除或移动，归档里的同名文件会留下用户无法移除的技能
+- 工作区写入接口补上 `_builtin_skills` 保护：`PUT /workspace/file` 和 `POST /workspace/upload` 此前可以往 Octop 内置技能目录里写文件（新建目录、删除、移动、文档编辑都拒绝），写进去的文件会被当作内置技能出现在技能列表里，而删除/移动接口对该前缀一律 403，所以再也清不掉
+
+- `wiki_summary` 的 `lang` 不再被拼进请求主机名：此前传 `evil.com#` 会真的向 `https://evil.com` 发请求（`localhost:8443/` 则打本机端口），并把对方返回的摘要回显进聊天；现只接受 `zh` / `en` / `zh-classical` 这类裸子域标签，其余按「语言代码无效」返回错误卡片
+- 登录验证码的 `OCTOP_CAPTCHA_V3_MIN_SCORE` 只按 `float()` 解析，未校验取值：填成 `nan` 时 `score < nan` 恒为 `False`，`recaptcha-v3` 的分数门槛被静默关闭（机器分 0.0 也能登录），负数同样放行，`inf`/大于 1 则把所有登录锁死。现按该参数已有的「不可用即回落默认值」规则处理，只接受 `0`–`1` 内的有限数值
 
 ## [1.0.2b2] - 2026-09-23
 
