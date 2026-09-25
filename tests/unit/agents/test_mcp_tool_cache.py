@@ -93,7 +93,7 @@ async def test_get_or_load_caches_and_reuses() -> None:
     aload = AsyncMock(return_value=[fake])
 
     spec = {"transport": "stdio", "command": "npx", "args": []}
-    with patch("harness_agent.mcp.aload_mcp_tools", aload):
+    with patch("octop_harness.mcp.aload_mcp_tools", aload):
         first = await mgr._get_or_load_mcp_tools(1, "s", spec)
         second = await mgr._get_or_load_mcp_tools(1, "s", spec)
 
@@ -124,7 +124,7 @@ async def test_get_or_load_misses_on_fingerprint_change() -> None:
 
     aload = AsyncMock(side_effect=[[_tool("s_a")], [_tool("s_b")]])
 
-    with patch("harness_agent.mcp.aload_mcp_tools", aload):
+    with patch("octop_harness.mcp.aload_mcp_tools", aload):
         a = await mgr._get_or_load_mcp_tools(
             1, "s", {"transport": "stdio", "command": "npx", "args": ["a"]}
         )
@@ -181,7 +181,7 @@ async def test_prepare_chat_mcp_injects_custom_from_cache() -> None:
     }
     mgr.reload_connectors = AsyncMock()
 
-    with patch("harness_agent.mcp.aload_mcp_tools", aload):
+    with patch("octop_harness.mcp.aload_mcp_tools", aload):
         failed = await mgr.prepare_chat_mcp("A1", ["deepwiki"], connector_user_id=7)
         failed2 = await mgr.prepare_chat_mcp("A1", ["deepwiki"], connector_user_id=7)
 
