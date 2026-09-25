@@ -31,9 +31,9 @@ bash scripts/install.sh
 # 指定版本
 bash scripts/install.sh --version 0.1.0
 
-# 安装可选附加组件
+# 安装可选附加组件（可选值：browser / desktop / local-embedding / knowledge-ocr）
 bash scripts/install.sh --extras browser
-bash scripts/install.sh --extras browser,channels-feishu
+bash scripts/install.sh --extras desktop,knowledge-ocr
 
 # 从本地源码安装（开发/离线）
 bash scripts/install.sh --from-source

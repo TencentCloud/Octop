@@ -214,7 +214,7 @@ source ~/.bashrc  # Bash
 </code></pre>
 <p>安装脚本会把 <code>octop</code> 命令放入 <code>~/.octop/bin</code> 并加入 PATH，并在 <code>~/.octop/venv</code> 创建隔离环境；<strong>不会改动系统 Python</strong>。</p>
 <blockquote>
-<p><strong>可选附加组件</strong>：安装脚本支持通过 <code>--extras</code> 追加能力，例如浏览器自动化 <code>--extras browser</code>、飞书通道 <code>--extras channels-feishu</code>；也可用 <code>--version</code> 指定版本、<code>--mirror &lt;url&gt;</code> 使用国内 PyPI 镜像。更多选项见 <a href="scripts/README.md">scripts/README.md</a>。</p>
+<p><strong>可选附加组件</strong>：安装脚本支持通过 <code>--extras</code> 追加能力，可选值为 wheel 声明的 <code>browser</code>、<code>desktop</code>、<code>local-embedding</code>、<code>knowledge-ocr</code>，例如浏览器自动化 <code>--extras browser</code>、知识库 OCR <code>--extras knowledge-ocr</code>；飞书等 IM 通道无需附加组件（<code>lark-oapi</code> 已随基础安装提供）。也可用 <code>--version</code> 指定版本、<code>--mirror &lt;url&gt;</code> 使用国内 PyPI 镜像。更多选项见 <a href="scripts/README.md">scripts/README.md</a>。</p>
 </blockquote>
 <h3 id="h2-3">2.3 验证安装</h3>
 <pre><code class="language-bash">octop --version

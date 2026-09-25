@@ -97,7 +97,7 @@ source ~/.bashrc  # Bash
 
 安装脚本会把 `octop` 命令放入 `~/.octop/bin` 并加入 PATH，并在 `~/.octop/venv` 创建隔离环境；**不会改动系统 Python**。
 
-> **可选附加组件**：安装脚本支持通过 `--extras` 追加能力，例如浏览器自动化 `--extras browser`、飞书通道 `--extras channels-feishu`；也可用 `--version` 指定版本、`--mirror <url>` 使用国内 PyPI 镜像。更多选项见 [scripts/README.md](../scripts/README.md)。
+> **可选附加组件**：安装脚本支持通过 `--extras` 追加能力，可选值为 wheel 声明的 `browser`、`desktop`、`local-embedding`、`knowledge-ocr`，例如浏览器自动化 `--extras browser`、知识库 OCR `--extras knowledge-ocr`；飞书等 IM 通道无需附加组件（`lark-oapi` 已随基础安装提供）。也可用 `--version` 指定版本、`--mirror <url>` 使用国内 PyPI 镜像。更多选项见 [scripts/README.md](../scripts/README.md)。
 
 ### 2.3 验证安装
 
