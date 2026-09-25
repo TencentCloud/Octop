@@ -1,4 +1,4 @@
-"""Unit tests for harness-agent plugin loader."""
+"""Unit tests for octop-harness plugin loader."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from harness_agent.plugins import (
+from langchain_core.tools import StructuredTool
+from octop_harness.plugins import (
     PluginRegistry,
     build_plugin_tools,
     collect_plugin_tool_configs,
     load_plugin_dir,
 )
-from langchain_core.tools import StructuredTool
 
 from octop.infra.agents.plugin_tool_names import (
     sanitize_plugin_tool_name,
@@ -167,8 +167,8 @@ def test_sanitize_plugin_tools_reserved_names() -> None:
 
 def test_build_plugin_tools_then_sanitize_keeps_config_keys_original() -> None:
     pytest.importorskip("pypinyin")
-    from harness_agent.plugins.manifest import PluginManifest
-    from harness_agent.plugins.registry import LoadedPlugin, ToolRegistration
+    from octop_harness.plugins.manifest import PluginManifest
+    from octop_harness.plugins.registry import LoadedPlugin, ToolRegistration
 
     manifest = PluginManifest(id="demo", version="1.0.0", name="Demo", kind="tool", entry="main.py")
     PluginRegistry().register(

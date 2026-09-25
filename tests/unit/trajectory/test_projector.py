@@ -7,8 +7,8 @@ Fixture shapes live in ``tests/unit/trajectory/fixtures/``:
   Keys: ``ts``, ``role=user``, ``content``, ``thread_id``, ``source``.
 * ``context_injection.json`` — synthetic; session JSONL has no context rows.
   Spec §2 ``context`` (source / label / token estimate). ``source=rules``
-  matches ``harness_agent.context_usage`` (AGENTS.md / ``<agent_memory>``).
-* ``compacted.json`` — synthetic; matches ``harness_agent.compaction.CompactResult``
+  matches ``octop_harness.context_usage`` (AGENTS.md / ``<agent_memory>``).
+* ``compacted.json`` — synthetic; matches ``octop_harness.compaction.CompactResult``
   field names (``summarized_count``, ``preserved_count``, ``removed_tokens``)
   plus spec §2 ``summary`` / ``file_path``.
 """

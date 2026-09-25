@@ -249,7 +249,7 @@ async def get_thread_context_usage(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Return persisted context-window usage for a thread (harness-agent snapshot)."""
+    """Return persisted context-window usage for a thread (octop-harness snapshot)."""
     _require_thread(server, agent_id, thread_id, user, as_user)
     registry = server.app_runtime.agent_registry
     effective_max = registry.resolve_context_max_tokens(agent_id, fallback=max_tokens)
