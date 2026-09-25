@@ -1040,6 +1040,37 @@ function ChatPageInner() {
     ],
   );
 
+  const handleExportSession = useCallback(
+    async (targetThreadId: string) => {
+      const agent = resolvedAgentId;
+      if (!agent || !targetThreadId) return;
+      try {
+        const blob = await octopThreadsApi.exportHistory(agent, targetThreadId);
+        const rawTitle =
+          sessions.find((session) => session.id === targetThreadId)?.name ||
+          t("chat.conversationFilename");
+        const safeTitle =
+          rawTitle
+            .trim()
+            .replace(/[\\/:*?"<>|]+/g, "_")
+            .replace(/\s+/g, " ")
+            .slice(0, 80) || t("chat.conversationFilename");
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${safeTitle}-${targetThreadId.slice(-8)}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        antMessage.success(t("chat.exportConversationSuccess"));
+      } catch (error) {
+        antMessage.error(
+          apiErrorMessage(error, t("chat.exportConversationFailed"), t),
+        );
+      }
+    },
+    [resolvedAgentId, sessions, t],
+  );
+
   const hasMessages = messages.length > 0;
   // On hard refresh / deep-link into a thread, messages start empty. Showing
   // Welcome until history returns looks like a full page flash. Keep the list
@@ -1244,6 +1275,7 @@ function ChatPageInner() {
                 onRename={renameSession}
                 onPin={pinSession}
                 onFork={handleForkSession}
+                onExport={handleExportSession}
                 onDelete={handleDeleteSession}
                 forkDisabled={sessionForkDisabled}
                 forkDisabledHint={sessionForkDisabledHint}

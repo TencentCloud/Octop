@@ -4,6 +4,7 @@ import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
 import {
   MoreVertical,
+  Download,
   Pin,
   PinOff,
   Pencil,
@@ -24,6 +25,7 @@ interface ChatTitleBarProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
+  onExport: (id: string) => void;
   onDelete: (id: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
@@ -36,6 +38,7 @@ export default function ChatTitleBar({
   onRename,
   onPin,
   onFork,
+  onExport,
   onDelete,
   forkDisabled,
   forkDisabledHint,
@@ -102,6 +105,12 @@ export default function ChatTitleBar({
         onClick: () => onFork(session.id),
       },
       {
+        key: "export",
+        label: t("chat.exportConversation"),
+        icon: <Download size={14} />,
+        onClick: () => onExport(session.id),
+      },
+      {
         key: "delete",
         label: t("common.delete"),
         icon: <Trash2 size={14} />,
@@ -126,6 +135,7 @@ export default function ChatTitleBar({
       session.pinned,
       onPin,
       onFork,
+      onExport,
       onDelete,
       forkDisabled,
       forkDisabledHint,

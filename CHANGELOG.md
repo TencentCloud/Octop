@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 对话标题菜单新增完整历史导出入口，下载已有 `octop-history-v2` JSON 归档以便分享或离线保存（#1044）
+
 ### 变更
 - 运行时依赖改为 `octop-harness[all]` / `octop-gateway` / `octop-memory` / `octop-browser` 1.0.0（原 `orcakit-harness-agent` / `harness-*`）；文档、UI 文案与生成路径同步改为 `octop-*`（`~/.harness-browser` 仅作迁移/拒绝源）
 

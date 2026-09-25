@@ -1,5 +1,5 @@
 import type { HitlPendingPayload, HitlSessionPolicy } from "../types/hitl";
-import { request } from "../request";
+import { request, requestBlob } from "../request";
 
 export interface OctopThread {
   thread_id: string;
@@ -138,6 +138,13 @@ export const octopThreadsApi = {
       }`,
     );
   },
+
+  exportHistory: (agentId: string, threadId: string) =>
+    requestBlob(
+      `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
+        threadId,
+      )}/history/export`,
+    ),
 
   contextUsage: (
     agentId: string,
