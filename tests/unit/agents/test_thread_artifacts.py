@@ -13,7 +13,7 @@ from octop.infra.agents.middleware.thread_artifacts import (
     ThreadArtifactsMiddleware,
     peer_room_thread_id,
 )
-from octop.infra.agents.thread_artifact import (
+from octop.infra.agents.threads.artifact import (
     artifact_path_allowed,
     artifacts_for_response,
     extract_artifact_paths,
@@ -122,7 +122,7 @@ def test_artifacts_for_response_keeps_producer_path_without_host_join(
 
 
 def test_thread_artifacts_payload_has_legacy_and_refs(tmp_path: Path) -> None:
-    from octop.infra.agents.thread_artifact import thread_artifacts_payload
+    from octop.infra.agents.threads.artifact import thread_artifacts_payload
 
     ws = _ws(tmp_path)
     payload = thread_artifacts_payload(

@@ -16,7 +16,7 @@ from langchain_core.runnables import RunnableConfig
 
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.i18n.domains.attachment import attachment_empty_image
-from octop.infra.agents.context_breakdown import usage_dict_from_message
+from octop.infra.agents.threads.context_breakdown import usage_dict_from_message
 from octop.infra.gateway.process.message_keys import (
     CHECKPOINT_TS_KEY,
     COMPOSER_CTX_KEY,
