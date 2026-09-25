@@ -1117,7 +1117,7 @@ async def test_a_turn_repairs_model_resolution_on_a_real_harness_factory(
     tmp_path: Path,
 ) -> None:
     """Unmocked: the model a DB check accepts is the model the factory can build."""
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     services = _make_services(tmp_path)
     (tmp_path / "logs").mkdir()
