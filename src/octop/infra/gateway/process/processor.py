@@ -529,7 +529,9 @@ class GlobalProcessor:
             meta,
             thread_row.model_ref if thread_row is not None else None,
         )
-        if model_ref and not providers.is_model_ref_usable(model_ref):
+        # A Dashboard Auto choice supersedes an older /model override while
+        # leaving expert and personal defaults to resolve below.
+        if model_ref == "auto" or (model_ref and not providers.is_model_ref_usable(model_ref)):
             model_ref = None
         if not model_ref:
             row = self._agent_repo.get(agent_id)

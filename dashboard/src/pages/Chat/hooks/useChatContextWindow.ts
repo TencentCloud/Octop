@@ -58,7 +58,7 @@ export function useChatContextWindow(
   selectedModel: string | null,
   availableModels: ResolvedModel[],
   agentDefaultModel?: string | null,
-  /** Global preferred model (settings active-model) used when composer is Auto. */
+  /** Personal preferred model, then global active model, when no expert default exists. */
   activeModelRef?: string | null,
   agentConfig?: { max_input_length?: number | null } | null,
 ) {

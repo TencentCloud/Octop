@@ -83,6 +83,7 @@ export function useChatComposerResources(
   const [availableModels, setAvailableModels] = useState<ResolvedModel[]>([]);
   const [activeModelRef, setActiveModelRef] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [preferredModel, setPreferredModel] = useState<string | null>(null);
   const [modelReasoning, setModelReasoning] = useState<
     Record<
       string,
@@ -123,7 +124,7 @@ export function useChatComposerResources(
     if (isNewSession) composerTouchedRef.current = false;
   }, [isNewSession]);
 
-  // Auto = omit turn model; backend applies the expert default.
+  // null = untouched default; "auto" = explicit Auto; otherwise a manual model.
   useEffect(() => {
     const local = activeThreadId
       ? conversationOverrides[activeThreadId]
@@ -334,6 +335,7 @@ export function useChatComposerResources(
       .get()
       .then((preferences) => {
         if (cancelled) return;
+        setPreferredModel(preferences.preferred_model || null);
         setModelReasoning(preferences.model_reasoning || {});
       })
       .catch(() => undefined);
@@ -501,6 +503,7 @@ export function useChatComposerResources(
 
   return {
     selectedModel,
+    preferredModel,
     setSelectedModel: handleModelChange,
     reasoningMode,
     reasoningEffort,

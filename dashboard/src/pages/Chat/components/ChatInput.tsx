@@ -47,6 +47,7 @@ import {
   writeInputDraft,
 } from "../hooks/chatStore";
 import {
+  AUTO_MODEL_REF,
   buildComposerContext,
   resolveTurnModelRef,
 } from "../utils/chatMessages";
@@ -685,7 +686,11 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       if (!draft || !agentId || polishing || isStreaming || disabled) return;
       setPolishing(true);
       try {
-        const result = await agentChatApi.polish(agentId, draft, selectedModel);
+        const result = await agentChatApi.polish(
+          agentId,
+          draft,
+          selectedModel === AUTO_MODEL_REF ? null : selectedModel,
+        );
         const polished = stripThinkingTags(result.text?.trim() ?? "");
         if (!polished) {
           antMessage.error(t("chat.polish.emptyResult"));

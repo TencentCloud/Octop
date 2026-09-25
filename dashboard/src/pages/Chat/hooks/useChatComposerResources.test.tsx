@@ -77,6 +77,7 @@ vi.mock("../../../context/AgentContext", () => ({
 
 import { useChatComposerResources } from "./useChatComposerResources";
 import { preferencesApi } from "../../../api/modules/preferences";
+import { octopThreadsApi } from "../../../api/modules/octopThreads";
 
 beforeEach(() => {
   localStorage.clear();
@@ -179,7 +180,7 @@ describe("useChatComposerResources — per-expert KB selection", () => {
 });
 
 describe("useChatComposerResources — model priority", () => {
-  it("keeps Auto selected when only a personal preferred model exists", async () => {
+  it("keeps the untouched model unset while exposing the personal fallback", async () => {
     const { result } = renderHook(() =>
       useChatComposerResources("expertA", "thread-existing", null),
     );
@@ -188,6 +189,24 @@ describe("useChatComposerResources — model priority", () => {
     await act(async () => Promise.resolve());
 
     expect(result.current.selectedModel).toBeNull();
+    expect(result.current.preferredModel).toBe("p/personal");
+  });
+
+  it("persists explicit Auto separately from an untouched model", async () => {
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing", null),
+    );
+    await waitFor(() =>
+      expect(result.current.preferredModel).toBe("p/personal"),
+    );
+
+    act(() => result.current.setSelectedModel("auto"));
+    expect(result.current.selectedModel).toBe("auto");
+    expect(octopThreadsApi.patch).toHaveBeenCalledWith(
+      "expertA",
+      "thread-existing",
+      expect.objectContaining({ model_ref: "auto" }),
+    );
   });
 
   it("restores the current conversation model above lower-level defaults", async () => {

@@ -12,6 +12,7 @@ import pytest
 from langchain_core.messages import HumanMessage
 
 from octop.api.routers.chat import history as history_mod
+from octop.api.routers.chat.models import RenameThreadBody
 from octop.api.routers.chat.serialize import (
     HISTORY_DEFAULT_LIMIT,
     HISTORY_MAX_LIMIT,
@@ -32,6 +33,43 @@ def test_clamp_history_limit() -> None:
     assert _clamp_history_limit(0) == 1
     assert _clamp_history_limit(25) == 25
     assert _clamp_history_limit(999) == HISTORY_MAX_LIMIT
+
+
+async def test_patch_thread_accepts_explicit_auto_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = SimpleNamespace(
+        title="Chat",
+        pinned=False,
+        model_ref="auto",
+        reasoning_mode=None,
+        reasoning_effort=None,
+        conversation_mode="craft",
+        pending_plan_path=None,
+        hitl_policy=None,
+    )
+    registry = MagicMock()
+    registry.get_thread.return_value = row
+    providers = MagicMock()
+    server = SimpleNamespace(
+        app_runtime=SimpleNamespace(
+            gateway=SimpleNamespace(thread_registry=registry),
+            agent_registry=SimpleNamespace(providers=providers),
+        )
+    )
+    monkeypatch.setattr(history_mod, "_require_thread", lambda *_args: row)
+
+    result = await history_mod.patch_thread(
+        "agent-1",
+        "thread-1",
+        RenameThreadBody(model_ref="auto"),
+        user=SimpleNamespace(id=1),
+        server=server,
+    )
+
+    assert result["model_ref"] == "auto"
+    assert registry.update_composer.call_args.kwargs["model_ref"] == "auto"
+    providers.is_model_ref_usable.assert_not_called()
 
 
 def test_slice_message_page_recent() -> None:
