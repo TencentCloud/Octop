@@ -1,4 +1,4 @@
-"""Process-level configuration (config.json + env overrides)."""
+﻿"""Process-level configuration (config.json + env overrides)."""
 
 from __future__ import annotations
 
@@ -421,7 +421,7 @@ def load_config(path: Path) -> OctopConfig:
     file_defaults = _defaults_for_file()
     if path.exists():
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
+            raw = json.loads(path.read_text(encoding="utf-8-sig"))
         except json.JSONDecodeError as exc:
             raise ValueError(
                 f"{path} is not valid JSON (line {exc.lineno}, column {exc.colno});"
@@ -624,3 +624,4 @@ def load_config(path: Path) -> OctopConfig:
             ),
         ),
     )
+
