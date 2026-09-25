@@ -37,7 +37,7 @@ _THINKING_CAPTURE_RE = re.compile(
 
 # Matches the lightweight placeholder that ``MediaOffloadMiddleware`` writes
 # into LangGraph state for already-offloaded inline images / audio. Format
-# (see harness_agent.middleware.media_offload._placeholder_text_block):
+# (see octop_harness.middleware.media_offload._placeholder_text_block):
 #   [<btype> offloaded: sha=<short_sha> path=<path> size=<n>B mime=<m>;
 #   use read_file to retrieve bytes]
 # We strip these on history serialization because the original bytes are
