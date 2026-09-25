@@ -11,12 +11,13 @@ interface ChatDockPanelsProps {
   isResizing: boolean;
   panelSizes: { rightWidth: number; bottomHeight: number };
   agentId: string;
-  filePaths: string[];
+  filePaths: Array<string | { path: string; agentId?: string }>;
+  agentNameById?: Record<string, string>;
   openTabs: DockTab[];
   activeTabId: DockTabId | null;
   onSelectTab: (id: DockTabId) => void;
   onCloseTab: (id: DockTabId) => void;
-  onOpenFile: (path: string) => void;
+  onOpenFile: (path: string, agentId?: string | null) => void;
   browserEnvironment: DisplayEnvironment;
   threadId?: string | null;
   isStreamingTurn?: boolean;
@@ -47,6 +48,7 @@ export default function ChatDockPanels({
   panelSizes,
   agentId,
   filePaths,
+  agentNameById,
   openTabs,
   activeTabId,
   onSelectTab,
@@ -84,6 +86,7 @@ export default function ChatDockPanels({
       }
       agentId={agentId}
       filePaths={filePaths}
+      agentNameById={agentNameById}
       openTabs={openTabs}
       activeTabId={activeTabId}
       onSelectTab={onSelectTab}

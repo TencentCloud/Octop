@@ -260,3 +260,33 @@ async def test_metadata_mismatch_blocks_bearer_transport(monkeypatch):
     with pytest.raises(ValueError, match="metadata mismatch"):
         await qcc.request_resource("risk", "secret", "tools/list", {})
     transport.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_legacy_key_does_not_refresh_or_revoke(grant, monkeypatch):
+    _, repo, svc = grant
+    refresh = AsyncMock()
+    revoke = AsyncMock()
+    monkeypatch.setattr("octop.infra.connectors.service.refresh_oauth_credentials", refresh)
+    monkeypatch.setattr(qcc, "revoke", revoke)
+    error = httpx.HTTPStatusError(
+        "unauthorized",
+        request=httpx.Request("POST", qcc.RESOURCES["company"]),
+        response=httpx.Response(401),
+    )
+    request = AsyncMock(side_effect=error)
+    monkeypatch.setattr(qcc, "request_resource", request)
+    with pytest.raises(httpx.HTTPStatusError):
+        await svc._qcc_request("grant", "company", "tools/list", {})
+    request.assert_awaited_once()
+    refresh.assert_not_awaited()
+    await svc.disconnect_qcc("grant")
+    revoke.assert_not_awaited()
+    assert repo.get("grant") is None
+
+
+def test_oauth_token_takes_precedence_over_legacy_key():
+    assert (
+        qcc.bearer_token({"api_key": "old", "access_token": "new", "oauth_client_id": "client"})
+        == "new"
+    )

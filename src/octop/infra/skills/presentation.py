@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from octop.infra.utils.locale import Locale
 
-# Keep in sync with harness_agent.skills.catalog._summary_dict.
+# Keep in sync with octop_harness.skills.catalog._summary_dict.
 _EXTENSION_NAMESPACES = ("octop", "harness", "lightclaw", "orca", "openclaw")
 
 

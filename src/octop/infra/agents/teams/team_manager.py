@@ -18,25 +18,43 @@ from collections.abc import Callable
 from dataclasses import fields
 from typing import TYPE_CHECKING, Any
 
-from harness_agent.messages import extract_call_response
-from harness_agent.teams.inbox import InboxMessage
-from harness_agent.teams.processor import ReplyEvent
-from harness_agent.teams.util import (
+from langchain_core.messages import AIMessage, HumanMessage
+from octop_harness.messages import extract_call_response
+from octop_harness.teams.inbox import InboxMessage
+from octop_harness.teams.processor import ReplyEvent
+from octop_harness.teams.util import (
     PeerCall,
     PeerSession,
     build_one_shot_request,
     derive_peer_thread_id,
 )
-from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n import tr
 from octop.infra.agents.teams.service import is_team_agent
+from octop.infra.agents.thread_artifact import artifact_path_allowed, extract_artifact_paths
+from octop.infra.gateway.media.tool_media import tool_name_base
 from octop.infra.gateway.process.history_projection import (
     live_message_inputs,
     message_inputs,
 )
-from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.locale import DEFAULT_LOCALE, resolve_user_locale
 from octop.infra.utils.ulid import new_ulid
+
+# Matches dashboard FILE_TOOL_NAMES — drives the "edited N files" history card.
+_EDIT_CARD_TOOL_BASES = frozenset(
+    {
+        "write_file",
+        "edit_file",
+        "send_file",
+        "send_file_to_user",
+    }
+)
+
+# Cap tool-result bodies on room/member projections so fan-in history stays lean.
+_HISTORY_TOOL_RESULT_MAX_CHARS = 4000
+_HISTORY_TOOL_RESULT_SUFFIX = "…"
+# Member answer excerpt injected into the host wrap-up wake-up prompt.
+_FOLLOWUP_RESULT_MAX_CHARS = 6000
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
@@ -66,6 +84,19 @@ _STREAM_SPEAKER_TYPES = frozenset(
 )
 
 
+def host_system_prompt(row: Any, user_repo: Any) -> str:
+    """Runtime host briefing, appended to any custom ``system_prompt``."""
+    uid = getattr(row, "user_id", None)
+    locale = (
+        resolve_user_locale(user_repo=user_repo, user_id=uid)
+        if isinstance(uid, int) and uid > 0
+        else DEFAULT_LOCALE
+    )
+    briefing = tr("teams.host_briefing", locale)
+    custom = str(getattr(row, "system_prompt", None) or "").strip()
+    return f"{custom}\n\n{briefing}".strip() if custom else briefing
+
+
 class TeamManager:
     """Octop-side team room. Harness still owns ``ask_agent`` / inbox."""
 
@@ -92,7 +123,7 @@ class TeamManager:
     # -- ask_agent session (member page) -------------------------------------
 
     async def prepare_peer_session(self, call: PeerCall) -> PeerSession | None:
-        """Open the member thread and stash the user-visible question."""
+        """Open the member thread and stash the host's rewritten assignment."""
         thread_id = (
             derive_peer_thread_id(call.source_thread_id, call.to_agent_id)
             if call.source_thread_id
@@ -105,7 +136,7 @@ class TeamManager:
         question = ""
         dispatch_message = None
         if group:
-            question = await self._visible_user_prompt(call)
+            question = await self._assignment_text(call)
             dispatch_message = await self._dispatch_message(call, uid)
             if thread_id and (question or dispatch_message):
                 self.stash_peer_prompt(
@@ -167,12 +198,12 @@ class TeamManager:
             if self._thread_message_repo is None:
                 return
             messages = result.get("messages")
-            visible = _peer_turn_messages(messages) if isinstance(messages, list) else []
+            msg_list = messages if isinstance(messages, list) else []
+            edited = _edited_files_from_messages(msg_list)
+            visible = _peer_turn_messages(msg_list)
             visible = [msg for msg in visible if _message_role(msg) not in {"human", "user"}]
-            if self._is_group_dispatch(call):
-                prompt = await self._visible_user_prompt(call)
-            else:
-                prompt = str(call.message or "").strip()
+            visible, _ = _apply_edited_files_stamp(visible, edited)
+            prompt = await self._assignment_text(call)
             if prompt:
                 visible = [
                     HumanMessage(
@@ -187,7 +218,10 @@ class TeamManager:
             try:
                 self._thread_message_repo.append_if_ready(
                     thread_id,
-                    message_inputs(visible, dedupe_missing_ids=True),
+                    message_inputs(
+                        _history_projection_messages(visible),
+                        dedupe_missing_ids=True,
+                    ),
                 )
             except Exception:
                 logger.warning(
@@ -210,12 +244,8 @@ class TeamManager:
         result_text: str | None,
         error_text: str | None,
     ) -> str:
-        _ = result_text
         child_name = self._display_name(msg.target_agent_id)
-        uid = _octop_user_id(msg.user_id)
-        locale = (
-            resolve_user_locale(user_repo=self._user_repo, user_id=uid) if uid is not None else "en"
-        )
+        locale = self._locale_for(_octop_user_id(msg.user_id))
         if error_text:
             return tr(
                 "teams.followup_failed",
@@ -224,38 +254,56 @@ class TeamManager:
                 task=msg.message,
                 error=error_text,
             )
+        # Member answers live on the room wall / peer checkpoint, not the host
+        # graph — inject a truncated excerpt so wrap-up can follow their advice.
+        result = _truncate_tool_result_text(
+            (result_text or "").strip(),
+            max_chars=_FOLLOWUP_RESULT_MAX_CHARS,
+        )
+        if not result:
+            result = "(empty)"
         return tr(
             "teams.followup_done",
             locale,
             name=child_name,
             task=msg.message,
+            result=result,
         )
 
     async def on_reply(self, event: ReplyEvent) -> None:
         self._end_job_from_reply(event)
         room = str(event.source_thread_id or "").strip()
-        if self._take_live_host_reply(room) and event.status == "done":
-            if room:
-                self._thread_registry.touch_last_active(room)
-            return
+        speaker = event.source_agent_id
         text = (
             event.error_text or "Background task did not complete."
             if event.status != "done"
             else (event.reply_text or "(empty)")
         )
-        session_key = event.metadata.get("session_key")
-        if isinstance(session_key, str) and session_key.strip():
-            session = self._thread_registry.get_session(session_key.strip())
-            if session is not None:
-                await self._deliver_text(
-                    session,
-                    session_key.strip(),
-                    text,
-                    speaker_id=event.source_agent_id,
-                )
-                return
         if room:
-            await self._publish_room_text(room, event.source_agent_id, text)
+            await self._push_room_to_channels(room, speaker, text, prefix_speaker=False)
+        live_ws = self._take_live_host_reply(room) and event.status == "done"
+        if live_ws:
+            if room:
+                self._thread_registry.touch_last_active(room)
+            return
+        session_key = event.metadata.get("session_key")
+        session = (
+            self._thread_registry.get_session(session_key.strip())
+            if isinstance(session_key, str) and session_key.strip()
+            else None
+        )
+        if session is not None and not self._thread_registry.is_im_session(session):
+            await self._deliver_text(
+                session,
+                str(session.session_key),
+                text,
+                speaker_id=speaker,
+            )
+            return
+        if session is not None:
+            return
+        if room:
+            await self._publish_room_text(room, speaker, text)
             self._thread_registry.touch_last_active(room)
             return
         logger.warning("team reply %s: no room to publish", event.inbox_id)
@@ -405,19 +453,23 @@ class TeamManager:
         *,
         live_streamed: bool = False,
     ) -> None:
-        """Persist the member's final bubble on the caller's room thread."""
+        """Persist the member's tool trail + final bubble on the caller's room thread."""
         if not self._is_group_dispatch(call):
             return
         speaker = call.to_agent_id
         stamped = [_with_speaker(msg, speaker) for msg in _room_peer_messages(visible)]
-        final = _final_room_assistant(stamped)
-        if final is None:
+        if not stamped:
             return
+        edited = _edited_files_from_messages(stamped)
+        stamped, final = _apply_edited_files_stamp(stamped, edited)
         if self._thread_message_repo is not None:
             try:
                 self._thread_message_repo.append_if_ready(
                     call.source_thread_id,
-                    live_message_inputs([final], dedupe_missing_ids=True),
+                    live_message_inputs(
+                        _history_projection_messages(stamped),
+                        dedupe_missing_ids=True,
+                    ),
                 )
             except Exception:
                 logger.warning(
@@ -426,16 +478,13 @@ class TeamManager:
                     speaker,
                     exc_info=True,
                 )
-        if live_streamed:
-            return
         room = str(call.source_thread_id or "").strip()
-        if not room:
+        text = _assistant_text(final) if final is not None else ""
+        if not room or not text:
             return
-        await self._push_room_snapshot(
-            room,
-            speaker,
-            _assistant_text(final),
-        )
+        await self._push_room_to_channels(room, speaker, text)
+        if not live_streamed:
+            await self._push_room_snapshot(room, speaker, text)
 
     def stamp_host_runtime(self, request: dict[str, Any], agent_id: str) -> None:
         """Force the host turn onto async ``ask_agent`` (inbox), not sync."""
@@ -593,25 +642,34 @@ class TeamManager:
                 exc_info=True,
             )
 
+    async def _assignment_text(self, call: PeerCall) -> str:
+        """Host-rewritten task; fall back to the last room user line if empty."""
+        text = str(call.message or "").strip()
+        if text:
+            return text
+        if self._is_group_dispatch(call):
+            return await self._visible_user_prompt(call)
+        return ""
+
+    def _locale_for(self, user_id: int | None) -> str:
+        if user_id is None:
+            return DEFAULT_LOCALE
+        return resolve_user_locale(user_repo=self._user_repo, user_id=user_id)
+
     async def _dispatch_message(self, call: PeerCall, user_id: int | None) -> str:
-        locale = (
-            resolve_user_locale(user_repo=self._user_repo, user_id=user_id)
-            if user_id is not None
-            else "en"
-        )
+        locale = self._locale_for(user_id)
         transcript = await self._room_transcript(
             call.source_thread_id,
             call.from_agent_id,
             locale,
         )
-        if not transcript:
-            return call.message
-        return tr(
-            "teams.dispatch_with_history",
-            locale,
-            history=transcript,
-            task=call.message,
-        )
+        if transcript:
+            return tr(
+                "teams.member_briefing_with_history",
+                locale,
+                history=transcript,
+            )
+        return tr("teams.member_briefing", locale)
 
     async def _visible_user_prompt(self, call: PeerCall) -> str:
         last = await self._last_room_user_text(call.source_thread_id, call.from_agent_id)
@@ -695,11 +753,11 @@ class TeamManager:
         if not text or _is_team_system_prompt(text):
             return None
         if role in {"human", "user"}:
-            return f"{tr('teams.speaker_user', locale)}: {text}"
+            return self._channel_line(locale, tr("teams.speaker_user", locale), text)
         if role not in {"ai", "assistant"}:
             return None
         speaker = _projected_speaker(row) or host_id
-        return f"{self._display_name(speaker)}: {text}"
+        return self._channel_line(locale, self._display_name(speaker), text)
 
     async def _history(self, agent_id: str, thread_id: str | None) -> list[Any]:
         if not thread_id:
@@ -732,7 +790,7 @@ class TeamManager:
         if not text:
             return None
         if role in {"human", "user"}:
-            return f"{tr('teams.speaker_user', locale)}: {text}"
+            return self._channel_line(locale, tr("teams.speaker_user", locale), text)
         if role not in {"ai", "assistant"}:
             return None
         kwargs = (
@@ -741,13 +799,16 @@ class TeamManager:
             else getattr(msg, "additional_kwargs", None)
         ) or {}
         speaker = str(kwargs.get("speaker_agent_id") or host_id)
-        return f"{self._display_name(speaker)}: {text}"
+        return self._channel_line(locale, self._display_name(speaker), text)
+
+    def _channel_line(self, locale: str, name: str, text: str) -> str:
+        return tr("teams.channel_line", locale, name=name, text=text)
 
     def _title_member_thread(self, call: PeerCall, thread_id: str, user_id: int) -> None:
         host = self._agent_manager.get_row(call.from_agent_id)
         if not is_team_agent(host):
             return
-        locale = resolve_user_locale(user_repo=self._user_repo, user_id=user_id)
+        locale = self._locale_for(user_id)
         title = tr(
             "teams.peer_thread_title", locale, name=host.name if host else call.from_agent_id
         )
@@ -851,6 +912,53 @@ class TeamManager:
                 exc_info=True,
             )
 
+    async def _push_session_channel(self, session: SessionRow, text: str) -> None:
+        if self._gateway is None:
+            return
+        await self._gateway.push_text(
+            session.channel_type,
+            session.channel_id,
+            session.to_channel_subject(),
+            text,
+        )
+
+    async def _push_room_to_channels(
+        self,
+        thread_id: str,
+        speaker_id: str,
+        text: str,
+        *,
+        prefix_speaker: bool = True,
+    ) -> None:
+        """Push a finished room bubble to IM sessions bound to this thread.
+
+        Dashboard / CLI already receive the room WebSocket stream. Channels only
+        see the host's inbound turn unless we deliver member (and wrap-up) text
+        here as a complete outbound message.
+        """
+        body = (text or "").strip()
+        if not thread_id or not body or self._gateway is None:
+            return
+        for session in self._thread_registry.im_sessions_for_thread(thread_id):
+            outbound = (
+                self._channel_line(
+                    self._locale_for(int(session.user_id)),
+                    self._display_name(speaker_id),
+                    body,
+                )
+                if prefix_speaker
+                else body
+            )
+            try:
+                await self._push_session_channel(session, outbound)
+            except Exception:
+                logger.warning(
+                    "failed to push team speech to channel thread=%s speaker=%s",
+                    thread_id,
+                    speaker_id,
+                    exc_info=True,
+                )
+
     async def _publish_room_text(self, thread_id: str, speaker_id: str, text: str) -> None:
         body = (text or "").strip()
         if not thread_id or not body:
@@ -915,13 +1023,8 @@ class TeamManager:
         *,
         speaker_id: str | None = None,
     ) -> None:
-        if session.channel_id and self._gateway is not None:
-            await self._gateway.push_text(
-                session.channel_type,
-                session.channel_id,
-                session.to_channel_subject(),
-                text,
-            )
+        if self._thread_registry.is_im_session(session):
+            await self._push_session_channel(session, text)
             return
         await self._publish_room_text(
             session.thread_id,
@@ -1003,9 +1106,13 @@ def _is_team_system_prompt(text: str) -> bool:
         (
             "[团队成员",
             "[系统唤醒",
+            "[团队派工",
+            "[主持人调度",
             "[team member",
             "[system wake-up",
             "[background task",
+            "[Team assignment",
+            "[Host dispatch",
             "以下是当前群聊记录",
             "Here is the current group-chat transcript",
         )
@@ -1121,19 +1228,137 @@ def _final_room_assistant(messages: list[Any]) -> Any | None:
     return None
 
 
-def _with_speaker(msg: Any, agent_id: str) -> Any:
+def _apply_edited_files_stamp(
+    messages: list[Any],
+    edited: list[str],
+) -> tuple[list[Any], Any | None]:
+    """Stamp ``edited_files`` on the final text bubble, or last AI if tools-only."""
+    final = _final_room_assistant(messages)
+    if not edited:
+        return messages, final
+    target = final
+    if target is None:
+        for msg in reversed(messages):
+            if _message_is_assistant(msg):
+                target = msg
+                break
+    if target is None:
+        return messages, final
+    stamped_target = _with_edited_files(target, edited)
+    out = [stamped_target if msg is target else msg for msg in messages]
+    if final is None:
+        return out, None
+    return out, stamped_target if final is target else final
+
+
+def _truncate_tool_result_text(
+    text: str,
+    *,
+    max_chars: int = _HISTORY_TOOL_RESULT_MAX_CHARS,
+) -> str:
+    if len(text) <= max_chars:
+        return text
+    keep = max(max_chars - len(_HISTORY_TOOL_RESULT_SUFFIX), 0)
+    return text[:keep] + _HISTORY_TOOL_RESULT_SUFFIX
+
+
+def _truncate_tool_content(content: Any) -> Any:
+    if isinstance(content, str):
+        return _truncate_tool_result_text(content)
+    if isinstance(content, list):
+        out: list[Any] = []
+        changed = False
+        for block in content:
+            if isinstance(block, str):
+                new_block = _truncate_tool_result_text(block)
+                out.append(new_block)
+                changed = changed or new_block != block
+            elif isinstance(block, dict) and isinstance(block.get("text"), str):
+                text = str(block["text"])
+                new_text = _truncate_tool_result_text(text)
+                if new_text != text:
+                    out.append({**block, "text": new_text})
+                    changed = True
+                else:
+                    out.append(block)
+            else:
+                out.append(block)
+        return out if changed else content
+    return content
+
+
+def _replace_message_content(msg: Any, content: Any) -> Any:
+    if isinstance(msg, dict):
+        out = dict(msg)
+        out["content"] = content
+        return out
+    copy = getattr(msg, "model_copy", None)
+    if callable(copy):
+        try:
+            return copy(update={"content": content})
+        except Exception:
+            pass
+    try:
+        object.__setattr__(msg, "content", content)
+    except Exception:
+        msg.content = content
+    return msg
+
+
+def _history_projection_messages(messages: list[Any]) -> list[Any]:
+    """Truncate bulky ToolMessage bodies before writing team projections."""
+    out: list[Any] = []
+    for msg in messages:
+        if _message_role(msg) != "tool":
+            out.append(msg)
+            continue
+        content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+        truncated = _truncate_tool_content(content)
+        if truncated is content:
+            out.append(msg)
+            continue
+        out.append(_replace_message_content(msg, truncated))
+    return out
+
+
+def _edited_files_from_messages(messages: list[Any]) -> list[str]:
+    """Workspace paths from write/edit/send tool_calls in a peer turn."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for msg in messages:
+        tool_calls = _message_tool_calls(msg)
+        if not isinstance(tool_calls, list):
+            continue
+        for call in tool_calls:
+            if isinstance(call, dict):
+                name = str(call.get("name") or "")
+                args = call.get("args")
+            else:
+                name = str(getattr(call, "name", "") or "")
+                args = getattr(call, "args", None)
+            base = tool_name_base(name).lower()
+            if base not in _EDIT_CARD_TOOL_BASES:
+                continue
+            for path in extract_artifact_paths(tool_name=name, args=args):
+                key = path.replace("\\", "/").strip()
+                if not key or not artifact_path_allowed(key) or key in seen:
+                    continue
+                seen.add(key)
+                out.append(key)
+    return out
+
+
+def _patch_additional_kwargs(msg: Any, updates: dict[str, Any]) -> Any:
+    if not updates:
+        return msg
     if isinstance(msg, dict):
         kwargs = dict(msg.get("additional_kwargs") or {})
-        if kwargs.get("speaker_agent_id") == agent_id:
-            return msg
-        kwargs["speaker_agent_id"] = agent_id
+        kwargs.update(updates)
         out = dict(msg)
         out["additional_kwargs"] = kwargs
         return out
     kwargs = dict(getattr(msg, "additional_kwargs", None) or {})
-    if kwargs.get("speaker_agent_id") == agent_id:
-        return msg
-    kwargs["speaker_agent_id"] = agent_id
+    kwargs.update(updates)
     copy = getattr(msg, "model_copy", None)
     if callable(copy):
         try:
@@ -1145,6 +1370,24 @@ def _with_speaker(msg: Any, agent_id: str) -> Any:
     except Exception:
         msg.additional_kwargs = kwargs
     return msg
+
+
+def _with_speaker(msg: Any, agent_id: str) -> Any:
+    if isinstance(msg, dict):
+        kwargs = dict(msg.get("additional_kwargs") or {})
+        if kwargs.get("speaker_agent_id") == agent_id:
+            return msg
+    else:
+        kwargs = dict(getattr(msg, "additional_kwargs", None) or {})
+        if kwargs.get("speaker_agent_id") == agent_id:
+            return msg
+    return _patch_additional_kwargs(msg, {"speaker_agent_id": agent_id})
+
+
+def _with_edited_files(msg: Any, paths: list[str]) -> Any:
+    if not paths:
+        return msg
+    return _patch_additional_kwargs(msg, {"edited_files": list(paths)})
 
 
 def _ensure_reasoning(msg: Any, reasoning: str) -> None:
@@ -1192,25 +1435,27 @@ def _assistant_text(msg: Any) -> str:
 
 
 def _peer_turn_messages(messages: list[Any]) -> list[Any]:
-    trigger: Any | None = None
-    final_ai: Any | None = None
-    for msg in messages:
-        role = ""
-        if isinstance(msg, dict):
-            role = str(msg.get("role") or msg.get("type") or "").lower()
-            tool_calls = msg.get("tool_calls")
-        else:
-            role = str(getattr(msg, "type", None) or getattr(msg, "role", "") or "").lower()
-            tool_calls = getattr(msg, "tool_calls", None)
-        if role in ("human", "user"):
-            trigger = msg
-        if role in ("ai", "assistant") and not tool_calls:
-            final_ai = msg
+    """Last user turn for the member page: trigger + full assistant/tool trail.
+
+    Historically this kept only the final AI text, which dropped tool_calls
+    from both the member projection and (via fan-in) the room wall.
+    """
+    last_user = -1
+    for index, msg in enumerate(messages):
+        if _message_role(msg) in {"human", "user"}:
+            last_user = index
+    if last_user >= 0:
+        trigger = messages[last_user]
+        tail = messages[last_user + 1 :]
+    else:
+        trigger = None
+        tail = list(messages)
+    skip = {"system", "human", "user"}
+    trail = [msg for msg in tail if _message_role(msg) not in skip]
     out: list[Any] = []
     if trigger is not None:
         out.append(trigger)
-    if final_ai is not None:
-        out.append(final_ai)
+    out.extend(trail)
     return out
 
 
@@ -1465,6 +1710,7 @@ def wire_host_dispatch(
 
 __all__ = [
     "TeamManager",
+    "host_system_prompt",
     "stamp_stream_speaker",
     "stamp_team_host_chunk",
     "wire_host_dispatch",

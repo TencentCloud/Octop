@@ -1,4 +1,4 @@
-"""Project harness stream chunks into harness-gateway MessageEvent objects."""
+"""Project harness stream chunks into octop-gateway MessageEvent objects."""
 
 from __future__ import annotations
 
@@ -6,12 +6,15 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from harness_gateway.media import MediaBackend
-from harness_gateway.models import MessageEvent
+from octop_gateway.media import MediaBackend
+from octop_gateway.models import MessageEvent
 
 from octop.i18n import channel_tool_hint_end, channel_tool_hint_start, tool_display_name
 from octop.infra.gateway.hitl.format import format_hitl_card
-from octop.infra.gateway.media.tool_media import media_events_from_tool_result
+from octop.infra.gateway.media.tool_media import (
+    dedup_tool_result_messages,
+    media_events_from_tool_result,
+)
 from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agent
 from octop.infra.gateway.process.history_projection import TurnHistoryTracker
 from octop.infra.gateway.process.usage_record import UsageTracker
@@ -42,42 +45,6 @@ class _ToolProjectionState:
     # Track tool_call_ids whose media we've already emitted to prevent
     # re-emission when PatchToolCallsMiddleware emits Overwrite(full_history).
     emitted_media_ids: set[str] = field(default_factory=set)
-
-
-def _dedup_tool_result_messages(
-    chunk: dict[str, Any],
-    emitted_ids: set[str],
-) -> dict[str, Any] | None:
-    """Filter ``tool_result`` messages to those not yet emitted this stream.
-
-    When ``PatchToolCallsMiddleware`` returns ``Overwrite(full_history)`` the
-    ``tool_result`` chunk contains every ToolMessage ever (including ones from
-    previous turns).  We keep only messages whose ``tool_call_id`` hasn't been
-    seen yet in this stream, then record the new ones.
-
-    Returns the (possibly trimmed) chunk, or ``None`` when all messages are
-    duplicates.
-    """
-    messages = chunk.get("messages")
-    if not isinstance(messages, list):
-        return chunk
-
-    new_messages = []
-    for msg in messages:
-        msg_id = getattr(msg, "tool_call_id", None) or (
-            msg.get("tool_call_id") if isinstance(msg, dict) else None
-        )
-        if msg_id and msg_id in emitted_ids:
-            continue
-        new_messages.append(msg)
-        if msg_id:
-            emitted_ids.add(msg_id)
-
-    if not new_messages:
-        return None
-    if len(new_messages) == len(messages):
-        return chunk
-    return {**chunk, "messages": new_messages}
 
 
 def enrich_tool_stream_chunk(
@@ -199,7 +166,7 @@ async def _project_chunks(
                 tool_state.tool_started.discard(idx)
                 tool_state.active_tool_idx = None
             if harness_workspace is not None and tool_state.saw_tool_call:
-                chunk_for_media = _dedup_tool_result_messages(chunk, tool_state.emitted_media_ids)
+                chunk_for_media = dedup_tool_result_messages(chunk, tool_state.emitted_media_ids)
                 if chunk_for_media is not None:
                     async for media_event in media_events_from_tool_result(
                         chunk_for_media,

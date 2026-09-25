@@ -1,4 +1,4 @@
-"""One QCC API key, five fixed MCP resources, one namespaced tool surface."""
+"""One QCC OAuth grant (or legacy API key), five fixed MCP resources, one namespaced tool surface."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
+from octop.infra.connectors.oauth.mcp import _ensure_mcp_oauth_url, fetch_authorization_metadata
 from octop.infra.utils.ssrf_guard import safe_request
 
 ISSUER = "https://agent.qcc.com"
@@ -35,7 +36,13 @@ _METADATA_TTL_SEC = 600.0
 _metadata_ok_until: dict[str, float] = {}
 
 
+def is_oauth_grant(creds: dict[str, Any]) -> bool:
+    return bool(creds.get("oauth_client_id") or creds.get("refresh_token"))
+
+
 def bearer_token(creds: dict[str, Any]) -> str:
+    if is_oauth_grant(creds):
+        return str(creds.get("access_token") or "").strip()
     return str(
         creds.get("api_key") or creds.get("token") or creds.get("access_token") or ""
     ).strip()
@@ -143,3 +150,32 @@ async def probe(token: str) -> dict[str, Any]:
         "servers": servers,
         **({"error": f"QCC MCP probe failed: {', '.join(failed)}"} if failed else {}),
     }
+
+
+def unauthorized(exc: BaseException) -> bool:
+    if isinstance(exc, BaseExceptionGroup):
+        return any(unauthorized(child) for child in exc.exceptions)
+    return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 401
+
+
+async def revoke(creds: dict[str, Any]) -> None:
+    token = str(creds.get("refresh_token") or "")
+    if not token:
+        return
+    metadata = await fetch_authorization_metadata(ISSUER)
+    endpoint = await _ensure_mcp_oauth_url(
+        str(metadata.get("revocation_endpoint") or ""),
+        issuer=ISSUER,
+        field="revocation_endpoint",
+    )
+    response = await safe_request(
+        "POST",
+        endpoint,
+        data={
+            "client_id": str(creds.get("oauth_client_id") or ""),
+            "token": token,
+            "token_type_hint": "refresh_token",
+        },
+        timeout=20.0,
+    )
+    response.raise_for_status()

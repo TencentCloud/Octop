@@ -230,6 +230,16 @@ def validate_create_credentials(
             raise ValueError("token is required")
         return {"token": token}
 
+    # Preserve credentials submitted by older QCC clients during migration.
+    if kind == "qcc" and credentials.get("api_key") and not credentials.get("access_token"):
+        api_key = str(credentials["api_key"]).strip()
+        if not api_key:
+            raise ValueError("api_key is required")
+        return {
+            "api_key": api_key,
+            "internal_token": new_internal_token(),
+        }
+
     if entry.auth_kind == "oauth2":
         access_token = str(
             credentials.get("access_token") or credentials.get("token") or ""
@@ -573,7 +583,7 @@ def inject_missing_gateway_tools(
     """Register gateway tools in-process when HTTP MCP load did not produce them."""
     import logging
 
-    from harness_agent.mcp import mcp_tool_names
+    from octop_harness.mcp import mcp_tool_names
 
     from octop.infra.connectors.gateway import build_gateway_langchain_tools
 
