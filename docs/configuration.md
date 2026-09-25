@@ -10,7 +10,7 @@ on first server start (or by `octop init` / `octop run`).
 ├── config.json              # process-level settings (host, port, CORS, DB, TLS, …)
 ├── env                      # optional dotenv (OCTOP_DATABASE_*, API keys, …); loaded at server start
 ├── octop.db                 # SQLite — users, agents, providers, sessions, audit
-├── cli_state.json           # CLI token + pinned defaults (`octop user login`)
+├── cli_state.json           # pinned defaults (`octop config set-user` / `octop agent use`)
 ├── repl_history             # readline-style history for `octop chats repl`
 ├── secrets/
 │   └── jwt_secret           # 32-byte random; rotate with `octop admin rotate-jwt-secret`
