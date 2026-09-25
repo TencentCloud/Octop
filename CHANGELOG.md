@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 修复
+
+- 飞书通道：修复保存设置后旧 WebSocket 连接未关闭的问题；检测连接时仅校验凭据，避免干扰正在收消息的通道。
 ### 变更
 - 运行时依赖改为 `octop-harness[all]` / `octop-gateway` / `octop-memory` / `octop-browser` 1.0.0（原 `orcakit-harness-agent` / `harness-*`）；文档、UI 文案与生成路径同步改为 `octop-*`（`~/.harness-browser` 仅作迁移/拒绝源）
 
