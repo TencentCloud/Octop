@@ -1,4 +1,4 @@
-"""Team peer discovery after harness-agent dropped apply_mentions intercept."""
+"""Team peer discovery after octop-harness dropped apply_mentions intercept."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from harness_agent.config import HarnessAgentConfig, ModelConfig, ProviderConfig
-from harness_agent.manager import HarnessAgentManager
-from harness_agent.teams.tools import AskAgentInput, build_team_tools
+from octop_harness.config import HarnessAgentConfig, ModelConfig, ProviderConfig
+from octop_harness.manager import HarnessAgentManager
+from octop_harness.teams.tools import AskAgentInput, build_team_tools
 
 
 def _config(tmp_path: Path, *, name: str = "agent") -> HarnessAgentConfig:
@@ -32,7 +32,7 @@ def _mgr(tmp_path: Path) -> HarnessAgentManager:
     mock_agent = MagicMock()
     mock_agent.init_workspace.return_value = MagicMock()
     mock_agent.call = AsyncMock(return_value={"messages": [{"role": "assistant", "content": "ok"}]})
-    with patch("harness_agent.manager.HarnessAgent", return_value=mock_agent):
+    with patch("octop_harness.manager.HarnessAgent", return_value=mock_agent):
         mgr = HarnessAgentManager()
         mgr.create_agent(
             _config(tmp_path, name="main"),
@@ -64,7 +64,7 @@ def test_resolve_peer_matches_octop_display_name(tmp_path: Path) -> None:
     mock_agent = MagicMock()
     mock_agent.init_workspace.return_value = MagicMock()
     mock_agent.call = AsyncMock(return_value={"messages": [{"role": "assistant", "content": "ok"}]})
-    with patch("harness_agent.manager.HarnessAgent", return_value=mock_agent):
+    with patch("octop_harness.manager.HarnessAgent", return_value=mock_agent):
         mgr = HarnessAgentManager()
         mgr.create_agent(
             _config(tmp_path, name="agent_host01"),
@@ -94,7 +94,7 @@ async def test_ask_agent_accepts_expert_or_legacy_agent_key(tmp_path: Path) -> N
     mgr = _mgr(tmp_path)
     tools = {tool.name: tool for tool in build_team_tools(mgr.team)}
     runtime = {"configurable": {"agent_id": "main", "user": 1}}
-    with patch("harness_agent.teams.tools.get_config", return_value=runtime):
+    with patch("octop_harness.teams.tools.get_config", return_value=runtime):
         by_expert = json.loads(
             await tools["ask_agent"].ainvoke({"expert": "researcher", "message": "hi"})
         )
