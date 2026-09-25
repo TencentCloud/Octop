@@ -77,7 +77,12 @@ class _Siteverify(BaseHTTPRequestHandler):
 
 
 @pytest.fixture
-def siteverify() -> tuple[str, type[_Siteverify]]:
+def siteverify(monkeypatch: pytest.MonkeyPatch) -> tuple[str, type[_Siteverify]]:
+    # httpx trusts ambient proxy config (exported http_proxy, macOS system
+    # proxy), which would send these loopback calls to the proxy instead of
+    # the mock. Keep loopback direct.
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
     _Siteverify.last_query = {}
     _Siteverify.last_body = {}
     _Siteverify.payload = {"success": True}
