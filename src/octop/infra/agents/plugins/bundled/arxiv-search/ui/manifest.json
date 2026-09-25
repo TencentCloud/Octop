@@ -1,0 +1,6 @@
+{
+  "renderers": [
+    { "id": "arxiv_search_results", "tools": ["arxiv_search"] },
+    { "id": "arxiv_paper_card", "tools": ["arxiv_paper"] }
+  ]
+}
