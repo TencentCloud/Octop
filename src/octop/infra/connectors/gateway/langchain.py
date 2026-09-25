@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from harness_agent.mcp import mcp_args_model, sanitize_llm_tool_name
+from octop_harness.mcp import mcp_args_model, sanitize_llm_tool_name
 
 from octop.infra.connectors.catalog import ConnectorCatalogEntry, is_inprocess_gateway
 from octop.infra.connectors.gateway.protocol import handle_mcp_request

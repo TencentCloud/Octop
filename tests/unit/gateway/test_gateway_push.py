@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from harness_gateway.models import ChannelSubject
+from octop_gateway.models import ChannelSubject
 
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool

@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any, Literal
 
-from harness_gateway.channel import MessageProcessor
-from harness_gateway.models import (
+from octop_gateway.channel import MessageProcessor
+from octop_gateway.models import (
     ContentPart,
     InboundMessage,
     MessageEvent,

@@ -4,7 +4,7 @@
 
 ## 1. 安装依赖并启动
 
-Discord 适配器已随 `harness-gateway 0.9.9` 发布。Octop 要求 `harness-gateway>=0.9.9`，可直接使用发布包，无需克隆相邻网关仓库：
+Discord 适配器已随 `octop-gateway 0.9.9` 发布。Octop 要求 `octop-gateway>=0.9.9`，可直接使用发布包，无需克隆相邻网关仓库：
 
 ```sh
 cd Octop
@@ -14,7 +14,7 @@ uv run octop run
 
 可在 `uv run octop run` 后追加原有启动参数。先停止占用同一服务端口的旧进程；不要同时启动两个使用同一 Bot Token 的实例。
 
-仅在联调相邻 `harness-im-bridge` 源码时使用 `bash scripts/run-discord-local.sh`；该脚本会覆盖发布包为本地可编辑依赖。恢复发布包时重新运行 `uv sync --locked --extra dev`。
+仅在联调相邻 `octop-gateway` 源码时使用 `bash scripts/run-discord-local.sh`；该脚本会覆盖发布包为本地可编辑依赖。恢复发布包时重新运行 `uv sync --locked --extra dev`。
 
 ## 2. 填写位置
 
@@ -54,7 +54,7 @@ uv run octop run
 
 | 检查 | 结果 |
 |---|---|
-| harness-im-bridge `make all` | 格式、Lint、mypy 通过；458 项测试通过，13 项集成测试按默认命令排除 |
+| octop-gateway `make all` | 格式、Lint、mypy 通过；458 项测试通过，13 项集成测试按默认命令排除 |
 | Octop `make all` | 格式、Lint、mypy 通过；3587 项测试通过，17 项条件跳过 |
 | Discord 最终相关后端复核 | 18 项通过，覆盖路由、实时状态、通道 CRUD 与配置探测 |
 | 前端通道测试 | 12 项通过，包含 Discord 入口、Token 和长数字 ID 的完整保存流程 |
@@ -68,7 +68,7 @@ uv run octop run
 
 新增「允许所有可访问频道」开关，前后端默认开启；缺少该字段的旧配置同样按开启处理。关闭并保存后保持指定频道模式；输入框保留原有 ID。私聊允许列表与直接 @触发规则不变。
 
-- harness-im-bridge `make all`：460 passed，13 deselected；格式、Lint、mypy 通过。
+- octop-gateway `make all`：460 passed，13 deselected；格式、Lint、mypy 通过。
 - Octop `make all`：3591 passed，17 skipped；格式、Lint、mypy 通过。
 - 前端通道测试：16 passed，覆盖默认开启、关闭后保存、旧配置默认值、重新编辑保留布尔值。
 - 前端相关文件 ESLint 通过；TypeScript 和 Vite 构建通过，内置网页产物已更新。
