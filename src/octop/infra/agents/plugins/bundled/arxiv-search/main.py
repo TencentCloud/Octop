@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 from typing import Any
 
 import httpx
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 _API_URL = "https://export.arxiv.org/api/query"
 _UA = "Octop-arxiv-search/0.1.0"

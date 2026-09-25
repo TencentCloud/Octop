@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from types import SimpleNamespace
 from typing import Any
 
@@ -229,9 +230,11 @@ def test_setup_registers_the_search_and_detail_tools() -> None:
     assert [name for name, _ in context.tools] == ["arxiv_search", "arxiv_paper"]
 
 
-def test_plugin_loads_through_the_harness_registry() -> None:
-    from harness_agent.plugins import PluginRegistry, load_plugin_dir
+def test_plugin_loads_through_the_harness_registry(monkeypatch: Any) -> None:
+    from octop_harness.plugins import PluginRegistry, load_plugin_dir
 
+    monkeypatch.setitem(sys.modules, "harness_agent", None)
+    monkeypatch.setitem(sys.modules, "harness_agent.plugins", None)
     PluginRegistry.reset()
     try:
         plugin = load_plugin_dir(
