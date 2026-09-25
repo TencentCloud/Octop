@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import pytest
-from harness_gateway.models import (
+from octop_gateway.models import (
     FileContent,
     InboundMessage,
     MessageEvent,

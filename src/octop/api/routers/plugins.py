@@ -458,7 +458,7 @@ async def list_agent_plugin_tools(
                     if isinstance(raw_tool, dict):
                         tool_cfg = raw_tool
             # Default on when the agent has no explicit override (matches
-            # harness_agent.plugins.tools._tool_enabled).
+            # octop_harness.plugins.tools._tool_enabled).
             if tool_cfg and "enabled" in tool_cfg:
                 tool_enabled = bool(tool_cfg.get("enabled"))
             else:

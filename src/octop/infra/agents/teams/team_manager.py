@@ -18,16 +18,16 @@ from collections.abc import Callable
 from dataclasses import fields
 from typing import TYPE_CHECKING, Any
 
-from harness_agent.messages import extract_call_response
-from harness_agent.teams.inbox import InboxMessage
-from harness_agent.teams.processor import ReplyEvent
-from harness_agent.teams.util import (
+from langchain_core.messages import AIMessage, HumanMessage
+from octop_harness.messages import extract_call_response
+from octop_harness.teams.inbox import InboxMessage
+from octop_harness.teams.processor import ReplyEvent
+from octop_harness.teams.util import (
     PeerCall,
     PeerSession,
     build_one_shot_request,
     derive_peer_thread_id,
 )
-from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n import tr
 from octop.infra.agents.teams.service import is_team_agent
