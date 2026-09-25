@@ -555,6 +555,7 @@ async def patch_thread(
         model_ref = (body.model_ref or "").strip() or None
         if (
             model_ref is not None
+            and model_ref != "auto"
             and not server.app_runtime.agent_registry.providers.is_model_ref_usable(model_ref)
         ):
             raise OctopError(

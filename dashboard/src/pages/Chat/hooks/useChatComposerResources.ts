@@ -124,21 +124,13 @@ export function useChatComposerResources(
     if (isNewSession) composerTouchedRef.current = false;
   }, [isNewSession]);
 
-  // Auto = omit turn model; backend applies the expert default.
+  // null = untouched default; "auto" = explicit Auto; otherwise a manual model.
   useEffect(() => {
     const local = activeThreadId
       ? conversationOverrides[activeThreadId]
       : undefined;
-    setSelectedModel(
-      local ? local.model : stickyModel || preferredModel || null,
-    );
-  }, [
-    resolvedAgentId,
-    activeThreadId,
-    stickyModel,
-    preferredModel,
-    conversationOverrides,
-  ]);
+    setSelectedModel(local ? local.model : stickyModel || null);
+  }, [resolvedAgentId, activeThreadId, stickyModel, conversationOverrides]);
 
   useEffect(() => {
     const defaults = selectedModel ? modelReasoning[selectedModel] : undefined;
@@ -511,6 +503,7 @@ export function useChatComposerResources(
 
   return {
     selectedModel,
+    preferredModel,
     setSelectedModel: handleModelChange,
     reasoningMode,
     reasoningEffort,

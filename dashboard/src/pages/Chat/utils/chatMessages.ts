@@ -52,12 +52,10 @@ export function normalizeComposerContext(
   return has ? ctx : undefined;
 }
 
-/**
- * WS ``model`` field for each turn.
- *
- * Only an explicit composer selection is sent. Agent/user/global defaults are
- * resolved by the backend so they are not mistaken for a sticky override.
- */
+/** Explicit Auto is distinct from an untouched composer (null). */
+export const AUTO_MODEL_REF = "auto";
+
+/** Only an explicit selection is sent; the backend resolves untouched defaults. */
 export function resolveTurnModelRef(
   selectedModel: string | null | undefined,
   agentDefaultModel: string | null | undefined,
@@ -67,14 +65,12 @@ export function resolveTurnModelRef(
   return selected || null;
 }
 
-/** User picked a model different from the expert default (for UI chips / history). */
+/** A concrete manual selection, even when it matches the current default. */
 export function resolveTurnModelOverride(
   selectedModel: string | null | undefined,
-  agentDefaultModel: string | null | undefined,
 ): string | null {
   const selected = (selectedModel || "").trim();
-  const agentDefault = (agentDefaultModel || "").trim();
-  if (!selected || (agentDefault && selected === agentDefault)) {
+  if (!selected || selected === AUTO_MODEL_REF) {
     return null;
   }
   return selected;
@@ -110,7 +106,7 @@ export function buildComposerContext(params: {
   }
 
   const selectedModel = (params.selectedModel || "").trim();
-  if (selectedModel) {
+  if (selectedModel && selectedModel !== AUTO_MODEL_REF) {
     ctx.model = selectedModel;
     has = true;
   }

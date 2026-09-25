@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUTO_MODEL_REF,
+  buildComposerContext,
   formatRunUsage,
   resolveTurnModelRef,
+  resolveTurnModelOverride,
   assistantTurnsFromEnd,
   userTurnsFromEnd,
 } from "./chatMessages";
@@ -32,9 +35,23 @@ describe("resolveTurnModelRef", () => {
     expect(resolveTurnModelRef("p/picked", null)).toBe("p/picked");
   });
 
-  it("omits model when composer is Auto so backend can resolve expert default", () => {
+  it("omits an untouched model so backend can resolve expert and personal defaults", () => {
     expect(resolveTurnModelRef(null, null)).toBeNull();
     expect(resolveTurnModelRef("", null)).toBeNull();
+  });
+
+  it("persists an explicit Auto choice without treating it as a model override", () => {
+    expect(resolveTurnModelRef(AUTO_MODEL_REF, "p/expert")).toBe(
+      AUTO_MODEL_REF,
+    );
+    expect(resolveTurnModelOverride(AUTO_MODEL_REF)).toBeNull();
+    expect(
+      buildComposerContext({ selectedModel: AUTO_MODEL_REF }),
+    ).toBeUndefined();
+  });
+
+  it("keeps a manually chosen model explicit even if it matches a default", () => {
+    expect(resolveTurnModelOverride("p/expert")).toBe("p/expert");
   });
 });
 
