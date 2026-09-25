@@ -12,7 +12,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from harness_gateway.models import (
+from octop_gateway.models import (
     AudioContent,
     ContentPart,
     FileContent,
@@ -32,8 +32,8 @@ from octop.infra.gateway.media.inbound_store import (
 from octop.infra.utils.locale import Locale
 
 if TYPE_CHECKING:
-    from harness_agent.backends.workspace import BackendWorkspace
-    from harness_gateway.media import MediaBackend
+    from octop_gateway.media import MediaBackend
+    from octop_harness.backends.workspace import BackendWorkspace
 
 logger = logging.getLogger(__name__)
 
