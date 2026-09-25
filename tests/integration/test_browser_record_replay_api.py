@@ -112,7 +112,7 @@ async def test_record_replay_stop_generates_steps(env: Any) -> None:
     owned = SimpleNamespace(read_manifest=lambda _rid: SimpleNamespace(profile="user-1"))
 
     with (
-        patch("harness_browser.record.store.RecordingStore", return_value=owned),
+        patch("octop_browser.record.store.RecordingStore", return_value=owned),
         patch(
             "octop.api.routers.browser.record_replay.send_record_request",
             new=AsyncMock(
@@ -175,7 +175,7 @@ async def test_record_replay_replay_runs_runner(env: Any) -> None:
 
     with (
         patch(
-            "harness_browser.record.store.RecordingStore",
+            "octop_browser.record.store.RecordingStore",
             return_value=SimpleNamespace(
                 read_manifest=lambda _rid: SimpleNamespace(profile="user-1")
             ),
@@ -223,7 +223,7 @@ async def test_record_skill_content_hides_other_user_recording(env: Any) -> None
     store = SimpleNamespace(
         read_manifest=lambda _rid: SimpleNamespace(profile="user-99"),
     )
-    with patch("harness_browser.record.store.RecordingStore", return_value=store):
+    with patch("octop_browser.record.store.RecordingStore", return_value=store):
         r = await client.post(
             "/api/browser/record-replay/skill-content",
             headers=auth,

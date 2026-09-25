@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 import httpx
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 
 def _payload(data: dict[str, Any], text: str) -> str:

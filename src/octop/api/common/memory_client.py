@@ -1,6 +1,6 @@
 """Per-agent ``Memory`` instance management for the dashboard router.
 
-Owns a tiny LRU cache of ``harness_memory.core.Memory`` instances
+Owns a tiny LRU cache of ``octop_memory.core.Memory`` instances
 keyed by ``agent_id``. Backend may be sqlite (default workspace file) or
 postgres when ``config_json.memory.backend`` says so.
 """
@@ -24,7 +24,7 @@ _MEMORY_NS_PREFIX = "agent_"
 
 
 def memory_namespace(agent_id: str) -> str:
-    """Return the memory namespace harness-memory uses for ``agent_id``."""
+    """Return the memory namespace octop-memory uses for ``agent_id``."""
     return f"{_MEMORY_NS_PREFIX}{agent_id}"
 
 
@@ -70,8 +70,8 @@ class _MemoryCache:
         backend_config: dict[str, Any] | None,
         fingerprint: str,
     ) -> tuple[Any, Any]:
-        from harness_memory.adapters.bridge.handlers import Bridge  # noqa: PLC0415
-        from harness_memory.core import Memory  # noqa: PLC0415
+        from octop_memory.adapters.bridge.handlers import Bridge  # noqa: PLC0415
+        from octop_memory.core import Memory  # noqa: PLC0415
 
         with self._lock:
             cached = self._entries.get(agent_id)

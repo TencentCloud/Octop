@@ -149,8 +149,8 @@ class LangfuseSettingsStore:
         return await loop.run_in_executor(None, verify_langfuse_credentials, h, pk, sk)
 
     def harness_config(self) -> Any:
-        """Build harness-agent ``LangfuseConfig`` for ``HarnessAgentManager``."""
-        from harness_agent.observability.langfuse import LangfuseConfig  # noqa: PLC0415
+        """Build octop-harness ``LangfuseConfig`` for ``HarnessAgentManager``."""
+        from octop_harness.observability.langfuse import LangfuseConfig  # noqa: PLC0415
 
         view = self.load()
         if not view.enabled:
