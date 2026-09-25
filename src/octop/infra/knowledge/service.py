@@ -1,4 +1,4 @@
-"""Knowledge-base ownership checks and document upload orchestration.
+﻿"""Knowledge-base ownership checks and document upload orchestration.
 
 Visibility is owner or instance-wide ``shared``.
 """
@@ -439,6 +439,18 @@ class KnowledgeService:
         cleaned = (new_name or "").strip()
         if not cleaned or "/" in cleaned or "\\" in cleaned:
             raise ValueError("invalid knowledge document name")
+        # Documents store their bytes under a path derived from the original
+        # filename extension (see document_path()). A rename that drops or
+        # swaps the extension moves the row off its own file — downloads
+        # 404 and delete leaks the bytes. Preserve the original suffix for
+        # files; folders have no on-disk file and rename freely.
+        if not document.is_dir:
+            original_suffix = Path(document.filename).suffix.lower()
+            if original_suffix:
+                cleaned_stem = Path(cleaned).stem
+                current_suffix = Path(cleaned).suffix.lower()
+                if current_suffix != original_suffix:
+                    cleaned = f"{cleaned_stem}{original_suffix}"
         new_path = normalize_kb_path(f"{path_parent(document.path)}/{cleaned}")
         if new_path == document.path:
             return cast(KnowledgeDocumentRow, document)
@@ -459,3 +471,4 @@ class KnowledgeService:
         if base is None:
             raise LookupError("knowledge base not found")
         return cast(KnowledgeBaseRow, base)
+
