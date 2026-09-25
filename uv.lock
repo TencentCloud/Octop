@@ -1329,55 +1329,6 @@ wheels = [
 ]
 
 [[package]]
-name = "harness-browser"
-version = "0.7.9"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "mcp" },
-    { name = "pydantic" },
-    { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a4/08/8dfe724dc05de9ab8c903f64482dbe54f67a9323995867ebbd4094c52fe2/harness_browser-0.7.9.tar.gz", hash = "sha256:a88a7a9d55649c628ff41b073be749885d16d95925521ab8a3e2e4e11c3f37f8", size = 341291, upload-time = "2026-09-17T13:00:12.571Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/29/b652bc07e2bf4b1c012469f512cca9bab01c1958842129304996811e80a1/harness_browser-0.7.9-py3-none-any.whl", hash = "sha256:4c1afc19e225105cbc6f2804a1ae56fd32555b1e32cf8a215752823f79a69023", size = 102702, upload-time = "2026-09-17T13:00:10.986Z" },
-]
-
-[[package]]
-name = "harness-gateway"
-version = "0.9.9"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "cryptography" },
-    { name = "dingtalk-stream" },
-    { name = "discord-py" },
-    { name = "httpx" },
-    { name = "lark-oapi" },
-    { name = "paho-mqtt" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "python-socketio", extra = ["asyncio-client"] },
-    { name = "python-telegram-bot" },
-    { name = "websocket-client" },
-    { name = "websockets" },
-    { name = "wecom-aibot-sdk" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/76/95/07ccd875cab4cb92c4fcf33948af3feb47ef552279a853e289b615d0fec3/harness_gateway-0.9.9.tar.gz", hash = "sha256:7bf412b3645fd07ee4b9646af2384e770062268426f49778c37dfde558a61788", size = 532057, upload-time = "2026-09-22T04:04:28.177Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/16/2f/6e38ab8fa06a8ac74b01374a6f79489d695ab42aab25de3e445d2f940e25/harness_gateway-0.9.9-py3-none-any.whl", hash = "sha256:e0021105cece57bce69fa966fea836be5219e124dc74a0c238221703cbb381de", size = 157953, upload-time = "2026-09-22T04:04:25.872Z" },
-]
-
-[[package]]
-name = "harness-memory"
-version = "0.9.11"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/58/cc/6dbe35a4917e3edf378223e61f03a021ce48be45d6320a260d4a46af0ef6/harness_memory-0.9.11.tar.gz", hash = "sha256:b03dfa7d5543455da858732ab5edcbd7875cbfcb219b0306a56ae920ba4b8e78", size = 1189418, upload-time = "2026-09-20T09:26:41.438Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/87/82/8a0c5c6624d4bc845449f76823ce424c13802a32629fe4590cc903727d7b/harness_memory-0.9.11-py3-none-any.whl", hash = "sha256:65bb58689c537b6f9adef2b6a19b711dff226833318205ab21b7724fceb93c8f", size = 370616, upload-time = "2026-09-20T09:26:36.915Z" },
-]
-
-[[package]]
 name = "hf-xet"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2514,16 +2465,16 @@ dependencies = [
     { name = "cryptography" },
     { name = "edge-tts" },
     { name = "fastapi" },
-    { name = "harness-browser" },
-    { name = "harness-gateway" },
-    { name = "harness-memory" },
     { name = "josepy" },
     { name = "langchain-core" },
     { name = "langgraph-checkpoint-postgres" },
     { name = "lark-oapi" },
     { name = "mcp" },
+    { name = "octop-browser" },
+    { name = "octop-gateway" },
+    { name = "octop-harness", extra = ["all"] },
+    { name = "octop-memory" },
     { name = "openpyxl" },
-    { name = "orcakit-harness-agent", extra = ["all"] },
     { name = "pillow" },
     { name = "playwright" },
     { name = "psycopg", extra = ["binary"] },
@@ -2598,9 +2549,6 @@ requires-dist = [
     { name = "edge-tts", specifier = ">=6.1" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "fastembed", marker = "extra == 'local-embedding'", specifier = ">=0.4" },
-    { name = "harness-browser", specifier = ">=0.7.9" },
-    { name = "harness-gateway", specifier = ">=0.9.9" },
-    { name = "harness-memory", specifier = ">=0.9.11" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "huggingface-hub", marker = "extra == 'local-embedding'", specifier = ">=0.20" },
     { name = "josepy", specifier = ">=2.2.0" },
@@ -2610,9 +2558,12 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.9,<2" },
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
+    { name = "octop-browser", specifier = ">=1.0.0" },
+    { name = "octop-gateway", specifier = ">=1.0.0" },
+    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.0" },
+    { name = "octop-memory", specifier = ">=1.0.0" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
     { name = "openpyxl", specifier = ">=3.1" },
-    { name = "orcakit-harness-agent", extras = ["all"], specifier = ">=1.0.14" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.40" },
@@ -2655,6 +2606,99 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.6" },
     { name = "ruff", specifier = ">=0.4" },
     { name = "xlwt", specifier = ">=1.3" },
+]
+
+[[package]]
+name = "octop-browser"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "mcp" },
+    { name = "pydantic" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9c/a6/a89e5d3c6b27bb5dc310290f52fb85a3d1f59279b7854ebd5c9973855651/octop_browser-1.0.0.tar.gz", hash = "sha256:a7e12bcf7ca1541d6c81e05d88ecb6a3aaf988ee648fe05922d06f94de18210c", size = 455743, upload-time = "2026-09-24T10:14:17.347Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b0/2a/16ab16287ea1e3f2357c12ccfe1c90dd0ec7af70d71605c54933c5e7db86/octop_browser-1.0.0-py3-none-any.whl", hash = "sha256:9856d0a3449ff8fb63dc86acb6cf51e492e3d70d77f7f9a35c1802c99566a174", size = 108073, upload-time = "2026-09-24T10:14:15.855Z" },
+]
+
+[[package]]
+name = "octop-gateway"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "cryptography" },
+    { name = "dingtalk-stream" },
+    { name = "discord-py" },
+    { name = "httpx" },
+    { name = "lark-oapi" },
+    { name = "paho-mqtt" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "python-socketio", extra = ["asyncio-client"] },
+    { name = "python-telegram-bot" },
+    { name = "websocket-client" },
+    { name = "websockets" },
+    { name = "wecom-aibot-sdk" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/94/6c/b24f7d8d9f975a7dbe47bcd616429d5a0d75153b2dc0866d6136e653b2db/octop_gateway-1.0.0.tar.gz", hash = "sha256:3630e9f9d40014d961bf8839c19759a676da6e311057df064885fc69cdd789fa", size = 608199, upload-time = "2026-09-24T09:52:46.666Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/20/77/c6d42986b1140c148da0f4777bbff31d189179f2bc69ac276392a73f8589/octop_gateway-1.0.0-py3-none-any.whl", hash = "sha256:bb4aeee8b8bbf683f15d29f8adcff9f5c4963544276c56dca858b01eed78ecaa", size = 160304, upload-time = "2026-09-24T09:52:45.299Z" },
+]
+
+[[package]]
+name = "octop-harness"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "deepagents" },
+    { name = "httpx" },
+    { name = "langchain" },
+    { name = "langchain-anthropic" },
+    { name = "langchain-core" },
+    { name = "langchain-mcp-adapters" },
+    { name = "langchain-openai" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-sqlite" },
+    { name = "markdownify" },
+    { name = "mcp" },
+    { name = "octop-browser" },
+    { name = "octop-memory" },
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/53/84/618b1299758b0ddd5fcf9f6740d154c64ece333bff28e949cdfd335364f0/octop_harness-1.0.0.tar.gz", hash = "sha256:63d049380547723de0756f1c4c307d5844281a098eb1b43fc0c30e8c98a8db2f", size = 931797, upload-time = "2026-09-24T10:13:33.321Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/67/bc/726ceefa15fb84e54d10a4f078839c94758c680bfd4f2e67f9755e96630f/octop_harness-1.0.0-py3-none-any.whl", hash = "sha256:8448fbb9e5d6884d826a149cd8f58a65f690c1a8f3a0c52bf79da99b8319504e", size = 1133881, upload-time = "2026-09-24T10:13:32.064Z" },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "agent-client-protocol" },
+    { name = "cos-python-sdk-v5" },
+    { name = "deepagents-backends" },
+    { name = "docker" },
+    { name = "esdk-obs-python" },
+    { name = "google-api-python-client" },
+    { name = "langchain-aws" },
+    { name = "langchain-community" },
+    { name = "langchain-tavily" },
+    { name = "langfuse" },
+    { name = "mss" },
+    { name = "oss2" },
+    { name = "pillow" },
+    { name = "psutil" },
+    { name = "pynput" },
+]
+
+[[package]]
+name = "octop-memory"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/98/58/cf0333efbdd36808c3b6448f7be846cc4a7b32bb21b0e6f2d4408662aab1/octop_memory-1.0.0.tar.gz", hash = "sha256:1df8fa2deb4d37b20f1d00de6a12c8493dcbdaf01745c8313231395442f79556", size = 577027, upload-time = "2026-09-24T09:53:32.674Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1e/30/17736beb07fc5ce734d2568a316f6f159740022c75cd014f63c33014df9d/octop_memory-1.0.0-py3-none-any.whl", hash = "sha256:518d1033d679be00e32d91ad80cf2378a6b7086824fa23927577d316b27e72ce", size = 372264, upload-time = "2026-09-24T09:53:31.44Z" },
 ]
 
 [[package]]
@@ -2831,50 +2875,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5a/30/5f26df29509eccd86b99b481ac9ffa39da49ba9577cc69071c552ae30447/opentelemetry_semantic_conventions-0.64b0.tar.gz", hash = "sha256:72f76fb2d1582d9d033dd1fcd84532e961e6ff3d90d24ba6fabc72975a83864c", size = 148340, upload-time = "2026-06-24T15:20:09.267Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f2/ca/23ba87a221b574a7c5a99d48849d80bfe8b047624681357e2b002e566187/opentelemetry_semantic_conventions-0.64b0-py3-none-any.whl", hash = "sha256:ea77e85e354b8f604ddbe5f3d9135216f982fa4d77e5859ac30f6d8a50505aa6", size = 203713, upload-time = "2026-06-24T15:19:53.339Z" },
-]
-
-[[package]]
-name = "orcakit-harness-agent"
-version = "1.0.14"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "deepagents" },
-    { name = "harness-browser" },
-    { name = "harness-memory" },
-    { name = "httpx" },
-    { name = "langchain" },
-    { name = "langchain-anthropic" },
-    { name = "langchain-core" },
-    { name = "langchain-mcp-adapters" },
-    { name = "langchain-openai" },
-    { name = "langgraph" },
-    { name = "langgraph-checkpoint-sqlite" },
-    { name = "markdownify" },
-    { name = "mcp" },
-    { name = "pyyaml" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/9b/5a23300805f1187e09a95c9a037a0cf1bf9ed2c45f2068fc1d8e8b88d10d/orcakit_harness_agent-1.0.14.tar.gz", hash = "sha256:a13224912dca14409da3b286e5069c4a8ba17cff79cbef60d8dcbabdbcf438b1", size = 1239932, upload-time = "2026-09-22T09:06:12.653Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a4/ef/ac2cda738593d7f8be0486303038a8dd026b7aaf2f25cfea5264ba9c55bc/orcakit_harness_agent-1.0.14-py3-none-any.whl", hash = "sha256:7c1a11bc37d68ad1421db196f63718085fa8eab5b952d4fac0f28aa06497867e", size = 1473099, upload-time = "2026-09-22T09:06:07.493Z" },
-]
-
-[package.optional-dependencies]
-all = [
-    { name = "agent-client-protocol" },
-    { name = "cos-python-sdk-v5" },
-    { name = "deepagents-backends" },
-    { name = "docker" },
-    { name = "esdk-obs-python" },
-    { name = "google-api-python-client" },
-    { name = "langchain-aws" },
-    { name = "langchain-community" },
-    { name = "langchain-tavily" },
-    { name = "langfuse" },
-    { name = "mss" },
-    { name = "oss2" },
-    { name = "pillow" },
-    { name = "psutil" },
-    { name = "pynput" },
 ]
 
 [[package]]

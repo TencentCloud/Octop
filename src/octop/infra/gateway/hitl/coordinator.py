@@ -6,8 +6,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
-from harness_agent.slash import SlashCommand
-from harness_gateway.models import MessageEvent
+from octop_gateway.models import MessageEvent
+from octop_harness.slash import SlashCommand
 
 from octop.i18n.domains.slash import tr
 from octop.infra.agents.security.hitl_session import HitlSessionPolicyStore
