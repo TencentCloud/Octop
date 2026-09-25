@@ -583,7 +583,7 @@ def _run_fpk_upgrade(
     安装到该打包目录本身，重启服务后即加载新版，升级真正生效。
 
     与普通部署不同，FPK 首次在线升级需要从零解析并下载完整依赖树
-    （octop 依赖 orcakit-harness-agent 等大包），故超时显著放宽；且某镜像
+    （octop 依赖 octop-harness 等大包），故超时显著放宽；且某镜像
     可能滞后（装到同版本旧版），此时继续尝试下一个镜像，最后以 pypi.org
     兜底，避免「镜像有货但版本不新」导致升级假成功。
     """
@@ -615,7 +615,7 @@ def _run_fpk_upgrade(
         return result.returncode, snippet
 
     python_exe = sys.executable
-    installer = detect_installer()  # uv 优先：pip 对 orcakit-harness-agent[all] 依赖树解析会卡死
+    installer = detect_installer()  # uv 优先：pip 对 octop-harness[all] 依赖树解析会卡死
 
     def _build_cmd(index_url: str = "") -> list[str]:
         requirement = package_requirement(version)
