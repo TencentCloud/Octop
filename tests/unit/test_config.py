@@ -104,6 +104,17 @@ def test_loads_existing(tmp_path: Path):
     assert cfg.max_upload_mb == 100  # missing key uses default
 
 
+def test_loads_config_with_utf8_bom(tmp_path: Path):
+    # Editors on Chinese Windows (Notepad and others) save "UTF-8 with BOM";
+    # the file is valid JSON to the user but must not fail to load.
+    cfg_path = tmp_path / "config.json"
+    body = json.dumps({"port": 9000, "log_level": "debug"}, indent=2).encode("utf-8")
+    cfg_path.write_bytes(b"\xef\xbb\xbf" + body)
+    cfg = load_config(cfg_path)
+    assert cfg.port == 9000
+    assert cfg.log_level == "debug"
+
+
 def test_loads_max_upload_mb(tmp_path: Path):
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({"max_upload_mb": 50}))

@@ -22,6 +22,7 @@
 
 - `wiki_summary` 的 `lang` 不再被拼进请求主机名：此前传 `evil.com#` 会真的向 `https://evil.com` 发请求（`localhost:8443/` 则打本机端口），并把对方返回的摘要回显进聊天；现只接受 `zh` / `en` / `zh-classical` 这类裸子域标签，其余按「语言代码无效」返回错误卡片
 - 登录验证码的 `OCTOP_CAPTCHA_V3_MIN_SCORE` 只按 `float()` 解析，未校验取值：填成 `nan` 时 `score < nan` 恒为 `False`，`recaptcha-v3` 的分数门槛被静默关闭（机器分 0.0 也能登录），负数同样放行，`inf`/大于 1 则把所有登录锁死。现按该参数已有的「不可用即回落默认值」规则处理，只接受 `0`–`1` 内的有限数值
+- `~/.octop/config.json` 带 UTF-8 BOM（记事本等编辑器在 Windows 上的常见保存方式）时，服务与 CLI 启动时报「config.json 不是合法 JSON (line 1, column 1)」直接退出，而文件在任何编辑器里都显示正常；现按 `utf-8-sig` 读取（`load_config` 与 `read_json_object` 两条入口），无 BOM 的文件行为不变
 
 ## [1.0.2b2] - 2026-09-23
 

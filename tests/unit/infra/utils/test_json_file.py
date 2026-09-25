@@ -28,6 +28,13 @@ def test_read_valid_object(tmp_path: Path) -> None:
     assert read_json_object(path) == {"bind_host": "0.0.0.0", "port": 8088}
 
 
+def test_read_strips_utf8_bom(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    body = json.dumps({"bind_host": "0.0.0.0", "port": 8088}).encode("utf-8")
+    path.write_bytes(b"\xef\xbb\xbf" + body)
+    assert read_json_object(path) == {"bind_host": "0.0.0.0", "port": 8088}
+
+
 def test_read_corrupt_raises_with_position_and_never_leaks_contents(tmp_path: Path) -> None:
     path = tmp_path / "config.json"
     # Trailing comma — the classic hand-edit slip. The password must not surface.

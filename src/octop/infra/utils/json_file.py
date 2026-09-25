@@ -65,7 +65,9 @@ def read_json_object(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     try:
-        raw = path.read_text(encoding="utf-8")
+        # utf-8-sig, not utf-8: a BOM written by an editor stays in the string
+        # as U+FEFF and makes json report a corrupt file that opens fine.
+        raw = path.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError as exc:
         raise JsonFileCorruptError(path, "not valid UTF-8") from exc
     try:
