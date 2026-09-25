@@ -1,7 +1,7 @@
 /**
- * BackendBuilder — visual editor for harness-agent backend specs.
+ * BackendBuilder — visual editor for octop-harness backend specs.
  *
- * The harness-agent backend system supports several types
+ * The octop-harness backend system supports several types
  * (local_shell, filesystem, state, store, s3, cos, postgres) and a
  * special ``composite`` type that routes by path-prefix to nested
  * sub-backends. This component lets the user pick one of:
@@ -16,7 +16,7 @@
  * is uniform.
  *
  * Composite nesting is intentionally **one level only**: nested
- * composites are technically legal in harness-agent but rare in
+ * composites are technically legal in octop-harness but rare in
  * practice, and an unconstrained tree editor is hard to use without
  * dedicated UX. If a user needs nesting they can hand-edit the JSON
  * preview at the bottom (a planned follow-up).

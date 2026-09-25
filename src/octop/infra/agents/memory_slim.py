@@ -54,14 +54,14 @@ class MemorySlimCoordinator:
 
     @staticmethod
     def _require_live_support(locale: str) -> None:
-        from harness_memory.application import checkpoint_maintenance
+        from octop_memory.application import checkpoint_maintenance
 
         if not callable(getattr(checkpoint_maintenance, "slim_live_checkpoints", None)):
             raise ValueError(tr("memory_slim.upgrade", locale))
 
     def _require_memory(self, agent_id: str, locale: str) -> Any:
-        from harness_memory.storage.backends.sqlite import SqliteMemoryBackend
-        from harness_memory.storage.backends.sqlite_checkpoint import CompactSqliteSaver
+        from octop_memory.storage.backends.sqlite import SqliteMemoryBackend
+        from octop_memory.storage.backends.sqlite_checkpoint import CompactSqliteSaver
 
         try:
             agent = self._agent_manager.get_agent(agent_id)
@@ -196,7 +196,7 @@ class MemorySlimCoordinator:
         registry = self._agent_manager
         reserved = False
         try:
-            from harness_memory.application import checkpoint_maintenance
+            from octop_memory.application import checkpoint_maintenance
 
             slim_live_checkpoints = getattr(checkpoint_maintenance, "slim_live_checkpoints", None)
             if not callable(slim_live_checkpoints):

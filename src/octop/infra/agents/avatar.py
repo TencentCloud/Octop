@@ -7,7 +7,7 @@ from contextlib import suppress
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
-from harness_agent.backends.utils import BackendOperationNotSupportedError
+from octop_harness.backends.utils import BackendOperationNotSupportedError
 
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.attachment_hints import sniff_image_media_type
