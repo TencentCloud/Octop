@@ -23,6 +23,7 @@ Commands:
   admin      Admin commands.
   agent      Agent lifecycle commands.
   backup     Export and restore Octop backups.
+  captcha    Login captcha maintenance (lockout escape hatch).
   chat       [deprecated] Alias for `octop chats`.
   chats      Chat REPL and session management.
   channel    Channel management commands.
@@ -31,6 +32,7 @@ Commands:
   config     CLI state (base URL, defaults).
   cron       Cron job management commands.
   init       Bootstrap an Octop server install.
+  memory     Live memory maintenance (backup and slim).
   models     Model catalog and active-model settings.
   plugin     Install and manage plugins.
   provider   Provider management (admin write).
@@ -42,8 +44,8 @@ Commands:
   version    Show the installed octop version.
 ```
 
-> **Tip.** Regenerate the per-subcommand listings below with
-> `make docs-cli` (each `octop <cmd> --help` is captured to stdout).
+> **Tip.** Regenerate the per-subcommand listings below by running
+> `octop <cmd> --help` and capturing stdout.
 
 ## Global options
 
@@ -345,6 +347,28 @@ Commands:
 Boot-env captcha (`OCTOP_CAPTCHA_*`) is not touched by `reset` — unset
 those in the environment file if they are the actual lockout cause.
 Restart `octop run` (if already running) for the change to apply.
+
+## `octop memory`
+
+Live memory maintenance (backup and slim) coordinated by the running
+local Octop server — the host process pauses new turns, backs up the
+SQLite database, and slims it while keeping all history. See
+[docs/memory-slim.md](memory-slim.md) for the full workflow.
+
+```
+Usage: octop memory [OPTIONS] COMMAND [ARGS]...
+
+  Memory maintenance through the running local Octop server.
+
+Commands:
+  list    List eligible running agents without starting maintenance.
+  slim    Back up and slim memory, pausing new turns until completion. Keeps all history.
+```
+
+`octop memory slim` accepts `--agent ID` (use a specific agent; without
+it the CLI prompts from the eligible list) and `--all` (sequentially
+maintain all eligible running agents with per-agent progress). Honor
+`--json` on `octop memory list` for machine-readable output.
 
 ## `octop backup`
 
