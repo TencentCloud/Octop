@@ -133,6 +133,7 @@ interface GroupRenderContext {
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
+  onManualProcessExpand: () => void;
   registerBubbleRef: (messageId: string, el: HTMLDivElement | null) => void;
 }
 
@@ -180,6 +181,7 @@ function renderMessageGroup(
             shellCommandDisabled={ctx.shellCommandDisabled}
             shellCommandDisabledTitle={ctx.shellCommandDisabledTitle}
             compactProcess={ctx.compactProcess}
+            onManualProcessExpand={ctx.onManualProcessExpand}
           />
         </div>
       );
@@ -232,6 +234,7 @@ function renderMessageGroup(
         shellCommandDisabled={ctx.shellCommandDisabled}
         shellCommandDisabledTitle={ctx.shellCommandDisabledTitle}
         compactProcess={ctx.compactProcess}
+        onManualProcessExpand={ctx.onManualProcessExpand}
       />
     </div>
   );
@@ -438,6 +441,7 @@ export default function MessageList(props: MessageListProps) {
   const {
     showScrollBtn,
     scrollToBottom,
+    pauseAutoScroll,
     armProgrammaticGuard,
     handleAtBottomChange,
   } = useAutoScroll({
@@ -699,6 +703,7 @@ export default function MessageList(props: MessageListProps) {
       shellCommandDisabled,
       shellCommandDisabledTitle,
       compactProcess,
+      onManualProcessExpand: pauseAutoScroll,
       registerBubbleRef,
     }),
     [
@@ -721,6 +726,7 @@ export default function MessageList(props: MessageListProps) {
       shellCommandDisabled,
       shellCommandDisabledTitle,
       compactProcess,
+      pauseAutoScroll,
       registerBubbleRef,
     ],
   );
@@ -799,6 +805,7 @@ export default function MessageList(props: MessageListProps) {
           key={stableSessionKey}
           ref={virtuosoRef}
           className={styles.messageList}
+          data-chat-message-scroller=""
           style={{ height: "100%" }}
           data={messageGroups}
           context={virtuosoContext}
@@ -827,7 +834,11 @@ export default function MessageList(props: MessageListProps) {
           }
         />
       ) : (
-        <div className={styles.messageList} ref={bindNonVirtualScroller}>
+        <div
+          className={styles.messageList}
+          data-chat-message-scroller=""
+          ref={bindNonVirtualScroller}
+        >
           <div className={styles.messageListInner}>
             {historyHeader}
             {messageGroups.map((group, groupIndex) => (

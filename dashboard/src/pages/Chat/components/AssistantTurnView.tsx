@@ -50,6 +50,7 @@ interface AssistantTurnViewProps {
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
+  onManualProcessExpand?: () => void;
 }
 
 function hasProcessContent(
@@ -75,6 +76,7 @@ export default function AssistantTurnView({
   shellCommandDisabled,
   shellCommandDisabledTitle,
   compactProcess = false,
+  onManualProcessExpand,
 }: AssistantTurnViewProps) {
   const { t } = useTranslation();
   const { activeAgentId } = useAgent();
@@ -184,6 +186,7 @@ export default function AssistantTurnView({
                   hideToolMedia={hasToolMedia}
                   agentId={speakerAgentId}
                   showAvatar={idx === firstSummaryIdx}
+                  onManualProcessExpand={onManualProcessExpand}
                 />
                 {todoPanel && idx === firstProcessSegmentIdx ? (
                   <div className={styles.turnInset}>{todoPanel}</div>
@@ -208,6 +211,7 @@ export default function AssistantTurnView({
             hideToolMedia={hasToolMedia}
             agentId={speakerAgentId}
             showAvatar={firstSummaryIdx < 0 && trailingHasSummary}
+            onManualProcessExpand={onManualProcessExpand}
           />
           {todoPanel && firstProcessSegmentIdx < 0 ? (
             <div className={styles.turnInset}>{todoPanel}</div>

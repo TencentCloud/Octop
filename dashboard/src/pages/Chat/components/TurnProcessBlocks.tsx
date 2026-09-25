@@ -20,6 +20,7 @@ interface TurnProcessBlocksProps {
   agentId: string | null;
   /** One expert avatar per turn — only the first process row should show it. */
   showAvatar?: boolean;
+  onManualProcessExpand?: () => void;
 }
 
 function hasFoldContent(split: AssistantTurnSplit): boolean {
@@ -35,6 +36,7 @@ export function TurnProcessBlocks({
   hideToolMedia,
   agentId,
   showAvatar = false,
+  onManualProcessExpand,
 }: TurnProcessBlocksProps) {
   const { t } = useTranslation();
   const { agents, activeAgent } = useAgent();
@@ -86,6 +88,7 @@ export function TurnProcessBlocks({
             onAcpPermissionSelect={onAcpPermissionSelect}
             hideToolMedia={hideToolMedia}
             agentId={agentId}
+            onManualProcessExpand={onManualProcessExpand}
           />
         </div>
       ) : null}
