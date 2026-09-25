@@ -128,7 +128,7 @@ describe("dockFilePath", () => {
     expect(dockFileTabId("file:///workspace/x.py")).toBe("file:x.py");
     expect(
       dockFileTabId("/home/wally/.octop/agents/main/generated/a.pptx", "main"),
-    ).toBe("file:generated/a.pptx");
+    ).toBe("file:main:generated/a.pptx");
   });
 
   it("folder tree uses absolute paths from artifacts", () => {
@@ -173,7 +173,27 @@ describe("dockFilePath", () => {
         ["/home/wally/.octop/agents/main/generated/a.pptx", "generated/a.pptx"],
         "main",
       ),
-    ).toEqual(["/home/wally/.octop/agents/main/generated/a.pptx"]);
+    ).toEqual([
+      {
+        path: "/home/wally/.octop/agents/main/generated/a.pptx",
+        agentId: "main",
+      },
+    ]);
+  });
+
+  it("keeps same relative path from different agents", () => {
+    expect(
+      listDockFilePathsForTree(
+        [
+          { path: "outbound/a.md", agentId: "member-a" },
+          { path: "outbound/a.md", agentId: "member-b" },
+        ],
+        "host",
+      ),
+    ).toEqual([
+      { path: "outbound/a.md", agentId: "member-a" },
+      { path: "outbound/a.md", agentId: "member-b" },
+    ]);
   });
 
   it("maps download APIs; host abs stays file:// for virtual root failback", () => {

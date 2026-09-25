@@ -17,6 +17,7 @@ from octop.api.common.workspace import (
     coerce_read_content,
     file_info_to_dict,
     reanchor_entry_path,
+    require_agent_workspace,
     require_running_workspace,
     workspace_api_path,
 )
@@ -161,7 +162,7 @@ async def read_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Read a UTF-8 text file."""
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
     content = await ws.aread_text(_workspace_io_path(path, from_workspace=from_workspace))
     if content is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot read {path!r}")
@@ -341,7 +342,7 @@ async def download_file(
     outputs (Desktop, ``~/.octop/agents/…``, workspace tree) but denied for
     sensitive system roots (``/etc``, ``.harness-browser``, ``.octop-browser``, Windows system dirs).
     """
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
     if is_host_absolute_path(io_path) and not is_allowed_host_download_abs_path(
         io_path,
@@ -375,7 +376,7 @@ async def read_doc(
 ) -> dict[str, Any]:
     """Read an editable document (e.g. ``.docx``) as Markdown for online editing."""
     converter = _ensure_editable_doc(path)
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
     try:
         blob = await ws.adownload_bytes(io_path)

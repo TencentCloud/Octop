@@ -3128,6 +3128,7 @@ class AgentManager:
             ThreadArtifactsMiddleware(
                 thread_repo=self._repos.thread_repo,
                 workspace_dir=harness_workspace,
+                agent_id=row.agent_id,
             ),
         ]
 

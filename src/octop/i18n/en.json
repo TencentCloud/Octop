@@ -797,7 +797,7 @@
   },
   "teams": {
     "peer_thread_title": "From team {name}",
-    "followup_done": "[system wake-up, not a new user question]\nTeam member {name} finished. Their answer is already on the group timeline.\nTask: {task}\n\nDo not restate their answer. Do not say you have assigned someone or ask the user to wait. Do not call ask_agent for the same task again. If more work is needed, dispatch the next member. If the team is done, write at most three short wrap-up sentences.",
+    "followup_done": "[system wake-up, not a new user question]\nTeam member {name} finished. Their answer is already on the group timeline; it is not in your own chat context, so a truncated excerpt is included below for wrap-up.\nTask: {task}\n\nMember answer:\n{result}\n\nUse that answer to decide next steps. Do not paste it back in full. Do not say you have assigned someone or ask the user to wait. Do not call ask_agent for the same task again. If more work is needed, dispatch the next member. If the team is done, write at most three short wrap-up sentences and say whether you adopt their advice.",
     "followup_failed": "[system wake-up, not a new user question]\nTeam member {name} failed.\nTask: {task}\nError: {error}\n\nBriefly tell the user it failed and either dispatch someone else or close the turn. Do not announce another assignment. Do not invent a substitute answer.",
     "speaker_user": "User",
     "channel_line": "{name}: {text}",

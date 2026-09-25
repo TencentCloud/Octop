@@ -104,8 +104,8 @@ export default function AssistantTurnView({
   const fullSplit = useMemo(() => splitAssistantTurn(messages), [messages]);
 
   const toolMedia = useMemo(
-    () => collectTurnToolMedia(fullSplit, agentId),
-    [fullSplit, agentId],
+    () => collectTurnToolMedia(fullSplit, speakerAgentId),
+    [fullSplit, speakerAgentId],
   );
   const knowledgeCitations = useMemo(
     () => collectTurnKnowledgeCitations(fullSplit),
@@ -220,7 +220,7 @@ export default function AssistantTurnView({
             images={toolMedia.images}
             videos={toolMedia.videos}
             files={toolMedia.files}
-            agentId={agentId}
+            agentId={speakerAgentId}
           />
         </div>
       )}
