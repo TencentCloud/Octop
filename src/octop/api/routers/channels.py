@@ -965,12 +965,13 @@ async def yuanbao_bot_creator_start(
             cmd.append(ip_addr)
 
     try:
+        # Binary stdout with stderr merged into it: `parse_subprocess_json_lines`
+        # decodes the bytes it reads, and a stderr pipe nobody drains swallows the
+        # child's diagnostics (and blocks it once the OS pipe buffer is full).
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            bufsize=1,
-            universal_newlines=True,
+            stderr=subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1"},
             shell=False,
         )
@@ -1006,8 +1007,9 @@ async def yuanbao_bot_creator_poll(
         finished = return_code is not None
 
         if finished and proc.stdout:
-            remaining = proc.stdout.read()
-            if remaining:
+            remaining_bytes = proc.stdout.read()
+            if remaining_bytes:
+                remaining = remaining_bytes.decode("utf-8", errors="replace")
                 for line in remaining.strip().split("\n"):
                     line = line.strip()
                     if line:
