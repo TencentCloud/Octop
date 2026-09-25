@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from octop.infra.agents.workspace_dir import (
+from octop.infra.agents.workspace.dir import (
     agent_auth_dir,
     agent_facing_workspace_dir_from_config,
     agent_facing_workspace_root,

@@ -573,7 +573,7 @@ class AgentManager:
             )
             if spec.persona_mbti:
                 config["persona"] = spec.persona_mbti.upper()
-            from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
+            from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
                 DEFAULT_SYSTEM_FILES_PATH,
                 seed_workspace_dir_on_create,
             )
@@ -1054,7 +1054,7 @@ class AgentManager:
         ``_build_harness_config`` parses the persisted string directly from
         config — do not route harness through this host join.
         """
-        from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
+        from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
             workspace_dir_from_config,
         )
 
@@ -2691,7 +2691,7 @@ class AgentManager:
         from octop_harness.backends import resolve_backend  # noqa: PLC0415
         from octop_harness.backends.workspace import BackendWorkspace  # noqa: PLC0415
 
-        from octop.infra.agents.workspace_dir import system_files_path_from_config  # noqa: PLC0415
+        from octop.infra.agents.workspace.dir import system_files_path_from_config  # noqa: PLC0415
         from octop.infra.backend.opensandbox_deps import ensure_opensandbox_deps  # noqa: PLC0415
 
         if cfg is None:
@@ -2978,7 +2978,7 @@ class AgentManager:
         """Convert an AgentRow into a HarnessAgentConfig."""
         from octop_harness.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
 
-        from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
+        from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
             harness_workspace_path,
             resolve_workspace_host_path,
             system_files_path_from_config,
@@ -3216,7 +3216,9 @@ class AgentManager:
                             self._plugin_manager.plugin_skill_names(plugin_id)
                         )
 
-        from octop.infra.agents.execute_env import inject_agent_execute_env  # noqa: PLC0415
+        from octop.infra.agents.workspace.execute_env import (
+            inject_agent_execute_env,  # noqa: PLC0415
+        )
 
         backend = inject_agent_execute_env(
             self._prepare_docker_backend(backend, row),

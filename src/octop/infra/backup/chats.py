@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from octop.infra.agents.workspace_dir import DEFAULT_SYSTEM_FILES_PATH
+from octop.infra.agents.workspace.dir import DEFAULT_SYSTEM_FILES_PATH
 from octop.infra.backup.snapshot import _patch_channel_metadata, _rewrite_session_key
 from octop.infra.db.pool import DatabasePool
 

@@ -247,7 +247,7 @@ resolve_acting_user_id_offline = resolve_cron_user_id
 
 
 def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
-    from octop.infra.agents.workspace_dir import workspace_dir_from_config_json
+    from octop.infra.agents.workspace.dir import workspace_dir_from_config_json
 
     with open_cli_services(home) as svc:
         row = svc.agent_repo.get(agent_id)

@@ -23,7 +23,7 @@ from octop.infra.agents.security.hitl_session import parse_hitl_session_policy
 from octop.infra.agents.threads.artifact import thread_artifacts_payload
 from octop.infra.agents.threads.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
 from octop.infra.agents.threads.fork import fork_dashboard_thread
-from octop.infra.agents.workspace_dir import agent_facing_workspace_dir_from_config
+from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_config
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages

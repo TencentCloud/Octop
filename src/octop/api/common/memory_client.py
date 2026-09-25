@@ -15,7 +15,7 @@ from typing import Any
 
 from octop.api.common.agent import require_agent_owner_row
 from octop.infra.agents.memory.backend import open_memory_kwargs
-from octop.infra.agents.workspace_dir import host_system_dir
+from octop.infra.agents.workspace.dir import host_system_dir
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)

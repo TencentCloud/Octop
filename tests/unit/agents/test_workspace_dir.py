@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from octop.infra.agents.workspace_dir import (
+from octop.infra.agents.workspace.dir import (
     agent_facing_workspace_dir_from_config,
     agent_facing_workspace_root,
     default_agent_workspace_dir,
