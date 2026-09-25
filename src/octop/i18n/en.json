@@ -619,7 +619,8 @@
   },
   "cron": {
     "history": {
-      "executed": "Task {cron_id}: {name} executed."
+      "executed": "Task {cron_id}: {name} executed.",
+      "failed": "Task {cron_id}: {name} failed. Open the Octop automation task to view the error details, then retry."
     }
   },
   "agents": {

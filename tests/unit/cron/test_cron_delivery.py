@@ -121,7 +121,7 @@ async def test_text_dashboard_appends_checkpoint_before_push() -> None:
 
 
 @pytest.mark.asyncio
-async def test_text_checkpoint_failure_skips_push() -> None:
+async def test_text_checkpoint_failure_pushes_failure_instead_of_output() -> None:
     session = _session(channel_type=ThreadRegistry.CHANNEL_DASHBOARD)
     harness = MagicMock()
     harness.aappend_messages = AsyncMock(side_effect=RuntimeError("checkpoint down"))
@@ -134,15 +134,22 @@ async def test_text_checkpoint_failure_skips_push() -> None:
     gateway.push_session_text = AsyncMock()
     gateway.notify_dashboard_push = AsyncMock()
 
+    repos = MagicMock()
+    repos.user_repo.get.return_value = MagicMock(locale="en")
+
     service = CronDeliveryService(
         gateway=gateway,
         agent_manager=agent_manager,
-        repos=MagicMock(),
+        repos=repos,
     )
     with pytest.raises(RuntimeError, match="checkpoint down"):
         await service.deliver(_command())
-    gateway.push_session_text.assert_not_awaited()
-    gateway.notify_dashboard_push.assert_not_awaited()
+
+    gateway.push_session_text.assert_awaited_once()
+    failure_text = gateway.push_session_text.await_args.args[1]
+    assert "failed" in failure_text
+    assert "记得喝水" not in failure_text
+    gateway.notify_dashboard_push.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -195,7 +202,7 @@ async def test_text_im_skips_checkpoint() -> None:
 
 
 @pytest.mark.asyncio
-async def test_agent_hitl_does_not_push() -> None:
+async def test_agent_hitl_records_dashboard_failure_without_partial_output() -> None:
     session = _session(channel_type=ThreadRegistry.CHANNEL_DASHBOARD)
 
     async def _stream(_aid: str, _request: dict):
@@ -207,13 +214,18 @@ async def test_agent_hitl_does_not_push() -> None:
     agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
     agent_manager.stream = _stream
     agent_manager.get_row = MagicMock(return_value=None)
+    harness = MagicMock()
+    harness.aappend_messages = AsyncMock(side_effect=lambda _tid, messages: messages)
+    agent_manager.get_agent.return_value = harness
 
     gateway = MagicMock()
     gateway.run_in_session = _run_locked
     gateway.require_session = MagicMock(return_value=session)
     gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
 
     repos = MagicMock()
+    repos.user_repo.get.return_value = MagicMock(locale="en")
     service = CronDeliveryService(
         gateway=gateway,
         agent_manager=agent_manager,
@@ -221,14 +233,21 @@ async def test_agent_hitl_does_not_push() -> None:
     )
     with pytest.raises(RuntimeError, match="interaction"):
         await service.deliver(_command(task_type="agent", prompt="run"))
-    gateway.push_session_text.assert_not_awaited()
-    projected = repos.thread_message_repo.append_if_ready.call_args.args[1]
-    assert projected[0].role == "human"
-    assert "run" in projected[0].message_json
+
+    harness.aappend_messages.assert_awaited_once()
+    failure = harness.aappend_messages.await_args.args[1][0]
+    assert "failed" in failure.content
+    assert failure.additional_kwargs["octop_stream_error"] is True
+    gateway.push_session_text.assert_awaited_once()
+    assert "partial" not in gateway.push_session_text.await_args.args[1]
+    projection_calls = repos.thread_message_repo.append_if_ready.call_args_list
+    assert projection_calls[0].args[1][0].role == "human"
+    assert "run" in projection_calls[0].args[1][0].message_json
+    assert "octop_stream_error" in projection_calls[1].args[1][0].message_json
 
 
 @pytest.mark.asyncio
-async def test_agent_empty_reply_does_not_push() -> None:
+async def test_agent_empty_reply_pushes_failure_to_im_channel() -> None:
     session = _session(channel_type="feishu")
 
     async def _stream(_aid: str, _request: dict):
@@ -246,6 +265,7 @@ async def test_agent_empty_reply_does_not_push() -> None:
     gateway.push_session_text = AsyncMock()
 
     repos = MagicMock()
+    repos.user_repo.get.return_value = MagicMock(locale="zh")
     service = CronDeliveryService(
         gateway=gateway,
         agent_manager=agent_manager,
@@ -253,7 +273,9 @@ async def test_agent_empty_reply_does_not_push() -> None:
     )
     with pytest.raises(RuntimeError, match="no visible response"):
         await service.deliver(_command(task_type="agent", prompt="run"))
-    gateway.push_session_text.assert_not_awaited()
+
+    gateway.push_session_text.assert_awaited_once()
+    assert "执行失败" in gateway.push_session_text.await_args.args[1]
     projected = repos.thread_message_repo.append_if_ready.call_args.args[1]
     assert projected[0].role == "human"
     assert "run" in projected[0].message_json
@@ -314,6 +336,71 @@ async def test_fresh_thread_resets_before_require_session() -> None:
     )
     await service.deliver(_command(fresh_thread=True, task_type="text"))
     assert order == ["reset", "require"]
+
+
+@pytest.mark.asyncio
+async def test_fresh_dashboard_thread_failure_is_persisted(tmp_path: Path) -> None:
+    db = SqlitePool(tmp_path / "octop.db")
+    run_migrations(db)
+    UserRepo(db).create(username="u", password_hash="h", role="user")
+    AgentRepo(db).create(agent_id="a1", user_id=1, name="bot")
+    session_repo = SessionRepo(db)
+    thread_repo = ThreadRepo(db)
+    message_repo = ThreadMessageRepo(db)
+    registry = ThreadRegistry(session_repo=session_repo, thread_repo=thread_repo)
+    session_key = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    old_thread_id = await registry.get_or_create_by_key(
+        session_key=session_key,
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+    )
+
+    gateway = MagicMock()
+    gateway.thread_registry = registry
+    gateway.run_in_session = _run_locked
+    gateway.require_session.side_effect = lambda _aid, key: registry.get_session(key)
+
+    async def push(session, _text, *, title_source=None):
+        registry.touch_last_active(session.thread_id)
+        registry.set_title_if_null(session.thread_id, title_source)
+
+    gateway.push_session_text = push
+    gateway.notify_dashboard_push = AsyncMock()
+
+    harness = MagicMock()
+    harness.aappend_messages = AsyncMock(side_effect=lambda _tid, messages: messages)
+    agent_manager = MagicMock()
+    agent_manager.get_row.return_value = None
+    agent_manager.merge_turn_mcp_servers.return_value = ["broken"]
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=["broken"])
+    agent_manager.get_agent.return_value = harness
+
+    repos = MagicMock()
+    repos.user_repo = UserRepo(db)
+    repos.thread_message_repo = message_repo
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=repos)
+
+    with pytest.raises(RuntimeError, match="mcp load failed"):
+        await service.deliver(
+            _command(
+                session_key=session_key,
+                fresh_thread=True,
+                task_type="agent",
+                mcp_servers=("broken",),
+            )
+        )
+
+    session = registry.get_session(session_key)
+    assert session is not None
+    assert session.thread_id != old_thread_id
+    page, _has_more = message_repo.page(session.thread_id, limit=10)
+    assert len(page) == 1
+    assert "执行失败" in page[0].message_json
+    thread = thread_repo.get(session.thread_id)
+    assert thread is not None
+    assert thread.last_active > 0
+    assert thread.title == "记得喝水"
 
 
 @pytest.mark.asyncio
@@ -386,6 +473,9 @@ async def test_agent_failure_projects_the_prompt(tmp_path: Path) -> None:
     agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
     agent_manager.stream = _stream
     agent_manager.get_row = MagicMock(return_value=None)
+    harness = MagicMock()
+    harness.aappend_messages = AsyncMock(side_effect=lambda _tid, messages: messages)
+    agent_manager.get_agent.return_value = harness
 
     gateway = MagicMock()
     gateway.run_in_session = _run_locked
@@ -403,9 +493,11 @@ async def test_agent_failure_projects_the_prompt(tmp_path: Path) -> None:
             _command(task_type="agent", prompt="记得喝水", session_key=session.session_key)
         )
 
-    gateway.push_session_text.assert_not_awaited()
+    gateway.push_session_text.assert_awaited_once()
+    assert "执行失败" in gateway.push_session_text.await_args.args[1]
     page, _has_more = ThreadMessageRepo(db).page("thr_fail", limit=10)
-    assert [row.role for row in page] == ["human", "ai"]
+    assert [row.role for row in page] == ["human", "ai", "ai"]
     assert "记得喝水" in page[0].message_json
     assert "先查一下" in page[1].message_json
+    assert "执行失败" in page[2].message_json
     db.close()
