@@ -7,8 +7,8 @@ import tempfile
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
-from harness_agent.backends.workspace import BackendWorkspace
-from harness_gateway.models import FileContent, InboundMessage
+from octop_gateway.models import FileContent, InboundMessage
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.api.common.attachments import dashboard_inbound_preview_url, save_attachment
 from octop.infra.errors import ErrorCode, OctopError
@@ -213,7 +213,7 @@ async def test_save_attachment_pdf_uses_extension() -> None:
 
 @pytest.mark.asyncio
 async def test_build_content_from_file_part_uses_resolved_path() -> None:
-    from harness_gateway.models import TextContent
+    from octop_gateway.models import TextContent
 
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = _workspace(ws_dir)

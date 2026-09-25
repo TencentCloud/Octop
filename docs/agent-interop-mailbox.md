@@ -1,12 +1,12 @@
 # Agent Teams：Inbox + Callback 方案
 
 **状态：** 已实现（harness `teams/` + octop `GlobalProcessor` 作为 `TeamProcessor`）
-**范围：** `harness-agent`（主实现）+ `octop`（宿主适配）
+**范围：** `octop-harness`（主实现）+ `octop`（宿主适配）
 **关联：** [agent-call-agent.md](./agent-call-agent.md)、[agent-delegation.md](./agent-delegation.md)
 
 > 说明：早前实现的 `AgentMailbox`（把所有 `stream`/`call` 透明入队）将被本方案取代。
 > 本方案核心：`stream`/`call` 回到**原始直连**行为；互调能力收敛到一个**全局 inbox** +
-> 可选 **callback processor**；相关代码集中到 `harness_agent/teams/`。
+> 可选 **callback processor**；相关代码集中到 `octop_harness/teams/`。
 
 ---
 
@@ -19,7 +19,7 @@
    - **使用 inbox**：构造时提供一个 `callback`（process 方法/类）。提供后，manager 启用对 inbox
      队列的处理：收到消息 → `target.call` → 拿到结果 → 组合提示词后请求
      `source` agent + `source_thread_id` 再 `call` → 把返回通过 callback 暴露出来（主动推送）。
-3. `peer_agent` 工具不放在 `builtin/`。新增 `harness_agent/teams/` 目录，集中放 inbox_manager、
+3. `peer_agent` 工具不放在 `builtin/`。新增 `octop_harness/teams/` 目录，集中放 inbox_manager、
    工具、callback 定义。工具**不进 agent 默认工具集**，仅在「启用 team」时由 manager 提供。
 4. `ask_agent` 工具：**默认同步阻塞**等待结果返回；**仅当 manager 配置了 callback** 时才走异步
    ——向 `HarnessAgentInboxManager` 投递一条消息并立即返回 `id`。
@@ -29,7 +29,7 @@
 ## 2. 模块布局
 
 ```
-harness_agent/teams/
+octop_harness/teams/
   __init__.py        # 导出公开符号
   inbox.py           # InboxMessage, InboxStatus, HarnessAgentInboxManager
   processor.py       # TeamProcessor 协议, ReplyEvent, 默认提示词组合
@@ -37,7 +37,7 @@ harness_agent/teams/
   util.py            # extract_call_response / first_user_text 等纯函数
 ```
 
-删除：`harness_agent/mailbox.py`、`harness_agent/peer.py`（内容拆入 `teams/`）。
+删除：`octop_harness/mailbox.py`、`octop_harness/peer.py`（内容拆入 `teams/`）。
 
 ---
 
@@ -279,7 +279,7 @@ inbox worker：
 
 ## 9. 与现有实现的差异（重构清单）
 
-### harness-agent
+### octop-harness
 
 | 文件 | 操作 |
 |------|------|
@@ -297,7 +297,7 @@ inbox worker：
 |------|------|
 | `infra/gateway/processor.py` | `GlobalProcessor` 实现 `TeamProcessor`；`on_reply` 投递未读/IM |
 | `infra/agents/manager.py` | 构造 `team_processor=...`；`team_tools()` 注册；`apply_mention_agent_calls` 透传 |
-| `infra/agents/agent_call.py` | 重导出从 `harness_agent.teams.util` |
+| `infra/agents/agent_call.py` | 重导出从 `octop_harness.teams.util` |
 | `api/routers/chat.py`、`infra/gateway/processor.py` | 导入路径调整，逻辑不变 |
 | 相关单测 | 跟随导入调整 |
 
