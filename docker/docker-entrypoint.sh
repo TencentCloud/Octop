@@ -75,7 +75,7 @@ Password: ${DEFAULT_PASSWORD}
 
 Please change this password after first login!
   - Via Web: avatar menu → Change password
-  - Via CLI: docker exec -it <container> octop user passwd --username $ADMIN_USERNAME
+  - Via CLI: docker exec -it <container> octop user passwd "$ADMIN_USERNAME"
 
 This file is rewritten whenever the initial password is (re)generated here.
 If you changed the password inside the Web console, that password wins.
