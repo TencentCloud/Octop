@@ -63,6 +63,7 @@ class ThreadRow:
     last_active: int
     created_at: int
     pinned: bool = False
+    archived: bool = False
     model_ref: str | None = None
     reasoning_mode: str | None = None
     reasoning_effort: str | None = None
@@ -100,6 +101,7 @@ class ThreadRow:
             last_active=r["last_active"],
             created_at=r["created_at"],
             pinned=bool(r["pinned"]),
+            archived=bool(r["archived"]),
             model_ref=r["model_ref"],
             reasoning_mode=r["reasoning_mode"],
             reasoning_effort=r["reasoning_effort"],
@@ -213,30 +215,37 @@ class ThreadRepo:
             r = conn.execute("SELECT * FROM threads WHERE thread_id = ?", (thread_id,)).fetchone()
         return ThreadRow.from_row(r) if r else None
 
-    def list_by_agent(self, *, agent_id: str, limit: int = 50) -> list[ThreadRow]:
+    def list_by_agent(
+        self, *, agent_id: str, limit: int = 50, archived: bool = False
+    ) -> list[ThreadRow]:
         # last_active=0 is "no turns yet" (has_messages sentinel). Fall back to
         # created_at so brand-new empty threads sort to the top of the sidebar
         # instead of sinking below every previously active chat.
         with self._db.connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM threads WHERE agent_id = ? "
+                "SELECT * FROM threads WHERE agent_id = ? AND archived = ? "
                 "ORDER BY pinned DESC, "
                 "CASE WHEN last_active > 0 THEN last_active ELSE created_at END DESC, "
                 "thread_id DESC LIMIT ?",
-                (agent_id, limit),
+                (agent_id, bool_int(archived), limit),
             ).fetchall()
         return map_rows(rows, ThreadRow)
 
     def list_by_agent_user(
-        self, *, agent_id: str, user_id: int, limit: int = 50
+        self,
+        *,
+        agent_id: str,
+        user_id: int,
+        limit: int = 50,
+        archived: bool = False,
     ) -> list[ThreadRow]:
         with self._db.connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM threads WHERE agent_id = ? AND user_id = ? "
+                "SELECT * FROM threads WHERE agent_id = ? AND user_id = ? AND archived = ? "
                 "ORDER BY pinned DESC, "
                 "CASE WHEN last_active > 0 THEN last_active ELSE created_at END DESC, "
                 "thread_id DESC LIMIT ?",
-                (agent_id, user_id, limit),
+                (agent_id, user_id, bool_int(archived), limit),
             ).fetchall()
         return map_rows(rows, ThreadRow)
 
@@ -270,6 +279,13 @@ class ThreadRepo:
             conn.execute(
                 "UPDATE threads SET pinned = ? WHERE thread_id = ?",
                 (bool_int(pinned), thread_id),
+            )
+
+    def set_archived(self, thread_id: str, archived: bool) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE threads SET archived = ? WHERE thread_id = ?",
+                (bool_int(archived), thread_id),
             )
 
     def update_composer(

@@ -1588,6 +1588,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     multi-identity ``user_sso_identities``.
     Version 16 adds ``agents.kind`` so team hosts can be listed.
     Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
+    Version 18 adds reversible thread archiving.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1700,6 +1701,17 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         return
     if version == 17:
         _ensure_thread_conversation_mode_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
+    if version == 18:
+        if _table_exists(db, "threads"):
+            _ensure_column(db, "threads", "archived", "INTEGER NOT NULL DEFAULT 0")
+            with db.connect() as conn:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_threads_agent_user_archived "
+                    "ON threads(agent_id, user_id, archived, pinned, last_active, created_at)"
+                )
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return

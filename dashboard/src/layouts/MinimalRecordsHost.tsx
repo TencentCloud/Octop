@@ -107,6 +107,24 @@ export default function MinimalRecordsHost() {
     [resolvedAgentId],
   );
 
+  const handleArchiveActive = useCallback(
+    async (sessionId: string, archived: boolean) => {
+      if (!resolvedAgentId || !sessionId) return;
+      try {
+        await octopThreadsApi.patch(resolvedAgentId, sessionId, { archived });
+        emitSessionEvent({ kind: "sessionDeleted", sessionId });
+        if (pathThreadId === sessionId) {
+          navigate(`/chat/${resolvedAgentId}`, { replace: true });
+        }
+      } catch (error) {
+        antMessage.error(
+          apiErrorMessage(error, t("chat.archiveConversationFailed"), t),
+        );
+      }
+    },
+    [navigate, pathThreadId, resolvedAgentId, t],
+  );
+
   const handleFork = useCallback(
     async (threadId: string, agentId?: string | null) => {
       const agent = agentId || resolvedAgentId;
@@ -136,7 +154,9 @@ export default function MinimalRecordsHost() {
       onDeleteActive={(id) => void handleDeleteActive(id)}
       onRenameActive={handleRenameActive}
       onPinActive={handlePinActive}
+      onArchiveActive={(id, archived) => void handleArchiveActive(id, archived)}
       onFork={(id, agentId) => void handleFork(id, agentId)}
+      showArchived={false}
     />
   );
 }

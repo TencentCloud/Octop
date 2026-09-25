@@ -167,6 +167,9 @@ because each request is a one-shot continuation.
 | `PATCH`  | `/agents/{id}/chat/sessions/{thread_id}` | owner | body `{title?, pinned?}` → updated row |
 | `DELETE` | `/agents/{id}/chat/sessions/{thread_id}` | owner | `204` (archives the active row) |
 | `GET`    | `/agents/{id}/chat/sessions/{thread_id}/history` | owner | paginated message history; `turn_active` tells a reconnecting client whether to re-`subscribe` over the chat WebSocket |
+| `GET`    | `/agents/{id}/threads?archived=false` | owner | dashboard thread list; set `archived=true` for the archived view |
+| `PATCH`  | `/agents/{id}/threads/{thread_id}` | owner | body `{title?, pinned?, archived?, ...}`; archiving is reversible and does not delete messages |
+| `DELETE` | `/agents/{id}/threads/{thread_id}` | owner | `204`; permanently deletes the thread, checkpoint, and projected history |
 
 ### Trajectory ledger
 
