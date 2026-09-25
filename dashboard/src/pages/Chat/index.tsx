@@ -1184,7 +1184,8 @@ function ChatPageInner() {
                     }
                     setSidebarOpen(!sidebarOpen);
                   }}
-                  title={t("nav.chatHistory") || "会话列表"}
+                  title={t("chat.historyTitle", "聊天记录")}
+                  aria-label={t("chat.historyTitle", "聊天记录")}
                 >
                   <PanelLeftOpen size={18} strokeWidth={1.8} />
                 </button>
