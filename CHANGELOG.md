@@ -26,6 +26,7 @@
 
 - `wiki_summary` 的 `lang` 不再被拼进请求主机名：此前传 `evil.com#` 会真的向 `https://evil.com` 发请求（`localhost:8443/` 则打本机端口），并把对方返回的摘要回显进聊天；现只接受 `zh` / `en` / `zh-classical` 这类裸子域标签，其余按「语言代码无效」返回错误卡片
 - 登录验证码的 `OCTOP_CAPTCHA_V3_MIN_SCORE` 只按 `float()` 解析，未校验取值：填成 `nan` 时 `score < nan` 恒为 `False`，`recaptcha-v3` 的分数门槛被静默关闭（机器分 0.0 也能登录），负数同样放行，`inf`/大于 1 则把所有登录锁死。现按该参数已有的「不可用即回落默认值」规则处理，只接受 `0`–`1` 内的有限数值
+- 保存个人偏好里的时区时，路径形式的值（如 `/etc/localtime`、`./Asia/Shanghai`）不再返回 500：`zoneinfo` 对绝对路径与含 `..` 的键抛 `ValueError`（`ZoneInfoNotFoundError` 才是 `KeyError` 子类），现与未知时区一样按 400 提示「timezone must be a valid IANA timezone」
 
 ## [1.0.2b2] - 2026-09-23
 

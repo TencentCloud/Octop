@@ -84,5 +84,6 @@ async def test_preferences_timezone_roundtrip(env) -> None:
 @pytest.mark.asyncio
 async def test_preferences_timezone_rejects_invalid_value(env) -> None:
     client, _srv, auth = env
-    r = await client.patch("/api/preferences", headers=auth, json={"timezone": "BAD_ZONE"})
-    assert r.status_code in (400, 422)
+    for raw in ("BAD_ZONE", "/etc/localtime", "./Asia/Shanghai"):
+        r = await client.patch("/api/preferences", headers=auth, json={"timezone": raw})
+        assert r.status_code in (400, 422), raw
