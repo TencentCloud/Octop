@@ -3,7 +3,7 @@
 Plugin authors register tools with ``ctx.tool("中文名", fn, ...)``; the harness
 passes that name straight into the function-calling schema, but most LLM APIs
 only accept ``^[a-zA-Z0-9_-]{1,64}$``. Mirroring the MCP-side fix
-(``harness_agent.mcp.sanitize_llm_tool_name``) this module rewrites non-conforming
+(``octop_harness.mcp.sanitize_llm_tool_name``) this module rewrites non-conforming
 plugin tool names to legal ASCII names:
 
 - CJK characters are transliterated to pinyin (``天气查询`` -> ``tianqichaxun``)
