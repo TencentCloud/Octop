@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -79,6 +80,49 @@ def test_cron_weekday_ranges_use_unix_semantics(weekday: str, expected_weekdays:
     trig = build_trigger(f"cron:0 9 * * {weekday}")
     assert isinstance(trig, CronTrigger)
     assert _next_weekdays(trig, count=len(expected_weekdays)) == expected_weekdays
+
+
+def _next_dates(spec: str, *, count: int) -> list[dt.date]:
+    trig = build_trigger(spec, timezone="UTC")
+    cursor: dt.datetime | None = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    actual: list[dt.date] = []
+    while len(actual) < count and cursor is not None:
+        cursor = trig.get_next_fire_time(None, cursor)
+        if cursor is None:
+            break
+        actual.append(cursor.date())
+        cursor = cursor + dt.timedelta(minutes=1)
+    return actual
+
+
+def test_cron_day_fields_union_when_both_restricted():
+    """Unix crontab: with both day fields restricted, *either* one firing runs the job."""
+    trig = build_trigger("cron:0 9 13 * fri", timezone="UTC")
+    assert isinstance(trig, OrTrigger)
+    assert _next_dates("cron:0 9 13 * fri", count=6) == [
+        dt.date(2026, 1, 2),  # Friday
+        dt.date(2026, 1, 9),  # Friday
+        dt.date(2026, 1, 13),  # the 13th
+        dt.date(2026, 1, 16),  # Friday
+        dt.date(2026, 1, 23),  # Friday
+        dt.date(2026, 1, 30),  # Friday
+    ]
+
+
+@pytest.mark.parametrize(
+    ("spec", "expected"),
+    [
+        # One day field left as ``*`` keeps the plain AND path.
+        ("cron:0 9 13 * *", [dt.date(2026, 1, 13), dt.date(2026, 2, 13)]),
+        ("cron:0 9 * * fri", [dt.date(2026, 1, 2), dt.date(2026, 1, 9)]),
+        # Vixie cron treats a field that *starts* with ``*`` as unrestricted, so
+        # ``*/2`` intersects with Friday rather than unioning with it.
+        ("cron:0 9 */2 * fri", [dt.date(2026, 1, 9), dt.date(2026, 1, 23)]),
+    ],
+)
+def test_cron_single_restricted_day_field_still_intersects(spec: str, expected: list[dt.date]):
+    assert isinstance(build_trigger(spec, timezone="UTC"), CronTrigger)
+    assert _next_dates(spec, count=len(expected)) == expected
 
 
 def test_date_iso():
