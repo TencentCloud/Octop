@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from harness_agent.security.models import SecurityPolicy
+from octop_harness.security.models import SecurityPolicy
 
 from octop.infra.agents.security import SecuritySettingsStore
 

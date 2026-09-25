@@ -285,7 +285,7 @@ Usage: octop models [OPTIONS] COMMAND [ARGS]...
   Model catalog and active-model settings.
 
 Commands:
-  presets       List built-in provider templates from harness-agent.
+  presets       List built-in provider templates from octop-harness.
   list          List all resolved models across enabled providers.
   active        Show or set the global default model (admin).
   config        Interactively create a provider from presets and set the active model.

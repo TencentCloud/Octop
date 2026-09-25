@@ -20,8 +20,8 @@ _FALLBACK_SEGMENT_KEYS: tuple[str, ...] = (
 )
 
 try:
-    from harness_agent.context_usage import SEGMENT_KEYS as SEGMENT_KEYS
-except ImportError:  # pragma: no cover - older orcakit-harness-agent wheels
+    from octop_harness.context_usage import SEGMENT_KEYS as SEGMENT_KEYS
+except ImportError:  # pragma: no cover - older octop-harness wheels
     SEGMENT_KEYS = _FALLBACK_SEGMENT_KEYS
 
 __all__ = [
