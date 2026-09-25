@@ -33,7 +33,7 @@ from octop.i18n import tr
 from octop.infra.agents.teams.service import is_team_agent
 from octop.infra.agents.threads.artifact import artifact_path_allowed, extract_artifact_paths
 from octop.infra.gateway.media.tool_media import tool_name_base
-from octop.infra.gateway.process.history_projection import (
+from octop.infra.history.projection import (
     live_message_inputs,
     message_inputs,
 )

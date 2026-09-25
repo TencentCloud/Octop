@@ -10,16 +10,16 @@ from typing import Any, cast
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from octop.infra.gateway.process.history_projection import (
-    TurnHistoryTracker,
-    _role,
-    live_message_input,
-    message_input,
-)
 from octop.infra.gateway.process.message_keys import (
     CHECKPOINT_TS_KEY,
     STREAM_ERROR_CODE_KEY,
     STREAM_ERROR_FLAG,
+)
+from octop.infra.history.projection import (
+    TurnHistoryTracker,
+    _role,
+    live_message_input,
+    message_input,
 )
 from octop.infra.history.service import HistoryArchive
 from octop.infra.history.store import dumps
@@ -119,7 +119,7 @@ class RecordingTracker(TurnHistoryTracker):
         super().observe(chunk)
         kind = chunk.get("type")
         if kind in ("state_snapshot", "state_update"):
-            from octop.infra.gateway.process.history_projection import (
+            from octop.infra.history.projection import (
                 _chunk_messages,  # noqa: PLC0415
             )
 

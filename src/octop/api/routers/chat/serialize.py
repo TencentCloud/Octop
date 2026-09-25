@@ -525,7 +525,7 @@ async def _backfill_thread_projection(
                 user=user,
             )
             raw = session_rows
-        from octop.infra.gateway.process.history_projection import message_inputs  # noqa: PLC0415
+        from octop.infra.history.projection import message_inputs  # noqa: PLC0415
 
         projected = await asyncio.to_thread(message_inputs, list(raw))
         await asyncio.to_thread(repo.replace_all, thread_id, projected)
