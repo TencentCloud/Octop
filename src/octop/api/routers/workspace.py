@@ -408,7 +408,9 @@ async def write_doc(
     _ = from_workspace  # Mutations always use workspace-relative paths.
     rel = _assert_workspace_mutable(path)
     converter = _ensure_editable_doc(path)
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     try:
         data = converter.from_markdown(body.content)
     except Exception as exc:
