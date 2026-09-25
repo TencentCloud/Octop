@@ -81,7 +81,7 @@ powershell -File scripts/wheel_build.ps1
 
 输出：`dist/*.whl`、`dist/*.tar.gz`
 
-发布前请确认 `pyproject.toml` 中的 `orcakit-harness-agent`、`harness-gateway` 等依赖已发布到 PyPI（`[tool.uv.sources]` 仅对 uv 本地开发生效，pip/PyPI 不读取）。
+发布前请确认 `pyproject.toml` 中的 `octop-harness`、`octop-gateway` 等依赖已发布到 PyPI（`[tool.uv.sources]` 仅对 uv 本地开发生效，pip/PyPI 不读取）。
 
 ---
 

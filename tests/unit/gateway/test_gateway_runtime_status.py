@@ -164,7 +164,7 @@ async def test_reload_channels_from_db_unregisters_old_and_registers_enabled(
 
 @pytest.mark.asyncio
 async def test_probe_weixin_without_token_fails_before_start(tmp_path: Path) -> None:
-    from harness_gateway.manager import ChannelManager
+    from octop_gateway.manager import ChannelManager
 
     gw = _make_gateway(tmp_path)
     gw._channel_manager = ChannelManager()

@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from harness_agent.acp.models import ACPConfig, default_acp_runners
+from octop_harness.acp.models import ACPConfig, default_acp_runners
 
 from octop.infra.db.repos.agents import AgentRepo, AgentRow
 from octop.infra.db.repos.settings import SettingsRepo
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 _SETTINGS_PREFIX = "acp_runners:user:"
 _HIDDEN_RUNNERS = frozenset({"qwen_code"})
-# Until orcakit-harness-agent ships these builtins, merge Octop-side defaults.
+# Until octop-harness ships these builtins, merge Octop-side defaults.
 _OCTOP_BUILTIN_RUNNERS: dict[str, dict[str, Any]] = {
     "kimi_code": {
         "command": "kimi",
