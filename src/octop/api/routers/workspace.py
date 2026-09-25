@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import posixpath
 import re
 from typing import Any, Literal
 
@@ -40,9 +41,11 @@ _PROTECTED_PREFIX = "_builtin_skills"
 def _assert_workspace_mutable(path: str) -> str:
     """Mutating ops always treat paths as workspace-relative (``from_workspace=true``)."""
     rel = _workspace_io_path(path, from_workspace=True)
-    if rel == ".":
+    # The backend resolves ``..`` before touching disk, so the check has to run
+    # on the folded path — ``sub/../_builtin_skills/x`` is the protected tree.
+    posix = posixpath.normpath(rel.replace("\\", "/").strip("/"))
+    if posix == ".":
         raise OctopError(ErrorCode.FORBIDDEN, "cannot modify workspace root")
-    posix = rel.replace("\\", "/").strip("/")
     if (
         posix == _PROTECTED_PREFIX
         or posix.startswith(f"{_PROTECTED_PREFIX}/")
