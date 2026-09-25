@@ -1,4 +1,4 @@
-"""Safe read/write helpers for the small JSON config files under ``OCTOP_HOME``.
+﻿"""Safe read/write helpers for the small JSON config files under ``OCTOP_HOME``.
 
 Leaf module (AGENTS.md §5): stdlib only, no ``infra`` imports. Callers translate
 :class:`JsonFileCorruptError` into ``OctopError`` via
@@ -65,7 +65,7 @@ def read_json_object(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     try:
-        raw = path.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError as exc:
         raise JsonFileCorruptError(path, "not valid UTF-8") from exc
     try:
@@ -107,3 +107,4 @@ def write_json_atomic(path: Path, data: dict[str, Any]) -> None:
         with contextlib.suppress(OSError):
             os.unlink(tmp_name)
         raise
+
