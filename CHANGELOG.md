@@ -13,6 +13,7 @@
 - 知识库文档数达到上限时不再答非所问：单库 `max_documents` 可配置之后，上传超限文档仍按字面量「at most 100」匹配错误文案，只有上限恰好是默认值 100 的库才报对，其余（如 2、500）会返回 409 `KNOWLEDGE_BASE_LIMIT`「每个用户最多可创建 20 个知识库」；现按两条报错各自的稳定措辞区分，超限一律正确返回 `KNOWLEDGE_DOC_LIMIT`
 - 知识库文档重命名保留存储键的文件后缀：改名去掉 `.pdf` 等后缀后，原文下载/预览会 404、删除也会留下孤儿文件；现按 `create_text_document` 的既有做法补回原后缀，目录改名不受影响 (#1107)
 - 会话列表接口 `GET /api/agents/{id}/threads` 的 `limit` 增加 1–200 边界（与消息分页沿用同一上限）：此前负数会被 SQLite 解释成「不限制」，一次返回该用户的全部会话，`limit=0` 又返回空列表；越界请求现在统一拒绝
+- 离线 CLI `octop chats list --limit N` 不再绕过 limit：`ThreadRepo.list_by_agent`/`list_by_agent_user`/`list_by_session` 对 `limit <= 0` 短路返回空列表（与 `thread_messages`/`trajectory_events` 同族写法一致），SQLite 把负 `LIMIT` 当作「不限制」、一次吐出该 agent 的全部线程的问题从数据访问层堵住
 
 - 填写 IPv6 字面量地址的 MCP / OAuth 端点此前无法连通：出站请求固定 IP 时会把 URL 重建为 httpx 无法解析的形式（`InvalidURL`），同时丢弃路径参数；现按原样保留两者
 - 会话级 HITL「跳过审批」不再按进程缓存：`octop run --workers N`（或 CLI 与服务并发）时，另一个进程里撤销的跳过仍会持续自动放行工具调用，新授予的也可能不生效；改为每次判定都以 `threads.hitl_policy` 为准
