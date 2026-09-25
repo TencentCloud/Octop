@@ -6,6 +6,7 @@ export const FILE_TOOL_NAMES = [
   "write_file",
   "edit_file",
   "send_file",
+  "send_file_to_user",
 ] as const;
 
 export const EMPTY_CHAT_SESSION_KEY = "__empty__";

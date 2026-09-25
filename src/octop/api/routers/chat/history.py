@@ -20,8 +20,8 @@ from octop.api.routers.chat.serialize import (
     _load_projected_thread_messages,
 )
 from octop.infra.agents.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
-from octop.infra.agents.middleware.thread_artifacts import artifacts_for_response
 from octop.infra.agents.security.hitl_session import parse_hitl_session_policy
+from octop.infra.agents.thread_artifact import thread_artifacts_payload
 from octop.infra.agents.thread_fork import fork_dashboard_thread
 from octop.infra.agents.workspace_dir import agent_facing_workspace_dir_from_config
 from octop.infra.errors import ErrorCode, OctopError
@@ -130,7 +130,11 @@ async def list_threads(
             "conversation_mode": r.conversation_mode or "craft",
             "pending_plan_path": r.pending_plan_path,
             "hitl_policy": _hitl_policy_payload(r),
-            "artifacts": artifacts_for_response(r.artifacts, workspace_dir),
+            **thread_artifacts_payload(
+                r.artifacts,
+                workspace_dir,
+                default_agent_id=agent_id,
+            ),
         }
         for r in rows
     ]
@@ -383,7 +387,11 @@ async def get_thread_history(
         "history_retry_after_ms": 1500 if history_loading else 0,
         "turn_active": server.app_runtime.gateway.ws_hub.is_turn_active(thread_id),
         "hitl_pending": hitl_pending,
-        "artifacts": artifacts_for_response(row.artifacts, workspace_dir),
+        **thread_artifacts_payload(
+            row.artifacts,
+            workspace_dir,
+            default_agent_id=agent_id,
+        ),
         "conversation_mode": row.conversation_mode or "craft",
         "pending_plan_path": row.pending_plan_path,
         "hitl_policy": _hitl_policy_payload(row),

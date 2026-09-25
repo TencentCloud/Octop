@@ -496,13 +496,27 @@ function ChatPageInner() {
   const panelFilePaths = useMemo(() => {
     const fromTabs = openTabs
       .filter((tab) => tab.kind === "file")
-      .map((tab) => tab.path);
-    const fromThread = composerSession?.artifacts ?? [];
+      .map((tab) => ({
+        path: tab.path,
+        ...(tab.agentId ? { agentId: tab.agentId } : {}),
+      }));
+    const fromThread = (composerSession?.artifacts ?? []).map((item) => ({
+      path: item.path,
+      ...(item.agent_id ? { agentId: item.agent_id } : {}),
+    }));
     return listDockFilePathsForTree(
       [...fromThread, ...fromTabs],
       resolvedAgentId,
     );
   }, [openTabs, resolvedAgentId, composerSession?.artifacts]);
+
+  const dockAgentNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const a of agents) {
+      if (a.agent_id) map[a.agent_id] = a.name || a.agent_id;
+    }
+    return map;
+  }, [agents]);
 
   const {
     selectedModel,
@@ -1624,6 +1638,7 @@ function ChatPageInner() {
             panelSizes={dockPanelSizes}
             agentId={resolvedAgentId ?? ""}
             filePaths={sharedExpertViewer ? [] : panelFilePaths}
+            agentNameById={dockAgentNameById}
             openTabs={openTabs}
             activeTabId={activeTabId}
             onSelectTab={setDockActiveTab}
