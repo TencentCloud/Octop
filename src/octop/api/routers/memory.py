@@ -2,7 +2,7 @@
 
 Mounts at ``/api/agents/{agent_id}/memory/*`` and forwards each
 endpoint to a single JSON-RPC method on the agent's
-``harness_memory.Bridge``. The router itself contains no business
+``octop_memory.Bridge``. The router itself contains no business
 logic — every handler is one ``call_memory_rpc(...)`` call.
 
 Surface (mirrors the design doc §6.2):
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Defaults mirror ``HarnessAgentConfig`` (harness_agent.config). Kept in sync
+# Defaults mirror ``HarnessAgentConfig`` (octop_harness.config). Kept in sync
 # manually — the dashboard writes these into the agent's ``config_json`` under
 # the ``memory`` section, and ``AgentManager._build_harness_config`` reads them
 # back when constructing the agent.
