@@ -210,7 +210,7 @@ def _backfill_agent_profile_from_config(db: DatabasePool) -> None:
     cols = _table_columns(db, "agents")
     if "icon_name" not in cols:
         return
-    from octop.infra.agents.profile import (  # noqa: PLC0415
+    from octop.infra.agents.settings.profile import (  # noqa: PLC0415
         PROFILE_CONFIG_KEYS,
         extract_profile_from_config,
         parse_config_json,

@@ -22,25 +22,7 @@ from octop_harness.security.models import SecurityPolicy
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
 from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
-from octop.infra.agents.profile import (
-    dump_id_list,
-    dump_skill_package_ids,
-    dumps_config,
-    extract_profile_from_config,
-    id_list_from_row,
-    overlay_skill_package_ids,
-    parse_config_json,
-    strip_profile_config,
-)
 from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
-from octop.infra.agents.runtime_limits import (
-    AGENT_RUNTIME_CONFIG_KEYS,
-    apply_agent_runtime_to_stream_request,
-    merge_agent_runtime_values,
-)
-from octop.infra.agents.runtime_limits import (
-    resolve_context_max_tokens as config_context_max_tokens,
-)
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.agents.security.hitl_session import (
     HitlSessionPolicyStore,
@@ -54,6 +36,23 @@ from octop.infra.agents.settings.media_generation import (
     MediaGenerationSettings,
     MediaGenerationSettingsStore,
     MediaProviderUpdate,
+)
+from octop.infra.agents.settings.profile import (
+    dump_id_list,
+    dumps_config,
+    extract_profile_from_config,
+    id_list_from_row,
+    overlay_skill_package_ids,
+    parse_config_json,
+    strip_profile_config,
+)
+from octop.infra.agents.settings.runtime_limits import (
+    AGENT_RUNTIME_CONFIG_KEYS,
+    apply_agent_runtime_to_stream_request,
+    merge_agent_runtime_values,
+)
+from octop.infra.agents.settings.runtime_limits import (
+    resolve_context_max_tokens as config_context_max_tokens,
 )
 from octop.infra.backend.docker_spec import (
     enrich_docker_backend_spec,
@@ -119,7 +118,7 @@ def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
 
 def tools_disabled_set(cfg: dict[str, Any]) -> set[str]:
     """Return disabled built-in tool names from agent config (critical stripped)."""
-    from octop.infra.agents.tool_catalog import tools_disabled_set as _tools_disabled_set
+    from octop.infra.agents.settings.tool_catalog import tools_disabled_set as _tools_disabled_set
 
     return _tools_disabled_set(cfg)
 
@@ -612,7 +611,7 @@ class AgentManager:
             profile = extract_profile_from_config(config)
             config = strip_profile_config(config)
             package_ids_json = (
-                dump_skill_package_ids(spec.skill_package_ids)
+                dump_id_list(spec.skill_package_ids)
                 if spec.skill_package_ids is not None
                 else profile.get("skill_package_ids")
             )
@@ -1923,7 +1922,7 @@ class AgentManager:
 
     async def persist_tools_disabled(self, agent_id: str, disabled: set[str]) -> None:
         """Persist builtin ``tools_disabled`` and hot-sync the effective denylist."""
-        from octop.infra.agents.tool_catalog import normalize_tools_disabled
+        from octop.infra.agents.settings.tool_catalog import normalize_tools_disabled
 
         cfg = self.get_config(agent_id)
         cleaned = normalize_tools_disabled(sorted(disabled))
@@ -2051,7 +2050,7 @@ class AgentManager:
         cfg = self.get_config(agent_id)
         self._repos.agent_repo.update_config(
             agent_id,
-            skill_package_ids=dump_skill_package_ids(normalized_ids),
+            skill_package_ids=dump_id_list(normalized_ids),
             config_json=dumps_config(cfg),
         )
         self.sync_skill_package_dirs(agent_id)
@@ -2201,7 +2200,7 @@ class AgentManager:
             remaining = [item for item in package_ids if item != package_id]
             self._repos.agent_repo.update_config(
                 row.agent_id,
-                skill_package_ids=dump_skill_package_ids(remaining),
+                skill_package_ids=dump_id_list(remaining),
                 config_json=dumps_config(cfg),
             )
             self.sync_skill_package_dirs(row.agent_id)
@@ -2414,8 +2413,8 @@ class AgentManager:
         """Hot-sync builtin + plugin denylist derived from current agent config."""
         from octop_harness.plugins import PluginRegistry
 
+        from octop.infra.agents.settings.tool_catalog import effective_tools_disabled
         from octop.infra.agents.teams import host_tools_disabled, is_team_agent
-        from octop.infra.agents.tool_catalog import effective_tools_disabled
 
         cfg = self.get_config(agent_id)
         global_plugins = (
@@ -3267,8 +3266,8 @@ class AgentManager:
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
         )
         if "tools_disabled" in _HARNESS_AGENT_CONFIG_FIELDS:
+            from octop.infra.agents.settings.tool_catalog import effective_tools_disabled
             from octop.infra.agents.teams import host_tools_disabled
-            from octop.infra.agents.tool_catalog import effective_tools_disabled
 
             disabled = effective_tools_disabled(
                 cfg,

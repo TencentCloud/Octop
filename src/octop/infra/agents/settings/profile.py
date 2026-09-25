@@ -61,15 +61,6 @@ def dump_id_list(ids: list[str]) -> str:
     return json.dumps(list(ids), ensure_ascii=False)
 
 
-def parse_skill_package_ids_json(raw: str | None) -> list[str] | None:
-    """Parse the ``skill_package_ids`` column. ``None`` means the column is unset."""
-    return parse_id_list_json(raw)
-
-
-def dump_skill_package_ids(ids: list[str]) -> str:
-    return dump_id_list(ids)
-
-
 def id_list_from_row(row: Any, attr: str) -> list[str]:
     """Return a stored JSON id list, or ``[]`` when the column is unset."""
     parsed = parse_id_list_json(getattr(row, attr, None))
@@ -140,7 +131,7 @@ def welcome_from_row(row: Any) -> str | None:
 
 def overlay_skill_package_ids(cfg: dict[str, Any], row: Any) -> dict[str, Any]:
     """Prefer the column when set; otherwise keep a legacy ``config_json`` list."""
-    from_col = parse_skill_package_ids_json(getattr(row, "skill_package_ids", None))
+    from_col = parse_id_list_json(getattr(row, "skill_package_ids", None))
     if from_col is None:
         return cfg
     merged = dict(cfg)
@@ -151,14 +142,12 @@ def overlay_skill_package_ids(cfg: dict[str, Any], row: Any) -> dict[str, Any]:
 __all__ = [
     "PROFILE_CONFIG_KEYS",
     "dump_id_list",
-    "dump_skill_package_ids",
     "dumps_config",
     "extract_profile_from_config",
     "id_list_from_row",
     "overlay_skill_package_ids",
     "parse_config_json",
     "parse_id_list_json",
-    "parse_skill_package_ids_json",
     "strip_profile_config",
     "welcome_from_row",
 ]

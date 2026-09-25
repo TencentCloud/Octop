@@ -1,4 +1,4 @@
-"""Agent-scoped settings stores (ACP, Langfuse, media generation)."""
+"""Agent-scoped settings: stores, profile columns, runtime knobs, tool catalog."""
 
 from octop.infra.agents.settings.acp import ACPSettingsStore
 from octop.infra.agents.settings.langfuse import (

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from octop.infra.agents.profile import (
+from octop.infra.agents.settings.profile import (
     extract_profile_from_config,
     strip_profile_config,
     welcome_from_row,

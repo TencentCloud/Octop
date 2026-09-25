@@ -21,8 +21,8 @@ from octop_harness.teams.processor import ReplyEvent
 from octop_harness.teams.util import PeerCall, PeerSession
 
 from octop.i18n.domains.stream import format_stream_error
-from octop.infra.agents.profile import parse_config_json
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
+from octop.infra.agents.settings.profile import parse_config_json
 from octop.infra.agents.teams import is_team_agent
 from octop.infra.agents.teams.team_manager import (
     TeamManager,
