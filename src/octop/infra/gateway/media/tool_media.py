@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from harness_agent.backends.workspace import BackendWorkspace
+    from octop_harness.backends.workspace import BackendWorkspace
 
-from harness_gateway.models import (
+from octop_gateway.models import (
     AudioContent,
     ContentPart,
     FileContent,
