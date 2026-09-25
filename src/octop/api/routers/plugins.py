@@ -14,12 +14,12 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
 from octop.api.deps import current_user, get_server, require_permission
-from octop.infra.agents.plugin_tool_defaults import (
+from octop.infra.agents.plugins.manager import PluginManager
+from octop.infra.agents.plugins.plugin_tool_defaults import (
     agent_plugin_enabled,
     merge_plugins_enabled_settings,
     merge_plugins_tool_settings,
 )
-from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 

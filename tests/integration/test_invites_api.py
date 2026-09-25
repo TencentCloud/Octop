@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from octop.infra.agents.default_agent import default_home_local_backend
+from octop.infra.agents.experts.default_agent import default_home_local_backend
 from octop.infra.utils.host_dirs import host_fs_tree_root
 
 

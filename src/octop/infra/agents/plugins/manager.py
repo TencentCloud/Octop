@@ -734,7 +734,7 @@ class PluginManager:
     ) -> None:
         from octop_harness.backends.workspace import BackendWorkspace
 
-        from octop.infra.agents.plugin_tool_defaults import agent_plugin_enabled
+        from octop.infra.agents.plugins.plugin_tool_defaults import agent_plugin_enabled
 
         if not isinstance(workspace, BackendWorkspace):
             return

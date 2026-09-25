@@ -23,7 +23,7 @@ from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.content_disposition import content_disposition
 from octop.api.common.memory_client import memory_db_path_for_cfg, memory_namespace
 from octop.api.deps import current_user, get_server
-from octop.infra.agents.memory_backend import open_memory_kwargs
+from octop.infra.agents.memory.backend import open_memory_kwargs
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)

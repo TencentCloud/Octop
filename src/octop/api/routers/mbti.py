@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner
 from octop.api.deps import current_user, get_server
-from octop.infra.agents.mbti_profiles import (
+from octop.infra.agents.persona.mbti_profiles import (
     MBTIProfile,
     get_all_profiles,
     get_profile,

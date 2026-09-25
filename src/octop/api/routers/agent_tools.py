@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
 from octop.api.deps import current_user, get_server
 from octop.i18n.domains.tools import tool_display_name
-from octop.infra.agents.plugin_tool_defaults import merge_plugins_tool_settings
+from octop.infra.agents.plugins.plugin_tool_defaults import merge_plugins_tool_settings
 from octop.infra.agents.teams import HOST_TOOLS_ALLOWED, is_team_agent
 from octop.infra.agents.tool_catalog import (
     BUILTIN_TOOL_CATALOG,
@@ -82,7 +82,7 @@ def _plugin_tool_label(
     if labeled != name:
         return labeled
     if description:
-        from octop.infra.agents.plugin_tool_names import (  # noqa: PLC0415
+        from octop.infra.agents.plugins.plugin_tool_names import (  # noqa: PLC0415
             extract_original_plugin_label,
         )
 

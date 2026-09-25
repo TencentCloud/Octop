@@ -20,15 +20,8 @@ from octop_harness.registry import AgentEntry
 from octop_harness.security.models import SecurityPolicy
 
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
-from octop.infra.agents.acp_settings import ACPSettingsStore
-from octop.infra.agents.langfuse import LangfuseSettings, LangfuseSettingsStore
-from octop.infra.agents.media_generation import (
-    MediaGenerationSettings,
-    MediaGenerationSettingsStore,
-    MediaProviderUpdate,
-)
-from octop.infra.agents.memory_backend import memory_backend_from_agent_config
-from octop.infra.agents.memory_slim import MemorySlimCoordinator
+from octop.infra.agents.memory.backend import memory_backend_from_agent_config
+from octop.infra.agents.memory.slim import MemorySlimCoordinator
 from octop.infra.agents.profile import (
     dump_id_list,
     dump_skill_package_ids,
@@ -54,6 +47,13 @@ from octop.infra.agents.security.hitl_session import (
     apply_session_bypass,
     hitl_thread_scope,
     thread_id_from_request,
+)
+from octop.infra.agents.settings.acp import ACPSettingsStore
+from octop.infra.agents.settings.langfuse import LangfuseSettings, LangfuseSettingsStore
+from octop.infra.agents.settings.media_generation import (
+    MediaGenerationSettings,
+    MediaGenerationSettingsStore,
+    MediaProviderUpdate,
 )
 from octop.infra.backend.docker_spec import (
     enrich_docker_backend_spec,
@@ -3043,7 +3043,7 @@ class AgentManager:
 
         from octop_harness.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
 
-        from octop.infra.agents.plugin_tool_defaults import (  # noqa: PLC0415
+        from octop.infra.agents.plugins.plugin_tool_defaults import (  # noqa: PLC0415
             agent_plugin_enabled,
             expand_plugin_tools_default_on,
         )
@@ -3076,7 +3076,7 @@ class AgentManager:
         # which strict LLM tool-name APIs reject. Rewrite them to legal names
         # before binding, keeping the original in the description. Config keys
         # and the plugin-side closures still use the original names.
-        from octop.infra.agents.plugin_tool_names import (  # noqa: PLC0415
+        from octop.infra.agents.plugins.plugin_tool_names import (  # noqa: PLC0415
             extract_original_plugin_label,
             sanitize_plugin_tool_names,
         )

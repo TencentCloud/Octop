@@ -14,7 +14,7 @@ from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_upd
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.common.workspace import require_agent_workspace
 from octop.api.deps import current_user, get_server
-from octop.infra.agents.avatar import (
+from octop.infra.agents.experts.avatar import (
     agent_avatar_api_path,
     delete_workspace_avatar,
     display_agent_icon_url,
