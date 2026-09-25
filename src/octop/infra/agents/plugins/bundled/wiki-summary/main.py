@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from urllib.parse import quote
 
@@ -10,6 +11,11 @@ import httpx
 from octop_harness.plugins import PluginContext
 
 _UA = "Octop-wiki-summary/0.1.0"
+
+# ``lang`` is interpolated into the URL host, so it must stay a bare subdomain label:
+# ``evil.com#`` would otherwise send the request to evil.com, and ``localhost:8443/``
+# to the server's own loopback.
+_LANG = re.compile(r"[a-z][a-z-]{1,14}")
 
 
 def _payload(data: dict[str, Any], text: str) -> str:
@@ -59,6 +65,11 @@ async def wiki_summary(query: str, lang: str = "zh") -> str:
     if not q:
         return _payload({"error": "empty"}, "请提供词条名或关键词。")
     language = (lang or "zh").strip().lower() or "zh"
+    if not _LANG.fullmatch(language):
+        return _payload(
+            {"error": "invalid lang", "query": q, "lang": language},
+            "语言代码无效：lang 只接受 zh、en、ja、zh-classical 这样的维基百科语言子域。",
+        )
     headers = {"User-Agent": _UA}
     try:
         with httpx.Client(timeout=20.0, headers=headers, follow_redirects=True) as client:
