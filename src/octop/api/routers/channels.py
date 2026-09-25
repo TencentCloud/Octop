@@ -26,6 +26,7 @@ from octop.infra.gateway.bot_creators.feishu_runner import extract_feishu_creden
 from octop.infra.gateway.channels import dingtalk_registration, qr_bind
 from octop.infra.gateway.gateway import ChannelKind
 from octop.infra.utils.locale import DEFAULT_LOCALE, resolve_request_locale
+from octop.infra.utils.subprocess_env import python_subprocess_env
 from octop.infra.utils.subprocess_io import parse_subprocess_json_lines
 
 logger = logging.getLogger(__name__)
@@ -822,7 +823,7 @@ async def feishu_bot_creator_start(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            env=python_subprocess_env(),
             shell=False,
         )
         async with state["lock"]:
@@ -971,7 +972,7 @@ async def yuanbao_bot_creator_start(
             stderr=subprocess.PIPE,
             bufsize=1,
             universal_newlines=True,
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            env=python_subprocess_env(),
             shell=False,
         )
         async with state["lock"]:

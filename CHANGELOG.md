@@ -97,6 +97,10 @@
 
 ### 修复
 
+- 修复 `config.json` 解析失败时被静默清空的问题（#730）：`octop run --host/--port`、`octop service start --host/--port`、插件开关与插件 seeding 过去会把无法解析的配置当成空配置再写回，导致 `bind_host`、`database` 等全部设置丢失（PostgreSQL 实例会静默退回全新空 SQLite，且无任何告警）；现在直接报错并保留原文件不动，错误信息含行列号但不回显文件内容（其中含数据库凭据），配置写入统一改为原子写
+- `config.json` 无法解析时，`load_config` 的报错现在带上文件路径与行列号（此前是裸 `JSONDecodeError`，不说哪个文件出错），并拒绝“合法 JSON 但不是 object”的文件；报错不回显内容
+- 腾讯验证码票据校验改用 DescribeCaptchaResult 接口（旧端点对新票据返回 decrypt fail）；校验需云 API 密钥签名，设置页新增对应字段
+- 修复 Windows 下飞书通道「一键创建机器人」扫不到码或扫码后仍提示“飞书机器人创建失败”的问题：绿色便携包只把 `packages/` 加进服务进程自己的 `sys.path`（`launch.py` + `site.addsitedir`，同时清空 `PYTHONPATH`），创建子进程因此以 `ModuleNotFoundError: No module named 'lark_oapi'` 退出、二维码根本生成不出来；另外子进程 stdout 沿用 ANSI 代码页（cp936），输出带 `✅` 的完成事件时抛 `UnicodeEncodeError`，导致飞书应用其实已创建成功却无法把凭据回传、界面误报失败。现在创建子进程统一携带包路径并以 UTF-8 输出
 - 超长 URL 导致历史消息加载极慢
 - 手动创建渠道默认启用；PostgreSQL 知识库缺列；损坏 config 被清空
 - 若干 Dashboard / 构建相关问题（权限页签、抽屉滚动、Windows 构建等）
