@@ -199,9 +199,9 @@ class TeamManager:
                 return
             messages = result.get("messages")
             msg_list = messages if isinstance(messages, list) else []
-            edited = _edited_files_from_messages(msg_list)
             visible = _peer_turn_messages(msg_list)
             visible = [msg for msg in visible if _message_role(msg) not in {"human", "user"}]
+            edited = _edited_files_from_messages(visible)
             visible, _ = _apply_edited_files_stamp(visible, edited)
             prompt = await self._assignment_text(call)
             if prompt:
