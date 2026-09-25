@@ -277,7 +277,7 @@ reloads running agents so the image and video tools receive the new configuratio
 | `GET`    | `/personas` | user | `[{code}, ...]` (compat shim) |
 | `GET`    | `/personas/{code}` | user | rendered template (compat shim) |
 
-Persona content lives in `src/octop/infra/agents/mbti_profiles.py` —
+Persona content lives in `src/octop/infra/agents/persona/mbti_profiles.py` —
 see [Personas](./personas.md).
 
 ## Experts

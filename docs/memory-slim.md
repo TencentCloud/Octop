@@ -151,7 +151,7 @@ strict mypy 499 files、Ruff/format 通过。这里只验证 PostgreSQL 拒绝�
 2026-09-18 对话入口补充：
 
 ```bash
-PYTHONPATH=../octop-memory/src:src uv run --no-sync pytest tests/unit/agents/test_memory_slim.py tests/unit/gateway/test_slash*.py tests/unit/gateway/test_message_keys.py tests/unit/gateway/test_gateway.py tests/unit/gateway/test_history_projection.py tests/unit/i18n -q
+PYTHONPATH=../octop-memory/src:src uv run --no-sync pytest tests/unit/agents/test_memory_slim.py tests/unit/gateway/test_slash*.py tests/unit/gateway/test_message_keys.py tests/unit/gateway/test_gateway.py tests/unit/history/test_projection.py tests/unit/i18n -q
 ```
 
 178 passed，覆盖真实临时 SQLite 的对话触发、历史保留、用户隔离、批次串行/互斥、所有权变更、
