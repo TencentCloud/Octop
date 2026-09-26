@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import time
 from collections.abc import Mapping, Sequence
+from datetime import datetime, timedelta
 from typing import Any, Protocol, TypeVar
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 R_co = TypeVar("R_co", covariant=True)
 
@@ -64,11 +66,50 @@ def sql_in_placeholders(count: int) -> str:
     return ", ".join("?" * count)
 
 
-def sql_unix_day_bucket(column: str, *, dialect: str = "sqlite") -> str:
-    """Expression that buckets a unix-epoch integer column into YYYY-MM-DD."""
+def _bucket_zone(timezone: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
+
+
+def _sqlite_utc_offset(zone: ZoneInfo, at: int | None) -> str:
+    """``±HH:MM`` SQLite date modifier for *zone* at unix seconds *at*."""
+    instant = datetime.fromtimestamp(time.time() if at is None else at, tz=zone)
+    seconds = int((instant.utcoffset() or timedelta(0)).total_seconds())
+    sign = "+" if seconds >= 0 else "-"
+    hours, minutes = divmod(abs(seconds), 3600)
+    return f"{sign}{hours:02d}:{minutes // 60:02d}"
+
+
+def sql_unix_day_bucket(
+    column: str,
+    *,
+    dialect: str = "sqlite",
+    timezone: str | None = None,
+    at: int | None = None,
+) -> str:
+    """Expression that buckets a unix-epoch integer column into YYYY-MM-DD.
+
+    Without *timezone* the day is cut at UTC midnight in both engines. Pass the
+    IANA zone a stats window was resolved with so the day buckets and the window
+    share one day boundary.
+
+    PostgreSQL converts every row, so DST is exact. SQLite has no tz database:
+    the zone is flattened to the offset it holds at *at* (default: now), so rows
+    within an hour of a DST switch can land in the neighbouring day — still
+    closer to the window than always cutting at UTC. An unusable zone name falls
+    back to UTC, matching ``resolve_usage_window``.
+    """
+    if timezone is None:
+        if dialect == "postgresql":
+            return f"to_char(to_timestamp({column}), 'YYYY-MM-DD')"
+        return f"date({column}, 'unixepoch')"
+    zone = _bucket_zone(timezone)
     if dialect == "postgresql":
-        return f"to_char(to_timestamp({column}), 'YYYY-MM-DD')"
-    return f"date({column}, 'unixepoch')"
+        # ``ZoneInfo`` only accepts real tz-database keys, so this cannot quote-shift.
+        return f"to_char(to_timestamp({column}) AT TIME ZONE '{zone}', 'YYYY-MM-DD')"
+    return f"date({column}, 'unixepoch', '{_sqlite_utc_offset(zone, at)}')"
 
 
 def insert_returning_id(conn: Any, sql: str, params: Sequence[object]) -> int:

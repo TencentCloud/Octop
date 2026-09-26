@@ -14,6 +14,7 @@
 - 运行时依赖改为 `octop-harness[all]` / `octop-gateway` / `octop-memory` / `octop-browser` 1.0.0（原 `orcakit-harness-agent` / `harness-*`）；文档、UI 文案与生成路径同步改为 `octop-*`（`~/.harness-browser` 仅作迁移/拒绝源）
 
 ### 修复
+- Token 统计的按天明细不再按 UTC 切日：`by_day` 分桶此前始终用数据库默认日界（UTC），而统计窗口用的是配置的 `default_timezone`，两者最多差一天——上海时间凌晨 2 点的用量会被算到前一天，按天明细与总量对不上。现在分桶与窗口共用同一时区（PostgreSQL 逐行转换，SQLite 取窗口起点处的 UTC 偏移）(#974)
 - 知识库文档数达到上限时不再答非所问：单库 `max_documents` 可配置之后，上传超限文档仍按字面量「at most 100」匹配错误文案，只有上限恰好是默认值 100 的库才报对，其余（如 2、500）会返回 409 `KNOWLEDGE_BASE_LIMIT`「每个用户最多可创建 20 个知识库」；现按两条报错各自的稳定措辞区分，超限一律正确返回 `KNOWLEDGE_DOC_LIMIT`
 - 知识库文档重命名保留存储键的文件后缀：改名去掉 `.pdf` 等后缀后，原文下载/预览会 404、删除也会留下孤儿文件；现按 `create_text_document` 的既有做法补回原后缀，目录改名不受影响 (#1107)
 - 会话列表接口 `GET /api/agents/{id}/threads` 的 `limit` 增加 1–200 边界（与消息分页沿用同一上限）：此前负数会被 SQLite 解释成「不限制」，一次返回该用户的全部会话，`limit=0` 又返回空列表；越界请求现在统一拒绝
