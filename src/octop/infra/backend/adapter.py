@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from urllib.parse import quote_plus
 
 from octop.infra.db.repos.backends import BackendRow
 
@@ -132,7 +133,13 @@ def row_to_backend_spec(row: BackendRow) -> dict[str, Any] | None:
             if user and password and dbname:
                 host = row.endpoint
                 schema = row.region or cfg.get("schema") or "public"
-                conn = f"postgresql://{user}:{password}@{host}/{dbname}"
+                # Percent-encode the credentials as OctopConfig.postgresql_conninfo()
+                # does: libpq decodes userinfo, so an unquoted "@", "/" or "%" in a
+                # password shifts the host/database out of the URL.
+                conn = (
+                    f"postgresql://{quote_plus(str(user))}"
+                    f":{quote_plus(str(password))}@{host}/{dbname}"
+                )
                 if schema != "public":
                     cfg = {**cfg, "schema": schema}
         if not conn:
