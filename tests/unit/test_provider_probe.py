@@ -196,6 +196,30 @@ async def test_chat_probe_skips_embeddings_endpoint() -> None:
 
 
 @pytest.mark.asyncio
+async def test_chat_probe_uses_content_part_for_vision_model() -> None:
+    row = SimpleNamespace(
+        name="Vision Provider",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        extra_json=None,
+        get_models=lambda: [{"id": "qwen-vl", "name": "qwen-vl", "input": ["text", "image"]}],
+    )
+    fake = AsyncMock()
+    fake.ainvoke = AsyncMock(return_value=SimpleNamespace(content="pong"))
+    with patch(
+        "octop.infra.agents.providers.probe.build_probe_chat_model",
+        return_value=fake,
+    ):
+        result = await probe_provider_row(row, model_id="qwen-vl")
+
+    assert result["ok"] is True
+    fake.ainvoke.assert_awaited_once()
+    message = fake.ainvoke.await_args.args[0][0]
+    assert message.content == [{"type": "text", "text": "ping"}]
+
+
+@pytest.mark.asyncio
 async def test_chat_probe_empty_exception_message_returns_type_name(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
