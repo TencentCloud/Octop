@@ -191,6 +191,8 @@ class ThreadRepo:
         return ThreadRow.from_row(r) if r else None
 
     def list_by_agent(self, *, agent_id: str, limit: int = 50) -> list[ThreadRow]:
+        if limit <= 0:
+            return []
         # last_active=0 is "no turns yet" (has_messages sentinel). Fall back to
         # created_at so brand-new empty threads sort to the top of the sidebar
         # instead of sinking below every previously active chat.
@@ -207,6 +209,8 @@ class ThreadRepo:
     def list_by_agent_user(
         self, *, agent_id: str, user_id: int, limit: int = 50
     ) -> list[ThreadRow]:
+        if limit <= 0:
+            return []
         with self._db.connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM threads WHERE agent_id = ? AND user_id = ? "
@@ -218,6 +222,8 @@ class ThreadRepo:
         return map_rows(rows, ThreadRow)
 
     def list_by_session(self, *, session_key: str, limit: int = 50) -> list[ThreadRow]:
+        if limit <= 0:
+            return []
         with self._db.connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM threads WHERE session_key = ? "
