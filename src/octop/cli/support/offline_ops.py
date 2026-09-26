@@ -19,7 +19,7 @@ from octop.infra.cron.task_type import normalize_cron_task_type, require_cron_pr
 from octop.infra.cron.trigger import build_trigger
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.threads import ThreadRegistry
-from octop.infra.users.password import hash_password
+from octop.infra.users.password import hash_password, validate_password_policy
 from octop.infra.utils.ulid import new_cron_id, new_ulid
 
 logger = logging.getLogger(__name__)
@@ -91,6 +91,7 @@ def create_user_offline(
     from octop.infra.users.email import parse_optional_email
 
     normalized_email = parse_optional_email(email)
+    validate_password_policy(password)
     with open_cli_services(home) as svc:
         if svc.user_repo.get_by_username(username) is not None:
             raise OctopError(ErrorCode.USERNAME_TAKEN, f"username {username!r} already exists")
@@ -134,6 +135,7 @@ def set_user_email_offline(
 def set_user_password_offline(username: str, password: str, *, home: Path | None = None) -> None:
     with open_cli_services(home) as svc:
         uid = _require_username(svc, username)
+        validate_password_policy(password)
         svc.user_repo.set_password_hash(uid, hash_password(password))
 
 

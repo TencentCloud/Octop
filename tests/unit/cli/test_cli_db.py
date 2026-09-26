@@ -80,3 +80,48 @@ def test_agent_list_offline_flag(fake_home: Path) -> None:
     result = runner.invoke(cli, ["agent", "list", "--user", "alice"])
     assert result.exit_code == 0, result.output
     assert "ag1" in result.output
+
+
+def test_user_create_enforces_password_policy(fake_home: Path) -> None:
+    _bootstrap(fake_home)
+    runner = CliRunner()
+
+    weak = runner.invoke(
+        cli,
+        ["user", "create", "bob", "--password", "short1", "--role", "user"],
+    )
+    assert weak.exit_code == 1
+    assert "password too short" in weak.output
+
+    strong = runner.invoke(
+        cli,
+        [
+            "user",
+            "create",
+            "bob",
+            "--password",
+            "StrongPass12",
+            "--role",
+            "user",
+        ],
+    )
+    assert strong.exit_code == 0, strong.output
+
+
+def test_user_passwd_enforces_password_policy(fake_home: Path) -> None:
+    _bootstrap(fake_home)
+    runner = CliRunner()
+
+    weak = runner.invoke(
+        cli,
+        ["user", "passwd", "alice", "--password", "password1"],
+    )
+    assert weak.exit_code == 1
+    assert "password is too common" in weak.output
+
+    strong = runner.invoke(
+        cli,
+        ["user", "passwd", "alice", "--password", "NewPass12"],
+    )
+    assert strong.exit_code == 0, strong.output
+    assert "ok" in strong.output
