@@ -1627,6 +1627,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_agent_teams_schema(db)
             if max_version >= 17:
                 _ensure_thread_conversation_mode_schema(db)
+            if max_version >= 18:
+                _ensure_user_role_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -1669,6 +1671,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_agent_teams_schema(db)
     if max_version >= 17:
         _ensure_thread_conversation_mode_schema(db)
+    if max_version >= 18:
+        _ensure_user_role_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -1834,6 +1838,16 @@ def run_migrations(db: DatabasePool) -> None:
         _repair_legacy_schema(db)
     for version, path in _discover(db.dialect):
         if version <= _current_version(db):
+            continue
+        # v18 touches optional ``user_invites``; use the idempotent helper for both
+        # dialects so restores from pre-invite physical schemas do not fail.
+        if version == 18:
+            _ensure_user_role_schema(db)
+            with db.connect() as conn:
+                if db.dialect == "postgresql":
+                    conn.execute("UPDATE _schema_version SET version = %s", (version,))
+                else:
+                    conn.execute("UPDATE _schema_version SET version = ?", (version,))
             continue
         if db.dialect == "postgresql":
             sql = path.read_text(encoding="utf-8")
