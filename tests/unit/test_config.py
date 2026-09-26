@@ -430,3 +430,11 @@ def test_non_object_config_raises(tmp_path: Path):
     with pytest.raises(ValueError, match="JSON object"):
         load_config(cfg_path)
     assert cfg_path.read_text(encoding="utf-8") == "[1, 2]"
+
+
+def test_utf8_bom_config_loads(tmp_path: Path):
+    """A BOM saved by Windows editors must not fail as "line 1, column 1"."""
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_bytes(b"\xef\xbb\xbf" + json.dumps({"port": 9000}).encode("utf-8"))
+    cfg = load_config(cfg_path)
+    assert cfg.port == 9000
