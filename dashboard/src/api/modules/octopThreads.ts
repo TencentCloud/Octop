@@ -131,6 +131,7 @@ export interface ContextUsageBreakdown {
   max_tokens: number;
   used_tokens: number;
   segments: ContextUsageSegment[];
+  available?: boolean;
 }
 
 export interface HistoryMigrationStatus {

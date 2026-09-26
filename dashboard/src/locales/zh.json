@@ -1354,10 +1354,11 @@
     "sessionWorking": "正在回复",
     "composerContextLabel": "消息附加上下文",
     "contextWindow": {
-      "tooltip": "上下文占用 {{used}} / {{max}} · {{percent}}%（最近一次模型请求）",
+      "tooltip": "上下文快照 {{used}} / {{max}} · {{percent}}%（上限由配置或运行时提供）",
+      "unavailableTooltip": "暂无可靠上下文快照（上限 {{max}} 由配置或运行时提供）",
       "breakdownTitle": "上下文使用",
       "breakdownPercent": "已用 {{percent}}%",
-      "breakdownHint": "显示当前上下文窗口占用，不是本轮计费合计。",
+      "breakdownHint": "这是上下文快照；上限由配置或运行时提供，不一定是厂商公布的物理上下文窗口。",
       "segments": {
         "system_prompt": "系统提示词",
         "tool_definitions": "工具定义",
