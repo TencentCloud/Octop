@@ -4901,6 +4901,7 @@
     "subtitle": "懂你、帮你、陪你成长的智能伙伴",
     "username": "用户名或邮箱",
     "password": "密码",
+    "remember": "记住登录状态",
     "submit": "登录",
     "forgotPassword": "忘记密码？",
     "forgotPasswordTitle": "重置密码",
