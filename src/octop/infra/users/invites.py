@@ -249,16 +249,16 @@ def _role_defaults_for_invite(
     user_role_id = getattr(invite, "user_role_id", None)
     if not isinstance(user_role_id, str) or not user_role_id:
         user_role_id = None
-    if (not isinstance(role_name, str) or not role_name) and user_role_id is None:
-        return "user", [], [], None, None
     from octop.infra.db.repos.user_roles import UserRoleRepo
     from octop.infra.users.permissions import PERMISSIONS
 
-    role = (
-        UserRoleRepo(db).get(user_role_id)
-        if user_role_id is not None
-        else UserRoleRepo(db).get_by_name(role_name)
-    )
+    repo = UserRoleRepo(db)
+    if user_role_id is not None:
+        role = repo.get(user_role_id)
+    elif isinstance(role_name, str) and role_name:
+        role = repo.get_by_name(role_name)
+    else:
+        return "user", [], [], None, None
     if role is None:
         raise OctopError(
             ErrorCode.INVITE_ROLE_MISSING,
