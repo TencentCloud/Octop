@@ -327,7 +327,29 @@ async def _prepare_credentials(
 def _merge_credentials(
     old: dict[str, Any],
     new: dict[str, Any],
+    *,
+    kind: str | None = None,
 ) -> dict[str, Any]:
+    # QCC: switching auth mode must replace the other mode's secrets, not layer them.
+    if kind == "qcc":
+        new_api_key = str(new.get("api_key") or "").strip()
+        new_access = str(new.get("access_token") or new.get("token") or "").strip()
+        oauth_in_new = bool(new.get("oauth_client_id") or new.get("refresh_token") or new_access)
+        if new_api_key and not oauth_in_new:
+            out: dict[str, Any] = {"api_key": new_api_key}
+            if old.get("internal_token"):
+                out["internal_token"] = old["internal_token"]
+            return out
+        if oauth_in_new:
+            merged_oauth = dict(old)
+            for key, value in new.items():
+                if value is None:
+                    continue
+                if isinstance(value, str) and not value.strip():
+                    continue
+                merged_oauth[key] = value
+            merged_oauth.pop("api_key", None)
+            return merged_oauth
     merged = dict(old)
     for key, value in new.items():
         if value is None:
@@ -350,7 +372,13 @@ def _credentials_preview(kind: str, creds: dict[str, Any]) -> dict[str, Any]:
         elif str(creds.get("token") or creds.get("access_token") or "").strip():
             preview["token_configured"] = True
     elif entry.auth_kind == "oauth2":
-        if str(creds.get("access_token") or "").strip():
+        if (
+            kind == "qcc"
+            and str(creds.get("api_key") or "").strip()
+            and not (creds.get("oauth_client_id") or creds.get("refresh_token"))
+        ):
+            preview["api_key_configured"] = True
+        elif str(creds.get("access_token") or "").strip():
             preview["oauth_configured"] = True
         if creds.get("expires_at") is not None:
             preview["expires_at"] = creds.get("expires_at")
@@ -812,7 +840,7 @@ async def patch_instance(
         repo.update_metadata(instance_id, shared=body.shared)
     if body.credentials is not None:
         svc = _connector_service(server)
-        merged = _merge_credentials(svc.decrypt(instance_id), body.credentials)
+        merged = _merge_credentials(svc.decrypt(instance_id), body.credentials, kind=inst.kind)
         try:
             prepared = await _prepare_credentials(inst.kind, merged, server.services.settings_repo)
         except ValueError as exc:
