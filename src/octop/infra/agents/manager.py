@@ -1414,28 +1414,29 @@ class AgentManager:
         connector_user_id: int | None = None,
     ) -> None:
         """Refresh connector OAuth tokens and reload harness MCP tool registrations."""
-        from octop.infra.agents.teams import is_team_agent
+        async with self._lifecycle_lock_for(agent_id):
+            from octop.infra.agents.teams import is_team_agent
 
-        row = self.get_row(agent_id)
-        if row is None or is_team_agent(row):
-            return
-        uid = self._connector_uid_for(row, connector_user_id=connector_user_id)
-        if uid is None:
-            logger.warning(
-                "agent %s: skip connector reload — agent.user_id is NULL and no connector_user_id",
-                agent_id,
-            )
-            return
-        self._connector_user_override[agent_id] = uid
-        try:
-            svc = self._connector_svc
-            for inst in self._repos.connector_repo.list_visible(uid):
-                if inst.status != "active":
-                    continue
-                await svc.ensure_fresh_credentials(inst.instance_id, inst.kind)
-            await self._reload_agent(agent_id)
-        finally:
-            self._connector_user_override.pop(agent_id, None)
+            row = self.get_row(agent_id)
+            if row is None or is_team_agent(row):
+                return
+            uid = self._connector_uid_for(row, connector_user_id=connector_user_id)
+            if uid is None:
+                logger.warning(
+                    "agent %s: skip connector reload — agent.user_id is NULL and no connector_user_id",
+                    agent_id,
+                )
+                return
+            self._connector_user_override[agent_id] = uid
+            try:
+                svc = self._connector_svc
+                for inst in self._repos.connector_repo.list_visible(uid):
+                    if inst.status != "active":
+                        continue
+                    await svc.ensure_fresh_credentials(inst.instance_id, inst.kind)
+                await self._reload_agent_locked(agent_id)
+            finally:
+                self._connector_user_override.pop(agent_id, None)
 
     async def reload_connectors_for_user(self, user_id: int) -> None:
         self.invalidate_mcp_tool_cache(user_id)
@@ -2789,41 +2790,45 @@ class AgentManager:
     # ------------------------------------------------------------------
 
     async def _reload_agent(self, agent_id: str) -> None:
-        assert self._harness_manager is not None
         async with self._lifecycle_lock_for(agent_id):
-            self._bootstrap_graph_refresh_pending.discard(agent_id)
-            row = self._repos.agent_repo.get(agent_id)
-            if not row or not row.enabled or row.last_state == "stopped":
-                await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
-                await self._harness_manager.aremove_agent(agent_id)
-                return
-            if self._harness_manager.shared_factory is None:
-                return
-            try:
-                cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
-                entry = await self._harness_manager.arebuild_agent(
-                    agent_id,
-                    cfg,
-                    metadata=metadata,
-                    tags=tags,
-                )
-                await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
+            await self._reload_agent_locked(agent_id)
+
+    async def _reload_agent_locked(self, agent_id: str) -> None:
+        """Reload with the caller holding this agent's lifecycle lock."""
+        assert self._harness_manager is not None
+        self._bootstrap_graph_refresh_pending.discard(agent_id)
+        row = self._repos.agent_repo.get(agent_id)
+        if not row or not row.enabled or row.last_state == "stopped":
+            await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
+            await self._harness_manager.aremove_agent(agent_id)
+            return
+        if self._harness_manager.shared_factory is None:
+            return
+        try:
+            cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
+            entry = await self._harness_manager.arebuild_agent(
+                agent_id,
+                cfg,
+                metadata=metadata,
+                tags=tags,
+            )
+            await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
+            self._repos.agent_repo.set_state(agent_id, "running", error=None)
+        except Exception as exc:
+            recovered = self._octop_harness_or_none(agent_id)
+            if recovered is not None and self._is_already_registered_error(exc):
                 self._repos.agent_repo.set_state(agent_id, "running", error=None)
-            except Exception as exc:
-                recovered = self._octop_harness_or_none(agent_id)
-                if recovered is not None and self._is_already_registered_error(exc):
-                    self._repos.agent_repo.set_state(agent_id, "running", error=None)
-                    logger.warning(
-                        "Agent %s reload raced; keeping existing registry entry",
-                        agent_id,
-                    )
-                    return
-                logger.exception("Background reload failed for agent %s", agent_id)
-                self._repos.agent_repo.set_state(
+                logger.warning(
+                    "Agent %s reload raced; keeping existing registry entry",
                     agent_id,
-                    "failed",
-                    error=format_agent_start_error(exc),
                 )
+                return
+            logger.exception("Background reload failed for agent %s", agent_id)
+            self._repos.agent_repo.set_state(
+                agent_id,
+                "failed",
+                error=format_agent_start_error(exc),
+            )
 
     def _schedule_reload(self, agent_id: str) -> None:
         """Queue a background harness reload; coalesces rapid successive updates."""
