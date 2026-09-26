@@ -421,7 +421,8 @@ def load_config(path: Path) -> OctopConfig:
     file_defaults = _defaults_for_file()
     if path.exists():
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
+            # utf-8-sig strips a UTF-8 BOM; identical bytes to utf-8 when absent.
+            raw = json.loads(path.read_text(encoding="utf-8-sig"))
         except json.JSONDecodeError as exc:
             raise ValueError(
                 f"{path} is not valid JSON (line {exc.lineno}, column {exc.colno});"
