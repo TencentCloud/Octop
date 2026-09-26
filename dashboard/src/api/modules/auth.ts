@@ -1,20 +1,16 @@
 import { clearSetupRequired, markSetupRequired, request } from "../request";
 
 /**
- * Auth + setup module — adapted to octop's multi-user backend.
+ * Auth + setup API module for Octop's multi-user backend.
  *
- * Octop endpoints (spec §11.3):
- *  - GET  /api/setup/status         → { setup_required }
- *  - POST /api/setup/initial-admin  → 201 { id, username, role }
- *  - POST /api/auth/login           → { access_token, token_type, expires_in, user }
- *  - POST /api/auth/logout          → 204
- *  - GET  /api/auth/me              → { id, username, role, display_name }
- *  - POST /api/auth/change-password → 204
+ * Setup completion comes from ``GET /api/setup/status``. Login, logout,
+ * profile, password, OIDC, and OAuth operations use the ``/api/auth``
+ * endpoints wrapped below.
  *
- * The shape exported below is intentionally a superset that keeps a few
- * legacy fields populated (``setup_done``, ``enabled``, ``has_password``)
- * so existing finnie-derived components compile until they're replaced
- * by the octop settings editors in phase 14.6.
+ * ``AuthStatus`` intentionally keeps the legacy ``setup_done``, ``enabled``,
+ * and ``has_password`` aliases. ``setup_required`` remains authoritative;
+ * ``getAuthStatus`` derives or hard-codes the aliases to preserve the exported
+ * API shape.
  */
 
 export interface AuthStatus {
@@ -22,9 +18,9 @@ export interface AuthStatus {
   setup_required: boolean;
   /** Legacy alias of ``!setup_required`` kept for compat. */
   setup_done: boolean;
-  /** Octop always requires auth; kept true so legacy components don't unguard. */
+  /** Legacy setup-status field; hard-coded true because auth is mandatory. */
   enabled: boolean;
-  /** Legacy field — octop always uses passwords. */
+  /** Legacy setup-status field; hard-coded true by ``getAuthStatus``. */
   has_password: boolean;
   /** True when ~/.octop/octop-login.txt exists on the server (wizard-only). */
   wizard_password_exists: boolean;
@@ -255,10 +251,9 @@ export const authApi = {
       body: JSON.stringify({ display_name: displayName }),
     }),
 
-  // --- Legacy stubs kept so finnie-era components compile ----------------
-  // These call paths are removed in octop's data model; the actual
-  // settings UI is rewritten in phase 14.6. Stubs return rejected
-  // promises with a clear message to make accidental use loud.
+  // --- Deprecated compatibility methods ----------------------------------
+  // Unsupported mutations reject loudly. markSetupDone remains a no-op because
+  // setup completion is derived from the server's setup status.
 
   /** @deprecated Octop always requires auth — there is no first-time set step. */
   setPassword: (): Promise<never> =>
@@ -270,6 +265,6 @@ export const authApi = {
   disableAuth: (): Promise<never> =>
     Promise.reject(new Error("disableAuth is not supported in octop")),
 
-  /** @deprecated Octop's setup wizard is single-step; nothing to mark done. */
+  /** @deprecated Setup completion is server-derived; retained as a no-op. */
   markSetupDone: (): Promise<{ ok: boolean }> => Promise.resolve({ ok: true }),
 };
