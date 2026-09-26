@@ -524,12 +524,21 @@ async def _enrich_block_with_backend(
     return _block_with_preview_url(block, url)
 
 
-def enrich_tool_output_string_sync(output: str, *, agent_id: str) -> str:
+def enrich_tool_output_string_sync(
+    output: str, *, agent_id: str, tool_name: str | None = None
+) -> str:
     """Cheap URL rewrite for history loads — no workspace file import."""
     if not output.strip():
         return output
     stripped = output.strip()
     if stripped[0] not in "{[":
+        # Plain-text "saved to outbound/…" inference invents an image block, so it
+        # must honour the same delivery-tool gate as streaming
+        # (``enrich_tool_result_with_backend``): otherwise a write_file / read_file
+        # turn that stayed text-only while it streamed grows a phantom attachment
+        # the first time the thread is reloaded.
+        if not is_media_push_tool(tool_name):
+            return output
         return _enrich_plain_text_tool_media_sync(output, agent_id=agent_id)
     enriched = enrich_tool_message_content(output, agent_id=agent_id)
     return enriched if isinstance(enriched, str) else output

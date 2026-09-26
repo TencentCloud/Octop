@@ -572,7 +572,9 @@ def _enrich_history_tool_media(
             if not isinstance(output, str) or not output.strip():
                 blocks.append(block)
                 continue
-            new_output = enrich_tool_output_string_sync(output, agent_id=media_agent)
+            new_output = enrich_tool_output_string_sync(
+                output, agent_id=media_agent, tool_name=block.get("name")
+            )
             if new_output != output:
                 blocks.append({**block, "output": new_output})
                 changed = True
