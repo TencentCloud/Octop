@@ -8,6 +8,7 @@
 
 ### 新增
 
+- 登录页增加「记住登录状态」勾选（默认勾选）：取消后 JWT 仅保存在当前标签页的 `sessionStorage`，关闭标签后需重新登录；SSO 弹窗通过 postMessage 回传 token
 - 企查查内置连接器恢复一键 OAuth：保留 internal HTTP 工具加载及已有 API Key，支持五类资源共享刷新与远程解绑；注明系统浏览器及公网 HTTPS 回调要求。
 
 ### 变更

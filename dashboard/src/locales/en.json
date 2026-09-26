@@ -4762,6 +4762,7 @@
     "subtitle": "An intelligent partner that understands you, helps you, and grows with you",
     "username": "Username or email",
     "password": "Password",
+    "remember": "Remember me",
     "submit": "Sign in",
     "forgotPassword": "Forgot password?",
     "forgotPasswordTitle": "Reset password",
