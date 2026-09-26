@@ -177,11 +177,9 @@ class InviteService:
         if name == "":
             name = None
         normalized_email = parse_optional_email(email)
-        account_role, perm_list, policy_pairs, user_role_id, role_name = (
-            _role_defaults_for_invite(
+        account_role, perm_list, policy_pairs, user_role_id, role_name = _role_defaults_for_invite(
             self._services.db,
             self._repo.get_by_code(cleaned_code),
-            )
         )
         try:
             user_id, _invite = self._repo.redeem_creating_user(

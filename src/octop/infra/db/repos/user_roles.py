@@ -95,9 +95,7 @@ class UserRoleRow:
             user_role_id=str(row["user_role_id"]),
             user_role_name=str(row["user_role_name"]),
             description=(
-                str(row["description"]).strip() or None
-                if row["description"] is not None
-                else None
+                str(row["description"]).strip() or None if row["description"] is not None else None
             ),
             permissions=parse_string_list(row["permissions"]),
             policies=parse_policies(row["policies"]),

@@ -47,9 +47,7 @@ class InviteRow:
             ),
             revoked_at=int(row["revoked_at"]) if row["revoked_at"] is not None else None,
             role_name=_optional_text(row["role_name"]) if "role_name" in keys else None,
-            user_role_id=(
-                _optional_text(row["user_role_id"]) if "user_role_id" in keys else None
-            ),
+            user_role_id=(_optional_text(row["user_role_id"]) if "user_role_id" in keys else None),
         )
 
     def status(self, *, now: int | None = None) -> str:
