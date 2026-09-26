@@ -244,3 +244,53 @@ async def test_peer_cannot_rebind_session_to_owner_thread(env) -> None:
         json={"thread_id": owner_thread_id},
     )
     assert response.status_code == 403
+
+
+async def test_peer_cannot_write_doc_in_shared_agent(env) -> None:
+    """PUT /workspace/doc is a workspace mutation and must be owner-only.
+
+    The text write endpoint (PUT /workspace/file) rejects peers, but the doc
+    editor route resolves the workspace with plain access (shared agents are
+    accessible), so a peer could overwrite the owner's .docx documents.
+    """
+    client, owner_auth, peer_auth, agent_id = await _shared_agent(env)
+    response = await client.patch(
+        f"/api/agents/{agent_id}",
+        headers=owner_auth,
+        json={"is_shared": True},
+    )
+    assert response.status_code == 200, response.text
+
+    # Empty content through the text endpoint stores a valid empty .docx.
+    response = await client.put(
+        f"/api/agents/{agent_id}/workspace/file",
+        headers=owner_auth,
+        params={"path": "report.docx"},
+        json={"content": ""},
+    )
+    assert response.status_code == 200, response.text
+
+    response = await client.put(
+        f"/api/agents/{agent_id}/workspace/doc",
+        headers=peer_auth,
+        params={"path": "report.docx"},
+        json={"content": "# peer title\n"},
+    )
+    assert response.status_code == 403, response.text
+
+    response = await client.get(
+        f"/api/agents/{agent_id}/workspace/doc",
+        headers=owner_auth,
+        params={"path": "report.docx"},
+    )
+    assert response.status_code == 200, response.text
+    assert "peer title" not in response.json()["content"]
+
+    # The owner can still save through the doc endpoint.
+    response = await client.put(
+        f"/api/agents/{agent_id}/workspace/doc",
+        headers=owner_auth,
+        params={"path": "report.docx"},
+        json={"content": "# owner title\n"},
+    )
+    assert response.status_code == 200, response.text
