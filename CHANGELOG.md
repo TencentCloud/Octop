@@ -86,6 +86,7 @@
 - 同一线程回合串行，避免 HITL 与普通回合交错污染会话
 - agent 配置 PATCH 不再丢掉 `workspace_dir`；cron / 系统任务按时区触发
 - iOS PWA 状态栏与 safe-area；无网络启动错误提示；旧版 Chromium 启动兼容
+- 「运行配置」的「最大迭代次数」不再被误读为工具调用次数：提示与超限报错均说明该值按 Agent 内部步骤计数（即 LangGraph `recursion_limit`），一次工具调用通常消耗约 7–14 步，需按预期工具调用次数的十倍以上设置 (#809)
 
 ### 变更
 

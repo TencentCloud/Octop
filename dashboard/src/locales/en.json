@@ -3373,7 +3373,7 @@
     "title": "Configuration",
     "description": "Configure agent runtime parameters",
     "maxIters": "Max Iterations",
-    "maxItersTooltip": "Maximum number of reasoning-acting iterations for ReAct agent",
+    "maxItersTooltip": "Upper bound on agent run steps (LangGraph recursion_limit). It counts internal steps, and one tool call typically costs about 7-14 of them, so set it well above the number of tool calls you expect.",
     "maxItersPlaceholder": "Enter max iterations",
     "maxItersRequired": "Max iterations is required",
     "maxItersMin": "Max iterations must be at least 1",

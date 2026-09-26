@@ -3370,7 +3370,7 @@
     "title": "运行配置",
     "description": "配置智能体运行参数",
     "maxIters": "最大迭代次数",
-    "maxItersTooltip": "ReAct 智能体的最大推理-行动迭代次数",
+    "maxItersTooltip": "Agent 运行步数上限（即 LangGraph recursion_limit）。它按内部步骤计数，一次工具调用通常消耗约 7–14 步，请按预期工具调用次数的十倍以上设置。",
     "maxItersPlaceholder": "请输入最大迭代次数",
     "maxItersRequired": "最大迭代次数为必填项",
     "maxItersMin": "最大迭代次数必须大于等于 1",
