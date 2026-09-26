@@ -6,6 +6,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Select,
   Pagination,
   Popconfirm,
   Space,
@@ -16,6 +17,14 @@ import {
 import { Copy, Link2, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
+  SEEDED_USER_ROLE_ID,
+  snapshotRoleLabel,
+  userRoleLabel,
+  userRolesApi,
+  type UserRole,
+} from "../../../api/modules/userRoles";
+import { RoleSelectLabel } from "./ProfileAvatar";
+import {
   invitesApi,
   localInviteUrl,
   type InviteRow,
@@ -24,6 +33,7 @@ import {
 import { message } from "@/utils/antdMessage";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { copyText } from "../../../utils/copyText";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import styles from "./index.module.less";
@@ -44,14 +54,28 @@ interface InviteDrawerProps {
   onClose: () => void;
 }
 
+function presetInviteRoleId(loaded: UserRole[], actorIsAdmin: boolean): string | undefined {
+  const pool = actorIsAdmin
+    ? loaded
+    : loaded.filter((role) => role.system_role !== "admin");
+  return pool.find((role) => role.user_role_id === SEEDED_USER_ROLE_ID)?.user_role_id;
+}
+
 export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
   const { t } = useTranslation();
   const timeZone = useServerTimezone();
+  const currentUser = useCurrentUser();
+  const actorIsAdmin = currentUser?.role === "admin";
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [rows, setRows] = useState<InviteRow[]>([]);
   const [page, setPage] = useState(1);
-  const [form] = Form.useForm<{ note?: string; expires_in_days: number }>();
+  const [roles, setRoles] = useState<UserRole[]>([]);
+  const [form] = Form.useForm<{
+    note?: string;
+    expires_in_days: number;
+    user_role_id?: string;
+  }>();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -66,10 +90,24 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
 
   useEffect(() => {
     if (!open) return;
-    form.setFieldsValue({ expires_in_days: 7, note: undefined });
     setPage(1);
     void refresh();
-  }, [open, form, refresh]);
+    void userRolesApi
+      .list()
+      .then((loaded) => {
+        setRoles(loaded);
+        form.setFieldsValue({
+          expires_in_days: 7,
+          note: undefined,
+          user_role_id: presetInviteRoleId(loaded, actorIsAdmin),
+        });
+      })
+      .catch((err) => {
+        setRoles([]);
+        form.setFieldsValue({ expires_in_days: 7, note: undefined });
+        message.error(apiErrorMessage(err, t("adminUsers.roleLoadFailed"), t));
+      });
+  }, [actorIsAdmin, open, form, refresh, t]);
 
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE) || 1);
   const safePage = Math.min(page, pageCount);
@@ -85,15 +123,21 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
   const onCreate = async (values: {
     note?: string;
     expires_in_days: number;
+    user_role_id?: string;
   }) => {
     setCreating(true);
     try {
       const row = await invitesApi.create({
         note: values.note?.trim() || null,
         expires_in_days: values.expires_in_days,
+        user_role_id: values.user_role_id,
       });
       message.success(t("adminUsers.inviteCreateSuccess"));
-      form.setFieldsValue({ note: undefined, expires_in_days: 7 });
+      form.setFieldsValue({
+        note: undefined,
+        expires_in_days: 7,
+        user_role_id: presetInviteRoleId(roles, actorIsAdmin),
+      });
       setRows((prev) => [row, ...prev.filter((r) => r.id !== row.id)]);
       setPage(1);
       const url = localInviteUrl(row.code);
@@ -152,6 +196,51 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
         className={styles.inviteCreateForm}
       >
         <Form.Item
+          name="user_role_id"
+          label={t("adminUsers.inviteRole")}
+          extra={t("adminUsers.inviteRoleHint")}
+          rules={[
+            { required: true, message: t("adminUsers.inviteRoleRequired") },
+          ]}
+        >
+          <Select
+            options={(actorIsAdmin
+              ? roles
+              : roles.filter((role) => role.system_role !== "admin")
+            ).map((role) => ({
+              value: role.user_role_id,
+              label: userRoleLabel(role, t),
+            }))}
+            optionRender={(option) => {
+              const role = roles.find(
+                (item) => item.user_role_id === option.value,
+              );
+              if (!role) return option.label;
+              return (
+                <RoleSelectLabel
+                  url={role.avatar_url}
+                  icon={role.avatar_icon}
+                  label={userRoleLabel(role, t)}
+                />
+              );
+            }}
+            labelRender={(option) => {
+              const role = roles.find(
+                (item) => item.user_role_id === option.value,
+              );
+              if (!role) return option.label;
+              return (
+                <RoleSelectLabel
+                  url={role.avatar_url}
+                  icon={role.avatar_icon}
+                  label={userRoleLabel(role, t)}
+                />
+              );
+            }}
+            placeholder={t("adminUsers.inviteRoleRequired")}
+          />
+        </Form.Item>
+        <Form.Item
           name="note"
           label={t("adminUsers.inviteNote")}
           extra={t("adminUsers.inviteNoteHint")}
@@ -201,7 +290,13 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
       ) : (
         <>
           <div className={styles.inviteList}>
-            {pagedRows.map((row) => (
+            {pagedRows.map((row) => {
+              const matchedRole = roles.find(
+                (role) =>
+                  role.user_role_id === row.user_role_id ||
+                  (!row.user_role_id && role.user_role_name === row.role_name),
+              );
+              return (
               <div key={row.id} className={styles.inviteCard}>
                 <div className={styles.inviteCardTop}>
                   <Space size={8} wrap>
@@ -244,11 +339,29 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
                     {localInviteUrl(row.code)}
                   </Text>
                 </div>
-                {row.note ? (
-                  <Text type="secondary" className={styles.inviteNote}>
-                    {row.note}
-                  </Text>
-                ) : null}
+                <Text type="secondary" className={styles.inviteNote}>
+                  {row.role_name?.trim() ? (
+                    <RoleSelectLabel
+                      url={matchedRole?.avatar_url}
+                      icon={matchedRole?.avatar_icon}
+                      label={snapshotRoleLabel(
+                        row.role_name,
+                        roles,
+                        t,
+                        row.user_role_id,
+                      )}
+                    />
+                  ) : (
+                    t("adminUsers.inviteRoleLegacy")
+                  )}
+                  {row.role_name?.trim() && !matchedRole ? (
+                    <>
+                      {" "}
+                      <Tag>{t("adminUsers.roleNameMissing")}</Tag>
+                    </>
+                  ) : null}
+                  {row.note ? ` · ${row.note}` : ""}
+                </Text>
                 <div className={styles.inviteMeta}>
                   <Text type="secondary">
                     {t("adminUsers.inviteCreatedAt", {
@@ -262,7 +375,8 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
                   </Text>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
           {rows.length > PAGE_SIZE ? (
             <div className={styles.invitePagination}>

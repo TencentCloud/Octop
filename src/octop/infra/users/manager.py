@@ -129,6 +129,8 @@ class UserManager:
         locale: str | None = None,
         permissions: builtins.list[str] | None = None,
         email: str | None = None,
+        role_name: str | None = None,
+        user_role_id: str | None = None,
     ) -> User:
         if not username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty")
@@ -162,6 +164,8 @@ class UserManager:
                     locale=loc,
                     email=normalized_email,
                     permissions=keys,
+                    role_name=role_name,
+                    user_role_id=user_role_id,
                 )
             except Exception as exc:
                 if _is_unique_violation(exc) and normalized_email is not None:
@@ -247,6 +251,13 @@ class UserManager:
             display_name = _claim_display_name(claims)
 
             if row is None:
+                from octop.infra.db.repos.user_roles import seeded_user_role_assignment
+
+                assignment = seeded_user_role_assignment(self._services.db)
+                sso_user_role_id = assignment[0] if assignment else None
+                sso_role_name = assignment[1] if assignment else None
+                sso_permissions = list(assignment[2]) if assignment else []
+                sso_policies = list(assignment[3]) if assignment else []
                 for attempt in range(3):
                     if (
                         email is not None
@@ -263,7 +274,12 @@ class UserManager:
                             email=email,
                             sso_provider_id=provider_id,
                             sso_subject=subject,
+                            permissions=sso_permissions,
+                            role_name=sso_role_name,
+                            user_role_id=sso_user_role_id,
                         )
+                        if sso_policies:
+                            self._services.user_policy_repo.merge(uid, dict(sso_policies))
                         self._services.user_repo.upsert_sso_identity(
                             uid, provider_id=provider_id, subject=subject
                         )
@@ -282,7 +298,7 @@ class UserManager:
                             username=username,
                             role=Role.USER,
                             display_name=display_name,
-                            permissions=[],
+                            permissions=list(sso_permissions),
                         )
                         self._users[username] = user
                         self._services.audit_repo.write(

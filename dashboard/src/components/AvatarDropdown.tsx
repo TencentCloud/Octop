@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, type ReactNode } from "react";
 import {
-  Avatar,
   Modal,
   Drawer,
   Form,
@@ -48,6 +47,10 @@ import { userCan } from "../utils/permissions";
 import feishuIcon from "../assets/channels/feishu.svg";
 import dingtalkIcon from "../assets/channels/dingtalk.svg";
 import wecomIcon from "../assets/channels/wecom.svg";
+import {
+  ProfileAvatar,
+  ProfileAvatarPicker,
+} from "../pages/Admin/Users/ProfileAvatar";
 import styles from "./AvatarDropdown.module.less";
 
 const GITHUB_URL = "https://github.com/TencentCloud/Octop";
@@ -251,9 +254,6 @@ export default function AvatarDropdown({
     role === "admin" ? t("account.roleAdmin") : t("account.roleUser");
 
   const displayName = user?.display_name || user?.username || "—";
-  const initials = (user?.display_name || user?.username || "?")
-    .charAt(0)
-    .toUpperCase();
 
   /** Defer panel open so the account Popover / mobile sidebar can unmount first. */
   const deferOpen = (open: () => void) => {
@@ -317,17 +317,12 @@ export default function AvatarDropdown({
   }, [onUserChange, t]);
 
   const avatar = (
-    <Avatar
-      size={32}
-      style={{
-        background: "var(--fn-color-brand)",
-        fontSize: 14,
-        userSelect: "none",
-        flexShrink: 0,
-      }}
-    >
-      {initials}
-    </Avatar>
+    <ProfileAvatar
+      url={user?.avatar_url}
+      icon={user?.avatar_icon}
+      kind="user"
+      className={styles.accountAvatar}
+    />
   );
 
   const menuContent = (
@@ -459,16 +454,12 @@ export default function AvatarDropdown({
   const settingsBody = (
     <div className={styles.settingsBody}>
       <div className={styles.settingsIdentity}>
-        <Avatar
-          size={44}
-          style={{
-            background: "var(--fn-color-brand)",
-            fontSize: 18,
-            flexShrink: 0,
-          }}
-        >
-          {initials}
-        </Avatar>
+        <ProfileAvatar
+          url={user?.avatar_url}
+          icon={user?.avatar_icon}
+          kind="user"
+          className={`${styles.accountAvatar} ${styles.accountAvatarLarge}`}
+        />
         <div className={styles.settingsIdentityText}>
           <div className={styles.settingsIdentityName}>
             <span>{displayName}</span>
@@ -486,6 +477,54 @@ export default function AvatarDropdown({
           )}
         </div>
       </div>
+
+      <section className={styles.settingsSection}>
+        <div className={styles.settingsSectionHead}>
+          <h3 className={styles.settingsSectionTitle}>{t("account.avatar")}</h3>
+          <p className={styles.settingsSectionDesc}>{t("account.avatarHint")}</p>
+        </div>
+        {user ? (
+          <ProfileAvatarPicker
+            kind="user"
+            avatarUrl={user.avatar_url}
+            icon={user.avatar_icon}
+            onSelectIcon={async (icon) => {
+              try {
+                onUserChange?.(await authApi.setAvatarIcon(icon));
+              } catch (err) {
+                message.error(
+                  apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                );
+                throw err;
+              }
+            }}
+            onPick={async (file) => {
+              try {
+                const result = await authApi.uploadAvatar(file);
+                onUserChange?.({ ...user, avatar_url: result.avatar_url });
+              } catch (err) {
+                message.error(
+                  apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                );
+                throw err;
+              }
+            }}
+            onRemove={async () => {
+              try {
+                await authApi.deleteAvatar();
+                onUserChange?.({ ...user, avatar_url: null });
+              } catch (err) {
+                message.error(
+                  apiErrorMessage(err, t("experts.avatarRemoveFailed"), t),
+                );
+                throw err;
+              }
+            }}
+          />
+        ) : null}
+      </section>
+
+      <Divider className={styles.settingsDivider} />
 
       <section className={styles.settingsSection}>
         <div className={styles.settingsSectionHead}>
