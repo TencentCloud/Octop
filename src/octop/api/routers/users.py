@@ -486,6 +486,9 @@ async def delete_user(
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
     await server.user_manager.remove(row.username)
+    from octop.infra.users.profile_avatar import delete_profile_avatar
+
+    delete_profile_avatar(server.services.paths.user_avatars_dir, str(user_id))
 
 
 @router.post("/{user_id}/avatar", status_code=201)
