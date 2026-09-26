@@ -135,6 +135,9 @@ def set_user_password_offline(username: str, password: str, *, home: Path | None
     with open_cli_services(home) as svc:
         uid = _require_username(svc, username)
         svc.user_repo.set_password_hash(uid, hash_password(password))
+        # A lockout is usually what drove the operator here; leaving it in place
+        # would keep rejecting the password that was just reset (#869).
+        svc.user_repo.clear_login_lockout(uid)
 
 
 def set_user_role_offline(username: str, role: str, *, home: Path | None = None) -> None:
