@@ -104,7 +104,7 @@ async def list_threads(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """List conversation threads for an agent, including which thread is active for this user."""
+    """List conversation threads for an agent, including the selected thread and per-thread turn liveness."""
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     thread_registry = server.app_runtime.gateway.thread_registry
     effective_uid = as_user if as_user is not None else user.id
@@ -122,6 +122,7 @@ async def list_threads(
             "last_active": r.last_active,
             "created_at": r.created_at,
             "is_active": r.thread_id == bound,
+            "turn_active": server.app_runtime.gateway.ws_hub.is_turn_active(r.thread_id),
             "has_messages": thread_row_has_messages(r),
             "pinned": r.pinned,
             "model_ref": r.model_ref,

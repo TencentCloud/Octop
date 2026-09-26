@@ -420,6 +420,21 @@ async def test_thread_history_reports_active_turn(env: Any) -> None:
     assert active.json()["turn_active"] is True
 
 
+async def test_threads_list_reports_active_turn(env: Any) -> None:
+    """The thread list must expose per-thread turn liveness, so a dashboard can point
+    "stop" at the row a turn is actually running on instead of the selected one."""
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    create = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    tid = create.json()["thread_id"]
+
+    idle = await c.get(f"/api/agents/{aid}/threads", headers=alice_auth)
+    assert next(t for t in idle.json() if t["thread_id"] == tid)["turn_active"] is False
+
+    srv.app_runtime.gateway.ws_hub.mark_turn_active(tid)
+    busy = await c.get(f"/api/agents/{aid}/threads", headers=alice_auth)
+    assert next(t for t in busy.json() if t["thread_id"] == tid)["turn_active"] is True
+
+
 async def test_create_thread(env: Any) -> None:
     c, _srv, _fake, alice_auth, _bob_auth, aid = env
     r = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
