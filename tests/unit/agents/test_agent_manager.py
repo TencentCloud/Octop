@@ -2170,3 +2170,82 @@ async def test_stream_and_resume_hitl_serialize_per_thread(
     await turn
     await resume
     assert peak == 1
+
+
+@pytest.mark.asyncio
+async def test_thread_execution_lock_cache_does_not_grow_with_threads(
+    manager: AgentManager,
+) -> None:
+    """A finished turn must not leave its per-thread lock behind.
+
+    Thread ids are minted per conversation (and per cron run), so a cache that
+    keeps one entry per ``(agent, thread)`` forever grows with everything the
+    process has ever served.
+    """
+
+    async def _stream(agent_id: str, request: dict[str, Any], **_kw: Any) -> AsyncIterator[Any]:
+        yield {"type": "token", "content": "ok"}
+
+    manager._harness_manager = SimpleNamespace(stream=_stream)
+
+    for index in range(50):
+        await _collect_async(manager.stream("01AGENT", {"thread_id": f"thr-{index}"}))
+
+    assert manager._thread_execution_locks == {}
+
+
+@pytest.mark.asyncio
+async def test_releasing_a_thread_lock_keeps_waiting_turns_excluded(
+    manager: AgentManager,
+) -> None:
+    """Eviction may not hand a late arrival a lock nobody is waiting on.
+
+    Turn 1 holds the lock while turns 2 and 3 queue on it. Once turn 1 releases,
+    a *fourth* turn starts: it must still queue behind the in-flight turn 2, which
+    means the entry has to outlive turn 1 while other turns are still attached.
+    """
+
+    entered: list[asyncio.Event] = [asyncio.Event() for _ in range(4)]
+    release: list[asyncio.Event] = [asyncio.Event() for _ in range(4)]
+    started = 0
+    inside = 0
+    peak = 0
+
+    async def _stream(agent_id: str, request: dict[str, Any], **_kw: Any) -> AsyncIterator[Any]:
+        nonlocal started, inside, peak
+        mine = started
+        started += 1
+        inside += 1
+        peak = max(peak, inside)
+        entered[mine].set()
+        await release[mine].wait()
+        inside -= 1
+        yield {"type": "token", "content": "ok"}
+
+    manager._harness_manager = SimpleNamespace(stream=_stream)
+
+    first = asyncio.create_task(_collect_async(manager.stream("01AGENT", {"thread_id": "thr-1"})))
+    await entered[0].wait()
+    second = asyncio.create_task(_collect_async(manager.stream("01AGENT", {"thread_id": "thr-1"})))
+    third = asyncio.create_task(_collect_async(manager.stream("01AGENT", {"thread_id": "thr-1"})))
+    await asyncio.sleep(0.05)
+    assert started == 1
+
+    release[0].set()
+    await entered[1].wait()
+    assert started == 2
+
+    fourth = asyncio.create_task(_collect_async(manager.stream("01AGENT", {"thread_id": "thr-1"})))
+    await asyncio.sleep(0.05)
+    assert started == 2, "a turn queued after the holder released ran concurrently"
+
+    release[1].set()
+    await entered[2].wait()
+    release[2].set()
+    await entered[3].wait()
+    release[3].set()
+    await asyncio.gather(first, second, third, fourth)
+
+    assert peak == 1
+    assert started == 4
+    assert manager._thread_execution_locks == {}
