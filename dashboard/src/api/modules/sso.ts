@@ -26,6 +26,49 @@ export interface OidcConfigTestResult {
   detail?: string;
 }
 
+export interface LdapConfig {
+  enabled: boolean;
+  display_name: string;
+  server_url: string;
+  start_tls: boolean;
+  verify_tls: boolean;
+  bind_dn: string;
+  has_bind_password: boolean;
+  user_base_dn: string;
+  user_filter: string;
+  username_attribute: string;
+  email_attribute: string;
+  display_name_attribute: string;
+  group_attribute: string;
+  admin_groups: string;
+  auto_provision: boolean;
+  timeout_seconds: number;
+}
+
+export interface LdapConfigPut {
+  enabled?: boolean;
+  display_name?: string;
+  server_url?: string;
+  start_tls?: boolean;
+  verify_tls?: boolean;
+  bind_dn?: string;
+  bind_password?: string;
+  user_base_dn?: string;
+  user_filter?: string;
+  username_attribute?: string;
+  email_attribute?: string;
+  display_name_attribute?: string;
+  group_attribute?: string;
+  admin_groups?: string;
+  auto_provision?: boolean;
+  timeout_seconds?: number;
+}
+
+export interface LdapConfigTestResult {
+  ok: boolean;
+  detail: string;
+}
+
 export interface OauthAppConfig {
   kind: string;
   enabled: boolean;
@@ -61,6 +104,20 @@ export const ssoApi = {
   },
   testOidcConfig(): Promise<OidcConfigTestResult> {
     return request<OidcConfigTestResult>("/auth/oidc/config/test", {
+      method: "POST",
+    });
+  },
+  getLdapConfig(): Promise<LdapConfig> {
+    return request<LdapConfig>("/auth/ldap/config");
+  },
+  putLdapConfig(body: LdapConfigPut): Promise<LdapConfig> {
+    return request<LdapConfig>("/auth/ldap/config", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+  testLdapConfig(): Promise<LdapConfigTestResult> {
+    return request<LdapConfigTestResult>("/auth/ldap/config/test", {
       method: "POST",
     });
   },

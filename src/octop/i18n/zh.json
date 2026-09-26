@@ -352,6 +352,7 @@
     "EMAIL_TAKEN": "邮箱已被占用。",
     "EMAIL_INVALID": "邮箱格式不正确。",
     "PASSWORD_SAME_AS_OLD": "新密码不能与当前密码相同。",
+    "PASSWORD_NOT_SET": "该账号通过目录服务登录，没有可修改的本地密码。",
     "PASSWORD_TOO_WEAK": "密码过弱：至少 8 位，且同时包含字母和数字。",
     "SETUP_PASSWORD_WRONG": "启动密码不正确。",
     "SETUP_RATE_LIMITED": "尝试验证次数过多，请稍后再试。",
@@ -410,6 +411,9 @@
     "OIDC_BAD_REQUEST": "OIDC 请求无效：{detail}",
     "SSO_IDENTITY_TAKEN": "该登录身份已绑定到其他 Octop 账号。",
     "SSO_UNBIND_REQUIRES_PASSWORD": "请先设置密码再解绑单点登录。",
+    "LDAP_BAD_REQUEST": "LDAP 配置无效：{detail}",
+    "LDAP_UNAVAILABLE": "LDAP 目录服务不可用。请检查服务器地址与绑定凭证。",
+    "LDAP_USER_NOT_PROVISIONED": "该目录账号尚未创建 Octop 账号。请联系管理员创建，或开启自动创建账号。",
     "EXPERT_MARKET_FAILED": "专家市场暂时不可用，请稍后重试。",
     "SKILLHUB_SSL_FAILED": "SkillHub 请求失败：检测到 Python SSL 错误。macOS 可尝试 `brew reinstall openssl@3`，或检查系统 CA 证书。",
     "DESKTOP_SESSION_LIMIT": "远程桌面并发连接已达上限（最多 {limit} 路），请关闭其他连接后重试。",
@@ -810,5 +814,13 @@
   "conversation_mode": {
     "plan_ready": "计划已写入 `{path}`。回复「按计划执行」开始执行，或继续改计划。",
     "execute": "请按 {path} 执行"
+  },
+  "ldap": {
+    "test": {
+      "ok": "已连接 LDAP 目录服务",
+      "unreachable": "无法连接 LDAP 服务器",
+      "bind_failed": "目录服务拒绝了绑定 DN 或密码",
+      "search_failed": "目录服务拒绝了用户检索"
+    }
   }
 }

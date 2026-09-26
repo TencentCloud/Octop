@@ -495,7 +495,16 @@ class UserManager:
 
     async def change_password(self, username: str, old: str, new: str) -> None:
         row = self._services.user_repo.get_by_username(username)
-        if row is None or not row.password_hash or not verify_password(old, row.password_hash):
+        if row is None:
+            raise OctopError(ErrorCode.AUTH_FAILED, "current password incorrect")
+        if not row.password_hash:
+            # Accounts provisioned from a directory (or SSO) never hold a local
+            # password, so "current password incorrect" would be misleading.
+            raise OctopError(
+                ErrorCode.PASSWORD_NOT_SET,
+                "this account has no local password to change",
+            )
+        if not verify_password(old, row.password_hash):
             raise OctopError(ErrorCode.AUTH_FAILED, "current password incorrect")
         validate_password_policy(new, old_password=old)
         self._services.user_repo.set_password_hash(row.id, hash_password(new))

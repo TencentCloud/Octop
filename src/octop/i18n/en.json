@@ -352,6 +352,7 @@
     "EMAIL_TAKEN": "Email is already taken.",
     "EMAIL_INVALID": "Invalid email address.",
     "PASSWORD_SAME_AS_OLD": "New password must be different from the current password.",
+    "PASSWORD_NOT_SET": "This account signs in through a directory and has no local password to change.",
     "PASSWORD_TOO_WEAK": "Password is too weak: at least 8 characters with letters and digits.",
     "SETUP_PASSWORD_WRONG": "Incorrect setup password.",
     "SETUP_RATE_LIMITED": "Too many setup password attempts. Try again later.",
@@ -410,6 +411,9 @@
     "OIDC_BAD_REQUEST": "Invalid OIDC request: {detail}",
     "SSO_IDENTITY_TAKEN": "This login is already linked to another Octop account.",
     "SSO_UNBIND_REQUIRES_PASSWORD": "Set a password before unlinking single sign-on.",
+    "LDAP_BAD_REQUEST": "Invalid LDAP configuration: {detail}",
+    "LDAP_UNAVAILABLE": "The LDAP directory is unavailable. Check the server address and bind credentials.",
+    "LDAP_USER_NOT_PROVISIONED": "This directory account has no Octop account yet. Ask an administrator to create one or enable automatic provisioning.",
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
     "DESKTOP_SESSION_LIMIT": "Too many concurrent remote desktop streams (max {limit}). Close other connections and try again.",
@@ -810,5 +814,13 @@
   "conversation_mode": {
     "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",
     "execute": "Execute {path}"
+  },
+  "ldap": {
+    "test": {
+      "ok": "Connected to the LDAP directory",
+      "unreachable": "Could not reach the LDAP server",
+      "bind_failed": "The directory rejected the bind DN or password",
+      "search_failed": "The directory refused the user search"
+    }
   }
 }
