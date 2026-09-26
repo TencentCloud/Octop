@@ -493,6 +493,37 @@ def test_probe_health_with_retry_succeeds_on_second_attempt(
     assert "ok" in detail
 
 
+@pytest.mark.parametrize(("host", "expected"), [("127.0.0.1", "127.0.0.1"), ("::1", "[::1]")])
+def test_probe_health_brackets_ipv6_bind_host(
+    monkeypatch: pytest.MonkeyPatch,
+    host: str,
+    expected: str,
+) -> None:
+    """``status`` probes the address from ``config.bind_host``; an IPv6 literal has
+    to be bracketed or httpx rejects the URL and a running service reports unhealthy."""
+    import httpx
+
+    seen: list[str] = []
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, bool]:
+            return {"ok": True}
+
+    def _fake_get(url: str, **_kwargs: object) -> _Response:
+        seen.append(url)
+        return _Response()
+
+    monkeypatch.setattr(httpx, "get", _fake_get)
+
+    ok, detail = service_mod.probe_health(host, 8088)
+    assert seen == [f"http://{expected}:8088/api/health"]
+    assert ok is True
+    assert "ok" in detail
+
+
 # --- Scope / launchd user-domain support ----------------------------------
 
 

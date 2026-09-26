@@ -1,5 +1,19 @@
 """URL helpers shared across infra and API layers."""
 
+from __future__ import annotations
+
+
+def format_host_for_url(host: str) -> str:
+    """Bracket an IPv6 literal so it survives as a URL authority component.
+
+    uvicorn binds any address containing ``:`` as ``AF_INET6``, so a configured
+    ``bind_host`` of ``::1`` is legitimate; ``http://::1:8088`` is not a URL,
+    though — the port never splits cleanly from the last address group.
+    """
+    if ":" in host and not host.startswith("["):
+        return f"[{host}]"
+    return host
+
 
 def normalize_nav_url(raw: str) -> str:
     """``baidu.com`` → ``https://baidu.com``; empty input → ``\"\"``."""
