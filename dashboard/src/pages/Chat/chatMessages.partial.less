@@ -119,6 +119,21 @@
   animation: scrollBtnEnter 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
+.scrollToBottomBtnHasNew {
+  color: var(--fn-color-brand);
+  border-color: color-mix(in srgb, var(--fn-color-brand) 35%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--fn-color-brand) 8%,
+    var(--fn-bg-elevated, var(--fn-bg-primary))
+  );
+
+  &:hover {
+    color: var(--fn-color-brand);
+    border-color: color-mix(in srgb, var(--fn-color-brand) 50%, transparent);
+  }
+}
+
 /* Hidden state — exits downward, pointer-events disabled to avoid ghost clicks */
 .scrollToBottomBtnHidden {
   opacity: 0;
@@ -664,6 +679,51 @@
   }
 }
 
+.inlineToolSummaryRunning {
+  border-color: color-mix(in srgb, var(--fn-color-brand) 28%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--fn-color-brand) 5%,
+    var(--fn-bg-secondary, #f8fafc)
+  );
+  animation: inlineToolRunningPulse 1.6s ease-in-out infinite;
+
+  .inlineToolIcon {
+    color: var(--fn-color-brand);
+  }
+
+  .inlineToolStatus {
+    color: var(--fn-color-brand);
+  }
+}
+
+@keyframes inlineToolRunningPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--fn-color-brand) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px
+      color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
+  }
+}
+
+.inlineToolStatusLive {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--fn-color-brand);
+  font-size: 12px;
+
+  .thinkingDot {
+    width: 5px;
+    height: 5px;
+  }
+}
+
 .inlineToolIcon {
   display: inline-flex;
   align-items: center;
@@ -1026,6 +1086,26 @@
   min-width: 0;
 }
 
+.teamWrapupTurn {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+}
+
+.teamWrapupBadge {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.03));
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+}
+
 .knowledgeCitations {
   display: flex;
   flex-direction: column;
@@ -1182,9 +1262,39 @@
   }
 }
 
+.processSummaryToggleLive {
+  color: var(--fn-text-secondary);
+
+  &:hover {
+    color: var(--fn-text-primary);
+  }
+}
+
 .processSummaryText {
   flex: 1;
   min-width: 0;
+}
+
+.processLiveHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--fn-color-brand);
+
+  .thinkingDot {
+    width: 5px;
+    height: 5px;
+    flex-shrink: 0;
+  }
+}
+
+.processLiveLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: thinkingFadeInOut 2s ease-in-out infinite;
 }
 
 .processSummaryChevron {

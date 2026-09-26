@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import pytest
-from harness_agent.backends.utils import BackendOperationNotSupportedError
+from octop_harness.backends.utils import BackendOperationNotSupportedError
 
-from octop.infra.agents.avatar import (
+from octop.infra.agents.experts.avatar import (
     MAX_AVATAR_BYTES,
     agent_avatar_api_path,
     delete_workspace_avatar,

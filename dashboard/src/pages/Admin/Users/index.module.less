@@ -1,19 +1,18 @@
 /* ================================================================
    Admin → Users — card view
-   Profile-style cards: accent · avatar header · meta pills · footer
+   Profile-style cards: avatar header · meta pills · footer
    ================================================================ */
 
 .userCardGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   row-gap: 16px;
   column-gap: 12px;
-  padding: 4px 0 32px;
+  padding: 4px 0 24px;
 
-  @media (max-width: 640px) {
+  @media (max-width: 767px) {
     grid-template-columns: 1fr;
     gap: 12px;
-    padding: 0 0 24px;
   }
 }
 
@@ -81,6 +80,58 @@
 
 .createUserRoleItem {
   margin-bottom: 12px !important;
+}
+
+.tokenQuotaField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tokenQuotaPresets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.tokenQuotaPresetsLabel {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  margin-right: 2px;
+}
+
+.tokenQuotaPreset {
+  appearance: none;
+  border: 1px solid var(--fn-border-primary);
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-secondary);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    border-color: var(--fn-primary, #1677ff);
+    color: var(--fn-primary, #1677ff);
+  }
+}
+
+.tokenQuotaPresetActive {
+  border-color: var(--fn-primary, #1677ff);
+  color: var(--fn-primary, #1677ff);
+  background: color-mix(in srgb, var(--fn-primary, #1677ff) 10%, transparent);
+}
+
+.tokenQuotaPreview {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-text-tertiary);
 }
 
 .createUserPermItem {
@@ -384,8 +435,195 @@
   margin-bottom: 16px;
 }
 
+.roleToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.roleViewModeLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.roleCardLoading {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+}
+
+.roleCardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  row-gap: 16px;
+  column-gap: 12px;
+  padding: 4px 0 24px;
+
+  @media (max-width: 767px) {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+.roleCard {
+  background: var(--fn-bg-primary);
+  border: 1px solid var(--fn-card-border-normal);
+  border-radius: 14px;
+  box-shadow: var(--fn-card-shadow-normal, 0 1px 2px rgba(16, 24, 40, 0.04));
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    border-color: color-mix(
+      in srgb,
+      var(--fn-color-brand) 22%,
+      var(--fn-card-border-normal)
+    );
+
+    @media (max-width: 767px) {
+      transform: none;
+      box-shadow: var(
+        --fn-card-shadow-normal,
+        0 1px 2px rgba(16, 24, 40, 0.04)
+      );
+      border-color: var(--fn-card-border-normal);
+    }
+  }
+}
+
+.roleCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 16px 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.roleCardTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.roleCardTitle {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+
+  h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--fn-text-primary);
+    overflow-wrap: anywhere;
+  }
+}
+
+.roleCardTags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+
+  :global(.ant-tag),
+  :global(.octop-ant-tag) {
+    margin: 0 !important;
+    line-height: 18px;
+    padding-inline: 6px;
+    font-size: 12px;
+  }
+}
+
+.roleCardDescription {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.roleCardFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+}
+
+.roleCardBuiltin {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fn-text-tertiary);
+}
+
+.roleCardFootNote {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
 .userSearch {
   width: min(320px, 100%);
+}
+
+.userSearchRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.batchBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin: -4px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+  background: color-mix(
+    in srgb,
+    var(--fn-primary, #1677ff) 6%,
+    var(--fn-bg-primary)
+  );
+}
+
+.batchBarCount {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.batchBarActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Role legend: label + body, same type scale / line-height for alignment */
@@ -432,21 +670,45 @@
   position: relative;
   background: var(--fn-bg-primary);
   border: 1px solid var(--fn-card-border-normal);
-  border-radius: var(--fn-radius-lg);
+  border-radius: 14px;
+  box-shadow: var(--fn-card-shadow-normal, 0 1px 2px rgba(16, 24, 40, 0.04));
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   min-width: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition:
-    box-shadow 0.2s ease,
-    transform 0.2s ease,
-    border-color 0.2s ease;
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
 
   &:hover {
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
     transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    border-color: color-mix(
+      in srgb,
+      var(--fn-color-brand) 22%,
+      var(--fn-card-border-normal)
+    );
+
+    @media (max-width: 767px) {
+      transform: none;
+      box-shadow: var(
+        --fn-card-shadow-normal,
+        0 1px 2px rgba(16, 24, 40, 0.04)
+      );
+      border-color: var(--fn-card-border-normal);
+    }
   }
+}
+
+.userCardSelected {
+  border-color: var(--fn-primary, #1677ff);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--fn-primary, #1677ff) 35%, transparent);
+}
+
+.userCardSelect {
+  flex-shrink: 0;
+  margin-top: 4px;
 }
 
 .userCardLocked {
@@ -461,60 +723,268 @@
   }
 }
 
-.userCardAccent {
-  height: 2px;
-  flex-shrink: 0;
+.roleNameMark {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
 }
 
-.userCardAccentAdmin {
-  background: var(--fn-color-brand);
+.roleNameText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
-.userCardAccentUser {
-  background: var(--fn-border-strong, var(--fn-border-primary));
-}
-
-.userCardAccentLocked {
-  background: #ff4d4f;
-}
-
-.userCardAccentDisabled {
-  background: var(--fn-text-tertiary);
-}
-
-.userCardInner {
+.userCardBody {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  gap: 10px;
   padding: 16px 16px 12px;
-  gap: 12px;
+  flex: 1;
+  min-width: 0;
 }
 
-/* ── Header ─────────────────────────────────────────────────────── */
-
-.userCardHeader {
+.userCardTop {
   display: flex;
   align-items: flex-start;
   gap: 12px;
 }
 
-.userCardAvatar {
-  width: 48px;
-  height: 48px;
+.profileAvatarPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid var(--fn-card-border-normal);
   border-radius: 14px;
+  background: var(--fn-bg-primary);
+}
+
+.profileAvatarPickerHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profileAvatarPickerPreview {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  svg {
+    width: 26px;
+    height: 26px;
+  }
+}
+
+.profileAvatarPickerActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.profileAvatarPickerHint {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.avatarPresetLabel {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.avatarPresetGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.avatarPreset {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.avatarPresetActive {
+  border-color: var(--fn-color-brand, #1570ef);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--fn-color-brand, #1570ef) 24%, transparent);
+}
+
+.avatarPresetPlain {
+  background: transparent;
+  color: var(--fn-text-secondary);
+
+  &.avatarPresetActive {
+    background: transparent;
+    color: var(--fn-color-brand, #1570ef);
+  }
+}
+
+.roleSelectOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.roleSelectIcon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--fn-text-secondary);
+  background: transparent;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  img {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    object-fit: cover;
+  }
+}
+
+.roleSelectName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roleCardAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  color: var(--fn-text-secondary);
+  background: transparent;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.userCardAvatarWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.userCardStatusDot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #12b76a;
+  box-shadow: 0 0 0 2px var(--fn-bg-primary);
+}
+
+.userCardStatusDotOff {
+  background: #98a2b3;
+}
+
+.userCardYou {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--fn-color-brand);
+}
+
+.userCardSub,
+.userCardQuiet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fn-text-tertiary, var(--fn-text-secondary));
+}
+
+.userCardAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1;
+  overflow: hidden;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 .userCardTitleBlock {
-  flex: 1;
   min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   padding-top: 2px;
 }
 
@@ -526,14 +996,45 @@
 }
 
 .userCardName {
+  margin: 0;
   font-size: 15px;
   font-weight: 600;
   color: var(--fn-text-primary);
-  line-height: 1.3;
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+.userCardDesc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.userCardDetailLink {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--fn-color-brand, #1570ef);
+  line-height: 1.2;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 .userCardYouTag {
@@ -570,9 +1071,26 @@
 
 .userCardMeta {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fn-text-tertiary, var(--fn-text-secondary));
+
+  :global(.ant-tag),
+  :global(.octop-ant-tag) {
+    margin: 0 !important;
+    line-height: 18px;
+    padding-inline: 6px;
+    font-size: 12px;
+  }
+}
+
+.userCardMetaSep {
+  opacity: 0.4;
+  user-select: none;
 }
 
 .userCardInfo {
@@ -748,27 +1266,25 @@
 .userCardFooter {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding-top: 2px;
-  border-top: 1px solid var(--fn-border-tertiary, rgba(0, 0, 0, 0.06));
-  margin-top: auto;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
 }
 
 .userCardIconBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--fn-radius-sm);
-  border: 1px solid var(--fn-border-primary);
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
   background: transparent;
   cursor: pointer;
   color: var(--fn-text-secondary);
   transition:
     background 0.15s,
-    color 0.15s,
-    border-color 0.15s;
+    color 0.15s;
 
   &:hover:not(:disabled) {
     background: var(--fn-sidebar-item-hover);
@@ -852,8 +1368,18 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 700;
+  overflow: hidden;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
 }
 
 .userCellText {

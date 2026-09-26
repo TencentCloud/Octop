@@ -19,9 +19,7 @@ export interface BackendOption {
 }
 
 export interface FilesystemDefaults {
-  home: string;
   default_root_dir: string;
-  allow_outside_home: boolean;
   tree_root: string;
   /** True when the Octop server process runs inside a container. */
   in_container?: boolean;
@@ -79,11 +77,16 @@ export interface RootDirProbeResult {
 export function normalizeRootDir(rootDir?: string | null): string {
   const trimmed = (rootDir ?? "").trim();
   if (!trimmed || trimmed === "\\" || trimmed === "/") return "/";
-  return trimmed.replace(/\/+$/, "") || "/";
+  // Strip trailing POSIX or Windows separators (so ``C:/`` → ``C:``).
+  const stripped = trimmed.replace(/[/\\]+$/, "");
+  return stripped || "/";
 }
 
+/** True for POSIX ``/`` or a Windows drive root such as ``C:/`` / ``C:``. */
 export function isHostRootDir(rootDir?: string | null): boolean {
-  return normalizeRootDir(rootDir) === "/";
+  const normalized = normalizeRootDir(rootDir);
+  if (normalized === "/") return true;
+  return /^[A-Za-z]:$/.test(normalized);
 }
 
 /**
@@ -130,12 +133,12 @@ export function supportsHostSkillPackagesFromConfig(
 }
 
 /**
- * Whether outbound ``acp_runner`` should be blocked for this backend.
+ * Whether the ACP page should lock runner enable/edit for this backend.
  *
- * Scoped ``root_dir`` enables the Linux bwrap jail; host-spawned ACP runners
- * would bypass it. Host root ``/`` and the agent workspace root are allowed
- * (Windows defaults to the workspace). Non-local backends are blocked.
- * Inbound ``octop acp`` (IDE → this agent) is unaffected.
+ * Scoped ``root_dir`` enables the Linux bwrap jail. Host root ``/`` and the
+ * agent workspace root are not treated as a jail (Windows defaults to the
+ * workspace). Non-local backends count as locked for that UI. The per-agent
+ * ``acp_runner`` tool toggle and inbound ``octop acp`` are unaffected.
  */
 export function blocksAcpOutbound(options: {
   backendChoice: string;
@@ -157,16 +160,21 @@ export function blocksAcpOutbound(options: {
   return true;
 }
 
-/** Detect outbound-ACP block from an agent ``config`` blob. */
+/** Detect ACP runner-lock (sandbox) from an agent ``config`` blob. */
 export function blocksAcpOutboundFromConfig(
   config: Record<string, unknown> | null | undefined,
   workspaceDir?: string | null,
 ): boolean {
   const parsed = parseBackendSpec(config?.backend);
+  const workspaceRaw = config?.workspace_dir;
+  const fromConfig =
+    typeof workspaceRaw === "string" && workspaceRaw.trim()
+      ? workspaceRaw.trim()
+      : null;
   return blocksAcpOutbound({
     backendChoice: parsed.backendChoice,
     rootDir: parsed.rootDir,
-    workspaceDir,
+    workspaceDir: workspaceDir ?? fromConfig,
   });
 }
 

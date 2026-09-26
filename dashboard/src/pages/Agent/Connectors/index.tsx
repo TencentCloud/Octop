@@ -58,6 +58,7 @@ import {
   isDifyMcpServerUrl,
   isGuidedConnector,
 } from "./guidedConnectorUtils";
+import { oauthCallbackSupported } from "./oauthCallback";
 import { useConnectorInstances } from "./useConnectors";
 import styles from "./index.module.less";
 
@@ -70,6 +71,13 @@ function buildCredentials(
     const token = String(values.token ?? "").trim();
     if (token) credentials.token = token;
   } else if (entry.auth_kind === "oauth2") {
+    if (entry.kind === "qcc") {
+      const api_key = String(values.api_key ?? "").trim();
+      if (api_key) {
+        credentials.api_key = api_key;
+        return credentials;
+      }
+    }
     const access_token = String(values.access_token ?? "").trim();
     if (access_token && access_token !== "__configured__") {
       credentials.access_token = access_token;
@@ -198,6 +206,10 @@ function hasFreshCredentialInput(
     return Boolean(String(values.token ?? "").trim());
   }
   if (entry.auth_kind === "oauth2") {
+    if (entry.kind === "qcc") {
+      const apiKey = String(values.api_key ?? "").trim();
+      if (apiKey) return true;
+    }
     const token = String(values.access_token ?? "").trim();
     return Boolean(token && token !== "__configured__");
   }
@@ -1099,9 +1111,16 @@ function ConnectorConfigDrawer({
     const values = form.getFieldsValue();
     if (entry.auth_kind === "oauth2") {
       const token = String(values.access_token ?? "").trim();
-      if (!hasStoredCredentials && !token) {
+      const apiKey =
+        entry.kind === "qcc" ? String(values.api_key ?? "").trim() : "";
+      if (!hasStoredCredentials && !token && !apiKey) {
         message.warning(
-          t("connectors.oauthNeedToken", "请先完成授权或手动填写 Token"),
+          entry.kind === "qcc"
+            ? t(
+                "connectors.qccNeedAuthOrKey",
+                "请先完成一键授权，或填写 API Key",
+              )
+            : t("connectors.oauthNeedToken", "请先完成授权或手动填写 Token"),
         );
         return;
       }
@@ -1147,12 +1166,22 @@ function ConnectorConfigDrawer({
 
   if (!entry) return null;
 
-  const hasOAuthPopup = entry.auth_kind === "oauth2" && entry.oauth_ready;
+  const hasOAuthPopup =
+    entry.auth_kind === "oauth2" &&
+    entry.oauth_ready &&
+    oauthCallbackSupported();
   const hasAuthorizeUrl = Boolean(authInfo?.authorize_url);
   const hasLoginUrl = Boolean(authInfo?.login_url);
   const guideUrl = authInfo?.guide_url ?? entry.guide_url ?? entry.doc_url;
   const manualUrl = authInfo?.manual_url ?? entry.manual_url ?? guideUrl;
-  const authHint = authInfo?.auth_hint ?? entry.auth_hint;
+  const catalogAuthHint = authInfo?.auth_hint ?? entry.auth_hint;
+  const authHint =
+    entry.kind === "qcc" && !hasOAuthPopup
+      ? t(
+          "connectors.qccApiKeyOnlyHint",
+          "当前环境无法完成 OAuth 回调。请打开授权页获取 API Key，粘贴后探测并保存。",
+        )
+      : catalogAuthHint;
   const guidedKind = isGuidedConnector(entry.kind) ? entry.kind : null;
 
   const preview = instanceDetail?.credentials_preview;
@@ -1373,7 +1402,18 @@ function ConnectorConfigDrawer({
               loading={openingAuthorize}
               onClick={() => void handleOpenAuthorize()}
             >
-              {t("connectors.openAuthorizePage", "打开授权页")}
+              {entry.kind === "qcc"
+                ? t("connectors.qccOpenKeyPage", "打开授权页")
+                : t("connectors.openAuthorizePage", "打开授权页")}
+            </Button>
+          )}
+          {hasOAuthPopup && entry.kind === "qcc" && hasAuthorizeUrl && (
+            <Button
+              icon={<ExternalLink size={14} />}
+              loading={openingAuthorize}
+              onClick={() => void handleOpenAuthorize()}
+            >
+              {t("connectors.qccOpenKeyPage", "打开授权页")}
             </Button>
           )}
           {hasLoginUrl && !hideTopAuth && (
@@ -1864,48 +1904,90 @@ function ConnectorConfigDrawer({
                   {t("connectors.oauthConfigured", "已授权，可直接探测或保存")}
                 </div>
               )}
-              {entry.oauth_ready && !preview?.oauth_configured && (
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--fn-text-tertiary)",
-                    marginBottom: 8,
-                  }}
-                >
-                  {t(
-                    "connectors.oauthHint",
-                    "点击「一键授权」完成登录后将自动保存；也可手动粘贴 Token",
-                  )}
-                </div>
-              )}
-              <div
-                className={styles.manualToggle}
-                onClick={() => setShowManual((v) => !v)}
-                role="button"
-                tabIndex={0}
-              >
-                {showManual
-                  ? t("connectors.hideManual", "收起手动输入")
-                  : t("connectors.showManual", "手动粘贴 Token")}
-              </div>
-              {showManual && (
+              {entry.kind === "qcc" &&
+                preview?.api_key_configured &&
+                !showManual && (
+                  <div className={styles.configuredBadge}>
+                    {t(
+                      "connectors.qccApiKeyConfigured",
+                      "已配置 API Key，可直接探测或保存",
+                    )}
+                  </div>
+                )}
+              {entry.oauth_ready &&
+                hasOAuthPopup &&
+                !preview?.oauth_configured &&
+                !(entry.kind === "qcc" && preview?.api_key_configured) && (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "var(--fn-text-tertiary)",
+                      marginBottom: 8,
+                    }}
+                  >
+                    {entry.kind === "qcc"
+                      ? t(
+                          "connectors.qccOauthHint",
+                          "点击「一键授权」完成登录后将自动保存；也可打开授权页获取 API Key 后粘贴",
+                        )
+                      : t(
+                          "connectors.oauthHint",
+                          "点击「一键授权」完成登录后将自动保存；也可手动粘贴 Token",
+                        )}
+                  </div>
+                )}
+              {entry.kind === "qcc" ? (
                 <Form.Item
-                  name="access_token_manual"
-                  label={t("connectors.accessTokenManual", "Access Token")}
-                  extra={
-                    manualUrl ? (
-                      <a href={manualUrl} target="_blank" rel="noreferrer">
-                        {t("connectors.manualTokenDoc", "手动获取 Token 文档")}
-                      </a>
-                    ) : undefined
-                  }
+                  name="api_key"
+                  label={t("connectors.qccApiKey", "API Key")}
+                  extra={configuredExtra(preview, "api_key_configured", t)}
                 >
                   <Input.Password
-                    onChange={(e) =>
-                      form.setFieldValue("access_token", e.target.value)
+                    placeholder={
+                      preview?.api_key_configured
+                        ? t("connectors.secretPlaceholder", "留空表示不修改")
+                        : t(
+                            "connectors.qccApiKeyPlaceholder",
+                            "粘贴企查查 API Key",
+                          )
                     }
                   />
                 </Form.Item>
+              ) : (
+                <>
+                  <div
+                    className={styles.manualToggle}
+                    onClick={() => setShowManual((v) => !v)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    {showManual
+                      ? t("connectors.hideManual", "收起手动输入")
+                      : t("connectors.showManual", "手动粘贴 Token")}
+                  </div>
+                  {showManual && (
+                    <Form.Item
+                      name="access_token_manual"
+                      label={t("connectors.accessTokenManual", "Access Token")}
+                      extra={
+                        manualUrl ? (
+                          <a href={manualUrl} target="_blank" rel="noreferrer">
+                            {t(
+                              "connectors.manualTokenDoc",
+                              "手动获取 Token 文档",
+                            )}
+                          </a>
+                        ) : undefined
+                      }
+                    >
+                      <Input.Password
+                        onChange={(e) =>
+                          form.setFieldValue("access_token", e.target.value)
+                        }
+                      />
+                    </Form.Item>
+                  )}
+                </>
               )}
             </>
           )}
@@ -2212,45 +2294,44 @@ export default function ConnectorsPage() {
             <Spin />
           </div>
         ) : instances.length === 0 ? (
-          <StreamSetupGuide
-            wide
-            icon={
-              <OctopEmptyMascot
-                size={120}
-                className={styles.emptyGuideMascot}
-              />
-            }
-            title={t("connectors.emptyGuideTitle")}
-            description={t("connectors.emptyGuideDesc")}
-            steps={[
-              {
-                label: t("connectors.emptyGuideStepWhat"),
-                detail: t("connectors.emptyGuideStepWhatDetail"),
-              },
-              {
-                label: t("connectors.emptyGuideStepHow"),
-                detail: t("connectors.emptyGuideStepHowDetail"),
-              },
-              {
-                label: t("connectors.emptyGuideStepShare"),
-                detail: t("connectors.emptyGuideStepShareDetail"),
-              },
-            ]}
-            primaryAction={{
-              label: t("connectors.emptyGuideBrowseBuiltin"),
-              onClick: () => setActiveTab("builtin"),
-              icon: <Plug size={14} />,
-            }}
-            secondaryAction={{
-              label: t("connectors.emptyGuideAddCustom"),
-              onClick: () => {
-                setCustomFocusServerName(null);
-                setActiveTab("custom");
-              },
-              icon: <Plus size={14} />,
-              type: "default",
-            }}
-          />
+          <div className={styles.emptyLayout}>
+            <StreamSetupGuide
+              className={styles.emptyGuide}
+              wide
+              plain
+              icon={<OctopEmptyMascot />}
+              title={t("connectors.emptyGuideTitle")}
+              description={t("connectors.emptyGuideDesc")}
+              steps={[
+                {
+                  label: t("connectors.emptyGuideStepWhat"),
+                  detail: t("connectors.emptyGuideStepWhatDetail"),
+                },
+                {
+                  label: t("connectors.emptyGuideStepHow"),
+                  detail: t("connectors.emptyGuideStepHowDetail"),
+                },
+                {
+                  label: t("connectors.emptyGuideStepShare"),
+                  detail: t("connectors.emptyGuideStepShareDetail"),
+                },
+              ]}
+              primaryAction={{
+                label: t("connectors.emptyGuideBrowseBuiltin"),
+                onClick: () => setActiveTab("builtin"),
+                icon: <Plug size={14} />,
+              }}
+              secondaryAction={{
+                label: t("connectors.emptyGuideAddCustom"),
+                onClick: () => {
+                  setCustomFocusServerName(null);
+                  setActiveTab("custom");
+                },
+                icon: <Plus size={14} />,
+                type: "default",
+              }}
+            />
+          </div>
         ) : (
           <>
             <div className={styles.listToolbar}>

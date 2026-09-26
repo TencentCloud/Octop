@@ -144,7 +144,7 @@ async def run_foreground(
         )
         servers.append(uvicorn.Server(single_config))
 
-    from octop.infra.agents.memory_slim_control import MemorySlimControl
+    from octop.infra.agents.memory.slim_control import MemorySlimControl
 
     memory_control = MemorySlimControl(srv)
     try:

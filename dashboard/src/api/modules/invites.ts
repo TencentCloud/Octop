@@ -15,11 +15,15 @@ export interface InviteRow {
   status: InviteStatus;
   invite_path: string;
   invite_url: string;
+  role_name?: string | null;
+  user_role_id?: string | null;
+  system_role?: string | null;
 }
 
 export interface InviteCreateBody {
   note?: string | null;
   expires_in_days?: number;
+  user_role_id?: string | null;
 }
 
 export interface InviteRedeemBody {

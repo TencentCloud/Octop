@@ -150,6 +150,7 @@ function sealInFlightAssistantMessages(state: SessionStreamState): void {
   state.messages = state.messages.map((m) =>
     m.status === "streaming" ? { ...m, status: "done" as const } : m,
   );
+  clearAllLiveSpeakers(state);
 }
 
 // ── Pending prefill text ──────────────────────────────────────────────────
@@ -253,6 +254,7 @@ const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
   historyNextOffset: 0,
   historyHydrated: false,
   pendingPlanPath: null,
+  liveSpeakers: [] as string[],
 });
 
 const sessionStates = new Map<string, SessionStreamState>();
@@ -384,7 +386,58 @@ function buildSnapshot(state: SessionStreamState): SessionSnapshot {
     historyNextCursor: state.historyNextCursor,
     historyHydrated: state.historyHydrated,
     pendingPlanPath: state.pendingPlanPath ?? null,
+    liveSpeakers: [...state.liveSpeakers].sort(),
   };
+}
+
+function speakerLiveKey(speaker?: string): string {
+  return (speaker || "").trim();
+}
+
+/** Mark a speaker as still generating (survives tool gaps until ``done``). */
+function markSpeakerLive(state: SessionStreamState, speaker?: string): void {
+  const key = speakerLiveKey(speaker);
+  state.liveSpeakers.add(key);
+  // Unlabeled host frames also light up the room id so stamped host groups match.
+  if (!key) {
+    const host = state.roomAgentId?.trim();
+    if (host) state.liveSpeakers.add(host);
+  }
+}
+
+function clearSpeakerLive(state: SessionStreamState, speaker?: string): void {
+  const key = speakerLiveKey(speaker);
+  state.liveSpeakers.delete(key);
+  const host = state.roomAgentId?.trim();
+  // Unlabeled and stamped host share one live bit — clear both together.
+  if (!key) {
+    if (host) state.liveSpeakers.delete(host);
+  } else if (host && key === host) {
+    state.liveSpeakers.delete("");
+  }
+}
+
+function clearAllLiveSpeakers(state: SessionStreamState): void {
+  state.liveSpeakers.clear();
+}
+
+/** Drop live speakers with no streaming text and no in-flight tools. */
+function pruneIdleLiveSpeakers(state: SessionStreamState): void {
+  if (state.liveSpeakers.size === 0) return;
+  const busy = new Set<string>();
+  const host = state.roomAgentId?.trim();
+  for (const message of state.messages) {
+    if (message.role !== "assistant") continue;
+    const key = speakerLiveKey(message.speakerAgentId);
+    const inFlightTool = Boolean(message.toolData && !message.toolData.output);
+    if (message.status !== "streaming" && !inFlightTool) continue;
+    busy.add(key);
+    if (!key && host) busy.add(host);
+    if (key && host && key === host) busy.add("");
+  }
+  for (const key of [...state.liveSpeakers]) {
+    if (!busy.has(key)) state.liveSpeakers.delete(key);
+  }
 }
 
 function getOrCreate(sessionId: string): SessionStreamState {
@@ -411,6 +464,7 @@ function getOrCreate(sessionId: string): SessionStreamState {
       _snapshot: EMPTY_SNAPSHOT,
       roomAgentId: undefined,
       isTeamRoom: false,
+      liveSpeakers: new Set(),
     };
     sessionStates.set(sessionId, state);
   }
@@ -430,12 +484,15 @@ function notify(state: SessionStreamState) {
 }
 
 function beginStream(state: SessionStreamState, sessionId: string): void {
+  clearAllLiveSpeakers(state);
   state.thinkingStartedAt = Date.now();
   state.isStreaming = true;
   touchStreamActivity(sessionId);
 }
 
 function clearStreamingFlags(state: SessionStreamState): void {
+  // Do not clear liveSpeakers — team members may keep generating after the
+  // host turn unlocks the composer; process panels key off liveSpeakers.
   state.isStreaming = false;
   state.thinkingStartedAt = null;
 }
@@ -744,6 +801,7 @@ export function clearMessages(sessionId: string) {
   if (alreadyEmpty) return;
   state.messages = [];
   clearStreamingFlags(state);
+  clearAllLiveSpeakers(state);
   state.runUsage = null;
   usageSamplesByState.delete(state);
   state.streamMsg = "";
@@ -1103,25 +1161,34 @@ function handleHarnessChunk(
     touchStreamActivity(sessionId);
   }
   switch (chunk.type) {
-    case "token":
+    case "token": {
+      const snapshot = Boolean(chunk.team_snapshot);
+      // Snapshots are complete wall copies — never leave the speaker "live".
+      if (!snapshot) markSpeakerLive(state, speaker);
       appendStreamingToken(
         state,
         chunk.content,
         speaker,
-        Boolean(chunk.team_snapshot),
+        snapshot,
         Boolean(chunk.team_wrapup),
       );
+      if (snapshot) clearSpeakerLive(state, speaker);
       break;
+    }
     case "reasoning":
+      markSpeakerLive(state, speaker);
       appendStreamingReasoning(state, chunk.content, speaker);
       break;
     case "usage":
       applyUsageChunk(state, chunk);
       break;
     case "tool_call_chunk":
+      markSpeakerLive(state, speaker);
       upsertToolCall(state, chunk, sessionId, speaker);
       break;
     case "tool_result":
+      // Keep the speaker live across the tool→next-token gap.
+      markSpeakerLive(state, speaker);
       closeToolCall(state, chunk.messages, sessionId, speaker);
       break;
     case "done":
@@ -1134,6 +1201,10 @@ function handleHarnessChunk(
       }
       if (Boolean(chunk.team_wrapup)) {
         finalizeWrapupMessages(state, speaker);
+        clearSpeakerLive(state, speaker);
+        // Wrap-up means members already finished — drop stale live bits
+        // (e.g. snapshot re-marked a speaker after their done).
+        pruneIdleLiveSpeakers(state);
         break;
       }
       finalizeStreamingMessages(
@@ -1141,6 +1212,7 @@ function handleHarnessChunk(
         speaker,
         sessionHostAgentId(state, sessionId),
       );
+      clearSpeakerLive(state, speaker);
       // Host done always frees the composer. Member bubbles may still stream.
       if (!speaker || (!hasStreamingMessages(state) && state.isStreaming)) {
         clearStreamingFlags(state);
@@ -1756,6 +1828,16 @@ function extractToolResultOutput(messages: unknown[]): string {
   return "";
 }
 
+/** First non-null ToolMessage ``artifact`` in a tool_result frame, if any. */
+function extractToolResultArtifact(messages: unknown[]): unknown {
+  for (const raw of messages) {
+    if (!raw || typeof raw !== "object") continue;
+    const artifact = (raw as Record<string, unknown>).artifact;
+    if (artifact !== undefined && artifact !== null) return artifact;
+  }
+  return undefined;
+}
+
 function closeToolCall(
   state: SessionStreamState,
   messages: unknown[],
@@ -1815,6 +1897,7 @@ function closeToolCall(
   if (toolIdx < 0) return;
   const target = state.messages[toolIdx];
   const output = extractToolResultOutput(messages);
+  const artifact = extractToolResultArtifact(messages);
   const explicitToolError = messages.some(
     (raw) =>
       raw !== null &&
@@ -1841,6 +1924,7 @@ function closeToolCall(
         ...(target.toolData ?? {}),
         output,
         errorCode,
+        ...(artifact != null ? { artifact } : {}),
       },
     },
     ...state.messages.slice(toolIdx + 1),
@@ -2042,6 +2126,7 @@ function handleHitlRequired(
 ): void {
   finalizeStreamingMessages(state);
   clearStreamingFlags(state);
+  clearAllLiveSpeakers(state);
   state.messages = [
     ...state.messages,
     {

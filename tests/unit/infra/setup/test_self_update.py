@@ -8,11 +8,16 @@ import pytest
 
 from octop.infra.setup.self_update import (
     UpgradeResult,
+    _all_mirrors_failed,
     build_upgrade_command,
+    index_label,
     is_newer,
     is_prerelease,
+    page_has_package_version,
     parse_version,
     pick_latest_versions,
+    probe_index,
+    rank_install_indexes,
     restore_console_scripts,
     run_upgrade,
     stash_console_scripts,
@@ -168,3 +173,155 @@ def test_run_upgrade_restores_launcher_only_on_failure(
     expected = "new launcher" if success else "launcher"
     assert (script_dir / "octop.exe").read_text() == expected
     assert not (script_dir / "octop.exe.octop-old").exists()
+
+
+def test_page_has_package_version_matches_wheel_and_sdist() -> None:
+    body = '<a href="octop-1.0.1-py3-none-any.whl">octop-1.0.1-py3-none-any.whl</a>'
+    assert page_has_package_version(body, "1.0.1")
+    assert not page_has_package_version(body, "1.0.10")
+    assert page_has_package_version(
+        '<a href="octop-1.0.2.tar.gz">octop-1.0.2.tar.gz</a>',
+        "1.0.2",
+    )
+    assert page_has_package_version("any non-empty body", None)
+    assert not page_has_package_version("   ", None)
+
+
+def test_index_label_prefers_hostname() -> None:
+    assert index_label("https://pypi.org/simple") == "pypi.org"
+    assert (
+        index_label("https://mirrors.cloud.tencent.com/pypi/simple") == "mirrors.cloud.tencent.com"
+    )
+
+
+def test_probe_index_classifies_missing_and_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Resp:
+        def __enter__(self) -> _Resp:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'<a href="octop-0.9.0-py3-none-any.whl">x</a>'
+
+    monkeypatch.setattr(
+        "octop.infra.setup.self_update.urllib.request.urlopen",
+        lambda *_a, **_k: _Resp(),
+    )
+    missing = probe_index("https://mirrors.example/simple", version="1.0.1", timeout=1)
+    assert missing.status == "missing_version"
+    assert "1.0.1" in missing.detail
+
+    def _boom(*_a: object, **_k: object) -> None:
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr("octop.infra.setup.self_update.urllib.request.urlopen", _boom)
+    bad = probe_index("https://down.example/simple", version="1.0.1", timeout=1)
+    assert bad.status == "unreachable"
+    assert bad.detail.startswith("timeout:")
+
+
+def test_rank_install_indexes_skips_missing_prefers_fast_hit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.setup import self_update
+
+    def fake_probe(
+        index_url: str,
+        *,
+        version: str | None = None,
+        timeout: float = 8,
+    ) -> self_update.IndexProbe:
+        label = self_update.index_label(index_url)
+        if "tencent" in index_url:
+            return self_update.IndexProbe(
+                index_url, label, 0.05, "missing_version", "missing_version 1.2.3"
+            )
+        if "aliyun" in index_url:
+            return self_update.IndexProbe(index_url, label, 0.02, "has_version")
+        if "tuna" in index_url:
+            return self_update.IndexProbe(index_url, label, 0.01, "has_version")
+        if "ustc" in index_url:
+            return self_update.IndexProbe(index_url, label, 0.2, "unreachable", "unreachable: down")
+        return self_update.IndexProbe(index_url, label, 0.03, "has_version")
+
+    monkeypatch.setattr(self_update, "probe_index", fake_probe)
+    ordered, skips = rank_install_indexes("1.2.3")
+    labels = [label for _url, label in ordered]
+    assert labels[0] == "pypi.tuna.tsinghua.edu.cn"
+    assert labels[1] == "mirrors.aliyun.com"
+    assert labels[-1] == "pypi.org"
+    assert any("tencent" in err and "missing_version" in err for err in skips)
+    assert any("ustc" in err and "unreachable" in err for err in skips)
+    assert "mirrors.cloud.tencent.com" not in labels
+    assert "mirrors.ustc.edu.cn" not in labels
+
+
+def test_all_mirrors_failed_enriches_error_with_install_detail() -> None:
+    result = _all_mirrors_failed(
+        [
+            "mirrors.example: missing_version 1.0.1",
+            "pypi.org: Could not find a version that satisfies the requirement",
+        ]
+    )
+    assert result.success is False
+    assert result.error is not None
+    assert result.error.startswith("upgrade failed on all mirrors")
+    assert "Could not find" in result.error
+    assert "missing_version" not in (result.error or "")
+
+
+def test_run_managed_upgrade_uses_ranked_indexes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.setup import self_update
+
+    monkeypatch.delenv("OCTOP_FPK_SITE_PACKAGES", raising=False)
+    monkeypatch.setattr(self_update, "detect_installer", lambda: "uv")
+    monkeypatch.setattr(self_update, "resolve_venv_python", lambda: "/venv/bin/python")
+    monkeypatch.setattr(self_update, "get_local_version", lambda: "1.0.0")
+    monkeypatch.setattr(
+        self_update,
+        "rank_install_indexes",
+        lambda version, probe_timeout=8: (
+            [
+                ("https://fast.example/simple", "fast.example"),
+                ("https://pypi.org/simple", "pypi.org"),
+            ],
+            ["slow.example: missing_version 1.0.1"],
+        ),
+    )
+    calls: list[str] = []
+
+    def fake_install(
+        cmd: list[str],
+        label: str,
+        *,
+        verbose: bool,
+        timeout: float,
+    ) -> tuple[int | None, str]:
+        calls.append(label)
+        assert timeout == self_update._INSTALL_TIMEOUT_S
+        if label == "fast.example":
+            return 1, "network reset"
+        return 0, ""
+
+    monkeypatch.setattr(self_update, "_run_install_cmd", fake_install)
+    monkeypatch.setattr(
+        self_update,
+        "_verify_upgrade",
+        lambda local, python, errs: UpgradeResult(
+            success=True,
+            installed_version="1.0.1",
+            mirror_errors=errs,
+        ),
+    )
+
+    result = self_update._run_managed_upgrade(version="1.0.1")
+    assert result.success is True
+    assert calls == ["fast.example", "pypi.org"]
+    assert "slow.example: missing_version 1.0.1" in (result.mirror_errors or [])
+    assert any("fast.example" in err for err in (result.mirror_errors or []))

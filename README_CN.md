@@ -56,7 +56,7 @@
 | 🔒 | **更安全** | JWT 多用户隔离、工具审批、Shell 命令防护与敏感信息脱敏，数据留在本地 |
 | 🔌 | **Connector 拓展体系** | 一键接入腾讯全家桶（文档 / 微博 / 新闻等），OAuth 与 MCP 网关轻松扩展 |
 | 💾 | **可插拔后端存储** | 本地目录、Docker 容器、PostgreSQL 或 COS/S3，AI 在隔离边界内操作 |
-| 🧠 | **可迁移记忆系统** | 基于 harness-memory，记忆随工作区迁移 |
+| 🧠 | **可迁移记忆系统** | 基于 [octop-memory](https://github.com/TencentCloud/octop-memory)，记忆随工作区迁移 |
 | 📚 | **知识库** | 基于文档的 RAG 检索，让 Agent 的回答锚定你的私有知识库 |
 | 🧩 | **插件** | 支持第三方插件扩展；内置插件随安装注入，按需一键启用 |
 | ↔️ | **ACP 双向集成** | `octop acp` 增强 IDE 与终端 AI；对话中委派 OpenCode / Claude Code 等 |
@@ -85,20 +85,20 @@
 |------|------|
 | **语言** | Python 3.12+ |
 | **Web 框架** | FastAPI + uvicorn |
-| **Agent 运行时** | harness-agent |
-| **IM 桥接** | harness-gateway |
+| **Agent 运行时** | [octop-harness](https://github.com/TencentCloud/octop-harness) |
+| **IM 桥接** | [octop-gateway](https://github.com/TencentCloud/octop-gateway) |
 | **控制平面数据库** | SQLite (WAL，默认) 或 PostgreSQL（可选） |
 | **前端** | React 18 + TypeScript + Vite + Ant Design |
 | **调度** | APScheduler |
 | **ACP** | agent-client-protocol |
 | **构建 / 质量** | hatchling · ruff · mypy · pytest |
 
-Octop 基于一系列 Harness 工程实践构建——它将这些专注的运行时组合进同一个进程：
+Octop 基于一系列 Octop Harness 工程实践构建——它将这些专注的运行时组合进同一个进程：
 
-- **harness-agent** — Agent 运行时：模型路由、工具、技能与对话检查点。
-- **harness-gateway** — 多平台 IM 通道桥接，将各类入站消息归一为统一的处理管线。
-- **harness-memory** — 分层记忆与全文检索，让 Agent 的记忆随工作区一同迁移。
-- **harness-browser** — 基于 CDP 的浏览器自动化，支持持久化配置，用于网页类任务。
+- **[octop-harness](https://github.com/TencentCloud/octop-harness)** — Agent 运行时：模型路由、工具、技能与对话检查点。
+- **[octop-gateway](https://github.com/TencentCloud/octop-gateway)** — 多平台 IM 通道桥接，将各类入站消息归一为统一的处理管线。
+- **[octop-memory](https://github.com/TencentCloud/octop-memory)** — 分层记忆与全文检索，让 Agent 的记忆随工作区一同迁移。
+- **[octop-browser](https://github.com/TencentCloud/octop-browser)** — 基于 CDP 的浏览器自动化，支持持久化配置，用于网页类任务。
 
 Octop 不依赖外部消息队列或中间件，而是通过进程内的 `HarnessProcessor` 统一路由所有入口——Web UI、IM 与定时任务。最终呈现为一个可重启恢复的单进程：启动时整个状态都从控制面数据库重建（默认 `~/.octop/octop.db`，亦可配置 PostgreSQL）。
 
@@ -394,7 +394,15 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 | `octop plugin` | 安装并管理第三方插件 |
 | `octop backup` | 导出 / 恢复备份 |
 | `octop clean` | 清理 CLI 状态或清空 `~/.octop/` |
+| `octop memory list` | 列出可参与记忆维护的运行中 Agent；不改动数据库。 |
+| `octop memory slim [--agent ID]` | 通过运行中的宿主备份并精简 SQLite 记忆；使用指定 Agent 或按提示选择。在终端与控制台显示进度。[详情](docs/memory-slim.md) |
+| `octop memory slim --all` | 依次维护所有符合条件的运行中 Agent，逐个显示进度；首个失败即停止。 |
 | `octop update` | 检查并安装更新 |
+
+在已登录的 Web 控制台或本地 CLI 聊天中，`/memory slim` 会说明当前 Agent 的维护方式；
+`/memory slim --all` 列出符合条件的 Agent。审阅影响后加 `--confirm` 开始维护。
+使用 `/memory status` 查看进度/结果。维护确认并开始之前，聊天始终可用。
+外部 IM 的记忆维护需要已验证的发送者权限，暂未开放。
 
 完整参考：**[docs/cli.md](docs/cli.md)**。
 
@@ -446,9 +454,9 @@ OctopServer
  ├─ UserManager
  │   └─ HarnessAgentManager（按用户）
  │       └─ AgentRuntime（按 Agent）
- │           ├─ HarnessAgent      Agent 运行时（harness-agent）
+ │           ├─ HarnessAgent      Agent 运行时（octop-harness）
  │           ├─ HarnessProcessor  IM / UI / 定时任务入口
- │           ├─ ChannelManager    IM 连接（harness-gateway）
+ │           ├─ ChannelManager    IM 连接（octop-gateway）
  │           └─ CronManager       APScheduler
  └─ FastAPI app (uvicorn)
 ```
@@ -521,12 +529,10 @@ cd dashboard && npx tsc -b
 
 | 项目 | 描述 |
 |------|------|
-| harness-agent | Agent 运行时 — 模型路由、工具、Skill、检查点 |
-| harness-gateway | 多平台 IM 通道桥接 |
-| harness-memory | 层级召回与全文搜索 |
-| harness-browser | CDP 浏览器自动化，支持 profile 持久登录 |
-
-> 这些 `harness-*` 项目正在筹备开源中，仓库地址将在发布后补充。
+| [octop-harness](https://github.com/TencentCloud/octop-harness) | Agent 运行时 — 模型路由、工具、Skill、检查点 |
+| [octop-gateway](https://github.com/TencentCloud/octop-gateway) | 多平台 IM 通道桥接 |
+| [octop-memory](https://github.com/TencentCloud/octop-memory) | 层级召回与全文搜索 |
+| [octop-browser](https://github.com/TencentCloud/octop-browser) | CDP 浏览器自动化，支持 profile 持久登录 |
 
 ## 💬 客户企业微信群
 

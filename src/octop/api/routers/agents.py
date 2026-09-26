@@ -14,21 +14,21 @@ from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_upd
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.common.workspace import require_agent_workspace
 from octop.api.deps import current_user, get_server
-from octop.infra.agents.avatar import (
+from octop.infra.agents.experts.avatar import (
     agent_avatar_api_path,
     delete_workspace_avatar,
     display_agent_icon_url,
     read_workspace_avatar,
     write_workspace_avatar,
 )
-from octop.infra.agents.profile import (
+from octop.infra.agents.settings.profile import (
     id_list_from_row,
     parse_config_json,
-    parse_skill_package_ids_json,
+    parse_id_list_json,
     strip_profile_config,
     welcome_from_row,
 )
-from octop.infra.agents.runtime_limits import (
+from octop.infra.agents.settings.runtime_limits import (
     AGENT_RUNTIME_CONFIG_KEYS,
     agent_runtime_values,
 )
@@ -150,7 +150,7 @@ def _row_dict(
         for key, value in strip_profile_config(cfg).items()
         if key not in AGENT_RUNTIME_CONFIG_KEYS
     }
-    packages = parse_skill_package_ids_json(row.skill_package_ids)
+    packages = parse_id_list_json(row.skill_package_ids)
     if packages is None:
         raw_packages = cfg.get("skill_package_ids")
         packages = (

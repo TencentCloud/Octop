@@ -11,7 +11,9 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -22,8 +24,12 @@ logger = logging.getLogger(__name__)
 
 _PACKAGE_NAME = "octop"
 _PYPI_URL = f"https://pypi.org/pypi/{_PACKAGE_NAME}/json"
+_PYPI_SIMPLE = "https://pypi.org/simple"
 _GREEN_PACKAGES_ENV = "OCTOP_GREEN_PACKAGES"
 _STASH_SUFFIX = ".octop-old"
+_PROBE_TIMEOUT_S = 8
+_INSTALL_TIMEOUT_S = 90
+_FPK_INSTALL_TIMEOUT_S = 900
 
 _MIRRORS = [
     "https://mirrors.cloud.tencent.com/pypi/simple",
@@ -47,6 +53,17 @@ class UpgradeResult:
     error: str | None = None
     installed_version: str | None = None
     mirror_errors: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class IndexProbe:
+    """Result of probing a PEP 503 simple index for ``octop``."""
+
+    index_url: str
+    label: str
+    elapsed: float
+    status: str  # has_version | missing_version | unreachable
+    detail: str = ""
 
 
 def green_packages_dir() -> Path | None:
@@ -530,6 +547,146 @@ def get_version_in_dir(python_exe: str, target: str) -> str | None:
     return None
 
 
+def index_label(index_url: str) -> str:
+    """Short label for logs / UI (hostname, or ``pypi.org``)."""
+    if "pypi.org" in index_url:
+        return "pypi.org"
+    host = urllib.parse.urlparse(index_url).hostname
+    return host or index_url
+
+
+def _index_package_url(index_url: str) -> str:
+    return f"{index_url.rstrip('/')}/{_PACKAGE_NAME}/"
+
+
+def page_has_package_version(body: str, version: str | None) -> bool:
+    """True when a PEP 503 simple page lists *version* (or any file when unpinned)."""
+    if not version:
+        return bool(body.strip())
+    # Wheel / sdist names: octop-1.0.1-py3-none-any.whl, octop-1.0.1.tar.gz
+    return f"{_PACKAGE_NAME}-{version}-" in body or f"{_PACKAGE_NAME}-{version}." in body
+
+
+def probe_index(
+    index_url: str,
+    *,
+    version: str | None = None,
+    timeout: float = _PROBE_TIMEOUT_S,
+) -> IndexProbe:
+    """GET ``{index}/{package}/`` and classify reachability / version presence."""
+    label = index_label(index_url)
+    url = _index_package_url(index_url)
+    started = time.monotonic()
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": f"{_PACKAGE_NAME}-updater/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+        elapsed = time.monotonic() - started
+        if page_has_package_version(body, version):
+            return IndexProbe(index_url, label, elapsed, "has_version")
+        detail = f"missing_version {version}" if version else "missing_version"
+        return IndexProbe(index_url, label, elapsed, "missing_version", detail)
+    except Exception as exc:
+        elapsed = time.monotonic() - started
+        exc_text = str(exc).lower()
+        kind = (
+            "timeout" if isinstance(exc, TimeoutError) or "timed out" in exc_text else "unreachable"
+        )
+        return IndexProbe(index_url, label, elapsed, "unreachable", f"{kind}: {exc}")
+
+
+def rank_install_indexes(
+    version: str | None,
+    *,
+    probe_timeout: float = _PROBE_TIMEOUT_S,
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """Probe mirrors in parallel; return ``([(index_url, label), ...], skip_errors)``.
+
+    Install candidates are indexes that list the target version, ordered by probe
+    latency. ``pypi.org`` is always appended as a final fallback even when its
+    probe fails (HTML parse misses / transient errors).
+    """
+    indexes = [*_MIRRORS, _PYPI_SIMPLE]
+    probes: list[IndexProbe] = []
+    with ThreadPoolExecutor(max_workers=len(indexes)) as pool:
+        futures = [
+            pool.submit(probe_index, url, version=version, timeout=probe_timeout) for url in indexes
+        ]
+        for fut in as_completed(futures):
+            probes.append(fut.result())
+
+    skip_errors: list[str] = []
+    mirror_hits: list[IndexProbe] = []
+    pypi_probe: IndexProbe | None = None
+    for probe in probes:
+        if probe.label == "pypi.org":
+            pypi_probe = probe
+            continue
+        if probe.status == "has_version":
+            mirror_hits.append(probe)
+        else:
+            skip_errors.append(f"{probe.label}: {probe.detail or probe.status}")
+
+    mirror_hits.sort(key=lambda item: item.elapsed)
+    ordered: list[tuple[str, str]] = [(item.index_url, item.label) for item in mirror_hits]
+
+    if pypi_probe is not None and pypi_probe.status != "has_version":
+        skip_errors.append(f"pypi.org: {pypi_probe.detail or pypi_probe.status}")
+    ordered.append((_PYPI_SIMPLE, "pypi.org"))
+    return ordered, skip_errors
+
+
+def _all_mirrors_failed(mirror_errors: list[str]) -> UpgradeResult:
+    hint = ""
+    if mirror_errors:
+        preferred = next(
+            (
+                err
+                for err in mirror_errors
+                if "missing_version" not in err and "unreachable:" not in err
+            ),
+            next(
+                (err for err in mirror_errors if "missing_version" not in err),
+                mirror_errors[0],
+            ),
+        )
+        short = preferred if len(preferred) <= 120 else preferred[:117] + "..."
+        hint = f" ({short})"
+    return UpgradeResult(
+        success=False,
+        error=f"upgrade failed on all mirrors{hint}",
+        mirror_errors=mirror_errors,
+    )
+
+
+def _run_install_cmd(
+    cmd: list[str],
+    label: str,
+    *,
+    verbose: bool,
+    timeout: float,
+) -> tuple[int | None, str]:
+    logger.debug("running %s: %s", label, " ".join(cmd))
+    try:
+        # NOCA:DangerousSubprocessUseAudit(argv list with shell=False; installer paths and mirrors are trusted)
+        result = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=not verbose,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return None, f"timed out after {int(timeout)}s"
+    if result.returncode == 0:
+        return 0, ""
+    snippet = (result.stderr or result.stdout or "")[:300]
+    return result.returncode, snippet
+
+
 def _verify_fpk_upgrade(
     local_ver: str,
     site_packages: str,
@@ -583,9 +740,8 @@ def _run_fpk_upgrade(
     安装到该打包目录本身，重启服务后即加载新版，升级真正生效。
 
     与普通部署不同，FPK 首次在线升级需要从零解析并下载完整依赖树
-    （octop 依赖 orcakit-harness-agent 等大包），故超时显著放宽；且某镜像
-    可能滞后（装到同版本旧版），此时继续尝试下一个镜像，最后以 pypi.org
-    兜底，避免「镜像有货但版本不新」导致升级假成功。
+    （octop 依赖 octop-harness 等大包），故安装超时显著放宽；先并行探测
+    simple index，缺版本/不可达的镜像直接跳过，最后以 pypi.org 兜底。
     """
     if not os.path.isdir(site_packages):
         return UpgradeResult(
@@ -593,31 +749,11 @@ def _run_fpk_upgrade(
             error=f"FPK site-packages 目录不存在：{site_packages}",
         )
     local_ver = get_local_version()
-    mirror_errors: list[str] = []
-    per_mirror_timeout = 900  # FPK 首次升级需下载完整依赖树，180s 不够
-
-    def _run_install(cmd: list[str], label: str) -> tuple[int | None, str]:
-        logger.debug("running %s: %s", label, " ".join(cmd))
-        try:
-            # NOCA:DangerousSubprocessUseAudit(argv list with shell=False; installer paths and mirrors are trusted)
-            result = subprocess.run(
-                cmd,
-                check=False,
-                capture_output=not verbose,
-                text=True,
-                timeout=per_mirror_timeout,
-            )
-        except subprocess.TimeoutExpired:
-            return None, f"timed out after {per_mirror_timeout}s"
-        if result.returncode == 0:
-            return 0, ""
-        snippet = (result.stderr or result.stdout or "")[:300]
-        return result.returncode, snippet
-
+    ordered, mirror_errors = rank_install_indexes(version)
     python_exe = sys.executable
-    installer = detect_installer()  # uv 优先：pip 对 orcakit-harness-agent[all] 依赖树解析会卡死
+    installer = detect_installer()  # uv 优先：pip 对 octop-harness[all] 依赖树解析会卡死
 
-    def _build_cmd(index_url: str = "") -> list[str]:
+    def _build_cmd(index_url: str) -> list[str]:
         requirement = package_requirement(version)
         if installer == "uv":
             cmd = [
@@ -630,9 +766,9 @@ def _run_fpk_upgrade(
                 site_packages,
                 "--upgrade-package",
                 _PACKAGE_NAME,
+                "--index-url",
+                index_url,
             ]
-            if index_url:
-                cmd.extend(["--index-url", index_url])
             append_prerelease_flags(cmd, installer, allow_prerelease=allow_prerelease)
             cmd.append(requirement)
             return cmd
@@ -646,33 +782,30 @@ def _run_fpk_upgrade(
             "only-if-needed",
             "--target",
             site_packages,
+            "-i",
+            index_url,
         ]
-        if index_url:
-            cmd.extend(["-i", index_url])
         append_prerelease_flags(cmd, installer, allow_prerelease=allow_prerelease)
         cmd.append(requirement)
         return cmd
 
-    for mirror in _MIRRORS:
-        rc, err_snippet = _run_install(_build_cmd(mirror), mirror)
+    for index_url, label in ordered:
+        rc, err_snippet = _run_install_cmd(
+            _build_cmd(index_url),
+            label,
+            verbose=verbose,
+            timeout=_FPK_INSTALL_TIMEOUT_S,
+        )
         if rc != 0:
-            mirror_errors.append(f"{mirror}: {err_snippet}")
+            mirror_errors.append(f"{label}: {err_snippet or 'unknown error'}")
             continue
         res = _verify_fpk_upgrade(local_ver, site_packages, python_exe, mirror_errors)
         if res.success:
             return res
         # 镜像装到了同版本/旧版（同步滞后）：继续尝试下一个镜像
-        mirror_errors.append(f"{mirror}: {res.error or 'version unchanged'}")
+        mirror_errors.append(f"{label}: {res.error or 'version unchanged'}")
 
-    rc, err_snippet = _run_install(_build_cmd(), "pypi.org")
-    if rc != 0:
-        mirror_errors.append(f"pypi.org: {err_snippet or 'unknown error'}")
-        return UpgradeResult(
-            success=False,
-            error="upgrade failed on all mirrors",
-            mirror_errors=mirror_errors,
-        )
-    return _verify_fpk_upgrade(local_ver, site_packages, python_exe, mirror_errors)
+    return _all_mirrors_failed(mirror_errors)
 
 
 def run_upgrade(
@@ -723,32 +856,13 @@ def _run_managed_upgrade(
     installer = detect_installer()
     venv_python = resolve_venv_python()
     local_ver = get_local_version()
-    mirror_errors: list[str] = []
-    per_mirror_timeout = 180
+    ordered, mirror_errors = rank_install_indexes(version)
 
-    def _run_install(cmd: list[str], label: str) -> tuple[int | None, str]:
-        logger.debug("running %s: %s", label, " ".join(cmd))
-        try:
-            # NOCA:DangerousSubprocessUseAudit(argv list with shell=False; installer paths and mirrors are trusted)
-            result = subprocess.run(
-                cmd,
-                check=False,
-                capture_output=not verbose,
-                text=True,
-                timeout=per_mirror_timeout,
-            )
-        except subprocess.TimeoutExpired:
-            return None, f"timed out after {per_mirror_timeout}s"
-        if result.returncode == 0:
-            return 0, ""
-        snippet = (result.stderr or result.stdout or "")[:300]
-        return result.returncode, snippet
-
-    for mirror in _MIRRORS:
+    for index_url, label in ordered:
         cmd = build_upgrade_command(
             installer,
             venv_python,
-            index_url=mirror,
+            index_url=index_url,
             allow_prerelease=allow_prerelease,
             version=version,
         )
@@ -758,32 +872,17 @@ def _run_managed_upgrade(
                 error="pip is not available for the Octop virtual environment.",
                 mirror_errors=mirror_errors,
             )
-        rc, err_snippet = _run_install(cmd, mirror)
+        rc, err_snippet = _run_install_cmd(
+            cmd,
+            label,
+            verbose=verbose,
+            timeout=_INSTALL_TIMEOUT_S,
+        )
         if rc == 0:
             return _verify_upgrade(local_ver, venv_python, mirror_errors)
-        mirror_errors.append(f"{mirror}: {err_snippet}")
+        mirror_errors.append(f"{label}: {err_snippet or 'unknown error'}")
 
-    cmd = build_upgrade_command(
-        installer,
-        venv_python,
-        allow_prerelease=allow_prerelease,
-        version=version,
-    )
-    if cmd is None:
-        return UpgradeResult(
-            success=False,
-            error="pip is not available for the Octop virtual environment.",
-            mirror_errors=mirror_errors,
-        )
-    rc, err_snippet = _run_install(cmd, "pypi.org")
-    if rc != 0:
-        mirror_errors.append(f"pypi.org: {err_snippet or 'unknown error'}")
-        return UpgradeResult(
-            success=False,
-            error="upgrade failed on all mirrors",
-            mirror_errors=mirror_errors,
-        )
-    return _verify_upgrade(local_ver, venv_python, mirror_errors)
+    return _all_mirrors_failed(mirror_errors)
 
 
 def _verify_upgrade(

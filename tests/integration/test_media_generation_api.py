@@ -60,7 +60,7 @@ async def test_media_generation_model_test_dispatches_provider_configuration(
     provider = _provider_body(api_key="ark-draft-test")
 
     with patch(
-        "octop.infra.agents.media_generation.MediaGenerationSettingsStore.test_model",
+        "octop.infra.agents.settings.media_generation.MediaGenerationSettingsStore.test_model",
         new=AsyncMock(return_value={"ok": True}),
     ) as test_model:
         response = await client.post(

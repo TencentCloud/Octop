@@ -98,7 +98,7 @@ Usage: octop run [OPTIONS]
 
 Options:
   --host TEXT                 Override OCTOP_BIND_HOST.
-  --port INTEGER              Override OCTOP_PORT.
+  --port INTEGER RANGE        Override OCTOP_PORT (0-65535, 0 = OS-assigned).
   --reload / --no-reload      Enable uvicorn auto-reload (dev only).
   --ssl / --no-ssl            Enable HTTPS with a self-signed cert (or a real one).
   --certfile PATH             TLS certificate (PEM).
@@ -281,7 +281,7 @@ Usage: octop models [OPTIONS] COMMAND [ARGS]...
   Model catalog and active-model settings.
 
 Commands:
-  presets       List built-in provider templates from harness-agent.
+  presets       List built-in provider templates from octop-harness.
   list          List all resolved models across enabled providers.
   active        Show or set the global default model (admin).
   config        Interactively create a provider from presets and set the active model.

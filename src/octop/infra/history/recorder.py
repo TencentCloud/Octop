@@ -5,25 +5,28 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import re
 from typing import Any, cast
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from octop.infra.gateway.process.history_projection import (
-    TurnHistoryTracker,
-    _role,
-    live_message_input,
-    message_input,
-)
 from octop.infra.gateway.process.message_keys import (
     CHECKPOINT_TS_KEY,
     STREAM_ERROR_CODE_KEY,
     STREAM_ERROR_FLAG,
 )
+from octop.infra.history.projection import (
+    TurnHistoryTracker,
+    _role,
+    live_message_input,
+    message_input,
+)
 from octop.infra.history.service import HistoryArchive
 from octop.infra.history.store import dumps
 from octop.infra.history.trajectory.projector import _tool_result_fields
+
+logger = logging.getLogger(__name__)
 
 
 def _live_wire(message: Any) -> dict[str, Any] | None:
@@ -31,6 +34,23 @@ def _live_wire(message: Any) -> dict[str, Any] | None:
     if item is None:
         return None
     return cast(dict[str, Any], json.loads(item.message_json))
+
+
+def _chunk_artifact(chunk: dict[str, Any]) -> Any:
+    """Best-effort artifact extraction for the no-messages fallback path."""
+    artifact = chunk.get("artifact")
+    if artifact is not None:
+        return artifact
+    messages = chunk.get("messages")
+    if isinstance(messages, list):
+        for message in messages:
+            if isinstance(message, dict):
+                value = message.get("artifact")
+            else:
+                value = getattr(message, "artifact", None)
+            if value is not None:
+                return value
+    return None
 
 
 class RecordingTracker(TurnHistoryTracker):
@@ -119,7 +139,7 @@ class RecordingTracker(TurnHistoryTracker):
         super().observe(chunk)
         kind = chunk.get("type")
         if kind in ("state_snapshot", "state_update"):
-            from octop.infra.gateway.process.history_projection import (
+            from octop.infra.history.projection import (
                 _chunk_messages,  # noqa: PLC0415
             )
 
@@ -184,12 +204,18 @@ class RecordingTracker(TurnHistoryTracker):
                         wires.append(wire)
             if not wires:
                 call_id, name, result = _tool_result_fields(chunk)
+                logger.info(
+                    "tool_result fallback used for %s (%s): no wire-able messages",
+                    name,
+                    call_id,
+                )
                 fallback = _live_wire(
                     ToolMessage(
                         content=result if isinstance(result, (str, list)) else dumps(result),
                         name=name,
                         tool_call_id=call_id,
                         id=f"{self.turn['id']}:tool:{call_id}",
+                        artifact=_chunk_artifact(chunk),
                     )
                 )
                 wires = [fallback] if fallback is not None else []

@@ -546,6 +546,21 @@ export default function UpdateConfig() {
                       {t("advancedSettings.update.upgradeFailed")}:{" "}
                       {progress.error}
                     </p>
+                    {progress.mirror_errors &&
+                      progress.mirror_errors.length > 0 && (
+                        <div className={styles.mirrorErrors}>
+                          <p className={styles.mirrorErrorsTitle}>
+                            {t("advancedSettings.update.mirrorErrorsTitle")}
+                          </p>
+                          <ul className={styles.mirrorErrorsList}>
+                            {progress.mirror_errors.map((err) => (
+                              <li key={err}>
+                                <code>{err}</code>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     <p className={styles.manualHint}>
                       {t("advancedSettings.update.manualUpgradeHint")}
                     </p>

@@ -1,14 +1,24 @@
 import type { ChatMessage } from "../hooks/useChat";
 import { isBrowserToolName, isWriteToolName } from "../constants";
 
-const THINKING_TAG_RE = /<think>[\s\S]*?<\/think>/g;
+const THINKING_TAG_RE = /<(?:think|thinking)>[\s\S]*?<\/(?:think|thinking)>/gi;
+const THINKING_OPEN_RE = /<(?:think|thinking)>/i;
+const THINKING_CLOSE_RE = /<\/(?:think|thinking)>/i;
 
-/** Strip `<think>` blocks from visible assistant text. */
+/** Strip `<think>` / `<thinking>` blocks from visible assistant text. */
 export function stripThinkTags(raw: string): string {
   let result = raw.replace(THINKING_TAG_RE, "");
-  const unclosedIdx = result.indexOf("<think>");
-  if (unclosedIdx >= 0) {
-    result = result.slice(0, unclosedIdx);
+  // Orphan closing tag: drop the hidden prefix before it.
+  while (true) {
+    const close = result.search(THINKING_CLOSE_RE);
+    if (close < 0) break;
+    const open = result.search(THINKING_OPEN_RE);
+    if (open >= 0 && open < close) break;
+    result = result.slice(close).replace(THINKING_CLOSE_RE, "");
+  }
+  const unclosed = result.search(THINKING_OPEN_RE);
+  if (unclosed >= 0) {
+    result = result.slice(0, unclosed);
   }
   return result.trim();
 }
@@ -105,6 +115,7 @@ function hasCompletedToolBetweenTexts(messages: ChatMessage[]): boolean {
 
 export function splitAssistantTurn(
   messages: ChatMessage[],
+  opts?: { joinAnswerFragments?: boolean },
 ): AssistantTurnSplit {
   const tools: ChatMessage[] = [];
   const thinkings: ThinkingProcessItem[] = [];
@@ -137,11 +148,17 @@ export function splitAssistantTurn(
     }
   }
 
-  // 1:1 ReAct (text → tool → conclusion) keeps the last bubble as the answer.
-  // Join only team fragments of the same speaker that were split across bubbles.
+  // 1:1 ReAct (text → tool → conclusion) keeps the last bubble as the answer
+  // once the turn settles. While generating (or for stamped team speakers),
+  // join fragments so the answer never shrinks mid-flight after a tool round.
+  const teamStamped = messages.some((item) =>
+    Boolean((item.speakerAgentId || "").trim()),
+  );
   const joinFragments =
     textParts.length > 1 &&
-    (messages.some((item) => item.teamWrapup) ||
+    (Boolean(opts?.joinAnswerFragments) ||
+      teamStamped ||
+      messages.some((item) => item.teamWrapup) ||
       !hasCompletedToolBetweenTexts(messages));
   const answerMessage =
     answerTemplate && textParts.length > 0
@@ -197,7 +214,10 @@ function messageUsesFileTool(msg: ChatMessage): boolean {
 
 /** True when this assistant turn invoked a workspace file write/edit tool. */
 export function turnUsedFileTool(split: AssistantTurnSplit): boolean {
-  return (split?.tools ?? []).some((msg) => messageUsesFileTool(msg));
+  if ((split?.tools ?? []).some((msg) => messageUsesFileTool(msg))) {
+    return true;
+  }
+  return (split?.answerMessage?.editedFiles?.length ?? 0) > 0;
 }
 
 /** Index of the most recent assistant turn that invoked a browser tool, or -1. */

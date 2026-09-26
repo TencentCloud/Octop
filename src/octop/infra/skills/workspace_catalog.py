@@ -7,7 +7,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
-from octop.infra.agents.workspace_dir import skills_discovery_roots
+from octop.infra.agents.workspace.dir import skills_discovery_roots
 from octop.infra.skills.presentation import apply_skill_presentation
 from octop.infra.utils.frontmatter import parse_frontmatter
 from octop.infra.utils.utf8_text import repair_skill_manifest_file

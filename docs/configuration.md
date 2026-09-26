@@ -134,7 +134,7 @@ Each variable, when set, takes precedence over the matching key in
 |----------|------|---------|--------|
 | `OCTOP_HOME` | path | `~/.octop` | Install root (DB, secrets, workspaces, plugins) |
 | `OCTOP_BIND_HOST` | string | `127.0.0.1` | Listen address (use `0.0.0.0` for LAN access) |
-| `OCTOP_PORT` | int | `8088` | Listen port |
+| `OCTOP_PORT` | int | `8088` | Listen port (`0`–`65535`; `0` asks the OS for a free port) |
 | `OCTOP_LOG_LEVEL` | string | `info` | One of `debug` `info` `warning` `error` |
 | `OCTOP_LOG_RETENTION_DAYS` | int | `14` | Keep rotated `octop.log.YYYY-MM-DD` files for this many days |
 | `OCTOP_LOG_MAX_BYTES` | int | `104857600` (100 MiB) | Roll the active log when it exceeds this size (in addition to daily rotation) |
@@ -187,9 +187,9 @@ Control-plane `database` and agent memory are separate layers. Defaults:
 - Control plane SQLite → agent memory stays `{workspace}/memory.sqlite`
   (or `{workspace}/.octop/memory.sqlite` for new agents).
 - Control plane PostgreSQL → agent memory **defaults to the same DSN**
-  (harness-memory per-agent PG schema `agent_<id>`). Runtime also needs
+  (octop-memory per-agent PG schema `agent_<id>`). Runtime also needs
   ``langgraph-checkpoint-postgres`` (pulled in via
-  ``harness-memory[langgraph-postgres]``) so LangGraph checkpoints work.
+  ``octop-memory[langgraph-postgres]``) so LangGraph checkpoints work.
   To keep file memory while the control plane is PG, set on the agent:
 
 ```json

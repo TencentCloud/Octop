@@ -22,7 +22,7 @@ from octop.api.common.agent import require_agent_owner_row, user_owns_agent
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.deps import current_user, get_server
-from octop.infra.agents.avatar import (
+from octop.infra.agents.experts.avatar import (
     display_published_expert_icon_url,
     public_portrait_icon_url,
     read_snapshot_avatar,

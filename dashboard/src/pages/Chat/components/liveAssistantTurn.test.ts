@@ -36,14 +36,14 @@ describe("isLiveAssistantTurn", () => {
     ).toBe(false);
   });
 
-  it("is false for earlier assistant groups while a later one is live", () => {
+  it("keeps earlier team speakers live while a later one is also streaming", () => {
     expect(
       isLiveAssistantTurn({
         isStreaming: true,
         groupIndex: 1,
         lastAssistantGroupIndex: 3,
-        lastUserGroupIndex: 2,
+        lastUserGroupIndex: 0,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

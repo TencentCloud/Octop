@@ -12,7 +12,7 @@ from typing import Any, cast
 
 from psycopg import IntegrityError as PsycopgIntegrityError
 
-from octop.infra.agents.avatar import (
+from octop.infra.agents.experts.avatar import (
     bind_workspace_avatar_icon_url,
     public_portrait_icon_url,
 )

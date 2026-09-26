@@ -638,7 +638,6 @@ export default function BrowserAiPanel({
             messages={messages}
             isStreaming={isStreaming}
             sessionKey={threadId ?? undefined}
-            onCancel={cancelStream}
           />
         )}
       </div>
@@ -691,11 +690,19 @@ export default function BrowserAiPanel({
           <button
             type="button"
             className={styles.sendBtn}
-            disabled={!inputValue.trim() || inputDisabled}
-            onClick={handleSend}
-            title={t("terminal.ai.send", "发送")}
+            disabled={
+              isStreaming
+                ? booting || !threadId
+                : !inputValue.trim() || inputDisabled
+            }
+            onClick={isStreaming ? cancelStream : handleSend}
+            title={
+              isStreaming
+                ? t("chat.stop", "停止")
+                : t("terminal.ai.send", "发送")
+            }
           >
-            <Send size={16} />
+            {isStreaming ? <Square size={16} /> : <Send size={16} />}
           </button>
         </div>
       </div>
