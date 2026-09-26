@@ -16,6 +16,11 @@ from octop.infra.db.repos.cron import CronJobRepo
 from octop.infra.db.repos.invites import InviteRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfigRepo
+from octop.infra.db.repos.projects import (
+    ProjectMemberRepo,
+    ProjectRepo,
+    ProjectTaskRepo,
+)
 from octop.infra.db.repos.providers import ProviderRepo
 from octop.infra.db.repos.published_experts import PublishedExpertRepo
 from octop.infra.db.repos.secrets import SecretRepo
@@ -60,6 +65,9 @@ class RepoBundle:
     voice_provider_repo: VoiceProviderRepo
     care_push_repo: CarePushRepo
     proactive_care_config_repo: ProactiveCareConfigRepo
+    project_repo: ProjectRepo
+    project_member_repo: ProjectMemberRepo
+    project_task_repo: ProjectTaskRepo
     sso_repo: SsoRepo
 
     @classmethod
@@ -89,6 +97,9 @@ class RepoBundle:
             voice_provider_repo=VoiceProviderRepo(db),
             care_push_repo=CarePushRepo(db),
             proactive_care_config_repo=ProactiveCareConfigRepo(db),
+            project_repo=ProjectRepo(db),
+            project_member_repo=ProjectMemberRepo(db),
+            project_task_repo=ProjectTaskRepo(db),
             sso_repo=SsoRepo(db),
         )
 
@@ -194,6 +205,18 @@ class SharedServices:
     @property
     def proactive_care_config_repo(self) -> ProactiveCareConfigRepo:
         return self.repos.proactive_care_config_repo
+
+    @property
+    def project_repo(self) -> ProjectRepo:
+        return self.repos.project_repo
+
+    @property
+    def project_member_repo(self) -> ProjectMemberRepo:
+        return self.repos.project_member_repo
+
+    @property
+    def project_task_repo(self) -> ProjectTaskRepo:
+        return self.repos.project_task_repo
 
     @property
     def sso_repo(self) -> SsoRepo:
