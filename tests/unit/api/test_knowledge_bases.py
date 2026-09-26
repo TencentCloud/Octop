@@ -732,3 +732,57 @@ def test_map_knowledge_error_prerequisites_distinguished() -> None:
     )
     assert err_model.code == ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED
     assert err_model.status == 409
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        # `normalize_kb_path` rejects a `..` segment.
+        "invalid knowledge document path",
+        # `ensure_folder` rejects a path that normalizes to empty (``.``, ``/``).
+        "invalid knowledge folder path",
+    ],
+)
+def test_map_knowledge_error_invalid_path_is_client_error(message: str) -> None:
+    from octop.api.routers.knowledge_bases import _map_knowledge_error
+
+    # The path came from the request, so it is a client error: mapping it to
+    # INTERNAL_ERROR would answer 500 and log a stack trace for every such call.
+    err = _map_knowledge_error(ValueError(message), locale="zh")
+    assert err.code == ErrorCode.KNOWLEDGE_PATH_INVALID
+    assert err.status == 400
+    assert err.message == "路径无效。"
+
+    err_en = _map_knowledge_error(ValueError(message), locale="en")
+    assert err_en.message == "Invalid path."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("path", "message"),
+    [
+        ("../secret", "invalid knowledge document path"),
+        (".", "invalid knowledge folder path"),
+    ],
+)
+async def test_create_folder_maps_invalid_path(
+    monkeypatch: pytest.MonkeyPatch, path: str, message: str
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise ValueError(message)
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", fail)
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.create_folder(
+            kb_id="kb-1",
+            body=knowledge_bases.CreateFolderBody(path=path),
+            request=_request(),
+            server=SimpleNamespace(services=_services()),
+            user=object(),
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_PATH_INVALID
+    assert raised.value.status == 400
