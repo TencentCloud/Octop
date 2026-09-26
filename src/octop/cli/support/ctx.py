@@ -1,10 +1,10 @@
 """Shared CLI context helpers — root-level option fallback.
 
-Plan §13.1 requires the root ``cli`` to accept ``--user`` and ``--agent``
-options that subcommands inherit when not given explicitly. Subcommands
-keep their own ``--user`` / ``--agent`` options; this module provides a
-single resolver that picks the explicit value first, falling back to
-``ctx.obj`` (set by the root group), and finally returning ``None``.
+The root ``cli`` accepts ``--user`` and ``--agent`` options that subcommands
+inherit when not given explicitly. Subcommands keep their own ``--user`` /
+``--agent`` options; this module provides a single resolver that picks the
+explicit value first, falls back to ``ctx.obj`` (set by the root group), and
+finally returns ``None``.
 
 Importing ``octop.cli.support.ctx`` is cheap (no third-party imports), so it is
 safe to call from any subcommand at the top of its body.
