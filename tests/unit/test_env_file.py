@@ -128,3 +128,40 @@ def test_quoted_value_with_inner_quote_does_not_swallow_following_lines() -> Non
     text = 'MALFORMED="abc"def\nNEXT=1\n'
 
     assert parse_env_text(text) == {"MALFORMED": '"abc"def', "NEXT": "1"}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        '{\n  "client_email": "svc@example.com",\n  "private_key": "k"\n}',
+        '{"a":1}\n{"b":2}',
+        '{"k":"v"}\n{"k2":"v2"}',
+        'line1\n"quoted"\nline2',
+        '"x"\ny',
+    ],
+)
+def test_multiline_value_with_inner_quote_survives_roundtrip(value: str) -> None:
+    """An escaped inner quote is not the closing delimiter.
+
+    ``format_env_file`` writes inner quotes of a double-quoted value as ``\\"``. Reading
+    back the first line of such a value used to end it at that first inner quote, so a
+    multi-line value containing a quote (a pasted JSON credential, say) came back
+    truncated and with a stray leading quote.
+    """
+    assert parse_env_text(format_env_file({"KEY": value})) == {"KEY": value}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        '{\n  "client_email": "svc@example.com",\n  "private_key": "k"\n}',
+        '{"a":1}\n{"b":2}',
+        'line1\n"quoted"\nline2',
+        '"x"\ny',
+    ],
+)
+def test_multiline_inner_quote_roundtrip_is_stable_across_cycles(value: str) -> None:
+    """Previously every save/load cycle truncated such a value further."""
+    loaded = parse_env_text(format_env_file({"KEY": value}))
+    assert loaded["KEY"] == value
+    assert parse_env_text(format_env_file(loaded))["KEY"] == value
