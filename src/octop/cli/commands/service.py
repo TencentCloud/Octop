@@ -105,8 +105,14 @@ def _echo_summary_for(runtime: ServiceRuntime, *, warn_health: bool) -> None:
 
 @service.command("start")
 @click.option("--host", default=None, help="Bind host saved to config.json before install.")
+# Same bound as ``octop run --port``: this value is written into config.json
+# before the unit is installed, so an unbindable port survives the failed start
+# and every later start inherits it. 0 stays valid (the OS picks a free port).
 @click.option(
-    "--port", default=None, type=int, help="Bind port saved to config.json before install."
+    "--port",
+    default=None,
+    type=click.IntRange(0, 65535),
+    help="Bind port saved to config.json before install.",
 )
 @click.option(
     "--force-install",
