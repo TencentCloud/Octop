@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 
+from octop.api.routers.admin import AUDIT_LOG_MAX_LIMIT
 from tests.support.auth import create_agent
 
 
@@ -108,6 +109,24 @@ async def test_admin_audit_log_honors_limit(env: Any) -> None:
     rows = r.json()
     assert isinstance(rows, list)
     assert len(rows) <= 5
+
+
+async def test_admin_audit_log_rejects_limit_out_of_bounds(env: Any) -> None:
+    """A non-positive ``limit`` must not reach SQL ``LIMIT``.
+
+    SQLite reads a negative LIMIT as "no limit at all" (the whole audit log in one
+    response) and ``LIMIT 0`` as "no rows"; the thread list got the same bound.
+    """
+    c, _srv, admin_auth, _alice_auth = env
+    for bad in (0, -1, AUDIT_LOG_MAX_LIMIT + 1):
+        r = await c.get(f"/api/admin/audit-log?limit={bad}", headers=admin_auth)
+        assert r.status_code == 422, f"limit={bad} -> {r.status_code}: {r.text}"
+
+
+async def test_admin_audit_log_accepts_the_largest_panel_page(env: Any) -> None:
+    c, _srv, admin_auth, _alice_auth = env
+    r = await c.get(f"/api/admin/audit-log?limit={AUDIT_LOG_MAX_LIMIT}", headers=admin_auth)
+    assert r.status_code == 200, r.text
 
 
 async def test_admin_audit_log_non_admin_403(env: Any) -> None:
