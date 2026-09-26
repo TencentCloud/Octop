@@ -71,6 +71,9 @@ export function sameGroupedSpeaker(
  * ``continueThroughTools`` only skips *in-flight* tools (no output yet). A
  * completed ``ask_agent`` is a turn break so the host wrap-up after members
  * reply opens a new bubble instead of appending to the dispatch text.
+ *
+ * Team **members** keep one answer bubble across their own completed tools
+ * (normal ReAct). Host still treats completed tools as a break.
  */
 export function findSpeakerTextToContinue(
   messages: ChatMessage[],
@@ -80,6 +83,10 @@ export function findSpeakerTextToContinue(
 ): number {
   const skipTools = new Set(options?.continueThroughTools ?? []);
   const teamRoom = Boolean(options?.teamRoom);
+  const memberContinuesThroughTools =
+    teamRoom &&
+    Boolean((speakerId || "").trim()) &&
+    !isRoomHostSpeaker(speakerId, hostAgentId);
   let lastTool = -1;
   let lastText = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -99,7 +106,7 @@ export function findSpeakerTextToContinue(
     if (message.toolData) {
       const name = message.toolData.name || "";
       const inFlight = skipTools.has(name) && !message.toolData.output;
-      if (inFlight) continue;
+      if (inFlight || memberContinuesThroughTools) continue;
       if (lastTool < 0) lastTool = i;
       continue;
     }

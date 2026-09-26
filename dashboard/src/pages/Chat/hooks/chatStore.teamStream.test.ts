@@ -695,11 +695,77 @@ describe("team member live stream", () => {
       agent_id: "doctor",
       team_snapshot: true,
     });
-    const { messages } = getSnapshot(SESSION);
+    const { messages, liveSpeakers } = getSnapshot(SESSION);
     const member = messages.filter((item) => item.speakerAgentId === "doctor");
     expect(member).toHaveLength(1);
     expect(member[0]?.content).toBe("please rest");
     expect(member[0]?.status).toBe("done");
+    expect(liveSpeakers).not.toContain("doctor");
+  });
+
+  it("keeps a member answer on one bubble across completed tools", () => {
+    ingestHarnessChunk(SESSION, {
+      type: "token",
+      content: "我先查一下。",
+      agent_id: "doctor",
+    });
+    ingestHarnessChunk(SESSION, {
+      type: "tool_call_chunk",
+      index: 0,
+      id: "read-1",
+      name: "read_file",
+      args: "{}",
+      agent_id: "doctor",
+    });
+    ingestHarnessChunk(SESSION, {
+      type: "tool_result",
+      messages: [{ tool_call_id: "read-1", content: "labs ok" }],
+      agent_id: "doctor",
+    });
+    ingestHarnessChunk(SESSION, {
+      type: "token",
+      content: "结论如下。",
+      agent_id: "doctor",
+    });
+    const member = getSnapshot(SESSION).messages.filter(
+      (item) => item.speakerAgentId === "doctor" && !item.toolData,
+    );
+    expect(member).toHaveLength(1);
+    expect(member[0]?.content).toBe("我先查一下。结论如下。");
+  });
+
+  it("clears stale member live state when host wrap-up finishes", () => {
+    ingestHarnessChunk(SESSION, {
+      type: "token",
+      content: "done work",
+      agent_id: "doctor",
+    });
+    ingestHarnessChunk(SESSION, { type: "done", agent_id: "doctor" });
+    // Snapshot must not re-light a finished speaker.
+    ingestHarnessChunk(SESSION, {
+      type: "token",
+      content: "done work",
+      agent_id: "doctor",
+      team_snapshot: true,
+    });
+    expect(getSnapshot(SESSION).liveSpeakers).not.toContain("doctor");
+
+    ingestHarnessChunk(
+      SESSION,
+      {
+        type: "token",
+        content: "汇总完成",
+        agent_id: "host",
+        team_wrapup: true,
+      },
+      "host",
+    );
+    ingestHarnessChunk(
+      SESSION,
+      { type: "done", agent_id: "host", team_wrapup: true },
+      "host",
+    );
+    expect(getSnapshot(SESSION).liveSpeakers).toEqual([]);
   });
 
   it("keeps a member live across tool gaps after the host unlocks the composer", () => {
