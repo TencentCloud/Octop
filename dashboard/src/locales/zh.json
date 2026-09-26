@@ -187,7 +187,9 @@
     "TEAM_MEMBERS_TOO_FEW": "团队至少需要两名成员。",
     "TEAM_MEMBER_INVALID": "当前选中的编制无效。",
     "TEAM_MEMBER_BUSY": "该专家有进行中的团队任务，请等结束后再改编制或删除。",
-    "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。"
+    "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。",
+    "PROJECT_INVALID_TRANSITION": "不允许的状态流转。",
+    "PROJECT_KB_BIND_FAILED": "无法创建项目知识库，项目未创建。"
   },
   "nav": {
     "chat": "对话",

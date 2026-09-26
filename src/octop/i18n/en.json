@@ -446,7 +446,9 @@
     "TEAM_MEMBERS_TOO_FEW": "A team needs at least two members.",
     "TEAM_MEMBER_INVALID": "The selected roster is not valid.",
     "TEAM_MEMBER_BUSY": "This expert has an in-flight team job. Wait until it finishes.",
-    "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version."
+    "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version.",
+    "PROJECT_INVALID_TRANSITION": "That status change is not allowed for this project.",
+    "PROJECT_KB_BIND_FAILED": "Could not create the project's knowledge base; the project was not created."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
