@@ -208,6 +208,9 @@ def test_parse_csv_large_cell(tmp_path: Path) -> None:
     csv_path.write_text(f"col\n{large_text}\n", encoding="utf-8")
     parsed = parse_document(csv_path)
     assert f"# large\ncol\n{large_text}" == parsed
+
+
+def test_parse_html_json_and_plain_variants(tmp_path: Path) -> None:
     html = tmp_path / "page.html"
     html.write_text(
         "<html><head><style>p{color:red}</style></head>"
