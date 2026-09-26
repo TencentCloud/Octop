@@ -11,6 +11,7 @@
 - 用户管理增加角色模板：创建、编辑和邀请时带出权限、资源策略与头像；修改角色不会改写已有用户的权限、策略或账号类型。用户与角色支持预设图标和上传头像。
 - 登录页增加「记住登录状态」勾选（默认勾选）：取消后 JWT 仅保存在当前标签页的 `sessionStorage`，关闭标签后需重新登录；SSO 弹窗通过 postMessage 回传 token
 - 企查查内置连接器恢复一键 OAuth：保留 internal HTTP 工具加载及已有 API Key，支持五类资源共享刷新与远程解绑；注明系统浏览器及公网 HTTPS 回调要求。
+- 企查查连接器同时支持一键 OAuth 与 API Key：无公网 HTTPS 时可粘贴 Key；两种方式二选一，切换时替换另一模式的凭证。
 
 ### 变更
 - 运行时依赖改为 `octop-harness[all]` / `octop-gateway` / `octop-memory` / `octop-browser` 1.0.0（原 `orcakit-harness-agent` / `harness-*`）；文档、UI 文案与生成路径同步改为 `octop-*`（`~/.harness-browser` 仅作迁移/拒绝源）
