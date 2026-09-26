@@ -5,7 +5,10 @@ from __future__ import annotations
 import secrets
 import time
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from octop.infra.db.repos.hitl_pending import HitlPendingRepo
 
 HitlPendingStatus = Literal["pending", "approved", "rejected", "expired"]
 
@@ -30,10 +33,50 @@ class HitlPendingRecord:
 
 @dataclass
 class HitlPendingStore:
-    """Session-scoped pending HITL records (process-local, TTL-gc)."""
+    """Session-scoped pending HITL records (in-memory hot cache, TTL-gc).
+
+    With a repo bound (server boot), every state transition is written through
+    so a restart can hydrate the still-pending records from SQL.
+    """
 
     ttl_seconds: float = _DEFAULT_TTL_SECONDS
     _records: dict[str, HitlPendingRecord] = field(default_factory=dict)
+    _repo: HitlPendingRepo | None = field(default=None, repr=False, compare=False)
+
+    def replace_repo(self, repo: HitlPendingRepo | None) -> None:
+        """Bind the durability layer (server boot). In-memory records are kept."""
+        self._repo = repo
+
+    def hydrate_from_repo(self) -> None:
+        """Load records persisted by a previous process into the hot cache.
+
+        Rows older than the TTL hydrate as ``expired`` so a restart can never
+        resurrect an actionable card; in-memory records always win.
+        """
+        repo = self._repo
+        if repo is None:
+            return
+        now = time.time()
+        for row in repo.list_pending():
+            if row.pending_id in self._records:
+                continue
+            status: HitlPendingStatus = (
+                "expired" if now - row.created_at > self.ttl_seconds else "pending"
+            )
+            self._records[row.pending_id] = HitlPendingRecord(
+                pending_id=row.pending_id,
+                thread_id=row.thread_id,
+                agent_id=row.agent_id,
+                user_id=row.user_id,
+                session_key=row.session_key,
+                channel_type=row.channel_type,
+                action_requests=row.action_requests,
+                review_configs=row.review_configs,
+                created_at=row.created_at,
+                status=status,
+                ask_question_index=row.ask_question_index,
+                ask_answers=row.ask_answers,
+            )
 
     def register(
         self,
@@ -50,6 +93,7 @@ class HitlPendingStore:
         for existing in list(self._records.values()):
             if existing.session_key == session_key and existing.status == "pending":
                 existing.status = "expired"
+                self._persist(existing)
         pending_id = secrets.token_hex(2)
         while pending_id in self._records:
             pending_id = secrets.token_hex(2)
@@ -65,6 +109,7 @@ class HitlPendingStore:
             created_at=time.time(),
         )
         self._records[pending_id] = record
+        self._persist(record)
         return record
 
     def get(self, pending_id: str) -> HitlPendingRecord | None:
@@ -76,6 +121,7 @@ class HitlPendingStore:
             return record
         if time.time() - record.created_at > self.ttl_seconds:
             record.status = "expired"
+            self._persist(record)
             return record
         return record
 
@@ -116,6 +162,7 @@ class HitlPendingStore:
                 continue
             if time.time() - record.created_at > self.ttl_seconds:
                 record.status = "expired"
+                self._persist(record)
                 continue
             if latest is None or record.created_at > latest.created_at:
                 latest = record
@@ -140,6 +187,7 @@ class HitlPendingStore:
                 continue
             if time.time() - record.created_at > self.ttl_seconds:
                 record.status = "expired"
+                self._persist(record)
                 continue
             if latest is None or record.created_at > latest.created_at:
                 latest = record
@@ -179,6 +227,7 @@ class HitlPendingStore:
             if user_id is not None and record.user_id != user_id:
                 continue
             record.status = "expired"
+            self._persist(record)
 
     def mark_resolved(
         self,
@@ -188,6 +237,7 @@ class HitlPendingStore:
         record = self._records.get(pending_id)
         if record is not None:
             record.status = status
+            self._persist(record)
 
     def append_ask_answer(self, pending_id: str, answer: str) -> HitlPendingRecord | None:
         """Record one IM answer and advance to the next question."""
@@ -196,6 +246,7 @@ class HitlPendingStore:
             return None
         record.ask_answers.append(answer)
         record.ask_question_index += 1
+        self._persist(record)
         return record
 
     def _gc(self) -> None:
@@ -209,3 +260,27 @@ class HitlPendingStore:
                 stale_ids.append(pending_id)
         for pending_id in stale_ids:
             del self._records[pending_id]
+            self._forget(pending_id)
+
+    def _persist(self, record: HitlPendingRecord) -> None:
+        repo = self._repo
+        if repo is None:
+            return
+        repo.upsert(
+            pending_id=record.pending_id,
+            thread_id=record.thread_id,
+            agent_id=record.agent_id,
+            user_id=record.user_id,
+            session_key=record.session_key,
+            channel_type=record.channel_type,
+            action_requests=record.action_requests,
+            review_configs=record.review_configs,
+            created_at=record.created_at,
+            status=record.status,
+            ask_question_index=record.ask_question_index,
+            ask_answers=record.ask_answers,
+        )
+
+    def _forget(self, pending_id: str) -> None:
+        if self._repo is not None:
+            self._repo.delete(pending_id)

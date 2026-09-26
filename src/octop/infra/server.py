@@ -457,6 +457,9 @@ class OctopServer:
         hitl_session_store = gateway.processor.hitl_coordinator.session_policies
         hitl_session_store.replace_repo(self.services.repos.thread_repo)
         registry.set_hitl_session_store(hitl_session_store)
+        hitl_pending_store = gateway.processor.hitl_coordinator.store
+        hitl_pending_store.replace_repo(self.services.repos.hitl_pending_repo)
+        hitl_pending_store.hydrate_from_repo()
 
         care_service = ProactiveCareService(
             gateway=gateway,

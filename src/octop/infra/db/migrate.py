@@ -1422,6 +1422,48 @@ def _ensure_thread_conversation_mode_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "hitl_policy", "TEXT")
 
 
+def _ensure_hitl_pending_schema(db: DatabasePool) -> None:
+    """Create ``hitl_pending_records`` (schema v17) when missing.
+
+    The DDL is folded into the unreleased ``017`` pair. Databases that already
+    recorded v17 before the fold skip that file, so this idempotent helper
+    backfills the table on every migrate run.
+    """
+    if _table_exists(db, "hitl_pending_records"):
+        return
+    pk = _integer_pk_sql(db)
+    user_id = "BIGINT" if db.dialect == "postgresql" else "INTEGER"
+    created_at = "DOUBLE PRECISION" if db.dialect == "postgresql" else "REAL"
+    with db.connect() as conn:
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS hitl_pending_records (
+              id                 {pk},
+              pending_id         TEXT    NOT NULL UNIQUE,
+              thread_id          TEXT    NOT NULL,
+              agent_id           TEXT    NOT NULL,
+              user_id            {user_id} NOT NULL,
+              session_key        TEXT    NOT NULL,
+              channel_type       TEXT    NOT NULL,
+              action_requests    TEXT    NOT NULL DEFAULT '[]',
+              review_configs     TEXT,
+              created_at         {created_at} NOT NULL,
+              status             TEXT    NOT NULL DEFAULT 'pending',
+              ask_question_index INTEGER NOT NULL DEFAULT 0,
+              ask_answers        TEXT    NOT NULL DEFAULT '[]'
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hitl_pending_records_session "
+            "ON hitl_pending_records(session_key, status)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hitl_pending_records_thread "
+            "ON hitl_pending_records(thread_id, status)"
+        )
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -1507,6 +1549,7 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_agent_teams_schema(db)
             if max_version >= 17:
                 _ensure_thread_conversation_mode_schema(db)
+                _ensure_hitl_pending_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -1549,6 +1592,7 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_agent_teams_schema(db)
     if max_version >= 17:
         _ensure_thread_conversation_mode_schema(db)
+        _ensure_hitl_pending_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -1587,7 +1631,10 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     Version 15 adds pluggable SSO provider ``kind`` / ``extra`` and
     multi-identity ``user_sso_identities``.
     Version 16 adds ``agents.kind`` so team hosts can be listed.
-    Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
+    Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads
+    plus the durable ``hitl_pending_records`` table (folded into the unreleased
+    ``017`` pair; the idempotent ``_ensure_hitl_pending_schema`` covers databases
+    that already recorded v17 before the fold).
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1700,6 +1747,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         return
     if version == 17:
         _ensure_thread_conversation_mode_schema(db)
+        _ensure_hitl_pending_schema(db)
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
@@ -1746,5 +1794,6 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_user_policy_schema(db)
     _ensure_agent_teams_schema(db)
     _ensure_thread_conversation_mode_schema(db)
+    _ensure_hitl_pending_schema(db)
     _ensure_agent_profile_columns(db)
     _ensure_sso_provider_kind_schema(db)
