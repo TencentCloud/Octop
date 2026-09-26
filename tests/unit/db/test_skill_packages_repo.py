@@ -28,7 +28,7 @@ def test_skill_packages_table_exists(db: SqlitePool) -> None:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(skill_packages)").fetchall()}
     assert "skill_packages" in names
-    assert v == 17
+    assert v == 18
     assert "skill_package_id" in cols
 
 
