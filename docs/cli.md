@@ -259,6 +259,10 @@ pushes the reply. `--prompt` is required, must be non-empty and ≤
 
 Local DB provider CRUD. `test` requires a running server.
 
+These write the database directly; a running server reconciles its model factory
+before the next agent turn, so model resolution follows the change without a
+restart (#952).
+
 ```
 Usage: octop provider [OPTIONS] COMMAND [ARGS]...
 

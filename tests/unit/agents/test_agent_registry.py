@@ -984,6 +984,174 @@ async def test_on_provider_changed_removes_stale_provider(tmp_path: Path, monkey
 
 
 # ---------------------------------------------------------------------------
+# Provider drift picked up by an invocation (#952)
+# ---------------------------------------------------------------------------
+
+
+def _factory_providers(fake_hm: MagicMock) -> dict[str, Any]:
+    return {cfg.id: cfg for cfg in fake_hm.shared_factory.provider_configs()}
+
+
+def _add_stream_agent(services, agent_id: str = "AGT_DRIFT") -> None:
+    services.repos.agent_repo.create(agent_id=agent_id, user_id=None, name="drift")
+
+
+async def _drive_stream(registry: AgentManager, fake_hm: Any, agent_id: str) -> list[Any]:
+    """Run one turn through the harness seam, without a real agent behind it."""
+
+    async def _fake_stream(*_args: Any, **_kwargs: Any) -> Any:
+        yield {"type": "token", "content": "hi"}
+
+    fake_hm.stream = _fake_stream
+    return [chunk async for chunk in registry.stream(agent_id, {"thread_id": "thr1"})]
+
+
+@pytest.mark.asyncio
+async def test_stream_picks_up_provider_created_after_boot(tmp_path: Path) -> None:
+    """A provider row written by another process (the CLI) is live on the next turn."""
+    services = _make_services(tmp_path)
+    fake_hm = _make_fake_hm()
+    registry = _make_registry(services, fake_hm=fake_hm)
+    _add_stream_agent(services)
+
+    services.provider_repo.create(
+        name="late",
+        kind="openai",
+        base_url="https://api.late.example/v1",
+        api_key="sk-late",
+        models_json=json.dumps([{"id": "late-1", "name": "late-1", "enabled": True}]),
+    )
+    assert "late" not in _factory_providers(fake_hm)
+
+    chunks = await _drive_stream(registry, fake_hm, "AGT_DRIFT")
+
+    assert chunks == [{"type": "token", "content": "hi"}]
+    assert "late" in _factory_providers(fake_hm)
+
+
+@pytest.mark.asyncio
+async def test_stream_picks_up_a_model_added_to_an_existing_provider(
+    tmp_path: Path,
+) -> None:
+    """Same-name edits are drift too: the provider id alone cannot detect them."""
+    services = _make_services(tmp_path)
+    fake_hm = _make_fake_hm()
+    registry = _make_registry(services, fake_hm=fake_hm)
+    _add_stream_agent(services)
+    row = services.provider_repo.get_by_name("test-openai")
+
+    services.provider_repo.update(
+        row.id,
+        models_json=json.dumps(
+            [
+                {"id": "gpt-4o-mini", "name": "gpt-4o-mini", "enabled": True},
+                {"id": "gpt-5-nano", "name": "gpt-5-nano", "enabled": True},
+            ]
+        ),
+    )
+    assert "gpt-5-nano" not in {m.id for m in _factory_providers(fake_hm)["test-openai"].models}
+
+    await _drive_stream(registry, fake_hm, "AGT_DRIFT")
+
+    assert {m.id for m in _factory_providers(fake_hm)["test-openai"].models} == {
+        "gpt-4o-mini",
+        "gpt-5-nano",
+    }
+
+
+@pytest.mark.asyncio
+async def test_stream_drops_a_provider_deleted_after_boot(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    fake_hm = _make_fake_hm()
+    registry = _make_registry(services, fake_hm=fake_hm)
+    _add_stream_agent(services)
+    row = services.provider_repo.get_by_name("test-openai")
+
+    services.provider_repo.delete(row.id)
+
+    await _drive_stream(registry, fake_hm, "AGT_DRIFT")
+
+    assert _factory_providers(fake_hm) == {}
+
+
+@pytest.mark.asyncio
+async def test_stream_bootstraps_a_factory_that_booted_without_providers(tmp_path: Path) -> None:
+    """``boot()`` leaves the shared factory unset with an empty catalog; a turn builds it."""
+    services = _make_services(tmp_path)
+    services.provider_repo.delete(services.provider_repo.get_by_name("test-openai").id)
+    fake_hm = _make_fake_hm()
+    registry = _attach_registry(services, fake_hm=fake_hm)
+    assert fake_hm.shared_factory is None
+    _add_stream_agent(services)
+
+    services.provider_repo.create(
+        name="first",
+        kind="openai",
+        base_url="https://api.first.example/v1",
+        api_key="sk-first",
+        models_json=json.dumps([{"id": "first-1", "name": "first-1", "enabled": True}]),
+    )
+
+    await _drive_stream(registry, fake_hm, "AGT_DRIFT")
+
+    assert "first" in _factory_providers(fake_hm)
+
+
+@pytest.mark.asyncio
+async def test_unchanged_providers_are_not_reregistered_per_turn(tmp_path: Path) -> None:
+    """Re-registering evicts harness's cached chat models, so only drift may do it."""
+    services = _make_services(tmp_path)
+    fake_hm = _make_fake_hm()
+    registry = _make_registry(services, fake_hm=fake_hm)
+    _add_stream_agent(services)
+    before = fake_hm.add_provider.call_count
+
+    for _ in range(3):
+        await _drive_stream(registry, fake_hm, "AGT_DRIFT")
+
+    assert fake_hm.add_provider.call_count == before
+
+
+@pytest.mark.asyncio
+async def test_a_turn_repairs_model_resolution_on_a_real_harness_factory(
+    tmp_path: Path,
+) -> None:
+    """Unmocked: the model a DB check accepts is the model the factory can build."""
+    from octop_harness import HarnessAgentManager
+
+    services = _make_services(tmp_path)
+    (tmp_path / "logs").mkdir()
+    registry = AgentManager(repos=services.repos, paths=services.paths)
+    harness_manager = HarnessAgentManager(
+        providers=registry.providers.build_harness_configs(),
+        log_dir=str(tmp_path / "logs"),
+    )
+    registry._harness_manager = harness_manager
+    _add_stream_agent(services)
+    ref = "test-openai/gpt-5-nano"
+    try:
+        row = services.provider_repo.get_by_name("test-openai")
+        services.provider_repo.update(
+            row.id,
+            models_json=json.dumps(
+                [
+                    {"id": "gpt-4o-mini", "name": "gpt-4o-mini", "enabled": True},
+                    {"id": "gpt-5-nano", "name": "gpt-5-nano", "enabled": True},
+                ]
+            ),
+        )
+        assert registry.providers.is_model_ref_usable(ref) is True
+        with pytest.raises(ValueError, match="not found or disabled"):
+            harness_manager.shared_factory.get_chat_model(ref)
+
+        await _drive_stream(registry, harness_manager, "AGT_DRIFT")
+
+        assert harness_manager.shared_factory.get_chat_model(ref) is not None
+    finally:
+        await harness_manager.aclose()
+
+
+# ---------------------------------------------------------------------------
 # Expert template application
 # ---------------------------------------------------------------------------
 
