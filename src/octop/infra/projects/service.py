@@ -105,11 +105,26 @@ class ProjectActor(Protocol):
 
 
 def _forbidden(message: str) -> OctopError:
-    return OctopError(ErrorCode.FORBIDDEN, message)
+    """No access to the project at all (not a member, archived, feature off)."""
+    return OctopError(ErrorCode.PROJECT_FORBIDDEN, message)
 
 
-def _invalid_transition(message: str) -> OctopError:
-    return OctopError(ErrorCode.PROJECT_INVALID_TRANSITION, message)
+def _role_forbidden(message: str) -> OctopError:
+    """A member, but the role is too weak for the requested action (§4.6)."""
+    return OctopError(ErrorCode.PROJECT_ROLE_FORBIDDEN, message)
+
+
+def _member_invalid(message: str) -> OctopError:
+    """A membership change that would break a project invariant."""
+    return OctopError(ErrorCode.PROJECT_MEMBER_INVALID, message)
+
+
+def _project_status_invalid(message: str) -> OctopError:
+    return OctopError(ErrorCode.PROJECT_STATUS_INVALID, message)
+
+
+def _task_status_invalid(message: str) -> OctopError:
+    return OctopError(ErrorCode.PROJECT_TASK_STATUS_INVALID, message)
 
 
 class ProjectService:
@@ -162,7 +177,9 @@ class ProjectService:
         if project.status == "archived" and required != PROJECT_READ:
             raise _forbidden("This project is archived and can no longer be changed.")
         if required not in _ROLE_LEVELS[role]:
-            raise _forbidden(f"Your role in this project ({role}) cannot perform '{required}'.")
+            raise _role_forbidden(
+                f"Your role in this project ({role}) cannot perform '{required}'."
+            )
         return role
 
     def role_of(self, project_id: str, *, user: ProjectActor) -> str | None:
@@ -294,7 +311,7 @@ class ProjectService:
         self.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
         updated = self._projects.update(project_id, **fields)
         if updated is None:
-            raise OctopError(ErrorCode.NOT_FOUND, "Project not found.")
+            raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Project not found.")
         return updated
 
     def transition_project(self, project_id: str, *, user: ProjectActor, target: str) -> ProjectRow:
@@ -310,7 +327,7 @@ class ProjectService:
         self._assert_transition(project, target)
         updated = self._projects.update(project_id, status=target)
         if updated is None:
-            raise OctopError(ErrorCode.NOT_FOUND, "Project not found.")
+            raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Project not found.")
         return updated
 
     def delete_project(self, project_id: str, *, user: ProjectActor) -> bool:
@@ -325,7 +342,7 @@ class ProjectService:
 
     def _assert_transition(self, project: ProjectRow, target: str) -> None:
         if target not in _TRANSITIONS.get(project.status, frozenset()):
-            raise _invalid_transition(
+            raise _project_status_invalid(
                 f"Cannot change project status from '{project.status}' to '{target}'."
             )
         if target == "active":
@@ -334,12 +351,12 @@ class ProjectService:
     def _assert_activation_ready(self, project: ProjectRow) -> None:
         """``draft -> active`` needs at least one member and a sitting owner."""
         if self._members.count(project.id) < 1:
-            raise _invalid_transition("Add at least one member before activating.")
+            raise _project_status_invalid("Add at least one member before activating.")
         owner_role = self._members.role_of(
             project.id, MEMBER_SUBJECT_USER, str(project.owner_user_id)
         )
         if owner_role != "owner":
-            raise _invalid_transition("The project owner must be a member with the owner role.")
+            raise _project_status_invalid("The project owner must be a member with the owner role.")
 
     # ── membership ───────────────────────────────────────────────────────────
 
@@ -377,7 +394,7 @@ class ProjectService:
         self.assert_project_role(project_id, user=user, required=PROJECT_MANAGE_MEMBERS)
         project = self._require_project(project_id)
         if subject_type == MEMBER_SUBJECT_USER and str(project.owner_user_id) == subject_id:
-            raise _invalid_transition("The project owner cannot be removed.")
+            raise _member_invalid("The project owner cannot be removed.")
         return self._members.remove(project_id, subject_type, subject_id)
 
     def _assert_owner_role_untouched(
@@ -387,7 +404,7 @@ class ProjectService:
         if subject_type != MEMBER_SUBJECT_USER:
             return
         if str(project.owner_user_id) == subject_id and role != "owner":
-            raise _invalid_transition("The project owner must keep the owner role.")
+            raise _member_invalid("The project owner must keep the owner role.")
 
     # ── tasks (T2.3) ─────────────────────────────────────────────────────────
 
@@ -443,7 +460,7 @@ class ProjectService:
             return task
         updated = self._tasks.update(task_id, **fields)
         if updated is None:
-            raise OctopError(ErrorCode.NOT_FOUND, "Task not found.")
+            raise OctopError(ErrorCode.PROJECT_TASK_NOT_FOUND, "Task not found.")
         self._record(
             task.project_id,
             task_id,
@@ -468,12 +485,12 @@ class ProjectService:
         task = self._require_task(task_id)
         self.assert_project_role(task.project_id, user=user, required=PROJECT_WRITE)
         if target not in _TASK_TRANSITIONS.get(task.status, frozenset()):
-            raise _invalid_transition(
+            raise _task_status_invalid(
                 f"Cannot change task status from '{task.status}' to '{target}'."
             )
         updated = self._tasks.update(task_id, status=target)
         if updated is None:
-            raise OctopError(ErrorCode.NOT_FOUND, "Task not found.")
+            raise OctopError(ErrorCode.PROJECT_TASK_NOT_FOUND, "Task not found.")
         self._record(
             task.project_id,
             task_id,
@@ -533,13 +550,13 @@ class ProjectService:
     def _require_task(self, task_id: str) -> ProjectTaskRow:
         task = self._tasks.get(task_id)
         if task is None:
-            raise OctopError(ErrorCode.NOT_FOUND, "Task not found.")
+            raise OctopError(ErrorCode.PROJECT_TASK_NOT_FOUND, "Task not found.")
         return task
 
     def _require_project(self, project_id: str) -> ProjectRow:
         project = self._projects.get(project_id)
         if project is None:
-            raise OctopError(ErrorCode.NOT_FOUND, "Project not found.")
+            raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Project not found.")
         return project
 
     def _role_of(self, project: ProjectRow, user: ProjectActor) -> str | None:

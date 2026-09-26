@@ -188,7 +188,15 @@
     "TEAM_MEMBER_INVALID": "当前选中的编制无效。",
     "TEAM_MEMBER_BUSY": "该专家有进行中的团队任务，请等结束后再改编制或删除。",
     "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。",
-    "PROJECT_INVALID_TRANSITION": "不允许的状态流转。",
+    "PROJECT_NOT_FOUND": "项目不存在。",
+    "PROJECT_FORBIDDEN": "您没有该项目的访问权限。",
+    "PROJECT_ROLE_FORBIDDEN": "您在该项目中的角色不允许此操作。",
+    "PROJECT_MEMBER_INVALID": "不允许的成员变更。",
+    "PROJECT_STATUS_INVALID": "不允许的项目状态流转。",
+    "PROJECT_TASK_NOT_FOUND": "任务不存在。",
+    "PROJECT_TASK_STATUS_INVALID": "不允许的任务状态流转。",
+    "PROJECT_NODE_NOT_FOUND": "需求节点不存在。",
+    "PROJECT_NODE_NOT_CONFIRMED": "该需求节点尚未确认。",
     "PROJECT_KB_BIND_FAILED": "无法创建项目知识库，项目未创建。"
   },
   "nav": {

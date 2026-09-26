@@ -169,7 +169,7 @@ def test_create_task_requires_write(
     )
     with pytest.raises(OctopError) as err:
         service.create_task(project.id, user=viewer, title="T")
-    assert err.value.code is ErrorCode.FORBIDDEN
+    assert err.value.code is ErrorCode.PROJECT_ROLE_FORBIDDEN
 
 
 # ── soft foreign keys ────────────────────────────────────────────────────────
@@ -258,7 +258,7 @@ def test_todo_cannot_jump_to_done(service: ProjectService, project: Any, owner: 
     task = service.create_task(project.id, user=owner, title="T")
     with pytest.raises(OctopError) as err:
         service.transition_task(task.id, user=owner, target="done")
-    assert err.value.code is ErrorCode.PROJECT_INVALID_TRANSITION
+    assert err.value.code is ErrorCode.PROJECT_TASK_STATUS_INVALID
     assert service.get_task(task.id, user=owner).status == "todo"
 
 
@@ -282,7 +282,7 @@ def test_done_can_only_be_reopened_to_doing(
     for target in ("todo", "review", "blocked"):
         with pytest.raises(OctopError) as err:
             service.transition_task(task.id, user=owner, target=target)
-        assert err.value.code is ErrorCode.PROJECT_INVALID_TRANSITION
+        assert err.value.code is ErrorCode.PROJECT_TASK_STATUS_INVALID
 
     assert service.transition_task(task.id, user=owner, target="doing").status == "doing"
 
@@ -293,7 +293,7 @@ def test_cancelled_is_terminal(service: ProjectService, project: Any, owner: Act
     for target in ("todo", "doing", "review", "done", "blocked", "cancelled"):
         with pytest.raises(OctopError) as err:
             service.transition_task(task.id, user=owner, target=target)
-        assert err.value.code is ErrorCode.PROJECT_INVALID_TRANSITION
+        assert err.value.code is ErrorCode.PROJECT_TASK_STATUS_INVALID
 
 
 def test_unknown_task_status_is_a_programming_error(
@@ -367,7 +367,7 @@ def test_delete_task_records_but_keeps_the_history(
 
     with pytest.raises(OctopError) as err:
         service.get_task(task.id, user=owner)
-    assert err.value.code is ErrorCode.NOT_FOUND
+    assert err.value.code is ErrorCode.PROJECT_TASK_NOT_FOUND
 
     events = service.list_timeline(project.id, user=owner)
     assert [e.action for e in events] == [TIMELINE_TASK_CREATED, TIMELINE_TASK_DELETED]
@@ -377,7 +377,7 @@ def test_delete_task_records_but_keeps_the_history(
 def test_delete_unknown_task_is_not_found(service: ProjectService, owner: Actor) -> None:
     with pytest.raises(OctopError) as err:
         service.delete_task("nope", user=owner)
-    assert err.value.code is ErrorCode.NOT_FOUND
+    assert err.value.code is ErrorCode.PROJECT_TASK_NOT_FOUND
 
 
 # ── listing / permissions ────────────────────────────────────────────────────
@@ -420,7 +420,7 @@ def test_viewer_can_read_tasks_but_not_change_them(
     ):
         with pytest.raises(OctopError) as err:
             call()
-        assert err.value.code is ErrorCode.FORBIDDEN
+        assert err.value.code is ErrorCode.PROJECT_ROLE_FORBIDDEN
     assert service.assert_project_role(project.id, user=viewer, required=PROJECT_READ) == "viewer"
     with pytest.raises(OctopError):
         service.assert_project_role(project.id, user=viewer, required=PROJECT_WRITE)
@@ -434,7 +434,7 @@ def test_non_member_cannot_reach_a_task(
 
     with pytest.raises(OctopError) as err:
         service.get_task(task.id, user=outsider)
-    assert err.value.code is ErrorCode.FORBIDDEN
+    assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
 
 
 def test_archived_project_makes_tasks_read_only(
@@ -447,7 +447,7 @@ def test_archived_project_makes_tasks_read_only(
     assert service.get_task(task.id, user=owner).id == task.id
     with pytest.raises(OctopError) as err:
         service.transition_task(task.id, user=owner, target="doing")
-    assert err.value.code is ErrorCode.FORBIDDEN
+    assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
 
 
 def test_timeline_limit(service: ProjectService, project: Any, owner: Actor) -> None:

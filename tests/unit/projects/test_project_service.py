@@ -142,7 +142,7 @@ def test_create_project_requires_the_projects_permission(service: ProjectService
     actor = Actor(1, permissions=[])
     with pytest.raises(OctopError) as err:
         service.create_project(owner_user=actor, name="Alpha")
-    assert err.value.code is ErrorCode.FORBIDDEN
+    assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
 
 
 def test_create_project_requires_the_knowledge_bases_permission(
@@ -155,7 +155,7 @@ def test_create_project_requires_the_knowledge_bases_permission(
     actor = Actor(1, permissions=["projects"])
     with pytest.raises(OctopError) as err:
         service.create_project(owner_user=actor, name="Alpha")
-    assert err.value.code is ErrorCode.FORBIDDEN
+    assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
     assert services.project_repo.list_by_owner(1) == []
     assert services.knowledge_repo.count_bases_for_owner(1) == 0
 
@@ -314,7 +314,7 @@ def test_role_matrix_matches_the_plan(service: ProjectService, owner: Actor) -> 
         for action in (PROJECT_WRITE, PROJECT_CONFIRM, PROJECT_MANAGE_MEMBERS, PROJECT_ARCHIVE):
             with pytest.raises(OctopError) as err:
                 service.assert_project_role(project.id, user=actor, required=action)
-            assert err.value.code is ErrorCode.FORBIDDEN
+            assert err.value.code is ErrorCode.PROJECT_ROLE_FORBIDDEN
 
     assert service.assert_project_role(project.id, user=member, required=PROJECT_WRITE)
     with pytest.raises(OctopError):
@@ -324,7 +324,7 @@ def test_role_matrix_matches_the_plan(service: ProjectService, owner: Actor) -> 
     assert service.assert_project_role(project.id, user=proj_admin, required=PROJECT_MANAGE_MEMBERS)
     with pytest.raises(OctopError) as err:
         service.assert_project_role(project.id, user=proj_admin, required=PROJECT_ARCHIVE)
-    assert err.value.code is ErrorCode.FORBIDDEN, "admin must not archive"
+    assert err.value.code is ErrorCode.PROJECT_ROLE_FORBIDDEN, "admin must not archive"
 
     assert service.assert_project_role(project.id, user=owner, required=PROJECT_ARCHIVE)
 
@@ -339,7 +339,7 @@ def test_non_member_is_rejected_even_when_a_platform_admin(
 
     with pytest.raises(OctopError) as err:
         service.assert_project_role(project.id, user=outsider, required=PROJECT_READ)
-    assert err.value.code is ErrorCode.FORBIDDEN
+    assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
 
 
 def test_unknown_action_is_a_programming_error(service: ProjectService, owner: Actor) -> None:
@@ -351,7 +351,7 @@ def test_unknown_action_is_a_programming_error(service: ProjectService, owner: A
 def test_missing_project_is_not_found(service: ProjectService, owner: Actor) -> None:
     with pytest.raises(OctopError) as err:
         service.get_project("nope", user=owner)
-    assert err.value.code is ErrorCode.NOT_FOUND
+    assert err.value.code is ErrorCode.PROJECT_NOT_FOUND
 
 
 # ── state machine (§4.6 / M8) ────────────────────────────────────────────────
@@ -368,7 +368,7 @@ def test_draft_cannot_jump_straight_to_archived(service: ProjectService, owner: 
     project = make_project(service, owner)
     with pytest.raises(OctopError) as err:
         service.transition_project(project.id, user=owner, target="archived")
-    assert err.value.code is ErrorCode.PROJECT_INVALID_TRANSITION
+    assert err.value.code is ErrorCode.PROJECT_STATUS_INVALID
     assert service.get_project(project.id, user=owner).status == "draft"
 
 
@@ -381,8 +381,8 @@ def test_archived_is_terminal(service: ProjectService, owner: Actor) -> None:
         with pytest.raises(OctopError) as err:
             service.transition_project(project.id, user=owner, target=target)
         assert err.value.code in {
-            ErrorCode.PROJECT_INVALID_TRANSITION,
-            ErrorCode.FORBIDDEN,
+            ErrorCode.PROJECT_STATUS_INVALID,
+            ErrorCode.PROJECT_FORBIDDEN,
         }
 
 
@@ -396,7 +396,7 @@ def test_archived_project_is_read_only(
     assert service.get_project(project.id, user=owner) is not None
     with pytest.raises(OctopError) as err:
         service.update_project(project.id, user=owner, name="Renamed")
-    assert err.value.code is ErrorCode.FORBIDDEN
+    assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
     with pytest.raises(OctopError) as err:
         service.add_member(
             project.id,
@@ -404,7 +404,7 @@ def test_archived_project_is_read_only(
             subject_type=MEMBER_SUBJECT_AGENT,
             subject_id="agent-1",
         )
-    assert err.value.code is ErrorCode.FORBIDDEN
+    assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
 
 
 def test_activation_requires_at_least_one_member(
@@ -416,7 +416,7 @@ def test_activation_requires_at_least_one_member(
 
     with pytest.raises(OctopError) as err:
         service.transition_project(project.id, user=owner, target="active")
-    assert err.value.code is ErrorCode.PROJECT_INVALID_TRANSITION
+    assert err.value.code is ErrorCode.PROJECT_STATUS_INVALID
 
 
 def test_activation_requires_the_owner_row_to_keep_the_owner_role(
@@ -431,7 +431,7 @@ def test_activation_requires_the_owner_row_to_keep_the_owner_role(
 
     with pytest.raises(OctopError) as err:
         service.transition_project(project.id, user=owner, target="active")
-    assert err.value.code is ErrorCode.PROJECT_INVALID_TRANSITION
+    assert err.value.code is ErrorCode.PROJECT_STATUS_INVALID
 
 
 def test_unknown_status_is_a_programming_error(service: ProjectService, owner: Actor) -> None:
@@ -449,7 +449,7 @@ def test_owner_cannot_be_removed(service: ProjectService, owner: Actor) -> None:
         service.remove_member(
             project.id, user=owner, subject_type=MEMBER_SUBJECT_USER, subject_id=str(owner.id)
         )
-    assert err.value.code is ErrorCode.PROJECT_INVALID_TRANSITION
+    assert err.value.code is ErrorCode.PROJECT_MEMBER_INVALID
 
 
 def test_owner_cannot_be_demoted(service: ProjectService, owner: Actor) -> None:
@@ -462,7 +462,7 @@ def test_owner_cannot_be_demoted(service: ProjectService, owner: Actor) -> None:
             subject_id=str(owner.id),
             role="viewer",
         )
-    assert err.value.code is ErrorCode.PROJECT_INVALID_TRANSITION
+    assert err.value.code is ErrorCode.PROJECT_MEMBER_INVALID
 
 
 def test_unknown_role_is_rejected(service: ProjectService, owner: Actor) -> None:
@@ -491,7 +491,7 @@ def test_viewer_cannot_add_members(
             subject_type=MEMBER_SUBJECT_AGENT,
             subject_id="agent-1",
         )
-    assert err.value.code is ErrorCode.FORBIDDEN
+    assert err.value.code is ErrorCode.PROJECT_ROLE_FORBIDDEN
 
 
 def test_member_can_be_removed_by_an_admin_role(
@@ -544,7 +544,7 @@ def test_list_projects_includes_member_projects(
 def test_list_projects_requires_the_projects_permission(service: ProjectService) -> None:
     with pytest.raises(OctopError) as err:
         service.list_projects(user=Actor(1, permissions=[]))
-    assert err.value.code is ErrorCode.FORBIDDEN
+    assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
 
 
 def test_delete_project_requires_owner(
@@ -556,7 +556,7 @@ def test_delete_project_requires_owner(
 
     with pytest.raises(OctopError) as err:
         service.delete_project(project.id, user=proj_admin)
-    assert err.value.code is ErrorCode.FORBIDDEN
+    assert err.value.code is ErrorCode.PROJECT_ROLE_FORBIDDEN
 
     assert service.delete_project(project.id, user=owner) is True
     assert services.project_repo.get(project.id) is None
