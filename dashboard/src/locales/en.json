@@ -1263,7 +1263,7 @@
     "hideThinking": "Hide thinking",
     "showThinking": "Show thinking",
     "collapseThinking": "Collapse thinking by default",
-    "collapseThinkingHint": "Keep thinking and tool calls collapsed while generating replies. You can still expand them manually. Saved in this browser.",
+    "collapseThinkingHint": "Team chats collapse thinking and tool panels by default; solo chats stay expanded. You can change either anytime. Each preference is saved in this browser.",
     "processSummary": "Called {{tools}} tools, {{thinking}} deep thoughts",
     "processSummaryToolsOnly": "Called {{tools}} tools",
     "processSummaryThinkingOnly": "{{thinking}} deep thoughts",
