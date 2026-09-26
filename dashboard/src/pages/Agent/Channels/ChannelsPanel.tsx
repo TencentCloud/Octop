@@ -18,6 +18,7 @@ import {
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
   applyQqChannelSaveConfig,
   CHANNEL_DISPLAY_CONFIG_KEYS,
+  CHANNEL_FORM_RESERVED_KEYS,
   CHANNEL_FIELDS,
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeChannelFieldValue,
@@ -199,7 +200,8 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
           if (
             CHANNEL_DISPLAY_CONFIG_KEYS.includes(
               k as (typeof CHANNEL_DISPLAY_CONFIG_KEYS)[number],
-            )
+            ) ||
+            (CHANNEL_FORM_RESERVED_KEYS as readonly string[]).includes(k)
           ) {
             continue;
           }

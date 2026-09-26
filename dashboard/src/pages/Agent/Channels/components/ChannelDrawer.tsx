@@ -1161,6 +1161,7 @@ export function ChannelDrawer({
   const handleFinish = (values: ChannelFormValues) => {
     const {
       kind,
+      enabled,
       __raw_config,
       response_mode,
       show_thinking,
