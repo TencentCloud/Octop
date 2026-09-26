@@ -129,6 +129,28 @@ def _assert_can_assign(actor: User, permissions: list[str]) -> None:
         )
 
 
+def _assert_can_grant_admin(actor: User, role: Role) -> None:
+    """Only an administrator may hand out the admin role.
+
+    ``admin`` bypasses every permission check (``user_has_permission``), so the
+    delegatable ``users`` permission must not be able to mint new administrators.
+    """
+    if role is Role.ADMIN and not actor.is_admin:
+        raise OctopError(ErrorCode.FORBIDDEN, "cannot grant the admin role")
+
+
+def _assert_can_manage(actor: User, row: Any) -> None:
+    """A delegated user manager may not act on administrator accounts.
+
+    Without this, ``users`` would mean "reset the owner's password and log in as
+    them", or "demote/disable/delete the only administrator".
+    """
+    if actor.is_admin:
+        return
+    if str(getattr(row, "role", "")) == Role.ADMIN.value:
+        raise OctopError(ErrorCode.FORBIDDEN, "cannot manage an administrator account")
+
+
 def _can_manage_users(row: Any) -> bool:
     if str(getattr(row, "role", "")) == "admin":
         return True
@@ -207,6 +229,7 @@ async def create_user(
     if "max_agents" in policy_kwargs:
         normalize_max_agents(policy_kwargs["max_agents"])
     role = Role(body.role)
+    _assert_can_grant_admin(actor, role)
     user = await server.user_manager.create(
         username=body.username,
         password=body.password,
@@ -352,6 +375,7 @@ async def patch_user(
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    _assert_can_manage(actor, row)
     if body.permissions is not None:
         _assert_can_assign(actor, body.permissions)
         _assert_not_last_user_manager(
@@ -361,9 +385,11 @@ async def patch_user(
             new_permissions=body.permissions,
         )
     if body.role is not None:
-        if user_id == actor.id and Role(body.role) is not Role.ADMIN:
+        new_role = Role(body.role)
+        _assert_can_grant_admin(actor, new_role)
+        if user_id == actor.id and new_role is not Role.ADMIN:
             raise OctopError(ErrorCode.FORBIDDEN, "cannot demote yourself")
-        await server.user_manager.set_role(row.username, Role(body.role))
+        await server.user_manager.set_role(row.username, new_role)
     if body.display_name is not None:
         await server.user_manager.set_display_name(row.username, body.display_name)
     if "email" in body.model_fields_set:
@@ -402,12 +428,13 @@ async def unlock_user_login(
 async def reset_password(
     user_id: int,
     body: ResetPasswordBody,
-    _: Any = Depends(require_permission("users")),
+    actor: Any = Depends(require_permission("users")),
     server: Any = Depends(get_server),
 ) -> None:
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    _assert_can_manage(actor, row)
     await server.user_manager.reset_password(row.username, body.new_password)
 
 
@@ -422,4 +449,5 @@ async def delete_user(
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    _assert_can_manage(actor, row)
     await server.user_manager.remove(row.username)
