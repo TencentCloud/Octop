@@ -1,4 +1,9 @@
-import { clearSetupRequired, markSetupRequired, request } from "../request";
+import {
+  clearSetupRequired,
+  markSetupRequired,
+  request,
+  requestUpload,
+} from "../request";
 
 /**
  * Auth + setup module — adapted to octop's multi-user backend.
@@ -55,6 +60,10 @@ export interface OctopUser {
   /** Linked SSO providers (multi-identity). */
   sso_identities?: SsoIdentity[];
   has_password?: boolean;
+  /** Preset character id. Empty means the built-in default portrait. */
+  avatar_icon?: string | null;
+  /** Uploaded portrait. Shown ahead of the preset when present. */
+  avatar_url?: string | null;
 }
 
 export interface LoginResponse {
@@ -254,6 +263,21 @@ export const authApi = {
       method: "PATCH",
       body: JSON.stringify({ display_name: displayName }),
     }),
+
+  /** Choose a preset icon. Null restores the built-in default and clears an upload. */
+  setAvatarIcon: (icon: string | null) =>
+    request<OctopUser>("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({ avatar_icon: icon }),
+    }),
+
+  uploadAvatar: (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return requestUpload<{ avatar_url: string | null }>("/auth/me/avatar", body);
+  },
+
+  deleteAvatar: () => request<void>("/auth/me/avatar", { method: "DELETE" }),
 
   // --- Legacy stubs kept so finnie-era components compile ----------------
   // These call paths are removed in octop's data model; the actual

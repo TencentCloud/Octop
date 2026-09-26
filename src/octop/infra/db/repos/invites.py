@@ -8,6 +8,13 @@ from typing import Any
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, insert_returning_id, map_rows, now_ts
+from octop.infra.utils.ulid import new_ulid
+
+
+def _optional_text(raw: object) -> str | None:
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
 
 
 @dataclass(frozen=True)
@@ -21,9 +28,12 @@ class InviteRow:
     used_at: int | None
     used_by_user_id: int | None
     revoked_at: int | None
+    role_name: str | None = None
+    user_role_id: str | None = None
 
     @classmethod
     def from_row(cls, row: DbRow) -> InviteRow:
+        keys = set(row.keys())
         return cls(
             id=int(row["id"]),
             code=str(row["code"]),
@@ -36,6 +46,10 @@ class InviteRow:
                 int(row["used_by_user_id"]) if row["used_by_user_id"] is not None else None
             ),
             revoked_at=int(row["revoked_at"]) if row["revoked_at"] is not None else None,
+            role_name=_optional_text(row["role_name"]) if "role_name" in keys else None,
+            user_role_id=(
+                _optional_text(row["user_role_id"]) if "user_role_id" in keys else None
+            ),
         )
 
     def status(self, *, now: int | None = None) -> str:
@@ -60,15 +74,17 @@ class InviteRepo:
         created_by: int,
         expires_at: int,
         note: str | None = None,
+        role_name: str | None = None,
+        user_role_id: str | None = None,
     ) -> InviteRow:
         ts = now_ts()
         with self._db.transaction() as conn:
             invite_id = insert_returning_id(
                 conn,
                 "INSERT INTO user_invites("
-                "code, created_by, note, created_at, expires_at"
-                ") VALUES (?, ?, ?, ?, ?)",
-                (code, created_by, note, ts, expires_at),
+                "code, created_by, note, created_at, expires_at, role_name, user_role_id"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (code, created_by, note, ts, expires_at, role_name, user_role_id),
             )
         row = self.get(invite_id)
         assert row is not None
@@ -116,6 +132,11 @@ class InviteRepo:
         display_name: str | None,
         locale: str,
         email: str | None = None,
+        account_role: str = "user",
+        permissions: list[str] | None = None,
+        policies: list[tuple[str, str]] | None = None,
+        user_role_id: str | None = None,
+        role_name: str | None = None,
     ) -> tuple[int, InviteRow]:
         """Create a user and mark the invite used in one transaction.
 
@@ -146,22 +167,28 @@ class InviteRepo:
                 if email_owner is not None:
                     raise ValueError("email_taken")
 
+            perm_list = list(permissions or [])
             user_id = insert_returning_id(
                 conn,
                 "INSERT INTO users(username, password_hash, role, display_name, locale, "
-                "email, sso_provider_id, sso_subject, disabled, created_at, permissions) "
-                "VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 0, ?, ?)",
+                "email, sso_provider_id, sso_subject, disabled, created_at, permissions, "
+                "role_name, user_role_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 0, ?, ?, ?, ?)",
                 (
                     username,
                     password_hash,
-                    "user",
+                    account_role,
                     display_name,
                     locale,
                     email,
                     ts,
-                    json.dumps([], ensure_ascii=False),
+                    json.dumps(perm_list, ensure_ascii=False),
+                    role_name if role_name is not None else invite.role_name,
+                    user_role_id if user_role_id is not None else invite.user_role_id,
                 ),
             )
+            if policies:
+                _insert_named_policies(conn, user_id=user_id, policies=policies, ts=ts)
             updated = conn.execute(
                 "UPDATE user_invites SET used_at = ?, used_by_user_id = ? "
                 "WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
@@ -172,6 +199,29 @@ class InviteRepo:
             fresh = conn.execute("SELECT * FROM user_invites WHERE id = ?", (invite.id,)).fetchone()
             assert fresh is not None
             return user_id, InviteRow.from_row(fresh)
+
+
+def _insert_named_policies(
+    conn: Any,
+    *,
+    user_id: int,
+    policies: list[tuple[str, str]],
+    ts: int,
+) -> None:
+    for name, value in policies:
+        conn.execute(
+            """
+            INSERT INTO user_policies(
+              policy_id, user_id, name, enabled, value, created_at, updated_at
+            )
+            VALUES (?, ?, ?, 1, ?, ?, ?)
+            ON CONFLICT(user_id, name) DO UPDATE SET
+              enabled = 1,
+              value = excluded.value,
+              updated_at = excluded.updated_at
+            """,
+            (new_ulid(), user_id, name, value, ts, ts),
+        )
 
 
 def invite_status_payload(invite: InviteRow, *, now: int | None = None) -> dict[str, Any]:
@@ -187,4 +237,6 @@ def invite_status_payload(invite: InviteRow, *, now: int | None = None) -> dict[
         "used_by_user_id": invite.used_by_user_id,
         "revoked_at": invite.revoked_at,
         "status": invite.status(now=ts),
+        "role_name": invite.role_name,
+        "user_role_id": invite.user_role_id,
     }

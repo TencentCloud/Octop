@@ -9,6 +9,7 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from octop.infra.db.repos._base import now_ts
 from octop.infra.db.repos.invites import InviteRepo, InviteRow, invite_status_payload
@@ -78,6 +79,8 @@ class InviteService:
         actor_username: str,
         note: str | None = None,
         expires_in_days: int = DEFAULT_EXPIRES_DAYS,
+        role_name: str | None = None,
+        user_role_id: str | None = None,
     ) -> InviteRow:
         days = int(expires_in_days)
         if days < MIN_EXPIRES_DAYS or days > MAX_EXPIRES_DAYS:
@@ -99,6 +102,8 @@ class InviteService:
                     created_by=created_by,
                     expires_at=expires_at,
                     note=cleaned,
+                    role_name=role_name,
+                    user_role_id=user_role_id,
                 )
                 self._services.audit_repo.write(
                     actor=actor_username,
@@ -144,6 +149,7 @@ class InviteService:
             raise OctopError(ErrorCode.INVITE_EXPIRED, "invite expired")
         if status == "revoked":
             raise OctopError(ErrorCode.INVITE_REVOKED, "invite revoked")
+        _role_defaults_for_invite(self._services.db, row)
         return {"ok": True, "expires_at": row.expires_at}
 
     def redeem(
@@ -171,6 +177,12 @@ class InviteService:
         if name == "":
             name = None
         normalized_email = parse_optional_email(email)
+        account_role, perm_list, policy_pairs, user_role_id, role_name = (
+            _role_defaults_for_invite(
+            self._services.db,
+            self._repo.get_by_code(cleaned_code),
+            )
+        )
         try:
             user_id, _invite = self._repo.redeem_creating_user(
                 code=cleaned_code,
@@ -179,6 +191,11 @@ class InviteService:
                 display_name=name,
                 locale=loc,
                 email=normalized_email,
+                account_role=account_role,
+                permissions=perm_list,
+                policies=policy_pairs,
+                user_role_id=user_role_id,
+                role_name=role_name,
             )
         except LookupError as exc:
             raise OctopError(ErrorCode.INVITE_INVALID, "invite not found") from exc
@@ -205,10 +222,10 @@ class InviteService:
         user = User(
             id=user_id,
             username=cleaned_username,
-            role=Role.USER,
+            role=Role(account_role),
             display_name=name,
             locale=loc,
-            permissions=[],
+            permissions=perm_list,
         )
         register_user(user)
         self._services.audit_repo.write(
@@ -217,6 +234,49 @@ class InviteService:
             target=cleaned_code,
         )
         return user
+
+
+def _role_defaults_for_invite(
+    db: Any, invite: Any
+) -> tuple[str, list[str], list[tuple[str, str]], str | None, str | None]:
+    """Read the role named on the invite.
+
+    Legacy invites with no role name stay a plain user. A stored name that no
+    longer matches a role fails the redeem, so a deleted or renamed template
+    cannot silently create an empty account.
+    """
+    if invite is None:
+        return "user", [], [], None, None
+    role_name = getattr(invite, "role_name", None)
+    user_role_id = getattr(invite, "user_role_id", None)
+    if not isinstance(user_role_id, str) or not user_role_id:
+        user_role_id = None
+    if (not isinstance(role_name, str) or not role_name) and user_role_id is None:
+        return "user", [], [], None, None
+    from octop.infra.db.repos.user_roles import UserRoleRepo
+    from octop.infra.users.permissions import PERMISSIONS
+
+    role = (
+        UserRoleRepo(db).get(user_role_id)
+        if user_role_id is not None
+        else UserRoleRepo(db).get_by_name(role_name)
+    )
+    if role is None:
+        raise OctopError(
+            ErrorCode.INVITE_ROLE_MISSING,
+            "invite role no longer exists",
+            status=409,
+        )
+    if role.is_admin:
+        return "admin", [], [], role.user_role_id, role.user_role_name
+    permissions = [key for key in role.permissions if key in PERMISSIONS]
+    return (
+        "user",
+        permissions,
+        list(role.policies),
+        role.user_role_id,
+        role.user_role_name,
+    )
 
 
 def check_invite_rate_limit(client_id: str) -> None:

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_permission, sign_token
 from octop.api.routers.auth import _user_json
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.users.invites import (
     DEFAULT_EXPIRES_DAYS,
@@ -58,6 +59,10 @@ class InviteCreateBody(BaseModel):
         ge=MIN_EXPIRES_DAYS,
         le=MAX_EXPIRES_DAYS,
     )
+    user_role_id: str | None = Field(
+        default=None,
+        description="Role id stored on the invite. Defaults are read when the invite is redeemed.",
+    )
 
 
 class InviteValidateBody(BaseModel):
@@ -89,11 +94,31 @@ async def create_invite(
     actor: User = Depends(require_permission("users")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
+    role_name: str | None = None
+    user_role_id: str | None = None
+    if body.user_role_id is not None:
+        from octop.api.routers.users import _assert_can_assign
+        from octop.infra.db.repos.user_roles import UserRoleRepo
+
+        role = UserRoleRepo(server.services.db).get(body.user_role_id)
+        if role is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "role not found")
+        if role.is_admin and not actor.is_admin:
+            raise OctopError(
+                ErrorCode.FORBIDDEN,
+                "only an administrator can invite the administrator role",
+            )
+        if not role.is_admin:
+            _assert_can_assign(actor, list(role.permissions))
+        role_name = role.user_role_name
+        user_role_id = role.user_role_id
     row = _service(server).create(
         created_by=actor.id,
         actor_username=actor.username,
         note=body.note,
         expires_in_days=body.expires_in_days,
+        role_name=role_name,
+        user_role_id=user_role_id,
     )
     from octop.infra.db.repos.invites import invite_status_payload
 

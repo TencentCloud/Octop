@@ -138,7 +138,11 @@ async def test_sso_create_then_updates_same_subject(manager: UserManager):
     )
 
     assert user.role is Role.USER
+    assert "channels" in user.permissions
     row = manager.get_row(user.id)
+    assert row is not None
+    assert row.role_name == "用户"
+    assert row.user_role_id == "user"
     assert row.password_hash is None
     assert row.email == "alice@example.com"
     assert row.display_name == "Alice"

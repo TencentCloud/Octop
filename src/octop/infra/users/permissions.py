@@ -62,8 +62,8 @@ PERMISSIONS: dict[str, PermissionDef] = {
     "users": _p(
         "users",
         "admin",
-        "内置用户",
-        "Local users",
+        "用户管理",
+        "User management",
         page="users",
         page_zh="用户",
         page_en="Users",

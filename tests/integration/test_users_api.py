@@ -33,6 +33,24 @@ async def test_create_list_get_delete(env):
     assert r.status_code == 404
 
 
+async def test_admin_can_save_own_account_with_empty_permissions(env):
+    """Admin accounts store permissions as []. Saving that list must not 403."""
+    c, _srv, auth = env
+    me = (await c.get("/api/auth/me", headers=auth)).json()
+    saved = await c.patch(
+        f"/api/users/{me['id']}",
+        headers=auth,
+        json={
+            "display_name": "Root",
+            "role": "admin",
+            "permissions": [],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["display_name"] == "Root"
+    assert saved.json()["role"] == "admin"
+
+
 async def test_non_admin_gets_403(env):
     c, srv, _ = env
     admin_auth = env[2]

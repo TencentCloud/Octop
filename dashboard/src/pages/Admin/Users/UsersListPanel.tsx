@@ -16,7 +16,7 @@
  *   DELETE /api/users/{id}
  */
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Button,
   Modal,
@@ -32,6 +32,7 @@ import {
   Spin,
   Tag,
   Segmented,
+  Select,
   Checkbox,
   InputNumber,
 } from "antd";
@@ -41,9 +42,7 @@ import { ResizableTable } from "@/components/ResizableTable";
 import {
   Bot,
   Check,
-  ChevronRight,
   CircleHelp,
-  Clock,
   Coins,
   IdCard,
   KeyRound,
@@ -67,10 +66,19 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
+import {
+  userRolesApi,
+  snapshotRoleLabel,
+  userRoleDrift,
+  userRoleLabel,
+  type UserRole,
+} from "../../../api/modules/userRoles";
 import { authApi } from "../../../api/modules/auth";
 import { useCardTableView } from "../../../hooks/useCardTableView";
+import { useSetCurrentUser } from "../../../hooks/useCurrentUser";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { apiErrorMessage } from "../../../utils/apiError";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { AgentCard } from "../../Experts/components/AgentCard";
@@ -81,6 +89,13 @@ import { fetchFilesystemDefaults } from "../../Experts/components/agentBackendFo
 import { HOST_FS_ROOT } from "../../Experts/components/rootDirTree";
 import expertStyles from "../../Experts/index.module.less";
 import styles from "./index.module.less";
+import {
+  deleteUserAvatar,
+  ProfileAvatar,
+  ProfileAvatarPicker,
+  RoleSelectLabel,
+  uploadUserAvatar,
+} from "./ProfileAvatar";
 
 const { Text } = Typography;
 
@@ -99,12 +114,16 @@ interface UserRow {
   login_retry_after_seconds?: number;
   created_at?: number;
   permissions?: string[];
+  role_name?: string | null;
+  user_role_id?: string | null;
+  avatar_url?: string | null;
+  avatar_icon?: string | null;
   workspace_root_dir?: string | null;
   token_quota?: number | null;
   max_agents?: number | null;
 }
 
-interface PermissionCatalogItem {
+export interface PermissionCatalogItem {
   key: string;
   category: string;
   label: string;
@@ -112,12 +131,12 @@ interface PermissionCatalogItem {
   page_label?: string;
 }
 
-function permFullLabel(item: PermissionCatalogItem): string {
+export function permFullLabel(item: PermissionCatalogItem): string {
   if (item.page_label) return `${item.page_label} / ${item.label}`;
   return item.label;
 }
 
-interface PolicyFormValues {
+export interface PolicyFormValues {
   limit_workspace_root?: boolean;
   workspace_root_dir?: string;
   limit_token_quota?: boolean;
@@ -134,6 +153,8 @@ interface CreateValues extends PolicyFormValues {
   confirm: string;
   role: "admin" | "user";
   permissions?: string[];
+  user_role_id?: string | null;
+  role_name?: string | null;
 }
 
 interface EditValues extends PolicyFormValues {
@@ -141,11 +162,202 @@ interface EditValues extends PolicyFormValues {
   email?: string;
   role: "admin" | "user";
   permissions?: string[];
+  user_role_id?: string | null;
+  role_name?: string | null;
 }
 
 interface ResetValues {
   password: string;
   confirm: string;
+}
+
+function policyFieldsFromRole(
+  role: UserRole,
+  workspaceRootAllowed: boolean,
+): PolicyFormValues {
+  return {
+    limit_workspace_root:
+      workspaceRootAllowed && Boolean(role.workspace_root_dir),
+    workspace_root_dir: role.workspace_root_dir ?? undefined,
+    limit_token_quota: role.token_quota != null,
+    token_quota: role.token_quota ?? undefined,
+    limit_max_agents: role.max_agents != null,
+    max_agents: role.max_agents ?? undefined,
+  };
+}
+
+function UserRoleField({
+  roles,
+  workspaceRootAllowed,
+  staleName,
+  confirmOverwrite,
+  actorIsAdmin,
+  diverged,
+  snapshotName,
+}: {
+  roles: UserRole[];
+  workspaceRootAllowed: boolean;
+  staleName?: string | null;
+  confirmOverwrite?: boolean;
+  actorIsAdmin?: boolean;
+  diverged?: boolean;
+  snapshotName?: string | null;
+}) {
+  const { t } = useTranslation();
+  const form = Form.useFormInstance();
+  const selectedId = Form.useWatch("user_role_id", form);
+  const showStale = Boolean(staleName) && selectedId == null;
+  const selectedRole = roles.find((role) => role.user_role_id === selectedId);
+  const showDiverged =
+    Boolean(diverged) &&
+    Boolean(snapshotName) &&
+    selectedRole?.user_role_name === snapshotName;
+  const visibleRoles =
+    actorIsAdmin === false
+      ? roles.filter((role) => role.system_role !== "admin")
+      : roles;
+  const committedId = useRef<string | null>(
+    (form.getFieldValue("user_role_id") as string | null | undefined) ?? null,
+  );
+  const committedName = useRef<string | null>(
+    (form.getFieldValue("role_name") as string | null | undefined) ?? null,
+  );
+
+  const applyRole = (role: UserRole) => {
+    const next: Record<string, unknown> = {
+      user_role_id: role.user_role_id,
+      role_name: role.user_role_name,
+    };
+    if (role.system_role !== "admin") {
+      next.permissions = [...role.permissions];
+      Object.assign(next, policyFieldsFromRole(role, workspaceRootAllowed));
+    }
+    form.setFieldsValue(next);
+    committedId.current = role.user_role_id;
+    committedName.current = role.user_role_name;
+  };
+
+  return (
+    <>
+      <Form.Item name="role_name" hidden>
+        <Input />
+      </Form.Item>
+      <Form.Item
+        label={t("adminUsers.formUserRole")}
+        name="user_role_id"
+        extra={
+          showStale
+            ? t("adminUsers.formUserRoleStale", { name: staleName })
+            : showDiverged
+              ? t("adminUsers.formRoleDiverged")
+              : t("adminUsers.formUserRoleHint")
+        }
+      >
+        <Select
+          allowClear
+          placeholder={t("adminUsers.formUserRolePlaceholder")}
+          options={visibleRoles.map((role) => ({
+            value: role.user_role_id,
+            label: userRoleLabel(role, t),
+          }))}
+          optionRender={(option) => {
+            const role = visibleRoles.find(
+              (item) => item.user_role_id === option.value,
+            );
+            if (!role) return option.label;
+            return (
+              <RoleSelectLabel
+                url={role.avatar_url}
+                icon={role.avatar_icon}
+                label={userRoleLabel(role, t)}
+              />
+            );
+          }}
+          labelRender={(option) => {
+            const role = visibleRoles.find(
+              (item) => item.user_role_id === option.value,
+            );
+            if (!role) return option.label;
+            return (
+              <RoleSelectLabel
+                url={role.avatar_url}
+                icon={role.avatar_icon}
+                label={userRoleLabel(role, t)}
+              />
+            );
+          }}
+          onChange={(id) => {
+            const next = (id as string | null | undefined) ?? null;
+            if (next == null) {
+              form.setFieldsValue({ user_role_id: null, role_name: null });
+              committedId.current = null;
+              committedName.current = null;
+              return;
+            }
+            const role = visibleRoles.find((item) => item.user_role_id === next);
+            if (!role) return;
+            if (!confirmOverwrite || committedId.current === next) {
+              applyRole(role);
+              return;
+            }
+            Modal.confirm({
+              title: t("adminUsers.roleApplyConfirm"),
+              content: t("adminUsers.roleApplyConfirmHint"),
+              okText: t("common.confirm"),
+              cancelText: t("common.cancel"),
+              onOk: () => applyRole(role),
+              onCancel: () => {
+                form.setFieldsValue({
+                  user_role_id: committedId.current,
+                  role_name: committedName.current,
+                });
+              },
+            });
+          }}
+        />
+      </Form.Item>
+    </>
+  );
+}
+
+function RoleNameMark({
+  row,
+  roles,
+  className,
+}: {
+  row: UserRow;
+  roles: UserRole[];
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  const name = row.role_name?.trim();
+  if (!name) return <span className={className}>—</span>;
+  const drift = userRoleDrift(row, roles);
+  const matched = row.user_role_id
+    ? roles.find((role) => role.user_role_id === row.user_role_id)
+    : roles.find((role) => role.user_role_name === name);
+  return (
+    <span className={`${styles.roleNameMark} ${className ?? ""}`}>
+      {matched ? (
+        <ProfileAvatar
+          url={matched.avatar_url}
+          icon={matched.avatar_icon}
+          kind="role"
+          className={styles.roleSelectIcon}
+        />
+      ) : null}
+      <span className={styles.roleNameText}>
+        {snapshotRoleLabel(name, roles, t, row.user_role_id)}
+      </span>
+      {drift ? (
+        <Tag>
+          {drift === "missing"
+            ? t("adminUsers.roleNameMissing")
+            : t("adminUsers.roleNameChanged")}
+        </Tag>
+      ) : null}
+    </span>
+  );
 }
 
 function roleToneClass(role: "admin" | "user"): string {
@@ -194,6 +406,7 @@ interface UserCardGridProps {
   onDelete: (row: UserRow) => Promise<void>;
   onUnlockLogin: (row: UserRow) => Promise<void>;
   nowSec: number;
+  userRoles: UserRole[];
 }
 
 type BatchAction =
@@ -225,21 +438,12 @@ interface BatchMaxAgentsFormValues {
   max_agents?: number | null;
 }
 
-function userInitials(displayName: string, username: string): string {
-  const source = displayName.trim() || username;
-  const parts = source.split(/[\s._-]+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return source.slice(0, 2).toUpperCase();
-}
-
 const FIELD_ICON_PROPS = {
   size: 16 as const,
   style: { color: "var(--fn-text-tertiary)" },
 };
 
-function policyPayload(
+export function policyPayload(
   values: PolicyFormValues,
   options: { workspaceRootAllowed: boolean },
 ): {
@@ -255,6 +459,24 @@ function policyPayload(
     token_quota: values.limit_token_quota ? values.token_quota ?? null : null,
     max_agents: values.limit_max_agents ? values.max_agents ?? null : null,
   };
+}
+
+export function rolePoliciesFromForm(
+  values: PolicyFormValues,
+  options: { workspaceRootAllowed: boolean },
+): { name: string; value: string }[] {
+  const flat = policyPayload(values, options);
+  const policies: { name: string; value: string }[] = [];
+  if (flat.workspace_root_dir) {
+    policies.push({ name: "workspace_root_dir", value: flat.workspace_root_dir });
+  }
+  if (flat.token_quota != null) {
+    policies.push({ name: "token_quota", value: String(flat.token_quota) });
+  }
+  if (flat.max_agents != null) {
+    policies.push({ name: "max_agents", value: String(flat.max_agents) });
+  }
+  return policies;
 }
 
 /** Common quotas admins pick — values are absolute token counts. */
@@ -380,7 +602,7 @@ function MaxAgentsInput({ value, onChange }: MaxAgentsInputProps) {
   );
 }
 
-function ResourcePolicyFields({
+export function ResourcePolicyFields({
   fsTreeRoot,
   workspaceRootAllowed,
 }: {
@@ -548,7 +770,7 @@ interface PermissionCheckboxPickerProps {
   disabled?: boolean;
 }
 
-function PermissionCheckboxPicker({
+export function PermissionCheckboxPicker({
   value,
   onChange,
   catalog,
@@ -784,6 +1006,7 @@ function UserCardGrid({
   onDelete,
   onUnlockLogin,
   nowSec,
+  userRoles,
 }: UserCardGridProps) {
   const { t } = useTranslation();
   const timeZone = useServerTimezone();
@@ -808,17 +1031,6 @@ function UserCardGrid({
         const remaining = lockRemainingSeconds(row, nowSec);
         const isLocked = remaining > 0;
         const failedCount = row.login_failed_count ?? 0;
-        const accentClass = isLocked
-          ? styles.userCardAccentLocked
-          : row.disabled
-          ? styles.userCardAccentDisabled
-          : row.role === "admin"
-          ? styles.userCardAccentAdmin
-          : styles.userCardAccentUser;
-        const statusColor = row.disabled ? "#8c8c8c" : "#52c41a";
-        const statusBg = row.disabled
-          ? "rgba(140,140,140,0.10)"
-          : "rgba(82,196,26,0.10)";
         return (
           <div
             key={row.id}
@@ -831,10 +1043,8 @@ function UserCardGrid({
               .filter(Boolean)
               .join(" ")}
           >
-            <div className={`${styles.userCardAccent} ${accentClass}`} />
-
-            <div className={styles.userCardInner}>
-              <div className={styles.userCardHeader}>
+            <div className={styles.userCardBody}>
+              <div className={styles.userCardTop}>
                 <Checkbox
                   checked={selected}
                   onChange={(e) => onToggleSelect(row.id, e.target.checked)}
@@ -843,107 +1053,66 @@ function UserCardGrid({
                     username: row.username,
                   })}
                 />
-                <div
-                  className={`${styles.userCardAvatar} ${roleToneClass(
-                    row.role,
-                  )}`}
-                  aria-hidden="true"
-                >
-                  {userInitials(displayName, row.username)}
-                </div>
-
+                <span className={styles.userCardAvatarWrap}>
+                  <ProfileAvatar
+                    url={row.avatar_url}
+                    icon={row.avatar_icon}
+                    kind="user"
+                    className={styles.userCardAvatar}
+                  />
+                  <span
+                    className={
+                      row.disabled
+                        ? `${styles.userCardStatusDot} ${styles.userCardStatusDotOff}`
+                        : styles.userCardStatusDot
+                    }
+                  />
+                </span>
                 <div className={styles.userCardTitleBlock}>
                   <div className={styles.userCardNameRow}>
-                    <span className={styles.userCardName}>{displayName}</span>
-                    {isSelf && (
-                      <Tag className={styles.userCardYouTag}>
+                    <h3 className={styles.userCardName}>{displayName}</h3>
+                    {isSelf ? (
+                      <span className={styles.userCardYou}>
                         {t("adminUsers.you")}
-                      </Tag>
-                    )}
+                      </span>
+                    ) : null}
                   </div>
-                  <div className={styles.userCardHandle}>@{row.username}</div>
-                </div>
-
-                <Switch
-                  size="small"
-                  checked={!row.disabled}
-                  onChange={(checked) =>
-                    void onTogglePatch(row, { disabled: !checked })
-                  }
-                  className={styles.userCardSwitch}
-                  aria-label={t("common.enabled")}
-                />
-              </div>
-
-              <div className={styles.userCardMeta}>
-                <span
-                  className={`${styles.userCardPill} ${roleToneClass(
-                    row.role,
-                  )}`}
-                >
-                  {row.role === "admin"
-                    ? t("adminUsers.roleAdmin")
-                    : t("adminUsers.roleUser")}
-                </span>
-                <span
-                  className={styles.userCardPill}
-                  style={{ color: statusColor, background: statusBg }}
-                >
-                  <span
-                    className={styles.userCardStatusDot}
-                    style={{ background: statusColor }}
-                  />
-                  {row.disabled
-                    ? t("adminUsers.statusDisabled")
-                    : t("adminUsers.statusEnabled")}
-                </span>
-                {row.sso_linked && (
-                  <span className={styles.userCardAuth}>
-                    {t("adminUsers.ssoBadge")}
-                  </span>
-                )}
-                {row.has_password && (
-                  <span className={styles.userCardAuth}>
-                    {t("adminUsers.passwordBadge")}
-                  </span>
-                )}
-              </div>
-
-              <div className={styles.userCardInfo}>
-                <span className={styles.userCardTime}>
-                  <Mail size={11} />
-                  <span>{row.email?.trim() || "—"}</span>
-                </span>
-                {row.created_at != null && (
-                  <Tooltip title={t("adminUsers.colCreatedAt")}>
-                    <span className={styles.userCardTime}>
-                      <Clock size={11} />
-                      <span>{formatUserTs(row.created_at, timeZone)}</span>
+                  <p className={styles.userCardSub}>
+                    <span>@{row.username}</span>
+                    <span className={styles.userCardMetaSep}>·</span>
+                    <span>
+                      {row.role === "admin"
+                        ? t("adminUsers.roleAdmin")
+                        : t("adminUsers.roleUser")}
                     </span>
-                  </Tooltip>
-                )}
+                    {row.role_name ? (
+                      <>
+                        <span className={styles.userCardMetaSep}>·</span>
+                        <RoleNameMark row={row} roles={userRoles} />
+                      </>
+                    ) : null}
+                  </p>
+                </div>
+              </div>
+              <p className={styles.userCardDesc}>
+                {row.email?.trim() || t("adminUsers.noEmail")}
+                {row.created_at != null
+                  ? ` · ${formatUserTs(row.created_at, timeZone)}`
+                  : ""}
+              </p>
+              <div className={styles.userCardQuiet}>
                 <PermissionSummary row={row} permLabelByKey={permLabelByKey} />
+                {row.sso_linked ? (
+                  <span>{t("adminUsers.ssoBadge")}</span>
+                ) : null}
+                {row.has_password ? (
+                  <span>{t("adminUsers.passwordBadge")}</span>
+                ) : null}
               </div>
-
-              <div className={styles.userCardStats}>
-                <button
-                  type="button"
-                  className={styles.userCardStatBtn}
-                  onClick={() => onShowAgents(row)}
-                >
-                  <Bot size={15} />
-                  <span>{t("adminUsers.colAgents")}</span>
-                  <span className={styles.userCardStatCount}>
-                    {agentsLoading ? "…" : agentCount}
-                  </span>
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-
-              {isLocked && (
+              {isLocked ? (
                 <div className={styles.userCardLockAlert}>
                   <Lock size={14} />
-                  <span className={styles.userCardLockText}>
+                  <span>
                     {t("adminUsers.loginLockActive", {
                       minutes: Math.max(1, Math.ceil(remaining / 60)),
                     })}
@@ -951,22 +1120,37 @@ function UserCardGrid({
                   <Button
                     type="link"
                     size="small"
-                    className={styles.userCardLockUnlock}
                     onClick={() => void onUnlockLogin(row)}
                   >
                     {t("adminUsers.unlockLogin")}
                   </Button>
                 </div>
-              )}
-
-              {!isLocked && failedCount > 0 && (
+              ) : null}
+              {!isLocked && failedCount > 0 ? (
                 <div className={styles.userCardFailedHint}>
                   {t("adminUsers.loginFailedCount", { count: failedCount })}
                 </div>
-              )}
-
-              <div className={styles.userCardFooter}>
-                <Tooltip title={t("common.edit")} mouseEnterDelay={0.5}>
+              ) : null}
+            </div>
+            <div className={styles.userCardFooter}>
+              <button
+                type="button"
+                className={styles.userCardDetailLink}
+                onClick={() => onShowAgents(row)}
+              >
+                <Bot size={14} />
+                {t("adminUsers.colAgents")} {agentsLoading ? "…" : agentCount}
+              </button>
+              <span className={styles.userCardFooterSpacer} />
+              <Switch
+                size="small"
+                checked={!row.disabled}
+                onChange={(checked) =>
+                  void onTogglePatch(row, { disabled: !checked })
+                }
+                aria-label={t("common.enabled")}
+              />
+              <Tooltip title={t("common.edit")} mouseEnterDelay={0.5}>
                   <button
                     type="button"
                     className={styles.userCardIconBtn}
@@ -1014,12 +1198,8 @@ function UserCardGrid({
                     </button>
                   </Tooltip>
                 </Popconfirm>
-
-                <span className={styles.userCardFooterSpacer} />
-
                 <span className={styles.userCardIdBadge}>#{row.id}</span>
               </div>
-            </div>
           </div>
         );
       })}
@@ -1088,6 +1268,7 @@ function UserLoginLock({
 
 export default function UsersListPanel() {
   const { t } = useTranslation();
+  const setCurrentUser = useSetCurrentUser();
   const timeZone = useServerTimezone();
   const isMobile = useIsMobile();
   const [agents, setAgents] = useState<OctopAgent[]>([]);
@@ -1095,6 +1276,8 @@ export default function UsersListPanel() {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [pendingUserAvatar, setPendingUserAvatar] = useState<File | null>(null);
+  const [pendingUserIcon, setPendingUserIcon] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<CreateValues>();
@@ -1105,6 +1288,7 @@ export default function UsersListPanel() {
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [resetForm] = Form.useForm<ResetValues>();
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [actorIsAdmin, setActorIsAdmin] = useState(true);
   const [agentDrawerUser, setAgentDrawerUser] = useState<UserRow | null>(null);
   const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1116,6 +1300,7 @@ export default function UsersListPanel() {
   const [batchMaxAgentsForm] = Form.useForm<BatchMaxAgentsFormValues>();
   const { viewMode, setViewMode, showCardView } = useCardTableView("table");
   const [permCatalog, setPermCatalog] = useState<PermissionCatalogItem[]>([]);
+  const [userRoles, setUserRoles] = useState<UserRole[]>([]);
   const [fsTreeRoot, setFsTreeRoot] = useState(HOST_FS_ROOT);
   const [workspaceRootAllowed, setWorkspaceRootAllowed] = useState(true);
 
@@ -1134,19 +1319,40 @@ export default function UsersListPanel() {
   );
 
   const createRoleOptions = useMemo(
-    () => [
-      {
-        value: "user" as const,
-        label: t("adminUsers.roleUser"),
-        hint: t("adminUsers.roleUserHint"),
-      },
-      {
-        value: "admin" as const,
-        label: t("adminUsers.roleAdmin"),
-        hint: t("adminUsers.roleAdminHint"),
-      },
-    ],
-    [t],
+    () =>
+      [
+        {
+          value: "user" as const,
+          label: t("adminUsers.roleUser"),
+          hint: t("adminUsers.roleUserHint"),
+        },
+        {
+          value: "admin" as const,
+          label: t("adminUsers.roleAdmin"),
+          hint: t("adminUsers.roleAdminHint"),
+        },
+      ].filter((option) => actorIsAdmin || option.value !== "admin"),
+    [actorIsAdmin, t],
+  );
+
+  const syncSelfAvatar = useCallback(
+    (
+      userId: number,
+      avatar: { avatar_url?: string | null; avatar_icon?: string | null },
+    ) => {
+      setCurrentUser((prev) => {
+        if (!prev || prev.id !== userId) return prev;
+        return {
+          ...prev,
+          avatar_url: avatar.avatar_url ?? null,
+          avatar_icon:
+            avatar.avatar_icon === undefined
+              ? prev.avatar_icon
+              : avatar.avatar_icon,
+        };
+      });
+    },
+    [setCurrentUser],
   );
 
   const isSelfAdmin = useCallback(
@@ -1182,10 +1388,12 @@ export default function UsersListPanel() {
       const username = row.username.toLowerCase();
       const displayName = (row.display_name ?? "").trim().toLowerCase();
       const email = (row.email ?? "").trim().toLowerCase();
+      const roleName = (row.role_name ?? "").trim().toLowerCase();
       return (
         username.includes(query) ||
         displayName.includes(query) ||
-        email.includes(query)
+        email.includes(query) ||
+        roleName.includes(query)
       );
     });
   }, [rows, searchQuery]);
@@ -1447,11 +1655,21 @@ export default function UsersListPanel() {
     void refreshAll();
     authApi
       .me()
-      .then((u) => setCurrentUserId(u.id))
-      .catch(() => setCurrentUserId(null));
+      .then((u) => {
+        setCurrentUserId(u.id);
+        setActorIsAdmin(u.role === "admin");
+      })
+      .catch(() => {
+        setCurrentUserId(null);
+        setActorIsAdmin(false);
+      });
     request<PermissionCatalogItem[]>("/users/permissions")
       .then(setPermCatalog)
       .catch(() => setPermCatalog([]));
+    userRolesApi
+      .list()
+      .then(setUserRoles)
+      .catch(() => setUserRoles([]));
     fetchFilesystemDefaults()
       .then((defaults) => {
         setFsTreeRoot(defaults.tree_root);
@@ -1466,7 +1684,7 @@ export default function UsersListPanel() {
   const onCreate = async (values: CreateValues) => {
     setSubmitting(true);
     try {
-      await request("/users", {
+      const created = await request<UserRow>("/users", {
         method: "POST",
         body: JSON.stringify({
           username: values.username,
@@ -1475,9 +1693,29 @@ export default function UsersListPanel() {
           password: values.password,
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
+          role_name: values.role_name?.trim() || null,
+          user_role_id: values.user_role_id ?? null,
           ...policyPayload(values, { workspaceRootAllowed }),
         }),
       });
+      if (pendingUserAvatar) {
+        try {
+          await uploadUserAvatar(created.id, pendingUserAvatar);
+        } catch (err) {
+          message.error(apiErrorMessage(err, t("experts.avatarUploadFailed"), t));
+        }
+      } else if (pendingUserIcon) {
+        try {
+          await request(`/users/${created.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ avatar_icon: pendingUserIcon }),
+          });
+        } catch (err) {
+          message.error(apiErrorMessage(err, t("experts.avatarUploadFailed"), t));
+        }
+      }
+      setPendingUserAvatar(null);
+      setPendingUserIcon(null);
       message.success(
         t("adminUsers.createSuccess", { username: values.username }),
       );
@@ -1494,9 +1732,12 @@ export default function UsersListPanel() {
   };
 
   const openCreate = () => {
+    const userRole = userRoles.find((role) => role.user_role_id === "user");
     form.setFieldsValue({
       role: "user",
-      permissions: [...baselinePermissions],
+      permissions: userRole ? [...userRole.permissions] : [...baselinePermissions],
+      user_role_id: userRole?.user_role_id,
+      role_name: userRole?.user_role_name,
       username: undefined,
       display_name: undefined,
       email: undefined,
@@ -1508,17 +1749,27 @@ export default function UsersListPanel() {
       token_quota: undefined,
       limit_max_agents: false,
       max_agents: undefined,
+      ...(userRole ? policyFieldsFromRole(userRole, workspaceRootAllowed) : {}),
     });
+    setPendingUserAvatar(null);
+    setPendingUserIcon(null);
     setCreateOpen(true);
   };
 
   const openEdit = (row: UserRow) => {
     setEditTarget(row);
+    const matched = row.role_name
+      ? row.user_role_id
+        ? userRoles.find((role) => role.user_role_id === row.user_role_id)
+        : userRoles.find((role) => role.user_role_name === row.role_name)
+      : undefined;
     editForm.setFieldsValue({
       display_name: row.display_name ?? "",
       email: row.email ?? "",
       role: row.role,
       permissions: [...(row.permissions ?? [])],
+      user_role_id: matched?.user_role_id,
+      role_name: row.role_name ?? undefined,
       limit_workspace_root: workspaceRootAllowed
         ? Boolean(row.workspace_root_dir)
         : false,
@@ -1570,6 +1821,8 @@ export default function UsersListPanel() {
           email: values.email?.trim() || null,
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
+          role_name: values.role_name?.trim() || null,
+          user_role_id: values.user_role_id ?? null,
           ...policyPayload(values, { workspaceRootAllowed }),
         }),
       });
@@ -1789,6 +2042,7 @@ export default function UsersListPanel() {
           onDelete={onDelete}
           onUnlockLogin={onUnlockLogin}
           nowSec={nowSec}
+          userRoles={userRoles}
         />
       ) : (
         <ResizableTable
@@ -1799,7 +2053,7 @@ export default function UsersListPanel() {
           loading={loading}
           dataSource={filteredRows}
           pagination={false}
-          scroll={{ x: 1360 }}
+          scroll={{ x: 1500 }}
           rowSelection={{
             selectedRowKeys: selectedIds,
             onChange: (keys) => setSelectedIds(keys.map((key) => Number(key))),
@@ -1822,13 +2076,12 @@ export default function UsersListPanel() {
                 const displayName = row.display_name?.trim() || row.username;
                 return (
                   <div className={styles.userCell}>
-                    <span
-                      className={`${styles.userCellAvatar} ${roleToneClass(
-                        row.role,
-                      )}`}
-                    >
-                      {userInitials(displayName, row.username)}
-                    </span>
+                    <ProfileAvatar
+                      url={row.avatar_url}
+                      icon={row.avatar_icon}
+                      kind="user"
+                      className={styles.userCellAvatar}
+                    />
                     <span className={styles.userCellText}>
                       <span className={styles.userCellName}>
                         {displayName}
@@ -1890,7 +2143,7 @@ export default function UsersListPanel() {
             },
             {
               title: t("adminUsers.colRole"),
-              width: 88,
+              width: 110,
               render: (_, row) => (
                 <span
                   className={`${styles.userCardPill} ${roleToneClass(
@@ -1901,6 +2154,17 @@ export default function UsersListPanel() {
                     ? t("adminUsers.roleAdmin")
                     : t("adminUsers.roleUser")}
                 </span>
+              ),
+            },
+            {
+              title: t("adminUsers.colRoleName"),
+              width: 220,
+              render: (_, row) => (
+                <RoleNameMark
+                  row={row}
+                  roles={userRoles}
+                  className={styles.userCellMuted}
+                />
               ),
             },
             {
@@ -2112,6 +2376,18 @@ export default function UsersListPanel() {
             <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccount")}
             </div>
+            <ProfileAvatarPicker
+              kind="user"
+              icon={pendingUserIcon}
+              onPick={async (file) => {
+                setPendingUserAvatar(file);
+              }}
+              onSelectIcon={(icon) => {
+                setPendingUserIcon(icon);
+                setPendingUserAvatar(null);
+              }}
+              onRemove={() => setPendingUserAvatar(null)}
+            />
             <Form.Item
               label={t("adminUsers.formUsername")}
               name="username"
@@ -2197,6 +2473,11 @@ export default function UsersListPanel() {
               <CircleHelp size={15} strokeWidth={2} />
               <span>{t("adminUsers.permEditHint")}</span>
             </div>
+            <UserRoleField
+              roles={userRoles}
+              workspaceRootAllowed={workspaceRootAllowed}
+              actorIsAdmin={actorIsAdmin}
+            />
             <Form.Item
               label={t("adminUsers.formRole")}
               name="role"
@@ -2291,6 +2572,67 @@ export default function UsersListPanel() {
             <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccount")}
             </div>
+            {editTarget ? (
+              <ProfileAvatarPicker
+                kind="user"
+                avatarUrl={editTarget.avatar_url}
+                icon={editTarget.avatar_icon}
+                onSelectIcon={async (icon) => {
+                  try {
+                    const updated = await request<UserRow>(
+                      `/users/${editTarget.id}`,
+                      {
+                        method: "PATCH",
+                        body: JSON.stringify({ avatar_icon: icon }),
+                      },
+                    );
+                    setEditTarget({
+                      ...editTarget,
+                      avatar_url: updated.avatar_url,
+                      avatar_icon: updated.avatar_icon,
+                    });
+                    syncSelfAvatar(editTarget.id, updated);
+                    void refreshUsers();
+                  } catch (err) {
+                    message.error(
+                      apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                    );
+                    throw err;
+                  }
+                }}
+                onPick={async (file) => {
+                  try {
+                    const result = await uploadUserAvatar(editTarget.id, file);
+                    setEditTarget({
+                      ...editTarget,
+                      avatar_url: result.avatar_url,
+                    });
+                    syncSelfAvatar(editTarget.id, {
+                      avatar_url: result.avatar_url,
+                    });
+                    void refreshUsers();
+                  } catch (err) {
+                    message.error(
+                      apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                    );
+                    throw err;
+                  }
+                }}
+                onRemove={async () => {
+                  try {
+                    await deleteUserAvatar(editTarget.id);
+                    setEditTarget({ ...editTarget, avatar_url: null });
+                    syncSelfAvatar(editTarget.id, { avatar_url: null });
+                    void refreshUsers();
+                  } catch (err) {
+                    message.error(
+                      apiErrorMessage(err, t("experts.avatarRemoveFailed"), t),
+                    );
+                    throw err;
+                  }
+                }}
+              />
+            ) : null}
             <Form.Item
               label={t("adminUsers.formDisplayName")}
               name="display_name"
@@ -2325,6 +2667,28 @@ export default function UsersListPanel() {
               <CircleHelp size={15} strokeWidth={2} />
               <span>{t("adminUsers.permEditHint")}</span>
             </div>
+            <UserRoleField
+              roles={userRoles}
+              workspaceRootAllowed={workspaceRootAllowed}
+              confirmOverwrite
+              actorIsAdmin={actorIsAdmin}
+              diverged={
+                Boolean(editTarget) &&
+                userRoleDrift(editTarget as UserRow, userRoles) === "changed"
+              }
+              snapshotName={editTarget?.role_name}
+              staleName={
+                editTarget?.role_name &&
+                !userRoles.some(
+                  (role) =>
+                    role.user_role_id === editTarget.user_role_id ||
+                    (!editTarget.user_role_id &&
+                      role.user_role_name === editTarget.role_name),
+                )
+                  ? editTarget.role_name
+                  : null
+              }
+            />
             <Form.Item
               label={t("adminUsers.formRole")}
               name="role"
