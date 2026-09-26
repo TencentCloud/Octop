@@ -1,10 +1,12 @@
-"""Helpers shared across repo implementations."""
+﻿"""Helpers shared across repo implementations."""
 
 from __future__ import annotations
 
 import time
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Any, Protocol, TypeVar
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 R_co = TypeVar("R_co", covariant=True)
 
@@ -64,11 +66,49 @@ def sql_in_placeholders(count: int) -> str:
     return ", ".join("?" * count)
 
 
-def sql_unix_day_bucket(column: str, *, dialect: str = "sqlite") -> str:
-    """Expression that buckets a unix-epoch integer column into YYYY-MM-DD."""
+def _utc_offset_hours(timezone: str) -> float:
+    """Get current UTC offset in hours for a timezone.
+
+    Uses the current date's offset; DST edge cases at historical boundaries
+    are acceptable for daily-bucket display purposes.
+    """
+    try:
+        tz = ZoneInfo(timezone)
+        offset = datetime.now(tz).utcoffset()
+        return offset.total_seconds() / 3600 if offset else 0.0
+    except (ZoneInfoNotFoundError, ValueError):
+        return 0.0
+
+
+def sql_unix_day_bucket(column: str, *, dialect: str = "sqlite", timezone: str = "UTC") -> str:
+    """Expression that buckets a unix-epoch integer column into YYYY-MM-DD.
+
+    Args:
+        column: The unix-epoch integer column name.
+        dialect: SQL dialect ("sqlite" or "postgresql").
+        timezone: IANA timezone name (e.g. "Asia/Shanghai") for day boundaries.
+                  Defaults to UTC (original behavior).
+    """
+    if timezone == "UTC":
+        tz_offset_hours = 0.0
+    else:
+        tz_offset_hours = _utc_offset_hours(timezone)
+
     if dialect == "postgresql":
-        return f"to_char(to_timestamp({column}), 'YYYY-MM-DD')"
-    return f"date({column}, 'unixepoch')"
+        # to_timestamp(ts) → timestamp without tz (interpreted as UTC)
+        # AT TIME ZONE 'UTC' → timestamp with tz
+        # AT TIME ZONE '<tz>' → timestamp without tz in target tz
+        return f"to_char(to_timestamp({column}) AT TIME ZONE 'UTC' AT TIME ZONE '{timezone}', 'YYYY-MM-DD')"
+
+    # SQLite: apply hour offset modifier
+    if tz_offset_hours == 0:
+        return f"date({column}, 'unixepoch')"
+    elif tz_offset_hours > 0:
+        hours = int(tz_offset_hours)
+        return f"date({column}, 'unixepoch', '+{hours} hours')"
+    else:
+        hours = int(abs(tz_offset_hours))
+        return f"date({column}, 'unixepoch', '-{hours} hours')"
 
 
 def insert_returning_id(conn: Any, sql: str, params: Sequence[object]) -> int:
@@ -79,3 +119,4 @@ def insert_returning_id(conn: Any, sql: str, params: Sequence[object]) -> int:
     if isinstance(row, Mapping):
         return int(row["id"])
     return int(row[0])
+
