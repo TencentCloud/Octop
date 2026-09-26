@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 猜数字游戏（`guess_number`）以 0 为下界的区间不再被静默改成从 1 开始：此前 `low=0` 会被当成未传，`0–1` 这类区间还会整段退回默认的 1–100
 
 ### 修复
 - 云端协同对端专家的模型、连接器、知识库和对话模式会显示在本端输入框上方
