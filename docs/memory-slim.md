@@ -105,7 +105,7 @@ IM 暂不开放：现有 IM `user_id` 是用于会话存储的 agent owner，不
 
 ### 协调与存储
 
-- `cli/commands/memory.py` → `infra/agents/memory_slim_control.py` 的本机 loopback 通道。
+- `cli/commands/memory.py` → `infra/agents/memory/slim_control.py` 的本机 loopback 通道。
   控制端口随机，仅绑定 127.0.0.1；`OCTOP_HOME/memory-slim-control.json` 包含私有 token，
   通过权限为 0600 的临时文件原子发布（Windows 依赖用户目录 ACL）。权限语义沿用本机 CLI 的文件系统信任。
   不提供无认证的远程 HTTP 管理入口。该文件随正常退出删除，旧 token 不能调用新进程。
