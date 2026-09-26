@@ -23,14 +23,15 @@ const trayDoubleClick = 400 * time.Millisecond
 
 // App is the Wails service bound to the shell UI.
 type App struct {
-	app            *application.App
-	window         *application.WebviewWindow
-	settingsWindow *application.WebviewWindow
-	store          *settingsStore
-	sleep          *sleepGuard
-	cmd            *exec.Cmd
-	mu             sync.Mutex
-	quitting       bool
+	app               *application.App
+	window            *application.WebviewWindow
+	settingsWindow    *application.WebviewWindow
+	store             *settingsStore
+	sleep             *sleepGuard
+	cmd               *exec.Cmd
+	mu                sync.Mutex
+	quitting          bool
+	setTrayMenuLocale func(Locale)
 
 	trayClickMu    sync.Mutex
 	lastTrayClick  time.Time
@@ -94,7 +95,15 @@ func (a *App) SaveSettings(next Settings) (Settings, error) {
 	}
 	saved := a.store.get()
 	a.applyDashboardPrefs(saved)
+	a.updateTrayMenuLocale(cur.Locale, saved.Locale)
 	return saved, nil
+}
+
+func (a *App) updateTrayMenuLocale(previous, current Locale) {
+	if previous == current || a.setTrayMenuLocale == nil {
+		return
+	}
+	a.setTrayMenuLocale(current)
 }
 
 func (a *App) ShowMain() {
@@ -389,12 +398,15 @@ func main() {
 	tray.SetTooltip("Octop")
 	tray.AttachWindow(settingsWin).WindowOffset(6)
 	showSettings := func() { tray.ShowWindow() }
+	api.setTrayMenuLocale = func(locale Locale) {
+		tray.SetMenu(newTrayMenu(locale, showSettings, api.showWindow, api.requestQuit))
+	}
+	api.setTrayMenuLocale(store.get().Locale)
 	if trayLeftClickShowsSettings(runtime.GOOS) {
 		tray.OnClick(showSettings)
 	} else {
 		tray.OnClick(func() { api.onTrayLeftClick() })
 	}
-	tray.OnRightClick(showSettings)
 
 	if _, err := api.setAutostart(store.get().Autostart); err != nil {
 		log.Printf("sync autostart: %v", err)
