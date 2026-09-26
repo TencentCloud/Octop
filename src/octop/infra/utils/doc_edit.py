@@ -292,9 +292,17 @@ def _parse_pipe_row(raw: str) -> list[str] | None:
         return None
     cells: list[str] = []
     current: list[str] = []
+    escaped = False
     for char in line[1:-1]:
+        if escaped:
+            # The previous char was a backslash: this one is escaped content
+            # (mirror of _escape_cell), so it cannot open a new cell.
+            current.append(char)
+            escaped = False
+            continue
         if char == "\\":
             current.append(char)
+            escaped = True
             continue
         if char == "|":
             cells.append("".join(current).strip().replace("\\|", "|"))
