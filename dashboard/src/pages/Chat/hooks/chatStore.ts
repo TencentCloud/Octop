@@ -408,14 +408,36 @@ function markSpeakerLive(state: SessionStreamState, speaker?: string): void {
 function clearSpeakerLive(state: SessionStreamState, speaker?: string): void {
   const key = speakerLiveKey(speaker);
   state.liveSpeakers.delete(key);
+  const host = state.roomAgentId?.trim();
+  // Unlabeled and stamped host share one live bit — clear both together.
   if (!key) {
-    const host = state.roomAgentId?.trim();
     if (host) state.liveSpeakers.delete(host);
+  } else if (host && key === host) {
+    state.liveSpeakers.delete("");
   }
 }
 
 function clearAllLiveSpeakers(state: SessionStreamState): void {
   state.liveSpeakers.clear();
+}
+
+/** Drop live speakers with no streaming text and no in-flight tools. */
+function pruneIdleLiveSpeakers(state: SessionStreamState): void {
+  if (state.liveSpeakers.size === 0) return;
+  const busy = new Set<string>();
+  const host = state.roomAgentId?.trim();
+  for (const message of state.messages) {
+    if (message.role !== "assistant") continue;
+    const key = speakerLiveKey(message.speakerAgentId);
+    const inFlightTool = Boolean(message.toolData && !message.toolData.output);
+    if (message.status !== "streaming" && !inFlightTool) continue;
+    busy.add(key);
+    if (!key && host) busy.add(host);
+    if (key && host && key === host) busy.add("");
+  }
+  for (const key of [...state.liveSpeakers]) {
+    if (!busy.has(key)) state.liveSpeakers.delete(key);
+  }
 }
 
 function getOrCreate(sessionId: string): SessionStreamState {
@@ -1139,16 +1161,20 @@ function handleHarnessChunk(
     touchStreamActivity(sessionId);
   }
   switch (chunk.type) {
-    case "token":
-      markSpeakerLive(state, speaker);
+    case "token": {
+      const snapshot = Boolean(chunk.team_snapshot);
+      // Snapshots are complete wall copies — never leave the speaker "live".
+      if (!snapshot) markSpeakerLive(state, speaker);
       appendStreamingToken(
         state,
         chunk.content,
         speaker,
-        Boolean(chunk.team_snapshot),
+        snapshot,
         Boolean(chunk.team_wrapup),
       );
+      if (snapshot) clearSpeakerLive(state, speaker);
       break;
+    }
     case "reasoning":
       markSpeakerLive(state, speaker);
       appendStreamingReasoning(state, chunk.content, speaker);
@@ -1176,6 +1202,9 @@ function handleHarnessChunk(
       if (Boolean(chunk.team_wrapup)) {
         finalizeWrapupMessages(state, speaker);
         clearSpeakerLive(state, speaker);
+        // Wrap-up means members already finished — drop stale live bits
+        // (e.g. snapshot re-marked a speaker after their done).
+        pruneIdleLiveSpeakers(state);
         break;
       }
       finalizeStreamingMessages(

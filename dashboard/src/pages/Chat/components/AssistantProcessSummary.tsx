@@ -17,6 +17,8 @@ interface AssistantProcessSummaryProps {
    */
   statsSplit?: AssistantTurnSplit;
   isStreaming?: boolean;
+  /** Team rooms default to collapsed thinking; solo stays expanded. */
+  isTeam?: boolean;
   onAcpPermissionSelect?: (message: string) => void;
   hideToolMedia?: boolean;
   agentId?: string | null;
@@ -75,12 +77,13 @@ function AssistantProcessSummary({
   split,
   statsSplit,
   isStreaming = false,
+  isTeam = false,
   onAcpPermissionSelect,
   hideToolMedia = false,
   agentId = null,
 }: AssistantProcessSummaryProps) {
   const { t } = useTranslation();
-  const [collapseThinking] = useCollapseThinking();
+  const [collapseThinking] = useCollapseThinking(isTeam);
   const [expanded, setExpanded] = useState(isStreaming && !collapseThinking);
   const prevStreaming = useRef(isStreaming);
   const prevCollapseThinking = useRef(collapseThinking);

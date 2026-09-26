@@ -194,6 +194,53 @@ describe("groupConsecutiveAssistantMessages", () => {
     ).toBe(0);
   });
 
+  it("keeps a team member answer on one bubble across completed tools", () => {
+    const messages = [
+      msg("assistant", "member", {
+        content: "我先查一下",
+        speakerAgentId: "doctor",
+        status: "done",
+      }),
+      msg("assistant", "tool", {
+        toolData: {
+          name: "read_file",
+          arguments: "{}",
+          output: "labs ok",
+        },
+        speakerAgentId: "doctor",
+      }),
+    ];
+    expect(
+      findSpeakerTextToContinue(messages, "doctor", "host", {
+        teamRoom: true,
+        continueThroughTools: ["ask_agent"],
+      }),
+    ).toBe(0);
+    // Host still treats completed tools as a break.
+    expect(
+      findSpeakerTextToContinue(
+        [
+          msg("assistant", "host", {
+            content: "稍等",
+            speakerAgentId: "host",
+            status: "done",
+          }),
+          msg("assistant", "tool", {
+            toolData: {
+              name: "ask_agent",
+              arguments: "{}",
+              output: "queued",
+            },
+            speakerAgentId: "host",
+          }),
+        ],
+        "host",
+        "host",
+        { teamRoom: true, continueThroughTools: ["ask_agent"] },
+      ),
+    ).toBe(-1);
+  });
+
   it("treats a completed ask_agent as a turn break", () => {
     const messages = [
       msg("assistant", "host", { content: "I will ask" }),
