@@ -21,6 +21,17 @@ from __future__ import annotations
 import logging
 from typing import Any, Protocol
 
+from octop.infra.db.repos.project_tasks import (
+    TASK_STATUSES,
+    TIMELINE_TASK_ASSIGNED,
+    TIMELINE_TASK_CREATED,
+    TIMELINE_TASK_DELETED,
+    TIMELINE_TASK_STATUS_CHANGED,
+    TIMELINE_TASK_UPDATED,
+    ProjectTaskRow,
+    TimelineEventRow,
+    actor_ref,
+)
 from octop.infra.db.repos.projects import (
     MEMBER_SUBJECT_USER,
     PROJECT_ROLES,
@@ -58,12 +69,27 @@ _ROLE_LEVELS: dict[str, frozenset[str]] = {
     "viewer": frozenset({PROJECT_READ}),
 }
 
-#: Allowed status transitions. ``archived`` is terminal.
+#: Allowed project status transitions. ``archived`` is terminal.
 _TRANSITIONS: dict[str, frozenset[str]] = {
     "draft": frozenset({"active"}),
     "active": frozenset({"paused", "archived"}),
     "paused": frozenset({"active", "archived"}),
     "archived": frozenset(),
+}
+
+#: Allowed task status transitions.
+#:
+#: The plan fixes the task status *vocabulary* (``TASK_STATUSES``) but not the
+#: graph, so this is a deliberate design: work flows ``todo -> doing -> review ->
+#: done``; ``blocked`` is a side state reachable from either working state;
+#: ``done`` can only be reopened to ``doing``; ``cancelled`` is terminal.
+_TASK_TRANSITIONS: dict[str, frozenset[str]] = {
+    "todo": frozenset({"doing", "blocked", "cancelled"}),
+    "doing": frozenset({"todo", "review", "done", "blocked", "cancelled"}),
+    "review": frozenset({"doing", "done", "blocked", "cancelled"}),
+    "blocked": frozenset({"todo", "doing", "cancelled"}),
+    "done": frozenset({"doing"}),
+    "cancelled": frozenset(),
 }
 
 
@@ -92,6 +118,7 @@ class ProjectService:
         self._projects = services.project_repo
         self._members = services.project_member_repo
         self._tasks = services.project_task_repo
+        self._timeline = services.timeline_repo
         # Plain attribute (not a property) so tests can inject a failing KB
         # service and drive the compensating-delete branch.
         self._knowledge = KnowledgeService(services)
@@ -362,7 +389,152 @@ class ProjectService:
         if str(project.owner_user_id) == subject_id and role != "owner":
             raise _invalid_transition("The project owner must keep the owner role.")
 
+    # ── tasks (T2.3) ─────────────────────────────────────────────────────────
+
+    def list_tasks(
+        self, project_id: str, *, user: ProjectActor, status: str | None = None
+    ) -> list[ProjectTaskRow]:
+        self.assert_project_role(project_id, user=user, required=PROJECT_READ)
+        return self._tasks.list_by_project(project_id, status=status)
+
+    def get_task(self, task_id: str, *, user: ProjectActor) -> ProjectTaskRow:
+        task = self._require_task(task_id)
+        self.assert_project_role(task.project_id, user=user, required=PROJECT_READ)
+        return task
+
+    def create_task(
+        self,
+        project_id: str,
+        *,
+        user: ProjectActor,
+        title: str,
+        **fields: Any,
+    ) -> ProjectTaskRow:
+        """Create a task. New tasks always start in ``todo``.
+
+        Letting the caller pick an initial status would give a second path into
+        the state machine that bypasses :meth:`transition_task`; callers that
+        want a task further along should transition it.
+        """
+        self.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
+        title = title.strip()
+        if not title:
+            raise ValueError("task title is required")
+        if fields.pop("status", None) not in (None, "todo"):
+            raise ValueError("new tasks start in 'todo'; use transition_task() to move them")
+        task = self._tasks.create(project_id=project_id, title=title, created_by=user.id, **fields)
+        self._record(
+            project_id,
+            task.id,
+            user,
+            TIMELINE_TASK_CREATED,
+            {"title": task.title},
+        )
+        return task
+
+    def update_task(self, task_id: str, *, user: ProjectActor, **fields: Any) -> ProjectTaskRow:
+        """Patch task fields other than status."""
+        task = self._require_task(task_id)
+        self.assert_project_role(task.project_id, user=user, required=PROJECT_WRITE)
+        if fields.get("status") is not None:
+            raise ValueError("use transition_task() to change status")
+        fields.pop("status", None)
+        if not fields:
+            return task
+        updated = self._tasks.update(task_id, **fields)
+        if updated is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "Task not found.")
+        self._record(
+            task.project_id,
+            task_id,
+            user,
+            TIMELINE_TASK_UPDATED,
+            {"fields": sorted(fields)},
+        )
+        if "assignee_id" in fields or "assignee_type" in fields:
+            self._record(
+                task.project_id,
+                task_id,
+                user,
+                TIMELINE_TASK_ASSIGNED,
+                {"assignee_type": updated.assignee_type, "assignee_id": updated.assignee_id},
+            )
+        return updated
+
+    def transition_task(self, task_id: str, *, user: ProjectActor, target: str) -> ProjectTaskRow:
+        """Move a task along the task state machine."""
+        if target not in TASK_STATUSES:
+            raise ValueError(f"unknown task status: {target}")
+        task = self._require_task(task_id)
+        self.assert_project_role(task.project_id, user=user, required=PROJECT_WRITE)
+        if target not in _TASK_TRANSITIONS.get(task.status, frozenset()):
+            raise _invalid_transition(
+                f"Cannot change task status from '{task.status}' to '{target}'."
+            )
+        updated = self._tasks.update(task_id, status=target)
+        if updated is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "Task not found.")
+        self._record(
+            task.project_id,
+            task_id,
+            user,
+            TIMELINE_TASK_STATUS_CHANGED,
+            {"from": task.status, "to": target},
+        )
+        return updated
+
+    def delete_task(self, task_id: str, *, user: ProjectActor) -> bool:
+        task = self._require_task(task_id)
+        self.assert_project_role(task.project_id, user=user, required=PROJECT_WRITE)
+        deleted = self._tasks.delete(task_id)
+        if deleted:
+            # Keep the task id on the event: timeline_events.task_id has no FK
+            # precisely so history survives the row it describes.
+            self._record(
+                task.project_id,
+                task_id,
+                user,
+                TIMELINE_TASK_DELETED,
+                {"title": task.title},
+            )
+        return deleted
+
+    def list_timeline(
+        self, project_id: str, *, user: ProjectActor, limit: int | None = None
+    ) -> list[TimelineEventRow]:
+        """Chronological project timeline (oldest first)."""
+        self.assert_project_role(project_id, user=user, required=PROJECT_READ)
+        return self._timeline.list_by_project(project_id, limit=limit)
+
+    def _record(
+        self,
+        project_id: str,
+        task_id: str | None,
+        user: ProjectActor,
+        action: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Append a timeline row.
+
+        Deliberately not wrapped in a try/except: the task write has already
+        committed by now, and a silently missing audit row would make the
+        timeline quietly incomplete (M16 / AC-12).
+        """
+        self._timeline.append(
+            project_id=project_id,
+            task_id=task_id,
+            actor=actor_ref("user", user.id),
+            action=action,
+            payload=payload,
+        )
+
     # ── internals ────────────────────────────────────────────────────────────
+
+    def _require_task(self, task_id: str) -> ProjectTaskRow:
+        task = self._tasks.get(task_id)
+        if task is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "Task not found.")
+        return task
 
     def _require_project(self, project_id: str) -> ProjectRow:
         project = self._projects.get(project_id)

@@ -1,4 +1,4 @@
-"""Project domain repos — projects, members, tasks.
+"""Project domain repos — projects, members, and their tasks.
 
 Repo layer only: SQL shape, id allocation, patch semantics (``UNSET`` = leave
 alone, explicit ``None`` = clear), and the resource-table convention
@@ -13,17 +13,18 @@ import pytest
 
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
+from octop.infra.db.repos.agents import AgentRepo
+from octop.infra.db.repos.project_tasks import TASK_STATUSES, ProjectTaskRepo
 from octop.infra.db.repos.projects import (
     MEMBER_SUBJECT_AGENT,
     MEMBER_SUBJECT_USER,
     PROJECT_ROLES,
     PROJECT_STATUSES,
-    TASK_STATUSES,
     ProjectMemberRepo,
     ProjectRepo,
-    ProjectTaskRepo,
     project_memory_namespace,
 )
+from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.users import UserRepo
 
 
@@ -325,9 +326,39 @@ def test_task_update_distinguishes_omit_from_explicit_none(db: SqlitePool, owner
 def test_task_list_by_thread(db: SqlitePool, owner: int):
     project = ProjectRepo(db).create(owner_user_id=owner, name="A")
     tasks = ProjectTaskRepo(db)
+    # thread_id is a soft foreign key, so the thread has to exist first —
+    # and threads.agent_id is a hard FK, hence the agent row.
+    AgentRepo(db).create(agent_id="a1", user_id=owner, name="Agent 1")
+    ThreadRepo(db).insert(
+        thread_id="th1",
+        agent_id="a1",
+        user_id=owner,
+        channel_type="dashboard",
+        session_key="sk-th1",
+    )
     linked = tasks.create(project_id=project.id, title="linked", created_by=owner, thread_id="th1")
     tasks.create(project_id=project.id, title="loose", created_by=owner)
     assert [t.id for t in tasks.list_by_thread("th1")] == [linked.id]
+
+
+def test_task_thread_must_exist(db: SqlitePool, owner: int):
+    """Soft foreign key: a bogus thread_id is rejected, not silently stored."""
+    project = ProjectRepo(db).create(owner_user_id=owner, name="A")
+    with pytest.raises(ValueError, match="does not exist"):
+        ProjectTaskRepo(db).create(
+            project_id=project.id, title="T", created_by=owner, thread_id="nope"
+        )
+
+
+def test_task_parent_must_be_in_the_same_project(db: SqlitePool, owner: int):
+    projects = ProjectRepo(db)
+    tasks = ProjectTaskRepo(db)
+    a = projects.create(owner_user_id=owner, name="A")
+    b = projects.create(owner_user_id=owner, name="B")
+    foreign = tasks.create(project_id=b.id, title="elsewhere", created_by=owner)
+
+    with pytest.raises(ValueError, match="belongs to another project"):
+        tasks.create(project_id=a.id, title="child", created_by=owner, parent_id=foreign.id)
 
 
 def test_task_delete(db: SqlitePool, owner: int):

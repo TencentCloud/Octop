@@ -16,12 +16,12 @@ import pytest
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.knowledge import KnowledgeRepo
+from octop.infra.db.repos.project_tasks import ProjectTaskRepo, TimelineRepo
 from octop.infra.db.repos.projects import (
     MEMBER_SUBJECT_AGENT,
     MEMBER_SUBJECT_USER,
     ProjectMemberRepo,
     ProjectRepo,
-    ProjectTaskRepo,
 )
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.users import UserRepo
@@ -70,6 +70,7 @@ def services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace
         project_repo=ProjectRepo(pool),
         project_member_repo=ProjectMemberRepo(pool),
         project_task_repo=ProjectTaskRepo(pool),
+        timeline_repo=TimelineRepo(pool),
         knowledge_repo=KnowledgeRepo(pool),
         settings_repo=SettingsRepo(pool),
         user_repo=UserRepo(pool),
