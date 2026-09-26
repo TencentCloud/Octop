@@ -423,3 +423,47 @@ async def test_admin_can_set_max_agents_and_block_create(env):
         json={"name": "expert-three"},
     )
     assert third.status_code == 201, third.text
+
+
+_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+    b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+async def test_delete_removes_uploaded_portrait(env):
+    """Both delete paths must drop the portrait file under avatars/users/."""
+    c, srv, auth = env
+    avatars = srv.services.paths.user_avatars_dir
+    ids: dict[str, int] = {}
+    for name in ("portrait_batch", "portrait_single"):
+        created = await c.post(
+            "/api/users",
+            headers=auth,
+            json={"username": name, "password": "TestPass12", "role": "user"},
+        )
+        assert created.status_code == 201, created.text
+        user_id = int(created.json()["id"])
+        ids[name] = user_id
+        uploaded = await c.post(
+            f"/api/users/{user_id}/avatar",
+            headers=auth,
+            files={"file": ("avatar.png", _PNG, "image/png")},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        assert list(avatars.glob(f"{user_id}.*")), "upload stored no portrait"
+
+    batched = await c.post(
+        "/api/users/batch",
+        headers=auth,
+        json={"user_ids": [ids["portrait_batch"]], "action": "delete"},
+    )
+    assert batched.status_code == 200, batched.text
+    assert batched.json()["succeeded"] == 1
+
+    single = await c.delete(f"/api/users/{ids['portrait_single']}", headers=auth)
+    assert single.status_code == 204, single.text
+
+    for name, user_id in ids.items():
+        assert not list(avatars.glob(f"{user_id}.*")), f"{name} left an orphan portrait behind"
