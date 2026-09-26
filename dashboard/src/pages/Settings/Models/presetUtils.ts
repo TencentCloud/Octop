@@ -201,6 +201,56 @@ export function isOnnxProviderRow(provider: {
   return n === "onnx" || n === "onnx (local)";
 }
 
+/** Hosts that always mean "this machine". Public names such as ollama.com are
+ * deliberately absent: every official Ollama host contains "ollama". */
+const LOCAL_HOSTS = new Set([
+  "localhost",
+  "ollama",
+  "host.docker.internal",
+  "gateway.docker.internal",
+]);
+
+function isPrivateIpv4(host: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!m) return false;
+  const b = m.slice(1).map(Number);
+  if (b.some((n) => n > 255)) return false;
+  return (
+    b[0] === 10 ||
+    b[0] === 127 ||
+    (b[0] === 172 && b[1] >= 16 && b[1] <= 31) ||
+    (b[0] === 192 && b[1] === 168) ||
+    (b[0] === 169 && b[1] === 254)
+  );
+}
+
+/** True when a provider base URL points at this machine. Mirrors the backend
+ * rule so the card and the delete guard stay aligned. */
+function hostLooksLocal(baseUrl: string): boolean {
+  const raw = baseUrl.trim().toLowerCase();
+  if (!raw) return false;
+  let host = "";
+  let port = "";
+  try {
+    const u = new URL(raw.includes("://") ? raw : `http://${raw}`);
+    host = u.hostname.toLowerCase().replace(/\.$/, "");
+    port = u.port;
+  } catch {
+    return raw.includes("11434");
+  }
+  if (!host) return raw.includes("11434");
+  if (port === "11434") return true;
+  if (LOCAL_HOSTS.has(host)) return true;
+  if (
+    host.endsWith(".local") ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".internal")
+  )
+    return true;
+  if (host === "::1") return true;
+  return isPrivateIpv4(host);
+}
+
 export function isOllamaProviderRow(provider: {
   name: string;
   base_url?: string | null;
@@ -212,8 +262,7 @@ export function isOllamaProviderRow(provider: {
   return (
     n === "ollama" ||
     n === "ollama (local)" ||
-    (provider.base_url?.includes("11434") ?? false) ||
-    (provider.base_url?.includes("ollama") ?? false)
+    hostLooksLocal(provider.base_url ?? "")
   );
 }
 
