@@ -23,6 +23,8 @@ import {
   Github,
   RefreshCw,
   KeyRound,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -56,6 +58,11 @@ import styles from "./AvatarDropdown.module.less";
 const GITHUB_URL = "https://github.com/TencentCloud/Octop";
 const HELP_FEEDBACK_URL = "https://octop.cloud";
 const APP_OAUTH_KINDS = new Set(["feishu", "dingtalk", "wecom"]);
+
+const PASSWORD_FIELD_ICON_PROPS = {
+  size: 14 as const,
+  style: { color: "var(--fn-text-tertiary)" },
+};
 
 function oauthProviderIcon(kind: string): ReactNode {
   const src =
@@ -481,7 +488,9 @@ export default function AvatarDropdown({
       <section className={styles.settingsSection}>
         <div className={styles.settingsSectionHead}>
           <h3 className={styles.settingsSectionTitle}>{t("account.avatar")}</h3>
-          <p className={styles.settingsSectionDesc}>{t("account.avatarHint")}</p>
+          <p className={styles.settingsSectionDesc}>
+            {t("account.avatarHint")}
+          </p>
         </div>
         {user ? (
           <ProfileAvatarPicker
@@ -713,7 +722,10 @@ export default function AvatarDropdown({
               },
             ]}
           >
-            <Input.Password autoComplete="current-password" />
+            <Input.Password
+              autoComplete="current-password"
+              prefix={<Lock {...PASSWORD_FIELD_ICON_PROPS} />}
+            />
           </Form.Item>
           <Form.Item
             name="new_password"
@@ -741,7 +753,10 @@ export default function AvatarDropdown({
               }),
             ]}
           >
-            <Input.Password autoComplete="new-password" />
+            <Input.Password
+              autoComplete="new-password"
+              prefix={<Lock {...PASSWORD_FIELD_ICON_PROPS} />}
+            />
           </Form.Item>
           <Form.Item
             name="confirm"
@@ -765,7 +780,10 @@ export default function AvatarDropdown({
             ]}
             style={{ marginBottom: 12 }}
           >
-            <Input.Password autoComplete="new-password" />
+            <Input.Password
+              autoComplete="new-password"
+              prefix={<LockOpen {...PASSWORD_FIELD_ICON_PROPS} />}
+            />
           </Form.Item>
           <Button type="primary" htmlType="submit" loading={changingPw} block>
             {t("account.changePassword")}
