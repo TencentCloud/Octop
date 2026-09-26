@@ -34,6 +34,9 @@ CUR_PASS="$(octop_env_get "$ENV_FILE" OCTOP_DEFAULT_PASSWORD)"
 CUR_LOG="$(octop_env_get "$ENV_FILE" OCTOP_LOG_LEVEL)"
 CUR_OPENAI="$(octop_env_get "$ENV_FILE" OPENAI_API_KEY)"
 CUR_DASH="$(octop_env_get "$ENV_FILE" DASHSCOPE_API_KEY)"
+# 端口本窗口不可编辑，但用户可能已自行改过 .env：回读而不是写死，否则任何一次
+# 「保存」都会把 OCTOP_PORT 静默改回 8089（issue #985，与 #730 同类问题）。
+CUR_PORT="$(octop_effective_port "$ENV_FILE" 8089)"
 [ -n "$CUR_USER" ] || CUR_USER="admin"
 
 ADMIN_USER="$CUR_USER"
@@ -111,7 +114,7 @@ fi
 # ---------------------------------------------------------------------------
 # 写回 .env（逐键更新，保留未知键）
 # ---------------------------------------------------------------------------
-octop_env_set "$ENV_FILE" OCTOP_PORT "8089"
+octop_env_set "$ENV_FILE" OCTOP_PORT "$CUR_PORT"
 octop_env_set "$ENV_FILE" OCTOP_BIND_HOST "0.0.0.0"
 octop_env_set "$ENV_FILE" OCTOP_LOG_LEVEL "$LOG_LEVEL"
 octop_env_set "$ENV_FILE" OCTOP_ADMIN_USERNAME "$ADMIN_USER"
@@ -123,7 +126,7 @@ octop_env_set "$ENV_FILE" DASHSCOPE_API_KEY "$DASHSCOPE"
 echo "[octop-native] 已更新配置: $ENV_FILE" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
 
 # 凭据回落保存 + 「设置」窗口当前密码显示刷新
-octop_write_login_file "$DATA_DIR" "$ADMIN_USER" "$ADMIN_PASS" 8089
+octop_write_login_file "$DATA_DIR" "$ADMIN_USER" "$ADMIN_PASS" "$CUR_PORT"
 WIZARD_TEMPLATE="$APPDEST/wizard/config.template"
 WIZARD_DIR="$(dirname "$APPDEST")/wizard"
 [ -f "$WIZARD_TEMPLATE" ] || WIZARD_TEMPLATE="${APPDEST}/../wizard/config"
