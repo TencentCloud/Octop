@@ -11,17 +11,15 @@ import { showApiError } from "../../../utils/showApiToast";
  * SkillSpec mirrors the JSON shape returned by octop's
  * ``GET /api/agents/{aid}/skills`` (see ``octop/api/routers/skills.py``).
  *
- * Field-name reconciliation: finnie's UI treats the identifier as ``slug``
- * and uses ``kind`` (``builtin`` | ``workspace``) to split built-in vs
- * customised skills. Octop only returns ``name`` and has no kind concept.
+ * The server returns a stable directory-name ``slug`` and classifies each
+ * skill as ``workspace``, ``builtin``, or ``package``.
  *
- * To reuse finnie-style components without renaming everything, this
- * hook exposes ``slug`` (= server's ``name``) and synthesises ``kind``
- * (always ``"workspace"`` for now — every octop skill is editable).
- * The optional ``emoji`` from frontmatter is also surfaced for the card.
+ * This hook preserves those fields for the UI, while falling back to ``name``
+ * and ``workspace`` for responses from older backends. The optional ``emoji``
+ * from frontmatter is also surfaced for the card.
  */
 export interface SkillSpec {
-  /** Identifier used in URLs / list keys. Equal to the server's ``name``. */
+  /** Stable directory identifier used in URLs and list keys. */
   slug: string;
   /** Human readable name (server falls back to slug). */
   name: string;
