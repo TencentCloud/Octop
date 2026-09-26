@@ -9,6 +9,8 @@
 
 import { getApiUrl } from "../../../api/config";
 import { getAuthToken } from "../../../api/request";
+import { octopThreadsApi } from "../../../api/modules/octopThreads";
+import { isPendingThread } from "./useSessions";
 import type { TokenUsage } from "../../../api/types";
 import { buildDashboardChatWsUrl } from "../../../api/modules/wsChat";
 import { generateId } from "../../../utils/messageParser";
@@ -511,7 +513,7 @@ type LiveSocket = {
    */
   intentionalClose: boolean;
   /**
-   * User hit stop (or cancelStream). Distinct from intentional socket *replace*
+   * Stream controller aborted. Distinct from intentional socket *replace*
    * while the server turn should keep running.
    */
   userCancelled: boolean;
@@ -852,33 +854,23 @@ function closeLiveSocket(
   clearLiveSocket(sessionId);
 }
 
-/** Cancel any in-flight stream for a session (user stop). */
-export function cancelStream(sessionId: string) {
-  const state = sessionStates.get(sessionId);
-  if (!state) return;
-  const live = liveSockets.get(sessionId);
-  if (live) {
-    live.intentionalClose = true;
-    live.userCancelled = true;
-    sendCancelFrame(live.ws, live.threadId || sessionId);
+/** Request cancellation without closing the stream or claiming completion. */
+export async function cancelStream(sessionId: string, agentId: string) {
+  const threadId = liveSockets.get(sessionId)?.threadId || sessionId;
+  if (
+    !agentId ||
+    !threadId ||
+    threadId === "__empty__" ||
+    isPendingThread(threadId)
+  ) {
+    throw new Error("No server thread is available to cancel");
   }
-  const hadAbort = Boolean(state.abortController);
-  const hadStreaming = state.isStreaming;
-  const hadStreamingMsgs = state.messages.some((m) => m.status === "streaming");
-  state.abortController?.abort();
-  state.abortController = null;
-  clearStreamingFlags(state);
-  clearStreamActivity(sessionId);
-  pendingResumeBySession.delete(sessionId);
-  state.runUsage = null;
-  usageSamplesByState.delete(state);
-  if (hadStreamingMsgs) {
-    state.messages = state.messages.map((m) =>
-      m.status === "streaming" ? { ...m, status: "done" as const } : m,
-    );
-  }
-  if (hadAbort || hadStreaming || hadStreamingMsgs) {
-    notify(state);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    return await octopThreadsApi.cancel(agentId, threadId, controller.signal);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

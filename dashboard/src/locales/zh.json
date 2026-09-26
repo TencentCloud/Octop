@@ -1273,6 +1273,9 @@
     "processThinkingLive": "深度思考中",
     "send": "发送",
     "stop": "停止",
+    "stopRequested": "停止请求已发送，正在等待任务结束",
+    "stopInactive": "当前未检测到运行中的回合",
+    "stopUnconfirmed": "停止请求未确认，请检查连接后重试",
     "queue": {
       "label": "排队中的消息",
       "action": "排队",

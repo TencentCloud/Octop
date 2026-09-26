@@ -160,6 +160,13 @@ because each request is a one-shot continuation.
 
 ## Threads & history
 
+`POST /agents/{id}/threads/{thread_id}/cancel` requires the current user's thread ownership
+and no request body. Returns `{thread_id, requested}`: `true` means the cancellation entry
+was called for a hub-active ordinary Dashboard turn, **not** that it has stopped; `false`
+means no such active turn was detected. Observe stream termination or re-subscribe for
+`turn_status`. This does not cancel queued tasks/HITL or roll back external side effects,
+does not identify an earlier turn, and must not be automatically retried.
+
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`    | `/agents/{id}/chat/sessions` | owner | `[{id, thread_id, title, archived, last_active, unread, ...}]` |
