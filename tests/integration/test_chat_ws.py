@@ -509,3 +509,34 @@ async def test_fork_thread_from_assistant_message(env: Any) -> None:
         json={"message_id": "a1", "assistant_turns_from_end": 2},
     )
     assert denied.status_code in {403, 404}
+
+
+async def test_ws_cancel_persists_interrupted_history(tmp_octop_home, monkeypatch):
+    monkeypatch.setenv("OCTOP_HISTORY_V2_ENABLED", "true")
+    stopped = asyncio.Event()
+    fake = FakeHarnessAgent()
+
+    async def stream(_request):
+        yield {"type": "token", "content": "partial answer"}
+        await stopped.wait()  # Harness cancellation returns without raising.
+
+    async with octop_client(tmp_octop_home, fake_agent=fake) as (c, srv):
+        await bootstrap_admin(c, tmp_octop_home)
+        auth = await auth_header(c)
+        await seed_openai_provider(c, auth)
+        aid = await create_agent(c, auth)
+        tid = (await c.post(f"/api/agents/{aid}/threads", headers=auth)).json()["thread_id"]
+        registry = srv.app_runtime.agent_registry
+        registry.get_agent(aid).stream = stream
+        registry._harness_manager.cancel.side_effect = lambda *_args: stopped.set()
+        async with _chat_ws(c, aid, auth) as ws:
+            await ws.send_json({"type": "user_turn", "text": "hello", "thread_id": tid})
+            assert (await ws.receive_json())["content"] == "partial answer"
+            await ws.send_json({"type": "cancel", "thread_id": tid})
+            frames = await ws.drain_turn()
+        assert frames[-1]["type"] == "done"
+        assert all(frame["type"] != "octop_stream_cancelled" for frame in frames)
+        assert srv.app_runtime.history_archive.store.turn(tid)["status"] == "interrupted"
+        assert not registry._stream_cancellations
+        history = await c.get(f"/api/agents/{aid}/threads/{tid}/history", headers=auth)
+        assert "partial answer" in history.text

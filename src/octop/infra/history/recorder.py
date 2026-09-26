@@ -59,6 +59,7 @@ class RecordingTracker(TurnHistoryTracker):
         self.archive = archive
         self.turn = turn
         self.paused = False
+        self.cancelled = False
         self.failed = False
         self.decode_failed = bool(turn.get("error"))
         self._parts: list[dict[str, Any]] = []
@@ -146,6 +147,8 @@ class RecordingTracker(TurnHistoryTracker):
             for msg in _chunk_messages(chunk):
                 if _role(msg) != "system" and message_input(msg) is None:
                     self.decode_failed = True
+        if kind == "octop_stream_cancelled":
+            self.cancelled = True
         if kind == "hitl_required":
             self.paused = True
         if kind == "error":
@@ -407,7 +410,7 @@ class RecordingTracker(TurnHistoryTracker):
             else "failed"
             if self.failed
             else "complete"
-            if completed
+            if completed and not self.cancelled
             else "interrupted"
         )
         if status == "complete" and self.turn["format"] == "v2":

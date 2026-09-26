@@ -1052,3 +1052,40 @@ async def test_im_projection_stops_on_archive_failure(archive, monkeypatch):
     await tracker.finish(completed=False)
     assert messages_from_dict(_committed_messages(archive))[0].content == "already committed"
     assert archive.store.turn("t")["status"] == "failed"
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("path", ["dashboard", "im", "resume"])
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_cancelled_processor_turn_stays_interrupted(archive, enabled, path, cancelled):
+    from unittest.mock import AsyncMock
+
+    archive.finish(archive.begin("a", "t")["id"], "complete")
+    archive.enabled = enabled
+    # Start with a ready projection so no legacy checkpoint lookup is needed.
+    archive.messages.append_if_ready("t", message_inputs([HumanMessage(content="seed", id="seed")]))
+    chunks = [{"type": "token", "content": "partial answer"}]
+    if cancelled:
+        chunks.append({"type": "octop_stream_cancelled"})
+    processor, msg = _dashboard_with_chunks(archive, chunks)
+    processor._agent_manager.resume_hitl = processor._agent_manager.stream
+    if path == "resume":
+        archive.finish(archive.begin("a", "t")["id"], "paused")
+        stream = processor.iter_hitl_resume_chunks(
+            agent_id="a",
+            thread_id="t",
+            user_id=1,
+            decisions=[{"type": "approve"}],
+        )
+    elif path == "im":
+        processor._thread_registry.get_or_create_by_key = AsyncMock(return_value="t")
+        stream = processor(msg)
+    else:
+        stream = processor.iter_turn_chunks(msg)
+    output = [item async for item in stream]
+    processor._record_stream_error.assert_not_awaited()
+    assert output
+    assert archive.store.turn("t")["status"] == ("interrupted" if cancelled else "complete")
+    assert archive.store.turn("t")["format"] == ("v2" if enabled else "legacy")
+    history = (await archive.page("t", limit=20, cursor=None, legacy_reader=no_anchor))["messages"]
+    assert messages_from_dict(history)[-1].content == "partial answer"
