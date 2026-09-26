@@ -19,6 +19,13 @@ _OCTOP_COMMON="$(dirname "$0")/../cmd/common.sh"
 APPDEST="${TRIM_APPDEST:-/var/apps/octop-native}"
 PKGVAR="${TRIM_PKGVAR:-/var/apps/octop-native/var}"
 
+# 架构闸门（issue #816）：本包只含 x86_64 载荷，在 ARM64 设备上应在启动最前端
+# 明确报错并退出，而不是让 Python 在 import 编译型依赖时抛出难懂的动态库错误。
+# common.sh 未注入时（仓库内直接运行）函数缺失，跳过即可。
+if command -v octop_require_supported_arch >/dev/null 2>&1; then
+    octop_require_supported_arch || exit 1
+fi
+
 # 数据落在 FnOS 的 data-share 共享目录，升级时保留。
 if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
     DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
