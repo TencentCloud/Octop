@@ -874,6 +874,8 @@ class AgentManager:
                 await asyncio.to_thread(shutil.rmtree, workspace_dir)
         except OSError:
             logger.exception("rmtree failed for %s; agent removed from DB anyway", workspace_dir)
+        if self._cron_manager is not None:
+            await self._cron_manager.cancel_agent(agent_id)
         self._repos.agent_repo.delete(agent_id)
         if self._proactive_scheduler is not None:
             self._proactive_scheduler.cancel(agent_id)
