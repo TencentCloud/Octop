@@ -475,7 +475,10 @@ function EditAgentDrawerBody({
           welcome_message: stored.welcome_message ?? "",
           knowledge_base_ids: stored.knowledge_base_ids ?? [],
           mcp_servers: stored.mcp_servers ?? [],
-          ...buildAgentRuntimeRequest(values, { clearMissing: true }),
+          // ``values`` only carries mounted fields, and the limits live in a
+          // collapsed panel; reading them from the store keeps a plain
+          // name/model save from clearing them (#810).
+          ...buildAgentRuntimeRequest(stored, { clearMissing: true }),
         }),
       });
 
