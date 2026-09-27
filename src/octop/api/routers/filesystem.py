@@ -23,7 +23,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_admin
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.users.resource_policy import (
@@ -146,7 +146,7 @@ async def probe_host_dir(
     summary="Best-effort ensure bubblewrap for scoped root_dir",
 )
 async def ensure_bwrap(
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_admin()),
 ) -> dict[str, Any]:
     """Ensure ``bwrap`` is available when saving a non-host-root backend.
 
@@ -176,7 +176,7 @@ async def get_docker_status(
     summary="Best-effort ensure Docker Engine for sandbox backends",
 )
 async def post_ensure_docker(
-    _: Any = Depends(current_user),
+    _: Any = Depends(require_admin()),
 ) -> dict[str, Any]:
     """Detect Docker; on Linux with passwordless sudo, try package install.
 

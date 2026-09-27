@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from octop.api.deps import current_user
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.permissions import user_has_permission
 from octop.infra.utils.browser_media import user_browser_profile
 
 logger = logging.getLogger(__name__)
@@ -292,6 +293,8 @@ async def harness_sessions_payload(profile_name: str) -> dict[str, Any]:
 @router.get("/browser/harness-sessions")
 async def list_harness_sessions(user: Any = Depends(current_user)) -> dict[str, Any]:
     """List the current user's live harness-browser profile."""
+    if not user_has_permission(user, "browser"):
+        raise OctopError(ErrorCode.FORBIDDEN, "browser permission required")
     return await harness_sessions_payload(user_browser_profile(user.id))
 
 
@@ -308,6 +311,8 @@ async def handoff(
     session and reflected in ``harness-sessions`` and the WS screencast so a
     takeover survives dashboard reloads and reconnects.
     """
+    if not user_has_permission(user, "browser"):
+        raise OctopError(ErrorCode.FORBIDDEN, "browser permission required")
     profile = user_browser_profile(user.id)
     if session_id not in {"", "auto"} and session_id != profile:
         logger.debug("handoff path %r ignored; using %r", session_id, profile)
@@ -345,6 +350,8 @@ async def handoff(
 )
 async def shutdown_browser(user: Any = Depends(current_user)) -> dict[str, Any]:
     """Terminate the current user's Octop-managed Chrome. Cookies stay on disk."""
+    if not user_has_permission(user, "browser"):
+        raise OctopError(ErrorCode.FORBIDDEN, "browser permission required")
     try:
         from harness_browser.tool_interface import browser_tool
     except ImportError as exc:

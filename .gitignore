@@ -104,3 +104,10 @@ scripts/dev-local-link.sh
 docs/superpowers/
 scripts/lh_image_install_octop_tencentos.sh
 .worktrees/
+
+# Local agent working context (Orion-OS framework + memory bank; not for upstream)
+.agents/
+
+# Local security audit report (contains exploit reproductions; not for upstream)
+audit-report.html
+audit-report.pdf

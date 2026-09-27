@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from octop.api.deps import get_server, require_permission
 
@@ -49,7 +49,7 @@ async def audit_log(
     since: int | None = None,
     actor: str | None = None,
     action: str | None = None,
-    limit: int = 100,
+    limit: int = Query(default=100, ge=1, le=1000),
     _: Any = Depends(require_permission("admin_console")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:

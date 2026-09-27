@@ -192,6 +192,16 @@ async def resume_hitl(
 ) -> StreamingResponse:
     """Resume a paused human-in-the-loop tool approval and stream subsequent chunks."""
     assert_agent_access(server, agent_id, user)
+    # SEC-16: resume must not be reachable for another user's thread. The
+    # pending record lookup already scopes by user_id, but a thread with no
+    # pending record would otherwise fall through to the caller's own DM
+    # session — verify ownership explicitly, matching turn.py.
+    thread_row = server.app_runtime.gateway.thread_registry.get_thread(body.thread_id)
+    if thread_row is not None:
+        if thread_row.agent_id != agent_id:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"thread {body.thread_id!r} not found")
+        if thread_row.user_id != user.id:
+            raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
     processor = server.app_runtime.gateway.processor
     hitl_coordinator = processor.hitl_coordinator
     pending = hitl_coordinator.store.resolve_pending_for_thread(

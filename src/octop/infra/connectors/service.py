@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import time
 from pathlib import Path
 from typing import Any
@@ -568,7 +569,7 @@ class ConnectorService:
     def verify_internal_token(self, instance_id: str, token: str) -> dict[str, Any] | None:
         creds = self.decrypt(instance_id)
         expected = str(creds.get("internal_token") or "")
-        if not expected or expected != token:
+        if not expected or not secrets.compare_digest(expected, token):
             return None
         return creds
 

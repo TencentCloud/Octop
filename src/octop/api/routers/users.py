@@ -163,6 +163,8 @@ async def create_user(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     _assert_can_assign(actor, body.permissions)
+    if Role(body.role) is not Role.USER and not actor.is_admin:
+        raise OctopError(ErrorCode.FORBIDDEN, "only admin may create privileged users")
     policy_kwargs = _policy_kwargs_from_body(body)
     if "workspace_root_dir" in policy_kwargs:
         normalize_workspace_root_dir(policy_kwargs["workspace_root_dir"])
@@ -215,6 +217,8 @@ async def patch_user(
             new_permissions=body.permissions,
         )
     if body.role is not None:
+        if not actor.is_admin:
+            raise OctopError(ErrorCode.FORBIDDEN, "admin required to change role")
         if user_id == actor.id and Role(body.role) is not Role.ADMIN:
             raise OctopError(ErrorCode.FORBIDDEN, "cannot demote yourself")
         await server.user_manager.set_role(row.username, Role(body.role))

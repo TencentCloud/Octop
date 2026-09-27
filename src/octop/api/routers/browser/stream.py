@@ -46,6 +46,7 @@ from octop.api.routers.browser.harness import (
     harness_page_url,
     resolve_harness_session,
 )
+from octop.infra.users.permissions import user_has_permission
 from octop.infra.utils.browser_media import user_browser_profile
 
 logger = logging.getLogger(__name__)
@@ -345,6 +346,9 @@ async def browser_stream_ws(
         user = resolve_user_from_token(server, token)
     except Exception as exc:
         await websocket.close(code=4001, reason=f"auth failed: {exc}")
+        return
+    if not user_has_permission(user, "browser"):
+        await websocket.close(code=4003, reason="permission required")
         return
 
     await websocket.accept()

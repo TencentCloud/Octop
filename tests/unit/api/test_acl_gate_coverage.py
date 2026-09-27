@@ -40,6 +40,10 @@ GATED_FILES = [
     "routers/skill_packages.py",
     "routers/terminal.py",
     "routers/acp.py",
+    "routers/browser/stream.py",
+    "routers/browser/harness.py",
+    "routers/browser/record_replay.py",
+    "routers/filesystem.py",
 ]
 
 

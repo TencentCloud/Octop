@@ -102,7 +102,7 @@ async def test_shutdown_browser_forces_current_user_profile() -> None:
         patch("harness_browser.tool_interface._registry", {"work": object()}),
     ):
         body = await harness_mod.shutdown_browser(
-            user=SimpleNamespace(id=7),
+            user=SimpleNamespace(id=7, is_admin=True, permissions=[]),
         )
     assert body == {"ok": True, "profile": "user-7"}
     tool.assert_awaited_once_with(

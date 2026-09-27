@@ -11,6 +11,16 @@ import pytest
 from octop.infra.agents.providers.probe import fetch_openai_compatible_models
 
 
+@pytest.fixture(autouse=True)
+def _skip_dns_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SEC-8 added DNS resolution to the probe guard; unit tests stub HTTP."""
+
+    async def _fake_resolve(url: str, *, field: str = "url") -> str:
+        return url
+
+    monkeypatch.setattr("octop.infra.utils.ssrf_guard._resolve_validated_ip", _fake_resolve)
+
+
 def _mock_response(status: int, payload: Any) -> httpx.Response:
     request = httpx.Request("GET", "https://api.example.com/v1/models")
     return httpx.Response(status, json=payload, request=request)
@@ -174,3 +184,14 @@ async def test_fetch_models_server_error_friendly() -> None:
     assert result["ok"] is False
     assert "temporarily unavailable" in result["error"].lower()
     assert "503" not in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_rejects_private_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SEC-8: the SSRF guard must reject private/loopback draft base_urls."""
+    result = await fetch_openai_compatible_models(
+        base_url="http://169.254.169.254/v1",
+        api_key="sk-secret",
+    )
+    assert result["ok"] is False
+    assert "not allowed" in result["error"] or "https" in result["error"].lower()

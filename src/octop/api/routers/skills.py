@@ -1145,7 +1145,7 @@ async def _download_skillhub_package_via_cli(
     await _upgrade_skillhub_cli(skillhub_bin)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        install_args = ["--dir", tmpdir, "install", skill_name]
+        install_args = ["--dir", tmpdir, "install", "--", skill_name]
         try:
             rc, _stdout, stderr = await _run_skillhub_cmd(
                 skillhub_bin,
@@ -1279,7 +1279,7 @@ async def _hub_search(request: Request, *, q: str, limit: int) -> list[dict[str,
     try:
         rc, stdout, stderr = await _run_skillhub_cmd(
             skillhub_bin,
-            ["search", "--search-limit", str(effective_limit), query],
+            ["search", "--search-limit", str(effective_limit), "--", query],
             timeout=30,
         )
     except TimeoutError:

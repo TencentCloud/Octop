@@ -27,17 +27,27 @@ _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _CAPTCHA_SECRET_KEYS = frozenset({"OCTOP_CAPTCHA_SECRET", "OCTOP_CAPTCHA_CAM_SECRET_KEY"})
 _SECRET_SENTINEL = "********"
 
+# SEC-18: the env file exists to hold API keys — redact by name pattern, not
+# just the two captcha keys. The write path already round-trips the sentinel.
+_SECRET_KEY_RE = re.compile(r"(_KEY$|_SECRET|_TOKEN$|_PASSWORD$)", re.IGNORECASE)
+
+
+def _is_secret_key(key: str) -> bool:
+    return key in _CAPTCHA_SECRET_KEYS or bool(_SECRET_KEY_RE.search(key))
+
 
 def _redact_env_items(items: list[dict[str, str]]) -> list[dict[str, str]]:
     return [
-        {**item, "value": _SECRET_SENTINEL} if item["key"] in _CAPTCHA_SECRET_KEYS else item
+        {**item, "value": _SECRET_SENTINEL} if _is_secret_key(item["key"]) else item
         for item in items
     ]
 
 
 def _restore_secret_sentinel(cleaned: dict[str, str], previous: dict[str, str]) -> None:
-    for key in _CAPTCHA_SECRET_KEYS:
-        if cleaned.get(key) != _SECRET_SENTINEL:
+    for key in list(cleaned):
+        if not _is_secret_key(key):
+            continue
+        if cleaned[key] != _SECRET_SENTINEL:
             continue
         if key in previous:
             cleaned[key] = previous[key]

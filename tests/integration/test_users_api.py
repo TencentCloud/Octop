@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.auth import create_user
+
 
 async def test_create_list_get_delete(env):
     c, srv, auth = env
@@ -245,3 +247,40 @@ async def test_admin_can_set_resource_policy(env, tmp_path, monkeypatch):
     assert r.status_code == 200
     assert r.json()["workspace_root_dir"] is None
     assert r.json()["token_quota"] is None
+
+
+# --- role escalation gate (audit SEC-3) -------------------------------------
+
+
+async def test_users_permission_holder_cannot_grant_admin_role(env):
+    """SEC-3: a non-admin holding the ``users`` permission cannot self-promote.
+
+    Before the fix, ``patch_user`` checked the self-demotion rule but never
+    required ``actor.is_admin`` for role changes, so a ``users``-permission
+    holder could PATCH their own role to ``admin``.
+    """
+    c, srv, admin_auth = env
+    user_auth = await create_user(
+        c, admin_auth, username="delegate", password="TestPass12", permissions=["users"]
+    )
+    me = (await c.get("/api/auth/me", headers=user_auth)).json()
+    r = await c.patch(f"/api/users/{me['id']}", headers=user_auth, json={"role": "admin"})
+    assert r.status_code == 403, r.text
+    after = (await c.get(f"/api/users/{me['id']}", headers=admin_auth)).json()
+    assert after["role"] == "user"
+
+
+async def test_users_permission_holder_cannot_create_admin(env):
+    """SEC-3 variant: a non-admin ``users`` holder cannot mint a new admin."""
+    c, srv, admin_auth = env
+    user_auth = await create_user(
+        c, admin_auth, username="delegate2", password="TestPass12", permissions=["users"]
+    )
+    r = await c.post(
+        "/api/users",
+        headers=user_auth,
+        json={"username": "newadmin", "password": "TestPass12", "role": "admin"},
+    )
+    assert r.status_code == 403, r.text
+    users = (await c.get("/api/users", headers=admin_auth)).json()
+    assert all(u["username"] != "newadmin" for u in users)

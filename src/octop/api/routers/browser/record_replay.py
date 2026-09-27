@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.permissions import user_has_permission
 from octop.infra.utils.browser_media import user_browser_profile
 
 router = APIRouter()
@@ -141,6 +142,8 @@ def _raise_if_not_ok(data: dict[str, Any], *, status: int = 500) -> None:
 
 @router.get("/browser/record-replay/status")
 async def record_status(user: Any = Depends(current_user)) -> dict[str, Any]:
+    if not user_has_permission(user, "browser"):
+        raise OctopError(ErrorCode.FORBIDDEN, "browser permission required")
     profile = user_browser_profile(user.id)
     try:
         data = await send_record_request({"command": "status"})
@@ -156,6 +159,8 @@ async def record_start(
     body: RecordStartBody,
     user: Any = Depends(current_user),
 ) -> dict[str, Any]:
+    if not user_has_permission(user, "browser"):
+        raise OctopError(ErrorCode.FORBIDDEN, "browser permission required")
     daemon = await ensure_record_daemon()
     _raise_if_not_ok(daemon, status=503)
     data = await send_record_request(
@@ -176,6 +181,8 @@ async def record_stop(
     body: RecordStopBody,
     user: Any = Depends(current_user),
 ) -> dict[str, Any]:
+    if not user_has_permission(user, "browser"):
+        raise OctopError(ErrorCode.FORBIDDEN, "browser permission required")
     profile = user_browser_profile(user.id)
     recording_id = body.recording_id
     if recording_id:
@@ -210,6 +217,8 @@ async def record_stop_and_generate_skill(
     generate-skill into a single call, returning the generated skill markdown
     content so the frontend can display it for user confirmation.
     """
+    if not user_has_permission(user, "browser"):
+        raise OctopError(ErrorCode.FORBIDDEN, "browser permission required")
     profile = user_browser_profile(user.id)
     recording_id = body.recording_id
     if recording_id:
@@ -285,6 +294,8 @@ async def get_skill_content(
     user: Any = Depends(current_user),
 ) -> dict[str, Any]:
     """Read the generated skill content (draft.skill.md) for a given recording."""
+    if not user_has_permission(user, "browser"):
+        raise OctopError(ErrorCode.FORBIDDEN, "browser permission required")
     skill_content = None
     skill_name = None
     skill_exists = False
@@ -314,6 +325,8 @@ async def replay_recording(
     body: ReplayBody,
     user: Any = Depends(current_user),
 ) -> dict[str, Any]:
+    if not user_has_permission(user, "browser"):
+        raise OctopError(ErrorCode.FORBIDDEN, "browser permission required")
     profile = user_browser_profile(user.id)
     _require_owned_recording(body.recording_id, profile)
     data = await run_replay_recording(

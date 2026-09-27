@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 
 from octop.api.deps import (
     ACCESS_TOKEN_RESPONSE_HEADER,
+    _query_token_allowed,
     authenticate_request,
     extract_raw_token,
     is_jwt_exempt_request,
@@ -45,7 +46,9 @@ def install(app: Any, server: Any) -> None:
 
         raw = extract_raw_token(
             authorization=request.headers.get("authorization"),
-            access_token=request.query_params.get("access_token"),
+            access_token=(
+                request.query_params.get("access_token") if _query_token_allowed(path) else None
+            ),
         )
         try:
             request.state.octop_user = authenticate_request(request, server)

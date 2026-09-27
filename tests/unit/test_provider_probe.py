@@ -13,6 +13,16 @@ from octop.infra.agents.providers.probe import build_probe_chat_model as _build_
 from octop.infra.agents.providers.probe import probe_provider_row
 
 
+@pytest.fixture(autouse=True)
+def _skip_dns_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SEC-8 added DNS resolution to the probe guard; unit tests stub HTTP."""
+
+    async def _fake_resolve(url: str, *, field: str = "url") -> str:
+        return url
+
+    monkeypatch.setattr("octop.infra.utils.ssrf_guard._resolve_validated_ip", _fake_resolve)
+
+
 def test_build_chat_model_includes_provider_id_and_model_name() -> None:
     row = SimpleNamespace(
         name="HAI",

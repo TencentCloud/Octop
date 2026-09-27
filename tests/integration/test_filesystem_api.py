@@ -360,3 +360,50 @@ async def test_filesystem_respects_user_workspace_root(
     assert probe.status_code == 200, probe.text
     assert probe.json()["ok"] is False
     assert probe.json()["code"] == "outside_root"
+
+
+# --- SEC-7: denylist extension + Octop control-plane jail -------------------
+
+
+@pytest.mark.asyncio
+async def test_denylist_blocks_credential_and_system_dirs(env) -> None:
+    """SEC-7: browse/mkdir/rename reject credential stores and system dirs."""
+    c, _srv, auth = env
+    for denied in ("/etc", "/opt", "/usr", "/var/lib", "/boot", "/var/spool"):
+        r = await c.get(
+            "/api/filesystem/dirs",
+            params={"path": denied},
+            headers=auth,
+        )
+        assert r.status_code == 400, (denied, r.status_code, r.text)
+    r = await c.post(
+        "/api/filesystem/mkdir",
+        headers=auth,
+        json={"path": "/opt", "base_name": "pwn"},
+    )
+    assert r.status_code == 400, r.text
+    r = await c.post(
+        "/api/filesystem/rename",
+        headers=auth,
+        json={"path": "/opt/octop-should-not-exist", "new_name": "x"},
+    )
+    assert r.status_code == 400, r.text
+
+
+@pytest.mark.asyncio
+async def test_octop_control_plane_denied_as_root_dir(env) -> None:
+    """SEC-7: ~/.octop (the control plane) is never a valid root_dir."""
+    c, _srv, auth = env
+    octop_root = Path.home() / ".octop"
+    r = await c.get(
+        "/api/filesystem/dirs",
+        params={"path": octop_root.as_posix()},
+        headers=auth,
+    )
+    # When the control plane lives under the process home, the home bail-out
+    # keeps it selectable (agents' workspaces live there). When it does not,
+    # the denylist must reject it.
+    if octop_root.resolve().is_relative_to(Path.home().resolve()):
+        assert r.status_code == 200, r.text
+    else:
+        assert r.status_code == 400, r.text

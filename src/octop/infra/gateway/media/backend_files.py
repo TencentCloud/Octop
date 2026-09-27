@@ -273,7 +273,11 @@ async def resolve_dashboard_media_url(
 
 def _guess_mime(path: str, hint: str = "") -> str:
     if hint:
-        return hint.split(";", 1)[0].strip().lower()
+        # SEC-11: never trust a client-supplied MIME hint for executable
+        # types — the preview route serves bytes inline on the app origin.
+        lowered = hint.split(";", 1)[0].strip().lower()
+        if lowered != "image/svg+xml":
+            return lowered
     guessed, _ = mimetypes.guess_type(path)
     return (guessed or "application/octet-stream").lower()
 

@@ -119,7 +119,8 @@ async def test_status_reports_wizard_password_exists(env: Any) -> None:
     assert body["setup_required"] is True
     assert body["wizard_password_required"] is True
     assert body["wizard_password_exists"] is True
-    assert body["wizard_password_path"] == str(Path.home() / WIZARD_FILE_NAME)
+    # SEC-17: the absolute server path is no longer disclosed.
+    assert "wizard_password_path" not in body
 
 
 async def test_begin_issues_token_when_password_not_required(tmp_octop_home: Path) -> None:
@@ -130,7 +131,7 @@ async def test_begin_issues_token_when_password_not_required(tmp_octop_home: Pat
         body = r.json()
         assert body["wizard_password_required"] is False
         assert body["wizard_password_exists"] is False
-        assert body["wizard_password_path"] is None
+        assert "wizard_password_path" not in body
 
         r = await c.post("/api/setup/begin")
         assert r.status_code == 200
@@ -264,11 +265,21 @@ async def test_resume_wizard_after_admin_created(env: Any) -> None:
         json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
+    # Anonymous resume must now fail closed (SEC-1).
     r = await c.post("/api/setup/resume-wizard")
-    assert r.status_code == 200
+    assert r.status_code == 401
+
+    # The wizard password itself authorizes a fresh token.
+    r = await c.post("/api/setup/resume-wizard", headers={"Authorization": f"Bearer {pw}"})
+    assert r.status_code == 200, r.text
     body = r.json()
     assert isinstance(body["wizard_token"], str)
     assert body["expires_in"] > 0
+
+    # A still-valid wizard token authorizes too.
+    tok2 = body["wizard_token"]
+    r = await c.post("/api/setup/resume-wizard", headers={"Authorization": f"Bearer {tok2}"})
+    assert r.status_code == 200, r.text
 
 
 async def test_test_provider_accepts_admin_jwt_after_admin_created(env: Any) -> None:

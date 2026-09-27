@@ -173,10 +173,34 @@ def maybe_sliding_renew_token(server: OctopServer, token: str, user: User) -> st
     )
 
 
+def _query_token_allowed(path: str) -> bool:
+    """SEC-19: query-string tokens land in access logs and Referer headers.
+
+    Browsers cannot set Authorization on EventSource, so the query token is
+    only honoured for the GET SSE route that actually needs it (trajectory
+    live stream). WebSocket routes authenticate inside their own handlers
+    with ``?token=`` and never pass through HTTP middleware.
+    """
+    parts = path.split("/")
+    # /api/agents/{aid}/threads/{tid}/trajectory/stream -> 8 segments
+    return (
+        len(parts) == 8
+        and parts[1] == "api"
+        and parts[2] == "agents"
+        and parts[4] == "threads"
+        and parts[6] == "trajectory"
+        and parts[7] == "stream"
+    )
+
+
 def authenticate_request(request: Request, server: OctopServer) -> User:
     raw = extract_raw_token(
         authorization=request.headers.get("authorization"),
-        access_token=request.query_params.get("access_token"),
+        access_token=(
+            request.query_params.get("access_token")
+            if _query_token_allowed(request.url.path)
+            else None
+        ),
     )
     if not raw:
         raise OctopError(ErrorCode.AUTH_FAILED, "missing credentials")
@@ -192,7 +216,10 @@ async def current_user(
     cached = getattr(request.state, "octop_user", None)
     if cached is not None:
         return cast("User", cached)
-    raw = extract_raw_token(authorization=authorization, access_token=access_token)
+    raw = extract_raw_token(
+        authorization=authorization,
+        access_token=access_token if _query_token_allowed(request.url.path) else None,
+    )
     if not raw:
         raise OctopError(ErrorCode.AUTH_FAILED, "missing credentials")
     return resolve_user_from_token(server, raw)

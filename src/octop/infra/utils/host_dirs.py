@@ -20,7 +20,24 @@ ProbeCode = Literal[
 _MAX_LIST_ENTRIES = 1000
 
 # Host paths that must not be browsed or used as workspace roots (POSIX).
-_DENIED_PREFIXES_POSIX = ("/proc", "/sys", "/dev", "/etc", "/root")
+_DENIED_PREFIXES_POSIX = (
+    "/proc",
+    "/sys",
+    "/dev",
+    "/etc",
+    "/root",
+    # SEC-7: credential stores and system/service locations have no business
+    # in a root_dir picker. Home is checked first, so these never deny paths
+    # under the process home.
+    "/.ssh",
+    "/.aws",
+    "/.config/gcloud",
+    "/var/lib",
+    "/var/spool",
+    "/usr",
+    "/opt",
+    "/boot",
+)
 
 _OUTSIDE_HOME_MSG = "path outside home"
 _OUTSIDE_ROOT_MSG = "path outside allowed workspace root"
@@ -129,6 +146,18 @@ def _is_denied_host_path(resolved: Path) -> bool:
     # denied policy still matches the logical system locations.
     if text == "/private" or text.startswith("/private/"):
         text = text[len("/private") :] or "/"
+    # SEC-7: the Octop control plane (~/.octop, or OCTOP_HOME) holds the
+    # database and JWT signing secret — never a valid root_dir target. When
+    # the control plane lives inside the process home this check is already
+    # satisfied by the home bail-out above.
+    try:
+        from octop.infra.utils.paths import PathLayout  # noqa: PLC0415
+
+        octop_root = Path(os.path.realpath(str(PathLayout.from_env().root)))
+        if _path_within_base(text, octop_root.as_posix()):
+            return True
+    except (ImportError, OSError, ValueError):
+        pass
     return any(text == denied or text.startswith(f"{denied}/") for denied in _DENIED_PREFIXES_POSIX)
 
 
