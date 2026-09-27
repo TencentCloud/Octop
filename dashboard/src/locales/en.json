@@ -75,7 +75,10 @@
     "copyErrorForOctop": "Copy error details",
     "installLogEmpty": "(No install log available)",
     "tokenCountPresets": "Quick fill",
-    "tokenCountPreview": "About {{label}} tokens ({{exact}})"
+    "tokenCountPreview": "About {{label}} tokens ({{exact}})",
+    "back": "Back",
+    "comingSoon": "Coming soon",
+    "notImplemented": "This page is under construction."
   },
   "apiErrors": {
     "AUTH_FAILED": "Authentication failed.",
@@ -278,7 +281,8 @@
     "groupNamePlaceholder": "Group name",
     "groupNameRequired": "Enter a group name",
     "saveFailed": "Could not save the navigation layout",
-    "dragToReorder": "Drag to reorder"
+    "dragToReorder": "Drag to reorder",
+    "chatHistory": "Session list"
   },
   "skillPackages": {
     "title": "Skill Packages",
@@ -1100,7 +1104,8 @@
     "pluginsBtn": "Plugins",
     "mbtiBtn": "MBTI",
     "channelsBtn": "Channels",
-    "memoryBtn": "Memory"
+    "memoryBtn": "Memory",
+    "openChat": "Chat"
   },
   "subagents": {
     "catalogTitle": "Manage subagents",
@@ -1652,7 +1657,10 @@
     "toolUiDockedOpen": "Open side panel",
     "loadEarlierMessages": "Load earlier messages",
     "historyLoadFailed": "History could not be loaded. Existing messages have been kept. Please retry.",
-    "historyRetry": "Retry"
+    "historyRetry": "Retry",
+    "creatingSession": "Creating session…",
+    "resizePopup": "Resize window",
+    "unreadMessages": "Unread messages"
   },
   "tools": {
     "unknown": "Unknown tool",
@@ -2112,7 +2120,11 @@
     "tencentcloud-infra": "Tencent Cloud Infra",
     "publisher-multi-platform": "Multi-platform Publisher",
     "docker-management": "Docker Management",
-    "copyDenied": "The package creator has disabled copying"
+    "copyDenied": "The package creator has disabled copying",
+    "table": {
+      "actions": "Actions",
+      "enabled": "Enabled"
+    }
   },
   "cronJobs": {
     "title": "Cron Jobs",
@@ -2299,7 +2311,8 @@
       "runtimeTimeoutSeconds": "Timeout (s)",
       "runtimeMisfireGrace": "Misfire Grace (s)"
     },
-    "noAgentSelected": "Pick an expert in the top-right switcher first to manage its scheduled tasks"
+    "noAgentSelected": "Pick an expert in the top-right switcher first to manage its scheduled tasks",
+    "goToChat": "Send to chat"
   },
   "channels": {
     "title": "Channels",
@@ -3301,7 +3314,8 @@
     "onnxNotReady": "not ready",
     "onnxCacheDir": "Cache: {{dir}}",
     "onnxLocalCached": "Cached models",
-    "onnxQuickDownload": "Quick download from catalog…"
+    "onnxQuickDownload": "Quick download from catalog…",
+    "defaultModelExtra": "Model used by Test connection; leave empty to use the first enabled model"
   },
   "advancedSettings": {
     "description": "Manage runtime configuration and environment variables.",
@@ -3606,7 +3620,20 @@
     "quietHoursEnd": "Do Not Disturb Until",
     "saveSuccess": "Proactive reminder settings saved",
     "saveFailed": "Failed to save proactive reminder settings",
-    "loadFailed": "Failed to load proactive reminder settings"
+    "loadFailed": "Failed to load proactive reminder settings",
+    "activeHoursEnd": "Care hours · end",
+    "activeHoursEndRequired": "Select an end time",
+    "activeHoursStart": "Care hours · start",
+    "activeHoursStartRequired": "Select a start time",
+    "episodeBannerText": "Octop picks a good moment from your episodes to send a caring message. See which entries are referenced in \"Episodes\".",
+    "intervalOrderError": "Minimum interval cannot exceed maximum interval",
+    "maxIntervalHours": "Max interval (hours)",
+    "maxIntervalRequired": "Enter the maximum interval",
+    "minIntervalHours": "Min interval (hours)",
+    "minIntervalMin": "Minimum interval is 1 hour",
+    "minIntervalRequired": "Enter the minimum interval",
+    "timeRangeError": "Care hours start must be earlier than end",
+    "viewEpisodes": "Open Episodes →"
   },
   "chatWelcome": {
     "greeting": "Hi! Your personal AI sidekick is here",
@@ -3721,7 +3748,8 @@
   },
   "language": {
     "title": "Language",
-    "description": "Choose the display language for the console."
+    "description": "Choose the display language for the console.",
+    "saveFailed": "Failed to save language preference"
   },
   "theme": {
     "title": "Appearance Theme",
@@ -3947,7 +3975,8 @@
       "deleteModelCacheTitle": "Delete model cache?",
       "deleteModelCacheDesc": "Delete the local cache for {{model}}? You'll need to re-download it before vector search can be re-enabled.",
       "deleteModelCacheSuccess": "Model cache deleted",
-      "deleteModelCacheFailed": "Delete failed: the model may be activating. Switch, save, or restart before deleting."
+      "deleteModelCacheFailed": "Delete failed: the model may be activating. Switch, save, or restart before deleting.",
+      "selectModel": "Select a model"
     },
     "pipeline": {
       "title": "Memory pipeline",
@@ -3963,11 +3992,16 @@
       "emptyTitle": "Memories are still being distilled",
       "emptyNoRaw": "No memories yet. Start chatting and the system will capture material and distill memories automatically.",
       "emptyWithRaw": "{{n}} pieces of conversation material captured. Distillation runs automatically once a session goes idle; the first memories usually appear after a few exchanges.",
-      "emptyPendingSuffix": "{{n}} memory candidates are awaiting confirmation in Pending Review."
+      "emptyPendingSuffix": "{{n}} memory candidates are awaiting confirmation in Pending Review.",
+      "lastExtract": "Last organized {{time}}"
     },
     "library": {
       "viewRaw": "Raw material",
-      "hintRaw": "Raw conversation material captured before distillation (counts don't map 1:1 to Conversations)"
+      "hintRaw": "Raw conversation material captured before distillation (counts don't map 1:1 to Conversations)",
+      "hintAtoms": "All memories in a flat list, filterable by importance",
+      "hintTree": "Browse related memories grouped by people, projects, tools and more",
+      "viewAtoms": "List view",
+      "viewTree": "Topic view"
     },
     "raw": {
       "typeFilter": "Type",
@@ -4033,7 +4067,17 @@
       "turnsEmpty": "No conversation turns in the last 7 days",
       "turns": "Turns",
       "growthTitle": "Memory growth · 7 days",
-      "growthEmpty": "No new memories in the last 7 days"
+      "growthEmpty": "No new memories in the last 7 days",
+      "atomsDelta7dShort": "added in 7 days",
+      "entitiesShort": "people & things",
+      "episodesShort": "conversation episodes",
+      "heroTitle": "User profile",
+      "memories": "memories",
+      "profileSubtitle": "A structured summary of what Octop currently understands about you — high-value conclusions only, not the full memory store.",
+      "reviewAction": "Tidy up profile",
+      "rowGoLibrary": "Open memory library →",
+      "rowHintToLibrary": "Wrong? Discard it in the memory library",
+      "viewAll": "View all"
     },
     "entitySummary": "Topic summary",
     "tree": {
@@ -4093,6 +4137,117 @@
       "ok": "Deprecate",
       "success": "Deprecated — Octop will no longer use this memory",
       "failed": "Operation failed: {{message}}"
+    },
+    "atomDetail": "Memory detail",
+    "episodeDetail": "Episode detail",
+    "candidates": {
+      "confirmPromote": "Adopt this memory?",
+      "confirmReject": "Confirm discard",
+      "detail": "Memory draft detail",
+      "empty": "No memory content yet",
+      "kindLabel": "Type",
+      "promote": "Adopt",
+      "promoteOk": "Adopted",
+      "reject": "Discard",
+      "rejectHint": "Discarded drafts never enter long-term memory. You can optionally give a reason for later review.",
+      "rejectOk": "Discarded",
+      "rejectReasonPlaceholder": "Optional reason, e.g. expired / inaccurate / not important",
+      "rejectTitle": "Discard this draft",
+      "statusLabel": "Status"
+    },
+    "confidence": {
+      "high": "High confidence",
+      "low": "Low confidence",
+      "medium": "Medium confidence"
+    },
+    "entityType": {
+      "concept": "Concept",
+      "event": "Event",
+      "organization": "Organization",
+      "other": "Other",
+      "person": "Person",
+      "place": "Place",
+      "project": "Project",
+      "tool": "Tool"
+    },
+    "episodes": {
+      "disclaimer": "This diary keeps the emotions and little stories from your time with Octop. It is not quoted in regular chats — it only helps Octop care for you better and feeds the weekly / monthly recaps."
+    },
+    "importance": {
+      "high": "Very important",
+      "low": "Normal",
+      "medium": "Important",
+      "title": "Importance"
+    },
+    "kind": {
+      "conflict": "Possible conflict",
+      "decision": "Decision",
+      "fact": "Fact",
+      "preference": "Preference",
+      "task": "Task"
+    },
+    "list": {
+      "importanceMin": "Importance at least",
+      "kind": "Type"
+    },
+    "migrate": {
+      "alreadyAdopted": "Already migrated, skipped",
+      "alreadyAdoptedAt": "This package was already imported at {{at}}",
+      "buttonLabel": "Migrate memory",
+      "chooseFile": "Choose file",
+      "comparePkgLabel": "Optional: upload a .hmpkg file to compare row counts",
+      "confirmDesc": "Once everything looks right, click \"Confirm & import\" to apply.",
+      "confirmImport": "Confirm & import",
+      "conflictLabel": "Conflict policy",
+      "conflictReplace": "Replace (overwrite with new data)",
+      "conflictSkip": "Skip (keep existing)",
+      "doctorAllPassed": "All checks passed ✓",
+      "doctorDesc": "Run a health check on this Octop memory store: schema, indexes, foreign-key integrity and more.",
+      "doctorFailed": "Some checks failed — see details",
+      "doctorLabel": "Validate migration",
+      "doctorTitle": "Validate migration health",
+      "dryRunResult": "Dry-run result",
+      "exportBtn": "Pack & download",
+      "exportDesc": "Pack all memories of this Octop into a .hmpkg file and download it. You can import the file on another host (openclaw / hermes) to keep using them.",
+      "exportLabel": "Export to file",
+      "exportSuccess": "Memory package downloaded",
+      "exportTitle": "Export memory to file",
+      "hostRewriteKeep": "Keep original host",
+      "hostRewriteLabel": "Host field",
+      "hostRewriteTarget": "Rewrite to target host",
+      "importBtn": "Import directly",
+      "importLabel": "Import from file",
+      "importStats": "Wrote {{n}}, skipped {{s}}",
+      "importSuccess": "Import finished — wrote {{n}} entries",
+      "importTitle": "Import memory from file",
+      "previewBtn": "Dry run",
+      "rowCountDiff": "Row count difference: ",
+      "runDoctor": "Run checks",
+      "selectFile": "Select a .hmpkg file first",
+      "selectFileLabel": "Select a .hmpkg file",
+      "targetHostLabel": "Target host",
+      "targetNs": "Target namespace: {{ns}}",
+      "willApply": "Will write: {{n}} entries",
+      "importDone": "Import finished"
+    },
+    "terminal": {
+      "aboutMe": "About you",
+      "currentFocus": "Current focus",
+      "emptyAboutMe": "Octop is still getting to know you — chat a bit more and it will fill in",
+      "emptyEntities": "No frequent people or things yet",
+      "emptyFocus": "No tasks in progress",
+      "emptyToldMe": "No explicit facts noted yet",
+      "entities": "Key people & things",
+      "entitiesDesc": "The most frequent topics in your memory",
+      "toldMe": "Facts you mentioned",
+      "toldMeDesc": "Key details recently noted by Octop",
+      "aboutMeDesc": "Stable preferences and facts",
+      "currentFocusDesc": "Tasks in progress and recent decisions"
+    },
+    "time": {
+      "daysAgo": "{{n}} days ago",
+      "today": "Today",
+      "yesterday": "Yesterday"
     }
   },
   "personalization": {
@@ -4477,7 +4632,8 @@
     "mobileHint": "Tap the view to control the remote desktop; shortcut buttons send common key chords.",
     "adminOnlyTitle": "Admin access required",
     "adminOnlyDesc": "Remote desktop controls the host OS and is available to administrators only. Ask an admin if you need access.",
-    "adminOnlyBack": "Back to chat"
+    "adminOnlyBack": "Back to chat",
+    "streamError": "Remote desktop connection failed"
   },
   "browserWorkspace": {
     "title": "Browser",
@@ -4583,7 +4739,8 @@
     "vectorIndexWarning": "If you change the embedding model, switch between local and external providers, or edit vector dimensions, a mismatch with the existing memory index will cause the Qdrant collection to be recreated — stored vectors are cleared and the index is rebuilt from your memory files.",
     "loadError": "Failed to load configuration",
     "applySuccess": "Configuration applied",
-    "saveAndApply": "Save & Apply"
+    "saveAndApply": "Save & Apply",
+    "selectModel": "Select a model"
   },
   "cos": {
     "tooltip": "Cloud Storage",
@@ -5602,7 +5759,40 @@
     "chatPickerSearch": "Search connectors",
     "chatNone": "None",
     "chatEmptyHint": "Add connectors on the Connectors page first",
-    "manageConnectors": "Manage connectors"
+    "manageConnectors": "Manage connectors",
+    "apiKey": "API Key",
+    "apiKeyDoc": "See how to get an API Key",
+    "apiKeyPlaceholder": "Paste API Key",
+    "authCodeDoc": "See how to get an authorization code",
+    "authCodePlaceholder": "Paste authorization code",
+    "authUrlFailed": "Failed to open the authorization page",
+    "authUrlMissing": "Authorization page URL unavailable",
+    "deleteFailed": "Delete failed",
+    "detectLocal": "Detect local service",
+    "difyMcpUrlInvalid": "Paste the full MCP Server URL from your Dify endpoint",
+    "difyPasteUrlRequired": "No MCP URL found in the clipboard",
+    "difyStep1": "Publish the app or workflow in Dify",
+    "difyStep2": "Enable MCP on the endpoint and copy the full Server URL",
+    "disableSuccess": "Disabled",
+    "enableSuccess": "Enabled",
+    "getTokenAt": "Get a Token",
+    "guidedSetup": "Quick setup",
+    "guidedStepProbe": "Probe and save after pasting credentials",
+    "lexiangCompanyFrom": "Company ID (company_from)",
+    "lexiangCompanyFromPlaceholder": "Copy from the Lexiang credentials page",
+    "manualTokenDoc": "Token docs (manual)",
+    "oauthTimedOut": "Authorization timed out; try one-click auth again",
+    "openAuthorizePage": "Open authorization page",
+    "pasteMcpUrl": "Paste MCP URL",
+    "probeNeedSecretAfterConfigChange": "Connection changed — re-enter the secret before probing",
+    "smartPaste": "Smart paste",
+    "toggleFailed": "Update failed",
+    "viewGuide": "View guide",
+    "weknoraDetectFailed": "Failed to detect local WeKnora",
+    "weknoraFound": "Detected local WeKnora and filled in the URL",
+    "weknoraNotFound": "WeKnora not found at 127.0.0.1:8080 on the Octop host",
+    "weknoraStep1": "Open WeKnora and create an API Key",
+    "weknoraStep2": "Detect the local service or enter the deployment URL manually"
   },
   "mbtiPage": {
     "pickAgent": "Select an Agent first"
@@ -5797,7 +5987,8 @@
         "label": "Token usage",
         "description": "Show token usage for the current thread"
       }
-    }
+    },
+    "menuHint": "↑↓ navigate · Enter confirm · Esc close"
   },
   "pageShell": {
     "experts": {
@@ -5911,6 +6102,10 @@
     "mobile": {
       "title": "Remote Phone",
       "subtitle": "View and control a connected phone or emulator"
+    },
+    "adminSharedModels": {
+      "title": "Shared Models",
+      "subtitle": "Model presets shared with all users"
     }
   },
   "remoteAndroid": {
@@ -6059,5 +6254,44 @@
     "updateReady": "A new version is ready",
     "updateNow": "Update now",
     "later": "Later"
+  },
+  "browser": {
+    "recordReplay": {
+      "replay": "Replay last browser recording",
+      "replayFailed": "Replay failed",
+      "replayPassed": "Replay finished",
+      "start": "Start browser recording",
+      "startFailed": "Failed to start recording",
+      "started": "Browser recording started",
+      "stop": "Stop browser recording",
+      "noRecording": "Finish a browser recording first"
+    }
+  },
+  "shortcut": {
+    "title": "Shortcuts"
+  },
+  "skillRecord": {
+    "applyFailed": "Failed to apply skill",
+    "recordingStopped": "Recording finished — captured {{steps}} replay steps",
+    "skillApplied": "Skill \"{{name}}\" applied",
+    "stopFailed": "Failed to stop recording"
+  },
+  "skillRecordGuide": {
+    "buttonLabel": "Skill recording",
+    "buttonTip": "Record browser actions into a reusable skill script",
+    "envWarning": "Browser environment not ready",
+    "envWarningDesc": "Make sure the browser environment is available before recording.",
+    "intro": "Record browser actions to generate a reusable skill script. After recording starts, describe the task goal and the operations in the AI assistant chat.",
+    "startRecording": "Start recording",
+    "step1Title": "Start recording",
+    "step1Desc": "Click the button below; the system will record all browser actions.",
+    "step2Title": "Enter the task goal",
+    "step2Desc": "Once recording starts, the AI assistant asks for a task goal — it becomes the skill's name and trigger keyword (e.g. \"Log into the OA system\").",
+    "step3Title": "Describe the steps",
+    "step3Desc": "Then describe what the assistant should do in the browser; it will perform and record the actions.",
+    "step4Title": "Stop and confirm",
+    "step4Desc": "When finished, type \"结束\" to stop; after confirmation the skill is saved under the task goal. Type the goal keyword later to replay it.",
+    "envNotReady": "Browser environment required first",
+    "title": "Skill recording guide"
   }
 }

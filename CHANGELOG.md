@@ -5,6 +5,10 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+- 安装或启用仍 `import harness_agent` 的旧插件时，不再因运行时包改名为 `octop_harness` 而失败。
+- 恢复工作区 zip 导入对 Octop 自有 `_builtin_skills` 前缀的过滤（#1105 的修复曾被连带删除，含回归测试），修复后导入不再植入无法通过 API 删除的内置技能条目（Fixes #1254）。
+- Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
 
 ### 修复
 
