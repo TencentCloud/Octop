@@ -11,6 +11,7 @@ import type {
   CallEntry,
 } from "../../../api/types";
 import type { HitlSessionPolicy } from "../../../api/types/hitl";
+import type { ThreadArtifact } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
 import { shouldBlockHistoryRefresh } from "./wsResumeGate";
 import {
@@ -473,7 +474,14 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
         entry.speaker_agent_id.trim()
           ? entry.speaker_agent_id.trim()
           : undefined,
-      teamWrapup: Boolean((entry as { team_wrapup?: boolean }).team_wrapup),
+      teamWrapup: Boolean(entry.team_wrapup),
+      editedFiles: Array.isArray(entry.edited_files)
+        ? entry.edited_files
+            .filter(
+              (p): p is string => typeof p === "string" && p.trim().length > 0,
+            )
+            .map((p) => p.trim())
+        : undefined,
     };
   });
 
@@ -499,6 +507,9 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
             output: current.toolData?.output,
             errorCode: current.toolData?.errorCode,
             returnCode: current.toolData?.returnCode,
+            ...(current.toolData?.artifact != null
+              ? { artifact: current.toolData.artifact }
+              : {}),
           },
           status: current.status,
           errorInfo: current.errorInfo,
@@ -661,6 +672,7 @@ export function convertHistoryMessages(
     error_code?: string;
     agent_id?: string;
     team_wrapup?: boolean;
+    edited_files?: string[];
   }>,
   agentId?: string,
 ): ChatMessage[] {
@@ -688,6 +700,11 @@ export function convertHistoryMessages(
           ? message.agent_id.trim()
           : undefined,
       team_wrapup: message.team_wrapup === true,
+      edited_files: Array.isArray(message.edited_files)
+        ? message.edited_files.filter(
+            (p): p is string => typeof p === "string" && p.trim().length > 0,
+          )
+        : undefined,
     };
   });
   const converted = convertCallEntries(entries).filter(
@@ -708,13 +725,12 @@ async function loadThreadHistory(
   nextOffset: number;
   nextCursor: string | null;
   turnActive: boolean;
-  artifacts: string[];
+  artifacts: ThreadArtifact[];
   projectionLoading: boolean;
   retryAfterMs: number;
 }> {
-  const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE } = await import(
-    "../../../api/modules/octopThreads"
-  );
+  const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE, normalizeThreadArtifacts } =
+    await import("../../../api/modules/octopThreads");
   const {
     syncSessionArtifacts,
     syncSessionConversationMode,
@@ -727,12 +743,11 @@ async function loadThreadHistory(
     offset,
     cursor: params.cursor,
   });
-  const artifacts = Array.isArray(history.artifacts)
-    ? history.artifacts.filter(
-        (path): path is string =>
-          typeof path === "string" && path.trim().length > 0,
-      )
-    : [];
+  const artifacts = normalizeThreadArtifacts(
+    history.artifacts,
+    agentId,
+    history.artifact_refs,
+  );
   if (offset === 0) {
     syncSessionArtifacts(threadId, artifacts);
     syncSessionConversationMode(
@@ -825,6 +840,7 @@ export function useChat(
     historyLoadingMore,
     historyHydrated,
     pendingPlanPath,
+    liveSpeakers,
   } = useSyncExternalStore(subscribeStore, getStoreSnapshot);
 
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1175,6 +1191,7 @@ export function useChat(
     historyRefreshing,
     historyHydrated,
     pendingPlanPath,
+    liveSpeakers,
     sendMessage,
     editAndResend,
     cancelStream,

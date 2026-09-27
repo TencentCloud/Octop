@@ -39,8 +39,8 @@ octop backup --help     # 备份/恢复
 
 | 版本 | 包名 | 体积 | 运行方式 | 依赖 |
 |------|------|------|----------|------|
-| **Docker 版** | `octop-<ver>.fpk` | ~8 KB | 飞牛自动从 GHCR 拉取 `ghcr.io/tencentcloud/octop:latest` 镜像运行 | 宿主需有 Docker 运行时 |
-| **本地版（非 Docker）** | `octop-native-<ver>.fpk` | ~560 MB | 自带 Python 3.12 运行时 + 前端 + 核心依赖，原生运行在飞牛主机 | 无需 Docker |
+| **Docker 版** | `Octop-fnos-docker-<ver>.fpk` | ~8 KB | 飞牛自动从 GHCR 拉取 `ghcr.io/tencentcloud/octop:latest` 镜像运行 | 宿主需有 Docker 运行时 |
+| **本地版（非 Docker）** | `Octop-fnos-native-<ver>.fpk` | ~560 MB | 自带 Python 3.12 运行时 + 前端 + 核心依赖，原生运行在飞牛主机 | 无需 Docker |
 
 - **Docker 版**实现为 FnOS `docker-project`：包体只含 `docker-compose.yaml` 与向导配置，运行时由飞牛从 GHCR 拉取镜像。镜像已内置 `desktop` 桌面控制与前端；Playwright Chromium 不预装，可在控制台按需安装。
 - **本地版**实现为 FnOS 原生 `app`：包内自带独立 Python 3.12 运行时、Octop 核心依赖、前端构建产物，以及 `data-share` 共享数据目录，直接以进程方式运行，不依赖 Docker。

@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from octop.infra.agents.avatar import materialize_remote_icon_url
+from octop.infra.agents.experts.avatar import materialize_remote_icon_url
 from octop.infra.agents.experts.catalog import (
     WORKSPACE_MANIFEST_PATH,
     apply_workspace_quick_prompts,
