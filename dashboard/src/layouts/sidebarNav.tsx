@@ -7,6 +7,7 @@ import {
   Waypoints,
   Link2,
   Database,
+  FolderKanban,
   Cpu,
   Users as UsersIcon,
   Activity,
@@ -53,6 +54,7 @@ export const SIDEBAR_GROUPED_NAV_KEYS = [
   "connectors",
   "skill-packages",
   "knowledge-bases",
+  "projects",
   "workbench",
   "remote-desktop",
   "acp",
@@ -144,6 +146,14 @@ export function buildNavSections(
       path: "/knowledge-bases",
       icon: <Database size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.knowledgeBases",
+    });
+  }
+  if (navAllowed(user, "projects")) {
+    settingsItems.push({
+      key: "projects",
+      path: "/projects",
+      icon: <FolderKanban size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.projects",
     });
   }
   if (settingsItems.length > 0) {
