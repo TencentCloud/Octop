@@ -667,8 +667,45 @@ def test_restart_service_waits_for_startup(monkeypatch: pytest.MonkeyPatch, tmp_
     monkeypatch.setattr(service_mod.time, "sleep", lambda s: sleeps.append(s))
 
     restart_service(runtime)
-    # launchd restart: bootout → _wait_for_stop polls → bootstrap → _wait_for_startup
+    # launchd restart: kickstart -k → _wait_for_startup
     assert service_mod._STARTUP_GRACE_SECONDS in sleeps  # noqa: SLF001
+
+
+def test_restart_service_never_unloads_the_launchd_job(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: the service used to vanish from the launchd domain.
+
+    ``bootout`` unloads the job *and* SIGTERMs the very process running the
+    restart, so the ``bootstrap`` that had to follow raced our own shutdown.
+    Whenever it lost, the job was gone from the domain, KeepAlive went with it,
+    and nothing brought the service back.  A launchd restart must therefore be
+    a single launchd-owned ``kickstart -k`` that never unloads the job and never
+    waits for this process to stop.
+    """
+    runtime = replace(_runtime(tmp_path), mode="launchd", scope="user")
+    calls: list[tuple[str, ...]] = []
+
+    def _fake_launchctl_run(_scope: str, *args: str) -> object:
+        calls.append(tuple(args))
+        return type("_P", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    def _must_not_poll(*_a: object, **_k: object) -> object:
+        pytest.fail("restart must not wait for its own process to stop")
+
+    monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: True)
+    monkeypatch.setattr(service_mod, "install_service", lambda rt, force=False: False)
+    monkeypatch.setattr(service_mod, "_launchctl_run", _fake_launchctl_run)
+    monkeypatch.setattr(service_mod, "collect_service_status", _must_not_poll)
+    monkeypatch.setattr(service_mod, "_wait_for_startup", lambda: None)
+    monkeypatch.setattr(service_mod.time, "sleep", lambda _s: None)
+
+    restart_service(runtime)
+
+    verbs = [args[0] for args in calls]
+    assert ("kickstart", "-k", launchd_domain("user")) in calls
+    assert "bootout" not in verbs
+    assert "bootstrap" not in verbs
 
 
 def test_resolve_run_as_user_root_session(monkeypatch: pytest.MonkeyPatch) -> None:
