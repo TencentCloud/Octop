@@ -13,7 +13,7 @@ from langgraph.config import get_config
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
-from octop.infra.agents.thread_artifact import (
+from octop.infra.agents.threads.artifact import (
     extract_artifact_paths,
     is_artifact_tool_name,
 )
