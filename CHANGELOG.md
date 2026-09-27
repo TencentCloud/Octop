@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 修复
+- 挂载技能包供给的 skill slug 不再被 `skills/copy` / `skills/import` / `skills/hub/install` 静默覆盖成工作区副本：三条路径与既有 create/update/delete/push 一致返回 403，需先经 `POST /agents/{id}/skill-packages/{package_id}/copy` 显式落地 (#1217)
+
 ## [1.0.2b3] - 2026-09-26
 
 ### 新增

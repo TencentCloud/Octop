@@ -885,6 +885,7 @@ class _AgentWorkspaceInstallTarget:
         return await _resolve_skill(self._workspace, slug) is not None
 
     async def write_files(self, slug: str, files: list[tuple[str, bytes]]) -> None:
+        await _guard_package_only_skill_write(self._workspace, self._config, self._server, slug)
         skill_root = f"skills/{slug}"
         with contextlib.suppress(Exception):
             await self._workspace.adelete(skill_root)
@@ -920,6 +921,7 @@ async def copy_skill_from_agent(
     locale = resolve_request_locale(request)
     try:
         slug = validate_skill_slug(body.slug)
+        await _guard_package_only_skill_write(dest.workspace, dest.config, server, slug)
         copied_identity_keys = set(await _skill_disable_keys(dest, slug))
         copied = await copy_workspace_skill_to_workspace(
             source=source,
