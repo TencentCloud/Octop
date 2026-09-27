@@ -96,6 +96,21 @@ describe("history token usage", () => {
     expect(messages[3]?.speakerAgentId).toBe("host");
   });
 
+  it("maps stamped edited_files onto history bubbles for the edit card", () => {
+    const messages = convertHistoryMessages([
+      { role: "user", content: "write a plan", id: "u1" },
+      {
+        role: "assistant",
+        content: "done",
+        id: "m1",
+        agent_id: "doctor",
+        edited_files: ["notes/plan.md", ""],
+      },
+    ]);
+    expect(messages[1]?.editedFiles).toEqual(["notes/plan.md"]);
+    expect(messages[1]?.speakerAgentId).toBe("doctor");
+  });
+
   it("maps persisted stream errors to assistant error bubbles", () => {
     const messages = convertHistoryMessages([
       { role: "user", content: "continue this", id: "u1" },

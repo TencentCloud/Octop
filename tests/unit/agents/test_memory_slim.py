@@ -14,8 +14,8 @@ from langgraph.checkpoint.base import empty_checkpoint
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from octop.infra.agents.manager import AgentManager
-from octop.infra.agents.memory_slim import MemorySlimCoordinator
-from octop.infra.agents.memory_slim_control import MemorySlimControl, request_memory_slim
+from octop.infra.agents.memory.slim import MemorySlimCoordinator
+from octop.infra.agents.memory.slim_control import MemorySlimControl, request_memory_slim
 
 
 def make_manager(tmp_path):
@@ -375,7 +375,7 @@ def test_live_discovery_filters_unavailable_agents_without_opening_memory(tmp_pa
 async def test_control_discovery_and_heartbeat_during_unchanged_phase(tmp_path, monkeypatch):
     from octop_memory.application import checkpoint_maintenance
 
-    from octop.infra.agents.memory_slim_control import list_memory_slim_agents
+    from octop.infra.agents.memory.slim_control import list_memory_slim_agents
 
     coordinator, registry, memory, _, _ = make_manager(tmp_path)
     registry.list_rows = lambda: [SimpleNamespace(agent_id="a", name="助手")]

@@ -41,7 +41,7 @@ async def test_create_user_writes_db(manager: UserManager):
         username="alice", password="TestPass12", role=Role.ADMIN, display_name="Alice"
     )
     assert user.username == "alice"
-    assert user.role is Role.ADMIN
+    assert user.role == Role.ADMIN
     assert manager.get("alice") is not None
 
 
@@ -137,8 +137,12 @@ async def test_sso_create_then_updates_same_subject(manager: UserManager):
         claims={"preferred_username": "alice", "email": "Alice@Example.com", "name": "Alice"},
     )
 
-    assert user.role is Role.USER
+    assert user.role == Role.USER
+    assert "channels" in user.permissions
     row = manager.get_row(user.id)
+    assert row is not None
+    assert row.role_name == "用户"
+    assert row.role == "user"
     assert row.password_hash is None
     assert row.email == "alice@example.com"
     assert row.display_name == "Alice"
@@ -403,7 +407,7 @@ async def test_create_rejects_weak_password(manager: UserManager):
 async def test_set_role(manager: UserManager):
     await manager.create(username="a", password="TestPass12", role=Role.USER)
     await manager.set_role("a", Role.ADMIN)
-    assert manager.get("a").role is Role.ADMIN
+    assert manager.get("a").role == Role.ADMIN
 
 
 async def test_disable_removes_from_memory(manager: UserManager):
