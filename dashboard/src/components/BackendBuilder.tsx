@@ -18,8 +18,8 @@
  * Composite nesting is intentionally **one level only**: nested
  * composites are technically legal in octop-harness but rare in
  * practice, and an unconstrained tree editor is hard to use without
- * dedicated UX. If a user needs nesting they can hand-edit the JSON
- * preview at the bottom (a planned follow-up).
+ * dedicated UX. The JSON preview at the bottom is read-only, so nested
+ * composites cannot be authored in this builder.
  */
 
 import { useEffect, useMemo, useState } from "react";

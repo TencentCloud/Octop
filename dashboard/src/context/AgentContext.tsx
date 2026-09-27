@@ -13,11 +13,10 @@ import { agentApi as legacyAgentApi } from "../api/modules/agent";
 /**
  * Multi-Agent navigation state.
  *
- * Plan §14.3: the dashboard fetches the current user's agents on login,
- * stores the list + selected id in this context, persists the selection
- * in ``localStorage`` (``octop:active-agent``), and pipes the selected id
- * into ``api/request.ts`` so every agent-scoped HTTP call gets an
- * ``X-Octop-Agent-Id`` header.
+ * The dashboard fetches the current user's agents on login, stores the list +
+ * selected id in this context, persists the selection in ``localStorage``
+ * (``octop:active-agent``), and pipes the selected id into ``api/request.ts``
+ * so every agent-scoped HTTP call gets an ``X-Octop-Agent-Id`` header.
  */
 
 export interface OctopAgent {
@@ -170,16 +169,14 @@ const defaultValue: AgentContextValue = {
 const AgentContext = createContext<AgentContextValue>(defaultValue);
 
 interface ListAgentsResponse {
-  // Server returns OctopAgent[]; typed loosely so legacy agent.ts module
-  // (which has a different ``agentApi`` shape for finnie endpoints) stays
-  // untouched.
+  // Compatible API modules may expose a collection-list method that returns
+  // the same shape as GET /api/agents.
   list: () => Promise<OctopAgent[]>;
 }
 
 /**
- * Fetch ``/api/agents``. Tries the orca-flavored ``listAll`` method first,
- * falls back to a direct request if the legacy module hasn't been
- * regenerated yet.
+ * Fetch ``/api/agents`` through a compatible collection-list method when one
+ * is available, otherwise fall back to a direct request.
  */
 async function fetchAgents(): Promise<OctopAgent[]> {
   const candidate = legacyAgentApi as Partial<ListAgentsResponse> &
@@ -187,7 +184,7 @@ async function fetchAgents(): Promise<OctopAgent[]> {
   if (typeof candidate.list === "function") {
     return candidate.list();
   }
-  // Direct fallback so 14.3 doesn't depend on 14.6's API module rewrite.
+  // Fall back directly when the API module has no collection-list method.
   const { request } = await import("../api/request");
   return request<OctopAgent[]>("/agents");
 }
