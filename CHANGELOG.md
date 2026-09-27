@@ -8,6 +8,7 @@
 
 ### 修复
 - 测试套件在中文 Windows（ANSI 代码页 936）上不再因平台默认编码读迁移 SQL 而报 `UnicodeDecodeError`：读 `src/octop/infra/db/migrations/*.sql` 的 22 处 `read_text()` 统一显式按 UTF-8 解码，与 `migrate.py` 的既有写法一致
+- 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 
 ## [1.0.2b3] - 2026-09-26
 

@@ -19,6 +19,7 @@ import {
 } from "../../routes";
 import { CHAT_HISTORY_RAIL_ID, isChatPath } from "../chatHistoryRail";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useKeyboardOffset } from "../../hooks/useKeyboardOffset";
 import { useChatSidebarOpen } from "../../pages/Chat/hooks/useChatSidebarState";
 import { EXPAND_CHAT_RAIL_EVENT } from "../../pages/Chat/components/ChatSidebarPanel";
 import RequirePermission from "../../components/RequirePermission";
@@ -59,6 +60,7 @@ export default function MainLayout() {
   const isMobile = useIsMobile();
   const { layoutMode } = useLayoutMode();
   useDashboardPushToast();
+  useKeyboardOffset();
   const isMinimalLayout = layoutMode === "minimal";
   const isFullscreen =
     FULLSCREEN_PATHS.has(currentPath) ||

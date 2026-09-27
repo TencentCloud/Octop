@@ -18,6 +18,7 @@ from octop.infra.utils.ulid import new_ulid
 
 ADMIN_USER_ROLE_ID = "admin"
 SEEDED_USER_ROLE_ID = "user"
+BUILTIN_USER_ROLE_IDS = frozenset({ADMIN_USER_ROLE_ID, SEEDED_USER_ROLE_ID})
 
 
 def parse_string_list(raw: object) -> builtins.list[str]:
