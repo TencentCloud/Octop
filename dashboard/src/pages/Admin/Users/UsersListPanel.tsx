@@ -292,7 +292,12 @@ function UserRoleField({
           }}
           onChange={(id) => {
             const next = (id as string | null | undefined) ?? null;
-            if (next == null) return;
+            if (next == null) {
+              form.setFieldsValue({ role: null, role_name: null });
+              committedId.current = null;
+              committedName.current = null;
+              return;
+            }
             const role = visibleRoles.find(
               (item) => item.user_role_id === next,
             );
