@@ -64,6 +64,7 @@ import {
   builtinPluginHost,
   createPluginUiHost,
   parseOctopToolOutput,
+  resolvePluginUiData,
   resolveToolRenderer,
   useToolRendererVersion,
   type ToolRenderProps,
@@ -379,6 +380,11 @@ export function ToolDetailsInline({
     () => parseOctopToolOutput(toolData.output),
     [toolData.output],
   );
+  // Offloaded octop_ui payloads: explicit data wins; data_ref → artifact.
+  const resolvedData = useMemo(
+    () => resolvePluginUiData(parsed, toolData.artifact, toolData.output),
+    [parsed, toolData.artifact, toolData.output],
+  );
   const pluginId =
     toolData.pluginId ?? lookupPluginIdForTool(toolData.name) ?? "builtin";
 
@@ -415,12 +421,7 @@ export function ToolDetailsInline({
     callId: toolData.callId,
     status,
     args,
-    data:
-      parsed.data !== undefined
-        ? parsed.data
-        : parsed.isJson
-        ? parsed.raw
-        : toolData.output,
+    data: resolvedData,
     textFallback: parsed.text,
     host:
       registration && registration.pluginId !== "builtin"

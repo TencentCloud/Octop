@@ -406,8 +406,14 @@ class ThreadRegistry:
     def touch_last_active(self, thread_id: str) -> None:
         self._threads.touch_last_active(thread_id)
 
-    def append_artifacts(self, thread_id: str, paths: list[str] | tuple[str, ...]) -> None:
-        self._threads.append_artifacts(thread_id, paths)
+    def append_artifacts(
+        self,
+        thread_id: str,
+        paths: list[str] | tuple[str, ...],
+        *,
+        agent_id: str = "",
+    ) -> None:
+        self._threads.append_artifacts(thread_id, paths, agent_id=agent_id)
 
     def get_thread(self, thread_id: str) -> ThreadRow | None:
         return self._threads.get(thread_id)
