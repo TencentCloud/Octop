@@ -60,12 +60,13 @@ interface ChatDockPanelProps {
   onClose: () => void;
   style?: React.CSSProperties;
   agentId: string;
-  filePaths: string[];
+  filePaths: Array<string | { path: string; agentId?: string }>;
+  agentNameById?: Record<string, string>;
   openTabs: DockTab[];
   activeTabId: DockTabId | null;
   onSelectTab: (id: DockTabId) => void;
   onCloseTab: (id: DockTabId) => void;
-  onOpenFile: (path: string) => void;
+  onOpenFile: (path: string, agentId?: string | null) => void;
   browserEnvironment?: DisplayEnvironment;
   threadId?: string | null;
   isStreamingTurn?: boolean;
@@ -192,6 +193,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   style,
   agentId,
   filePaths,
+  agentNameById,
   openTabs,
   activeTabId,
   onSelectTab,
@@ -215,9 +217,9 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   const [terminalMounted, setTerminalMounted] = useState(
     openTabs.some((tab) => tab.kind === "terminal"),
   );
-  const [mountedFilePaths, setMountedFilePaths] = useState<string[]>(() =>
-    openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
-  );
+  const [mountedFileTabs, setMountedFileTabs] = useState<
+    Extract<DockTab, { kind: "file" }>[]
+  >(() => openTabs.filter((tab) => tab.kind === "file"));
   const [mountedKnowledgeTabs, setMountedKnowledgeTabs] = useState<
     Extract<DockTab, { kind: "knowledge" }>[]
   >(() => openTabs.filter((tab) => tab.kind === "knowledge"));
@@ -225,7 +227,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     () =>
       openTabs.filter((tab) => tab.kind === "toolUi").map((tab) => tab.callId),
   );
-  const [fileActionsByPath, setFileActionsByPath] = useState<
+  const [fileActionsById, setFileActionsById] = useState<
     Record<string, ReactNode>
   >({});
   const [knowledgeActionsById, setKnowledgeActionsById] = useState<
@@ -246,8 +248,13 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     setWorkspaceMounted(hasWorkspace);
     setBrowserMounted(hasBrowser);
     setTerminalMounted(hasTerminal);
-    const openFilePaths = new Set(
-      openTabs.filter((tab) => tab.kind === "file").map((tab) => tab.path),
+    const openFileById = new Map(
+      openTabs
+        .filter(
+          (tab): tab is Extract<DockTab, { kind: "file" }> =>
+            tab.kind === "file",
+        )
+        .map((tab) => [tab.id, tab]),
     );
     const openKnowledgeById = new Map(
       openTabs
@@ -260,12 +267,15 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     const openToolUiCallIds = new Set(
       openTabs.filter((tab) => tab.kind === "toolUi").map((tab) => tab.callId),
     );
-    setMountedFilePaths((prev) => {
-      const next = prev.filter((path) => openFilePaths.has(path));
-      let changed = next.length !== prev.length;
-      for (const path of openFilePaths) {
-        if (!next.includes(path)) {
-          next.push(path);
+    setMountedFileTabs((prev) => {
+      const next = prev
+        .filter((tab) => openFileById.has(tab.id))
+        .map((tab) => openFileById.get(tab.id) ?? tab);
+      let changed =
+        next.length !== prev.length || next.some((tab, i) => tab !== prev[i]);
+      for (const tab of openFileById.values()) {
+        if (!next.some((row) => row.id === tab.id)) {
+          next.push(tab);
           changed = true;
         }
       }
@@ -296,15 +306,15 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
       }
       return changed ? next : prev;
     });
-    setFileActionsByPath((prev) => {
+    setFileActionsById((prev) => {
       let changed = false;
       const next: Record<string, ReactNode> = {};
-      for (const path of Object.keys(prev)) {
-        if (openFilePaths.has(path)) {
-          next[path] = prev[path];
+      for (const id of Object.keys(prev)) {
+        if (openFileById.has(id)) {
+          next[id] = prev[id];
         } else {
           changed = true;
-          delete fileActionsHandlersRef.current[path];
+          delete fileActionsHandlersRef.current[id];
         }
       }
       return changed ? next : prev;
@@ -328,22 +338,22 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     browserRefreshRef.current = refresh;
   }, []);
 
-  const getFileActionsHandler = useCallback((path: string) => {
-    const existing = fileActionsHandlersRef.current[path];
+  const getFileActionsHandler = useCallback((tabId: string) => {
+    const existing = fileActionsHandlersRef.current[tabId];
     if (existing) return existing;
     const handler = (actions: ReactNode | null) => {
-      setFileActionsByPath((prev) => {
+      setFileActionsById((prev) => {
         if (actions == null) {
-          if (!(path in prev)) return prev;
+          if (!(tabId in prev)) return prev;
           const next = { ...prev };
-          delete next[path];
+          delete next[tabId];
           return next;
         }
-        if (prev[path] === actions) return prev;
-        return { ...prev, [path]: actions };
+        if (prev[tabId] === actions) return prev;
+        return { ...prev, [tabId]: actions };
       });
     };
-    fileActionsHandlersRef.current[path] = handler;
+    fileActionsHandlersRef.current[tabId] = handler;
     return handler;
   }, []);
 
@@ -416,7 +426,22 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             ) : (
               <>
                 <FilePen size={16} strokeWidth={2} aria-hidden />
-                <span title={tab.path}>{dockFileBasename(tab.path)}</span>
+                <span
+                  title={
+                    tab.agentId && tab.agentId !== agentId
+                      ? `${tab.path} · ${
+                          agentNameById?.[tab.agentId] || tab.agentId
+                        }`
+                      : tab.path
+                  }
+                >
+                  {dockFileBasename(tab.path)}
+                  {tab.agentId &&
+                  tab.agentId !== agentId &&
+                  (agentNameById?.[tab.agentId] || tab.agentId)
+                    ? ` · ${agentNameById?.[tab.agentId] || tab.agentId}`
+                    : ""}
+                </span>
               </>
             );
           return (
@@ -478,13 +503,13 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
       );
     }
     if (activeTab?.kind === "file") {
-      return fileActionsByPath[activeTab.path] ?? null;
+      return fileActionsById[activeTab.id] ?? null;
     }
     if (activeTab?.kind === "knowledge") {
       return knowledgeActionsById[activeTab.id] ?? null;
     }
     return null;
-  }, [activeTab, fileActionsByPath, knowledgeActionsById, t]);
+  }, [activeTab, fileActionsById, knowledgeActionsById, t]);
 
   return (
     <ChatDockPanelShell
@@ -508,25 +533,27 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             <ChatDockFileList
               agentId={agentId}
               filePaths={filePaths}
+              agentNameById={agentNameById}
               onOpenFile={onOpenFile}
             />
           </div>
         )}
 
-        {mountedFilePaths.map((path) => {
+        {mountedFileTabs.map((tab) => {
           const isActive =
-            activeTab?.kind === "file" && activeTab.path === path;
+            activeTab?.kind === "file" && activeTab.id === tab.id;
+          const fileAgent = tab.agentId || agentId;
           return (
             <div
-              key={path}
+              key={tab.id}
               className={styles.dockTabBody}
               hidden={!isActive}
               style={{ display: isActive ? "flex" : "none" }}
             >
               <FilePanelContent
-                agentId={agentId}
-                filePath={path}
-                onActionsChange={getFileActionsHandler(path)}
+                agentId={fileAgent}
+                filePath={tab.path}
+                onActionsChange={getFileActionsHandler(tab.id)}
               />
             </div>
           );
