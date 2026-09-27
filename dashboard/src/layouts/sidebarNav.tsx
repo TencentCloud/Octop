@@ -37,9 +37,66 @@ export interface NavItem {
 }
 
 export interface NavSection {
-  /** When omitted, items render flat without a group header. */
+  /** Stable group id. Omitted for the ungrouped block at the top. */
+  id?: string;
+  /** Built-in label key. Omitted when {@link title} is set or the block is ungrouped. */
   groupKey?: string;
+  /** User-defined group title. Wins over {@link groupKey}. */
+  title?: string;
   items: NavItem[];
+}
+
+/** Every nav item key the sidebar can show. Keep in sync with `SIDEBAR_NAV_KEYS` in `octop.infra.users.preferences`. */
+export const SIDEBAR_NAV_KEYS = [
+  "chat",
+  "experts",
+  "tasks",
+  "token-usage",
+  "personalization",
+  "channels",
+  "connectors",
+  "skill-packages",
+  "knowledge-bases",
+  "workbench",
+  "remote-desktop",
+  "acp",
+  "admin-users",
+  "models",
+  "admin-storage",
+  "admin-plugins",
+  "admin-security",
+  "admin-advanced",
+] as const;
+
+export const BUILTIN_NAV_GROUP_IDS = ["settings", "control", "admin"] as const;
+
+const BUILTIN_NAV_GROUP_LABEL_KEYS: Record<
+  (typeof BUILTIN_NAV_GROUP_IDS)[number],
+  string
+> = {
+  settings: "nav.settings",
+  control: "nav.control",
+  admin: "nav.admin",
+};
+
+export function isBuiltinNavGroupId(id: string): boolean {
+  return (BUILTIN_NAV_GROUP_IDS as readonly string[]).includes(id);
+}
+
+export function builtinNavGroupLabelKey(id: string): string | null {
+  if (!isBuiltinNavGroupId(id)) return null;
+  return BUILTIN_NAV_GROUP_LABEL_KEYS[
+    id as (typeof BUILTIN_NAV_GROUP_IDS)[number]
+  ];
+}
+
+export function navSectionLabel(
+  section: NavSection,
+  translate: (key: string) => string,
+): string {
+  if (section.title) return section.title;
+  if (section.groupKey) return translate(section.groupKey);
+  return "";
 }
 
 /**
@@ -147,7 +204,11 @@ export function buildNavSections(
     });
   }
   if (settingsItems.length > 0) {
-    sections.push({ groupKey: "nav.settings", items: settingsItems });
+    sections.push({
+      id: "settings",
+      groupKey: "nav.settings",
+      items: settingsItems,
+    });
   }
 
   const controlItems: NavItem[] = [];
@@ -181,7 +242,11 @@ export function buildNavSections(
     });
   }
   if (controlItems.length > 0) {
-    sections.push({ groupKey: "nav.control", items: controlItems });
+    sections.push({
+      id: "control",
+      groupKey: "nav.control",
+      items: controlItems,
+    });
   }
 
   const adminItems: NavItem[] = [];
@@ -234,7 +299,7 @@ export function buildNavSections(
     });
   }
   if (adminItems.length > 0) {
-    sections.push({ groupKey: "nav.admin", items: adminItems });
+    sections.push({ id: "admin", groupKey: "nav.admin", items: adminItems });
   }
   return sections;
 }
