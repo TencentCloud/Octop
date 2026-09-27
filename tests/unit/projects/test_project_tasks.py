@@ -221,6 +221,133 @@ def test_task_cannot_be_its_own_parent(service: ProjectService, project: Any, ow
     assert err.value.status != 500
 
 
+# ── parent_id, the four frozen shapes (PLAN §5.2 / AC-F4-6) ──────────────────
+#
+# ① self-reference → 404 (the test above), ② missing parent → 404,
+# ③ cross-project parent → 404, ④ **indirect cycle → 400** (the one new code).
+# The three 404 shapes are pre-existing behaviour: they are checked before the
+# cycle walk and must never move to the new code (two codes for one family is
+# the shape this repo keeps re-learning to avoid).
+
+
+def test_reparenting_to_an_unknown_task_is_not_found(
+    service: ProjectService, project: Any, owner: Actor
+) -> None:
+    task = service.create_task(project.id, user=owner, title="T")
+
+    with pytest.raises(OctopError) as err:
+        service.update_task(project.id, task.id, user=owner, parent_id="tsk_missing")
+
+    assert err.value.code is ErrorCode.PROJECT_TASK_NOT_FOUND
+    assert err.value.status == 404
+    assert err.value.status != 500
+    assert service.get_task(project.id, task.id, user=owner).parent_id is None
+
+
+def test_reparenting_to_another_projects_task_is_not_found(
+    service: ProjectService, project: Any, owner: Actor
+) -> None:
+    other = service.create_project(owner_user=owner, name="Beta")
+    foreign = service.create_task(other.id, user=owner, title="elsewhere")
+    task = service.create_task(project.id, user=owner, title="T")
+
+    with pytest.raises(OctopError) as err:
+        service.update_task(project.id, task.id, user=owner, parent_id=foreign.id)
+
+    assert err.value.code is ErrorCode.PROJECT_TASK_NOT_FOUND
+    assert err.value.status == 404
+    assert err.value.status != 500
+    assert service.get_task(project.id, task.id, user=owner).parent_id is None
+
+
+def test_reparenting_onto_a_direct_child_is_rejected_with_400(
+    service: ProjectService, project: Any, owner: Actor
+) -> None:
+    """④ A→B→A: the new parent is this task's own descendant."""
+    root = service.create_task(project.id, user=owner, title="root")
+    child = service.create_task(project.id, user=owner, title="child", parent_id=root.id)
+
+    with pytest.raises(OctopError) as err:
+        service.update_task(project.id, root.id, user=owner, parent_id=child.id)
+
+    assert err.value.code is ErrorCode.PROJECT_TASK_PARENT_INVALID
+    assert err.value.status == 400
+    assert err.value.status != 500
+    # Nothing was written: the rejected move leaves both rows as they were.
+    assert service.get_task(project.id, root.id, user=owner).parent_id is None
+    assert service.get_task(project.id, child.id, user=owner).parent_id == root.id
+
+
+def test_reparenting_onto_a_deeper_descendant_is_rejected_with_400(
+    service: ProjectService, project: Any, owner: Actor
+) -> None:
+    """④ The walk is transitive: a grandchild is a descendant too."""
+    root = service.create_task(project.id, user=owner, title="root")
+    child = service.create_task(project.id, user=owner, title="child", parent_id=root.id)
+    grandchild = service.create_task(project.id, user=owner, title="grandchild", parent_id=child.id)
+
+    with pytest.raises(OctopError) as err:
+        service.update_task(project.id, root.id, user=owner, parent_id=grandchild.id)
+
+    assert err.value.code is ErrorCode.PROJECT_TASK_PARENT_INVALID
+    assert err.value.status == 400
+    assert service.get_task(project.id, root.id, user=owner).parent_id is None
+
+
+def test_a_legal_reparent_inside_the_same_project_is_accepted(
+    service: ProjectService, project: Any, owner: Actor
+) -> None:
+    """The new 400 must not block the legitimate case it was carved out of."""
+    first = service.create_task(project.id, user=owner, title="first")
+    second = service.create_task(project.id, user=owner, title="second")
+    leaf = service.create_task(project.id, user=owner, title="leaf", parent_id=first.id)
+
+    moved = service.update_task(project.id, leaf.id, user=owner, parent_id=second.id)
+
+    assert moved.parent_id == second.id
+
+
+def test_the_ancestor_walk_terminates_on_a_dirty_cycle(
+    services: SimpleNamespace, service: ProjectService, project: Any, owner: Actor
+) -> None:
+    """★ Termination: a chain that is already cyclic must stop, not loop forever.
+
+    The cycle is written straight into the row (no service path can create one
+    any more, which is the point of the guard), so this asserts the escape hatch
+    of the walk rather than a user-reachable state.
+    """
+    first = service.create_task(project.id, user=owner, title="first")
+    second = service.create_task(project.id, user=owner, title="second", parent_id=first.id)
+    third = service.create_task(project.id, user=owner, title="third", parent_id=second.id)
+    with services.db.transaction() as conn:
+        conn.execute(
+            "UPDATE project_tasks SET parent_id = ? WHERE task_id = ?",
+            (third.id, first.id),
+        )
+    other = service.create_task(project.id, user=owner, title="other")
+
+    with pytest.raises(OctopError) as err:
+        service.update_task(project.id, other.id, user=owner, parent_id=second.id)
+
+    assert err.value.code is ErrorCode.PROJECT_TASK_PARENT_INVALID
+    assert err.value.status == 400
+    assert err.value.status != 500
+
+
+def test_the_ancestor_walk_stops_at_a_missing_row(
+    services: SimpleNamespace, service: ProjectService, project: Any, owner: Actor
+) -> None:
+    """★ Termination: a dangling ``parent_id`` above the target ends the walk."""
+    root = service.create_task(project.id, user=owner, title="root")
+    middle = service.create_task(project.id, user=owner, title="middle", parent_id=root.id)
+    services.project_task_repo.delete(root.id)
+    leaf = service.create_task(project.id, user=owner, title="leaf")
+
+    moved = service.update_task(project.id, leaf.id, user=owner, parent_id=middle.id)
+
+    assert moved.parent_id == middle.id
+
+
 def test_unknown_thread_is_rejected(service: ProjectService, project: Any, owner: Actor) -> None:
     with pytest.raises(OctopError) as err:
         service.create_task(project.id, user=owner, title="T", thread_id="th_missing")

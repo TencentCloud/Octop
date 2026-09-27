@@ -198,6 +198,13 @@ class ProjectPatch(BaseModel):
     due_at: int | None = None
     clear_start_at: bool = Field(default=False, description="Set start_at to NULL.")
     clear_due_at: bool = Field(default=False, description="Set due_at to NULL.")
+    kb_id: str | None = Field(
+        default=None,
+        description=(
+            "Knowledge base to bind; null unbinds. Omitting the key leaves it as is. "
+            "Sending it raises the whole request to the config permission level."
+        ),
+    )
 
 
 class MemberCreate(BaseModel):
@@ -406,6 +413,11 @@ async def patch_project(
             fields[key] = None
         elif value is not None:
             fields[key] = value
+    sent = body.model_dump(exclude_unset=True)
+    if "kb_id" in sent:
+        # Three states: absent (untouched) / null (unbind) / value (rebind). Passing
+        # it in the same call is what makes the whole request MANAGE_CONFIG.
+        fields["kb_id"] = body.kb_id
 
     if fields:
         service.update_project(project_id, user=actor, **fields)

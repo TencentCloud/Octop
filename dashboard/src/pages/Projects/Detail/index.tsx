@@ -46,6 +46,10 @@ import AssetsTab from "./AssetsTab";
 import CustomFieldsPanel from "./CustomFieldsPanel";
 import DynamicTab from "./DynamicTab";
 import RightRail from "./RightRail";
+import TaskCreateModal, {
+  type TaskCreateValues,
+  type TaskPatchValues,
+} from "./TaskCreateModal";
 import TaskListView from "./TaskListView";
 import styles from "./index.module.less";
 import TagsManager from "./TagsManager";
@@ -110,6 +114,32 @@ function parseTab(raw: string | null): DetailTabKey {
   return found ? found.key : "plan";
 }
 
+/**
+ * `ProjectTask` → 编辑器值的适配器（PLAN §5.1：**不复制字段定义**，只做形状映射；
+ * 字段类型全部来自 `TaskCreateModal` 导出的 `TaskCreateValues`）。
+ */
+function taskToValues(task: ProjectTask): TaskCreateValues {
+  return {
+    task_id: task.task_id,
+    title: task.title,
+    description: task.description,
+    status: task.status,
+    priority: task.priority,
+    assignee:
+      task.assignee_type && task.assignee_id
+        ? { type: task.assignee_type, id: task.assignee_id }
+        : null,
+    tag_ids: (task.tags ?? []).map((tag) => tag.tag_id),
+    start_at: task.start_at,
+    due_at: task.due_at,
+    parent_id: task.parent_id,
+    deps: task.deps ?? [],
+    custom_fields: Object.fromEntries(
+      (task.custom_fields ?? []).map((field) => [field.field_id, field.value]),
+    ),
+  };
+}
+
 function ProjectDetailPage() {
   const { t } = useTranslation();
   const { projectId = "" } = useParams<{ projectId: string }>();
@@ -136,6 +166,8 @@ function ProjectDetailPage() {
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   /** 任务增删改后 +1 → TaskListView 重新取数（PLAN §9 的 refreshKey）。 */
   const [tasksRefreshKey, setTasksRefreshKey] = useState(0);
+  /** 正在编辑的任务（null = 编辑器关闭）；编辑器本体 = T-F4 的双模式弹窗。 */
+  const [editTaskId, setEditTaskId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<unknown>(null);
   const loadedOnceRef = useRef(false);
@@ -191,10 +223,25 @@ function ProjectDetailPage() {
   const canManageConfig = canManageMembers;
 
   /**
-   * `TaskListView` 的行点击入口。**任务详情页属第三批范围**（PLAN §0「本轮不
-   * 做」清单）→ 这里只保留入口契约，不自造详情视图；第三批接线时替换本回调。
+   * `TaskListView` 的行点击入口。**任务详情页属第四批范围**（PLAN §0「本轮不
+   * 做」清单）→ 这里只保留入口契约，不自造详情视图；第四批接线时替换本回调。
    */
   const openTask = useCallback((_taskId: string) => undefined, []);
+
+  const editedTask = tasks.find((task) => task.task_id === editTaskId) ?? null;
+
+  /**
+   * 编辑提交（PLAN §5.1/§5.2）：只提交差异集合，成功后 `load()` **重读服务端**
+   * （看板与列表一致，禁止本地乐观改状态）。
+   */
+  const submitTaskEdit = useCallback(
+    async (patch: TaskPatchValues) => {
+      if (!editTaskId) return;
+      await projectsApi.updateTask(projectId, editTaskId, patch);
+      await load();
+    },
+    [editTaskId, load, projectId],
+  );
 
   const openEdit = () => {
     if (!project) return;
@@ -313,53 +360,46 @@ function ProjectDetailPage() {
       subtitle={t("projects.detailSubtitle")}
       actions={headerActions}
     >
-      <section className={styles.section}>
-        <div className={styles.sectionTitle}>
-          {t("projects.overview")}
-          <Tag color={STATUS_COLORS[project.status]}>
-            {t(STATUS_LABEL_KEYS[project.status])}
-          </Tag>
-        </div>
-        <Descriptions column={1} size="small">
-          <Descriptions.Item label={t("projects.goal")}>
-            {project.goal || t("projects.noGoal")}
-          </Descriptions.Item>
-          <Descriptions.Item label={t("projects.projectId")}>
-            <Text copyable className={styles.mono}>
-              {project.project_id}
-            </Text>
-          </Descriptions.Item>
-          <Descriptions.Item label={t("projects.kbId")}>
-            {project.kb_id ? (
-              <Text copyable className={styles.mono}>
-                {project.kb_id}
-              </Text>
-            ) : (
-              "—"
-            )}
-          </Descriptions.Item>
-          <Descriptions.Item label={t("projects.startAt")}>
-            {formatServerDateTime(project.start_at ?? 0, timeZone)}
-          </Descriptions.Item>
-          <Descriptions.Item label={t("projects.dueAt")}>
-            {formatServerDateTime(project.due_at ?? 0, timeZone)}
-          </Descriptions.Item>
-          <Descriptions.Item label={t("projects.owner")}>
-            {project.owner_user_id}
-          </Descriptions.Item>
-          <Descriptions.Item label={t("projects.createdAt")}>
-            {formatServerDateTime(project.created_at, timeZone)}
-          </Descriptions.Item>
-          <Descriptions.Item label={t("projects.updatedAt")}>
-            {formatServerDateTime(project.updated_at, timeZone)}
-          </Descriptions.Item>
-        </Descriptions>
-      </section>
-
       {/* 布局（PLAN §4）：主区（TabBar + 当前 Tab 内容）在前，右栏在后 ——
           S6 要求窄屏堆叠时 DOM 顺序即「主区 → 右栏」，不得用 CSS order 提前。 */}
       <div className={styles.detailLayout}>
-        <div className={styles.mainColumn}>
+        <div className={styles.mainColumn} data-testid="project-main-column">
+          {/* PLAN §2.1：概览**在主区之内**（TabBar 之上）→ 右边缘 = 主区右边缘
+              = 右栏左边缘（不再跨满全宽）。 */}
+          <section className={styles.section} data-testid="project-overview">
+            <div
+              className={styles.sectionTitle}
+              /* projectId 移出概览：作为标题的 title 属性仍可达（数据源未删）。 */
+              title={project.project_id}
+            >
+              {t("projects.overview")}
+              <Tag color={STATUS_COLORS[project.status]}>
+                {t(STATUS_LABEL_KEYS[project.status])}
+              </Tag>
+            </div>
+            {/* G6 压缩：column={2} + size="small"；8 项 → 6 项。 */}
+            <Descriptions column={2} size="small">
+              <Descriptions.Item label={t("projects.goal")} span={2}>
+                {project.goal || t("projects.noGoal")}
+              </Descriptions.Item>
+              <Descriptions.Item label={t("projects.startAt")}>
+                {formatServerDateTime(project.start_at ?? 0, timeZone)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t("projects.dueAt")}>
+                {formatServerDateTime(project.due_at ?? 0, timeZone)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t("projects.owner")}>
+                {project.owner_user_id}
+              </Descriptions.Item>
+              <Descriptions.Item label={t("projects.createdAt")}>
+                {formatServerDateTime(project.created_at, timeZone)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t("projects.updatedAt")}>
+                {formatServerDateTime(project.updated_at, timeZone)}
+              </Descriptions.Item>
+            </Descriptions>
+          </section>
+
           <TabBar
             tabs={DETAIL_TABS}
             activeKey={activeTab}
@@ -394,6 +434,7 @@ function ProjectDetailPage() {
                 projectId={project.project_id}
                 onOpenTask={openTask}
                 refreshKey={tasksRefreshKey}
+                onEditTask={canEdit ? setEditTaskId : undefined}
               />
               {/* PLAN §4.2：标签定义与自定义字段定义两个面板归 `tasks` Tab
                   （防死 schema 的两条读环断言依赖它们默认挂载）。 */}
@@ -468,6 +509,18 @@ function ProjectDetailPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <TaskCreateModal
+        open={editTaskId !== null}
+        projectId={project.project_id}
+        tasks={tasks}
+        canEdit={canEdit}
+        mode="edit"
+        initialValues={editedTask ? taskToValues(editedTask) : undefined}
+        onSubmitEdit={submitTaskEdit}
+        onClose={() => setEditTaskId(null)}
+        onCreated={load}
+      />
     </PageShell>
   );
 }

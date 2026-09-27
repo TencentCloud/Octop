@@ -168,6 +168,34 @@ class ProjectTaskRepo:
                 f"thread {thread_id} does not exist",
             )
 
+    def _assert_parent_not_descendant(self, task_id: str, parent_id: str) -> None:
+        """Reject an **indirect** cycle: the new parent is a descendant of the task.
+
+        Only reachable once a task may be re-parented (``update``). Walking up
+        from the proposed parent must never reach ``task_id``; if it does, the
+        move would create ``A -> B -> A`` and the row would become unreachable
+        from any root.
+
+        The self-reference (``parent_id == task_id``), a missing parent and a
+        cross-project parent stay ``404 PROJECT_TASK_NOT_FOUND`` — they are
+        checked before this runs and must not move to this code (batch 3 §5.2).
+
+        The walk is bounded by ``seen``: a chain that is already cyclic (dirty
+        data written before this guard existed) and a chain that ends in a
+        missing row both stop instead of looping forever.
+        """
+        seen = {task_id}
+        current: str | None = parent_id
+        while current is not None:
+            if current in seen:
+                raise OctopError(
+                    ErrorCode.PROJECT_TASK_PARENT_INVALID,
+                    f"parent task {parent_id} is a descendant of task {task_id}",
+                )
+            seen.add(current)
+            row = self.get(current)
+            current = row.parent_id if row is not None else None
+
     # ── reads ────────────────────────────────────────────────────────────────
 
     def next_sort_order(self, project_id: str) -> int:
@@ -303,6 +331,9 @@ class ProjectTaskRepo:
                     "a task cannot be its own parent",
                 )
             self._assert_parent_ok(current.project_id, parent_value)
+            if parent_value is not None:
+                # ④ indirect cycle only; the three 404 shapes above are frozen.
+                self._assert_parent_not_descendant(task_id, parent_value)
         if thread_id is not UNSET:
             self._assert_thread_exists(cast("str | None", thread_id))
 

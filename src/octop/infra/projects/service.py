@@ -27,6 +27,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Protocol
 
+from octop.infra.db.repos._base import UNSET
 from octop.infra.db.repos.project_tasks import (
     TASK_STATUSES,
     TIMELINE_TASK_ASSIGNED,
@@ -411,13 +412,59 @@ class ProjectService:
         project_id: str,
         *,
         user: ProjectActor,
+        kb_id: object = UNSET,
         **fields: Any,
     ) -> ProjectRow:
-        self.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
-        updated = self._projects.update(project_id, **fields)
+        """Patch a project.
+
+        ``kb_id`` is the one field with a higher permission level (PLAN.md §4.3):
+        **presence of the key** raises the *whole request* to
+        ``PROJECT_MANAGE_CONFIG``, so a write-only actor cannot smuggle other
+        edits alongside a rebind. Omitting it leaves the stored value untouched.
+
+        A rebind goes through :meth:`ProjectRepo.set_kb_id` (the only writer);
+        ``ProjectRepo.update`` deliberately refuses the column. The previous base
+        is kept, never deleted (G2).
+        """
+        required = PROJECT_MANAGE_CONFIG if kb_id is not UNSET else PROJECT_WRITE
+        self.assert_project_role(project_id, user=user, required=required)
+        updated = self._projects.update(project_id, **fields) if fields else None
         if updated is None:
-            raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Project not found.")
+            current = self._projects.get(project_id)
+            if current is None:
+                raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Project not found.")
+            updated = current
+        if kb_id is not UNSET:
+            target = kb_id if isinstance(kb_id, str) and kb_id else None
+            if target is not None:
+                self._assert_kb_writable(target, user=user)
+            self._projects.set_kb_id(project_id, target)
+            refreshed = self._projects.get(project_id)
+            if refreshed is None:  # pragma: no cover - the row exists, it was just read
+                raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Project not found.")
+            updated = refreshed
         return updated
+
+    def _assert_kb_writable(self, kb_id: str, *, user: ProjectActor) -> None:
+        """Map the KB primitives onto the two refusal codes frozen in PLAN.md §4.2.
+
+        ``LookupError`` = the base does not exist / is not visible to this user →
+        the existing ``KNOWLEDGE_NOT_FOUND``; ``PermissionError`` = visible but not
+        writable → the new ``PROJECT_KB_FORBIDDEN``. Neither may escape as a 500.
+        """
+        try:
+            self._knowledge.get_writable_base(
+                kb_id,
+                actor_user_id=user.id,
+                is_admin=bool(getattr(user, "is_admin", False)),
+            )
+        except LookupError as exc:
+            raise OctopError(ErrorCode.KNOWLEDGE_NOT_FOUND, "Knowledge base not found.") from exc
+        except PermissionError as exc:
+            raise OctopError(
+                ErrorCode.PROJECT_KB_FORBIDDEN,
+                f"no write access to knowledge base {kb_id!r}",
+            ) from exc
 
     def transition_project(self, project_id: str, *, user: ProjectActor, target: str) -> ProjectRow:
         """Move a project along the state machine (plan T2.1 ②).

@@ -763,3 +763,120 @@ def test_delete_project_keeps_the_knowledge_base(
     kb_id = project.kb_id
     service.delete_project(project.id, user=owner)
     assert [b.id for b in services.knowledge_repo.list_visible(owner.id)] == [kb_id]
+
+
+# ── F3: knowledge-base rebind (PLAN.md §4) ───────────────────────────────────
+
+
+def _make_kb(
+    services: SimpleNamespace, *, owner_user_id: int, name: str, shared: bool = False
+) -> str:
+    from octop.infra.knowledge.service import KnowledgeService
+
+    return (
+        KnowledgeService(services)
+        .create_base(owner_user_id=owner_user_id, name=name, shared=shared)
+        .id
+    )
+
+
+def test_kb_rebind_is_three_state_and_idempotent(
+    service: ProjectService, services: SimpleNamespace, owner: Actor
+) -> None:
+    """Absent leaves it alone; a value rebinds; null unbinds — all 200."""
+    project = service.create_project(owner_user=owner, name="Alpha")
+    first = project.kb_id or _make_kb(services, owner_user_id=owner.id, name="Alpha")
+
+    # ① the key is absent: nothing changes (the easiest case to get wrong)
+    service.update_project(project.id, user=owner, goal="new goal")
+    assert service.get_project(project.id, user=owner).kb_id == first
+
+    second = _make_kb(services, owner_user_id=owner.id, name="Beta")
+    rebound = service.update_project(project.id, user=owner, kb_id=second)
+    assert rebound.kb_id == second
+
+    # ② idempotent: rebinding to the same base keeps the value and does not raise
+    assert service.update_project(project.id, user=owner, kb_id=second).kb_id == second
+
+    # ③ null unbinds (a 200, not an error face)
+    assert service.update_project(project.id, user=owner, kb_id=None).kb_id is None
+    assert service.get_project(project.id, user=owner).kb_id is None
+
+
+def test_kb_rebind_refusal_codes(
+    service: ProjectService, services: SimpleNamespace, owner: Actor
+) -> None:
+    """404 for an invisible base, 403 for a visible-but-unwritable one (never 500)."""
+    project = service.create_project(owner_user=owner, name="Alpha")
+    other = Actor(services.user_repo.create(username="other", password_hash="h", role="user"))
+    private = _make_kb(services, owner_user_id=other.id, name="Private")
+
+    with pytest.raises(OctopError) as err:
+        service.update_project(project.id, user=owner, kb_id="kb_missing")
+    assert err.value.code is ErrorCode.KNOWLEDGE_NOT_FOUND
+    assert err.value.status == 404
+    assert err.value.status != 500
+
+    with pytest.raises(OctopError) as err:
+        service.update_project(project.id, user=owner, kb_id=private)
+    assert err.value.code is ErrorCode.PROJECT_KB_FORBIDDEN
+    assert err.value.status == 403
+    assert err.value.status != 500
+
+    # A refused rebind must not have written anything.
+    assert service.get_project(project.id, user=owner).kb_id == project.kb_id
+
+
+def test_kb_rebind_permission_matrix(
+    service: ProjectService, services: SimpleNamespace, owner: Actor
+) -> None:
+    """The key's presence raises the whole request; other fields stay PROJECT_WRITE."""
+    project = service.create_project(owner_user=owner, name="Alpha")
+    member = Actor(services.user_repo.create(username="member", password_hash="h", role="user"))
+    admin = Actor(services.user_repo.create(username="padmin", password_hash="h", role="user"))
+    for actor, role in ((member, "member"), (admin, "admin")):
+        service.add_member(
+            project.id,
+            user=owner,
+            subject_type=MEMBER_SUBJECT_USER,
+            subject_id=str(actor.id),
+            role=role,
+            subject_user_id=actor.id,
+        )
+    kb_id = _make_kb(services, owner_user_id=owner.id, name="Shared-KB")
+
+    # A write-only member may still edit a plain field…
+    assert service.update_project(project.id, user=member, goal="member goal").goal == "member goal"
+
+    # …but the same request carrying ``kb_id`` is refused for the whole payload.
+    with pytest.raises(OctopError) as err:
+        service.update_project(project.id, user=member, goal="smuggled", kb_id=kb_id)
+    assert err.value.code is ErrorCode.PROJECT_ROLE_FORBIDDEN
+    assert err.value.status == 403
+    assert err.value.status != 500
+    assert service.get_project(project.id, user=owner).goal == "member goal", "no smuggling"
+
+    # admin holds MANAGE_CONFIG and may rebind — to a base it can write. The KB
+    # owner is a *knowledge* fact, independent of the project role: the owner's KB
+    # stays out of reach (that is the 403 case above, seen from the other side).
+    admin_kb = _make_kb(services, owner_user_id=admin.id, name="Admin-KB")
+    assert service.update_project(project.id, user=admin, kb_id=admin_kb).kb_id == admin_kb
+    with pytest.raises(OctopError) as err:
+        service.update_project(project.id, user=admin, kb_id=kb_id)
+    assert err.value.code is ErrorCode.PROJECT_KB_FORBIDDEN
+    assert err.value.status == 403
+
+
+def test_kb_rebind_on_an_archived_project_is_forbidden(
+    service: ProjectService, services: SimpleNamespace, owner: Actor
+) -> None:
+    project = service.create_project(owner_user=owner, name="Alpha")
+    service.transition_project(project.id, user=owner, target="active")
+    service.transition_project(project.id, user=owner, target="archived")
+    kb_id = _make_kb(services, owner_user_id=owner.id, name="Late-KB")
+
+    with pytest.raises(OctopError) as err:
+        service.update_project(project.id, user=owner, kb_id=kb_id)
+    assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
+    assert err.value.status == 403
+    assert err.value.status != 500

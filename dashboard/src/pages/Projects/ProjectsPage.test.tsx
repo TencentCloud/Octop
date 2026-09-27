@@ -395,9 +395,10 @@ describe("project detail 4 tabs + right rail (T-FE-DETAIL)", () => {
     expect(
       await screen.findByTestId("project-custom-fields"),
     ).toBeInTheDocument();
-    expect(
-      await screen.findByText("projects.taskListEmpty"),
-    ).toBeInTheDocument();
+    // F1 分区后该文案在 7 个空区各出现一次（PLAN F2 acceptance ⑧）。
+    expect(await screen.findAllByText("projects.taskListEmpty")).toHaveLength(
+      7,
+    );
     // tasks Tab 里两道读环真的发出（同一份防死 schema 凭证）。
     await waitFor(() => {
       expect(callFor("GET", "/projects/p1/tags")).toBeTruthy();
@@ -428,5 +429,109 @@ describe("project detail 4 tabs + right rail (T-FE-DETAIL)", () => {
     // 空数据也照样渲染整栏：成员/专家面板给出各自的空态。
     expect(screen.getByText("projects.membersEmpty")).toBeInTheDocument();
     expect(screen.getByText("projects.expertNone")).toBeInTheDocument();
+  });
+});
+
+describe("F2 概览压缩与主区归属（PLAN §2 / G6）", () => {
+  function LocationProbeF2() {
+    const location = useLocation();
+    return <span data-testid="location-search">{location.search}</span>;
+  }
+
+  function renderF2(path: string) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route
+            path="/projects/:projectId"
+            element={
+              <>
+                <ProjectDetailPage />
+                <LocationProbeF2 />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it("① 概览在主区容器内部（不再跨满全宽），且主区/概览各有 testid", async () => {
+    renderF2("/projects/p1");
+    await screen.findByTestId("project-overview");
+
+    const main = screen.getByTestId("project-main-column");
+    const overview = screen.getByTestId("project-overview");
+    const rail = screen.getByTestId("project-right-rail");
+
+    // 概览**在主区之内** → 右边缘 = 主区右边缘（与右栏对齐），而不是跨满全宽。
+    expect(main.contains(overview)).toBe(true);
+    // 主区与右栏是同一层级的两个 grid 子项（概览不得成为 grid 的直接子项）。
+    expect(main.parentElement).toBe(rail.parentElement);
+    expect(rail.contains(overview)).toBe(false);
+  });
+
+  it("① 概览位于 <TabBar> 之上（DOM 顺序）", async () => {
+    renderF2("/projects/p1");
+    const overview = await screen.findByTestId("project-overview");
+    const tabList = screen.getByRole("tablist");
+    expect(
+      overview.compareDocumentPosition(tabList) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("② 概览压缩为 6 项 + column=2；projectId / kbId 移出概览", async () => {
+    const { container } = renderF2("/projects/p1");
+    await screen.findByTestId("project-overview");
+
+    const overview = screen.getByTestId("project-overview");
+    const items = overview.querySelectorAll(".ant-descriptions-item");
+    expect(items).toHaveLength(6);
+
+    // 两列布局（antd 以 `ant-descriptions-row` 的列数体现，直接断 row 数量）。
+    const rows = overview.querySelectorAll(".ant-descriptions-row");
+    // goal 跨两列 → 其余 5 项两两成行 = 1 + 3 = 4 行。
+    expect(rows).toHaveLength(4);
+
+    // 6 项标签：目标 / 开始 / 截止 / 负责人 / 创建 / 更新。
+    for (const key of [
+      "projects.goal",
+      "projects.startAt",
+      "projects.dueAt",
+      "projects.owner",
+      "projects.createdAt",
+      "projects.updatedAt",
+    ]) {
+      expect(within(overview).getByText(key)).toBeInTheDocument();
+    }
+    // 移出概览的两项（kbId 的独立编辑器由 F3 承载；projectId 进 title 属性）。
+    expect(within(overview).queryByText("projects.projectId")).toBeNull();
+    expect(within(overview).queryByText("projects.kbId")).toBeNull();
+    // 数据源仍在：projectId 作为页面标题的 title 属性可达。
+    expect(container.ownerDocument.querySelector('[title="p1"]')).toBeTruthy();
+  });
+
+  it("④⑥ 既有 4 Tab 与 ?tab= 语义不变，且 tablist 仍在右栏之前", async () => {
+    renderF2("/projects/p1?tab=bogus");
+    expect(
+      await screen.findByText("projects.taskStatusPlanning"),
+    ).toBeInTheDocument();
+
+    const tabList = screen.getByRole("tablist");
+    const rail = screen.getByTestId("project-right-rail");
+    expect(
+      tabList.compareDocumentPosition(rail) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      Array.from(document.querySelectorAll('[role="tab"]')).map(
+        (tab) => tab.textContent,
+      ),
+    ).toEqual([
+      "projects.tabDynamic",
+      "projects.tabPlan",
+      "projects.tabTasks",
+      "projects.tabAssets",
+    ]);
   });
 });

@@ -91,6 +91,17 @@
   color: var(--fn-color-brand);
 }
 
+/* PLAN S4: an illegal status target in edit mode — visible but not pickable. */
+.optionDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+
+  &:hover {
+    background: transparent;
+    color: var(--fn-text-secondary);
+  }
+}
+
 .pickerCentered {
   display: flex;
   justify-content: center;
@@ -226,5 +237,12 @@
 
 .shortcutHint {
   opacity: 0.75;
+  font-size: 12px;
+}
+
+/* F4: the parent-cycle refusal stays visible while the "more" popover is shut. */
+.cycleHint {
+  margin-top: 4px;
+  color: var(--fn-color-danger);
   font-size: 12px;
 }

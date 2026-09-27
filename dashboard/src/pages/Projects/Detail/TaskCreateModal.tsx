@@ -35,12 +35,18 @@ import {
   type ProjectTagDefinition,
   type ProjectTask,
   type ProjectTaskStatus,
+  type ProjectTaskUpdateBody,
 } from "../../../api/modules/projects";
 import { projectMetadataApi } from "../../../api/modules/projectMetadata";
 import { useProjectMembers } from "../../../hooks/useProjectMembers";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { message } from "../../../utils/antdMessage";
 import { ChipButton, ChipToolbar } from "../../../components/ChipToolbar";
+import {
+  COLUMN_STATUSES,
+  isTransitionAllowed,
+  STATUS_LABEL_KEYS,
+} from "../utils/taskStatus";
 import styles from "./TaskCreateModal.module.less";
 
 const { Text } = Typography;
@@ -48,33 +54,57 @@ const { Text } = Typography;
 /** PLAN §7.2: single-file ceiling; the server is still authoritative. */
 const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
 
-/** Column order for the status picker (PLAN §1.1: planning first). */
-const TASK_STATUS_ORDER: ProjectTaskStatus[] = [
-  "planning",
-  "todo",
-  "doing",
-  "review",
-  "blocked",
-  "done",
-  "cancelled",
-];
-
-const STATUS_LABEL_KEYS: Record<ProjectTaskStatus, string> = {
-  planning: "projects.taskStatusPlanning",
-  todo: "projects.taskStatusTodo",
-  doing: "projects.taskStatusDoing",
-  review: "projects.taskStatusReview",
-  blocked: "projects.taskStatusBlocked",
-  done: "projects.taskStatusDone",
-  cancelled: "projects.taskStatusCancelled",
-};
-
 const PRIORITY_OPTIONS = [0, 1, 2, 3, 4];
 
 interface Assignee {
   type: string;
   id: string;
 }
+
+/**
+ * The dialog's value shape — the **single** field definition shared by both
+ * modes (PLAN §5.1 / FIND-10). ``start_at`` / ``due_at`` are unix seconds (the
+ * API's unit), so a caller can hand a ``ProjectTask`` straight over.
+ */
+export interface TaskCreateValues {
+  /** The task being edited — edit mode needs it for the parent cycle guard. */
+  task_id?: string;
+  title: string;
+  description: string;
+  status: ProjectTaskStatus;
+  priority: number;
+  assignee: Assignee | null;
+  tag_ids: string[];
+  start_at: number | null;
+  due_at: number | null;
+  parent_id: string | null;
+  deps: string[];
+  custom_fields: Record<string, ProjectCustomFieldWriteValue>;
+}
+
+/**
+ * What an edit submits: only the **changed** keys (PLAN §5.1 diff submit), typed
+ * against the API patch so the two cannot drift.
+ *
+ * ``tags`` / ``deps`` / ``custom_fields`` are **full replacements** (PLAN §5.2):
+ * the submitted array / object *is* the final set, an empty one clears it, and
+ * an absent key leaves it untouched (the route uses ``exclude_unset``).
+ */
+export type TaskPatchValues = Pick<
+  ProjectTaskUpdateBody,
+  | "title"
+  | "description"
+  | "priority"
+  | "deps"
+  | "start_at"
+  | "due_at"
+  | "status"
+  | "assignee_type"
+  | "assignee_id"
+  | "parent_id"
+  | "tags"
+  | "custom_fields"
+>;
 
 interface TaskCreateModalProps {
   open: boolean;
@@ -84,6 +114,12 @@ interface TaskCreateModalProps {
   canEdit: boolean;
   onClose: () => void;
   onCreated: () => void | Promise<void>;
+  /** Defaults to ``"create"``; ``"edit"`` reuses the very same field set. */
+  mode?: "create" | "edit";
+  /** Edit mode: the task's current values (PLAN §5.1). */
+  initialValues?: Partial<TaskCreateValues>;
+  /** Edit mode submit: awaits the caller's patch request, so its failures show here. */
+  onSubmitEdit?: (patch: TaskPatchValues) => Promise<void>;
 }
 
 function toEpochSeconds(value: Dayjs | null): number | null {
@@ -93,10 +129,83 @@ function toEpochSeconds(value: Dayjs | null): number | null {
 const memberLabel = (member: ProjectMember) =>
   `${member.subject_type}:${member.subject_id}`;
 
+/** Edit-mode baseline: the same shape as the form, from ``initialValues``. */
+function toValues(
+  source: Partial<TaskCreateValues> | undefined,
+): TaskCreateValues {
+  return {
+    task_id: source?.task_id,
+    title: source?.title ?? "",
+    description: source?.description ?? "",
+    status: source?.status ?? "planning",
+    priority: source?.priority ?? 0,
+    assignee: source?.assignee ?? null,
+    tag_ids: source?.tag_ids ?? [],
+    start_at: source?.start_at ?? null,
+    due_at: source?.due_at ?? null,
+    parent_id: source?.parent_id ?? null,
+    deps: source?.deps ?? [],
+    custom_fields: source?.custom_fields ?? {},
+  };
+}
+
+function sameIds(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return sortedA.every((value, index) => value === sortedB[index]);
+}
+
+function sameCustomFields(
+  a: Record<string, ProjectCustomFieldWriteValue>,
+  b: Record<string, ProjectCustomFieldWriteValue>,
+): boolean {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every((key) => a[key] === b[key]);
+}
+
 /**
- * Create-task dialog (R3, SPEC AC-U-8): breadcrumb + inline title + inline
- * description + chip toolbar (status / priority / assignee / tags / project /
- * more) + attachments + "switch to agent" + "keep creating" + ⌘↵ submit.
+ * Collect a task and every descendant, following ``parent_id``. ``tasks`` is the
+ * project's own list (the only task source this dialog has), and the walk is
+ * guarded so a cycle in the data cannot loop forever.
+ */
+function descendantIds(taskId: string, tasks: ProjectTask[]): Set<string> {
+  const childrenOf = new Map<string, string[]>();
+  for (const task of tasks) {
+    if (!task.parent_id) continue;
+    const bucket = childrenOf.get(task.parent_id) ?? [];
+    bucket.push(task.task_id);
+    childrenOf.set(task.parent_id, bucket);
+  }
+  const found = new Set<string>();
+  const stack = [taskId];
+  while (stack.length > 0) {
+    const current = stack.pop() as string;
+    for (const child of childrenOf.get(current) ?? []) {
+      if (found.has(child)) continue;
+      found.add(child);
+      stack.push(child);
+    }
+  }
+  return found;
+}
+
+/**
+ * One dialog, two modes (PLAN §5, F4).
+ *
+ * ``create`` (R3, SPEC AC-U-8): breadcrumb + inline title + inline description +
+ * chip toolbar (status / priority / assignee / tags / project / more) +
+ * attachments + "switch to agent" + "keep creating" + ⌘↵ submit.
+ *
+ * ``edit`` reuses **the same fields and the same validation** — no second form
+ * component, no duplicated field definition — and differs only in three ways:
+ * it seeds from ``initialValues``, it submits a **diff** through
+ * ``onSubmitEdit``, and its title / button / success copy come from the
+ * ``editTask*`` keys. Status still moves through the state machine: an illegal
+ * target is disabled up front (PLAN S4) and the server's 409 is what the user
+ * sees if one slips through — there is no optimistic local status write.
  *
  * Keyboard (PLAN §10.1): ⌘/Ctrl+Enter submits from anywhere in the dialog,
  * a bare Enter in the title submits, Enter in the description inserts a
@@ -111,8 +220,12 @@ export default function TaskCreateModal({
   canEdit,
   onClose,
   onCreated,
+  mode = "create",
+  initialValues,
+  onSubmitEdit,
 }: TaskCreateModalProps) {
   const { t } = useTranslation();
+  const editing = mode === "edit";
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -138,6 +251,11 @@ export default function TaskCreateModal({
   >([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // The values the current open started from: the diff is computed against
+  // these, so an untouched field is never written back (PLAN §5.1).
+  const baselineRef = useRef<TaskCreateValues>(toValues(undefined));
+  const initialValuesRef = useRef(initialValues);
+  initialValuesRef.current = initialValues;
   // Members only while the dialog is open: the hook is the single member feed
   // (R5 / AC-U-24) and must never touch the global user directory.
   const { members, loading: membersLoading } = useProjectMembers(
@@ -207,6 +325,52 @@ export default function TaskCreateModal({
     setKeepCreating(false);
   }, []);
 
+  // Seed once per open: create gets the empty shape, edit gets the current
+  // values. Keyed on ``open`` only — re-seeding on every render would clobber
+  // what the user is typing (the values are read through a ref).
+  useEffect(() => {
+    if (!open) return;
+    const seeded = toValues(initialValuesRef.current);
+    baselineRef.current = seeded;
+    setTitle(seeded.title);
+    setDescription(seeded.description);
+    setStatus(seeded.status);
+    setPriority(seeded.priority);
+    setAssignee(seeded.assignee);
+    setTagIds(seeded.tag_ids);
+    setStartAt(seeded.start_at ? dayjs(seeded.start_at * 1000) : null);
+    setDueAt(seeded.due_at ? dayjs(seeded.due_at * 1000) : null);
+    setParentId(seeded.parent_id);
+    setCustomValues(seeded.custom_fields);
+    setStaged([]);
+    setKeepCreating(false);
+  }, [open]);
+
+  /** The edited node and everything below it — illegal new parents (PLAN §5.2 ④). */
+  const forbiddenParentIds = useMemo(() => {
+    const editedId = initialValuesRef.current?.task_id;
+    if (!editing || !editedId) return new Set<string>();
+    return new Set([editedId, ...descendantIds(editedId, tasks)]);
+  }, [editing, tasks]);
+
+  /**
+   * PLAN S4: an edit may only move the status along the frozen machine, so
+   * illegal targets are disabled up front — exactly like the board's dropdown.
+   * Creation is not a transition, so create mode keeps all seven.
+   */
+  const statusOptions = useMemo(() => {
+    if (!editing) return COLUMN_STATUSES;
+    const current = baselineRef.current.status;
+    // The board's dropdown offers the current status plus every legal target;
+    // this mirrors it exactly (PLAN S4: same experience at both entry points).
+    return COLUMN_STATUSES.filter(
+      (option) => option === current || isTransitionAllowed(current, option),
+    );
+  }, [editing]);
+
+  const parentCycleBlocked =
+    editing && parentId !== null && forbiddenParentIds.has(parentId);
+
   const handleCancel = () => {
     // PLAN §7.5.6: give up the staged files explicitly; uploads that were
     // already used by a create are bound and must not be touched.
@@ -215,12 +379,75 @@ export default function TaskCreateModal({
     onClose();
   };
 
+  /** Edit mode: only the keys that actually changed (PLAN §5.1). */
+  const buildPatch = (trimmed: string): TaskPatchValues => {
+    const baseline = baselineRef.current;
+    const patch: TaskPatchValues = {};
+    if (trimmed !== baseline.title) patch.title = trimmed;
+    const nextDescription = description.trim();
+    if (nextDescription !== baseline.description) {
+      patch.description = nextDescription;
+    }
+    if (priority !== baseline.priority) patch.priority = priority;
+    if (status !== baseline.status) patch.status = status;
+    if (toEpochSeconds(startAt) !== baseline.start_at) {
+      patch.start_at = toEpochSeconds(startAt);
+    }
+    if (toEpochSeconds(dueAt) !== baseline.due_at) {
+      patch.due_at = toEpochSeconds(dueAt);
+    }
+    if (parentId !== baseline.parent_id) patch.parent_id = parentId;
+    // Full replacements: the array / object *is* the final set (PLAN §5.2).
+    // ``deps`` is part of the frozen edit field set but has no key in the frozen
+    // i18n table, so no editor is rendered for it and it is never written back
+    // (an absent key leaves the column untouched — the frozen "缺键 = 不改").
+    if (!sameIds(tagIds, baseline.tag_ids)) patch.tags = tagIds;
+    if (!sameCustomFields(customValues, baseline.custom_fields)) {
+      patch.custom_fields = customValues;
+    }
+    const baselineAssignee = baseline.assignee;
+    const assigneeChanged =
+      (assignee?.type ?? null) !== (baselineAssignee?.type ?? null) ||
+      (assignee?.id ?? null) !== (baselineAssignee?.id ?? null);
+    if (assigneeChanged) {
+      patch.assignee_type = assignee?.type ?? null;
+      patch.assignee_id = assignee?.id ?? null;
+    }
+    return patch;
+  };
+
+  const submitEdit = async (trimmed: string) => {
+    if (!onSubmitEdit) return;
+    const patch = buildPatch(trimmed);
+    // Nothing changed: close instead of sending an empty patch.
+    if (Object.keys(patch).length === 0) {
+      resetForm();
+      onClose();
+      return;
+    }
+    await onSubmitEdit(patch);
+    message.success(t("projects.editTaskSaved"));
+    resetForm();
+    onClose();
+  };
+
   const submit = async () => {
     if (!canEdit || submitting) return;
     const trimmed = title.trim();
     if (!trimmed) return;
+    // Front-end backstop for the cycle guard: the picker already hides these,
+    // and the server answers 400 PROJECT_TASK_PARENT_INVALID if one arrives.
+    if (parentCycleBlocked) {
+      message.error(t("apiErrors.PROJECT_TASK_PARENT_INVALID"));
+      return;
+    }
+    if (editing && !onSubmitEdit) return;
     setSubmitting(true);
     try {
+      if (editing) {
+        await submitEdit(trimmed);
+        return;
+      }
       await projectsApi.createTask(projectId, {
         title: trimmed,
         description: description.trim() || undefined,
@@ -249,7 +476,15 @@ export default function TaskCreateModal({
         onClose();
       }
     } catch (error) {
-      message.error(apiErrorMessage(error, t("projects.boardCreateFailed"), t));
+      message.error(
+        apiErrorMessage(
+          error,
+          t(
+            editing ? "projects.boardMoveFailed" : "projects.boardCreateFailed",
+          ),
+          t,
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -331,19 +566,27 @@ export default function TaskCreateModal({
 
   const renderStatusPicker = () => (
     <div className={styles.optionList}>
-      {TASK_STATUS_ORDER.map((option) => (
-        <button
-          key={option}
-          type="button"
-          className={`${styles.option} ${
-            option === status ? styles.optionActive : ""
-          }`}
-          onClick={() => setStatus(option)}
-        >
-          <span>{t(STATUS_LABEL_KEYS[option])}</span>
-          {option === status ? <Check size={14} /> : null}
-        </button>
-      ))}
+      {COLUMN_STATUSES.map((option) => {
+        // PLAN S4: an illegal target is refused here, never silently sent.
+        const allowed = statusOptions.includes(option);
+        return (
+          <button
+            key={option}
+            type="button"
+            className={`${styles.option} ${
+              option === status ? styles.optionActive : ""
+            } ${allowed ? "" : styles.optionDisabled}`}
+            aria-disabled={allowed ? undefined : true}
+            onClick={() => {
+              if (!allowed) return;
+              setStatus(option);
+            }}
+          >
+            <span>{t(STATUS_LABEL_KEYS[option])}</span>
+            {option === status ? <Check size={14} /> : null}
+          </button>
+        );
+      })}
     </div>
   );
 
@@ -536,12 +779,17 @@ export default function TaskCreateModal({
           }
           aria-label={t("projects.chipParentTask")}
           onChange={(next) => setParentId(next ?? null)}
-          options={tasks.map((task) => ({
-            value: task.task_id,
-            label: task.title,
-          }))}
+          // PLAN §5.2 ④: the edited task and its descendants can never become
+          // its parent — the same rule the server enforces with a 400.
+          options={tasks
+            .filter((task) => !forbiddenParentIds.has(task.task_id))
+            .map((task) => ({
+              value: task.task_id,
+              label: task.title,
+            }))}
         />
       </div>
+
       <div className={styles.moreRow}>
         <span className={styles.moreLabel}>{t("projects.chipSubtasks")}</span>
         {/* Reverse relation: other tasks point at this one, so nothing can be
@@ -625,7 +873,11 @@ export default function TaskCreateModal({
             </>
           ) : null}
           <span className={styles.breadcrumbCurrent}>
-            {t("projects.createTaskBreadcrumb")}
+            {t(
+              editing
+                ? "projects.editTaskTitle"
+                : "projects.createTaskBreadcrumb",
+            )}
           </span>
         </div>
       }
@@ -701,7 +953,13 @@ export default function TaskCreateModal({
           </ChipButton>
         </ChipToolbar>
 
-        {staged.length > 0 ? (
+        {parentCycleBlocked ? (
+          <div className={styles.cycleHint} role="alert">
+            {t("apiErrors.PROJECT_TASK_PARENT_INVALID")}
+          </div>
+        ) : null}
+
+        {editing ? null : staged.length > 0 ? (
           <div className={styles.attachments}>
             {staged.map((item) => (
               <span key={item.artifact_id} className={styles.attachment}>
@@ -726,21 +984,25 @@ export default function TaskCreateModal({
 
         <div className={styles.footer}>
           <div className={styles.footerLeft}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className={styles.fileInput}
-              onChange={(event) => void handleFileChange(event)}
-            />
-            <Tooltip title={t("projects.attachFile")}>
-              <Button
-                type="text"
-                aria-label={t("projects.attachFile")}
-                loading={uploading}
-                icon={<Paperclip size={16} />}
-                onClick={() => fileInputRef.current?.click()}
-              />
-            </Tooltip>
+            {editing ? null : (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className={styles.fileInput}
+                  onChange={(event) => void handleFileChange(event)}
+                />
+                <Tooltip title={t("projects.attachFile")}>
+                  <Button
+                    type="text"
+                    aria-label={t("projects.attachFile")}
+                    loading={uploading}
+                    icon={<Paperclip size={16} />}
+                    onClick={() => fileInputRef.current?.click()}
+                  />
+                </Tooltip>
+              </>
+            )}
             <span className={styles.footerButton}>
               <ChipButton
                 icon={<User size={14} />}
@@ -757,13 +1019,15 @@ export default function TaskCreateModal({
                 {renderAgentPicker()}
               </ChipButton>
             </span>
-            <Checkbox
-              className={styles.keepCreating}
-              checked={keepCreating}
-              onChange={(event) => setKeepCreating(event.target.checked)}
-            >
-              {t("projects.createAndContinue")}
-            </Checkbox>
+            {editing ? null : (
+              <Checkbox
+                className={styles.keepCreating}
+                checked={keepCreating}
+                onChange={(event) => setKeepCreating(event.target.checked)}
+              >
+                {t("projects.createAndContinue")}
+              </Checkbox>
+            )}
           </div>
           <div className={styles.footerRight}>
             <Tooltip title={t("common.cancel")}>
@@ -781,7 +1045,11 @@ export default function TaskCreateModal({
               onClick={() => void submit()}
             >
               <span className={styles.submitLabel}>
-                {t("projects.createTaskSubmit")}
+                {t(
+                  editing
+                    ? "projects.editTaskSubmit"
+                    : "projects.createTaskSubmit",
+                )}
                 <span className={styles.shortcutHint}>⌘↵</span>
               </span>
             </Button>

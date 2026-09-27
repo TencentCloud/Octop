@@ -147,6 +147,8 @@ export interface ProjectTimelineEvent {
 export interface ProjectCreateBody {
   name: string;
   goal?: string;
+  /** Initial status (all six are selectable); omitted → the server's `draft`. */
+  status?: ProjectStatus | null;
   start_at?: number | null;
   due_at?: number | null;
 }
@@ -157,6 +159,14 @@ export interface ProjectUpdateBody {
   status?: ProjectStatus;
   start_at?: number | null;
   due_at?: number | null;
+  /**
+   * Knowledge-base rebind — three states, decided by whether the key is present
+   * (PLAN §4.1): absent = leave it, `null` = unbind, a value = rebind.
+   *
+   * ★ Presence is what raises the **whole request** to `PROJECT_MANAGE_CONFIG`
+   * (PLAN §4.3), so a goal-only edit must omit the key.
+   */
+  kb_id?: string | null;
   /** Explicitly store `null` in `start_at` / `due_at`. */
   clear_start_at?: boolean;
   clear_due_at?: boolean;

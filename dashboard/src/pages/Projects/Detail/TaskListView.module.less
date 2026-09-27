@@ -51,3 +51,65 @@
     outline-offset: 1px;
   }
 }
+
+/* ---------- F1 按状态分区 (PLAN §1) ---------- */
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sectionTitle {
+  font-weight: 600;
+}
+
+.sectionCount {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+/* 空区：仍占一行，不隐藏该区块。 */
+.sectionEmpty {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.titleCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.titleText {
+  overflow-wrap: anywhere;
+}
+
+/* S8(b)：常显的行内编辑入口（不是 hover 才出现）。 */
+.editButton {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-sm, 4px);
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  transition:
+    background var(--fn-transition-fast),
+    color var(--fn-transition-fast);
+
+  &:hover {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-brand, var(--fn-text-primary));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}

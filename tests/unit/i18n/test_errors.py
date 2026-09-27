@@ -239,8 +239,8 @@ def test_dashboard_projects_namespace_is_paired_and_localized():
     en = json.loads((repo / "dashboard/src/locales/en.json").read_text(encoding="utf-8"))
     zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
     assert set(en["projects"]) == set(zh["projects"])
-    # 152 after batch 1, + 56 from PLAN.md §11.1 in batch 2 = 208.
-    assert len(zh["projects"]) == 208
+    # 208 after batch 2, + 4 from PLAN.md §7.1 in batch 3 = 212.
+    assert len(zh["projects"]) == 212
     # R6 copy change: values only, keys untouched.
     assert zh["projects"]["taskStatusReview"] == "审核中"
     assert zh["projects"]["taskStatusBlocked"] == "已阻塞"
@@ -415,5 +415,92 @@ def test_batch2_projects_keys_exist_in_both_locales():
         assert key in zh["projects"], f"zh projects.{key} missing"
         assert key in en["projects"], f"en projects.{key} missing"
         assert en["projects"][key] != "", f"en projects.{key} is empty"
-    assert len(zh["projects"]) == 208
-    assert len(en["projects"]) == 208
+    assert len(zh["projects"]) == 212
+    assert len(en["projects"]) == 212
+
+
+# ── batch 3 (T-I18N3): edit-dialog labels + two rejection codes ──────────────
+#
+# Per-key zh assertions (S10): a key-set comparison alone would stay green while a
+# zh value silently fell back to English (``loader.py`` behaviour), and the L10
+# transcription rule means the PLAN table's ``**`` markers are never part of a key
+# or a value.
+
+_T_I18N3_PROJECT_KEYS = {
+    "editTaskTitle": ("Edit task", "编辑任务"),
+    "editTaskSubmit": ("Save", "保存"),
+    "editTaskSaved": ("Task updated", "任务已更新"),
+    "kbUnbind": ("Unbind knowledge base", "解绑知识库"),
+}
+
+_T_I18N3_ERROR_ZH = {
+    "PROJECT_KB_FORBIDDEN": "您没有该知识库的写入权限。",
+    "PROJECT_TASK_PARENT_INVALID": "父任务不能是自身的后代（间接环）。",
+}
+
+
+def _dash(locale: str) -> dict:
+    repo = Path(__file__).resolve().parents[3]
+    return json.loads((repo / f"dashboard/src/locales/{locale}.json").read_text(encoding="utf-8"))
+
+
+def test_batch3_project_keys_are_localized_per_key():
+    en, zh = _dash("en"), _dash("zh")
+    for key, (en_value, zh_value) in _T_I18N3_PROJECT_KEYS.items():
+        assert zh["projects"][key] == zh_value, key
+        assert en["projects"][key] == en_value, key
+        assert "**" not in zh["projects"][key] and "※" not in zh["projects"][key], key
+    assert list(zh["projects"])[-4:] == list(_T_I18N3_PROJECT_KEYS), "the four land last"
+
+
+def test_batch3_error_codes_are_localized_per_key():
+    repo = Path(__file__).resolve().parents[3]
+    backend_zh = json.loads((repo / "src/octop/i18n/zh.json").read_text(encoding="utf-8"))
+    dash_zh = _dash("zh")
+    for code, expected in _T_I18N3_ERROR_ZH.items():
+        assert code in {c.value for c in ErrorCode}, code
+        assert backend_zh["errors"][code] == expected, code
+        assert dash_zh["apiErrors"][code] == expected, code
+        assert error_message(code, "zh") == expected, code
+        assert error_message(code, "en"), f"{code} has no en text"
+
+
+def test_batch3_status_mapping():
+    assert OctopError(ErrorCode.PROJECT_KB_FORBIDDEN, "x").status == 403
+    assert OctopError(ErrorCode.PROJECT_TASK_PARENT_INVALID, "x").status == 400
+    for code in (ErrorCode.PROJECT_KB_FORBIDDEN, ErrorCode.PROJECT_TASK_PARENT_INVALID):
+        assert OctopError(code, "x").status != 500
+
+
+def _duplicate_keys_in_one_object(path: Path) -> list[str]:
+    """Duplicate keys **within a single JSON object** (cross-namespace repeats are legal)."""
+    seen: list[str] = []
+
+    def collect(pairs: list[tuple[str, object]]) -> dict:
+        keys = [key for key, _ in pairs]
+        seen.extend([key for key in set(keys) if keys.count(key) > 1])
+        return dict(pairs)
+
+    json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=collect)
+    return seen
+
+
+def test_no_duplicate_keys_inside_any_dashboard_object():
+    """``L2``/``FIND-7``: ``JSON.parse`` silently keeps the last duplicate.
+
+    The check therefore runs on the parsed pair list per object — not on a
+    top-level line regex, which cannot tell the two cases apart.
+    """
+    repo = Path(__file__).resolve().parents[3]
+    for locale in ("en", "zh"):
+        path = repo / f"dashboard/src/locales/{locale}.json"
+        assert _duplicate_keys_in_one_object(path) == [], locale
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert len(data) == 81 and len(data["chat"]) == 211, locale
+
+
+def test_the_projects_block_is_written_once():
+    repo = Path(__file__).resolve().parents[3]
+    for locale in ("en", "zh"):
+        text = (repo / f"dashboard/src/locales/{locale}.json").read_text(encoding="utf-8")
+        assert len(re.findall(r'^  "projects": \{', text, re.M)) == 1, locale

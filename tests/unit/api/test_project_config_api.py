@@ -166,3 +166,308 @@ async def test_non_member_is_refused_on_every_new_endpoint(
     response = await client.request(method, f"{PROJECTS}/{ctx['pid']}{path}", headers=ctx["bob"])
     assert response.status_code == 403, response.text
     assert response.json()["error"]["code"] == "PROJECT_FORBIDDEN"
+
+
+# ── F3: knowledge-base rebind over real HTTP (T-INT3, `-k kb`) ───────────────
+
+KNOWLEDGE_NOT_FOUND = "KNOWLEDGE_NOT_FOUND"  # reused existing code (PLAN.md §4.2)
+PROJECT_KB_FORBIDDEN = "PROJECT_KB_FORBIDDEN"
+
+
+def _kb(srv: Any, *, owner_user_id: int, name: str, shared: bool = False) -> str:
+    """Insert a knowledge base straight through the repo (the HTTP KB flow needs a
+    configured embedding provider, which is not what these tests are about)."""
+    return str(
+        srv.services.knowledge_repo.create_base(
+            owner_user_id=owner_user_id, name=name, shared=shared
+        ).id
+    )
+
+
+async def _member(
+    client: httpx.AsyncClient, auth: dict[str, str], pid: str, user_id: int, role: str
+) -> None:
+    response = await client.post(
+        f"{PROJECTS}/{pid}/members",
+        headers=auth,
+        json={"subject_type": "user", "subject_id": str(user_id), "role": role},
+    )
+    assert response.status_code == 201, response.text
+
+
+async def test_kb_rebind_three_states_and_idempotency(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    client, srv, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    admin_id = (await client.get("/api/users", headers=auth)).json()
+    admin_user_id = next(u["id"] for u in admin_id if u["username"] == "admin")
+    first = _kb(srv, owner_user_id=admin_user_id, name="First")
+
+    rebound = await client.patch(f"{PROJECTS}/{pid}", headers=auth, json={"kb_id": first})
+    assert rebound.status_code == 200, rebound.text
+    assert rebound.json()["kb_id"] == first
+
+    # idempotent: the same value again is a 200 with the value unchanged
+    again = await client.patch(f"{PROJECTS}/{pid}", headers=auth, json={"kb_id": first})
+    assert again.status_code == 200, again.text
+    assert again.json()["kb_id"] == first
+
+    # the key absent: nothing is touched (RF-7)
+    untouched = await client.patch(f"{PROJECTS}/{pid}", headers=auth, json={"goal": "new goal"})
+    assert untouched.status_code == 200, untouched.text
+    assert untouched.json()["kb_id"] == first
+
+    # null: unbind (a 200, not an error face)
+    unbound = await client.patch(f"{PROJECTS}/{pid}", headers=auth, json={"kb_id": None})
+    assert unbound.status_code == 200, unbound.text
+    assert unbound.json()["kb_id"] is None
+    assert (await client.get(f"{PROJECTS}/{pid}", headers=auth)).json()["kb_id"] is None
+
+
+async def test_kb_rebind_refusal_codes(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """404 for an invisible base; 403 for a visible-but-unwritable one.
+
+    The 403 case needs a caller who is *not* a platform admin — a platform admin
+    may write any base, so the KB-level refusal is only observable for a project
+    admin whose own platform role is plain ``user``.
+    """
+    client, srv, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    users = (await client.get("/api/users", headers=auth)).json()
+    ids = {u["username"]: u["id"] for u in users}
+    carol = await create_user(client, auth, username="carol")
+    carol_id = next(
+        u["id"]
+        for u in (await client.get("/api/users", headers=auth)).json()
+        if u["username"] == "carol"
+    )
+    private = _kb(srv, owner_user_id=carol_id, name="Carol private")
+
+    missing = await client.patch(f"{PROJECTS}/{pid}", headers=auth, json={"kb_id": "kb_missing"})
+    assert missing.status_code == 404, missing.text
+    assert missing.status_code != 500
+    assert missing.json()["error"]["code"] == KNOWLEDGE_NOT_FOUND
+
+    # bob: project admin (so MANAGE_CONFIG passes) but a plain platform user
+    await _member(client, auth, pid, ids["bob"], "admin")
+    forbidden = await client.patch(f"{PROJECTS}/{pid}", headers=ctx["bob"], json={"kb_id": private})
+    assert forbidden.status_code == 403, forbidden.text
+    assert forbidden.status_code != 500
+    assert forbidden.json()["error"]["code"] == PROJECT_KB_FORBIDDEN
+    assert carol is not None
+
+
+async def test_kb_rebind_raises_the_whole_request_permission(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """A write-only member may edit plain fields, but a request carrying ``kb_id``
+    is checked at the config level as a whole — no smuggling."""
+    client, srv, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    bob_auth = ctx["bob"]
+    bob_id = next(
+        u["id"]
+        for u in (await client.get("/api/users", headers=auth)).json()
+        if u["username"] == "bob"
+    )
+    await _member(client, auth, pid, bob_id, "member")
+    admin_user_id = next(
+        u["id"]
+        for u in (await client.get("/api/users", headers=auth)).json()
+        if u["username"] == "admin"
+    )
+    kb_id = _kb(srv, owner_user_id=admin_user_id, name="Shared")
+
+    plain = await client.patch(f"{PROJECTS}/{pid}", headers=bob_auth, json={"goal": "member goal"})
+    assert plain.status_code == 200, plain.text
+
+    smuggled = await client.patch(
+        f"{PROJECTS}/{pid}", headers=bob_auth, json={"goal": "smuggled", "kb_id": kb_id}
+    )
+    assert smuggled.status_code == 403, smuggled.text
+    assert smuggled.status_code != 500
+    assert smuggled.json()["error"]["code"] == "PROJECT_ROLE_FORBIDDEN"
+    assert (await client.get(f"{PROJECTS}/{pid}", headers=auth)).json()["goal"] == "member goal"
+
+
+async def test_kb_rebind_on_an_archived_project_is_forbidden(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    client, srv, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    admin_user_id = next(
+        u["id"]
+        for u in (await client.get("/api/users", headers=auth)).json()
+        if u["username"] == "admin"
+    )
+    kb_id = _kb(srv, owner_user_id=admin_user_id, name="Late")
+    await client.patch(f"{PROJECTS}/{pid}", headers=auth, json={"status": "archived"})
+
+    response = await client.patch(f"{PROJECTS}/{pid}", headers=auth, json={"kb_id": kb_id})
+    assert response.status_code == 403, response.text
+    assert response.status_code != 500
+    assert response.json()["error"]["code"] == "PROJECT_FORBIDDEN"
+
+
+# ── F4: task editing over real HTTP (T-INT3, `-k task_edit`) ────────────────
+
+
+async def _new_task(
+    client: httpx.AsyncClient, auth: dict[str, str], pid: str, **fields: Any
+) -> dict[str, Any]:
+    response = await client.post(
+        f"{PROJECTS}/{pid}/tasks", headers=auth, json={"title": "T", **fields}
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+async def _board_task(
+    client: httpx.AsyncClient, auth: dict[str, str], pid: str, task_id: str
+) -> dict[str, Any]:
+    rows = (await client.get(f"{PROJECTS}/{pid}/tasks", headers=auth)).json()
+    return next(row for row in rows if row["task_id"] == task_id)
+
+
+async def test_task_edit_fields_round_trip(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    client, _, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    task = await _new_task(client, auth, pid, description="old", priority=1, deps=["dep-a"])
+
+    patched = await client.patch(
+        f"{PROJECTS}/{pid}/tasks/{task['task_id']}",
+        headers=auth,
+        json={
+            "title": "Renamed",
+            "description": "new",
+            "priority": 5,
+            "start_at": 1_700_000_000,
+            "due_at": 1_700_003_600,
+            "status": "todo",
+        },
+    )
+    assert patched.status_code == 200, patched.text
+    row = await _board_task(client, auth, pid, task["task_id"])
+    assert (row["title"], row["description"], row["priority"]) == ("Renamed", "new", 5)
+    assert (row["start_at"], row["due_at"]) == (1_700_000_000, 1_700_003_600)
+    assert row["status"] == "todo"
+
+
+async def test_task_edit_illegal_status_is_409(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    client, _, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    task = await _new_task(client, auth, pid)  # planning
+
+    response = await client.patch(
+        f"{PROJECTS}/{pid}/tasks/{task['task_id']}", headers=auth, json={"status": "done"}
+    )
+    assert response.status_code == 409, response.text
+    assert response.status_code != 500
+    assert response.json()["error"]["code"] == "PROJECT_TASK_STATUS_INVALID"
+    assert (await _board_task(client, auth, pid, task["task_id"]))["status"] == "planning"
+
+
+async def test_task_edit_parent_four_way_split(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """Self / missing / cross-project stay 404; only the indirect cycle is 400."""
+    client, _, ctx = api
+    auth = ctx["admin"]
+    pid = ctx["pid"]
+    other = (await client.post(f"{PROJECTS}", headers=auth, json={"name": "Borealis"})).json()[
+        "project_id"
+    ]
+
+    task_a = await _new_task(client, auth, pid, title="A")
+    task_b = await _new_task(client, auth, pid, title="B")
+    foreign = await _new_task(client, auth, other, title="Foreign")
+
+    cases = [
+        (task_a["task_id"], task_a["task_id"], 404, "PROJECT_TASK_NOT_FOUND"),
+        (task_a["task_id"], "tsk_missing", 404, "PROJECT_TASK_NOT_FOUND"),
+        (task_a["task_id"], foreign["task_id"], 404, "PROJECT_TASK_NOT_FOUND"),
+    ]
+    for target, parent, expected_status, expected_code in cases:
+        response = await client.patch(
+            f"{PROJECTS}/{pid}/tasks/{target}", headers=auth, json={"parent_id": parent}
+        )
+        assert response.status_code == expected_status, response.text
+        assert response.status_code != 500
+        assert response.json()["error"]["code"] == expected_code
+
+    # A → B is legal, then B → A closes the loop and must be refused as an indirect cycle
+    legal = await client.patch(
+        f"{PROJECTS}/{pid}/tasks/{task_a['task_id']}",
+        headers=auth,
+        json={"parent_id": task_b["task_id"]},
+    )
+    assert legal.status_code == 200, legal.text
+    cycle = await client.patch(
+        f"{PROJECTS}/{pid}/tasks/{task_b['task_id']}",
+        headers=auth,
+        json={"parent_id": task_a["task_id"]},
+    )
+    assert cycle.status_code == 400, cycle.text
+    assert cycle.status_code != 500
+    assert cycle.json()["error"]["code"] == "PROJECT_TASK_PARENT_INVALID"
+
+
+async def test_task_edit_full_replacement_and_deps_are_never_cleared(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """``tags`` / ``custom_fields`` are whole-set writes; ``deps`` only changes when
+    the key is actually sent (the UI has no deps control this round)."""
+    client, _, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    tag = (
+        await client.post(f"{PROJECTS}/{pid}/tags", headers=auth, json={"name": "urgent"})
+    ).json()["tag_id"]
+    field = (
+        await client.post(
+            f"{PROJECTS}/{pid}/custom-fields",
+            headers=auth,
+            json={"key": "risk", "label": "Risk", "type": "text"},
+        )
+    ).json()["field_id"]
+    task = await _new_task(client, auth, pid, deps=["dep-a"])
+    tid = task["task_id"]
+
+    filled = await client.patch(
+        f"{PROJECTS}/{pid}/tasks/{tid}",
+        headers=auth,
+        json={"tags": [tag], "custom_fields": {field: "high"}},
+    )
+    assert filled.status_code == 200, filled.text
+    row = await _board_task(client, auth, pid, tid)
+    assert [t["tag_id"] for t in row["tags"]] == [tag]
+    assert row["custom_fields"][0]["value"] == "high"
+    assert row["deps"] == ["dep-a"], "deps must survive a patch that omits the key"
+
+    # A patch without the keys changes none of the three collections.
+    plain = await client.patch(
+        f"{PROJECTS}/{pid}/tasks/{tid}", headers=auth, json={"title": "Only the title"}
+    )
+    assert plain.status_code == 200, plain.text
+    row = await _board_task(client, auth, pid, tid)
+    assert [t["tag_id"] for t in row["tags"]] == [tag]
+    assert row["custom_fields"][0]["value"] == "high"
+    assert row["deps"] == ["dep-a"]
+
+    # Explicit empty values clear them (full replacement, not a merge).
+    cleared = await client.patch(
+        f"{PROJECTS}/{pid}/tasks/{tid}",
+        headers=auth,
+        json={"tags": [], "custom_fields": {}, "deps": []},
+    )
+    assert cleared.status_code == 200, cleared.text
+    row = await _board_task(client, auth, pid, tid)
+    assert row["tags"] == []
+    assert row["custom_fields"] == []
+    assert row["deps"] == []
