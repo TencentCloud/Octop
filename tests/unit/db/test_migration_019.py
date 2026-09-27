@@ -1,8 +1,8 @@
-"""Schema v18: project-management domain.
+"""Schema v19: project-management domain.
 
 Covers the versioned path (fresh DB), the idempotent re-run path, and the
 ``_ensure_projects_schema`` repair path used when a database's recorded version
-skipped 018.
+skipped 019.
 
 Uses ``tmp_path`` throughout so the suite runs on Windows and POSIX alike.
 """
@@ -57,17 +57,17 @@ def _columns(db: SqlitePool, table: str) -> set[str]:
     return {str(row["name"]) for row in rows}
 
 
-def test_migration_018_is_the_applied_watermark(db: SqlitePool):
-    assert _version(db) == 18
+def test_migration_019_is_the_applied_watermark(db: SqlitePool):
+    assert _version(db) == 19
 
 
-def test_migration_018_creates_all_project_tables(db: SqlitePool):
+def test_migration_019_creates_all_project_tables(db: SqlitePool):
     names = _table_names(db)
     missing = sorted(set(PROJECT_TABLES) - names)
     assert missing == [], f"missing project tables: {missing}"
 
 
-def test_migration_018_does_not_alter_threads(db: SqlitePool):
+def test_migration_019_does_not_alter_threads(db: SqlitePool):
     """Project linkage resolves by reverse lookup, so threads must stay untouched."""
     columns = _columns(db, "threads")
     assert "project_id" not in columns
@@ -75,25 +75,25 @@ def test_migration_018_does_not_alter_threads(db: SqlitePool):
     assert {"conversation_mode", "pending_plan_path", "hitl_policy"} <= columns
 
 
-def test_migration_018_is_idempotent(tmp_path: Path):
+def test_migration_019_is_idempotent(tmp_path: Path):
     pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     run_migrations(pool)  # must not raise (CREATE ... IF NOT EXISTS everywhere)
-    assert _version(pool) == 18
+    assert _version(pool) == 19
     assert set(PROJECT_TABLES) <= _table_names(pool)
 
 
 def test_ensure_projects_schema_repairs_missing_tables(db: SqlitePool):
-    """A DB recorded at v18 but missing the tables must be repaired on next run."""
+    """A DB recorded at v19 but missing the tables must be repaired on next run."""
     with db.transaction() as conn:
         for table in PROJECT_TABLES:
             conn.execute(f"DROP TABLE IF EXISTS {table}")
     assert not (set(PROJECT_TABLES) & _table_names(db))
 
-    run_migrations(db)  # version already 18 -> only the unconditional helpers run
+    run_migrations(db)  # version already 19 -> only the unconditional helpers run
 
     assert set(PROJECT_TABLES) <= _table_names(db)
-    assert _version(db) == 18
+    assert _version(db) == 19
 
 
 def test_projects_project_id_is_unique(db: SqlitePool):

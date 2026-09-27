@@ -54,11 +54,15 @@ interface InviteDrawerProps {
   onClose: () => void;
 }
 
-function presetInviteRoleId(loaded: UserRole[], actorIsAdmin: boolean): string | undefined {
+function presetInviteRoleId(
+  loaded: UserRole[],
+  actorIsAdmin: boolean,
+): string | undefined {
   const pool = actorIsAdmin
     ? loaded
     : loaded.filter((role) => role.system_role !== "admin");
-  return pool.find((role) => role.user_role_id === SEEDED_USER_ROLE_ID)?.user_role_id;
+  return pool.find((role) => role.user_role_id === SEEDED_USER_ROLE_ID)
+    ?.user_role_id;
 }
 
 export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
@@ -297,84 +301,84 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
                   (!row.user_role_id && role.user_role_name === row.role_name),
               );
               return (
-              <div key={row.id} className={styles.inviteCard}>
-                <div className={styles.inviteCardTop}>
-                  <Space size={8} wrap>
-                    <Tag color={STATUS_COLOR[row.status]}>
-                      {t(`adminUsers.inviteStatus.${row.status}`)}
-                    </Tag>
-                    <Text code>{row.code}</Text>
-                  </Space>
-                  <Space size={4}>
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<Copy size={14} />}
-                      onClick={() => void onCopy(row)}
-                      title={t("adminUsers.inviteCopyUrl")}
-                    />
-                    {row.status === "pending" ? (
-                      <Popconfirm
-                        title={t("adminUsers.inviteRevokeConfirm")}
-                        onConfirm={() => void onRevoke(row)}
-                      >
-                        <Button
-                          type="text"
-                          size="small"
-                          danger
-                          icon={<Trash2 size={14} />}
-                          title={t("adminUsers.inviteRevoke")}
-                        />
-                      </Popconfirm>
+                <div key={row.id} className={styles.inviteCard}>
+                  <div className={styles.inviteCardTop}>
+                    <Space size={8} wrap>
+                      <Tag color={STATUS_COLOR[row.status]}>
+                        {t(`adminUsers.inviteStatus.${row.status}`)}
+                      </Tag>
+                      <Text code>{row.code}</Text>
+                    </Space>
+                    <Space size={4}>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<Copy size={14} />}
+                        onClick={() => void onCopy(row)}
+                        title={t("adminUsers.inviteCopyUrl")}
+                      />
+                      {row.status === "pending" ? (
+                        <Popconfirm
+                          title={t("adminUsers.inviteRevokeConfirm")}
+                          onConfirm={() => void onRevoke(row)}
+                        >
+                          <Button
+                            type="text"
+                            size="small"
+                            danger
+                            icon={<Trash2 size={14} />}
+                            title={t("adminUsers.inviteRevoke")}
+                          />
+                        </Popconfirm>
+                      ) : null}
+                    </Space>
+                  </div>
+                  <div className={styles.inviteUrlRow}>
+                    <Link2 size={12} />
+                    <Text
+                      ellipsis
+                      className={styles.inviteUrl}
+                      title={localInviteUrl(row.code)}
+                    >
+                      {localInviteUrl(row.code)}
+                    </Text>
+                  </div>
+                  <Text type="secondary" className={styles.inviteNote}>
+                    {row.role_name?.trim() ? (
+                      <RoleSelectLabel
+                        url={matchedRole?.avatar_url}
+                        icon={matchedRole?.avatar_icon}
+                        label={snapshotRoleLabel(
+                          row.role_name,
+                          roles,
+                          t,
+                          row.user_role_id,
+                        )}
+                      />
+                    ) : (
+                      t("adminUsers.inviteRoleLegacy")
+                    )}
+                    {row.role_name?.trim() && !matchedRole ? (
+                      <>
+                        {" "}
+                        <Tag>{t("adminUsers.roleNameMissing")}</Tag>
+                      </>
                     ) : null}
-                  </Space>
-                </div>
-                <div className={styles.inviteUrlRow}>
-                  <Link2 size={12} />
-                  <Text
-                    ellipsis
-                    className={styles.inviteUrl}
-                    title={localInviteUrl(row.code)}
-                  >
-                    {localInviteUrl(row.code)}
+                    {row.note ? ` · ${row.note}` : ""}
                   </Text>
+                  <div className={styles.inviteMeta}>
+                    <Text type="secondary">
+                      {t("adminUsers.inviteCreatedAt", {
+                        time: formatServerDateTime(row.created_at, timeZone),
+                      })}
+                    </Text>
+                    <Text type="secondary">
+                      {t("adminUsers.inviteExpiresAt", {
+                        time: formatServerDateTime(row.expires_at, timeZone),
+                      })}
+                    </Text>
+                  </div>
                 </div>
-                <Text type="secondary" className={styles.inviteNote}>
-                  {row.role_name?.trim() ? (
-                    <RoleSelectLabel
-                      url={matchedRole?.avatar_url}
-                      icon={matchedRole?.avatar_icon}
-                      label={snapshotRoleLabel(
-                        row.role_name,
-                        roles,
-                        t,
-                        row.user_role_id,
-                      )}
-                    />
-                  ) : (
-                    t("adminUsers.inviteRoleLegacy")
-                  )}
-                  {row.role_name?.trim() && !matchedRole ? (
-                    <>
-                      {" "}
-                      <Tag>{t("adminUsers.roleNameMissing")}</Tag>
-                    </>
-                  ) : null}
-                  {row.note ? ` · ${row.note}` : ""}
-                </Text>
-                <div className={styles.inviteMeta}>
-                  <Text type="secondary">
-                    {t("adminUsers.inviteCreatedAt", {
-                      time: formatServerDateTime(row.created_at, timeZone),
-                    })}
-                  </Text>
-                  <Text type="secondary">
-                    {t("adminUsers.inviteExpiresAt", {
-                      time: formatServerDateTime(row.expires_at, timeZone),
-                    })}
-                  </Text>
-                </div>
-              </div>
               );
             })}
           </div>
