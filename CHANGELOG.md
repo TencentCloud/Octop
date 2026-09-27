@@ -8,6 +8,7 @@
 
 ### 修复
 - 工作区 `_builtin_skills` 保护改为先折叠 `..` 再匹配：校验读的是未折叠字符串，而后端落盘前才解析 `..`，所以 `DELETE path=/sub/../_builtin_skills/foo/SKILL.md` 删得掉内置技能文件、`move destination=/sub/../_builtin_skills/…` 写得进去，`path=/sub/..` 同样绕过「不能修改工作区根目录」；现三者均返回 403
+- 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 
 ## [1.0.2b3] - 2026-09-26
 
