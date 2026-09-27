@@ -21,7 +21,7 @@ async def overview(
         users.append(
             {
                 "username": user.username,
-                "role": user.role.value,
+                "role": user.role,
                 "agents": [],  # agents are now global, not per-user
             }
         )
