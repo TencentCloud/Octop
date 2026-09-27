@@ -168,7 +168,7 @@ def maybe_sliding_renew_token(server: OctopServer, token: str, user: User) -> st
         secret,
         sub=user.id,
         uname=user.username,
-        role=user.role.value,
+        role=user.role,
         ttl_seconds=ttl,
     )
 

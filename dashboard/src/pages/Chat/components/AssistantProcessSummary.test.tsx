@@ -88,9 +88,7 @@ describe("thinking display preference", () => {
 
   it("shows a live hint while a tool is running", () => {
     render(<AssistantProcessSummary split={runningToolSplit()} isStreaming />);
-    expect(
-      screen.getByText(/正在调用工具|Calling tools/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/正在调用工具|Calling tools/)).toBeInTheDocument();
     expect(screen.getByRole("button")).toHaveAttribute("aria-busy", "true");
   });
 
