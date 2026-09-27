@@ -8,6 +8,7 @@
 
 ### 修复
 - 连接器 CLI（lark-cli / wecom-cli / npm）的子进程输出改为显式按 UTF-8 解码：此前 `text=True` 跟随系统 ANSI 代码页，中文 Windows（cp936）上读线程抛 `UnicodeDecodeError` 后 stdout 变成 `None`，工具调用静默返回空 `{}`、登录状态被误判为「未登录」，界面上没有任何报错
+- 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 
 ## [1.0.2b3] - 2026-09-26
 
