@@ -9,7 +9,7 @@ from unittest import mock
 
 import pytest
 
-from octop.infra.agents.langfuse import LangfuseSettingsStore, verify_langfuse_credentials
+from octop.infra.agents.settings.langfuse import LangfuseSettingsStore, verify_langfuse_credentials
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.secrets import SecretRepo

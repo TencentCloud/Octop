@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_permission
-from octop.infra.agents.media_generation import (
+from octop.infra.agents.settings.media_generation import (
     MEDIA_PROVIDER_PRESETS,
     MediaGenerationSettings,
     MediaProviderName,
