@@ -32,6 +32,7 @@ from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.knowledge import service as knowledge_service_module
+from octop.infra.projects import service as project_service_module
 from octop.infra.projects.service import PROJECT_READ, PROJECT_WRITE, ProjectService
 from octop.infra.utils.paths import PathLayout
 
@@ -55,6 +56,9 @@ def services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace
     pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     monkeypatch.setattr(knowledge_service_module, "assert_knowledge_usable", lambda *_a: None)
+    monkeypatch.setattr(
+        project_service_module, "get_capability", lambda *_a, **_k: {"usable": True}
+    )
     return SimpleNamespace(
         db=pool,
         project_repo=ProjectRepo(pool),

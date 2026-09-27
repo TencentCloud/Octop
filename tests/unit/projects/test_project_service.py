@@ -65,6 +65,11 @@ def services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace
     # The knowledge feature gate needs an embedding provider; the project
     # service is not what is under test here.
     monkeypatch.setattr(knowledge_service_module, "assert_knowledge_usable", lambda *_a: None)
+    # Pretend the knowledge feature is ready, so create_project binds a KB.
+    # test_create_project_without_a_usable_knowledge_feature overrides this.
+    monkeypatch.setattr(
+        project_service_module, "get_capability", lambda *_a, **_k: {"usable": True}
+    )
     return SimpleNamespace(
         db=pool,
         project_repo=ProjectRepo(pool),
@@ -158,6 +163,37 @@ def test_create_project_requires_the_knowledge_bases_permission(
     assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
     assert services.project_repo.list_by_owner(1) == []
     assert services.knowledge_repo.count_bases_for_owner(1) == 0
+
+
+def test_create_project_without_a_usable_knowledge_feature(
+    service: ProjectService,
+    services: SimpleNamespace,
+    owner: Actor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fresh install has the knowledge feature off; projects must still work.
+
+    Regression: the capability check used to be missing from the ⓪ phase, so a
+    project created on a fresh install died at step ③ with an opaque
+    PROJECT_KB_BIND_FAILED (500). ``kb_id`` stays NULL, which is the case the
+    plan's T3.4 note already allows for.
+    """
+    monkeypatch.setattr(
+        project_service_module, "get_capability", lambda *_a, **_k: {"usable": False}
+    )
+
+    project = make_project(service, owner, name="无知识库项目")
+
+    assert project.kb_id is None, "no KB should be bound when the feature is off"
+    assert project.memory_namespace == f"project_{project.id}"
+    assert services.project_repo.list_by_owner(owner.id) == [project]
+    assert services.knowledge_repo.count_bases_for_owner(owner.id) == 0
+
+    # And the project is fully usable: activate, add a task, read the timeline.
+    activated = service.transition_project(project.id, user=owner, target="active")
+    assert activated.status == "active"
+    task = service.create_task(project.id, user=owner, title="照常可用")
+    assert task.status == "todo"
 
 
 def test_create_project_rejects_a_blank_name(service: ProjectService, owner: Actor) -> None:

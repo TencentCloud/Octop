@@ -40,6 +40,7 @@ from octop.infra.db.repos.projects import (
 )
 from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.knowledge.gate import get_capability
 from octop.infra.knowledge.service import MAX_BASES_PER_OWNER, KnowledgeService
 from octop.infra.users.permissions import user_has_permission
 
@@ -196,27 +197,40 @@ class ProjectService:
         start_at: int | None = None,
         due_at: int | None = None,
     ) -> ProjectRow:
-        """Create a project together with its knowledge base.
+        """Create a project, binding a knowledge base when one can be created.
 
         Steps (each with an explicit failure branch):
 
         ⓪ preconditions — no side effects, so an unactionable ⓪ leaves nothing behind
         ① ``projects`` row
         ② owner membership row
-        ③ knowledge base
+        ③ knowledge base            (only when the knowledge feature is usable)
         ④ write ``kb_id`` back onto the project
 
         A failure in ③ or ④ deletes whatever the earlier steps created, then
         raises ``PROJECT_KB_BIND_FAILED``.
+
+        **When the knowledge feature is not usable** (feature off, or no usable
+        embedding model) the project is still created with ``kb_id = NULL``.
+        Making the KB mandatory would mean a fresh install cannot create a
+        project at all until an embedding model is configured, and the plan's
+        own T3.4 note ("归档只在 ``kb_id IS NOT NULL`` 时执行") presupposes the
+        NULL case. The hard compensating-delete path is kept for the case that
+        matters: the feature *is* ready, so a failure there is a real failure
+        rather than a missing prerequisite.
         """
         self._assert_feature_enabled(owner_user)
         name = name.strip()
         if not name:
             raise ValueError("project name is required")
 
-        # ⓪ No side effects yet, so these surface the KB error codes directly —
-        #    they are actionable and the caller has nothing to clean up.
-        self._assert_kb_preconditions(owner_user, name)
+        bind_kb = self._knowledge_usable()
+        if bind_kb:
+            # ⓪ No side effects yet, so these surface the KB error codes directly —
+            #    they are actionable and the caller has nothing to clean up.
+            self._assert_kb_preconditions(owner_user, name)
+        else:
+            logger.info("knowledge feature unavailable; creating project %r without a KB", name)
 
         project: ProjectRow | None = None
         kb_id: str | None = None
@@ -235,8 +249,11 @@ class ProjectService:
                 user_id=owner_user.id,
                 role="owner",
             )
-            kb_id = str(self._knowledge.create_base(owner_user_id=owner_user.id, name=name).id)  # ③
-            self._projects.set_kb_id(project.id, kb_id)  # ④
+            if bind_kb:
+                kb_id = str(  # ③
+                    self._knowledge.create_base(owner_user_id=owner_user.id, name=name).id
+                )
+                self._projects.set_kb_id(project.id, kb_id)  # ④
         except Exception as exc:
             self._compensate_create(project=project, kb_id=kb_id)
             if isinstance(exc, OctopError) and exc.code is ErrorCode.PROJECT_KB_BIND_FAILED:
@@ -254,6 +271,18 @@ class ProjectService:
                 "Project disappeared right after creation.",
             )
         return created
+
+    def _knowledge_usable(self) -> bool:
+        """Whether a knowledge base can actually be created right now.
+
+        False on a fresh install (the feature is off until an embedding model is
+        configured), which is why project creation must not depend on it.
+        """
+        capability = get_capability(
+            self._services.settings_repo.get,
+            getattr(self._services, "provider_repo", None),
+        )
+        return bool(capability.get("usable"))
 
     def _assert_kb_preconditions(self, owner_user: ProjectActor, name: str) -> None:
         """Reject before any write when the KB half of creation cannot succeed."""
