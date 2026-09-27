@@ -8,6 +8,7 @@
 
 ### 修复
 - 离线 CLI `octop chats list --limit N` 不再绕过 limit：`ThreadRepo.list_by_agent`/`list_by_agent_user`/`list_by_session` 对 `limit <= 0` 短路返回空列表（与 `thread_messages`/`trajectory_events` 同族写法一致），SQLite 把负 `LIMIT` 当作「不限制」、一次吐出该 agent 的全部线程的问题从数据访问层堵住
+- 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 
 ## [1.0.2b3] - 2026-09-26
 
