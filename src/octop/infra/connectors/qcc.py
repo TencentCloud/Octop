@@ -1,4 +1,4 @@
-"""One QCC OAuth grant (or legacy API key), five fixed MCP resources, one namespaced tool surface."""
+"""One QCC OAuth grant or API key, five fixed MCP resources, one namespaced tool surface."""
 
 from __future__ import annotations
 

@@ -430,6 +430,7 @@
     "AVATAR_INVALID": "头像须为 PNG、JPEG、WebP 或 GIF 图片。",
     "AVATAR_TOO_LARGE": "头像超过 5 MB 大小限制。",
     "INVITE_INVALID": "邀请码无效。",
+    "INVITE_ROLE_MISSING": "邀请对应的角色已删除或改名，无法完成注册。",
     "INVITE_USED": "该邀请码已被使用。",
     "INVITE_EXPIRED": "该邀请码已过期。",
     "INVITE_REVOKED": "该邀请码已被撤销。",

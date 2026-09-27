@@ -430,6 +430,7 @@
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
     "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
     "INVITE_INVALID": "This invite code is invalid.",
+    "INVITE_ROLE_MISSING": "The role on this invite was deleted or renamed, so the account cannot be created.",
     "INVITE_USED": "This invite code has already been used.",
     "INVITE_EXPIRED": "This invite code has expired.",
     "INVITE_REVOKED": "This invite code has been revoked.",

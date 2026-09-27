@@ -17,6 +17,8 @@ interface AssistantProcessSummaryProps {
    */
   statsSplit?: AssistantTurnSplit;
   isStreaming?: boolean;
+  /** Team rooms default to collapsed thinking; solo stays expanded. */
+  isTeam?: boolean;
   onAcpPermissionSelect?: (message: string) => void;
   hideToolMedia?: boolean;
   agentId?: string | null;
@@ -36,18 +38,9 @@ function resolveLiveProcessHint(
       !step.message.toolData?.output,
   );
   if (runningTool && runningTool.kind === "tool") {
-    const name =
-      runningTool.message.toolData?.displayName?.trim() ||
-      runningTool.message.toolData?.name?.trim() ||
-      "";
-    return name
-      ? t("chat.processRunningTool", {
-          name,
-          defaultValue: "正在调用 {{name}}",
-        })
-      : t("chat.processRunningTools", {
-          defaultValue: "正在调用工具",
-        });
+    return t("chat.processRunningTools", {
+      defaultValue: "正在调用工具",
+    });
   }
 
   const thinkingLive = split.processSteps.some(
@@ -75,12 +68,13 @@ function AssistantProcessSummary({
   split,
   statsSplit,
   isStreaming = false,
+  isTeam = false,
   onAcpPermissionSelect,
   hideToolMedia = false,
   agentId = null,
 }: AssistantProcessSummaryProps) {
   const { t } = useTranslation();
-  const [collapseThinking] = useCollapseThinking();
+  const [collapseThinking] = useCollapseThinking(isTeam);
   const [expanded, setExpanded] = useState(isStreaming && !collapseThinking);
   const prevStreaming = useRef(isStreaming);
   const prevCollapseThinking = useRef(collapseThinking);

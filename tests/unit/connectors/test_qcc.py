@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from octop.api.routers.connectors import _credentials_preview, _merge_credentials
 from octop.config import OctopConfig
 from octop.infra.connectors.builder import (
     build_http_mcp_spec,
@@ -54,6 +55,37 @@ async def test_qcc_credentials_build_and_probe(monkeypatch: pytest.MonkeyPatch) 
     result = await probe_connector(entry, creds, instance_id="qcc-test", config=OctopConfig())
     assert result["ok"] is True
     probe.assert_awaited_once_with("test-qcc-token")
+
+
+def test_qcc_api_key_credentials_and_preview() -> None:
+    creds = validate_create_credentials("qcc", {"api_key": "qcc-api-key"})
+    assert creds == {"api_key": "qcc-api-key", "internal_token": creds["internal_token"]}
+    assert _credentials_preview("qcc", creds) == {"api_key_configured": True}
+    oauth = validate_create_credentials(
+        "qcc", {"access_token": "tok", "oauth_client_id": "client", "refresh_token": "r"}
+    )
+    assert _credentials_preview("qcc", oauth)["oauth_configured"] is True
+    assert "api_key_configured" not in _credentials_preview("qcc", oauth)
+
+
+def test_qcc_merge_switches_auth_mode() -> None:
+    oauth = {
+        "access_token": "a",
+        "refresh_token": "r",
+        "oauth_client_id": "c",
+        "internal_token": "keep",
+    }
+    as_key = _merge_credentials(oauth, {"api_key": "k"}, kind="qcc")
+    assert as_key == {"api_key": "k", "internal_token": "keep"}
+    as_oauth = _merge_credentials(
+        as_key,
+        {"access_token": "new", "oauth_client_id": "c2", "refresh_token": "r2"},
+        kind="qcc",
+    )
+    assert as_oauth["access_token"] == "new"
+    assert as_oauth["oauth_client_id"] == "c2"
+    assert "api_key" not in as_oauth
+    assert as_oauth["internal_token"] == "keep"
 
 
 @pytest.mark.parametrize(

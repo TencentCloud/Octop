@@ -377,7 +377,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
     ConnectorCatalogEntry(
         kind="qcc",
         name="企查查",
-        description="请用系统浏览器授权。一键 OAuth 接入企业、风险、知识产权、经营及董监高五类数据",
+        description="一键 OAuth 或粘贴 API Key，接入企业、风险、知识产权、经营及董监高五类数据",
         auth_kind="oauth2",
         doc_url="https://agent.qcc.com/",
         icon="qcc",
@@ -388,7 +388,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         quick_auth_url="https://agent.qcc.com/",
         guide_url="https://agent.qcc.com/guide",
         manual_url="https://agent.qcc.com/",
-        auth_hint="请用系统浏览器授权；内嵌/桌面弹窗可能无法回调。本机可用 localhost/127.0.0.1，公网部署须配置 HTTPS 回调；查询范围以账户权限为准。",
+        auth_hint="有公网 HTTPS 或本机 localhost 时可用一键 OAuth；否则打开授权页获取 API Key 后粘贴。查询范围以账户权限为准。",
         oauth_issuer="https://agent.qcc.com",
         mcp_url="https://agent.qcc.com/mcp/company/stream",
         oauth_resource="https://agent.qcc.com/mcp/company/stream",

@@ -3,6 +3,8 @@ import i18n from "../i18n";
 import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
 
 const AUTH_TOKEN_KEY = "auth_token";
+/** sessionStorage handoff for SSO redirects / popups (default = remember). */
+const AUTH_REMEMBER_PREF_KEY = "auth_remember_pref";
 
 /**
  * Fired when the session is no longer valid. Cancelable: a listener inside the
@@ -42,20 +44,58 @@ export function isSetupRequiredKnown(): boolean {
   return _setupRequiredKnown;
 }
 
-/** Save JWT token to localStorage */
-export function setAuthToken(token: string) {
-  localStorage.setItem(AUTH_TOKEN_KEY, token);
+/** Stash the login-page "remember me" choice for SSO redirects / popups. */
+export function setRememberLoginPreference(remember: boolean): void {
+  sessionStorage.setItem(AUTH_REMEMBER_PREF_KEY, remember ? "1" : "0");
+}
+
+/** Read the stashed remember preference (defaults to true). */
+export function getRememberLoginPreference(): boolean {
+  return sessionStorage.getItem(AUTH_REMEMBER_PREF_KEY) !== "0";
+}
+
+/**
+ * Whether the current token is session-only (not "remember me").
+ * Session-only tokens live in ``sessionStorage`` so a new tab does not
+ * share — or erase — another tab's login.
+ */
+export function isSessionOnlyAuth(): boolean {
+  return (
+    sessionStorage.getItem(AUTH_TOKEN_KEY) != null &&
+    localStorage.getItem(AUTH_TOKEN_KEY) == null
+  );
+}
+
+/**
+ * Save JWT token. When ``remember`` is false the token is kept in
+ * ``sessionStorage`` (cleared when the tab/window closes). SSO popups must
+ * post the token back to the opener — ``sessionStorage`` is not shared.
+ */
+export function setAuthToken(token: string, remember: boolean = true) {
+  if (remember) {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  } else {
+    sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  }
   clearSetupRequired();
 }
 
-/** Get JWT token from localStorage */
+/** Get JWT token from localStorage or (session-only) sessionStorage. */
 export function getAuthToken(): string {
-  return localStorage.getItem(AUTH_TOKEN_KEY) || "";
+  return (
+    localStorage.getItem(AUTH_TOKEN_KEY) ||
+    sessionStorage.getItem(AUTH_TOKEN_KEY) ||
+    ""
+  );
 }
 
-/** Remove JWT token from localStorage */
+/** Remove JWT token from both storages. */
 export function clearAuthToken() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
+  sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  sessionStorage.removeItem(AUTH_REMEMBER_PREF_KEY);
   localStorage.removeItem("octop:active-agent");
   setActiveAgentId(null);
 }
@@ -64,7 +104,7 @@ export function clearAuthToken() {
 export function applyRenewedAccessToken(response: Response): void {
   const renewed = response.headers.get(ACCESS_TOKEN_RESPONSE_HEADER);
   if (renewed) {
-    setAuthToken(renewed);
+    setAuthToken(renewed, !isSessionOnlyAuth());
   }
 }
 
