@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from octop.config import OctopConfig
-from octop.infra.agents.workspace_dir import host_system_dir
+from octop.infra.agents.workspace.dir import host_system_dir
 from octop.infra.errors import ErrorCode, OctopError
 
 
