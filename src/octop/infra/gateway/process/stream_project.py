@@ -16,8 +16,8 @@ from octop.infra.gateway.media.tool_media import (
     media_events_from_tool_result,
 )
 from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agent
-from octop.infra.gateway.process.history_projection import TurnHistoryTracker
 from octop.infra.gateway.process.usage_record import UsageTracker
+from octop.infra.history.projection import TurnHistoryTracker
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, normalize_locale
 
 if TYPE_CHECKING:
@@ -98,6 +98,8 @@ async def _project_chunks(
         return MessageEvent.tool_start(
             label,
             tool_hint_text=channel_tool_hint_start(label, loc),
+            # Raw tool id for invoke-collapse / team channel UX (label is localized).
+            tool_key=raw,
         )
 
     def _tool_end(raw: str) -> MessageEvent:
