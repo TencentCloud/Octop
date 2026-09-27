@@ -65,6 +65,31 @@ export function useChatComposerResources(
   const expertKbKey = (expertKnowledgeBaseIds ?? []).join("\0");
   const isNewSession = !activeThreadId || isPendingThread(activeThreadId);
   const composerTouchedRef = useRef(false);
+  // FE-4: serialize thread-preference PATCHes so rapid mode switches cannot
+  // write out of order, and log (never swallow) failures.
+  const threadPatchQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const persistThreadPreferences = useCallback(
+    (body: Record<string, unknown>) => {
+      if (
+        !resolvedAgentId ||
+        !activeThreadId ||
+        isPendingThread(activeThreadId)
+      ) {
+        return;
+      }
+      const agentId = resolvedAgentId;
+      const threadId = activeThreadId;
+      threadPatchQueueRef.current = threadPatchQueueRef.current
+        .then(() => octopThreadsApi.patch(agentId, threadId, body))
+        .then(
+          () => undefined,
+          (err: unknown) => {
+            console.error("thread preference save failed", err);
+          },
+        );
+    },
+    [resolvedAgentId, activeThreadId],
+  );
   const [selectedConnectors, setSelectedConnectors] = useState<string[]>([]);
   const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<
     string[]
@@ -426,14 +451,20 @@ export function useChatComposerResources(
         activeThreadId &&
         !isPendingThread(activeThreadId)
       ) {
-        void octopThreadsApi.patch(resolvedAgentId, activeThreadId, {
+        persistThreadPreferences({
           model_ref: model,
           reasoning_mode: nextMode,
           reasoning_effort: nextEffort,
         });
       }
     },
-    [activeThreadId, availableModels, modelReasoning, resolvedAgentId],
+    [
+      activeThreadId,
+      availableModels,
+      modelReasoning,
+      resolvedAgentId,
+      persistThreadPreferences,
+    ],
   );
 
   const handleReasoningChange = useCallback(
@@ -455,13 +486,13 @@ export function useChatComposerResources(
         activeThreadId &&
         !isPendingThread(activeThreadId)
       ) {
-        void octopThreadsApi.patch(resolvedAgentId, activeThreadId, {
+        persistThreadPreferences({
           reasoning_mode: mode,
           reasoning_effort: effort,
         });
       }
     },
-    [activeThreadId, resolvedAgentId, selectedModel],
+    [activeThreadId, resolvedAgentId, selectedModel, persistThreadPreferences],
   );
 
   const handleConversationModeChange = useCallback(
@@ -480,12 +511,12 @@ export function useChatComposerResources(
         activeThreadId &&
         !isPendingThread(activeThreadId)
       ) {
-        void octopThreadsApi.patch(resolvedAgentId, activeThreadId, {
+        persistThreadPreferences({
           conversation_mode: mode,
         });
       }
     },
-    [activeThreadId, resolvedAgentId],
+    [activeThreadId, resolvedAgentId, persistThreadPreferences],
   );
 
   const handleHitlPolicyChange = useCallback(
@@ -501,12 +532,12 @@ export function useChatComposerResources(
         activeThreadId &&
         !isPendingThread(activeThreadId)
       ) {
-        void octopThreadsApi.patch(resolvedAgentId, activeThreadId, {
+        persistThreadPreferences({
           hitl_policy: next,
         });
       }
     },
-    [activeThreadId, resolvedAgentId],
+    [activeThreadId, resolvedAgentId, persistThreadPreferences],
   );
 
   return {

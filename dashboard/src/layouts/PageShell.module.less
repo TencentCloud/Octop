@@ -1,3 +1,24 @@
+/* A11Y-10: visually hidden until focused, then pinned top-left over content. */
+.skipLink {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1100;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--fn-color-brand);
+  color: var(--fn-color-on-brand);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transform: translateY(-200%);
+  transition: transform 0.15s ease;
+
+  &:focus {
+    transform: translateY(0);
+  }
+}
+
 .agentBar {
   flex-shrink: 0;
   margin-bottom: 12px;

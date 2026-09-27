@@ -97,7 +97,10 @@ export function VoiceSettingsPanel() {
   const openConfigure = (preset: VoicePreset) => {
     const existing = findConfigured(preset);
     setConfigure({ preset, existing });
-    setApiKey(existing?.api_key ?? "");
+    // SEC-4 decision (a): the stored key is masked in API responses, so it
+    // must not be prefilled (the user would silently round-trip the mask).
+    // Leave the field empty; the PATCH path treats null as "keep existing".
+    setApiKey("");
     const extra = existing?.extra ?? {};
     setSecretId(String(extra.secret_id ?? ""));
     setSecretKey(String(extra.secret_key ?? ""));
@@ -140,7 +143,10 @@ export function VoiceSettingsPanel() {
           ? secretId && secretKey
             ? `${secretId}:${secretKey}`
             : null
-          : apiKey || null,
+          : // SEC-4 decision (a): empty field means "keep existing" — the
+            // server's partial update skips null api_key, so the stored key
+            // survives a re-save untouched.
+            apiKey || null,
       extra_json: JSON.stringify(extra),
     };
   };

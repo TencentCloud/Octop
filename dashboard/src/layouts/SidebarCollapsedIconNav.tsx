@@ -41,6 +41,7 @@ export default function SidebarCollapsedIconNav({
             <button
               type="button"
               onClick={() => onNavigate(item.path)}
+              aria-current={active ? "page" : undefined}
               style={{
                 display: "flex",
                 alignItems: "center",

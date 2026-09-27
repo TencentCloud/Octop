@@ -68,6 +68,8 @@ export default function SlashCommandMenu<T extends SlashPickerRow>({
           onMouseEnter={() => onHover(idx)}
           disabled={disabled}
           type="button"
+          role="option"
+          aria-selected={active}
         >
           <span className={toneClass}>
             <Icon size={iconSize} />
@@ -91,6 +93,8 @@ export default function SlashCommandMenu<T extends SlashPickerRow>({
         onMouseEnter={() => onHover(idx)}
         disabled={disabled}
         type="button"
+        role="option"
+        aria-selected={active}
         title={`${item.label} ${item.command}`}
       >
         <span className={labelClassName}>
@@ -103,7 +107,11 @@ export default function SlashCommandMenu<T extends SlashPickerRow>({
   };
 
   const renderGrid = (items: T[]) => (
-    <div className={itemsGridClassName}>
+    <div
+      id="octop-chat-pick-menu"
+      className={itemsGridClassName}
+      role="listbox"
+    >
       {items.map((item) => renderRow(item))}
     </div>
   );

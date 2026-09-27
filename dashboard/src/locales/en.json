@@ -1,6 +1,7 @@
 {
   "app": {
-    "pageTitle": "Octop - An intelligent partner that understands you, helps you, and grows with you"
+    "pageTitle": "Octop - An intelligent partner that understands you, helps you, and grows with you",
+    "appName": "Octop"
   },
   "layout": {
     "collapsePanel": "Collapse panel",
@@ -73,7 +74,8 @@
       "unknown": "Unknown"
     },
     "copyErrorForOctop": "Copy error details",
-    "installLogEmpty": "(No install log available)"
+    "installLogEmpty": "(No install log available)",
+    "skipToContent": "Skip to main content"
   },
   "apiErrors": {
     "AUTH_FAILED": "Authentication failed.",
@@ -243,7 +245,8 @@
     "remoteAndroid": "Remote Phone",
     "records": "Tasks",
     "paneSettings": "Settings",
-    "paneRecords": "Tasks"
+    "paneRecords": "Tasks",
+    "mainNavigation": "Main navigation"
   },
   "skillPackages": {
     "title": "Skill Packages",
@@ -1058,7 +1061,12 @@
     "pluginsBtn": "Plugins",
     "mbtiBtn": "MBTI",
     "channelsBtn": "Channels",
-    "memoryBtn": "Memory"
+    "memoryBtn": "Memory",
+    "fileLoadFailed": "Failed to load {{filename}}",
+    "unsavedChangesTitle": "Unsaved changes",
+    "unsavedChangesBody": "You have unsaved edits in this file. Closing now will discard them.",
+    "unsavedChangesKeepEditing": "Keep editing",
+    "unsavedChangesDiscard": "Discard changes"
   },
   "subagents": {
     "catalogTitle": "Manage subagents",
@@ -1200,6 +1208,7 @@
     "continuing": "Continuing",
     "generating": "Generating",
     "generatingWithElapsed": "Generating · {{seconds}}s",
+    "messageLog": "Conversation messages",
     "scrollToBottom": "Back to bottom",
     "turnTimeline": {
       "label": "Conversation turns",
@@ -1575,7 +1584,8 @@
     "toolUiDockedOpen": "Open side panel",
     "loadEarlierMessages": "Load earlier messages",
     "historyLoadFailed": "History could not be loaded. Existing messages have been kept. Please retry.",
-    "historyRetry": "Retry"
+    "historyRetry": "Retry",
+    "inputLabel": "Message input"
   },
   "tools": {
     "unknown": "Unknown tool",
@@ -2034,7 +2044,8 @@
     "cvm-ai-doctor": "CVM AI Doctor",
     "tencentcloud-infra": "Tencent Cloud Infra",
     "publisher-multi-platform": "Multi-platform Publisher",
-    "docker-management": "Docker Management"
+    "docker-management": "Docker Management",
+    "zipDropZoneLabel": "Select or drop a skill ZIP file"
   },
   "cronJobs": {
     "title": "Cron Jobs",
@@ -5764,5 +5775,23 @@
     "updateReady": "A new version is ready",
     "updateNow": "Update now",
     "later": "Later"
+  },
+  "pwaInstall": {
+    "iosTitle": "Add to Home Screen",
+    "iosDesc": "Install Octop as an app for one-tap access.",
+    "iosStep1Prefix": "Tap the",
+    "iosStep1Suffix": "share button in the bottom toolbar",
+    "iosStep2": "Scroll down and tap \"Add to Home Screen\"",
+    "iosStep3": "Tap \"Add\" in the top-right corner to finish installing",
+    "desktopTitle": "Install as desktop app",
+    "desktopDesc": "Your browser is not ready for one-tap install yet. Follow the steps below, or refresh the page and use the install button in the header.",
+    "desktopStep1Prefix": "Look for the",
+    "desktopStep1Suffix": "install icon to the right of the address bar and click it",
+    "desktopStep2Prefix": "Or open the browser menu and choose \"",
+    "browserEdge": "Apps",
+    "browserInstall": "Install",
+    "desktopStep2Suffix": " Octop\" / Install Octop",
+    "desktopStep3": "Once installed, open Octop from your desktop or dock",
+    "desktopHint": "When accessing via a LAN IP you must use HTTPS, otherwise the browser will not offer installation."
   }
 }

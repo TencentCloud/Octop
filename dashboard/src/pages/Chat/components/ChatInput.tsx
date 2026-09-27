@@ -761,6 +761,15 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               rows={1}
               disabled={disabled}
               enterKeyHint={isMobile ? "enter" : undefined}
+              // A11Y-11: expose the slash/mention popups as an ARIA combobox.
+              aria-label={t("chat.inputLabel", "Message input")}
+              aria-expanded={slashMenuOpen || mentionMenuOpen}
+              aria-haspopup="listbox"
+              aria-controls={
+                slashMenuOpen || mentionMenuOpen
+                  ? "octop-chat-pick-menu"
+                  : undefined
+              }
             />
             {/*
             Slash badge (plan §14.5): octop's HarnessProcessor handles slash

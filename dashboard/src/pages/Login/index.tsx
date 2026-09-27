@@ -165,6 +165,16 @@ export default function LoginPage() {
     setCaptchaResetKey((k) => k + 1);
   };
 
+  // FE-15: the 400ms SSO popup poller must not outlive the login page.
+  const ssoPollRef = useRef<number | null>(null);
+  const ssoPopupRef = useRef<Window | null>(null);
+  useEffect(() => {
+    return () => {
+      if (ssoPollRef.current !== null) window.clearInterval(ssoPollRef.current);
+      ssoPopupRef.current?.close();
+    };
+  }, []);
+
   const onSso = async (kind: string) => {
     setSsoLoadingKind(kind);
     let popup: Window | null = null;
@@ -179,9 +189,12 @@ export default function LoginPage() {
       }
       if (popup && !popup.closed) {
         popup.location.href = authorization_url;
-        const timer = window.setInterval(() => {
+        ssoPopupRef.current = popup;
+        ssoPollRef.current = window.setInterval(() => {
           if (!popup || popup.closed) {
-            window.clearInterval(timer);
+            if (ssoPollRef.current !== null)
+              window.clearInterval(ssoPollRef.current);
+            ssoPollRef.current = null;
             setSsoLoadingKind((current) => (current === kind ? null : current));
           }
         }, 400);
@@ -280,6 +293,8 @@ export default function LoginPage() {
             <User size={16} style={{ color: "var(--fn-text-quaternary)" }} />
           }
           placeholder={t("login.username")}
+          aria-label={t("login.username")}
+          autoComplete="username"
           size="large"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
@@ -292,6 +307,8 @@ export default function LoginPage() {
             <Lock size={16} style={{ color: "var(--fn-text-quaternary)" }} />
           }
           placeholder={t("login.password")}
+          aria-label={t("login.password")}
+          autoComplete="current-password"
           size="large"
           value={password}
           onChange={(e) => setPassword(e.target.value)}

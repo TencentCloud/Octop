@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Segmented, Typography } from "antd";
+import { useTranslation } from "react-i18next";
 import AgentSelector from "../components/AgentSelector";
 import { useIsMobile } from "../hooks/useIsMobile";
 import {
@@ -95,6 +96,7 @@ function PageShell({
   fill,
   children,
 }: PageShellProps) {
+  const { t } = useTranslation();
   const isMobile = useIsMobile();
   const outerPad = isMobile ? 12 : 32;
   const outerPadTop = isMobile ? 12 : 24;
@@ -135,6 +137,18 @@ function PageShell({
         overflow: "hidden",
       }}
     >
+      {/* A11Y-10: skip link — first tab stop, jumps past the sidebar to the
+          page content. Visually hidden until focused. */}
+      <a
+        href="#octop-main-content"
+        className={styles.skipLink}
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("octop-main-content")?.focus();
+        }}
+      >
+        {t("common.skipToContent")}
+      </a>
       {/* Title row — fixed, never scrolls */}
       <div
         style={{
@@ -183,6 +197,8 @@ function PageShell({
          tabbed pages get more usable horizontal space. Path tabs on mobile
          pin above the body (same chrome as Workbench / Personalization). */}
       <div
+        id="octop-main-content"
+        tabIndex={-1}
         className={DESKTOP_NO_DRAG_CLASS}
         style={{
           flex: 1,

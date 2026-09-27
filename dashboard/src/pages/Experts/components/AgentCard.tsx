@@ -45,12 +45,14 @@ const STATE_META: Record<
   string,
   { color: string; bg: string; spin?: boolean }
 > = {
-  running: { color: "#52c41a", bg: "rgba(82,196,26,0.12)" },
-  stopped: { color: "#8c8c8c", bg: "rgba(140,140,140,0.10)" },
-  created: { color: "#8c8c8c", bg: "rgba(140,140,140,0.10)" },
-  failed: { color: "#ff4d4f", bg: "rgba(255,77,79,0.10)" },
-  starting: { color: "#1677ff", bg: "rgba(22,119,255,0.10)", spin: true },
-  stopping: { color: "#1677ff", bg: "rgba(22,119,255,0.10)", spin: true },
+  /* Colour-blind-safe state palette (audit A11Y-6): all ≥4.5:1 on the card
+     background as text, and green/amber/red distinguished by lightness. */
+  running: { color: "#047857", bg: "rgba(4,120,87,0.12)" },
+  stopped: { color: "#6b7280", bg: "rgba(107,114,128,0.10)" },
+  created: { color: "#6b7280", bg: "rgba(107,114,128,0.10)" },
+  failed: { color: "#b91c1c", bg: "rgba(185,28,28,0.10)" },
+  starting: { color: "#1d4ed8", bg: "rgba(29,78,216,0.10)", spin: true },
+  stopping: { color: "#1d4ed8", bg: "rgba(29,78,216,0.10)", spin: true },
 };
 
 function getStateMeta(state: string) {
@@ -338,6 +340,7 @@ export const AgentCard = memo(function AgentCard({
                 <span
                   className={meta.spin ? styles.stateDotSpin : styles.stateDot2}
                   style={!meta.spin ? { background: meta.color } : undefined}
+                  aria-hidden
                 />
                 {formatAgentState(localState, t)}
               </div>

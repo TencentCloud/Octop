@@ -1,6 +1,7 @@
 {
   "app": {
-    "pageTitle": "Octop - 懂你、帮你、陪你成长的智能伙伴"
+    "pageTitle": "Octop - 懂你、帮你、陪你成长的智能伙伴",
+    "appName": "Octop"
   },
   "layout": {
     "collapsePanel": "收起面板",
@@ -73,7 +74,8 @@
       "unknown": "未知"
     },
     "copyErrorForOctop": "复制错误信息",
-    "installLogEmpty": "（暂无安装日志）"
+    "installLogEmpty": "（暂无安装日志）",
+    "skipToContent": "跳到主要内容"
   },
   "apiErrors": {
     "AUTH_FAILED": "认证失败。",
@@ -243,7 +245,8 @@
     "remoteAndroid": "远程手机",
     "records": "任务",
     "paneSettings": "设置",
-    "paneRecords": "任务"
+    "paneRecords": "任务",
+    "mainNavigation": "主导航"
   },
   "skillPackages": {
     "title": "技能包",
@@ -1058,7 +1061,12 @@
     "pluginsBtn": "插件",
     "mbtiBtn": "MBTI",
     "channelsBtn": "通道",
-    "memoryBtn": "记忆"
+    "memoryBtn": "记忆",
+    "fileLoadFailed": "加载 {{filename}} 失败",
+    "unsavedChangesTitle": "未保存的更改",
+    "unsavedChangesBody": "此文件有未保存的编辑，关闭后将丢失。",
+    "unsavedChangesKeepEditing": "继续编辑",
+    "unsavedChangesDiscard": "放弃更改"
   },
   "subagents": {
     "catalogTitle": "子智能体管理",
@@ -1200,6 +1208,7 @@
     "continuing": "继续生成中",
     "generating": "生成中",
     "generatingWithElapsed": "生成中 · {{seconds}}s",
+    "messageLog": "对话消息",
     "scrollToBottom": "回到底部",
     "turnTimeline": {
       "label": "对话回合",
@@ -1575,7 +1584,8 @@
     "toolUiDockedOpen": "打开侧栏",
     "loadEarlierMessages": "加载更早的消息",
     "historyLoadFailed": "历史记录加载失败，已显示的消息仍然保留。请重试。",
-    "historyRetry": "重试"
+    "historyRetry": "重试",
+    "inputLabel": "消息输入框"
   },
   "tools": {
     "unknown": "未知工具",
@@ -2033,7 +2043,8 @@
     "cvm-ai-doctor": "CVM AI 诊断",
     "tencentcloud-infra": "腾讯云基础设施",
     "publisher-multi-platform": "多平台发布",
-    "docker-management": "Docker 管理"
+    "docker-management": "Docker 管理",
+    "zipDropZoneLabel": "选择或拖入技能 ZIP 文件"
   },
   "cronJobs": {
     "title": "定时任务",
@@ -5903,5 +5914,23 @@
     "updateReady": "新版本已就绪",
     "updateNow": "立即更新",
     "later": "稍后更新"
+  },
+  "pwaInstall": {
+    "iosTitle": "添加到主屏幕",
+    "iosDesc": "将 Octop 安装为 App，随时一键打开。",
+    "iosStep1Prefix": "点击底部工具栏的",
+    "iosStep1Suffix": "分享按钮",
+    "iosStep2": "向下滚动，点击「添加到主屏幕」",
+    "iosStep3": "点击右上角「添加」完成安装",
+    "desktopTitle": "安装为桌面应用",
+    "desktopDesc": "浏览器尚未准备好一键安装。请按以下方式操作，或刷新页面后再点 Header 中的安装按钮。",
+    "desktopStep1Prefix": "查看地址栏右侧的",
+    "desktopStep1Suffix": "安装图标并点击",
+    "desktopStep2Prefix": "或打开浏览器菜单，选择「",
+    "browserEdge": "应用",
+    "browserInstall": "安装",
+    "desktopStep2Suffix": " Octop」/ Install Octop",
+    "desktopStep3": "确认安装后，可从桌面或程序坞一键打开",
+    "desktopHint": "通过局域网 IP 访问时需使用 HTTPS，否则浏览器不会提供安装选项。"
   }
 }

@@ -4,7 +4,7 @@
  * without modifying the global active-agent selection.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   App,
   Tree,
@@ -276,6 +276,11 @@ export default function WorkspaceDrawer({
   const [editMode, setEditMode] = useState(false);
   const [fileLoading, setFileLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Guards against the stale-response race (audit RACE-1): a slow read for
+  // file A must never populate the editor after the user has switched to B,
+  // and save must refuse to write content loaded for a different path.
+  const loadedPathRef = useRef<string | null>(null);
+  const fetchSeqRef = useRef(0);
   const [previewMode, setPreviewMode] = useState(true);
   const [archiveExporting, setArchiveExporting] = useState(false);
   const [archiveImportOpen, setArchiveImportOpen] = useState(false);
@@ -380,6 +385,8 @@ export default function WorkspaceDrawer({
     setTreeData([]);
     setSelectedKey(null);
     setContent("");
+    loadedPathRef.current = null;
+    fetchSeqRef.current += 1;
     setEditMode(false);
     setMobilePane("tree");
     setDirEntries([]);
@@ -488,6 +495,8 @@ export default function WorkspaceDrawer({
       if (selectedKey === nodeKey(target)) {
         setSelectedKey(null);
         setContent("");
+        loadedPathRef.current = null;
+        fetchSeqRef.current += 1;
         setDirEntries([]);
       }
       await reloadBranch(parentDir(target.path));
@@ -555,6 +564,7 @@ export default function WorkspaceDrawer({
         if (isMobile) setMobilePane("viewer");
         if (!getMediaKind(dest) && isProbablyText(dest)) {
           setFileLoading(true);
+          const seq = ++fetchSeqRef.current;
           try {
             const r = await request<{ content: string }>(
               withFromWorkspace(
@@ -563,9 +573,11 @@ export default function WorkspaceDrawer({
                 )}`,
               ),
             );
+            if (seq !== fetchSeqRef.current) return;
+            loadedPathRef.current = dest;
             setContent(r.content);
           } finally {
-            setFileLoading(false);
+            if (seq === fetchSeqRef.current) setFileLoading(false);
           }
         }
       }
@@ -763,6 +775,9 @@ export default function WorkspaceDrawer({
     setEditMode(false);
     setPreviewMode(is_dir ? false : defaultPreviewMode(path));
     setContent("");
+    // Any new selection invalidates in-flight reads and the save binding.
+    loadedPathRef.current = null;
+    fetchSeqRef.current += 1;
     if (is_dir) {
       setDirEntries([]);
       if (isMobile) setMobilePane("viewer");
@@ -774,20 +789,25 @@ export default function WorkspaceDrawer({
     if (getMediaKind(path)) return;
     if (!isProbablyText(path)) return;
     setFileLoading(true);
+    const seq = ++fetchSeqRef.current;
     try {
       const r = await request<{ content: string }>(
         withFromWorkspace(
           `/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`,
         ),
       );
+      if (seq !== fetchSeqRef.current) return;
+      loadedPathRef.current = path;
       setContent(r.content);
     } catch (err: unknown) {
-      message.error(
-        (err instanceof Error ? err.message : String(err)) ||
-          t("workspace.readFailed", "读取失败"),
-      );
+      if (seq === fetchSeqRef.current) {
+        message.error(
+          (err instanceof Error ? err.message : String(err)) ||
+            t("workspace.readFailed", "读取失败"),
+        );
+      }
     } finally {
-      setFileLoading(false);
+      if (seq === fetchSeqRef.current) setFileLoading(false);
     }
   };
 
@@ -905,27 +925,39 @@ export default function WorkspaceDrawer({
       return;
     }
     setFileLoading(true);
+    const seq = ++fetchSeqRef.current;
     try {
       const r = await request<{ content: string }>(
         withFromWorkspace(
           `/agents/${agentId}/workspace/doc?path=${encodeURIComponent(path)}`,
         ),
       );
+      if (seq !== fetchSeqRef.current) return;
+      loadedPathRef.current = path;
       setContent(r.content);
       setEditMode(true);
     } catch (err: unknown) {
-      message.error(
-        (err instanceof Error ? err.message : String(err)) ||
-          t("workspace.readFailed", "读取失败"),
-      );
+      if (seq === fetchSeqRef.current) {
+        message.error(
+          (err instanceof Error ? err.message : String(err)) ||
+            t("workspace.readFailed", "读取失败"),
+        );
+      }
     } finally {
-      setFileLoading(false);
+      if (seq === fetchSeqRef.current) setFileLoading(false);
     }
   };
 
   const save = async () => {
     if (!agentId || !selectedKey) return;
     const { path } = pathFromKey(selectedKey);
+    // RACE-1 guard: never write editor content that was loaded for a
+    // different path (stale-response overwrite), or that never finished
+    // loading at all.
+    if (loadedPathRef.current !== path) {
+      message.error(t("workspace.readFailed", "读取失败"));
+      return;
+    }
     setSaving(true);
     try {
       if (isEditableDoc(path)) {

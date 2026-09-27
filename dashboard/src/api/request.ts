@@ -44,13 +44,27 @@ export function isSetupRequiredKnown(): boolean {
 
 /** Save JWT token to localStorage */
 export function setAuthToken(token: string) {
-  localStorage.setItem(AUTH_TOKEN_KEY, token);
+  try {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+  } catch {
+    /* FE-14: storage-restricted environments — login still succeeds in-page */
+  }
   clearSetupRequired();
+  // FE-1: a successful login/refresh re-arms the one-shot redirect latch —
+  // without this, one 401 anywhere permanently breaks later 401 handling.
+  _redirectingToLogin = false;
 }
 
 /** Get JWT token from localStorage */
 export function getAuthToken(): string {
-  return localStorage.getItem(AUTH_TOKEN_KEY) || "";
+  // FE-14: storage-restricted environments (Safari private mode, enterprise
+  // policy) throw SecurityError on localStorage access. Callers treat "" as
+  // "no token", so swallow instead of breaking every request/stream.
+  try {
+    return localStorage.getItem(AUTH_TOKEN_KEY) || "";
+  } catch {
+    return "";
+  }
 }
 
 /** Remove JWT token from localStorage */

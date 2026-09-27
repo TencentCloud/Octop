@@ -710,7 +710,15 @@ export function truncateAndReplaceUserMessage(
   return true;
 }
 
-/** Append a push (proactive/cron) assistant message to all active sessions. */
+/**
+ * Append a push (proactive/cron) assistant message to the focused session.
+ *
+ * FE-3: this used to fan the same message into every cached session, which
+ * duplicated recording/automation progress notes into unrelated conversations
+ * under the same message id. UI progress notes belong to the session the user
+ * is actually looking at; server-pushed proactive messages arrive through the
+ * socket and are not affected by this path.
+ */
 export function appendPushMessage(text: string) {
   const msg: ChatMessage = {
     id: generateId(),
@@ -718,14 +726,11 @@ export function appendPushMessage(text: string) {
     content: text,
     timestamp: Date.now(),
   };
-  // renameSessionKey may briefly alias two keys to one state — dedupe.
-  const seen = new Set<SessionStreamState>();
-  for (const state of sessionStates.values()) {
-    if (seen.has(state)) continue;
-    seen.add(state);
-    state.messages = [...state.messages, msg];
-    notify(state);
-  }
+  const focused = getFocusedChatSession();
+  const state = focused ? sessionStates.get(focused) : undefined;
+  if (!state) return;
+  state.messages = [...state.messages, msg];
+  notify(state);
 }
 
 /** Clear all messages for a session, unless a turn is still in flight. */

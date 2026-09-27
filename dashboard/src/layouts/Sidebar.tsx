@@ -157,6 +157,7 @@ function NavItemButton({
         type="button"
         className={styles.navItemMain}
         onClick={() => onNavigate(item.path)}
+        aria-current={active ? "page" : undefined}
         style={{
           color: active
             ? "var(--fn-sidebar-item-active-text)"
@@ -409,6 +410,17 @@ export default function Sidebar({
     [collapsed, onToggle, setMinimalPane],
   );
 
+  // A11Y-2: on mobile the open drawer is a modal surface — Escape must
+  // dismiss it (the overlay click-catcher is not keyboard-reachable).
+  useEffect(() => {
+    if (!isMobile || collapsed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onToggle();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isMobile, collapsed, onToggle]);
+
   // Pane choice is user-controlled; do not flip 记录/设置 when the route changes.
   // Both records-open events map to the same pane switch in minimal mode.
   useEffect(() => {
@@ -456,11 +468,14 @@ export default function Sidebar({
     setChatSidebarOpen,
   ]);
 
+  // A11Y-8(b): the app has no <h1> anywhere. The desktop sidebar brand block
+  // is the natural page-level heading; the img alt supplies its name.
   const brandInner = (
     <>
       <img
         src={isRailCollapsed ? "/pwa-192.png" : wordmarkSrc}
         alt="Octop"
+        aria-hidden={!isRailCollapsed || isMobile ? undefined : true}
         style={{
           height: isRailCollapsed ? 32 : isMobile ? 38 : 36,
           width: isRailCollapsed ? 32 : "auto",
@@ -617,10 +632,14 @@ export default function Sidebar({
 
   const navScrollBody = isMinimal ? minimalNavBody : classicNavBody;
 
-  // Mobile: fixed overlay drawer
+  // Mobile: fixed overlay drawer. While collapsed it is fully off-screen —
+  // render null so its buttons leave the tab order and SR tree entirely
+  // (transform-hiding alone leaves them focusable, audit A11Y-2).
   if (isMobile) {
+    if (collapsed) return null;
     return (
-      <div
+      <nav
+        aria-label={t("nav.mainNavigation", "Main navigation")}
         style={{
           position: "fixed",
           top: 0,
@@ -706,14 +725,15 @@ export default function Sidebar({
         >
           {userFooter}
         </div>
-      </div>
+      </nav>
     );
   }
 
   // Desktop: custom sidebar with icon-only collapsed mode.
   // Right border is drawn by MainLayout's RailEdgeControl.
   return (
-    <div
+    <nav
+      aria-label={t("nav.mainNavigation", "Main navigation")}
       style={{
         width: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
         minWidth: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
@@ -729,12 +749,15 @@ export default function Sidebar({
         minHeight: 0,
       }}
     >
-      <div
+      <h1
         className={`${styles.sidebarBrand} ${DESKTOP_DRAG_REGION_CLASS}`}
         style={{
           display: "flex",
           alignItems: "center",
           gap: 6,
+          margin: 0,
+          fontSize: "inherit",
+          fontWeight: "inherit",
           minWidth: 0,
           padding: isRailCollapsed ? "12px 0" : "14px 14px 10px",
           justifyContent: isRailCollapsed ? "center" : "flex-start",
@@ -742,7 +765,7 @@ export default function Sidebar({
         }}
       >
         {brandInner}
-      </div>
+      </h1>
 
       <div
         style={{
@@ -758,6 +781,6 @@ export default function Sidebar({
       </div>
 
       {userFooter}
-    </div>
+    </nav>
   );
 }
