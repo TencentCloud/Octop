@@ -221,6 +221,34 @@ cd dashboard; npx tsc -b
 > 这四点写在 `dispatch.py` 的模块 docstring 和 `test_project_dispatch.py` 的文件 docstring 里，不是口头约定。
 > **新机器上如果配好 provider，第一件事就是跑 `_tools/verify_dispatch_e2e.py` 把这四点补上。**
 
+### 3.5 已知遗留缺陷 + 已知既有测试 flake（★ 避免新机器上重复排查）
+
+**遗留缺陷（与本批次刚修的问题同族，刻意未修，需要你先决策）**
+
+1. **建任务时 `parent_id` / `thread_id` 仍会返回 500。**
+   `POST /projects/{id}/tasks` 若 `parent_id` 指向**别的项目**的任务、或 `thread_id` 不存在，`repos/project_tasks.py` 里 `_assert_parent_ok` / `_assert_thread_exists` 抛出的 `ValueError` 会直接冒到 `app.py:95` 的兜底处理器，变成 **HTTP 500**，而不是 4xx。
+   这与本批次刚修的「非法枚举值 → 500」是**同一族问题**。当时未修的原因是**没有语义完全贴合的 `PROJECT_*` 错误码** —— 这是需要你拍板的语义决策，不是纯技术活。
+   建议方向：`parent_id` 跨项目或不存在 → `PROJECT_TASK_NOT_FOUND`(404)；`thread_id` 不存在 → 复用 404 或新增一个码。
+
+**已知既有测试 flake（★ 全部与项目域无关，不要追）**
+
+本机高负载时（`-n auto`，14 worker）会出现下列失败，**全部单跑通过，且没有一个是项目域引起的**：
+
+| 失败用例 | 真实原因 |
+|---|---|
+| `tests/unit/gateway/test_versioned_history.py::test_process_exit_after_commit_keeps_last_fragment` | 子进程 helper 在 14 路负载下 `subprocess.TimeoutExpired(20s)`；单跑 `1 passed in 25.84s` |
+| `tests/unit/cli/test_chats_cmd.py::test_chats_list_uses_offline_db` 与 `::test_chats_update_sends_title` | **同 worker 测试污染**：`::test_chats_list_requires_agent` 会把 `octop.cli.support.ctx.require_agent` monkeypatch 成桩（回显 `error: --agent is required`）。xdist 把它与这两个用例分到同一 worker 就串味。**只跑 `tests/unit/cli -n auto` 也能复现**（`1 failed, 92 passed, 9 skipped`），是**既有 bug**，与项目管理代码无关 |
+| `tests/unit/auth/test_captcha_verify.py::test_mocked_success_passes`、`tests/integration/test_captcha_api.py::test_strong_login_mocked_ok_token_returns_jwt` | 高负载 flake，单跑通过 |
+| `tests/integration/test_postgresql_control_plane.py::test_pg_knowledge_base_max_documents_schema_and_crud` | **测试库并行竞争**：另一个 worker 的 `_reset_public_schema` 把共享 `OCTOP_TEST_DATABASE_URL` 库里的表 DROP 了，报 `psycopg UndefinedTable`。单跑 `1 passed in 3.16s` |
+
+> **分块跑全量的结果**（与 `make test` 收集到同一批 4009 项）：
+>
+> - `uv run pytest tests/unit -n auto -m "not live" -q` → **3 failed, 3336 passed, 101 skipped**（连跑两轮结果一致）
+> - `uv run pytest tests/integration -n auto -m "not live" -q` → **1 failed, 558 passed, 10 skipped**
+> - 3440 + 569 = 4009
+>
+> **所有失败都是上表这几条环境 flake，没有任何一条与项目域相关。** 另：之前怀疑的 `test_sse_catchup_refreshes_same_seq_tool_after_history` 在多轮运行中**从未真的失败过**。
+
 ### 3.3 已验证项（来自开发期间的真实运行）
 
 | 检查 | 结果 |
@@ -479,6 +507,28 @@ cd dashboard; npx tsc -b
 ### 7.11 看板没有拖拽库
 
 `dashboard` **不依赖任何拖拽库**。已有实现用原生 HTML5 DnD，参考 `pages/KnowledgeBases/index.tsx`、`WorkspaceDrawer.tsx`、以及本次的 `pages/Projects/Detail/Board.tsx`。
+
+### 7.12 ★ 长任务会被作业运行器掐断（「95% 处神秘失败」的真相）
+
+本机全量 `make all` 约 **17–19 分钟**。**作业运行器会在超时后掐掉长作业**，日志里的标志是：
+
+```
+Windows Job runner exited with exit code 4294967295 before proving its managed range empty
+```
+
+**症状**：pytest 跑到 **95%–98%** 时进程被杀，**永远不打印 `short test summary info`**。你只会看到一大片点和一个孤零零的 `F`，**却拿不到失败用例名**。
+
+> 本次开发中反复出现的「神秘失败在 95%」就是这个原因，**不是代码问题，也不是并发问题**。
+
+应对方式：
+
+- **不要**试图从被截断的日志里找失败名，找不到的。
+- 改为**分块跑**：
+  ```powershell
+  uv run pytest tests/unit -n auto -m "not live" -q
+  uv run pytest tests/integration -n auto -m "not live" -q
+  ```
+- 或把完整输出重定向到**仓库外**的文件（`Out-File` 到 `D:\nancc\octop\`），因为缓冲输出在进程被杀时会全部丢失。
 
 ---
 
