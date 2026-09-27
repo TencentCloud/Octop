@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from octop.infra.providers.codex_oauth import (
+from octop.infra.agents.providers.codex_oauth import (
     CODEX_BASE_URL,
     CodexOAuthCredentials,
     build_codex_headers,

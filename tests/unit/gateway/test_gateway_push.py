@@ -36,6 +36,7 @@ def gateway(tmp_path: Path) -> Gateway:
     gw._channel_manager = MagicMock()
     gw._channel_manager.channel_ids = ["ch-1"]
     gw._channel_manager.push_text = AsyncMock()
+    gw._channel_manager.get_channel = MagicMock(return_value=None)
 
     async def run_in_session(_channel_id, _session_key, operation):
         await operation()
@@ -97,6 +98,51 @@ async def test_rebind_repairs_stale_session_agent_id(gateway: Gateway) -> None:
     row = gateway.thread_registry.get_session(sk)
     assert row is not None
     assert row.agent_id == "a1"
+
+
+@pytest.mark.asyncio
+async def test_push_text_strips_thinking_when_disabled(gateway: Gateway) -> None:
+    subject = ChannelSubject(subject_id="ou_1", chat_type="dm", metadata={})
+    channel = SimpleNamespace(
+        constraints=SimpleNamespace(
+            show_thinking=False,
+            thinking_template="💭 Thinking: {content}",
+        )
+    )
+    gateway._channel_manager.get_channel = MagicMock(return_value=channel)
+
+    await gateway.push_text(
+        "feishu",
+        "ch-1",
+        subject,
+        "<think>secret</think>\n可见回复",
+    )
+
+    gateway._channel_manager.push_text.assert_awaited_once_with("ch-1", subject, "可见回复")
+
+
+@pytest.mark.asyncio
+async def test_push_text_formats_thinking_when_enabled(gateway: Gateway) -> None:
+    subject = ChannelSubject(subject_id="ou_1", chat_type="dm", metadata={})
+    channel = SimpleNamespace(
+        constraints=SimpleNamespace(
+            show_thinking=True,
+            thinking_template="💭 Thinking: {content}",
+        )
+    )
+    gateway._channel_manager.get_channel = MagicMock(return_value=channel)
+
+    await gateway.push_text(
+        "feishu",
+        "ch-1",
+        subject,
+        "<think>secret</think>\n可见回复",
+    )
+
+    gateway._channel_manager.push_text.assert_awaited_once()
+    assert gateway._channel_manager.push_text.await_args.args[2] == (
+        "💭 Thinking: secret\n\n可见回复"
+    )
 
 
 @pytest.mark.asyncio

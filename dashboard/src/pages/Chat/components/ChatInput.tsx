@@ -842,6 +842,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <ChatInputActionsRow
             isMobile={isMobile}
             isStreaming={isStreaming}
+            isTeam={isTeam}
             disabled={disabled}
             canSend={canSend}
             text={text}
