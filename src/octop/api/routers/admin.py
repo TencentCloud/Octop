@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from octop.api.deps import get_server, require_permission
 
@@ -44,12 +44,21 @@ async def overview(
     }
 
 
+# The largest page the Settings → Security audit panel offers.
+AUDIT_LOG_MAX_LIMIT = 500
+
+
 @router.get("/audit-log")
 async def audit_log(
     since: int | None = None,
     actor: str | None = None,
     action: str | None = None,
-    limit: int = 100,
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=AUDIT_LOG_MAX_LIMIT,
+        description=f"Maximum rows to return, between 1 and {AUDIT_LOG_MAX_LIMIT}.",
+    ),
     _: Any = Depends(require_permission("admin_console")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:

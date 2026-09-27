@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -120,12 +121,22 @@ def normalize_workspace_root_dir(raw: str | None) -> str | None:
             "workspace root policy is unavailable in container deployments",
         )
     path = assert_safe_host_path(str(raw).strip(), restrict_to_home=False)
-    if not path.is_dir():
-        raise OctopError(
-            ErrorCode.WORKSPACE_ROOT_RESTRICTED,
-            "workspace root must be a directory",
-        )
-    return host_path_text(path)
+    resolved = os.path.realpath(os.fspath(path))
+    drive, _tail = os.path.splitdrive(resolved)
+    # Own drive root on Windows, ``/`` on POSIX. ``startswith`` after
+    # ``realpath`` is the containment barrier CodeQL requires before isdir.
+    base = f"{drive}{os.sep}" if drive else os.sep
+    if resolved.startswith(base):
+        if not os.path.isdir(resolved):
+            raise OctopError(
+                ErrorCode.WORKSPACE_ROOT_RESTRICTED,
+                "workspace root must be a directory",
+            )
+        return host_path_text(path)
+    raise OctopError(
+        ErrorCode.WORKSPACE_ROOT_RESTRICTED,
+        "path not allowed",
+    )
 
 
 def normalize_token_quota(raw: int | None) -> int | None:
