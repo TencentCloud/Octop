@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
-from octop.infra.agents.workspace_dir import (
+from octop.infra.agents.workspace.dir import (
     agent_facing_workspace_root,
     join_agent_facing,
 )
