@@ -1,0 +1,24 @@
+/* 右栏容器 (PLAN §4)：常驻，与主区构成两栏 grid；<1100px 由 index.module.less 堆叠. */
+.rail {
+  display: flex;
+  position: sticky;
+  top: 12px;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-primary);
+  overflow: hidden;
+}
+
+.railTitle {
+  padding: 12px 12px 8px;
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 面板自带的 border-bottom 会重复；最后一个去掉。 */
+.rail > :last-child {
+  border-bottom: none;
+}

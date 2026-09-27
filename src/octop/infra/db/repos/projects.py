@@ -38,6 +38,11 @@ PROJECT_STATUSES: tuple[str, ...] = (
     "archived",
 )
 
+#: ``projects.instruction`` is display-only free text (PLAN.md §5). The cap lives
+#: here because this module owns the column; the rejection itself is raised by
+#: the HTTP layer, which is the only place allowed to import the error codes.
+PROJECT_INSTRUCTION_MAX_LENGTH = 2000
+
 # ``project_members.subject_type`` — who a membership row points at.
 MEMBER_SUBJECT_USER = "user"
 MEMBER_SUBJECT_AGENT = "agent"
@@ -63,6 +68,7 @@ class ProjectRow:
     pk: int
     name: str
     goal: str
+    instruction: str
     status: str
     owner_user_id: int
     memory_namespace: str
@@ -80,6 +86,9 @@ class ProjectRow:
             pk=int(r["id"]),
             name=str(r["name"]),
             goal=str(r["goal"] or ""),
+            # ``TEXT NOT NULL DEFAULT ''`` (migration 021); ``or ""`` keeps the
+            # dataclass honest if a row ever predates the column.
+            instruction=str(r["instruction"] or ""),
             status=str(r["status"]),
             owner_user_id=int(r["owner_user_id"]),
             memory_namespace=str(r["memory_namespace"]),
@@ -226,6 +235,7 @@ class ProjectRepo:
         *,
         name: object = UNSET,
         goal: object = UNSET,
+        instruction: object = UNSET,
         status: object = UNSET,
         start_at: object = UNSET,
         due_at: object = UNSET,
@@ -233,6 +243,8 @@ class ProjectRepo:
         """Patch mutable fields; omit a keyword to leave it untouched.
 
         Pass an explicit ``None`` for ``start_at`` / ``due_at`` to clear it.
+        ``instruction`` is ``TEXT NOT NULL`` — pass a string (``""`` clears the
+        text, which is the sanctioned S12 shape), never ``None``.
         ``kb_id`` is not patchable here — use :meth:`set_kb_id` so the
         compensating-delete flow in the service stays the only writer.
         """
@@ -240,6 +252,7 @@ class ProjectRepo:
             [
                 ("name", name),
                 ("goal", goal),
+                ("instruction", instruction),
                 ("status", status),
                 ("start_at", start_at),
                 ("due_at", due_at),

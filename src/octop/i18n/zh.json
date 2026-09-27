@@ -464,7 +464,11 @@
     "PROJECT_ATTACHMENT_INVALID": "附件不符合上传要求（类型或大小）。",
     "PROJECT_NODE_NOT_FOUND": "需求节点不存在。",
     "PROJECT_NODE_NOT_CONFIRMED": "该需求节点尚未确认。",
-    "PROJECT_KB_BIND_FAILED": "无法创建项目知识库，项目未创建。"
+    "PROJECT_KB_BIND_FAILED": "无法创建项目知识库，项目未创建。",
+    "PROJECT_CONNECTOR_INVALID": "连接器类型不存在或不可用。",
+    "PROJECT_SKILL_INVALID": "只能选择该专家已安装的技能。",
+    "PROJECT_CRON_INVALID": "定时任务的执行专家或归属不合法。",
+    "PROJECT_INSTRUCTION_INVALID": "指令内容不合法（超长或含非法字符）。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",

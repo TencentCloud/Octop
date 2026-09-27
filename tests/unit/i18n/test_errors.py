@@ -182,6 +182,11 @@ _NEW_ERROR_ZH = {
     "PROJECT_CUSTOM_FIELD_INVALID": "自定义字段定义不合法。",
     "PROJECT_CUSTOM_FIELD_VALUE_INVALID": "自定义字段取值不符合字段定义。",
     "PROJECT_ATTACHMENT_INVALID": "附件不符合上传要求（类型或大小）。",
+    # batch 2 (PLAN.md §11.2 / §12)
+    "PROJECT_CONNECTOR_INVALID": "连接器类型不存在或不可用。",
+    "PROJECT_SKILL_INVALID": "只能选择该专家已安装的技能。",
+    "PROJECT_CRON_INVALID": "定时任务的执行专家或归属不合法。",
+    "PROJECT_INSTRUCTION_INVALID": "指令内容不合法（超长或含非法字符）。",
 }
 
 
@@ -204,6 +209,17 @@ def test_new_rejection_codes_status_mapping():
     for code, status in expected.items():
         assert OctopError(code, "detail").status == status, code
     assert OctopError(ErrorCode.PROJECT_ATTACHMENT_INVALID, "too large", status=413).status == 413
+    # batch 2: one code has one default status; the duplicate-connector branch
+    # passes ``status=409`` explicitly (PLAN.md §12).
+    batch2 = {
+        ErrorCode.PROJECT_CONNECTOR_INVALID: 400,
+        ErrorCode.PROJECT_SKILL_INVALID: 409,
+        ErrorCode.PROJECT_CRON_INVALID: 409,
+        ErrorCode.PROJECT_INSTRUCTION_INVALID: 400,
+    }
+    for code, status in batch2.items():
+        assert OctopError(code, "detail").status == status, code
+    assert OctopError(ErrorCode.PROJECT_CONNECTOR_INVALID, "duplicate", status=409).status == 409
 
 
 def test_dashboard_api_errors_carry_the_new_zh_text():
@@ -223,7 +239,8 @@ def test_dashboard_projects_namespace_is_paired_and_localized():
     en = json.loads((repo / "dashboard/src/locales/en.json").read_text(encoding="utf-8"))
     zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
     assert set(en["projects"]) == set(zh["projects"])
-    assert len(zh["projects"]) == 152
+    # 152 after batch 1, + 56 from PLAN.md §11.1 in batch 2 = 208.
+    assert len(zh["projects"]) == 208
     # R6 copy change: values only, keys untouched.
     assert zh["projects"]["taskStatusReview"] == "审核中"
     assert zh["projects"]["taskStatusBlocked"] == "已阻塞"
@@ -312,3 +329,91 @@ def test_dashboard_projects_new_keys_are_present_in_both_locales():
     for key in frozen:
         assert zh["projects"].get(key), f"zh projects.{key} missing"
         assert en["projects"].get(key), f"en projects.{key} missing"
+
+
+# ── the 56 batch-2 ``projects.*`` keys (PLAN.md §11.1 / S10) ─────────────────
+#
+# S10 is a *per-key value* assertion, not a key-set assertion. ``loader.py``
+# falls back to English when a zh key is missing, so comparing key sets (or only
+# counting them) stays green while a zh user reads English. Each of the 56 keys
+# is therefore pinned to its verbatim zh string from PLAN.md §11.1.
+_BATCH2_PROJECTS_ZH: dict[str, str] = {
+    "tabDynamic": "动态",
+    "tabPlan": "计划",
+    "tabTasks": "任务",
+    "tabAssets": "资产",
+    "dynamicPlaceholder": "动态流即将上线",
+    "dynamicComingSoon": "排入下一批",
+    "configTitle": "项目配置",
+    "instructionTitle": "指令",
+    "instructionPlaceholder": "描述该项目的规范与约定",
+    "instructionSaved": "指令已保存",
+    "instructionTooLong": "指令不得超过 2000 字符",
+    "instructionEmpty": "未填写",
+    "connectorTitle": "连接器",
+    "connectorAdd": "添加连接器",
+    "connectorNone": "尚未声明连接器",
+    "connectorAvailable": "可用",
+    "connectorUnavailable": "对你不可用",
+    "connectorUsing": "将使用 {{name}}",
+    "expertTitle": "专家",
+    "expertAdd": "添加专家",
+    "expertNone": "暂无专家",
+    "skillTitle": "技能",
+    "skillAdd": "添加技能",
+    "skillNone": "尚未声明技能",
+    "skillStale": "已失效（该专家已不再安装）",
+    "skillUnavailable": "只能选择该专家已安装的技能",
+    "cronTitle": "定时任务",
+    "cronCreate": "新建定时任务",
+    "cronNone": "暂无定时任务",
+    "cronEnable": "启用",
+    "cronDisable": "停用",
+    "cronDeleteConfirm": "删除该定时任务？",
+    "cronPromptHidden": "正文已隐藏（其他成员创建）",
+    "cronOwnedByOther": "由其他成员创建",
+    "memberTitle": "成员",
+    "memberRoleOwner": "所有者",
+    "memberRoleAdmin": "管理员",
+    "memberRoleMember": "成员",
+    "memberRoleViewer": "只读",
+    "assetTitle": "知识库",
+    "assetEmpty": "尚未绑定知识库",
+    "assetBind": "去绑定知识库",
+    "assetOpen": "打开知识库",
+    "assetDocCount": "{{count}} 篇文档",
+    "taskListTitle": "任务列表",
+    "taskListFilterStatus": "状态",
+    "taskListFilterKeyword": "搜索任务",
+    "taskListEmpty": "没有符合条件的任务",
+    "taskListColumnStatus": "状态",
+    "taskListColumnTitle": "标题",
+    "taskListColumnAssignee": "负责人",
+    "taskListColumnPriority": "优先级",
+    "taskListColumnStartAt": "开始",
+    "taskListColumnDueAt": "截止",
+    "taskListColumnTags": "标签",
+    "taskListColumnUpdatedAt": "更新时间",
+}
+
+
+def test_batch2_projects_keys_have_the_frozen_zh_text():
+    """S10: every one of the 56 new keys carries its frozen zh wording."""
+    repo = Path(__file__).resolve().parents[3]
+    zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
+    assert len(_BATCH2_PROJECTS_ZH) == 56, "the frozen key table is 56 keys (PLAN.md §11.1)"
+    for key, expected in _BATCH2_PROJECTS_ZH.items():
+        assert zh["projects"][key] == expected, f"projects.{key}"
+
+
+def test_batch2_projects_keys_exist_in_both_locales():
+    """Key-set parity for the same 56 keys — the value check above is zh-only."""
+    repo = Path(__file__).resolve().parents[3]
+    zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
+    en = json.loads((repo / "dashboard/src/locales/en.json").read_text(encoding="utf-8"))
+    for key in _BATCH2_PROJECTS_ZH:
+        assert key in zh["projects"], f"zh projects.{key} missing"
+        assert key in en["projects"], f"en projects.{key} missing"
+        assert en["projects"][key] != "", f"en projects.{key} is empty"
+    assert len(zh["projects"]) == 208
+    assert len(en["projects"]) == 208

@@ -1954,6 +1954,18 @@ class AgentManager:
             roots.append(str(store.package_skills_dir(package_id).resolve()))
         return roots
 
+    def resolve_skill_package_dirs(self, agent_id: str) -> list[str]:
+        """Public entry to the mounted skill-package skill directories.
+
+        A **thin wrapper only**: :meth:`_resolve_skill_package_dirs` stays the
+        single implementation of package-id → directory resolution, because a
+        second resolver would be a second source of truth for the same fact
+        (PLAN.md §2.2 FIND-5). It touches only persisted state — the agent's
+        ``skill_package_ids`` and the package rows — so it works for a stopped
+        agent, which is exactly what the offline enumeration needs.
+        """
+        return self._resolve_skill_package_dirs(agent_id)
+
     @staticmethod
     def _normalize_skills_dir_config(value: Any) -> list[str]:
         if isinstance(value, str | bytes):

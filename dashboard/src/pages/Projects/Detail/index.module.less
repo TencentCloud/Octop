@@ -76,3 +76,26 @@
 .field {
   width: 100%;
 }
+
+/* ---------- 项目详情两栏布局 (PLAN §4) ----------
+   主区在前、右栏在后 → 窄屏堆叠时 DOM 顺序即「主区 → 右栏」(S6)，
+   不得用 CSS order 提前。 */
+.detailLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.mainColumn {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (max-width: 1099px) {
+  .detailLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

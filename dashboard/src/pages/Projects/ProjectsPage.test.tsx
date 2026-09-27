@@ -6,7 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 
 // Only the transport is mocked: both pages must go through ``projectsApi`` /
 // ``projectMetadataApi``, so asserting on ``request`` proves the real paths and
@@ -304,7 +304,9 @@ describe("project status copy (AC-U-22 / AC-U-23)", () => {
 
 describe("project detail metadata mount (T-FE-META products)", () => {
   it("mounts the tag and custom-field definition panels", async () => {
-    renderRoutes("/projects/p1");
+    // PLAN §4.2：面板归 `tasks` Tab → 先进该 Tab 再断言（**只换进入方式**，
+    // 两道读环断言与两行 callFor 原样保留 —— 它们是防死 schema 的唯一凭证）。
+    renderRoutes("/projects/p1?tab=tasks");
 
     expect(await screen.findByTestId("project-tags")).toBeInTheDocument();
     expect(
@@ -317,5 +319,114 @@ describe("project detail metadata mount (T-FE-META products)", () => {
     });
     expect(screen.getByText("projects.tagsEmpty")).toBeInTheDocument();
     expect(screen.getByText("projects.cfEmpty")).toBeInTheDocument();
+  });
+});
+
+describe("project detail 4 tabs + right rail (T-FE-DETAIL)", () => {
+  /** 探针：把当前 query string 渲染出来，用于断言 URL 真的（没）被改写。 */
+  function LocationProbe() {
+    const location = useLocation();
+    return <span data-testid="location-search">{location.search}</span>;
+  }
+
+  function renderWithProbe(path: string) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route
+            path="/projects/:projectId"
+            element={
+              <>
+                <ProjectDetailPage />
+                <LocationProbe />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  const planVisible = async () =>
+    screen.findByText("projects.taskStatusPlanning");
+
+  it("S5：无参数 → 落 plan，且不往 URL 写参数", async () => {
+    renderWithProbe("/projects/p1");
+    expect(await planVisible()).toBeInTheDocument();
+    expect(screen.getByTestId("location-search")).toHaveTextContent("");
+  });
+
+  it("S5：?tab=bogus 非法值 → 落 plan，且不把非法值写回/写坏 URL", async () => {
+    renderWithProbe("/projects/p1?tab=bogus");
+    expect(await planVisible()).toBeInTheDocument();
+    // 非法值既不生效也不被规范化写回 —— URL 原样保留（未被改写）。
+    expect(screen.getByTestId("location-search")).toHaveTextContent(
+      "?tab=bogus",
+    );
+    expect(
+      screen.getByRole("tab", { name: "projects.tabPlan" }),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("S5：?tab=assets → 直接落 assets；点击 Tab 用 replace 写 URL", async () => {
+    renderWithProbe("/projects/p1?tab=assets");
+    expect(
+      await screen.findByTestId("project-assets-empty"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("location-search")).toHaveTextContent(
+      "?tab=assets",
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "projects.tabTasks" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location-search")).toHaveTextContent(
+        "tab=tasks",
+      ),
+    );
+  });
+
+  it("四个 Tab 各自能渲染（plan / tasks / assets / dynamic）", async () => {
+    renderWithProbe("/projects/p1?tab=plan");
+    // plan = 既有看板（7 列，planning 在列首）。
+    expect(await planVisible()).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "projects.tabTasks" }));
+    expect(await screen.findByTestId("project-tags")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("project-custom-fields"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("projects.taskListEmpty"),
+    ).toBeInTheDocument();
+    // tasks Tab 里两道读环真的发出（同一份防死 schema 凭证）。
+    await waitFor(() => {
+      expect(callFor("GET", "/projects/p1/tags")).toBeTruthy();
+      expect(callFor("GET", "/projects/p1/custom-fields")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "projects.tabAssets" }));
+    expect(
+      await screen.findByTestId("project-assets-empty"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "projects.tabDynamic" }));
+    expect(await screen.findByTestId("project-dynamic")).toBeInTheDocument();
+    expect(screen.getByText("projects.dynamicPlaceholder")).toBeInTheDocument();
+  });
+
+  it("S6：右栏常驻（空数据不隐藏整栏），且 DOM 顺序 = 主区 → 右栏", async () => {
+    renderWithProbe("/projects/p1");
+    await planVisible();
+
+    const tabList = screen.getByRole("tablist");
+    const rail = screen.getByTestId("project-right-rail");
+    expect(rail).toBeInTheDocument();
+    // 主区在右栏**之前**（窄屏堆叠顺序即主区 → 右栏，不靠 CSS order）。
+    expect(
+      tabList.compareDocumentPosition(rail) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // 空数据也照样渲染整栏：成员/专家面板给出各自的空态。
+    expect(screen.getByText("projects.membersEmpty")).toBeInTheDocument();
+    expect(screen.getByText("projects.expertNone")).toBeInTheDocument();
   });
 });

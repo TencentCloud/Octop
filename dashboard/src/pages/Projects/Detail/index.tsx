@@ -9,24 +9,27 @@ import {
   Select,
   Space,
   Spin,
-  Table,
   Tag,
   Tooltip,
   Typography,
 } from "antd";
-import type { ColumnsType } from "antd/es/table";
 import dayjs, { type Dayjs } from "dayjs";
-import { Pencil, RefreshCw, Trash2, UserPlus } from "lucide-react";
+import {
+  Activity,
+  BookOpen,
+  LayoutGrid,
+  List,
+  Pencil,
+  RefreshCw,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import {
   projectsApi,
   type ProjectMember,
-  type ProjectMemberRole,
   type ProjectOut,
   type ProjectStatus,
-  type ProjectSubjectType,
   type ProjectTask,
   type ProjectUpdateBody,
 } from "../../../api/modules/projects";
@@ -39,9 +42,14 @@ import { message } from "../../../utils/antdMessage";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import Board from "./Board";
+import AssetsTab from "./AssetsTab";
 import CustomFieldsPanel from "./CustomFieldsPanel";
+import DynamicTab from "./DynamicTab";
+import RightRail from "./RightRail";
+import TaskListView from "./TaskListView";
 import styles from "./index.module.less";
 import TagsManager from "./TagsManager";
+import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 
 const { Text } = Typography;
 
@@ -78,25 +86,6 @@ const STATUS_TRANSITIONS: Record<ProjectStatus, ProjectStatus[]> = {
   archived: [],
 };
 
-const ROLE_LABEL_KEYS: Record<ProjectMemberRole, string> = {
-  owner: "projects.roleOwner",
-  admin: "projects.roleAdmin",
-  member: "projects.roleMember",
-  viewer: "projects.roleViewer",
-};
-
-const SUBJECT_LABEL_KEYS: Record<ProjectSubjectType, string> = {
-  user: "projects.subjectUser",
-  agent: "projects.subjectAgent",
-  team: "projects.subjectTeam",
-};
-
-const SUBJECT_ID_HINT_KEYS: Record<ProjectSubjectType, string> = {
-  user: "projects.subjectIdHintUser",
-  agent: "projects.subjectIdHintAgent",
-  team: "projects.subjectIdHintTeam",
-};
-
 interface ProjectFormValues {
   name: string;
   goal?: string;
@@ -105,14 +94,20 @@ interface ProjectFormValues {
   due_at?: Dayjs | null;
 }
 
-interface MemberFormValues {
-  subject_type: ProjectSubjectType;
-  subject_id: string;
-  role: ProjectMemberRole;
-}
+/** 4 Tab（PLAN §4.1）：动态占位 / 计划看板 / 任务列表 / 资产。 */
+type DetailTabKey = "dynamic" | "plan" | "tasks" | "assets";
 
-function memberKey(member: ProjectMember): string {
-  return `${member.subject_type}:${member.subject_id}`;
+const DETAIL_TABS: TabBarItem<DetailTabKey>[] = [
+  { key: "dynamic", labelKey: "projects.tabDynamic", icon: Activity },
+  { key: "plan", labelKey: "projects.tabPlan", icon: LayoutGrid },
+  { key: "tasks", labelKey: "projects.tabTasks", icon: List },
+  { key: "assets", labelKey: "projects.tabAssets", icon: BookOpen },
+];
+
+/** S5：缺省与非法值（含空串）一律回落 `plan`，且不把非法值写回 URL。 */
+function parseTab(raw: string | null): DetailTabKey {
+  const found = DETAIL_TABS.find((tab) => tab.key === raw);
+  return found ? found.key : "plan";
 }
 
 function ProjectDetailPage() {
@@ -122,20 +117,31 @@ function ProjectDetailPage() {
   const timeZone = useServerTimezone();
   const currentUser = useCurrentUser();
   const [editForm] = Form.useForm<ProjectFormValues>();
-  const [memberForm] = Form.useForm<MemberFormValues>();
-  const memberSubjectType = Form.useWatch("subject_type", memberForm) ?? "user";
+
+  // Tab 表达 = 查询参数 `?tab=`（PLAN §4）：不新增顶层路由，刷新保留。
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = parseTab(searchParams.get("tab"));
+  const selectTab = useCallback(
+    (next: DetailTabKey) => {
+      const updated = new URLSearchParams(searchParams);
+      updated.set("tab", next);
+      // `replace`：切 Tab 不堆历史（与 Settings/Models 的写法一致）。
+      setSearchParams(updated, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   const [project, setProject] = useState<ProjectOut | null>(null);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
+  /** 任务增删改后 +1 → TaskListView 重新取数（PLAN §9 的 refreshKey）。 */
+  const [tasksRefreshKey, setTasksRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<unknown>(null);
   const loadedOnceRef = useRef(false);
 
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [memberSaving, setMemberSaving] = useState(false);
-  const [roleSavingKey, setRoleSavingKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!projectId) return;
@@ -149,6 +155,7 @@ function ProjectDetailPage() {
       setProject(nextProject);
       setMembers(nextMembers);
       setTasks(nextTasks);
+      setTasksRefreshKey((value) => value + 1);
       setLoadError(null);
       loadedOnceRef.current = true;
     } catch (error) {
@@ -180,14 +187,14 @@ function ProjectDetailPage() {
   const canArchive = !isArchived && myRole === "owner";
   const canManageMembers =
     !isArchived && (myRole === "owner" || myRole === "admin");
+  /** PLAN §6：`PROJECT_MANAGE_CONFIG` = owner + admin（member/viewer 看不到右栏配置面板）。 */
+  const canManageConfig = canManageMembers;
 
-  const isOwnerMember = useCallback(
-    (member: ProjectMember) =>
-      member.subject_type === "user" &&
-      project !== null &&
-      member.subject_id === String(project.owner_user_id),
-    [project],
-  );
+  /**
+   * `TaskListView` 的行点击入口。**任务详情页属第三批范围**（PLAN §0「本轮不
+   * 做」清单）→ 这里只保留入口契约，不自造详情视图；第三批接线时替换本回调。
+   */
+  const openTask = useCallback((_taskId: string) => undefined, []);
 
   const openEdit = () => {
     if (!project) return;
@@ -250,129 +257,6 @@ function ProjectDetailPage() {
       },
     });
   };
-
-  const submitMember = async (values: MemberFormValues) => {
-    if (!project) return;
-    setMemberSaving(true);
-    try {
-      await projectsApi.addMember(project.project_id, {
-        subject_type: values.subject_type,
-        subject_id: values.subject_id.trim(),
-        role: values.role,
-      });
-      message.success(t("projects.memberSaved"));
-      memberForm.resetFields();
-      await load();
-    } catch (error) {
-      message.error(apiErrorMessage(error, t("projects.memberSaveFailed"), t));
-    } finally {
-      setMemberSaving(false);
-    }
-  };
-
-  const changeRole = async (member: ProjectMember, role: ProjectMemberRole) => {
-    if (!project) return;
-    setRoleSavingKey(memberKey(member));
-    try {
-      await projectsApi.addMember(project.project_id, {
-        subject_type: member.subject_type,
-        subject_id: member.subject_id,
-        role,
-      });
-      message.success(t("projects.memberRoleUpdated"));
-      await load();
-    } catch (error) {
-      message.error(apiErrorMessage(error, t("projects.memberSaveFailed"), t));
-    } finally {
-      setRoleSavingKey(null);
-    }
-  };
-
-  const confirmRemoveMember = (member: ProjectMember) => {
-    if (!project) return;
-    showConfirmModal({
-      title: t("projects.memberRemoveConfirm"),
-      okText: t("common.delete"),
-      okType: "danger",
-      cancelText: t("common.cancel"),
-      onOk: async () => {
-        try {
-          await projectsApi.removeMember(
-            project.project_id,
-            member.subject_type,
-            member.subject_id,
-          );
-          message.success(t("projects.memberRemoved"));
-          await load();
-        } catch (error) {
-          message.error(
-            apiErrorMessage(error, t("projects.memberRemoveFailed"), t),
-          );
-        }
-      },
-    });
-  };
-
-  const memberColumns: ColumnsType<ProjectMember> = [
-    {
-      title: t("projects.memberSubject"),
-      key: "subject",
-      render: (_, member) => (
-        <Space direction="vertical" size={0}>
-          <Text className={styles.mono}>{member.subject_id}</Text>
-          <Text type="secondary" className={styles.memberSubjectType}>
-            {t(SUBJECT_LABEL_KEYS[member.subject_type])}
-          </Text>
-        </Space>
-      ),
-    },
-    {
-      title: t("projects.memberRole"),
-      key: "role",
-      width: 160,
-      render: (_, member) =>
-        isOwnerMember(member) ? (
-          <Tag color="gold">{t(ROLE_LABEL_KEYS[member.role])}</Tag>
-        ) : (
-          <Select<ProjectMemberRole>
-            size="small"
-            value={member.role}
-            disabled={!canManageMembers}
-            loading={roleSavingKey === memberKey(member)}
-            className={styles.roleSelect}
-            onChange={(role) => void changeRole(member, role)}
-            options={(Object.keys(ROLE_LABEL_KEYS) as ProjectMemberRole[]).map(
-              (role) => ({ value: role, label: t(ROLE_LABEL_KEYS[role]) }),
-            )}
-          />
-        ),
-    },
-    {
-      title: t("projects.memberSince"),
-      key: "created_at",
-      width: 200,
-      render: (_, member) => formatServerDateTime(member.created_at, timeZone),
-    },
-    {
-      title: t("common.actions"),
-      key: "actions",
-      width: 80,
-      align: "right",
-      render: (_, member) => (
-        <Tooltip title={t("common.delete")}>
-          <Button
-            type="text"
-            size="small"
-            danger
-            disabled={!canManageMembers || isOwnerMember(member)}
-            aria-label={t("common.delete")}
-            icon={<Trash2 size={14} />}
-            onClick={() => confirmRemoveMember(member)}
-          />
-        </Tooltip>
-      ),
-    },
-  ];
 
   const headerActions = (
     <Space>
@@ -472,99 +356,64 @@ function ProjectDetailPage() {
         </Descriptions>
       </section>
 
-      {/* Project metadata: tag definitions (PLAN §4) and custom-field
-          definitions (PLAN §6, ring ④). Both panels own their own section
-          shell; this page only mounts them. */}
-      <TagsManager projectId={project.project_id} canEdit={canEdit} />
-      <CustomFieldsPanel projectId={project.project_id} canEdit={canEdit} />
+      {/* 布局（PLAN §4）：主区（TabBar + 当前 Tab 内容）在前，右栏在后 ——
+          S6 要求窄屏堆叠时 DOM 顺序即「主区 → 右栏」，不得用 CSS order 提前。 */}
+      <div className={styles.detailLayout}>
+        <div className={styles.mainColumn}>
+          <TabBar
+            tabs={DETAIL_TABS}
+            activeKey={activeTab}
+            onChange={selectTab}
+          />
 
-      <section className={styles.section}>
-        <div className={styles.sectionTitle}>
-          {t("projects.members")}
-          <Text type="secondary" className={styles.sectionHint}>
-            {t("projects.membersHint")}
-          </Text>
-        </div>
-        {canManageMembers ? (
-          <Form
-            form={memberForm}
-            layout="inline"
-            className={styles.memberForm}
-            initialValues={{ subject_type: "user", role: "member" }}
-            onFinish={(values) => void submitMember(values)}
-          >
-            <Form.Item name="subject_type" label={t("projects.memberSubject")}>
-              <Select<ProjectSubjectType>
-                className={styles.subjectTypeSelect}
-                options={(
-                  Object.keys(SUBJECT_LABEL_KEYS) as ProjectSubjectType[]
-                ).map((type) => ({
-                  value: type,
-                  label: t(SUBJECT_LABEL_KEYS[type]),
-                }))}
-              />
-            </Form.Item>
-            <Form.Item
-              name="subject_id"
-              label={t("projects.memberId")}
-              rules={[
-                { required: true, message: t("projects.memberIdRequired") },
-              ]}
-            >
-              <Input
-                className={styles.subjectIdInput}
-                placeholder={t(SUBJECT_ID_HINT_KEYS[memberSubjectType])}
-              />
-            </Form.Item>
-            <Form.Item name="role" label={t("projects.memberRole")}>
-              <Select<ProjectMemberRole>
-                className={styles.roleSelect}
-                options={(
-                  Object.keys(ROLE_LABEL_KEYS) as ProjectMemberRole[]
-                ).map((role) => ({
-                  value: role,
-                  label: t(ROLE_LABEL_KEYS[role]),
-                }))}
-              />
-            </Form.Item>
-            <Form.Item>
-              <Button
-                type="primary"
-                htmlType="submit"
-                icon={<UserPlus size={15} />}
-                loading={memberSaving}
-              >
-                {t("projects.memberAdd")}
-              </Button>
-            </Form.Item>
-          </Form>
-        ) : null}
-        <Table<ProjectMember>
-          rowKey={memberKey}
-          size="small"
-          className={styles.table}
-          columns={memberColumns}
-          dataSource={members}
-          pagination={false}
-          scroll={{ x: 640 }}
-          locale={{ emptyText: t("projects.membersEmpty") }}
-        />
-      </section>
+          {activeTab === "dynamic" ? (
+            /* S9：占位只用 dynamicPlaceholder + dynamicComingSoon，零请求、不加图标。 */
+            <DynamicTab />
+          ) : null}
 
-      <section className={styles.section}>
-        <div className={styles.sectionTitle}>
-          {t("projects.tasks")}
-          <Text type="secondary" className={styles.sectionHint}>
-            {t("projects.tasksHint")}
-          </Text>
+          {activeTab === "plan" ? (
+            <section className={styles.section}>
+              <div className={styles.sectionTitle}>
+                {t("projects.tasks")}
+                <Text type="secondary" className={styles.sectionHint}>
+                  {t("projects.tasksHint")}
+                </Text>
+              </div>
+              <Board
+                projectId={project.project_id}
+                tasks={tasks}
+                canEdit={canEdit}
+                onChanged={load}
+              />
+            </section>
+          ) : null}
+
+          {activeTab === "tasks" ? (
+            <>
+              <TaskListView
+                projectId={project.project_id}
+                onOpenTask={openTask}
+                refreshKey={tasksRefreshKey}
+              />
+              {/* PLAN §4.2：标签定义与自定义字段定义两个面板归 `tasks` Tab
+                  （防死 schema 的两条读环断言依赖它们默认挂载）。 */}
+              <TagsManager projectId={project.project_id} canEdit={canEdit} />
+              <CustomFieldsPanel
+                projectId={project.project_id}
+                canEdit={canEdit}
+              />
+            </>
+          ) : null}
+
+          {activeTab === "assets" ? <AssetsTab kbId={project.kb_id} /> : null}
         </div>
-        <Board
+
+        <RightRail
           projectId={project.project_id}
-          tasks={tasks}
-          canEdit={canEdit}
-          onChanged={load}
+          canManageConfig={canManageConfig}
+          canManageMembers={canManageMembers}
         />
-      </section>
+      </div>
 
       <Modal
         open={editOpen}

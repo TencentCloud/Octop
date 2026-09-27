@@ -37,6 +37,15 @@ import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { message } from "../../../utils/antdMessage";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
+import {
+  asTaskStatus,
+  COLUMN_STATUSES,
+  isTransitionAllowed,
+  STATUS_COLORS,
+  STATUS_LABEL_KEYS,
+  STATUS_TRANSITIONS,
+  TERMINAL_STATUSES,
+} from "../utils/taskStatus";
 import TaskCreateModal from "./TaskCreateModal";
 import styles from "./Board.module.less";
 
@@ -44,55 +53,6 @@ const { Text } = Typography;
 
 /** Custom drag type: identifies a board card during a native HTML5 drag. */
 const TASK_DRAG_TYPE = "application/x-octop-project-task";
-
-/** Column order; the terminal columns come last and can be hidden. */
-const COLUMN_STATUSES: ProjectTaskStatus[] = [
-  "planning",
-  "todo",
-  "doing",
-  "review",
-  "blocked",
-  "done",
-  "cancelled",
-];
-
-const TERMINAL_STATUSES: ProjectTaskStatus[] = ["done", "cancelled"];
-
-const STATUS_LABEL_KEYS: Record<ProjectTaskStatus, string> = {
-  planning: "projects.taskStatusPlanning",
-  todo: "projects.taskStatusTodo",
-  doing: "projects.taskStatusDoing",
-  review: "projects.taskStatusReview",
-  done: "projects.taskStatusDone",
-  blocked: "projects.taskStatusBlocked",
-  cancelled: "projects.taskStatusCancelled",
-};
-
-const STATUS_COLORS: Record<ProjectTaskStatus, string> = {
-  planning: "default",
-  todo: "default",
-  doing: "processing",
-  review: "warning",
-  done: "success",
-  blocked: "error",
-  cancelled: "default",
-};
-
-/**
- * Mirrors `_TASK_TRANSITIONS` in `infra/projects/service.py` (PLAN §1.2). The
- * backend stays authoritative and answers an illegal move with
- * `PROJECT_TASK_STATUS_INVALID` (HTTP 409); illegal drops are refused here so
- * nothing is sent at all.
- */
-const STATUS_TRANSITIONS: Record<ProjectTaskStatus, ProjectTaskStatus[]> = {
-  planning: ["todo", "cancelled"],
-  todo: ["planning", "doing", "blocked", "cancelled"],
-  doing: ["todo", "review", "done", "blocked", "cancelled"],
-  review: ["doing", "done", "blocked", "cancelled"],
-  blocked: ["todo", "doing", "cancelled"],
-  done: ["doing"],
-  cancelled: [],
-};
 
 /** Timeline actions recorded by the backend (`infra/db/repos/project_tasks.py`). */
 const TIMELINE_ACTION_KEYS: Record<string, string> = {
@@ -104,23 +64,9 @@ const TIMELINE_ACTION_KEYS: Record<string, string> = {
   "task.dispatched": "projects.boardActionDispatched",
 };
 
-function isTransitionAllowed(
-  from: ProjectTaskStatus,
-  to: ProjectTaskStatus,
-): boolean {
-  return STATUS_TRANSITIONS[from].includes(to);
-}
-
 /** Every column can be created into directly (R2; the old todo-only limit is gone). */
 function canCreateInto(status: ProjectTaskStatus): boolean {
   return (COLUMN_STATUSES as string[]).includes(status);
-}
-
-function asTaskStatus(value: unknown): ProjectTaskStatus | null {
-  return typeof value === "string" &&
-    (COLUMN_STATUSES as string[]).includes(value)
-    ? (value as ProjectTaskStatus)
-    : null;
 }
 
 interface BoardProps {

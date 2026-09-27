@@ -17,8 +17,10 @@ from octop.infra.db.repos.invites import InviteRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfigRepo
 from octop.infra.db.repos.project_artifacts import ProjectArtifactRepo
+from octop.infra.db.repos.project_connectors import ProjectConnectorRepo
 from octop.infra.db.repos.project_content import ProjectCommentRepo
 from octop.infra.db.repos.project_custom_fields import ProjectCustomFieldRepo
+from octop.infra.db.repos.project_skills import ProjectSkillRepo
 from octop.infra.db.repos.project_tags import ProjectTagRepo
 from octop.infra.db.repos.project_tasks import ProjectTaskRepo, TimelineRepo
 from octop.infra.db.repos.projects import (
@@ -76,6 +78,8 @@ class RepoBundle:
     project_tag_repo: ProjectTagRepo
     project_custom_field_repo: ProjectCustomFieldRepo
     project_artifact_repo: ProjectArtifactRepo
+    project_connector_repo: ProjectConnectorRepo
+    project_skill_repo: ProjectSkillRepo
     timeline_repo: TimelineRepo
     sso_repo: SsoRepo
 
@@ -113,6 +117,8 @@ class RepoBundle:
             project_tag_repo=ProjectTagRepo(db),
             project_custom_field_repo=ProjectCustomFieldRepo(db),
             project_artifact_repo=ProjectArtifactRepo(db),
+            project_connector_repo=ProjectConnectorRepo(db),
+            project_skill_repo=ProjectSkillRepo(db),
             timeline_repo=TimelineRepo(db),
             sso_repo=SsoRepo(db),
         )
@@ -247,6 +253,14 @@ class SharedServices:
     @property
     def project_artifact_repo(self) -> ProjectArtifactRepo:
         return self.repos.project_artifact_repo
+
+    @property
+    def project_connector_repo(self) -> ProjectConnectorRepo:
+        return self.repos.project_connector_repo
+
+    @property
+    def project_skill_repo(self) -> ProjectSkillRepo:
+        return self.repos.project_skill_repo
 
     @property
     def timeline_repo(self) -> TimelineRepo:

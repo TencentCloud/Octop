@@ -30,8 +30,10 @@ from octop.infra.knowledge import service as knowledge_service_module
 from octop.infra.knowledge.service import MAX_BASES_PER_OWNER
 from octop.infra.projects import service as project_service_module
 from octop.infra.projects.service import (
+    PROJECT_ACTIONS,
     PROJECT_ARCHIVE,
     PROJECT_CONFIRM,
+    PROJECT_MANAGE_CONFIG,
     PROJECT_MANAGE_MEMBERS,
     PROJECT_READ,
     PROJECT_WRITE,
@@ -363,6 +365,157 @@ def test_role_matrix_matches_the_plan(service: ProjectService, owner: Actor) -> 
     assert err.value.code is ErrorCode.PROJECT_ROLE_FORBIDDEN, "admin must not archive"
 
     assert service.assert_project_role(project.id, user=owner, required=PROJECT_ARCHIVE)
+
+
+# ── permission matrix: completeness (second batch PLAN §6 / F5) ──────────────
+#
+# The hand-written assertions above exercise *chosen* actions. Nothing there
+# fails if an action is missing from ``PROJECT_ACTIONS`` or from a role's level
+# set — the frozen matrix ("owner/admin have manage_config, member/viewer do
+# not") could be implemented backwards and stay green. The three tests below
+# make the action set and every role × action cell assertable.
+
+#: The four project roles, in matrix order.
+_MATRIX_ROLES = ("owner", "admin", "member", "viewer")
+
+#: Frozen matrix (second batch PLAN §6, first frozen in the first batch's §3.3).
+#: ``owner`` and ``admin`` are derived from ``PROJECT_ACTIONS`` on purpose: a new
+#: action must then be granted (or explicitly removed) for those roles instead of
+#: silently drifting out of the contract.
+_EXPECTED_ROLE_ACTIONS: dict[str, frozenset[str]] = {
+    "owner": frozenset(PROJECT_ACTIONS),
+    "admin": frozenset(PROJECT_ACTIONS) - {PROJECT_ARCHIVE},
+    "member": frozenset({PROJECT_READ, PROJECT_WRITE}),
+    "viewer": frozenset({PROJECT_READ}),
+}
+
+#: Distinct user ids for the non-owner rows of the matrix.
+_MATRIX_ROLE_OFFSETS = {"admin": 201, "member": 202, "viewer": 203}
+
+
+def test_project_actions_is_the_frozen_full_set() -> None:
+    """The action universe itself is asserted: dropping one is a failure.
+
+    Literal strings on purpose — they are the wire values the routers, the
+    i18n keys and the frontend depend on, so a rename must be a deliberate act.
+    """
+    assert set(PROJECT_ACTIONS) == {
+        "read",
+        "write",
+        "confirm",
+        "manage_members",
+        "manage_config",
+        "archive",
+    }
+    assert len(PROJECT_ACTIONS) == 6
+    assert PROJECT_MANAGE_CONFIG == "manage_config"
+
+
+def test_matrix_definition_covers_the_full_cartesian_product() -> None:
+    """Guard the matrix definition itself: 4 roles × 6 actions = 24 cells.
+
+    Without this, a shortened parametrize list or a typo inside an expected set
+    (which would silently turn a cell into "expected allow" while never being
+    exercised) would shrink coverage instead of failing.
+    """
+    assert _MATRIX_ROLES == ("owner", "admin", "member", "viewer")
+    assert set(_EXPECTED_ROLE_ACTIONS) == set(_MATRIX_ROLES)
+    assert len(PROJECT_ACTIONS) == 6
+    cells = {(role, action) for role in _MATRIX_ROLES for action in PROJECT_ACTIONS}
+    assert len(cells) == 24
+    for role, actions in _EXPECTED_ROLE_ACTIONS.items():
+        assert actions <= set(PROJECT_ACTIONS), f"{role} expects an unknown action"
+    # 6 (owner has every action) + 5 (admin has all but archive) + 2 + 1.
+    assert sum(len(actions) for actions in _EXPECTED_ROLE_ACTIONS.values()) == 14
+
+
+@pytest.mark.parametrize("role", _MATRIX_ROLES)
+def test_role_matrix_matches_the_plan_for_every_cell(
+    service: ProjectService, owner: Actor, role: str
+) -> None:
+    """Walk the whole cartesian product for one role: every action, every cell.
+
+    Allowed cells must return the caller's role; denied cells must raise
+    ``PROJECT_ROLE_FORBIDDEN`` (403) — never a 500 and never a silent pass.
+    """
+    project = make_project(service, owner, name=f"Matrix {role}")
+    actor = owner
+    if role != "owner":
+        actor = Actor(owner.id + _MATRIX_ROLE_OFFSETS[role])
+        add_member(
+            service,
+            project.id,
+            actor=owner,
+            subject_id=str(actor.id),
+            role=role,
+        )
+
+    allowed = _EXPECTED_ROLE_ACTIONS[role]
+    visited: set[tuple[str, str]] = set()
+    for action in PROJECT_ACTIONS:
+        visited.add((role, action))
+        if action in allowed:
+            assert service.assert_project_role(project.id, user=actor, required=action) == role, (
+                f"{role} must be allowed to {action}"
+            )
+        else:
+            with pytest.raises(OctopError) as err:
+                service.assert_project_role(project.id, user=actor, required=action)
+            assert err.value.code is ErrorCode.PROJECT_ROLE_FORBIDDEN, f"{role} + {action}"
+            assert err.value.status == 403, f"{role} + {action} must be a 403"
+
+    assert visited == {(role, action) for action in PROJECT_ACTIONS}
+
+
+def test_manage_config_is_not_implied_by_write_or_archive(
+    service: ProjectService, owner: Actor
+) -> None:
+    """R18: actions are looked up, never implied — in both directions.
+
+    ``member`` may write, yet must not configure (a member could otherwise widen
+    what the project's agents can reach); ``admin`` may configure, yet must not
+    archive (archiving stays owner-only).
+    """
+    project = make_project(service, owner)
+    member = Actor(owner.id + 301)
+    proj_admin = Actor(owner.id + 302)
+    add_member(service, project.id, actor=owner, subject_id=str(member.id), role="member")
+    add_member(service, project.id, actor=owner, subject_id=str(proj_admin.id), role="admin")
+
+    # write does not imply manage_config
+    assert service.assert_project_role(project.id, user=member, required=PROJECT_WRITE)
+    with pytest.raises(OctopError) as err:
+        service.assert_project_role(project.id, user=member, required=PROJECT_MANAGE_CONFIG)
+    assert err.value.code is ErrorCode.PROJECT_ROLE_FORBIDDEN
+    assert err.value.status == 403
+
+    # manage_config does not imply archive
+    assert service.assert_project_role(project.id, user=proj_admin, required=PROJECT_MANAGE_CONFIG)
+    with pytest.raises(OctopError) as err:
+        service.assert_project_role(project.id, user=proj_admin, required=PROJECT_ARCHIVE)
+    assert err.value.code is ErrorCode.PROJECT_ROLE_FORBIDDEN
+
+    # …and the same two claims against the frozen table, so an implication
+    # sneaking into either side is caught even where no role can observe it.
+    assert PROJECT_WRITE in project_service_module._ROLE_LEVELS["member"]
+    assert PROJECT_MANAGE_CONFIG not in project_service_module._ROLE_LEVELS["member"]
+    assert PROJECT_MANAGE_CONFIG in project_service_module._ROLE_LEVELS["admin"]
+    assert PROJECT_ARCHIVE not in project_service_module._ROLE_LEVELS["admin"]
+
+
+def test_archived_project_rejects_manage_config_as_well(
+    service: ProjectService, owner: Actor
+) -> None:
+    """The read-only rule is orthogonal to the role table, and still applies."""
+    project = make_project(service, owner)
+    service.transition_project(project.id, user=owner, target="active")
+    service.transition_project(project.id, user=owner, target="archived")
+
+    assert service.assert_project_role(project.id, user=owner, required=PROJECT_READ) == "owner"
+    with pytest.raises(OctopError) as err:
+        service.assert_project_role(project.id, user=owner, required=PROJECT_MANAGE_CONFIG)
+    assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
+    assert err.value.status == 403
 
 
 def test_non_member_is_rejected_even_when_a_platform_admin(

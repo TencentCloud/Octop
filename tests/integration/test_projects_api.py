@@ -655,3 +655,187 @@ async def test_non_member_cannot_reach_a_task_by_guessing_its_id(
 
     after = await _task(client, alice, pid, tid)
     assert (after["title"], after["status"]) == ("Draft the flight plan", "planning")
+
+
+# ── second batch: the four project-config subsystems (T-INT2) ────────────────
+
+
+async def _add_agent_member(
+    client: httpx.AsyncClient, auth: dict[str, str], pid: str, agent_id: str
+) -> None:
+    response = await client.post(
+        f"{PROJECTS}/{pid}/members",
+        headers=auth,
+        json={"subject_type": "agent", "subject_id": agent_id, "role": "member"},
+    )
+    assert response.status_code == 201, response.text
+
+
+async def test_connector_declarations_replace_fully_and_store_kind_only(
+    env: Any,
+    users: dict[str, Any],
+    owned: dict[str, Any],
+) -> None:
+    """R17: the declaration table has no instance id; PUT is a full replacement."""
+    client, srv, _ = env
+    alice = users["auth"]["alice"]
+    pid = owned["project_id"]
+    await _activate(client, alice, pid)
+
+    kinds = [
+        entry.kind
+        for entry in __import__(
+            "octop.infra.connectors.catalog", fromlist=["list_catalog"]
+        ).list_catalog()
+    ][:2]
+    replaced = await client.put(
+        f"{PROJECTS}/{pid}/connectors", headers=alice, json={"kinds": kinds}
+    )
+    assert replaced.status_code == 200, replaced.text
+    assert isinstance(replaced.json(), list), "the response is a bare array"
+
+    with srv.services.db.connect() as conn:
+        stored = [
+            str(row["kind"])
+            for row in conn.execute(
+                "SELECT kind FROM project_connectors WHERE project_id = ? ORDER BY created_at, id",
+                (pid,),
+            ).fetchall()
+        ]
+        columns = {
+            str(row["name"])
+            for row in conn.execute("PRAGMA table_info(project_connectors)").fetchall()
+        }
+    assert stored == kinds, "the rows carry the declared kinds"
+    assert "instance_id" not in columns, "R17: kind only, no instance id column"
+
+    duplicate = await client.put(
+        f"{PROJECTS}/{pid}/connectors", headers=alice, json={"kinds": [kinds[0], kinds[0]]}
+    )
+    assert duplicate.status_code == 409, duplicate.text
+    assert duplicate.json()["error"]["code"] == "PROJECT_CONNECTOR_INVALID"
+
+    narrowed = await client.put(
+        f"{PROJECTS}/{pid}/connectors", headers=alice, json={"kinds": [kinds[1]]}
+    )
+    assert narrowed.status_code == 200, narrowed.text
+    assert [item["kind"] for item in narrowed.json()] == [kinds[1]]
+
+
+async def test_skill_projection_get_and_put_share_one_shape(
+    env: Any,
+    users: dict[str, Any],
+    owned: dict[str, Any],
+) -> None:
+    """GET/PUT agree, and a declaration that is no longer installed reads as stale."""
+    client, srv, _ = env
+    alice = users["auth"]["alice"]
+    pid = owned["project_id"]
+    await _activate(client, alice, pid)
+    agent_id = await _create_expert(client, alice, "skill-host")
+    await _add_agent_member(client, alice, pid, agent_id)
+
+    empty = await client.get(f"{PROJECTS}/{pid}/skills", headers=alice)
+    assert empty.status_code == 200, empty.text
+    assert empty.json() == {"effective": [], "stale": []}
+
+    cleared = await client.put(f"{PROJECTS}/{pid}/skills", headers=alice, json={"skills": []})
+    assert cleared.status_code == 200, cleared.text
+    assert set(cleared.json()) == {"effective", "stale"}, "PUT echoes the GET shape"
+
+    # NOTE: reading a *stale* declaration needs a resolvable agent — inserting one
+    # for a non-running member agent answers 404 AGENT_NOT_FOUND (reported to the
+    # Lead as the T-SKILL side's open question); the shape contract is asserted here.
+
+
+async def test_cron_jobs_are_listed_only_for_their_creator(
+    env: Any,
+    users: dict[str, Any],
+    owned: dict[str, Any],
+) -> None:
+    """Main behaviour: two users with config rights each see exactly their own job."""
+    client, _, _ = env
+    alice = users["auth"]["alice"]
+    bob = users["auth"]["bob"]
+    pid = owned["project_id"]
+    await _activate(client, alice, pid)
+    agent_id = await _create_expert(client, alice, "cron-host")
+    await _add_agent_member(client, alice, pid, agent_id)
+    await _add_member(client, alice, pid, subject_id=str(users["id"]["bob"]), role="admin")
+
+    alice_job = await client.post(
+        f"{PROJECTS}/{pid}/cron",
+        headers=alice,
+        json={"agent_id": agent_id, "schedule_spec": "@every 1h", "prompt": "alice prompt"},
+    )
+    assert alice_job.status_code == 201, alice_job.text
+    bob_job = await client.post(
+        f"{PROJECTS}/{pid}/cron",
+        headers=bob,
+        json={"agent_id": agent_id, "schedule_spec": "@every 1h", "prompt": "bob prompt"},
+    )
+    assert bob_job.status_code == 201, bob_job.text
+
+    as_alice = await client.get(f"{PROJECTS}/{pid}/cron", headers=alice)
+    as_bob = await client.get(f"{PROJECTS}/{pid}/cron", headers=bob)
+    assert {job["cron_id"] for job in as_alice.json()} == {alice_job.json()["cron_id"]}
+    assert {job["cron_id"] for job in as_bob.json()} == {bob_job.json()["cron_id"]}
+
+    # Writability is per-job too: bob holds manage_config but cannot touch alice's job.
+    stolen = await client.patch(
+        f"{PROJECTS}/{pid}/cron/{alice_job.json()['cron_id']}", headers=bob, json={"enabled": False}
+    )
+    assert stolen.status_code == 403, stolen.text
+
+    deleted = await client.delete(
+        f"{PROJECTS}/{pid}/cron/{alice_job.json()['cron_id']}", headers=alice
+    )
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json() == {"deleted": True}
+
+
+async def test_instruction_clears_and_refuses_oversize(
+    env: Any,
+    users: dict[str, Any],
+    owned: dict[str, Any],
+) -> None:
+    client, _, _ = env
+    alice = users["auth"]["alice"]
+    pid = owned["project_id"]
+    await _activate(client, alice, pid)
+
+    too_long = await client.put(
+        f"{PROJECTS}/{pid}/instruction", headers=alice, json={"instruction": "x" * 2001}
+    )
+    assert too_long.status_code == 400, too_long.text
+    assert too_long.json()["error"]["code"] == "PROJECT_INSTRUCTION_INVALID"
+
+    written = await client.put(
+        f"{PROJECTS}/{pid}/instruction", headers=alice, json={"instruction": "be brief"}
+    )
+    assert written.status_code == 200, written.text
+    cleared = await client.put(
+        f"{PROJECTS}/{pid}/instruction", headers=alice, json={"instruction": ""}
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["instruction"] == ""
+    assert (await client.get(f"{PROJECTS}/{pid}/instruction", headers=alice)).json()[
+        "instruction"
+    ] == ""
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/connectors", "/cron", "/instruction", "/skills"],
+)
+async def test_the_new_endpoints_refuse_a_non_member(
+    env: Any,
+    users: dict[str, Any],
+    owned: dict[str, Any],
+    path: str,
+) -> None:
+    client, _, _ = env
+    pid = owned["project_id"]
+    response = await client.get(f"{PROJECTS}/{pid}{path}", headers=users["auth"]["carol"])
+    assert response.status_code == 403, response.text
+    assert _error_code(response) == "PROJECT_FORBIDDEN"

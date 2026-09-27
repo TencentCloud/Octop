@@ -464,7 +464,11 @@
     "PROJECT_ATTACHMENT_INVALID": "The attachment does not meet the upload requirements (type or size).",
     "PROJECT_NODE_NOT_FOUND": "Requirement node not found.",
     "PROJECT_NODE_NOT_CONFIRMED": "This requirement node has not been confirmed yet.",
-    "PROJECT_KB_BIND_FAILED": "Could not create the project's knowledge base; the project was not created."
+    "PROJECT_KB_BIND_FAILED": "Could not create the project's knowledge base; the project was not created.",
+    "PROJECT_CONNECTOR_INVALID": "That connector type does not exist or is not available.",
+    "PROJECT_SKILL_INVALID": "Only skills installed on that expert can be selected.",
+    "PROJECT_CRON_INVALID": "The scheduled task's expert or project ownership is not valid.",
+    "PROJECT_INSTRUCTION_INVALID": "The instructions are not valid (too long or containing illegal characters)."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",

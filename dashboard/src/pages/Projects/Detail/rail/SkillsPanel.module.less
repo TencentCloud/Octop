@@ -1,0 +1,83 @@
+/* 右栏「技能」面板 (PLAN §2.3). */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--fn-border-primary);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.title {
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.centered {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 失效声明：显式标注的灰态，不隐藏。 */
+.staleRow {
+  opacity: 0.7;
+}
+
+.staleTag {
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.rowName {
+  min-width: 0;
+  flex: 1;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.rowMeta {
+  font-size: 12px;
+}
+
+.kindTag {
+  margin-inline-end: 0;
+  font-size: 11px;
+}
+
+.addBox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.addHint {
+  font-size: 12px;
+}
+
+.addControl {
+  width: 100%;
+}

@@ -1,0 +1,53 @@
+/* Task list view — the `tasks` tab (PLAN.md §9). */
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.statusFilter {
+  min-width: 220px;
+}
+
+.keyword {
+  width: 220px;
+}
+
+.table {
+  :global(.ant-table) {
+    background: transparent;
+  }
+}
+
+.titleLink {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fn-color-brand);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}

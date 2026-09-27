@@ -64,6 +64,11 @@ PROJECT_READ = "read"
 PROJECT_WRITE = "write"
 PROJECT_CONFIRM = "confirm"
 PROJECT_MANAGE_MEMBERS = "manage_members"
+#: Configuration writes (instruction / connectors / skills / cron) — PLAN.md §6.
+#: Deliberately a **peer** of ``write``: configuration decides what the project's
+#: agents may reach, so a member who may edit the goal must not get it, and the
+#: four config write routes must never be guarded by ``write`` alone.
+PROJECT_MANAGE_CONFIG = "manage_config"
 PROJECT_ARCHIVE = "archive"
 
 PROJECT_ACTIONS: tuple[str, ...] = (
@@ -71,14 +76,26 @@ PROJECT_ACTIONS: tuple[str, ...] = (
     PROJECT_WRITE,
     PROJECT_CONFIRM,
     PROJECT_MANAGE_MEMBERS,
+    PROJECT_MANAGE_CONFIG,
     PROJECT_ARCHIVE,
 )
 
-#: Which levels each role satisfies. Note ``admin`` deliberately lacks
-#: ``archive`` — §4.6 gives archive/delete to the owner alone.
+#: Which levels each role satisfies. This is a plain role -> action **lookup**;
+#: there is no implication between actions (PLAN.md §3.3 / R18), so
+#: ``manage_config`` is granted explicitly and never derived from ``write``.
+#: Note ``admin`` deliberately lacks ``archive`` — §4.6 gives archive/delete to
+#: the owner alone.
 _ROLE_LEVELS: dict[str, frozenset[str]] = {
     "owner": frozenset(PROJECT_ACTIONS),
-    "admin": frozenset({PROJECT_READ, PROJECT_WRITE, PROJECT_CONFIRM, PROJECT_MANAGE_MEMBERS}),
+    "admin": frozenset(
+        {
+            PROJECT_READ,
+            PROJECT_WRITE,
+            PROJECT_CONFIRM,
+            PROJECT_MANAGE_MEMBERS,
+            PROJECT_MANAGE_CONFIG,
+        }
+    ),
     "member": frozenset({PROJECT_READ, PROJECT_WRITE}),
     "viewer": frozenset({PROJECT_READ}),
 }
