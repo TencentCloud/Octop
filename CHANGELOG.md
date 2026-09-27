@@ -8,6 +8,7 @@
 
 ### 修复
 - Dashboard 兼容 Chromium 91 及更旧的内核：mermaid 渲染图表时会调用 `structuredClone`（Chrome 98+）与 `Array.prototype.at`（Chrome 92+），入口脚本此前只补了 `Object.hasOwn`，饼图/雷达图在模块求值阶段就抛 `TypeError`；现按同一位置一并补齐（#768）
+- 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 
 ## [1.0.2b3] - 2026-09-26
 
