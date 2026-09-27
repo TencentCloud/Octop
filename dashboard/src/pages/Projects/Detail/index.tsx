@@ -28,7 +28,6 @@ import {
   type ProjectStatus,
   type ProjectSubjectType,
   type ProjectTask,
-  type ProjectTaskStatus,
   type ProjectUpdateBody,
 } from "../../../api/modules/projects";
 import { EmptyState } from "../../../components/EmptyState";
@@ -39,6 +38,7 @@ import { apiErrorMessage } from "../../../utils/apiError";
 import { message } from "../../../utils/antdMessage";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
+import Board from "./Board";
 import styles from "./index.module.less";
 
 const { Text } = Typography;
@@ -86,24 +86,6 @@ const SUBJECT_ID_HINT_KEYS: Record<ProjectSubjectType, string> = {
   user: "projects.subjectIdHintUser",
   agent: "projects.subjectIdHintAgent",
   team: "projects.subjectIdHintTeam",
-};
-
-const TASK_STATUS_LABEL_KEYS: Record<ProjectTaskStatus, string> = {
-  todo: "projects.taskStatusTodo",
-  doing: "projects.taskStatusDoing",
-  review: "projects.taskStatusReview",
-  done: "projects.taskStatusDone",
-  blocked: "projects.taskStatusBlocked",
-  cancelled: "projects.taskStatusCancelled",
-};
-
-const TASK_STATUS_COLORS: Record<ProjectTaskStatus, string> = {
-  todo: "default",
-  doing: "processing",
-  review: "warning",
-  done: "success",
-  blocked: "error",
-  cancelled: "default",
 };
 
 interface ProjectFormValues {
@@ -383,38 +365,6 @@ function ProjectDetailPage() {
     },
   ];
 
-  const taskColumns: ColumnsType<ProjectTask> = [
-    {
-      title: t("projects.taskTitle"),
-      dataIndex: "title",
-      key: "title",
-      render: (title: string) => <Text strong>{title}</Text>,
-    },
-    {
-      title: t("projects.taskStatus"),
-      key: "status",
-      width: 140,
-      render: (_, task) => (
-        <Tag color={TASK_STATUS_COLORS[task.status]}>
-          {t(TASK_STATUS_LABEL_KEYS[task.status])}
-        </Tag>
-      ),
-    },
-    {
-      title: t("projects.taskPriority"),
-      dataIndex: "priority",
-      key: "priority",
-      width: 100,
-      render: (priority: number) => priority,
-    },
-    {
-      title: t("projects.dueAt"),
-      key: "due_at",
-      width: 200,
-      render: (_, task) => formatServerDateTime(task.due_at ?? 0, timeZone),
-    },
-  ];
-
   const headerActions = (
     <Space>
       <Tooltip title={t("common.refresh")}>
@@ -593,19 +543,11 @@ function ProjectDetailPage() {
             {t("projects.tasksHint")}
           </Text>
         </div>
-        <Table<ProjectTask>
-          rowKey="task_id"
-          size="small"
-          className={styles.table}
-          columns={taskColumns}
-          dataSource={tasks}
-          scroll={{ x: 640 }}
-          pagination={{
-            pageSize: 10,
-            hideOnSinglePage: true,
-            showSizeChanger: false,
-          }}
-          locale={{ emptyText: t("projects.tasksEmpty") }}
+        <Board
+          projectId={project.project_id}
+          tasks={tasks}
+          canEdit={canEdit}
+          onChanged={load}
         />
       </section>
 

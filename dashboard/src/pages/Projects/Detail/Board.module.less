@@ -1,0 +1,199 @@
+/* Task board (kanban) for the project detail page. */
+
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.search {
+  width: 240px;
+  max-width: 100%;
+}
+
+.readOnly {
+  font-size: 12px;
+}
+
+.columns {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 4px;
+  overflow-x: auto;
+}
+
+.column {
+  display: flex;
+  flex: 0 0 240px;
+  flex-direction: column;
+  width: 240px;
+  max-height: 560px;
+  padding: 8px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-secondary);
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    opacity 0.15s;
+
+  &.columnLocked {
+    opacity: 0.55;
+  }
+
+  &.columnOver {
+    border-color: var(--fn-color-brand);
+    background: var(--fn-color-brand-bg);
+  }
+
+  &.columnReject {
+    border-color: var(--fn-color-danger);
+    background: var(--fn-bg-danger-light);
+  }
+}
+
+.columnHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+
+  :global(.ant-tag) {
+    margin-inline-end: 0;
+  }
+}
+
+.columnCount {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.columnBody {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 48px;
+  overflow-y: auto;
+}
+
+.columnEmpty {
+  padding: 12px 0;
+  font-size: 12px;
+  text-align: center;
+  color: var(--fn-text-tertiary);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+  background: var(--fn-bg-primary);
+  box-shadow: var(--fn-shadow-xs);
+
+  &[draggable="true"] {
+    cursor: grab;
+  }
+}
+
+.cardDragging {
+  opacity: 0.5;
+}
+
+.cardPending {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.cardPriority {
+  margin-inline-end: 0;
+  font-size: 11px;
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.cardMetaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fn-text-tertiary);
+}
+
+.cardMetaText {
+  font-size: 12px;
+}
+
+.cardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  :global(.ant-tag) {
+    margin-inline-end: 0;
+  }
+}
+
+.cardStatusSelect {
+  min-width: 108px;
+}
+
+.addButton {
+  margin-top: 8px;
+  color: var(--fn-text-secondary);
+}
+
+.addForm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.timelineCentered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.timelineItem {
+  display: flex;
+  flex-direction: column;
+}
+
+.timelineDetail {
+  font-size: 12px;
+}
+
+.timelineMeta {
+  font-size: 12px;
+}
