@@ -3,6 +3,18 @@ import i18n from "../i18n";
 import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
 
 const AUTH_TOKEN_KEY = "auth_token";
+let authEpoch = 0;
+let _redirectingToLogin = false;
+type AuthContext = { epoch: number; token: string };
+
+function currentAuthContext(): AuthContext {
+  return { epoch: authEpoch, token: getAuthToken() };
+}
+
+function isCurrentAuthContext(context: AuthContext): boolean {
+  return context.epoch === authEpoch && context.token === getAuthToken();
+}
+
 /** sessionStorage handoff for SSO redirects / popups (default = remember). */
 const AUTH_REMEMBER_PREF_KEY = "auth_remember_pref";
 
@@ -72,6 +84,8 @@ export function isSessionOnlyAuth(): boolean {
  * post the token back to the opener — ``sessionStorage`` is not shared.
  */
 export function setAuthToken(token: string, remember: boolean = true) {
+  authEpoch++;
+  _redirectingToLogin = false;
   if (remember) {
     localStorage.setItem(AUTH_TOKEN_KEY, token);
     sessionStorage.removeItem(AUTH_TOKEN_KEY);
@@ -93,6 +107,7 @@ export function getAuthToken(): string {
 
 /** Remove JWT token from both storages. */
 export function clearAuthToken() {
+  authEpoch++;
   localStorage.removeItem(AUTH_TOKEN_KEY);
   sessionStorage.removeItem(AUTH_TOKEN_KEY);
   sessionStorage.removeItem(AUTH_REMEMBER_PREF_KEY);
@@ -101,7 +116,11 @@ export function clearAuthToken() {
 }
 
 /** Persist a sliding-renewed access token from an API response, if present. */
-export function applyRenewedAccessToken(response: Response): void {
+export function applyRenewedAccessToken(
+  response: Response,
+  context?: AuthContext,
+): void {
+  if (context && !isCurrentAuthContext(context)) return;
   const renewed = response.headers.get(ACCESS_TOKEN_RESPONSE_HEADER);
   if (renewed) {
     setAuthToken(renewed, !isSessionOnlyAuth());
@@ -159,8 +178,9 @@ function assertNotSetupLocked(path: string): void {
 async function check503ForSetupRequired(
   path: string,
   response: Response,
+  context: AuthContext,
 ): Promise<boolean> {
-  if (response.status !== 503) return false;
+  if (response.status !== 503 || !isCurrentAuthContext(context)) return false;
   let body: unknown = null;
   try {
     body = await response.clone().json();
@@ -171,7 +191,8 @@ async function check503ForSetupRequired(
   if (
     body &&
     typeof body === "object" &&
-    (body as Record<string, unknown>).setup_required === true
+    (body as Record<string, unknown>).setup_required === true &&
+    isCurrentAuthContext(context)
   ) {
     markSetupRequired();
     clearAuthToken();
@@ -280,8 +301,6 @@ function buildAuthHeaders(path: string): Record<string, string> {
   return headers;
 }
 
-let _redirectingToLogin = false;
-
 /**
  * Send the user to the login screen exactly once, no matter how many parallel
  * requests report an expired session.
@@ -313,12 +332,15 @@ function handleUnauthorized(): void {
 async function throwIfUnauthorized(
   path: string,
   response: Response,
+  context: AuthContext,
 ): Promise<void> {
   if (response.status !== 401 || path.startsWith("/auth/")) {
     return;
   }
-  clearAuthToken();
-  handleUnauthorized();
+  if (isCurrentAuthContext(context)) {
+    clearAuthToken();
+    handleUnauthorized();
+  }
   let message = "Unauthorized";
   if (path.startsWith("/setup/")) {
     try {
@@ -344,18 +366,19 @@ export async function request<T = unknown>(
   const url = getApiUrl(path);
 
   const headers = buildHeaders(path, options.headers);
+  const authContext = currentAuthContext();
 
   const response = await fetch(url, {
     ...options,
     headers,
   });
 
-  if (await check503ForSetupRequired(path, response)) {
+  if (await check503ForSetupRequired(path, response, authContext)) {
     throw new SetupRequiredError();
   }
 
-  await throwIfUnauthorized(path, response);
-  applyRenewedAccessToken(response);
+  await throwIfUnauthorized(path, response, authContext);
+  applyRenewedAccessToken(response, authContext);
 
   if (!response.ok) {
     if (response.status === 403 && isAgentScopedPath(path)) {
@@ -399,17 +422,18 @@ export async function requestBlob(
 
   const url = getApiUrl(path);
   const headers = buildAuthHeaders(path);
+  const authContext = currentAuthContext();
   const response = await fetch(url, {
     ...options,
     headers: { ...headers, ...(options.headers as Record<string, string>) },
   });
 
-  if (await check503ForSetupRequired(path, response)) {
+  if (await check503ForSetupRequired(path, response, authContext)) {
     throw new SetupRequiredError();
   }
 
-  await throwIfUnauthorized(path, response);
-  applyRenewedAccessToken(response);
+  await throwIfUnauthorized(path, response, authContext);
+  applyRenewedAccessToken(response, authContext);
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -452,17 +476,18 @@ export async function probeAuthResource(
 
   const url = getApiUrl(path);
   const headers = buildAuthHeaders(path);
+  const authContext = currentAuthContext();
   const response = await fetch(url, {
     ...options,
     headers: { ...headers, ...(options.headers as Record<string, string>) },
   });
 
-  if (await check503ForSetupRequired(path, response)) {
+  if (await check503ForSetupRequired(path, response, authContext)) {
     throw new SetupRequiredError();
   }
 
-  await throwIfUnauthorized(path, response);
-  applyRenewedAccessToken(response);
+  await throwIfUnauthorized(path, response, authContext);
+  applyRenewedAccessToken(response, authContext);
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -492,17 +517,18 @@ export async function requestStream(
 
   const url = getApiUrl(path);
   const headers = buildAuthHeaders(path);
+  const authContext = currentAuthContext();
   const response = await fetch(url, {
     ...options,
     headers: { ...headers, ...(options.headers as Record<string, string>) },
   });
 
-  if (await check503ForSetupRequired(path, response)) {
+  if (await check503ForSetupRequired(path, response, authContext)) {
     throw new SetupRequiredError();
   }
 
-  await throwIfUnauthorized(path, response);
-  applyRenewedAccessToken(response);
+  await throwIfUnauthorized(path, response, authContext);
+  applyRenewedAccessToken(response, authContext);
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -539,6 +565,7 @@ export async function requestUpload<T = unknown>(
 
   const url = getApiUrl(path);
   const headers = buildAuthHeaders(path);
+  const authContext = currentAuthContext();
   const method = options.method ?? "POST";
 
   return new Promise<T>((resolve, reject) => {
@@ -596,19 +623,19 @@ export async function requestUpload<T = unknown>(
           headers: responseHeaders,
         });
 
-        if (await check503ForSetupRequired(path, response)) {
+        if (await check503ForSetupRequired(path, response, authContext)) {
           reject(new SetupRequiredError());
           return;
         }
 
         try {
-          await throwIfUnauthorized(path, response);
+          await throwIfUnauthorized(path, response, authContext);
         } catch (err) {
           reject(err);
           return;
         }
 
-        applyRenewedAccessToken(response);
+        applyRenewedAccessToken(response, authContext);
 
         if (!response.ok) {
           // Same shape as request() so parseApiError() can read the error envelope.
