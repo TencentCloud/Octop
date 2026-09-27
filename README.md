@@ -34,7 +34,7 @@
 </p>
 
 <p align="center">
-  <b>English</b> · <a href="README_CN.md">中文</a>
+  <b>English</b> · <a href="README_CN.md">中文</a> · <a href="README_RU.md">Русский</a>
 </p>
 
 ---
