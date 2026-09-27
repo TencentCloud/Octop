@@ -1,10 +1,11 @@
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Users } from "lucide-react";
+import { IdCard, Users } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import { TAB_ICON_SIZE } from "../../../components/TabLabel";
 import { TabPanelHeader } from "../../Settings/AdvancedSettings/TabPanelHeader";
+import RolesPanel from "./RolesPanel";
 import UsersListPanel from "./UsersListPanel";
 import SsoPanel from "./SsoPanel";
 import OauthProviderCard from "./OauthProviderCard";
@@ -18,7 +19,7 @@ import dingtalkIcon from "../../../assets/channels/dingtalk.svg";
 import openidIcon from "../../../assets/providers/openid.svg";
 import styles from "./index.module.less";
 
-type TabKey = "local" | OauthAppKind | "oidc";
+type TabKey = "local" | "roles" | OauthAppKind | "oidc";
 
 const OAUTH_BRAND_ICONS: Record<OauthAppKind, string> = {
   feishu: feishuIcon,
@@ -38,6 +39,7 @@ function BrandTabIcon({
 
 const TABS: TabBarItem<TabKey>[] = [
   { key: "local", labelKey: "adminUsers.tabLocal", icon: Users },
+  { key: "roles", labelKey: "adminUsers.tabRoles", icon: IdCard },
   {
     key: "feishu",
     labelKey: "adminUsers.tabFeishu",
@@ -61,6 +63,7 @@ const TABS: TabBarItem<TabKey>[] = [
 ];
 
 function parseTab(raw: string | null): TabKey {
+  if (raw === "roles") return "roles";
   if (
     raw === "feishu" ||
     raw === "wecom" ||
@@ -106,7 +109,9 @@ export default function AdminUsersPage() {
   if (forbidden) return <ForbiddenPage />;
 
   let body: ReactNode = <UsersListPanel />;
-  if (activeTab === "oidc") {
+  if (activeTab === "roles") {
+    body = <RolesPanel />;
+  } else if (activeTab === "oidc") {
     body = (
       <div className={styles.ssoPanel}>
         <TabPanelHeader
