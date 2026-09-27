@@ -242,6 +242,8 @@ def test_migration_005_preserves_populated_users_and_constraints(tmp_path: Path)
             "sso_provider_id": None,
             "sso_subject": None,
             "permissions": "[]",
+            "role_name": None,
+            "avatar_icon": None,
         }
         assert dict(agent) == {
             "agent_id": "legacy-agent",

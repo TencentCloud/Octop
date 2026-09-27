@@ -12,6 +12,7 @@ const listMock = vi.fn();
 const patchMock = vi.fn();
 
 vi.mock("../../../api/modules/octopThreads", () => ({
+  normalizeThreadArtifacts: vi.fn(() => []),
   octopThreadsApi: {
     list: (...args: unknown[]) => listMock(...args),
     create: vi.fn(),
