@@ -14,6 +14,7 @@
 - 安装或启用仍 `import harness_agent` 的旧插件时，不再因运行时包改名为 `octop_harness` 而失败。
 - 恢复工作区 zip 导入对 Octop 自有 `_builtin_skills` 前缀的过滤（#1105 的修复曾被连带删除，含回归测试），修复后导入不再植入无法通过 API 删除的内置技能条目（Fixes #1254）。
 - Dashboard 约 30 个被引用却从未定义的设计系统 token（`--fn-surface-sunken`、`--fn-color-error` 等）导致沉底面板透明、暗色主题错色：在 light/dark 主题中补齐定义，并修正 `--text-secondary`/`--border-color` 拼写笔误（Fixes #1239）。
+- 媒体预览响应补上 `Content-Security-Policy: sandbox` 与 `X-Content-Type-Options: nosniff`：用户上传的 SVG 等内容以内联文档打开时不再可能在应用同源执行脚本，图片/视频预览不受影响（Fixes #1242）。
 
 ## [1.0.2b3] - 2026-09-26
 
