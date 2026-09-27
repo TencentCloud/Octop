@@ -76,6 +76,9 @@ async def resolve_thread_id(
         return thread_id, sk
     bound = thread_registry.get_bound_thread_id(sk)
     if bound:
+        row = thread_registry.get_thread(bound)
+        if row is None or row.user_id != user_id:
+            raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
         return bound, sk
     tid = await thread_registry.get_or_create_by_key(
         session_key=sk,

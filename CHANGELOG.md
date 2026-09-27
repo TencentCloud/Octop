@@ -35,6 +35,7 @@
 - 企查查在对话中改为按内部 HTTP MCP 加载工具（`mcp_mode=internal`），不再误走进程内 gateway 导致「无法加载 MCP 工具」
 - 定时任务以专家方式执行时，运行失败（工具调用报错、需要人工介入、没有可见回复）也会把任务提示词和已产出的部分内容投影进会话线程；此前这些线程一个字都没有，点「立即执行」后打开对话只看到空会话（#516）
 - 插件工具返回超大 octop_ui 数据（如番剧上千集选集列表）时不再把整份 JSON 塞进模型上下文导致爆窗：新增中间件把 ≥4000 字符的 UI payload 原地剥离到 `ToolMessage.artifact`，模型只看到保留 title/summary 的精简结果；前端实时流与历史回放均从 artifact 恢复渲染，不影响媒体提取与文本类工具结果（#1032）
+- 仪表盘对话不再能把这一轮写进别人的会话：`user_turn` 只带 `session_key`（不带 `thread_id`）时，`resolve_thread_id` 按原样返回该键绑定的会话、不校验归属，而 dashboard 键 `{agent_id}:dashboard:{user_id}:dm` 里的 `user_id` 是可枚举的整数；在共享 agent（`is_shared`，所有登录用户都能开 WS）上，任何人带上别人的键即可把自己这一轮写进并订阅对方的会话。现与同函数的 `thread_id` 分支及 `subscribe` / `cancel` 帧一致，先读该会话行并要求 `row.user_id` 等于调用者，否则按 `FORBIDDEN` 拒绝（WS 侧回 `error` 帧）(#1206)
 ## [1.0.2b2] - 2026-09-23
 
 ### 新增
