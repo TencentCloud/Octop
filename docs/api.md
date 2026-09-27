@@ -168,6 +168,15 @@ because each request is a one-shot continuation.
 | `DELETE` | `/agents/{id}/chat/sessions/{thread_id}` | owner | `204` (archives the active row) |
 | `GET`    | `/agents/{id}/chat/sessions/{thread_id}/history` | owner | paginated message history; `turn_active` tells a reconnecting client whether to re-`subscribe` over the chat WebSocket |
 
+**Tool result blocks.** `tool_result` blocks in history (and `tool_result`
+frames on the chat WebSocket) carry the tool's return value in `output`. When a
+plugin returns a large `octop_ui` payload, the backend offloads the envelope's
+`data` field: `output` then contains the slim envelope with
+`data_ref: "artifact"`, and the full payload is on the block's `artifact` key
+(absent otherwise). An explicit `data` key always takes precedence over
+`data_ref` when both appear. Clients that render plugin UIs must resolve
+`data_ref` from `artifact`; clients that only read `output` keep working.
+
 ### Trajectory ledger
 
 | Method | Path | Auth | Notes |
@@ -237,7 +246,7 @@ the server derives one from `prompt`.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET` | `/models/presets` | user | provider templates from `harness-agent` |
+| `GET` | `/models/presets` | user | provider templates from `octop-harness` |
 | `GET` | `/models` | user | resolved models across enabled providers |
 | `GET` | `/models/active` | user | `{provider_name, model}` |
 | `PUT` | `/models/active` | admin | body `{provider_name, model}` |
@@ -277,7 +286,7 @@ reloads running agents so the image and video tools receive the new configuratio
 | `GET`    | `/personas` | user | `[{code}, ...]` (compat shim) |
 | `GET`    | `/personas/{code}` | user | rendered template (compat shim) |
 
-Persona content lives in `src/octop/infra/agents/mbti_profiles.py` —
+Persona content lives in `src/octop/infra/agents/persona/mbti_profiles.py` —
 see [Personas](./personas.md).
 
 ## Experts
@@ -391,11 +400,11 @@ registration (DCR), stores encrypted tokens in the custom MCP spec, and injects 
 Bearer` when loading tools. Loopback and LAN MCP URLs may use HTTP and do not use remote OAuth
 discovery.
 
-## Internal MCP (harness agents)
+## Internal MCP (octop-harness agents)
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `POST`/`GET`/… | `/internal/mcp/*` | public (mTLS / network-isolated) | MCP gateway used by harness agents (not the dashboard) |
+| `POST`/`GET`/… | `/internal/mcp/*` | public (mTLS / network-isolated) | MCP gateway used by octop-harness agents (not the dashboard) |
 
 ## Observability & security
 
@@ -427,7 +436,7 @@ endpoint (public, mounted directly in `api/app.py`).
 |--------|------|------|-------|
 | `WS`/`POST`/`GET`/… | `/agents/{aid}/terminal` | owner | AI-assisted remote PTY |
 | `GET` | `/agents/{aid}/terminal/context` | owner | recent terminal context for the AI helper |
-| `WS`/`POST`/`GET`/… | `/browser/...` | user | harness-browser sessions, live stream, record/replay |
+| `WS`/`POST`/`GET`/… | `/browser/...` | user | octop-browser sessions, live stream, record/replay |
 | `POST` | `/browser/shutdown` | user | stop the current user's Octop-managed Chrome |
 | `POST` | `/agents/{aid}/upload` | user | multipart upload → `{workspace}/inbound/` |
 | `POST` | `/agents/{aid}/files/access-urls` | user | refresh inbound media URLs (signed) |

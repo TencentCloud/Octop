@@ -1179,7 +1179,7 @@ async def test_create_with_unknown_template_does_not_crash(tmp_path: Path) -> No
 
 def _spy_resolve_backend(monkeypatch) -> list[Any]:
     """Record every ``resolve_backend`` call made while resolving a workspace."""
-    import harness_agent.backends as harness_backends  # noqa: PLC0415
+    import octop_harness.backends as harness_backends  # noqa: PLC0415
 
     calls: list[Any] = []
     original = harness_backends.resolve_backend

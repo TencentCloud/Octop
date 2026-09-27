@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 _HEX3 = re.compile(r"^#([0-9a-fA-F]{3})$")
 _HEX6 = re.compile(r"^#([0-9a-fA-F]{6})$")

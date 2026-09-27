@@ -11,11 +11,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 from octop.i18n import tr
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.gateway.process import build_harness_request
-from octop.infra.gateway.process.history_projection import (
-    TurnHistoryTracker,
-    live_message_inputs,
-    message_inputs,
-)
 from octop.infra.gateway.process.message_keys import (
     COMPOSER_CTX_KEY,
     STREAM_ERROR_FLAG,
@@ -23,6 +18,11 @@ from octop.infra.gateway.process.message_keys import (
 )
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.threads import ThreadRegistry
+from octop.infra.history.projection import (
+    TurnHistoryTracker,
+    live_message_inputs,
+    message_inputs,
+)
 from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.utils.llm_text import strip_thinking
 from octop.infra.utils.locale import resolve_user_locale

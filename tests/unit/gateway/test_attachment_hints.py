@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
-from harness_agent.backends.workspace import BackendWorkspace
-from harness_gateway.models import FileContent, ImageContent, TextContent
+from octop_gateway.models import FileContent, ImageContent, TextContent
+from octop_harness.backends.workspace import BackendWorkspace
 from PIL import Image
 
 from octop.api.routers.chat.models import ChatTurnBody
@@ -171,7 +171,7 @@ async def test_file_typed_image_path_still_materializes_via_content_parts() -> N
         parts = content_parts_from_dashboard_turn(turn)
         assert any(isinstance(p, ImageContent) for p in parts)
         backend = AgentBackedMediaBackend(workspace)
-        from harness_gateway.models import InboundMessage
+        from octop_gateway.models import InboundMessage
 
         msg = InboundMessage(
             channel_id=WS_CHANNEL_ID,

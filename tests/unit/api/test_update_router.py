@@ -134,24 +134,130 @@ async def test_restart_endpoint_rejects_when_service_not_installed(
 async def test_restart_endpoint_desktop_schedules_process_exec(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    called: list[bool] = []
+    received: list[object] = []
     monkeypatch.setattr(update_router, "_is_desktop_process", lambda: True)
     monkeypatch.setattr(
         update_router,
         "_restart_desktop_process",
-        lambda: called.append(True),
+        lambda server: received.append(server),
     )
 
     from fastapi import BackgroundTasks
 
+    fake_server = object()
     bg = BackgroundTasks()
-    result = await update_router.restart_service_endpoint(bg, _=None)
+    result = await update_router.restart_service_endpoint(bg, server=fake_server, _=None)
 
     assert result == {"status": "restarting", "service_mode": "desktop"}
-    assert called == []
+    assert received == []
     for task in bg.tasks:
         await task()
-    assert called == [True]
+    assert received == [fake_server]
+
+
+@pytest.mark.asyncio
+async def test_restart_desktop_process_checkpoints_sqlite_wal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression for #800: desktop restart must flush WAL before execv."""
+    checkpoints: list[str] = []
+    closes: list[bool] = []
+    exec_args: list[tuple[str, list[str]]] = []
+
+    class FakeConn:
+        def execute(self, sql: str) -> None:
+            checkpoints.append(sql)
+
+    class FakePool:
+        dialect = "sqlite"
+
+        def connect(self):
+            class Ctx:
+                def __enter__(_self):
+                    return FakeConn()
+
+                def __exit__(_self, *args):
+                    return None
+
+            return Ctx()
+
+        def close(self) -> None:
+            closes.append(True)
+
+    class FakeServices:
+        db = FakePool()
+
+    class FakeServer:
+        services = FakeServices()
+
+    monkeypatch.setattr(
+        update_router,
+        "os",
+        type("os", (), {"execv": lambda _self, p, a: exec_args.append((p, a))})(),
+    )
+    monkeypatch.setattr(
+        update_router,
+        "sys",
+        type(
+            "sys", (), {"executable": "/bin/python", "argv": ["octop", "run"], "orig_argv": None}
+        )(),
+    )
+    monkeypatch.setattr(update_router.time, "sleep", lambda _s: None)
+
+    update_router._restart_desktop_process(FakeServer())
+
+    assert len(checkpoints) == 1
+    assert "PRAGMA wal_checkpoint(TRUNCATE)" in checkpoints[0]
+    assert closes == [True]
+    assert len(exec_args) == 1
+
+
+@pytest.mark.asyncio
+async def test_restart_desktop_process_swallows_checkpoint_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failing checkpoint should not prevent restart; data loss is logged."""
+    exec_args: list[tuple[str, list[str]]] = []
+
+    class BadPool:
+        dialect = "sqlite"
+
+        def connect(self):
+            class Ctx:
+                def __enter__(_self):
+                    raise RuntimeError("db busy")
+
+                def __exit__(_self, *args):
+                    return None
+
+            return Ctx()
+
+        def close(self) -> None:
+            pass
+
+    class FakeServices:
+        db = BadPool()
+
+    class FakeServer:
+        services = FakeServices()
+
+    monkeypatch.setattr(
+        update_router,
+        "os",
+        type("os", (), {"execv": lambda _self, p, a: exec_args.append((p, a))})(),
+    )
+    monkeypatch.setattr(
+        update_router,
+        "sys",
+        type(
+            "sys", (), {"executable": "/bin/python", "argv": ["octop", "run"], "orig_argv": None}
+        )(),
+    )
+    monkeypatch.setattr(update_router.time, "sleep", lambda _s: None)
+
+    update_router._restart_desktop_process(FakeServer())
+
+    assert len(exec_args) == 1
 
 
 @pytest.mark.asyncio

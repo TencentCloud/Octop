@@ -15,7 +15,11 @@ from octop.infra.agents.teams.service import (
     is_team_agent,
     team_icon_url,
 )
-from octop.infra.agents.teams.team_manager import TeamManager, wire_host_dispatch
+from octop.infra.agents.teams.team_manager import (
+    TeamManager,
+    host_system_prompt,
+    wire_host_dispatch,
+)
 
 __all__ = [
     "HOST_TOOLS_ALLOWED",
@@ -29,6 +33,7 @@ __all__ = [
     "TeamManager",
     "TeamService",
     "agent_kind",
+    "host_system_prompt",
     "host_tools_disabled",
     "is_team_agent",
     "team_icon_url",

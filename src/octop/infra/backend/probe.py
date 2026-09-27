@@ -10,7 +10,7 @@ import tempfile
 import uuid
 from typing import Any, cast
 
-from harness_agent.backends.probe import probe_backend
+from octop_harness.backends.probe import probe_backend
 
 from octop.infra.backend.adapter import row_to_backend_spec
 from octop.infra.backend.docker_spec import (
@@ -138,7 +138,7 @@ def _probe_docker(row: BackendRow) -> dict[str, Any]:
         return {
             "ok": False,
             "message": (
-                "docker Python package not installed (pip install 'orcakit-harness-agent[docker]')"
+                "docker Python package not installed (pip install 'octop-harness[docker]')"
             ),
         }
 
@@ -149,14 +149,12 @@ def _probe_docker(row: BackendRow) -> dict[str, Any]:
         return {"ok": False, "message": f"docker daemon unreachable: {exc}"}
 
     try:
-        from harness_agent.backends import resolve_backend
-        from harness_agent.backends.docker_sandbox import ensure_docker_image
+        from octop_harness.backends import resolve_backend
+        from octop_harness.backends.docker_sandbox import ensure_docker_image
     except ImportError:
         return {
             "ok": False,
-            "message": (
-                "docker sandbox helpers unavailable (pip install 'orcakit-harness-agent[docker]')"
-            ),
+            "message": ("docker sandbox helpers unavailable (pip install 'octop-harness[docker]')"),
         }
 
     try:
