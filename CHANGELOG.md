@@ -8,6 +8,7 @@
 
 ### 修复
 - `octop completion install` 不再用平台编码读取 rc 文件：中文 Windows（GBK/cp936）上带中文注释的 `~/.bashrc` 之前会直接抛 `UnicodeDecodeError` 并退出 1，补全一行都写不进去；现在按字节查找 `_OCTOP_COMPLETE` 标记，UTF-8 与 ANSI/GBK 保存的 rc 都能正确识别「已安装」，不会重复追加
+- 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 
 ## [1.0.2b3] - 2026-09-26
 

@@ -70,7 +70,7 @@ async def exchange_login_code_response(code: str, server: Any) -> dict[str, Any]
     ttl = server.services.config.access_token_ttl_seconds
     return {
         "access_token": sign_token(
-            secret, sub=user.id, uname=user.username, role=user.role.value, ttl_seconds=ttl
+            secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl
         ),
         "token_type": "Bearer",
         "expires_in": ttl,
