@@ -181,7 +181,12 @@ cd dashboard; npx tsc -b
 | `a8f808a8` | 修复：知识库能力不可用时仍可创建项目（`kb_id=NULL`） |
 | `c7b57690` | 迁移重编号 018 → **019** |
 | `b8868d50` | 看板页（状态列 + 拖拽 + 过滤） |
-| *(本批次，见 §3.2)* | 派单 T2.5 / 讨论线 T3.1 / 权限集成测试 / 路由守护修复 |
+| `95642443` | 派单 T2.5 + 任务路由跨项目守护修复 + 枚举值 4xx |
+| `cec85936` | 讨论线 T3.1（`ProjectCommentRepo` + `ProjectDiscussion`） |
+| `5e37f25d` | 权限集成测试（AC-13 / AC-16） |
+| `271f63ca` | 交接文档（`docs/PROJECT_MANAGEMENT_HANDOFF.md`） |
+
+**当前 HEAD = `271f63ca`**，与 `origin/feature/projects-p0` 完全一致（0/0），相对 `upstream/develop` **领先 13 个提交、落后 0**。
 
 **规模**：相对 `upstream/develop`，50 个文件、约 +6611 / −277 行。
 
@@ -198,7 +203,23 @@ cd dashboard; npx tsc -b
 | **路由守护修复** | `infra/projects/service.py::_require_task(project_id, task_id)` |
 | 测试 | `test_project_dispatch.py`、`test_project_discussion.py`、`test_project_route_guards.py` |
 
-> 具体提交哈希以 `git log --oneline -8` 为准；本文档写作时该批次仍在最终门禁中。
+> **本批次权威门禁**（交付前最后一次 `make all`）：
+> `All checks passed!`（ruff check）· `1096 files already formatted` · `Success: no issues found in 538 source files`（mypy strict）· 测试 **3897 passed / 1 failed / 111 skipped**。
+> 那 1 个失败是 `tests/unit/gateway/test_versioned_history.py::test_process_exit_after_commit_keeps_last_fragment`，**单独重跑 `1 passed in 25.84s`** —— 高负载下的 flaky，与项目域无关（另一个代理在低负载下单跑 `make all` 得到 3898 passed / 0 failed，exit 0）。
+
+### 3.4 ★ 本批次明确「未验证」的部分（新机器上优先补）
+
+派单（T2.5）的**代码路径全部通过单测，但真实 LLM 回合从未执行过**。当时的机器上**没有配置 LLM provider**，所以 `agent_manager.stream(...)` 全程走的是 `_StubAgentManager`。以下四点没有被证明：
+
+| # | 未验证项 | 影响 |
+|---|---|---|
+| 1 | 真实 agent 回合从未跑过（无 provider、无已配置专家） | 派单能否真的驱动一次专家执行，未知 |
+| 2 | **步骤 ④ 团队房间端到端**：团队宿主是否真的起回合、其 `ask_agent(async)` 是否真的开房间并把成员发言扇回来 | 只断言了 `stamp_host_runtime` 被调用，**行为未证** |
+| 3 | `run_agent_turn` 的 HITL / 空回复 `RuntimeError` 分支，项目路径未覆盖（cron 路径有既有测试） | 只覆盖了通用回合失败 |
+| 4 | 无 HTTP 冒烟测试：`:8088` 上跑的是**改动前**的代码，从未用新代码重启过 | 路由存在性有 `route.matches()` 证明，但没有真实请求 |
+
+> 这四点写在 `dispatch.py` 的模块 docstring 和 `test_project_dispatch.py` 的文件 docstring 里，不是口头约定。
+> **新机器上如果配好 provider，第一件事就是跑 `_tools/verify_dispatch_e2e.py` 把这四点补上。**
 
 ### 3.3 已验证项（来自开发期间的真实运行）
 
