@@ -8,6 +8,7 @@
 
 ### 修复
 - 邮箱连接器 `search_emails` 的 `limit` 现在钳制到 `1-50`：此前它直接进入 `uids[-limit:]` 切片，模型传负数时语义整个翻转——`limit=-5` 会越过「最多 5 封」返回 7 封并多发 7 次 IMAP FETCH，`limit=-100` 更是在邮箱非空时返回空列表，让助手误报「没有邮件」；工具 schema 也同步声明 `minimum`/`maximum`，与 `tencent_ima`／`tencent_news`／`yuandian`／`weknora` 既有的一致做法对齐
+- 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 
 ## [1.0.2b3] - 2026-09-26
 

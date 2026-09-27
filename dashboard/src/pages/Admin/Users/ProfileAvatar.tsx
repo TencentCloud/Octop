@@ -40,25 +40,121 @@ interface AvatarPreset {
 }
 
 const USER_PRESETS: AvatarPreset[] = [
-  { id: "user", labelKey: "adminUsers.avatarIconUser", bg: "#e8f1ff", fg: "#175cd3", Icon: UserRound },
-  { id: "business", labelKey: "adminUsers.avatarIconBusiness", bg: "#fff4d6", fg: "#b54708", Icon: Briefcase },
-  { id: "research", labelKey: "adminUsers.avatarIconResearch", bg: "#f4ebff", fg: "#6941c6", Icon: FlaskConical },
-  { id: "medical", labelKey: "adminUsers.avatarIconMedical", bg: "#ffe4e8", fg: "#c01048", Icon: Stethoscope },
-  { id: "laptop", labelKey: "adminUsers.avatarIconLaptop", bg: "#e0f2fe", fg: "#026aa2", Icon: Laptop },
-  { id: "teach", labelKey: "adminUsers.avatarIconTeach", bg: "#f3e8dd", fg: "#93370d", Icon: BookOpen },
-  { id: "design", labelKey: "adminUsers.avatarIconDesign", bg: "#fce7f6", fg: "#c11574", Icon: Palette },
-  { id: "learner", labelKey: "adminUsers.avatarIconLearner", bg: "#fef7c3", fg: "#a15c07", Icon: GraduationCap },
+  {
+    id: "user",
+    labelKey: "adminUsers.avatarIconUser",
+    bg: "#e8f1ff",
+    fg: "#175cd3",
+    Icon: UserRound,
+  },
+  {
+    id: "business",
+    labelKey: "adminUsers.avatarIconBusiness",
+    bg: "#fff4d6",
+    fg: "#b54708",
+    Icon: Briefcase,
+  },
+  {
+    id: "research",
+    labelKey: "adminUsers.avatarIconResearch",
+    bg: "#f4ebff",
+    fg: "#6941c6",
+    Icon: FlaskConical,
+  },
+  {
+    id: "medical",
+    labelKey: "adminUsers.avatarIconMedical",
+    bg: "#ffe4e8",
+    fg: "#c01048",
+    Icon: Stethoscope,
+  },
+  {
+    id: "laptop",
+    labelKey: "adminUsers.avatarIconLaptop",
+    bg: "#e0f2fe",
+    fg: "#026aa2",
+    Icon: Laptop,
+  },
+  {
+    id: "teach",
+    labelKey: "adminUsers.avatarIconTeach",
+    bg: "#f3e8dd",
+    fg: "#93370d",
+    Icon: BookOpen,
+  },
+  {
+    id: "design",
+    labelKey: "adminUsers.avatarIconDesign",
+    bg: "#fce7f6",
+    fg: "#c11574",
+    Icon: Palette,
+  },
+  {
+    id: "learner",
+    labelKey: "adminUsers.avatarIconLearner",
+    bg: "#fef7c3",
+    fg: "#a15c07",
+    Icon: GraduationCap,
+  },
 ];
 
 const ROLE_PRESETS: AvatarPreset[] = [
-  { id: "member", labelKey: "adminUsers.avatarIconMember", bg: "", fg: "", Icon: SquareUser },
-  { id: "award", labelKey: "adminUsers.avatarIconAward", bg: "", fg: "", Icon: Award },
-  { id: "terminal", labelKey: "adminUsers.avatarIconTerminal", bg: "", fg: "", Icon: Terminal },
-  { id: "pen", labelKey: "adminUsers.avatarIconPen", bg: "", fg: "", Icon: PenLine },
-  { id: "chart", labelKey: "adminUsers.avatarIconChart", bg: "", fg: "", Icon: ChartColumn },
-  { id: "headset", labelKey: "adminUsers.avatarIconHeadset", bg: "", fg: "", Icon: Headset },
-  { id: "wrench", labelKey: "adminUsers.avatarIconWrench", bg: "", fg: "", Icon: Wrench },
-  { id: "scale", labelKey: "adminUsers.avatarIconScale", bg: "", fg: "", Icon: Scale },
+  {
+    id: "member",
+    labelKey: "adminUsers.avatarIconMember",
+    bg: "",
+    fg: "",
+    Icon: SquareUser,
+  },
+  {
+    id: "award",
+    labelKey: "adminUsers.avatarIconAward",
+    bg: "",
+    fg: "",
+    Icon: Award,
+  },
+  {
+    id: "terminal",
+    labelKey: "adminUsers.avatarIconTerminal",
+    bg: "",
+    fg: "",
+    Icon: Terminal,
+  },
+  {
+    id: "pen",
+    labelKey: "adminUsers.avatarIconPen",
+    bg: "",
+    fg: "",
+    Icon: PenLine,
+  },
+  {
+    id: "chart",
+    labelKey: "adminUsers.avatarIconChart",
+    bg: "",
+    fg: "",
+    Icon: ChartColumn,
+  },
+  {
+    id: "headset",
+    labelKey: "adminUsers.avatarIconHeadset",
+    bg: "",
+    fg: "",
+    Icon: Headset,
+  },
+  {
+    id: "wrench",
+    labelKey: "adminUsers.avatarIconWrench",
+    bg: "",
+    fg: "",
+    Icon: Wrench,
+  },
+  {
+    id: "scale",
+    labelKey: "adminUsers.avatarIconScale",
+    bg: "",
+    fg: "",
+    Icon: Scale,
+  },
 ];
 
 function presetsFor(kind: AvatarKind): AvatarPreset[] {
@@ -91,11 +187,9 @@ function pickImageFile(): Promise<File | null> {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = AVATAR_ACCEPT;
-    input.addEventListener(
-      "change",
-      () => resolve(input.files?.[0] ?? null),
-      { once: true },
-    );
+    input.addEventListener("change", () => resolve(input.files?.[0] ?? null), {
+      once: true,
+    });
     input.click();
   });
 }
@@ -236,7 +330,9 @@ export function ProfileAvatarPicker({
           </span>
         </div>
       </div>
-      <div className={styles.avatarPresetLabel}>{t("adminUsers.avatarSamples")}</div>
+      <div className={styles.avatarPresetLabel}>
+        {t("adminUsers.avatarSamples")}
+      </div>
       <div className={styles.avatarPresetGrid}>
         {presets.map((preset, index) => {
           const selected =
