@@ -127,7 +127,7 @@ function NavItemButton({
   onNavigate: (path: string) => void;
   onExpandChatRail?: () => void;
   showChatRailExpand?: boolean;
-  role: "admin" | "user" | null;
+  role: string | null;
   hasUpdate: boolean;
   t: TFunction<"translation", undefined>;
 }) {

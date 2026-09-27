@@ -80,7 +80,7 @@ class InviteService:
         note: str | None = None,
         expires_in_days: int = DEFAULT_EXPIRES_DAYS,
         role_name: str | None = None,
-        user_role_id: str | None = None,
+        role: str | None = None,
     ) -> InviteRow:
         days = int(expires_in_days)
         if days < MIN_EXPIRES_DAYS or days > MAX_EXPIRES_DAYS:
@@ -103,7 +103,7 @@ class InviteService:
                     expires_at=expires_at,
                     note=cleaned,
                     role_name=role_name,
-                    user_role_id=user_role_id,
+                    role=role,
                 )
                 self._services.audit_repo.write(
                     actor=actor_username,
@@ -177,7 +177,7 @@ class InviteService:
         if name == "":
             name = None
         normalized_email = parse_optional_email(email)
-        account_role, perm_list, policy_pairs, user_role_id, role_name = _role_defaults_for_invite(
+        account_role, perm_list, policy_pairs, role_name = _role_defaults_for_invite(
             self._services.db,
             self._repo.get_by_code(cleaned_code),
         )
@@ -192,7 +192,6 @@ class InviteService:
                 account_role=account_role,
                 permissions=perm_list,
                 policies=policy_pairs,
-                user_role_id=user_role_id,
                 role_name=role_name,
             )
         except LookupError as exc:
@@ -220,7 +219,7 @@ class InviteService:
         user = User(
             id=user_id,
             username=cleaned_username,
-            role=Role(account_role),
+            role=account_role,
             display_name=name,
             locale=loc,
             permissions=perm_list,
@@ -236,29 +235,29 @@ class InviteService:
 
 def _role_defaults_for_invite(
     db: Any, invite: Any
-) -> tuple[str, list[str], list[tuple[str, str]], str | None, str | None]:
-    """Read the role named on the invite.
+) -> tuple[str, list[str], list[tuple[str, str]], str | None]:
+    """Resolve the role template named on the invite into users.role defaults.
 
-    Legacy invites with no role name stay a plain user. A stored name that no
-    longer matches a role fails the redeem, so a deleted or renamed template
-    cannot silently create an empty account.
+    ``users.role`` stores the template public id. Legacy invites with no role
+    id/name create a plain ``user``. A stored id/name that no longer matches a
+    template fails redeem.
     """
     if invite is None:
-        return "user", [], [], None, None
+        return Role.USER, [], [], None
+    role_id = getattr(invite, "role", None)
+    if not isinstance(role_id, str) or not role_id:
+        role_id = None
     role_name = getattr(invite, "role_name", None)
-    user_role_id = getattr(invite, "user_role_id", None)
-    if not isinstance(user_role_id, str) or not user_role_id:
-        user_role_id = None
     from octop.infra.db.repos.user_roles import UserRoleRepo
     from octop.infra.users.permissions import PERMISSIONS
 
     repo = UserRoleRepo(db)
-    if user_role_id is not None:
-        role = repo.get(user_role_id)
+    if role_id is not None:
+        role = repo.get(role_id)
     elif isinstance(role_name, str) and role_name:
         role = repo.get_by_name(role_name)
     else:
-        return "user", [], [], None, None
+        return Role.USER, [], [], None
     if role is None:
         raise OctopError(
             ErrorCode.INVITE_ROLE_MISSING,
@@ -266,13 +265,12 @@ def _role_defaults_for_invite(
             status=409,
         )
     if role.is_admin:
-        return "admin", [], [], role.user_role_id, role.user_role_name
+        return role.user_role_id, [], [], role.user_role_name
     permissions = [key for key in role.permissions if key in PERMISSIONS]
     return (
-        "user",
+        role.user_role_id,
         permissions,
         list(role.policies),
-        role.user_role_id,
         role.user_role_name,
     )
 
