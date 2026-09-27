@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 import pytest
@@ -128,3 +129,18 @@ def test_parse_version() -> None:
     assert creator._parse_version("1.5.5") >= creator.MIN_LARK_OAPI
     assert creator._parse_version("1.5.4") < creator.MIN_LARK_OAPI
     assert creator._parse_version("1.7.0") >= creator.MIN_LARK_OAPI
+
+
+def test_state_file_lives_in_platform_tmpdir() -> None:
+    """The creator state file must resolve on every platform (#1189).
+
+    ``/tmp`` does not exist on Windows; ``tempfile.gettempdir()`` resolves to
+    the right location everywhere and is what STATE_DIR is built on.
+    """
+    import tempfile
+
+    from octop.infra.gateway.bot_creators import feishu_bot_creator, yuanbao_bot_creator
+
+    assert tempfile.gettempdir() == feishu_bot_creator.STATE_DIR
+    assert tempfile.gettempdir() == yuanbao_bot_creator.STATE_DIR
+    assert os.path.dirname(feishu_bot_creator._state_file()) == tempfile.gettempdir()

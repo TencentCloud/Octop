@@ -23,6 +23,7 @@ Flow: create (get scan_code + user scan confirm + emit credentials via finish ev
 from __future__ import annotations
 
 import sys
+import tempfile
 
 # Force stdout line-buffered / write-through so the parent process can read
 # structured JSON lines in real time (Python defaults to full buffering in
@@ -62,7 +63,7 @@ API_BASE = f"https://{YUANBAO_DOMAIN}"
 POLL_INTERVAL = 3
 QR_MAX_RETRIES = 3
 
-STATE_DIR = "/tmp"
+STATE_DIR = tempfile.gettempdir()
 STATE_FILE = os.path.join(STATE_DIR, "yuanbao-bot-creator-state.json")
 
 _HEADERS = {

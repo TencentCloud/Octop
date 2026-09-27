@@ -8,6 +8,7 @@
 
 ### 修复
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+- 飞书/元宝 bot 创建器的状态文件目录从硬编码 `/tmp` 改为 `tempfile.gettempdir()`，Windows 上 `feishu-setup` 不再报 `No such file or directory`（#1189）。
 
 ## [1.0.2b3] - 2026-09-26
 
