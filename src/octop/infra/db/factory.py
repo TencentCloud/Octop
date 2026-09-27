@@ -31,6 +31,21 @@ def should_defer_control_plane_db(config: OctopConfig, paths: PathLayout) -> boo
     return not resolve_sqlite_db_path(config, paths).exists()
 
 
+def is_database_initialized(config: OctopConfig, paths: PathLayout) -> bool:
+    """Check the configured database without creating a fresh SQLite file."""
+    if not config.database.is_postgresql:
+        return resolve_sqlite_db_path(config, paths).is_file()
+
+    db = open_database(config, paths)
+    try:
+        with db.connect() as conn:
+            if conn.execute("SELECT to_regclass('users')").fetchone()[0] is None:
+                return False
+            return conn.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
+    finally:
+        db.close()
+
+
 def open_database(config: OctopConfig, paths: PathLayout) -> DatabasePool:
     """Return a DB pool for the configured driver.
 

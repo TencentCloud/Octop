@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### 修复
+- Docker 使用 PostgreSQL 或自定义 SQLite 路径时，容器重启不再重复执行初始化而启动失败。
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 
 ## [1.0.2b3] - 2026-09-26
