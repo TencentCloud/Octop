@@ -143,7 +143,8 @@ export function userRoleDrift(
   const root = row.workspace_root_dir?.trim() || null;
   const roleRoot = role.workspace_root_dir?.trim() || null;
   if (root !== roleRoot) return "changed";
-  if ((row.token_quota ?? null) !== (role.token_quota ?? null)) return "changed";
+  if ((row.token_quota ?? null) !== (role.token_quota ?? null))
+    return "changed";
   if ((row.max_agents ?? null) !== (role.max_agents ?? null)) return "changed";
   return null;
 }
