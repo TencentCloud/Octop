@@ -9,6 +9,9 @@
 ### 修复
 - CLI `octop provider create/delete` 直接改数据库时，运行中的服务不再需要重启：每次对话（stream / call / HITL resume）前比对 DB 与 harness model factory，仅在存在差异时同步，修复此前新增或改动的模型仍报 `Unknown provider ... in model ref` / `Model ... not found or disabled`（#952）
 
+### 修复
+- 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+
 ## [1.0.2b3] - 2026-09-26
 
 ### 新增
