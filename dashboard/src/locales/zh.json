@@ -126,6 +126,7 @@
     "CONNECTOR_ALREADY_BOUND": "连接器已绑定。",
     "CONNECTOR_MCP_LOAD_FAILED": "无法加载 MCP 工具：{{servers}}",
     "CRON_TRIGGER_INVALID": "无效的定时触发器。",
+    "CRON_PROMPT_INVALID": "无效的定时任务指令或名称。",
     "SLASH_UNKNOWN": "未知的斜杠指令。",
     "SLASH_BAD_ARGS": "参数无效。",
     "ATTACHMENT_UNSUPPORTED_TYPE": "不支持此文件类型。",

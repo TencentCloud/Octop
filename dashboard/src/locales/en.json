@@ -126,6 +126,7 @@
     "CONNECTOR_ALREADY_BOUND": "Connector is already bound.",
     "CONNECTOR_MCP_LOAD_FAILED": "Failed to load tools for MCP server(s): {{servers}}",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
+    "CRON_PROMPT_INVALID": "Invalid cron prompt or name.",
     "SLASH_UNKNOWN": "Unknown slash command.",
     "SLASH_BAD_ARGS": "Invalid arguments.",
     "ATTACHMENT_UNSUPPORTED_TYPE": "This file type is not supported.",

@@ -8,6 +8,7 @@
 
 ### 修复
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+- 定时任务的空白指令、超过 2000 字符的指令与超过 80 字符的名称此前逃成 500 `INTERNAL_ERROR`（并打印服务端 traceback），现按 `docs/api.md` 已承诺的 `CRON_PROMPT_INVALID` 返回 400；`octop cron create` 同步从 traceback 变为可读报错（Fixes #1244）。
 
 ## [1.0.2b3] - 2026-09-26
 

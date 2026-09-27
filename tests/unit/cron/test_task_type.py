@@ -12,16 +12,19 @@ from octop.infra.cron.task_type import (
     require_cron_name,
     require_cron_prompt,
 )
+from octop.infra.errors import ErrorCode, OctopError
 
 
 def test_require_cron_prompt_rejects_empty() -> None:
-    with pytest.raises(ValueError, match="empty"):
+    with pytest.raises(OctopError, match="empty") as exc:
         require_cron_prompt("   ")
+    assert exc.value.code is ErrorCode.CRON_PROMPT_INVALID
 
 
 def test_require_cron_prompt_rejects_too_long() -> None:
-    with pytest.raises(ValueError, match=str(CRON_PROMPT_MAX_LEN)):
+    with pytest.raises(OctopError, match=str(CRON_PROMPT_MAX_LEN)) as exc:
         require_cron_prompt("x" * (CRON_PROMPT_MAX_LEN + 1))
+    assert exc.value.code is ErrorCode.CRON_PROMPT_INVALID
 
 
 def test_require_cron_prompt_strips() -> None:
@@ -50,5 +53,6 @@ def test_require_cron_name_blank_uses_prompt_prefix() -> None:
 
 
 def test_require_cron_name_rejects_too_long() -> None:
-    with pytest.raises(ValueError, match=str(CRON_NAME_MAX_LEN)):
+    with pytest.raises(OctopError, match=str(CRON_NAME_MAX_LEN)) as exc:
         require_cron_name("x" * (CRON_NAME_MAX_LEN + 1), prompt="p", cron_id="cron_x")
+    assert exc.value.code is ErrorCode.CRON_PROMPT_INVALID

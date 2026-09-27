@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from octop.infra.errors import ErrorCode, OctopError
+
 CronTaskType = Literal["text", "agent"]
 DEFAULT_CRON_TASK_TYPE: CronTaskType = "agent"
 CRON_PROMPT_MAX_LEN = 2000
@@ -30,9 +32,12 @@ def require_cron_prompt(prompt: str) -> str:
     """Validate cron instruction length and non-empty content."""
     text = prompt.strip()
     if not text:
-        raise ValueError("prompt must not be empty")
+        raise OctopError(ErrorCode.CRON_PROMPT_INVALID, "prompt must not be empty")
     if len(text) > CRON_PROMPT_MAX_LEN:
-        raise ValueError(f"prompt must be at most {CRON_PROMPT_MAX_LEN} characters")
+        raise OctopError(
+            ErrorCode.CRON_PROMPT_INVALID,
+            f"prompt must be at most {CRON_PROMPT_MAX_LEN} characters",
+        )
     return text
 
 
@@ -49,5 +54,8 @@ def require_cron_name(name: str | None, *, prompt: str, cron_id: str) -> str:
     """Return a non-empty display name; blank input falls back to the prompt prefix."""
     text = (name or "").strip() or default_cron_name(prompt, cron_id)
     if len(text) > CRON_NAME_MAX_LEN:
-        raise ValueError(f"name must be at most {CRON_NAME_MAX_LEN} characters")
+        raise OctopError(
+            ErrorCode.CRON_PROMPT_INVALID,
+            f"name must be at most {CRON_NAME_MAX_LEN} characters",
+        )
     return text
