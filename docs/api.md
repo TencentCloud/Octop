@@ -168,6 +168,15 @@ because each request is a one-shot continuation.
 | `DELETE` | `/agents/{id}/chat/sessions/{thread_id}` | owner | `204` (archives the active row) |
 | `GET`    | `/agents/{id}/chat/sessions/{thread_id}/history` | owner | paginated message history; `turn_active` tells a reconnecting client whether to re-`subscribe` over the chat WebSocket |
 
+**Tool result blocks.** `tool_result` blocks in history (and `tool_result`
+frames on the chat WebSocket) carry the tool's return value in `output`. When a
+plugin returns a large `octop_ui` payload, the backend offloads the envelope's
+`data` field: `output` then contains the slim envelope with
+`data_ref: "artifact"`, and the full payload is on the block's `artifact` key
+(absent otherwise). An explicit `data` key always takes precedence over
+`data_ref` when both appear. Clients that render plugin UIs must resolve
+`data_ref` from `artifact`; clients that only read `output` keep working.
+
 ### Trajectory ledger
 
 | Method | Path | Auth | Notes |
@@ -277,7 +286,7 @@ reloads running agents so the image and video tools receive the new configuratio
 | `GET`    | `/personas` | user | `[{code}, ...]` (compat shim) |
 | `GET`    | `/personas/{code}` | user | rendered template (compat shim) |
 
-Persona content lives in `src/octop/infra/agents/mbti_profiles.py` —
+Persona content lives in `src/octop/infra/agents/persona/mbti_profiles.py` —
 see [Personas](./personas.md).
 
 ## Experts

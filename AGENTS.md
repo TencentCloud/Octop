@@ -107,13 +107,15 @@ cli/ ──► launch.py ──► api/ + infra/
 
 | Path | Owns | Typical importers |
 |------|------|-------------------|
-| `infra/agents/` | Agent registry (`manager.py`), harness runtime, provider store (`providers/`), settings stores (`security/`, `acp_settings`, `langfuse`), MBTI personas, expert catalog (`experts/`) | `server.py`, `gateway/`, `api/routers/agents.py` |
+| `infra/agents/` | Agent registry (`manager.py`), harness runtime, providers, settings (`settings/`), workspace paths (`workspace/`), threads helpers (`threads/`), security, persona/MBTI, experts, plugins, teams, memory | `server.py`, `gateway/`, `api/routers/agents.py` |
 | `infra/backend/` | Workspace storage adapter, resolver, remote probe (COS/S3/…) | `agents/`, `api/routers/workspace*.py` |
 | `infra/connectors/` | Connector catalog, OAuth, MCP gateway, credential crypto | `api/routers/connectors.py`, `internal_mcp.py`, `agents/manager.py` (MCP assembly) |
 | `infra/cron/` | Cron jobs, triggers, agent tool hooks | `server.py`, `api/routers/cron.py` |
 | `infra/db/` | `SqlitePool`, migrations, `RepoBundle` / `SharedServices` in `services.py` | all domain code needing persistence |
 | `infra/gateway/` | IM ingress (`processor.py`), threads, slash commands (`slash/`), bot setup (`bot_creators/`) | `server.py`, `api/routers/chat.py`, `channels.py` |
+| `infra/history/` | Versioned message archive, trajectory, turn projection (`projection.py`) | `gateway/`, `api/routers/chat`, `cron/`, `agents/teams` |
 | `infra/setup/` | First-run wizard, system service install, TLS / Let's Encrypt | `server.py`, `launch.py`, `api/routers/setup.py`, `api/routers/tls.py` |
+| `infra/skills/` | Skill packages, SkillHub HTTP client (`skillhub_market`, `skillhub_common`) | `api/routers/skills.py`, `agents/experts` |
 | `infra/users/` | Users, roles, password hashing, `UserManager` | `server.py`, `api/routers/auth.py`, `users.py` |
 | `infra/errors.py` | `OctopError`, `ErrorCode` — shared exception types | everywhere in `infra/` and `api/` |
 | `infra/metrics.py` | In-process counters (`METRICS`) | lazy-import inside hot paths |
@@ -356,7 +358,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | TLS / Let's Encrypt | `infra/setup/tls/`, `api/routers/tls.py` |
 | `octop run` boot sequence | `launch.py`, `cli/run_cmd.py` |
 | How is a message processed? | `infra/gateway/processor.py` → harness agent |
-| How are agents started/stopped? | `infra/agents/manager.py`, `infra/agents/runtime.py` |
+| How are agents started/stopped? | `infra/agents/manager.py` |
 | How does cron work? | `infra/cron/manager.py`, `infra/cron/job.py` |
 | What DB tables exist? | `infra/db/migrations/` + `infra/db/repos/` |
 | What env vars are supported? | `config.py` |

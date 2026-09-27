@@ -18,6 +18,12 @@ export interface ToolCallData {
   callId?: string;
   arguments?: string;
   output?: string;
+  /**
+   * Offloaded ``octop_ui`` payload. When the backend strips a large ``data``
+   * field from the tool output (envelope carries ``data_ref: "artifact"``),
+   * the full payload lands here — never in the model's context.
+   */
+  artifact?: unknown;
   errorCode?: string;
   returnCode?: number;
   /** Owning plugin id when known (from tool index / SSE). */
@@ -128,6 +134,12 @@ export interface SessionStreamState {
   /** Team host room — listen-only sockets and ask_agent continue stay on. */
   isTeamRoom?: boolean;
   pendingPlanPath?: string | null;
+  /**
+   * Speakers that still own an open generation (token / tool / reasoning)
+   * until their ``done`` frame. Empty string = unlabeled host. Keeps process
+   * panels open across tool gaps after the composer has unlocked.
+   */
+  liveSpeakers: Set<string>;
 }
 
 /** Read-only snapshot shape exposed via ``chatStore.getSnapshot``. */
@@ -143,4 +155,6 @@ export interface SessionSnapshot {
   historyNextCursor?: string | null;
   historyHydrated: boolean;
   pendingPlanPath?: string | null;
+  /** Sorted speaker keys still generating (see SessionStreamState.liveSpeakers). */
+  liveSpeakers: string[];
 }

@@ -31,9 +31,8 @@ bash scripts/install.sh
 # 指定版本
 bash scripts/install.sh --version 0.1.0
 
-# 安装可选附加组件
+# 安装可选附加组件（下载 Playwright Chromium）
 bash scripts/install.sh --extras browser
-bash scripts/install.sh --extras browser,channels-feishu
 
 # 从本地源码安装（开发/离线）
 bash scripts/install.sh --from-source

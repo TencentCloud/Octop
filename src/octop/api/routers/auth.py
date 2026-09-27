@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, sign_token
@@ -43,6 +43,14 @@ def me_payload(user: Any, server: Any) -> dict[str, Any]:
     payload["sso_linked"] = bool(identities)
     payload["sso_kind"] = identities[0]["kind"] if identities else None
     payload["has_password"] = row.password_hash is not None
+    from octop.infra.users.profile_avatar import profile_avatar_url
+
+    payload["avatar_icon"] = row.avatar_icon
+    payload["avatar_url"] = profile_avatar_url(
+        server.services.paths.user_avatars_dir,
+        str(user.id),
+        f"/api/users/{user.id}/avatar",
+    )
     return payload
 
 
@@ -148,6 +156,7 @@ async def change_password(
 class UpdateMeBody(BaseModel):
     display_name: str | None = None
     locale: str | None = None
+    avatar_icon: str | None = Field(default=None, max_length=32)
 
 
 @router.patch("/me", summary="Update profile")
@@ -167,6 +176,44 @@ async def update_me(
         await server.user_manager.set_display_name(user.username, body.display_name)
     if "locale" in provided:
         await server.user_manager.set_locale(user.username, body.locale)
+    if "avatar_icon" in provided:
+        from octop.infra.users.profile_avatar import clean_avatar_icon, delete_profile_avatar
+
+        server.services.user_repo.set_avatar_icon(user.id, clean_avatar_icon(body.avatar_icon))
+        delete_profile_avatar(server.services.paths.user_avatars_dir, str(user.id))
     updated = server.user_manager.get(user.username)
     assert updated is not None
-    return _user_json(updated, locale=updated.locale)
+    return me_payload(updated, server)
+
+
+@router.post("/me/avatar", status_code=201, summary="Upload the current user's portrait")
+async def upload_my_avatar(
+    file: UploadFile = File(...),  # noqa: B008
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, str | None]:
+    from octop.infra.users.profile_avatar import profile_avatar_url, write_profile_avatar
+
+    write_profile_avatar(
+        server.services.paths.user_avatars_dir,
+        str(user.id),
+        await file.read(),
+    )
+    return {
+        "avatar_url": profile_avatar_url(
+            server.services.paths.user_avatars_dir,
+            str(user.id),
+            f"/api/users/{user.id}/avatar",
+        )
+    }
+
+
+@router.delete("/me/avatar", status_code=204, summary="Remove the current user's portrait")
+async def delete_my_avatar(
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Response:
+    from octop.infra.users.profile_avatar import delete_profile_avatar
+
+    delete_profile_avatar(server.services.paths.user_avatars_dir, str(user.id))
+    return Response(status_code=204)

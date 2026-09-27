@@ -507,6 +507,9 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
             output: current.toolData?.output,
             errorCode: current.toolData?.errorCode,
             returnCode: current.toolData?.returnCode,
+            ...(current.toolData?.artifact != null
+              ? { artifact: current.toolData.artifact }
+              : {}),
           },
           status: current.status,
           errorInfo: current.errorInfo,
@@ -837,6 +840,7 @@ export function useChat(
     historyLoadingMore,
     historyHydrated,
     pendingPlanPath,
+    liveSpeakers,
   } = useSyncExternalStore(subscribeStore, getStoreSnapshot);
 
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1187,6 +1191,7 @@ export function useChat(
     historyRefreshing,
     historyHydrated,
     pendingPlanPath,
+    liveSpeakers,
     sendMessage,
     editAndResend,
     cancelStream,
