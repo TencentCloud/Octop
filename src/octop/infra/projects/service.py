@@ -11,6 +11,10 @@ Three responsibilities beyond the repos (plan T2.1):
    terminal and makes the project read-only.
 3. **Permission matrix** (plan §4.6) behind :meth:`ProjectService.assert_project_role`.
 
+Task dispatch (plan T2.5) hangs off the same service — :meth:`ProjectService.dispatch_task`
+owns the task write and the timeline row, while the turn itself lives in
+:mod:`octop.infra.projects.dispatch` and reuses cron's extracted delivery path.
+
 Membership is the only way in: a platform admin who is not a project member is
 rejected like anyone else. The coarse ``projects`` permission key gates "may use
 the project feature"; the ``project_members`` join gates the data.
@@ -19,13 +23,14 @@ the project feature"; the ``project_members`` join gates the data.
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from octop.infra.db.repos.project_tasks import (
     TASK_STATUSES,
     TIMELINE_TASK_ASSIGNED,
     TIMELINE_TASK_CREATED,
     TIMELINE_TASK_DELETED,
+    TIMELINE_TASK_DISPATCHED,
     TIMELINE_TASK_STATUS_CHANGED,
     TIMELINE_TASK_UPDATED,
     ProjectTaskRow,
@@ -35,6 +40,7 @@ from octop.infra.db.repos.project_tasks import (
 from octop.infra.db.repos.projects import (
     MEMBER_SUBJECT_USER,
     PROJECT_ROLES,
+    PROJECT_STATUSES,
     ProjectMemberRow,
     ProjectRow,
 )
@@ -42,7 +48,12 @@ from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.knowledge.gate import get_capability
 from octop.infra.knowledge.service import MAX_BASES_PER_OWNER, KnowledgeService
+from octop.infra.projects.dispatch import run_dispatch_turn
 from octop.infra.users.permissions import user_has_permission
+
+if TYPE_CHECKING:
+    from octop.infra.agents.manager import AgentManager
+    from octop.infra.gateway.gateway import Gateway
 
 logger = logging.getLogger(__name__)
 
@@ -129,12 +140,22 @@ def _task_status_invalid(message: str) -> OctopError:
 
 
 class ProjectService:
-    def __init__(self, services: SharedServices) -> None:
+    def __init__(
+        self,
+        services: SharedServices,
+        *,
+        agent_manager: AgentManager | None = None,
+        gateway: Gateway | None = None,
+    ) -> None:
         self._services = services
         self._projects = services.project_repo
         self._members = services.project_member_repo
         self._tasks = services.project_task_repo
         self._timeline = services.timeline_repo
+        # Runtime handles used by task dispatch only (plan T2.5); they are optional
+        # because the CRUD / board surface needs neither agent registry nor gateway.
+        self._agent_manager = agent_manager
+        self._gateway = gateway
         # Plain attribute (not a property) so tests can inject a failing KB
         # service and drive the compensating-delete branch.
         self._knowledge = KnowledgeService(services)
@@ -348,8 +369,8 @@ class ProjectService:
 
         Archiving is owner-only; every other transition needs ``write``.
         """
-        if target not in _TRANSITIONS:
-            raise ValueError(f"unknown project status: {target}")
+        if target not in PROJECT_STATUSES:
+            raise _project_status_invalid(f"Unknown project status: '{target}'.")
         project = self._require_project(project_id)
         required = PROJECT_ARCHIVE if target == "archived" else PROJECT_WRITE
         self.assert_project_role(project_id, user=user, required=required)
@@ -401,7 +422,7 @@ class ProjectService:
     ) -> ProjectMemberRow:
         self.assert_project_role(project_id, user=user, required=PROJECT_MANAGE_MEMBERS)
         if role not in PROJECT_ROLES:
-            raise ValueError(f"unknown project role: {role}")
+            raise _member_invalid(f"Unknown project role: '{role}'.")
         project = self._require_project(project_id)
         self._assert_owner_role_untouched(project, subject_type, subject_id, role)
         return self._members.add(
@@ -443,9 +464,9 @@ class ProjectService:
         self.assert_project_role(project_id, user=user, required=PROJECT_READ)
         return self._tasks.list_by_project(project_id, status=status)
 
-    def get_task(self, task_id: str, *, user: ProjectActor) -> ProjectTaskRow:
-        task = self._require_task(task_id)
-        self.assert_project_role(task.project_id, user=user, required=PROJECT_READ)
+    def get_task(self, project_id: str, task_id: str, *, user: ProjectActor) -> ProjectTaskRow:
+        task = self._require_task(project_id, task_id)
+        self.assert_project_role(project_id, user=user, required=PROJECT_READ)
         return task
 
     def create_task(
@@ -478,10 +499,12 @@ class ProjectService:
         )
         return task
 
-    def update_task(self, task_id: str, *, user: ProjectActor, **fields: Any) -> ProjectTaskRow:
+    def update_task(
+        self, project_id: str, task_id: str, *, user: ProjectActor, **fields: Any
+    ) -> ProjectTaskRow:
         """Patch task fields other than status."""
-        task = self._require_task(task_id)
-        self.assert_project_role(task.project_id, user=user, required=PROJECT_WRITE)
+        task = self._require_task(project_id, task_id)
+        self.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
         if fields.get("status") is not None:
             raise ValueError("use transition_task() to change status")
         fields.pop("status", None)
@@ -507,12 +530,14 @@ class ProjectService:
             )
         return updated
 
-    def transition_task(self, task_id: str, *, user: ProjectActor, target: str) -> ProjectTaskRow:
+    def transition_task(
+        self, project_id: str, task_id: str, *, user: ProjectActor, target: str
+    ) -> ProjectTaskRow:
         """Move a task along the task state machine."""
         if target not in TASK_STATUSES:
-            raise ValueError(f"unknown task status: {target}")
-        task = self._require_task(task_id)
-        self.assert_project_role(task.project_id, user=user, required=PROJECT_WRITE)
+            raise _task_status_invalid(f"Unknown task status: '{target}'.")
+        task = self._require_task(project_id, task_id)
+        self.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
         if target not in _TASK_TRANSITIONS.get(task.status, frozenset()):
             raise _task_status_invalid(
                 f"Cannot change task status from '{task.status}' to '{target}'."
@@ -529,9 +554,9 @@ class ProjectService:
         )
         return updated
 
-    def delete_task(self, task_id: str, *, user: ProjectActor) -> bool:
-        task = self._require_task(task_id)
-        self.assert_project_role(task.project_id, user=user, required=PROJECT_WRITE)
+    def delete_task(self, project_id: str, task_id: str, *, user: ProjectActor) -> bool:
+        task = self._require_task(project_id, task_id)
+        self.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
         deleted = self._tasks.delete(task_id)
         if deleted:
             # Keep the task id on the event: timeline_events.task_id has no FK
@@ -544,6 +569,57 @@ class ProjectService:
                 {"title": task.title},
             )
         return deleted
+
+    # ── dispatch (T2.5) ──────────────────────────────────────────────────────
+
+    async def dispatch_task(
+        self, project_id: str, task_id: str, *, user: ProjectActor
+    ) -> ProjectTaskRow:
+        """Dispatch a task to its agent/team assignee (plan T2.5 ①-⑥).
+
+        Steps ①-④ — fresh thread, task prompt, one agent turn under the target
+        session's serialization lock — run in
+        :func:`octop.infra.projects.dispatch.run_dispatch_turn`. The task write
+        (⑤) and the timeline row (⑥) stay here with the other task mutations.
+
+        A task with no dispatchable assignee is a caller error, so an
+        ``assignee_type`` outside ``agent``/``team`` (or an empty assignee id)
+        raises ``ValueError``, like the other malformed-task inputs in this
+        service. A missing or stopped assignee keeps the registry's own
+        ``AGENT_NOT_FOUND`` / ``AGENT_NOT_RUNNING``.
+
+        Nothing is written when the turn fails: the thread stays unbound and the
+        caller sees the failure rather than a task that claims to be dispatched.
+        """
+        task = self._require_task(project_id, task_id)
+        self.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
+        project = self._require_project(project_id)
+        if self._agent_manager is None or self._gateway is None:
+            # No booted runtime means no agent can be running right now.
+            raise OctopError(ErrorCode.AGENT_NOT_RUNNING, "The agent runtime is not available.")
+        thread_id = await run_dispatch_turn(
+            repos=self._services.repos,
+            agent_manager=self._agent_manager,
+            gateway=self._gateway,
+            project=project,
+            task=task,
+            dispatcher_user_id=user.id,
+        )
+        updated = self._tasks.update(task_id, thread_id=thread_id)
+        if updated is None:
+            raise OctopError(ErrorCode.PROJECT_TASK_NOT_FOUND, "Task not found.")
+        self._record(
+            project_id,
+            task_id,
+            user,
+            TIMELINE_TASK_DISPATCHED,
+            {
+                "assignee_type": updated.assignee_type,
+                "assignee_id": updated.assignee_id,
+                "thread_id": thread_id,
+            },
+        )
+        return updated
 
     def list_timeline(
         self, project_id: str, *, user: ProjectActor, limit: int | None = None
@@ -576,9 +652,18 @@ class ProjectService:
 
     # ── internals ────────────────────────────────────────────────────────────
 
-    def _require_task(self, task_id: str) -> ProjectTaskRow:
+    def _require_task(self, project_id: str, task_id: str) -> ProjectTaskRow:
+        """Load a task **through its project path**.
+
+        Both a missing task and a task that lives in another project are
+        ``PROJECT_TASK_NOT_FOUND``: the ``{project_id}`` segment is part of the
+        resource's identity, so a mismatched pair must never reach the task. Every
+        task route takes both ids — resolving the task's own project instead would
+        let ``/projects/B/tasks/<task-of-A>`` edit A through B's URL, which becomes
+        an escalation for any caller that trusts the path's project.
+        """
         task = self._tasks.get(task_id)
-        if task is None:
+        if task is None or task.project_id != project_id:
             raise OctopError(ErrorCode.PROJECT_TASK_NOT_FOUND, "Task not found.")
         return task
 

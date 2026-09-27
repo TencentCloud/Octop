@@ -196,7 +196,12 @@ class TaskPatch(BaseModel):
 
 def _service(server: OctopServer) -> ProjectService:
     assert server.services is not None
-    return ProjectService(server.services)
+    runtime = server.app_runtime
+    return ProjectService(
+        server.services,
+        agent_manager=runtime.agent_registry if runtime is not None else None,
+        gateway=runtime.gateway if runtime is not None else None,
+    )
 
 
 # ── projects ─────────────────────────────────────────────────────────────────
@@ -387,17 +392,19 @@ async def patch_task(
     user: User = Depends(require_permission("projects")),
 ) -> TaskOut:
     """``status`` goes through the task state machine; every other field is a
-    plain patch. Changing either one appends to the project timeline."""
+    plain patch. Changing either one appends to the project timeline. The task must
+    belong to ``project_id``; the service answers ``PROJECT_TASK_NOT_FOUND`` when it
+    does not."""
     service = _service(server)
     actor = _actor(user)
 
     if body.status is not None:
-        service.transition_task(task_id, user=actor, target=body.status)
+        service.transition_task(project_id, task_id, user=actor, target=body.status)
 
     fields = body.model_dump(exclude_unset=True, exclude={"status"})
     if fields:
-        service.update_task(task_id, user=actor, **fields)
-    return TaskOut.of(service.get_task(task_id, user=actor))
+        service.update_task(project_id, task_id, user=actor, **fields)
+    return TaskOut.of(service.get_task(project_id, task_id, user=actor))
 
 
 @router.delete("/{project_id}/tasks/{task_id}", summary="Delete a task")
@@ -407,9 +414,32 @@ async def delete_task(
     server: OctopServer = Depends(get_server),
     user: User = Depends(require_permission("projects")),
 ) -> dict[str, bool]:
-    """The deletion stays in the timeline: history outlives the row."""
-    deleted = _service(server).delete_task(task_id, user=_actor(user))
+    """The deletion stays in the timeline: history outlives the row. The task must
+    belong to ``project_id``, like every other task route."""
+    deleted = _service(server).delete_task(project_id, task_id, user=_actor(user))
     return {"deleted": deleted}
+
+
+@router.post(
+    "/{project_id}/tasks/{task_id}:dispatch",
+    summary="Dispatch a task to its agent or team",
+)
+async def dispatch_task(
+    project_id: str,
+    task_id: str,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("projects")),
+) -> TaskOut:
+    """Run one agent turn for the task's assignee and bind its thread to the task.
+
+    The assignee must be an ``agent`` or a ``team`` (a team is dispatched through
+    its host, which opens the team room); a human assignee has no runtime to run.
+    The turn executes in the background — this endpoint returns the updated task
+    rather than streaming, and the conversation can be followed through
+    ``thread_id``. ``assignee_type`` outside agent/team is rejected.
+    """
+    task = await _service(server).dispatch_task(project_id, task_id, user=_actor(user))
+    return TaskOut.of(task)
 
 
 # ── timeline ─────────────────────────────────────────────────────────────────

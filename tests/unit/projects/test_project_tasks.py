@@ -205,7 +205,7 @@ def test_task_can_nest_in_its_own_project(
 def test_task_cannot_be_its_own_parent(service: ProjectService, project: Any, owner: Actor) -> None:
     task = service.create_task(project.id, user=owner, title="T")
     with pytest.raises(ValueError, match="cannot be its own parent"):
-        service.update_task(task.id, user=owner, parent_id=task.id)
+        service.update_task(project.id, task.id, user=owner, parent_id=task.id)
 
 
 def test_unknown_thread_is_rejected(service: ProjectService, project: Any, owner: Actor) -> None:
@@ -242,7 +242,9 @@ def test_happy_path_todo_doing_review_done(
 ) -> None:
     task = service.create_task(project.id, user=owner, title="T")
     for target in ("doing", "review", "done"):
-        assert service.transition_task(task.id, user=owner, target=target).status == target
+        assert (
+            service.transition_task(project.id, task.id, user=owner, target=target).status == target
+        )
 
     assert actions(service, project.id, owner) == [
         TIMELINE_TASK_CREATED,
@@ -261,51 +263,63 @@ def test_happy_path_todo_doing_review_done(
 def test_todo_cannot_jump_to_done(service: ProjectService, project: Any, owner: Actor) -> None:
     task = service.create_task(project.id, user=owner, title="T")
     with pytest.raises(OctopError) as err:
-        service.transition_task(task.id, user=owner, target="done")
+        service.transition_task(project.id, task.id, user=owner, target="done")
     assert err.value.code is ErrorCode.PROJECT_TASK_STATUS_INVALID
-    assert service.get_task(task.id, user=owner).status == "todo"
+    assert service.get_task(project.id, task.id, user=owner).status == "todo"
 
 
 def test_blocked_is_reachable_and_recoverable(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
     task = service.create_task(project.id, user=owner, title="T")
-    assert service.transition_task(task.id, user=owner, target="blocked").status == "blocked"
-    assert service.transition_task(task.id, user=owner, target="doing").status == "doing"
-    assert service.transition_task(task.id, user=owner, target="blocked").status == "blocked"
-    assert service.transition_task(task.id, user=owner, target="todo").status == "todo"
+    assert (
+        service.transition_task(project.id, task.id, user=owner, target="blocked").status
+        == "blocked"
+    )
+    assert (
+        service.transition_task(project.id, task.id, user=owner, target="doing").status == "doing"
+    )
+    assert (
+        service.transition_task(project.id, task.id, user=owner, target="blocked").status
+        == "blocked"
+    )
+    assert service.transition_task(project.id, task.id, user=owner, target="todo").status == "todo"
 
 
 def test_done_can_only_be_reopened_to_doing(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
     task = service.create_task(project.id, user=owner, title="T")
-    service.transition_task(task.id, user=owner, target="doing")
-    service.transition_task(task.id, user=owner, target="done")
+    service.transition_task(project.id, task.id, user=owner, target="doing")
+    service.transition_task(project.id, task.id, user=owner, target="done")
 
     for target in ("todo", "review", "blocked"):
         with pytest.raises(OctopError) as err:
-            service.transition_task(task.id, user=owner, target=target)
+            service.transition_task(project.id, task.id, user=owner, target=target)
         assert err.value.code is ErrorCode.PROJECT_TASK_STATUS_INVALID
 
-    assert service.transition_task(task.id, user=owner, target="doing").status == "doing"
+    assert (
+        service.transition_task(project.id, task.id, user=owner, target="doing").status == "doing"
+    )
 
 
 def test_cancelled_is_terminal(service: ProjectService, project: Any, owner: Actor) -> None:
     task = service.create_task(project.id, user=owner, title="T")
-    service.transition_task(task.id, user=owner, target="cancelled")
+    service.transition_task(project.id, task.id, user=owner, target="cancelled")
     for target in ("todo", "doing", "review", "done", "blocked", "cancelled"):
         with pytest.raises(OctopError) as err:
-            service.transition_task(task.id, user=owner, target=target)
+            service.transition_task(project.id, task.id, user=owner, target=target)
         assert err.value.code is ErrorCode.PROJECT_TASK_STATUS_INVALID
 
 
-def test_unknown_task_status_is_a_programming_error(
+def test_unknown_task_status_is_rejected_with_its_code(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
     task = service.create_task(project.id, user=owner, title="T")
-    with pytest.raises(ValueError, match="unknown task status"):
-        service.transition_task(task.id, user=owner, target="exploded")
+    with pytest.raises(OctopError) as err:
+        service.transition_task(project.id, task.id, user=owner, target="exploded")
+    assert err.value.code is ErrorCode.PROJECT_TASK_STATUS_INVALID
+    assert err.value.status == 409, "an unknown enum value is a 4xx, never a 500"
 
 
 def test_no_timeline_row_when_the_transition_is_rejected(
@@ -313,7 +327,7 @@ def test_no_timeline_row_when_the_transition_is_rejected(
 ) -> None:
     task = service.create_task(project.id, user=owner, title="T")
     with pytest.raises(OctopError):
-        service.transition_task(task.id, user=owner, target="done")
+        service.transition_task(project.id, task.id, user=owner, target="done")
     assert actions(service, project.id, owner) == [TIMELINE_TASK_CREATED]
 
 
@@ -322,7 +336,7 @@ def test_task_status_is_not_patchable_through_update_task(
 ) -> None:
     task = service.create_task(project.id, user=owner, title="T")
     with pytest.raises(ValueError, match="use transition_task"):
-        service.update_task(task.id, user=owner, status="done")
+        service.update_task(project.id, task.id, user=owner, status="done")
 
 
 # ── update / delete ──────────────────────────────────────────────────────────
@@ -332,7 +346,7 @@ def test_update_task_patches_and_records(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
     task = service.create_task(project.id, user=owner, title="T")
-    updated = service.update_task(task.id, user=owner, title="Renamed", priority=5)
+    updated = service.update_task(project.id, task.id, user=owner, title="Renamed", priority=5)
 
     assert (updated.title, updated.priority) == ("Renamed", 5)
     events = service.list_timeline(project.id, user=owner)
@@ -344,7 +358,7 @@ def test_update_task_with_no_fields_is_a_noop(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
     task = service.create_task(project.id, user=owner, title="T")
-    assert service.update_task(task.id, user=owner) == task
+    assert service.update_task(project.id, task.id, user=owner) == task
     assert actions(service, project.id, owner) == [TIMELINE_TASK_CREATED]
 
 
@@ -352,7 +366,9 @@ def test_assignment_records_its_own_event(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
     task = service.create_task(project.id, user=owner, title="T")
-    service.update_task(task.id, user=owner, assignee_type="agent", assignee_id="agent-1")
+    service.update_task(
+        project.id, task.id, user=owner, assignee_type="agent", assignee_id="agent-1"
+    )
 
     events = service.list_timeline(project.id, user=owner)
     assert [e.action for e in events] == [
@@ -367,10 +383,10 @@ def test_delete_task_records_but_keeps_the_history(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
     task = service.create_task(project.id, user=owner, title="T")
-    assert service.delete_task(task.id, user=owner) is True
+    assert service.delete_task(project.id, task.id, user=owner) is True
 
     with pytest.raises(OctopError) as err:
-        service.get_task(task.id, user=owner)
+        service.get_task(project.id, task.id, user=owner)
     assert err.value.code is ErrorCode.PROJECT_TASK_NOT_FOUND
 
     events = service.list_timeline(project.id, user=owner)
@@ -378,9 +394,11 @@ def test_delete_task_records_but_keeps_the_history(
     assert events[-1].task_id == task.id, "the deleted task id must survive in history"
 
 
-def test_delete_unknown_task_is_not_found(service: ProjectService, owner: Actor) -> None:
+def test_delete_unknown_task_is_not_found(
+    service: ProjectService, project: Any, owner: Actor
+) -> None:
     with pytest.raises(OctopError) as err:
-        service.delete_task("nope", user=owner)
+        service.delete_task(project.id, "nope", user=owner)
     assert err.value.code is ErrorCode.PROJECT_TASK_NOT_FOUND
 
 
@@ -390,7 +408,7 @@ def test_delete_unknown_task_is_not_found(service: ProjectService, owner: Actor)
 def test_list_tasks_filters_by_status(service: ProjectService, project: Any, owner: Actor) -> None:
     first = service.create_task(project.id, user=owner, title="1")
     service.create_task(project.id, user=owner, title="2")
-    service.transition_task(first.id, user=owner, target="doing")
+    service.transition_task(project.id, first.id, user=owner, target="doing")
 
     assert [t.title for t in service.list_tasks(project.id, user=owner)] == ["1", "2"]
     assert [t.title for t in service.list_tasks(project.id, user=owner, status="todo")] == ["2"]
@@ -412,15 +430,15 @@ def test_viewer_can_read_tasks_but_not_change_them(
     )
 
     assert [t.id for t in service.list_tasks(project.id, user=viewer)] == [task.id]
-    assert service.get_task(task.id, user=viewer).id == task.id
+    assert service.get_task(project.id, task.id, user=viewer).id == task.id
     assert [e.action for e in service.list_timeline(project.id, user=viewer)] == [
         TIMELINE_TASK_CREATED
     ]
 
     for call in (
-        lambda: service.transition_task(task.id, user=viewer, target="doing"),
-        lambda: service.update_task(task.id, user=viewer, title="X"),
-        lambda: service.delete_task(task.id, user=viewer),
+        lambda: service.transition_task(project.id, task.id, user=viewer, target="doing"),
+        lambda: service.update_task(project.id, task.id, user=viewer, title="X"),
+        lambda: service.delete_task(project.id, task.id, user=viewer),
     ):
         with pytest.raises(OctopError) as err:
             call()
@@ -437,7 +455,7 @@ def test_non_member_cannot_reach_a_task(
     outsider = Actor(services.user_repo.create(username="out", password_hash="h", role="user"))
 
     with pytest.raises(OctopError) as err:
-        service.get_task(task.id, user=outsider)
+        service.get_task(project.id, task.id, user=outsider)
     assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
 
 
@@ -448,9 +466,9 @@ def test_archived_project_makes_tasks_read_only(
     service.transition_project(project.id, user=owner, target="active")
     service.transition_project(project.id, user=owner, target="archived")
 
-    assert service.get_task(task.id, user=owner).id == task.id
+    assert service.get_task(project.id, task.id, user=owner).id == task.id
     with pytest.raises(OctopError) as err:
-        service.transition_task(task.id, user=owner, target="doing")
+        service.transition_task(project.id, task.id, user=owner, target="doing")
     assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
 
 
@@ -465,7 +483,7 @@ def test_timeline_is_ordered_oldest_first(
 ) -> None:
     first = service.create_task(project.id, user=owner, title="1")
     second = service.create_task(project.id, user=owner, title="2")
-    service.transition_task(first.id, user=owner, target="doing")
+    service.transition_task(project.id, first.id, user=owner, target="doing")
 
     events = service.list_timeline(project.id, user=owner)
     assert [e.task_id for e in events] == [first.id, second.id, first.id]

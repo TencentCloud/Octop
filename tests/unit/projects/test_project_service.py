@@ -470,10 +470,12 @@ def test_activation_requires_the_owner_row_to_keep_the_owner_role(
     assert err.value.code is ErrorCode.PROJECT_STATUS_INVALID
 
 
-def test_unknown_status_is_a_programming_error(service: ProjectService, owner: Actor) -> None:
+def test_unknown_status_is_rejected_with_its_code(service: ProjectService, owner: Actor) -> None:
     project = make_project(service, owner)
-    with pytest.raises(ValueError, match="unknown project status"):
+    with pytest.raises(OctopError) as err:
         service.transition_project(project.id, user=owner, target="exploded")
+    assert err.value.code is ErrorCode.PROJECT_STATUS_INVALID
+    assert err.value.status == 409, "an unknown enum value is a 4xx, never a 500"
 
 
 # ── membership guards ────────────────────────────────────────────────────────
@@ -503,7 +505,7 @@ def test_owner_cannot_be_demoted(service: ProjectService, owner: Actor) -> None:
 
 def test_unknown_role_is_rejected(service: ProjectService, owner: Actor) -> None:
     project = make_project(service, owner)
-    with pytest.raises(ValueError, match="unknown project role"):
+    with pytest.raises(OctopError) as err:
         service.add_member(
             project.id,
             user=owner,
@@ -511,6 +513,8 @@ def test_unknown_role_is_rejected(service: ProjectService, owner: Actor) -> None
             subject_id="agent-1",
             role="wizard",
         )
+    assert err.value.code is ErrorCode.PROJECT_MEMBER_INVALID
+    assert err.value.status == 400, "an unknown enum value is a 4xx, never a 500"
 
 
 def test_viewer_cannot_add_members(
