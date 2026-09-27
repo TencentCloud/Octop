@@ -25,6 +25,7 @@ import {
   KeyRound,
   Lock,
   LockOpen,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -89,6 +90,8 @@ interface AvatarDropdownProps {
   compact?: boolean;
   /** Called before opening settings / password panels (e.g. close mobile nav drawer). */
   onBeforeOpenSettings?: () => void;
+  /** Opens the sidebar layout editor. Omitted when that editor is unavailable. */
+  onCustomizeNav?: () => void;
 }
 
 export default function AvatarDropdown({
@@ -97,6 +100,7 @@ export default function AvatarDropdown({
   placement = "default",
   compact = false,
   onBeforeOpenSettings,
+  onCustomizeNav,
 }: AvatarDropdownProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -281,6 +285,12 @@ export default function AvatarDropdown({
     deferOpen(() => setPasswordOpen(true));
   };
 
+  const openCustomizeNav = () => {
+    setMenuOpen(false);
+    onBeforeOpenSettings?.();
+    deferOpen(() => onCustomizeNav?.());
+  };
+
   const closeSettings = () => setSettingsOpen(false);
   const closePassword = () => setPasswordOpen(false);
 
@@ -380,6 +390,17 @@ export default function AvatarDropdown({
         <Github size={16} strokeWidth={1.8} />
         <span>{t("account.projectUrl")}</span>
       </a>
+
+      {onCustomizeNav ? (
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={openCustomizeNav}
+        >
+          <SlidersHorizontal size={16} strokeWidth={1.8} />
+          <span>{t("nav.customize")}</span>
+        </button>
+      ) : null}
 
       <button type="button" className={styles.menuItem} onClick={openSettings}>
         <Settings size={16} strokeWidth={1.8} />
