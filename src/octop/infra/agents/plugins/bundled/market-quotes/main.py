@@ -88,6 +88,8 @@ async def get_crypto(ids: str = "bitcoin,ethereum") -> str:
             )
             extra = f" {pct:+.2f}%" if isinstance(pct, int | float) else ""
             lines.append(f"{cid} ${usd}{extra}")
+        if not rows:
+            raise RuntimeError("empty quote")
         return _payload({"kind": "crypto", "rows": rows}, "加密货币：" + "；".join(lines))
     except Exception as exc:
         return _payload(
