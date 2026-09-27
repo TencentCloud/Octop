@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   SIDEBAR_GROUPED_NAV_KEYS,
+  SIDEBAR_NAV_KEYS,
   buildNavSections,
   isGroupedNavKey,
 } from "./sidebarNav";
@@ -41,5 +42,20 @@ describe("sidebarNav", () => {
     for (const key of flatKeys) {
       expect(isGroupedNavKey(key)).toBe(false);
     }
+  });
+
+  it("covers every catalog key from the admin nav", () => {
+    const keys = buildNavSections(adminUser, { mobileEnabled: true }).flatMap(
+      (section) => section.items.map((item) => item.key),
+    );
+    expect(new Set(keys)).toEqual(new Set(SIDEBAR_NAV_KEYS));
+    const grouped = buildNavSections(adminUser, { mobileEnabled: true }).filter(
+      (section) => section.id,
+    );
+    expect(grouped.map((section) => section.id)).toEqual([
+      "settings",
+      "control",
+      "admin",
+    ]);
   });
 });
