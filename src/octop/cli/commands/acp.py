@@ -15,7 +15,7 @@ async def _run_acp_server(*, agent_id: str | None, debug: bool) -> None:
     level = logging.DEBUG if debug else logging.WARNING
     logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
 
-    srv = OctopServer()
+    srv = OctopServer(register_im_channels=False)
     await srv.start()
     assert srv.app_runtime is not None
     registry = srv.app_runtime.agent_registry

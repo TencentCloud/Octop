@@ -58,6 +58,27 @@ async def test_gateway_boot_and_shutdown(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("register_im_channels", [False, True])
+async def test_gateway_boot_can_skip_im_channels(
+    tmp_path: Path, register_im_channels: bool
+) -> None:
+    services = _make_services(tmp_path)
+    registry = AgentManager(
+        repos=services.repos,
+        paths=services.paths,
+        config=services.config,
+    )
+    gw = Gateway(agent_manager=registry, repos=services.repos)
+    with (
+        patch.object(services.repos.channel_repo, "list_all", return_value=[MagicMock()]),
+        patch.object(gw, "_safe_register_channel", new_callable=AsyncMock) as register,
+    ):
+        await gw.boot(register_im_channels=register_im_channels)
+        assert register.await_count == int(register_im_channels)
+        await gw.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_create_channel_updates_existing_same_kind(tmp_path: Path) -> None:
     services = _make_services(tmp_path)
     agent_id, user_id = _seed_agent(services, tmp_path)

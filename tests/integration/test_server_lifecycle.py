@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+from octop.infra.gateway.gateway import Gateway
 from octop.infra.server import OctopServer
 from tests.support.app import ensure_control_plane_bound
 
@@ -37,6 +39,25 @@ async def test_start_defers_db_until_bind(tmp_octop_home: Path):
         assert srv.database_bound is True
     finally:
         await srv.stop()
+
+
+async def test_embedded_server_skips_im_channel_registration(tmp_octop_home: Path):
+    boot = Gateway.boot
+    registration_flags: list[bool] = []
+
+    async def record_boot(gateway: Gateway, *, register_im_channels: bool = True) -> None:
+        registration_flags.append(register_im_channels)
+        await boot(gateway, register_im_channels=register_im_channels)
+
+    srv = OctopServer(home=tmp_octop_home, register_im_channels=False)
+    with patch.object(Gateway, "boot", record_boot):
+        await srv.start()
+        try:
+            await _bind_default_sqlite(srv)
+        finally:
+            await srv.stop()
+
+    assert registration_flags == [False]
 
 
 async def test_start_creates_root_and_db(server: OctopServer, tmp_octop_home: Path):

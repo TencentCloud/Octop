@@ -20,7 +20,7 @@ async def embedded_runtime() -> AsyncIterator[OctopServer]:
 
     async with _lock:
         if _server is None:
-            _server = OctopServer()
+            _server = OctopServer(register_im_channels=False)
             await _server.start()
         _refs += 1
         server = _server
