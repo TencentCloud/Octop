@@ -39,7 +39,7 @@ def test_admin_rotate_jwt_help() -> None:
 
 
 def test_channel_group_lists_test_subcommand() -> None:
-    """Plan §13.6 requires ``channel test`` subcommand."""
+    """The channel command group exposes the runtime probe subcommand."""
     runner = CliRunner()
     result = runner.invoke(cli, ["channel", "--help"])
     assert result.exit_code == 0
@@ -54,7 +54,7 @@ def test_channel_test_help() -> None:
 
 
 def test_provider_group_lists_test_subcommand() -> None:
-    """Plan §13.6 requires ``provider test`` subcommand."""
+    """The provider command group exposes the credential probe subcommand."""
     runner = CliRunner()
     result = runner.invoke(cli, ["provider", "--help"])
     assert result.exit_code == 0
@@ -68,7 +68,7 @@ def test_provider_test_help() -> None:
 
 
 def test_root_help_lists_global_options() -> None:
-    """Plan §13.1 mandates root-level --user / --agent / --json options."""
+    """Root help advertises the acting user, agent, and output-format options."""
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
@@ -111,7 +111,7 @@ def test_channel_list_without_agent_errors() -> None:
 
 
 def test_channel_list_json_emits_dump(monkeypatch) -> None:
-    """Plan §13.1: root ``--json`` flips list-style output to JSON.
+    """Root ``--json`` switches list-style output to JSON.
 
     Asserts the rendered output is valid JSON (no Rich box characters)
     and round-trips to the original payload.
