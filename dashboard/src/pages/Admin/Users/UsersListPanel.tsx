@@ -249,8 +249,8 @@ function UserRoleField({
           showStale
             ? t("adminUsers.formUserRoleStale", { name: staleName })
             : showDiverged
-              ? t("adminUsers.formRoleDiverged")
-              : t("adminUsers.formUserRoleHint")
+            ? t("adminUsers.formRoleDiverged")
+            : t("adminUsers.formUserRoleHint")
         }
       >
         <Select
@@ -294,7 +294,9 @@ function UserRoleField({
               committedName.current = null;
               return;
             }
-            const role = visibleRoles.find((item) => item.user_role_id === next);
+            const role = visibleRoles.find(
+              (item) => item.user_role_id === next,
+            );
             if (!role) return;
             if (!confirmOverwrite || committedId.current === next) {
               applyRole(role);
@@ -468,7 +470,10 @@ export function rolePoliciesFromForm(
   const flat = policyPayload(values, options);
   const policies: { name: string; value: string }[] = [];
   if (flat.workspace_root_dir) {
-    policies.push({ name: "workspace_root_dir", value: flat.workspace_root_dir });
+    policies.push({
+      name: "workspace_root_dir",
+      value: flat.workspace_root_dir,
+    });
   }
   if (flat.token_quota != null) {
     policies.push({ name: "token_quota", value: String(flat.token_quota) });
@@ -1151,55 +1156,55 @@ function UserCardGrid({
                 aria-label={t("common.enabled")}
               />
               <Tooltip title={t("common.edit")} mouseEnterDelay={0.5}>
-                  <button
-                    type="button"
-                    className={styles.userCardIconBtn}
-                    onClick={() => onEdit(row)}
-                    aria-label={t("common.edit")}
-                  >
-                    <Pencil size={15} />
-                  </button>
-                </Tooltip>
+                <button
+                  type="button"
+                  className={styles.userCardIconBtn}
+                  onClick={() => onEdit(row)}
+                  aria-label={t("common.edit")}
+                >
+                  <Pencil size={15} />
+                </button>
+              </Tooltip>
 
+              <Tooltip
+                title={t("adminUsers.resetPassword")}
+                mouseEnterDelay={0.5}
+              >
+                <button
+                  type="button"
+                  className={styles.userCardIconBtn}
+                  onClick={() => onResetPassword(row)}
+                  aria-label={t("adminUsers.resetPassword")}
+                >
+                  <KeyRound size={15} />
+                </button>
+              </Tooltip>
+
+              <Popconfirm
+                title={t("adminUsers.deleteConfirm", {
+                  username: row.username,
+                })}
+                onConfirm={() => void onDelete(row)}
+                disabled={isSelf}
+              >
                 <Tooltip
-                  title={t("adminUsers.resetPassword")}
+                  title={
+                    isSelf ? t("adminUsers.deleteSelf") : t("common.delete")
+                  }
                   mouseEnterDelay={0.5}
                 >
                   <button
                     type="button"
-                    className={styles.userCardIconBtn}
-                    onClick={() => onResetPassword(row)}
-                    aria-label={t("adminUsers.resetPassword")}
+                    className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
+                    disabled={isSelf}
+                    aria-label={t("common.delete")}
                   >
-                    <KeyRound size={15} />
+                    <Trash2 size={15} />
                   </button>
                 </Tooltip>
-
-                <Popconfirm
-                  title={t("adminUsers.deleteConfirm", {
-                    username: row.username,
-                  })}
-                  onConfirm={() => void onDelete(row)}
-                  disabled={isSelf}
-                >
-                  <Tooltip
-                    title={
-                      isSelf ? t("adminUsers.deleteSelf") : t("common.delete")
-                    }
-                    mouseEnterDelay={0.5}
-                  >
-                    <button
-                      type="button"
-                      className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
-                      disabled={isSelf}
-                      aria-label={t("common.delete")}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </Tooltip>
-                </Popconfirm>
-                <span className={styles.userCardIdBadge}>#{row.id}</span>
-              </div>
+              </Popconfirm>
+              <span className={styles.userCardIdBadge}>#{row.id}</span>
+            </div>
           </div>
         );
       })}
@@ -1702,7 +1707,9 @@ export default function UsersListPanel() {
         try {
           await uploadUserAvatar(created.id, pendingUserAvatar);
         } catch (err) {
-          message.error(apiErrorMessage(err, t("experts.avatarUploadFailed"), t));
+          message.error(
+            apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+          );
         }
       } else if (pendingUserIcon) {
         try {
@@ -1711,7 +1718,9 @@ export default function UsersListPanel() {
             body: JSON.stringify({ avatar_icon: pendingUserIcon }),
           });
         } catch (err) {
-          message.error(apiErrorMessage(err, t("experts.avatarUploadFailed"), t));
+          message.error(
+            apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+          );
         }
       }
       setPendingUserAvatar(null);
@@ -1735,7 +1744,9 @@ export default function UsersListPanel() {
     const userRole = userRoles.find((role) => role.user_role_id === "user");
     form.setFieldsValue({
       role: "user",
-      permissions: userRole ? [...userRole.permissions] : [...baselinePermissions],
+      permissions: userRole
+        ? [...userRole.permissions]
+        : [...baselinePermissions],
       user_role_id: userRole?.user_role_id,
       role_name: userRole?.user_role_name,
       username: undefined,
