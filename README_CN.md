@@ -394,7 +394,15 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 | `octop plugin` | 安装并管理第三方插件 |
 | `octop backup` | 导出 / 恢复备份 |
 | `octop clean` | 清理 CLI 状态或清空 `~/.octop/` |
+| `octop memory list` | 列出可参与记忆维护的运行中 Agent；不改动数据库。 |
+| `octop memory slim [--agent ID]` | 通过运行中的宿主备份并精简 SQLite 记忆；使用指定 Agent 或按提示选择。在终端与控制台显示进度。[详情](docs/memory-slim.md) |
+| `octop memory slim --all` | 依次维护所有符合条件的运行中 Agent，逐个显示进度；首个失败即停止。 |
 | `octop update` | 检查并安装更新 |
+
+在已登录的 Web 控制台或本地 CLI 聊天中，`/memory slim` 会说明当前 Agent 的维护方式；
+`/memory slim --all` 列出符合条件的 Agent。审阅影响后加 `--confirm` 开始维护。
+使用 `/memory status` 查看进度/结果。维护确认并开始之前，聊天始终可用。
+外部 IM 的记忆维护需要已验证的发送者权限，暂未开放。
 
 完整参考：**[docs/cli.md](docs/cli.md)**。
 
