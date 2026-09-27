@@ -26,6 +26,7 @@ from octop.infra.db.repos.projects import (
 )
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.users import UserRepo
+from octop.infra.errors import ErrorCode, OctopError
 
 
 @pytest.fixture
@@ -344,10 +345,13 @@ def test_task_list_by_thread(db: SqlitePool, owner: int):
 def test_task_thread_must_exist(db: SqlitePool, owner: int):
     """Soft foreign key: a bogus thread_id is rejected, not silently stored."""
     project = ProjectRepo(db).create(owner_user_id=owner, name="A")
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(OctopError) as err:
         ProjectTaskRepo(db).create(
             project_id=project.id, title="T", created_by=owner, thread_id="nope"
         )
+    assert err.value.code is ErrorCode.PROJECT_TASK_THREAD_NOT_FOUND
+    assert err.value.status == 404
+    assert err.value.status != 500
 
 
 def test_task_parent_must_be_in_the_same_project(db: SqlitePool, owner: int):
@@ -357,8 +361,11 @@ def test_task_parent_must_be_in_the_same_project(db: SqlitePool, owner: int):
     b = projects.create(owner_user_id=owner, name="B")
     foreign = tasks.create(project_id=b.id, title="elsewhere", created_by=owner)
 
-    with pytest.raises(ValueError, match="belongs to another project"):
+    with pytest.raises(OctopError) as err:
         tasks.create(project_id=a.id, title="child", created_by=owner, parent_id=foreign.id)
+    assert err.value.code is ErrorCode.PROJECT_TASK_NOT_FOUND
+    assert err.value.status == 404
+    assert err.value.status != 500
 
 
 def test_task_delete(db: SqlitePool, owner: int):

@@ -9,6 +9,8 @@ Both bugs were reported against the wire, so these tests boot a real
   that guarded it).
 * ``status`` / ``role`` values outside the known vocabularies escaped as an
   unhandled ``ValueError`` — HTTP 500 instead of the project error codes.
+* a ``parent_id`` that cannot be used (missing, or belonging to another project)
+  escaped the same way; it is now the ``PROJECT_TASK_NOT_FOUND`` 404 envelope.
 
 Every refusal asserts the error **code** from the standard envelope, not just the
 status: a 404 carrying ``PROJECT_NOT_FOUND`` (the project in the path) would mean
@@ -173,3 +175,32 @@ async def test_bogus_member_role_is_a_client_error(
     )
     assert response.status_code == 400, response.text
     assert _error_code(response) == "PROJECT_MEMBER_INVALID", response.text
+
+
+# ── bug 3: a bad parent_id is a 404 envelope, never an unhandled 500 ─────────
+
+
+async def test_unusable_parent_id_is_a_404_not_a_500(
+    api: tuple[httpx.AsyncClient, dict[str, dict[str, str]]],
+) -> None:
+    """``parent_id`` pointing outside the project (or nowhere) used to escape as an
+    unhandled ``ValueError`` → 500. Both cases share ``PROJECT_TASK_NOT_FOUND``
+    (the message is not asserted: PLAN.md §7 freezes the code, not the text)."""
+    client, users = api
+    alice = users["alice"]
+    pid_a = await _create_project(client, alice, "Apollo")
+    pid_b = await _create_project(client, alice, "Borealis")
+    parent_in_b = await _create_task(client, alice, pid_b, "Parent in B")
+
+    for parent_id in (parent_in_b, "tsk_does_not_exist"):
+        response = await client.post(
+            f"{PROJECTS}/{pid_a}/tasks",
+            headers=alice,
+            json={"title": "child", "parent_id": parent_id},
+        )
+        assert response.status_code == 404, response.text
+        assert response.status_code != 500, response.text
+        assert _error_code(response) == "PROJECT_TASK_NOT_FOUND", response.text
+
+    # Nothing was created by the refused requests.
+    assert await _board(client, alice, pid_a) == []

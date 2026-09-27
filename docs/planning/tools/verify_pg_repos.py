@@ -18,11 +18,11 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 from octop.infra.db.migrate import run_migrations  # noqa: E402
 from octop.infra.db.pool import PostgresPool  # noqa: E402
+from octop.infra.db.repos.project_tasks import ProjectTaskRepo  # noqa: E402
 from octop.infra.db.repos.projects import (  # noqa: E402
     MEMBER_SUBJECT_USER,
     ProjectMemberRepo,
     ProjectRepo,
-    ProjectTaskRepo,
 )
 from octop.infra.db.repos.users import UserRepo  # noqa: E402
 

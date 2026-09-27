@@ -180,8 +180,11 @@ def test_create_task_requires_write(
 
 
 def test_parent_task_must_exist(service: ProjectService, project: Any, owner: Actor) -> None:
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(OctopError) as err:
         service.create_task(project.id, user=owner, title="child", parent_id="nope")
+    assert err.value.code is ErrorCode.PROJECT_TASK_NOT_FOUND
+    assert err.value.status == 404
+    assert err.value.status != 500
 
 
 def test_parent_task_must_belong_to_the_same_project(
@@ -190,8 +193,11 @@ def test_parent_task_must_belong_to_the_same_project(
     other = service.create_project(owner_user=owner, name="Beta")
     foreign_parent = service.create_task(other.id, user=owner, title="elsewhere")
 
-    with pytest.raises(ValueError, match="belongs to another project"):
+    with pytest.raises(OctopError) as err:
         service.create_task(project.id, user=owner, title="child", parent_id=foreign_parent.id)
+    assert err.value.code is ErrorCode.PROJECT_TASK_NOT_FOUND
+    assert err.value.status == 404
+    assert err.value.status != 500
 
 
 def test_task_can_nest_in_its_own_project(
@@ -204,13 +210,33 @@ def test_task_can_nest_in_its_own_project(
 
 def test_task_cannot_be_its_own_parent(service: ProjectService, project: Any, owner: Actor) -> None:
     task = service.create_task(project.id, user=owner, title="T")
-    with pytest.raises(ValueError, match="cannot be its own parent"):
+    with pytest.raises(OctopError) as err:
         service.update_task(project.id, task.id, user=owner, parent_id=task.id)
+    assert err.value.code is ErrorCode.PROJECT_TASK_NOT_FOUND
+    assert err.value.status != 500
 
 
 def test_unknown_thread_is_rejected(service: ProjectService, project: Any, owner: Actor) -> None:
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(OctopError) as err:
         service.create_task(project.id, user=owner, title="T", thread_id="th_missing")
+    assert err.value.code is ErrorCode.PROJECT_TASK_THREAD_NOT_FOUND
+    assert err.value.status == 404
+    assert err.value.status != 500
+
+
+def test_unknown_thread_is_rejected_on_the_update_path_too(
+    service: ProjectService, project: Any, owner: Actor
+) -> None:
+    """``update`` takes the same soft-FK check, so it must answer the same code."""
+    task = service.create_task(project.id, user=owner, title="T")
+
+    with pytest.raises(OctopError) as err:
+        service.update_task(project.id, task.id, user=owner, thread_id="th_missing")
+
+    assert err.value.code is ErrorCode.PROJECT_TASK_THREAD_NOT_FOUND
+    assert err.value.status == 404
+    assert err.value.status != 500
+    assert service.get_task(project.id, task.id, user=owner).thread_id is None
 
 
 def _insert_thread(services: SimpleNamespace, thread_id: str, user_id: int) -> None:

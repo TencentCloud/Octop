@@ -103,3 +103,65 @@ def test_config_file_corrupt_interpolates_path_and_detail():
     for locale in ("en", "zh"):
         msg = error_message("CONFIG_FILE_CORRUPT", locale, **kwargs)
         assert "{path}" not in msg and "{detail}" not in msg
+
+
+# ── PROJECT_TASK_THREAD_NOT_FOUND: zh is asserted explicitly ─────────────────
+#
+# ``loader.lookup`` falls back to English when a zh key is missing, so an en-only
+# check would stay green while zh users read English. The zh value below is frozen
+# by PLAN.md §7 / SPEC.md §边界与禁止项.
+
+
+def test_project_task_thread_not_found_zh_is_frozen():
+    assert error_message("PROJECT_TASK_THREAD_NOT_FOUND", "zh") == "关联会话不存在，无法创建任务"
+
+
+def test_dashboard_api_error_zh_carries_the_same_frozen_text():
+    repo = Path(__file__).resolve().parents[3]
+    dash_zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
+    assert dash_zh["apiErrors"]["PROJECT_TASK_THREAD_NOT_FOUND"] == error_message(
+        "PROJECT_TASK_THREAD_NOT_FOUND", "zh"
+    )
+
+
+def test_api_errors_namespaces_agree_in_both_locales():
+    """The ``errors`` / ``apiErrors`` namespaces only — never the whole tree.
+
+    Dashboard en/zh key trees differ outside these namespaces by design, so a
+    whole-file equality assertion would be a false failure.
+    """
+    repo = Path(__file__).resolve().parents[3]
+    for locale in ("en", "zh"):
+        dash = json.loads(
+            (repo / f"dashboard/src/locales/{locale}.json").read_text(encoding="utf-8")
+        )
+        backend = json.loads((repo / f"src/octop/i18n/{locale}.json").read_text(encoding="utf-8"))
+        assert set(dash["apiErrors"]) == set(backend["errors"]) == {c.value for c in ErrorCode}
+
+
+def test_backend_locales_have_identical_key_trees():
+    repo = Path(__file__).resolve().parents[3]
+    en = json.loads((repo / "src/octop/i18n/en.json").read_text(encoding="utf-8"))
+    zh = json.loads((repo / "src/octop/i18n/zh.json").read_text(encoding="utf-8"))
+
+    def tree(value: object) -> object:
+        return {k: tree(v) for k, v in value.items()} if isinstance(value, dict) else True
+
+    assert tree(en) == tree(zh)
+
+
+def test_dashboard_chat_labels_are_paired_and_localized():
+    """The four S0/T2.6 labels — namespace-level parity, frozen zh wording."""
+    repo = Path(__file__).resolve().parents[3]
+    en = json.loads((repo / "dashboard/src/locales/en.json").read_text(encoding="utf-8"))
+    zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
+    assert set(en["chat"]) == set(zh["chat"])
+    assert len(zh["chat"]) == 211
+    assert zh["chat"]["sectionPinned"] == "置顶"
+    assert zh["chat"]["sectionActive"] == "会话"
+    assert zh["chat"]["sectionUnused"] == "未使用"
+    assert zh["chat"]["projectSessionBadge"] == "项目会话"
+    assert en["chat"]["sectionPinned"] == "Pinned"
+    assert en["chat"]["sectionActive"] == "Chats"
+    assert en["chat"]["sectionUnused"] == "Unused"
+    assert en["chat"]["projectSessionBadge"] == "Project chat"

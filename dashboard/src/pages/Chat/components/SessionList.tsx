@@ -1,4 +1,12 @@
-import { memo, useCallback, useMemo, useState, useRef, useEffect } from "react";
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useMemo,
+  useState,
+  useRef,
+  useEffect,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Dropdown } from "antd";
@@ -14,8 +22,10 @@ import {
   GitFork,
   Eye,
   EyeOff,
+  RefreshCw,
 } from "lucide-react";
 import type { Session } from "../hooks/useSessions";
+import type { InboxByAgent } from "../hooks/useSessionInbox";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { showConfirmModal } from "../../../utils/confirmModal";
@@ -24,6 +34,7 @@ import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import SessionChannelIcon from "./SessionChannelIcon";
 import SharedExpertHint from "./SharedExpertHint";
 import TeamChatBadge from "./TeamChatBadge";
+import SessionGroupHeader from "./SessionGroupHeader";
 import styles from "../index.module.less";
 
 function AgentUnreadBadge({ count }: { count: number }) {
@@ -39,14 +50,98 @@ function AgentUnreadBadge({ count }: { count: number }) {
   );
 }
 
-interface SessionItemProps {
-  session: Session;
-  isActive: boolean;
-  onSelect: (id: string) => void;
+/** Session count marker on an agent row (PLAN §8.2: ``▸ n``). */
+function SessionCountMark({ count }: { count: number }) {
+  if (!count || count <= 0) return null;
+  return (
+    <span
+      style={{
+        flexShrink: 0,
+        fontSize: 12,
+        color: "var(--fn-text-tertiary)",
+      }}
+    >
+      ▸ {count}
+    </span>
+  );
+}
+
+/**
+ * 「项目会话」marker. Renders on session rows only — the agent row carries the
+ * team badge (S-4: 群聊 → 项目会话, on separate rows, fixed order).
+ * Definition (S-11): only sessions produced by project-task dispatch.
+ */
+function ProjectSessionBadge() {
+  const { t } = useTranslation();
+  const label = t("chat.projectSessionBadge");
+  return (
+    <span className={styles.sharedExpertFlag} aria-label={label}>
+      {label}
+    </span>
+  );
+}
+
+interface SessionProjectGroup {
+  projectId: string | null;
+  projectName: string | null;
+  sessions: Session[];
+}
+
+/**
+ * Group rendered session rows by project: project chats first (projectName
+ * asc, then projectId asc), non-project chats keep their incoming time order.
+ * Project fields come from the API only — never re-derived here (T2.6).
+ */
+function groupSessionsByProject(sessions: Session[]): SessionProjectGroup[] {
+  const byProject = new Map<string, SessionProjectGroup>();
+  const noProject: Session[] = [];
+  for (const session of sessions) {
+    if (session.projectId == null) {
+      noProject.push(session);
+      continue;
+    }
+    const existing = byProject.get(session.projectId);
+    if (existing) {
+      existing.sessions.push(session);
+    } else {
+      byProject.set(session.projectId, {
+        projectId: session.projectId,
+        projectName: session.projectName ?? null,
+        sessions: [session],
+      });
+    }
+  }
+  const groups = [...byProject.values()].sort((a, b) => {
+    const an = a.projectName ?? "";
+    const bn = b.projectName ?? "";
+    if (an !== bn) return an.localeCompare(bn);
+    return (a.projectId ?? "").localeCompare(b.projectId ?? "");
+  });
+  if (noProject.length > 0) {
+    groups.push({ projectId: null, projectName: null, sessions: noProject });
+  }
+  return groups;
+}
+
+interface SessionManageHandlers {
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
+}
+
+interface SessionItemProps {
+  session: Session;
+  isActive: boolean;
+  onSelect: (id: string) => void;
+  /**
+   * Row management is agent-scoped, so the 📌 pinned section omits the menu for
+   * sessions owned by another agent (a click still switches to that session).
+   */
+  onDelete?: (id: string) => void;
+  onRename?: (id: string, name: string) => void;
+  onPin?: (id: string, pinned: boolean) => void;
+  onFork?: (id: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
 }
@@ -81,7 +176,7 @@ const SessionItem = memo(function SessionItem({
   const commitEdit = useCallback(() => {
     const trimmed = editValue.trim();
     if (trimmed && trimmed !== session.name) {
-      onRename(session.id, trimmed);
+      onRename?.(session.id, trimmed);
     } else {
       setEditValue(session.name);
     }
@@ -93,57 +188,64 @@ const SessionItem = memo(function SessionItem({
     ? t("chat.forkNoAssistant")
     : forkDisabledHint;
 
-  const menuItems: MenuProps["items"] = [
-    {
-      key: "pin",
-      label: session.pinned
-        ? t("chat.unpin", "取消置顶")
-        : t("chat.pin", "置顶"),
-      icon: session.pinned ? <PinOff size={14} /> : <Pin size={14} />,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        onPin(session.id, !session.pinned);
-      },
-    },
-    {
-      key: "fork",
-      label: t("chat.fork", "分叉"),
-      icon: <GitFork size={14} />,
-      disabled: itemForkDisabled,
-      title: itemForkDisabled && itemForkHint ? itemForkHint : undefined,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        onFork(session.id);
-      },
-    },
-    {
-      key: "rename",
-      label: t("common.rename"),
-      icon: <Pencil size={14} />,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        setIsEditing(true);
-      },
-    },
-    {
-      key: "delete",
-      label: t("common.delete", "Delete"),
-      icon: <Trash2 size={14} />,
-      danger: true,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        showConfirmModal({
-          title: t("chat.deleteSessionConfirm"),
-          okText: t("common.delete"),
-          cancelText: t("common.cancel"),
-          okButtonProps: { danger: true },
-          onOk: () => {
-            onDelete(session.id);
+  const manage: SessionManageHandlers | null =
+    onDelete && onRename && onPin && onFork
+      ? { onDelete, onRename, onPin, onFork }
+      : null;
+
+  const menuItems: MenuProps["items"] = manage
+    ? [
+        {
+          key: "pin",
+          label: session.pinned
+            ? t("chat.unpin", "取消置顶")
+            : t("chat.pin", "置顶"),
+          icon: session.pinned ? <PinOff size={14} /> : <Pin size={14} />,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            manage.onPin(session.id, !session.pinned);
           },
-        });
-      },
-    },
-  ];
+        },
+        {
+          key: "fork",
+          label: t("chat.fork", "分叉"),
+          icon: <GitFork size={14} />,
+          disabled: itemForkDisabled,
+          title: itemForkDisabled && itemForkHint ? itemForkHint : undefined,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            manage.onFork(session.id);
+          },
+        },
+        {
+          key: "rename",
+          label: t("common.rename"),
+          icon: <Pencil size={14} />,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            setIsEditing(true);
+          },
+        },
+        {
+          key: "delete",
+          label: t("common.delete", "Delete"),
+          icon: <Trash2 size={14} />,
+          danger: true,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            showConfirmModal({
+              title: t("chat.deleteSessionConfirm"),
+              okText: t("common.delete"),
+              cancelText: t("common.cancel"),
+              okButtonProps: { danger: true },
+              onOk: () => {
+                manage.onDelete(session.id);
+              },
+            });
+          },
+        },
+      ]
+    : [];
 
   return (
     <div
@@ -183,6 +285,7 @@ const SessionItem = memo(function SessionItem({
       ) : (
         <>
           <span className={styles.sessionRowTitle}>{session.name}</span>
+          {session.projectId != null ? <ProjectSessionBadge /> : null}
           {session.pinned ? (
             <span
               className={styles.sessionRowPinIndicator}
@@ -191,20 +294,22 @@ const SessionItem = memo(function SessionItem({
               <Pin size={12} strokeWidth={2} />
             </span>
           ) : null}
-          <Dropdown
-            menu={{ items: menuItems }}
-            trigger={["click"]}
-            placement="bottomRight"
-          >
-            <button
-              type="button"
-              className={styles.sessionRowMore}
-              aria-label={t("common.more", "More")}
-              onClick={(e) => e.stopPropagation()}
+          {manage ? (
+            <Dropdown
+              menu={{ items: menuItems }}
+              trigger={["click"]}
+              placement="bottomRight"
             >
-              <MoreHorizontal size={15} />
-            </button>
-          </Dropdown>
+              <button
+                type="button"
+                className={styles.sessionRowMore}
+                aria-label={t("common.more", "More")}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal size={15} />
+              </button>
+            </Dropdown>
+          ) : null}
         </>
       )}
     </div>
@@ -214,6 +319,7 @@ const SessionItem = memo(function SessionItem({
 interface AgentCardProps {
   agent: OctopAgent;
   sessions: Session[];
+  sessionCount: number;
   activeId: string | null;
   searchQuery: string;
   hasMore: boolean;
@@ -234,6 +340,7 @@ interface AgentCardProps {
 function ActiveAgentCard({
   agent,
   sessions,
+  sessionCount,
   activeId,
   searchQuery,
   hasMore,
@@ -258,6 +365,11 @@ function ActiveAgentCard({
     if (!q) return sessions;
     return sessions.filter((s) => s.name.toLowerCase().includes(q));
   }, [sessions, searchQuery]);
+
+  const sessionGroups = useMemo(
+    () => groupSessionsByProject(filteredSessions),
+    [filteredSessions],
+  );
 
   const fetchAllRequestedRef = useRef(false);
   useEffect(() => {
@@ -304,6 +416,7 @@ function ActiveAgentCard({
               <TeamChatBadge agent={agent} />
               <SharedExpertHint agent={agent} />
             </div>
+            <SessionCountMark count={sessionCount} />
             <AgentUnreadBadge count={agent.unread_count ?? 0} />
             <button
               type="button"
@@ -357,23 +470,34 @@ function ActiveAgentCard({
           </div>
         ) : (
           <>
-            {filteredSessions.map((s) => (
-              <SessionItem
-                key={s.id}
-                session={s}
-                isActive={activeId === s.id}
-                onSelect={(id) => onSelect(id, agent.agent_id)}
-                onDelete={onDelete}
-                onRename={onRename}
-                onPin={onPin}
-                onFork={onFork}
-                forkDisabled={
-                  activeId === s.id ? activeForkDisabled : undefined
-                }
-                forkDisabledHint={
-                  activeId === s.id ? activeForkDisabledHint : undefined
-                }
-              />
+            {sessionGroups.map((group) => (
+              <Fragment key={group.projectId ?? "__no_project__"}>
+                {group.projectId != null && group.projectName ? (
+                  <SessionGroupHeader
+                    nested
+                    title={group.projectName}
+                    count={group.sessions.length}
+                  />
+                ) : null}
+                {group.sessions.map((s) => (
+                  <SessionItem
+                    key={s.id}
+                    session={s}
+                    isActive={activeId === s.id}
+                    onSelect={(id) => onSelect(id, agent.agent_id)}
+                    onDelete={onDelete}
+                    onRename={onRename}
+                    onPin={onPin}
+                    onFork={onFork}
+                    forkDisabled={
+                      activeId === s.id ? activeForkDisabled : undefined
+                    }
+                    forkDisabledHint={
+                      activeId === s.id ? activeForkDisabledHint : undefined
+                    }
+                  />
+                ))}
+              </Fragment>
             ))}
             {showExpandMore ? (
               <button
@@ -396,6 +520,7 @@ function ActiveAgentCard({
 
 interface AgentRowProps {
   agent: OctopAgent;
+  sessionCount?: number;
   onSelect: () => void;
   onNewChat?: () => void;
   onHide?: () => void;
@@ -404,6 +529,7 @@ interface AgentRowProps {
 
 function InactiveAgentRow({
   agent,
+  sessionCount = 0,
   onSelect,
   onNewChat,
   onHide,
@@ -443,6 +569,7 @@ function InactiveAgentRow({
               <TeamChatBadge agent={agent} />
               <SharedExpertHint agent={agent} />
             </div>
+            <SessionCountMark count={sessionCount} />
             <AgentUnreadBadge count={agent.unread_count ?? 0} />
             {onNewChat ? (
               <button
@@ -495,8 +622,14 @@ interface SessionListProps {
   activeAgentId: string | null;
   hasMore: boolean;
   loadingMore: boolean;
+  /** Inbox snapshot: the only input for section assignment (PLAN §6). */
+  inboxByAgent: InboxByAgent;
+  /** Cross-agent pinned rows — the 📌 section data source (PLAN §8.1). */
+  pinnedSessions: Session[];
   onLoadMore: () => void;
   onFetchAllSessions: () => void;
+  /** User-triggered inbox refresh (S-10); never called implicitly. */
+  onRefreshInbox: () => void;
   onSelect: (sessionId: string, agentId: string) => void;
   onAgentSelect: (agentId: string) => void;
   onNewChat: (agentId: string) => void;
@@ -515,8 +648,11 @@ export default function SessionList({
   activeAgentId,
   hasMore,
   loadingMore,
+  inboxByAgent,
+  pinnedSessions,
   onLoadMore,
   onFetchAllSessions,
+  onRefreshInbox,
   onSelect,
   onAgentSelect,
   onNewChat,
@@ -531,7 +667,9 @@ export default function SessionList({
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [showingHidden, setShowingHidden] = useState(false);
-  const { filterVisible, pickHidden, hide, unhide, canHide } =
+  /** 📦 collapse state only — search force-expansion never writes back (S-2). */
+  const [unusedExpanded, setUnusedExpanded] = useState(false);
+  const { filterVisible, pickHidden, hide, unhide, canHide, isHidden } =
     useHiddenSharedExperts();
 
   const hiddenAgents = useMemo(
@@ -548,18 +686,139 @@ export default function SessionList({
 
   // Leave the hidden-only view once nothing remains hidden.
   const viewingHidden = showingHidden && hiddenAgents.length > 0;
-  const agentsToRender = viewingHidden ? hiddenAgents : sortedAgents;
 
   const expandedAgentId = useMemo(
     () =>
       viewingHidden ? null : activeAgentId ?? sortedAgents[0]?.agent_id ?? null,
     [activeAgentId, sortedAgents, viewingHidden],
   );
-  const activeAgent = useMemo(
+  const expandedAgent = useMemo(
     () => sortedAgents.find((a) => a.agent_id === expandedAgentId) ?? null,
     [sortedAgents, expandedAgentId],
   );
-  const showSessions = isAgentChatReady(activeAgent?.state);
+  const showSessions = isAgentChatReady(expandedAgent?.state);
+
+  const query = searchQuery.trim().toLowerCase();
+  const searching = query.length > 0;
+  const matchesSearch = useCallback(
+    (name: string) => !searching || name.toLowerCase().includes(query),
+    [searching, query],
+  );
+
+  // 📌 pinned rows: hidden experts are dropped from the pinned section too (S-6).
+  const visiblePinned = useMemo(() => {
+    const notHidden = pinnedSessions.filter(
+      (s) => !s.agentId || !isHidden(s.agentId),
+    );
+    return searching
+      ? notHidden.filter((s) => s.name.toLowerCase().includes(query))
+      : notHidden;
+  }, [pinnedSessions, isHidden, searching, query]);
+
+  // Section assignment: only ``inboxByAgent[id].hasActivity`` may decide (PLAN §6).
+  const activeSectionAgents = useMemo(
+    () =>
+      sortedAgents.filter(
+        (a) => inboxByAgent[a.agent_id]?.hasActivity === true,
+      ),
+    [sortedAgents, inboxByAgent],
+  );
+  const unusedSectionAgents = useMemo(
+    () =>
+      sortedAgents.filter(
+        (a) => inboxByAgent[a.agent_id]?.hasActivity !== true,
+      ),
+    [sortedAgents, inboxByAgent],
+  );
+
+  // The expanded (current) agent stays reachable while searching (S-9).
+  const keepAgentRow = useCallback(
+    (agent: OctopAgent) =>
+      agent.agent_id === expandedAgentId || matchesSearch(agent.name),
+    [expandedAgentId, matchesSearch],
+  );
+  const activeRows = useMemo(
+    () => activeSectionAgents.filter(keepAgentRow),
+    [activeSectionAgents, keepAgentRow],
+  );
+  const unusedRows = useMemo(
+    () => unusedSectionAgents.filter(keepAgentRow),
+    [unusedSectionAgents, keepAgentRow],
+  );
+
+  // S-8: with no sessions at all, 📦 is force-expanded so the sidebar is never blank.
+  const hasAnySession =
+    pinnedSessions.length > 0 || Object.keys(inboxByAgent).length > 0;
+  // S-9: the current agent must not be collapsed out of reach.
+  const unusedHoldsExpanded = unusedRows.some(
+    (a) => a.agent_id === expandedAgentId,
+  );
+  const unusedVisible =
+    unusedExpanded || searching || !hasAnySession || unusedHoldsExpanded;
+
+  const renderAgentRow = useCallback(
+    (agent: OctopAgent) => {
+      const inboxRow = inboxByAgent[agent.agent_id];
+      const sessionCount = inboxRow?.sessionCount ?? 0;
+      if (agent.agent_id === expandedAgentId) {
+        return (
+          <ActiveAgentCard
+            key={agent.agent_id}
+            agent={agent}
+            sessions={sessions}
+            sessionCount={sessionCount}
+            activeId={activeId}
+            searchQuery={searchQuery}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            onLoadMore={onLoadMore}
+            onFetchAllSessions={onFetchAllSessions}
+            onSelect={onSelect}
+            onNewChat={onNewChat}
+            onDelete={onDelete}
+            onRename={onRename}
+            onPin={onPin}
+            onFork={onFork}
+            activeForkDisabled={activeForkDisabled}
+            activeForkDisabledHint={activeForkDisabledHint}
+            onHide={canHide(agent) ? () => hide(agent.agent_id) : undefined}
+          />
+        );
+      }
+      return (
+        <InactiveAgentRow
+          key={agent.agent_id}
+          agent={agent}
+          sessionCount={sessionCount}
+          onSelect={() => onAgentSelect(agent.agent_id)}
+          onNewChat={() => onNewChat(agent.agent_id)}
+          onHide={canHide(agent) ? () => hide(agent.agent_id) : undefined}
+        />
+      );
+    },
+    [
+      inboxByAgent,
+      expandedAgentId,
+      sessions,
+      activeId,
+      searchQuery,
+      hasMore,
+      loadingMore,
+      onLoadMore,
+      onFetchAllSessions,
+      onSelect,
+      onNewChat,
+      onDelete,
+      onRename,
+      onPin,
+      onFork,
+      activeForkDisabled,
+      activeForkDisabledHint,
+      canHide,
+      hide,
+      onAgentSelect,
+    ],
+  );
 
   return (
     <div className={styles.sessionList}>
@@ -578,6 +837,15 @@ export default function SessionList({
             placeholder={t("chat.searchSessions", "搜索会话")}
             aria-label={t("chat.searchSessions", "搜索会话")}
           />
+          <button
+            type="button"
+            className={styles.sessionAddBtn}
+            aria-label={t("common.refresh")}
+            title={t("common.refresh")}
+            onClick={onRefreshInbox}
+          >
+            <RefreshCw size={14} aria-hidden />
+          </button>
         </div>
       ) : null}
 
@@ -596,59 +864,100 @@ export default function SessionList({
         </div>
       ) : (
         <div className={styles.sessionItems}>
-          {viewingHidden
-            ? hiddenAgents.map((agent) => (
-                <InactiveAgentRow
-                  key={agent.agent_id}
-                  agent={agent}
-                  onSelect={() => {
-                    unhide(agent.agent_id);
-                    setShowingHidden(false);
-                    onAgentSelect(agent.agent_id);
-                  }}
-                  onUnhide={() => unhide(agent.agent_id)}
-                />
-              ))
-            : agentsToRender.map((agent) => {
-                const expanded = agent.agent_id === expandedAgentId;
-                if (expanded) {
-                  return (
-                    <ActiveAgentCard
-                      key={agent.agent_id}
-                      agent={agent}
-                      sessions={sessions}
-                      activeId={activeId}
-                      searchQuery={searchQuery}
-                      hasMore={hasMore}
-                      loadingMore={loadingMore}
-                      onLoadMore={onLoadMore}
-                      onFetchAllSessions={onFetchAllSessions}
-                      onSelect={onSelect}
-                      onNewChat={onNewChat}
-                      onDelete={onDelete}
-                      onRename={onRename}
-                      onPin={onPin}
-                      onFork={onFork}
-                      activeForkDisabled={activeForkDisabled}
-                      activeForkDisabledHint={activeForkDisabledHint}
-                      onHide={
-                        canHide(agent) ? () => hide(agent.agent_id) : undefined
-                      }
-                    />
-                  );
-                }
-                return (
-                  <InactiveAgentRow
-                    key={agent.agent_id}
-                    agent={agent}
-                    onSelect={() => onAgentSelect(agent.agent_id)}
-                    onNewChat={() => onNewChat(agent.agent_id)}
-                    onHide={
-                      canHide(agent) ? () => hide(agent.agent_id) : undefined
-                    }
+          {viewingHidden ? (
+            hiddenAgents.map((agent) => (
+              <InactiveAgentRow
+                key={agent.agent_id}
+                agent={agent}
+                onSelect={() => {
+                  unhide(agent.agent_id);
+                  setShowingHidden(false);
+                  onAgentSelect(agent.agent_id);
+                }}
+                onUnhide={() => unhide(agent.agent_id)}
+              />
+            ))
+          ) : (
+            <>
+              {/* 📌 置顶段 — cross-agent page-entry snapshot, hidden when empty. */}
+              {visiblePinned.length > 0 ? (
+                <section data-testid="session-section-pinned">
+                  <SessionGroupHeader
+                    icon="📌"
+                    title={t("chat.sectionPinned")}
+                    count={visiblePinned.length}
                   />
-                );
-              })}
+                  <div className={styles.agentRowList}>
+                    {groupSessionsByProject(visiblePinned).map((group) => (
+                      <Fragment key={group.projectId ?? "__no_project__"}>
+                        {group.projectId != null && group.projectName ? (
+                          <SessionGroupHeader
+                            nested
+                            title={group.projectName}
+                            count={group.sessions.length}
+                          />
+                        ) : null}
+                        {group.sessions.map((session) => {
+                          const manage =
+                            !session.agentId ||
+                            session.agentId === activeAgentId;
+                          return (
+                            <SessionItem
+                              key={session.id}
+                              session={session}
+                              isActive={activeId === session.id}
+                              onSelect={(id) =>
+                                onSelect(
+                                  id,
+                                  session.agentId ?? activeAgentId ?? "",
+                                )
+                              }
+                              onDelete={manage ? onDelete : undefined}
+                              onRename={manage ? onRename : undefined}
+                              onPin={manage ? onPin : undefined}
+                              onFork={manage ? onFork : undefined}
+                            />
+                          );
+                        })}
+                      </Fragment>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {/* 💬 会话段 — agents whose inbox row reports has_activity. */}
+              {activeRows.length > 0 ? (
+                <section data-testid="session-section-active">
+                  <SessionGroupHeader
+                    icon="💬"
+                    title={t("chat.sectionActive")}
+                    count={activeRows.length}
+                  />
+                  {activeRows.map(renderAgentRow)}
+                </section>
+              ) : null}
+
+              {/* 📦 未使用段 — default collapsed; force-expanded on search (S-2),
+                  when nothing is active (S-8) or when the current agent is here (S-9). */}
+              {unusedRows.length > 0 ? (
+                <section data-testid="session-section-unused">
+                  <SessionGroupHeader
+                    icon="📦"
+                    title={t("chat.sectionUnused")}
+                    count={unusedRows.length}
+                    collapsible
+                    expanded={unusedVisible}
+                    onToggle={() => setUnusedExpanded((v) => !v)}
+                  />
+                  {unusedVisible ? (
+                    <div className={styles.agentRowList}>
+                      {unusedRows.map(renderAgentRow)}
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+            </>
+          )}
           {hiddenAgents.length > 0 ? (
             <button
               type="button"

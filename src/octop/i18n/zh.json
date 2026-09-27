@@ -453,6 +453,7 @@
     "PROJECT_MEMBER_INVALID": "不允许的成员变更。",
     "PROJECT_STATUS_INVALID": "不允许的项目状态流转。",
     "PROJECT_TASK_NOT_FOUND": "任务不存在。",
+    "PROJECT_TASK_THREAD_NOT_FOUND": "关联会话不存在，无法创建任务",
     "PROJECT_TASK_STATUS_INVALID": "不允许的任务状态流转。",
     "PROJECT_NODE_NOT_FOUND": "需求节点不存在。",
     "PROJECT_NODE_NOT_CONFIRMED": "该需求节点尚未确认。",

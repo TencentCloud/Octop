@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-REPO = Path(r"D:\nancc\octop\Octop-develop")
+REPO = Path(__file__).resolve().parents[3]
 MIGRATIONS = REPO / "src/octop/infra/db/migrations"
 MIGRATE_PY = REPO / "src/octop/infra/db/migrate.py"
 
@@ -87,13 +87,16 @@ def main() -> int:
        "_ensure_user_role_schema" in src or "if version == 18:" in src)
 
     print("5) schema-version assertions were re-bumped to 19")
+    # Only ``tests/`` is scanned: the planning docs and this very script mention
+    # the old numbers on purpose (they describe the renumber), so a whole-repo
+    # grep reports them as false positives.
     files = subprocess.run(
-        ["git", "grep", "-l", "-E", r"assert (v|version) == 18|schema_version\"\] == 18|runtime_schema_version\": 18"],
+        ["git", "grep", "-l", "-E", r"assert (v|version) == 18|schema_version\"\] == 18|runtime_schema_version\": 18", "--", "tests/"],
         cwd=REPO, capture_output=True, text=True, encoding="utf-8",
     ).stdout.split()
     ok("no test still asserts 18", not files, str(files) if files else "")
     hits = subprocess.run(
-        ["git", "grep", "-c", "-E", r"assert (v|version) == 19|schema_version\"\] == 19|runtime_schema_version\": 19"],
+        ["git", "grep", "-c", "-E", r"assert (v|version) == 19|schema_version\"\] == 19|runtime_schema_version\": 19", "--", "tests/"],
         cwd=REPO, capture_output=True, text=True, encoding="utf-8",
     ).stdout
     print("     19-assertions per file:")

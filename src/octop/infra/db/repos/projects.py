@@ -13,6 +13,7 @@ service layer, so this module stays SQL-only.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
@@ -22,6 +23,7 @@ from octop.infra.db.repos._base import (
     map_rows,
     now_ts,
     optional_updates,
+    sql_in_placeholders,
 )
 from octop.infra.utils.ulid import new_short_id
 
@@ -81,6 +83,14 @@ class ProjectRow:
             created_at=int(r["created_at"]),
             updated_at=int(r["updated_at"]),
         )
+
+
+@dataclass(frozen=True)
+class ThreadProjectRef:
+    """The project a conversation was dispatched from (scalar, one per thread)."""
+
+    project_id: str
+    project_name: str
 
 
 class ProjectRepo:
@@ -166,6 +176,42 @@ class ProjectRepo:
                 (user_id, MEMBER_SUBJECT_USER, str(user_id)),
             ).fetchall()
         return map_rows(rows, ProjectRow)
+
+    def projects_by_thread(self, thread_ids: Iterable[str]) -> dict[str, ThreadProjectRef]:
+        """Reverse lookup: the project each conversation was dispatched from.
+
+        The single thread→project entry point (PLAN.md §4). The data source is
+        ``project_tasks.thread_id`` — written only by task dispatch — so a
+        conversation the user opened by hand is never a project chat.
+
+        A thread can carry tasks from several projects; the most recently
+        updated task wins (``updated_at DESC, task_id DESC``), which keeps every
+        value a scalar. One SQL statement, no status/membership filtering: the
+        caller has already scoped the thread ids to the current user.
+        """
+        ids = [str(t) for t in thread_ids]
+        if not ids:
+            return {}
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT t.thread_id, t.project_id, p.name AS project_name "
+                "FROM project_tasks t "
+                "JOIN projects p ON p.project_id = t.project_id "
+                f"WHERE t.thread_id IN ({sql_in_placeholders(len(ids))}) "
+                "ORDER BY t.thread_id ASC, t.updated_at DESC, t.task_id DESC",
+                ids,
+            ).fetchall()
+        refs: dict[str, ThreadProjectRef] = {}
+        for r in rows:
+            # Rows arrive best-first per thread; keep the first one only.
+            refs.setdefault(
+                str(r["thread_id"]),
+                ThreadProjectRef(
+                    project_id=str(r["project_id"]),
+                    project_name=str(r["project_name"]),
+                ),
+            )
+        return refs
 
     def update(
         self,

@@ -61,8 +61,8 @@ def main() -> int:
         run_migrations(pool)
         names = tables(pool)
         missing = sorted(set(PROJECT_TABLES) - names)
-        ok = not missing and version(pool) == 18
-        report("version == 18", version(pool) == 18, f"got {version(pool)}")
+        ok = not missing and version(pool) == 19
+        report("version == 19", version(pool) == 19, f"got {version(pool)}")
         report("10 project tables exist", not missing, f"missing={missing}" if missing else "")
         failures += 0 if ok else 1
 

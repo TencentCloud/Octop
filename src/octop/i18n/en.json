@@ -453,6 +453,7 @@
     "PROJECT_MEMBER_INVALID": "That membership change is not allowed.",
     "PROJECT_STATUS_INVALID": "That project status change is not allowed.",
     "PROJECT_TASK_NOT_FOUND": "Task not found.",
+    "PROJECT_TASK_THREAD_NOT_FOUND": "The linked conversation does not exist; the task was not created.",
     "PROJECT_TASK_STATUS_INVALID": "That task status change is not allowed.",
     "PROJECT_NODE_NOT_FOUND": "Requirement node not found.",
     "PROJECT_NODE_NOT_CONFIRMED": "This requirement node has not been confirmed yet.",

@@ -4,6 +4,7 @@ import type { RefObject } from "react";
 import SessionList from "./SessionList";
 import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
 import type { Session } from "../hooks/useSessions";
+import type { InboxByAgent } from "../hooks/useSessionInbox";
 import type { OctopAgent } from "../../../context/AgentContext";
 import RailEdgeControl from "../../../components/RailEdgeControl";
 import styles from "../index.module.less";
@@ -19,12 +20,17 @@ interface ChatSidebarPanelProps {
   sidebarElRef?: RefObject<HTMLDivElement>;
   agents: OctopAgent[];
   sessions: Session[];
+  /** Cross-agent inbox snapshot (classic layout only; minimal is unchanged). */
+  inboxByAgent: InboxByAgent;
+  pinnedSessions: Session[];
   activeThreadId: string | null;
   resolvedAgentId: string | null | undefined;
   sessionsHasMore: boolean;
   sessionsLoadingMore: boolean;
   onLoadMoreSessions: () => void;
   onFetchAllSessions: () => void;
+  /** User-triggered inbox refresh (S-10). */
+  onRefreshInbox: () => void;
   onSelectSession: (sessionId: string, agentId: string) => void;
   onAgentSelect: (agentId: string) => void;
   /** Start a fresh chat from an expert row (classic + minimal). */
@@ -54,12 +60,15 @@ export default function ChatSidebarPanel({
   sidebarElRef,
   agents,
   sessions,
+  inboxByAgent,
+  pinnedSessions,
   activeThreadId,
   resolvedAgentId,
   sessionsHasMore,
   sessionsLoadingMore,
   onLoadMoreSessions,
   onFetchAllSessions,
+  onRefreshInbox,
   onSelectSession,
   onAgentSelect,
   onNewChatWithAgent,
@@ -110,8 +119,11 @@ export default function ChatSidebarPanel({
       activeAgentId={resolvedAgentId ?? null}
       hasMore={sessionsHasMore}
       loadingMore={sessionsLoadingMore}
+      inboxByAgent={inboxByAgent}
+      pinnedSessions={pinnedSessions}
       onLoadMore={onLoadMoreSessions}
       onFetchAllSessions={onFetchAllSessions}
+      onRefreshInbox={onRefreshInbox}
       onSelect={onSelectSession}
       onAgentSelect={onAgentSelect}
       onNewChat={onNewChatWithAgent}

@@ -27,6 +27,7 @@ from octop.infra.db.repos._base import (
     now_ts,
     optional_updates,
 )
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.ulid import new_short_id
 
 TASK_STATUSES: tuple[str, ...] = (
@@ -143,9 +144,15 @@ class ProjectTaskRepo:
             return
         parent = self.get(parent_id)
         if parent is None:
-            raise ValueError(f"parent task {parent_id} does not exist")
+            raise OctopError(
+                ErrorCode.PROJECT_TASK_NOT_FOUND,
+                f"parent task {parent_id} does not exist",
+            )
         if parent.project_id != project_id:
-            raise ValueError(f"parent task {parent_id} belongs to another project")
+            raise OctopError(
+                ErrorCode.PROJECT_TASK_NOT_FOUND,
+                f"parent task {parent_id} belongs to another project",
+            )
 
     def _assert_thread_exists(self, thread_id: str | None) -> None:
         if thread_id is None:
@@ -153,7 +160,10 @@ class ProjectTaskRepo:
         with self._db.connect() as conn:
             row = conn.execute("SELECT 1 FROM threads WHERE thread_id = ?", (thread_id,)).fetchone()
         if row is None:
-            raise ValueError(f"thread {thread_id} does not exist")
+            raise OctopError(
+                ErrorCode.PROJECT_TASK_THREAD_NOT_FOUND,
+                f"thread {thread_id} does not exist",
+            )
 
     # ── reads ────────────────────────────────────────────────────────────────
 
@@ -282,7 +292,10 @@ class ProjectTaskRepo:
         if parent_id is not UNSET:
             parent_value = cast("str | None", parent_id)
             if parent_value == task_id:
-                raise ValueError("a task cannot be its own parent")
+                raise OctopError(
+                    ErrorCode.PROJECT_TASK_NOT_FOUND,
+                    "a task cannot be its own parent",
+                )
             self._assert_parent_ok(current.project_id, parent_value)
         if thread_id is not UNSET:
             self._assert_thread_exists(cast("str | None", thread_id))

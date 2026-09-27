@@ -24,6 +24,7 @@ from octop.infra.agents.threads.artifact import thread_artifacts_payload
 from octop.infra.agents.threads.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
 from octop.infra.agents.threads.fork import fork_dashboard_thread
 from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_config
+from octop.infra.db.repos.projects import ThreadProjectRef
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages
@@ -83,6 +84,13 @@ def _agent_facing_workspace_dir(server: Any, agent_id: str) -> Path:
     return resolve_agent_workspace_dir(server, agent_id)
 
 
+def _thread_project_fields(ref: ThreadProjectRef | None) -> dict[str, Any]:
+    """``project_id`` / ``project_name`` for a thread, from the one reverse lookup."""
+    if ref is None:
+        return {"project_id": None, "project_name": None}
+    return {"project_id": ref.project_id, "project_name": ref.project_name}
+
+
 def _require_thread(
     server: Any, agent_id: str, thread_id: str, user: Any, as_user: int | None
 ) -> Any:
@@ -113,6 +121,9 @@ async def list_threads(
         ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=effective_uid)
     )
     workspace_dir = _agent_facing_workspace_dir(server, agent_id)
+    # One reverse lookup for the whole page (PLAN.md §4.3); the project fields are
+    # annotations of the caller's own conversations, never a permission input.
+    project_refs = server.services.project_repo.projects_by_thread([r.thread_id for r in rows])
     return [
         {
             "thread_id": r.thread_id,
@@ -135,6 +146,7 @@ async def list_threads(
                 workspace_dir,
                 default_agent_id=agent_id,
             ),
+            **_thread_project_fields(project_refs.get(r.thread_id)),
         }
         for r in rows
     ]
