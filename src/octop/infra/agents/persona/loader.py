@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from octop.infra.agents.mbti_profiles import MBTIProfile, get_profile
+from octop.infra.agents.persona.mbti_profiles import MBTIProfile, get_profile
 
 _DEFAULT_PERSONA_TEMPLATE = """\
 # Persona: Default

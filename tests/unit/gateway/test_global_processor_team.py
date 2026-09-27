@@ -1417,6 +1417,40 @@ def _bind_im_session(processor_env: dict, *, thread_id: str = "thr_parent") -> s
 
 
 @pytest.mark.asyncio
+async def test_prepare_team_peer_pushes_dispatch_notice_to_im(
+    processor_env: dict,
+) -> None:
+    from octop_harness.teams.util import PeerCall
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    processor._agent_manager.teams.member_ids.return_value = ["child"]
+    _bind_im_session(processor_env)
+    pushed: list[str] = []
+
+    async def capture_push(channel_type: str, channel_id: str, subject: object, text: str) -> None:
+        pushed.append(text)
+
+    gateway.push_text = capture_push  # type: ignore[method-assign]
+
+    await processor.prepare_peer_session(
+        PeerCall(
+            from_agent_id="host",
+            to_agent_id="child",
+            user_id=1,
+            message="look at the labs",
+            source_thread_id="thr_parent",
+            source_session_key=None,
+            job_id="job-dispatch-im",
+        )
+    )
+    assert len(pushed) == 1
+    assert "Researcher" in pushed[0]
+    assert ("请稍候" in pushed[0]) or ("please wait" in pushed[0].lower())
+
+
+@pytest.mark.asyncio
 async def test_fan_in_pushes_member_speech_to_im_channel(processor_env: dict) -> None:
     from langchain_core.messages import AIMessage
     from octop_harness.teams.util import PeerCall
@@ -1503,7 +1537,7 @@ async def test_on_reply_live_wrapup_still_pushes_im(processor_env: dict) -> None
             metadata={"session_key": processor_env["parent_sk"]},
         )
     )
-    assert pushed == ["可以收工。"]
+    assert pushed == ["【主持人总结】可以收工。"] or pushed == ["[Host wrap-up] 可以收工。"]
     assert "thr_parent" not in processor.teams._live_host_replies
 
 
