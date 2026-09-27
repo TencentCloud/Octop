@@ -37,6 +37,11 @@ interface AssistantTurnViewProps {
   isStreaming?: boolean;
   /** True while this assistant turn is still being generated (incl. between tool calls). */
   isTurnInProgress?: boolean;
+  /**
+   * Speakers still generating in the session store (survives tool gaps after
+   * the composer unlocks). Empty string = unlabeled host.
+   */
+  liveSpeakers?: ReadonlyArray<string>;
   onRegenerate?: (messageId: string) => void;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
@@ -58,10 +63,24 @@ function hasProcessContent(
   return turnHasVisibleProcess(split);
 }
 
+/** True when any message in this turn belongs to a still-live speaker. */
+function turnHasLiveSpeaker(
+  messages: ChatMessage[],
+  liveSpeakers: ReadonlyArray<string>,
+): boolean {
+  if (liveSpeakers.length === 0) return false;
+  const live = new Set(liveSpeakers);
+  for (const message of messages) {
+    if (live.has(messageSpeakerId(message))) return true;
+  }
+  return false;
+}
+
 export default function AssistantTurnView({
   messages,
   agentId: agentIdProp,
   isTurnInProgress = false,
+  liveSpeakers = [],
   onRegenerate,
   onEditUserMessage,
   onForkAssistantMessage,
@@ -82,26 +101,38 @@ export default function AssistantTurnView({
   const speakerAgentId =
     messages.map((item) => messageSpeakerId(item)).find(Boolean) || agentId;
 
+  const speakerLive = turnHasLiveSpeaker(messages, liveSpeakers);
+  const hasStreamingMsg = messages.some((m) => m.status === "streaming");
+  const turnStreaming = isTurnInProgress || hasStreamingMsg || speakerLive;
+
   const hitlLayout = useMemo(
     () => layoutAssistantTurnHitl(messages),
     [messages],
   );
   const hasPendingHitl = messages.some((m) => m.hitlData?.status === "pending");
 
+  const splitOpts = useMemo(
+    () => ({ joinAnswerFragments: turnStreaming }),
+    [turnStreaming],
+  );
+
   const segmentProcess = useMemo(
     () =>
       hitlLayout.segments.map((seg) => ({
-        split: splitAssistantTurn(seg.processMessages),
+        split: splitAssistantTurn(seg.processMessages, splitOpts),
         hitl: seg.hitlMessage,
       })),
-    [hitlLayout],
+    [hitlLayout, splitOpts],
   );
   const trailingSplit = useMemo(
-    () => splitAssistantTurn(hitlLayout.trailingMessages),
-    [hitlLayout],
+    () => splitAssistantTurn(hitlLayout.trailingMessages, splitOpts),
+    [hitlLayout, splitOpts],
   );
 
-  const fullSplit = useMemo(() => splitAssistantTurn(messages), [messages]);
+  const fullSplit = useMemo(
+    () => splitAssistantTurn(messages, splitOpts),
+    [messages, splitOpts],
+  );
 
   const toolMedia = useMemo(
     () => collectTurnToolMedia(fullSplit, speakerAgentId),
@@ -112,8 +143,6 @@ export default function AssistantTurnView({
     [fullSplit],
   );
 
-  const turnStreaming =
-    isTurnInProgress || messages.some((m) => m.status === "streaming");
   const usedBrowser = turnUsedBrowserTool(fullSplit);
   const showOpenBrowser = usedBrowser && !!onOpenBrowser;
   const usedFileTool = turnUsedFileTool(fullSplit);
@@ -161,6 +190,8 @@ export default function AssistantTurnView({
       />
     ) : null;
   const todoAtTop = todoPanel && !anyProcessShown ? todoPanel : null;
+
+  const isWrapupTurn = messages.some((item) => item.teamWrapup);
 
   return (
     <div className={styles.assistantTurn}>
@@ -225,7 +256,16 @@ export default function AssistantTurnView({
         </div>
       )}
       {trailingSplit.answerMessage ? (
-        <div className={styles.assistantTurnAnswer}>
+        <div
+          className={`${styles.assistantTurnAnswer}${
+            isWrapupTurn ? ` ${styles.teamWrapupTurn}` : ""
+          }`}
+        >
+          {isWrapupTurn ? (
+            <span className={styles.teamWrapupBadge}>
+              {t("chat.teamWrapupBadge", { defaultValue: "主持人总结" })}
+            </span>
+          ) : null}
           <MessageBubble
             message={toAnswerOnlyMessage(trailingSplit.answerMessage)}
             agentId={agentId}

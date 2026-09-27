@@ -176,6 +176,10 @@ Octop 的 Provider 为**全局（管理员）**配置；Agent 可选用全局默
 
 ### 查看 Provider 与模型（直接执行）
 
+**禁止**直接查 `~/.octop/octop.db`。`json_each(providers.models_json).id` 是 SQLite 内部序号，不是模型名，会拼出非法的 `"model": 1`。
+
+用 CLI（`models[].id` / 输出里的模型 id 才是发给网关的字符串）：
+
 ```bash
 octop provider list
 octop models list          # 所有已解析模型

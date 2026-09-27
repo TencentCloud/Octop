@@ -6,7 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 from urllib.parse import urlparse
 
-from octop.infra.providers.codex_oauth import CodexOAuthDeviceCodeError
+from octop.infra.agents.providers.codex_oauth import CodexOAuthDeviceCodeError
 
 
 async def test_admin_test_draft_requires_api_key(env: Any) -> None:
