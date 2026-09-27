@@ -5,13 +5,13 @@ from __future__ import annotations
 import time
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
-from octop.infra.users.permissions import PERMISSIONS
+from octop.infra.users.permissions import PERMISSIONS, effective_permissions
 from octop.infra.users.resource_policy import (
     normalize_max_agents,
     normalize_token_quota,
@@ -32,6 +32,8 @@ class UserCreateBody(BaseModel):
     display_name: str | None = None
     email: str | None = Field(default=None, max_length=254)
     permissions: list[str] = Field(default_factory=list)
+    role_name: str | None = Field(default=None, max_length=64)
+    user_role_id: str | None = Field(default=None, max_length=64)
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
     max_agents: int | None = Field(default=None, ge=0)
@@ -43,6 +45,9 @@ class UserPatchBody(BaseModel):
     email: str | None = Field(default=None, max_length=254)
     disabled: bool | None = None
     permissions: list[str] | None = None
+    role_name: str | None = Field(default=None, max_length=64)
+    user_role_id: str | None = Field(default=None, max_length=64)
+    avatar_icon: str | None = Field(default=None, max_length=32)
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
     max_agents: int | None = Field(default=None, ge=0)
@@ -81,7 +86,7 @@ class UserBatchResponse(BaseModel):
     failed: int
 
 
-def _row_to_dict(r: Any, policy: Any | None = None) -> dict[str, Any]:
+def _row_to_dict(r: Any, policy: Any | None = None, server: Any = None) -> dict[str, Any]:
     now = int(time.time())
     locked_until = int(getattr(r, "login_locked_until", 0) or 0)
     locked = locked_until > now and not bool(r.disabled)
@@ -101,8 +106,43 @@ def _row_to_dict(r: Any, policy: Any | None = None) -> dict[str, Any]:
         "login_retry_after_seconds": retry_after,
         "created_at": int(r.created_at),
         "permissions": list(getattr(r, "permissions", None) or []),
+        "role_name": getattr(r, "role_name", None) or None,
+        "user_role_id": getattr(r, "user_role_id", None) or None,
+        "avatar_icon": getattr(r, "avatar_icon", None) or None,
+        "avatar_url": _user_avatar_url(server, int(r.id)) if server is not None else None,
         **public_policy_fields(policy),
     }
+
+
+def _user_avatar_url(server: Any, user_id: int) -> str | None:
+    from octop.infra.users.profile_avatar import profile_avatar_url
+
+    return profile_avatar_url(
+        server.services.paths.user_avatars_dir,
+        str(user_id),
+        f"/api/users/{user_id}/avatar",
+    )
+
+
+def _require_admin_to_grant_admin(actor: Any, role: Role) -> None:
+    if role is not Role.ADMIN:
+        return
+    if not bool(getattr(actor, "is_admin", False)):
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "only an administrator can assign the administrator account",
+        )
+
+
+def _clean_role_name(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    name = raw.strip()
+    if not name:
+        return None
+    if len(name) > 64:
+        raise OctopError(ErrorCode.FORBIDDEN, "role name must be 1-64 characters", status=400)
+    return name
 
 
 def _policy_kwargs_from_body(body: UserCreateBody | UserPatchBody) -> dict[str, Any]:
@@ -189,7 +229,7 @@ async def list_users(
 ) -> list[dict[str, Any]]:
     rows = server.user_manager.list_all(include_disabled=True)
     policy_map = server.services.user_policy_repo.list_by_user_ids([r.id for r in rows])
-    return [_row_to_dict(r, policy_map.get(r.id)) for r in rows]
+    return [_row_to_dict(r, policy_map.get(r.id), server) for r in rows]
 
 
 @router.post("", status_code=201)
@@ -207,6 +247,7 @@ async def create_user(
     if "max_agents" in policy_kwargs:
         normalize_max_agents(policy_kwargs["max_agents"])
     role = Role(body.role)
+    _require_admin_to_grant_admin(actor, role)
     user = await server.user_manager.create(
         username=body.username,
         password=body.password,
@@ -214,12 +255,14 @@ async def create_user(
         display_name=body.display_name,
         email=body.email,
         permissions=body.permissions,
+        role_name=_clean_role_name(body.role_name),
+        user_role_id=body.user_role_id,
     )
     if policy_kwargs:
         await server.user_manager.set_resource_policy(user.username, **policy_kwargs)
     row = server.user_manager.get_row(user.id)
     assert row is not None
-    return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id))
+    return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id), server)
 
 
 def _batch_fail(user_id: int, *, code: str, error: str) -> UserBatchItemResult:
@@ -339,7 +382,7 @@ async def get_user(
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
-    return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id))
+    return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id), server)
 
 
 @router.patch("/{user_id}")
@@ -354,16 +397,26 @@ async def patch_user(
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
     if body.permissions is not None:
         _assert_can_assign(actor, body.permissions)
-        _assert_not_last_user_manager(
-            server,
-            actor=actor,
-            target_user_id=user_id,
-            new_permissions=body.permissions,
+        # An administrator account keeps full access. The form stores that as
+        # an empty permission list, which is not a removal of user management.
+        stays_admin = (
+            body.role == Role.ADMIN.value
+            if body.role is not None
+            else str(row.role) == Role.ADMIN.value
         )
+        if not stays_admin:
+            _assert_not_last_user_manager(
+                server,
+                actor=actor,
+                target_user_id=user_id,
+                new_permissions=body.permissions,
+            )
     if body.role is not None:
-        if user_id == actor.id and Role(body.role) is not Role.ADMIN:
+        next_role = Role(body.role)
+        if user_id == actor.id and next_role is not Role.ADMIN:
             raise OctopError(ErrorCode.FORBIDDEN, "cannot demote yourself")
-        await server.user_manager.set_role(row.username, Role(body.role))
+        _require_admin_to_grant_admin(actor, next_role)
+        await server.user_manager.set_role(row.username, next_role)
     if body.display_name is not None:
         await server.user_manager.set_display_name(row.username, body.display_name)
     if "email" in body.model_fields_set:
@@ -374,6 +427,15 @@ async def patch_user(
         await server.user_manager.enable(row.username)
     if body.permissions is not None:
         await server.user_manager.set_permissions(row.username, body.permissions)
+    if "role_name" in body.model_fields_set:
+        server.services.user_repo.set_role_name(user_id, _clean_role_name(body.role_name))
+    if "user_role_id" in body.model_fields_set:
+        server.services.user_repo.set_user_role_id(user_id, body.user_role_id)
+    if "avatar_icon" in body.model_fields_set:
+        from octop.infra.users.profile_avatar import clean_avatar_icon, delete_profile_avatar
+
+        server.services.user_repo.set_avatar_icon(user_id, clean_avatar_icon(body.avatar_icon))
+        delete_profile_avatar(server.services.paths.user_avatars_dir, str(user_id))
     policy_kwargs = _policy_kwargs_from_body(body)
     if policy_kwargs:
         await server.user_manager.set_resource_policy(row.username, **policy_kwargs)
@@ -382,6 +444,7 @@ async def patch_user(
     return _row_to_dict(
         updated,
         server.services.user_policy_repo.list_for_user(updated.id),
+        server,
     )
 
 
@@ -423,3 +486,53 @@ async def delete_user(
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
     await server.user_manager.remove(row.username)
+    from octop.infra.users.profile_avatar import delete_profile_avatar
+
+    delete_profile_avatar(server.services.paths.user_avatars_dir, str(user_id))
+
+
+@router.post("/{user_id}/avatar", status_code=201)
+async def upload_user_avatar(
+    user_id: int,
+    file: UploadFile = File(...),  # noqa: B008
+    _: Any = Depends(require_permission("users")),
+    server: Any = Depends(get_server),
+) -> dict[str, str | None]:
+    if server.user_manager.get_row(user_id) is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    from octop.infra.users.profile_avatar import write_profile_avatar
+
+    write_profile_avatar(
+        server.services.paths.user_avatars_dir,
+        str(user_id),
+        await file.read(),
+    )
+    return {"avatar_url": _user_avatar_url(server, user_id)}
+
+
+@router.get("/{user_id}/avatar")
+async def get_user_avatar(
+    user_id: int,
+    actor: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Any:
+    if actor.id != user_id and "users" not in effective_permissions(actor):
+        raise OctopError(ErrorCode.FORBIDDEN, "not allowed to read this avatar")
+    from octop.infra.users.profile_avatar import avatar_response
+
+    if server.user_manager.get_row(user_id) is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    return avatar_response(server.services.paths.user_avatars_dir, str(user_id))
+
+
+@router.delete("/{user_id}/avatar", status_code=204)
+async def delete_user_avatar(
+    user_id: int,
+    _: Any = Depends(require_permission("users")),
+    server: Any = Depends(get_server),
+) -> None:
+    if server.user_manager.get_row(user_id) is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    from octop.infra.users.profile_avatar import delete_profile_avatar
+
+    delete_profile_avatar(server.services.paths.user_avatars_dir, str(user_id))

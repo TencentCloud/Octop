@@ -73,15 +73,17 @@ async def require_agent_workspace(
     *,
     user: Any,
     server: Any,
+    as_user: int | None = None,
     owner_only: bool = False,
 ) -> BackendWorkspace:
     """Auth-checked workspace even when the agent is stopped.
 
     Used for display files (e.g. expert avatar) that must work from the
-    experts list without requiring a running harness handle.
+    experts list without requiring a running harness handle, and for chat
+    artifact preview/download after a team member has finished a turn.
     """
     checker = require_agent_owner_row if owner_only else require_agent_row
-    checker(agent_id, user=user, as_user=None, server=server)
+    checker(agent_id, user=user, as_user=as_user, server=server)
     assert server.app_runtime is not None
     workspace = server.app_runtime.agent_registry.workspace_for_agent(agent_id)
     if workspace is None:

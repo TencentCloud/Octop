@@ -42,7 +42,7 @@ export default function ChatTitleBar({
   isTeam = false,
 }: ChatTitleBarProps) {
   const { t } = useTranslation();
-  const [collapseThinking, setCollapseThinking] = useCollapseThinking();
+  const [collapseThinking, setCollapseThinking] = useCollapseThinking(isTeam);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
