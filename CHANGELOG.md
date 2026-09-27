@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 修复
+- `POST /api/agents/{agent_id}/chat/polish` 现在先校验请求里的 `default_model` 是否指向已启用的模型：以前这个值直接交给 harness 的模型工厂，遇到未知 provider 或被禁用的模型时工厂抛 `ValueError`，而这一行位于 `try:` 之前，异常逃过端点后由兜底 handler 渲染成 500 `INTERNAL_ERROR` 并写一条 traceback；仪表盘把同一个 `selectedModel` 同时发给 polish 和发消息，于是一次失效的模型选择让「润色」报 500 而「发送」报可读的 400。现按 `POST /agents/{id}/chat`、`PATCH /agents/{id}/threads/{tid}`、`PATCH /preferences` 的同一口径返回 400 `SLASH_BAD_ARGS`；省略该字段时仍回退到专家自己的默认模型，那条值不是客户端输入，因此不校验 (#1210)
+
 ## [1.0.2b3] - 2026-09-26
 
 ### 新增

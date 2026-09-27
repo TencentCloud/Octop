@@ -250,7 +250,16 @@ async def polish_prompt(
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "text is required")
 
     harness = server.app_runtime.agent_registry.get_agent(agent_id)
-    model_ref = (body.default_model or "").strip() or harness.config.pick_default_model_ref()
+    requested = (body.default_model or "").strip() or None
+    if (
+        requested is not None
+        and not server.app_runtime.agent_registry.providers.is_model_ref_usable(requested)
+    ):
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            "default_model must reference an enabled model",
+        )
+    model_ref = requested or harness.config.pick_default_model_ref()
     llm = harness.model_factory.get(model_ref)
     try:
         polished = await ainvoke_text(
