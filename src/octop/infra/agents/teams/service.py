@@ -7,8 +7,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from octop.infra.agents.settings.tool_catalog import BUILTIN_TOOL_CATALOG
 from octop.infra.agents.teams.jobs import TeamJobTracker
-from octop.infra.agents.tool_catalog import BUILTIN_TOOL_CATALOG
 from octop.infra.db.repos.agents import AgentRow
 from octop.infra.db.services import RepoBundle
 from octop.infra.errors import ErrorCode, OctopError

@@ -18,10 +18,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from harness_agent.backends.workspace import BackendWorkspace
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.infra.agents.manager import AgentCreateSpec
-from octop.infra.agents.workspace_dir import DEFAULT_SYSTEM_FILES_PATH
+from octop.infra.agents.workspace.dir import DEFAULT_SYSTEM_FILES_PATH
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from octop.config import DatabaseConfig, OctopConfig
-from octop.infra.agents.memory_backend import (
+from octop.infra.agents.memory.backend import (
     delete_thread_from_storage,
     memory_backend_from_agent_config,
     open_memory_kwargs,
@@ -125,8 +125,8 @@ def test_open_memory_kwargs_follows_postgresql_control_plane(tmp_path: Path) -> 
 
 @pytest.mark.asyncio
 async def test_delete_thread_from_stopped_agent_memory(tmp_path: Path) -> None:
-    from harness_agent.memory.store import close_memory_resources
-    from harness_memory import Memory
+    from octop_harness.memory.store import close_memory_resources
+    from octop_memory import Memory
 
     system_dir = tmp_path / ".octop"
     system_dir.mkdir()

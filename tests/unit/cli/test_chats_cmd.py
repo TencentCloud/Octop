@@ -79,8 +79,8 @@ def test_chats_update_sends_title(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_delete_thread_offline_unbinds_session(tmp_octop_home: Path) -> None:
-    from harness_agent.memory.store import close_memory_resources
-    from harness_memory import Memory
+    from octop_harness.memory.store import close_memory_resources
+    from octop_memory import Memory
 
     from octop.cli.support.db import open_cli_services
     from octop.cli.support.offline_ops import (

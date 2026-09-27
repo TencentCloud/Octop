@@ -2,7 +2,7 @@
 
 Dashboard / gateway code uses this module — **not**
 :class:`~octop.infra.gateway.media.ingress.AgentBackedMediaBackend`,
-which is only the harness-gateway ``MediaBackend`` adapter for IM ingress.
+which is only the octop-gateway ``MediaBackend`` adapter for IM ingress.
 
 Path rule for ``BackendWorkspace``
 ----------------------------------
@@ -33,7 +33,7 @@ from octop.infra.gateway.media.constants import OUTBOUND_DIR
 from octop.infra.utils.browser_media import legacy_harness_screenshots_dir
 
 if TYPE_CHECKING:
-    from harness_agent.backends.workspace import BackendWorkspace
+    from octop_harness.backends.workspace import BackendWorkspace
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,15 @@ _BLOCKED_WIN_DRIVE_PREFIXES = (
     "c:/program files (x86)/",
 )
 
+# New default is ``~/.octop-browser``; keep ``~/.harness-browser`` as a deny
+# source so leftover profiles cannot be downloaded after migration.
+_DENIED_BROWSER_HOME_SEGMENTS = (".harness-browser", ".octop-browser")
+
+
+def _contains_denied_browser_home(text: str) -> bool:
+    lowered = text.replace("\\", "/").lower()
+    return any(segment in lowered for segment in _DENIED_BROWSER_HOME_SEGMENTS)
+
 
 def _normalize_host_path(raw: str) -> str:
     """Lowercase path with forward slashes for prefix checks."""
@@ -80,8 +89,7 @@ def is_blocked_host_download_path(raw: str) -> bool:
     if not text:
         return False
 
-    lowered = text.replace("\\", "/").lower()
-    if ".harness-browser" in lowered:
+    if _contains_denied_browser_home(text):
         return True
 
     if len(text) >= 2 and text[1] == ":":
@@ -347,7 +355,7 @@ def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
         return False
 
     norm = str(resolved).replace("\\", "/").lower()
-    if ".harness-browser" in norm:
+    if _contains_denied_browser_home(norm):
         return False
 
     try:

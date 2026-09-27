@@ -582,27 +582,18 @@ export default function SkillPackagesPage() {
       fill
     >
       {loading && packages.length === 0 ? (
-        <div
-          className={`${styles.emptyLayout}${
-            isMobile ? ` ${styles.emptyLayoutMobile}` : ""
-          }`}
-        >
+        <div className={styles.emptyLayout}>
           <div className={styles.centered}>
             <Spin />
           </div>
         </div>
       ) : showEmptyGuide ? (
-        <div
-          className={`${styles.emptyLayout}${
-            isMobile ? ` ${styles.emptyLayoutMobile}` : ""
-          }`}
-        >
+        <div className={styles.emptyLayout}>
           <StreamSetupGuide
             className={styles.emptyGuide}
             wide
-            icon={
-              <OctopEmptyMascot size={120} className={styles.setupMascot} />
-            }
+            plain
+            icon={<OctopEmptyMascot />}
             title={t("skillPackages.emptyGuideTitle")}
             description={t("skillPackages.emptyGuideDesc")}
             steps={[

@@ -154,9 +154,10 @@ def _authorize_setup_mid_wizard(authorization: str | None, server: Any) -> str |
 
 async def _bootstrap_default_agent(server: Any, *, user_id: int, locale: str = "zh") -> None:
     """Create the first default agent for a fresh install (pinned id ``main``)."""
-    from octop.infra.agents.default_agent import (
+    from octop.infra.agents.experts.default_agent import (
         SETUP_DEFAULT_AGENT_ID,
         bootstrap_default_agent,
+        user_policy_workspace_root,
     )
 
     if server.app_runtime is None:
@@ -167,6 +168,7 @@ async def _bootstrap_default_agent(server: Any, *, user_id: int, locale: str = "
         user_id=user_id,
         locale=locale,
         agent_id=SETUP_DEFAULT_AGENT_ID,
+        root_dir=user_policy_workspace_root(server, user_id),
     )
 
 
@@ -352,6 +354,9 @@ async def initial_admin(
     locale = normalize_locale(body.locale or resolve_request_locale(request))
     assert server.user_manager is not None
     assert server.services is not None
+    from octop.infra.db.repos.user_roles import ADMIN_USER_ROLE_ID, UserRoleRepo
+
+    admin_role = UserRoleRepo(server.services.db).get(ADMIN_USER_ROLE_ID)
     user = await server.user_manager.create(
         username=body.username,
         password=body.password,
@@ -359,16 +364,17 @@ async def initial_admin(
         display_name=body.display_name,
         email=body.email,
         locale=locale,
+        role_name=admin_role.user_role_name if admin_role is not None else "管理员",
     )
     secret = server.services.secret_repo.get("jwt")
     ttl = server.services.config.access_token_ttl_seconds
     access_token = sign_token(
-        secret, sub=user.id, uname=user.username, role=user.role.value, ttl_seconds=ttl
+        secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl
     )
     return {
         "id": user.id,
         "username": user.username,
-        "role": user.role.value,
+        "role": user.role,
         "locale": user.locale,
         "access_token": access_token,
         "expires_in": ttl,

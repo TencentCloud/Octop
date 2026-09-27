@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from harness_gateway.models import ChannelSubject, ImageContent, InboundMessage, TextContent
+from octop_gateway.models import ChannelSubject, ImageContent, InboundMessage, TextContent
 
 from octop.infra.gateway.media.tool_media import enrich_media_block_preview
 from octop.infra.gateway.ws import WS_CHANNEL_ID, WebSocketChannel, WebSocketHub

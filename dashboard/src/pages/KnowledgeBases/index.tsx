@@ -1563,23 +1563,28 @@ export default function KnowledgeBasesPage() {
     }
   };
 
+  // Depend on selected.id (not the whole selected object). Silent indexing
+  // polls call setSelected(base) every 2.5s with a new object reference; that
+  // used to recreate fetchBlob and re-run DocumentPreviewCore's load effect,
+  // aborting slow Office parsers (docx/pptx/xlsx) while fast PDF survived.
+  const selectedId = selected?.id;
   const fetchPreviewBlob = useCallback(
     async (
       onProgress?: (loaded: number, total: number) => void,
       signal?: AbortSignal,
     ) => {
-      if (!selected || !previewDocId) {
+      if (!selectedId || !previewDocId) {
         throw new Error("missing knowledge document preview target");
       }
       return knowledgeBasesApi.fetchDocumentFile(
-        selected.id,
+        selectedId,
         previewDocId,
         "inline",
         onProgress,
         signal,
       );
     },
-    [selected, previewDocId],
+    [selectedId, previewDocId],
   );
 
   useEffect(() => {
@@ -1850,12 +1855,8 @@ export default function KnowledgeBasesPage() {
   const showListPanel = showListPane && (isMobile || !listPanelCollapsed);
   const showEnableGuide = !loading && !usable;
   const showEmptyGuide = !loading && usable && bases.length === 0;
-  const emptyLayoutClassName = `${styles.emptyLayout}${
-    isMobile ? ` ${styles.emptyLayoutMobile}` : ""
-  }`;
-  const setupMascot = (
-    <OctopEmptyMascot size={120} className={styles.setupMascot} />
-  );
+  const emptyLayoutClassName = styles.emptyLayout;
+  const setupMascot = <OctopEmptyMascot />;
 
   const onDocsViewChange = (value: string | number) => {
     const mode = value === "table" ? "table" : "card";
@@ -1887,6 +1888,7 @@ export default function KnowledgeBasesPage() {
           <StreamSetupGuide
             className={styles.emptyGuide}
             wide
+            plain
             icon={setupMascot}
             title={
               canConfigureKb
@@ -1932,6 +1934,7 @@ export default function KnowledgeBasesPage() {
           <StreamSetupGuide
             className={styles.emptyGuide}
             wide
+            plain
             icon={setupMascot}
             title={t("knowledgeBases.emptyGuideTitle")}
             description={t("knowledgeBases.emptyGuideDesc")}

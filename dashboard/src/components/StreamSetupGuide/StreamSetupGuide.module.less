@@ -27,6 +27,48 @@
   width: min(100%, 480px);
 }
 
+/* Tasks-like empty tip: no card border / shadow / fill. */
+.plain {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 64px 24px 48px;
+}
+
+.plain .card {
+  width: min(100%, 440px);
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  gap: 12px;
+}
+
+.plain.wide .card {
+  width: min(100%, 440px);
+}
+
+.plain .title {
+  font-size: 18px;
+  margin-top: 8px;
+}
+
+.plain .description {
+  margin-bottom: 8px;
+}
+
+.plain .steps {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.plain .actions {
+  margin-top: 12px;
+}
+
 .icon {
   display: flex;
   align-items: center;
@@ -114,8 +156,16 @@
     padding: 16px;
   }
 
+  .plain {
+    padding: 40px 16px 32px;
+  }
+
   .card {
     padding: 28px 20px 24px;
+  }
+
+  .plain .card {
+    padding: 0;
   }
 
   .actions {

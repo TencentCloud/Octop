@@ -120,7 +120,7 @@ def _probe_row(**overrides: Any) -> SimpleNamespace:
 
 
 def test_probe_chat_model_injects_throwaway_session_header() -> None:
-    with patch("harness_agent.llm.factory.build_chat_model") as mock_build:
+    with patch("octop_harness.llm.factory.build_chat_model") as mock_build:
         mock_build.return_value = object()
         build_probe_chat_model(_probe_row(), model_id="glm-5.2")
 
@@ -131,7 +131,7 @@ def test_probe_chat_model_injects_throwaway_session_header() -> None:
 
 def test_probe_chat_model_keeps_user_session_header() -> None:
     row = _probe_row(extra_json=json.dumps({"headers": {OPENCODE_SESSION_HEADER: "mine"}}))
-    with patch("harness_agent.llm.factory.build_chat_model") as mock_build:
+    with patch("octop_harness.llm.factory.build_chat_model") as mock_build:
         mock_build.return_value = object()
         build_probe_chat_model(row, model_id="glm-5.2")
 
@@ -141,7 +141,7 @@ def test_probe_chat_model_keeps_user_session_header() -> None:
 
 def test_probe_injects_for_custom_provider_on_go_url() -> None:
     row = _probe_row(name="my-relay")
-    with patch("harness_agent.llm.factory.build_chat_model") as mock_build:
+    with patch("octop_harness.llm.factory.build_chat_model") as mock_build:
         mock_build.return_value = object()
         build_probe_chat_model(row, model_id="glm-5.2")
 

@@ -1,4 +1,4 @@
-"""Map Octop ``storage_backends`` rows to harness-agent backend specs (no I/O)."""
+"""Map Octop ``storage_backends`` rows to octop-harness backend specs (no I/O)."""
 
 from __future__ import annotations
 

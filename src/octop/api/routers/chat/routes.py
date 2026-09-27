@@ -22,7 +22,7 @@ from octop.infra.agents.experts.catalog import (
     welcome_payload_from_manifest_data,
     welcome_payload_has_content,
 )
-from octop.infra.agents.profile import welcome_from_row
+from octop.infra.agents.settings.profile import welcome_from_row
 from octop.infra.agents.teams import is_team_agent
 from octop.infra.agents.teams.welcome import team_host_welcome_payload
 from octop.infra.errors import ErrorCode, OctopError
@@ -268,9 +268,9 @@ async def polish_prompt(
         )
     except TimeoutError:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request timed out") from None
-    except Exception as exc:
+    except Exception:
         logger.exception("polish failed agent=%s model=%s", agent_id, model_ref)
-        raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request failed") from None
 
     if not polished:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "model returned empty polish result")

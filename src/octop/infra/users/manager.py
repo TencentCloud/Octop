@@ -106,7 +106,7 @@ class UserManager:
                 user = User(
                     id=row.id,
                     username=row.username,
-                    role=Role(row.role),
+                    role=str(row.role),
                     display_name=row.display_name,
                     locale=normalize_locale(row.locale),
                     permissions=list(row.permissions),
@@ -124,11 +124,12 @@ class UserManager:
         *,
         username: str,
         password: str,
-        role: Role,
+        role: Role | str,
         display_name: str | None = None,
         locale: str | None = None,
         permissions: builtins.list[str] | None = None,
         email: str | None = None,
+        role_name: str | None = None,
     ) -> User:
         if not username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty")
@@ -139,6 +140,7 @@ class UserManager:
         except ValueError as exc:
             raise OctopError(ErrorCode.FORBIDDEN, str(exc), status=400) from exc
         normalized_email = parse_optional_email(email)
+        role_id = str(role)
         async with self._lock:
             if self._services.user_repo.get_by_username(username) is not None:
                 raise OctopError(
@@ -157,11 +159,12 @@ class UserManager:
                 uid = self._services.user_repo.create(
                     username=username,
                     password_hash=hash_password(password),
-                    role=role.value,
+                    role=role_id,
                     display_name=display_name,
                     locale=loc,
                     email=normalized_email,
                     permissions=keys,
+                    role_name=role_name,
                 )
             except Exception as exc:
                 if _is_unique_violation(exc) and normalized_email is not None:
@@ -173,7 +176,7 @@ class UserManager:
             user = User(
                 id=uid,
                 username=username,
-                role=role,
+                role=role_id,
                 display_name=display_name,
                 locale=loc,
                 permissions=keys,
@@ -247,6 +250,13 @@ class UserManager:
             display_name = _claim_display_name(claims)
 
             if row is None:
+                from octop.infra.db.repos.user_roles import seeded_user_role_assignment
+
+                assignment = seeded_user_role_assignment(self._services.db)
+                sso_role_id = assignment[0] if assignment else Role.USER
+                sso_role_name = assignment[1] if assignment else None
+                sso_permissions = list(assignment[2]) if assignment else []
+                sso_policies = list(assignment[3]) if assignment else []
                 for attempt in range(3):
                     if (
                         email is not None
@@ -258,12 +268,16 @@ class UserManager:
                         uid = self._services.user_repo.create(
                             username=username,
                             password_hash=None,
-                            role=Role.USER.value,
+                            role=sso_role_id,
                             display_name=display_name,
                             email=email,
                             sso_provider_id=provider_id,
                             sso_subject=subject,
+                            permissions=sso_permissions,
+                            role_name=sso_role_name,
                         )
+                        if sso_policies:
+                            self._services.user_policy_repo.merge(uid, dict(sso_policies))
                         self._services.user_repo.upsert_sso_identity(
                             uid, provider_id=provider_id, subject=subject
                         )
@@ -280,9 +294,9 @@ class UserManager:
                         user = User(
                             id=uid,
                             username=username,
-                            role=Role.USER,
+                            role=sso_role_id,
                             display_name=display_name,
-                            permissions=[],
+                            permissions=list(sso_permissions),
                         )
                         self._users[username] = user
                         self._services.audit_repo.write(
@@ -306,7 +320,7 @@ class UserManager:
                 user = User(
                     id=row.id,
                     username=row.username,
-                    role=Role(row.role),
+                    role=str(row.role),
                     display_name=row.display_name,
                     locale=normalize_locale(row.locale),
                     permissions=list(row.permissions),
@@ -363,7 +377,7 @@ class UserManager:
                 cached = User(
                     id=row.id,
                     username=row.username,
-                    role=Role(row.role),
+                    role=str(row.role),
                     display_name=row.display_name,
                     locale=normalize_locale(row.locale),
                     permissions=list(row.permissions),
@@ -405,7 +419,7 @@ class UserManager:
         user = User(
             id=row.id,
             username=row.username,
-            role=Role(row.role),
+            role=str(row.role),
             display_name=row.display_name,
             locale=normalize_locale(row.locale),
             permissions=list(row.permissions),
@@ -484,7 +498,7 @@ class UserManager:
             user = User(
                 id=row.id,
                 username=row.username,
-                role=Role(row.role),
+                role=str(row.role),
                 display_name=row.display_name,
                 locale=normalize_locale(row.locale),
                 permissions=list(row.permissions),
@@ -542,10 +556,13 @@ class UserManager:
         *,
         workspace_root_dir: Any = UNSET,
         token_quota: Any = UNSET,
+        max_agents: Any = UNSET,
     ) -> None:
         from octop.infra.users.resource_policy import (
+            POLICY_MAX_AGENTS,
             POLICY_TOKEN_QUOTA,
             POLICY_WORKSPACE_ROOT_DIR,
+            normalize_max_agents,
             normalize_token_quota,
             normalize_workspace_root_dir,
         )
@@ -556,12 +573,16 @@ class UserManager:
         updates: dict[str, str | None] = {}
         root_arg: Any = UNSET
         quota_arg: Any = UNSET
+        max_agents_arg: Any = UNSET
         if workspace_root_dir is not UNSET:
             root_arg = normalize_workspace_root_dir(workspace_root_dir)
             updates[POLICY_WORKSPACE_ROOT_DIR] = root_arg
         if token_quota is not UNSET:
             quota_arg = normalize_token_quota(token_quota)
             updates[POLICY_TOKEN_QUOTA] = None if quota_arg is None else str(quota_arg)
+        if max_agents is not UNSET:
+            max_agents_arg = normalize_max_agents(max_agents)
+            updates[POLICY_MAX_AGENTS] = None if max_agents_arg is None else str(max_agents_arg)
         if not updates:
             return
         self._services.user_policy_repo.merge(row.id, updates)
@@ -579,6 +600,13 @@ class UserManager:
                 target=username,
                 payload=str(quota_arg) if quota_arg is not None else "",
             )
+        if max_agents is not UNSET:
+            self._services.audit_repo.write(
+                actor=ACTOR_ADMIN,
+                action="user.set_max_agents",
+                target=username,
+                payload=str(max_agents_arg) if max_agents_arg is not None else "",
+            )
 
     async def set_workspace_root_dir(self, username: str, workspace_root_dir: str | None) -> None:
         await self.set_resource_policy(username, workspace_root_dir=workspace_root_dir)
@@ -586,20 +614,24 @@ class UserManager:
     async def set_token_quota(self, username: str, token_quota: int | None) -> None:
         await self.set_resource_policy(username, token_quota=token_quota)
 
-    async def set_role(self, username: str, role: Role) -> None:
+    async def set_max_agents(self, username: str, max_agents: int | None) -> None:
+        await self.set_resource_policy(username, max_agents=max_agents)
+
+    async def set_role(self, username: str, role: Role | str) -> None:
         row = self._services.user_repo.get_by_username(username)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "user not found")
-        self._services.user_repo.set_role(row.id, role.value)
+        role_id = str(role)
+        self._services.user_repo.set_role(row.id, role_id)
         async with self._lock:
             current = self._users.get(username)
             if current is not None:
-                current.role = role
+                current.role = role_id
         self._services.audit_repo.write(
             actor=ACTOR_ADMIN,
             action="user.set_role",
             target=username,
-            payload=role.value,
+            payload=role_id,
         )
 
     async def set_display_name(self, username: str, display_name: str | None) -> None:
@@ -703,7 +735,7 @@ class UserManager:
         user = User(
             id=row.id,
             username=row.username,
-            role=Role(row.role),
+            role=str(row.role),
             display_name=row.display_name,
             locale=normalize_locale(row.locale),
             permissions=list(row.permissions),

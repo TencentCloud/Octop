@@ -4,7 +4,7 @@
 non-host ``root_dir`` + ``bwrap`` are available (factory routes before any
 backend I/O). Otherwise ``HarnessLocalShellBackend`` runs on the host; with
 ``virtual_mode`` and a scoped ``root_dir`` it still rewrites virtual absolute
-paths in ``execute`` onto that root (harness-agent >= 1.0).
+paths in ``execute`` onto that root (octop-harness >= 1.0).
 
 Cross-platform cases run on Windows, macOS, and Linux. POSIX-shell and real
 ``bwrap`` jail cases are skipped where the host cannot run them (see markers).
@@ -19,8 +19,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from deepagents.backends.protocol import ExecuteResponse
-from harness_agent.backends import resolve_backend
-from harness_agent.backends.bwrap_shell import (
+from octop_harness.backends import resolve_backend
+from octop_harness.backends.bwrap_shell import (
     BubbledLocalShellBackend,
     HarnessLocalShellBackend,
     can_use_bubbled_shell,
@@ -58,7 +58,7 @@ def test_resolve_backend_routes_bubbled_only_when_jail_available(tmp_path: Path)
     spec, scoped, workspace = _scoped_spec(tmp_path)
 
     with patch(
-        "harness_agent.backends.bwrap_shell.resolve_bubbled_bwrap",
+        "octop_harness.backends.bwrap_shell.resolve_bubbled_bwrap",
         return_value=_BWRAP,
     ):
         bubbled = resolve_backend(spec, workspace_dir=workspace)
@@ -67,7 +67,7 @@ def test_resolve_backend_routes_bubbled_only_when_jail_available(tmp_path: Path)
     assert Path(bubbled.cwd).resolve() == scoped.resolve()
 
     with patch(
-        "harness_agent.backends.bwrap_shell.resolve_bubbled_bwrap",
+        "octop_harness.backends.bwrap_shell.resolve_bubbled_bwrap",
         return_value=None,
     ):
         plain = resolve_backend(spec, workspace_dir=workspace)
@@ -90,7 +90,7 @@ def test_write_virtual_path_lands_under_scoped_root(tmp_path: Path) -> None:
     """Filesystem virtual ``/out/…`` maps under scoped ``root_dir`` on every OS."""
     spec, scoped, workspace = _scoped_spec(tmp_path)
     with patch(
-        "harness_agent.backends.bwrap_shell.resolve_bubbled_bwrap",
+        "octop_harness.backends.bwrap_shell.resolve_bubbled_bwrap",
         return_value=None,
     ):
         backend = resolve_backend(spec, workspace_dir=workspace)
@@ -102,7 +102,7 @@ def test_write_virtual_path_lands_under_scoped_root(tmp_path: Path) -> None:
 def test_read_virtual_path_from_scoped_root(tmp_path: Path) -> None:
     spec, scoped, workspace = _scoped_spec(tmp_path)
     with patch(
-        "harness_agent.backends.bwrap_shell.resolve_bubbled_bwrap",
+        "octop_harness.backends.bwrap_shell.resolve_bubbled_bwrap",
         return_value=None,
     ):
         backend = resolve_backend(spec, workspace_dir=workspace)
@@ -119,7 +119,7 @@ def test_read_virtual_path_from_scoped_root(tmp_path: Path) -> None:
 def test_execute_without_jail_rewrites_virtual_command_paths(tmp_path: Path) -> None:
     """Non-jail scoped shell still maps virtual absolute paths onto ``root_dir``.
 
-    harness-agent 1.0 no longer delegates ``execute`` to deepagents
+    octop-harness 1.0 no longer delegates ``execute`` to deepagents
     ``LocalShellBackend.execute``; it rewrites then calls ``_execute_on_host``.
     Env mapping is stubbed so inaccessible ``PATH`` entries (common on CI)
     cannot raise ``PermissionError`` from ``Path.exists``.
@@ -127,7 +127,7 @@ def test_execute_without_jail_rewrites_virtual_command_paths(tmp_path: Path) -> 
     spec, scoped, workspace = _scoped_spec(tmp_path)
     (scoped / "out").mkdir()
     with patch(
-        "harness_agent.backends.bwrap_shell.resolve_bubbled_bwrap",
+        "octop_harness.backends.bwrap_shell.resolve_bubbled_bwrap",
         return_value=None,
     ):
         backend = resolve_backend(spec, workspace_dir=workspace)
@@ -141,7 +141,7 @@ def test_execute_without_jail_rewrites_virtual_command_paths(tmp_path: Path) -> 
             return_value=ExecuteResponse(output="ok", exit_code=0, truncated=False),
         ) as host_exec,
         patch(
-            "harness_agent.backends.local_shell.map_virtual_paths_in_env",
+            "octop_harness.backends.local_shell.map_virtual_paths_in_env",
             side_effect=lambda env, *_a, **_k: env,
         ),
     ):

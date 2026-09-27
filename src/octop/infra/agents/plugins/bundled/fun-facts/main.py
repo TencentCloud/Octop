@@ -6,7 +6,7 @@ import json
 import random
 from typing import Any
 
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 _FACTS = (
     "蜂鸟是唯一可以倒飞的鸟类。",

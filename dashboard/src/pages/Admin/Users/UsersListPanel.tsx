@@ -10,12 +10,13 @@
  * Endpoints (all require admin role; backend returns 403 otherwise):
  *   GET    /api/users
  *   POST   /api/users
+ *   POST   /api/users/batch
  *   PATCH  /api/users/{id}
  *   POST   /api/users/{id}/reset-password
  *   DELETE /api/users/{id}
  */
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Button,
   Modal,
@@ -31,6 +32,7 @@ import {
   Spin,
   Tag,
   Segmented,
+  Select,
   Checkbox,
   InputNumber,
 } from "antd";
@@ -40,9 +42,8 @@ import { ResizableTable } from "@/components/ResizableTable";
 import {
   Bot,
   Check,
-  ChevronRight,
   CircleHelp,
-  Clock,
+  Coins,
   IdCard,
   KeyRound,
   LayoutGrid,
@@ -52,20 +53,31 @@ import {
   LockOpen,
   Pencil,
   Plus,
+  Power,
+  PowerOff,
   RefreshCw,
   Search,
   ShieldCheck,
   Trash2,
   User,
-  UserRound,
   Mail,
+  X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
+import {
+  userRolesApi,
+  snapshotRoleLabel,
+  userRoleDrift,
+  userRoleLabel,
+  type UserRole,
+} from "../../../api/modules/userRoles";
 import { authApi } from "../../../api/modules/auth";
 import { useCardTableView } from "../../../hooks/useCardTableView";
+import { useSetCurrentUser } from "../../../hooks/useCurrentUser";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { apiErrorMessage } from "../../../utils/apiError";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { AgentCard } from "../../Experts/components/AgentCard";
@@ -76,13 +88,21 @@ import { fetchFilesystemDefaults } from "../../Experts/components/agentBackendFo
 import { HOST_FS_ROOT } from "../../Experts/components/rootDirTree";
 import expertStyles from "../../Experts/index.module.less";
 import styles from "./index.module.less";
+import {
+  deleteUserAvatar,
+  ProfileAvatar,
+  ProfileAvatarPicker,
+  RoleSelectLabel,
+  uploadUserAvatar,
+} from "./ProfileAvatar";
 
 const { Text } = Typography;
 
 interface UserRow {
   id: number;
   username: string;
-  role: "admin" | "user";
+  /** Role-template public id: admin | user | custom ULID. */
+  role: string;
   display_name: string | null;
   email?: string | null;
   has_password?: boolean;
@@ -94,11 +114,15 @@ interface UserRow {
   login_retry_after_seconds?: number;
   created_at?: number;
   permissions?: string[];
+  role_name?: string | null;
+  avatar_url?: string | null;
+  avatar_icon?: string | null;
   workspace_root_dir?: string | null;
   token_quota?: number | null;
+  max_agents?: number | null;
 }
 
-interface PermissionCatalogItem {
+export interface PermissionCatalogItem {
   key: string;
   category: string;
   label: string;
@@ -106,16 +130,18 @@ interface PermissionCatalogItem {
   page_label?: string;
 }
 
-function permFullLabel(item: PermissionCatalogItem): string {
+export function permFullLabel(item: PermissionCatalogItem): string {
   if (item.page_label) return `${item.page_label} / ${item.label}`;
   return item.label;
 }
 
-interface PolicyFormValues {
+export interface PolicyFormValues {
   limit_workspace_root?: boolean;
   workspace_root_dir?: string;
   limit_token_quota?: boolean;
   token_quota?: number | null;
+  limit_max_agents?: boolean;
+  max_agents?: number | null;
 }
 
 interface CreateValues extends PolicyFormValues {
@@ -124,15 +150,17 @@ interface CreateValues extends PolicyFormValues {
   email?: string;
   password: string;
   confirm: string;
-  role: "admin" | "user";
+  role: string;
   permissions?: string[];
+  role_name?: string | null;
 }
 
 interface EditValues extends PolicyFormValues {
   display_name?: string;
   email?: string;
-  role: "admin" | "user";
+  role: string;
   permissions?: string[];
+  role_name?: string | null;
 }
 
 interface ResetValues {
@@ -140,8 +168,208 @@ interface ResetValues {
   confirm: string;
 }
 
-function roleToneClass(role: "admin" | "user"): string {
-  return role === "admin" ? styles.roleToneAdmin : styles.roleToneUser;
+function policyFieldsFromRole(
+  role: UserRole,
+  workspaceRootAllowed: boolean,
+): PolicyFormValues {
+  return {
+    limit_workspace_root:
+      workspaceRootAllowed && Boolean(role.workspace_root_dir),
+    workspace_root_dir: role.workspace_root_dir ?? undefined,
+    limit_token_quota: role.token_quota != null,
+    token_quota: role.token_quota ?? undefined,
+    limit_max_agents: role.max_agents != null,
+    max_agents: role.max_agents ?? undefined,
+  };
+}
+
+function UserRoleField({
+  roles,
+  workspaceRootAllowed,
+  staleName,
+  confirmOverwrite,
+  actorIsAdmin,
+  diverged,
+  snapshotName,
+  disabled,
+}: {
+  roles: UserRole[];
+  workspaceRootAllowed: boolean;
+  staleName?: string | null;
+  confirmOverwrite?: boolean;
+  actorIsAdmin?: boolean;
+  diverged?: boolean;
+  snapshotName?: string | null;
+  disabled?: boolean;
+}) {
+  const { t } = useTranslation();
+  const form = Form.useFormInstance();
+  const selectedId = Form.useWatch("role", form) as string | undefined;
+  const showStale = Boolean(staleName) && !selectedId;
+  const selectedRole = roles.find((role) => role.user_role_id === selectedId);
+  const showDiverged =
+    Boolean(diverged) &&
+    Boolean(snapshotName) &&
+    selectedRole?.user_role_name === snapshotName;
+  const visibleRoles =
+    actorIsAdmin === false
+      ? roles.filter((role) => role.system_role !== "admin")
+      : roles;
+  const committedId = useRef<string | null>(
+    (form.getFieldValue("role") as string | null | undefined) ?? null,
+  );
+  const committedName = useRef<string | null>(
+    (form.getFieldValue("role_name") as string | null | undefined) ?? null,
+  );
+
+  const applyRole = (role: UserRole) => {
+    const next: Record<string, unknown> = {
+      role: role.user_role_id,
+      role_name: role.user_role_name,
+    };
+    if (role.system_role !== "admin") {
+      next.permissions = [...role.permissions];
+      Object.assign(next, policyFieldsFromRole(role, workspaceRootAllowed));
+    } else {
+      next.permissions = [];
+    }
+    form.setFieldsValue(next);
+    committedId.current = role.user_role_id;
+    committedName.current = role.user_role_name;
+  };
+
+  return (
+    <>
+      <Form.Item name="role_name" hidden>
+        <Input />
+      </Form.Item>
+      <Form.Item
+        label={t("adminUsers.formUserRole")}
+        name="role"
+        rules={[
+          { required: true, message: t("adminUsers.formUserRolePlaceholder") },
+        ]}
+        extra={
+          showStale
+            ? t("adminUsers.formUserRoleStale", { name: staleName })
+            : showDiverged
+            ? t("adminUsers.formRoleDiverged")
+            : t("adminUsers.formUserRoleHint")
+        }
+      >
+        <Select
+          disabled={disabled}
+          placeholder={t("adminUsers.formUserRolePlaceholder")}
+          options={visibleRoles.map((role) => ({
+            value: role.user_role_id,
+            label: userRoleLabel(role, t),
+          }))}
+          optionRender={(option) => {
+            const role = visibleRoles.find(
+              (item) => item.user_role_id === option.value,
+            );
+            if (!role) return option.label;
+            return (
+              <RoleSelectLabel
+                url={role.avatar_url}
+                icon={role.avatar_icon}
+                label={userRoleLabel(role, t)}
+              />
+            );
+          }}
+          labelRender={(option) => {
+            const role = visibleRoles.find(
+              (item) => item.user_role_id === option.value,
+            );
+            if (!role) return option.label;
+            return (
+              <RoleSelectLabel
+                url={role.avatar_url}
+                icon={role.avatar_icon}
+                label={userRoleLabel(role, t)}
+              />
+            );
+          }}
+          onChange={(id) => {
+            const next = (id as string | null | undefined) ?? null;
+            if (next == null) {
+              form.setFieldsValue({ role: null, role_name: null });
+              committedId.current = null;
+              committedName.current = null;
+              return;
+            }
+            const role = visibleRoles.find(
+              (item) => item.user_role_id === next,
+            );
+            if (!role) return;
+            if (!confirmOverwrite || committedId.current === next) {
+              applyRole(role);
+              return;
+            }
+            Modal.confirm({
+              title: t("adminUsers.roleApplyConfirm"),
+              content: t("adminUsers.roleApplyConfirmHint"),
+              okText: t("common.confirm"),
+              cancelText: t("common.cancel"),
+              onOk: () => applyRole(role),
+              onCancel: () => {
+                form.setFieldsValue({
+                  role: committedId.current,
+                  role_name: committedName.current,
+                });
+              },
+            });
+          }}
+        />
+      </Form.Item>
+    </>
+  );
+}
+
+function RoleNameMark({
+  row,
+  roles,
+  className,
+}: {
+  row: UserRow;
+  roles: UserRole[];
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  const name = row.role_name?.trim();
+  const drift = userRoleDrift(row, roles);
+  const matched = row.role
+    ? roles.find((role) => role.user_role_id === row.role)
+    : name
+    ? roles.find((role) => role.user_role_name === name)
+    : undefined;
+  const label =
+    snapshotRoleLabel(name, roles, t, row.role) ||
+    (matched ? userRoleLabel(matched, t) : "");
+  if (!label && drift !== "missing") {
+    return <span className={className}>—</span>;
+  }
+  return (
+    <span className={`${styles.roleNameMark} ${className ?? ""}`}>
+      {matched ? (
+        <ProfileAvatar
+          url={matched.avatar_url}
+          icon={matched.avatar_icon}
+          kind="role"
+          className={styles.roleSelectIcon}
+        />
+      ) : null}
+      <span className={styles.roleNameText}>
+        {label || t("adminUsers.roleNameMissing")}
+      </span>
+      {drift === "changed" ? (
+        <Tag>{t("adminUsers.roleNameChanged")}</Tag>
+      ) : null}
+      {drift === "missing" && label ? (
+        <Tag>{t("adminUsers.roleNameMissing")}</Tag>
+      ) : null}
+    </span>
+  );
 }
 
 function useNowSeconds(active: boolean): number {
@@ -174,6 +402,8 @@ interface UserCardGridProps {
   agentsLoading: boolean;
   currentUserId: number | null;
   permLabelByKey: Map<string, string>;
+  selectedIds: number[];
+  onToggleSelect: (id: number, checked: boolean) => void;
   onTogglePatch: (
     row: UserRow,
     patch: Partial<Pick<UserRow, "role" | "disabled" | "permissions">>,
@@ -184,15 +414,36 @@ interface UserCardGridProps {
   onDelete: (row: UserRow) => Promise<void>;
   onUnlockLogin: (row: UserRow) => Promise<void>;
   nowSec: number;
+  userRoles: UserRole[];
 }
 
-function userInitials(displayName: string, username: string): string {
-  const source = displayName.trim() || username;
-  const parts = source.split(/[\s._-]+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return source.slice(0, 2).toUpperCase();
+type BatchAction =
+  | "enable"
+  | "disable"
+  | "delete"
+  | "set_token_quota"
+  | "set_max_agents";
+
+interface BatchResponse {
+  action: BatchAction;
+  results: {
+    user_id: number;
+    ok: boolean;
+    error?: string | null;
+    code?: string | null;
+  }[];
+  succeeded: number;
+  failed: number;
+}
+
+interface BatchTokenFormValues {
+  limit_token_quota?: boolean;
+  token_quota?: number | null;
+}
+
+interface BatchMaxAgentsFormValues {
+  limit_max_agents?: boolean;
+  max_agents?: number | null;
 }
 
 const FIELD_ICON_PROPS = {
@@ -200,12 +451,13 @@ const FIELD_ICON_PROPS = {
   style: { color: "var(--fn-text-tertiary)" },
 };
 
-function policyPayload(
+export function policyPayload(
   values: PolicyFormValues,
   options: { workspaceRootAllowed: boolean },
 ): {
   workspace_root_dir: string | null;
   token_quota: number | null;
+  max_agents: number | null;
 } {
   return {
     workspace_root_dir:
@@ -213,10 +465,155 @@ function policyPayload(
         ? values.workspace_root_dir?.trim() || null
         : null,
     token_quota: values.limit_token_quota ? values.token_quota ?? null : null,
+    max_agents: values.limit_max_agents ? values.max_agents ?? null : null,
   };
 }
 
-function ResourcePolicyFields({
+export function rolePoliciesFromForm(
+  values: PolicyFormValues,
+  options: { workspaceRootAllowed: boolean },
+): { name: string; value: string }[] {
+  const flat = policyPayload(values, options);
+  const policies: { name: string; value: string }[] = [];
+  if (flat.workspace_root_dir) {
+    policies.push({
+      name: "workspace_root_dir",
+      value: flat.workspace_root_dir,
+    });
+  }
+  if (flat.token_quota != null) {
+    policies.push({ name: "token_quota", value: String(flat.token_quota) });
+  }
+  if (flat.max_agents != null) {
+    policies.push({ name: "max_agents", value: String(flat.max_agents) });
+  }
+  return policies;
+}
+
+/** Common quotas admins pick — values are absolute token counts. */
+const TOKEN_QUOTA_PRESETS = [
+  1_000_000, 5_000_000, 10_000_000, 50_000_000, 100_000_000,
+] as const;
+
+const MAX_AGENTS_PRESETS = [1, 3, 5, 10, 20] as const;
+
+function formatMillionsLabel(tokens: number): string {
+  const millions = tokens / 1_000_000;
+  if (Number.isInteger(millions)) return String(millions);
+  return millions.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function formatTokenQuotaExact(tokens: number): string {
+  return tokens.toLocaleString("en-US");
+}
+
+interface TokenQuotaInputProps {
+  value?: number | null;
+  onChange?: (value: number | null) => void;
+}
+
+function TokenQuotaInput({ value, onChange }: TokenQuotaInputProps) {
+  const { t } = useTranslation();
+  const numeric =
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+
+  return (
+    <div className={styles.tokenQuotaField}>
+      <InputNumber
+        value={numeric ?? undefined}
+        onChange={(next) => onChange?.(typeof next === "number" ? next : null)}
+        min={0}
+        step={1_000_000}
+        style={{ width: "100%" }}
+        placeholder={t("adminUsers.policyTokenQuotaPlaceholder")}
+        formatter={(raw) =>
+          `${raw ?? ""}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+        }
+        parser={(raw) => {
+          const cleaned = (raw ?? "").replace(/,/g, "");
+          if (!cleaned) return undefined as unknown as number;
+          return Number(cleaned);
+        }}
+      />
+      <div className={styles.tokenQuotaPresets} role="group">
+        <span className={styles.tokenQuotaPresetsLabel}>
+          {t("adminUsers.policyTokenQuotaPresets")}
+        </span>
+        {TOKEN_QUOTA_PRESETS.map((preset) => {
+          const selected = numeric === preset;
+          return (
+            <button
+              key={preset}
+              type="button"
+              className={`${styles.tokenQuotaPreset} ${
+                selected ? styles.tokenQuotaPresetActive : ""
+              }`}
+              onClick={() => onChange?.(preset)}
+            >
+              {t("adminUsers.policyTokenQuotaPreset", {
+                millions: formatMillionsLabel(preset),
+              })}
+            </button>
+          );
+        })}
+      </div>
+      {numeric != null && numeric > 0 ? (
+        <div className={styles.tokenQuotaPreview}>
+          {t("adminUsers.policyTokenQuotaPreview", {
+            millions: formatMillionsLabel(numeric),
+            exact: formatTokenQuotaExact(numeric),
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface MaxAgentsInputProps {
+  value?: number | null;
+  onChange?: (value: number | null) => void;
+}
+
+function MaxAgentsInput({ value, onChange }: MaxAgentsInputProps) {
+  const { t } = useTranslation();
+  const numeric =
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+
+  return (
+    <div className={styles.tokenQuotaField}>
+      <InputNumber
+        value={numeric ?? undefined}
+        onChange={(next) => onChange?.(typeof next === "number" ? next : null)}
+        min={0}
+        step={1}
+        style={{ width: "100%" }}
+        placeholder={t("adminUsers.policyMaxAgentsPlaceholder")}
+      />
+      <div className={styles.tokenQuotaPresets} role="group">
+        <span className={styles.tokenQuotaPresetsLabel}>
+          {t("common.tokenCountPresets")}
+        </span>
+        {MAX_AGENTS_PRESETS.map((preset) => {
+          const selected = numeric === preset;
+          return (
+            <button
+              key={preset}
+              type="button"
+              className={`${styles.tokenQuotaPreset} ${
+                selected ? styles.tokenQuotaPresetActive : ""
+              }`}
+              onClick={() => onChange?.(preset)}
+            >
+              {preset}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function ResourcePolicyFields({
   fsTreeRoot,
   workspaceRootAllowed,
 }: {
@@ -293,56 +690,41 @@ function ResourcePolicyFields({
                 },
               ]}
             >
-              <InputNumber min={0} step={1000} style={{ width: "100%" }} />
+              <TokenQuotaInput />
             </Form.Item>
           ) : null
         }
       </Form.Item>
-    </div>
-  );
-}
-
-interface RolePickerProps {
-  value?: "admin" | "user";
-  onChange?: (value: "admin" | "user") => void;
-  disabled?: boolean;
-  options: {
-    value: "admin" | "user";
-    label: string;
-    hint: string;
-  }[];
-}
-
-function RolePicker({ value, onChange, options, disabled }: RolePickerProps) {
-  return (
-    <div className={styles.rolePicker} role="radiogroup">
-      {options.map((opt) => {
-        const selected = value === opt.value;
-        const Icon = opt.value === "admin" ? ShieldCheck : UserRound;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            disabled={disabled}
-            className={`${styles.roleOption} ${
-              selected ? styles.roleOptionSelected : ""
-            }`}
-            onClick={() => {
-              if (!disabled) onChange?.(opt.value);
-            }}
-          >
-            <span className={styles.roleOptionIcon} aria-hidden>
-              <Icon size={15} strokeWidth={2} />
-            </span>
-            <span className={styles.roleOptionBody}>
-              <span className={styles.roleOptionLabel}>{opt.label}</span>
-              <span className={styles.roleOptionHint}>{opt.hint}</span>
-            </span>
-          </button>
-        );
-      })}
+      <Form.Item
+        label={t("adminUsers.policyMaxAgents")}
+        extra={t("adminUsers.policyMaxAgentsHint")}
+      >
+        <Form.Item name="limit_max_agents" valuePropName="checked" noStyle>
+          <Switch />
+        </Form.Item>
+      </Form.Item>
+      <Form.Item
+        noStyle
+        shouldUpdate={(prev, cur) =>
+          prev.limit_max_agents !== cur.limit_max_agents
+        }
+      >
+        {({ getFieldValue }) =>
+          getFieldValue("limit_max_agents") ? (
+            <Form.Item
+              name="max_agents"
+              rules={[
+                {
+                  required: true,
+                  message: t("adminUsers.policyMaxAgentsRequired"),
+                },
+              ]}
+            >
+              <MaxAgentsInput />
+            </Form.Item>
+          ) : null
+        }
+      </Form.Item>
     </div>
   );
 }
@@ -354,7 +736,7 @@ interface PermissionCheckboxPickerProps {
   disabled?: boolean;
 }
 
-function PermissionCheckboxPicker({
+export function PermissionCheckboxPicker({
   value,
   onChange,
   catalog,
@@ -581,6 +963,8 @@ function UserCardGrid({
   agentsLoading,
   currentUserId,
   permLabelByKey,
+  selectedIds,
+  onToggleSelect,
   onTogglePatch,
   onEdit,
   onShowAgents,
@@ -588,9 +972,11 @@ function UserCardGrid({
   onDelete,
   onUnlockLogin,
   nowSec,
+  userRoles,
 }: UserCardGridProps) {
   const { t } = useTranslation();
   const timeZone = useServerTimezone();
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   if (loading && rows.length === 0) {
     return (
       <div className={styles.userGridLoading}>
@@ -606,137 +992,83 @@ function UserCardGrid({
       {rows.map((row) => {
         const agentCount = agentsByUserId.get(row.id)?.length ?? 0;
         const isSelf = row.id === currentUserId;
+        const selected = selectedSet.has(row.id);
         const displayName = row.display_name?.trim() || row.username;
         const remaining = lockRemainingSeconds(row, nowSec);
         const isLocked = remaining > 0;
         const failedCount = row.login_failed_count ?? 0;
-        const accentClass = isLocked
-          ? styles.userCardAccentLocked
-          : row.disabled
-          ? styles.userCardAccentDisabled
-          : row.role === "admin"
-          ? styles.userCardAccentAdmin
-          : styles.userCardAccentUser;
-        const statusColor = row.disabled ? "#8c8c8c" : "#52c41a";
-        const statusBg = row.disabled
-          ? "rgba(140,140,140,0.10)"
-          : "rgba(82,196,26,0.10)";
         return (
           <div
             key={row.id}
             className={[
               styles.userCard,
+              selected ? styles.userCardSelected : "",
               isLocked ? styles.userCardLocked : "",
               row.disabled ? styles.userCardDisabled : "",
             ]
               .filter(Boolean)
               .join(" ")}
           >
-            <div className={`${styles.userCardAccent} ${accentClass}`} />
-
-            <div className={styles.userCardInner}>
-              <div className={styles.userCardHeader}>
-                <div
-                  className={`${styles.userCardAvatar} ${roleToneClass(
-                    row.role,
-                  )}`}
-                  aria-hidden="true"
-                >
-                  {userInitials(displayName, row.username)}
-                </div>
-
+            <div className={styles.userCardBody}>
+              <div className={styles.userCardTop}>
+                <Checkbox
+                  checked={selected}
+                  onChange={(e) => onToggleSelect(row.id, e.target.checked)}
+                  className={styles.userCardSelect}
+                  aria-label={t("adminUsers.batchSelectUser", {
+                    username: row.username,
+                  })}
+                />
+                <span className={styles.userCardAvatarWrap}>
+                  <ProfileAvatar
+                    url={row.avatar_url}
+                    icon={row.avatar_icon}
+                    kind="user"
+                    className={styles.userCardAvatar}
+                  />
+                  <span
+                    className={
+                      row.disabled
+                        ? `${styles.userCardStatusDot} ${styles.userCardStatusDotOff}`
+                        : styles.userCardStatusDot
+                    }
+                  />
+                </span>
                 <div className={styles.userCardTitleBlock}>
                   <div className={styles.userCardNameRow}>
-                    <span className={styles.userCardName}>{displayName}</span>
-                    {isSelf && (
-                      <Tag className={styles.userCardYouTag}>
+                    <h3 className={styles.userCardName}>{displayName}</h3>
+                    {isSelf ? (
+                      <span className={styles.userCardYou}>
                         {t("adminUsers.you")}
-                      </Tag>
-                    )}
+                      </span>
+                    ) : null}
                   </div>
-                  <div className={styles.userCardHandle}>@{row.username}</div>
+                  <p className={styles.userCardSub}>
+                    <span>@{row.username}</span>
+                    <span className={styles.userCardMetaSep}>·</span>
+                    <RoleNameMark row={row} roles={userRoles} />
+                  </p>
                 </div>
-
-                <Switch
-                  size="small"
-                  checked={!row.disabled}
-                  onChange={(checked) =>
-                    void onTogglePatch(row, { disabled: !checked })
-                  }
-                  className={styles.userCardSwitch}
-                  aria-label={t("common.enabled")}
-                />
               </div>
-
-              <div className={styles.userCardMeta}>
-                <span
-                  className={`${styles.userCardPill} ${roleToneClass(
-                    row.role,
-                  )}`}
-                >
-                  {row.role === "admin"
-                    ? t("adminUsers.roleAdmin")
-                    : t("adminUsers.roleUser")}
-                </span>
-                <span
-                  className={styles.userCardPill}
-                  style={{ color: statusColor, background: statusBg }}
-                >
-                  <span
-                    className={styles.userCardStatusDot}
-                    style={{ background: statusColor }}
-                  />
-                  {row.disabled
-                    ? t("adminUsers.statusDisabled")
-                    : t("adminUsers.statusEnabled")}
-                </span>
-                {row.sso_linked && (
-                  <span className={styles.userCardAuth}>
-                    {t("adminUsers.ssoBadge")}
-                  </span>
-                )}
-                {row.has_password && (
-                  <span className={styles.userCardAuth}>
-                    {t("adminUsers.passwordBadge")}
-                  </span>
-                )}
-              </div>
-
-              <div className={styles.userCardInfo}>
-                <span className={styles.userCardTime}>
-                  <Mail size={11} />
-                  <span>{row.email?.trim() || "—"}</span>
-                </span>
-                {row.created_at != null && (
-                  <Tooltip title={t("adminUsers.colCreatedAt")}>
-                    <span className={styles.userCardTime}>
-                      <Clock size={11} />
-                      <span>{formatUserTs(row.created_at, timeZone)}</span>
-                    </span>
-                  </Tooltip>
-                )}
+              <p className={styles.userCardDesc}>
+                {row.email?.trim() || t("adminUsers.noEmail")}
+                {row.created_at != null
+                  ? ` · ${formatUserTs(row.created_at, timeZone)}`
+                  : ""}
+              </p>
+              <div className={styles.userCardQuiet}>
                 <PermissionSummary row={row} permLabelByKey={permLabelByKey} />
+                {row.sso_linked ? (
+                  <span>{t("adminUsers.ssoBadge")}</span>
+                ) : null}
+                {row.has_password ? (
+                  <span>{t("adminUsers.passwordBadge")}</span>
+                ) : null}
               </div>
-
-              <div className={styles.userCardStats}>
-                <button
-                  type="button"
-                  className={styles.userCardStatBtn}
-                  onClick={() => onShowAgents(row)}
-                >
-                  <Bot size={15} />
-                  <span>{t("adminUsers.colAgents")}</span>
-                  <span className={styles.userCardStatCount}>
-                    {agentsLoading ? "…" : agentCount}
-                  </span>
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-
-              {isLocked && (
+              {isLocked ? (
                 <div className={styles.userCardLockAlert}>
                   <Lock size={14} />
-                  <span className={styles.userCardLockText}>
+                  <span>
                     {t("adminUsers.loginLockActive", {
                       minutes: Math.max(1, Math.ceil(remaining / 60)),
                     })}
@@ -744,74 +1076,85 @@ function UserCardGrid({
                   <Button
                     type="link"
                     size="small"
-                    className={styles.userCardLockUnlock}
                     onClick={() => void onUnlockLogin(row)}
                   >
                     {t("adminUsers.unlockLogin")}
                   </Button>
                 </div>
-              )}
-
-              {!isLocked && failedCount > 0 && (
+              ) : null}
+              {!isLocked && failedCount > 0 ? (
                 <div className={styles.userCardFailedHint}>
                   {t("adminUsers.loginFailedCount", { count: failedCount })}
                 </div>
-              )}
+              ) : null}
+            </div>
+            <div className={styles.userCardFooter}>
+              <button
+                type="button"
+                className={styles.userCardDetailLink}
+                onClick={() => onShowAgents(row)}
+              >
+                <Bot size={14} />
+                {t("adminUsers.colAgents")} {agentsLoading ? "…" : agentCount}
+              </button>
+              <span className={styles.userCardFooterSpacer} />
+              <Switch
+                size="small"
+                checked={!row.disabled}
+                onChange={(checked) =>
+                  void onTogglePatch(row, { disabled: !checked })
+                }
+                aria-label={t("common.enabled")}
+              />
+              <Tooltip title={t("common.edit")} mouseEnterDelay={0.5}>
+                <button
+                  type="button"
+                  className={styles.userCardIconBtn}
+                  onClick={() => onEdit(row)}
+                  aria-label={t("common.edit")}
+                >
+                  <Pencil size={15} />
+                </button>
+              </Tooltip>
 
-              <div className={styles.userCardFooter}>
-                <Tooltip title={t("common.edit")} mouseEnterDelay={0.5}>
-                  <button
-                    type="button"
-                    className={styles.userCardIconBtn}
-                    onClick={() => onEdit(row)}
-                    aria-label={t("common.edit")}
-                  >
-                    <Pencil size={15} />
-                  </button>
-                </Tooltip>
+              <Tooltip
+                title={t("adminUsers.resetPassword")}
+                mouseEnterDelay={0.5}
+              >
+                <button
+                  type="button"
+                  className={styles.userCardIconBtn}
+                  onClick={() => onResetPassword(row)}
+                  aria-label={t("adminUsers.resetPassword")}
+                >
+                  <KeyRound size={15} />
+                </button>
+              </Tooltip>
 
+              <Popconfirm
+                title={t("adminUsers.deleteConfirm", {
+                  username: row.username,
+                })}
+                onConfirm={() => void onDelete(row)}
+                disabled={isSelf}
+              >
                 <Tooltip
-                  title={t("adminUsers.resetPassword")}
+                  title={
+                    isSelf ? t("adminUsers.deleteSelf") : t("common.delete")
+                  }
                   mouseEnterDelay={0.5}
                 >
                   <button
                     type="button"
-                    className={styles.userCardIconBtn}
-                    onClick={() => onResetPassword(row)}
-                    aria-label={t("adminUsers.resetPassword")}
+                    className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
+                    disabled={isSelf}
+                    aria-label={t("common.delete")}
                   >
-                    <KeyRound size={15} />
+                    <Trash2 size={15} />
                   </button>
                 </Tooltip>
-
-                <Popconfirm
-                  title={t("adminUsers.deleteConfirm", {
-                    username: row.username,
-                  })}
-                  onConfirm={() => void onDelete(row)}
-                  disabled={isSelf}
-                >
-                  <Tooltip
-                    title={
-                      isSelf ? t("adminUsers.deleteSelf") : t("common.delete")
-                    }
-                    mouseEnterDelay={0.5}
-                  >
-                    <button
-                      type="button"
-                      className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
-                      disabled={isSelf}
-                      aria-label={t("common.delete")}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </Tooltip>
-                </Popconfirm>
-
-                <span className={styles.userCardFooterSpacer} />
-
-                <span className={styles.userCardIdBadge}>#{row.id}</span>
-              </div>
+              </Popconfirm>
+              <span className={styles.userCardIdBadge}>#{row.id}</span>
             </div>
           </div>
         );
@@ -881,6 +1224,7 @@ function UserLoginLock({
 
 export default function UsersListPanel() {
   const { t } = useTranslation();
+  const setCurrentUser = useSetCurrentUser();
   const timeZone = useServerTimezone();
   const isMobile = useIsMobile();
   const [agents, setAgents] = useState<OctopAgent[]>([]);
@@ -888,6 +1232,8 @@ export default function UsersListPanel() {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [pendingUserAvatar, setPendingUserAvatar] = useState<File | null>(null);
+  const [pendingUserIcon, setPendingUserIcon] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<CreateValues>();
@@ -898,11 +1244,19 @@ export default function UsersListPanel() {
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [resetForm] = Form.useForm<ResetValues>();
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [actorIsAdmin, setActorIsAdmin] = useState(true);
   const [agentDrawerUser, setAgentDrawerUser] = useState<UserRow | null>(null);
   const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const [batchTokenOpen, setBatchTokenOpen] = useState(false);
+  const [batchTokenForm] = Form.useForm<BatchTokenFormValues>();
+  const [batchMaxAgentsOpen, setBatchMaxAgentsOpen] = useState(false);
+  const [batchMaxAgentsForm] = Form.useForm<BatchMaxAgentsFormValues>();
   const { viewMode, setViewMode, showCardView } = useCardTableView("table");
   const [permCatalog, setPermCatalog] = useState<PermissionCatalogItem[]>([]);
+  const [userRoles, setUserRoles] = useState<UserRole[]>([]);
   const [fsTreeRoot, setFsTreeRoot] = useState(HOST_FS_ROOT);
   const [workspaceRootAllowed, setWorkspaceRootAllowed] = useState(true);
 
@@ -920,20 +1274,24 @@ export default function UsersListPanel() {
     [permCatalog],
   );
 
-  const createRoleOptions = useMemo(
-    () => [
-      {
-        value: "user" as const,
-        label: t("adminUsers.roleUser"),
-        hint: t("adminUsers.roleUserHint"),
-      },
-      {
-        value: "admin" as const,
-        label: t("adminUsers.roleAdmin"),
-        hint: t("adminUsers.roleAdminHint"),
-      },
-    ],
-    [t],
+  const syncSelfAvatar = useCallback(
+    (
+      userId: number,
+      avatar: { avatar_url?: string | null; avatar_icon?: string | null },
+    ) => {
+      setCurrentUser((prev) => {
+        if (!prev || prev.id !== userId) return prev;
+        return {
+          ...prev,
+          avatar_url: avatar.avatar_url ?? null,
+          avatar_icon:
+            avatar.avatar_icon === undefined
+              ? prev.avatar_icon
+              : avatar.avatar_icon,
+        };
+      });
+    },
+    [setCurrentUser],
   );
 
   const isSelfAdmin = useCallback(
@@ -969,13 +1327,48 @@ export default function UsersListPanel() {
       const username = row.username.toLowerCase();
       const displayName = (row.display_name ?? "").trim().toLowerCase();
       const email = (row.email ?? "").trim().toLowerCase();
+      const roleName = (row.role_name ?? "").trim().toLowerCase();
       return (
         username.includes(query) ||
         displayName.includes(query) ||
-        email.includes(query)
+        email.includes(query) ||
+        roleName.includes(query)
       );
     });
   }, [rows, searchQuery]);
+
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedVisibleCount = useMemo(
+    () => filteredRows.filter((row) => selectedIdSet.has(row.id)).length,
+    [filteredRows, selectedIdSet],
+  );
+
+  const clearSelection = useCallback(() => setSelectedIds([]), []);
+
+  const toggleSelectOne = useCallback((id: number, checked: boolean) => {
+    setSelectedIds((prev) => {
+      if (checked) {
+        return prev.includes(id) ? prev : [...prev, id];
+      }
+      return prev.filter((item) => item !== id);
+    });
+  }, []);
+
+  const setSelectAllVisible = useCallback(
+    (checked: boolean) => {
+      const visibleIds = filteredRows.map((row) => row.id);
+      setSelectedIds((prev) => {
+        if (checked) {
+          const next = new Set(prev);
+          for (const id of visibleIds) next.add(id);
+          return Array.from(next);
+        }
+        const drop = new Set(visibleIds);
+        return prev.filter((id) => !drop.has(id));
+      });
+    },
+    [filteredRows],
+  );
 
   const refreshUsers = useCallback(async () => {
     setLoading(true);
@@ -991,6 +1384,143 @@ export default function UsersListPanel() {
     }
   }, [t]);
 
+  const reportBatchResult = useCallback(
+    (body: BatchResponse) => {
+      if (body.failed === 0) {
+        message.success(
+          t("adminUsers.batchSuccess", {
+            count: body.succeeded,
+            action: t(`adminUsers.batchAction.${body.action}`),
+          }),
+        );
+        return;
+      }
+      if (body.succeeded === 0) {
+        message.error(
+          t("adminUsers.batchAllFailed", {
+            failed: body.failed,
+            action: t(`adminUsers.batchAction.${body.action}`),
+          }),
+        );
+        return;
+      }
+      message.warning(
+        t("adminUsers.batchPartial", {
+          succeeded: body.succeeded,
+          failed: body.failed,
+          action: t(`adminUsers.batchAction.${body.action}`),
+        }),
+      );
+    },
+    [t],
+  );
+
+  const runBatch = useCallback(
+    async (
+      action: BatchAction,
+      options?: {
+        token_quota?: number | null;
+        max_agents?: number | null;
+      },
+    ) => {
+      if (selectedIds.length === 0) return;
+      setBatchSubmitting(true);
+      try {
+        const body = await request<BatchResponse>("/users/batch", {
+          method: "POST",
+          body: JSON.stringify({
+            user_ids: selectedIds,
+            action,
+            ...(action === "set_token_quota"
+              ? { token_quota: options?.token_quota ?? null }
+              : {}),
+            ...(action === "set_max_agents"
+              ? { max_agents: options?.max_agents ?? null }
+              : {}),
+          }),
+        });
+        reportBatchResult(body);
+        clearSelection();
+        setBatchTokenOpen(false);
+        batchTokenForm.resetFields();
+        setBatchMaxAgentsOpen(false);
+        batchMaxAgentsForm.resetFields();
+        void refreshUsers();
+      } catch (err) {
+        message.error(
+          err instanceof Error ? err.message : t("adminUsers.batchFailed"),
+        );
+      } finally {
+        setBatchSubmitting(false);
+      }
+    },
+    [
+      selectedIds,
+      reportBatchResult,
+      clearSelection,
+      batchTokenForm,
+      batchMaxAgentsForm,
+      refreshUsers,
+      t,
+    ],
+  );
+
+  const confirmBatchAction = (
+    action: Extract<BatchAction, "enable" | "disable" | "delete">,
+  ) => {
+    if (selectedIds.length === 0) return;
+    const titles = {
+      enable: "adminUsers.batchEnableConfirm",
+      disable: "adminUsers.batchDisableConfirm",
+      delete: "adminUsers.batchDeleteConfirm",
+    } as const;
+    const hints = {
+      enable: "adminUsers.batchEnableHint",
+      disable: "adminUsers.batchDisableHint",
+      delete: "adminUsers.batchDeleteHint",
+    } as const;
+    const okLabels = {
+      enable: t("adminUsers.batchEnable"),
+      disable: t("adminUsers.batchDisable"),
+      delete: t("common.delete"),
+    } as const;
+    Modal.confirm({
+      title: t(titles[action], { count: selectedIds.length }),
+      content: t(hints[action]),
+      okType: action === "delete" ? "danger" : "primary",
+      okText: okLabels[action],
+      cancelText: t("common.cancel"),
+      onOk: () => runBatch(action),
+    });
+  };
+
+  const openBatchToken = () => {
+    batchTokenForm.setFieldsValue({
+      limit_token_quota: true,
+      token_quota: 10_000_000,
+    });
+    setBatchTokenOpen(true);
+  };
+
+  const submitBatchToken = async (values: BatchTokenFormValues) => {
+    await runBatch("set_token_quota", {
+      token_quota: values.limit_token_quota ? values.token_quota ?? null : null,
+    });
+  };
+
+  const openBatchMaxAgents = () => {
+    batchMaxAgentsForm.setFieldsValue({
+      limit_max_agents: true,
+      max_agents: 5,
+    });
+    setBatchMaxAgentsOpen(true);
+  };
+
+  const submitBatchMaxAgents = async (values: BatchMaxAgentsFormValues) => {
+    await runBatch("set_max_agents", {
+      max_agents: values.limit_max_agents ? values.max_agents ?? null : null,
+    });
+  };
   useEffect(() => {
     if (!hasLockedUser) return;
     const anyExpired = rows.some(
@@ -1064,11 +1594,21 @@ export default function UsersListPanel() {
     void refreshAll();
     authApi
       .me()
-      .then((u) => setCurrentUserId(u.id))
-      .catch(() => setCurrentUserId(null));
+      .then((u) => {
+        setCurrentUserId(u.id);
+        setActorIsAdmin(u.role === "admin");
+      })
+      .catch(() => {
+        setCurrentUserId(null);
+        setActorIsAdmin(false);
+      });
     request<PermissionCatalogItem[]>("/users/permissions")
       .then(setPermCatalog)
       .catch(() => setPermCatalog([]));
+    userRolesApi
+      .list()
+      .then(setUserRoles)
+      .catch(() => setUserRoles([]));
     fetchFilesystemDefaults()
       .then((defaults) => {
         setFsTreeRoot(defaults.tree_root);
@@ -1083,7 +1623,7 @@ export default function UsersListPanel() {
   const onCreate = async (values: CreateValues) => {
     setSubmitting(true);
     try {
-      await request("/users", {
+      const created = await request<UserRow>("/users", {
         method: "POST",
         body: JSON.stringify({
           username: values.username,
@@ -1092,9 +1632,32 @@ export default function UsersListPanel() {
           password: values.password,
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
+          role_name: values.role_name?.trim() || null,
           ...policyPayload(values, { workspaceRootAllowed }),
         }),
       });
+      if (pendingUserAvatar) {
+        try {
+          await uploadUserAvatar(created.id, pendingUserAvatar);
+        } catch (err) {
+          message.error(
+            apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+          );
+        }
+      } else if (pendingUserIcon) {
+        try {
+          await request(`/users/${created.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ avatar_icon: pendingUserIcon }),
+          });
+        } catch (err) {
+          message.error(
+            apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+          );
+        }
+      }
+      setPendingUserAvatar(null);
+      setPendingUserIcon(null);
       message.success(
         t("adminUsers.createSuccess", { username: values.username }),
       );
@@ -1111,9 +1674,13 @@ export default function UsersListPanel() {
   };
 
   const openCreate = () => {
+    const userRole = userRoles.find((role) => role.user_role_id === "user");
     form.setFieldsValue({
-      role: "user",
-      permissions: [...baselinePermissions],
+      role: userRole?.user_role_id ?? "user",
+      permissions: userRole
+        ? [...userRole.permissions]
+        : [...baselinePermissions],
+      role_name: userRole?.user_role_name,
       username: undefined,
       display_name: undefined,
       email: undefined,
@@ -1123,17 +1690,28 @@ export default function UsersListPanel() {
       workspace_root_dir: undefined,
       limit_token_quota: false,
       token_quota: undefined,
+      limit_max_agents: false,
+      max_agents: undefined,
+      ...(userRole ? policyFieldsFromRole(userRole, workspaceRootAllowed) : {}),
     });
+    setPendingUserAvatar(null);
+    setPendingUserIcon(null);
     setCreateOpen(true);
   };
 
   const openEdit = (row: UserRow) => {
     setEditTarget(row);
+    const matched =
+      userRoles.find((role) => role.user_role_id === row.role) ??
+      (row.role_name
+        ? userRoles.find((role) => role.user_role_name === row.role_name)
+        : undefined);
     editForm.setFieldsValue({
       display_name: row.display_name ?? "",
       email: row.email ?? "",
-      role: row.role,
+      role: matched?.user_role_id ?? row.role,
       permissions: [...(row.permissions ?? [])],
+      role_name: row.role_name ?? matched?.user_role_name ?? undefined,
       limit_workspace_root: workspaceRootAllowed
         ? Boolean(row.workspace_root_dir)
         : false,
@@ -1142,6 +1720,8 @@ export default function UsersListPanel() {
         : undefined,
       limit_token_quota: row.token_quota != null,
       token_quota: row.token_quota ?? undefined,
+      limit_max_agents: row.max_agents != null,
+      max_agents: row.max_agents ?? undefined,
     });
   };
 
@@ -1183,6 +1763,7 @@ export default function UsersListPanel() {
           email: values.email?.trim() || null,
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
+          role_name: values.role_name?.trim() || null,
           ...policyPayload(values, { workspaceRootAllowed }),
         }),
       });
@@ -1247,14 +1828,32 @@ export default function UsersListPanel() {
       <div className={styles.pageTop}>
         <RoleLegend />
         <div className={expertStyles.gridToolbar}>
-          <Input
-            allowClear
-            prefix={<Search size={14} />}
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={t("adminUsers.searchPlaceholder")}
-            className={styles.userSearch}
-          />
+          <div className={styles.userSearchRow}>
+            {showCardView ? (
+              <Checkbox
+                checked={
+                  filteredRows.length > 0 &&
+                  selectedVisibleCount === filteredRows.length
+                }
+                indeterminate={
+                  selectedVisibleCount > 0 &&
+                  selectedVisibleCount < filteredRows.length
+                }
+                disabled={filteredRows.length === 0}
+                onChange={(e) => setSelectAllVisible(e.target.checked)}
+              >
+                {t("adminUsers.batchSelectAll")}
+              </Checkbox>
+            ) : null}
+            <Input
+              allowClear
+              prefix={<Search size={14} />}
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={t("adminUsers.searchPlaceholder")}
+              className={styles.userSearch}
+            />
+          </div>
           <div className={expertStyles.gridToolbarRight}>
             <Segmented
               size="small"
@@ -1304,6 +1903,66 @@ export default function UsersListPanel() {
         </div>
       </div>
 
+      {selectedIds.length > 0 ? (
+        <div className={styles.batchBar} role="toolbar">
+          <span className={styles.batchBarCount}>
+            {t("adminUsers.batchSelected", { count: selectedIds.length })}
+          </span>
+          <div className={styles.batchBarActions}>
+            <Button
+              size="small"
+              icon={<Power size={14} />}
+              loading={batchSubmitting}
+              onClick={() => confirmBatchAction("enable")}
+            >
+              {t("adminUsers.batchEnable")}
+            </Button>
+            <Button
+              size="small"
+              icon={<PowerOff size={14} />}
+              loading={batchSubmitting}
+              onClick={() => confirmBatchAction("disable")}
+            >
+              {t("adminUsers.batchDisable")}
+            </Button>
+            <Button
+              size="small"
+              icon={<Coins size={14} />}
+              loading={batchSubmitting}
+              onClick={openBatchToken}
+            >
+              {t("adminUsers.batchSetToken")}
+            </Button>
+            <Button
+              size="small"
+              icon={<Bot size={14} />}
+              loading={batchSubmitting}
+              onClick={openBatchMaxAgents}
+            >
+              {t("adminUsers.batchSetMaxAgents")}
+            </Button>
+            <Button
+              size="small"
+              danger
+              icon={<Trash2 size={14} />}
+              loading={batchSubmitting}
+              onClick={() => confirmBatchAction("delete")}
+            >
+              {t("common.delete")}
+            </Button>
+            <Button
+              size="small"
+              type="text"
+              icon={<X size={14} />}
+              onClick={clearSelection}
+              aria-label={t("adminUsers.batchClear")}
+            >
+              {t("adminUsers.batchClear")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {showCardView ? (
         <UserCardGrid
           rows={filteredRows}
@@ -1312,6 +1971,8 @@ export default function UsersListPanel() {
           agentsLoading={agentsLoading}
           currentUserId={currentUserId}
           permLabelByKey={permLabelByKey}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelectOne}
           onTogglePatch={togglePatch}
           onEdit={openEdit}
           onShowAgents={setAgentDrawerUser}
@@ -1322,6 +1983,7 @@ export default function UsersListPanel() {
           onDelete={onDelete}
           onUnlockLogin={onUnlockLogin}
           nowSec={nowSec}
+          userRoles={userRoles}
         />
       ) : (
         <ResizableTable
@@ -1333,6 +1995,11 @@ export default function UsersListPanel() {
           dataSource={filteredRows}
           pagination={false}
           scroll={{ x: 1360 }}
+          rowSelection={{
+            selectedRowKeys: selectedIds,
+            onChange: (keys) => setSelectedIds(keys.map((key) => Number(key))),
+            preserveSelectedRowKeys: true,
+          }}
           rowClassName={(row) =>
             [
               row.disabled ? styles.userTableRowDisabled : "",
@@ -1350,13 +2017,12 @@ export default function UsersListPanel() {
                 const displayName = row.display_name?.trim() || row.username;
                 return (
                   <div className={styles.userCell}>
-                    <span
-                      className={`${styles.userCellAvatar} ${roleToneClass(
-                        row.role,
-                      )}`}
-                    >
-                      {userInitials(displayName, row.username)}
-                    </span>
+                    <ProfileAvatar
+                      url={row.avatar_url}
+                      icon={row.avatar_icon}
+                      kind="user"
+                      className={styles.userCellAvatar}
+                    />
                     <span className={styles.userCellText}>
                       <span className={styles.userCellName}>
                         {displayName}
@@ -1417,18 +2083,14 @@ export default function UsersListPanel() {
               },
             },
             {
-              title: t("adminUsers.colRole"),
-              width: 88,
+              title: t("adminUsers.colRoleName"),
+              width: 220,
               render: (_, row) => (
-                <span
-                  className={`${styles.userCardPill} ${roleToneClass(
-                    row.role,
-                  )}`}
-                >
-                  {row.role === "admin"
-                    ? t("adminUsers.roleAdmin")
-                    : t("adminUsers.roleUser")}
-                </span>
+                <RoleNameMark
+                  row={row}
+                  roles={userRoles}
+                  className={styles.userCellMuted}
+                />
               ),
             },
             {
@@ -1632,6 +2294,7 @@ export default function UsersListPanel() {
             permissions: [],
             limit_workspace_root: false,
             limit_token_quota: false,
+            limit_max_agents: false,
           }}
           className={styles.createUserForm}
         >
@@ -1639,6 +2302,18 @@ export default function UsersListPanel() {
             <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccount")}
             </div>
+            <ProfileAvatarPicker
+              kind="user"
+              icon={pendingUserIcon}
+              onPick={async (file) => {
+                setPendingUserAvatar(file);
+              }}
+              onSelectIcon={(icon) => {
+                setPendingUserIcon(icon);
+                setPendingUserAvatar(null);
+              }}
+              onRemove={() => setPendingUserAvatar(null)}
+            />
             <Form.Item
               label={t("adminUsers.formUsername")}
               name="username"
@@ -1724,14 +2399,11 @@ export default function UsersListPanel() {
               <CircleHelp size={15} strokeWidth={2} />
               <span>{t("adminUsers.permEditHint")}</span>
             </div>
-            <Form.Item
-              label={t("adminUsers.formRole")}
-              name="role"
-              rules={[{ required: true }]}
-              className={styles.createUserRoleItem}
-            >
-              <RolePicker options={createRoleOptions} />
-            </Form.Item>
+            <UserRoleField
+              roles={userRoles}
+              workspaceRootAllowed={workspaceRootAllowed}
+              actorIsAdmin={actorIsAdmin}
+            />
             <Form.Item
               noStyle
               shouldUpdate={(prev, cur) => prev.role !== cur.role}
@@ -1818,6 +2490,67 @@ export default function UsersListPanel() {
             <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccount")}
             </div>
+            {editTarget ? (
+              <ProfileAvatarPicker
+                kind="user"
+                avatarUrl={editTarget.avatar_url}
+                icon={editTarget.avatar_icon}
+                onSelectIcon={async (icon) => {
+                  try {
+                    const updated = await request<UserRow>(
+                      `/users/${editTarget.id}`,
+                      {
+                        method: "PATCH",
+                        body: JSON.stringify({ avatar_icon: icon }),
+                      },
+                    );
+                    setEditTarget({
+                      ...editTarget,
+                      avatar_url: updated.avatar_url,
+                      avatar_icon: updated.avatar_icon,
+                    });
+                    syncSelfAvatar(editTarget.id, updated);
+                    void refreshUsers();
+                  } catch (err) {
+                    message.error(
+                      apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                    );
+                    throw err;
+                  }
+                }}
+                onPick={async (file) => {
+                  try {
+                    const result = await uploadUserAvatar(editTarget.id, file);
+                    setEditTarget({
+                      ...editTarget,
+                      avatar_url: result.avatar_url,
+                    });
+                    syncSelfAvatar(editTarget.id, {
+                      avatar_url: result.avatar_url,
+                    });
+                    void refreshUsers();
+                  } catch (err) {
+                    message.error(
+                      apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                    );
+                    throw err;
+                  }
+                }}
+                onRemove={async () => {
+                  try {
+                    await deleteUserAvatar(editTarget.id);
+                    setEditTarget({ ...editTarget, avatar_url: null });
+                    syncSelfAvatar(editTarget.id, { avatar_url: null });
+                    void refreshUsers();
+                  } catch (err) {
+                    message.error(
+                      apiErrorMessage(err, t("experts.avatarRemoveFailed"), t),
+                    );
+                    throw err;
+                  }
+                }}
+              />
+            ) : null}
             <Form.Item
               label={t("adminUsers.formDisplayName")}
               name="display_name"
@@ -1852,22 +2585,33 @@ export default function UsersListPanel() {
               <CircleHelp size={15} strokeWidth={2} />
               <span>{t("adminUsers.permEditHint")}</span>
             </div>
-            <Form.Item
-              label={t("adminUsers.formRole")}
-              name="role"
-              rules={[{ required: true }]}
-              className={styles.createUserRoleItem}
-              extra={
-                editTarget && isSelfAdmin(editTarget)
-                  ? t("adminUsers.demoteSelf")
-                  : undefined
+            <UserRoleField
+              roles={userRoles}
+              workspaceRootAllowed={workspaceRootAllowed}
+              confirmOverwrite
+              actorIsAdmin={actorIsAdmin}
+              disabled={Boolean(editTarget && isSelfAdmin(editTarget))}
+              diverged={
+                Boolean(editTarget) &&
+                userRoleDrift(editTarget as UserRow, userRoles) === "changed"
               }
-            >
-              <RolePicker
-                options={createRoleOptions}
-                disabled={Boolean(editTarget && isSelfAdmin(editTarget))}
-              />
-            </Form.Item>
+              snapshotName={editTarget?.role_name}
+              staleName={
+                editTarget?.role_name &&
+                !userRoles.some(
+                  (role) =>
+                    role.user_role_id === editTarget.role ||
+                    role.user_role_name === editTarget.role_name,
+                )
+                  ? editTarget.role_name
+                  : null
+              }
+            />
+            {editTarget && isSelfAdmin(editTarget) ? (
+              <div className={styles.permAdminHint}>
+                <span>{t("adminUsers.demoteSelf")}</span>
+              </div>
+            ) : null}
             <Form.Item
               noStyle
               shouldUpdate={(prev, cur) => prev.role !== cur.role}
@@ -1969,6 +2713,118 @@ export default function UsersListPanel() {
                 />
               }
             />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={t("adminUsers.batchSetTokenTitle", {
+          count: selectedIds.length,
+        })}
+        open={batchTokenOpen}
+        onCancel={() => {
+          setBatchTokenOpen(false);
+          batchTokenForm.resetFields();
+        }}
+        onOk={() => batchTokenForm.submit()}
+        okText={t("common.confirm")}
+        cancelText={t("common.cancel")}
+        confirmLoading={batchSubmitting}
+        destroyOnHidden
+      >
+        <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
+          {t("adminUsers.batchSetTokenHint")}
+        </Text>
+        <Form<BatchTokenFormValues>
+          form={batchTokenForm}
+          layout="vertical"
+          onFinish={(values) => void submitBatchToken(values)}
+        >
+          <Form.Item
+            label={t("adminUsers.policyTokenQuota")}
+            extra={t("adminUsers.policyTokenQuotaHint")}
+          >
+            <Form.Item name="limit_token_quota" valuePropName="checked" noStyle>
+              <Switch />
+            </Form.Item>
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, cur) =>
+              prev.limit_token_quota !== cur.limit_token_quota
+            }
+          >
+            {({ getFieldValue }) =>
+              getFieldValue("limit_token_quota") ? (
+                <Form.Item
+                  name="token_quota"
+                  rules={[
+                    {
+                      required: true,
+                      message: t("adminUsers.policyTokenQuotaRequired"),
+                    },
+                  ]}
+                >
+                  <TokenQuotaInput />
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={t("adminUsers.batchSetMaxAgentsTitle", {
+          count: selectedIds.length,
+        })}
+        open={batchMaxAgentsOpen}
+        onCancel={() => {
+          setBatchMaxAgentsOpen(false);
+          batchMaxAgentsForm.resetFields();
+        }}
+        onOk={() => batchMaxAgentsForm.submit()}
+        okText={t("common.confirm")}
+        cancelText={t("common.cancel")}
+        confirmLoading={batchSubmitting}
+        destroyOnHidden
+      >
+        <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
+          {t("adminUsers.batchSetMaxAgentsHint")}
+        </Text>
+        <Form<BatchMaxAgentsFormValues>
+          form={batchMaxAgentsForm}
+          layout="vertical"
+          onFinish={(values) => void submitBatchMaxAgents(values)}
+        >
+          <Form.Item
+            label={t("adminUsers.policyMaxAgents")}
+            extra={t("adminUsers.policyMaxAgentsHint")}
+          >
+            <Form.Item name="limit_max_agents" valuePropName="checked" noStyle>
+              <Switch />
+            </Form.Item>
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, cur) =>
+              prev.limit_max_agents !== cur.limit_max_agents
+            }
+          >
+            {({ getFieldValue }) =>
+              getFieldValue("limit_max_agents") ? (
+                <Form.Item
+                  name="max_agents"
+                  rules={[
+                    {
+                      required: true,
+                      message: t("adminUsers.policyMaxAgentsRequired"),
+                    },
+                  ]}
+                >
+                  <MaxAgentsInput />
+                </Form.Item>
+              ) : null
+            }
           </Form.Item>
         </Form>
       </Modal>

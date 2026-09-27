@@ -23,6 +23,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Route,
 } from "lucide-react";
 import { Tooltip, Popover, Drawer } from "antd";
 import type { ResolvedModel } from "../../../api/types";
@@ -89,6 +90,8 @@ const _sttAvailable = isSttAvailable();
 interface ChatInputActionsRowProps {
   isMobile: boolean;
   isStreaming: boolean;
+  /** Team host room — stop control uses clearer wording. */
+  isTeam?: boolean;
   disabled?: boolean;
   canSend: boolean;
   text: string;
@@ -150,6 +153,7 @@ interface ChatInputActionsRowProps {
 export default function ChatInputActionsRow({
   isMobile,
   isStreaming,
+  isTeam = false,
   disabled,
   canSend,
   text,
@@ -483,7 +487,7 @@ export default function ChatInputActionsRow({
               }}
             >
               <span className={styles.modelMenuTitle}>
-                <Sparkles size={16} aria-hidden />
+                <Route size={16} aria-hidden />
                 <span className={styles.modelMenuLabel}>
                   {t("chat.modelAuto", "Auto")}
                 </span>
@@ -1328,11 +1332,28 @@ export default function ChatInputActionsRow({
               </button>
             </Tooltip>
           ) : (
-            <Tooltip title={t("chat.stop", "Stop")} mouseEnterDelay={0.4}>
+            <Tooltip
+              title={
+                isTeam
+                  ? t("chat.stopTeamHint", {
+                      defaultValue:
+                        "停止本轮生成；已开始的成员回复可能仍会继续推送",
+                    })
+                  : t("chat.stop", "Stop")
+              }
+              mouseEnterDelay={0.4}
+            >
               <button
                 className={`${styles.sendBtn} ${styles.cancelBtn}`}
                 onClick={onCancel}
-                title={t("chat.stop", "Stop")}
+                title={
+                  isTeam
+                    ? t("chat.stopTeamHint", {
+                        defaultValue:
+                          "停止本轮生成；已开始的成员回复可能仍会继续推送",
+                      })
+                    : t("chat.stop", "Stop")
+                }
                 type="button"
                 aria-label={t("chat.stop", "Stop")}
               >

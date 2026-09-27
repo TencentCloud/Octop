@@ -6,7 +6,7 @@ import asyncio
 import ipaddress
 import socket
 import typing
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 from httpcore._backends.auto import AutoBackend
@@ -209,8 +209,13 @@ async def safe_request(
     validated IP so a malicious DNS change between validation and connection
     cannot redirect the request to an internal address.
     """
-    host, _port = _parse_https_host(url)
+    parsed = urlparse(url)
+    host, port = _parse_https_host(url)
     pin_ip = await _resolve_validated_ip(url)
+    # Rebuild the request URL from validated components so the outbound call
+    # does not reuse the original user-controlled string (CWE-918 / CodeQL).
+    netloc = f"{host}:{port}" if port is not None else host
+    request_url = urlunparse(("https", netloc, parsed.path or "/", "", parsed.query, ""))
     transport = PinnedIPTransport(host, pin_ip)
     async with httpx.AsyncClient(transport=transport, timeout=timeout) as client:
-        return await client.request(method, url, json=json, data=data, headers=headers)
+        return await client.request(method, request_url, json=json, data=data, headers=headers)

@@ -998,9 +998,7 @@ export default function DesktopPanel({
     "pageShell.desktop.subtitle",
     "查看并操控 Octop 主机操作系统桌面",
   );
-  const setupMascot = (
-    <OctopEmptyMascot size={120} className={styles.setupMascot} />
-  );
+  const setupMascot = <OctopEmptyMascot />;
 
   if (user === null) {
     const loading = (
@@ -1022,66 +1020,64 @@ export default function DesktopPanel({
     return <ForbiddenPage />;
   }
 
-  const headerActions = (
+  const headerActions = isStreaming ? (
     <Space size={8} wrap>
-      <Tooltip title={t("remoteDesktop.checkInstallTip")}>
+      <Tooltip title={t("remoteDesktop.disconnect", "断开")}>
         <Button
           size={isMobile ? "small" : "middle"}
-          icon={<Monitor size={14} />}
-          onClick={openEnvModal}
-          type={envReady ? "default" : "primary"}
+          danger
+          icon={<Unplug size={14} />}
+          onClick={handleDisconnect}
+          aria-label={t("remoteDesktop.disconnect", "断开")}
         >
-          {t("remoteDesktop.checkInstallShort", "检查")}
-          {envReady && !envLoading && (
-            <CheckCircle2
-              size={14}
-              style={{
-                marginLeft: 4,
-                color: "var(--fn-color-success,#52c41a)",
-              }}
-            />
-          )}
+          {!isMobile && t("remoteDesktop.disconnect", "断开")}
         </Button>
       </Tooltip>
-      {!isStreaming ? (
-        <Tooltip
-          title={
-            envReady
-              ? undefined
-              : needsMacPermissions
-              ? t(
-                  "remoteDesktop.connectDisabledPerms",
-                  "请先在系统设置中开启屏幕录制与辅助功能权限，然后重启 Octop",
-                )
-              : t("remoteDesktop.connectDisabled")
-          }
-        >
-          <Button
-            size={isMobile ? "small" : "middle"}
-            type="primary"
-            icon={<PlugZap size={14} />}
-            onClick={handleConnect}
-            disabled={!envReady}
-            aria-label={t("remoteDesktop.connect", "连接")}
-          >
-            {!isMobile && t("remoteDesktop.connect", "连接")}
-          </Button>
-        </Tooltip>
-      ) : (
-        <Tooltip title={t("remoteDesktop.disconnect", "断开")}>
-          <Button
-            size={isMobile ? "small" : "middle"}
-            danger
-            icon={<Unplug size={14} />}
-            onClick={handleDisconnect}
-            aria-label={t("remoteDesktop.disconnect", "断开")}
-          >
-            {!isMobile && t("remoteDesktop.disconnect", "断开")}
-          </Button>
-        </Tooltip>
-      )}
     </Space>
-  );
+  ) : undefined;
+
+  const checkGuideAction = needsMacPermissions
+    ? {
+        label: t("remoteDesktop.recheck", "重新检测"),
+        onClick: () => void refreshEnv(),
+        icon: <RefreshCw size={14} />,
+        loading: envLoading,
+        type: "default" as const,
+      }
+    : {
+        label: t("remoteDesktop.checkInstallShort", "检查"),
+        onClick: openEnvModal,
+        icon: <Monitor size={14} />,
+        type: "default" as const,
+        title: t("remoteDesktop.checkInstallTip"),
+      };
+
+  const connectGuideAction = {
+    label: t("remoteDesktop.connect", "连接"),
+    onClick: handleConnect,
+    icon: <PlugZap size={14} />,
+    disabled: !envReady,
+    title: envReady
+      ? undefined
+      : needsMacPermissions
+      ? t(
+          "remoteDesktop.connectDisabledPerms",
+          "请先在系统设置中开启屏幕录制与辅助功能权限，然后重启 Octop",
+        )
+      : t("remoteDesktop.connectDisabled"),
+  };
+
+  const uninstallGuideAction = canUninstall
+    ? {
+        label: t("remoteDesktop.uninstall", "卸载"),
+        onClick: handleUninstall,
+        icon: <Trash2 size={14} />,
+        loading: uninstalling,
+        disabled: uninstalling || envLoading,
+        danger: true,
+        type: "default" as const,
+      }
+    : undefined;
 
   const pageBody = (
     <>
@@ -1099,9 +1095,9 @@ export default function DesktopPanel({
       </Modal>
 
       <div className={styles.remoteDesktopPage}>
-        {embedded && (
+        {embedded && headerActions ? (
           <div className={styles.embeddedActions}>{headerActions}</div>
-        )}
+        ) : null}
         {needsMacPermissions && !showStream && (
           <Alert
             type="warning"
@@ -1151,6 +1147,7 @@ export default function DesktopPanel({
               renderViewportUninstallProgress()
             ) : (
               <StreamSetupGuide
+                plain
                 icon={setupMascot}
                 title={
                   envReady
@@ -1238,38 +1235,9 @@ export default function DesktopPanel({
                         },
                       ]
                 }
-                primaryAction={
-                  envReady
-                    ? {
-                        label: t("remoteDesktop.connect", "连接"),
-                        onClick: handleConnect,
-                        icon: <PlugZap size={14} />,
-                      }
-                    : needsMacPermissions
-                    ? {
-                        label: t("remoteDesktop.recheck", "重新检测"),
-                        onClick: () => void refreshEnv(),
-                        icon: <RefreshCw size={14} />,
-                        loading: envLoading,
-                      }
-                    : {
-                        label: t("remoteDesktop.checkInstallShort", "检查"),
-                        onClick: openEnvModal,
-                        icon: <Monitor size={14} />,
-                      }
-                }
-                secondaryAction={
-                  (envReady || needsMacPermissions) && canUninstall
-                    ? {
-                        label: t("remoteDesktop.uninstall", "卸载"),
-                        onClick: handleUninstall,
-                        icon: <Trash2 size={14} />,
-                        loading: uninstalling,
-                        disabled: uninstalling || envLoading,
-                        danger: true,
-                      }
-                    : undefined
-                }
+                primaryAction={checkGuideAction}
+                secondaryAction={connectGuideAction}
+                extraAction={uninstallGuideAction}
               />
             )
           ) : (
