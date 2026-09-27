@@ -18,7 +18,7 @@ from octop.infra.db.repos.thread_messages import ThreadMessageRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.trajectory_events import TrajectoryEventRepo
 from octop.infra.db.repos.users import UserRepo
-from octop.infra.gateway.process.history_projection import message_inputs
+from octop.infra.history.projection import message_inputs
 from octop.infra.history.recorder import RecordingTracker
 from octop.infra.history.service import HistoryArchive
 from octop.infra.history.store import HistoryStore

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, App, Button, Empty, Form, Switch, Tooltip } from "antd";
+import { Alert, App, Button, Empty, Form, Switch } from "antd";
 
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
@@ -50,6 +50,9 @@ export function ACPPanel() {
   const outboundBlocked = blocksAcpOutboundFromConfig(
     activeAgent?.config ?? null,
   );
+  // Under directory sandbox: lock runner enable/edit only. The per-agent
+  // acp_runner tool toggle stays available (host-spawned runners may already
+  // be enabled for other agents on this account).
 
   useEffect(() => {
     activeAgentIdRef.current = activeAgentId;
@@ -154,7 +157,6 @@ export function ACPPanel() {
   const handleToolToggle = async (checked: boolean) => {
     const agentId = activeAgentIdRef.current;
     if (!agentId || toolLoading) return;
-    if (checked && outboundBlocked) return;
     setToolToggleLoading(true);
     try {
       await persistToolEnabled(agentId, checked);
@@ -191,6 +193,7 @@ export function ACPPanel() {
   };
 
   const openEdit = (key: string) => {
+    if (outboundBlocked) return;
     const cfg = runners[key];
     setIsCreateMode(false);
     setActiveKey(key);
@@ -260,25 +263,16 @@ export function ACPPanel() {
     });
   };
 
-  const toolToggleDisabled =
-    !activeAgentId || toolLoading || (outboundBlocked && !toolEnabled);
+  const toolToggleDisabled = !activeAgentId || toolLoading;
 
   const toolSwitch = (
-    <Tooltip
-      title={
-        activeAgentId && outboundBlocked && !toolEnabled
-          ? t("acp.outboundBlockedTooltip")
-          : undefined
-      }
-    >
-      <Switch
-        key={activeAgentId ?? "none"}
-        checked={toolEnabled}
-        loading={toolLoading || toolToggleLoading}
-        disabled={toolToggleDisabled}
-        onChange={handleToolToggle}
-      />
-    </Tooltip>
+    <Switch
+      key={activeAgentId ?? "none"}
+      checked={toolEnabled}
+      loading={toolLoading || toolToggleLoading}
+      disabled={toolToggleDisabled}
+      onChange={handleToolToggle}
+    />
   );
 
   return (
@@ -331,14 +325,7 @@ export function ACPPanel() {
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         ) : (
-          <div
-            className={[
-              styles.toolToggle,
-              outboundBlocked && !toolEnabled ? styles.toolToggleDisabled : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
+          <div className={styles.toolToggle}>
             <span>{t("acp.toolEnabled")}</span>
             {toolSwitch}
           </div>
