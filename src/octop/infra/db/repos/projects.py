@@ -29,7 +29,14 @@ from octop.infra.utils.ulid import new_short_id
 
 PROJECT_ROLES: tuple[str, ...] = ("owner", "admin", "member", "viewer")
 
-PROJECT_STATUSES: tuple[str, ...] = ("draft", "active", "paused", "archived")
+PROJECT_STATUSES: tuple[str, ...] = (
+    "draft",
+    "active",
+    "paused",
+    "completed",
+    "cancelled",
+    "archived",
+)
 
 # ``project_members.subject_type`` — who a membership row points at.
 MEMBER_SUBJECT_USER = "user"

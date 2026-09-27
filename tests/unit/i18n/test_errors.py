@@ -165,3 +165,150 @@ def test_dashboard_chat_labels_are_paired_and_localized():
     assert en["chat"]["sectionActive"] == "Chats"
     assert en["chat"]["sectionUnused"] == "Unused"
     assert en["chat"]["projectSessionBadge"] == "Project chat"
+
+
+# ── the seven metadata/dispatch rejection codes (PLAN.md §2.2 / §13.2) ───────
+#
+# zh values are frozen verbatim by PLAN.md §2.2. They are asserted on both sides
+# (backend bundle + dashboard ``apiErrors``) because ``loader.py`` silently falls
+# back to English for a missing zh key — an en-only gate would stay green while a
+# zh user reads English.
+
+_NEW_ERROR_ZH = {
+    "PROJECT_TASK_TAG_INVALID": "标签不存在或不属于当前项目。",
+    "PROJECT_TASK_DATE_INVALID": "任务日期不合法。",
+    "PROJECT_TASK_DISPATCH_INVALID": "该任务的负责人不是可运行的智能体或团队。",
+    "PROJECT_CUSTOM_FIELD_NOT_FOUND": "自定义字段不存在。",
+    "PROJECT_CUSTOM_FIELD_INVALID": "自定义字段定义不合法。",
+    "PROJECT_CUSTOM_FIELD_VALUE_INVALID": "自定义字段取值不符合字段定义。",
+    "PROJECT_ATTACHMENT_INVALID": "附件不符合上传要求（类型或大小）。",
+}
+
+
+def test_new_rejection_codes_have_the_frozen_zh_text():
+    for code, expected in _NEW_ERROR_ZH.items():
+        assert error_message(code, "zh") == expected, code
+
+
+def test_new_rejection_codes_status_mapping():
+    """One code has one default status; 413 is passed explicitly by the caller."""
+    expected = {
+        ErrorCode.PROJECT_TASK_TAG_INVALID: 409,
+        ErrorCode.PROJECT_TASK_DATE_INVALID: 400,
+        ErrorCode.PROJECT_TASK_DISPATCH_INVALID: 409,
+        ErrorCode.PROJECT_CUSTOM_FIELD_NOT_FOUND: 404,
+        ErrorCode.PROJECT_CUSTOM_FIELD_INVALID: 409,
+        ErrorCode.PROJECT_CUSTOM_FIELD_VALUE_INVALID: 400,
+        ErrorCode.PROJECT_ATTACHMENT_INVALID: 400,
+    }
+    for code, status in expected.items():
+        assert OctopError(code, "detail").status == status, code
+    assert OctopError(ErrorCode.PROJECT_ATTACHMENT_INVALID, "too large", status=413).status == 413
+
+
+def test_dashboard_api_errors_carry_the_new_zh_text():
+    repo = Path(__file__).resolve().parents[3]
+    dash_zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
+    for code, expected in _NEW_ERROR_ZH.items():
+        assert dash_zh["apiErrors"][code] == expected, code
+
+
+def test_dashboard_projects_namespace_is_paired_and_localized():
+    """The new ``projects.*`` keys — namespace-level parity, frozen zh wording.
+
+    Only the named keys are asserted: dashboard en/zh whole-tree equality does not
+    hold (and never did), so a tree-level assertion would be a false failure.
+    """
+    repo = Path(__file__).resolve().parents[3]
+    en = json.loads((repo / "dashboard/src/locales/en.json").read_text(encoding="utf-8"))
+    zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
+    assert set(en["projects"]) == set(zh["projects"])
+    assert len(zh["projects"]) == 152
+    # R6 copy change: values only, keys untouched.
+    assert zh["projects"]["taskStatusReview"] == "审核中"
+    assert zh["projects"]["taskStatusBlocked"] == "已阻塞"
+    assert en["projects"]["taskStatusReview"] == "In review"
+    assert en["projects"]["taskStatusBlocked"] == "Blocked"
+    # New status labels.
+    assert zh["projects"]["taskStatusPlanning"] == "待规划"
+    assert zh["projects"]["statusCompleted"] == "已完成"
+    assert zh["projects"]["statusCancelled"] == "已取消"
+    assert en["projects"]["taskStatusPlanning"] == "Planned"
+    assert en["projects"]["statusCompleted"] == "Completed"
+    assert en["projects"]["statusCancelled"] == "Cancelled"
+    # FIND-12: the board's explicit "dispatch" action label.
+    assert zh["projects"]["boardDispatch"] == "派单"
+    assert en["projects"]["boardDispatch"] == "Dispatch"
+
+
+def test_dashboard_projects_new_keys_are_present_in_both_locales():
+    """Every key PLAN.md §13.1 froze exists in both bundles (no invented names)."""
+    repo = Path(__file__).resolve().parents[3]
+    en = json.loads((repo / "dashboard/src/locales/en.json").read_text(encoding="utf-8"))
+    zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
+    frozen = (
+        "taskStatusPlanning",
+        "statusCompleted",
+        "statusCancelled",
+        # U2 create-task dialog
+        "createTaskTitle",
+        "createTaskDescription",
+        "createTaskSubmit",
+        "createTaskBreadcrumb",
+        "createAndContinue",
+        "switchToAgent",
+        "attachFile",
+        "attachmentsEmpty",
+        "attachmentDeleteConfirm",
+        "chipStatus",
+        "chipPriority",
+        "chipAssignee",
+        "chipTags",
+        "chipProject",
+        "chipDueAt",
+        "chipStartAt",
+        "chipParentTask",
+        "chipSubtasks",
+        "chipCustomFields",
+        "chipMore",
+        "pickAssignee",
+        "pickParentTask",
+        "pickTag",
+        "noMembers",
+        "noTags",
+        "noTasks",
+        # U4 tags
+        "tagsTitle",
+        "tagName",
+        "tagColor",
+        "tagCreate",
+        "tagDeleteConfirm",
+        "tagsEmpty",
+        "tagInvalid",
+        # U6 custom fields
+        "customFieldsTitle",
+        "cfKey",
+        "cfLabel",
+        "cfType",
+        "cfTypeText",
+        "cfTypeNumber",
+        "cfTypeDate",
+        "cfTypeSelect",
+        "cfRequired",
+        "cfOptions",
+        "cfAdd",
+        "cfDeleteConfirm",
+        "cfEmpty",
+        "cfInvalid",
+        # U7 attachments
+        "attachmentsTitle",
+        "attachmentUpload",
+        "attachmentUploaded",
+        "attachmentDownload",
+        "attachmentTooLarge",
+        "attachmentBadType",
+    )
+    assert len(frozen) == 56
+    for key in frozen:
+        assert zh["projects"].get(key), f"zh projects.{key} missing"
+        assert en["projects"].get(key), f"en projects.{key} missing"

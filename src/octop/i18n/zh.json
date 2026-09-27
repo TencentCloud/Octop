@@ -455,6 +455,13 @@
     "PROJECT_TASK_NOT_FOUND": "任务不存在。",
     "PROJECT_TASK_THREAD_NOT_FOUND": "关联会话不存在，无法创建任务",
     "PROJECT_TASK_STATUS_INVALID": "不允许的任务状态流转。",
+    "PROJECT_TASK_TAG_INVALID": "标签不存在或不属于当前项目。",
+    "PROJECT_TASK_DATE_INVALID": "任务日期不合法。",
+    "PROJECT_TASK_DISPATCH_INVALID": "该任务的负责人不是可运行的智能体或团队。",
+    "PROJECT_CUSTOM_FIELD_NOT_FOUND": "自定义字段不存在。",
+    "PROJECT_CUSTOM_FIELD_INVALID": "自定义字段定义不合法。",
+    "PROJECT_CUSTOM_FIELD_VALUE_INVALID": "自定义字段取值不符合字段定义。",
+    "PROJECT_ATTACHMENT_INVALID": "附件不符合上传要求（类型或大小）。",
     "PROJECT_NODE_NOT_FOUND": "需求节点不存在。",
     "PROJECT_NODE_NOT_CONFIRMED": "该需求节点尚未确认。",
     "PROJECT_KB_BIND_FAILED": "无法创建项目知识库，项目未创建。"

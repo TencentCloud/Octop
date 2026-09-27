@@ -58,7 +58,7 @@ def _columns(db: SqlitePool, table: str) -> set[str]:
 
 
 def test_migration_019_is_the_applied_watermark(db: SqlitePool):
-    assert _version(db) == 19
+    assert _version(db) == 20
 
 
 def test_migration_019_creates_all_project_tables(db: SqlitePool):
@@ -79,21 +79,22 @@ def test_migration_019_is_idempotent(tmp_path: Path):
     pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     run_migrations(pool)  # must not raise (CREATE ... IF NOT EXISTS everywhere)
-    assert _version(pool) == 19
+    assert _version(pool) == 20
     assert set(PROJECT_TABLES) <= _table_names(pool)
 
 
 def test_ensure_projects_schema_repairs_missing_tables(db: SqlitePool):
-    """A DB recorded at v19 but missing the tables must be repaired on next run."""
+    """A DB recorded at the latest version but missing the tables must be repaired
+    on next run."""
     with db.transaction() as conn:
         for table in PROJECT_TABLES:
             conn.execute(f"DROP TABLE IF EXISTS {table}")
     assert not (set(PROJECT_TABLES) & _table_names(db))
 
-    run_migrations(db)  # version already 19 -> only the unconditional helpers run
+    run_migrations(db)  # version already current -> only the unconditional helpers run
 
     assert set(PROJECT_TABLES) <= _table_names(db)
-    assert _version(db) == 19
+    assert _version(db) == 20
 
 
 def test_projects_project_id_is_unique(db: SqlitePool):

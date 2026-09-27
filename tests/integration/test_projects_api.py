@@ -146,7 +146,7 @@ async def users(env: Any) -> dict[str, Any]:
 
 @pytest.fixture
 async def owned(env: Any, users: dict[str, Any]) -> dict[str, Any]:
-    """Project ``Apollo`` (owner: alice) in ``draft``, holding one ``todo`` task."""
+    """Project ``Apollo`` (owner: alice) in ``draft``, holding one ``planning`` task."""
     client = env[0]
     alice = users["auth"]["alice"]
     project = await _create_project(client, alice, "Apollo", goal="Ship the lunar board")
@@ -228,7 +228,7 @@ async def test_ac13_non_member_refused_every_project_resource(
     assert detail.status_code == 200, detail.text
     assert (detail.json()["goal"], detail.json()["status"]) == ("Ship the lunar board", "draft")
     after = await _task(client, alice, pid, tid)
-    assert (after["title"], after["status"]) == ("Draft the flight plan", "todo")
+    assert (after["title"], after["status"]) == ("Draft the flight plan", "planning")
 
 
 async def test_ac13_platform_admin_is_not_a_membership_bypass(
@@ -400,7 +400,7 @@ async def test_viewer_reads_but_every_write_is_role_forbidden(
     assert detail.json()["goal"] == "Ship the lunar board"
     assert detail.json()["status"] == "active"
     after = await _task(client, alice, pid, tid)
-    assert (after["title"], after["status"]) == ("Draft the flight plan", "todo")
+    assert (after["title"], after["status"]) == ("Draft the flight plan", "planning")
 
 
 async def test_member_writes_tasks_but_not_membership_or_archive(
@@ -417,7 +417,11 @@ async def test_member_writes_tasks_but_not_membership_or_archive(
     await _activate(client, alice, pid)
 
     created = await _create_task(client, bob, pid, "Bob's task")
-    assert created["status"] == "todo"
+    assert created["status"] == "planning", "new tasks start unscheduled (AC-U-3)"
+    scheduled = await client.patch(
+        f"{PROJECTS}/{pid}/tasks/{created['task_id']}", headers=bob, json={"status": "todo"}
+    )
+    assert scheduled.status_code == 200, scheduled.text
     moved = await client.patch(
         f"{PROJECTS}/{pid}/tasks/{created['task_id']}", headers=bob, json={"status": "doing"}
     )
@@ -520,7 +524,7 @@ async def test_archived_project_is_read_only(
     detail = await client.get(f"{PROJECTS}/{pid}", headers=alice)
     assert (detail.json()["name"], detail.json()["status"]) == ("Apollo", "archived")
     after = await _task(client, alice, pid, tid)
-    assert (after["title"], after["status"]) == ("Draft the flight plan", "todo")
+    assert (after["title"], after["status"]) == ("Draft the flight plan", "planning")
     listed = await client.get(PROJECTS, headers=alice)
     assert pid in [p["project_id"] for p in listed.json()], "archived is not deleted"
 
@@ -533,22 +537,36 @@ async def test_task_status_machine(
     users: dict[str, Any],
     owned: dict[str, Any],
 ) -> None:
-    """``todo -> doing`` is legal and persists; ``todo -> review`` is a 409 that writes nothing."""
+    """``planning -> todo -> doing`` is legal and persists; ``planning -> review`` is a 409.
+
+    Reflects PLAN.md §1.2: ``planning``'s only working exit is ``todo``, so a new
+    task cannot jump straight into ``doing`` — the suite walks the frozen graph.
+    """
     client = env[0]
     alice = users["auth"]["alice"]
     pid = owned["project_id"]
     tid = owned["task_id"]
 
+    # planning 出边 = {todo, cancelled}: ``review`` is not reachable from it.
     illegal = await client.patch(
         f"{PROJECTS}/{pid}/tasks/{tid}", headers=alice, json={"status": "review"}
     )
     assert illegal.status_code == 409, illegal.text
     assert _error_code(illegal) == "PROJECT_TASK_STATUS_INVALID", illegal.text
-    assert (await _task(client, alice, pid, tid))["status"] == "todo", "409 must not write"
+    assert (await _task(client, alice, pid, tid))["status"] == "planning", "409 must not write"
     timeline = await client.get(f"{PROJECTS}/{pid}/timeline", headers=alice)
     assert [e["action"] for e in timeline.json()] == ["task.created"], (
         "a refused transition must not append a timeline row"
     )
+
+    planning = await client.get(f"{PROJECTS}/{pid}/tasks?status=planning", headers=alice)
+    assert [t["task_id"] for t in planning.json()] == [tid], "the new task sits in planning"
+
+    scheduled = await client.patch(
+        f"{PROJECTS}/{pid}/tasks/{tid}", headers=alice, json={"status": "todo"}
+    )
+    assert scheduled.status_code == 200, scheduled.text
+    assert scheduled.json()["status"] == "todo"
 
     legal = await client.patch(
         f"{PROJECTS}/{pid}/tasks/{tid}", headers=alice, json={"status": "doing"}
@@ -562,9 +580,14 @@ async def test_task_status_machine(
     todo = await client.get(f"{PROJECTS}/{pid}/tasks?status=todo", headers=alice)
     assert todo.json() == []
     events = (await client.get(f"{PROJECTS}/{pid}/timeline", headers=alice)).json()
-    assert [e["action"] for e in events] == ["task.created", "task.status_changed"]
+    assert [e["action"] for e in events] == [
+        "task.created",
+        "task.status_changed",
+        "task.status_changed",
+    ]
     assert events[1]["task_id"] == tid
-    assert events[1]["payload"] == {"from": "todo", "to": "doing"}
+    assert events[1]["payload"] == {"from": "planning", "to": "todo"}
+    assert events[2]["payload"] == {"from": "todo", "to": "doing"}
 
 
 async def test_project_status_machine_and_missing_ids(
@@ -631,4 +654,4 @@ async def test_non_member_cannot_reach_a_task_by_guessing_its_id(
         assert tid not in response.text, "a refused response must not echo the task"
 
     after = await _task(client, alice, pid, tid)
-    assert (after["title"], after["status"]) == ("Draft the flight plan", "todo")
+    assert (after["title"], after["status"]) == ("Draft the flight plan", "planning")

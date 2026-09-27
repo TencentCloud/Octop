@@ -29,6 +29,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from octop.infra.cron.delivery import run_agent_turn
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.threads import ThreadRegistry
 
 if TYPE_CHECKING:
@@ -105,16 +106,25 @@ def build_dispatch_prompt(
 
 
 def require_dispatchable(task: ProjectTaskRow) -> str:
-    """Return the task's assignee id, or reject a task that cannot be dispatched."""
+    """Return the task's assignee id, or reject a task that cannot be dispatched.
+
+    A human assignee (or no assignee at all) is a caller error, not a server
+    fault: the refusal is a ``409 PROJECT_TASK_DISPATCH_INVALID`` envelope, never
+    an unhandled ``500`` (FIND-2 / PLAN.md §2.2).
+    """
     assignee_type = (task.assignee_type or "").strip()
     if assignee_type not in DISPATCH_ASSIGNEE_TYPES:
-        raise ValueError(
+        raise OctopError(
+            ErrorCode.PROJECT_TASK_DISPATCH_INVALID,
             "task assignee_type must be one of "
-            f"{', '.join(DISPATCH_ASSIGNEE_TYPES)} to dispatch (got {assignee_type or 'none'!r})"
+            f"{', '.join(DISPATCH_ASSIGNEE_TYPES)} to dispatch (got {assignee_type or 'none'!r})",
         )
     assignee_id = (task.assignee_id or "").strip()
     if not assignee_id:
-        raise ValueError("task has no assignee_id to dispatch")
+        raise OctopError(
+            ErrorCode.PROJECT_TASK_DISPATCH_INVALID,
+            "task has no assignee_id to dispatch",
+        )
     return assignee_id
 
 
@@ -160,8 +170,8 @@ async def run_dispatch_turn(
     """Run steps ①-④ of plan §T2.5 and return the thread the turn ran in.
 
     Raises before creating anything when the task cannot be dispatched
-    (``ValueError``), or when the assignee is missing / not running
-    (``AGENT_NOT_FOUND`` / ``AGENT_NOT_RUNNING``, straight from the registry).
+    (``PROJECT_TASK_DISPATCH_INVALID``), or when the assignee is missing / not
+    running (``AGENT_NOT_FOUND`` / ``AGENT_NOT_RUNNING``, straight from the registry).
     """
     assignee_id = require_dispatchable(task)
     # Existence + running state of the assignee, with the registry's own codes.

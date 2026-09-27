@@ -19,6 +19,7 @@ import {
   History,
   Plus,
   Search,
+  Send,
   User,
   X,
 } from "lucide-react";
@@ -26,6 +27,8 @@ import { useTranslation } from "react-i18next";
 
 import {
   projectsApi,
+  type ProjectCustomFieldType,
+  type ProjectCustomFieldWriteValue,
   type ProjectTask,
   type ProjectTaskStatus,
   type ProjectTimelineEvent,
@@ -34,6 +37,7 @@ import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { message } from "../../../utils/antdMessage";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
+import TaskCreateModal from "./TaskCreateModal";
 import styles from "./Board.module.less";
 
 const { Text } = Typography;
@@ -43,6 +47,7 @@ const TASK_DRAG_TYPE = "application/x-octop-project-task";
 
 /** Column order; the terminal columns come last and can be hidden. */
 const COLUMN_STATUSES: ProjectTaskStatus[] = [
+  "planning",
   "todo",
   "doing",
   "review",
@@ -54,6 +59,7 @@ const COLUMN_STATUSES: ProjectTaskStatus[] = [
 const TERMINAL_STATUSES: ProjectTaskStatus[] = ["done", "cancelled"];
 
 const STATUS_LABEL_KEYS: Record<ProjectTaskStatus, string> = {
+  planning: "projects.taskStatusPlanning",
   todo: "projects.taskStatusTodo",
   doing: "projects.taskStatusDoing",
   review: "projects.taskStatusReview",
@@ -63,6 +69,7 @@ const STATUS_LABEL_KEYS: Record<ProjectTaskStatus, string> = {
 };
 
 const STATUS_COLORS: Record<ProjectTaskStatus, string> = {
+  planning: "default",
   todo: "default",
   doing: "processing",
   review: "warning",
@@ -72,12 +79,14 @@ const STATUS_COLORS: Record<ProjectTaskStatus, string> = {
 };
 
 /**
- * Mirrors `_TASK_TRANSITIONS` in `infra/projects/service.py`. The backend stays
- * authoritative and answers an illegal move with `PROJECT_TASK_STATUS_INVALID`
- * (HTTP 409); illegal drops are refused here so nothing is sent at all.
+ * Mirrors `_TASK_TRANSITIONS` in `infra/projects/service.py` (PLAN §1.2). The
+ * backend stays authoritative and answers an illegal move with
+ * `PROJECT_TASK_STATUS_INVALID` (HTTP 409); illegal drops are refused here so
+ * nothing is sent at all.
  */
 const STATUS_TRANSITIONS: Record<ProjectTaskStatus, ProjectTaskStatus[]> = {
-  todo: ["doing", "blocked", "cancelled"],
+  planning: ["todo", "cancelled"],
+  todo: ["planning", "doing", "blocked", "cancelled"],
   doing: ["todo", "review", "done", "blocked", "cancelled"],
   review: ["doing", "done", "blocked", "cancelled"],
   blocked: ["todo", "doing", "cancelled"],
@@ -102,9 +111,9 @@ function isTransitionAllowed(
   return STATUS_TRANSITIONS[from].includes(to);
 }
 
-/** Creation is `todo`-only server-side, so only reachable columns offer "add". */
+/** Every column can be created into directly (R2; the old todo-only limit is gone). */
 function canCreateInto(status: ProjectTaskStatus): boolean {
-  return status === "todo" || isTransitionAllowed("todo", status);
+  return (COLUMN_STATUSES as string[]).includes(status);
 }
 
 function asTaskStatus(value: unknown): ProjectTaskStatus | null {
@@ -123,6 +132,61 @@ interface BoardProps {
   onChanged: () => void | Promise<void>;
 }
 
+/** Unix seconds in, server-timezone text out (PLAN §0 invariant 3). */
+function formatCustomFieldValue(
+  value: ProjectCustomFieldWriteValue | undefined,
+  type: ProjectCustomFieldType | undefined,
+  timeZone: string,
+): string {
+  if (value === null || value === undefined || value === "") return "";
+  if (type === "date") {
+    const seconds = Number(value);
+    return Number.isFinite(seconds) && seconds > 0
+      ? formatServerDateTime(seconds, timeZone)
+      : "";
+  }
+  return String(value);
+}
+
+/** Tags + custom-field values under a card's meta row (AC-U-13 / AC-CF-5). */
+function CardMetadata({
+  task,
+  timeZone,
+}: {
+  task: ProjectTask;
+  timeZone: string;
+}) {
+  const tags = task.tags ?? [];
+  const fields = (task.custom_fields ?? []).filter(
+    (field) => formatCustomFieldValue(field.value, field.type, timeZone) !== "",
+  );
+  if (tags.length === 0 && fields.length === 0) return null;
+  return (
+    <div className={styles.cardMetadata}>
+      {tags.map((tag) => (
+        <Tag
+          key={tag.tag_id}
+          color={tag.color || undefined}
+          className={styles.cardTag}
+        >
+          {tag.name}
+        </Tag>
+      ))}
+      {fields.map((field) => (
+        <span key={field.field_id} className={styles.cardMetaItem}>
+          <Text type="secondary" className={styles.cardMetaText}>
+            {`${field.label}：${formatCustomFieldValue(
+              field.value,
+              field.type,
+              timeZone,
+            )}`}
+          </Text>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
   const { t } = useTranslation();
   const timeZone = useServerTimezone();
@@ -134,11 +198,17 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [overStatus, setOverStatus] = useState<ProjectTaskStatus | null>(null);
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
+  /** Task whose explicit dispatch action is in flight (PLAN §8.1-2). */
+  const [dispatchingTaskId, setDispatchingTaskId] = useState<string | null>(
+    null,
+  );
   const [addingStatus, setAddingStatus] = useState<ProjectTaskStatus | null>(
     null,
   );
   const [newTitle, setNewTitle] = useState("");
   const [creating, setCreating] = useState(false);
+  /** Full create dialog (R3); the column "+" keeps the inline quick path (R5). */
+  const [createOpen, setCreateOpen] = useState(false);
   const [timelineTask, setTimelineTask] = useState<ProjectTask | null>(null);
   const [timelineEvents, setTimelineEvents] = useState<ProjectTimelineEvent[]>(
     [],
@@ -225,6 +295,27 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
     }
   };
 
+  /**
+   * Explicit dispatch action (PLAN §8.1-2). The create dialog only writes
+   * `assignee`; this is where the task is actually handed to the agent/team.
+   */
+  const dispatchTaskToAssignee = async (task: ProjectTask) => {
+    if (!canEdit || dispatchingTaskId) return;
+    setDispatchingTaskId(task.task_id);
+    try {
+      await projectsApi.dispatchTask(projectId, task.task_id);
+      message.success(t("projects.boardActionDispatched"));
+    } catch (error) {
+      message.error(
+        apiErrorMessage(error, t("apiErrors.PROJECT_TASK_DISPATCH_INVALID"), t),
+      );
+    } finally {
+      setDispatchingTaskId(null);
+      // Re-read either way: dispatch changes `thread_id` server-side.
+      await onChanged();
+    }
+  };
+
   const handleCardDragStart = (
     event: DragEvent<HTMLDivElement>,
     task: ProjectTask,
@@ -289,21 +380,9 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
     if (!title || creating || !canEdit) return;
     setCreating(true);
     try {
-      // The API only creates `todo` tasks; a card added to another legal
-      // column is created first and then moved.
-      const created = await projectsApi.createTask(projectId, { title });
-      if (
-        created.status !== status &&
-        isTransitionAllowed(created.status, status)
-      ) {
-        try {
-          await projectsApi.updateTask(projectId, created.task_id, { status });
-        } catch (error) {
-          message.error(
-            apiErrorMessage(error, t("projects.boardMoveFailed"), t),
-          );
-        }
-      }
+      // One request carrying the target column (R2): the old
+      // "create as todo, then move" two-step is gone.
+      await projectsApi.createTask(projectId, { title, status });
       message.success(t("projects.boardCreated"));
       setNewTitle("");
       setAddingStatus(null);
@@ -345,6 +424,12 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
   const renderCard = (task: ProjectTask) => {
     const pending = pendingTaskId === task.task_id;
     const dragging = dragTaskId === task.task_id;
+    // PLAN §8.1-3: only an agent / team assignee has a runtime to dispatch to.
+    const canDispatch =
+      task.assignee_type === "agent" || task.assignee_type === "team";
+    const dispatchTitle = canDispatch
+      ? t("projects.boardDispatch")
+      : t("apiErrors.PROJECT_TASK_DISPATCH_INVALID");
     const cardClass = [
       styles.card,
       dragging ? styles.cardDragging : "",
@@ -377,6 +462,14 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
               </Text>
             </span>
           ) : null}
+          {task.start_at ? (
+            <span className={styles.cardMetaItem}>
+              <CalendarDays size={12} />
+              <Text type="secondary" className={styles.cardMetaText}>
+                {formatServerDateTime(task.start_at, timeZone)}
+              </Text>
+            </span>
+          ) : null}
           {task.due_at ? (
             <span className={styles.cardMetaItem}>
               <CalendarDays size={12} />
@@ -386,6 +479,7 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
             </span>
           ) : null}
         </div>
+        <CardMetadata task={task} timeZone={timeZone} />
         <div className={styles.cardFooter}>
           {canEdit ? (
             <Select<ProjectTaskStatus>
@@ -407,15 +501,32 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
               {t(STATUS_LABEL_KEYS[task.status])}
             </Tag>
           )}
-          <Tooltip title={t("projects.boardTimeline")}>
-            <Button
-              type="text"
-              size="small"
-              aria-label={t("projects.boardTimeline")}
-              icon={<History size={14} />}
-              onClick={() => openTimeline(task)}
-            />
-          </Tooltip>
+          <div className={styles.cardActions}>
+            {canEdit ? (
+              <Tooltip title={dispatchTitle}>
+                <Button
+                  type="text"
+                  size="small"
+                  className={styles.cardDispatch}
+                  aria-label={t("projects.boardDispatch")}
+                  title={dispatchTitle}
+                  disabled={!canDispatch || pending}
+                  loading={dispatchingTaskId === task.task_id}
+                  icon={<Send size={14} />}
+                  onClick={() => void dispatchTaskToAssignee(task)}
+                />
+              </Tooltip>
+            ) : null}
+            <Tooltip title={t("projects.boardTimeline")}>
+              <Button
+                type="text"
+                size="small"
+                aria-label={t("projects.boardTimeline")}
+                icon={<History size={14} />}
+                onClick={() => openTimeline(task)}
+              />
+            </Tooltip>
+          </div>
         </div>
       </div>
     );
@@ -493,31 +604,20 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
               />
             </div>
           ) : (
-            <Tooltip
-              title={
-                canCreateInto(status)
-                  ? t("projects.boardAdd")
-                  : t("projects.boardAddBlocked")
-              }
+            <Button
+              type="text"
+              size="small"
+              block
+              className={styles.addButton}
+              icon={<Plus size={14} />}
+              disabled={!canCreateInto(status)}
+              onClick={() => {
+                setNewTitle("");
+                setAddingStatus(status);
+              }}
             >
-              <Button
-                type="text"
-                size="small"
-                block
-                className={styles.addButton}
-                icon={<Plus size={14} />}
-                onClick={() => {
-                  if (!canCreateInto(status)) {
-                    message.warning(t("projects.boardAddBlocked"));
-                    return;
-                  }
-                  setNewTitle("");
-                  setAddingStatus(status);
-                }}
-              >
-                {t("projects.boardAdd")}
-              </Button>
-            </Tooltip>
+              {t("projects.boardAdd")}
+            </Button>
           )
         ) : null}
       </div>
@@ -527,6 +627,16 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
   return (
     <div className={styles.board}>
       <div className={styles.toolbar}>
+        {canEdit ? (
+          <Button
+            type="primary"
+            size="small"
+            icon={<Plus size={14} />}
+            onClick={() => setCreateOpen(true)}
+          >
+            {t("projects.createTaskSubmit")}
+          </Button>
+        ) : null}
         <Input
           size="small"
           allowClear
@@ -550,6 +660,14 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
         ) : null}
       </div>
       <div className={styles.columns}>{visibleColumns.map(renderColumn)}</div>
+      <TaskCreateModal
+        open={createOpen}
+        projectId={projectId}
+        tasks={tasks}
+        canEdit={canEdit}
+        onClose={() => setCreateOpen(false)}
+        onCreated={onChanged}
+      />
       <Modal
         open={timelineTask !== null}
         title={t("projects.boardTimelineTitle", {

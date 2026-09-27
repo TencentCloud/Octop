@@ -39,7 +39,9 @@ import { message } from "../../../utils/antdMessage";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import Board from "./Board";
+import CustomFieldsPanel from "./CustomFieldsPanel";
 import styles from "./index.module.less";
+import TagsManager from "./TagsManager";
 
 const { Text } = Typography;
 
@@ -47,6 +49,8 @@ const STATUS_LABEL_KEYS: Record<ProjectStatus, string> = {
   draft: "projects.statusDraft",
   active: "projects.statusActive",
   paused: "projects.statusPaused",
+  completed: "projects.statusCompleted",
+  cancelled: "projects.statusCancelled",
   archived: "projects.statusArchived",
 };
 
@@ -54,18 +58,23 @@ const STATUS_COLORS: Record<ProjectStatus, string> = {
   draft: "default",
   active: "success",
   paused: "warning",
+  completed: "blue",
+  cancelled: "error",
   archived: "default",
 };
 
 /**
- * Mirrors `_TRANSITIONS` in `infra/projects/service.py` (``archived`` is
- * terminal). The backend stays authoritative and answers an illegal move with
+ * Mirrors `_TRANSITIONS` in `infra/projects/service.py` (PLAN §3.1; ``archived``
+ * is terminal, ``completed``/``cancelled`` can reopen as ``active``). The
+ * backend stays authoritative and answers an illegal move with
  * `PROJECT_STATUS_INVALID`.
  */
 const STATUS_TRANSITIONS: Record<ProjectStatus, ProjectStatus[]> = {
-  draft: ["active"],
-  active: ["paused", "archived"],
-  paused: ["active", "archived"],
+  draft: ["active", "cancelled"],
+  active: ["paused", "completed", "cancelled", "archived"],
+  paused: ["active", "completed", "cancelled", "archived"],
+  completed: ["active", "archived"],
+  cancelled: ["active", "archived"],
   archived: [],
 };
 
@@ -462,6 +471,12 @@ function ProjectDetailPage() {
           </Descriptions.Item>
         </Descriptions>
       </section>
+
+      {/* Project metadata: tag definitions (PLAN §4) and custom-field
+          definitions (PLAN §6, ring ④). Both panels own their own section
+          shell; this page only mounts them. */}
+      <TagsManager projectId={project.project_id} canEdit={canEdit} />
+      <CustomFieldsPanel projectId={project.project_id} canEdit={canEdit} />
 
       <section className={styles.section}>
         <div className={styles.sectionTitle}>

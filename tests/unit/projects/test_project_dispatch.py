@@ -320,15 +320,36 @@ def test_prompt_keeps_the_sections_when_the_task_has_no_text() -> None:
 async def test_dispatch_rejects_assignee_types_that_cannot_run(
     services: SimpleNamespace, project: Any, owner: Actor
 ) -> None:
+    """A human / missing assignee is a caller error — 409, never an unhandled 500."""
     service, manager, gateway = build(services)
     create_agents(services, owner.id)
     human = make_task(service, project, owner, assignee_type="user", assignee_id=str(owner.id))
     unassigned = make_task(service, project, owner, assignee_type=None, assignee_id=None)
 
     for task in (human, unassigned):
-        with pytest.raises(ValueError, match="assignee_type"):
+        with pytest.raises(OctopError) as err:
             await service.dispatch_task(project.id, task.id, user=owner)
+        assert err.value.code is ErrorCode.PROJECT_TASK_DISPATCH_INVALID
+        assert err.value.status == 409
+        assert err.value.status != 500
 
+    assert manager.streams == []
+    assert gateway.teams.stamped == []
+
+
+async def test_dispatch_rejects_an_agent_task_without_an_assignee_id(
+    services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    """The second malformed branch: a runnable type with an empty assignee id."""
+    service, manager, gateway = build(services)
+    create_agents(services, owner.id)
+    nameless = make_task(service, project, owner, assignee_type="agent", assignee_id=None)
+
+    with pytest.raises(OctopError) as err:
+        await service.dispatch_task(project.id, nameless.id, user=owner)
+    assert err.value.code is ErrorCode.PROJECT_TASK_DISPATCH_INVALID
+    assert err.value.status == 409
+    assert err.value.status != 500
     assert manager.streams == []
     assert gateway.teams.stamped == []
 

@@ -193,7 +193,7 @@ def test_create_project_without_a_usable_knowledge_feature(
     activated = service.transition_project(project.id, user=owner, target="active")
     assert activated.status == "active"
     task = service.create_task(project.id, user=owner, title="照常可用")
-    assert task.status == "todo"
+    assert task.status == "planning"
 
 
 def test_create_project_rejects_a_blank_name(service: ProjectService, owner: Actor) -> None:

@@ -1,0 +1,230 @@
+/* Create-task dialog (R3 / AC-U-8) — T-FE-MODAL. */
+
+.modal {
+  :global(.ant-modal-body) {
+    padding-top: 8px;
+  }
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.breadcrumbParent {
+  color: var(--fn-text-tertiary);
+}
+
+.breadcrumbSep {
+  color: var(--fn-text-tertiary);
+}
+
+.breadcrumbCurrent {
+  color: var(--fn-text-primary);
+}
+
+/* Inline large title — no label box around it (R3). */
+.titleInput {
+  width: 100%;
+  padding: 4px 0;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: var(--fn-text-primary);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+  outline: none;
+
+  &::placeholder {
+    color: var(--fn-text-tertiary);
+  }
+
+  &:focus {
+    border-bottom-color: var(--fn-border-primary);
+  }
+}
+
+.description {
+  resize: none;
+}
+
+.optionList {
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--fn-radius-md, 6px);
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-primary);
+  }
+}
+
+.optionActive {
+  color: var(--fn-color-brand);
+}
+
+.pickerCentered {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+}
+
+.pickerEmpty {
+  padding: 12px;
+  color: var(--fn-text-tertiary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.morePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 320px;
+}
+
+.moreRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.moreLabel {
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.moreHint {
+  font-size: 12px;
+}
+
+.moreDivider {
+  height: 1px;
+  background: var(--fn-border-primary);
+}
+
+.requiredMark {
+  margin-inline-start: 2px;
+  color: var(--fn-color-danger);
+}
+
+.fieldControl {
+  min-width: 180px;
+}
+
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 999px;
+  background: var(--fn-bg-secondary);
+  font-size: 12px;
+}
+
+.attachmentName {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentRemove {
+  display: inline-flex;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-color-danger);
+  }
+}
+
+.attachmentsEmpty {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--fn-border-primary);
+}
+
+.footerLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.footerRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.footerButton {
+  display: inline-flex;
+}
+
+/* The trigger is a chip; keep the native input out of the layout. */
+.fileInput {
+  display: none;
+}
+
+.keepCreating {
+  font-size: 13px;
+}
+
+.submitLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shortcutHint {
+  opacity: 0.75;
+  font-size: 12px;
+}

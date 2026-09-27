@@ -10,15 +10,19 @@ specifies, and it is why archiving is owner-only while the project row survives.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from octop.api.deps import get_server, require_permission
+from octop.api.routers.project_attachments import AttachmentOut
 from octop.infra.db.repos.project_tasks import ProjectTaskRow, TimelineEventRow
 from octop.infra.db.repos.projects import ProjectMemberRow, ProjectRow
+from octop.infra.projects.custom_fields import ProjectCustomFieldService
 from octop.infra.projects.service import ProjectActor, ProjectService
+from octop.infra.projects.tags import ProjectTagService
 from octop.infra.server import OctopServer
 from octop.infra.users.identity import User
 
@@ -76,20 +80,49 @@ class MemberOut(BaseModel):
         )
 
 
+class TaskTagOut(BaseModel):
+    """A tag as resolved on a task (PLAN.md §4): ``tag_id`` / ``name`` / ``color``."""
+
+    tag_id: str
+    name: str
+    color: str
+
+
+class TaskCustomFieldValueOut(BaseModel):
+    """A stored custom-field value plus the definition it belongs to (§6.3)."""
+
+    field_id: str
+    key: str
+    label: str
+    type: str = Field(description="text | number | date | select")
+    value: str = Field(description="Normalised stored value; '' when empty.")
+
+
 class TaskOut(BaseModel):
     task_id: str
     project_id: str
     parent_id: str | None
     title: str
     description: str
-    status: str = Field(description="todo | doing | review | done | blocked | cancelled")
+    status: str = Field(description="planning | todo | doing | review | done | blocked | cancelled")
     assignee_type: str | None
     assignee_id: str | None
     priority: int
     deps: list[str]
     thread_id: str | None
     origin_node_id: str | None
+    start_at: int | None
     due_at: int | None
+    tags: list[TaskTagOut] = Field(
+        default_factory=list, description="Resolved tags, oldest link first (never null)."
+    )
+    custom_fields: list[TaskCustomFieldValueOut] = Field(
+        default_factory=list,
+        description="Stored values in field display order (never null).",
+    )
+    attachments: list[AttachmentOut] = Field(
+        default_factory=list, description="Attachments bound to this task (never null)."
+    )
     sort_order: int
     created_by: int
     created_at: int
@@ -110,6 +143,7 @@ class TaskOut(BaseModel):
             deps=list(row.deps),
             thread_id=row.thread_id,
             origin_node_id=row.origin_node_id,
+            start_at=row.start_at,
             due_at=row.due_at,
             sort_order=row.sort_order,
             created_by=row.created_by,
@@ -142,6 +176,13 @@ class TimelineEventOut(BaseModel):
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, description="Project name; also names its knowledge base.")
     goal: str = Field(default="", description="What the project is meant to achieve.")
+    status: str | None = Field(
+        default=None,
+        description=(
+            "Initial status; defaults to draft. One of "
+            "draft | active | paused | completed | cancelled | archived."
+        ),
+    )
     start_at: int | None = Field(default=None, description="Planned start, unix seconds.")
     due_at: int | None = Field(default=None, description="Planned finish, unix seconds.")
 
@@ -173,7 +214,29 @@ class TaskCreate(BaseModel):
     assignee_id: str | None = None
     priority: int = 0
     deps: list[str] = Field(default_factory=list)
-    due_at: int | None = None
+    status: str | None = Field(
+        default=None,
+        description="Initial status; defaults to planning. Must be one of the seven task states.",
+    )
+    start_at: int | None = Field(default=None, description="Planned start, unix seconds.")
+    due_at: int | None = Field(default=None, description="Planned finish, unix seconds.")
+    tags: list[str] = Field(default_factory=list, description="Tag ids to apply on creation.")
+    custom_fields: dict[str, object] | None = Field(
+        default=None,
+        description="Custom-field id to value; null skips required-field validation.",
+    )
+    attachment_ids: list[str] = Field(
+        default_factory=list,
+        description="Pending attachment ids to bind once the task row exists.",
+    )
+
+    @field_validator("title")
+    @classmethod
+    def _title_is_not_blank(cls, value: str) -> str:
+        """``"   "`` is not a title: reject it as a validation error (422)."""
+        if not value.strip():
+            raise ValueError("title must not be blank")
+        return value
 
 
 class TaskPatch(BaseModel):
@@ -184,10 +247,19 @@ class TaskPatch(BaseModel):
     assignee_id: str | None = None
     priority: int | None = None
     deps: list[str] | None = None
+    start_at: int | None = Field(default=None, description="Planned start, unix seconds.")
     due_at: int | None = None
+    tags: list[str] | None = Field(default=None, description="Tag ids; replaces the whole set.")
+    custom_fields: dict[str, object] | None = Field(
+        default=None,
+        description="Custom-field id to value; null skips required-field validation.",
+    )
     status: str | None = Field(
         default=None,
-        description="Target status; routed through the task state machine.",
+        description=(
+            "Target status; routed through the task state machine. One of "
+            "planning | todo | doing | review | done | blocked | cancelled."
+        ),
     )
 
 
@@ -202,6 +274,68 @@ def _service(server: OctopServer) -> ProjectService:
         agent_manager=runtime.agent_registry if runtime is not None else None,
         gateway=runtime.gateway if runtime is not None else None,
     )
+
+
+def _tasks_out(
+    server: OctopServer,
+    service: ProjectService,
+    project_id: str,
+    rows: Sequence[ProjectTaskRow],
+) -> list[TaskOut]:
+    """Assemble task payloads with their tags, field values and attachments.
+
+    The whole page is resolved with **four batch reads** (tag join, values,
+    definitions, attachments) regardless of row count — the board renders every
+    task at once, so reading per task would be N+1. All three collections are
+    always present and may be empty, never ``null``.
+    """
+    payload = [TaskOut.of(row) for row in rows]
+    if not payload:
+        return payload
+    assert server.services is not None
+    task_ids = [row.id for row in rows]
+    tags_by_task = ProjectTagService(server.services, project_service=service).resolve_task_tags(
+        task_ids
+    )
+    values_by_task = ProjectCustomFieldService(
+        server.services, project_service=service
+    ).resolve_task_values(task_ids)
+    definitions = {
+        definition.field_id: definition
+        for definition in server.services.project_custom_field_repo.list_by_project(project_id)
+    }
+    attachments_by_task = server.services.project_artifact_repo.list_by_tasks(
+        project_id=project_id, task_ids=task_ids
+    )
+    for out, row in zip(payload, rows, strict=True):
+        out.tags = [
+            TaskTagOut(tag_id=tag.tag_id, name=tag.name, color=tag.color)
+            for tag in tags_by_task.get(row.id, [])
+        ]
+        entries = [
+            (
+                definitions[field_id].sort_order,
+                field_id,
+                TaskCustomFieldValueOut(
+                    field_id=field_id,
+                    key=definitions[field_id].key,
+                    label=definitions[field_id].label,
+                    type=definitions[field_id].type,
+                    value=value,
+                ),
+            )
+            for field_id, value in (values_by_task.get(row.id) or {}).items()
+            if field_id in definitions
+        ]
+        entries.sort(key=lambda entry: (entry[0], entry[1]))
+        out.custom_fields = [entry[2] for entry in entries]
+        out.attachments = [AttachmentOut.of(row) for row in attachments_by_task.get(row.id, [])]
+    return payload
+
+
+def _task_out(server: OctopServer, service: ProjectService, row: ProjectTaskRow) -> TaskOut:
+    """One task with its metadata attached (same batch path as the board)."""
+    return _tasks_out(server, service, row.project_id, [row])[0]
 
 
 # ── projects ─────────────────────────────────────────────────────────────────
@@ -224,11 +358,15 @@ async def create_project(
 ) -> ProjectOut:
     """Creates the project, its owner membership, and a knowledge base of the
     same name. If the knowledge base cannot be created or bound, the project is
-    rolled back and nothing is left behind."""
+    rolled back and nothing is left behind.
+
+    ``status`` is an initial value (all six states are selectable, SPEC S-10), not
+    a transition; an unknown value is a 409, never a silent drop."""
     project = _service(server).create_project(
         owner_user=_actor(user),
         name=body.name,
         goal=body.goal,
+        status=body.status,
         start_at=body.start_at,
         due_at=body.due_at,
     )
@@ -352,8 +490,9 @@ async def list_tasks(
     server: OctopServer = Depends(get_server),
     user: User = Depends(require_permission("projects")),
 ) -> list[TaskOut]:
-    rows = _service(server).list_tasks(project_id, user=_actor(user), status=status_filter)
-    return [TaskOut.of(r) for r in rows]
+    service = _service(server)
+    rows = service.list_tasks(project_id, user=_actor(user), status=status_filter)
+    return _tasks_out(server, service, project_id, rows)
 
 
 @router.post(
@@ -367,7 +506,14 @@ async def create_task(
     server: OctopServer = Depends(get_server),
     user: User = Depends(require_permission("projects")),
 ) -> TaskOut:
-    """New tasks always start in ``todo``; move them with PATCH."""
+    """Create a task. ``status`` defaults to ``planning``; any of the seven states
+    may be chosen up front (the board creates straight into its column), and later
+    moves go through PATCH.
+
+    ``tags`` / ``custom_fields`` / ``attachment_ids`` are applied by the four-step
+    orchestration in :meth:`ProjectService.create_task` (PLAN.md §2.3): a refused
+    request rolls back the whole task rather than silently dropping the metadata.
+    """
     task = _service(server).create_task(
         project_id,
         user=_actor(user),
@@ -378,9 +524,14 @@ async def create_task(
         assignee_id=body.assignee_id,
         priority=body.priority,
         deps=body.deps,
+        status=body.status,
+        start_at=body.start_at,
         due_at=body.due_at,
+        tags=body.tags,
+        custom_fields=body.custom_fields,
+        attachment_ids=body.attachment_ids,
     )
-    return TaskOut.of(task)
+    return _task_out(server, _service(server), task)
 
 
 @router.patch("/{project_id}/tasks/{task_id}", summary="Edit a task or drag it to a column")
@@ -394,17 +545,27 @@ async def patch_task(
     """``status`` goes through the task state machine; every other field is a
     plain patch. Changing either one appends to the project timeline. The task must
     belong to ``project_id``; the service answers ``PROJECT_TASK_NOT_FOUND`` when it
-    does not."""
+    does not.
+
+    ``tags`` / ``custom_fields`` carry the same meaning as on create (the whole
+    set, not a merge) and are applied through their own services — a patch that
+    includes them must not return 200 while dropping them. ``exclude_unset`` is
+    what makes "omitted" different from "explicitly empty".
+    """
     service = _service(server)
     actor = _actor(user)
 
     if body.status is not None:
         service.transition_task(project_id, task_id, user=actor, target=body.status)
 
-    fields = body.model_dump(exclude_unset=True, exclude={"status"})
+    fields = body.model_dump(exclude_unset=True, exclude={"status", "tags", "custom_fields"})
     if fields:
         service.update_task(project_id, task_id, user=actor, **fields)
-    return TaskOut.of(service.get_task(project_id, task_id, user=actor))
+    if body.tags is not None:
+        service.set_task_tags(project_id, task_id, user=actor, tag_ids=body.tags)
+    if body.custom_fields is not None:
+        service.set_task_values(project_id, task_id, user=actor, values=body.custom_fields)
+    return _task_out(server, service, service.get_task(project_id, task_id, user=actor))
 
 
 @router.delete("/{project_id}/tasks/{task_id}", summary="Delete a task")
@@ -438,8 +599,9 @@ async def dispatch_task(
     rather than streaming, and the conversation can be followed through
     ``thread_id``. ``assignee_type`` outside agent/team is rejected.
     """
-    task = await _service(server).dispatch_task(project_id, task_id, user=_actor(user))
-    return TaskOut.of(task)
+    service = _service(server)
+    task = await service.dispatch_task(project_id, task_id, user=_actor(user))
+    return _task_out(server, service, task)
 
 
 # ── timeline ─────────────────────────────────────────────────────────────────

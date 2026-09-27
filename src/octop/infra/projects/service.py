@@ -7,8 +7,9 @@ Three responsibilities beyond the repos (plan T2.1):
    open their own transaction — there is no shared transaction to roll back.
    Every failure therefore runs an explicit **compensating delete** so we never
    leave a project without its KB, or a KB without its project.
-2. **State machine.** ``draft -> active -> (paused|archived)``; ``archived`` is
-   terminal and makes the project read-only.
+2. **State machines.** Projects: ``draft -> active -> (paused|completed|cancelled)
+   -> archived`` (PLAN.md §3.1); ``archived`` is terminal and makes the project
+   read-only. Tasks: seven states with ``planning`` as the entry state (§1.2).
 3. **Permission matrix** (plan §4.6) behind :meth:`ProjectService.assert_project_role`.
 
 Task dispatch (plan T2.5) hangs off the same service — :meth:`ProjectService.dispatch_task`
@@ -23,6 +24,7 @@ the project feature"; the ``project_members`` join gates the data.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Protocol
 
 from octop.infra.db.repos.project_tasks import (
@@ -81,28 +83,38 @@ _ROLE_LEVELS: dict[str, frozenset[str]] = {
     "viewer": frozenset({PROJECT_READ}),
 }
 
-#: Allowed project status transitions. ``archived`` is terminal.
+#: Allowed project status transitions (PLAN.md §3.1). ``archived`` is terminal;
+#: ``draft -> completed`` is deliberately unreachable (activate first), while a
+#: completed / cancelled project can be reopened through ``active``.
 _TRANSITIONS: dict[str, frozenset[str]] = {
-    "draft": frozenset({"active"}),
-    "active": frozenset({"paused", "archived"}),
-    "paused": frozenset({"active", "archived"}),
+    "draft": frozenset({"active", "cancelled"}),
+    "active": frozenset({"paused", "completed", "cancelled", "archived"}),
+    "paused": frozenset({"active", "completed", "cancelled", "archived"}),
+    "completed": frozenset({"active", "archived"}),
+    "cancelled": frozenset({"active", "archived"}),
     "archived": frozenset(),
 }
 
-#: Allowed task status transitions.
+#: Allowed task status transitions (PLAN.md §1.2, frozen).
 #:
-#: The plan fixes the task status *vocabulary* (``TASK_STATUSES``) but not the
-#: graph, so this is a deliberate design: work flows ``todo -> doing -> review ->
-#: done``; ``blocked`` is a side state reachable from either working state;
-#: ``done`` can only be reopened to ``doing``; ``cancelled`` is terminal.
+#: ``planning`` is the entry state: it can leave for ``todo`` (scheduled) or
+#: ``cancelled``, and the only other way in is ``todo -> planning`` — a task that
+#: has started work must not be able to hide its progress. The six pre-existing
+#: states keep their adjacency verbatim.
 _TASK_TRANSITIONS: dict[str, frozenset[str]] = {
-    "todo": frozenset({"doing", "blocked", "cancelled"}),
+    "planning": frozenset({"todo", "cancelled"}),
+    "todo": frozenset({"planning", "doing", "blocked", "cancelled"}),
     "doing": frozenset({"todo", "review", "done", "blocked", "cancelled"}),
     "review": frozenset({"doing", "done", "blocked", "cancelled"}),
     "blocked": frozenset({"todo", "doing", "cancelled"}),
     "done": frozenset({"doing"}),
     "cancelled": frozenset(),
 }
+
+#: Task dates are unix seconds inside this half-open range (2100-01-01 UTC), which
+#: also rejects the common milliseconds mistake (~1.7e12) — PLAN.md §5.
+_TASK_DATE_MIN = 1
+_TASK_DATE_MAX = 4102444800
 
 
 class ProjectActor(Protocol):
@@ -137,6 +149,23 @@ def _project_status_invalid(message: str) -> OctopError:
 
 def _task_status_invalid(message: str) -> OctopError:
     return OctopError(ErrorCode.PROJECT_TASK_STATUS_INVALID, message)
+
+
+def _task_date_invalid(message: str) -> OctopError:
+    return OctopError(ErrorCode.PROJECT_TASK_DATE_INVALID, message)
+
+
+def _check_task_dates(start_at: int | None, due_at: int | None) -> None:
+    """Reject unusable task dates (PLAN.md §5): range first, then ordering.
+
+    The check lives here rather than in a DB ``CHECK`` because SQLite cannot add
+    one by ``ALTER`` and the repo deliberately carries no validation.
+    """
+    for label, value in (("start_at", start_at), ("due_at", due_at)):
+        if value is not None and not (_TASK_DATE_MIN <= value < _TASK_DATE_MAX):
+            raise _task_date_invalid(f"task {label} is not a valid unix timestamp")
+    if start_at is not None and due_at is not None and start_at > due_at:
+        raise _task_date_invalid("task start_at must not be after due_at")
 
 
 class ProjectService:
@@ -215,10 +244,16 @@ class ProjectService:
         owner_user: ProjectActor,
         name: str,
         goal: str = "",
+        status: str | None = None,
         start_at: int | None = None,
         due_at: int | None = None,
     ) -> ProjectRow:
         """Create a project, binding a knowledge base when one can be created.
+
+        ``status`` is an **initial value assignment, not a transition**: the
+        creation dialog offers all six states (SPEC S-10), so ``_TRANSITIONS`` is
+        not consulted here. ``None`` keeps the repo default (``draft``); anything
+        outside ``PROJECT_STATUSES`` is a 409 rather than a silent drop.
 
         Steps (each with an explicit failure branch):
 
@@ -244,6 +279,8 @@ class ProjectService:
         name = name.strip()
         if not name:
             raise ValueError("project name is required")
+        if status is not None and status not in PROJECT_STATUSES:
+            raise _project_status_invalid(f"Unknown project status: '{status}'.")
 
         bind_kb = self._knowledge_usable()
         if bind_kb:
@@ -260,6 +297,7 @@ class ProjectService:
                 owner_user_id=owner_user.id,
                 name=name,
                 goal=goal,
+                status=status or "draft",
                 start_at=start_at,
                 due_at=due_at,
             )
@@ -475,21 +513,39 @@ class ProjectService:
         *,
         user: ProjectActor,
         title: str,
+        tags: Sequence[object] | None = None,
+        custom_fields: Mapping[str, object] | None = None,
+        attachment_ids: Sequence[object] | None = None,
         **fields: Any,
     ) -> ProjectTaskRow:
-        """Create a task. New tasks always start in ``todo``.
+        """Create a task; ``status=None`` lands in ``planning``.
 
-        Letting the caller pick an initial status would give a second path into
-        the state machine that bypasses :meth:`transition_task`; callers that
-        want a task further along should transition it.
+        Any status in ``TASK_STATUSES`` is a legal *initial* status (the board lets
+        a card be created straight into its column, PLAN.md §2.1). This does not
+        bypass the state machine: every later move still goes through
+        :meth:`transition_task`, which enforces the adjacency graph.
+
+        The optional metadata is written by the **four-step orchestration** frozen
+        in PLAN.md §2.3 — task row, tags, custom-field values, then staged
+        attachments. Any failure in steps ②-④ rolls back in **reverse order** and
+        finally compensating-deletes the task row, so a refused request never
+        leaves a half-built task behind. Files are never deleted by compensation.
         """
         self.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
         title = title.strip()
         if not title:
             raise ValueError("task title is required")
-        if fields.pop("status", None) not in (None, "todo"):
-            raise ValueError("new tasks start in 'todo'; use transition_task() to move them")
-        task = self._tasks.create(project_id=project_id, title=title, created_by=user.id, **fields)
+        status = fields.pop("status", None) or "planning"
+        if status not in TASK_STATUSES:
+            raise _task_status_invalid(f"Unknown task status: '{status}'.")
+        _check_task_dates(fields.get("start_at"), fields.get("due_at"))
+        task = self._tasks.create(  # ①
+            project_id=project_id,
+            title=title,
+            created_by=user.id,
+            status=status,
+            **fields,
+        )
         self._record(
             project_id,
             task.id,
@@ -497,19 +553,119 @@ class ProjectService:
             TIMELINE_TASK_CREATED,
             {"title": task.title},
         )
+        try:
+            self._apply_task_metadata(
+                project_id,
+                task.id,
+                user=user,
+                tags=tags,
+                custom_fields=custom_fields,
+                attachment_ids=attachment_ids,
+            )
+        except Exception:
+            self._compensate_task_create(
+                project_id, task.id, user=user, attachment_ids=attachment_ids
+            )
+            raise
         return task
+
+    def _apply_task_metadata(
+        self,
+        project_id: str,
+        task_id: str,
+        *,
+        user: ProjectActor,
+        tags: Sequence[object] | None,
+        custom_fields: Mapping[str, object] | None,
+        attachment_ids: Sequence[object] | None,
+    ) -> None:
+        """Steps ②-④ of PLAN.md §2.3, in order, on the task that already exists."""
+        tag_ids = [str(tag) for tag in (tags or [])]
+        if tag_ids:
+            self.set_task_tags(project_id, task_id, user=user, tag_ids=tag_ids)  # ②
+        if custom_fields is not None:
+            self.set_task_values(project_id, task_id, user=user, values=custom_fields)  # ③
+        pending = [str(aid) for aid in (attachment_ids or [])]
+        if pending:
+            self._attachment_service().bind_pending(  # ④
+                project_id, task_id, pending, user=user
+            )
+
+    def set_task_tags(
+        self, project_id: str, task_id: str, *, user: ProjectActor, tag_ids: Sequence[object]
+    ) -> Any:
+        """Replace a task's tag set (PLAN.md §4); shared by create and PATCH."""
+        return self._tag_service().set_task_tags(project_id, task_id, user=user, tag_ids=tag_ids)
+
+    def set_task_values(
+        self,
+        project_id: str,
+        task_id: str,
+        *,
+        user: ProjectActor,
+        values: Mapping[str, object],
+    ) -> Any:
+        """Replace a task's custom-field values (PLAN.md §6); create and PATCH."""
+        return self._custom_field_service().set_task_values(
+            project_id, task_id, user=user, values=values
+        )
+
+    def _compensate_task_create(
+        self,
+        project_id: str,
+        task_id: str,
+        *,
+        user: ProjectActor,
+        attachment_ids: Sequence[object] | None,
+    ) -> None:
+        """Reverse-order rollback for a failed create (PLAN.md §2.3).
+
+        Attachments go back to *pending* first (``task_id`` set to NULL — rows and
+        files are untouched, the user may retry), then the task row is deleted,
+        which takes the tag links and field values with it via their cascades.
+        Both halves are idempotent: unbinding an unbound row is a no-op and
+        ``delete_task`` returns ``False`` for an already-deleted task.
+        """
+        pending = [str(aid) for aid in (attachment_ids or [])]
+        if pending:
+            self._attachment_service().unbind_all(task_id, pending)
+        self.delete_task(project_id, task_id, user=user)
+
+    def _tag_service(self) -> Any:
+        from octop.infra.projects.tags import ProjectTagService  # noqa: PLC0415 - cycle-safe
+
+        return ProjectTagService(self._services, project_service=self)
+
+    def _custom_field_service(self) -> Any:
+        from octop.infra.projects.custom_fields import (  # noqa: PLC0415 - cycle-safe
+            ProjectCustomFieldService,
+        )
+
+        return ProjectCustomFieldService(self._services, project_service=self)
+
+    def _attachment_service(self) -> Any:
+        from octop.infra.projects.attachments import (  # noqa: PLC0415 - cycle-safe
+            ProjectAttachmentService,
+        )
+
+        return ProjectAttachmentService(self._services, project_service=self)
 
     def update_task(
         self, project_id: str, task_id: str, *, user: ProjectActor, **fields: Any
     ) -> ProjectTaskRow:
-        """Patch task fields other than status."""
+        """Patch task fields other than status (that goes through the state machine)."""
         task = self._require_task(project_id, task_id)
         self.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
         if fields.get("status") is not None:
-            raise ValueError("use transition_task() to change status")
+            raise _task_status_invalid("use transition_task() to change status")
         fields.pop("status", None)
         if not fields:
             return task
+        if "start_at" in fields or "due_at" in fields:
+            _check_task_dates(
+                fields.get("start_at", task.start_at),
+                fields.get("due_at", task.due_at),
+            )
         updated = self._tasks.update(task_id, **fields)
         if updated is None:
             raise OctopError(ErrorCode.PROJECT_TASK_NOT_FOUND, "Task not found.")
@@ -584,9 +740,9 @@ class ProjectService:
 
         A task with no dispatchable assignee is a caller error, so an
         ``assignee_type`` outside ``agent``/``team`` (or an empty assignee id)
-        raises ``ValueError``, like the other malformed-task inputs in this
-        service. A missing or stopped assignee keeps the registry's own
-        ``AGENT_NOT_FOUND`` / ``AGENT_NOT_RUNNING``.
+        raises ``PROJECT_TASK_DISPATCH_INVALID`` (409) instead of escaping as an
+        unhandled ``ValueError``. A missing or stopped assignee keeps the
+        registry's own ``AGENT_NOT_FOUND`` / ``AGENT_NOT_RUNNING``.
 
         Nothing is written when the turn fails: the thread stays unbound and the
         caller sees the failure rather than a task that claims to be dispatched.

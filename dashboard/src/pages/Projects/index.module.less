@@ -94,3 +94,59 @@
 .field {
   width: 100%;
 }
+
+/* New-project dialog (R4: breadcrumb + inline title + description + chips). */
+
+.breadcrumb {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fn-text-tertiary);
+}
+
+.dialog {
+  :global(.ant-form-item) {
+    margin-bottom: 12px;
+  }
+}
+
+.titleInput {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.chipMenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+}
+
+.chipOption {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--fn-radius-sm, 6px);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+  }
+}
+
+.chipOptionActive {
+  background: var(--fn-color-brand-bg);
+}
+
+.chipPopover {
+  padding: 4px;
+}
+
+.readOnlyHint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}

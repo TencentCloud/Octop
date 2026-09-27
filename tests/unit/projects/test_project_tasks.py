@@ -96,12 +96,12 @@ def actions(service: ProjectService, project_id: str, owner: Actor) -> list[str]
 # ── create ───────────────────────────────────────────────────────────────────
 
 
-def test_create_task_starts_in_todo_and_records_timeline(
+def test_create_task_starts_in_planning_and_records_timeline(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
     task = service.create_task(project.id, user=owner, title="Write the spec")
 
-    assert task.status == "todo"
+    assert task.status == "planning"
     assert task.project_id == project.id
     assert task.created_by == owner.id
     assert task.sort_order == 0
@@ -120,13 +120,18 @@ def test_create_task_rejects_a_blank_title(
         service.create_task(project.id, user=owner, title="   ")
 
 
-def test_create_task_cannot_skip_the_state_machine(
+def test_create_task_rejects_a_status_outside_the_vocabulary(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
-    with pytest.raises(ValueError, match="start in 'todo'"):
-        service.create_task(project.id, user=owner, title="T", status="done")
-    with pytest.raises(ValueError, match="start in 'todo'"):
-        service.create_task(project.id, user=owner, title="T", status="review")
+    """Any of the seven states may be chosen up front (R2); anything else is 409."""
+    for status in ("done", "review"):
+        assert (
+            service.create_task(project.id, user=owner, title="T", status=status).status == status
+        )
+    with pytest.raises(OctopError) as err:
+        service.create_task(project.id, user=owner, title="T", status="exploded")
+    assert err.value.code is ErrorCode.PROJECT_TASK_STATUS_INVALID
+    assert err.value.status == 409
 
 
 def test_create_task_accepts_explicit_todo(
@@ -266,7 +271,7 @@ def test_known_thread_is_accepted(
 def test_happy_path_todo_doing_review_done(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
-    task = service.create_task(project.id, user=owner, title="T")
+    task = service.create_task(project.id, user=owner, title="T", status="todo")
     for target in ("doing", "review", "done"):
         assert (
             service.transition_task(project.id, task.id, user=owner, target=target).status == target
@@ -287,7 +292,7 @@ def test_happy_path_todo_doing_review_done(
 
 
 def test_todo_cannot_jump_to_done(service: ProjectService, project: Any, owner: Actor) -> None:
-    task = service.create_task(project.id, user=owner, title="T")
+    task = service.create_task(project.id, user=owner, title="T", status="todo")
     with pytest.raises(OctopError) as err:
         service.transition_task(project.id, task.id, user=owner, target="done")
     assert err.value.code is ErrorCode.PROJECT_TASK_STATUS_INVALID
@@ -297,7 +302,7 @@ def test_todo_cannot_jump_to_done(service: ProjectService, project: Any, owner: 
 def test_blocked_is_reachable_and_recoverable(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
-    task = service.create_task(project.id, user=owner, title="T")
+    task = service.create_task(project.id, user=owner, title="T", status="todo")
     assert (
         service.transition_task(project.id, task.id, user=owner, target="blocked").status
         == "blocked"
@@ -315,7 +320,7 @@ def test_blocked_is_reachable_and_recoverable(
 def test_done_can_only_be_reopened_to_doing(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
-    task = service.create_task(project.id, user=owner, title="T")
+    task = service.create_task(project.id, user=owner, title="T", status="todo")
     service.transition_task(project.id, task.id, user=owner, target="doing")
     service.transition_task(project.id, task.id, user=owner, target="done")
 
@@ -361,8 +366,10 @@ def test_task_status_is_not_patchable_through_update_task(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
     task = service.create_task(project.id, user=owner, title="T")
-    with pytest.raises(ValueError, match="use transition_task"):
+    with pytest.raises(OctopError) as err:
         service.update_task(project.id, task.id, user=owner, status="done")
+    assert err.value.code is ErrorCode.PROJECT_TASK_STATUS_INVALID
+    assert err.value.status == 409, "status changes route through the state machine"
 
 
 # ── update / delete ──────────────────────────────────────────────────────────
@@ -432,8 +439,8 @@ def test_delete_unknown_task_is_not_found(
 
 
 def test_list_tasks_filters_by_status(service: ProjectService, project: Any, owner: Actor) -> None:
-    first = service.create_task(project.id, user=owner, title="1")
-    service.create_task(project.id, user=owner, title="2")
+    first = service.create_task(project.id, user=owner, title="1", status="todo")
+    service.create_task(project.id, user=owner, title="2", status="todo")
     service.transition_task(project.id, first.id, user=owner, target="doing")
 
     assert [t.title for t in service.list_tasks(project.id, user=owner)] == ["1", "2"]
@@ -507,7 +514,7 @@ def test_timeline_limit(service: ProjectService, project: Any, owner: Actor) -> 
 def test_timeline_is_ordered_oldest_first(
     service: ProjectService, services: SimpleNamespace, project: Any, owner: Actor
 ) -> None:
-    first = service.create_task(project.id, user=owner, title="1")
+    first = service.create_task(project.id, user=owner, title="1", status="todo")
     second = service.create_task(project.id, user=owner, title="2")
     service.transition_task(project.id, first.id, user=owner, target="doing")
 

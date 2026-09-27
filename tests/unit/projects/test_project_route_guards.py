@@ -43,9 +43,15 @@ async def _create_project(client: httpx.AsyncClient, auth: dict[str, str], name:
 
 
 async def _create_task(
-    client: httpx.AsyncClient, auth: dict[str, str], project_id: str, title: str
+    client: httpx.AsyncClient,
+    auth: dict[str, str],
+    project_id: str,
+    title: str,
+    **fields: Any,
 ) -> str:
-    r = await client.post(f"{PROJECTS}/{project_id}/tasks", headers=auth, json={"title": title})
+    r = await client.post(
+        f"{PROJECTS}/{project_id}/tasks", headers=auth, json={"title": title, **fields}
+    )
     assert r.status_code == 201, r.text
     return str(r.json()["task_id"])
 
@@ -111,7 +117,9 @@ async def test_the_owning_projects_path_still_patches_and_deletes(
     client, users = api
     alice = users["alice"]
     pid_a = await _create_project(client, alice, "Apollo")
-    tid_a = await _create_task(client, alice, pid_a, "Draft the flight plan")
+    # Created straight into ``todo`` so the patch below can exercise ``todo -> doing``
+    # (a default-planned task must pass through ``todo`` first, PLAN.md §1.2).
+    tid_a = await _create_task(client, alice, pid_a, "Draft the flight plan", status="todo")
 
     renamed = await client.patch(
         f"{PROJECTS}/{pid_a}/tasks/{tid_a}", headers=alice, json={"title": "Renamed"}
@@ -204,3 +212,32 @@ async def test_unusable_parent_id_is_a_404_not_a_500(
 
     # Nothing was created by the refused requests.
     assert await _board(client, alice, pid_a) == []
+
+
+# ── a creation-time status is applied, never silently dropped (SPEC S-10) ────
+
+
+async def test_project_status_on_create_is_applied_and_validated(
+    api: tuple[httpx.AsyncClient, dict[str, dict[str, str]]],
+) -> None:
+    """``ProjectCreate.status`` must reach the row (all six states selectable) and
+    an unknown value must be a 409 envelope — never a silent default."""
+    client, users = api
+    alice = users["alice"]
+
+    created = await client.post(
+        f"{PROJECTS}", headers=alice, json={"name": "Apollo", "status": "active"}
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["status"] == "active", "status was silently dropped"
+
+    bogus = await client.post(
+        f"{PROJECTS}", headers=alice, json={"name": "Borealis", "status": "bogus"}
+    )
+    assert bogus.status_code == 409, bogus.text
+    assert bogus.status_code != 500, bogus.text
+    assert _error_code(bogus) == "PROJECT_STATUS_INVALID", bogus.text
+
+    listed = await client.get(f"{PROJECTS}", headers=alice)
+    names = [p["name"] for p in listed.json()]
+    assert names == ["Apollo"], "the rejected project must not exist"

@@ -11,7 +11,14 @@ import {
   Tooltip,
 } from "antd";
 import type { Dayjs } from "dayjs";
-import { FolderKanban, Plus, RefreshCw } from "lucide-react";
+import {
+  CalendarClock,
+  CalendarDays,
+  CircleDot,
+  FolderKanban,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
@@ -21,6 +28,7 @@ import {
   type ProjectOut,
   type ProjectStatus,
 } from "../../api/modules/projects";
+import { ChipButton, ChipToolbar } from "../../components/ChipToolbar";
 import { EmptyState } from "../../components/EmptyState";
 import { useAsyncResource } from "../../hooks/useAsyncResource";
 import { useServerTimezone } from "../../hooks/useServerTimezone";
@@ -30,10 +38,16 @@ import { message } from "../../utils/antdMessage";
 import { formatServerDateTime } from "../../utils/formatMessageTime";
 import styles from "./index.module.less";
 
+/**
+ * Project status copy (PLAN §3.2 / §3.1): six values, and ``archived`` is a
+ * different thing from ``cancelled`` — never share a key between the two.
+ */
 const STATUS_LABEL_KEYS: Record<ProjectStatus, string> = {
   draft: "projects.statusDraft",
   active: "projects.statusActive",
   paused: "projects.statusPaused",
+  completed: "projects.statusCompleted",
+  cancelled: "projects.statusCancelled",
   archived: "projects.statusArchived",
 };
 
@@ -41,15 +55,42 @@ const STATUS_COLORS: Record<ProjectStatus, string> = {
   draft: "default",
   active: "success",
   paused: "warning",
+  completed: "blue",
+  cancelled: "error",
   archived: "default",
 };
+
+const STATUS_OPTIONS = Object.keys(STATUS_LABEL_KEYS) as ProjectStatus[];
+
+/** Backend default for a fresh project (`repos/projects.py`). */
+const DEFAULT_STATUS: ProjectStatus = "draft";
+
+const DATE_FORMAT = "YYYY-MM-DD HH:mm";
+
+function emptyValues(): ProjectFormValues {
+  return {
+    name: "",
+    goal: "",
+    status: DEFAULT_STATUS,
+    start_at: null,
+    due_at: null,
+  };
+}
 
 interface ProjectFormValues {
   name: string;
   goal?: string;
+  status: ProjectStatus;
   start_at?: Dayjs | null;
   due_at?: Dayjs | null;
 }
+
+/**
+ * R4: the dialog field set is exactly name / goal / status / start / due. The
+ * status is sent along, so the request body is ``ProjectCreateBody`` plus
+ * ``status`` — never priority / owner / repository.
+ */
+type ProjectCreateRequest = ProjectCreateBody & { status: ProjectStatus };
 
 function ProjectsPage() {
   const { t } = useTranslation();
@@ -58,6 +99,9 @@ function ProjectsPage() {
   const [form] = Form.useForm<ProjectFormValues>();
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const status = Form.useWatch("status", form) ?? DEFAULT_STATUS;
+  const startAt = Form.useWatch("start_at", form);
+  const dueAt = Form.useWatch("due_at", form);
 
   const {
     data: projects,
@@ -69,20 +113,25 @@ function ProjectsPage() {
     logLabel: "projects",
   });
 
+  /**
+   * Seed the form store before the modal mounts. ``initialValues`` cannot do
+   * this: rc-field-form merges them *under* whatever the store already holds,
+   * so a reopened dialog would keep the previous entry.
+   */
   const openCreate = () => {
-    form.resetFields();
+    form.setFieldsValue(emptyValues());
     setCreateOpen(true);
   };
 
   const closeCreate = () => {
     setCreateOpen(false);
-    form.resetFields();
   };
 
   const submitCreate = async (values: ProjectFormValues) => {
-    const body: ProjectCreateBody = {
+    const body: ProjectCreateRequest = {
       name: values.name.trim(),
       goal: values.goal?.trim() ?? "",
+      status: values.status,
       start_at: values.start_at ? values.start_at.unix() : null,
       due_at: values.due_at ? values.due_at.unix() : null,
     };
@@ -98,6 +147,62 @@ function ProjectsPage() {
       setSaving(false);
     }
   };
+
+  const statusChip = (
+    <ChipButton
+      icon={<CircleDot size={14} />}
+      label={t("projects.status")}
+      value={t(STATUS_LABEL_KEYS[status])}
+      active={status !== DEFAULT_STATUS}
+      ariaLabel={t("projects.chipStatus")}
+    >
+      <div className={styles.chipMenu}>
+        {STATUS_OPTIONS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={option === status}
+            className={
+              option === status
+                ? `${styles.chipOption} ${styles.chipOptionActive}`
+                : styles.chipOption
+            }
+            onClick={() => form.setFieldValue("status", option)}
+          >
+            <Tag color={STATUS_COLORS[option]}>
+              {t(STATUS_LABEL_KEYS[option])}
+            </Tag>
+          </button>
+        ))}
+      </div>
+    </ChipButton>
+  );
+
+  const dateChip = (
+    field: "start_at" | "due_at",
+    label: string,
+    ariaLabel: string,
+    icon: JSX.Element,
+    value: Dayjs | null | undefined,
+  ) => (
+    <ChipButton
+      icon={icon}
+      label={label}
+      value={value ? value.format(DATE_FORMAT) : null}
+      active={Boolean(value)}
+      ariaLabel={ariaLabel}
+    >
+      <div className={styles.chipPopover}>
+        <Form.Item name={field} noStyle>
+          <DatePicker
+            showTime={{ format: "HH:mm" }}
+            format={DATE_FORMAT}
+            className={styles.field}
+          />
+        </Form.Item>
+      </div>
+    </ChipButton>
+  );
 
   return (
     <PageShell
@@ -177,7 +282,14 @@ function ProjectsPage() {
 
       <Modal
         open={createOpen}
-        title={t("projects.create")}
+        title={
+          <span
+            className={styles.breadcrumb}
+            data-testid="create-project-breadcrumb"
+          >
+            {t("projects.title")} › {t("projects.create")}
+          </span>
+        }
         okText={t("common.create")}
         cancelText={t("common.cancel")}
         confirmLoading={saving}
@@ -185,43 +297,77 @@ function ProjectsPage() {
         onOk={() => form.submit()}
         onCancel={closeCreate}
       >
-        <Form<ProjectFormValues>
-          form={form}
-          layout="vertical"
-          onFinish={(values) => void submitCreate(values)}
-        >
-          <Form.Item
-            name="name"
-            label={t("projects.name")}
-            rules={[{ required: true, message: t("projects.nameRequired") }]}
+        <div className={styles.dialog} data-testid="create-project-dialog">
+          <Form<ProjectFormValues>
+            form={form}
+            layout="vertical"
+            onFinish={(values) => void submitCreate(values)}
           >
-            <Input
-              className={styles.field}
-              placeholder={t("projects.namePlaceholder")}
-              maxLength={120}
-            />
-          </Form.Item>
-          <Form.Item name="goal" label={t("projects.goal")}>
-            <Input.TextArea
-              rows={3}
-              placeholder={t("projects.goalPlaceholder")}
-            />
-          </Form.Item>
-          <Form.Item name="start_at" label={t("projects.startAt")}>
-            <DatePicker
-              className={styles.field}
-              showTime={{ format: "HH:mm" }}
-              format="YYYY-MM-DD HH:mm"
-            />
-          </Form.Item>
-          <Form.Item name="due_at" label={t("projects.dueAt")}>
-            <DatePicker
-              className={styles.field}
-              showTime={{ format: "HH:mm" }}
-              format="YYYY-MM-DD HH:mm"
-            />
-          </Form.Item>
-        </Form>
+            {/* Field 1 — inline title, no label box (screenshot alignment). */}
+            <div data-testid="create-project-field-name">
+              <Form.Item
+                name="name"
+                rules={[
+                  { required: true, message: t("projects.nameRequired") },
+                ]}
+              >
+                <Input
+                  className={styles.titleInput}
+                  placeholder={t("projects.namePlaceholder")}
+                  maxLength={120}
+                  data-testid="create-project-name"
+                />
+              </Form.Item>
+            </div>
+            {/* Field 2 — description. */}
+            <div data-testid="create-project-field-goal">
+              <Form.Item name="goal">
+                <Input.TextArea
+                  autoSize={{ minRows: 2, maxRows: 5 }}
+                  placeholder={t("projects.goalPlaceholder")}
+                  data-testid="create-project-goal"
+                />
+              </Form.Item>
+            </div>
+            {/* Registered so the chip's value is part of the submitted form. */}
+            <Form.Item name="status" hidden>
+              <Input />
+            </Form.Item>
+            <ChipToolbar testId="create-project-chips">
+              {/* Field 3 — status chip (six options; PLAN §3.2 semantics). */}
+              <span data-testid="create-project-field-status">
+                {statusChip}
+              </span>
+              {/* Fields 4 and 5 — start / due date chips. */}
+              <span data-testid="create-project-field-start">
+                {dateChip(
+                  "start_at",
+                  t("projects.startAt"),
+                  t("projects.chipStartAt"),
+                  <CalendarDays size={14} />,
+                  startAt,
+                )}
+              </span>
+              <span data-testid="create-project-field-due">
+                {dateChip(
+                  "due_at",
+                  t("projects.dueAt"),
+                  t("projects.chipDueAt"),
+                  <CalendarClock size={14} />,
+                  dueAt,
+                )}
+              </span>
+            </ChipToolbar>
+            {status === "archived" ? (
+              <div
+                className={styles.readOnlyHint}
+                data-testid="create-project-archived-hint"
+              >
+                {t("projects.archiveConfirmDesc")}
+              </div>
+            ) : null}
+          </Form>
+        </div>
       </Modal>
     </PageShell>
   );

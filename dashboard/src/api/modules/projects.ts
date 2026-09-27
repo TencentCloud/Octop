@@ -1,12 +1,23 @@
 import { request } from "../request";
 
-export type ProjectStatus = "draft" | "active" | "paused" | "archived";
+export type ProjectStatus =
+  | "draft"
+  | "active"
+  | "paused"
+  | "completed"
+  | "cancelled"
+  | "archived";
 
 export type ProjectSubjectType = "user" | "agent" | "team";
 
 export type ProjectMemberRole = "owner" | "admin" | "member" | "viewer";
 
+/**
+ * Task statuses, v2 (PLAN §1.1): ``planning`` is prepended, the relative order
+ * of the existing six values is preserved verbatim.
+ */
 export type ProjectTaskStatus =
+  | "planning"
   | "todo"
   | "doing"
   | "review"
@@ -36,6 +47,67 @@ export interface ProjectMember {
   created_at: number;
 }
 
+/** Tag as resolved on a task (PLAN §4: ``TaskOut.tags``). */
+export interface ProjectTag {
+  tag_id: string;
+  name: string;
+  color: string;
+}
+
+/** Tag definition row (`GET /api/projects/{pid}/tags`). */
+export interface ProjectTagDefinition extends ProjectTag {
+  created_at: number;
+}
+
+/** Custom-field type system (PLAN §6.2: exactly four kinds). */
+export type ProjectCustomFieldType = "text" | "number" | "date" | "select";
+
+/** Field definition (`GET /api/projects/{pid}/custom-fields`). */
+export interface ProjectCustomFieldDefinition {
+  field_id: string;
+  key: string;
+  label: string;
+  type: ProjectCustomFieldType;
+  required: boolean;
+  options: string[];
+  sort_order: number;
+  created_at: number;
+  updated_at: number;
+}
+
+/** Value accepted by the write endpoints (PLAN §6.2). */
+export type ProjectCustomFieldWriteValue = string | number | null;
+
+/** Resolved value on a task (`TaskOut.custom_fields`). */
+export interface ProjectCustomFieldValue {
+  field_id: string;
+  key: string;
+  label: string;
+  type: ProjectCustomFieldType;
+  value: ProjectCustomFieldWriteValue;
+}
+
+/**
+ * Attachment row (PLAN §7.4) — never carries the stored path.
+ * ``task_id === null`` means the row is staged (pending) and not yet bound
+ * to a task (PLAN §7.5).
+ */
+export interface ProjectAttachment {
+  artifact_id: string;
+  name: string;
+  size: number;
+  mime: string;
+  created_at: number;
+  uploader: string;
+  task_id: string | null;
+}
+
+/** Task-level custom-field read shape (`GET .../tasks/{tid}/custom-fields`). */
+export interface ProjectTaskCustomFields {
+  definitions: ProjectCustomFieldDefinition[];
+  values: Record<string, ProjectCustomFieldWriteValue>;
+}
+
 export interface ProjectTask {
   task_id: string;
   project_id: string;
@@ -50,6 +122,14 @@ export interface ProjectTask {
   thread_id: string | null;
   origin_node_id: string | null;
   due_at: number | null;
+  /** Start date, Unix seconds (PLAN §5). */
+  start_at: number | null;
+  /** Resolved tags, oldest first (PLAN §4). */
+  tags: ProjectTag[];
+  /** Resolved custom-field values (PLAN §6.3 read ring). */
+  custom_fields: ProjectCustomFieldValue[];
+  /** Attachments already bound to this task (PLAN §7.4). */
+  attachments: ProjectAttachment[];
   sort_order: number;
   created_by: number;
   created_at: number;
@@ -97,6 +177,19 @@ export interface ProjectTaskCreateBody {
   priority?: number;
   deps?: string[];
   due_at?: number | null;
+  /** Target column; omitted/``null`` → server lands ``planning`` (PLAN §2.1). */
+  status?: ProjectTaskStatus | null;
+  /** Start date, Unix seconds. */
+  start_at?: number | null;
+  /** Tag ids (full replacement). */
+  tags?: string[];
+  /**
+   * ``field_id → value``. ``null`` skips required-field validation,
+   * ``{}`` explicitly clears and validates (PLAN §6.3).
+   */
+  custom_fields?: Record<string, ProjectCustomFieldWriteValue> | null;
+  /** Staged (pending) attachment ids bound after the task row is created. */
+  attachment_ids?: string[];
 }
 
 export interface ProjectTaskUpdateBody {
@@ -110,6 +203,10 @@ export interface ProjectTaskUpdateBody {
   due_at?: number | null;
   /** Routed through the task state machine by the backend. */
   status?: ProjectTaskStatus;
+  start_at?: number | null;
+  /** Tag ids (full replacement). */
+  tags?: string[];
+  custom_fields?: Record<string, ProjectCustomFieldWriteValue> | null;
 }
 
 function projectPath(projectId: string): string {
@@ -187,6 +284,18 @@ export const projectsApi = {
     request<{ deleted: boolean }>(
       `${projectPath(projectId)}/tasks/${encodeURIComponent(taskId)}`,
       { method: "DELETE" },
+    ),
+
+  /**
+   * Dispatch a task to its ``agent`` / ``team`` assignee — reuses the existing
+   * backend route (PLAN §8.2). Assignees of type ``user`` are rejected 409
+   * ``PROJECT_TASK_DISPATCH_INVALID``, so callers must gate on the assignee
+   * type before calling.
+   */
+  dispatchTask: (projectId: string, taskId: string) =>
+    request<ProjectTask>(
+      `${projectPath(projectId)}/tasks/${encodeURIComponent(taskId)}:dispatch`,
+      { method: "POST" },
     ),
 
   /** Oldest first, i.e. a replay of what happened in the project. */

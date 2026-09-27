@@ -51,8 +51,16 @@ def other(db: SqlitePool) -> int:
 
 def test_public_constants_match_the_ddl_comments():
     assert PROJECT_ROLES == ("owner", "admin", "member", "viewer")
-    assert PROJECT_STATUSES == ("draft", "active", "paused", "archived")
-    assert TASK_STATUSES == ("todo", "doing", "review", "done", "blocked", "cancelled")
+    assert PROJECT_STATUSES == ("draft", "active", "paused", "completed", "cancelled", "archived")
+    assert TASK_STATUSES == (
+        "planning",
+        "todo",
+        "doing",
+        "review",
+        "done",
+        "blocked",
+        "cancelled",
+    )
 
 
 def test_memory_namespace_is_derived_from_the_project_id():

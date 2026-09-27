@@ -59,8 +59,11 @@ async def test_projects_openapi_contract(tmp_octop_home: Path) -> None:
 
             ok = op["responses"].get("200") or op["responses"].get("201")
             assert ok is not None, f"{method.upper()} {path} has no 2xx response"
-            schema = ok.get("content", {}).get("application/json", {}).get("schema")
-            assert schema, f"{method.upper()} {path} has an untyped response"
+            # JSON where the route returns a model; a declared binary media type for
+            # the file download (which must still be *typed*, not an empty card).
+            content = ok.get("content", {})
+            declared = content.get("application/json") or next(iter(content.values()), {})
+            assert declared.get("schema"), f"{method.upper()} {path} has an untyped response"
 
 
 def test_every_route_requires_the_projects_permission() -> None:

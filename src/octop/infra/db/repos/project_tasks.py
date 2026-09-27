@@ -31,6 +31,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.ulid import new_short_id
 
 TASK_STATUSES: tuple[str, ...] = (
+    "planning",
     "todo",
     "doing",
     "review",
@@ -96,6 +97,7 @@ class ProjectTaskRow:
     deps: tuple[str, ...]
     thread_id: str | None
     origin_node_id: str | None
+    start_at: int | None
     due_at: int | None
     sort_order: int
     created_by: int
@@ -118,6 +120,7 @@ class ProjectTaskRow:
             deps=_parse_deps(r["deps"]),
             thread_id=(str(r["thread_id"]) if r["thread_id"] is not None else None),
             origin_node_id=(str(r["origin_node_id"]) if r["origin_node_id"] is not None else None),
+            start_at=(int(r["start_at"]) if r["start_at"] is not None else None),
             due_at=(int(r["due_at"]) if r["due_at"] is not None else None),
             sort_order=int(r["sort_order"]),
             created_by=int(r["created_by"]),
@@ -228,6 +231,7 @@ class ProjectTaskRepo:
         deps: Iterable[object] = (),
         thread_id: str | None = None,
         origin_node_id: str | None = None,
+        start_at: int | None = None,
         due_at: int | None = None,
         sort_order: int | None = None,
     ) -> ProjectTaskRow:
@@ -242,8 +246,8 @@ class ProjectTaskRepo:
                 "INSERT INTO project_tasks("
                 "task_id, project_id, parent_id, title, description, status, "
                 "assignee_type, assignee_id, priority, deps, thread_id, origin_node_id, "
-                "due_at, sort_order, created_by, created_at, updated_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "start_at, due_at, sort_order, created_by, created_at, updated_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     task_id,
                     project_id,
@@ -257,6 +261,7 @@ class ProjectTaskRepo:
                     _dump_deps(deps),
                     thread_id,
                     origin_node_id,
+                    start_at,
                     due_at,
                     sort_order,
                     created_by,
@@ -283,6 +288,7 @@ class ProjectTaskRepo:
         deps: object = UNSET,
         thread_id: object = UNSET,
         origin_node_id: object = UNSET,
+        start_at: object = UNSET,
         due_at: object = UNSET,
         sort_order: object = UNSET,
     ) -> ProjectTaskRow | None:
@@ -315,6 +321,7 @@ class ProjectTaskRepo:
                 ),
                 ("thread_id", thread_id),
                 ("origin_node_id", origin_node_id),
+                ("start_at", start_at),
                 ("due_at", due_at),
                 ("sort_order", sort_order),
             ]
