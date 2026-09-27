@@ -3,10 +3,7 @@ import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { THEME_STORAGE_KEY } from "./themePalettes";
 
-const INDEX_HTML = readFileSync(
-  resolve(__dirname, "../../index.html"),
-  "utf8",
-);
+const INDEX_HTML = readFileSync(resolve(__dirname, "../../index.html"), "utf8");
 
 function bootThemeScript(): string {
   const match = INDEX_HTML.match(

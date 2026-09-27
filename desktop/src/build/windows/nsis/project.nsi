@@ -5,13 +5,18 @@ Unicode true
 #   makensis -DARG_WAILS_AMD64_BINARY=..\..\..\bin\Octop.exe project.nsi
 #   makensis -DARG_WAILS_ARM64_BINARY=..\..\..\bin\Octop.exe project.nsi
 
+# Written by stamp_version.py nsis-defines (pep440 display + X.X.X.X file version).
+!include /nonfatal "version_defines.nsh"
 !include "wails_tools.nsh"
 
 SetCompressor /SOLID lzma
 
-# The version information for this two must consist of 4 parts
-VIProductVersion "${INFO_PRODUCTVERSION}.0"
-VIFileVersion    "${INFO_PRODUCTVERSION}.0"
+# VI*Version must be numeric X.X.X.X. Display strings may be pep440 (e.g. 1.0.2b1).
+!ifndef INFO_FILEVERSION
+    !define INFO_FILEVERSION "${INFO_PRODUCTVERSION}.0"
+!endif
+VIProductVersion "${INFO_FILEVERSION}"
+VIFileVersion    "${INFO_FILEVERSION}"
 
 VIAddVersionKey "CompanyName"     "${INFO_COMPANYNAME}"
 VIAddVersionKey "FileDescription" "${INFO_PRODUCTNAME} Installer"

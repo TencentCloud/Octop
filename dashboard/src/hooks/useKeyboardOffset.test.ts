@@ -8,9 +8,7 @@ import {
 
 describe("measureKeyboardOffset", () => {
   it("ignores home-indicator-sized leftover as a closed keyboard", () => {
-    expect(
-      measureKeyboardOffset(844, { height: 810, offsetTop: 0 }),
-    ).toBe(0);
+    expect(measureKeyboardOffset(844, { height: 810, offsetTop: 0 })).toBe(0);
     expect(
       measureKeyboardOffset(844, {
         height: 844 - KEYBOARD_GAP_THRESHOLD_PX,
@@ -20,15 +18,13 @@ describe("measureKeyboardOffset", () => {
   });
 
   it("reports a real soft keyboard", () => {
-    expect(
-      measureKeyboardOffset(844, { height: 500, offsetTop: 0 }),
-    ).toBe(344);
+    expect(measureKeyboardOffset(844, { height: 500, offsetTop: 0 })).toBe(344);
   });
 
   it("subtracts visualViewport.offsetTop before comparing", () => {
-    expect(
-      measureKeyboardOffset(844, { height: 500, offsetTop: 40 }),
-    ).toBe(304);
+    expect(measureKeyboardOffset(844, { height: 500, offsetTop: 40 })).toBe(
+      304,
+    );
   });
 });
 
@@ -46,13 +42,12 @@ describe("useKeyboardOffset", () => {
   });
 
   it("does not set --keyboard-offset outside PWA standalone", () => {
-    window.matchMedia = ((query: string) =>
-      ({
-        matches: false,
-        media: query,
-        addEventListener() {},
-        removeEventListener() {},
-      })) as typeof window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+    })) as typeof window.matchMedia;
 
     renderHook(() => useKeyboardOffset());
 

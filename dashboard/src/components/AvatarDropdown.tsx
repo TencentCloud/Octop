@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, type ReactNode } from "react";
 import {
-  Avatar,
   Modal,
   Drawer,
   Form,
@@ -24,6 +23,9 @@ import {
   Github,
   RefreshCw,
   KeyRound,
+  Lock,
+  LockOpen,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -48,11 +50,20 @@ import { userCan } from "../utils/permissions";
 import feishuIcon from "../assets/channels/feishu.svg";
 import dingtalkIcon from "../assets/channels/dingtalk.svg";
 import wecomIcon from "../assets/channels/wecom.svg";
+import {
+  ProfileAvatar,
+  ProfileAvatarPicker,
+} from "../pages/Admin/Users/ProfileAvatar";
 import styles from "./AvatarDropdown.module.less";
 
 const GITHUB_URL = "https://github.com/TencentCloud/Octop";
 const HELP_FEEDBACK_URL = "https://octop.cloud";
 const APP_OAUTH_KINDS = new Set(["feishu", "dingtalk", "wecom"]);
+
+const PASSWORD_FIELD_ICON_PROPS = {
+  size: 14 as const,
+  style: { color: "var(--fn-text-tertiary)" },
+};
 
 function oauthProviderIcon(kind: string): ReactNode {
   const src =
@@ -79,6 +90,8 @@ interface AvatarDropdownProps {
   compact?: boolean;
   /** Called before opening settings / password panels (e.g. close mobile nav drawer). */
   onBeforeOpenSettings?: () => void;
+  /** Opens the sidebar layout editor. Omitted when that editor is unavailable. */
+  onCustomizeNav?: () => void;
 }
 
 export default function AvatarDropdown({
@@ -87,6 +100,7 @@ export default function AvatarDropdown({
   placement = "default",
   compact = false,
   onBeforeOpenSettings,
+  onCustomizeNav,
 }: AvatarDropdownProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -251,9 +265,6 @@ export default function AvatarDropdown({
     role === "admin" ? t("account.roleAdmin") : t("account.roleUser");
 
   const displayName = user?.display_name || user?.username || "—";
-  const initials = (user?.display_name || user?.username || "?")
-    .charAt(0)
-    .toUpperCase();
 
   /** Defer panel open so the account Popover / mobile sidebar can unmount first. */
   const deferOpen = (open: () => void) => {
@@ -272,6 +283,12 @@ export default function AvatarDropdown({
     onBeforeOpenSettings?.();
     pwForm.resetFields();
     deferOpen(() => setPasswordOpen(true));
+  };
+
+  const openCustomizeNav = () => {
+    setMenuOpen(false);
+    onBeforeOpenSettings?.();
+    deferOpen(() => onCustomizeNav?.());
   };
 
   const closeSettings = () => setSettingsOpen(false);
@@ -317,17 +334,12 @@ export default function AvatarDropdown({
   }, [onUserChange, t]);
 
   const avatar = (
-    <Avatar
-      size={32}
-      style={{
-        background: "var(--fn-color-brand)",
-        fontSize: 14,
-        userSelect: "none",
-        flexShrink: 0,
-      }}
-    >
-      {initials}
-    </Avatar>
+    <ProfileAvatar
+      url={user?.avatar_url}
+      icon={user?.avatar_icon}
+      kind="user"
+      className={styles.accountAvatar}
+    />
   );
 
   const menuContent = (
@@ -378,6 +390,17 @@ export default function AvatarDropdown({
         <Github size={16} strokeWidth={1.8} />
         <span>{t("account.projectUrl")}</span>
       </a>
+
+      {onCustomizeNav ? (
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={openCustomizeNav}
+        >
+          <SlidersHorizontal size={16} strokeWidth={1.8} />
+          <span>{t("nav.customize")}</span>
+        </button>
+      ) : null}
 
       <button type="button" className={styles.menuItem} onClick={openSettings}>
         <Settings size={16} strokeWidth={1.8} />
@@ -459,16 +482,12 @@ export default function AvatarDropdown({
   const settingsBody = (
     <div className={styles.settingsBody}>
       <div className={styles.settingsIdentity}>
-        <Avatar
-          size={44}
-          style={{
-            background: "var(--fn-color-brand)",
-            fontSize: 18,
-            flexShrink: 0,
-          }}
-        >
-          {initials}
-        </Avatar>
+        <ProfileAvatar
+          url={user?.avatar_url}
+          icon={user?.avatar_icon}
+          kind="user"
+          className={`${styles.accountAvatar} ${styles.accountAvatarLarge}`}
+        />
         <div className={styles.settingsIdentityText}>
           <div className={styles.settingsIdentityName}>
             <span>{displayName}</span>
@@ -486,6 +505,56 @@ export default function AvatarDropdown({
           )}
         </div>
       </div>
+
+      <section className={styles.settingsSection}>
+        <div className={styles.settingsSectionHead}>
+          <h3 className={styles.settingsSectionTitle}>{t("account.avatar")}</h3>
+          <p className={styles.settingsSectionDesc}>
+            {t("account.avatarHint")}
+          </p>
+        </div>
+        {user ? (
+          <ProfileAvatarPicker
+            kind="user"
+            avatarUrl={user.avatar_url}
+            icon={user.avatar_icon}
+            onSelectIcon={async (icon) => {
+              try {
+                onUserChange?.(await authApi.setAvatarIcon(icon));
+              } catch (err) {
+                message.error(
+                  apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                );
+                throw err;
+              }
+            }}
+            onPick={async (file) => {
+              try {
+                const result = await authApi.uploadAvatar(file);
+                onUserChange?.({ ...user, avatar_url: result.avatar_url });
+              } catch (err) {
+                message.error(
+                  apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                );
+                throw err;
+              }
+            }}
+            onRemove={async () => {
+              try {
+                await authApi.deleteAvatar();
+                onUserChange?.({ ...user, avatar_url: null });
+              } catch (err) {
+                message.error(
+                  apiErrorMessage(err, t("experts.avatarRemoveFailed"), t),
+                );
+                throw err;
+              }
+            }}
+          />
+        ) : null}
+      </section>
+
+      <Divider className={styles.settingsDivider} />
 
       <section className={styles.settingsSection}>
         <div className={styles.settingsSectionHead}>
@@ -674,7 +743,10 @@ export default function AvatarDropdown({
               },
             ]}
           >
-            <Input.Password autoComplete="current-password" />
+            <Input.Password
+              autoComplete="current-password"
+              prefix={<Lock {...PASSWORD_FIELD_ICON_PROPS} />}
+            />
           </Form.Item>
           <Form.Item
             name="new_password"
@@ -702,7 +774,10 @@ export default function AvatarDropdown({
               }),
             ]}
           >
-            <Input.Password autoComplete="new-password" />
+            <Input.Password
+              autoComplete="new-password"
+              prefix={<Lock {...PASSWORD_FIELD_ICON_PROPS} />}
+            />
           </Form.Item>
           <Form.Item
             name="confirm"
@@ -726,7 +801,10 @@ export default function AvatarDropdown({
             ]}
             style={{ marginBottom: 12 }}
           >
-            <Input.Password autoComplete="new-password" />
+            <Input.Password
+              autoComplete="new-password"
+              prefix={<LockOpen {...PASSWORD_FIELD_ICON_PROPS} />}
+            />
           </Form.Item>
           <Button type="primary" htmlType="submit" loading={changingPw} block>
             {t("account.changePassword")}

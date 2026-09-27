@@ -73,6 +73,45 @@ def test_session_channel_id_persisted(repos):
     assert subject.metadata["channel_id"] == "ch-feishu-1"
 
 
+def test_session_list_by_thread(repos):
+    sessions, threads = repos
+    dash = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    im = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_1")
+    threads.insert(
+        thread_id="thr_room",
+        agent_id="a1",
+        user_id=1,
+        channel_type="feishu",
+        session_key=im,
+    )
+    sessions.upsert(
+        session_key=dash,
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        chat_type="dm",
+        thread_id="thr_room",
+    )
+    sessions.upsert(
+        session_key=im,
+        agent_id="a1",
+        user_id=1,
+        channel_type="feishu",
+        chat_type="dm",
+        thread_id="thr_room",
+        channel_id="ch-feishu-1",
+    )
+    rows = sessions.list_by_thread("thr_room")
+    assert {row.session_key for row in rows} == {dash, im}
+    assert sessions.list_by_thread("missing") == []
+    registry = ThreadRegistry(session_repo=sessions, thread_repo=threads)
+    im_only = registry.im_sessions_for_thread("thr_room")
+    assert [row.session_key for row in im_only] == [im]
+    assert ThreadRegistry.is_im_session(im_only[0])
+    assert not ThreadRegistry.is_virtual_channel("feishu")
+    assert ThreadRegistry.is_virtual_channel("dashboard")
+
+
 def test_session_to_channel_subject(repos):
     sessions, threads = repos
     sk = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)

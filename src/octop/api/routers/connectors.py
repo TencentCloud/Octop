@@ -6,8 +6,9 @@ import asyncio
 import json
 import logging
 import secrets
+from html import escape
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
@@ -16,6 +17,7 @@ from pydantic import BaseModel, Field, model_validator
 from octop.api.common.public_base import resolve_public_base
 from octop.api.deps import current_user, get_server, require_permission
 from octop.i18n import tr
+from octop.infra.auth.sso.redirect_after import sanitize_redirect_after
 from octop.infra.connectors.builder import (
     mcp_server_name,
     normalize_weiyun_mcp_token,
@@ -177,7 +179,7 @@ def _oauth_callback_html(
 ) -> HTMLResponse:
     locale = resolve_request_locale(request)
     message = tr(f"connector.oauth.{message_key}", locale, **fmt)
-    return HTMLResponse(f"<html><body>{message}</body></html>", status_code=status_code)
+    return HTMLResponse(f"<html><body>{escape(message)}</body></html>", status_code=status_code)
 
 
 def _resolve_custom_mcp_url(svc: ConnectorService, user_id: int, server_name: str) -> str:
@@ -325,7 +327,29 @@ async def _prepare_credentials(
 def _merge_credentials(
     old: dict[str, Any],
     new: dict[str, Any],
+    *,
+    kind: str | None = None,
 ) -> dict[str, Any]:
+    # QCC: switching auth mode must replace the other mode's secrets, not layer them.
+    if kind == "qcc":
+        new_api_key = str(new.get("api_key") or "").strip()
+        new_access = str(new.get("access_token") or new.get("token") or "").strip()
+        oauth_in_new = bool(new.get("oauth_client_id") or new.get("refresh_token") or new_access)
+        if new_api_key and not oauth_in_new:
+            out: dict[str, Any] = {"api_key": new_api_key}
+            if old.get("internal_token"):
+                out["internal_token"] = old["internal_token"]
+            return out
+        if oauth_in_new:
+            merged_oauth = dict(old)
+            for key, value in new.items():
+                if value is None:
+                    continue
+                if isinstance(value, str) and not value.strip():
+                    continue
+                merged_oauth[key] = value
+            merged_oauth.pop("api_key", None)
+            return merged_oauth
     merged = dict(old)
     for key, value in new.items():
         if value is None:
@@ -348,7 +372,13 @@ def _credentials_preview(kind: str, creds: dict[str, Any]) -> dict[str, Any]:
         elif str(creds.get("token") or creds.get("access_token") or "").strip():
             preview["token_configured"] = True
     elif entry.auth_kind == "oauth2":
-        if str(creds.get("access_token") or "").strip():
+        if (
+            kind == "qcc"
+            and str(creds.get("api_key") or "").strip()
+            and not (creds.get("oauth_client_id") or creds.get("refresh_token"))
+        ):
+            preview["api_key_configured"] = True
+        elif str(creds.get("access_token") or "").strip():
             preview["oauth_configured"] = True
         if creds.get("expires_at") is not None:
             preview["expires_at"] = creds.get("expires_at")
@@ -810,7 +840,7 @@ async def patch_instance(
         repo.update_metadata(instance_id, shared=body.shared)
     if body.credentials is not None:
         svc = _connector_service(server)
-        merged = _merge_credentials(svc.decrypt(instance_id), body.credentials)
+        merged = _merge_credentials(svc.decrypt(instance_id), body.credentials, kind=inst.kind)
         try:
             prepared = await _prepare_credentials(inst.kind, merged, server.services.settings_repo)
         except ValueError as exc:
@@ -897,7 +927,13 @@ async def delete_instance(
             cli_creds = {"instance_id": instance_id}
         else:
             cli_creds = {**cli_creds, "instance_id": instance_id}
-    repo.delete(instance_id)
+    if inst.kind == "qcc":
+        try:
+            await _connector_service(server).disconnect_qcc(instance_id)
+        except ValueError as exc:
+            raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
+    else:
+        repo.delete(instance_id)
     if cli_creds is not None:
         cleanup_creds_cli_dirs(inst.kind, cli_creds)
     _schedule_connector_reload(server, user_id, all_users=inst.shared)
@@ -1347,19 +1383,29 @@ async def oauth_callback(
         pending_key,
         json.dumps(pending_payload),
     )
-    redirect = row.redirect_after or "/connectors"
+    redirect = urlsplit(sanitize_redirect_after(row.redirect_after, default="/connectors"))
+    query = [
+        (key, value)
+        for key, value in parse_qsl(redirect.query, keep_blank_values=True)
+        if key != "oauth_state"
+    ]
+    query.append(("oauth_state", row.state_id))
+    redirect_target = redirect._replace(query=urlencode(query)).geturl()
     locale = resolve_request_locale(request)
     success_message = tr("connector.oauth.callback_success", locale)
+    # JSON-encode for the JS string literal (quotes/backslashes/newlines) and
+    # escape "<" so a stored "</script>" cannot terminate the script element.
+    target = json.dumps(redirect_target).replace("<", "\\u003c")
     html = f"""<!DOCTYPE html><html><body>
 <script>
   if (window.opener) {{
-    window.opener.postMessage({{ type: 'octop:connector-oauth', state_id: '{row.state_id}' }}, '*');
+    window.opener.postMessage({{ type: 'octop:connector-oauth', state_id: {json.dumps(row.state_id)} }}, window.location.origin);
     window.close();
   }} else {{
-    window.location.href = '{redirect}?oauth_state={row.state_id}';
+    window.location.href = {target};
   }}
 </script>
-<p>{success_message}</p>
+<p>{escape(success_message)}</p>
 </body></html>"""
     return HTMLResponse(html)
 

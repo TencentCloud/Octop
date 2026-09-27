@@ -50,6 +50,7 @@ export type NavPermissionKey = keyof typeof NAV_PERMISSIONS;
 
 export const USERS_TAB_PERMISSIONS = {
   local: "users",
+  roles: "users",
   feishu: "sso",
   wecom: "sso",
   dingtalk: "sso",

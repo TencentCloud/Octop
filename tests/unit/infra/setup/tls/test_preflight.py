@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -187,9 +188,9 @@ def test_parse_public_ipv4(text: str, expected: str | None) -> None:
 
 
 def test_default_probe_url_lists_prefer_cn_and_cloud() -> None:
-    assert _METADATA_PUBLIC_IP_URLS[0].startswith("http://metadata.tencentyun.com/")
-    assert any("100.100.100.200" in url for url in _METADATA_PUBLIC_IP_URLS)
-    assert _PUBLIC_IP_HTTPS_URLS[0].startswith("https://4.ipw.cn")
+    assert urlparse(_METADATA_PUBLIC_IP_URLS[0]).hostname == "metadata.tencentyun.com"
+    assert any(urlparse(url).hostname == "100.100.100.200" for url in _METADATA_PUBLIC_IP_URLS)
+    assert urlparse(_PUBLIC_IP_HTTPS_URLS[0]).hostname == "4.ipw.cn"
     assert "https://api.ipify.org?format=text" in _PUBLIC_IP_HTTPS_URLS
     assert _PUBLIC_IP_HTTPS_URLS.index("https://4.ipw.cn/") < _PUBLIC_IP_HTTPS_URLS.index(
         "https://api.ipify.org?format=text"
@@ -201,9 +202,10 @@ def test_fetch_public_ip_falls_back_past_unreachable_endpoints() -> None:
 
     def handler(url: str) -> object:
         calls.append(url)
-        if "ipify" in url:
+        host = urlparse(url).hostname or ""
+        if host == "api.ipify.org":
             raise httpx.ConnectError("blocked")
-        if "ipw.cn" in url:
+        if host == "4.ipw.cn":
             return _OkResponse(_PUBLIC_IP)
         raise httpx.ConnectError("skip")
 
@@ -266,7 +268,7 @@ def test_fetch_public_ip_skips_non_public_bodies() -> None:
 
 def test_fetch_public_ip_prefers_cloud_metadata() -> None:
     def handler(url: str) -> object:
-        assert "metadata.tencentyun.com" in url
+        assert urlparse(url).hostname == "metadata.tencentyun.com"
         return _OkResponse(_PUBLIC_IP)
 
     with (
@@ -286,9 +288,10 @@ def test_fetch_public_ip_falls_through_metadata_to_https() -> None:
 
     def handler(url: str) -> object:
         calls.append(url)
-        if "metadata" in url or "100.100.100.200" in url:
+        host = urlparse(url).hostname or ""
+        if host in {"metadata.tencentyun.com", "100.100.100.200"}:
             raise httpx.ConnectError("not on cloud")
-        if "ipw.cn" in url:
+        if host == "4.ipw.cn":
             return _OkResponse(_PUBLIC_IP)
         raise httpx.ConnectError("skip")
 

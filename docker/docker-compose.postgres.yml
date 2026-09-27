@@ -15,7 +15,7 @@
 # Init layers (ADR 002):
 #   - Control-plane schema → Octop migrate (NNN_*.pg.sql), not this compose
 #   - CREATE EXTENSION vector → postgres/init-vector.sql (initdb.d only)
-#   - Agent memory tables → harness-memory at runtime
+#   - Agent memory tables → octop-memory at runtime
 # =============================================================================
 
 services:

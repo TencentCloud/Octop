@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from octop.i18n.domains.stream import (
     MODEL_CALL_FAILED,
+    PATH_OUTSIDE_ROOT,
     RECURSION_LIMIT,
     STREAM_STALL,
     classify_stream_error_message,
@@ -96,6 +97,27 @@ def test_classify_model_call_failed_fallback() -> None:
         classify_stream_error_message("Model call failed after 3 attempts with RuntimeError: boom")
         == MODEL_CALL_FAILED
     )
+
+
+def test_classify_path_outside_root() -> None:
+    msg = (
+        r"Path:D:\octop-data\data\文章存稿\x.md outside root directory: "
+        r"C:\Users\Administrator"
+    )
+    assert classify_stream_error_message(msg) == PATH_OUTSIDE_ROOT
+    assert classify_stream_error_message("Path traversal not allowed") == PATH_OUTSIDE_ROOT
+
+
+def test_format_path_outside_root_zh_guides_to_storage_root() -> None:
+    msg = (
+        r"ValueError: Path:D:\octop-data\data\文章存稿\_核验与备选标题.md "
+        r"outside root directory: C:\Users\Administrator"
+    )
+    text = format_stream_error(msg, "zh")
+    assert "存储根目录" in text
+    assert "模型调用" not in text
+    assert "ValueError" not in text
+    assert "outside root" not in text
 
 
 def test_classify_unknown_passthrough() -> None:

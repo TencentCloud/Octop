@@ -1,11 +1,11 @@
-"""Ask / Plan / Craft helpers for Octop (policy SoT lives in harness-agent)."""
+"""Ask / Plan / Craft helpers for Octop (policy SoT lives in octop-harness)."""
 
 from __future__ import annotations
 
 import re
 from typing import Any
 
-from harness_agent.middleware.conversation_mode import (
+from octop_harness.middleware.conversation_mode import (
     CONFIG_EXTRA_READ_KEY,
     CONFIG_MODE_KEY,
     DEFAULT_CONVERSATION_MODE,

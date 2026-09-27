@@ -6,7 +6,7 @@ import base64
 from pathlib import Path
 
 import pytest
-from harness_gateway.models import ImageContent, TextContent
+from octop_gateway.models import ImageContent, TextContent
 
 from octop.infra.gateway.media.tool_media import iter_media_blocks
 from octop.infra.gateway.process import (
@@ -40,7 +40,7 @@ def test_build_content_with_image_data():
 
 
 def test_build_content_reads_media_backend_key(tmp_path: Path) -> None:
-    from harness_gateway.media import FileSystemMediaBackend
+    from octop_gateway.media import FileSystemMediaBackend
 
     media_root = tmp_path / "media"
     media_root.mkdir()

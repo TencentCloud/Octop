@@ -18,6 +18,7 @@ AuthKind = Literal[
 
 CredentialFieldType = Literal["text", "password", "url", "tags"]
 RemoteTransport = Literal["raw_http", "streamable_http", "sse"]
+McpMode = Literal["remote", "gateway", "internal"]
 ConnectorCategory = Literal[
     "office",
     "knowledge",
@@ -50,7 +51,10 @@ class ConnectorCatalogEntry:
     icon: str
     color: str
     phase: Literal["available", "coming_soon"]
-    mcp_mode: Literal["remote", "gateway"]
+    # remote: harness talks to the vendor URL.
+    # gateway: in-process Python adapter; harness config is a name-only placeholder.
+    # internal: Octop-hosted HTTP MCP at /api/internal/mcp; harness loads via HTTP.
+    mcp_mode: McpMode
     category: ConnectorCategory
     quick_auth_url: str | None = None
     login_url: str | None = None
@@ -61,7 +65,7 @@ class ConnectorCatalogEntry:
     # None means no restriction (all tools from the MCP server are available).
     allowed_tools: tuple[str, ...] | None = None
     # Catalog-driven remote MCP OAuth (Notion / Ardot / Linear…):
-    # when auth_kind=oauth2 + mcp_mode=remote and both issuer + mcp_url are set,
+    # when auth_kind=oauth2 + mcp_mode=remote/internal and issuer + mcp_url are set,
     # Octop uses DCR + PKCE against oauth_issuer and talks to mcp_url.
     oauth_issuer: str | None = None
     mcp_url: str | None = None
@@ -72,11 +76,21 @@ class ConnectorCatalogEntry:
     remote_transport: RemoteTransport = "raw_http"
 
 
+def is_inprocess_gateway(entry: ConnectorCatalogEntry) -> bool:
+    """Harness injects Python adapter tools; config is a name-only placeholder."""
+    return entry.mcp_mode == "gateway"
+
+
+def uses_internal_http_mcp(entry: ConnectorCatalogEntry) -> bool:
+    """Harness loads Octop-hosted HTTP MCP at ``/api/internal/mcp``."""
+    return entry.mcp_mode == "internal"
+
+
 def is_mcp_oauth_remote(entry: ConnectorCatalogEntry) -> bool:
-    """True when this catalog entry is a dynamic-OAuth remote MCP connector."""
+    """True when this catalog entry is a dynamic-OAuth MCP connector (remote or internal HTTP)."""
     return (
         entry.auth_kind == "oauth2"
-        and entry.mcp_mode == "remote"
+        and entry.mcp_mode in {"remote", "internal"}
         and bool(entry.oauth_issuer)
         and bool(entry.mcp_url)
     )
@@ -361,6 +375,27 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         auth_hint="登录元典开放平台获取 sk_ 开头的 API Key 并粘贴到下方",
     ),
     ConnectorCatalogEntry(
+        kind="qcc",
+        name="企查查",
+        description="一键 OAuth 或粘贴 API Key，接入企业、风险、知识产权、经营及董监高五类数据",
+        auth_kind="oauth2",
+        doc_url="https://agent.qcc.com/",
+        icon="qcc",
+        color="#008CFF",
+        phase="available",
+        mcp_mode="internal",
+        category="professional",
+        quick_auth_url="https://agent.qcc.com/",
+        guide_url="https://agent.qcc.com/guide",
+        manual_url="https://agent.qcc.com/",
+        auth_hint="有公网 HTTPS 或本机 localhost 时可用一键 OAuth；否则打开授权页获取 API Key 后粘贴。查询范围以账户权限为准。",
+        oauth_issuer="https://agent.qcc.com",
+        mcp_url="https://agent.qcc.com/mcp/company/stream",
+        oauth_resource="https://agent.qcc.com/mcp/company/stream",
+        oauth_scopes="mcp:tools",
+        remote_transport="streamable_http",
+    ),
+    ConnectorCatalogEntry(
         kind="tencent-ardot",
         name="腾讯设计 Ardot",
         description="腾讯设计平台官方 MCP：设计稿读写、设计系统与导出",
@@ -409,6 +444,25 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         oauth_issuer="https://mcp.notion.com",
         mcp_url="https://mcp.notion.com/mcp",
         mcp_user_agent="octop-connector/0.1",
+    ),
+    ConnectorCatalogEntry(
+        kind="openalex",
+        name="OpenAlex",
+        description="官方 MCP：检索学术文献、引文、研究实体与统计分析",
+        auth_kind="oauth2",
+        doc_url="https://help.openalex.org/access/connector/",
+        icon="openalex",
+        color="#1f6feb",
+        phase="available",
+        mcp_mode="remote",
+        category="knowledge",
+        guide_url="https://help.openalex.org/access/connector/",
+        auth_hint="点击「一键授权」登录 OpenAlex（桌面端请用系统浏览器）；查询将使用你自己的 API Key 与每日预算。",
+        oauth_issuer="https://mcp.openalex.org",
+        mcp_url="https://mcp.openalex.org/mcp",
+        oauth_resource="https://mcp.openalex.org/mcp",
+        oauth_scopes="openalex:query",
+        remote_transport="streamable_http",
     ),
     ConnectorCatalogEntry(
         kind="dida365",

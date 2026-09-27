@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from harness_gateway.models import (
+from octop_gateway.models import (
     ChannelSubject,
     ContentPart,
     FileContent,

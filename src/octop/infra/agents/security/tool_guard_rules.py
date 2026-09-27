@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from harness_agent.security.tool_guard.rule_guardian import (
+from octop_harness.security.tool_guard.rule_guardian import (
     list_guard_rule_catalog,
     read_bundled_rules_yaml,
     validate_rules_yaml,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from harness_agent.slash import SlashCommand, SlashSink
+from octop_harness.slash import SlashCommand, SlashSink
 
 from octop.i18n.domains.slash import tr
 from octop.infra.db.repos.threads import clip_thread_title
