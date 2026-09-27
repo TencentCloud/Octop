@@ -162,7 +162,7 @@ def _remote_ready(provider: Any | None, model_id: str) -> bool:
             provider_name=provider.name,
             provider_api_key=provider.api_key,
         )
-        and is_vision_model(model)
+        and is_vision_model(model, provider_base_url=provider.base_url)
         for model in provider.get_models()
     )
 

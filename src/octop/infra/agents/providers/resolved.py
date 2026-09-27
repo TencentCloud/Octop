@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from octop.infra.agents.providers.model_flags import is_chat_eligible_model
+from octop.infra.agents.providers.model_flags import (
+    infer_model_input_modalities,
+    is_chat_eligible_model,
+)
 from octop.infra.agents.providers.reasoning import reasoning_capability
 
 
@@ -30,6 +33,12 @@ def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
             window = m.get("context_window") or m.get("max_input_tokens")
             max_input = m.get("max_input_tokens") or window
             max_output = m.get("max_output_tokens") or m.get("max_tokens")
+            raw_input = m.get("input")
+            input_modalities = infer_model_input_modalities(
+                str(m["id"]),
+                raw_input if isinstance(raw_input, list) else None,
+                provider_base_url=provider.base_url,
+            )
             resolved.append(
                 {
                     "provider_id": provider.id,
@@ -37,7 +46,7 @@ def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
                     "provider_kind": provider.kind,
                     "model": m["id"],
                     "name": m.get("name") or m["id"],
-                    "input": m.get("input") or ["text"],
+                    "input": input_modalities,
                     "reasoning": reasoning_capability(m, base_url=provider.base_url) is not None,
                     "reasoning_config": reasoning_capability(m, base_url=provider.base_url),
                     "context_window": window,

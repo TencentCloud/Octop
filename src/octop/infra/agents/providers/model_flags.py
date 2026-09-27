@@ -131,7 +131,7 @@ def is_embedding_model(
     return is_onnx_local_provider(provider_name, provider_api_key=provider_api_key)
 
 
-def is_vision_model(model: dict[str, Any]) -> bool:
+def is_vision_model(model: dict[str, Any], *, provider_base_url: str | None = None) -> bool:
     """True when a model entry declares or conventionally supports image input."""
     model_id = str(model.get("id") or "").strip().lower()
     raw_input = model.get("input")
@@ -139,6 +139,12 @@ def is_vision_model(model: dict[str, Any]) -> bool:
         str(modality).strip().lower() == "image" for modality in raw_input
     ):
         return True
+    if model_id in {"deepseek-flash", "deepseek-v4-flash"}:
+        try:
+            if urlparse(provider_base_url or "").hostname == "api.deepseek.com":
+                return True
+        except ValueError:
+            pass
     return any(
         hint in model_id
         for hint in (
@@ -151,6 +157,23 @@ def is_vision_model(model: dict[str, Any]) -> bool:
             "gemini",
         )
     )
+
+
+def infer_model_input_modalities(
+    model_id: str,
+    explicit: list[str] | None = None,
+    *,
+    provider_base_url: str | None = None,
+) -> list[str]:
+    """Merge stored input modalities with known model capabilities."""
+    inputs = set(explicit or ["text"])
+    inputs.add("text")
+    if is_vision_model({"id": model_id, "input": explicit}, provider_base_url=provider_base_url):
+        inputs.add("image")
+    lower = model_id.lower()
+    if "audio" in lower or "whisper" in lower:
+        inputs.add("audio")
+    return sorted(inputs)
 
 
 def is_chat_eligible_model(

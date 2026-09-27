@@ -115,6 +115,24 @@ def test_vision_model_uses_explicit_input_then_known_ids() -> None:
     assert is_vision_model({"id": "custom", "input": ["text", "image"]})
     assert is_vision_model({"id": "gpt-4o-mini", "input": ["text"]})
     assert is_vision_model({"id": "qwen2.5-vl"})
+    deepseek_url = "https://api.deepseek.com/v1"
+    assert is_vision_model(
+        {"id": "deepseek-v4-flash", "input": ["text"]},
+        provider_base_url=deepseek_url,
+    )
+    assert is_vision_model({"id": "deepseek-flash"}, provider_base_url=deepseek_url)
+    assert not is_vision_model({"id": "deepseek-v4-flash", "input": ["text"]})
+    assert not is_vision_model(
+        {"id": "deepseek-v4-flash", "input": ["text"]},
+        provider_base_url="https://api.lkeap.cloud.tencent.com/plan/v3",
+    )
+    assert not is_vision_model(
+        {"id": "deepseek-v4-pro", "input": ["text"]}, provider_base_url=deepseek_url
+    )
+    assert not is_vision_model(
+        {"id": "deepseek-v4-flash-202605", "input": ["text"]},
+        provider_base_url=deepseek_url,
+    )
     assert not is_vision_model({"id": "text-only", "input": ["text"]})
 
 
@@ -161,3 +179,24 @@ def test_list_resolved_models_skips_embedding() -> None:
     assert resolved[0]["max_input_tokens"] == 120_000
     assert resolved[0]["max_output_tokens"] == 16_384
     assert resolved[0]["max_tokens"] == 16_384
+
+
+def test_resolved_models_show_official_deepseek_flash_vision() -> None:
+    def provider(provider_id: int, name: str, base_url: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=provider_id,
+            name=name,
+            kind="openai",
+            enabled=True,
+            api_key="sk-test",
+            base_url=base_url,
+            get_models=lambda: [{"id": "deepseek-v4-flash", "input": ["text"]}],
+        )
+
+    resolved = list_resolved_models(
+        [
+            provider(1, "deepseek", "https://api.deepseek.com/v1"),
+            provider(2, "tencent-token-plan", "https://api.lkeap.cloud.tencent.com/plan/v3"),
+        ]
+    )
+    assert [model["input"] for model in resolved] == [["image", "text"], ["text"]]

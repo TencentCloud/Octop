@@ -20,6 +20,7 @@ def test_load_provider_presets_integration() -> None:
     assert "deepseek-v4-pro" in deepseek_ids
     flash = next(m for m in deepseek["models"] if m["id"] == "deepseek-v4-flash")
     assert flash["reasoning_config"]["adapter"] == "thinking"
+    assert flash["input"] == ["text", "image"]
 
     token_plan = next(p for p in presets if p["id"] == "tencent-token-plan")
     token_ids = {m["id"] for m in token_plan["models"]}

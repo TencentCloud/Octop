@@ -272,7 +272,13 @@ def load_provider_presets() -> list[dict[str, Any]]:
     for preset in out:
         provider_id = str(preset.get("id") or "")
         for model in preset.get("models") or []:
-            profile = _reasoning_profile(provider_id, str(model.get("id") or ""))
+            model_id = str(model.get("id") or "")
+            if provider_id == "deepseek" and model_id in {
+                "deepseek-flash",
+                "deepseek-v4-flash",
+            }:
+                model["input"] = ["text", "image"]
+            profile = _reasoning_profile(provider_id, model_id)
             if profile is not None:
                 model["reasoning"] = True
                 model["reasoning_config"] = profile
