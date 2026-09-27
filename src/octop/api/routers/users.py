@@ -28,25 +28,29 @@ UserBatchAction = Literal["enable", "disable", "delete", "set_token_quota", "set
 class UserCreateBody(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=200)
-    role: str = "user"
+    role: str = Field(
+        default="user",
+        description="Role-template public id (admin | user | custom ULID).",
+    )
     display_name: str | None = None
     email: str | None = Field(default=None, max_length=254)
     permissions: list[str] = Field(default_factory=list)
     role_name: str | None = Field(default=None, max_length=64)
-    user_role_id: str | None = Field(default=None, max_length=64)
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
     max_agents: int | None = Field(default=None, ge=0)
 
 
 class UserPatchBody(BaseModel):
-    role: str | None = None
+    role: str | None = Field(
+        default=None,
+        description="Role-template public id (admin | user | custom ULID).",
+    )
     display_name: str | None = None
     email: str | None = Field(default=None, max_length=254)
     disabled: bool | None = None
     permissions: list[str] | None = None
     role_name: str | None = Field(default=None, max_length=64)
-    user_role_id: str | None = Field(default=None, max_length=64)
     avatar_icon: str | None = Field(default=None, max_length=32)
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
@@ -107,7 +111,6 @@ def _row_to_dict(r: Any, policy: Any | None = None, server: Any = None) -> dict[
         "created_at": int(r.created_at),
         "permissions": list(getattr(r, "permissions", None) or []),
         "role_name": getattr(r, "role_name", None) or None,
-        "user_role_id": getattr(r, "user_role_id", None) or None,
         "avatar_icon": getattr(r, "avatar_icon", None) or None,
         "avatar_url": _user_avatar_url(server, int(r.id)) if server is not None else None,
         **public_policy_fields(policy),
@@ -124,14 +127,55 @@ def _user_avatar_url(server: Any, user_id: int) -> str | None:
     )
 
 
-def _require_admin_to_grant_admin(actor: Any, role: Role) -> None:
-    if role is not Role.ADMIN:
+def _require_admin_to_grant_admin(actor: Any, role_id: str) -> None:
+    if role_id != Role.ADMIN:
         return
     if not bool(getattr(actor, "is_admin", False)):
         raise OctopError(
             ErrorCode.FORBIDDEN,
             "only an administrator can assign the administrator account",
         )
+
+
+def _resolve_role_template(
+    server: Any, role_id: str
+) -> tuple[str, str, list[str], list[tuple[str, str]]]:
+    """Return ``(role_id, role_name, permissions, policies)`` for a template id."""
+    from octop.infra.db.repos.user_roles import UserRoleRepo
+    from octop.infra.users.permissions import PERMISSIONS
+
+    cleaned = (role_id or "").strip()
+    if not cleaned:
+        raise OctopError(ErrorCode.FORBIDDEN, "role is required", status=400)
+    role = UserRoleRepo(server.services.db).get(cleaned)
+    if role is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "role not found")
+    if role.is_admin:
+        return role.user_role_id, role.user_role_name, [], []
+    permissions = [key for key in role.permissions if key in PERMISSIONS]
+    return role.user_role_id, role.user_role_name, permissions, list(role.policies)
+
+
+def _policy_kwargs_replace_from_pairs(pairs: list[tuple[str, str]]) -> dict[str, Any]:
+    """Full replace: every known policy is set or cleared.
+
+    Used when applying a role template so limits from a previous role cannot
+    linger after a switch (including to admin, which has no resource limits).
+    """
+    from octop.infra.users.resource_policy import (
+        POLICY_MAX_AGENTS,
+        POLICY_TOKEN_QUOTA,
+        POLICY_WORKSPACE_ROOT_DIR,
+        max_agents_of,
+        token_quota_of,
+    )
+
+    by_name = dict(pairs)
+    return {
+        "workspace_root_dir": by_name.get(POLICY_WORKSPACE_ROOT_DIR),
+        "token_quota": token_quota_of(by_name.get(POLICY_TOKEN_QUOTA)),
+        "max_agents": max_agents_of(by_name.get(POLICY_MAX_AGENTS)),
+    }
 
 
 def _clean_role_name(raw: str | None) -> str | None:
@@ -238,28 +282,39 @@ async def create_user(
     actor: Any = Depends(require_permission("users")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    _assert_can_assign(actor, body.permissions)
-    policy_kwargs = _policy_kwargs_from_body(body)
+    role_id, template_name, template_perms, template_policies = _resolve_role_template(
+        server, body.role
+    )
+    _require_admin_to_grant_admin(actor, role_id)
+    if role_id == Role.ADMIN:
+        permissions: list[str] = []
+    elif "permissions" in body.model_fields_set:
+        permissions = list(body.permissions)
+    else:
+        permissions = list(template_perms)
+    _assert_can_assign(actor, permissions)
+    # Template is a full replace; request body fields overlay on top.
+    policy_kwargs = _policy_kwargs_replace_from_pairs(template_policies)
+    policy_kwargs.update(_policy_kwargs_from_body(body))
     if "workspace_root_dir" in policy_kwargs:
         normalize_workspace_root_dir(policy_kwargs["workspace_root_dir"])
     if "token_quota" in policy_kwargs:
         normalize_token_quota(policy_kwargs["token_quota"])
     if "max_agents" in policy_kwargs:
         normalize_max_agents(policy_kwargs["max_agents"])
-    role = Role(body.role)
-    _require_admin_to_grant_admin(actor, role)
+    role_name = (
+        _clean_role_name(body.role_name) if "role_name" in body.model_fields_set else template_name
+    )
     user = await server.user_manager.create(
         username=body.username,
         password=body.password,
-        role=role,
+        role=role_id,
         display_name=body.display_name,
         email=body.email,
-        permissions=body.permissions,
-        role_name=_clean_role_name(body.role_name),
-        user_role_id=body.user_role_id,
+        permissions=permissions,
+        role_name=role_name,
     )
-    if policy_kwargs:
-        await server.user_manager.set_resource_policy(user.username, **policy_kwargs)
+    await server.user_manager.set_resource_policy(user.username, **policy_kwargs)
     row = server.user_manager.get_row(user.id)
     assert row is not None
     return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id), server)
@@ -400,9 +455,7 @@ async def patch_user(
         # An administrator account keeps full access. The form stores that as
         # an empty permission list, which is not a removal of user management.
         stays_admin = (
-            body.role == Role.ADMIN.value
-            if body.role is not None
-            else str(row.role) == Role.ADMIN.value
+            body.role == Role.ADMIN if body.role is not None else str(row.role) == Role.ADMIN
         )
         if not stays_admin:
             _assert_not_last_user_manager(
@@ -412,11 +465,24 @@ async def patch_user(
                 new_permissions=body.permissions,
             )
     if body.role is not None:
-        next_role = Role(body.role)
-        if user_id == actor.id and next_role is not Role.ADMIN:
+        role_id, template_name, template_perms, template_policies = _resolve_role_template(
+            server, body.role
+        )
+        if user_id == actor.id and role_id != Role.ADMIN:
             raise OctopError(ErrorCode.FORBIDDEN, "cannot demote yourself")
-        _require_admin_to_grant_admin(actor, next_role)
-        await server.user_manager.set_role(row.username, next_role)
+        _require_admin_to_grant_admin(actor, role_id)
+        await server.user_manager.set_role(row.username, role_id)
+        if "role_name" not in body.model_fields_set:
+            server.services.user_repo.set_role_name(user_id, template_name)
+        if body.permissions is None:
+            await server.user_manager.set_permissions(
+                row.username,
+                [] if role_id == Role.ADMIN else template_perms,
+            )
+        # Always replace policies from the new template; body fields overlay below.
+        await server.user_manager.set_resource_policy(
+            row.username, **_policy_kwargs_replace_from_pairs(template_policies)
+        )
     if body.display_name is not None:
         await server.user_manager.set_display_name(row.username, body.display_name)
     if "email" in body.model_fields_set:
@@ -429,8 +495,6 @@ async def patch_user(
         await server.user_manager.set_permissions(row.username, body.permissions)
     if "role_name" in body.model_fields_set:
         server.services.user_repo.set_role_name(user_id, _clean_role_name(body.role_name))
-    if "user_role_id" in body.model_fields_set:
-        server.services.user_repo.set_user_role_id(user_id, body.user_role_id)
     if "avatar_icon" in body.model_fields_set:
         from octop.infra.users.profile_avatar import clean_avatar_icon, delete_profile_avatar
 

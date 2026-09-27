@@ -8,6 +8,7 @@
 
 ### 修复
 - 聊天产物的预览不再要求产出它的专家还在运行：`GET /api/agents/{id}/media/preview` 是唯一一个仍要求「运行中」的工作区读取接口，团队成员结束一轮后被停止（`last_state=stopped`），历史消息里的图片/视频预览一律 409 `AGENT_NOT_RUNNING`，而同一个文件的 `GET /workspace/download` 一直返回 200；现与读取/下载一致改用 `require_agent_workspace`，可见性校验不变，无权用户仍是 403 (#1161)
+- 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 
 ## [1.0.2b3] - 2026-09-26
 
