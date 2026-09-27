@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -46,6 +47,20 @@ def test_allowed_host_download_desktop_style(tmp_path: Path) -> None:
 
 def test_denied_host_download_etc(tmp_path: Path) -> None:
     assert is_allowed_host_download_abs_path("/etc/passwd", workspace=tmp_path) is False
+
+
+@pytest.mark.parametrize("root", ["/etc", "/proc", "/sys", "/dev", "/private/etc"])
+def test_denied_system_root_itself(root: str, tmp_path: Path) -> None:
+    """The bare system root is denied too — not only paths underneath it."""
+    assert is_allowed_host_download_abs_path(root, workspace=tmp_path) is False
+    assert is_allowed_host_download_abs_path(f"{root}/", workspace=tmp_path) is False
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive-letter system roots")
+def test_denied_windows_system_root_itself(tmp_path: Path) -> None:
+    for root in (r"C:\Windows", r"C:\Program Files", "C:/Windows"):
+        assert is_allowed_host_download_abs_path(root, workspace=tmp_path) is False
+        assert is_allowed_host_download_abs_path(f"{root}/win.ini", workspace=tmp_path) is False
 
 
 def test_denied_harness_browser(tmp_path: Path) -> None:

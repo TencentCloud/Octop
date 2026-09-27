@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### 修复
+- 工作区读取接口补齐主机绝对路径拒绝清单：`read_file` / `read_doc` / `list_tree` / `grep` / `glob` 此前只解析路径、不校验主机绝对路径，与 `download` 的拒绝清单（`/etc`、`/proc`、`/sys`、`/dev`、Windows 系统目录、`.harness-browser`）不一致——同一路径下载返回 403，以文本读取或 grep 却返回文件内容；现读取侧统一使用 download 的同一策略
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 
 ## [1.0.2b3] - 2026-09-26
