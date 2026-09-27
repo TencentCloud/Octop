@@ -1,5 +1,5 @@
 id: market-quotes
-version: 0.2.2
+version: 0.2.3
 name: 行情
 description: 查询汇率、加密货币与 A 股行情卡片
 icon: icon.svg
