@@ -16,6 +16,7 @@ from octop.infra.db.repos.cron import CronJobRepo
 from octop.infra.db.repos.invites import InviteRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfigRepo
+from octop.infra.db.repos.project_content import ProjectCommentRepo
 from octop.infra.db.repos.project_tasks import ProjectTaskRepo, TimelineRepo
 from octop.infra.db.repos.projects import (
     ProjectMemberRepo,
@@ -68,6 +69,7 @@ class RepoBundle:
     project_repo: ProjectRepo
     project_member_repo: ProjectMemberRepo
     project_task_repo: ProjectTaskRepo
+    project_comment_repo: ProjectCommentRepo
     timeline_repo: TimelineRepo
     sso_repo: SsoRepo
 
@@ -101,6 +103,7 @@ class RepoBundle:
             project_repo=ProjectRepo(db),
             project_member_repo=ProjectMemberRepo(db),
             project_task_repo=ProjectTaskRepo(db),
+            project_comment_repo=ProjectCommentRepo(db),
             timeline_repo=TimelineRepo(db),
             sso_repo=SsoRepo(db),
         )
@@ -219,6 +222,10 @@ class SharedServices:
     @property
     def project_task_repo(self) -> ProjectTaskRepo:
         return self.repos.project_task_repo
+
+    @property
+    def project_comment_repo(self) -> ProjectCommentRepo:
+        return self.repos.project_comment_repo
 
     @property
     def timeline_repo(self) -> TimelineRepo:
