@@ -183,6 +183,33 @@ async def test_get_or_create_by_key_backfills_channel_id(registry: ThreadRegistr
 
 
 @pytest.mark.asyncio
+async def test_get_or_create_by_key_preserves_custom_session_key(
+    registry: ThreadRegistry,
+) -> None:
+    session_key = "cron:myjob"
+    thread_id = await registry.get_or_create_by_key(
+        session_key=session_key,
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+    )
+
+    session = registry.get_session(session_key)
+    thread = registry.get_thread(thread_id)
+    assert session is not None
+    assert session.session_key == session_key
+    assert thread is not None
+    assert thread.session_key == session_key
+
+    reopened = ThreadRegistry(
+        session_repo=registry._sessions,
+        thread_repo=registry._threads,
+    )
+    assert reopened.get_bound_thread_id(session_key) == thread_id
+    assert reopened.get_bound_thread_id("a1:dashboard:1:dm") is None
+
+
+@pytest.mark.asyncio
 async def test_inbound_rebinds_session_to_replacement_channel(registry: ThreadRegistry) -> None:
     """A deleted channel's id must not stay bound, or proactive push breaks."""
     sk = ThreadRegistry.make_key(agent_id="a1", channel_type="feishu", channel_subject_id="ou_x")
