@@ -83,6 +83,7 @@ export function TurnProcessBlocks({
             split={folded}
             statsSplit={split}
             isStreaming={isStreaming}
+            isTeam={isTeamRoom}
             onAcpPermissionSelect={onAcpPermissionSelect}
             hideToolMedia={hideToolMedia}
             agentId={agentId}
