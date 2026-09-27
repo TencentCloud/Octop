@@ -15,7 +15,7 @@ from typing import Any
 
 from octop import __version__
 from octop.config import DatabaseConfig
-from octop.infra.agents.workspace_dir import (
+from octop.infra.agents.workspace.dir import (
     system_files_path_from_config,
     workspace_dir_from_config_json,
 )

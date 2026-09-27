@@ -123,7 +123,7 @@ conversation_id = 主持人 thread_id
 - 成员自己的会话列表多一条 thread（派生 id），标题「来自团队 {name}」；session_key 为 `team:{房间thread}`，不占用成员 1:1 的 `dm` 会话
 - `@` 列表在团队聊天里收窄为成员；只作提示，不预调用
 
-房间 WS 逐 token 转播成员回复；fan-in 只在未 live 推送时补一条 snapshot。流式帧用 `agent` / `agent_id` 标识说话人。IM 通道看不到房间 WS：成员收口后会再推一条带说话人姓名的完整消息；主持人收口在 Dashboard 已直播时也会补推到通道。
+房间 WS 逐 token 转播成员回复；fan-in 只在未 live 推送时补一条 snapshot。流式帧用 `agent` / `agent_id` 标识说话人。IM 通道看不到房间 WS：派工成功后会立刻推一条「已请 {成员} 处理，请稍候…」；成员收口后再推带说话人姓名的完整消息；主持人收口补推为「【主持人总结】…」。团队主持人绑定的通道在注册时强制 `response_mode=stream`，避免 invoke 折叠丢掉派工叙述。
 
 ## HTTP
 
