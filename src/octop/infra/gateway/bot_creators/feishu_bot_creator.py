@@ -26,6 +26,7 @@ import json
 import os
 import ssl
 import sys
+import tempfile
 import time
 import urllib.request
 import uuid
@@ -63,7 +64,7 @@ _PLATFORM_CONFIGS = {
     },
 }
 
-STATE_DIR = "/tmp"
+STATE_DIR = tempfile.gettempdir()
 MIN_LARK_OAPI = (1, 5, 5)
 
 
