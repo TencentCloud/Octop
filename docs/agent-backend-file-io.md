@@ -108,7 +108,7 @@ await backend.aupload_files([(soul_path, text.encode("utf-8"))])
 | 位置 | 现状 | 改造 |
 |------|------|------|
 | `infra/agents/manager.py` `_seed_workspace` | `init_workspace(ws_dir)` 写本地 | `init_workspace(tmp_dir)` → 收集文件 → `backend.aupload_files`，path 为 `str(workspace_dir / rel)` |
-| `infra/agents/persona.py` `write_soul_md` | `Path.write_text` | 改为 async，参数含 `backend`；`aupload_files([(str(workspace_dir / "SOUL.md"), ...)])` |
+| `infra/agents/persona/` (SOUL / persona render) | `Path.write_text` | 改为 async，参数含 `backend`；`aupload_files([(str(workspace_dir / "SOUL.md"), ...)])` |
 | `infra/agents/manager.py` `_start_agent` | 调 `write_soul_md(workspace_dir=...)` | 先 `resolve_harness_backend`，再写 SOUL |
 | `infra/agents/plugins/manager.py` `sync_skills_to_workspace` | `shutil.copytree` 到本地 | 重命名为 `sync_skills_to_backend`；遍历插件目录 → `aupload_files`，path 为 `str(workspace_dir / "skills" / name / ...)` |
 | `infra/agents/manager.py` `_apply_expert_template` | 本地 `write_text` + 可选 `aupload_files` | **删除本地写**；path 用 `str(ws / rel_path.lstrip("/"))`，与原先 `disk_path` 一致 |
