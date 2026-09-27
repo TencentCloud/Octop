@@ -567,17 +567,20 @@ uv run octop run --host 127.0.0.1 --port 8088 --log-level info
 
 **演示数据**：`56JXDW` 演示项目 Alpha（active，4 任务，1 成员）、`MK3R2R` 演示项目 Alpha（draft）。运行时已配好 provider **DeepSeek**，专家 `7VDPXH`、`AD5N8X`、团队 `6FJJ66 测试`。
 
-### 8.1 本机辅助脚本（`D:\nancc\octop\_tools\`，**不在仓库里，需要重建或从旧机拷**）
+### 8.1 辅助脚本（★ 已提交进仓库：`docs/planning/tools/`）
+
+**clone 下来就有，不需要从旧机拷。**
 
 | 脚本 | 用途 |
 |---|---|
-| `verify_migration_numbering.py` | 13 项迁移号自检（重复号、水位、上游 wiring 是否还在） |
-| `verify_pg_018.py` / `verify_pg_repos.py` / `verify_pg_timeline.py` | 对真实 PG 跑迁移/repo/时间线验证 |
-| `verify_dispatch_e2e.py` | 派单端到端（6 段） |
+| `verify_migration_numbering.py` | ★ 13 项迁移号自检（重复号、水位、上游 wiring 是否还在）。**每次 rebase 后必跑** |
+| `verify_dispatch_e2e.py` | ★ 派单端到端（6 段）。**配好 provider 后第一件事就是跑它** |
+| `verify_pg_018.py` / `verify_pg_repos.py` / `verify_pg_timeline.py` | 对真实 PG 跑迁移 / repo / 时间线验证 |
+| `i18n-parity-check.mjs` / `i18n-delta-check.mjs` / `i18n-used-keys-check.mjs` | en/zh key 对齐、缺失 key、未使用 key 检查 |
 | `check_local_deploy.py` / `final_check.py` / `seed_demo_project.py` | 本地部署自检 / 造演示数据 |
 | `dump_schema.py` | 导出实际 schema |
 | `fix_eol.py` | 换行符归一 |
-| `renumber_018_to_019.py` 等 | 本次迁移重编号用的一次性脚本 |
+| `renumber_018_to_019.py` / `retarget_error_codes.py` / `rename_transition_helpers.py` / `update_plan_after_renumber.py` | 本次迁移重编号与错误码改名的一次性脚本（留档，一般不再需要） |
 
 ---
 
@@ -591,19 +594,25 @@ uv run octop run --host 127.0.0.1 --port 8088 --log-level info
 
 ---
 
-## 10. 文档索引（都在 `D:\nancc\octop\`，不在仓库里）
+## 10. 文档索引（★ 已全部提交进仓库：`docs/planning/`）
+
+**clone 下来就有，不需要从旧机拷任何文档。**
 
 | 文件 | 内容 |
 |---|---|
-| **`Octop-换机开发交接文档.md`** | **本文档** |
-| `Octop-总计划与落地开发计划.md` | ★ 主计划 v2.2（含附录 H 执行实况）。任务卡、验收表、§4.3 讨论线双层模型、§4.4 Leader 草案、§4.5 Owner 闸门、§4.6 权限矩阵 |
-| `Octop-需求文档-v1.0-正文提取.md` | 需求正文提取 |
-| `Octop-项目管理与跨团队协作-可行性分析.md` | 可行性分析（A→C 记忆路径、项目作用域可见性） |
-| `Octop-改造开发方案.md` | 改造方案 |
+| **`docs/PROJECT_MANAGEMENT_HANDOFF.md`** | **本文档**（用 ASCII 文件名，便于跨机器 / 跨语言环境） |
+| `Octop-总计划与落地开发计划.md` | ★ **主计划 v2.2**（84 KB，含附录 H 执行实况）：任务卡、验收表、§4.3 讨论线双层模型、§4.4 Leader 草案机制、§4.5 Owner 闸门、§4.6 权限矩阵。**接手后第二份该读的就是它**（第一份是本文档） |
+| `Octop-项目管理与跨团队协作-可行性分析.md` | 可行性分析（64 KB）：A→C 记忆路径、项目作用域跨团队可见性 |
+| `Octop-改造开发方案.md` | 改造开发方案（47 KB） |
+| `Octop-计划审查报告.md` | 计划审查报告（28 KB，32 项发现） |
+| `需求文档-v1.0-正文提取.md` | 需求正文提取（19 KB） |
 | `Octop-develop更新日志整理.md` | 上游 develop 更新日志整理 |
-| `Octop-计划审查报告.md` | 计划审查报告（32 项发现） |
-| `dev-env.ps1` | ★ 环境脚本（需带 BOM 重建，见 §2.3） |
+| `review/01`–`06` | 6 份专项审查（需求覆盖 / 技术事实核查 / 依赖与排序 / 工程风险 / v2.0 文档复核 / v2.0 技术复核），共 114 KB |
+| `tools/` | 验证与辅助脚本，见 §8.1 |
+| `dev-env.sample.ps1` | ★ 环境脚本样本。按 §2.3 改成新机器路径后使用。**已保留 UTF-8 BOM —— 不要用会吞 BOM 的编辑器覆盖保存** |
 | `start-octop.ps1` | `-Build` 构建前端 + 自检 + 起服务 |
+
+> ⚠️ **若之后要向上游 Tencent Cloud 提 PR**，先判断是否排除 `docs/planning/` —— 这是内部规划与审查资料，未必要进上游；`docs/PROJECT_MANAGEMENT_HANDOFF.md` 同理。
 
 ---
 
