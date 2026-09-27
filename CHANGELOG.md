@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 行情插件（market-quotes）查不到加密货币时不再返回“成功的空结果”：CoinGecko 对不认识的 id（例如把 `bitcoin` 写成 `btc`）返回 HTTP 200 与空对象 `{}`，`get_crypto` 既不报错也不返回任何行，用户只剩一张只有标题「🪙 加密货币」的空卡片；现按 `get_forex`/`get_cn_stock` 的既有做法把空结果按查询失败返回
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
