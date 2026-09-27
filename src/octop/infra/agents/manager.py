@@ -20,18 +20,25 @@ from octop_harness.registry import AgentEntry
 from octop_harness.security.models import SecurityPolicy
 
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
-from octop.infra.agents.acp_settings import ACPSettingsStore
-from octop.infra.agents.langfuse import LangfuseSettings, LangfuseSettingsStore
-from octop.infra.agents.media_generation import (
+from octop.infra.agents.memory.backend import memory_backend_from_agent_config
+from octop.infra.agents.memory.slim import MemorySlimCoordinator
+from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
+from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
+from octop.infra.agents.security.hitl_session import (
+    HitlSessionPolicyStore,
+    apply_session_bypass,
+    hitl_thread_scope,
+    thread_id_from_request,
+)
+from octop.infra.agents.settings.acp import ACPSettingsStore
+from octop.infra.agents.settings.langfuse import LangfuseSettings, LangfuseSettingsStore
+from octop.infra.agents.settings.media_generation import (
     MediaGenerationSettings,
     MediaGenerationSettingsStore,
     MediaProviderUpdate,
 )
-from octop.infra.agents.memory_backend import memory_backend_from_agent_config
-from octop.infra.agents.memory_slim import MemorySlimCoordinator
-from octop.infra.agents.profile import (
+from octop.infra.agents.settings.profile import (
     dump_id_list,
-    dump_skill_package_ids,
     dumps_config,
     extract_profile_from_config,
     id_list_from_row,
@@ -39,21 +46,13 @@ from octop.infra.agents.profile import (
     parse_config_json,
     strip_profile_config,
 )
-from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
-from octop.infra.agents.runtime_limits import (
+from octop.infra.agents.settings.runtime_limits import (
     AGENT_RUNTIME_CONFIG_KEYS,
     apply_agent_runtime_to_stream_request,
     merge_agent_runtime_values,
 )
-from octop.infra.agents.runtime_limits import (
+from octop.infra.agents.settings.runtime_limits import (
     resolve_context_max_tokens as config_context_max_tokens,
-)
-from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
-from octop.infra.agents.security.hitl_session import (
-    HitlSessionPolicyStore,
-    apply_session_bypass,
-    hitl_thread_scope,
-    thread_id_from_request,
 )
 from octop.infra.backend.docker_spec import (
     enrich_docker_backend_spec,
@@ -119,7 +118,7 @@ def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
 
 def tools_disabled_set(cfg: dict[str, Any]) -> set[str]:
     """Return disabled built-in tool names from agent config (critical stripped)."""
-    from octop.infra.agents.tool_catalog import tools_disabled_set as _tools_disabled_set
+    from octop.infra.agents.settings.tool_catalog import tools_disabled_set as _tools_disabled_set
 
     return _tools_disabled_set(cfg)
 
@@ -574,7 +573,7 @@ class AgentManager:
             )
             if spec.persona_mbti:
                 config["persona"] = spec.persona_mbti.upper()
-            from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
+            from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
                 DEFAULT_SYSTEM_FILES_PATH,
                 seed_workspace_dir_on_create,
             )
@@ -612,7 +611,7 @@ class AgentManager:
             profile = extract_profile_from_config(config)
             config = strip_profile_config(config)
             package_ids_json = (
-                dump_skill_package_ids(spec.skill_package_ids)
+                dump_id_list(spec.skill_package_ids)
                 if spec.skill_package_ids is not None
                 else profile.get("skill_package_ids")
             )
@@ -1055,7 +1054,7 @@ class AgentManager:
         ``_build_harness_config`` parses the persisted string directly from
         config — do not route harness through this host join.
         """
-        from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
+        from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
             workspace_dir_from_config,
         )
 
@@ -1923,7 +1922,7 @@ class AgentManager:
 
     async def persist_tools_disabled(self, agent_id: str, disabled: set[str]) -> None:
         """Persist builtin ``tools_disabled`` and hot-sync the effective denylist."""
-        from octop.infra.agents.tool_catalog import normalize_tools_disabled
+        from octop.infra.agents.settings.tool_catalog import normalize_tools_disabled
 
         cfg = self.get_config(agent_id)
         cleaned = normalize_tools_disabled(sorted(disabled))
@@ -2004,13 +2003,14 @@ class AgentManager:
         *,
         workspace_dir: Path | None = None,
     ) -> bool:
-        """True when outbound ``acp_runner`` would bypass the directory sandbox.
+        """True when a scoped directory sandbox is active for this backend.
 
-        Host-rooted local backends (``/``, ``\\``, or empty) are allowed. The
-        agent workspace root is also allowed — Windows rewrites ``root_dir='/'``
-        to the workspace, and that is still a host-local backend, not a project
-        jail. Scoped project roots and non-local backends are blocked. Inbound
-        ``octop acp`` is unaffected.
+        Used by the dashboard ACP page (via the mirrored TS helper) to lock
+        runner enable/edit while viewing a jailed agent. Host-rooted local
+        backends (``/``, ``\\``, or empty) and the agent workspace root are
+        not treated as a jail. Non-local backends count as blocked for that
+        UI. Inbound ``octop acp`` and the per-agent ``acp_runner`` tool toggle
+        are unaffected.
         """
         if not isinstance(spec, dict):
             return True
@@ -2051,7 +2051,7 @@ class AgentManager:
         cfg = self.get_config(agent_id)
         self._repos.agent_repo.update_config(
             agent_id,
-            skill_package_ids=dump_skill_package_ids(normalized_ids),
+            skill_package_ids=dump_id_list(normalized_ids),
             config_json=dumps_config(cfg),
         )
         self.sync_skill_package_dirs(agent_id)
@@ -2201,7 +2201,7 @@ class AgentManager:
             remaining = [item for item in package_ids if item != package_id]
             self._repos.agent_repo.update_config(
                 row.agent_id,
-                skill_package_ids=dump_skill_package_ids(remaining),
+                skill_package_ids=dump_id_list(remaining),
                 config_json=dumps_config(cfg),
             )
             self.sync_skill_package_dirs(row.agent_id)
@@ -2414,8 +2414,8 @@ class AgentManager:
         """Hot-sync builtin + plugin denylist derived from current agent config."""
         from octop_harness.plugins import PluginRegistry
 
+        from octop.infra.agents.settings.tool_catalog import effective_tools_disabled
         from octop.infra.agents.teams import host_tools_disabled, is_team_agent
-        from octop.infra.agents.tool_catalog import effective_tools_disabled
 
         cfg = self.get_config(agent_id)
         global_plugins = (
@@ -2692,7 +2692,7 @@ class AgentManager:
         from octop_harness.backends import resolve_backend  # noqa: PLC0415
         from octop_harness.backends.workspace import BackendWorkspace  # noqa: PLC0415
 
-        from octop.infra.agents.workspace_dir import system_files_path_from_config  # noqa: PLC0415
+        from octop.infra.agents.workspace.dir import system_files_path_from_config  # noqa: PLC0415
         from octop.infra.backend.opensandbox_deps import ensure_opensandbox_deps  # noqa: PLC0415
 
         if cfg is None:
@@ -2979,7 +2979,7 @@ class AgentManager:
         """Convert an AgentRow into a HarnessAgentConfig."""
         from octop_harness.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
 
-        from octop.infra.agents.workspace_dir import (  # noqa: PLC0415
+        from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
             harness_workspace_path,
             resolve_workspace_host_path,
             system_files_path_from_config,
@@ -3043,7 +3043,7 @@ class AgentManager:
 
         from octop_harness.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
 
-        from octop.infra.agents.plugin_tool_defaults import (  # noqa: PLC0415
+        from octop.infra.agents.plugins.plugin_tool_defaults import (  # noqa: PLC0415
             agent_plugin_enabled,
             expand_plugin_tools_default_on,
         )
@@ -3076,7 +3076,7 @@ class AgentManager:
         # which strict LLM tool-name APIs reject. Rewrite them to legal names
         # before binding, keeping the original in the description. Config keys
         # and the plugin-side closures still use the original names.
-        from octop.infra.agents.plugin_tool_names import (  # noqa: PLC0415
+        from octop.infra.agents.plugins.plugin_tool_names import (  # noqa: PLC0415
             extract_original_plugin_label,
             sanitize_plugin_tool_names,
         )
@@ -3102,6 +3102,7 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
         from octop.infra.agents.middleware.token_quota import TokenQuotaMiddleware
@@ -3114,6 +3115,9 @@ class AgentManager:
         # BinaryReadGuard stays Octop-specific (inbound/attachment product policy).
         # ThreadArtifacts writes workspace paths onto threads after successful tools.
         # WorkspaceImageMaterialize expands path-only vision refs at model-call time.
+        # OctopUiOffload stays innermost so every outer middleware observes the
+        # slimmed content consistently; it only touches octop_ui plugin envelopes,
+        # disjoint from the file-tool results ThreadArtifacts cares about.
         agent_middleware: list[Any] = [
             *plugin_middleware,
             TokenQuotaMiddleware(
@@ -3128,7 +3132,9 @@ class AgentManager:
             ThreadArtifactsMiddleware(
                 thread_repo=self._repos.thread_repo,
                 workspace_dir=harness_workspace,
+                agent_id=row.agent_id,
             ),
+            OctopUiOffloadMiddleware(),
         ]
 
         merged_tools: list[Any] = []
@@ -3216,7 +3222,9 @@ class AgentManager:
                             self._plugin_manager.plugin_skill_names(plugin_id)
                         )
 
-        from octop.infra.agents.execute_env import inject_agent_execute_env  # noqa: PLC0415
+        from octop.infra.agents.workspace.execute_env import (
+            inject_agent_execute_env,  # noqa: PLC0415
+        )
 
         backend = inject_agent_execute_env(
             self._prepare_docker_backend(backend, row),
@@ -3250,13 +3258,7 @@ class AgentManager:
             middleware=agent_middleware or None,
             bootstrap_enabled=not team_host,
             acp_runners=acp_config.runners,
-            acp_delegate_enabled=(
-                bool(acp_raw.get("tool_enabled", False))
-                and not self._backend_blocks_acp_outbound(
-                    backend,
-                    workspace_dir=workspace_dir,
-                )
-            ),
+            acp_delegate_enabled=bool(acp_raw.get("tool_enabled", False)),
             skills_disabled=frozenset(skills_disabled_set(cfg) | plugin_skills_disabled),
             skills_dir=skill_dirs or None,
             default_timezone=self._config.default_timezone,
@@ -3266,8 +3268,8 @@ class AgentManager:
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
         )
         if "tools_disabled" in _HARNESS_AGENT_CONFIG_FIELDS:
+            from octop.infra.agents.settings.tool_catalog import effective_tools_disabled
             from octop.infra.agents.teams import host_tools_disabled
-            from octop.infra.agents.tool_catalog import effective_tools_disabled
 
             disabled = effective_tools_disabled(
                 cfg,

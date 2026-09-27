@@ -222,7 +222,7 @@ async def fork_dashboard_thread(
     prefix = messages[: idx + 1]
     prefix_projection_inputs: list[Any] | None = None
     if thread_message_repo is not None:
-        from octop.infra.gateway.process.history_projection import (  # noqa: PLC0415
+        from octop.infra.history.projection import (  # noqa: PLC0415
             message_inputs,
         )
 

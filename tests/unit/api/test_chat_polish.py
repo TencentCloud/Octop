@@ -10,6 +10,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from octop.api.routers.chat.serialize import (
+    _enrich_history_tool_media,
     _entry_matches_thread,
     _is_offload_placeholder_block,
     _merge_adjacent_messages,
@@ -19,6 +20,51 @@ from octop.api.routers.chat.serialize import (
     _ts_to_ms,
 )
 from octop.infra.utils.llm_text import llm_text_content as _llm_text_content
+
+
+def test_enrich_history_tool_media_prefers_entry_agent_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+
+    def fake_enrich(output: str, *, agent_id: str, workspace: Any = None) -> str:
+        _ = workspace
+        seen.append(agent_id)
+        return f"{output}|{agent_id}"
+
+    monkeypatch.setattr(
+        "octop.infra.gateway.media.tool_media.enrich_tool_output_string_sync",
+        fake_enrich,
+    )
+    out = _enrich_history_tool_media(
+        [
+            {
+                "role": "tool",
+                "agent_id": "child",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "id": "c1",
+                        "name": "desktop_screenshot",
+                        "output": "shot child",
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "id": "c2",
+                        "name": "desktop_screenshot",
+                        "output": "shot host",
+                    }
+                ],
+            },
+        ],
+        agent_id="host",
+    )
+    assert seen == ["child", "host"]
+    assert out[0]["content"][0]["output"] == "shot child|child"
+    assert out[1]["content"][0]["output"] == "shot host|host"
 
 
 def test_serialize_history_message_includes_thinking_and_tools() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -89,8 +90,8 @@ def test_compose_followup_uses_peer_display_name(processor_env: dict) -> None:
     )
     text = processor.compose_followup(msg, result_text="findings", error_text=None)
     assert "Researcher" in text
-    assert "findings" not in text
-    assert "do not repeat" in text.lower() or "不要复述" in text
+    assert "findings" in text
+    assert "do not" in text.lower() or "不要" in text
 
 
 def test_compose_followup_team_host_asks_for_wrapup(processor_env: dict) -> None:
@@ -106,8 +107,45 @@ def test_compose_followup_team_host_asks_for_wrapup(processor_env: dict) -> None
     )
     text = processor.compose_followup(msg, result_text="findings", error_text=None)
     assert "Researcher" in text
-    assert "findings" not in text
-    assert "do not repeat" in text.lower() or "不要复述" in text
+    assert "findings" in text
+    assert "Member answer" in text or "成员正文" in text
+    assert "do not" in text.lower() or "不要" in text
+
+
+def test_compose_followup_truncates_long_member_result(processor_env: dict) -> None:
+    from octop.infra.agents.teams.team_manager import _FOLLOWUP_RESULT_MAX_CHARS
+
+    processor = processor_env["processor"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    msg = InboxMessage(
+        id="job-3",
+        target_agent_id="child",
+        source_agent_id="host",
+        source_thread_id="thr_parent",
+        message="survey market",
+        user_id=1,
+    )
+    huge = "建议采纳此项。" + ("x" * (_FOLLOWUP_RESULT_MAX_CHARS + 200))
+    text = processor.compose_followup(msg, result_text=huge, error_text=None)
+    assert "建议采纳此项。" in text
+    assert huge not in text
+    assert "…" in text
+    assert len(text) < len(huge) + 800
+
+
+def test_compose_followup_empty_result_placeholder(processor_env: dict) -> None:
+    processor = processor_env["processor"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    msg = InboxMessage(
+        id="job-4",
+        target_agent_id="child",
+        source_agent_id="host",
+        source_thread_id="thr_parent",
+        message="survey market",
+        user_id=1,
+    )
+    text = processor.compose_followup(msg, result_text="   ", error_text=None)
+    assert "(empty)" in text
 
 
 @pytest.mark.asyncio
@@ -1042,8 +1080,247 @@ async def test_fan_in_persists_member_turn_without_dispatch_prompt(
     repo.append_if_ready.assert_called_once()
     thread_id, inputs = repo.append_if_ready.call_args.args
     assert thread_id == "thr_parent"
-    assert len(inputs) == 1
-    assert inputs[0].role in {"ai", "assistant"}
+    roles = [item.role for item in inputs]
+    assert roles[0] in {"ai", "assistant"}
+    assert any(
+        item.role in {"ai", "assistant"} and "please rest" in item.message_json for item in inputs
+    )
+    assert any("read_file" in item.message_json for item in inputs)
+    assert all("internal dispatch" not in item.message_json for item in inputs)
+
+
+@pytest.mark.asyncio
+async def test_fan_in_stamps_edited_files_on_room_history(
+    processor_env: dict,
+) -> None:
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+    from octop_harness.teams.util import PeerCall
+
+    processor = processor_env["processor"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    repo = MagicMock()
+    repo.append_if_ready = MagicMock(return_value=1)
+    processor.replace_thread_message_repo(repo)
+
+    await processor.teams.fan_in_peer_turn(
+        PeerCall(
+            from_agent_id="host",
+            to_agent_id="child",
+            user_id=1,
+            message="ask",
+            source_thread_id="thr_parent",
+            source_session_key=None,
+        ),
+        [
+            HumanMessage(content="internal dispatch"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "write_file",
+                        "id": "c1",
+                        "args": {"path": "notes/plan.md"},
+                    },
+                    {
+                        "name": "edit_file",
+                        "id": "c2",
+                        "args": {"path": "notes/plan.md"},
+                    },
+                    {
+                        "name": "read_file",
+                        "id": "c3",
+                        "args": {"path": "SOUL.md"},
+                    },
+                ],
+            ),
+            ToolMessage(content="wrote plan", tool_call_id="c1", name="write_file"),
+            ToolMessage(content="edited plan", tool_call_id="c2", name="edit_file"),
+            ToolMessage(content="soul", tool_call_id="c3", name="read_file"),
+            AIMessage(content="wrote the plan"),
+        ],
+        live_streamed=True,
+    )
+    repo.append_if_ready.assert_called_once()
+    _thread_id, inputs = repo.append_if_ready.call_args.args
+    roles = [item.role for item in inputs]
+    assert "tool" in roles
+    assert roles.count("tool") == 3
+    final = next(
+        item
+        for item in inputs
+        if item.role in {"ai", "assistant"} and "wrote the plan" in item.message_json
+    )
+    wire = json.loads(final.message_json)
+    data = wire.get("data") if isinstance(wire, dict) else wire
+    kwargs = (data or {}).get("additional_kwargs") or {}
+    assert kwargs.get("speaker_agent_id") == "child"
+    assert kwargs.get("edited_files") == ["notes/plan.md"]
+    tool_wire = json.loads(next(item for item in inputs if item.role == "tool").message_json)
+    tool_data = tool_wire.get("data") if isinstance(tool_wire, dict) else tool_wire
+    assert (tool_data or {}).get("additional_kwargs", {}).get("speaker_agent_id") == "child"
+
+
+@pytest.mark.asyncio
+async def test_record_peer_turn_keeps_tool_trail_on_member_page(
+    processor_env: dict,
+) -> None:
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+    from octop_harness.teams.util import PeerCall
+
+    processor = processor_env["processor"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    repo = MagicMock()
+    repo.append_if_ready = MagicMock(return_value=1)
+    repo.projection_status = MagicMock(return_value="pending")
+    repo.mark_projection = MagicMock()
+    repo.page = MagicMock(return_value=([], False))
+    processor.replace_thread_message_repo(repo)
+    processor._agent_manager.get_agent.return_value = SimpleNamespace(
+        aget_history=AsyncMock(return_value=[HumanMessage(content="用户原话")])
+    )
+
+    await processor.record_peer_turn(
+        PeerCall(
+            from_agent_id="host",
+            to_agent_id="child",
+            user_id=1,
+            message="请写计划",
+            source_thread_id="thr_parent",
+            source_session_key=None,
+            job_id="job1",
+        ),
+        "thr_parent~child",
+        {
+            "messages": [
+                HumanMessage(content="请写计划"),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "write_file",
+                            "id": "c1",
+                            "args": {"path": "plan.md"},
+                        }
+                    ],
+                ),
+                ToolMessage(content="ok", tool_call_id="c1", name="write_file"),
+                AIMessage(content="写好了"),
+            ]
+        },
+    )
+
+    member_calls = [
+        call for call in repo.append_if_ready.call_args_list if call.args[0] == "thr_parent~child"
+    ]
+    assert member_calls
+    inputs = member_calls[0].args[1]
+    roles = [item.role for item in inputs]
+    assert "tool" in roles
+    assert any(
+        item.role in {"ai", "assistant"} and "write_file" in item.message_json for item in inputs
+    )
+    assert any(
+        item.role in {"ai", "assistant"} and "写好了" in item.message_json for item in inputs
+    )
+    room_calls = [
+        call for call in repo.append_if_ready.call_args_list if call.args[0] == "thr_parent"
+    ]
+    assert room_calls
+    room_roles = [item.role for item in room_calls[0].args[1]]
+    assert "tool" in room_roles
+
+
+@pytest.mark.asyncio
+async def test_fan_in_truncates_large_tool_results(
+    processor_env: dict,
+) -> None:
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+    from octop_harness.teams.util import PeerCall
+
+    from octop.infra.agents.teams.team_manager import _HISTORY_TOOL_RESULT_MAX_CHARS
+
+    processor = processor_env["processor"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    repo = MagicMock()
+    repo.append_if_ready = MagicMock(return_value=1)
+    processor.replace_thread_message_repo(repo)
+    huge = "x" * (_HISTORY_TOOL_RESULT_MAX_CHARS + 500)
+
+    await processor.teams.fan_in_peer_turn(
+        PeerCall(
+            from_agent_id="host",
+            to_agent_id="child",
+            user_id=1,
+            message="ask",
+            source_thread_id="thr_parent",
+            source_session_key=None,
+        ),
+        [
+            HumanMessage(content="dispatch"),
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "read_file", "id": "c1", "args": {"path": "big.md"}}],
+            ),
+            ToolMessage(content=huge, tool_call_id="c1", name="read_file"),
+            AIMessage(content="done"),
+        ],
+        live_streamed=True,
+    )
+    _thread_id, inputs = repo.append_if_ready.call_args.args
+    tool = next(item for item in inputs if item.role == "tool")
+    wire = json.loads(tool.message_json)
+    data = wire.get("data") if isinstance(wire, dict) else wire
+    content = (data or {}).get("content") or ""
+    assert len(content) <= _HISTORY_TOOL_RESULT_MAX_CHARS
+    assert content.endswith("…")
+    assert huge not in content
+
+
+@pytest.mark.asyncio
+async def test_fan_in_stamps_edited_files_when_final_text_missing(
+    processor_env: dict,
+) -> None:
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+    from octop_harness.teams.util import PeerCall
+
+    processor = processor_env["processor"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    repo = MagicMock()
+    repo.append_if_ready = MagicMock(return_value=1)
+    processor.replace_thread_message_repo(repo)
+
+    await processor.teams.fan_in_peer_turn(
+        PeerCall(
+            from_agent_id="host",
+            to_agent_id="child",
+            user_id=1,
+            message="ask",
+            source_thread_id="thr_parent",
+            source_session_key=None,
+        ),
+        [
+            HumanMessage(content="dispatch"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "write_file",
+                        "id": "c1",
+                        "args": {"path": "notes/only.md"},
+                    }
+                ],
+            ),
+            ToolMessage(content="ok", tool_call_id="c1", name="write_file"),
+        ],
+        live_streamed=True,
+    )
+    _thread_id, inputs = repo.append_if_ready.call_args.args
+    assert inputs
+    ai = next(item for item in inputs if item.role in {"ai", "assistant"})
+    wire = json.loads(ai.message_json)
+    data = wire.get("data") if isinstance(wire, dict) else wire
+    kwargs = (data or {}).get("additional_kwargs") or {}
+    assert kwargs.get("edited_files") == ["notes/only.md"]
 
 
 @pytest.mark.asyncio
@@ -1140,6 +1417,40 @@ def _bind_im_session(processor_env: dict, *, thread_id: str = "thr_parent") -> s
 
 
 @pytest.mark.asyncio
+async def test_prepare_team_peer_pushes_dispatch_notice_to_im(
+    processor_env: dict,
+) -> None:
+    from octop_harness.teams.util import PeerCall
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    processor._agent_manager.teams.member_ids.return_value = ["child"]
+    _bind_im_session(processor_env)
+    pushed: list[str] = []
+
+    async def capture_push(channel_type: str, channel_id: str, subject: object, text: str) -> None:
+        pushed.append(text)
+
+    gateway.push_text = capture_push  # type: ignore[method-assign]
+
+    await processor.prepare_peer_session(
+        PeerCall(
+            from_agent_id="host",
+            to_agent_id="child",
+            user_id=1,
+            message="look at the labs",
+            source_thread_id="thr_parent",
+            source_session_key=None,
+            job_id="job-dispatch-im",
+        )
+    )
+    assert len(pushed) == 1
+    assert "Researcher" in pushed[0]
+    assert ("请稍候" in pushed[0]) or ("please wait" in pushed[0].lower())
+
+
+@pytest.mark.asyncio
 async def test_fan_in_pushes_member_speech_to_im_channel(processor_env: dict) -> None:
     from langchain_core.messages import AIMessage
     from octop_harness.teams.util import PeerCall
@@ -1226,7 +1537,7 @@ async def test_on_reply_live_wrapup_still_pushes_im(processor_env: dict) -> None
             metadata={"session_key": processor_env["parent_sk"]},
         )
     )
-    assert pushed == ["可以收工。"]
+    assert pushed == ["【主持人总结】可以收工。"] or pushed == ["[Host wrap-up] 可以收工。"]
     assert "thr_parent" not in processor.teams._live_host_replies
 
 
