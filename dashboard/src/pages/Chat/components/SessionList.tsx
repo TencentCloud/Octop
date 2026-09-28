@@ -19,6 +19,7 @@ import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { showConfirmModal } from "../../../utils/confirmModal";
+import { isImeComposing } from "../../../utils/ime";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import SessionChannelIcon from "./SessionChannelIcon";
@@ -172,6 +173,7 @@ const SessionItem = memo(function SessionItem({
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={commitEdit}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === "Enter") commitEdit();
             if (e.key === "Escape") {
               setEditValue(session.name);

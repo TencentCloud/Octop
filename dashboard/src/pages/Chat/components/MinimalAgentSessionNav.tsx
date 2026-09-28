@@ -18,6 +18,7 @@ import { ExpertIcon } from "../../Experts/components/iconForName";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { isAgentChatReady } from "../../../utils/agentError";
+import { isImeComposing } from "../../../utils/ime";
 import { sortSessions, toSession, type Session } from "../hooks/useSessions";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent, onStreamEvent } from "../hooks/chatStore";
@@ -211,6 +212,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={commitEdit}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === "Enter") commitEdit();
             if (e.key === "Escape") {
               setEditValue(session.name);

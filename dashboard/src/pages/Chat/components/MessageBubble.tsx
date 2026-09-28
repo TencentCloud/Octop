@@ -29,6 +29,7 @@ import {
   isDataUrl,
   workspacePathFromAccessUrl,
 } from "../../../utils/toolMediaBlocks";
+import { isImeComposing } from "../../../utils/ime";
 import { formatMessageTime } from "../../../utils/formatMessageTime";
 import { copyText } from "../../../utils/copyText";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
@@ -798,6 +799,7 @@ function MessageBubble({
                     autoFocus
                     rows={4}
                     onKeyDown={(e) => {
+                      if (isImeComposing(e)) return;
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         handleEditSubmit();
