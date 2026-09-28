@@ -13,11 +13,12 @@ class AsyncByteReader(Protocol):
     async def read(self, size: int = -1) -> bytes: ...
 
 
-def _too_large(max_bytes: int, code: ErrorCode) -> OctopError:
+def _too_large(max_bytes: int, code: ErrorCode, status: int = 0) -> OctopError:
     max_mb = max(1, max_bytes // (1024 * 1024))
     return OctopError(
         code,
         f"file too large (max {max_mb}MB)",
+        status=status,
         details={"max_mb": max_mb},
     )
 
@@ -35,11 +36,17 @@ async def read_upload_capped(
     max_bytes: int,
     chunk_size: int = _DEFAULT_CHUNK,
     code: ErrorCode = ErrorCode.ATTACHMENT_TOO_LARGE,
+    status: int = 0,
 ) -> bytes:
-    """Read *upload* in chunks and abort as soon as *max_bytes* is exceeded."""
+    """Read *upload* in chunks and abort as soon as *max_bytes* is exceeded.
+
+    ``status`` overrides the code's default HTTP status (0 = keep the default);
+    the project-domain attachments pass 413 while sharing one error code for
+    "type or size" (PLAN.md §7.2).
+    """
     declared = _declared_size(upload)
     if declared is not None and declared > max_bytes:
-        raise _too_large(max_bytes, code)
+        raise _too_large(max_bytes, code, status)
     chunks: list[bytes] = []
     total = 0
     step = chunk_size if chunk_size > 0 else _DEFAULT_CHUNK
@@ -49,6 +56,6 @@ async def read_upload_capped(
             break
         total += len(chunk)
         if total > max_bytes:
-            raise _too_large(max_bytes, code)
+            raise _too_large(max_bytes, code, status)
         chunks.append(chunk)
     return b"".join(chunks)

@@ -1,0 +1,101 @@
+/* Project detail page. */
+
+.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+}
+
+.section {
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-primary);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.sectionHint {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.mono {
+  font-family: var(--fn-font-mono, monospace);
+  font-size: 12px;
+}
+
+.memberSubjectType {
+  font-size: 12px;
+}
+
+.memberForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+
+  :global(.ant-form-item) {
+    margin: 0;
+  }
+}
+
+.subjectTypeSelect {
+  width: 120px;
+}
+
+.subjectIdInput {
+  width: 200px;
+}
+
+.roleSelect {
+  width: 120px;
+}
+
+.table {
+  :global(.ant-table) {
+    background: transparent;
+  }
+}
+
+.field {
+  width: 100%;
+}
+
+/* ---------- 项目详情两栏布局 (PLAN §4) ----------
+   主区在前、右栏在后 → 窄屏堆叠时 DOM 顺序即「主区 → 右栏」(S6)，
+   不得用 CSS order 提前。 */
+.detailLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.mainColumn {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (max-width: 1099px) {
+  .detailLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

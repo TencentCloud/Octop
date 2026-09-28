@@ -1,0 +1,68 @@
+/* 右栏「成员」面板 (PLAN §7 · R19) —— 成员唯一入口. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--fn-border-primary);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.title {
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hint {
+  font-size: 12px;
+}
+
+.centered {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rowName {
+  min-width: 0;
+  flex: 1;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.rowRole {
+  font-size: 12px;
+}
+
+.kindTag {
+  margin-inline-end: 0;
+  font-size: 11px;
+}
+
+.addBox {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}

@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -360,6 +361,33 @@ def skills_discovery_roots(workspace_dir: Path) -> list[Path]:
     return [workspace_dir / DEFAULT_SYSTEM_FILES_PATH / "skills", workspace_dir / "skills"]
 
 
+def skills_discovery_roots_with_packages(
+    workspace_dir: Path,
+    package_dirs: Iterable[str | Path] = (),
+) -> list[tuple[Path, str]]:
+    """Scan roots as ``(root, kind)``, with mounted skill-package roots first.
+
+    The order is the contract, not a detail: the offline enumerator keeps the
+    **first** root that provides a slug, so putting package roots first makes a
+    skill provided by both a package and the workspace resolve to the package
+    (PLAN.md §2.2 S3).
+
+    ``kind`` is the label the enumerator stamps on rows found under that root
+    (``"package"`` / ``"workspace"``), matching what the runtime path reports.
+
+    ``skills_discovery_roots`` keeps its existing signature and meaning; this is
+    an additive companion, so every current caller is unaffected.
+    """
+    roots: list[tuple[Path, str]] = []
+    for raw in package_dirs:
+        root = Path(raw)
+        if root.is_dir():
+            roots.append((root, "package"))
+    for root in skills_discovery_roots(workspace_dir):
+        roots.append((root, "workspace"))
+    return roots
+
+
 def workspace_dir_from_config_json(
     config_json: str | None,
     *,
@@ -390,6 +418,7 @@ __all__ = [
     "scoped_workspace_dir_str",
     "seed_workspace_dir_on_create",
     "skills_discovery_roots",
+    "skills_discovery_roots_with_packages",
     "system_files_path_from_config",
     "uses_scoped_workspace_default",
     "workspace_dir_from_config",

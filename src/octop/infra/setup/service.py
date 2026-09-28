@@ -792,7 +792,10 @@ def restart_service(runtime: ServiceRuntime) -> None:
             "service file refresh failed; continuing with restart so the process comes back"
         )
     if runtime.mode == "launchd" and wrote:
-        # install_service already bootout+bootstrap'd the updated plist.
+        # Unreachable for launchd today: ``install_service(force=False)`` only
+        # writes a launchd plist when the job is missing, and this function has
+        # already raised in that case.  Deliberately does NOT unload the job —
+        # see the kickstart note at the end of this function.
         _wait_for_startup()
         return
     if runtime.mode == "systemd":
@@ -806,12 +809,16 @@ def restart_service(runtime: ServiceRuntime) -> None:
         _cmd_ok(proc, "restart failed")
         _wait_for_startup()
         return
-    # launchd: bootout → wait for stop → bootstrap (kickstart -k is async
-    # and can leave the old process's port bound when the new one starts).
-    proc = _launchctl_run(runtime.scope, "bootout", launchd_domain(runtime.scope))
-    _cmd_ok(proc, "restart bootout failed")
-    _wait_for_stop(runtime)
-    _launchd_bootstrap(runtime)
+    # launchd: never unload the job from inside the job being unloaded.
+    # `bootout` removes the job *and* SIGTERMs this very process, so the
+    # `bootstrap` that has to follow races our own shutdown.  When it loses the
+    # race the job is gone from the domain, KeepAlive went with it, and nothing
+    # ever brings the service back (`kickstart` then fails with "not found").
+    # `kickstart -k` is handled by launchd itself: it kills this instance and
+    # starts a replacement as the *same* job, so the loaded state and KeepAlive
+    # survive even if this process dies mid-call.
+    proc = _launchctl_run(runtime.scope, "kickstart", "-k", launchd_domain(runtime.scope))
+    _cmd_ok(proc, "restart failed")
     _wait_for_startup()
 
 

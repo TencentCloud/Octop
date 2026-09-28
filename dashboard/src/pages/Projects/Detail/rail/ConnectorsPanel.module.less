@@ -1,0 +1,75 @@
+/* 右栏「连接器」面板 (PLAN §1.2/§1.4). */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--fn-border-primary);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.title {
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.centered {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rowMain {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.rowName {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.rowMeta {
+  font-size: 12px;
+}
+
+/* S1/S2：非错误面 —— 灰态，绝不用错误色。 */
+.unavailable {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.availableTag {
+  margin-inline-end: 0;
+  font-size: 11px;
+}
+
+.addBox {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}

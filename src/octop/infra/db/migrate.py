@@ -913,21 +913,23 @@ def _ensure_user_invites_schema(db: DatabasePool) -> None:
 
 
 def _ensure_user_role_schema(db: DatabasePool) -> None:
-    """Role templates plus non-FK role id/name snapshots (schema v18)."""
+    """Role templates; users.role / user_invites.role store the template id (v18)."""
     if not _table_exists(db, "users"):
         return
     _ensure_column(db, "users", "role_name", "TEXT")
-    _ensure_column(db, "users", "user_role_id", "TEXT")
     _ensure_column(db, "users", "avatar_icon", "TEXT")
+    _fold_users_user_role_id_into_role(db)
     if _table_exists(db, "user_invites"):
         _ensure_column(db, "user_invites", "role_name", "TEXT")
-        _ensure_column(db, "user_invites", "user_role_id", "TEXT")
+        _ensure_column(db, "user_invites", "role", "TEXT")
+        _fold_invites_user_role_id_into_role(db)
         for column in (
             "system_role",
             "permissions",
             "workspace_root_dir",
             "token_quota",
             "max_agents",
+            "user_role_id",
         ):
             _drop_column(db, "user_invites", column)
     if _table_exists(db, "access_roles"):
@@ -938,6 +940,35 @@ def _ensure_user_role_schema(db: DatabasePool) -> None:
     _ensure_column(db, "user_role", "description", "TEXT")
     _ensure_column(db, "user_role", "avatar_icon", "TEXT")
     _seed_user_roles(db)
+
+
+def _fold_users_user_role_id_into_role(db: DatabasePool) -> None:
+    """Promote legacy users.user_role_id into users.role, then drop the column.
+
+    Custom template ids overwrite role; admin/user ids already match the privilege
+    strings used before this fold.
+    """
+    if "user_role_id" not in _table_columns(db, "users"):
+        return
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE users SET role = user_role_id "
+            "WHERE user_role_id IS NOT NULL AND TRIM(user_role_id) != ''"
+        )
+    _drop_column(db, "users", "user_role_id")
+
+
+def _fold_invites_user_role_id_into_role(db: DatabasePool) -> None:
+    """Copy legacy user_invites.user_role_id into user_invites.role when empty."""
+    cols = _table_columns(db, "user_invites")
+    if "user_role_id" not in cols or "role" not in cols:
+        return
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE user_invites SET role = user_role_id "
+            "WHERE (role IS NULL OR TRIM(role) = '') "
+            "AND user_role_id IS NOT NULL AND TRIM(user_role_id) != ''"
+        )
 
 
 def _create_user_role_table(db: DatabasePool) -> None:
@@ -978,10 +1009,10 @@ def _create_user_role_table(db: DatabasePool) -> None:
 
 
 def _seed_user_roles(db: DatabasePool) -> None:
-    """Insert the locked admin role, and the default user role once.
+    """Ensure locked built-in admin and user role templates exist.
 
-    The user role is not recreated after it is deleted. Existing users are
-    never rewritten.
+    Both ids are immutable product constants matching ``users.role`` values.
+    Existing users are never rewritten.
     """
     if not _table_exists(db, "user_role"):
         return
@@ -1001,15 +1032,6 @@ def _seed_user_roles(db: DatabasePool) -> None:
                 ") VALUES ('admin', ?, '[]', '[]', ?, ?)",
                 ("管理员", ts, ts),
             )
-    if not _table_exists(db, "settings"):
-        return
-    with db.connect() as conn:
-        marker = conn.execute(
-            "SELECT value FROM settings WHERE key = ?",
-            ("user_role_user_seeded",),
-        ).fetchone()
-    if marker is not None:
-        return
     with db.connect() as conn:
         user = conn.execute(
             "SELECT id FROM user_role WHERE user_role_id = ?",
@@ -1024,12 +1046,6 @@ def _seed_user_roles(db: DatabasePool) -> None:
                 ") VALUES ('user', ?, ?, '[]', ?, ?)",
                 ("用户", payload, ts, ts),
             )
-    with db.transaction() as conn:
-        conn.execute(
-            "INSERT INTO settings(key, value) VALUES(?, ?)"
-            " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            ("user_role_user_seeded", "1"),
-        )
 
 
 def _ensure_thread_message_projection_schema(db: DatabasePool) -> None:
@@ -1542,6 +1558,35 @@ def _ensure_thread_conversation_mode_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "hitl_policy", "TEXT")
 
 
+def _ensure_projects_schema(db: DatabasePool) -> None:
+    """Create the project-management tables (schema v18) when they are missing.
+
+    Runs the versioned migration file itself — minus its ``_schema_version``
+    bump — instead of repeating the DDL in Python. That keeps the numbered
+    ``018_projects.sql`` / ``018_projects.pg.sql`` pair the single source of
+    truth, so this helper can never drift from it.
+
+    Every statement in the pair is ``IF NOT EXISTS``, so this is safe to run:
+      * after the migration already applied (normal path: a no-op), and
+      * on a database whose recorded version skipped 018 (the repair path).
+    """
+    name = "019_projects.pg.sql" if db.dialect == "postgresql" else "019_projects.sql"
+    path = _MIGRATIONS_DIR / name
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8").replace("UPDATE _schema_version SET version = 19;", "")
+    if db.dialect == "postgresql":
+        # PostgreSQL executes one statement at a time; the file is split the
+        # same way ``run_migrations`` splits it for the versioned path.
+        with db.connect() as conn:
+            for statement in _split_pg_sql(text):
+                conn.execute(statement)
+        return
+    # ``executescript`` runs the whole file in one call and keeps comments.
+    with db.connect() as conn:
+        conn.executescript(text)
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -1713,6 +1758,9 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     Version 16 adds ``agents.kind`` so team hosts can be listed.
     Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
     Version 18 adds ``user_role`` templates and non-FK role id/name snapshots.
+    Version 19 adds the project-management domain (projects, members, tasks,
+    comments, requirement nodes, rooms, artifacts, timeline). ``threads`` is
+    deliberately not altered.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1828,6 +1876,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 19:
+        _ensure_projects_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -1884,3 +1937,4 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_agent_profile_columns(db)
     _ensure_sso_provider_kind_schema(db)
     _ensure_user_role_schema(db)
+    _ensure_projects_schema(db)

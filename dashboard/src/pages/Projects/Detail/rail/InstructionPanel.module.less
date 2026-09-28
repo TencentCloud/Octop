@@ -1,0 +1,56 @@
+/* 右栏「指令」面板 (PLAN §5). */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--fn-border-primary);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.title {
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.centered {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+}
+
+.text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.editorFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.counter,
+.tooLong {
+  font-size: 12px;
+}
+
+.actions {
+  display: inline-flex;
+  gap: 4px;
+}

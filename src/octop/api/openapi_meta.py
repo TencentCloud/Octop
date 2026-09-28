@@ -163,6 +163,13 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "name": "onnx",
         "description": "Local ONNX / fastembed embedding service: enable, catalog, and download.",
     },
+    {
+        "name": "projects",
+        "description": (
+            "Project management: projects, membership and roles, the task board, "
+            "and the append-only project timeline."
+        ),
+    },
 ]
 
 _BEARER_SCHEME = {

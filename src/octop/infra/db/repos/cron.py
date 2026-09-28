@@ -79,6 +79,7 @@ class CronJobRow:
     last_run_at: int | None
     last_status: str | None
     last_error: str | None
+    project_id: str | None
     created_at: int
     updated_at: int
 
@@ -101,6 +102,7 @@ class CronJobRow:
             last_run_at=r["last_run_at"],
             last_status=r["last_status"],
             last_error=r["last_error"],
+            project_id=_optional_str(r, "project_id"),
             created_at=r["created_at"],
             updated_at=r["updated_at"],
         )
@@ -145,14 +147,15 @@ class CronJobRepo:
         mcp_servers: list[str] | None = None,
         enabled: bool = True,
         name: str | None = None,
+        project_id: str | None = None,
     ) -> str:
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO cron_jobs(cron_id, name, agent_id, user_id, schedule_spec, prompt, "
-                "session_key, model, fresh_thread, task_type, mcp_servers, enabled, "
+                "session_key, model, fresh_thread, task_type, mcp_servers, enabled, project_id, "
                 "created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     cron_id,
                     (name or "").strip() or default_cron_name(prompt, cron_id),
@@ -166,11 +169,38 @@ class CronJobRepo:
                     task_type,
                     _encode_mcp_servers(mcp_servers),
                     bool_int(enabled),
+                    project_id,
                     ts,
                     ts,
                 ),
             )
         return cron_id
+
+    def list_by_project(
+        self,
+        project_id: str,
+        *,
+        user_id: int | None = None,
+        include_disabled: bool = True,
+    ) -> list[CronJobRow]:
+        """Project-owned jobs.
+
+        ``user_id`` keeps the existing **optional** filter semantics (``None`` =
+        every user's jobs for that project). The project surface must always pass
+        the caller's id — the service layer is what enforces that, so the repo
+        stays a plain query.
+        """
+        sql = "SELECT * FROM cron_jobs WHERE project_id = ?"
+        params: list[object] = [project_id]
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+        if not include_disabled:
+            sql += " AND enabled = 1"
+        sql += " ORDER BY created_at DESC"
+        with self._db.connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return map_rows(rows, CronJobRow)
 
     def get(self, cron_id: str) -> CronJobRow | None:
         with self._db.connect() as conn:

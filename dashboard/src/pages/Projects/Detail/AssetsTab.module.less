@@ -1,0 +1,68 @@
+/*
+ * Styles for the assets / activity tabs (T-FE-ASSETS).
+ *
+ * They follow the surrounding project-detail sections so the tab content looks
+ * like the panels it sits beside, without importing another panel's stylesheet.
+ */
+
+.section {
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-primary);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.name {
+  font-size: 14px;
+}
+
+.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+/* Activity placeholder: centred, muted, no icon (PLAN §4.1 — text only). */
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 40px 16px;
+  text-align: center;
+}
+
+.placeholderHint {
+  color: var(--fn-text-tertiary);
+}

@@ -10,10 +10,13 @@ from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
     get_remote_browser_bookmarks_from_json,
+    get_sidebar_nav_from_json,
     get_timezone_from_preferences_json,
     merge_model_preferences_json,
     merge_preferences_json,
+    merge_sidebar_nav_json,
     validate_remote_browser_bookmarks,
+    validate_sidebar_nav,
 )
 
 
@@ -102,6 +105,46 @@ def test_model_preferences_roundtrip_and_preserve_other_keys() -> None:
     )
 
 
+def test_sidebar_nav_roundtrip_preserves_other_keys() -> None:
+    layout = {
+        "groups": [
+            {"id": "settings", "name": "配置"},
+            {"id": "c_aabbccdd11223344", "name": "常用"},
+        ],
+        "items": [
+            {"key": "chat"},
+            {"key": "personalization", "group": "settings"},
+            {"key": "tasks", "hidden": True, "group": "settings"},
+        ],
+    }
+    merged = merge_sidebar_nav_json('{"foo": 1}', layout)
+    saved = get_sidebar_nav_from_json(merged)
+    assert saved is not None
+    assert saved["groups"][0] == {"id": "settings", "name": "配置"}
+    assert saved["groups"][1]["id"] == "c_aabbccdd11223344"
+    hidden = next(item for item in saved["items"] if item["key"] == "tasks")
+    assert hidden == {"key": "tasks", "hidden": True}
+    assert '"foo": 1' in merged or '"foo":1' in merged
+
+
+def test_sidebar_nav_rejects_unknown_item_and_dangling_group() -> None:
+    with pytest.raises(OctopError) as ei:
+        validate_sidebar_nav({"groups": [], "items": [{"key": "not-a-nav"}]})
+    assert ei.value.code is ErrorCode.SLASH_BAD_ARGS
+    with pytest.raises(OctopError):
+        validate_sidebar_nav({"groups": [], "items": [{"key": "chat", "group": "settings"}]})
+    with pytest.raises(OctopError):
+        validate_sidebar_nav({"groups": [{"id": "c_short", "name": "X"}], "items": []})
+
+
+def test_sidebar_nav_clear_and_invalid_payload() -> None:
+    merged = merge_sidebar_nav_json("{}", {"groups": [], "items": [{"key": "chat"}]})
+    cleared = merge_sidebar_nav_json(merged, None)
+    assert get_sidebar_nav_from_json(cleared) is None
+    assert get_sidebar_nav_from_json('{"sidebar_nav": "nope"}') is None
+    assert get_sidebar_nav_from_json("{}") is None
+
+
 def test_clear_preferred_model_keeps_reasoning_defaults() -> None:
     raw = merge_model_preferences_json(
         "{}",
@@ -111,3 +154,49 @@ def test_clear_preferred_model_keeps_reasoning_defaults() -> None:
     cleared = merge_model_preferences_json(raw, preferred_model=None)
     assert get_preferred_model_from_json(cleared) is None
     assert "token/glm-5" in get_model_reasoning_from_json(cleared)
+
+
+# ── cross-end key-table consistency (batch 5) ────────────────────────────────
+#
+# The backend validates ``sidebar_nav`` against ``SIDEBAR_NAV_KEYS`` and rejects
+# anything else (``SLASH_BAD_ARGS``). The dashboard keeps its own copy for
+# rendering, so a key added on one side only is *silently* accepted/rejected
+# depending on which end you talk to. This mirrors the existing precedent in
+# ``tests/unit/i18n/test_errors.py`` (backend ``errors`` == dashboard
+# ``apiErrors``) by reading the frontend source and comparing the two tables.
+
+import re  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from octop.infra.users.preferences import SIDEBAR_NAV_KEYS  # noqa: E402
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_SIDEBAR_NAV_TSX = _REPO_ROOT / "dashboard/src/layouts/sidebarNav.tsx"
+
+
+def _frontend_sidebar_nav_keys() -> list[str]:
+    """The ``SIDEBAR_NAV_KEYS`` array literal, in source order."""
+    source = _SIDEBAR_NAV_TSX.read_text(encoding="utf-8")
+    match = re.search(r"export const SIDEBAR_NAV_KEYS = \[(.*?)\]\s*as const;", source, re.DOTALL)
+    assert match, "SIDEBAR_NAV_KEYS array not found in the dashboard source"
+    return re.findall(r'"([^"]+)"', match.group(1))
+
+
+def test_sidebar_nav_keys_match_the_dashboard_source() -> None:
+    """Set **and** order must match: the sidebar renders in this exact order."""
+    frontend = _frontend_sidebar_nav_keys()
+    backend = list(SIDEBAR_NAV_KEYS)
+    assert len(frontend) == len(set(frontend)), "the frontend table has duplicates"
+    assert len(backend) == len(set(backend)), "the backend table has duplicates"
+    assert set(frontend) == set(backend), (
+        f"frontend-only={sorted(set(frontend) - set(backend))} "
+        f"backend-only={sorted(set(backend) - set(frontend))}"
+    )
+    assert [key for key in _expected_order() if key in set(frontend)] == frontend, (
+        "the frontend order drifted from the frozen sidebar order"
+    )
+
+
+def _expected_order() -> list[str]:
+    """The one frozen order both ends must agree on (frontend is authoritative)."""
+    return _frontend_sidebar_nav_keys()

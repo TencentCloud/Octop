@@ -16,6 +16,17 @@ from octop.infra.db.repos.cron import CronJobRepo
 from octop.infra.db.repos.invites import InviteRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfigRepo
+from octop.infra.db.repos.project_artifacts import ProjectArtifactRepo
+from octop.infra.db.repos.project_connectors import ProjectConnectorRepo
+from octop.infra.db.repos.project_content import ProjectCommentRepo
+from octop.infra.db.repos.project_custom_fields import ProjectCustomFieldRepo
+from octop.infra.db.repos.project_skills import ProjectSkillRepo
+from octop.infra.db.repos.project_tags import ProjectTagRepo
+from octop.infra.db.repos.project_tasks import ProjectTaskRepo, TimelineRepo
+from octop.infra.db.repos.projects import (
+    ProjectMemberRepo,
+    ProjectRepo,
+)
 from octop.infra.db.repos.providers import ProviderRepo
 from octop.infra.db.repos.published_experts import PublishedExpertRepo
 from octop.infra.db.repos.secrets import SecretRepo
@@ -60,6 +71,16 @@ class RepoBundle:
     voice_provider_repo: VoiceProviderRepo
     care_push_repo: CarePushRepo
     proactive_care_config_repo: ProactiveCareConfigRepo
+    project_repo: ProjectRepo
+    project_member_repo: ProjectMemberRepo
+    project_task_repo: ProjectTaskRepo
+    project_comment_repo: ProjectCommentRepo
+    project_tag_repo: ProjectTagRepo
+    project_custom_field_repo: ProjectCustomFieldRepo
+    project_artifact_repo: ProjectArtifactRepo
+    project_connector_repo: ProjectConnectorRepo
+    project_skill_repo: ProjectSkillRepo
+    timeline_repo: TimelineRepo
     sso_repo: SsoRepo
 
     @classmethod
@@ -89,6 +110,16 @@ class RepoBundle:
             voice_provider_repo=VoiceProviderRepo(db),
             care_push_repo=CarePushRepo(db),
             proactive_care_config_repo=ProactiveCareConfigRepo(db),
+            project_repo=ProjectRepo(db),
+            project_member_repo=ProjectMemberRepo(db),
+            project_task_repo=ProjectTaskRepo(db),
+            project_comment_repo=ProjectCommentRepo(db),
+            project_tag_repo=ProjectTagRepo(db),
+            project_custom_field_repo=ProjectCustomFieldRepo(db),
+            project_artifact_repo=ProjectArtifactRepo(db),
+            project_connector_repo=ProjectConnectorRepo(db),
+            project_skill_repo=ProjectSkillRepo(db),
+            timeline_repo=TimelineRepo(db),
             sso_repo=SsoRepo(db),
         )
 
@@ -194,6 +225,46 @@ class SharedServices:
     @property
     def proactive_care_config_repo(self) -> ProactiveCareConfigRepo:
         return self.repos.proactive_care_config_repo
+
+    @property
+    def project_repo(self) -> ProjectRepo:
+        return self.repos.project_repo
+
+    @property
+    def project_member_repo(self) -> ProjectMemberRepo:
+        return self.repos.project_member_repo
+
+    @property
+    def project_task_repo(self) -> ProjectTaskRepo:
+        return self.repos.project_task_repo
+
+    @property
+    def project_comment_repo(self) -> ProjectCommentRepo:
+        return self.repos.project_comment_repo
+
+    @property
+    def project_tag_repo(self) -> ProjectTagRepo:
+        return self.repos.project_tag_repo
+
+    @property
+    def project_custom_field_repo(self) -> ProjectCustomFieldRepo:
+        return self.repos.project_custom_field_repo
+
+    @property
+    def project_artifact_repo(self) -> ProjectArtifactRepo:
+        return self.repos.project_artifact_repo
+
+    @property
+    def project_connector_repo(self) -> ProjectConnectorRepo:
+        return self.repos.project_connector_repo
+
+    @property
+    def project_skill_repo(self) -> ProjectSkillRepo:
+        return self.repos.project_skill_repo
+
+    @property
+    def timeline_repo(self) -> TimelineRepo:
+        return self.repos.timeline_repo
 
     @property
     def sso_repo(self) -> SsoRepo:
