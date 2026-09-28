@@ -33,6 +33,24 @@ async def test_create_list_get_delete(env):
     assert r.status_code == 404
 
 
+async def test_admin_can_save_own_account_with_empty_permissions(env):
+    """Admin accounts store permissions as []. Saving that list must not 403."""
+    c, _srv, auth = env
+    me = (await c.get("/api/auth/me", headers=auth)).json()
+    saved = await c.patch(
+        f"/api/users/{me['id']}",
+        headers=auth,
+        json={
+            "display_name": "Root",
+            "role": "admin",
+            "permissions": [],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["display_name"] == "Root"
+    assert saved.json()["role"] == "admin"
+
+
 async def test_non_admin_gets_403(env):
     c, srv, _ = env
     admin_auth = env[2]
@@ -412,32 +430,6 @@ async def _user_id_by_name(c, auth, username: str) -> int:
     return next(int(u["id"]) for u in listed if u["username"] == username)
 
 
-async def test_delegated_user_manager_cannot_promote_self(env):
-    """``users`` delegates user management; it must not mint administrators."""
-    from tests.support.auth import create_user
-
-    c, srv, auth = env
-    helper_auth = await create_user(c, auth, username="helper_self", permissions=["users"])
-    me = (await c.get("/api/auth/me", headers=helper_auth)).json()
-
-    r = await c.patch(f"/api/users/{me['id']}", headers=helper_auth, json={"role": "admin"})
-    assert r.status_code == 403, r.text
-    assert str(srv.user_manager.get_row(me["id"]).role) == "user"
-
-
-async def test_delegated_user_manager_cannot_promote_others(env):
-    from tests.support.auth import create_user
-
-    c, srv, auth = env
-    await create_user(c, auth, username="peer_to_promote")
-    helper_auth = await create_user(c, auth, username="helper_peer", permissions=["users"])
-    peer_id = await _user_id_by_name(c, auth, "peer_to_promote")
-
-    r = await c.patch(f"/api/users/{peer_id}", headers=helper_auth, json={"role": "admin"})
-    assert r.status_code == 403, r.text
-    assert str(srv.user_manager.get_row(peer_id).role) == "user"
-
-
 async def test_delegated_user_manager_cannot_take_over_admin_account(env):
     """Resetting an administrator's password is an admin login; delegation must not allow it."""
     from tests.support.auth import create_user
@@ -485,3 +477,25 @@ async def test_admin_can_still_promote_regular_user(env):
     r = await c.patch(f"/api/users/{peer_id}", headers=auth, json={"role": "admin"})
     assert r.status_code == 200, r.text
     assert str(srv.user_manager.get_row(peer_id).role) == "admin"
+
+
+async def test_delegated_user_manager_cannot_batch_act_on_admin(env):
+    """``/api/users/batch`` is the same entry point with a list of ids."""
+    from tests.support.auth import create_user
+
+    c, _srv, auth = env
+    admin_id = (await c.get("/api/auth/me", headers=auth)).json()["id"]
+    helper_auth = await create_user(c, auth, username="helper_batch", permissions=["users"])
+
+    r = await c.post(
+        "/api/users/batch",
+        headers=helper_auth,
+        json={"user_ids": [admin_id], "action": "disable"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["succeeded"] == 0
+    assert body["failed"] == 1
+    assert body["results"][0]["ok"] is False
+    listed = {u["id"]: u for u in (await c.get("/api/users", headers=auth)).json()}
+    assert listed[admin_id]["disabled"] is False

@@ -10,7 +10,7 @@ from octop.infra.agents.experts.catalog import (
     welcome_payload_from_expert,
     welcome_payload_from_manifest_data,
 )
-from octop.infra.agents.profile import welcome_from_row
+from octop.infra.agents.settings.profile import welcome_from_row
 from octop.infra.agents.teams.service import is_team_agent
 from octop.infra.db.repos.agents import AgentRow
 
