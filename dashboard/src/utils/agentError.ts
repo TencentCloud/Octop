@@ -63,9 +63,9 @@ export function formatAgentError(
  */
 export function isAgentChatReady(
   state: string | null | undefined,
-  agent?: { bridge?: boolean } | null,
+  agent?: { bridge?: boolean; bridge_disconnected?: boolean } | null,
 ): boolean {
-  if (agent?.bridge) return true;
+  if (agent?.bridge) return !agent.bridge_disconnected;
   return state === "running";
 }
 

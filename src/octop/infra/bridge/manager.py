@@ -22,7 +22,7 @@ from octop.infra.db.repos.bridge_connections import BridgeConnectionRepo, Bridge
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.utils.ulid import new_ulid
+from octop.infra.utils.ulid import new_short_id
 
 logger = logging.getLogger(__name__)
 
@@ -41,19 +41,35 @@ def _absolute_peer_url(base_url: str, maybe_path: str | None) -> str | None:
     return urljoin(root, raw.lstrip("/"))
 
 
-def _probe_agent_summary(item: dict[str, Any], *, peer_base_url: str) -> dict[str, Any]:
+def _probe_agent_summary(
+    item: dict[str, Any],
+    *,
+    peer_base_url: str,
+    connection_id: str | None = None,
+) -> dict[str, Any]:
     remote_id = str(item.get("agent_id") or item.get("id") or "").strip()
-    icon_url = _absolute_peer_url(
-        peer_base_url,
-        str(item.get("icon_url") or item.get("icon") or "").strip() or None,
+    raw_icon = str(item.get("icon_url") or "").strip()
+    if not raw_icon:
+        legacy = str(item.get("icon") or "").strip()
+        if legacy.startswith("/") or legacy.startswith("http://") or legacy.startswith("https://"):
+            raw_icon = legacy
+    bridge_id = (
+        format_bridge_agent_id(connection_id, remote_id) if connection_id and remote_id else None
     )
+    _ = peer_base_url  # probe never returns peer-absolute URLs (browser cannot auth to them)
+    icon_name = item.get("icon_name")
+    color = item.get("color")
     return {
         "agent_id": remote_id,
         "name": str(item.get("name") or remote_id or "").strip() or remote_id,
         "description": str(item.get("description") or "").strip() or None,
-        "icon_url": icon_url,
-        "icon_name": item.get("icon_name"),
-        "color": item.get("color"),
+        "icon_url": rewrite_remote_icon_url(
+            raw_icon or None,
+            remote_agent_id=remote_id,
+            bridge_agent_id=bridge_id,
+        ),
+        "icon_name": str(icon_name).strip() or None if isinstance(icon_name, str) else None,
+        "color": str(color).strip() or None if isinstance(color, str) else None,
         "state": item.get("state"),
         "kind": item.get("kind") or "expert",
     }
@@ -143,6 +159,7 @@ class BridgeManager:
         peer_base_url: str,
         peer_username: str,
         password: str,
+        connection_id: str | None = None,
     ) -> dict[str, Any]:
         """Login to peer over HTTP and list experts (no connection row / WS)."""
         base = normalize_peer_base_url(peer_base_url)
@@ -180,7 +197,7 @@ class BridgeManager:
         if not isinstance(data, list):
             raise OctopError(ErrorCode.BRIDGE_TUNNEL_FAILED, "peer agents payload invalid")
         agents = [
-            _probe_agent_summary(item, peer_base_url=base)
+            _probe_agent_summary(item, peer_base_url=base, connection_id=connection_id)
             for item in data
             if isinstance(item, dict) and str(item.get("agent_id") or item.get("id") or "").strip()
         ]
@@ -194,6 +211,33 @@ class BridgeManager:
             "agent_count": len(agents),
             "agents": agents,
         }
+
+    def _stored_peer_password(self, row: BridgeConnectionRow) -> str:
+        if not row.credential_blob:
+            raise OctopError(ErrorCode.BRIDGE_AUTH_FAILED, "password required")
+        secret = str(decrypt_payload(self._secrets, row.credential_blob).get("password") or "")
+        if not secret:
+            raise OctopError(ErrorCode.BRIDGE_AUTH_FAILED, "password required")
+        return secret
+
+    async def probe_owned_connection(
+        self,
+        connection_id: str,
+        *,
+        owner_user_id: int,
+        peer_base_url: str,
+        peer_username: str,
+        password: str | None = None,
+    ) -> dict[str, Any]:
+        """Probe using the form endpoint; empty password reuses the stored secret."""
+        row = self.get_owned(connection_id, owner_user_id)
+        secret = (password or "").strip() or self._stored_peer_password(row)
+        return await self.probe_peer(
+            peer_base_url=peer_base_url,
+            peer_username=peer_username,
+            password=secret,
+            connection_id=connection_id,
+        )
 
     # -- create / delete / connect -------------------------------------------
 
@@ -243,7 +287,7 @@ class BridgeManager:
         from octop.infra.db.repos._base import now_ts
 
         expires_at = now_ts() + expires_in if expires_in > 0 else None
-        connection_id = new_ulid()
+        connection_id = self._allocate_connection_id()
         cred_blob = encrypt_payload(self._secrets, {"password": password})
         token_blob = encrypt_payload(self._secrets, {"access_token": token})
         row = self._repo.create(
@@ -270,6 +314,13 @@ class BridgeManager:
                 await self.disconnect(connection_id)
             self._repo.delete(connection_id)
             raise
+
+    def _allocate_connection_id(self) -> str:
+        for _ in range(16):
+            cid = new_short_id()
+            if self._repo.get(cid) is None:
+                return cid
+        raise RuntimeError("failed to allocate unique bridge connection_id")
 
     async def delete_connection(self, connection_id: str, *, owner_user_id: int) -> None:
         self.get_owned(connection_id, owner_user_id)

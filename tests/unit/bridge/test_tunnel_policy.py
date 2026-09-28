@@ -61,9 +61,14 @@ def test_allows_experts_non_agent_paths() -> None:
     assert is_tunnel_path_allowed("GET", "/api/subagent-catalog/divisions")
     assert is_tunnel_path_allowed("GET", "/api/acp")
     assert is_tunnel_path_allowed("PUT", "/api/acp/opencode")
+    assert is_tunnel_path_allowed("GET", "/api/cron/settings")
+    assert is_tunnel_path_allowed("GET", "/api/connector-instances")
     assert not is_tunnel_path_allowed("GET", "/api/plugins")
     assert not is_tunnel_path_allowed("POST", "/api/plugins/install")
     assert not is_tunnel_path_allowed("POST", "/api/subagent-catalog")
+    assert not is_tunnel_path_allowed("POST", "/api/cron/settings")
+    assert not is_tunnel_path_allowed("POST", "/api/connector-instances")
+    assert not is_tunnel_path_allowed("GET", "/api/connector-instances/inst1")
 
 
 def test_denies_management_and_auth_paths() -> None:

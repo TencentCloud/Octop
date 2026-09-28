@@ -75,6 +75,18 @@ def test_resolve_header_tunneled_paths() -> None:
     assert catalog is not None
     acp = resolve_tunnel_target("/api/acp", "bridge:cid1:aid1")
     assert acp is not None
+    cron = resolve_tunnel_target("/api/cron/settings", "bridge:cid1:aid1")
+    assert cron is not None
+    assert cron.remote_path == "/api/cron/settings"
+    connectors = resolve_tunnel_target("/api/connector-instances", "bridge:cid1:aid1")
+    assert connectors is not None
+    models = resolve_tunnel_target("/api/providers/resolved", "bridge:cid1:aid1")
+    assert models is not None
+    assert models.remote_path == "/api/providers/resolved"
+    kb = resolve_tunnel_target("/api/knowledge-bases", "bridge:cid1:aid1")
+    assert kb is not None
+    env = resolve_tunnel_target("/api/browser/env-status", "bridge:cid1:aid1")
+    assert env is not None
 
 
 def test_resolve_ignores_local_header_and_unscoped_paths() -> None:

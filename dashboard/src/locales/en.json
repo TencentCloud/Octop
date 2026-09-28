@@ -125,12 +125,12 @@
     "CONNECTOR_NOT_BOUND": "Connector is not bound to this agent.",
     "CONNECTOR_ALREADY_BOUND": "Connector is already bound.",
     "CONNECTOR_MCP_LOAD_FAILED": "Failed to load tools for MCP server(s): {{servers}}",
-    "BRIDGE_NOT_FOUND": "Bridge connection not found.",
+    "BRIDGE_NOT_FOUND": "Cloud collab connection not found.",
     "BRIDGE_AUTH_FAILED": "Remote Octop rejected the credentials. Check the address, username, and password — or use Probe to verify the account first.",
-    "BRIDGE_PEER_UNREACHABLE": "Could not reach the remote Octop instance. Confirm the URL is reachable, credentials are correct, and the peer has Bridge support (needs /api/bridge/ws). If the peer is behind NAT, initiate the link from the side that can reach the other.",
-    "BRIDGE_NOT_CONNECTED": "Bridge is not connected. Reconnect, or check that the peer is online.",
-    "BRIDGE_TUNNEL_FAILED": "Bridge tunnel request failed. The link may have dropped — reconnect and try again.",
-    "BRIDGE_REMOTE_UNSUPPORTED": "This action is not available through the remote bridge. Manage it on the peer Octop.",
+    "BRIDGE_PEER_UNREACHABLE": "Could not reach the remote Octop instance. Confirm the URL is reachable, credentials are correct, and the peer has cloud collab support (needs /api/bridge/ws). If the peer is behind NAT, initiate the link from the side that can reach the other.",
+    "BRIDGE_NOT_CONNECTED": "Cloud collab is not connected. Reconnect, or check that the peer is online.",
+    "BRIDGE_TUNNEL_FAILED": "Cloud collab request failed. The link may have dropped — reconnect and try again.",
+    "BRIDGE_REMOTE_UNSUPPORTED": "This action is not available on the remote expert. Manage it on the peer Octop.",
     "BRIDGE_DISPLAY_NAME_TAKEN": "Display name \"{{name}}\" is already in use. Choose another.",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
     "SLASH_UNKNOWN": "Unknown slash command.",
@@ -1188,7 +1188,7 @@
       "flag": "Shared"
     },
     "remoteExpert": {
-      "banner": "Remote expert · via “{{name}}” bridge",
+      "banner": "Remote expert · via “{{name}}”",
       "flag": "Remote",
       "manageOnPeer": "Edit on the remote instance",
       "manageToast": "This is a remote expert. Manage skills, models, knowledge bases, and related settings on the peer Octop.",
@@ -1196,7 +1196,15 @@
       "editSkillPackages": "Skill packages stay on this instance and cannot be installed onto a remote expert. That tab is hidden.",
       "editTools": "ACP runners execute on the peer. Plugin icons that are local files on the peer may not preview here.",
       "editPlugins": "You can toggle plugins already installed on the peer. Install, uninstall, and marketplace stay on the peer Octop.",
-      "editChannels": "QR login and bot-creator flows run on the peer machine, not this browser."
+      "editChannels": "QR login and bot-creator flows run on the peer machine, not this browser.",
+      "editTasks": "Tasks use the peer timezone. Model and connector options come from the peer; install new connectors there.",
+      "disconnectedTitle": "Cloud collab disconnected",
+      "disconnectedHint": "This remote expert is still selected. Reconnect to keep chatting and editing it.",
+      "disconnectedHintNamed": "The “{{name}}” link dropped. This remote expert is still selected — reconnect to continue.",
+      "reconnect": "Reconnect",
+      "peerOnlyTitle": "This page stays on this instance",
+      "peerOnlyAcp": "ACP runners listed here belong to this Octop. Pick a local expert to toggle its ACP tool, or open the remote expert’s Tools tab to manage the peer.",
+      "peerOnlyBrowser": "This page controls the browser on this host. For a remote expert, open the browser dock in chat instead."
     },
     "pushToast": {
       "title": "{{name}} sent a reminder",
@@ -3282,13 +3290,13 @@
       "addConfirm": "Save & connect",
       "created": "Saved and connected to remote",
       "createFailed": "Could not save and connect",
-      "loadFailed": "Could not load bridge connections",
+      "loadFailed": "Could not load cloud collab connections",
       "connect": "Reconnect",
       "disconnect": "Disconnect",
       "delete": "Delete connection",
-      "deleted": "Bridge connection deleted",
-      "deleteFailed": "Could not delete the bridge connection",
-      "deleteConfirmTitle": "Delete this bridge connection?",
+      "deleted": "Cloud collab connection deleted",
+      "deleteFailed": "Could not delete the cloud collab connection",
+      "deleteConfirmTitle": "Delete this cloud collab connection?",
       "deleteConfirmDesc": "This disconnects “{{name}}” and removes stored remote credentials. This cannot be undone.",
       "editTitle": "Edit connection",
       "editHint": "Update display info and the remote account. Changing the address, username, or password re-authenticates; a previously connected link reconnects automatically. Leave the password blank to keep the current one.",
@@ -3298,7 +3306,7 @@
       "passwordKeepPlaceholder": "••••••••",
       "emptyTitle": "No cloud collaborations yet",
       "emptyDesc": "Add a remote Octop address with username and password to start.",
-      "drawerHint": "The display name is used for chat group switching and must be unique. Probe first to verify the account; Save & connect only persists after login and the bridge handshake succeed — a failure will not keep the name.",
+      "drawerHint": "The display name is used for chat group switching and must be unique. Probe first to verify the account; Save & connect only persists after login and the cloud-collab handshake succeed — a failure will not keep the name.",
       "sectionIdentity": "Display",
       "sectionRemote": "Remote account",
       "probe": "Probe",
@@ -4874,7 +4882,9 @@
     }
   },
   "agentSelector": {
-    "label": "Active Expert"
+    "label": "Active Expert",
+    "localGroup": "This instance",
+    "disconnected": "Disconnected"
   },
   "login": {
     "title": "Sign in",

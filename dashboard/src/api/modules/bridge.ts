@@ -67,6 +67,22 @@ export const bridgeApi = {
       body: JSON.stringify(body),
     }),
 
+  probeConnection: (
+    connectionId: string,
+    body: {
+      peer_base_url: string;
+      peer_username: string;
+      password?: string;
+    },
+  ) =>
+    request<BridgeProbeResult>(
+      `/bridge/connections/${encodeURIComponent(connectionId)}/probe`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+
   create: (body: {
     peer_base_url: string;
     peer_username: string;

@@ -51,6 +51,19 @@ def _is_header_tunneled_path(path: str) -> bool:
         return True
     if raw == "/api/subagent-catalog" or raw.startswith("/api/subagent-catalog/"):
         return True
+    if raw == "/api/cron/settings":
+        return True
+    if raw == "/api/connector-instances":
+        return True
+    if raw in {
+        "/api/providers/resolved",
+        "/api/providers/active-model",
+        "/api/knowledge-bases",
+        "/api/knowledge-bases/capability",
+        "/api/browser/env-status",
+        "/api/browser/harness-sessions",
+    }:
+        return True
     return raw == "/api/acp" or raw.startswith("/api/acp/")
 
 

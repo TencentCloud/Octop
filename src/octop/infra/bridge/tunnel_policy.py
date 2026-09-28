@@ -37,6 +37,8 @@ _PLUGIN_AGENT = re.compile(r"^/api/plugins/agents/(?:bridge:[^/]+|[^/]+)(?:/tool
 _MBTI = re.compile(r"^/api/mbti(?:/.*)?$")
 _SUBAGENT_CATALOG = re.compile(r"^/api/subagent-catalog(?:/.*)?$")
 _ACP_GLOBAL = re.compile(r"^/api/acp(?:/[^/]+)?$")
+_CRON_SETTINGS = re.compile(r"^/api/cron/settings$")
+_CONNECTOR_INSTANCES_LIST = re.compile(r"^/api/connector-instances$")
 
 
 def is_tunnel_path_allowed(method: str, path: str) -> bool:
@@ -75,5 +77,11 @@ def is_tunnel_path_allowed(method: str, path: str) -> bool:
 
     if _ACP_GLOBAL.fullmatch(raw):
         return verb in {"GET", "PUT", "DELETE"}
+
+    if _CRON_SETTINGS.fullmatch(raw):
+        return verb == "GET"
+
+    if _CONNECTOR_INSTANCES_LIST.fullmatch(raw):
+        return verb == "GET"
 
     return False

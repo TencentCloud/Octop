@@ -20,14 +20,15 @@ def rewrite_remote_icon_url(
     raw: str | None,
     *,
     remote_agent_id: str,
-    bridge_agent_id: str,
+    bridge_agent_id: str | None = None,
 ) -> str | None:
     """Map a peer ``icon_url`` to something the local dashboard can load.
 
     - Bundled ``/experts/avatars/…`` paths stay as-is (same assets locally).
     - Absolute CDN / SkillHub ``http(s)://…`` URLs stay as-is.
     - Peer ``/api/agents/{id}/avatar`` (and absolute peer equivalents) become
-      the local Bridge proxy avatar path.
+      the local Bridge proxy avatar path when ``bridge_agent_id`` is set.
+      Without a connection, those URLs are dropped (browser cannot auth to the peer).
     - Empty → ``None`` so the UI falls back to ``icon_name``.
     """
     text = str(raw or "").strip()
@@ -50,6 +51,8 @@ def rewrite_remote_icon_url(
 
     # Uploaded workspace avatar (or legacy ``/icon``) → tunnel via Bridge proxy.
     if path_only.endswith("/avatar") or path_only.endswith("/icon"):
+        if not bridge_agent_id:
+            return None
         return bridge_avatar_api_path(bridge_agent_id)
 
     # Rare relative path — keep so we do not force a Lucide fallback incorrectly.

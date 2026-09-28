@@ -545,22 +545,22 @@ export default function BridgeSettingsPanel({
   };
 
   const onEditProbe = async () => {
+    if (!editTarget) return;
     try {
       const values = await editForm.validateFields([
         "peer_base_url",
         "peer_username",
-        "password",
       ]);
-      const password = String(values.password || "").trim();
-      if (!password) {
+      const password = String(editForm.getFieldValue("password") || "").trim();
+      if (!password && !editTarget.has_password) {
         message.warning(t("advancedSettings.bridge.passwordRequired"));
         return;
       }
       setEditProbing(true);
-      const result = await bridgeApi.probe({
+      const result = await bridgeApi.probeConnection(editTarget.connection_id, {
         peer_base_url: values.peer_base_url,
         peer_username: values.peer_username,
-        password,
+        ...(password ? { password } : {}),
       });
       setEditProbeResult(result);
       message.success(

@@ -9,6 +9,7 @@ import {
 import type { ReactNode } from "react";
 import { setActiveAgentId } from "../api/request";
 import { agentApi as legacyAgentApi } from "../api/modules/agent";
+import { retainDisconnectedBridgeAgents } from "../utils/remoteExpert";
 
 /**
  * Multi-Agent navigation state.
@@ -64,13 +65,15 @@ export interface OctopAgent {
   /** Member agent ids when ``kind === "team"``. */
   member_ids?: string[];
   welcome_message?: string | null;
-  /** True when this row is a remote shadow expert via Bridge. */
+  /** True when this row is a remote shadow expert via cloud collab. */
   bridge?: boolean;
   bridge_connection_id?: string | null;
-  /** Display name of the bridge link (chat group label). */
+  /** Display name of the cloud-collab link (chat group label). */
   bridge_connection_name?: string | null;
-  /** Icon selected for the bridge link (shown on remote expert badges). */
+  /** Icon selected for the cloud-collab link (shown on remote expert badges). */
   bridge_connection_icon?: string | null;
+  /** True while the cloud-collab link dropped but this shadow is still pinned. */
+  bridge_disconnected?: boolean;
 }
 
 interface AgentContextValue {
@@ -122,7 +125,9 @@ export function selectEnabledExperts(
   options: EnabledExpertsOptions = {},
 ): OctopAgent[] {
   const { pinActive = false } = options;
-  const enabled = agents.filter((a) => a.state === "running");
+  const enabled = agents.filter(
+    (a) => a.state === "running" || Boolean(a.bridge_disconnected),
+  );
   if (!pinActive || !resolvedAgentId) return enabled;
   if (enabled.some((a) => a.agent_id === resolvedAgentId)) return enabled;
   const pinnedActive = agents.find((a) => a.agent_id === resolvedAgentId);
@@ -152,8 +157,10 @@ export function projectChatAgentOption(agent: OctopAgent): {
   is_owner: boolean;
   owner_username: string | null;
   bridge: boolean;
+  bridge_connection_id: string | null;
   bridge_connection_name: string | null;
   bridge_connection_icon: string | null;
+  bridge_disconnected: boolean;
 } {
   return {
     agent_id: agent.agent_id,
@@ -165,8 +172,10 @@ export function projectChatAgentOption(agent: OctopAgent): {
     is_owner: Boolean(agent.is_owner),
     owner_username: agent.owner_username ?? null,
     bridge: Boolean(agent.bridge),
+    bridge_connection_id: agent.bridge_connection_id ?? null,
     bridge_connection_name: agent.bridge_connection_name ?? null,
     bridge_connection_icon: agent.bridge_connection_icon ?? null,
+    bridge_disconnected: Boolean(agent.bridge_disconnected),
   };
 }
 
@@ -189,12 +198,17 @@ interface ListAgentsResponse {
   list: () => Promise<OctopAgent[]>;
 }
 
+interface FetchAgentsResult {
+  agents: OctopAgent[];
+  liveConnectionIds: Set<string>;
+}
+
 /**
  * Fetch ``/api/agents``. Tries the orca-flavored ``listAll`` method first,
  * falls back to a direct request if the legacy module hasn't been
  * regenerated yet.
  */
-async function fetchAgents(): Promise<OctopAgent[]> {
+async function fetchAgents(): Promise<FetchAgentsResult> {
   const candidate = legacyAgentApi as Partial<ListAgentsResponse> &
     Record<string, unknown>;
   let local: OctopAgent[] = [];
@@ -205,18 +219,35 @@ async function fetchAgents(): Promise<OctopAgent[]> {
     const { request } = await import("../api/request");
     local = await request<OctopAgent[]>("/agents");
   }
-  const remote = await fetchBridgeShadowAgents();
-  if (remote.length === 0) return local;
+  const { remote, liveConnectionIds } = await fetchBridgeShadowAgents();
+  if (remote.length === 0) {
+    return { agents: local, liveConnectionIds };
+  }
   const localIds = new Set(local.map((a) => a.agent_id));
-  return [...local, ...remote.filter((a) => !localIds.has(a.agent_id))];
+  return {
+    agents: [...local, ...remote.filter((a) => !localIds.has(a.agent_id))],
+    liveConnectionIds,
+  };
 }
 
-async function fetchBridgeShadowAgents(): Promise<OctopAgent[]> {
+async function fetchBridgeShadowAgents(): Promise<{
+  remote: OctopAgent[];
+  liveConnectionIds: Set<string>;
+}> {
+  const empty = {
+    remote: [] as OctopAgent[],
+    liveConnectionIds: new Set<string>(),
+  };
   try {
     const { bridgeApi } = await import("../api/modules/bridge");
     const connections = await bridgeApi.list();
+    const liveConnectionIds = new Set(
+      connections.map((c) => c.connection_id).filter(Boolean),
+    );
     const connected = connections.filter((c) => c.status === "connected");
-    if (connected.length === 0) return [];
+    if (connected.length === 0) {
+      return { remote: [], liveConnectionIds };
+    }
     const batches = await Promise.all(
       connected.map(async (conn) => {
         try {
@@ -227,10 +258,10 @@ async function fetchBridgeShadowAgents(): Promise<OctopAgent[]> {
         }
       }),
     );
-    return batches.flat();
+    return { remote: batches.flat(), liveConnectionIds };
   } catch {
-    // Non-admin users or bridge-unavailable installs — ignore.
-    return [];
+    // Non-admin users or cloud-collab-unavailable installs — ignore.
+    return empty;
   }
 }
 
@@ -272,6 +303,9 @@ function mapBridgeAgent(
     config: {},
     kind: agent.kind === "team" ? "team" : "expert",
     bridge: true,
+    is_owner: true,
+    is_shared: false,
+    bridge_disconnected: false,
     bridge_connection_id: conn.connection_id,
     bridge_connection_name: conn.display_name,
     bridge_connection_icon:
@@ -308,16 +342,22 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       }
       setError(null);
       try {
-        const list = await fetchAgents();
+        const { agents: list, liveConnectionIds } = await fetchAgents();
         // Only update state when content actually changed, to prevent
         // unnecessary re-renders of every component subscribed to this context
         // (the chat page polls every 10 s to refresh unread badges).
+        let merged: OctopAgent[] = list;
         setAgents((prev) => {
+          merged = retainDisconnectedBridgeAgents(
+            prev,
+            list,
+            liveConnectionIds,
+          );
           if (
             !options?.force &&
-            prev.length === list.length &&
+            prev.length === merged.length &&
             prev.every((a, i) => {
-              const b = list[i];
+              const b = merged[i];
               return (
                 a.agent_id === b.agent_id &&
                 a.state === b.state &&
@@ -330,24 +370,28 @@ export function AgentProvider({ children }: { children: ReactNode }) {
                 a.color === b.color &&
                 a.kind === b.kind &&
                 a.bridge === b.bridge &&
+                a.is_owner === b.is_owner &&
                 a.bridge_connection_id === b.bridge_connection_id &&
                 a.bridge_connection_name === b.bridge_connection_name &&
+                a.bridge_disconnected === b.bridge_disconnected &&
                 sameMemberIds(a.member_ids, b.member_ids)
               );
             })
           ) {
+            merged = prev;
             return prev; // nothing changed — keep the same reference
           }
-          return list;
+          return merged;
         });
 
-        // Reconcile selection with what the server reports.
+        // Reconcile selection with what the server reports. Keep a
+        // disconnected remote pin instead of jumping to the first local expert.
         const stored = localStorage.getItem(STORAGE_KEY);
-        const haveStored = stored && list.some((a) => a.agent_id === stored);
+        const haveStored = stored && merged.some((a) => a.agent_id === stored);
         if (haveStored) {
           persistAndApply(stored);
-        } else if (list.length > 0) {
-          persistAndApply(list[0].agent_id);
+        } else if (merged.length > 0) {
+          persistAndApply(merged[0].agent_id);
         } else {
           persistAndApply(null);
         }

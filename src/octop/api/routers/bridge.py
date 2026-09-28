@@ -45,6 +45,15 @@ class BridgeProbeBody(BaseModel):
     password: str = Field(..., min_length=1)
 
 
+class BridgeConnectionProbeBody(BaseModel):
+    peer_base_url: str = Field(..., description="Remote Octop base URL")
+    peer_username: str = Field(..., min_length=1)
+    password: str | None = Field(
+        default=None,
+        description="Override password; omit or empty to use the stored secret",
+    )
+
+
 def _bridge(server: Any) -> Any:
     rt = server.app_runtime
     if rt is None or getattr(rt, "bridge_manager", None) is None:
@@ -67,6 +76,30 @@ async def probe_peer(
     return cast(
         dict[str, Any],
         await mgr.probe_peer(
+            peer_base_url=body.peer_base_url,
+            peer_username=body.peer_username,
+            password=body.password,
+        ),
+    )
+
+
+@router.post(
+    "/bridge/connections/{connection_id}/probe",
+    summary="Probe a saved connection (stored password if omitted)",
+)
+async def probe_connection(
+    connection_id: str,
+    body: BridgeConnectionProbeBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Login with the form URL/user; reuse the stored password when the field is blank."""
+    mgr = _bridge(server)
+    return cast(
+        dict[str, Any],
+        await mgr.probe_owned_connection(
+            connection_id,
+            owner_user_id=user.id,
             peer_base_url=body.peer_base_url,
             peer_username=body.peer_username,
             password=body.password,

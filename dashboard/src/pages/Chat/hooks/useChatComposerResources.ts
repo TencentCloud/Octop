@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { bridgeApi } from "../../../api/modules/bridge";
 import { connectorsApi } from "../../../api/modules/connectors";
 import { providerApi } from "../../../api/modules/provider";
 import { preferencesApi } from "../../../api/modules/preferences";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
-import { request } from "../../../api/request";
 import {
   knowledgeBasesApi,
   type KnowledgeBase,
@@ -198,52 +196,59 @@ export function useChatComposerResources(
   }, [isNewSession, stickyHitlPolicy, activeThreadId]);
 
   useEffect(() => {
-    // Local MCP credentials do not apply on the peer; hide connectors for
-    // Bridge shadow experts.
-    if (teamHost || remoteBridge) {
+    if (teamHost) {
       setSelectedConnectors([]);
       setChatConnectors([]);
       return;
     }
     let cancelled = false;
     const loadConnectors = () => {
-      void connectorsApi.listInstances().then((instances) => {
-        if (cancelled) return;
-        const options = (instances ?? [])
-          .filter((i) => i.status === "active" && i.has_credentials)
-          .map((i) => ({
-            mcp_server_name: i.mcp_server_name,
-            label:
-              currentUserId !== null && i.owner_user_id !== currentUserId
-                ? `${i.display_name} · ${
-                    i.owner_display_name || i.owner_username || i.owner_user_id
-                  }`
-                : i.display_name,
-            kind: i.kind,
-            default_open:
-              i.default_open === true && i.owner_user_id === currentUserId,
-          }));
-        setChatConnectors(options);
-        const allowed = new Set(options.map((o) => o.mcp_server_name));
-        const defaults = withDefaultOpenKnowledgeBases(
-          options.filter((o) => o.default_open).map((o) => o.mcp_server_name),
-          expertMcpServers ?? [],
-        );
-        setSelectedConnectors((prev) =>
-          resolveInitialConnectors({
-            prev,
-            saved: resolvedAgentId ? loadSavedConnectors(resolvedAgentId) : [],
-            hasSaved: resolvedAgentId
-              ? hasSavedConnectors(resolvedAgentId)
-              : false,
-            defaults,
-            allowed,
-            ignorePrev: isNewSession && !composerTouchedRef.current,
-            ignoreSaved: isNewSession,
-            preferPrev: composerTouchedRef.current,
-          }),
-        );
-      });
+      void connectorsApi
+        .listInstances(remoteBridge ? resolvedAgentId : undefined)
+        .then((instances) => {
+          if (cancelled) return;
+          const options = (instances ?? [])
+            .filter((i) => i.status === "active" && i.has_credentials)
+            .map((i) => ({
+              mcp_server_name: i.mcp_server_name,
+              label:
+                !remoteBridge &&
+                currentUserId !== null &&
+                i.owner_user_id !== currentUserId
+                  ? `${i.display_name} · ${
+                      i.owner_display_name ||
+                      i.owner_username ||
+                      i.owner_user_id
+                    }`
+                  : i.display_name,
+              kind: i.kind,
+              default_open: remoteBridge
+                ? i.default_open === true
+                : i.default_open === true && i.owner_user_id === currentUserId,
+            }));
+          setChatConnectors(options);
+          const allowed = new Set(options.map((o) => o.mcp_server_name));
+          const defaults = withDefaultOpenKnowledgeBases(
+            options.filter((o) => o.default_open).map((o) => o.mcp_server_name),
+            expertMcpServers ?? [],
+          );
+          setSelectedConnectors((prev) =>
+            resolveInitialConnectors({
+              prev,
+              saved: resolvedAgentId
+                ? loadSavedConnectors(resolvedAgentId)
+                : [],
+              hasSaved: resolvedAgentId
+                ? hasSavedConnectors(resolvedAgentId)
+                : false,
+              defaults,
+              allowed,
+              ignorePrev: isNewSession && !composerTouchedRef.current,
+              ignoreSaved: isNewSession,
+              preferPrev: composerTouchedRef.current,
+            }),
+          );
+        });
     };
     loadConnectors();
     const onFocus = () => loadConnectors();
@@ -277,13 +282,9 @@ export function useChatComposerResources(
     setChatKnowledgeBases(undefined);
 
     const loadCapability = (): Promise<KnowledgeCapability> =>
-      bridgeConnectionId
-        ? bridgeApi.getKnowledgeCapability(bridgeConnectionId)
-        : knowledgeBasesApi.getCapability();
+      knowledgeBasesApi.getCapability(resolvedAgentId);
     const loadBases = (): Promise<KnowledgeBase[]> =>
-      bridgeConnectionId
-        ? bridgeApi.listKnowledgeBases(bridgeConnectionId)
-        : knowledgeBasesApi.list();
+      knowledgeBasesApi.list(resolvedAgentId);
 
     void loadCapability()
       .then((capability) => {
@@ -304,9 +305,9 @@ export function useChatComposerResources(
             )
             .map((base) => base.id);
           const allowed = new Set(bases.map((base) => base.id));
-          // Peer owner_user_id rarely matches local user id — for bridge,
-          // treat default_open flags on the peer list as usable defaults.
-          const bridgeDefaults = bridgeConnectionId
+          // Peer owner_user_id rarely matches local user id — for remote
+          // experts, treat default_open flags on the peer list as usable.
+          const bridgeDefaults = remoteBridge
             ? bases.filter((base) => base.default_open).map((base) => base.id)
             : ownedDefaults;
           const defaults = withDefaultOpenKnowledgeBases(
@@ -350,16 +351,14 @@ export function useChatComposerResources(
     isNewSession,
     expertKbKey,
     teamHost,
-    bridgeConnectionId,
+    remoteBridge,
   ]);
 
   useEffect(() => {
     let cancelled = false;
     const loadModels = () => {
-      const fetchModels = bridgeConnectionId
-        ? bridgeApi.listResolvedModels(bridgeConnectionId)
-        : providerApi.listResolvedModels();
-      void fetchModels
+      void providerApi
+        .listResolvedModels(resolvedAgentId)
         .then((data) => {
           if (!cancelled) setAvailableModels(data);
         })
@@ -374,7 +373,7 @@ export function useChatComposerResources(
       cancelled = true;
       window.removeEventListener("focus", onFocus);
     };
-  }, [bridgeConnectionId]);
+  }, [resolvedAgentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -394,12 +393,8 @@ export function useChatComposerResources(
   useEffect(() => {
     let cancelled = false;
     const loadActiveModel = () => {
-      const fetchActive = bridgeConnectionId
-        ? bridgeApi.getActiveModel(bridgeConnectionId)
-        : request<{ provider_name: string; model: string }>(
-            "/providers/active-model",
-          );
-      void fetchActive
+      void providerApi
+        .getActiveModel(resolvedAgentId)
         .then((active) => {
           if (!cancelled) setActiveModelRef(activeModelToRef(active));
         })
@@ -414,11 +409,11 @@ export function useChatComposerResources(
       cancelled = true;
       window.removeEventListener("focus", onFocus);
     };
-  }, [bridgeConnectionId]);
+  }, [resolvedAgentId]);
 
   const handleConnectorsChange = useCallback(
     (names: string[]) => {
-      if (teamHost || remoteBridge) {
+      if (teamHost) {
         setSelectedConnectors([]);
         return;
       }
@@ -426,7 +421,7 @@ export function useChatComposerResources(
       setSelectedConnectors(names);
       if (resolvedAgentId) saveConnectors(resolvedAgentId, names);
     },
-    [resolvedAgentId, teamHost, remoteBridge],
+    [resolvedAgentId, teamHost],
   );
 
   const handleKnowledgeBaseIdsChange = useCallback(

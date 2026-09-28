@@ -13,6 +13,8 @@ interface RemoteExpertHintProps {
   show?: boolean;
   connectionName?: string | null;
   connectionIcon?: string | null;
+  /** Hide the connection name (chips / tight pickers). */
+  compact?: boolean;
 }
 
 /** Marks a sidebar / picker / experts row as a remote Bridge shadow expert. */
@@ -21,6 +23,7 @@ export default function RemoteExpertHint({
   show,
   connectionName,
   connectionIcon,
+  compact,
 }: RemoteExpertHintProps) {
   const { t } = useTranslation();
   const visible = show ?? Boolean(agent?.bridge);
@@ -35,14 +38,18 @@ export default function RemoteExpertHint({
   return (
     <Tooltip title={tip} mouseEnterDelay={0.35}>
       <span
-        className={styles.remoteExpertFlag}
+        className={`${styles.remoteExpertFlag}${
+          compact ? ` ${styles.remoteExpertFlagCompact}` : ""
+        }`}
         aria-label={tip}
         onClick={(event) => event.stopPropagation()}
       >
         <span className={styles.remoteExpertIcon} aria-hidden>
           {iconForName(icon, 11)}
         </span>
-        {name ? <span className={styles.remoteExpertName}>{name}</span> : null}
+        {name && !compact ? (
+          <span className={styles.remoteExpertName}>{name}</span>
+        ) : null}
       </span>
     </Tooltip>
   );

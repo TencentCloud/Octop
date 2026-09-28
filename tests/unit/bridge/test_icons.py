@@ -49,6 +49,16 @@ def test_rewrites_absolute_peer_avatar() -> None:
     assert out == f"/api/agents/{bridge_id}/avatar"
 
 
+def test_drops_peer_avatar_without_bridge_id() -> None:
+    assert (
+        rewrite_remote_icon_url(
+            "/api/agents/01REMOTE/avatar",
+            remote_agent_id="01REMOTE",
+        )
+        is None
+    )
+
+
 def test_empty_returns_none() -> None:
     assert (
         rewrite_remote_icon_url(

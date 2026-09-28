@@ -21,7 +21,7 @@ async def test_bridge_probe_returns_expert_list(env: Any) -> None:
             "id": 3,
             "name": "Remote Expert",
             "description": "Cloud helper",
-            "icon_url": "/api/agents/01REMOTE/icon",
+            "icon_url": "/experts/avatars/scene-healthcare.svg",
             "color": "#112233",
             "state": "idle",
             "kind": "expert",
@@ -65,7 +65,7 @@ async def test_bridge_probe_returns_expert_list(env: Any) -> None:
     assert body["agents"][0]["agent_id"] == "01REMOTE"
     assert body["agents"][0]["name"] == "Remote Expert"
     assert body["agents"][0]["description"] == "Cloud helper"
-    assert body["agents"][0]["icon_url"] == "https://demo.octop.chat/api/agents/01REMOTE/icon"
+    assert body["agents"][0]["icon_url"] == "/experts/avatars/scene-healthcare.svg"
 
     # Probe must not create a persisted connection.
     listed = await client.get("/api/bridge/connections", headers=auth)

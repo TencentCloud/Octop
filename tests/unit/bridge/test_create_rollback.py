@@ -44,7 +44,7 @@ async def test_create_connection_rolls_back_when_connect_fails(
     repo.find_by_display_name.return_value = None
     created = _row()
     repo.create.return_value = created
-    repo.get.return_value = created
+    repo.get.return_value = None
     repo.get_for_owner.return_value = created
     mgr = BridgeManager(
         bridge_repo=repo,
@@ -57,7 +57,7 @@ async def test_create_connection_rolls_back_when_connect_fails(
         lambda url: url.rstrip("/"),
     )
     monkeypatch.setattr(
-        "octop.infra.bridge.manager.new_ulid",
+        "octop.infra.bridge.manager.new_short_id",
         lambda: "01CONN",
     )
     monkeypatch.setattr(

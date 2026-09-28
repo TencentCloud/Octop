@@ -48,7 +48,6 @@ import {
 } from "./utils/chromeInstallGate";
 import { isFileToolName } from "./constants";
 import { browserApi } from "../../api/modules/browser";
-import { bridgeApi } from "../../api/modules/bridge";
 import { octopThreadsApi } from "../../api/modules/octopThreads";
 import type { TokenUsage } from "../../api/types";
 import type { ChatAttachment } from "./hooks/useChat";
@@ -423,9 +422,7 @@ function ChatPageInner() {
         if (chromeCheckInFlightRef.current) return;
         chromeCheckInFlightRef.current = true;
         try {
-          const env = bridgeConnectionId
-            ? await bridgeApi.getBrowserEnvStatus(bridgeConnectionId)
-            : await browserApi.checkEnvStatus();
+          const env = await browserApi.checkEnvStatus(resolvedAgentId);
           if (shouldJumpToChromeInstall(env)) {
             // Peer Chromium install is not tunneled — only nudge local install UX.
             if (bridgeConnectionId) {
@@ -465,7 +462,14 @@ function ChatPageInner() {
       }
       then();
     },
-    [browserSessionId, bridgeConnectionId, isMobile, navigate, t],
+    [
+      browserSessionId,
+      bridgeConnectionId,
+      isMobile,
+      navigate,
+      resolvedAgentId,
+      t,
+    ],
   );
 
   const handleToggleBrowserPanel = useCallback(() => {

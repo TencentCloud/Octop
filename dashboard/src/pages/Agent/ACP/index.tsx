@@ -4,6 +4,7 @@ import { Alert, App, Button, Empty, Form, Switch } from "antd";
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
 import { CardSkeleton } from "../../../components/Skeleton";
+import PeerOnlyRemoteAlert from "../../../components/PeerOnlyRemoteAlert";
 import { acpApi } from "../../../api/modules/acp";
 import {
   ACP_DEFAULT_STDIO_BUFFER_LIMIT_BYTES,
@@ -286,6 +287,9 @@ export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
 
   return (
     <>
+      {agentIdProp === undefined && activeAgent?.bridge ? (
+        <PeerOnlyRemoteAlert hintKey="peerOnlyAcp" />
+      ) : null}
       <div className={styles.toolbar}>
         <div className={styles.toolbarText}>
           <div className={styles.description}>{t("acp.description")}</div>

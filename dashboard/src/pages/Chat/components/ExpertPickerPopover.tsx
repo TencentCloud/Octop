@@ -8,6 +8,7 @@ import SearchablePickerPanel, {
 import { message } from "@/utils/antdMessage";
 import ExpertAgentAvatar, { type ChatAgentOption } from "./ExpertAgentAvatar";
 import RemoteExpertHint from "./RemoteExpertHint";
+import { groupExpertsByConnection } from "../../../utils/remoteExpert";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import styles from "../index.module.less";
 
@@ -46,6 +47,15 @@ export default function ExpertPickerPopover({
   // Leave the hidden-only view once nothing remains hidden.
   const viewingHidden = showingHidden && hiddenAgents.length > 0;
   const listAgents = viewingHidden ? hiddenAgents : visibleAgents;
+  const grouped = useMemo(
+    () => groupExpertsByConnection(listAgents, t("agentSelector.localGroup")),
+    [listAgents, t],
+  );
+  const showGroups = grouped.length > 1;
+  const pickerItems = useMemo(
+    () => (showGroups ? grouped.flatMap((group) => group.agents) : listAgents),
+    [grouped, listAgents, showGroups],
+  );
 
   const filterFn = useCallback(
     (agent: ChatAgentOption, query: string) =>
@@ -56,7 +66,7 @@ export default function ExpertPickerPopover({
 
   return (
     <SearchablePickerPanel
-      items={listAgents}
+      items={pickerItems}
       filterFn={filterFn}
       searchPlaceholder={
         viewingHidden
@@ -69,6 +79,31 @@ export default function ExpertPickerPopover({
           : t("chat.expertPickerEmpty")
       }
       width="compact"
+      getGroupKey={
+        showGroups
+          ? (agent) =>
+              agent.bridge
+                ? agent.bridge_connection_id ??
+                  agent.bridge_connection_name ??
+                  "_"
+                : "local"
+          : undefined
+      }
+      renderGroupHeader={
+        showGroups
+          ? (key, first) => (
+              <div className={styles.expertPickerGroup}>
+                {first.bridge
+                  ? `${first.bridge_connection_name || key}${
+                      first.bridge_disconnected
+                        ? ` · ${t("agentSelector.disconnected")}`
+                        : ""
+                    }`
+                  : t("agentSelector.localGroup")}
+              </div>
+            )
+          : undefined
+      }
       footerIcon={
         remoteManaged ? (
           <Info size={15} aria-hidden />
