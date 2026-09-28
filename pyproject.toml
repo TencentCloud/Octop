@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "octop"
-version = "1.0.2b2"
-description = "Smarter self-hosted AI assistant for multiple users and agents, built on harness-agent"
+version = "1.0.2b3"
+description = "Smarter self-hosted AI assistant for multiple users and agents, built on octop-harness"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.12"
@@ -21,10 +21,10 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
-    "orcakit-harness-agent[all]>=1.0.14",
-    "harness-memory>=0.9.11",
+    "octop-harness[all]>=1.0.0",
+    "octop-memory>=1.0.0",
     "lark-oapi>=1.7.3",
-    "harness-gateway>=0.9.9",
+    "octop-gateway>=1.0.0",
     "cryptography>=41",
     "scalar-fastapi>=1.0",
     "edge-tts>=6.1",
@@ -33,7 +33,7 @@ dependencies = [
     "acme>=5.6.0",
     "josepy>=2.2.0",
     "boto3>=1.40.61",
-    "harness-browser>=0.7.9",
+    "octop-browser>=1.0.0",
     "playwright>=1.40",
     "psycopg[binary]>=3.2",
     "langgraph-checkpoint-postgres>=2.0",

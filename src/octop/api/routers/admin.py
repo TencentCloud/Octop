@@ -21,7 +21,7 @@ async def overview(
         users.append(
             {
                 "username": user.username,
-                "role": user.role.value,
+                "role": user.role,
                 "agents": [],  # agents are now global, not per-user
             }
         )
@@ -44,12 +44,21 @@ async def overview(
     }
 
 
+# The largest page the Settings → Security audit panel offers.
+AUDIT_LOG_MAX_LIMIT = 500
+
+
 @router.get("/audit-log")
 async def audit_log(
     since: int | None = None,
     actor: str | None = None,
     action: str | None = None,
-    limit: int = Query(default=100, ge=1, le=1000),
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=AUDIT_LOG_MAX_LIMIT,
+        description=f"Maximum rows to return, between 1 and {AUDIT_LOG_MAX_LIMIT}.",
+    ),
     _: Any = Depends(require_permission("admin_console")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:

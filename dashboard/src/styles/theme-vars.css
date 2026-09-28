@@ -14,9 +14,10 @@ html[data-theme="light"] {
   --fn-bg-tertiary: #f0f1f3;
   --fn-bg-elevated: #ffffff;
   --fn-bg-layout: #f5f6f8;
-  --fn-bg-hover: rgba(184, 58, 80, 0.04);
-  --fn-bg-active: rgba(184, 58, 80, 0.08);
-  --fn-bg-selected: rgba(184, 58, 80, 0.06);
+  --fn-bg-container: #ffffff;
+  --fn-bg-hover: rgba(232, 93, 117, 0.04);
+  --fn-bg-active: rgba(232, 93, 117, 0.08);
+  --fn-bg-selected: rgba(232, 93, 117, 0.06);
   --fn-bg-code: #f5f6f8;
   --fn-bg-toolbar: #fafbfc;
   --fn-bg-toolbar-hover: #f0f1f3;
@@ -203,9 +204,10 @@ html[data-theme="dark"] {
   --fn-bg-tertiary: #222222;
   --fn-bg-elevated: #1e1e1e;
   --fn-bg-layout: #0e0e0e;
-  --fn-bg-hover: rgba(184, 58, 80, 0.08);
-  --fn-bg-active: rgba(184, 58, 80, 0.14);
-  --fn-bg-selected: rgba(184, 58, 80, 0.1);
+  --fn-bg-container: #141414;
+  --fn-bg-hover: rgba(232, 93, 117, 0.08);
+  --fn-bg-active: rgba(232, 93, 117, 0.14);
+  --fn-bg-selected: rgba(232, 93, 117, 0.1);
   --fn-bg-code: #1e1e1e;
   --fn-bg-toolbar: #161616;
   --fn-bg-toolbar-hover: #222222;

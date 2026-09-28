@@ -16,6 +16,10 @@ describe("skill package backend gates", () => {
     expect(normalizeRootDir("/tmp/project/")).toBe("/tmp/project");
     expect(isHostRootDir("/")).toBe(true);
     expect(isHostRootDir("/tmp/project")).toBe(false);
+    expect(isHostRootDir("C:/")).toBe(true);
+    expect(isHostRootDir("C:\\")).toBe(true);
+    expect(isHostRootDir("D:")).toBe(true);
+    expect(isHostRootDir("C:/Users")).toBe(false);
   });
 
   it("allows local backends with host root", () => {
@@ -88,7 +92,7 @@ describe("skill package backend gates", () => {
     ).toBe(false);
   });
 
-  it("blocks outbound acp_runner under directory sandbox", () => {
+  it("locks ACP runner UI under directory sandbox", () => {
     expect(
       blocksAcpOutboundFromConfig({
         backend: { type: "local_shell", root_dir: "/", virtual_mode: true },

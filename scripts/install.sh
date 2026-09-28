@@ -17,9 +17,9 @@ OCTOP_BIN="$OCTOP_HOME/bin"
 PYTHON_VERSION="3.12"
 OCTOP_REPO="${OCTOP_REPO:-https://github.com/TencentCloud/Octop.git}"
 _OCTOP_REPO_BASE="${OCTOP_REPO%/*}"
-HARNESS_AGENT_REPO="${HARNESS_AGENT_REPO:-${_OCTOP_REPO_BASE}/harness-agent.git}"
-HARNESS_GATEWAY_REPO="${HARNESS_GATEWAY_REPO:-${_OCTOP_REPO_BASE}/harness-gateway.git}"
-HARNESS_BROWSER_REPO="${HARNESS_BROWSER_REPO:-${_OCTOP_REPO_BASE}/harness-browser.git}"
+HARNESS_AGENT_REPO="${HARNESS_AGENT_REPO:-${_OCTOP_REPO_BASE}/octop-harness.git}"
+HARNESS_GATEWAY_REPO="${HARNESS_GATEWAY_REPO:-${_OCTOP_REPO_BASE}/octop-gateway.git}"
+HARNESS_BROWSER_REPO="${HARNESS_BROWSER_REPO:-${_OCTOP_REPO_BASE}/octop-browser.git}"
 
 if [ -n "${BASH_SOURCE[0]:-}" ]; then
     _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -97,9 +97,9 @@ Environment variables:
   OCTOP_HOME              Install directory (default: ~/.octop)
   OCTOP_PYPI_MIRROR       PyPI mirror URL (same as --mirror)
   OCTOP_REPO              Git URL to clone (used by --from-source with no local dir)
-  HARNESS_AGENT_REPO      harness-agent repo (derived from OCTOP_REPO by default)
-  HARNESS_GATEWAY_REPO    harness-gateway repo (derived from OCTOP_REPO by default)
-  HARNESS_BROWSER_REPO    harness-browser repo (used for source installs)
+  HARNESS_AGENT_REPO      octop-harness repo (derived from OCTOP_REPO by default)
+  HARNESS_GATEWAY_REPO    octop-gateway repo (derived from OCTOP_REPO by default)
+  HARNESS_BROWSER_REPO    octop-browser repo (used for source installs)
   PLAYWRIGHT_DOWNLOAD_HOST  Playwright download mirror (optional; auto: npmmirror -> official)
   PLAYWRIGHT_INSTALL_TIMEOUT  Per-mirror download timeout in seconds (default 600)
 
@@ -621,7 +621,7 @@ prepare_console() {
 }
 
 # TEMP: mcp 2.x 移除 RequestContext，与 langchain-mcp-adapters 不兼容。
-# harness-agent>=0.9.18 已在依赖中 pin；此处在验证前再钉一次，覆盖仍拉取到
+# octop-harness>=0.9.18 已在依赖中 pin；此处在验证前再钉一次，覆盖仍拉取到
 # 旧版 harness / 镜像滞后的安装路径。待 Octop 发版跟上后可删除。
 _pin_mcp_compat() {
     info "Pinning mcp<2 (langchain-mcp-adapters compatibility; temporary)..."
@@ -644,10 +644,10 @@ _clone_source_workspace() {
     local workdir="$1"
     command -v git &>/dev/null || die "git is required to clone the repos. Install git or use --from-pypi."
     mkdir -p "$workdir"
-    info "Cloning harness-agent / harness-gateway / Octop sources..."
-    git clone --depth 1 "$HARNESS_AGENT_REPO" "$workdir/harness-agent"
-    git clone --depth 1 "$HARNESS_GATEWAY_REPO" "$workdir/harness-gateway"
-    git clone --depth 1 "$HARNESS_BROWSER_REPO" "$workdir/harness-browser"
+    info "Cloning octop-harness / octop-gateway / Octop sources..."
+    git clone --depth 1 "$HARNESS_AGENT_REPO" "$workdir/octop-harness"
+    git clone --depth 1 "$HARNESS_GATEWAY_REPO" "$workdir/octop-gateway"
+    git clone --depth 1 "$HARNESS_BROWSER_REPO" "$workdir/octop-browser"
     git clone --depth 1 "$OCTOP_REPO" "$workdir/orca"
 }
 
@@ -873,12 +873,12 @@ _install_playwright_browsers() {
 # 检测系统是否已安装 Chrome / Chromium。
 # GUI 系统（macOS / Windows / Linux 桌面）通常已自带，无需再下载 Playwright 自带 Chromium。
 _detect_system_chrome() {
-    # 优先复用 harness-browser 的探测器（与运行期 launch 路径一致）
+    # 优先复用 octop-browser 的探测器（与运行期 launch 路径一致）
     local chrome
     chrome="$("$OCTOP_VENV/bin/python" -c '
 import sys
 try:
-    from harness_browser.cdp.launcher import find_chrome
+    from octop_browser.cdp.launcher import find_chrome
 except Exception:
     sys.exit(0)
 p = find_chrome()

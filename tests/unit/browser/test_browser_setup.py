@@ -29,7 +29,7 @@ posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX-only runtime d
 def test_configure_browser_idle_timeout_updates_harness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from harness_browser.settings import settings as hb_settings
+    from octop_browser.settings import settings as hb_settings
 
     from octop.infra.utils.browser_media import configure_browser_idle_timeout
 
@@ -158,8 +158,8 @@ def test_non_linux_temp_dirs_use_gettempdir_with_stable_token(
     runtime = _runtime_dir_for_uid(uid=7)
     profiles = _relocated_profiles_root_for_uid(uid=7)
 
-    assert runtime == fake_tmp / "runtime-harness-browser-7"
-    assert profiles == fake_tmp / "harness-browser-profiles-7"
+    assert runtime == fake_tmp / "runtime-octop-browser-7"
+    assert profiles == fake_tmp / "octop-browser-profiles-7"
     # Same inputs → same paths across "process restarts" (no pid in the name).
     assert _runtime_dir_for_uid(uid=7) == runtime
     assert _relocated_profiles_root_for_uid(uid=7) == profiles
@@ -266,7 +266,7 @@ def test_ensure_profile_writable_recreates_when_not_writable(
         monkeypatch.setattr(browser_setup, "_under_root_home", lambda _p: False)
         try:
             result = ensure_profile_writable(profile)
-            assert result == profile or "harness-browser-profiles" in str(result)
+            assert result == profile or "octop-browser-profiles" in str(result)
             assert _probe_dir_writable(result)
         finally:
             if profile.exists():
@@ -318,7 +318,7 @@ def test_ensure_profile_writable_never_chmods_system_paths(
     monkeypatch.setattr(browser_setup, "_under_root_home", lambda _p: False)
     monkeypatch.setattr(browser_setup, "_probe_dir_writable", lambda _p: True)
 
-    profile = Path(f"/tmp/harness-browser-profiles-{os.getuid()}") / "default"
+    profile = Path(f"/tmp/octop-browser-profiles-{os.getuid()}") / "default"
     ensure_profile_writable(profile)
 
     # Profile prep no longer chmod/chown at all — recreate/relocate only.

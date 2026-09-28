@@ -38,7 +38,7 @@ async def _collect_async(iterator: AsyncIterator[Any]) -> list[Any]:
 
 
 def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str, Any]:
-    from octop.infra.agents.execute_env import inject_agent_execute_env
+    from octop.infra.agents.workspace.execute_env import inject_agent_execute_env
 
     ws = manager._paths.ensure_agent_workspace(agent_id)
     return inject_agent_execute_env(
@@ -160,7 +160,7 @@ def test_strip_team_host_runtime_tools_drops_mcp(manager: AgentManager) -> None:
 def test_apply_team_host_config_forces_async_ask_agent(manager: AgentManager) -> None:
     from dataclasses import replace as dc_replace
 
-    from harness_agent.config import HarnessAgentConfig
+    from octop_harness.config import HarnessAgentConfig
 
     manager._teams.member_ids = MagicMock(return_value=["mem-a", "mem-b"])  # type: ignore[method-assign]
     cfg = HarnessAgentConfig(workspace_dir=manager.paths.ensure_agent_workspace("host"))
@@ -177,7 +177,7 @@ def test_apply_team_host_config_forces_async_ask_agent(manager: AgentManager) ->
 
 
 def test_apply_expert_config_forces_sync_ask_agent(manager: AgentManager) -> None:
-    from harness_agent.config import HarnessAgentConfig
+    from octop_harness.config import HarnessAgentConfig
 
     cfg = HarnessAgentConfig(workspace_dir=manager.paths.ensure_agent_workspace("expert"))
     out = manager._apply_team_host_config(cfg, _row(agent_id="expert"))
@@ -1146,9 +1146,9 @@ async def test_delete_still_removes_db_row_when_workspace_rmtree_fails(
 
 
 def test_bootstrap_pending_detects_unfinished_onboarding(tmp_path: Path) -> None:
-    from harness_agent.backends import resolve_backend
-    from harness_agent.backends.workspace import BackendWorkspace
-    from harness_agent.middleware.bootstrap import bootstrap_marker_exists
+    from octop_harness.backends import resolve_backend
+    from octop_harness.backends.workspace import BackendWorkspace
+    from octop_harness.middleware.bootstrap import bootstrap_marker_exists
 
     backend = resolve_backend(
         {"type": "filesystem", "root_dir": str(tmp_path), "virtual_mode": False},
@@ -1195,8 +1195,8 @@ def test_build_harness_config_keeps_fs_permissions_for_local_shell_guard(
 
     Octop must not re-mount the guard (or ModelSettings) via cfg.middleware.
     """
-    from harness_agent.middleware.filesystem_guard import FilesystemGuardMiddleware
-    from harness_agent.middleware.model_settings import ModelSettingsMiddleware
+    from octop_harness.middleware.filesystem_guard import FilesystemGuardMiddleware
+    from octop_harness.middleware.model_settings import ModelSettingsMiddleware
 
     cfg = manager._build_harness_config(
         _row(config_json=json.dumps({"backend": {"type": "local_shell", "virtual_mode": True}})),
@@ -1329,7 +1329,7 @@ def test_build_harness_config_tolerates_bad_config_json(manager: AgentManager) -
 @pytest.mark.asyncio
 async def test_start_agent_real_harness_seeds_agents_md(manager: AgentManager) -> None:
     """Uses real HarnessAgentManager — no LLM call, only workspace init."""
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
@@ -1345,7 +1345,7 @@ async def test_start_agent_real_harness_seeds_agents_md(manager: AgentManager) -
     row = manager._repos.agent_repo.get("REAL01")
     assert row is not None
 
-    from harness_agent import HarnessAgent
+    from octop_harness import HarnessAgent
 
     agent = await manager._start_agent(row)
     assert isinstance(agent, HarnessAgent)
@@ -1360,7 +1360,7 @@ async def test_start_agent_real_harness_seeds_agents_md(manager: AgentManager) -
 
 @pytest.mark.asyncio
 async def test_stop_and_start_round_trip(manager: AgentManager) -> None:
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
@@ -1395,8 +1395,8 @@ async def test_stop_and_start_round_trip(manager: AgentManager) -> None:
 
 
 @pytest.mark.asyncio
-async def test_save_security_rebuilds_running_harness_agent(manager: AgentManager) -> None:
-    from harness_agent import HarnessAgentManager
+async def test_save_security_rebuilds_running_octop_harness(manager: AgentManager) -> None:
+    from octop_harness import HarnessAgentManager
 
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
@@ -1425,7 +1425,7 @@ async def test_save_security_rebuilds_running_harness_agent(manager: AgentManage
 
 @pytest.mark.asyncio
 async def test_reload_skips_stopped_agent(manager: AgentManager) -> None:
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
@@ -1456,7 +1456,7 @@ async def test_reload_skips_stopped_agent(manager: AgentManager) -> None:
 @pytest.mark.asyncio
 async def test_create_seeds_bootstrap_files(manager: AgentManager) -> None:
     """create() must seed harness workspace (BOOTSTRAP.md, AGENTS.md, …) before start."""
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     from octop.infra.agents.manager import AgentCreateSpec
 
@@ -1487,7 +1487,7 @@ async def test_create_seeds_bootstrap_files(manager: AgentManager) -> None:
 @pytest.mark.asyncio
 async def test_start_team_host_does_not_copy_builtin_skills(manager: AgentManager) -> None:
     """Team hosts skip harness init_workspace so skills are never copied."""
-    from harness_agent import HarnessAgent, HarnessAgentManager
+    from octop_harness import HarnessAgent, HarnessAgentManager
 
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
@@ -1519,7 +1519,7 @@ async def test_create_keeps_user_workspace_dir(
     tmp_path: Path,
 ) -> None:
     """Explicit config.workspace_dir must not be replaced by the scoped default."""
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     from octop.infra.agents.manager import AgentCreateSpec
 
@@ -1558,7 +1558,7 @@ async def test_create_persists_rootfs_workspace_under_scoped_root(
     tmp_path: Path,
 ) -> None:
     """Non-host root_dir → config.workspace_dir is rootfs-absolute under that root."""
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     from octop.infra.agents.manager import AgentCreateSpec
 
@@ -1628,7 +1628,7 @@ def test_resolve_workspace_dir_backfills_legacy_row(manager: AgentManager) -> No
 @pytest.mark.asyncio
 async def test_templated_agent_keeps_expert_soul_on_reload(manager: AgentManager) -> None:
     """Reload must not overwrite expert template SOUL.md with persona defaults."""
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     from octop.infra.agents.experts.catalog import ExpertCatalog
     from octop.infra.agents.manager import AgentCreateSpec
@@ -1988,7 +1988,7 @@ def test_build_mcp_configs_shared_agent_uses_connector_user_override(manager: Ag
 
 def test_mcp_tool_filter_uses_server_prefix(manager: AgentManager) -> None:
     """Harness exposes MCP tools as {mcp_server_name}_{tool}; chat filters by prefix."""
-    from harness_agent.mcp import filter_tools_for_mcp_servers, mcp_tool_names
+    from octop_harness.mcp import filter_tools_for_mcp_servers, mcp_tool_names
 
     mcp_name = "tencent-ima__01INST"
     tools = [{"name": f"{mcp_name}_list_notes"}, {"name": f"{mcp_name}_search_notes"}]

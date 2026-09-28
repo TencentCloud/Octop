@@ -11,6 +11,11 @@ import { useTranslation } from "react-i18next";
 import { App } from "antd";
 
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import {
+  isPwaDisplay,
+  needsComposerVisualViewportFix,
+} from "../../../hooks/viewport";
+import { useKeepInVisualViewport } from "../../../hooks/useKeepInVisualViewport";
 import { useSlashCommands } from "../../../hooks/useSlashCommands";
 import SlashCommandMenu from "./SlashCommandMenu";
 import { agentChatApi } from "../../../api/modules/agentChat";
@@ -25,7 +30,6 @@ import ChatInputPreviewBar from "./ChatInputPreviewBar";
 import ChatInputActionsRow from "./ChatInputActionsRow";
 import ChatQueuedMessages from "./ChatQueuedMessages";
 import { useVoiceInput } from "../../../hooks/useVoiceInput";
-import { useKeyboardOffset } from "../../../hooks/useKeyboardOffset";
 import { useChatAttachments } from "../hooks/useChatAttachments";
 import { useSlashMentionInput } from "../hooks/useSlashMentionInput";
 import { stripThinkingTags } from "../utils/chatAttachments";
@@ -187,7 +191,12 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const { commands: slashCommands, labelFor } = useSlashCommands("ui");
     const skillDisplayName = useSkillDisplayName();
     const isMobile = useIsMobile();
-    useKeyboardOffset();
+    const shellRef = useRef<HTMLDivElement>(null);
+    const keepComposerInView =
+      typeof window !== "undefined" &&
+      !isPwaDisplay() &&
+      (isMobile || needsComposerVisualViewportFix());
+    useKeepInVisualViewport(shellRef, keepComposerInView);
     const [text, setText] = useState(
       () => initialText || readInputDraft(agentId, threadId),
     );
@@ -715,6 +724,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     return (
       <div
+        ref={shellRef}
         className={`${styles.chatInput} ${dragOver ? styles.dropActive : ""}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -851,6 +861,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <ChatInputActionsRow
             isMobile={isMobile}
             isStreaming={isStreaming}
+            isTeam={isTeam}
             disabled={disabled}
             canSend={canSend}
             text={text}

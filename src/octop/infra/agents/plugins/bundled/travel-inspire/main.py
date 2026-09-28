@@ -8,7 +8,7 @@ import random
 from datetime import date
 from typing import Any
 
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 _DESTINATIONS: tuple[dict[str, Any], ...] = (
     {

@@ -1,9 +1,9 @@
 /**
- * memoryDashboard — talks to the per-agent harness-memory dashboard
+ * memoryDashboard — talks to the per-agent octop-memory dashboard
  * surface mounted at ``/api/agents/{aid}/memory/*`` (octop router).
  *
  * Each function maps one-to-one to a backend endpoint. Type defs
- * mirror the wire shape the harness-memory bridge handlers emit
+ * mirror the wire shape the octop-memory bridge handlers emit
  * (see ``harness_memory.application.dashboard_data``); we deliberately
  * keep the shapes loose / partial and rely on the BE to never break
  * field names, so this client doesn't need to round-trip every CI run.

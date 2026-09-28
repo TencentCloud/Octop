@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from harness_agent.slash import SlashCommand, SlashSink
+from octop_harness.slash import SlashCommand, SlashSink
 
 from octop.i18n import tr as full_tr
 from octop.i18n.domains.slash import tr

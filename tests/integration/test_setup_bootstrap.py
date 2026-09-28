@@ -102,14 +102,16 @@ async def test_main_agent_seeds_general_assistant_workspace(patched_app_client: 
     """Finish creates main with expert files even when no provider is configured yet."""
     c, _srv, home = patched_app_client
     await bootstrap_admin(c, home)
-    ws = home / "workspaces" / "main"
+    ws = home / "agents" / "main"
     assert (ws / "SOUL.md").is_file()
     # New agents use system_files_path=.octop — BackendWorkspace remaps skills/.
     assert (ws / ".octop" / "skills" / "octop-assistant" / "SKILL.md").is_file()
 
 
-async def test_main_agent_uses_home_scoped_backend(patched_app_client: Any) -> None:
-    """Default main uses the same home-scoped local backend as dashboard-created agents."""
+async def test_main_agent_uses_fs_root_backend(patched_app_client: Any) -> None:
+    """Default main uses the same FS-root local backend as dashboard-created agents."""
+    from octop.infra.utils.host_dirs import host_fs_tree_root
+
     c, srv, home = patched_app_client
     await bootstrap_admin(c, home)
     assert srv.app_runtime is not None
@@ -118,10 +120,10 @@ async def test_main_agent_uses_home_scoped_backend(patched_app_client: Any) -> N
     cfg = json.loads(row.config_json or "{}")
     assert cfg["backend"] == {
         "type": "local_shell",
-        "root_dir": home.parent.resolve().as_posix(),
+        "root_dir": host_fs_tree_root(),
         "virtual_mode": True,
     }
-    assert cfg["workspace_dir"] == "/.octop/workspaces/main"
+    assert cfg["workspace_dir"] == str((home / "agents" / "main").resolve())
 
 
 async def test_main_agent_uses_general_assistant_template(patched_app_client: Any) -> None:
