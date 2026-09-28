@@ -189,9 +189,14 @@ def test_page_has_package_version_matches_wheel_and_sdist() -> None:
 
 def test_index_label_prefers_hostname() -> None:
     assert index_label("https://pypi.org/simple") == "pypi.org"
+    assert index_label("https://PyPI.org/simple") == "pypi.org"
     assert (
         index_label("https://mirrors.cloud.tencent.com/pypi/simple") == "mirrors.cloud.tencent.com"
     )
+    assert index_label("https://notpypi.org/simple") == "notpypi.org"
+    assert index_label("https://pypi.org.evil.example/simple") == "pypi.org.evil.example"
+    assert index_label("https://pypi.org@evil.example/simple") == "evil.example"
+    assert index_label("https://evil.example/simple?next=https://pypi.org") == "evil.example"
 
 
 def test_probe_index_classifies_missing_and_unreachable(
