@@ -8,6 +8,7 @@
 
 ### 修复
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+- Token 用量接口对非法 `window` 参数返回 400 却带 `INTERNAL_ERROR`（前端显示「服务器内部错误」、服务端也不落日志），改报 `SLASH_BAD_ARGS` 并在 `details.window` 回显被拒的值（Fixes #1249）。
 
 ## [1.0.2b3] - 2026-09-26
 
