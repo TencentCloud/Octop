@@ -12,6 +12,7 @@ import type { TreeSelectProps } from "antd";
 import { FolderPlus, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/antdMessage";
+import { isImeComposing } from "@/utils/ime";
 import { request } from "../../../api/request";
 import {
   HOST_FS_ROOT,
@@ -303,8 +304,8 @@ export default function RootDirSelect({
               disabled={busy}
               data-testid="root-dir-rename-input"
               onChange={(e) => setEditingName(e.target.value)}
-              onPressEnter={() => {
-                void commitRename(path, editingName);
+              onPressEnter={(e) => {
+                if (!isImeComposing(e)) void commitRename(path, editingName);
               }}
               onBlur={() => {
                 void commitRename(path, editingName);

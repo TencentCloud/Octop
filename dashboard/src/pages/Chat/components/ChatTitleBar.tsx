@@ -16,6 +16,7 @@ import SessionChannelIcon from "./SessionChannelIcon";
 import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
 import { DESKTOP_DRAG_REGION_CLASS } from "../../../utils/desktopChrome";
+import { isImeComposing } from "../../../utils/ime";
 import { useCollapseThinking } from "../hooks/useCollapseThinking";
 
 interface ChatTitleBarProps {
@@ -151,6 +152,7 @@ export default function ChatTitleBar({
             onChange={(e) => setEditValue(e.target.value)}
             onBlur={commitEdit}
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === "Enter") commitEdit();
               if (e.key === "Escape") {
                 setEditValue(title);
