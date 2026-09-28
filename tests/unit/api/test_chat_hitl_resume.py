@@ -10,6 +10,7 @@ import pytest
 
 from octop.api.routers.chat.routes import iter_dashboard_hitl_resume_sse
 from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator
+from octop.infra.gateway.ws.ws_hub import WebSocketHub
 
 
 def _parse_sse_chunks(raw: str) -> list[dict[str, Any]]:
@@ -254,6 +255,149 @@ async def test_dashboard_hitl_resume_finishes_after_client_disconnect() -> None:
 
     assert completed is True
     assert frames == []
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hitl_resume_broadcasts_to_thread_subscribers() -> None:
+    """A page open on the thread sees the remote resolution live (no reload)."""
+
+    async def _resume(*_args: object, **_kwargs: object):
+        yield {"type": "token", "content": "resuming"}
+        yield {"type": "state_snapshot", "data": {"messages": []}}
+
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = _resume
+    hitl = HitlChannelCoordinator()
+    hub = WebSocketHub()
+
+    received: list[dict[str, Any]] = []
+
+    async def _send(frame: dict[str, Any]) -> None:
+        received.append(frame)
+
+    hub.register("conn-open-page", _send)
+    hub.subscribe("thr-open", "conn-open-page")
+
+    async for _ in iter_dashboard_hitl_resume_sse(
+        server=object(),
+        processor=processor,
+        hitl_coordinator=hitl,
+        agent_id="agent-1",
+        thread_id="thr-open",
+        user_id=1,
+        decisions=[{"type": "approve"}],
+        pending=None,
+        session_key="sk-open",
+        channel_type="dashboard",
+        locale="en",
+        is_disconnected=AsyncMock(return_value=False),
+        hub=hub,
+    ):
+        pass
+
+    assert [c["type"] for c in received] == ["token", "state_snapshot", "done"]
+    assert hub.is_turn_active("thr-open") is False
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hitl_resume_broadcasts_after_client_disconnect() -> None:
+    """Subscribers keep receiving frames even once the SSE client is gone."""
+
+    async def _resume(*_args: object, **_kwargs: object):
+        yield {"type": "token", "content": "still running"}
+
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = _resume
+    hitl = HitlChannelCoordinator()
+    hub = WebSocketHub()
+
+    received: list[dict[str, Any]] = []
+
+    async def _send(frame: dict[str, Any]) -> None:
+        received.append(frame)
+
+    hub.register("conn-open-page", _send)
+    hub.subscribe("thr-gone", "conn-open-page")
+
+    frames = [
+        frame
+        async for frame in iter_dashboard_hitl_resume_sse(
+            server=object(),
+            processor=processor,
+            hitl_coordinator=hitl,
+            agent_id="agent-1",
+            thread_id="thr-gone",
+            user_id=1,
+            decisions=[{"type": "approve"}],
+            pending=None,
+            session_key="sk-gone",
+            channel_type="dashboard",
+            locale="en",
+            is_disconnected=AsyncMock(return_value=True),
+            hub=hub,
+        )
+    ]
+
+    assert frames == []
+    assert [c["type"] for c in received] == ["token", "done"]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hitl_resume_broadcasts_followup_pause_to_subscribers() -> None:
+    """A follow-up HITL pause mid-resume also reaches WS subscribers.
+
+    The hitl_required chunk must carry the enriched ``request`` (pending_id)
+    and the turn must end with ``done`` + ``hitl_paused``, not a plain done.
+    """
+
+    async def _resume(*_args: object, **_kwargs: object):
+        yield {"type": "token", "content": "checking"}
+        yield {
+            "type": "hitl_required",
+            "request": {
+                "action_requests": [
+                    {"name": "execute", "args": {"command": "ls -la /tmp"}},
+                ],
+                "review_configs": [
+                    {"action_name": "execute", "allowed_decisions": ["approve", "reject"]},
+                ],
+            },
+        }
+
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = _resume
+    hitl = HitlChannelCoordinator()
+    hub = WebSocketHub()
+
+    received: list[dict[str, Any]] = []
+
+    async def _send(frame: dict[str, Any]) -> None:
+        received.append(frame)
+
+    hub.register("conn-open-page", _send)
+    hub.subscribe("thr-pause", "conn-open-page")
+
+    async for _ in iter_dashboard_hitl_resume_sse(
+        server=object(),
+        processor=processor,
+        hitl_coordinator=hitl,
+        agent_id="agent-1",
+        thread_id="thr-pause",
+        user_id=1,
+        decisions=[{"type": "approve"}],
+        pending=None,
+        session_key="sk-pause",
+        channel_type="dashboard",
+        locale="en",
+        is_disconnected=AsyncMock(return_value=False),
+        hub=hub,
+    ):
+        pass
+
+    assert [c["type"] for c in received] == ["token", "hitl_required", "done"]
+    assert received[-1]["hitl_paused"] is True
+    assert received[1]["request"]["pending_id"]
+    assert hub.is_turn_active("thr-pause") is False
 
 
 @pytest.mark.asyncio

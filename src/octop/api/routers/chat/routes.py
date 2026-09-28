@@ -103,11 +103,16 @@ async def iter_dashboard_hitl_resume_sse(
     channel_type: str,
     locale: str,
     is_disconnected: Callable[[], Awaitable[bool]],
+    hub: Any | None = None,
 ) -> AsyncIterator[str]:
     """Stream dashboard HITL resume chunks and persist any nested ``hitl_required``.
 
     Follow-up interrupts during resume must land in the pending store so history
     reload / refresh can reinject the approval card (same as the initial turn).
+
+    When *hub* is given, every chunk is also broadcast to the thread's WebSocket
+    subscribers (mirroring the WS turn channel) so dashboard pages open on the
+    thread see the remote resolution live and dismiss their approval/ask card.
     """
     rejected = any(isinstance(d, dict) and d.get("type") == "reject" for d in decisions)
     if pending is not None and pending.resume_agent_id:
@@ -145,6 +150,20 @@ async def iter_dashboard_hitl_resume_sse(
     )
     disconnected = False
     followup_pause = False
+
+    async def broadcast(chunk: dict[str, Any]) -> None:
+        # Never let delivery failures abort the harness turn — a dead subscriber
+        # must not stop generation mid-node (same contract as ws_channel).
+        if hub is None:
+            return
+        try:
+            await hub.push_to_thread(thread_id, chunk)
+        except Exception:
+            logger.exception(
+                "hitl resume broadcast failed thread=%s (turn continues)",
+                thread_id,
+            )
+
     # Clear the in-memory pause before the (possibly long) resume stream so
     # history reload cannot reinject the same card while the turn continues.
     if pending is not None:
@@ -152,6 +171,8 @@ async def iter_dashboard_hitl_resume_sse(
             pending.pending_id,
             "rejected" if rejected else "approved",
         )
+    if hub is not None:
+        hub.mark_turn_active(thread_id)
     try:
         async for chunk in processor.iter_hitl_resume_chunks(
             agent_id=agent_id,
@@ -169,6 +190,8 @@ async def iter_dashboard_hitl_resume_sse(
                     record = hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
                     request_payload["pending_id"] = record.pending_id
                     chunk["request"] = request_payload
+            if isinstance(chunk, dict):
+                await broadcast(chunk)
             if not disconnected:
                 yield format_sse("chunk", chunk)
         # A new approval card is still pending. Draining now would start a
@@ -176,11 +199,15 @@ async def iter_dashboard_hitl_resume_sse(
         # without another pause. A plain ``done`` would also make the
         # dashboard flush locally queued messages and reload history.
         if followup_pause:
+            paused_frame = {"type": "done", "hitl_paused": True}
+            await broadcast(paused_frame)
             if not disconnected:
-                yield format_sse("chunk", {"type": "done", "hitl_paused": True})
+                yield format_sse("chunk", paused_frame)
             return
+        done_frame = {"type": "done"}
+        await broadcast(done_frame)
         if not disconnected:
-            yield format_sse("chunk", {"type": "done"})
+            yield format_sse("chunk", done_frame)
         # Steers parked across the HITL pause drain at this
         # boundary and continue through a normal WS turn — also when the SSE
         # client disconnected, because the resume itself completed here.
@@ -202,10 +229,13 @@ async def iter_dashboard_hitl_resume_sse(
         # leave the record looking like a successful approve/reject.
         if pending is not None:
             hitl_coordinator.store.mark_resolved(pending.pending_id, "expired")
-        yield format_sse(
-            "chunk",
-            {"type": "error", "message": format_stream_error(exc, locale)},
-        )
+        error_frame = {"type": "error", "message": format_stream_error(exc, locale)}
+        await broadcast(error_frame)
+        await broadcast({"type": "done"})
+        yield format_sse("chunk", error_frame)
+    finally:
+        if hub is not None:
+            hub.mark_turn_idle(thread_id)
 
 
 def _dashboard_hitl_stream_context(
@@ -285,6 +315,7 @@ async def resume_hitl(
             channel_type=channel_type,
             locale=resolve_request_locale(request),
             is_disconnected=request.is_disconnected,
+            hub=server.app_runtime.gateway.ws_hub,
         ):
             yield frame
 
