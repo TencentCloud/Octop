@@ -51,6 +51,7 @@ from octop.infra.gateway.process.harness_request import (
     build_content_from_message,
     build_harness_request,
 )
+from octop.infra.gateway.process.inbound_context import build_inbound_context
 from octop.infra.gateway.process.message_keys import (
     resolve_user_id_for_message,
     sanitize_im_metadata,
@@ -789,6 +790,7 @@ class GlobalProcessor:
             agent_id=agent_id,
             session_key=session_key,
             source=f"{msg.channel_type}/{msg.channel_id}",
+            inbound_context=build_inbound_context(msg, user_id=user_id, locale=locale),
             content=content,
             model=model_ref,
             message_kwargs=message_kwargs,
@@ -1264,6 +1266,7 @@ class GlobalProcessor:
             agent_id=agent_id,
             session_key=session_key,
             source=source,
+            inbound_context=build_inbound_context(msg, user_id=user_id, locale=locale),
             content=content,
             model=model_ref,
             message_kwargs=message_kwargs or None,
