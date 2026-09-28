@@ -170,6 +170,11 @@ export interface ProjectComment {
   /** ``none | conclusion``。 */
   node_type: string;
   concluded: boolean;
+  /** 采纳者（本批只写 `user`）；未采纳时三者均为 null。 */
+  concluded_by_type?: string | null;
+  concluded_by_id?: string | null;
+  /** ★ 采纳者显示名由**后端**按既有解析面解析好 ⇒ 前端**直接用**，不自己拼 `type:id`。 */
+  concluded_by_name?: string | null;
   created_at: number;
   updated_at: number;
 }

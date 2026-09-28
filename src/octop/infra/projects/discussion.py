@@ -19,6 +19,9 @@ owns the §4.6 matrix, so every entry point delegates to its
 
 from __future__ import annotations
 
+import json
+
+from octop.infra.db.repos.audit import AuditRepo
 from octop.infra.db.repos.project_content import (
     COMMENT_AUTHOR_AGENT,
     COMMENT_AUTHOR_TYPES,
@@ -56,6 +59,11 @@ class ProjectDiscussion:
     def __init__(self, services: SharedServices) -> None:
         self._comments = services.project_comment_repo
         self._projects = ProjectService(services)
+        self._services = services
+        # audit_log is the **history**; the conclusion columns on the comment row
+        # are the **only** authority for the current state (PLAN.md §2.1c). No code
+        # may derive the current conclusion by reading ``audit_log``.
+        self._audit = getattr(services, "audit_repo", None) or AuditRepo(services.db)
 
     # ── reads ────────────────────────────────────────────────────────────────
 
@@ -92,7 +100,41 @@ class ProjectDiscussion:
         if row is None or row.project_id != project_id:
             raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Comment not found in this project.")
         node_type = COMMENT_NODE_CONCLUSION if concluded else COMMENT_NODE_NONE
-        self._comments.set_node_type(comment_id, node_type)
+        # Audit records the **identifier**, never the display name (a later rename
+        # must not rewrite history). Adopting stores the actor, un-adopting clears
+        # both columns in the same UPDATE, so `NULL/NULL <=> not the conclusion`.
+        actor_type = "user"
+        actor_id = str(user.id)
+        by_type = actor_type if concluded else None
+        by_id = actor_id if concluded else None
+        action = "project.comment.conclude" if concluded else "project.comment.unconclude"
+        payload = json.dumps(
+            {
+                "project_id": project_id,
+                "task_id": row.task_id,
+                "node_type": node_type,
+                "concluded_by_type": by_type,
+                "concluded_by_id": by_id,
+            },
+            ensure_ascii=False,
+        )
+        # One transaction for state **and** audit: a failed audit write must roll the
+        # state back — never "columns changed, log missing" (PLAN.md §2.1c P6).
+        with self._services.db.transaction() as conn:
+            self._comments.set_node_type(
+                comment_id,
+                node_type,
+                concluded_by_type=by_type,
+                concluded_by_id=by_id,
+                conn=conn,
+            )
+            self._audit.write(
+                actor=getattr(user, "username", None) or str(user.id),
+                action=action,
+                target=comment_id,
+                payload=payload,
+                conn=conn,
+            )
         refreshed = self._comments.get(comment_id)
         if refreshed is None:  # pragma: no cover - the row was just updated
             raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Comment not found in this project.")

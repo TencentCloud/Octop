@@ -69,14 +69,14 @@ def _version(db: SqlitePool) -> int:
 
 
 def test_migration_020_is_the_applied_watermark(db: SqlitePool):
-    assert _version(db) == 21
+    assert _version(db) == 22
 
 
 def test_migration_020_is_idempotent(tmp_path: Path):
     pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     run_migrations(pool)  # must not raise; every DDL item is IF NOT EXISTS guarded
-    assert _version(pool) == 21
+    assert _version(pool) == 22
     assert set(NEW_TABLES) <= _table_names(pool)
 
 

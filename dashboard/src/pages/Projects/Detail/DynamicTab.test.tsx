@@ -14,6 +14,47 @@ vi.mock("../../../api/request", () => ({
   requestBlob: vi.fn(),
   requestUpload: vi.fn(),
 }));
+// ★ i18n 用**真 zh.json** 解析（仓内 S10 惯例，与 `RailPanels.test.tsx` 同款）：
+// 结论文本要断言【名字进入可见文本】，而全局 key-mock **不插值** ⇒ 必须真 zh。
+vi.mock("react-i18next", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const zh = JSON.parse(
+    fs.readFileSync(
+      path.resolve(process.cwd(), "src/locales/zh.json"),
+      "utf-8",
+    ),
+  ) as Record<string, unknown>;
+  const lookup = (key: string): string | undefined => {
+    let node: unknown = zh;
+    for (const part of key.split(".")) {
+      if (node === null || typeof node !== "object") return undefined;
+      node = (node as Record<string, unknown>)[part];
+    }
+    return typeof node === "string" ? node : undefined;
+  };
+  const interpolate = (tpl: string, opts?: Record<string, unknown>) =>
+    opts
+      ? tpl.replace(/\{\{(\w+)\}\}/g, (m, n: string) =>
+          n in opts ? String(opts[n]) : m,
+        )
+      : tpl;
+  return {
+    useTranslation: () => ({
+      t: (key: string, fallback?: unknown, opts?: unknown) => {
+        const options = (
+          fallback !== null && typeof fallback === "object" ? fallback : opts
+        ) as Record<string, unknown> | undefined;
+        const template =
+          lookup(key) ?? (typeof fallback === "string" ? fallback : undefined);
+        return template === undefined ? key : interpolate(template, options);
+      },
+      i18n: { language: "zh", changeLanguage: () => Promise.resolve() },
+    }),
+    Trans: ({ children }: { children?: unknown }) => children,
+  };
+});
+
 vi.mock("@/utils/antdMessage", () => ({
   message: {
     error: vi.fn(),
@@ -95,11 +136,9 @@ describe("动态 Tab = 项目留言 feed（批次八 AC-A-1..A-4）", () => {
   it("AC-A-1：有 composer；发布调用 POST /projects/p1/comments（正文）", async () => {
     renderTab();
     const composer = await screen.findByTestId("feed-composer");
-    const input = within(composer).getByPlaceholderText(
-      "projects.feedComposerPlaceholder",
-    );
+    const input = within(composer).getByPlaceholderText("写点什么…");
     fireEvent.change(input, { target: { value: "新留言" } });
-    fireEvent.click(within(composer).getByText("projects.feedPost"));
+    fireEvent.click(within(composer).getByText("发布"));
 
     await waitFor(() => {
       const post = mockedRequest.mock.calls.find(
@@ -138,7 +177,7 @@ describe("动态 Tab = 项目留言 feed（批次八 AC-A-1..A-4）", () => {
 
     // 点击前先让「下一次读」返回已采纳形态（POST 后组件会 refresh）。
     comments = [{ ...COMMENT, concluded: true, node_type: "conclusion" }];
-    fireEvent.click(within(item).getByText("projects.conclude"));
+    fireEvent.click(within(item).getByText("采纳为结论"));
     await waitFor(() =>
       expect(
         mockedRequest.mock.calls.some(
@@ -153,7 +192,7 @@ describe("动态 Tab = 项目留言 feed（批次八 AC-A-1..A-4）", () => {
     expect(
       within(concluded).getByTestId("comment-conclusion-badge"),
     ).toBeInTheDocument();
-    fireEvent.click(within(concluded).getByText("projects.unconclude"));
+    fireEvent.click(within(concluded).getByText("取消采纳"));
     await waitFor(() =>
       expect(
         mockedRequest.mock.calls.some(
@@ -190,7 +229,7 @@ describe("动态 Tab = 项目留言 feed（批次八 AC-A-1..A-4）", () => {
   it("AC-A-7：无留言 → feed-empty（不报错、不空白）", async () => {
     renderTab();
     expect(await screen.findByTestId("feed-empty")).toHaveTextContent(
-      "projects.feedEmpty",
+      "暂无留言",
     );
     expect(screen.queryAllByTestId("feed-item")).toHaveLength(0);
   });
@@ -198,7 +237,88 @@ describe("动态 Tab = 项目留言 feed（批次八 AC-A-1..A-4）", () => {
   it("★ O4：占位文案【键保留但不再渲染】", async () => {
     renderTab();
     await screen.findByTestId("feed-empty");
-    expect(screen.queryByText("projects.dynamicPlaceholder")).toBeNull();
-    expect(screen.queryByText("projects.dynamicComingSoon")).toBeNull();
+    expect(screen.queryByText("动态流即将上线")).toBeNull();
+    expect(screen.queryByText("排入下一批")).toBeNull();
+  });
+});
+
+describe("结论归属（P3 展示形态 / P3b 显示口径 / L30）", () => {
+  it("① 名字可用 → 「结论 · 由 <名字> 采纳」（文本，非 tooltip）", async () => {
+    comments = [
+      {
+        ...COMMENT,
+        concluded: true,
+        node_type: "conclusion",
+        concluded_by_type: "user",
+        concluded_by_id: "7",
+        concluded_by_name: "张三",
+      },
+    ];
+    renderTab();
+
+    const by = await screen.findByTestId("comment-conclusion-by");
+    expect(by).toHaveTextContent("结论 · 由 张三 采纳");
+    // 既有徽标 testid 保留 ✓
+    expect(screen.getByTestId("comment-conclusion-badge")).toBeInTheDocument();
+  });
+
+  it("② 名字拿不到 → 回退 `type:id`（★ 仍可区分「谁」）", async () => {
+    comments = [
+      {
+        ...COMMENT,
+        comment_id: "c_a",
+        concluded: true,
+        concluded_by_type: "user",
+        concluded_by_id: "42",
+        concluded_by_name: null,
+      },
+    ];
+    renderTab();
+    expect(
+      await screen.findByTestId("comment-conclusion-by"),
+    ).toHaveTextContent("结论 · 由 user:42 采纳");
+  });
+
+  it("③ 连 id 都没有 → 「已注销用户」（**不得空白**）", async () => {
+    comments = [
+      {
+        ...COMMENT,
+        concluded: true,
+        concluded_by_type: null,
+        concluded_by_id: null,
+        concluded_by_name: null,
+      },
+    ];
+    renderTab();
+    const by = await screen.findByTestId("comment-conclusion-by");
+    expect(by).toHaveTextContent("已注销用户");
+    expect(by.textContent?.trim()).not.toBe("");
+  });
+
+  it("★ 可区分性：两位不同采纳者 ⇒ 文本不同（回退也不许退化成同一占位）", async () => {
+    comments = [
+      {
+        ...COMMENT,
+        comment_id: "c1",
+        concluded: true,
+        concluded_by_type: "user",
+        concluded_by_id: "1",
+        concluded_by_name: null,
+      },
+      {
+        ...COMMENT,
+        comment_id: "c2",
+        concluded: true,
+        concluded_by_type: "user",
+        concluded_by_id: "2",
+        concluded_by_name: null,
+      },
+    ];
+    renderTab();
+    const labels = (await screen.findAllByTestId("comment-conclusion-by")).map(
+      (node) => node.textContent,
+    );
+    expect(labels).toEqual(["结论 · 由 user:1 采纳", "结论 · 由 user:2 采纳"]);
+    expect(new Set(labels).size).toBe(2);
   });
 });

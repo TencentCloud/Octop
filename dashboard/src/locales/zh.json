@@ -6329,6 +6329,8 @@
     "feedEmpty": "暂无留言",
     "conclusionBadge": "结论",
     "conclude": "采纳为结论",
-    "unconclude": "取消采纳"
+    "unconclude": "取消采纳",
+    "conclusionBy": "结论 · 由 {{name}} 采纳",
+    "concludedByUnknown": "已注销用户"
   }
 }

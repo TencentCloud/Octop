@@ -239,8 +239,8 @@ def test_dashboard_projects_namespace_is_paired_and_localized():
     en = json.loads((repo / "dashboard/src/locales/en.json").read_text(encoding="utf-8"))
     zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
     assert set(en["projects"]) == set(zh["projects"])
-    # 208+4+22+4+1 = 239, + 6 batch 8 (PLAN §5) = 245.
-    assert len(zh["projects"]) == 245
+    # 208+4+22+4+1 = 239, + 6 batch 8 (PLAN §5) = 245, + 2 batch 19 = 247.
+    assert len(zh["projects"]) == 247
     # R6 copy change: values only, keys untouched.
     assert zh["projects"]["taskStatusReview"] == "审核中"
     assert zh["projects"]["taskStatusBlocked"] == "已阻塞"
@@ -415,8 +415,8 @@ def test_batch2_projects_keys_exist_in_both_locales():
         assert key in zh["projects"], f"zh projects.{key} missing"
         assert key in en["projects"], f"en projects.{key} missing"
         assert en["projects"][key] != "", f"en projects.{key} is empty"
-    assert len(zh["projects"]) == 245
-    assert len(en["projects"]) == 245
+    assert len(zh["projects"]) == 247
+    assert len(en["projects"]) == 247
 
 
 # ── batch 3 (T-I18N3): edit-dialog labels + two rejection codes ──────────────
@@ -566,7 +566,7 @@ def test_batch4_project_keys_are_localized_per_key():
         # L10: the PLAN table's bold / footnote markers are never part of a value.
         for value in (zh["projects"][key], en["projects"][key]):
             assert "**" not in value and "※" not in value, key
-    assert len(zh["projects"]) == 245 and len(en["projects"]) == 245
+    assert len(zh["projects"]) == 247 and len(en["projects"]) == 247
     # The interpolation placeholder must survive transcription verbatim.
     assert zh["projects"]["quickInputTarget"] == "发给 {{name}}"
     assert en["projects"]["quickInputTarget"] == "To {{name}}"
@@ -629,7 +629,7 @@ def test_qi_recipient_keys_are_localized_per_key():
         assert en["projects"][key] == en_value, key
         for value in (zh["projects"][key], en["projects"][key]):
             assert "**" not in value and "※" not in value, key
-    assert len(zh["projects"]) == 245 and len(en["projects"]) == 245
+    assert len(zh["projects"]) == 247 and len(en["projects"]) == 247
     # The reused strings must keep their existing wording (no silent redefinition).
     assert zh["projects"]["quickInputTarget"] == "发给 {{name}}"
     assert zh["projects"]["quickInputNoAgent"] == "请先在项目配置中绑定专家。"
@@ -652,7 +652,7 @@ def test_batch6_picker_empty_teams_is_localized_per_key():
         assert en["projects"][key] == en_value, key
         for value in (zh["projects"][key], en["projects"][key]):
             assert "**" not in value and "※" not in value, key
-    assert len(zh["projects"]) == 245 and len(en["projects"]) == 245
+    assert len(zh["projects"]) == 247 and len(en["projects"]) == 247
     # The reused keys must keep their wording: this batch adds exactly one key.
     assert set(_T_P6_I18N_PROJECT_KEYS) <= set(zh["projects"])
     for reused, expected in (
@@ -690,7 +690,30 @@ def test_batch8_feed_keys_are_localized_per_key():
         assert en["projects"][key] == en_value, key
         for value in (zh["projects"][key], en["projects"][key]):
             assert "**" not in value and "※" not in value, key
-    assert len(zh["projects"]) == 245 and len(en["projects"]) == 245
+    assert len(zh["projects"]) == 247 and len(en["projects"]) == 247
     # Keys the feed keeps rendering must survive (reused, never redefined).
     for reused in ("tabDynamic", "dynamicPlaceholder", "taskDetailTimeline"):
         assert reused in zh["projects"], reused
+
+
+# ── batch 19 (T-19-I18N): conclusion attribution copy ───────────────────────
+
+_T_B19_I18N_PROJECT_KEYS = {
+    "conclusionBy": ("Conclusion · adopted by {{name}}", "结论 · 由 {{name}} 采纳"),
+    "concludedByUnknown": ("Deactivated user", "已注销用户"),
+}
+
+
+def test_batch19_conclusion_keys_are_localized_per_key():
+    """The two new keys, per key in both locales — and the frontend interpolation
+    placeholder must stay i18next-shaped (`{{name}}`, not `{name}`)."""
+    en, zh = _dash("en"), _dash("zh")
+    assert len(_T_B19_I18N_PROJECT_KEYS) == 2
+    for key, (en_value, zh_value) in _T_B19_I18N_PROJECT_KEYS.items():
+        assert key in zh["projects"], f"zh projects.{key} missing"
+        assert key in en["projects"], f"en projects.{key} missing"
+        assert zh["projects"][key] == zh_value, key
+        assert en["projects"][key] == en_value, key
+    # 带占位符的键必须用 i18next 形状（`{{name}}`，不是 Python `str.format` 的 `{name}`）。
+    assert "{{name}}" in zh["projects"]["conclusionBy"]
+    assert "{{name}}" in en["projects"]["conclusionBy"]

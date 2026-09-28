@@ -20,6 +20,7 @@ checked at write time instead — the same soft-FK approach as
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, map_rows, now_ts
@@ -56,6 +57,10 @@ class ProjectCommentRow:
     body: str
     source: str
     node_type: str
+    #: Adopting actor of the conclusion mark; both are NULL when the comment is not
+    #: the conclusion (PLAN.md §2.1c: ``NULL/NULL <=> not the conclusion``).
+    concluded_by_type: str | None
+    concluded_by_id: str | None
     created_at: int
     updated_at: int
 
@@ -72,6 +77,8 @@ class ProjectCommentRow:
             body=str(r["body"]),
             source=str(r["source"]),
             node_type=str(r["node_type"]),
+            concluded_by_type=r["concluded_by_type"],
+            concluded_by_id=r["concluded_by_id"],
             created_at=int(r["created_at"]),
             updated_at=int(r["updated_at"]),
         )
@@ -111,14 +118,48 @@ class ProjectCommentRepo:
 
     # ── reads ────────────────────────────────────────────────────────────────
 
-    def set_node_type(self, comment_id: str, node_type: str) -> bool:
+    def set_node_type(
+        self,
+        comment_id: str,
+        node_type: str,
+        *,
+        concluded_by_type: str | None = None,
+        concluded_by_id: str | None = None,
+        conn: Any = None,
+    ) -> bool:
         """Mark (or unmark) a comment as the conclusion. Idempotent: writing the
-        same value twice is a no-op that still reports success."""
-        with self._db.transaction() as conn:
-            cur = conn.execute(
-                "UPDATE project_comments SET node_type = ?, updated_at = ? WHERE comment_id = ?",
-                (node_type, now_ts(), comment_id),
+        same value twice is a no-op that still reports success.
+
+        The adopting actor lives and dies with the mark (PLAN.md §2.1c): adopting
+        writes both columns in the same UPDATE, un-adopting clears them in that same
+        UPDATE. Both keywords default to ``None``, so existing callers keep their
+        exact behaviour (v21 rows simply carry NULLs).
+        """
+        # Pairing invariant (REVIEW.md FIND-4): the two actor columns are set
+        # together or not at all, so ``NULL/NULL <=> not the conclusion`` can never
+        # be half-true. This is a **repo-layer** guarantee: the only writer is this
+        # method, and the check is what makes a half-pair impossible there.
+        # ★ Boundary, stated so nobody over-claims it: it is *not* a database
+        # constraint. SQLite cannot add a CHECK via ``ALTER TABLE``, so raw SQL
+        # (or a future writer bypassing this method) can still store one column —
+        # enforcing that would mean rebuilding ``project_comments``, i.e. a new
+        # migration, which this batch deliberately does not carry.
+        if (concluded_by_type is None) != (concluded_by_id is None):
+            raise ValueError(
+                "concluded_by_type and concluded_by_id must be set together "
+                "(a conclusion has exactly one adopting actor)"
             )
+        statement = (
+            "UPDATE project_comments SET node_type = ?, concluded_by_type = ?, "
+            "concluded_by_id = ?, updated_at = ? WHERE comment_id = ?"
+        )
+        params = (node_type, concluded_by_type, concluded_by_id, now_ts(), comment_id)
+        if conn is not None:
+            # Composed into the caller's transaction (state + audit together).
+            cur = conn.execute(statement, params)
+            return bool(cur.rowcount > 0)
+        with self._db.transaction() as own:
+            cur = own.execute(statement, params)
         return bool(cur.rowcount > 0)
 
     def get(self, comment_id: str) -> ProjectCommentRow | None:

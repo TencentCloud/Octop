@@ -317,3 +317,33 @@ async def test_timeline_filters_in_sql_without_changing_the_default(
     )
     assert limited.status_code == 200, limited.text
     assert len(limited.json()) == 1
+
+
+async def test_a_blank_project_name_is_a_422_not_a_500(
+    api: tuple[httpx.AsyncClient, dict[str, dict[str, str]]],
+) -> None:
+    """Same shape as the comment/task blank-text case, for ``ProjectCreate.name``.
+
+    ``""`` fails ``min_length``; ``"   "`` fails the field validator. Without the
+    validator the request reaches the service's bare ``ValueError`` (no 4xx
+    mapping) and the caller sees a 500-shaped failure — so this is the CI signal
+    that the guard still exists. ``"ok"`` is the positive control.
+    """
+    client, users = api
+    auth = next(iter(users.values()))
+
+    empty = await client.post(PROJECTS, headers=auth, json={"name": ""})
+    assert empty.status_code == 422, empty.text
+    detail = empty.json()["detail"][0]
+    assert detail["loc"] == ["body", "name"]
+    assert detail["type"] == "string_too_short"
+
+    blank = await client.post(PROJECTS, headers=auth, json={"name": "   "})
+    assert blank.status_code == 422, blank.text
+    detail = blank.json()["detail"][0]
+    assert detail["loc"] == ["body", "name"]
+    assert detail["type"] == "value_error"
+    assert "name" in detail["msg"]
+
+    ok = await client.post(PROJECTS, headers=auth, json={"name": "ok", "status": "active"})
+    assert ok.status_code == 201, ok.text

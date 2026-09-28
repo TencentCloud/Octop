@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, map_rows, now_ts
@@ -43,12 +44,34 @@ class AuditRepo:
         action: str,
         target: str | None = None,
         payload: str | None = None,
+        conn: Any = None,
     ) -> None:
-        with self._db.transaction() as conn:
-            conn.execute(
-                "INSERT INTO audit_log(ts, actor, action, target, payload) VALUES (?, ?, ?, ?, ?)",
-                (now_ts(), actor, action, target, payload or None),
-            )
+        """Append one audit row.
+
+        ``conn`` lets a caller compose this write into **its own** transaction
+        (state + audit must commit or roll back together, PLAN.md §2.1c). The
+        default ``None`` opens a private transaction, which is what every existing
+        call site relies on.
+        """
+        if conn is not None:
+            self._insert(conn, actor=actor, action=action, target=target, payload=payload)
+            return
+        with self._db.transaction() as own:
+            self._insert(own, actor=actor, action=action, target=target, payload=payload)
+
+    @staticmethod
+    def _insert(
+        conn: Any,
+        *,
+        actor: str | None,
+        action: str,
+        target: str | None,
+        payload: str | None,
+    ) -> None:
+        conn.execute(
+            "INSERT INTO audit_log(ts, actor, action, target, payload) VALUES (?, ?, ?, ?, ?)",
+            (now_ts(), actor, action, target, payload or None),
+        )
 
     def system_event(
         self,

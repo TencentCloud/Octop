@@ -189,9 +189,28 @@ class CommentOut(BaseModel):
             "UI falls back to author_id."
         ),
     )
+    concluded_by_type: str | None = Field(
+        default=None, description="Actor kind that adopted this conclusion (user)."
+    )
+    concluded_by_id: str | None = Field(
+        default=None, description="Actor id; both columns are null when not concluded."
+    )
+    concluded_by_name: str | None = Field(
+        default=None,
+        description=(
+            "Display name of the adopting actor, resolved through the same "
+            "resolve_actor_name path as `name`. Null when it cannot be resolved "
+            "(the UI then shows the deactivated-user copy)."
+        ),
+    )
 
     @classmethod
-    def of(cls, row: ProjectCommentRow, name: str | None = None) -> CommentOut:
+    def of(
+        cls,
+        row: ProjectCommentRow,
+        name: str | None = None,
+        concluded_by_name: str | None = None,
+    ) -> CommentOut:
         return cls(
             comment_id=row.id,
             project_id=row.project_id,
@@ -206,6 +225,9 @@ class CommentOut(BaseModel):
             created_at=row.created_at,
             updated_at=row.updated_at,
             name=name,
+            concluded_by_type=row.concluded_by_type,
+            concluded_by_id=row.concluded_by_id,
+            concluded_by_name=concluded_by_name,
         )
 
 
@@ -264,6 +286,19 @@ class ProjectCreate(BaseModel):
     )
     start_at: int | None = Field(default=None, description="Planned start, unix seconds.")
     due_at: int | None = Field(default=None, description="Planned finish, unix seconds.")
+
+    # P8: this validator is the **only** guard between a blank name and the
+    # service's bare ``ValueError`` (``infra/projects/service.py:359``), which has
+    # no 4xx mapping yet — so it escapes as a 500-shaped failure. A new call site
+    # must construct the project through *this* model, never around it.
+    @field_validator("name")
+    @classmethod
+    def _name_is_not_blank(cls, value: str) -> str:
+        """``"   "`` is not a name: reject it in the request layer (422), exactly
+        like ``_title_is_not_blank`` / ``_body_is_not_blank`` do."""
+        if not value.strip():
+            raise ValueError("name must not be blank")
+        return value
 
 
 class ProjectPatch(BaseModel):
@@ -727,6 +762,21 @@ def _discussion(server: OctopServer) -> ProjectDiscussion:
     return ProjectDiscussion(server.services)
 
 
+def _comment_out(server: OctopServer, row: ProjectCommentRow) -> CommentOut:
+    """Assemble the wire model, resolving both names through the one resolver."""
+    service = _service(server)
+    concluded_by_name = (
+        service.resolve_actor_name(row.concluded_by_type, row.concluded_by_id)
+        if row.concluded_by_type and row.concluded_by_id
+        else None
+    )
+    return CommentOut.of(
+        row,
+        service.resolve_actor_name(row.author_type, row.author_id),
+        concluded_by_name,
+    )
+
+
 @router.get("/{project_id}/comments", summary="List a project's comments")
 async def list_comments(
     project_id: str,
@@ -742,11 +792,7 @@ async def list_comments(
     rows = discussion.list_comments(
         project_id, user=_actor(user), task_id=task_id, concluded=concluded
     )
-    service = _service(server)
-    return [
-        CommentOut.of(row, service.resolve_actor_name(row.author_type, row.author_id))
-        for row in rows
-    ]
+    return [_comment_out(server, row) for row in rows]
 
 
 @router.post(
@@ -764,7 +810,7 @@ async def create_comment(
     row = _discussion(server).add_comment(
         project_id, user=_actor(user), body=body.body, task_id=body.task_id
     )
-    return CommentOut.of(row)
+    return _comment_out(server, row)
 
 
 @router.post(
@@ -781,7 +827,7 @@ async def conclude_comment(
     row = _discussion(server).set_conclusion(
         project_id, comment_id, user=_actor(user), concluded=True
     )
-    return CommentOut.of(row)
+    return _comment_out(server, row)
 
 
 @router.delete(
@@ -798,4 +844,4 @@ async def unconclude_comment(
     row = _discussion(server).set_conclusion(
         project_id, comment_id, user=_actor(user), concluded=False
     )
-    return CommentOut.of(row)
+    return _comment_out(server, row)

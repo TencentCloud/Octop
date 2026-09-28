@@ -20,6 +20,7 @@ import pytest
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
+from octop.infra.db.repos.audit import AuditRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.project_content import (
     COMMENT_AUTHOR_AGENT,
@@ -79,6 +80,7 @@ def services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace
         settings_repo=SettingsRepo(pool),
         user_repo=UserRepo(pool),
         agent_repo=AgentRepo(pool),
+        audit_repo=AuditRepo(pool),
         paths=PathLayout.from_env(),
     )
 
@@ -434,3 +436,145 @@ def test_comment_and_timeline_names_resolve_from_real_rows(
     # an unresolvable actor is null, never an exception
     assert service.resolve_actor_ref_name("user:999999") is None
     assert service.resolve_actor_name("agent", "ag_missing") is None
+
+
+# ── batch 9 (T-19-API): the two columns, the audit log, and their transaction ─
+
+
+def _audit_rows(services: SimpleNamespace, comment_id: str) -> list[str]:
+    with services.db.connect() as conn:
+        rows = conn.execute(
+            "SELECT action FROM audit_log WHERE target = ? ORDER BY ts, id", (comment_id,)
+        ).fetchall()
+    return [str(r["action"]) for r in rows]
+
+
+def test_conclusion_writes_the_actor_columns_and_logs_both_actions(
+    discussion: ProjectDiscussion,
+    services: SimpleNamespace,
+    project: Any,
+    owner: Actor,
+) -> None:
+    """Adopting stores the actor; un-adopting clears it — and both land in audit."""
+    owner.username = "owner"  # audit records the username, like every other writer
+    comment = discussion.add_comment(project.id, user=owner, body="adopt me")
+
+    adopted = discussion.set_conclusion(project.id, comment.id, user=owner, concluded=True)
+    assert adopted.concluded_by_type == "user"
+    assert adopted.concluded_by_id == str(owner.id)
+
+    cleared = discussion.set_conclusion(project.id, comment.id, user=owner, concluded=False)
+    assert cleared.concluded_by_type is None and cleared.concluded_by_id is None
+
+    assert _audit_rows(services, comment.id) == [
+        "project.comment.conclude",
+        "project.comment.unconclude",
+    ]
+
+
+def test_a_failed_audit_write_rolls_the_state_back(
+    discussion: ProjectDiscussion,
+    services: SimpleNamespace,
+    project: Any,
+    owner: Actor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PLAN.md §2.1c P6: state and audit share one transaction.
+
+    The probe replaces ``audit.write`` with a raising call — the real code path,
+    only the failure injected — and then reads the row back from the database.
+    """
+    comment = discussion.add_comment(project.id, user=owner, body="roll me back")
+    before = services.project_comment_repo.get(comment.id)
+    assert before is not None and before.node_type == COMMENT_NODE_NONE
+
+    def _boom(**_kwargs: Any) -> None:
+        raise RuntimeError("audit unavailable")
+
+    monkeypatch.setattr(discussion._audit, "write", _boom)
+
+    with pytest.raises(RuntimeError):
+        discussion.set_conclusion(project.id, comment.id, user=owner, concluded=True)
+
+    after = services.project_comment_repo.get(comment.id)
+    assert after is not None
+    assert after.node_type == COMMENT_NODE_NONE, "state must roll back with the audit write"
+    assert after.concluded_by_type is None and after.concluded_by_id is None
+    assert _audit_rows(services, comment.id) == []
+
+
+def test_a_half_pair_of_conclusion_columns_is_rejected(
+    services: SimpleNamespace, discussion: ProjectDiscussion, project: Any, owner: Actor
+) -> None:
+    """FIND-4: the two actor columns are set together or not at all.
+
+    Repo-layer guarantee (the only writer is ``set_node_type``); see the method's
+    comment for the stated boundary — raw SQL is not constrained (SQLite cannot add
+    a CHECK via ALTER TABLE).
+    """
+    comment = discussion.add_comment(project.id, user=owner, body="half pair")
+    repo = services.project_comment_repo
+
+    with pytest.raises(ValueError):
+        repo.set_node_type(comment.id, COMMENT_NODE_CONCLUSION, concluded_by_type="user")
+    with pytest.raises(ValueError):
+        repo.set_node_type(comment.id, COMMENT_NODE_CONCLUSION, concluded_by_id=str(owner.id))
+
+    # Nothing was written by the rejected calls, and the pair path still works.
+    after = repo.get(comment.id)
+    assert after is not None and after.node_type == COMMENT_NODE_NONE
+    assert after.concluded_by_type is None and after.concluded_by_id is None
+    assert repo.set_node_type(
+        comment.id,
+        COMMENT_NODE_CONCLUSION,
+        concluded_by_type="user",
+        concluded_by_id=str(owner.id),
+    )
+    paired = repo.get(comment.id)
+    assert paired is not None
+    assert (paired.concluded_by_type, paired.concluded_by_id) == ("user", str(owner.id))
+
+
+def test_the_read_face_uses_the_columns_not_the_audit_log(
+    discussion: ProjectDiscussion,
+    services: SimpleNamespace,
+    project: Any,
+    owner: Actor,
+) -> None:
+    """FIND-L3: the columns are the authority; ``audit_log`` is only history.
+
+    A literal "log and column disagree, trust the column" case would be tautological
+    — nothing in the read path ever looks at ``audit_log``. So this builds a **half
+    state** instead: the columns are written straight through the repo (bypassing
+    ``set_conclusion``) and **no audit row exists at all**. A read face that derived
+    "concluded" from ``audit_log`` would report nothing here and go red.
+
+    Boundary: some requirements have no runtime counter-example at all (a "no second
+    permission system" style structural absence). Those are covered by static
+    criteria plus a negative grep — never by a fabricated runtime case, because a
+    tautological test reads as coverage while proving nothing.
+    """
+    from octop.infra.db.repos.project_content import COMMENT_NODE_CONCLUSION as CONCLUSION
+
+    comment = discussion.add_comment(project.id, user=owner, body="columns only")
+    with services.db.transaction() as conn:
+        services.project_comment_repo.set_node_type(
+            comment.id,
+            CONCLUSION,
+            concluded_by_type="user",
+            concluded_by_id=str(owner.id),
+            conn=conn,
+        )
+
+    with services.db.connect() as conn:
+        audit_rows = int(
+            conn.execute(
+                "SELECT COUNT(*) AS c FROM audit_log WHERE target = ?", (comment.id,)
+            ).fetchone()["c"]
+        )
+    assert audit_rows == 0, "the half state must have no audit trail at all"
+
+    listed = discussion.list_comments(project.id, user=owner, concluded=True)
+    assert [row.id for row in listed] == [comment.id]
+    assert listed[0].node_type == CONCLUSION
+    assert listed[0].concluded_by_id == str(owner.id)

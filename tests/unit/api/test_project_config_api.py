@@ -713,3 +713,111 @@ async def test_member_add_refusals_are_403_not_500(
     assert archived.status_code == 403, archived.text
     assert archived.status_code != 500
     assert archived.json()["error"]["code"] == "PROJECT_FORBIDDEN"
+
+
+# ── batch 9 (T-19-INT): Z1 + Y10 + the audit trail over real HTTP ────────────
+
+
+async def test_z1_blank_project_name_is_a_422_not_a_500(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """Same structure as the route-guards case, on the in-process real app."""
+    client, _, ctx = api
+    auth = ctx["admin"]
+
+    empty = await client.post(PROJECTS, headers=auth, json={"name": ""})
+    assert empty.status_code == 422, empty.text
+    detail = empty.json()["detail"][0]
+    assert detail["loc"] == ["body", "name"] and detail["type"] == "string_too_short"
+
+    blank = await client.post(PROJECTS, headers=auth, json={"name": "   "})
+    assert blank.status_code == 422, blank.text
+    detail = blank.json()["detail"][0]
+    assert detail["loc"] == ["body", "name"] and detail["type"] == "value_error"
+
+    ok = await client.post(PROJECTS, headers=auth, json={"name": "ok", "status": "active"})
+    assert ok.status_code == 201, ok.text
+
+
+async def test_y10_round_trip_and_the_audit_trail(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """Adopt → the three fields come back; un-adopt → they clear; audit keeps both."""
+    client, srv, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    created = await client.post(
+        f"{PROJECTS}/{pid}/comments", headers=auth, json={"body": "adopt me"}
+    )
+    assert created.status_code == 201, created.text
+    cid = created.json()["comment_id"]
+
+    adopted = await client.post(f"{PROJECTS}/{pid}/comments/{cid}/conclude", headers=auth)
+    assert adopted.status_code == 200, adopted.text
+    body = adopted.json()
+    assert body["concluded"] is True
+    assert body["concluded_by_type"] == "user"
+    assert body["concluded_by_id"] == "1"
+    assert body["concluded_by_name"], "the adopting actor's display name must resolve"
+
+    only = await client.get(
+        f"{PROJECTS}/{pid}/comments", headers=auth, params={"concluded": "true"}
+    )
+    assert [row["comment_id"] for row in only.json()] == [cid]
+    rest = await client.get(
+        f"{PROJECTS}/{pid}/comments", headers=auth, params={"concluded": "false"}
+    )
+    assert all(row["comment_id"] != cid for row in rest.json())
+
+    cleared = await client.delete(f"{PROJECTS}/{pid}/comments/{cid}/conclude", headers=auth)
+    assert cleared.status_code == 200, cleared.text
+    body = cleared.json()
+    assert body["concluded"] is False
+    assert body["concluded_by_type"] is None and body["concluded_by_id"] is None
+    assert body["concluded_by_name"] is None
+
+    with srv.services.db.connect() as conn:
+        actions = [
+            str(row["action"])
+            for row in conn.execute(
+                "SELECT action FROM audit_log WHERE target = ? ORDER BY ts, id", (cid,)
+            ).fetchall()
+        ]
+    assert actions == ["project.comment.conclude", "project.comment.unconclude"]
+
+
+async def test_a_failing_audit_write_makes_the_request_fail_and_the_state_stand(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HTTP-layer evidence for PLAN.md §2.1c P6 (state and audit share a transaction).
+
+    The probe patches ``audit_repo.write`` on the live service object — the request
+    then travels the real ASGI path. Either the app answers non-2xx, or the
+    unhandled error propagates out of the ASGI transport: both mean "not 2xx".
+    """
+    client, srv, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    created = await client.post(
+        f"{PROJECTS}/{pid}/comments", headers=auth, json={"body": "roll back"}
+    )
+    cid = created.json()["comment_id"]
+
+    def _boom(**_kwargs: Any) -> None:
+        raise RuntimeError("audit unavailable")
+
+    monkeypatch.setattr(srv.services.audit_repo, "write", _boom)
+    failed = False
+    try:
+        response = await client.post(f"{PROJECTS}/{pid}/comments/{cid}/conclude", headers=auth)
+        assert response.status_code >= 400, response.text
+        failed = True
+    except Exception:  # the ASGI transport re-raises an unhandled error
+        failed = True
+    finally:
+        monkeypatch.undo()
+    assert failed, "a failed audit write must not answer 2xx"
+
+    listed = await client.get(f"{PROJECTS}/{pid}/comments", headers=auth)
+    row = next(item for item in listed.json() if item["comment_id"] == cid)
+    assert row["concluded"] is False
+    assert row["concluded_by_type"] is None and row["concluded_by_id"] is None

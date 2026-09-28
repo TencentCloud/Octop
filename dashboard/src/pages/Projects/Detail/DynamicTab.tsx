@@ -19,6 +19,28 @@ import styles from "./DynamicTab.module.less";
 
 const { Text } = Typography;
 
+/**
+ * 结论文本 =「结论 · 由 <谁> 采纳」（`P3` 展示形态 / `P3b` 显示口径 / `L30`）。
+ *
+ * 回退链（**与 `feed-author` 同一条口径**：名字优先 → 回退 → 不空白）：
+ *   ① `concluded_by_name`（后端解析好，**直接用**，不自己拼 ✗）
+ *   ② 拿不到名字 ⇒ `concluded_by_type:concluded_by_id`（★ **仍能区分「谁」**）
+ *   ③ 连 id 都没有 ⇒ `concludedByUnknown`（「已注销用户」，**不得空白**）
+ */
+function concludedByLabel(
+  comment: ProjectComment,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const name = comment.concluded_by_name?.trim();
+  if (name) return t("projects.conclusionBy", { name });
+  const id = comment.concluded_by_id?.trim();
+  if (id) {
+    const kind = comment.concluded_by_type?.trim();
+    return t("projects.conclusionBy", { name: kind ? `${kind}:${id}` : id });
+  }
+  return t("projects.concludedByUnknown");
+}
+
 /** 与 QuickInput 同一口径的可写角色集（`PROJECT_WRITE`）。 */
 const WRITE_ROLES = new Set(["owner", "admin", "member"]);
 
@@ -154,6 +176,14 @@ function DynamicTab() {
                   >
                     <BadgeCheck size={13} aria-hidden />
                     {t("projects.conclusionBadge")}
+                  </span>
+                ) : null}
+                {comment.concluded ? (
+                  <span
+                    className={styles.concludedBy}
+                    data-testid="comment-conclusion-by"
+                  >
+                    {concludedByLabel(comment, t)}
                   </span>
                 ) : null}
               </div>
