@@ -309,15 +309,18 @@ async def get_thread_history(
     archive = getattr(server.app_runtime, "history_archive", None)
     next_cursor = None
     if isinstance(archive, HistoryArchive):
-        page = await read_page(
-            archive,
-            server.app_runtime.agent_registry,
-            agent_id,
-            thread_id,
-            limit=page_limit,
-            offset=page_offset,
-            cursor=cursor,
-        )
+        try:
+            page = await read_page(
+                archive,
+                server.app_runtime.agent_registry,
+                agent_id,
+                thread_id,
+                limit=page_limit,
+                offset=page_offset,
+                cursor=cursor,
+            )
+        except ValueError as exc:
+            raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
         has_more, next_cursor = page["has_more"], page["next_cursor"]
         messages = []
         for message in messages_from_dict(page["messages"]):
