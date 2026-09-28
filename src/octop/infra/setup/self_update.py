@@ -549,9 +549,9 @@ def get_version_in_dir(python_exe: str, target: str) -> str | None:
 
 def index_label(index_url: str) -> str:
     """Short label for logs / UI (hostname, or ``pypi.org``)."""
-    if "pypi.org" in index_url:
-        return "pypi.org"
     host = urllib.parse.urlparse(index_url).hostname
+    if host == "pypi.org":
+        return "pypi.org"
     return host or index_url
 
 

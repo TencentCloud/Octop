@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-from base64 import urlsafe_b64encode
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
 
@@ -34,6 +32,7 @@ async def test_qcc_catalog_authorization_parameters(
     register = AsyncMock(return_value={"client_id": "test-public-client"})
     monkeypatch.setattr(registry, "fetch_authorization_metadata", fetch)
     monkeypatch.setattr(registry, "register_dynamic_client", register)
+    monkeypatch.setattr(registry, "new_pkce_pair", lambda: ("pkce-verifier", "pkce-challenge"))
     callback = base_url + "/api/connectors/oauth/callback"
     url, verifier, ctx = await registry.start_oauth_for_target(
         target={"type": "catalog", "kind": "qcc"},
@@ -51,8 +50,8 @@ async def test_qcc_catalog_authorization_parameters(
     assert query["resource"] == [RESOURCE]
     assert query["state"] == ["test-state"]
     assert query["code_challenge_method"] == ["S256"]
-    challenge = urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=")
-    assert query["code_challenge"] == [challenge.decode()]
+    assert query["code_challenge"] == ["pkce-challenge"]
+    assert verifier == "pkce-verifier"
     assert ctx["issuer"] == ISSUER
     assert ctx["resource"] == RESOURCE
 

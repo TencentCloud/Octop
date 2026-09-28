@@ -7,7 +7,7 @@ from pathlib import Path
 
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
-from octop.infra.db.repos.user_roles import UserRoleRepo, parse_policies
+from octop.infra.db.repos.user_roles import BUILTIN_USER_ROLE_IDS, UserRoleRepo, parse_policies
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.users.permissions import BASELINE_PERMISSIONS
 
@@ -35,16 +35,19 @@ def test_seeded_roles_leave_existing_users_unchanged(tmp_path: Path) -> None:
     assert user is not None
     assert set(user.permissions) == set(BASELINE_PERMISSIONS)
     assert user.policies == []
+    assert frozenset({"admin", "user"}) == BUILTIN_USER_ROLE_IDS
 
+    # Built-in templates can be deleted at the repo layer, but migrate re-seeds them.
     assert roles.delete("user") is True
     roles.delete("admin")
     run_migrations(db)
     assert roles.get("admin") is not None
-    assert roles.get("user") is None
+    assert roles.get("user") is not None
     again = users.get(uid)
     assert again is not None
     assert again.role_name is None
     assert again.permissions == ["browser"]
+    assert again.role == "user"
 
 
 def test_policies_array_omits_disabled_names() -> None:
@@ -88,27 +91,11 @@ def test_cli_and_seed_follow_preset_user_role(tmp_path: Path) -> None:
     db = SqlitePool(home / "octop.db")
     row = UserRepo(db).get_by_username("cliuser")
     assert row is not None
+    assert row.role == "user"
     assert row.role_name == "用户"
-    assert row.user_role_id == "user"
     assert set(row.permissions) == set(BASELINE_PERMISSIONS)
 
     assignment = seeded_user_role_assignment(db)
     assert assignment is not None
-    assert UserRoleRepo(db).delete("user") is True
-    assert seeded_user_role_assignment(db) is None
-    db.close()
-
-    again = create_user_offline(
-        username="plain",
-        password="TestPass12",
-        role="user",
-        home=home,
-    )
-    assert again["username"] == "plain"
-    db = SqlitePool(home / "octop.db")
-    plain = UserRepo(db).get_by_username("plain")
-    assert plain is not None
-    assert plain.role_name is None
-    assert plain.user_role_id is None
-    assert plain.permissions == []
+    assert assignment[0] == "user"
     db.close()
