@@ -107,6 +107,16 @@ export async function registerProductionSW(): Promise<void> {
     },
     60 * 60 * 1000,
   );
+
+  // Mobile Chrome often keeps a waiting worker forever unless something
+  // polls; check again when the tab becomes visible.
+  const onVisible = () => {
+    if (document.visibilityState === "visible") {
+      void registration.update();
+    }
+  };
+  document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("pageshow", onVisible);
 }
 
 export async function registerSW(): Promise<void> {

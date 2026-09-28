@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 
+from octop.api.routers.admin import AUDIT_LOG_MAX_LIMIT
 from tests.support.auth import create_agent
 
 
@@ -110,19 +111,21 @@ async def test_admin_audit_log_honors_limit(env: Any) -> None:
     assert len(rows) <= 5
 
 
-async def test_admin_audit_log_rejects_limit_outside_the_page_bounds(env: Any) -> None:
-    """A page size must be validated, not forwarded to SQL ``LIMIT``.
+async def test_admin_audit_log_rejects_limit_out_of_bounds(env: Any) -> None:
+    """A non-positive ``limit`` must not reach SQL ``LIMIT``.
 
-    SQLite answers ``limit=0`` with no rows and a negative ``limit`` with the
-    whole audit table, so the paginated endpoint silently returns the wrong
-    page; the ceiling is the largest page the dashboard itself offers (500).
+    SQLite reads a negative LIMIT as "no limit at all" (the whole audit log in one
+    response) and ``LIMIT 0`` as "no rows"; the thread list got the same bound.
     """
     c, _srv, admin_auth, _alice_auth = env
-    for bad in (0, -1, 501):
+    for bad in (0, -1, AUDIT_LOG_MAX_LIMIT + 1):
         r = await c.get(f"/api/admin/audit-log?limit={bad}", headers=admin_auth)
         assert r.status_code == 422, f"limit={bad} -> {r.status_code}: {r.text}"
 
-    r = await c.get("/api/admin/audit-log?limit=500", headers=admin_auth)
+
+async def test_admin_audit_log_accepts_the_largest_panel_page(env: Any) -> None:
+    c, _srv, admin_auth, _alice_auth = env
+    r = await c.get(f"/api/admin/audit-log?limit={AUDIT_LOG_MAX_LIMIT}", headers=admin_auth)
     assert r.status_code == 200, r.text
 
 

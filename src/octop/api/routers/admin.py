@@ -10,9 +10,6 @@ from octop.api.deps import get_server, require_permission
 
 router = APIRouter()
 
-AUDIT_DEFAULT_LIMIT = 100
-AUDIT_MAX_LIMIT = 500
-
 
 @router.get("/overview")
 async def overview(
@@ -24,7 +21,7 @@ async def overview(
         users.append(
             {
                 "username": user.username,
-                "role": user.role.value,
+                "role": user.role,
                 "agents": [],  # agents are now global, not per-user
             }
         )
@@ -47,16 +44,20 @@ async def overview(
     }
 
 
+# The largest page the Settings → Security audit panel offers.
+AUDIT_LOG_MAX_LIMIT = 500
+
+
 @router.get("/audit-log")
 async def audit_log(
     since: int | None = None,
     actor: str | None = None,
     action: str | None = None,
     limit: int = Query(
-        default=AUDIT_DEFAULT_LIMIT,
+        default=100,
         ge=1,
-        le=AUDIT_MAX_LIMIT,
-        description=f"Maximum rows to return, between 1 and {AUDIT_MAX_LIMIT}.",
+        le=AUDIT_LOG_MAX_LIMIT,
+        description=f"Maximum rows to return, between 1 and {AUDIT_LOG_MAX_LIMIT}.",
     ),
     _: Any = Depends(require_permission("admin_console")),
     server: Any = Depends(get_server),
