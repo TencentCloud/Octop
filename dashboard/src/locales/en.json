@@ -779,6 +779,8 @@
       "actions": "Actions"
     },
     "totalAgents": "{{count}} expert(s)",
+    "searchPlaceholder": "Search experts",
+    "searchEmpty": "No matching experts",
     "totalLibrary": "{{count}} built-in expert(s)",
     "totalMarket": "{{count}} market expert(s)",
     "addFromLibrary": "+ Add from Built-in",

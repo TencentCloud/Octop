@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Spin, Tabs, Segmented, Tooltip } from "antd";
+import { Input, Spin, Tabs, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -29,6 +29,7 @@ import {
   List,
   Plus,
   RefreshCw,
+  Search,
   Store,
   Users,
 } from "lucide-react";
@@ -59,6 +60,7 @@ import { PublishedExpertCard } from "./components/PublishedExpertCard";
 import AgentExpertsTable from "./components/AgentExpertsTable";
 import ExpertMarketTab from "./components/ExpertMarketTab";
 import { OctopEmptyMascot } from "../../components/EmptyState";
+import { pickLocale } from "../../utils/localizedText";
 import { isOwnedExpert, ownedExperts } from "../../utils/sharedExpert";
 import { apiErrorMessage } from "../../utils/apiError";
 import styles from "./index.module.less";
@@ -78,6 +80,14 @@ async function fetchExpertLibrary(): Promise<ExpertSummary[]> {
 
 async function fetchPublishedExperts(): Promise<PublishedExpert[]> {
   return publishedExpertsApi.list();
+}
+
+function textMatchesQuery(
+  query: string,
+  ...parts: Array<string | null | undefined>
+): boolean {
+  if (!query) return true;
+  return parts.some((part) => (part ?? "").toLowerCase().includes(query));
 }
 
 function installedExpertIdsFromAgents(
@@ -118,6 +128,8 @@ export default function ExpertsPage() {
     loadViewMode(),
   );
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchNeedle = searchQuery.trim().toLowerCase();
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -212,6 +224,25 @@ export default function ExpertsPage() {
   const teamAgents = useMemo(
     () => localAgents.filter((item) => item.kind === "team"),
     [localAgents],
+  );
+  const visibleExpertAgents = useMemo(
+    () =>
+      expertAgents.filter((agent) =>
+        textMatchesQuery(
+          searchNeedle,
+          agent.name,
+          agent.description,
+          agent.template_name,
+        ),
+      ),
+    [expertAgents, searchNeedle],
+  );
+  const visibleTeamAgents = useMemo(
+    () =>
+      teamAgents.filter((agent) =>
+        textMatchesQuery(searchNeedle, agent.name, agent.description),
+      ),
+    [searchNeedle, teamAgents],
   );
   const pickableExperts = useMemo(
     () =>
@@ -350,6 +381,20 @@ export default function ExpertsPage() {
     [handleRefresh, refreshing, t],
   );
 
+  const toolbarSearch = useMemo(
+    () => (
+      <Input
+        className={styles.toolbarSearch}
+        prefix={<Search size={14} />}
+        allowClear
+        value={searchQuery}
+        placeholder={t("experts.searchPlaceholder")}
+        onChange={(event) => setSearchQuery(event.target.value)}
+      />
+    ),
+    [searchQuery, t],
+  );
+
   // ── Render helpers ─────────────────────────────────────────────
 
   const myExpertsContent = useMemo(() => {
@@ -403,9 +448,10 @@ export default function ExpertsPage() {
       <>
         <div className={styles.gridToolbar}>
           <span className={styles.gridCount}>
-            {t("experts.totalAgents", { count: expertAgents.length })}
+            {t("experts.totalAgents", { count: visibleExpertAgents.length })}
           </span>
           <div className={styles.gridToolbarRight}>
+            {toolbarSearch}
             <Segmented
               size="small"
               value={viewMode}
@@ -446,9 +492,11 @@ export default function ExpertsPage() {
             </button>
           </div>
         </div>
-        {showCardView ? (
+        {visibleExpertAgents.length === 0 ? (
+          <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
+        ) : showCardView ? (
           <div className={styles.cardGrid}>
-            {expertAgents.map((agent) => (
+            {visibleExpertAgents.map((agent) => (
               <div
                 key={agent.agent_id}
                 className={
@@ -479,13 +527,15 @@ export default function ExpertsPage() {
           </div>
         ) : (
           <AgentExpertsTable
-            agents={expertAgents}
+            agents={visibleExpertAgents}
             publishedByAgentId={publishedByAgentId}
             onPublishedChange={() => {
               void refreshPublishedExperts();
             }}
             onEdit={(id) =>
-              setEditAgent(expertAgents.find((a) => a.agent_id === id) ?? null)
+              setEditAgent(
+                visibleExpertAgents.find((a) => a.agent_id === id) ?? null,
+              )
             }
             onDeleted={handleDeleted}
             onStateChange={handleStateChange}
@@ -504,8 +554,11 @@ export default function ExpertsPage() {
     publishedByAgentId,
     refreshButton,
     refreshPublishedExperts,
+    searchQuery,
     showCardView,
     t,
+    toolbarSearch,
+    visibleExpertAgents,
   ]);
 
   const teamsContent = useMemo(() => {
@@ -553,9 +606,10 @@ export default function ExpertsPage() {
       <>
         <div className={styles.gridToolbar}>
           <span className={styles.gridCount}>
-            {t("experts.teams.total", { count: teamAgents.length })}
+            {t("experts.teams.total", { count: visibleTeamAgents.length })}
           </span>
           <div className={styles.gridToolbarRight}>
+            {toolbarSearch}
             {refreshButton}
             <button
               className={styles.toolbarBtn}
@@ -566,22 +620,26 @@ export default function ExpertsPage() {
             </button>
           </div>
         </div>
-        <div className={styles.cardGrid}>
-          {teamAgents.map((agent) => (
-            <div key={agent.agent_id}>
-              <TeamCard
-                agent={agent}
-                experts={pickableExperts}
-                onEdit={(id) => {
-                  const row = teamAgents.find((item) => item.agent_id === id);
-                  if (row) setTeamDrawer({ mode: "edit", team: row });
-                }}
-                onDeleted={handleDeleted}
-                onStateChange={handleStateChange}
-              />
-            </div>
-          ))}
-        </div>
+        {visibleTeamAgents.length === 0 ? (
+          <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
+        ) : (
+          <div className={styles.cardGrid}>
+            {visibleTeamAgents.map((agent) => (
+              <div key={agent.agent_id}>
+                <TeamCard
+                  agent={agent}
+                  experts={pickableExperts}
+                  onEdit={(id) => {
+                    const row = teamAgents.find((item) => item.agent_id === id);
+                    if (row) setTeamDrawer({ mode: "edit", team: row });
+                  }}
+                  onDeleted={handleDeleted}
+                  onStateChange={handleStateChange}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </>
     );
   }, [
@@ -592,7 +650,38 @@ export default function ExpertsPage() {
     refreshButton,
     t,
     teamAgents,
+    toolbarSearch,
+    visibleTeamAgents,
   ]);
+
+  const visiblePublishedExperts = useMemo(
+    () =>
+      publishedExperts.filter((expert) =>
+        textMatchesQuery(
+          searchNeedle,
+          expert.name,
+          expert.description,
+          expert.creator_username,
+        ),
+      ),
+    [publishedExperts, searchNeedle],
+  );
+  const visibleLibraryExperts = useMemo(
+    () =>
+      experts.filter((expert) =>
+        textMatchesQuery(
+          searchNeedle,
+          expert.id,
+          pickLocale(expert.label, lang),
+          expert.label.zh,
+          expert.label.en,
+          pickLocale(expert.description, lang),
+          expert.description?.zh,
+          expert.description?.en,
+        ),
+      ),
+    [experts, lang, searchNeedle],
+  );
 
   const libraryContent = useMemo(() => {
     if (expertLoading || publishedExpertLoading) {
@@ -621,9 +710,10 @@ export default function ExpertsPage() {
             <div className={styles.gridToolbar}>
               <span className={styles.gridCount}>
                 {t("experts.published.listTitle", {
-                  count: publishedExperts.length,
+                  count: visiblePublishedExperts.length,
                 })}
               </span>
+              <div className={styles.gridToolbarRight}>{toolbarSearch}</div>
             </div>
             <p
               style={{
@@ -634,26 +724,35 @@ export default function ExpertsPage() {
             >
               {t("experts.published.listHint")}
             </p>
-            <div className={styles.cardGrid}>
-              {publishedExperts.map((expert) => (
-                <PublishedExpertCard
-                  key={expert.id}
-                  expert={expert}
-                  canManage={canManagePublished(expert)}
-                  onInstall={(item) =>
-                    setCreateSource({ kind: "published", expert: item })
-                  }
-                  onChanged={refreshPublishedExperts}
-                />
-              ))}
-            </div>
+            {visiblePublishedExperts.length === 0 ? (
+              <div className={styles.searchEmpty}>
+                {t("experts.searchEmpty")}
+              </div>
+            ) : (
+              <div className={styles.cardGrid}>
+                {visiblePublishedExperts.map((expert) => (
+                  <PublishedExpertCard
+                    key={expert.id}
+                    expert={expert}
+                    canManage={canManagePublished(expert)}
+                    onInstall={(item) =>
+                      setCreateSource({ kind: "published", expert: item })
+                    }
+                    onChanged={refreshPublishedExperts}
+                  />
+                ))}
+              </div>
+            )}
           </>
         )}
         <div className={styles.gridToolbar}>
           <span className={styles.gridCount}>
-            {t("experts.totalLibrary", { count: experts.length })}
+            {t("experts.totalLibrary", { count: visibleLibraryExperts.length })}
           </span>
-          <div className={styles.gridToolbarRight}>{refreshButton}</div>
+          <div className={styles.gridToolbarRight}>
+            {publishedExperts.length === 0 ? toolbarSearch : null}
+            {refreshButton}
+          </div>
         </div>
         {publishedExperts.length === 0 && (
           <p
@@ -666,30 +765,39 @@ export default function ExpertsPage() {
             {t("experts.published.emptyHint")}
           </p>
         )}
-        <div className={styles.cardGrid}>
-          {experts.map((expert) => (
-            <ExpertCard
-              key={expert.id}
-              expert={expert}
-              lang={lang}
-              isInstalled={agentExpertIds.has(expert.id)}
-              onCreate={(item) =>
-                setCreateSource({ kind: "builtin", expert: item })
-              }
-            />
-          ))}
-        </div>
+        {visibleLibraryExperts.length === 0 ? (
+          <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
+        ) : (
+          <div className={styles.cardGrid}>
+            {visibleLibraryExperts.map((expert) => (
+              <ExpertCard
+                key={expert.id}
+                expert={expert}
+                lang={lang}
+                isInstalled={agentExpertIds.has(expert.id)}
+                onCreate={(item) =>
+                  setCreateSource({ kind: "builtin", expert: item })
+                }
+              />
+            ))}
+          </div>
+        )}
       </>
     );
   }, [
     agentExpertIds,
+    canManagePublished,
     expertLoading,
     experts,
     lang,
     publishedExpertLoading,
     publishedExperts,
     refreshButton,
+    refreshPublishedExperts,
     t,
+    toolbarSearch,
+    visibleLibraryExperts,
+    visiblePublishedExperts,
   ]);
 
   const marketContent = useMemo(
