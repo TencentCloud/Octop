@@ -118,6 +118,33 @@ class ProjectCommentRepo:
 
     # ── reads ────────────────────────────────────────────────────────────────
 
+    def update_body(self, comment_id: str, body: str, *, conn: Any = None) -> bool:
+        """Replace a comment's text in place (``updated_at`` moves, the row stays).
+
+        The old text is not kept here: the audit trail is where "who changed what"
+        lives (PLAN §4), and the row is the current state.
+        """
+        statement = "UPDATE project_comments SET body = ?, updated_at = ? WHERE comment_id = ?"
+        params = (body, now_ts(), comment_id)
+        if conn is not None:
+            return bool(conn.execute(statement, params).rowcount > 0)
+        with self._db.transaction() as own:
+            return bool(own.execute(statement, params).rowcount > 0)
+
+    def delete(self, comment_id: str, *, conn: Any = None) -> bool:
+        """Hard delete: the row is gone, so all three read faces stop seeing it.
+
+        No ``deleted_at`` column exists (this batch is explicitly hard-delete), so
+        there is nothing for a reader to filter out. The caller deletes the
+        comment's attachments and writes the audit row **in the same transaction**
+        (``conn``) — see ``ProjectArtifactRepo.delete_by_comment``.
+        """
+        statement = "DELETE FROM project_comments WHERE comment_id = ?"
+        if conn is not None:
+            return bool(conn.execute(statement, (comment_id,)).rowcount > 0)
+        with self._db.transaction() as own:
+            return bool(own.execute(statement, (comment_id,)).rowcount > 0)
+
     def set_node_type(
         self,
         comment_id: str,

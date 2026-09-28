@@ -85,3 +85,33 @@
   color: var(--fn-text-secondary);
   font-size: 12px;
 }
+
+/* 行内操作区（批次十一 C2）：编辑 / 删除 / 附件挂载。 */
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.editRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* 已采纳 ⇒ 删除禁用 + 同键提示（与后端 409 同一说法）。 */
+.blockedHint {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.attachLabel {
+  cursor: pointer;
+  color: var(--fn-text-brand, var(--fn-text-primary));
+  font-size: 12px;
+}
+
+.attachInput {
+  display: none;
+}

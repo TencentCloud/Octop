@@ -41,6 +41,9 @@ from octop.infra.projects.service import (
     ProjectService,
 )
 
+#: How much of a replaced comment body the audit payload keeps (P4b: truncate **and** flag).
+_AUDIT_BODY_LIMIT = 500
+
 
 def _require_body(body: str) -> str:
     """A blank comment is a caller error, not an empty row.
@@ -64,6 +67,7 @@ class ProjectDiscussion:
         # are the **only** authority for the current state (PLAN.md §2.1c). No code
         # may derive the current conclusion by reading ``audit_log``.
         self._audit = getattr(services, "audit_repo", None) or AuditRepo(services.db)
+        self._artifacts = getattr(services, "project_artifact_repo", None)
 
     # ── reads ────────────────────────────────────────────────────────────────
 
@@ -79,6 +83,140 @@ class ProjectDiscussion:
         and ``concluded`` to (or away from) the adopted conclusion."""
         self._projects.assert_project_role(project_id, user=user, required=PROJECT_READ)
         return self._comments.list_by_project(project_id, task_id=task_id, concluded=concluded)
+
+    def _require_own_comment(
+        self, project_id: str, comment_id: str, *, user: ProjectActor
+    ) -> ProjectCommentRow:
+        """The comment must exist in this project **and** be authored by ``user``.
+
+        The author check matches ``author_type`` *and* ``author_id``: an agent row
+        whose id happens to equal a user's id is not that user's comment
+        (``019_projects.sql`` stores the two columns separately).
+        """
+        row = self._comments.get(comment_id)
+        if row is None or row.project_id != project_id:
+            raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Comment not found in this project.")
+        if row.author_type != COMMENT_AUTHOR_USER or row.author_id != str(user.id):
+            raise OctopError(
+                ErrorCode.PROJECT_FORBIDDEN,
+                "This comment belongs to another author.",
+            )
+        return row
+
+    def _may_govern(self, project_id: str, user: ProjectActor) -> bool:
+        """The governance line (SPEC P1), parallel to — not inside — the role check.
+
+        ``assert_project_role`` governs *project roles* and deliberately gives
+        ``is_admin`` no bypass. This gate governs the **governance surface**:
+        a platform admin acts without being a project member, and a project owner
+        is recognised straight from ``projects.owner_user_id`` (which is exactly
+        what ``_role_of`` does — the owner need not hold a member row).
+
+        Kept as its own function on purpose: an ``allow_governance=True`` default on
+        the author helper would fork the meaning of a call depending on an argument
+        someone can forget to pass.
+        """
+        if bool(getattr(user, "is_admin", False)):
+            return True
+        row = self._services.project_repo.get(project_id)
+        return row is not None and row.owner_user_id == user.id
+
+    def _require_comment_in_project(self, project_id: str, comment_id: str) -> ProjectCommentRow:
+        """404-only lookup used on the governance path (no author assertion)."""
+        row = self._comments.get(comment_id)
+        if row is None or row.project_id != project_id:
+            raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Comment not found in this project.")
+        return row
+
+    def _require_author_or_governance(
+        self, project_id: str, comment_id: str, *, user: ProjectActor
+    ) -> ProjectCommentRow:
+        """Author **or** governance, explicitly composed at the call site."""
+        if self._may_govern(project_id, user):
+            return self._require_comment_in_project(project_id, comment_id)
+        return self._require_own_comment(project_id, comment_id, user=user)
+
+    def delete_comment(self, project_id: str, comment_id: str, *, user: ProjectActor) -> bool:
+        """Delete one's own comment, its attachments and an audit row — atomically.
+
+        ★ Not writing the conclusion branch below means the default behaviour is
+        (c): the conclusion would keep pointing at a deleted comment, i.e. the
+        project's current conclusion silently dangles. The refusal (option a) makes
+        the caller un-adopt first, so the state stays consistent.
+        """
+        # Governance short-circuit (SPEC P1): an admin acts without being a member,
+        # so the project-role check is skipped on that line — otherwise a
+        # non-member admin would be refused by ``assert_project_role`` before the
+        # governance gate could ever allow it. Everyone else still runs the normal
+        # role check, which keeps ``is_admin`` from bypassing anything else.
+        if not self._may_govern(project_id, user):
+            self._projects.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
+        row = self._require_author_or_governance(project_id, comment_id, user=user)
+        if row.node_type == COMMENT_NODE_CONCLUSION:
+            raise OctopError(
+                ErrorCode.PROJECT_COMMENT_CONCLUDED,
+                "This comment is the adopted conclusion; un-adopt it before deleting.",
+            )
+        payload = json.dumps(
+            {"project_id": project_id, "task_id": row.task_id, "node_type": row.node_type},
+            ensure_ascii=False,
+        )
+        with self._services.db.transaction() as conn:
+            if self._artifacts is not None:
+                # Attachments die with their comment: no orphan artifact rows.
+                self._artifacts.delete_by_comment(comment_id, conn=conn)
+            removed = self._comments.delete(comment_id, conn=conn)
+            self._audit.write(
+                actor=getattr(user, "username", None) or str(user.id),
+                action="project.comment.delete",
+                target=comment_id,
+                payload=payload,
+                conn=conn,
+            )
+        return bool(removed)
+
+    def edit_comment(
+        self, project_id: str, comment_id: str, *, user: ProjectActor, body: str
+    ) -> ProjectCommentRow:
+        """Replace a comment's text; the previous text goes to ``audit_log``.
+
+        Long bodies are truncated **and flagged** in the payload (``P4b``), so a
+        reader can tell "this is the whole old text" from "this is a prefix".
+        """
+        # Governance short-circuit (SPEC P1): an admin acts without being a member,
+        # so the project-role check is skipped on that line — otherwise a
+        # non-member admin would be refused by ``assert_project_role`` before the
+        # governance gate could ever allow it. Everyone else still runs the normal
+        # role check, which keeps ``is_admin`` from bypassing anything else.
+        if not self._may_govern(project_id, user):
+            self._projects.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
+        row = self._require_author_or_governance(project_id, comment_id, user=user)
+        previous = row.body
+        limit = _AUDIT_BODY_LIMIT
+        truncated = len(previous) > limit
+        payload = json.dumps(
+            {
+                "project_id": project_id,
+                "task_id": row.task_id,
+                "old_body": previous[:limit],
+                "old_body_truncated": truncated,
+                "old_body_length": len(previous),
+            },
+            ensure_ascii=False,
+        )
+        with self._services.db.transaction() as conn:
+            self._comments.update_body(comment_id, _require_body(body), conn=conn)
+            self._audit.write(
+                actor=getattr(user, "username", None) or str(user.id),
+                action="project.comment.edit",
+                target=comment_id,
+                payload=payload,
+                conn=conn,
+            )
+        refreshed = self._comments.get(comment_id)
+        if refreshed is None:  # pragma: no cover - the row was just updated
+            raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Comment not found in this project.")
+        return refreshed
 
     def set_conclusion(
         self,

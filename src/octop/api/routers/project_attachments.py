@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from octop.api.common.upload_limit import read_upload_capped
 from octop.api.deps import get_server, require_permission
 from octop.infra.db.repos.project_artifacts import ArtifactRow
-from octop.infra.errors import ErrorCode
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.projects.attachments import ProjectAttachmentService
 from octop.infra.server import OctopServer
 from octop.infra.users.identity import User
@@ -52,7 +52,14 @@ class AttachmentOut(BaseModel):
 
 
 class AttachmentBindBody(BaseModel):
-    task_id: str = Field(min_length=1, description="Task to bind this staged attachment to.")
+    task_id: str | None = Field(default=None, description="Task to bind this staged attachment to.")
+    comment_id: str | None = Field(
+        default=None,
+        description=(
+            "Comment to bind this staged attachment to (v23). Exactly one of "
+            "task_id / comment_id must be sent."
+        ),
+    )
 
 
 def _attachment_service(server: OctopServer) -> ProjectAttachmentService:
@@ -138,9 +145,19 @@ async def bind_project_attachment(
     Re-binding an already-bound attachment is a 409: send it back to staging by
     deleting it instead (the file is never moved).
     """
-    row = _attachment_service(server).bind_to_task(
-        project_id, artifact_id, task_id=body.task_id, user=user
-    )
+    service = _attachment_service(server)
+    if (body.task_id is None) == (body.comment_id is None):
+        raise OctopError(
+            ErrorCode.PROJECT_ATTACHMENT_INVALID,
+            "send exactly one of task_id / comment_id",
+        )
+    if body.comment_id is not None:
+        row = service.bind_to_comment(
+            project_id, artifact_id, comment_id=body.comment_id, user=user
+        )
+    else:
+        assert body.task_id is not None  # noqa: S101 - guarded by the check above
+        row = service.bind_to_task(project_id, artifact_id, task_id=body.task_id, user=user)
     return AttachmentOut.of(row)
 
 

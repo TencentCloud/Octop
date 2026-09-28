@@ -465,6 +465,7 @@
     "PROJECT_ATTACHMENT_INVALID": "附件不符合上传要求（类型或大小）。",
     "PROJECT_KB_FORBIDDEN": "您没有该知识库的写入权限。",
     "PROJECT_TASK_PARENT_INVALID": "父任务不能是自身的后代（间接环）。",
+    "PROJECT_COMMENT_CONCLUDED": "该留言已被采纳为结论，请先取消采纳后再删除。",
     "PROJECT_NODE_NOT_FOUND": "需求节点不存在。",
     "PROJECT_NODE_NOT_CONFIRMED": "该需求节点尚未确认。",
     "PROJECT_KB_BIND_FAILED": "无法创建项目知识库，项目未创建。",

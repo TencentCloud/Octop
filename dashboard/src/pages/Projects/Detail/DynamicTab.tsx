@@ -62,6 +62,9 @@ function DynamicTab() {
   const { members, loading: membersLoading } = useProjectMembers(projectId);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  /** 正在编辑的留言 id（null = 无）与其草稿。 */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingBody, setEditingBody] = useState("");
 
   const {
     data: comments,
@@ -114,6 +117,45 @@ function DynamicTab() {
       await refresh();
     } catch (error) {
       message.error(apiErrorMessage(error, t("projects.conclude"), t));
+    }
+  };
+
+  /** 编辑保存（`PATCH …/comments/{cid}`）。 */
+  const saveEdit = async (commentId: string) => {
+    const next = editingBody.trim();
+    if (!next) return;
+    try {
+      await projectsApi.updateComment(projectId, commentId, next);
+      setEditingId(null);
+      setEditingBody("");
+      await refresh();
+    } catch (error) {
+      message.error(apiErrorMessage(error, t("projects.loadFailed"), t));
+    }
+  };
+
+  /** 硬删（`DELETE …/comments/{cid}`）。★ 已采纳留言**事前禁用**入口（服务端另有 409 兜底）。 */
+  const removeComment = async (commentId: string) => {
+    try {
+      await projectsApi.deleteComment(projectId, commentId);
+      await refresh();
+    } catch (error) {
+      message.error(
+        apiErrorMessage(error, t("apiErrors.PROJECT_COMMENT_CONCLUDED"), t),
+      );
+    }
+  };
+
+  /** 附件挂载：先暂存（`POST …/attachments`），再绑到该留言（`PATCH …/attachments/{id}`）。 */
+  const attachToComment = async (commentId: string, file: File) => {
+    try {
+      const staged = await projectsApi.uploadStagedAttachment(projectId, file);
+      await projectsApi.bindAttachment(projectId, staged.artifact_id, {
+        commentId,
+      });
+      await refresh();
+    } catch (error) {
+      message.error(apiErrorMessage(error, t("projects.loadFailed"), t));
     }
   };
 
@@ -187,18 +229,105 @@ function DynamicTab() {
                   </span>
                 ) : null}
               </div>
-              <div className={styles.body}>{comment.body}</div>
+              {editingId === comment.comment_id ? (
+                <div className={styles.editRow}>
+                  <Input.TextArea
+                    className={styles.composerInput}
+                    value={editingBody}
+                    autoSize={{ minRows: 1, maxRows: 6 }}
+                    aria-label={t("projects.feedPost")}
+                    data-testid="comment-edit-input"
+                    onChange={(event) => setEditingBody(event.target.value)}
+                  />
+                  <Button
+                    size="small"
+                    type="primary"
+                    data-testid="comment-edit-save"
+                    onClick={() => void saveEdit(comment.comment_id)}
+                  >
+                    {t("projects.feedPost")}
+                  </Button>
+                  <Button
+                    size="small"
+                    data-testid="comment-edit-cancel"
+                    onClick={() => setEditingId(null)}
+                  >
+                    {t("common.cancel", "取消")}
+                  </Button>
+                </div>
+              ) : (
+                <div className={styles.body}>{comment.body}</div>
+              )}
               {canWrite ? (
-                <Button
-                  type="link"
-                  size="small"
-                  className={styles.concludeAction}
-                  onClick={() => void toggleConclusion(comment)}
-                >
-                  {comment.concluded
-                    ? t("projects.unconclude")
-                    : t("projects.conclude")}
-                </Button>
+                <div className={styles.actions}>
+                  <Button
+                    type="link"
+                    size="small"
+                    className={styles.concludeAction}
+                    onClick={() => void toggleConclusion(comment)}
+                  >
+                    {comment.concluded
+                      ? t("projects.unconclude")
+                      : t("projects.conclude")}
+                  </Button>
+                  <Button
+                    type="link"
+                    size="small"
+                    data-testid="comment-edit"
+                    onClick={() => {
+                      setEditingId(comment.comment_id);
+                      setEditingBody(comment.body);
+                    }}
+                  >
+                    {t("common.edit", "编辑")}
+                  </Button>
+                  {comment.concluded ? (
+                    <>
+                      {/* ★ 与后端**同一口径**：已采纳 ⇒ 删除【事前禁用】，提示用**同一个键**
+                          （`apiErrors.PROJECT_COMMENT_CONCLUDED`，与 409 的 message 同源）。 */}
+                      <Button
+                        type="link"
+                        size="small"
+                        disabled
+                        data-testid="comment-delete"
+                      >
+                        {t("common.delete", "删除")}
+                      </Button>
+                      <span
+                        className={styles.blockedHint}
+                        data-testid="comment-delete-blocked"
+                      >
+                        {t("apiErrors.PROJECT_COMMENT_CONCLUDED")}
+                      </span>
+                    </>
+                  ) : (
+                    <Button
+                      type="link"
+                      size="small"
+                      data-testid="comment-delete"
+                      onClick={() => void removeComment(comment.comment_id)}
+                    >
+                      {t("common.delete", "删除")}
+                    </Button>
+                  )}
+                  <label className={styles.attachLabel}>
+                    <input
+                      type="file"
+                      className={styles.attachInput}
+                      data-testid="comment-attachment-input"
+                      aria-label={t("projects.attachFile")}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file)
+                          void attachToComment(comment.comment_id, file);
+                        event.target.value = "";
+                      }}
+                    />
+                    <span data-testid="comment-attach">
+                      {t("projects.feedPost")}
+                    </span>
+                  </label>
+                </div>
               ) : null}
             </li>
           ))}

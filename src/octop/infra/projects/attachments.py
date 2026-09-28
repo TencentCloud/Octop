@@ -110,6 +110,8 @@ class ProjectAttachmentService:
         self._services = services
         self._projects = project_service or ProjectService(services)
         self._repo = services.project_artifact_repo
+        # v23: comments own attachments; the comment must exist in this project.
+        self._comments = getattr(services, "project_comment_repo", None)
 
     # ── storage ──────────────────────────────────────────────────────────────
 
@@ -266,6 +268,37 @@ class ProjectAttachmentService:
         if current is None:  # pragma: no cover - row deleted between two statements
             raise OctopError(ErrorCode.NOT_FOUND, "Attachment not found.")
         return current
+
+    def _bind_comment_one(
+        self, project_id: str, artifact_id: str, *, comment_id: str
+    ) -> ArtifactRow:
+        """Same shape as ``_bind_one`` for the comment column (v23).
+
+        "Already bound" is a 409 here too: an artifact has exactly one
+        ``comment_id``, so binding it to a second comment would be a silent
+        re-bind — the endpoint would mean two different things depending on state.
+        """
+        row = self._repo.get(artifact_id)
+        if row is None or row.project_id != project_id or row.kind != ATTACHMENT_KIND:
+            raise OctopError(ErrorCode.NOT_FOUND, "Attachment not found.")
+        if row.comment_id is not None:
+            raise _attachment_invalid("this attachment is already bound to a comment", status=409)
+        comment = self._comments.get(comment_id) if self._comments is not None else None
+        if comment is None or comment.project_id != project_id:
+            raise OctopError(ErrorCode.NOT_FOUND, "Comment not found in this project.")
+        if not self._repo.bind_comment(artifact_id, comment_id=comment_id):
+            raise _attachment_invalid("this attachment is already bound to a comment", status=409)
+        current = self._repo.get(artifact_id)
+        if current is None:  # pragma: no cover - row deleted between two statements
+            raise OctopError(ErrorCode.NOT_FOUND, "Attachment not found.")
+        return current
+
+    def bind_to_comment(
+        self, project_id: str, artifact_id: str, *, comment_id: str, user: ProjectActor
+    ) -> ArtifactRow:
+        """Bind a staged attachment to the comment that introduced it."""
+        self._projects.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
+        return self._bind_comment_one(project_id, artifact_id, comment_id=comment_id)
 
     def bind_to_task(
         self, project_id: str, artifact_id: str, *, task_id: str, user: ProjectActor

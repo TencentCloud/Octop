@@ -73,11 +73,12 @@ vi.mock("../../../hooks/useServerTimezone", () => ({
   useServerTimezone: () => "UTC",
 }));
 
-import { request } from "../../../api/request";
+import { request, requestUpload } from "../../../api/request";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import DynamicTab from "./DynamicTab";
 
 const mockedRequest = vi.mocked(request);
+const mockedUpload = vi.mocked(requestUpload);
 
 const COMMENT = {
   comment_id: "cmt_1",
@@ -320,5 +321,132 @@ describe("结论归属（P3 展示形态 / P3b 显示口径 / L30）", () => {
     );
     expect(labels).toEqual(["结论 · 由 user:1 采纳", "结论 · 由 user:2 采纳"]);
     expect(new Set(labels).size).toBe(2);
+  });
+});
+
+describe("批次十一 C2 · 编辑 / 删除 / 附件挂载（T-C2-FE）", () => {
+  const concludedComment = {
+    ...COMMENT,
+    concluded: true,
+    node_type: "conclusion",
+    concluded_by_type: "user",
+    concluded_by_id: "1",
+    concluded_by_name: "张三",
+  };
+
+  it("① 编辑：改正文 → `PATCH /projects/p1/comments/cmt_1`（体 = {body}）", async () => {
+    comments = [COMMENT];
+    renderTab();
+
+    fireEvent.click(await screen.findByTestId("comment-edit"));
+    const input = await screen.findByTestId("comment-edit-input");
+    expect(input).toHaveValue(COMMENT.body);
+    fireEvent.change(input, { target: { value: "改后的正文" } });
+    fireEvent.click(screen.getByTestId("comment-edit-save"));
+
+    await waitFor(() => {
+      const call = mockedRequest.mock.calls.find(
+        ([path, init]) =>
+          path === "/projects/p1/comments/cmt_1" &&
+          (init as RequestInit | undefined)?.method === "PATCH",
+      );
+      expect(call).toBeTruthy();
+      expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({
+        body: "改后的正文",
+      });
+    });
+  });
+
+  it("② 删除（未采纳）：`DELETE /projects/p1/comments/cmt_1`", async () => {
+    comments = [COMMENT];
+    renderTab();
+
+    fireEvent.click(await screen.findByTestId("comment-delete"));
+    await waitFor(() =>
+      expect(
+        mockedRequest.mock.calls.some(
+          ([path, init]) =>
+            path === "/projects/p1/comments/cmt_1" &&
+            (init as RequestInit | undefined)?.method === "DELETE",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("★★ 已采纳 ⇒ 删除【事前禁用】+ 提示用【后端同一个键】（apiErrors.PROJECT_COMMENT_CONCLUDED）", async () => {
+    comments = [concludedComment];
+    renderTab();
+
+    const del = await screen.findByTestId("comment-delete");
+    expect(del).toBeDisabled();
+    // ★ 与 409 的 message 同源（本卡只引用键、不改 locales）。
+    expect(screen.getByTestId("comment-delete-blocked")).toHaveTextContent(
+      "该留言已被采纳为结论，请先取消采纳后再删除。",
+    );
+    // 即便强行点击也不发 DELETE（禁用是事前门 + 服务端 409 兜底）。
+    fireEvent.click(del);
+    await Promise.resolve();
+    expect(
+      mockedRequest.mock.calls.some(
+        ([path, init]) =>
+          path === "/projects/p1/comments/cmt_1" &&
+          (init as RequestInit | undefined)?.method === "DELETE",
+      ),
+    ).toBe(false);
+  });
+
+  it("③ 附件挂载：暂存（POST …/attachments）→ 绑定（PATCH …/attachments/{id}，comment_id）", async () => {
+    comments = [COMMENT];
+    // ★ 暂存走 `requestUpload`（multipart）⇒ 它是**独立** mock，必须单独注入。
+    mockedUpload.mockResolvedValue({ artifact_id: "art_1" } as never);
+    mockedRequest.mockImplementation(
+      async (path: string, init?: RequestInit) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (path === "/projects/p1/attachments" && method === "POST")
+          return { artifact_id: "art_1" } as never;
+        if (path.startsWith("/projects/p1/comments")) return comments as never;
+        if (path === "/projects/p1/members") return [MEMBER] as never;
+        return null as never;
+      },
+    );
+    renderTab();
+
+    const input = await screen.findByTestId("comment-attachment-input");
+    const file = new File(["x"], "shot.png", { type: "image/png" });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() =>
+      expect(
+        mockedUpload.mock.calls.some(
+          ([path]) => path === "/projects/p1/attachments",
+        ),
+      ).toBe(true),
+    );
+    await waitFor(() =>
+      expect(
+        mockedRequest.mock.calls.some(
+          ([path, init]) =>
+            path === "/projects/p1/attachments/art_1" &&
+            (init as RequestInit | undefined)?.method === "PATCH" &&
+            JSON.parse(String((init as RequestInit).body)).comment_id ===
+              "cmt_1",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("★ viewer（只读）不渲染写入口（既有门未破坏）", async () => {
+    comments = [COMMENT];
+    mockedRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith("/projects/p1/comments")) return comments as never;
+      if (path === "/projects/p1/members") return [] as never; // 非成员 ⇒ 只读
+      return null as never;
+    });
+    renderTab();
+
+    await screen.findByTestId("feed-item");
+    expect(screen.queryByTestId("comment-edit")).toBeNull();
+    expect(screen.queryByTestId("comment-delete")).toBeNull();
+    expect(screen.queryByTestId("comment-attach")).toBeNull();
   });
 });

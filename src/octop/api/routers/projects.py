@@ -231,6 +231,18 @@ class CommentOut(BaseModel):
         )
 
 
+class CommentPatch(BaseModel):
+    body: str = Field(min_length=1, description="New comment text; blank is rejected as 422.")
+
+    @field_validator("body")
+    @classmethod
+    def _body_is_not_blank(cls, value: str) -> str:
+        """Same shape as ``CommentCreate``: blank text never reaches the service."""
+        if not value.strip():
+            raise ValueError("body must not be blank")
+        return value
+
+
 class CommentCreate(BaseModel):
     body: str = Field(min_length=1, description="Comment text; blank is rejected as 422.")
     task_id: str | None = Field(default=None, description="Attach to a task's line.")
@@ -845,3 +857,42 @@ async def unconclude_comment(
         project_id, comment_id, user=_actor(user), concluded=False
     )
     return _comment_out(server, row)
+
+
+@router.patch(
+    "/{project_id}/comments/{comment_id}",
+    summary="Edit a comment",
+)
+async def update_comment(
+    project_id: str,
+    comment_id: str,
+    body: CommentPatch,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("projects")),
+) -> CommentOut:
+    """Replace one's own comment text; the previous text is kept in ``audit_log``."""
+    row = _discussion(server).edit_comment(
+        project_id, comment_id, user=_actor(user), body=body.body
+    )
+    return _comment_out(server, row)
+
+
+@router.delete(
+    "/{project_id}/comments/{comment_id}",
+    summary="Delete a comment",
+)
+async def delete_comment(
+    project_id: str,
+    comment_id: str,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("projects")),
+) -> dict[str, bool]:
+    """Hard delete one's own comment (row + its attachment rows, one transaction).
+
+    An adopted conclusion cannot be deleted here — the service answers
+    ``PROJECT_COMMENT_CONCLUDED`` (409) and the caller un-adopts first, so the
+    project's conclusion can never point at a deleted comment. Blob files are
+    deliberately kept (debt ``O6``): only rows go.
+    """
+    deleted = _discussion(server).delete_comment(project_id, comment_id, user=_actor(user))
+    return {"deleted": deleted}

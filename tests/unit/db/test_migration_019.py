@@ -58,7 +58,7 @@ def _columns(db: SqlitePool, table: str) -> set[str]:
 
 
 def test_migration_019_is_the_applied_watermark(db: SqlitePool):
-    assert _version(db) == 22
+    assert _version(db) == 23
 
 
 def test_migration_019_creates_all_project_tables(db: SqlitePool):
@@ -79,7 +79,7 @@ def test_migration_019_is_idempotent(tmp_path: Path):
     pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     run_migrations(pool)  # must not raise (CREATE ... IF NOT EXISTS everywhere)
-    assert _version(pool) == 22
+    assert _version(pool) == 23
     assert set(PROJECT_TABLES) <= _table_names(pool)
 
 
@@ -94,7 +94,7 @@ def test_ensure_projects_schema_repairs_missing_tables(db: SqlitePool):
     run_migrations(db)  # version already current -> only the unconditional helpers run
 
     assert set(PROJECT_TABLES) <= _table_names(db)
-    assert _version(db) == 22
+    assert _version(db) == 23
 
 
 def test_projects_project_id_is_unique(db: SqlitePool):

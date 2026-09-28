@@ -9,6 +9,7 @@ exists), a non-NULL ``task_id`` means bound. No new table, no status column.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, map_rows, now_ts, sql_in_placeholders
@@ -30,6 +31,7 @@ class ArtifactRow:
     hash: str
     created_by: str
     created_at: int
+    comment_id: str | None
 
     @classmethod
     def from_row(cls, r: DbRow) -> ArtifactRow:
@@ -46,6 +48,7 @@ class ArtifactRow:
             hash=str(r["hash"]),
             created_by=str(r["created_by"]),
             created_at=int(r["created_at"]),
+            comment_id=r["comment_id"],
         )
 
 
@@ -185,6 +188,42 @@ class ProjectArtifactRepo:
                 (artifact_id, task_id),
             )
         return bool(cur.rowcount)
+
+    def bind_comment(self, artifact_id: str, *, comment_id: str) -> bool:
+        """Attach an artifact to the comment that introduced it (v23 column).
+
+        Mirrors :meth:`bind` for ``task_id``: the file is inserted first (uploads
+        do not know the comment yet) and bound afterwards.
+        """
+        with self._db.transaction() as conn:
+            cur = conn.execute(
+                "UPDATE project_artifacts SET comment_id = ? WHERE artifact_id = ?",
+                (comment_id, artifact_id),
+            )
+        return bool(cur.rowcount > 0)
+
+    def list_by_comment(self, *, project_id: str, comment_id: str) -> list[ArtifactRow]:
+        """The files one comment owns, oldest first."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM project_artifacts WHERE project_id = ? AND comment_id = ? "
+                "ORDER BY created_at, artifact_id",
+                (project_id, comment_id),
+            ).fetchall()
+        return map_rows(rows, ArtifactRow)
+
+    def delete_by_comment(self, comment_id: str, *, conn: Any = None) -> int:
+        """Delete every artifact bound to a comment; returns how many rows went.
+
+        Takes the caller's transaction (``conn``) because deleting a comment is one
+        unit of work: comment row + its attachments + the audit row commit together
+        or not at all (PLAN §4).
+        """
+        statement = "DELETE FROM project_artifacts WHERE comment_id = ?"
+        if conn is not None:
+            return int(conn.execute(statement, (comment_id,)).rowcount)
+        with self._db.transaction() as own:
+            return int(own.execute(statement, (comment_id,)).rowcount)
 
     def delete(self, artifact_id: str) -> bool:
         with self._db.transaction() as conn:

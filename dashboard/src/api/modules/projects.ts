@@ -1,4 +1,4 @@
-import { request } from "../request";
+import { request, requestUpload } from "../request";
 
 export type ProjectStatus =
   | "draft"
@@ -401,6 +401,53 @@ export const projectsApi = {
         commentId,
       )}/conclude`,
       { method: "POST" },
+    ),
+
+  /** `PATCH …/comments/{cid}` —— 编辑留言正文（返回更新后的 `CommentOut`）。 */
+  updateComment: (projectId: string, commentId: string, body: string) =>
+    request<ProjectComment>(
+      `${projectPath(projectId)}/comments/${encodeURIComponent(commentId)}`,
+      { method: "PATCH", body: JSON.stringify({ body }) },
+    ),
+
+  /**
+   * `DELETE …/comments/{cid}` —— **硬删**（返回 `{ deleted: boolean }`）。
+   * ★ 若该留言已采纳为结论，服务端 **409** `PROJECT_COMMENT_CONCLUDED`（前端**事前禁用**入口，见 `DynamicTab`）。
+   */
+  deleteComment: (projectId: string, commentId: string) =>
+    request<{ deleted: boolean }>(
+      `${projectPath(projectId)}/comments/${encodeURIComponent(commentId)}`,
+      { method: "DELETE" },
+    ),
+
+  /** `POST …/attachments` —— 暂存（staged）一个附件，随后用 `bindAttachment` 挂到留言/任务。 */
+  uploadStagedAttachment: (projectId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return requestUpload<ProjectAttachment>(
+      `${projectPath(projectId)}/attachments`,
+      form,
+    );
+  },
+
+  /**
+   * `PATCH …/attachments/{artifactId}` —— 绑定暂存附件。
+   * ★ 服务端要求 `task_id` / `comment_id` **恰好一个**（都传或都不传 ⇒ 400；已绑 ⇒ 409）。
+   */
+  bindAttachment: (
+    projectId: string,
+    artifactId: string,
+    target: { taskId?: string; commentId?: string },
+  ) =>
+    request<ProjectAttachment>(
+      `${projectPath(projectId)}/attachments/${encodeURIComponent(artifactId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...(target.taskId ? { task_id: target.taskId } : {}),
+          ...(target.commentId ? { comment_id: target.commentId } : {}),
+        }),
+      },
     ),
 
   /**

@@ -206,6 +206,7 @@
     "PROJECT_ATTACHMENT_INVALID": "The attachment does not meet the upload requirements (type or size).",
     "PROJECT_KB_FORBIDDEN": "You do not have write access to that knowledge base.",
     "PROJECT_TASK_PARENT_INVALID": "A parent task cannot be a descendant of the task (indirect cycle).",
+    "PROJECT_COMMENT_CONCLUDED": "This comment is the adopted conclusion — un-adopt it before deleting.",
     "PROJECT_NODE_NOT_FOUND": "Requirement node not found.",
     "PROJECT_NODE_NOT_CONFIRMED": "This requirement node has not been confirmed yet.",
     "PROJECT_KB_BIND_FAILED": "Could not create the project's knowledge base; the project was not created.",

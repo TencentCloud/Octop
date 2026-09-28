@@ -11,6 +11,7 @@ a rejected write must leave no row behind.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -22,6 +23,7 @@ from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.audit import AuditRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
+from octop.infra.db.repos.project_artifacts import ProjectArtifactRepo
 from octop.infra.db.repos.project_content import (
     COMMENT_AUTHOR_AGENT,
     COMMENT_AUTHOR_USER,
@@ -81,6 +83,7 @@ def services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace
         user_repo=UserRepo(pool),
         agent_repo=AgentRepo(pool),
         audit_repo=AuditRepo(pool),
+        project_artifact_repo=ProjectArtifactRepo(pool),
         paths=PathLayout.from_env(),
     )
 
@@ -578,3 +581,260 @@ def test_the_read_face_uses_the_columns_not_the_audit_log(
     assert [row.id for row in listed] == [comment.id]
     assert listed[0].node_type == CONCLUSION
     assert listed[0].concluded_by_id == str(owner.id)
+
+
+# ── batch 11 (T-C2-REPO): edit, hard delete, and the attachment cascade ──────
+
+
+def test_editing_the_body_keeps_the_row_and_moves_updated_at(
+    discussion: ProjectDiscussion, services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    comment = discussion.add_comment(project.id, user=owner, body="before")
+    repo = services.project_comment_repo
+    assert repo.update_body(comment.id, "after") is True
+
+    fresh = repo.get(comment.id)
+    assert fresh is not None
+    assert fresh.body == "after"
+    assert fresh.created_at == comment.created_at, "editing must not rewrite the row's identity"
+    assert fresh.updated_at >= comment.updated_at
+
+
+def test_hard_delete_clears_all_three_read_faces(
+    discussion: ProjectDiscussion, services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    """Delete ⇒ single read, list and count all stop seeing the row.
+
+    All three faces are asserted together on purpose: a soft delete (a flag a
+    reader forgets to filter) would leave the row visible in at least one of them.
+    """
+    comment = discussion.add_comment(project.id, user=owner, body="delete me")
+    repo = services.project_comment_repo
+    assert repo.get(comment.id) is not None
+    assert repo.count_by_project(project.id) == 1
+
+    with services.db.transaction() as conn:
+        assert repo.delete(comment.id, conn=conn) is True
+
+    assert repo.get(comment.id) is None
+    assert repo.list_by_project(project.id) == []
+    assert repo.count_by_project(project.id) == 0
+
+
+def test_deleting_a_comment_takes_its_attachments_with_it(
+    discussion: ProjectDiscussion, services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    """The cascade lives in the caller's transaction (no orphan artifact rows)."""
+    comment = discussion.add_comment(project.id, user=owner, body="with a file")
+    artifacts = services.project_artifact_repo
+    artifacts.insert(
+        artifact_id="ART1",
+        project_id=project.id,
+        task_id=None,
+        name="note.txt",
+        size=4,
+        mime="text/plain",
+        uri="local://note.txt",
+        file_hash="h1",
+        created_by=owner.id,
+    )
+    assert artifacts.bind_comment("ART1", comment_id=comment.id) is True
+    assert [
+        a.artifact_id
+        for a in artifacts.list_by_comment(project_id=project.id, comment_id=comment.id)
+    ] == ["ART1"]
+
+    with services.db.transaction() as conn:
+        removed = artifacts.delete_by_comment(comment.id, conn=conn)
+        assert services.project_comment_repo.delete(comment.id, conn=conn) is True
+    assert removed == 1
+
+    assert artifacts.list_by_comment(project_id=project.id, comment_id=comment.id) == []
+    assert services.project_comment_repo.get(comment.id) is None
+
+
+# ── batch 11 (T-C2-SVC): delete refusal, its audit row, and the author check ─
+#
+# Written before the implementation on purpose: these are the criteria for
+# `delete_comment` / `edit_comment`, so they must be red until those exist.
+# Signature frozen here (the implementation follows it):
+#   ProjectDiscussion.delete_comment(project_id, comment_id, *, user) -> bool
+#   ProjectDiscussion.edit_comment(project_id, comment_id, *, user, body) -> ProjectCommentRow
+
+
+def _concluded(
+    discussion: ProjectDiscussion, project: Any, owner: Actor, body: str = "the conclusion"
+) -> Any:
+    comment = discussion.add_comment(project.id, user=owner, body=body)
+    discussion.set_conclusion(project.id, comment.id, user=owner, concluded=True)
+    return comment
+
+
+def test_deleting_a_concluded_comment_is_refused(
+    discussion: ProjectDiscussion, project: Any, owner: Actor
+) -> None:
+    """M2: option (a) — the adopted conclusion cannot be deleted; un-adopt first.
+
+    Without this branch the default behaviour is (c): the conclusion would point at
+    a deleted comment, i.e. the state silently becomes inconsistent.
+    """
+    comment = _concluded(discussion, project, owner)
+
+    with pytest.raises(OctopError) as err:
+        discussion.delete_comment(project.id, comment.id, user=owner)
+    assert err.value.code is ErrorCode.PROJECT_COMMENT_CONCLUDED
+    assert err.value.status == 409
+    assert err.value.status != 500
+
+    # Refused means refused: the row is still there and still the conclusion.
+    still = discussion.list_comments(project.id, user=owner, concluded=True)
+    assert [row.id for row in still] == [comment.id]
+
+
+def test_deleting_a_comment_writes_an_audit_row(
+    discussion: ProjectDiscussion, services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    """M3: a delete is recorded, in the same transaction as the row removal."""
+    comment = discussion.add_comment(project.id, user=owner, body="delete me too")
+    assert discussion.delete_comment(project.id, comment.id, user=owner) is True
+
+    assert _audit_rows(services, comment.id) == ["project.comment.delete"]
+    assert services.project_comment_repo.get(comment.id) is None
+
+
+def test_the_author_check_matches_both_type_and_id(
+    discussion: ProjectDiscussion, services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    """M5: the same numeric id under a different ``author_type`` is not the author.
+
+    Matching on ``author_id`` alone would let an agent-authored row be deleted by
+    the user whose id happens to equal the agent id (019_projects.sql @73/@74).
+    """
+    # The *attacker* must be a plain member: SPEC P1 lets the owner and a platform
+    # admin delete anyone's comment, so the author check is only observable for a
+    # member who is neither.
+    member = Actor(services.user_repo.create(username="member", password_hash="h", role="user"))
+    services.project_member_repo.add(
+        project_id=project.id,
+        subject_type="user",
+        subject_id=str(member.id),
+        role="member",
+        user_id=member.id,
+    )
+    row = services.project_comment_repo.create(
+        project_id=project.id,
+        author_type="agent",
+        author_id=str(member.id),
+        body="written by an agent",
+    )
+
+    with pytest.raises(OctopError) as err:
+        discussion.delete_comment(project.id, row.id, user=member)
+    assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
+    assert err.value.status == 403
+    assert services.project_comment_repo.get(row.id) is not None, "the row must survive"
+
+
+def test_governance_lets_an_admin_and_the_owner_act_on_any_comment(
+    discussion: ProjectDiscussion, services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    """SPEC P1: ``admin``/``owner`` may edit + delete **any** comment (member may not).
+
+    The admin case is the discriminator between the two lines: the admin here is
+    **not a project member**, so a role-based check alone would refuse — only the
+    governance gate lets it through.
+    """
+    outsider_admin = Actor(0, admin=True)  # ★ 非项目成员，仅平台 admin
+    member = Actor(services.user_repo.create(username="m2", password_hash="h", role="user"))
+    services.project_member_repo.add(
+        project_id=project.id,
+        subject_type="user",
+        subject_id=str(member.id),
+        role="member",
+        user_id=member.id,
+    )
+
+    # admin, not a member, edits someone else's comment
+    theirs = discussion.add_comment(project.id, user=owner, body="owner's text")
+    edited = discussion.edit_comment(project.id, theirs.id, user=outsider_admin, body="admin edit")
+    assert edited.body == "admin edit"
+
+    # the owner may delete any comment too
+    second = discussion.add_comment(project.id, user=member, body="member's text")
+    assert discussion.delete_comment(project.id, second.id, user=owner) is True
+    assert services.project_comment_repo.get(second.id) is None
+
+    # …while a plain member may not touch someone else's
+    third = discussion.add_comment(project.id, user=owner, body="owner again")
+    with pytest.raises(OctopError) as err:
+        discussion.delete_comment(project.id, third.id, user=member)
+    assert err.value.code is ErrorCode.PROJECT_FORBIDDEN
+    assert services.project_comment_repo.get(third.id) is not None
+
+
+def test_a_failing_audit_write_rolls_the_delete_back(
+    discussion: ProjectDiscussion,
+    services: SimpleNamespace,
+    project: Any,
+    owner: Actor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The delete and its audit row share one transaction: no half-delete."""
+    comment = discussion.add_comment(project.id, user=owner, body="roll the delete back")
+    artifacts = services.project_artifact_repo
+    artifacts.insert(
+        artifact_id="ART2",
+        project_id=project.id,
+        task_id=None,
+        name="f.txt",
+        size=2,
+        mime="text/plain",
+        uri="local://f.txt",
+        file_hash="h2",
+        created_by=owner.id,
+    )
+    assert artifacts.bind_comment("ART2", comment_id=comment.id) is True
+
+    def _boom(**_kwargs: Any) -> None:
+        raise RuntimeError("audit unavailable")
+
+    monkeypatch.setattr(discussion._audit, "write", _boom)
+    with pytest.raises(RuntimeError):
+        discussion.delete_comment(project.id, comment.id, user=owner)
+    monkeypatch.undo()
+
+    assert services.project_comment_repo.get(comment.id) is not None, "the comment must survive"
+    assert [
+        a.artifact_id
+        for a in artifacts.list_by_comment(project_id=project.id, comment_id=comment.id)
+    ] == ["ART2"], "the attachment must survive too"
+
+
+def test_editing_keeps_the_old_body_in_the_audit_payload(
+    discussion: ProjectDiscussion, services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    comment = discussion.add_comment(project.id, user=owner, body="short old body")
+    edited = discussion.edit_comment(project.id, comment.id, user=owner, body="new body")
+    assert edited.body == "new body" and edited.created_at == comment.created_at
+
+    with services.db.connect() as conn:
+        row = conn.execute(
+            "SELECT payload FROM audit_log WHERE target = ? AND action = 'project.comment.edit'",
+            (comment.id,),
+        ).fetchone()
+    payload = json.loads(row["payload"])
+    assert payload["old_body"] == "short old body"
+    assert payload["old_body_truncated"] is False
+
+    # P4b: an over-long old body is truncated **and** flagged.
+    long_comment = discussion.add_comment(project.id, user=owner, body="x" * 800)
+    discussion.edit_comment(project.id, long_comment.id, user=owner, body="short again")
+    with services.db.connect() as conn:
+        row = conn.execute(
+            "SELECT payload FROM audit_log WHERE target = ? AND action = 'project.comment.edit'",
+            (long_comment.id,),
+        ).fetchone()
+    payload = json.loads(row["payload"])
+    assert len(payload["old_body"]) == 500
+    assert payload["old_body_truncated"] is True
+    assert payload["old_body_length"] == 800

@@ -17,6 +17,8 @@ import pytest
 from tests.support.app import octop_client
 from tests.support.auth import auth_header, bootstrap_admin, create_user
 
+from octop.infra.projects.attachments import ProjectAttachmentService
+
 PROJECTS = "/api/projects"
 AGENT_ID = "ag-exec"
 
@@ -821,3 +823,227 @@ async def test_a_failing_audit_write_makes_the_request_fail_and_the_state_stand(
     row = next(item for item in listed.json() if item["comment_id"] == cid)
     assert row["concluded"] is False
     assert row["concluded_by_type"] is None and row["concluded_by_id"] is None
+
+
+# ── batch 11 (T-C2-API): comment edit / delete over real HTTP ────────────────
+
+
+async def test_editing_and_deleting_a_comment_over_http(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """PATCH replaces the text (old text -> audit); DELETE removes row + attachments."""
+    client, srv, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    created = await client.post(f"{PROJECTS}/{pid}/comments", headers=auth, json={"body": "v1"})
+    assert created.status_code == 201, created.text
+    cid = created.json()["comment_id"]
+
+    patched = await client.patch(
+        f"{PROJECTS}/{pid}/comments/{cid}", headers=auth, json={"body": "v2"}
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["body"] == "v2"
+    assert patched.json()["created_at"] == created.json()["created_at"]
+
+    with srv.services.db.connect() as conn:
+        payload = conn.execute(
+            "SELECT payload FROM audit_log WHERE target = ? AND action = 'project.comment.edit'",
+            (cid,),
+        ).fetchone()["payload"]
+    assert '"old_body": "v1"' in payload, payload
+
+    blank = await client.patch(
+        f"{PROJECTS}/{pid}/comments/{cid}", headers=auth, json={"body": "  "}
+    )
+    assert blank.status_code == 422, blank.text
+
+    # An attachment bound to the comment disappears with it (rows only).
+    srv.services.project_artifact_repo.insert(
+        artifact_id="ARTX",
+        project_id=pid,
+        task_id=None,
+        name="a.txt",
+        size=1,
+        mime="text/plain",
+        uri="local://a.txt",
+        file_hash="h",
+        created_by=1,
+    )
+    assert srv.services.project_artifact_repo.bind_comment("ARTX", comment_id=cid) is True
+
+    deleted = await client.delete(f"{PROJECTS}/{pid}/comments/{cid}", headers=auth)
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json() == {"deleted": True}
+    assert srv.services.project_artifact_repo.get("ARTX") is None, "attachment row must go"
+    listed = await client.get(f"{PROJECTS}/{pid}/comments", headers=auth)
+    assert all(row["comment_id"] != cid for row in listed.json())
+
+
+async def test_the_concluded_comment_cannot_be_deleted_over_http(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """F-3 four items: 409 + verbatim code + the frozen zh guidance + state unchanged."""
+    client, srv, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    created = await client.post(f"{PROJECTS}/{pid}/comments", headers=auth, json={"body": "keeper"})
+    cid = created.json()["comment_id"]
+    assert (
+        await client.post(f"{PROJECTS}/{pid}/comments/{cid}/conclude", headers=auth)
+    ).status_code == 200
+
+    refused = await client.delete(f"{PROJECTS}/{pid}/comments/{cid}", headers=auth)
+    assert refused.status_code == 409, refused.text
+    assert refused.status_code != 500
+    body = refused.json()["error"]
+    assert body["code"] == "PROJECT_COMMENT_CONCLUDED"
+    assert "先取消采纳" in body["message"], body["message"]
+
+    # The row is still there and still the conclusion.
+    listed = await client.get(f"{PROJECTS}/{pid}/comments", headers=auth)
+    row = next(r for r in listed.json() if r["comment_id"] == cid)
+    assert row["concluded"] is True and row["node_type"] == "conclusion"
+    with srv.services.db.connect() as conn:
+        still = conn.execute(
+            "SELECT node_type FROM project_comments WHERE comment_id = ?", (cid,)
+        ).fetchone()
+    assert still["node_type"] == "conclusion"
+
+
+async def test_a_non_member_cannot_edit_or_delete_comments(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    client, _, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    created = await client.post(f"{PROJECTS}/{pid}/comments", headers=auth, json={"body": "mine"})
+    cid = created.json()["comment_id"]
+
+    edited = await client.patch(
+        f"{PROJECTS}/{pid}/comments/{cid}", headers=ctx["bob"], json={"body": "hijack"}
+    )
+    assert edited.status_code == 403, edited.text
+    assert edited.status_code != 500
+    assert edited.json()["error"]["code"] == "PROJECT_FORBIDDEN"
+
+    removed = await client.request("DELETE", f"{PROJECTS}/{pid}/comments/{cid}", headers=ctx["bob"])
+    assert removed.status_code == 403, removed.text
+    assert removed.status_code != 500
+    assert removed.json()["error"]["code"] == "PROJECT_FORBIDDEN"
+
+
+# ── batch 11 (T-C2-API): binding attachments to a comment over real HTTP ─────
+
+
+def _stage(srv: Any, pid: str, artifact_id: str, uri: str = "local://a.txt") -> None:
+    srv.services.project_artifact_repo.insert(
+        artifact_id=artifact_id,
+        project_id=pid,
+        task_id=None,
+        name="a.txt",
+        size=1,
+        mime="text/plain",
+        uri=uri,
+        file_hash="h",
+        created_by=1,
+    )
+
+
+async def test_binding_an_attachment_to_a_comment_over_http(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """bind takes comment_id, persists it, and the four error paths stay put."""
+    client, srv, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    cid = (
+        await client.post(f"{PROJECTS}/{pid}/comments", headers=auth, json={"body": "own it"})
+    ).json()["comment_id"]
+    _stage(srv, pid, "ARTA")
+
+    bound = await client.patch(
+        f"{PROJECTS}/{pid}/attachments/ARTA", headers=auth, json={"comment_id": cid}
+    )
+    assert bound.status_code == 200, bound.text
+    with srv.services.db.connect() as conn:
+        stored = conn.execute(
+            "SELECT comment_id FROM project_artifacts WHERE artifact_id = ?", ("ARTA",)
+        ).fetchone()["comment_id"]
+    assert stored == cid, "the comment binding must be persisted"
+    assert [
+        a.artifact_id
+        for a in srv.services.project_artifact_repo.list_by_comment(project_id=pid, comment_id=cid)
+    ] == ["ARTA"]
+
+    # already bound ⇒ 409 (same shape as the task face)
+    again = await client.patch(
+        f"{PROJECTS}/{pid}/attachments/ARTA", headers=auth, json={"comment_id": cid}
+    )
+    assert again.status_code == 409, again.text
+    assert again.json()["error"]["code"] == "PROJECT_ATTACHMENT_INVALID"
+    assert again.status_code != 500
+
+    # exactly one of task_id / comment_id
+    _stage(srv, pid, "ARTB")
+    for payload in ({"task_id": "tsk_x", "comment_id": cid}, {}):
+        bad = await client.patch(f"{PROJECTS}/{pid}/attachments/ARTB", headers=auth, json=payload)
+        assert bad.status_code == 400, (payload, bad.text)
+        assert bad.json()["error"]["code"] == "PROJECT_ATTACHMENT_INVALID"
+        assert bad.status_code != 500
+
+
+async def test_deleting_a_comment_keeps_the_blob_file_on_disk(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """⑤ direct evidence for "blobs are kept" (debt O6): row gone, file still there."""
+    client, srv, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    cid = (
+        await client.post(f"{PROJECTS}/{pid}/comments", headers=auth, json={"body": "has file"})
+    ).json()["comment_id"]
+    _stage(srv, pid, "ARTC", uri="local://keepme.bin")
+    assert srv.services.project_artifact_repo.bind_comment("ARTC", comment_id=cid) is True
+
+    service = ProjectAttachmentService(srv.services)
+    path = service._absolute_path(pid, "local://keepme.bin")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"payload")
+    assert path.exists()
+
+    deleted = await client.delete(f"{PROJECTS}/{pid}/comments/{cid}", headers=auth)
+    assert deleted.status_code == 200, deleted.text
+    assert srv.services.project_artifact_repo.get("ARTC") is None, "the row must go"
+    assert path.exists(), "the blob file must survive (batch keeps blobs: debt O6)"
+    path.unlink(missing_ok=True)
+
+
+async def test_a_non_member_platform_admin_can_delete_another_users_comment(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """SPEC P1 end to end: governance is **parallel** to project membership.
+
+    The admin here is not a member of bob's project, so a role-based check alone
+    would answer 403 — only the governance gate lets this through. (Its mirror,
+    "a plain member may not touch someone else's comment", is asserted at the
+    service level in ``tests/unit/projects/test_project_discussion.py``.)
+    """
+    client, _, ctx = api
+    pid = (
+        await client.post(
+            PROJECTS, headers=ctx["bob"], json={"name": "bob's project", "status": "active"}
+        )
+    ).json()["project_id"]
+    cid = (
+        await client.post(
+            f"{PROJECTS}/{pid}/comments", headers=ctx["bob"], json={"body": "bob wrote"}
+        )
+    ).json()["comment_id"]
+
+    # sanity: the admin is genuinely not a member of this project
+    members = await client.get(f"{PROJECTS}/{pid}/members", headers=ctx["bob"])
+    assert all(m["subject_id"] != "1" for m in members.json()), members.text
+
+    removed = await client.request(
+        "DELETE", f"{PROJECTS}/{pid}/comments/{cid}", headers=ctx["admin"]
+    )
+    assert removed.status_code == 200, removed.text
+    assert removed.json() == {"deleted": True}
+    listed = await client.get(f"{PROJECTS}/{pid}/comments", headers=ctx["bob"])
+    assert all(row["comment_id"] != cid for row in listed.json())
