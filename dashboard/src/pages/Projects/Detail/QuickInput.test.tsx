@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   act,
   fireEvent,
@@ -145,6 +147,13 @@ async function open() {
   };
 }
 
+/** Same as ``open``, but waits until the recipient picker is available. */
+async function openWithPicker() {
+  const controls = await open();
+  await screen.findByTestId("quick-input-recipient-trigger");
+  return controls;
+}
+
 /** Types text and submits, then returns the socket the component opened. */
 async function submit(text: string) {
   const { input, send } = await open();
@@ -201,7 +210,9 @@ describe("QuickInput — 目标 agent（PLAN §3.2 / AC-G3-6）", () => {
     expect(screen.queryByTestId("quick-input-no-agent")).toBeNull();
   });
 
-  it(">1 个 agent：按 (created_at, subject_id) 确定性取首条并明示", async () => {
+  // ★ PLAN §9 O3（被推翻口径）：after 逐字 —— 默认值规则**保留**，只**增**切换断言
+  //   （「推翻 ≠ 弱化」：改的是能力上限，不是放宽任何既有断言）。
+  it(">1 个 agent：默认按 (created_at, subject_id) 取首条并明示；可切换为其它 agent", async () => {
     routes["/projects/p1/members"] = () => [
       member({ subject_id: "agent-z", created_at: 200 }),
       member({ subject_id: "agent-b", created_at: 100 }),
@@ -213,13 +224,20 @@ describe("QuickInput — 目标 agent（PLAN §3.2 / AC-G3-6）", () => {
         created_at: 1,
       }),
     ];
-    const { input, send } = await open();
+    const { input, send } = await openWithPicker();
 
-    // 常显目标（文案键）——确定性由实际发送对象证明。
+    // ① 既有断言（默认值的确定性 + 常显目标）逐字保留。
     await waitFor(() =>
       expect(screen.getByTestId("quick-input-target")).toHaveTextContent(
         "projects.quickInputTarget",
       ),
+    );
+    // ② 新增：默认 = 确定性首条（乱序注入 → agent-a；agent-b/agent-z 均非首条）。
+    expect(screen.getByTestId("quick-input-target").textContent).not.toContain(
+      "agent-b",
+    );
+    expect(screen.getByTestId("quick-input-target").textContent).not.toContain(
+      "agent-z",
     );
     fireEvent.change(input, { target: { value: "hi" } });
     fireEvent.click(send);
@@ -228,6 +246,22 @@ describe("QuickInput — 目标 agent（PLAN §3.2 / AC-G3-6）", () => {
     expect(MockWebSocket.instances[0].url).toContain(
       "/api/agents/agent-a/chat/ws",
     );
+
+    // ③ 新增：发完一轮后仍可切换收件人（目标是新增能力，不是放宽旧判据）。
+    act(() => MockWebSocket.instances[0].emit({ type: "done" }));
+    fireEvent.click(
+      await (async () => {
+        fireEvent.click(screen.getByTestId("quick-input-recipient-trigger"));
+        return screen.findByTestId("quick-input-recipient-option-agent-b");
+      })(),
+    );
+    // 切换生效（"发给谁"的文案模板由 i18n 渲染，共享 mock 只回键 → 用选中态证）。
+    fireEvent.click(screen.getByTestId("quick-input-recipient-trigger"));
+    expect(
+      (
+        await screen.findByTestId("quick-input-recipient-option-agent-b")
+      ).getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 });
 
@@ -454,6 +488,238 @@ describe("QuickInput — 任务引用（PLAN §3.3 / AC-G3-5）", () => {
   });
 });
 
+/** Opens the picker and returns the option button for one agent. */
+async function pickOption(subjectId: string) {
+  fireEvent.click(screen.getByTestId("quick-input-recipient-trigger"));
+  return screen.findByTestId(`quick-input-recipient-option-${subjectId}`);
+}
+
+/** Reopens the picker (it closes on select) and reads the chosen option. */
+async function chosenAfterReopen(subjectId: string): Promise<boolean> {
+  fireEvent.click(screen.getByTestId("quick-input-recipient-trigger"));
+  const option = await screen.findByTestId(
+    `quick-input-recipient-option-${subjectId}`,
+  );
+  return option.getAttribute("aria-pressed") === "true";
+}
+
+function isChosen(subjectId: string): boolean {
+  return (
+    screen
+      .getByTestId(`quick-input-recipient-option-${subjectId}`)
+      .getAttribute("aria-pressed") === "true"
+  );
+}
+
+describe("QuickInput — D2 收件人选择（PLAN §2 · AC-D2-1..6）", () => {
+  const shuffledMembers = () => [
+    userMember(),
+    // 乱序注入：不得依赖 DB/接口返回顺序。
+    member({ subject_id: "agent-z", created_at: 200 }),
+    member({ subject_id: "agent-a", created_at: 100 }),
+    member({ subject_id: "agent-b", created_at: 100 }),
+  ];
+
+  it("AC-D2-1: 只列 agent —— 负向注入 user 成员不出现在选项里", async () => {
+    routes["/projects/p1/members"] = shuffledMembers;
+    await openWithPicker();
+
+    fireEvent.click(screen.getByTestId("quick-input-recipient-trigger"));
+    await screen.findByTestId("quick-input-recipient-option-agent-a");
+
+    // 3 个 agent 选项（user 行「7」不得出现）。
+    const options = document.querySelectorAll(
+      '[data-testid^="quick-input-recipient-option-"]',
+    );
+    expect(options).toHaveLength(3);
+    expect(screen.queryByTestId("quick-input-recipient-option-7")).toBeNull();
+  });
+
+  it("AC-D2-2: 默认 = 确定性首条（乱序注入 → agent-a，不依赖返回顺序）", async () => {
+    routes["/projects/p1/members"] = shuffledMembers;
+    const { input, send } = await openWithPicker();
+
+    // 默认 = 首条：打开选择器时 agent-a 是当前项（乱序注入不影响）。
+    await pickOption("agent-a");
+    expect(isChosen("agent-a")).toBe(true);
+    expect(isChosen("agent-b")).toBe(false);
+    expect(isChosen("agent-z")).toBe(false);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+
+    // 确定性由实际发送对象再证一次。
+    fireEvent.change(input, { target: { value: "hi" } });
+    fireEvent.click(send);
+    await waitFor(() => expect(MockWebSocket.instances.length).toBe(1));
+    expect(MockWebSocket.instances[0].url).toContain(
+      "/api/agents/agent-a/chat/ws",
+    );
+  });
+
+  it("AC-D2-3: 切换收件人 → 目标文案随之更新；且无 localStorage 写入", async () => {
+    const setItem = vi.fn();
+    vi.stubGlobal("localStorage", {
+      getItem: () => null,
+      setItem,
+      removeItem: vi.fn(),
+    });
+    routes["/projects/p1/members"] = shuffledMembers;
+    await openWithPicker();
+
+    fireEvent.click(await pickOption("agent-z"));
+
+    // 切换已生效（"发给谁" 的文案由 i18n 模板渲染，共享 mock 只回键 → 用选择器
+    // 自身的选中态 + 真实发送目标来证）。
+    expect(await chosenAfterReopen("agent-z")).toBe(true);
+    expect(screen.getByTestId("quick-input-target")).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    const { input, send } = {
+      input: screen.getByLabelText("projects.quickInputPlaceholder"),
+      send: screen.getByRole("button", { name: /projects\.quickInputSend/ }),
+    };
+    fireEvent.change(input, { target: { value: "hi" } });
+    fireEvent.click(send);
+    await waitFor(() => expect(MockWebSocket.instances.length).toBe(1));
+    expect(MockWebSocket.instances[0].url).toContain(
+      "/api/agents/agent-z/chat/ws",
+    );
+    expect(setItem).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("AC-D2-3/4: 换人后的提交发给所选收件人，且仍不传 thread_id", async () => {
+    routes["/projects/p1/members"] = shuffledMembers;
+    const { input, send } = await openWithPicker();
+
+    fireEvent.click(screen.getByTestId("quick-input-recipient-trigger"));
+    fireEvent.click(
+      await screen.findByTestId("quick-input-recipient-option-agent-b"),
+    );
+    fireEvent.change(input, { target: { value: "发给 b" } });
+    fireEvent.click(send);
+
+    await waitFor(() => expect(MockWebSocket.instances.length).toBe(1));
+    const socket = MockWebSocket.instances[0];
+    expect(socket.url).toContain("/api/agents/agent-b/chat/ws");
+    act(() => socket.open());
+    // 沿用 G3-Q1：每次提交新建会话 → 不带 thread_id。
+    expect(socket.lastSent()).toEqual({ type: "user_turn", text: "发给 b" });
+    expect(Object.keys(socket.lastSent())).not.toContain("thread_id");
+
+    // 第二次发送：换回另一个收件人 → 仍不带 thread_id（各建一条会话）。
+    act(() => socket.emit({ type: "done" }));
+    fireEvent.click(screen.getByTestId("quick-input-recipient-trigger"));
+    fireEvent.click(
+      await screen.findByTestId("quick-input-recipient-option-agent-a"),
+    );
+    fireEvent.change(input, { target: { value: "发给 a" } });
+    fireEvent.click(send);
+    await waitFor(() => expect(MockWebSocket.instances.length).toBe(2));
+    const second = MockWebSocket.instances[1];
+    expect(second.url).toContain("/api/agents/agent-a/chat/ws");
+    act(() => second.open());
+    expect(Object.keys(second.lastSent())).not.toContain("thread_id");
+  });
+
+  it("AC-D2-5: 未持久 —— 重挂载回到默认（agent-a）", async () => {
+    routes["/projects/p1/members"] = shuffledMembers;
+    const first = render(<QuickInput projectId={PROJECT} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("quick-input-recipient-trigger")).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByTestId("quick-input-recipient-trigger"));
+    fireEvent.click(
+      await screen.findByTestId("quick-input-recipient-option-agent-z"),
+    );
+    // 切换已生效（文案由 i18n 模板渲染，共享 mock 只回键 → 用选中态证）。
+    expect(await chosenAfterReopen("agent-z")).toBe(true);
+    first.unmount();
+
+    render(<QuickInput projectId={PROJECT} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("quick-input-recipient-trigger")).toBeTruthy(),
+    );
+    // 重挂载后回到确定性首条（未持久化任何选择）。
+    await pickOption("agent-a");
+    expect(isChosen("agent-a")).toBe(true);
+  });
+
+  it("AC-D2-6: quick-input-target 文案含所选 agent 的 subject_id", async () => {
+    routes["/projects/p1/members"] = shuffledMembers;
+    await openWithPicker();
+
+    const target = screen.getByTestId("quick-input-target");
+    expect(target).toHaveTextContent("projects.quickInputTarget");
+    // 文案由 i18n 模板渲染（共享 mock 不插值）→ 断言 testid 存在 + 选项可定位。
+    fireEvent.click(screen.getByTestId("quick-input-recipient-trigger"));
+    expect(
+      await screen.findByTestId("quick-input-recipient-option-agent-a"),
+    ).toHaveTextContent("agent-a");
+  });
+
+  it("PLAN §2.1: 键入过滤（大小写不敏感子串）；无结果 → quickInputRecipientEmpty", async () => {
+    routes["/projects/p1/members"] = shuffledMembers;
+    await openWithPicker();
+
+    fireEvent.click(screen.getByTestId("quick-input-recipient-trigger"));
+    const filter = await screen.findByTestId("quick-input-recipient-filter");
+    fireEvent.change(filter, { target: { value: "AGENT-B" } });
+
+    expect(
+      screen.getByTestId("quick-input-recipient-option-agent-b"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByTestId("quick-input-recipient-option-agent-a"),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId("quick-input-recipient-option-agent-z"),
+    ).toBeNull();
+
+    fireEvent.change(filter, { target: { value: "nope" } });
+    expect(screen.getByTestId("quick-input-recipient-empty")).toHaveTextContent(
+      "projects.quickInputRecipientEmpty",
+    );
+  });
+
+  it("R10: 0 个 agent → 选择器不渲染 + quick-input-no-agent", async () => {
+    routes["/projects/p1/members"] = () => [userMember()];
+    await open();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("quick-input-no-agent")).toHaveTextContent(
+        "projects.quickInputNoAgent",
+      ),
+    );
+    expect(screen.queryByTestId("quick-input-recipient-trigger")).toBeNull();
+  });
+
+  it("R14 / 裁定 A①: 选中的 agent 无权访问（4003）→ 显式失败 + 保留输入（不预判）", async () => {
+    routes["/projects/p1/members"] = shuffledMembers;
+    const { input, send } = await openWithPicker();
+
+    // 选择器**不预判**访问权：agent-z 照常可选。
+    fireEvent.click(screen.getByTestId("quick-input-recipient-trigger"));
+    fireEvent.click(
+      await screen.findByTestId("quick-input-recipient-option-agent-z"),
+    );
+    fireEvent.change(input, { target: { value: "保留我" } });
+    fireEvent.click(send);
+
+    await waitFor(() => expect(MockWebSocket.instances.length).toBe(1));
+    const socket = MockWebSocket.instances[0];
+    expect(socket.url).toContain("/api/agents/agent-z/chat/ws");
+    act(() => socket.open());
+    // 服务端 assert_agent_access 拒绝（预期路径）。
+    act(() => socket.serverClose(4003));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("quick-input-failed")).toBeInTheDocument(),
+    );
+    expect(input).toHaveValue("保留我");
+    // 仍可重选收件人（失败不锁死选择器）。
+    expect(screen.getByTestId("quick-input-recipient-trigger")).toBeTruthy();
+  });
+});
+
 describe("QuickInput — 角色 UX 门（非安全控制）", () => {
   it("viewer（无 PROJECT_WRITE）：不提供输入框，只给一行说明", async () => {
     routes["/projects/p1/members"] = () => [userMember("viewer"), member()];
@@ -532,5 +798,77 @@ describe("composeMessage（纯函数：转义与顺序）", () => {
 
   it("无引用时正文原样（不加空行）", () => {
     expect(composeMessage("只有正文", [])).toBe("只有正文");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * D1 自适应软换行（PLAN §1 / §1.1 / §13 RQ-9 / AC-D1-1 · AC-D1-2/3/4）
+ * ★ AC-D1-4「不得单行横向滚动」是**真机项**：jsdom 不做布局
+ *   （scrollWidth/scrollHeight 恒 0），故此文件只留**代理判据**
+ *   （元素必须是 TEXTAREA + autoSize 逐字存在），真机数字由浏览器实测。
+ * ------------------------------------------------------------------ */
+const SOURCE = readFileSync(resolve(__dirname, "QuickInput.tsx"), "utf8");
+
+/**
+ * RQ-9 检出辅助：`autoSize` 必须**逐字** `minRows: 1, maxRows: 6`，且不得出现
+ * 固定高度写法 `rows={`、`onPressEnter`（TextArea 无此 prop）、手写高度。
+ * 判别性对照（③）用**同一套**辅助函数喂入已知错误输入 → 必须失败。
+ */
+function assertAutoSize(source: string) {
+  expect(source).toContain("Input.TextArea");
+  expect(source).toContain("autoSize={{ minRows: 1, maxRows: 6 }}");
+  expect(source).not.toMatch(/\brows=\{/);
+  expect(source).not.toContain("onPressEnter");
+  expect(source).not.toContain("adjustHeight");
+}
+
+describe("D1 自适应软换行（AC-D1-1 · AC-D1-2 · AC-D1-3 · RQ-9）", () => {
+  it("AC-D1-3 代理判据：长文本仍在 TEXTAREA 元素上（单行 input 不可能软换行）", async () => {
+    const { input } = await open();
+    const el = input as HTMLElement;
+    expect(el).toBeTruthy();
+    // ★ 单行 <input> 永远只横向滚动 → 该缺陷类被本条排除。
+    expect(el.tagName).toBe("TEXTAREA");
+    expect(el.tagName).not.toBe("INPUT");
+    fireEvent.change(el, { target: { value: "软换行".repeat(80) } });
+    expect(el.tagName).toBe("TEXTAREA");
+  });
+
+  it("⑬/RQ-9①：autoSize 逐字 minRows 1 / maxRows 6；无 rows= / onPressEnter / adjustHeight", () => {
+    assertAutoSize(SOURCE);
+  });
+
+  it("③ 判别性对照（可复跑 · L15 已知错误输入必红）：maxRows=99 / rows={4} / 残留 onPressEnter 都要失败", () => {
+    // 已知正确输入 → 绿（同一套辅助函数）。
+    expect(() => assertAutoSize(SOURCE)).not.toThrow();
+    // 已知错误输入 1：maxRows 写错（封顶失效）。
+    expect(() =>
+      assertAutoSize(SOURCE.replace("maxRows: 6", "maxRows: 99")),
+    ).toThrow();
+    // 已知错误输入 2：固定高度（多行但不自适应）。
+    expect(() =>
+      assertAutoSize(
+        SOURCE.replace("<Input.TextArea", "<Input.TextArea rows={4}"),
+      ),
+    ).toThrow();
+    // 已知错误输入 3：残留 TextArea 不支持的 onPressEnter。
+    expect(() =>
+      assertAutoSize(`${SOURCE}\nconst legacy = (p) => p.onPressEnter;\n`),
+    ).toThrow();
+  });
+
+  it("AC-D1-2：Enter 发送；Shift+Enter 只换行、不发送", async () => {
+    const { input } = await open();
+    await screen.findByTestId("quick-input-target");
+    const el = input as HTMLTextAreaElement;
+
+    fireEvent.change(el, { target: { value: "第一行" } });
+    // Shift+Enter = 换行（默认行为），**不得**触发发送。
+    fireEvent.keyDown(el, { key: "Enter", shiftKey: true });
+    expect(MockWebSocket.instances).toHaveLength(0);
+
+    // Enter = 发送。
+    fireEvent.keyDown(el, { key: "Enter" });
+    await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
   });
 });

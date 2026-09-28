@@ -10,6 +10,7 @@ import {
 } from "../../../api/modules/projects";
 import { buildDashboardChatWsUrl } from "../../../api/modules/wsChat";
 import { ChipButton, ChipToolbar } from "../../../components/ChipToolbar";
+import { AgentPicker } from "./AgentPicker";
 import { useAsyncResource } from "../../../hooks/useAsyncResource";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useProjectMembers } from "../../../hooks/useProjectMembers";
@@ -71,8 +72,15 @@ function myProjectRole(
   return mine?.role ?? null;
 }
 
-/** Deterministic project expert: oldest membership first, then subject id. */
-function pickAgent(members: ProjectMember[]): ProjectMember | null {
+/**
+ * Default recipient = the deterministic first agent (PLAN §2.3): sort by
+ * ``(created_at ASC, subject_id ASC)`` and take the head. The sort is done
+ * here on purpose — it must never depend on the order the API/DB returned, and
+ * ``subject_id`` breaks ties so the result is a total order.
+ */
+export function defaultRecipient(
+  members: ProjectMember[],
+): ProjectMember | null {
   const agents = members
     .filter((member) => member.subject_type === "agent")
     .sort((a, b) => {
@@ -81,6 +89,11 @@ function pickAgent(members: ProjectMember[]): ProjectMember | null {
       return a.subject_id < b.subject_id ? -1 : 1;
     });
   return agents[0] ?? null;
+}
+
+/** Candidate set for the picker: agent members only (PLAN §2.1 / AC-D2-1). */
+export function agentMembers(members: ProjectMember[]): ProjectMember[] {
+  return members.filter((member) => member.subject_type === "agent");
 }
 
 /**
@@ -135,7 +148,26 @@ export default function QuickInput({
   /** First terminal state wins. */
   const settledRef = useRef(false);
 
-  const agent = useMemo(() => pickAgent(members), [members]);
+  const agents = useMemo(() => agentMembers(members), [members]);
+  const initialRecipient = useMemo(() => defaultRecipient(members), [members]);
+  /** Selected recipient: in-memory only — nothing is persisted anywhere. */
+  const [recipient, setRecipient] = useState<ProjectMember | null>(null);
+  /**
+   * PLAN §2.2 state machine: the selection survives a members re-read while the
+   * agent is still listed; if it disappeared we fall back to the deterministic
+   * default (which may be null → R10 disabled + copy). ``recipient === null``
+   * before the first read is also covered: it is seeded from the default.
+   */
+  useEffect(() => {
+    setRecipient((current) => {
+      if (current && agents.some((a) => a.subject_id === current.subject_id)) {
+        return current;
+      }
+      return initialRecipient;
+    });
+  }, [agents, initialRecipient]);
+
+  const agent = recipient;
 
   /**
    * ★ UX 门（非安全控制）— ★ UX gate, **not a security boundary**.
@@ -209,7 +241,7 @@ export default function QuickInput({
 
   const submit = async () => {
     const body = text.trim();
-    if (!body || !agent || sending) return;
+    if (!body || !recipient || sending) return;
 
     // References are resolved against the list **at submit time**: a task
     // deleted meanwhile is dropped, the rest still goes out (PLAN §3.3). Only
@@ -234,7 +266,8 @@ export default function QuickInput({
       setReferencesDropped(true);
     }
 
-    const socket = new WebSocket(buildDashboardChatWsUrl(agent.subject_id));
+    // 换人 ⇒ 新建会话（沿用 G3-Q1）：仍不传 thread_id，目标 = 所选收件人。
+    const socket = new WebSocket(buildDashboardChatWsUrl(recipient.subject_id));
     socketRef.current = socket;
     failedRef.current = false;
     settledRef.current = false;
@@ -300,14 +333,24 @@ export default function QuickInput({
     <section className={styles.wrapper} data-testid="project-quick-input">
       {!roleKnown ? null : writeAllowed ? (
         <div className={styles.row}>
-          <Input
+          <Input.TextArea
             className={styles.input}
             value={text}
             disabled={!agent}
             placeholder={t("projects.quickInputPlaceholder")}
             aria-label={t("projects.quickInputPlaceholder")}
+            /* PLAN §1：自适应高度（1 行起、6 行封顶、超出内部滚动）；软换行由
+               textarea 默认 `wrap=soft` 提供 —— 不手写高度计算（§0 事实 4）。 */
+            autoSize={{ minRows: 1, maxRows: 6 }}
             onChange={(event) => setText(event.target.value)}
-            onPressEnter={() => void submit()}
+            /* PLAN §1：antd TextArea 没有 pressEnter 事件 → 用 onKeyDown：
+               Enter 发送、Shift+Enter 换行（默认行为）。 */
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void submit();
+              }
+            }}
           />
           <Button
             type="primary"
@@ -330,9 +373,12 @@ export default function QuickInput({
             {t("common.noPermission")}
           </span>
         ) : agent ? (
-          <span className={styles.target} data-testid="quick-input-target">
-            {t("projects.quickInputTarget", { name: agent.subject_id })}
-          </span>
+          <AgentPicker
+            agents={agents}
+            value={agent}
+            onChange={setRecipient}
+            disabled={sending}
+          />
         ) : (
           <span className={styles.noAgent} data-testid="quick-input-no-agent">
             {t("projects.quickInputNoAgent")}

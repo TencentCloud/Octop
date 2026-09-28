@@ -6318,6 +6318,10 @@
     "taskDetailTimelineDispatched": "已派单",
     "taskDetailTimelineEmpty": "暂无状态变更",
     "taskDetailNotFound": "该项目中不存在该任务",
-    "taskDetailSave": "保存"
+    "taskDetailSave": "保存",
+    "quickInputRecipientTrigger": "选择收件人",
+    "quickInputRecipientFilter": "输入以过滤…",
+    "quickInputRecipientEmpty": "无匹配的专家",
+    "quickInputRecipientListLabel": "收件人"
   }
 }

@@ -19,6 +19,9 @@
 .input {
   flex: 1;
   min-width: 0;
+  /* PLAN §1：行高恒定 + 禁拖拽改高（与 autoSize 冲突）；不新增设计 token。 */
+  line-height: 22px;
+  resize: none;
 }
 
 .meta {

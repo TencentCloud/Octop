@@ -1,0 +1,49 @@
+/* Recipient picker (PLAN §2) — project domain, no chat-page styles. */
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  max-width: 240px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.filter {
+  margin-bottom: 2px;
+}
+
+.empty {
+  padding: 6px 8px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--fn-radius-md, 6px);
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-primary);
+  }
+}
+
+.optionActive {
+  color: var(--fn-color-brand);
+}

@@ -6179,6 +6179,10 @@
     "taskDetailTimelineDispatched": "Dispatched",
     "taskDetailTimelineEmpty": "No status changes yet",
     "taskDetailNotFound": "Task not found in this project",
-    "taskDetailSave": "Save"
+    "taskDetailSave": "Save",
+    "quickInputRecipientTrigger": "Choose recipient",
+    "quickInputRecipientFilter": "Type to filter…",
+    "quickInputRecipientEmpty": "No matching expert",
+    "quickInputRecipientListLabel": "Recipients"
   }
 }
