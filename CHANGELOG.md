@@ -8,6 +8,7 @@
 
 ### 修复
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+- Dashboard 对话报错：以 HTTP 429 / 403 返回的余额不足与欠费（OpenAI `insufficient_quota`、智谱 1113、Moonshot、Anthropic、硅基流动、火山方舟）不再提示「被限流，请稍后重试」，改为提示充值；DashScope 借用额度文案的 TPM/RPM 限流仍按限流提示。
 
 ## [1.0.2b3] - 2026-09-26
 
