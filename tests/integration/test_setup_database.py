@@ -32,12 +32,28 @@ def _seed_occupied_sqlite(home, *, relative_path: str = "occupied.db") -> None:
 
 
 @pytest.mark.asyncio
+async def test_setup_database_probe_and_bind_require_wizard_token(patched_app_client) -> None:
+    client, srv, home = patched_app_client
+    payload = {"driver": "sqlite", "sqlite_path": "data/unauthorized.db"}
+
+    probed = await client.post("/api/setup/test-database", json=payload)
+    bound = await client.post("/api/setup/database", json=payload)
+
+    assert probed.status_code == 401
+    assert bound.status_code == 401
+    assert srv.user_manager.count() == 0
+    assert not (home / "data" / "unauthorized.db").exists()
+
+
+@pytest.mark.asyncio
 async def test_setup_database_sqlite_bind(patched_app_client) -> None:
     """Already-bound empty wizard can still swap sqlite path via rebind."""
     client, srv, home = patched_app_client
+    tok = await wizard_token(client, home)
     r = await client.post(
         "/api/setup/test-database",
         json={"driver": "sqlite", "sqlite_path": "data/wizard.db"},
+        headers={"Authorization": f"Bearer {tok}"},
     )
     assert r.status_code == 200, r.text
     assert r.json()["ok"] is True
@@ -45,6 +61,7 @@ async def test_setup_database_sqlite_bind(patched_app_client) -> None:
     r = await client.post(
         "/api/setup/database",
         json={"driver": "sqlite", "sqlite_path": "data/wizard.db"},
+        headers={"Authorization": f"Bearer {tok}"},
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -101,6 +118,7 @@ async def test_deferred_verify_password_then_bind(tmp_octop_home: Path) -> None:
         applied = await client.post(
             "/api/setup/database",
             json={"driver": "sqlite", "sqlite_path": "octop.db"},
+            headers={"Authorization": f"Bearer {tok}"},
         )
         assert applied.status_code == 200, applied.text
         assert srv.database_bound is True
@@ -128,6 +146,7 @@ async def test_setup_database_refuses_nonempty_target(patched_app_client) -> Non
     r = await client.post(
         "/api/setup/database",
         json={"driver": "sqlite", "sqlite_path": "occupied.db"},
+        headers={"Authorization": f"Bearer {await wizard_token(client, home)}"},
     )
     assert r.status_code == 409, r.text
     assert r.json()["error"]["code"] == "DATABASE_NOT_EMPTY"

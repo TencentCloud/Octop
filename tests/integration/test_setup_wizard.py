@@ -14,6 +14,7 @@ import pytest
 
 from octop.infra.setup.password_file import WIZARD_FILE_NAME, read_password
 from tests.support.app import octop_client, write_octop_config
+from tests.support.auth import bootstrap_admin
 
 
 @pytest.fixture
@@ -112,27 +113,32 @@ async def test_initial_admin_respects_locale_body(env: Any) -> None:
 # ─── /setup/status ─────────────────────────────────────────────────
 
 
-async def test_status_reports_wizard_password_exists(env: Any) -> None:
+async def test_status_reports_wizard_password_without_server_path(env: Any) -> None:
     c, _srv, home = env
     r = await c.get("/api/setup/status")
     body = r.json()
     assert body["setup_required"] is True
     assert body["wizard_password_required"] is True
     assert body["wizard_password_exists"] is True
-    assert body["wizard_password_path"] == str(Path.home() / WIZARD_FILE_NAME)
+    assert "wizard_password_path" not in body
 
 
-async def test_begin_issues_token_when_password_not_required(tmp_octop_home: Path) -> None:
+async def test_begin_never_issues_anonymous_token(tmp_octop_home: Path) -> None:
     write_octop_config(tmp_octop_home, require_setup_password=False)
 
     async with octop_client(tmp_octop_home) as (c, _srv):
         r = await c.get("/api/setup/status")
         body = r.json()
-        assert body["wizard_password_required"] is False
-        assert body["wizard_password_exists"] is False
-        assert body["wizard_password_path"] is None
+        assert body["wizard_password_required"] is True
+        assert body["wizard_password_exists"] is True
+        assert "wizard_password_path" not in body
 
         r = await c.post("/api/setup/begin")
+        assert r.status_code == 403
+
+        pw = read_password(Path.home())
+        assert pw is not None
+        r = await c.post("/api/setup/verify-password", json={"password": pw})
         assert r.status_code == 200
         assert r.json()["wizard_token"]
 
@@ -259,16 +265,38 @@ async def test_resume_wizard_after_admin_created(env: Any) -> None:
     c, _srv, home = env
     pw = read_password(Path.home())
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
-    await c.post(
+    admin = await c.post(
         "/api/setup/initial-admin",
         json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
-    r = await c.post("/api/setup/resume-wizard")
+    assert admin.status_code == 201
+    unauthenticated = await c.post("/api/setup/resume-wizard")
+    assert unauthenticated.status_code == 401
+
+    r = await c.post(
+        "/api/setup/resume-wizard",
+        headers={"Authorization": f"Bearer {admin.json()['access_token']}"},
+    )
     assert r.status_code == 200
     body = r.json()
     assert isinstance(body["wizard_token"], str)
     assert body["expires_in"] > 0
+
+
+async def test_resume_wizard_is_closed_after_setup_finishes(env: Any) -> None:
+    c, _srv, home = env
+    await bootstrap_admin(c, home)
+    admin_token = (
+        await c.post("/api/auth/login", json={"username": "admin", "password": "TestPass12"})
+    ).json()["access_token"]
+
+    r = await c.post(
+        "/api/setup/resume-wizard",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert r.status_code == 410
 
 
 async def test_test_provider_accepts_admin_jwt_after_admin_created(env: Any) -> None:

@@ -59,6 +59,21 @@ afterEach(() => {
 });
 
 if (typeof window !== "undefined") {
+  if (!(globalThis as typeof globalThis & { DOMMatrix?: unknown }).DOMMatrix) {
+    class _DOMMatrix {
+      a = 1;
+      b = 0;
+      c = 0;
+      d = 1;
+      e = 0;
+      f = 0;
+    }
+    Object.defineProperty(globalThis, "DOMMatrix", {
+      configurable: true,
+      value: _DOMMatrix,
+    });
+  }
+
   // matchMedia
   if (!window.matchMedia) {
     Object.defineProperty(window, "matchMedia", {

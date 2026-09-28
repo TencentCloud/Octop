@@ -59,7 +59,21 @@ RUN NODE_ENV=production NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_
 
 
 # ---------------------------------------------------------------------------
-# 阶段 2 — Python 运行时
+# 阶段 2 — 固定版本的 uv 构建工具
+# ---------------------------------------------------------------------------
+FROM python:3.12-slim AS uv-builder
+
+ARG PIP_INDEX_URL=
+ARG PIP_TRUSTED_HOST=
+
+RUN set -eu; \
+    if [ -n "$PIP_INDEX_URL" ]; then pip config set global.index-url "$PIP_INDEX_URL"; fi; \
+    if [ -n "$PIP_TRUSTED_HOST" ]; then pip config set global.trusted-host "$PIP_TRUSTED_HOST"; fi; \
+    pip install --no-cache-dir uv==0.7.12
+
+
+# ---------------------------------------------------------------------------
+# 阶段 3 — Python 运行时
 # ---------------------------------------------------------------------------
 FROM python:3.12-slim AS runtime
 
@@ -82,6 +96,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 ARG PIP_INDEX_URL=
 ARG PIP_TRUSTED_HOST=
 ARG APT_MIRROR=
+ARG UV_HTTP_TIMEOUT=300
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -96,7 +111,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /uvx /bin/
+COPY --from=uv-builder /usr/local/bin/uv /usr/local/bin/uv
+COPY --from=uv-builder /usr/local/bin/uvx /usr/local/bin/uvx
 
 WORKDIR /app
 
@@ -107,6 +123,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         export UV_INDEX_URL="$PIP_INDEX_URL"; \
         if [ -n "$PIP_TRUSTED_HOST" ]; then export UV_INSECURE_HOST="$PIP_TRUSTED_HOST"; fi; \
     fi \
+    && export UV_HTTP_TIMEOUT="$UV_HTTP_TIMEOUT" \
     && uv sync --frozen --no-install-project --no-dev --extra browser
 
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -124,6 +141,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         export UV_INDEX_URL="$PIP_INDEX_URL"; \
         if [ -n "$PIP_TRUSTED_HOST" ]; then export UV_INSECURE_HOST="$PIP_TRUSTED_HOST"; fi; \
     fi \
+    && export UV_HTTP_TIMEOUT="$UV_HTTP_TIMEOUT" \
     && uv sync --frozen --no-dev --extra browser \
     && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
     && apt-get purge -y --auto-remove build-essential \

@@ -225,7 +225,9 @@ async def test_tencent_login_rejects_reused_ticket_code(client: Any, siteverify:
     assert handler.hits == 1
 
 
-async def test_known_locked_user_skips_siteverify(client: Any, siteverify: Any) -> None:
+async def test_known_locked_user_gets_generic_failure_after_captcha(
+    client: Any, siteverify: Any
+) -> None:
     url, handler = siteverify
     set_test_siteverify_url("turnstile", url)
     handler.payload = {"success": True}
@@ -239,9 +241,9 @@ async def test_known_locked_user_skips_siteverify(client: Any, siteverify: Any) 
         "/api/auth/login",
         json={"username": "alice", "password": "TestPass12", "captcha_token": "ok-token"},
     )
-    assert r.status_code == 429 or r.json()["error"]["code"] == "LOGIN_LOCKED"
-    assert r.json()["error"]["code"] == "LOGIN_LOCKED"
-    assert handler.hits == 0
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "AUTH_FAILED"
+    assert handler.hits == 1
 
 
 async def test_overlong_captcha_token_is_422(client: Any) -> None:

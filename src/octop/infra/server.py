@@ -499,13 +499,10 @@ class OctopServer:
         if config is None:
             return
         wizard_home = Path.home()
-        if config.require_setup_password:
-            try:
-                new_pw = _wizard_pw.boot_self_heal(wizard_home, user_count=user_count)
-            except OSError as err:
-                logger.warning("wizard self-heal failed: %s", err)
-                new_pw = None
-        else:
+        try:
+            new_pw = _wizard_pw.boot_self_heal(wizard_home, user_count=user_count)
+        except OSError as err:
+            logger.warning("wizard self-heal failed: %s", err)
             new_pw = None
         if new_pw is not None:
             banner = (

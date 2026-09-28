@@ -97,11 +97,6 @@ class DatabaseSetupBody(BaseModel):
         return out
 
 
-def _setup_password_required(server: Any) -> bool:
-    cfg = server.services.config if server.services else getattr(server, "config", None)
-    return bool(cfg and cfg.require_setup_password)
-
-
 def _enforce_wizard_open(server: Any) -> None:
     um = server.user_manager
     if um is not None and um.count() != 0:
@@ -111,6 +106,11 @@ def _enforce_wizard_open(server: Any) -> None:
 def _enforce_wizard_token_phase(server: Any) -> None:
     """Allow wizard token operations while initial setup is still in progress."""
     um = server.user_manager
+    if (
+        server.services is not None
+        and server.services.settings_repo.get("setup.completed") == "true"
+    ):
+        raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
     if um is not None and um.count() > 1:
         raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
 
@@ -234,8 +234,6 @@ async def validate_wizard_token(
 @router.get("/setup/status", summary="Setup wizard status")
 async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
     """Whether initial admin creation is still required and wizard password file state."""
-    wizard_path = str(Path.home() / _wizard.WIZARD_FILE_NAME)
-    password_required = _setup_password_required(server)
     um = server.user_manager
     setup_required = um is None or um.count() == 0
     database_driver = None
@@ -243,11 +241,8 @@ async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
         database_driver = server.services.config.database.driver
     return {
         "setup_required": setup_required,
-        "wizard_password_required": password_required,
-        "wizard_password_exists": (
-            password_required and _wizard.read_password(Path.home()) is not None
-        ),
-        "wizard_password_path": wizard_path if password_required else None,
+        "wizard_password_required": True,
+        "wizard_password_exists": _wizard.read_password(Path.home()) is not None,
         "database_driver": database_driver,
         "database_bound": server.database_bound,
     }
@@ -257,9 +252,11 @@ async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
 async def test_database(
     body: DatabaseSetupBody,
     server: Any = Depends(get_server),
+    authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     """Validate DSN/settings with a short-lived pool (does not replace the process pool)."""
     _enforce_wizard_open(server)
+    _require_wizard_token(authorization, server)
     from octop.infra.db.probe import probe_database
     from octop.infra.db.rebind import database_config_from_payload
 
@@ -275,6 +272,7 @@ async def test_database(
 async def apply_database(
     body: DatabaseSetupBody,
     server: Any = Depends(get_server),
+    authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     """Write ``config.json`` database section, open the pool, migrate, and boot runtime.
 
@@ -282,6 +280,7 @@ async def apply_database(
     (e.g. changing engine mid-wizard), swaps via rebind.
     """
     _enforce_wizard_open(server)
+    _require_wizard_token(authorization, server)
     from octop.infra.db.probe import probe_database
     from octop.infra.db.rebind import (
         assert_control_plane_database_empty,
@@ -310,12 +309,9 @@ async def apply_database(
 
 @router.post("/setup/begin", summary="Begin setup without wizard password")
 async def begin_setup(server: Any = Depends(get_server)) -> dict[str, Any]:
-    """Issue a wizard token when ``require_setup_password`` is disabled."""
+    """Deprecated anonymous token endpoint; setup always requires the startup password."""
     _enforce_wizard_open(server)
-    if _setup_password_required(server):
-        raise OctopError(ErrorCode.FORBIDDEN, "setup password required")
-    token, ttl = server.wizard_tokens.issue()
-    return {"wizard_token": token, "expires_in": ttl}
+    raise OctopError(ErrorCode.FORBIDDEN, "verify the startup password to begin setup")
 
 
 @router.post("/setup/verify-password", summary="Verify wizard password")
@@ -326,8 +322,6 @@ async def verify_password(
 ) -> dict[str, Any]:
     """Validate the CLI-generated wizard password and return a short-lived wizard token."""
     _enforce_wizard_open(server)
-    if not _setup_password_required(server):
-        raise OctopError(ErrorCode.FORBIDDEN, "setup password not required")
     client_ip = request.client.host if request.client else "unknown"
     try:
         server.wizard_tokens.record_attempt(client_ip)
@@ -378,13 +372,17 @@ async def initial_admin(
 
 
 @router.post("/setup/resume-wizard", summary="Issue a fresh wizard token mid-setup")
-async def resume_wizard(server: Any = Depends(get_server)) -> dict[str, Any]:
+async def resume_wizard(
+    server: Any = Depends(get_server),
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
     """Issue a new wizard token after the admin exists but before finish."""
     _enforce_wizard_token_phase(server)
     require_database(server)
     assert server.user_manager is not None
     if server.user_manager.count() == 0:
         raise OctopError(ErrorCode.SETUP_TOKEN_INVALID, "admin not created yet", status=400)
+    _authorize_setup_mid_wizard(authorization, server)
     token, ttl = server.wizard_tokens.issue()
     return {"wizard_token": token, "expires_in": ttl}
 
@@ -440,6 +438,7 @@ async def finish(
             await _bootstrap_default_agent(server, user_id=admin.id, locale=admin.locale)
         except Exception as exc:  # pragma: no cover
             logger.warning("could not auto-create default agent: %s", exc)
+    server.services.settings_repo.set("setup.completed", "true")
     if wizard_token is not None:
         server.wizard_tokens.consume(wizard_token)
     return {"ok": True}

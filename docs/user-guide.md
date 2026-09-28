@@ -159,7 +159,7 @@ octop service start   # Linux(systemd) / macOS(launchd) / Windows 服务
 
 ### 3.2 向导步骤说明
 
-设置向导为分步引导，依次完成以下步骤（若关闭了 `require_setup_password`，则从「数据库」步开始）：
+设置向导为分步引导，依次完成以下步骤。首次配置必须先验证一次性设置密码，验证通过后才能继续配置数据库：
 
 ![图 3.1 — 设置向导步骤条](assets/setup-01-steps.png)
 
