@@ -1047,3 +1047,45 @@ async def test_a_non_member_platform_admin_can_delete_another_users_comment(
     assert removed.json() == {"deleted": True}
     listed = await client.get(f"{PROJECTS}/{pid}/comments", headers=ctx["bob"])
     assert all(row["comment_id"] != cid for row in listed.json())
+
+
+# ── batch 12 (T-F-API): the relevance filter on the comments feed ────────────
+
+
+async def test_relevance_me_narrows_the_feed_to_the_caller(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """`?relevance=me` = mentioned **or** on a task assigned to me; subset of the feed."""
+    client, srv, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    bob_id = next(
+        u["id"]
+        for u in (await client.get("/api/users", headers=auth)).json()
+        if u["username"] == "bob"
+    )
+    await _member(client, auth, pid, bob_id, "member")
+
+    # End to end over HTTP: the dashboard submits the mention, the server stores it
+    # verbatim, and `relevance=me` finds the row it stored.
+    mention = await client.post(
+        f"{PROJECTS}/{pid}/comments",
+        headers=ctx["bob"],
+        json={"body": "hey @admin", "mentions": [{"type": "user", "id": "1"}]},
+    )
+    assert mention.status_code == 201, mention.text
+    plain = await client.post(
+        f"{PROJECTS}/{pid}/comments", headers=ctx["bob"], json={"body": "unrelated"}
+    )
+    assert plain.status_code == 201, plain.text
+
+    feed = await client.get(f"{PROJECTS}/{pid}/comments", headers=auth)
+    assert len(feed.json()) >= 2, "precondition: the unfiltered feed is not empty"
+    mine = await client.get(f"{PROJECTS}/{pid}/comments", headers=auth, params={"relevance": "me"})
+    assert mine.status_code == 200, mine.text
+    ids = {row["comment_id"] for row in mine.json()}
+    assert ids == {mention.json()["comment_id"]}, ids
+    assert ids <= {row["comment_id"] for row in feed.json()}, "must stay a subset"
+
+    # an unknown value is refused, never silently ignored
+    bad = await client.get(f"{PROJECTS}/{pid}/comments", headers=auth, params={"relevance": "them"})
+    assert bad.status_code == 422, bad.text

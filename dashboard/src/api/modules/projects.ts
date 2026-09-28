@@ -184,6 +184,11 @@ export interface ProjectCommentCreateBody {
   /** 空白由后端 422 拒绝（前端只做按钮禁用）。 */
   body: string;
   task_id?: string | null;
+  /**
+   * ★ 被提及者（`[{type, id}]`）—— **只由显式 UI 动作产生**（**不做文本解析**）。
+   * ★ 服务端**只存不解析**；★ 省略 = NULL 与 `[]`（显式"没 @ 任何人"）是**两种事实**，不得塌缩。
+   */
+  mentions?: Array<{ type: string; id: string }> | null;
 }
 
 export interface ProjectCreateBody {
@@ -375,12 +380,24 @@ export const projectsApi = {
   /** `GET …/comments`（可选 `task_id` / `concluded` 过滤）。 */
   listComments: (
     projectId: string,
-    params?: { taskId?: string; concluded?: boolean },
+    params?: {
+      taskId?: string;
+      concluded?: boolean;
+      /** ★ 与 `authorType` **成对**（只给 id ⇒ 服务端 400）。 */
+      authorId?: string;
+      /** `user | agent` —— 与 `authorId` 成对。 */
+      authorType?: string;
+      /** ★ 冻结枚举值只有 `"me"`（= **关于调用者自己**；服务端 `Literal` ⇒ 非法值 422）。 */
+      relevance?: "me";
+    },
   ) => {
     const query = new URLSearchParams();
     if (params?.taskId) query.set("task_id", params.taskId);
     if (params?.concluded !== undefined)
       query.set("concluded", String(params.concluded));
+    if (params?.authorId) query.set("author_id", params.authorId);
+    if (params?.authorType) query.set("author_type", params.authorType);
+    if (params?.relevance) query.set("relevance", params.relevance);
     const qs = query.toString();
     return request<ProjectComment[]>(
       `${projectPath(projectId)}/comments${qs ? `?${qs}` : ""}`,

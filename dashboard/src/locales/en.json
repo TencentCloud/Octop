@@ -6193,6 +6193,13 @@
     "conclude": "Mark as conclusion",
     "unconclude": "Remove conclusion",
     "conclusionBy": "Conclusion · adopted by {{name}}",
-    "concludedByUnknown": "Deactivated user"
+    "concludedByUnknown": "Deactivated user",
+    "feedRelevanceMine": "Relevant to me",
+    "feedFilterByAuthor": "Filter by member",
+    "feedFilterAll": "All members",
+    "feedFilterClear": "Clear filter",
+    "feedMentions": "Mention",
+    "feedEmptyRelevance": "No notes relevant to you",
+    "feedEmptyFiltered": "No notes match this filter"
   }
 }

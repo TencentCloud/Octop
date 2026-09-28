@@ -6332,6 +6332,13 @@
     "conclude": "采纳为结论",
     "unconclude": "取消采纳",
     "conclusionBy": "结论 · 由 {{name}} 采纳",
-    "concludedByUnknown": "已注销用户"
+    "concludedByUnknown": "已注销用户",
+    "feedRelevanceMine": "与我相关",
+    "feedFilterByAuthor": "按成员筛选",
+    "feedFilterAll": "全部成员",
+    "feedFilterClear": "清除筛选",
+    "feedMentions": "提及",
+    "feedEmptyRelevance": "没有与你相关的留言",
+    "feedEmptyFiltered": "没有符合筛选条件的留言"
   }
 }

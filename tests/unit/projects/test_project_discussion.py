@@ -838,3 +838,66 @@ def test_editing_keeps_the_old_body_in_the_audit_payload(
     assert len(payload["old_body"]) == 500
     assert payload["old_body_truncated"] is True
     assert payload["old_body_length"] == 800
+
+
+# ── batch 12 (T-F-REPO): mentions, the shared clause, and the two-column author ─
+
+
+def test_mentions_are_stored_verbatim_and_absent_stays_null(
+    services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    """M2: what the dashboard picked is stored as submitted; no field ⇒ NULL.
+
+    ``[]`` (explicitly nobody) and ``NULL`` (the field was not sent) are different
+    facts, and the nullable column is what keeps them apart.
+    """
+    repo = services.project_comment_repo
+    picked = [{"type": "user", "id": "7"}, {"type": "agent", "id": "AG1"}]
+    with_mentions = repo.create(
+        project_id=project.id,
+        author_type="user",
+        author_id=str(owner.id),
+        body="hi @you",
+        mentions=picked,
+    )
+    stored = repo.get(with_mentions.id)
+    assert stored is not None and stored.mentions == json.dumps(picked, ensure_ascii=False)
+
+    explicit_none = repo.create(
+        project_id=project.id,
+        author_type="user",
+        author_id=str(owner.id),
+        body="nobody",
+        mentions=[],
+    )
+    assert repo.get(explicit_none.id).mentions == "[]"
+
+    absent = repo.create(
+        project_id=project.id, author_type="user", author_id=str(owner.id), body="no field"
+    )
+    assert repo.get(absent.id).mentions is None
+
+
+def test_list_and_count_agree_on_the_author_filter(
+    services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    """M4: both read paths use one clause, so list N and count M must match.
+
+    The filter is two-column: the same id under another ``author_type`` is a
+    different author and must not be counted.
+    """
+    repo = services.project_comment_repo
+    for _ in range(2):
+        repo.create(project_id=project.id, author_type="user", author_id=str(owner.id), body="mine")
+    repo.create(project_id=project.id, author_type="agent", author_id=str(owner.id), body="agent's")
+
+    listed = repo.list_by_project(project.id, author_id=str(owner.id), author_type="user")
+    counted = repo.count_by_project(project.id, author_id=str(owner.id), author_type="user")
+    assert len(listed) == 2
+    assert counted == len(listed), "list and count must come from the same clause"
+
+    agent_side = repo.count_by_project(project.id, author_id=str(owner.id), author_type="agent")
+    assert agent_side == 1, "the same id under another type is a different author"
+
+    with pytest.raises(ValueError):
+        repo.list_by_project(project.id, author_id=str(owner.id))

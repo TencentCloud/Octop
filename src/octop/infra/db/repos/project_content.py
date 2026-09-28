@@ -19,6 +19,7 @@ checked at write time instead — the same soft-FK approach as
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -63,6 +64,9 @@ class ProjectCommentRow:
     concluded_by_id: str | None
     created_at: int
     updated_at: int
+    #: JSON array of {type,id} as submitted by the dashboard, or None when the
+    #: comment was created without the field (batch 12; the server never parses it).
+    mentions: str | None
 
     @classmethod
     def from_row(cls, r: DbRow) -> ProjectCommentRow:
@@ -81,6 +85,7 @@ class ProjectCommentRow:
             concluded_by_id=r["concluded_by_id"],
             created_at=int(r["created_at"]),
             updated_at=int(r["updated_at"]),
+            mentions=r["mentions"],
         )
 
 
@@ -202,21 +207,22 @@ class ProjectCommentRepo:
         *,
         task_id: str | None = None,
         concluded: bool | None = None,
+        author_id: str | None = None,
+        author_type: str | None = None,
     ) -> list[ProjectCommentRow]:
         """Chronological (oldest first) — a discussion line reads top to bottom.
 
         ``concluded`` narrows to (or away from) the adopted conclusion; ``None``
         keeps every comment, which is the pre-existing behaviour.
         """
-        sql = "SELECT * FROM project_comments WHERE project_id = ?"
-        params: list[object] = [project_id]
-        if task_id is not None:
-            sql += " AND task_id = ?"
-            params.append(task_id)
-        if concluded is not None:
-            sql += " AND node_type " + ("=" if concluded else "!=") + " ?"
-            params.append(COMMENT_NODE_CONCLUSION)
-        sql += " ORDER BY created_at, id"
+        clause, params = self._where(
+            project_id,
+            task_id=task_id,
+            concluded=concluded,
+            author_id=author_id,
+            author_type=author_type,
+        )
+        sql = "SELECT * FROM project_comments " + clause + " ORDER BY created_at, id"
         with self._db.connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return map_rows(rows, ProjectCommentRow)
@@ -227,18 +233,54 @@ class ProjectCommentRepo:
         *,
         task_id: str | None = None,
         concluded: bool | None = None,
+        author_id: str | None = None,
+        author_type: str | None = None,
     ) -> int:
-        sql = "SELECT COUNT(*) AS c FROM project_comments WHERE project_id = ?"
-        params: list[object] = [project_id]
-        if task_id is not None:
-            sql += " AND task_id = ?"
-            params.append(task_id)
-        if concluded is not None:
-            sql += " AND node_type " + ("=" if concluded else "!=") + " ?"
-            params.append(COMMENT_NODE_CONCLUSION)
+        clause, params = self._where(
+            project_id,
+            task_id=task_id,
+            concluded=concluded,
+            author_id=author_id,
+            author_type=author_type,
+        )
+        sql = "SELECT COUNT(*) AS c FROM project_comments " + clause
         with self._db.connect() as conn:
             row = conn.execute(sql, params).fetchone()
         return int(row["c"]) if row else 0
+
+    @staticmethod
+    def _where(
+        project_id: str,
+        *,
+        task_id: str | None = None,
+        concluded: bool | None = None,
+        author_id: str | None = None,
+        author_type: str | None = None,
+    ) -> tuple[str, list[object]]:
+        """The one place the comment filters are written.
+
+        Both read paths (list and count) build their clause here, so the two can
+        never drift apart — a difference between them is exactly the "list N /
+        count M" bug the criteria watch for.
+
+        ``author_id`` must be paired with ``author_type``: a comment's author is
+        stored in **two** columns, so matching the id alone would let a row of
+        another type through (REPOWIKI §9.3).
+        """
+        if author_id is not None and author_type is None:
+            raise ValueError("author_id requires author_type (two-column author)")
+        clause = "WHERE project_id = ?"
+        params: list[object] = [project_id]
+        if task_id is not None:
+            clause += " AND task_id = ?"
+            params.append(task_id)
+        if concluded is not None:
+            clause += " AND node_type " + ("=" if concluded else "!=") + " ?"
+            params.append(COMMENT_NODE_CONCLUSION)
+        if author_id is not None:
+            clause += " AND author_id = ? AND author_type = ?"
+            params.extend([author_id, author_type])
+        return clause, params
 
     # ── writes ───────────────────────────────────────────────────────────────
 
@@ -253,6 +295,7 @@ class ProjectCommentRepo:
         thread_id: str | None = None,
         source: str = COMMENT_SOURCE_DASHBOARD,
         node_type: str = COMMENT_NODE_NONE,
+        mentions: list[dict[str, str]] | None = None,
     ) -> ProjectCommentRow:
         """Insert one comment on a discussion line.
 
@@ -266,8 +309,8 @@ class ProjectCommentRepo:
             conn.execute(
                 "INSERT INTO project_comments("
                 "comment_id, project_id, task_id, thread_id, author_type, author_id, "
-                "body, source, node_type, created_at, updated_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "body, source, node_type, mentions, created_at, updated_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     comment_id,
                     project_id,
@@ -278,6 +321,12 @@ class ProjectCommentRepo:
                     body,
                     source,
                     node_type,
+                    # ``None`` (no field sent) and ``[]`` (explicitly nobody) are two
+                    # different facts and must not collapse into one value: the column
+                    # is nullable precisely so "not submitted" stays distinguishable.
+                    # The server stores what the dashboard picked; it never parses the
+                    # body (design P1 = (c)).
+                    json.dumps(mentions, ensure_ascii=False) if mentions is not None else None,
                     ts,
                     ts,
                 ),

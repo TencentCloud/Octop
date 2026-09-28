@@ -45,6 +45,26 @@ from octop.infra.projects.service import (
 _AUDIT_BODY_LIMIT = 500
 
 
+def _mentions_actor(raw: str | None, subject_id: str) -> bool:
+    """Does the stored mention list contain ``{type: "user", id: subject_id}``?
+
+    Malformed or unexpected values answer ``False`` rather than raising: a bad
+    payload must never break the feed for everybody else.
+    """
+    if not raw:
+        return False
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(parsed, list):
+        return False
+    return any(
+        isinstance(item, dict) and item.get("type") == "user" and str(item.get("id")) == subject_id
+        for item in parsed
+    )
+
+
 def _require_body(body: str) -> str:
     """A blank comment is a caller error, not an empty row.
 
@@ -78,11 +98,55 @@ class ProjectDiscussion:
         user: ProjectActor,
         task_id: str | None = None,
         concluded: bool | None = None,
+        author_id: str | None = None,
+        author_type: str | None = None,
+        relevant_to: ProjectActor | int | None = None,
     ) -> list[ProjectCommentRow]:
-        """A project's comments, oldest first; ``task_id`` narrows to one task's line
-        and ``concluded`` to (or away from) the adopted conclusion."""
+        """A project's comments, oldest first.
+
+        ``task_id`` / ``concluded`` / ``author_id``+``author_type`` narrow the query
+        (the author pair is mandatory together — see ``ProjectCommentRepo._where``).
+        ``relevant_to`` is the Y1 "relevant to me" view: a comment is relevant when
+        it mentions that actor **or** it hangs off a task assigned to them. The
+        result is always a **subset** of the unfiltered feed: it only ever removes
+        rows, never adds one.
+
+        Mentions come from the dashboard as structured data and are stored verbatim
+        (design P1 = (c)); only the stored list is read here — the body is never
+        parsed.
+        """
         self._projects.assert_project_role(project_id, user=user, required=PROJECT_READ)
-        return self._comments.list_by_project(project_id, task_id=task_id, concluded=concluded)
+        rows = self._comments.list_by_project(
+            project_id,
+            task_id=task_id,
+            concluded=concluded,
+            author_id=author_id,
+            author_type=author_type,
+        )
+        if relevant_to is None:
+            return rows
+        subject_id = str(getattr(relevant_to, "id", relevant_to))
+        mine = self._task_ids_assigned_to(project_id, subject_id)
+        return [
+            row
+            for row in rows
+            if (row.task_id is not None and row.task_id in mine)
+            or _mentions_actor(row.mentions, subject_id)
+        ]
+
+    def _task_ids_assigned_to(self, project_id: str, subject_id: str) -> set[str]:
+        """Tasks of this project whose assignee is that **user**.
+
+        ``assignee_type`` is checked as well as the id: the two columns are an
+        independent pair, so matching the id alone would pull in another type's
+        rows (the same trap the comment author pair has).
+        """
+        return {
+            # ``row.id`` is the public task id (repos map the string id there).
+            row.id
+            for row in self._services.project_task_repo.list_by_project(project_id)
+            if row.assignee_type == "user" and row.assignee_id == subject_id
+        }
 
     def _require_own_comment(
         self, project_id: str, comment_id: str, *, user: ProjectActor
@@ -295,6 +359,7 @@ class ProjectDiscussion:
         source: str = COMMENT_SOURCE_DASHBOARD,
         author_type: str = COMMENT_AUTHOR_USER,
         author_id: str | None = None,
+        mentions: list[dict[str, str]] | None = None,
     ) -> ProjectCommentRow:
         """Add one comment to a project or task line; requires ``write`` (§4.6).
 
@@ -317,6 +382,7 @@ class ProjectDiscussion:
             author_id=author_id,
             body=_require_body(body),
             source=source,
+            mentions=mentions,
         )
 
     def add_agent_comment(

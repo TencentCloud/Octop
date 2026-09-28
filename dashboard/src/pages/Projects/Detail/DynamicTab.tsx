@@ -63,6 +63,19 @@ function DynamicTab() {
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   /** 正在编辑的留言 id（null = 无）与其草稿。 */
+  /** ★「与我相关」= **筛选参数**（`relevance=me`），**不是新视图**（P3 冻结）。 */
+  const [relevanceOnly, setRelevanceOnly] = useState(false);
+  /** ★ 按人筛选（`author_id` + `author_type` **成对**）；null = 不筛。 */
+  const [authorFilter, setAuthorFilter] = useState<{
+    id: string;
+    type: string;
+    label: string;
+  } | null>(null);
+  /** ★ 提及：**只由显式 UI 动作产生**（不做文本解析）；`touched` 区分"没动过"与"显式清空"。 */
+  const [mentions, setMentions] = useState<
+    Array<{ type: string; id: string; label: string }>
+  >([]);
+  const [mentionsTouched, setMentionsTouched] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState("");
 
@@ -72,8 +85,14 @@ function DynamicTab() {
     refresh,
   } = useAsyncResource<ProjectComment[]>(
     [],
-    () => projectsApi.listComments(projectId),
-    [projectId],
+    () =>
+      projectsApi.listComments(projectId, {
+        ...(relevanceOnly ? { relevance: "me" as const } : {}),
+        ...(authorFilter
+          ? { authorId: authorFilter.id, authorType: authorFilter.type }
+          : {}),
+      }),
+    [projectId, relevanceOnly, authorFilter],
     {
       enabled: projectId !== "",
       errorFallback: t("projects.loadFailed"),
@@ -97,8 +116,16 @@ function DynamicTab() {
     if (!body || saving) return;
     setSaving(true);
     try {
-      await projectsApi.createComment(projectId, { body });
+      await projectsApi.createComment(projectId, {
+        body,
+        // ★ `[]`（显式"没 @ 任何人"）与省略（NULL）是**两种事实**，不得塌缩。
+        ...(mentionsTouched
+          ? { mentions: mentions.map(({ type, id }) => ({ type, id })) }
+          : {}),
+      });
       setDraft("");
+      setMentions([]);
+      setMentionsTouched(false);
       await refresh();
     } catch (error) {
       message.error(apiErrorMessage(error, t("projects.feedPost"), t));
@@ -159,10 +186,73 @@ function DynamicTab() {
     }
   };
 
+  /** 候选集 = **项目成员**（`PLAN §1.2b` 冻结；不是全体用户 ✗）。 */
+  const memberCandidates = useMemo(
+    () =>
+      members
+        .filter(
+          (member) =>
+            member.subject_type === "user" || member.subject_type === "agent",
+        )
+        .map((member) => ({
+          type: member.subject_type,
+          id: member.subject_id,
+          label: member.name?.trim()
+            ? member.name
+            : `${member.subject_type}:${member.subject_id}`,
+        })),
+    [members],
+  );
+
   const roleKnown = !membersLoading;
 
   return (
     <div className={styles.wrapper} data-testid="project-dynamic">
+      {/* ★ 筛选条：与我相关（P3 = 筛选参数，不是新视图）+ 按人筛选（候选 = 项目成员）。 */}
+      <div className={styles.filters}>
+        <Button
+          size="small"
+          type={relevanceOnly ? "primary" : "default"}
+          data-testid="feed-relevance-toggle"
+          onClick={() => setRelevanceOnly((value) => !value)}
+        >
+          {t("projects.feedRelevanceMine")}
+        </Button>
+        <select
+          className={styles.authorSelect}
+          data-testid="feed-author-filter"
+          aria-label={t("projects.feedFilterByAuthor")}
+          value={authorFilter ? `${authorFilter.type}:${authorFilter.id}` : ""}
+          onChange={(event) => {
+            const picked = memberCandidates.find(
+              (candidate) =>
+                `${candidate.type}:${candidate.id}` === event.target.value,
+            );
+            setAuthorFilter(picked ?? null);
+          }}
+        >
+          <option value="">{t("projects.feedFilterAll")}</option>
+          {memberCandidates.map((candidate) => (
+            <option
+              key={`${candidate.type}:${candidate.id}`}
+              value={`${candidate.type}:${candidate.id}`}
+              data-testid={`feed-author-option-${candidate.id}`}
+            >
+              {candidate.label}
+            </option>
+          ))}
+        </select>
+        {authorFilter ? (
+          <Button
+            size="small"
+            type="link"
+            data-testid="feed-filter-clear"
+            onClick={() => setAuthorFilter(null)}
+          >
+            {t("projects.feedFilterClear")}
+          </Button>
+        ) : null}
+      </div>
       {roleKnown && canWrite ? (
         <div className={styles.composer} data-testid="feed-composer">
           <Input.TextArea
@@ -182,6 +272,63 @@ function DynamicTab() {
           >
             {t("projects.feedPost")}
           </Button>
+          <select
+            className={styles.mentionSelect}
+            data-testid="feed-mention-picker"
+            aria-label={t("projects.feedMentions")}
+            value=""
+            onChange={(event) => {
+              const picked = memberCandidates.find(
+                (candidate) =>
+                  `${candidate.type}:${candidate.id}` === event.target.value,
+              );
+              if (!picked) return;
+              setMentionsTouched(true);
+              setMentions((current) =>
+                current.some(
+                  (item) => item.id === picked.id && item.type === picked.type,
+                )
+                  ? current
+                  : [...current, picked],
+              );
+            }}
+          >
+            <option value="">{t("projects.feedMentions")}</option>
+            {memberCandidates.map((candidate) => (
+              <option
+                key={`${candidate.type}:${candidate.id}`}
+                value={`${candidate.type}:${candidate.id}`}
+              >
+                {candidate.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+
+      {mentions.length > 0 ? (
+        <div className={styles.mentionChips} data-testid="feed-mention-chips">
+          {mentions.map((item) => (
+            <span
+              key={`${item.type}:${item.id}`}
+              className={styles.mentionChip}
+              data-testid={`feed-mention-chip-${item.id}`}
+            >
+              @{item.label}
+            </span>
+          ))}
+          {/* ★ 显式清空 ⇒ 提交 `mentions: []`（"显式声明没 @ 任何人"），与**未动过**（NULL）两存。 */}
+          <Button
+            size="small"
+            type="link"
+            data-testid="feed-mentions-clear"
+            onClick={() => {
+              setMentionsTouched(true);
+              setMentions([]);
+            }}
+          >
+            {t("projects.feedFilterClear")}
+          </Button>
         </div>
       ) : null}
 
@@ -189,6 +336,14 @@ function DynamicTab() {
         <div className={styles.centered}>
           <Spin size="small" />
         </div>
+      ) : comments.length === 0 && relevanceOnly ? (
+        <Text type="secondary" data-testid="feed-empty-relevance">
+          {t("projects.feedEmptyRelevance")}
+        </Text>
+      ) : comments.length === 0 && authorFilter ? (
+        <Text type="secondary" data-testid="feed-empty-filtered">
+          {t("projects.feedEmptyFiltered")}
+        </Text>
       ) : comments.length === 0 ? (
         <Text type="secondary" data-testid="feed-empty">
           {t("projects.feedEmpty")}

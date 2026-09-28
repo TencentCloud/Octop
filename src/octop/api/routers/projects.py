@@ -11,7 +11,7 @@ specifies, and it is why archiving is owner-only while the project row survives.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field, field_validator
@@ -255,6 +255,14 @@ class CommentCreate(BaseModel):
         if not value.strip():
             raise ValueError("body must not be blank")
         return value
+
+    mentions: list[dict[str, str]] | None = Field(
+        default=None,
+        description=(
+            "Actors the dashboard picked, as structured `[{type,id}]`. Stored "
+            "verbatim — the server never parses the comment body."
+        ),
+    )
 
 
 class TimelineEventOut(BaseModel):
@@ -796,13 +804,35 @@ async def list_comments(
     concluded: bool | None = Query(
         default=None, description="true = only the conclusion; false = everything else."
     ),
+    author_id: str | None = Query(
+        default=None, description="Filter by author id; must be paired with author_type."
+    ),
+    author_type: str | None = Query(
+        default=None, description="Author kind for author_id (user | agent)."
+    ),
+    relevance: Literal["me"] | None = Query(
+        default=None,
+        description=(
+            "me = only what concerns the caller (mentioned, or on a task assigned to "
+            "them). An unknown value is a 422 rather than a silently ignored filter."
+        ),
+    ),
     server: OctopServer = Depends(get_server),
     user: User = Depends(require_permission("projects")),
 ) -> list[CommentOut]:
     """Oldest first. Domain rules live in ``ProjectDiscussion``; this is an adapter."""
     discussion = _discussion(server)
+    actor = _actor(user)
     rows = discussion.list_comments(
-        project_id, user=_actor(user), task_id=task_id, concluded=concluded
+        project_id,
+        user=actor,
+        task_id=task_id,
+        concluded=concluded,
+        author_id=author_id,
+        author_type=author_type,
+        # "relevance=me" is always about the **caller**: the parameter cannot ask
+        # for somebody else's relevance, so there is nothing to spoof.
+        relevant_to=actor if relevance == "me" else None,
     )
     return [_comment_out(server, row) for row in rows]
 
@@ -820,7 +850,11 @@ async def create_comment(
 ) -> CommentOut:
     """Requires ``write``. A blank body stays the existing 400, not an empty row."""
     row = _discussion(server).add_comment(
-        project_id, user=_actor(user), body=body.body, task_id=body.task_id
+        project_id,
+        user=_actor(user),
+        body=body.body,
+        task_id=body.task_id,
+        mentions=body.mentions,
     )
     return _comment_out(server, row)
 

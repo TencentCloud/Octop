@@ -111,10 +111,12 @@ beforeEach(() => {
   mockedRequest.mockReset();
   mockedRequest.mockImplementation(async (path: string, init?: RequestInit) => {
     const method = (init?.method ?? "GET").toUpperCase();
-    if (path === "/projects/p1/comments" && method === "GET")
-      return comments as never;
     if (path === "/projects/p1/comments" && method === "POST")
       return COMMENT as never;
+    // ★ 作用域调整（批次十二 F）：列表端点现在带查询串（`relevance` / `author_id` /
+    //   `author_type`）⇒ GET 按【端点前缀】匹配（不再是精确串）；POST/conclude 仍精确匹配。
+    if (path.startsWith("/projects/p1/comments") && method === "GET")
+      return comments as never;
     if (path.endsWith("/conclude"))
       return { ...COMMENT, concluded: true } as never;
     if (path === "/projects/p1/members") return [MEMBER] as never;
@@ -448,5 +450,171 @@ describe("批次十一 C2 · 编辑 / 删除 / 附件挂载（T-C2-FE）", () =>
     expect(screen.queryByTestId("comment-edit")).toBeNull();
     expect(screen.queryByTestId("comment-delete")).toBeNull();
     expect(screen.queryByTestId("comment-attach")).toBeNull();
+  });
+});
+
+describe("批次十二 F · 与我相关 / 按人筛选 / 显式提及（T-F-FE）", () => {
+  const TWO_MEMBERS = [
+    { ...MEMBER, subject_id: "u1", user_id: 1, name: "张三" },
+    {
+      ...MEMBER,
+      subject_type: "agent",
+      subject_id: "agt_9",
+      user_id: null,
+      name: "小助手",
+      role: "member",
+    },
+  ];
+
+  const feedPaths = () =>
+    mockedRequest.mock.calls
+      .map(([path]) => String(path))
+      .filter((path) => path.startsWith("/projects/p1/comments"));
+
+  it("① 「与我相关」= 筛选参数 `relevance=me`（P3：不是新视图）", async () => {
+    comments = [];
+    renderTab();
+    fireEvent.click(await screen.findByTestId("feed-relevance-toggle"));
+
+    await waitFor(() =>
+      expect(feedPaths().some((path) => path.includes("relevance=me"))).toBe(
+        true,
+      ),
+    );
+  });
+
+  it("② 按人筛选：`author_id` + `author_type` **成对**下发（候选 = 项目成员）", async () => {
+    comments = [];
+    mockedRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith("/projects/p1/comments")) return comments as never;
+      if (path === "/projects/p1/members") return TWO_MEMBERS as never;
+      return null as never;
+    });
+    renderTab();
+
+    const select = await screen.findByTestId("feed-author-filter");
+    // ★ §20.22：先断言候选集**非空**，再遍历/选择它的成员。
+    expect(within(select).getAllByRole("option").length).toBeGreaterThan(1);
+    expect(
+      within(select).getByTestId("feed-author-option-agt_9"),
+    ).toBeInTheDocument();
+
+    fireEvent.change(select, { target: { value: "agent:agt_9" } });
+    await waitFor(() =>
+      expect(
+        feedPaths().some(
+          (path) =>
+            path.includes("author_id=agt_9") &&
+            path.includes("author_type=agent"),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("★ P5：两种空态【分别】文案（与我相关空 ≠ 筛选导致空）", async () => {
+    comments = [];
+    renderTab();
+
+    // (a) 与我相关 + 空 ⇒ 专属空态
+    fireEvent.click(await screen.findByTestId("feed-relevance-toggle"));
+    expect(await screen.findByTestId("feed-empty-relevance")).toHaveTextContent(
+      "没有与你相关的留言",
+    );
+    expect(screen.queryByTestId("feed-empty-filtered")).toBeNull();
+    expect(screen.queryByTestId("feed-empty")).toBeNull();
+
+    // (b) 关闭后回到中性空态
+    fireEvent.click(screen.getByTestId("feed-relevance-toggle"));
+    expect(await screen.findByTestId("feed-empty")).toHaveTextContent(
+      "暂无留言",
+    );
+  });
+
+  it("③ 提及：**显式点选**产生（无文本解析）⇒ POST 体带 `mentions:[{type,id}]`", async () => {
+    comments = [];
+    mockedRequest.mockImplementation(
+      async (path: string, init?: RequestInit) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (path === "/projects/p1/comments" && method === "POST")
+          return COMMENT as never;
+        if (path.startsWith("/projects/p1/comments")) return comments as never;
+        if (path === "/projects/p1/members") return TWO_MEMBERS as never;
+        return null as never;
+      },
+    );
+    renderTab();
+
+    // ⑥：候选集非空再点选。
+    const picker = await screen.findByTestId("feed-mention-picker");
+    expect(within(picker).getAllByRole("option").length).toBeGreaterThan(1);
+    fireEvent.change(picker, { target: { value: "agent:agt_9" } });
+    expect(
+      await screen.findByTestId("feed-mention-chip-agt_9"),
+    ).toBeInTheDocument();
+
+    const composer = screen.getByTestId("feed-composer");
+    fireEvent.change(within(composer).getByPlaceholderText("写点什么…"), {
+      target: { value: "请看一下" },
+    });
+    fireEvent.click(within(composer).getByText("发布"));
+
+    await waitFor(() => {
+      const post = mockedRequest.mock.calls.find(
+        ([path, init]) =>
+          path === "/projects/p1/comments" &&
+          (init as RequestInit | undefined)?.method === "POST",
+      );
+      expect(post).toBeTruthy();
+      expect(JSON.parse(String((post?.[1] as RequestInit).body))).toEqual({
+        body: "请看一下",
+        mentions: [{ type: "agent", id: "agt_9" }],
+      });
+    });
+  });
+
+  it("★ `[]` 与「未动过」**两存**：显式清空 ⇒ 体带 `mentions: []`；未动过 ⇒ **无该键**（NULL）", async () => {
+    comments = [];
+    mockedRequest.mockImplementation(
+      async (path: string, init?: RequestInit) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (path === "/projects/p1/comments" && method === "POST")
+          return COMMENT as never;
+        if (path.startsWith("/projects/p1/comments")) return comments as never;
+        if (path === "/projects/p1/members") return TWO_MEMBERS as never;
+        return null as never;
+      },
+    );
+    renderTab();
+
+    const composer = await screen.findByTestId("feed-composer");
+    const body = () => {
+      const post = mockedRequest.mock.calls
+        .filter(
+          ([path, init]) =>
+            path === "/projects/p1/comments" &&
+            (init as RequestInit | undefined)?.method === "POST",
+        )
+        .pop();
+      return JSON.parse(String((post?.[1] as RequestInit).body));
+    };
+
+    // (a) 未动过提及 ⇒ 不带该键（NULL 事实）
+    fireEvent.change(within(composer).getByPlaceholderText("写点什么…"), {
+      target: { value: "A" },
+    });
+    fireEvent.click(within(composer).getByText("发布"));
+    await waitFor(() => expect(body().body).toBe("A"));
+    expect("mentions" in body()).toBe(false);
+
+    // (b) 显式清空 ⇒ `[]`（显式"没 @ 任何人"事实）
+    const picker = screen.getByTestId("feed-mention-picker");
+    fireEvent.change(picker, { target: { value: "user:u1" } });
+    fireEvent.click(await screen.findByTestId("feed-mentions-clear"));
+    fireEvent.change(within(composer).getByPlaceholderText("写点什么…"), {
+      target: { value: "B" },
+    });
+    fireEvent.click(within(composer).getByText("发布"));
+    await waitFor(() => expect(body().body).toBe("B"));
+    expect(body().mentions).toEqual([]);
   });
 });

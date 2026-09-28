@@ -115,3 +115,37 @@
 .attachInput {
   display: none;
 }
+
+/* 筛选条 + 提及（批次十二 F）：与我相关 / 按人筛选 / 显式提及。 */
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.authorSelect,
+.mentionSelect {
+  max-width: 160px;
+  padding: 0 4px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-sm, 4px);
+  background: var(--fn-bg-container, transparent);
+  color: var(--fn-text-primary);
+  font-size: 12px;
+  line-height: 22px;
+}
+
+.mentionChips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mentionChip {
+  padding: 1px 6px;
+  border-radius: var(--fn-radius-sm, 4px);
+  background: var(--fn-bg-hover);
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+}
