@@ -50,7 +50,8 @@ export interface SsoIdentity {
 export interface OctopUser {
   id: number;
   username: string;
-  role: "admin" | "user";
+  /** Role-template public id: admin | user | custom ULID. */
+  role: string;
   display_name: string | null;
   locale: string;
   /** Module permission keys; admin responses include the full catalog. */
@@ -274,7 +275,10 @@ export const authApi = {
   uploadAvatar: (file: File) => {
     const body = new FormData();
     body.append("file", file);
-    return requestUpload<{ avatar_url: string | null }>("/auth/me/avatar", body);
+    return requestUpload<{ avatar_url: string | null }>(
+      "/auth/me/avatar",
+      body,
+    );
   },
 
   deleteAvatar: () => request<void>("/auth/me/avatar", { method: "DELETE" }),
