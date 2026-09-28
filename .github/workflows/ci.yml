@@ -4,6 +4,9 @@ name: CI
 # build on main would re-test content that the release / feature PR already
 # proved green.
 on:
+  push:
+    branches:
+      - codex/security-assessment-remediation-82-157
   pull_request:
   workflow_dispatch:
 
