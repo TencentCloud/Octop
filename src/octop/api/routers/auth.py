@@ -21,7 +21,7 @@ def _user_json(user: Any, *, locale: str | None = None) -> dict[str, Any]:
     return {
         "id": user.id,
         "username": user.username,
-        "role": user.role.value,
+        "role": user.role,
         "display_name": user.display_name,
         "locale": loc,
         "permissions": effective_permissions(user),
@@ -121,9 +121,7 @@ async def login(
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid credentials")
     secret = server.services.secret_repo.get("jwt")
     ttl = server.services.config.access_token_ttl_seconds
-    token = sign_token(
-        secret, sub=user.id, uname=user.username, role=user.role.value, ttl_seconds=ttl
-    )
+    token = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl)
     return {
         "access_token": token,
         "token_type": "Bearer",

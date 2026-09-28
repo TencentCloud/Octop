@@ -348,6 +348,9 @@ async def initial_admin(
     locale = normalize_locale(body.locale or resolve_request_locale(request))
     assert server.user_manager is not None
     assert server.services is not None
+    from octop.infra.db.repos.user_roles import ADMIN_USER_ROLE_ID, UserRoleRepo
+
+    admin_role = UserRoleRepo(server.services.db).get(ADMIN_USER_ROLE_ID)
     user = await server.user_manager.create(
         username=body.username,
         password=body.password,
@@ -355,16 +358,17 @@ async def initial_admin(
         display_name=body.display_name,
         email=body.email,
         locale=locale,
+        role_name=admin_role.user_role_name if admin_role is not None else "管理员",
     )
     secret = server.services.secret_repo.get("jwt")
     ttl = server.services.config.access_token_ttl_seconds
     access_token = sign_token(
-        secret, sub=user.id, uname=user.username, role=user.role.value, ttl_seconds=ttl
+        secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl
     )
     return {
         "id": user.id,
         "username": user.username,
-        "role": user.role.value,
+        "role": user.role,
         "locale": user.locale,
         "access_token": access_token,
         "expires_in": ttl,
