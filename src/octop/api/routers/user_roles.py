@@ -14,7 +14,11 @@ from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_permission
 from octop.api.routers.users import _assert_can_assign
-from octop.infra.db.repos.user_roles import ADMIN_USER_ROLE_ID, UserRoleRepo, UserRoleRow
+from octop.infra.db.repos.user_roles import (
+    BUILTIN_USER_ROLE_IDS,
+    UserRoleRepo,
+    UserRoleRow,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.users.permissions import ALL_PERMISSION_KEYS, validate_permission_keys
@@ -159,7 +163,7 @@ def public_role(row: UserRoleRow, *, avatar_url: str | None = None) -> dict[str,
         "system_role": system_role,
         "permissions": permissions,
         "policies": policies,
-        "deletable": row.user_role_id != ADMIN_USER_ROLE_ID,
+        "deletable": row.user_role_id not in BUILTIN_USER_ROLE_IDS,
         "immutable": row.is_admin,
         "workspace_root_dir": workspace_root_dir,
         "token_quota": token_quota,
@@ -293,8 +297,14 @@ async def delete_user_role(
     current = _repo(server).get(user_role_id)
     if current is None:
         raise OctopError(ErrorCode.NOT_FOUND, "role not found")
-    if current.user_role_id == ADMIN_USER_ROLE_ID:
-        raise OctopError(ErrorCode.FORBIDDEN, "built-in administrator role cannot be deleted")
+    if current.user_role_id in BUILTIN_USER_ROLE_IDS:
+        raise OctopError(ErrorCode.FORBIDDEN, "built-in role cannot be deleted")
+    in_use = server.services.user_repo.count_by_role(user_role_id)
+    if in_use > 0:
+        raise OctopError(
+            ErrorCode.USER_ROLE_IN_USE,
+            f"role is assigned to {in_use} user(s); reassign them first",
+        )
     _repo(server).delete(user_role_id)
     from octop.infra.users.profile_avatar import delete_profile_avatar
 

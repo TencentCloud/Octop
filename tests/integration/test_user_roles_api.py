@@ -1,4 +1,4 @@
-"""Role templates supply defaults and do not own user rows."""
+"""Role templates supply defaults; users.role stores the template public id."""
 
 from __future__ import annotations
 
@@ -14,11 +14,14 @@ async def test_builtin_roles_invite_reads_role_at_redeem(env):
     assert by_id["admin"]["immutable"] is True
     assert by_id["admin"]["policies"] == []
     assert by_id["admin"]["system_role"] == "admin"
+    assert by_id["user"]["deletable"] is False
     assert "channels" in by_id["user"]["permissions"]
     assert by_id["user"]["policies"] == []
 
     denied = await c.delete("/api/users/roles/admin", headers=auth)
     assert denied.status_code == 403
+    denied_user = await c.delete("/api/users/roles/user", headers=auth)
+    assert denied_user.status_code == 403
 
     created = await c.post(
         "/api/users/roles",
@@ -43,16 +46,16 @@ async def test_builtin_roles_invite_reads_role_at_redeem(env):
         json={
             "username": "carol",
             "password": "TestPass12",
-            "role": "user",
+            "role": role["user_role_id"],
             "permissions": ["browser"],
             "role_name": "分析师",
-            "user_role_id": role["user_role_id"],
             "token_quota": 1000,
         },
     )
     assert user.status_code == 201, user.text
+    assert user.json()["role"] == role["user_role_id"]
     assert user.json()["role_name"] == "分析师"
-    assert user.json()["user_role_id"] == role["user_role_id"]
+    assert "user_role_id" not in user.json()
     uid = user.json()["id"]
 
     renamed = await c.patch(
@@ -70,20 +73,33 @@ async def test_builtin_roles_invite_reads_role_at_redeem(env):
     assert kept.json()["permissions"] == ["browser"]
     assert kept.json()["token_quota"] == 1000
 
+    # Still assigned — delete must be refused.
+    blocked = await c.delete(f"/api/users/roles/{role['user_role_id']}", headers=auth)
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["error"]["code"] == "USER_ROLE_IN_USE"
+
+    # Switch to built-in user (clears template policies), then delete template.
+    reassigned = await c.patch(
+        f"/api/users/{uid}",
+        headers=auth,
+        json={"role": "user"},
+    )
+    assert reassigned.status_code == 200, reassigned.text
+    assert reassigned.json()["role"] == "user"
+    assert reassigned.json()["token_quota"] is None
+
     deleted = await c.delete(f"/api/users/roles/{role['user_role_id']}", headers=auth)
     assert deleted.status_code == 204
-    kept = await c.get(f"/api/users/{uid}", headers=auth)
-    assert kept.json()["role_name"] == "分析师"
-    assert kept.json()["token_quota"] == 1000
 
     invite = await c.post(
         "/api/users/invites",
         headers=auth,
-        json={"user_role_id": "user", "note": "later"},
+        json={"role": "user", "note": "later"},
     )
     assert invite.status_code == 201, invite.text
     assert invite.json()["role_name"] == "用户"
-    assert invite.json()["user_role_id"] == "user"
+    assert invite.json()["role"] == "user"
+    assert "user_role_id" not in invite.json()
     assert "system_role" not in invite.json()
 
     patched = await c.patch(
@@ -107,14 +123,15 @@ async def test_builtin_roles_invite_reads_role_at_redeem(env):
 
     invited = await c.get("/api/users", headers=auth)
     row = next(item for item in invited.json() if item["username"] == "invited_one")
+    assert row["role"] == "user"
     assert row["role_name"] == "普通用户"
-    assert row["user_role_id"] == "user"
     assert row["permissions"] == ["browser"]
 
     me = await c.get("/api/auth/me", headers=auth)
     admin_id = me.json()["id"]
     admin_row = next(item for item in invited.json() if item["id"] == admin_id)
-    assert admin_row["role_name"] in (None, "")
+    assert admin_row["role"] == "admin"
+    assert admin_row["role_name"] == "管理员"
 
 
 async def test_role_policy_rejects_non_numeric_limit(env):
@@ -187,13 +204,20 @@ async def test_role_patch_without_policies_keeps_existing_policies(env):
 
 async def test_redeem_fails_when_named_role_is_gone(env):
     c, _srv, auth = env
+    created = await c.post(
+        "/api/users/roles",
+        headers=auth,
+        json={"user_role_name": "临时", "permissions": ["browser"]},
+    )
+    assert created.status_code == 201, created.text
+    role_id = created.json()["user_role_id"]
     invite = await c.post(
         "/api/users/invites",
         headers=auth,
-        json={"user_role_id": "user"},
+        json={"role": role_id},
     )
     assert invite.status_code == 201, invite.text
-    deleted = await c.delete("/api/users/roles/user", headers=auth)
+    deleted = await c.delete(f"/api/users/roles/{role_id}", headers=auth)
     assert deleted.status_code == 204, deleted.text
 
     redeem = await c.post(
@@ -235,7 +259,7 @@ async def test_non_admin_cannot_grant_administrator(env):
     denied_invite = await c.post(
         "/api/users/invites",
         headers=clerk,
-        json={"user_role_id": "admin"},
+        json={"role": "admin"},
     )
     assert denied_invite.status_code == 403, denied_invite.text
 
