@@ -21,8 +21,13 @@ vi.mock("../../../hooks/useVoiceInput", () => ({
   }),
 }));
 
-vi.mock("../../../hooks/useKeyboardOffset", () => ({
-  useKeyboardOffset: () => undefined,
+vi.mock("../../../hooks/useKeepInVisualViewport", () => ({
+  useKeepInVisualViewport: () => undefined,
+}));
+
+vi.mock("../../../hooks/viewport", () => ({
+  isPwaDisplay: () => false,
+  needsComposerVisualViewportFix: () => false,
 }));
 
 vi.mock("../hooks/useChatAttachments", () => ({
