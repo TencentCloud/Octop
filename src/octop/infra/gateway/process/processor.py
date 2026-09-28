@@ -37,7 +37,10 @@ from octop.infra.gateway.hitl.coordinator import (
     HitlSlashOutcome,
     HitlStreamContext,
 )
-from octop.infra.gateway.media.attachment_hints import content_blocks_need_vision
+from octop.infra.gateway.media.attachment_hints import (
+    content_blocks_need_vision,
+    inbound_attachments_from_parts,
+)
 from octop.infra.gateway.media.tool_media import (
     enrich_tool_result_for_dashboard,
     enrich_tool_result_with_backend,
@@ -52,6 +55,7 @@ from octop.infra.gateway.process.harness_request import (
     build_harness_request,
 )
 from octop.infra.gateway.process.message_keys import (
+    INBOUND_ATTACHMENTS_KEY,
     resolve_user_id_for_message,
     sanitize_im_metadata,
     session_key_from_message,
@@ -765,7 +769,10 @@ class GlobalProcessor:
             apply_defaults=True,
             raise_on_failure=False,
         )
-        message_kwargs: dict[str, Any] | None = None
+        message_kwargs: dict[str, Any] = {}
+        attachments = inbound_attachments_from_parts(msg.content)
+        if attachments:
+            message_kwargs[INBOUND_ATTACHMENTS_KEY] = attachments
         if mcp_servers:
             from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
                 COMPOSER_CTX_KEY,
@@ -782,7 +789,7 @@ class GlobalProcessor:
                 default_model=default_model,
             )
             if composer:
-                message_kwargs = {COMPOSER_CTX_KEY: composer}
+                message_kwargs[COMPOSER_CTX_KEY] = composer
         request = build_harness_request(
             thread_id=thread_id,
             user_id=user_id,
@@ -791,7 +798,7 @@ class GlobalProcessor:
             source=f"{msg.channel_type}/{msg.channel_id}",
             content=content,
             model=model_ref,
-            message_kwargs=message_kwargs,
+            message_kwargs=message_kwargs or None,
         )
         self.teams.stamp_host_runtime(request, agent_id)
         self._attach_turn_knowledge_config(
@@ -1181,10 +1188,7 @@ class GlobalProcessor:
         thread_id: str,
         meta: dict[str, Any],
     ) -> dict[str, Any]:
-        from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
-            COMPOSER_CTX_KEY,
-            INBOUND_ATTACHMENTS_KEY,
-        )
+        from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY  # noqa: PLC0415
 
         media_backend = media_backend_for_agent(self._agent_manager, agent_id)
         source = f"{msg.channel_type}/{msg.channel_id}"
@@ -1218,7 +1222,9 @@ class GlobalProcessor:
         if isinstance(composer, dict) and composer:
             message_kwargs[COMPOSER_CTX_KEY] = composer
         attachments = meta.get(INBOUND_ATTACHMENTS_KEY)
-        if isinstance(attachments, list) and attachments:
+        if not isinstance(attachments, list) or not attachments:
+            attachments = inbound_attachments_from_parts(msg.content)
+        if attachments:
             message_kwargs[INBOUND_ATTACHMENTS_KEY] = attachments
 
         explicit_mcp = meta.get("mcp_servers")
