@@ -282,6 +282,8 @@ export default function QuickInput({
         JSON.stringify({
           type: "user_turn",
           text: composeMessage(body, selected),
+          // ★ 项目页发送必须带项目上下文（批次十）—— 全局对话页那条路径不带（镜像风险）。
+          project_id: projectId,
         }),
       );
     };

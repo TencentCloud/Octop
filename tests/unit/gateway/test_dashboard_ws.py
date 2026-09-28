@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from octop_gateway.models import ChannelSubject, ImageContent, InboundMessage, TextContent
 
+from octop.api.routers.chat.models import UserTurnWsFrame
 from octop.infra.gateway.media.tool_media import enrich_media_block_preview
 from octop.infra.gateway.ws import WS_CHANNEL_ID, WebSocketChannel, WebSocketHub
 
@@ -754,3 +755,48 @@ async def test_ws_channel_send_text_finalizes_with_done() -> None:
     assert frames[0]["type"] == "token"
     assert frames[0]["content"] == "hello"
     assert frames[-1]["type"] == "done"
+
+
+# ── batch 10 (T-WS-MODEL): the frame's optional project context ──────────────
+
+
+def test_user_turn_frame_parses_without_a_project_id() -> None:
+    """Additive: every existing frame shape must keep parsing byte-for-byte."""
+    for payload in (
+        {"type": "user_turn", "text": "hello"},
+        {"text": "no type field at all"},
+        {"type": "ping"},
+        {"type": "user_turn", "text": "hi", "session_key": "k", "thread_id": "t"},
+    ):
+        frame = UserTurnWsFrame.model_validate(payload)
+        assert frame.project_id is None, payload
+
+
+def test_user_turn_frame_accepts_a_project_id_and_ignores_unknown_keys() -> None:
+    """The three states: absent → None · given → kept · unknown keys ignored."""
+    absent = UserTurnWsFrame.model_validate({"type": "user_turn", "text": "x"})
+    assert absent.project_id is None
+
+    given = UserTurnWsFrame.model_validate(
+        {"type": "user_turn", "text": "x", "project_id": "prj_1"}
+    )
+    assert given.project_id == "prj_1"
+
+    extra = UserTurnWsFrame.model_validate(
+        {"type": "user_turn", "text": "x", "project_id": "prj_1", "unknown_future_key": 1}
+    )
+    assert extra.project_id == "prj_1"
+
+    null = UserTurnWsFrame.model_validate({"type": "user_turn", "text": "x", "project_id": None})
+    assert null.project_id is None
+
+
+def test_the_existing_fields_keep_their_names_and_defaults() -> None:
+    """②: the additive field must not have disturbed any existing declaration."""
+    fields = UserTurnWsFrame.model_fields
+    assert fields["type"].default == "user_turn"
+    for name in ("text", "session_key", "thread_id", "model", "default_model"):
+        assert fields[name].default is None, name
+        assert fields[name].is_required() is False, name
+    assert fields["project_id"].default is None
+    assert fields["project_id"].is_required() is False

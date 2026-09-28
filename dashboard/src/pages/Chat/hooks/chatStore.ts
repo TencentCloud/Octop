@@ -2445,6 +2445,9 @@ async function sendTurnWebSocket(
   reasoningEffort?: string | null,
   conversationMode?: "ask" | "plan" | "craft" | null,
   hitlPolicy?: { mode: string; tools?: string[] } | null,
+  /** 项目上下文（批次十 WS）：**仅项目页传入**；缺省 ⇒ 帧体**不含** `project_id` 键。
+   *  ★ 反过来也成立：全局对话页**不得**被硬塞项目上下文（allow→deny 的镜像风险）。 */
+  projectId?: string | null,
 ): Promise<boolean> {
   const state = getOrCreate(sessionId);
   const resolvedThreadId = (threadId || sessionId).trim();
@@ -2508,6 +2511,8 @@ async function sendTurnWebSocket(
         ],
       };
       if (threadId) payload.thread_id = threadId;
+      // ★ 只增：仅当调用方**明确传入**时才带该键（缺省 ⇒ 与改动前逐字相同）。
+      if (projectId) payload.project_id = projectId;
       if (modelRef) payload.model = modelRef;
       // Always send the array (including []) so the server can honor Dashboard
       // opt-out of default_open connectors for this turn.

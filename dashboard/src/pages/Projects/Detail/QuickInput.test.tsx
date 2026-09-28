@@ -270,7 +270,19 @@ describe("QuickInput — 发送走 WebSocket（PLAN §3.1/§3.4）", () => {
     const { socket } = await submit("你好");
 
     expect(socket.url).toContain("/api/agents/agent-a/chat/ws");
-    expect(socket.lastSent()).toEqual({ type: "user_turn", text: "你好" });
+    // ★ 形态调整（批次十 T-WS-FE ③ 的必然结果，**不弱化**）：帧体新增 `project_id`
+    //   ⇒ 原「两键深相等」无法成立；改为**枚举全部键**（等价强度：任何多余/缺失键都会红）
+    //   + 逐字段值断言。
+    expect(Object.keys(socket.lastSent()).sort()).toEqual([
+      "project_id",
+      "text",
+      "type",
+    ]);
+    expect(socket.lastSent()).toMatchObject({
+      type: "user_turn",
+      text: "你好",
+      project_id: PROJECT,
+    });
     expect(Object.keys(socket.lastSent())).not.toContain("thread_id");
   });
 
@@ -602,7 +614,18 @@ describe("QuickInput — D2 收件人选择（PLAN §2 · AC-D2-1..6）", () => 
     expect(socket.url).toContain("/api/agents/agent-b/chat/ws");
     act(() => socket.open());
     // 沿用 G3-Q1：每次提交新建会话 → 不带 thread_id。
-    expect(socket.lastSent()).toEqual({ type: "user_turn", text: "发给 b" });
+    // ★ 形态调整（T-WS-FE ③ 的必然结果，**不弱化**）：帧体新增 `project_id`
+    //   ⇒ 原「两键深相等」不再成立；改为**枚举全部键**（任何多余/缺失键都会红）+ 逐字段值。
+    expect(Object.keys(socket.lastSent()).sort()).toEqual([
+      "project_id",
+      "text",
+      "type",
+    ]);
+    expect(socket.lastSent()).toMatchObject({
+      type: "user_turn",
+      text: "发给 b",
+      project_id: PROJECT,
+    });
     expect(Object.keys(socket.lastSent())).not.toContain("thread_id");
 
     // 第二次发送：换回另一个收件人 → 仍不带 thread_id（各建一条会话）。
@@ -870,5 +893,16 @@ describe("D1 自适应软换行（AC-D1-1 · AC-D1-2 · AC-D1-3 · RQ-9）", () 
     // Enter = 发送。
     fireEvent.keyDown(el, { key: "Enter" });
     await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+  });
+});
+
+describe("批次十 · WS 项目上下文（T-WS-FE）", () => {
+  it("★ 项目页发送的 user_turn 帧【带】project_id（贯通 QuickInput 的 projectId）", async () => {
+    const { socket } = await submit("你好");
+    const frame = JSON.parse(String(socket.sent[0]));
+    expect(frame.type).toBe("user_turn");
+    expect(frame.project_id).toBe(PROJECT);
+    // 既有约定不变：仍不传 thread_id（服务端推导会话）。
+    expect(frame).not.toHaveProperty("thread_id");
   });
 });

@@ -196,6 +196,14 @@ describe("team member live stream", () => {
       await Promise.resolve();
       const ws1 = FakeWebSocket.instances[0];
       expect(ws1).toBeDefined();
+
+      // ★ 批次十（T-WS-FE ④ · inScope 扩面）：**缺省路径**（全局对话页不传 projectId）
+      //   的帧体**不得**出现 `project_id` 键 —— 与项目页"必带"是同一枚硬币的两面
+      //   （allow→deny 的镜像风险）。★ 形态：显式判键存在性（缺省路径带上该键 ⇒ 必红 ✓）。
+      const turnFrame = JSON.parse(ws1.sent[0]) as Record<string, unknown>;
+      expect(turnFrame.type).toBe("user_turn");
+      expect("project_id" in turnFrame).toBe(false);
+      expect(Object.keys(turnFrame)).not.toContain("project_id");
       ws1.onmessage?.({
         data: JSON.stringify({ type: "token", content: "host talking" }),
       });

@@ -55,17 +55,25 @@ async def dashboard_chat_ws(
         await websocket.close(code=1011, reason="gateway not ready")
         return
 
+    # X2 (PLAN §2 / SPEC @245): the access decision happens **after** ``accept()``
+    # so the client can observe the close frame — the dashboard degrades in
+    # ``onclose``. Authentication (4001) and "gateway not ready" (1011) stay in the
+    # handshake, i.e. before ``accept()``: this moves *when* the ACL is checked, it
+    # does not remove any handshake-time refusal.
+    connection_id = uuid.uuid4().hex
+    await websocket.accept()
+
     try:
         assert_agent_access(server, agent_id, user)
     except OctopError as exc:
         from octop.infra.errors import ErrorCode  # noqa: PLC0415
 
+        # Unchanged mapping: FORBIDDEN is 4003, everything else 4404. The project
+        # codes (PROJECT_FORBIDDEN / PROJECT_ROLE_FORBIDDEN) are not FORBIDDEN, so
+        # they land on 4404 as well — zero new codes, zero new mapping.
         code = 4003 if exc.code == ErrorCode.FORBIDDEN else 4404
         await websocket.close(code=code, reason=str(exc.code.value))
         return
-
-    connection_id = uuid.uuid4().hex
-    await websocket.accept()
 
     async def send_frame(frame: dict[str, Any]) -> None:
         if websocket.application_state != WebSocketState.CONNECTED:
@@ -137,6 +145,27 @@ async def dashboard_chat_ws(
                 await send_frame({"type": "error", "message": str(exc)})
                 await send_frame({"type": "done"})
                 continue
+
+            # Three states (PLAN §10.2 A1-A6): no ``project_id`` in the frame ⇒ the
+            # agent ACL above is the whole check (the ``chatStore`` path, unchanged);
+            # a ``project_id`` ⇒ the caller must *also* hold ``write`` on that
+            # project. Order matters and is frozen: the agent check ran first, so a
+            # caller failing both still sees the agent-side code.
+            if frame.project_id:
+                from octop.infra.errors import ErrorCode  # noqa: PLC0415
+                from octop.infra.projects.service import (  # noqa: PLC0415
+                    PROJECT_WRITE,
+                    ProjectService,
+                )
+
+                try:
+                    ProjectService(server.services).assert_project_role(
+                        frame.project_id, user=user, required=PROJECT_WRITE
+                    )
+                except OctopError as exc:
+                    code = 4003 if exc.code == ErrorCode.FORBIDDEN else 4404
+                    await websocket.close(code=code, reason=str(exc.code.value))
+                    return
 
             turn = frame.to_turn_body()
             if not turn_has_content(turn):

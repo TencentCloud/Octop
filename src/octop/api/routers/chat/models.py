@@ -134,6 +134,14 @@ class UserTurnWsFrame(BaseModel):
     knowledge_base_ids: list[str] | None = None
     skills: list[str] | None = None
     messages: list[dict[str, Any]] | None = None
+    project_id: str | None = None
+    """Project the turn belongs to, when the dashboard sends one (WS project context).
+
+    Optional on purpose: the frame is parsed with Pydantic's default
+    ``extra="ignore"`` and every existing sender omits this key, so adding it is
+    purely additive. Making it required would be an allow→deny change — a client
+    that never sends ``project_id`` would stop parsing entirely.
+    """
     target_agent_ids: list[str] | None = None
 
     def to_turn_body(self) -> ChatTurnBody:

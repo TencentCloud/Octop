@@ -346,18 +346,30 @@ async def test_ws_emits_error_frame_on_exception(env: Any) -> None:
     assert chunks[-1]["type"] == "error"
 
 
+# X2 (PLAN §2): the access decision moved *after* ``accept()`` so the client can
+# observe the close frame and degrade in ``onclose``. These two cases therefore
+# assert the close explicitly: keeping the old ``pytest.raises`` around
+# ``connect()`` would leave a passing body that never observes the refusal — the
+# criterion would go silently green, which is worse than breaking it.
 async def test_ws_bad_agent_rejected(env: Any) -> None:
     c, _srv, _fake, alice_auth, _bob_auth, _aid = env
-    with pytest.raises(WebSocketDisconnect):
-        async with _chat_ws(c, "01HMISSING0000000000000000", alice_auth):
-            pass
+    async with _chat_ws(c, "01HMISSING0000000000000000", alice_auth) as websocket:
+        # entering the block succeeded — proof the refusal moved past the handshake
+        with pytest.raises(WebSocketDisconnect) as caught:
+            await websocket.receive_json()
+    assert caught.value.code == 4404
 
 
 async def test_ws_cross_user_rejected(env: Any) -> None:
     c, _srv, _fake, _admin_auth, bob_auth, aid = env
-    with pytest.raises(WebSocketDisconnect):
-        async with _chat_ws(c, aid, bob_auth):
-            pass
+    async with _chat_ws(c, aid, bob_auth) as websocket:
+        with pytest.raises(WebSocketDisconnect) as caught:
+            await websocket.receive_json()
+    # Pinned on purpose: the agent-side refusal is ``ErrorCode.FORBIDDEN``, which
+    # maps to 4003 (``ws.py``: ``code = 4003 if exc.code == FORBIDDEN else 4404``).
+    # A loose ``in (4003, 4404)`` would also accept a *project*-side code here and
+    # could not tell the two gates apart.
+    assert caught.value.code == 4003, f"agent-side refusal must be 4003: {caught.value}"
 
 
 async def test_ws_accepts_skills_and_model(env: Any) -> None:
@@ -509,3 +521,114 @@ async def test_fork_thread_from_assistant_message(env: Any) -> None:
         json={"message_id": "a1", "assistant_turns_from_end": 2},
     )
     assert denied.status_code in {403, 404}
+
+
+# ── batch 10 (T-WS-GATE-ii): the handshake-time refusal (F-1) ────────────────
+#
+# X2 moved the *access* decision past ``accept()``; authentication did **not**
+# move — ``ws.py`` closes with 4001 before accepting when the token is missing or
+# unresolvable. That dimension had **zero** coverage in this file, so a future
+# change that moved the token check after ``accept()`` would have had no CI signal.
+
+
+async def test_ws_bad_token_is_rejected_in_the_handshake(env: Any) -> None:
+    """A malformed token is refused *before* ``accept()`` → code 4001."""
+    c, _srv, _fake, _alice_auth, _bob_auth, aid = env
+    bad_auth = {"Authorization": "Bearer not-a-real-token"}
+
+    with pytest.raises(WebSocketDisconnect) as caught:
+        async with _chat_ws(c, aid, bad_auth):
+            pass
+    assert caught.value.code == 4001, f"handshake refusal must stay at 4001: {caught.value}"
+
+
+async def test_ws_missing_token_is_rejected_in_the_handshake(env: Any) -> None:
+    """The other 4001 branch: no token at all (`ws.py` @41).
+
+    Built by hand because ``chat_ws_path`` always appends ``?token=`` — the point
+    here is precisely the request that carries none.
+    """
+    c, _srv, _fake, _alice_auth, _bob_auth, aid = env
+    with pytest.raises(WebSocketDisconnect) as caught:
+        async with ws_connect(c._octop_app, f"/api/agents/{aid}/chat/ws"):  # type: ignore[attr-defined]
+            pass
+    assert caught.value.code == 4001
+
+
+# ── batch 10 (T-WS-INT): project context over a real websocket ───────────────
+#
+# The pair below is the point: A2 closes the batch-four gap (a non-member who can
+# reach the agent used to pass), while A4 is the red line (the ordinary
+# ``chatStore`` path sends no ``project_id`` and must keep working). Only A2 would
+# prove someone is blocked; only A4 would prove nobody is newly blocked.
+PROJECTS = "/api/projects"
+
+
+async def test_ws_project_context_gates_only_when_a_project_is_named(env: Any) -> None:
+    """A4 (no project_id ⇒ allowed) and A2 (foreign project_id ⇒ refused, 4404)."""
+    c, _srv, _fake, alice_auth, bob_auth, aid = env
+
+    # A4 — the existing dashboard path: no project context, turn runs to ``done``.
+    plain = await _consume_ws_turn(c, aid, alice_auth, text="A4")
+    assert plain[-1]["type"] == "done", plain
+
+    # A2 — alice owns the agent but is **not** a member of bob's project. The
+    # project gate is `PROJECT_WRITE`; `PROJECT_FORBIDDEN` is not `FORBIDDEN`, so
+    # the client observes 4404 (not 4003).
+    created = await c.post(PROJECTS, headers=bob_auth, json={"name": "A2", "status": "active"})
+    assert created.status_code == 201, created.text
+    foreign_pid = created.json()["project_id"]
+
+    with pytest.raises(WebSocketDisconnect) as caught:
+        await _consume_ws_turn(c, aid, alice_auth, text="A2", extra={"project_id": foreign_pid})
+    assert caught.value.code == 4404, f"project-side refusal must be 4404: {caught.value}"
+
+
+async def test_ws_project_context_accepts_a_member_and_refuses_the_rest(env: Any) -> None:
+    """A1 / A6 here; A3 is `test_ws_cross_user_rejected` (4003) and A5 below.
+
+    A1 — alice owns both the agent and the project ⇒ the turn runs to ``done``.
+    A6 — a project id that does not exist is refused with the existing code
+    (``PROJECT_NOT_FOUND`` → 4404); no new codes were introduced.
+    """
+    c, _srv, _fake, alice_auth, _bob_auth, aid = env
+
+    mine = await c.post(PROJECTS, headers=alice_auth, json={"name": "A1", "status": "active"})
+    assert mine.status_code == 201, mine.text
+    pid = mine.json()["project_id"]
+
+    framed = await _consume_ws_turn(c, aid, alice_auth, text="A1", extra={"project_id": pid})
+    assert framed[-1]["type"] == "done", framed
+
+    with pytest.raises(WebSocketDisconnect) as caught:
+        await _consume_ws_turn(
+            c, aid, alice_auth, text="A6", extra={"project_id": "prj_does_not_exist"}
+        )
+    assert caught.value.code == 4404, caught.value
+
+
+async def test_ws_project_context_refuses_a_viewer(env: Any) -> None:
+    """A5 — a viewer holds ``read`` but not ``write``: refused with 4404.
+
+    WS口径: the refusal arrives as a **close code**, not an HTTP 403.
+    """
+    c, _srv, _fake, alice_auth, _bob_auth, aid = env
+    admin_auth = await auth_header(c)
+    pid = (
+        await c.post(PROJECTS, headers=alice_auth, json={"name": "A5", "status": "active"})
+    ).json()["project_id"]
+    admin_id = next(
+        u["id"]
+        for u in (await c.get("/api/users", headers=admin_auth)).json()
+        if u["username"] == "admin"
+    )
+    added = await c.post(
+        f"{PROJECTS}/{pid}/members",
+        headers=alice_auth,
+        json={"subject_type": "user", "subject_id": str(admin_id), "role": "viewer"},
+    )
+    assert added.status_code == 201, added.text
+
+    with pytest.raises(WebSocketDisconnect) as caught:
+        await _consume_ws_turn(c, aid, admin_auth, text="A5", extra={"project_id": pid})
+    assert caught.value.code == 4404, caught.value
