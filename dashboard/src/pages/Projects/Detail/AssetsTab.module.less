@@ -66,3 +66,114 @@
 .placeholderHint {
   color: var(--fn-text-tertiary);
 }
+
+/* ---------- 批次七（门三）：只读文件树 + 预览 ---------- */
+.crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.crumbGroup {
+  display: inline-flex;
+  align-items: center;
+}
+
+.crumb {
+  padding: 2px 4px;
+  border: none;
+  border-radius: var(--fn-radius-sm, 4px);
+  background: none;
+  color: var(--fn-text-secondary);
+  font: inherit;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-primary);
+  }
+}
+
+.crumbSep {
+  color: var(--fn-text-tertiary);
+}
+
+.tree {
+  padding: 0;
+  margin: 0 0 12px;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--fn-radius-sm, 4px);
+  background: none;
+  color: var(--fn-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+  }
+
+  &[aria-pressed="true"] {
+    background: var(--fn-bg-hover);
+    font-weight: 600;
+  }
+}
+
+.rowName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.preview {
+  margin-top: 8px;
+}
+
+.unsupported {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px dashed var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+}
+
+/* 文本 / 图片预览通道（批次七真机修复）。 */
+.text {
+  max-height: 320px;
+  padding: 10px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+  margin: 0;
+  overflow: auto;
+  color: var(--fn-text-primary);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.image {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: var(--fn-radius-md, 8px);
+  margin-bottom: 8px;
+}
+
+/* 文本块：内容 + 下载入口（与图片模式同一套下载实现）。 */
+.textBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}

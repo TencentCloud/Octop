@@ -186,6 +186,15 @@ def _check_task_dates(start_at: int | None, due_at: int | None) -> None:
         raise _task_date_invalid("task start_at must not be after due_at")
 
 
+class _ActorRef:
+    """Minimal actor for membership checks performed without a request actor."""
+
+    def __init__(self, user_id: int) -> None:
+        self.id = user_id
+        self.permissions: list[str] = []
+        self.is_admin = False
+
+
 class ProjectService:
     def __init__(
         self,
@@ -476,6 +485,26 @@ class ProjectService:
                 raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Project not found.")
             updated = refreshed
         return updated
+
+    def may_read_knowledge_base(self, actor_user_id: int, kb_id: str) -> bool:
+        """PLAN.md §2.4 门二: may this actor read ``kb_id`` through a project binding?
+
+        Exists only as the project side of the KB read fallback: it is true when the
+        actor is a member (with ``PROJECT_READ``) of **at least one** project whose
+        ``kb_id`` is this base — an existential rule, so a base bound by several
+        projects stays readable while any one of them is. It never widens writes and
+        adds no second permission system: membership goes through the same
+        ``assert_project_role`` used everywhere else.
+        """
+        for project in self._projects.list_by_kb_id(kb_id):
+            try:
+                self.assert_project_role(
+                    project.id, user=_ActorRef(actor_user_id), required=PROJECT_READ
+                )
+            except OctopError:
+                continue
+            return True
+        return False
 
     def _assert_kb_writable(self, kb_id: str, *, user: ProjectActor) -> None:
         """Map the KB primitives onto the two refusal codes frozen in PLAN.md §4.2.

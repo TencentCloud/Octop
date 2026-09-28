@@ -78,8 +78,11 @@ def _resolve_content_type(filename: str, content_type: str) -> str:
 class KnowledgeService:
     """Apply ownership while keeping control-plane rows and files synchronized."""
 
-    def __init__(self, services: Any) -> None:
+    def __init__(self, services: Any, *, project_read_fallback: Any = None) -> None:
         self._services = services
+        # PLAN.md §2 门二: the project-binding read fallback, supplied by the caller
+        # that owns the request. ``None`` keeps the previous behaviour exactly.
+        self._project_read_fallback = project_read_fallback
 
     def _max_document_bytes(self) -> int:
         config = getattr(self._services, "config", None)
@@ -323,8 +326,20 @@ class KnowledgeService:
     def get_readable_base(
         self, kb_id: str, *, actor_user_id: int, is_admin: bool = False
     ) -> KnowledgeBaseRow:
+        """Readable when owner / shared / admin — or, since PLAN.md §2 门二, when the
+        caller is a reader of a project bound to this base (``project_read_fallback``).
+
+        Every read path in this module funnels through here (``list_documents``,
+        ``preview_document``, ``read_document_content``, the file download and the
+        metadata read), so this is the single fallback point; write paths keep using
+        ``get_writable_base`` and are untouched.
+        """
         base = self._require_base(kb_id)
         if is_admin or base.owner_user_id == actor_user_id or base.shared:
+            return base
+        if self._project_read_fallback is not None and self._project_read_fallback(
+            actor_user_id, kb_id
+        ):
             return base
         raise PermissionError("knowledge base read access is required")
 

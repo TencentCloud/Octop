@@ -341,7 +341,7 @@ _BATCH2_PROJECTS_ZH: dict[str, str] = {
     "tabDynamic": "动态",
     "tabPlan": "计划",
     "tabTasks": "任务",
-    "tabAssets": "资产",
+    "tabAssets": "知识库",
     "dynamicPlaceholder": "动态流即将上线",
     "dynamicComingSoon": "排入下一批",
     "configTitle": "项目配置",

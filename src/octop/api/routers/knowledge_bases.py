@@ -142,7 +142,18 @@ class RenameDocumentBody(BaseModel):
 def _knowledge_service(server: OctopServer) -> KnowledgeService:
     if server.services is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "knowledge services are not initialized")
-    return KnowledgeService(server.services)
+    # 门二 (PLAN.md §2): a base that is not owner/shared/admin-readable is still
+    # readable by a member of a project bound to it. The decision itself lives in
+    # ProjectService.may_read_knowledge_base — no second permission system here.
+    from octop.infra.projects.service import ProjectService  # noqa: PLC0415 - cycle-safe
+
+    project_service = ProjectService(server.services)
+    return KnowledgeService(
+        server.services,
+        project_read_fallback=lambda actor_user_id, kb_id: project_service.may_read_knowledge_base(
+            actor_user_id, kb_id
+        ),
+    )
 
 
 def _row_payload(row: Any, *, has_original: bool | None = None) -> dict[str, Any]:

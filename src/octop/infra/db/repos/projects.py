@@ -270,6 +270,14 @@ class ProjectRepo:
             )
         return self.get(project_id)
 
+    def list_by_kb_id(self, kb_id: str) -> list[ProjectRow]:
+        """Projects currently bound to ``kb_id`` (the §2.4 existential lookup)."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM projects WHERE kb_id = ? ORDER BY created_at", (kb_id,)
+            ).fetchall()
+        return map_rows(rows, ProjectRow)
+
     def set_kb_id(self, project_id: str, kb_id: str | None) -> None:
         with self._db.transaction() as conn:
             conn.execute(
