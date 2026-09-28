@@ -8,6 +8,7 @@
 
 ### 修复
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+- 设置用户 workspace 根目录时，被主机路径规则拒绝的值（含 NUL 字节，或位于 POSIX 禁止前缀之下）不再抛出未处理的 `ValueError` 而返回 500 `INTERNAL_ERROR`，而是与其他调用点一致地返回 400 `WORKSPACE_ROOT_RESTRICTED`（Fixes #1268）。
 
 ## [1.0.2b3] - 2026-09-26
 

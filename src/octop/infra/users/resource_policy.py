@@ -120,7 +120,10 @@ def normalize_workspace_root_dir(raw: str | None) -> str | None:
             ErrorCode.WORKSPACE_ROOT_CONTAINER_UNSUPPORTED,
             "workspace root policy is unavailable in container deployments",
         )
-    path = assert_safe_host_path(str(raw).strip(), restrict_to_home=False)
+    try:
+        path = assert_safe_host_path(str(raw).strip(), restrict_to_home=False)
+    except ValueError as exc:
+        raise OctopError(ErrorCode.WORKSPACE_ROOT_RESTRICTED, str(exc)) from exc
     resolved = os.path.realpath(os.fspath(path))
     drive, _tail = os.path.splitdrive(resolved)
     # Own drive root on Windows, ``/`` on POSIX. ``startswith`` after
