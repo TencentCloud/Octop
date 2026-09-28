@@ -8,6 +8,7 @@
 
 ### 修复
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+- Chat pages open on a thread now see a HITL approval/question resolved by another client (SSE resume, IM, API) in real time: the resumed turn is broadcast to the thread's WebSocket subscribers so the pending card dismisses without a reload.
 
 ## [1.0.2b3] - 2026-09-26
 
