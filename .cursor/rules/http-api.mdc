@@ -9,7 +9,8 @@ alwaysApply: false
 Routers validate HTTP, call `infra/`, and map errors. Domain rules belong in `infra/`.
 
 - Inject `server: OctopServer = Depends(get_server)`. Use `server.services`, not a module-level repo import.
-- Agent routes are `/api/agents/{agent_id}/…`. Load the row and `_assert_agent_owner(row, user)` (admin may bypass). Legacy MBTI still reads `X-Octop-Agent-Id`.
+- Agent routes are `/api/agents/{agent_id}/…`. Load the row with `require_agent_owner_row()` from `api/common/agent.py` (registry `get_row`, then the owner check; admin may bypass). Legacy MBTI still reads `X-Octop-Agent-Id`.
+- `SharedServices` exposes `agent_repo`, not `agents`. Repo reads are `server.services.agent_repo.get(agent_id)`.
 - Map failures with `OctopError` / `ErrorCode` (`api/errors.py`). New semantics go in `infra/errors.py`, then `errors.<CODE>` in both locale bundles.
 - Locale: `resolve_request_locale()` (stored preference, then `Accept-Language`).
 - No imports of `cli/` or `launch.py`.
@@ -20,7 +21,6 @@ OpenAPI (`/api/docs`, tags in `api/openapi_meta.py`):
 - Prefer `response_model` and Pydantic bodies. Document non-obvious fields with `Field(..., description="…")`.
 
 ```python
-row = server.services.agents.get(agent_id)
-_assert_agent_owner(row, user)
+row = require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
 return await some_infra_call(server, row)
 ```

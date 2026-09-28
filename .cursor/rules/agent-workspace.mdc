@@ -1,6 +1,6 @@
 ---
 description: Agent workspace content I/O goes through BackendWorkspace
-globs: src/octop/infra/agents/**/*.py,src/octop/infra/backend/**/*.py,src/octop/infra/gateway/process/agent_resolve.py,src/octop/api/common/workspace.py,src/octop/api/common/agent_workspace.py,src/octop/api/routers/workspace.py
+globs: src/octop/infra/agents/**/*.py,src/octop/infra/backend/**/*.py,src/octop/infra/gateway/**/*.py,src/octop/infra/proactive/**/*.py,src/octop/infra/backup/**/*.py,src/octop/api/common/**/*.py,src/octop/api/routers/**/*.py
 alwaysApply: false
 ---
 
