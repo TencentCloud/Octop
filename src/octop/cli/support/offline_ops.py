@@ -151,9 +151,31 @@ def set_user_password_offline(username: str, password: str, *, home: Path | None
 
 
 def set_user_role_offline(username: str, role: str, *, home: Path | None = None) -> None:
+    from octop.infra.db.repos.user_roles import role_template_assignment
+    from octop.infra.users.resource_policy import (
+        POLICY_MAX_AGENTS,
+        POLICY_TOKEN_QUOTA,
+        POLICY_WORKSPACE_ROOT_DIR,
+    )
+
     with open_cli_services(home) as svc:
         uid = _require_username(svc, username)
-        svc.user_repo.set_role(uid, role)
+        assignment = role_template_assignment(svc.db, role)
+        if assignment is None:
+            raise OctopError(ErrorCode.NOT_FOUND, f"role {role!r} not found")
+        role_id, role_name, permissions, policies = assignment
+        svc.user_repo.set_role(uid, role_id)
+        svc.user_repo.set_role_name(uid, role_name)
+        svc.user_repo.set_permissions(uid, permissions)
+        # Full replace, like the API: a limit from the previous template must not
+        # outlive the switch, and admin carries no resource limits at all.
+        updates: dict[str, str | None] = {
+            POLICY_WORKSPACE_ROOT_DIR: None,
+            POLICY_TOKEN_QUOTA: None,
+            POLICY_MAX_AGENTS: None,
+        }
+        updates.update(dict(policies))
+        svc.user_policy_repo.merge(uid, updates)
 
 
 def disable_user_offline(username: str, *, home: Path | None = None) -> None:
