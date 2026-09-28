@@ -5,6 +5,7 @@ name: CI
 # proved green.
 on:
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
