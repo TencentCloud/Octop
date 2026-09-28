@@ -8,6 +8,7 @@
 
 ### 修复
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+- 设置向导 `POST /api/setup/finish` 保存供应商时，空白的 `api_key` / `base_url` / `models` 改用 `SLASH_BAD_ARGS` 返回 400（此前借用只映射 500 的 `INTERNAL_ERROR`，客户端与 `~/.octop/logs` 都读不到缺失字段，Fixes #1292）。
 
 ## [1.0.2b3] - 2026-09-26
 

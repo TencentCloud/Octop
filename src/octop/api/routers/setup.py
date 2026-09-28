@@ -177,9 +177,9 @@ async def _apply_provider_draft(server: Any, draft: ProviderDraftBody) -> None:
     api_key = (draft.api_key or "").strip()
     base_url = (draft.base_url or "").strip()
     if not api_key:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "api_key is required", status=400)
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "api_key is required")
     if not base_url:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "base_url is required", status=400)
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "base_url is required")
 
     def _model_entry(m: ProviderModelDraft) -> dict[str, Any]:
         entry: dict[str, Any] = {
@@ -198,7 +198,7 @@ async def _apply_provider_draft(server: Any, draft: ProviderDraftBody) -> None:
         models = [_model_entry(draft.models[0])]
         models[0]["enabled"] = True
     if not models:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "at least one model is required", status=400)
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "at least one model is required")
     server.services.provider_repo.create(
         name=draft.name,
         kind=draft.type,
