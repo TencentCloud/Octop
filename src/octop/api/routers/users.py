@@ -447,6 +447,8 @@ async def patch_user(
     actor: Any = Depends(require_permission("users")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
+    if body.disabled is True and user_id == actor.id:
+        raise OctopError(ErrorCode.FORBIDDEN, "cannot disable yourself")
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")

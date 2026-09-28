@@ -8,6 +8,7 @@
 
 ### 修复
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+- 管理员可用 `PATCH /api/users/{user_id}` 传 `disabled: true` 禁用自己，之后既无法登录也没有接口可恢复（`patch_user` 先拒绝自我禁用，与批量禁用/删除/降级分支保持一致，Fixes #1256）。
 
 ## [1.0.2b3] - 2026-09-26
 
