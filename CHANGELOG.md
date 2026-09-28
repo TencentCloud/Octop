@@ -8,6 +8,7 @@
 
 ### 修复
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+- `media/preview` 把用户上传的字节以 `Content-Disposition: inline` 内联输出且不带任何 CSP 头，指向恶意 SVG 的预览链接被当作顶层文档打开时，其中的 `<script>` 会在应用同源执行（预览响应补上 `Content-Security-Policy: sandbox` 与 `X-Content-Type-Options: nosniff`，`<img>`/`<video>` 嵌入预览不受影响，Fixes #1242）。
 
 ## [1.0.2b3] - 2026-09-26
 

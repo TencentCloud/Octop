@@ -36,6 +36,13 @@ logger = logging.getLogger(__name__)
 
 _PROTECTED_PREFIX = "_builtin_skills"
 
+# Inline previews are user-controlled bytes a browser may load as an active document.
+_INLINE_PREVIEW_HEADERS = {
+    "Content-Disposition": "inline",
+    "Content-Security-Policy": "sandbox",
+    "X-Content-Type-Options": "nosniff",
+}
+
 
 def _assert_workspace_mutable(path: str) -> str:
     """Mutating ops always treat paths as workspace-relative (``from_workspace=true``)."""
@@ -452,7 +459,7 @@ async def preview_media(
     return StreamingResponse(
         iter([data]),
         media_type=mime,
-        headers={"Content-Disposition": "inline"},
+        headers=_INLINE_PREVIEW_HEADERS,
     )
 
 
