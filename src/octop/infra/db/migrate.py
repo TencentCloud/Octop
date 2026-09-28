@@ -1558,6 +1558,35 @@ def _ensure_thread_conversation_mode_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "hitl_policy", "TEXT")
 
 
+def _ensure_projects_schema(db: DatabasePool) -> None:
+    """Create the project-management tables (schema v18) when they are missing.
+
+    Runs the versioned migration file itself — minus its ``_schema_version``
+    bump — instead of repeating the DDL in Python. That keeps the numbered
+    ``018_projects.sql`` / ``018_projects.pg.sql`` pair the single source of
+    truth, so this helper can never drift from it.
+
+    Every statement in the pair is ``IF NOT EXISTS``, so this is safe to run:
+      * after the migration already applied (normal path: a no-op), and
+      * on a database whose recorded version skipped 018 (the repair path).
+    """
+    name = "019_projects.pg.sql" if db.dialect == "postgresql" else "019_projects.sql"
+    path = _MIGRATIONS_DIR / name
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8").replace("UPDATE _schema_version SET version = 19;", "")
+    if db.dialect == "postgresql":
+        # PostgreSQL executes one statement at a time; the file is split the
+        # same way ``run_migrations`` splits it for the versioned path.
+        with db.connect() as conn:
+            for statement in _split_pg_sql(text):
+                conn.execute(statement)
+        return
+    # ``executescript`` runs the whole file in one call and keeps comments.
+    with db.connect() as conn:
+        conn.executescript(text)
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -1729,6 +1758,9 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     Version 16 adds ``agents.kind`` so team hosts can be listed.
     Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
     Version 18 adds ``user_role`` templates and non-FK role id/name snapshots.
+    Version 19 adds the project-management domain (projects, members, tasks,
+    comments, requirement nodes, rooms, artifacts, timeline). ``threads`` is
+    deliberately not altered.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1844,6 +1876,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 19:
+        _ensure_projects_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -1900,3 +1937,4 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_agent_profile_columns(db)
     _ensure_sso_provider_kind_schema(db)
     _ensure_user_role_schema(db)
+    _ensure_projects_schema(db)

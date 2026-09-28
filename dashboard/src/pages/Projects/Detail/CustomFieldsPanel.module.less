@@ -1,0 +1,72 @@
+/*
+ * Shared styles for the project metadata panels (T-FE-META):
+ * `CustomFieldsPanel.tsx` and `TagsManager.tsx` both import this module so the
+ * two definition surfaces look like the surrounding project detail sections
+ * (PLAN §6 four-ring display / PLAN §4 tag model) without a second style file.
+ */
+
+.section {
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-primary);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.empty {
+  padding: 4px 0;
+}
+
+.table {
+  :global(.ant-table) {
+    background: transparent;
+  }
+}
+
+.mono {
+  font-family: var(--fn-font-mono, monospace);
+  font-size: 12px;
+}
+
+.dash {
+  color: var(--fn-text-tertiary);
+}
+
+.colorValue {
+  font-family: var(--fn-font-mono, monospace);
+  font-size: 12px;
+  text-transform: lowercase;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.field {
+  width: 100%;
+}

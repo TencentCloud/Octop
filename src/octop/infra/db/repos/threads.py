@@ -217,6 +217,18 @@ class ThreadRepo:
             ).fetchall()
         return map_rows(rows, ThreadRow)
 
+    def list_by_user(self, *, user_id: int, limit: int = 50) -> list[ThreadRow]:
+        """Every thread this user owns, newest first — sidebar aggregation."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM threads WHERE user_id = ? "
+                "ORDER BY pinned DESC, "
+                "CASE WHEN last_active > 0 THEN last_active ELSE created_at END DESC, "
+                "thread_id DESC LIMIT ?",
+                (user_id, limit),
+            ).fetchall()
+        return map_rows(rows, ThreadRow)
+
     def list_by_session(self, *, session_key: str, limit: int = 50) -> list[ThreadRow]:
         with self._db.connect() as conn:
             rows = conn.execute(

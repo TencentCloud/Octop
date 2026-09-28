@@ -7,6 +7,8 @@ const CronJobsPage = lazy(() => import("../pages/Control/CronJobs"));
 const ConnectorsPage = lazy(() => import("../pages/Agent/Connectors"));
 const SkillPackagesPage = lazy(() => import("../pages/SkillPackages"));
 const KnowledgeBasesPage = lazy(() => import("../pages/KnowledgeBases"));
+const ProjectsPage = lazy(() => import("../pages/Projects"));
+const ProjectDetailPage = lazy(() => import("../pages/Projects/Detail"));
 const PersonalizationPage = lazy(
   () => import("../pages/Agent/Personalization"),
 );
@@ -53,6 +55,7 @@ export const pathToKey: Record<string, string> = {
   "/connectors": "connectors",
   "/skill-packages": "skill-packages",
   "/knowledge-bases": "knowledge-bases",
+  "/projects": "projects",
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
   "/personalization/tools": "personalization",
@@ -135,6 +138,7 @@ export function isPersonalizationPath(pathname: string): boolean {
 export function resolveSelectedKey(pathname: string): string {
   if (pathToKey[pathname]) return pathToKey[pathname];
   if (pathname.startsWith("/chat/")) return "chat";
+  if (pathname.startsWith("/projects/")) return "projects";
   if (pathname.startsWith("/workbench/")) return "workbench";
   if (pathname.startsWith("/remote-desktop/")) return "remote-desktop";
   if (pathname.startsWith("/personalization/")) return "personalization";
@@ -153,6 +157,8 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/connectors", element: <ConnectorsPage /> },
   { path: "/skill-packages", element: <SkillPackagesPage /> },
   { path: "/knowledge-bases", element: <KnowledgeBasesPage /> },
+  { path: "/projects", element: <ProjectsPage /> },
+  { path: "/projects/:projectId", element: <ProjectDetailPage /> },
   {
     path: "/personalization/acp",
     element: <RedirectPreserveSearch to="/acp" />,

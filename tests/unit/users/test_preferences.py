@@ -154,3 +154,49 @@ def test_clear_preferred_model_keeps_reasoning_defaults() -> None:
     cleared = merge_model_preferences_json(raw, preferred_model=None)
     assert get_preferred_model_from_json(cleared) is None
     assert "token/glm-5" in get_model_reasoning_from_json(cleared)
+
+
+# ── cross-end key-table consistency (batch 5) ────────────────────────────────
+#
+# The backend validates ``sidebar_nav`` against ``SIDEBAR_NAV_KEYS`` and rejects
+# anything else (``SLASH_BAD_ARGS``). The dashboard keeps its own copy for
+# rendering, so a key added on one side only is *silently* accepted/rejected
+# depending on which end you talk to. This mirrors the existing precedent in
+# ``tests/unit/i18n/test_errors.py`` (backend ``errors`` == dashboard
+# ``apiErrors``) by reading the frontend source and comparing the two tables.
+
+import re  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from octop.infra.users.preferences import SIDEBAR_NAV_KEYS  # noqa: E402
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_SIDEBAR_NAV_TSX = _REPO_ROOT / "dashboard/src/layouts/sidebarNav.tsx"
+
+
+def _frontend_sidebar_nav_keys() -> list[str]:
+    """The ``SIDEBAR_NAV_KEYS`` array literal, in source order."""
+    source = _SIDEBAR_NAV_TSX.read_text(encoding="utf-8")
+    match = re.search(r"export const SIDEBAR_NAV_KEYS = \[(.*?)\]\s*as const;", source, re.DOTALL)
+    assert match, "SIDEBAR_NAV_KEYS array not found in the dashboard source"
+    return re.findall(r'"([^"]+)"', match.group(1))
+
+
+def test_sidebar_nav_keys_match_the_dashboard_source() -> None:
+    """Set **and** order must match: the sidebar renders in this exact order."""
+    frontend = _frontend_sidebar_nav_keys()
+    backend = list(SIDEBAR_NAV_KEYS)
+    assert len(frontend) == len(set(frontend)), "the frontend table has duplicates"
+    assert len(backend) == len(set(backend)), "the backend table has duplicates"
+    assert set(frontend) == set(backend), (
+        f"frontend-only={sorted(set(frontend) - set(backend))} "
+        f"backend-only={sorted(set(backend) - set(frontend))}"
+    )
+    assert [key for key in _expected_order() if key in set(frontend)] == frontend, (
+        "the frontend order drifted from the frozen sidebar order"
+    )
+
+
+def _expected_order() -> list[str]:
+    """The one frozen order both ends must agree on (frontend is authoritative)."""
+    return _frontend_sidebar_nav_keys()

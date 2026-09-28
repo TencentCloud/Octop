@@ -1,0 +1,90 @@
+/* 右栏「定时任务」面板 (PLAN §3.3 / S4). */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--fn-border-primary);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.title {
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.centered {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.rowMain {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rowName {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.rowMeta {
+  font-size: 12px;
+}
+
+.agentLine {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* S4：agent 未运行 = 灰点标注（不是错误、不禁用）。 */
+.agentIdleDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fn-text-tertiary);
+}
+
+.rowActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.addBox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.addControl {
+  width: 100%;
+}

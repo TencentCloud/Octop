@@ -63,6 +63,36 @@ export interface OctopThread {
   artifacts?: Array<string | ThreadArtifact>;
   /** Structured refs with producer ``agent_id``. */
   artifact_refs?: ThreadArtifact[];
+  /** Project this thread was dispatched for; null when not a project chat. */
+  project_id?: string | null;
+  /** Display name of ``project_id``; null whenever ``project_id`` is null. */
+  project_name?: string | null;
+}
+
+/** One session row inside an agent bucket of ``GET /api/threads/summary``. */
+export interface ThreadSummarySessionRow {
+  agent_id: string;
+  thread_id: string;
+  title: string | null;
+  channel_type: string;
+  last_active: number;
+  created_at: number;
+  has_messages: boolean;
+  pinned: boolean;
+  project_id: string | null;
+  project_name: string | null;
+}
+
+/**
+ * One agent bucket of ``GET /api/threads/summary`` (cross-agent inbox).
+ * ``has_activity`` is server-computed — never recompute it on the client.
+ */
+export interface ThreadSummaryRow {
+  agent_id: string;
+  session_count: number;
+  has_activity: boolean;
+  last_active: number;
+  pinned: ThreadSummarySessionRow[];
 }
 
 export interface OctopThreadHistory {
@@ -148,6 +178,9 @@ export interface HistoryMigrationStatus {
 export const CHAT_HISTORY_PAGE_SIZE = 25;
 
 export const octopThreadsApi = {
+  /** Cross-agent inbox snapshot for the authenticated user; takes no params. */
+  summary: () => request<ThreadSummaryRow[]>("/threads/summary"),
+
   list: (agentId: string, limit = 50) =>
     request<OctopThread[]>(
       `/agents/${encodeURIComponent(agentId)}/threads?limit=${limit}`,

@@ -1,0 +1,63 @@
+/* Chip toolbar — project domain (PLAN §9). Independent of Board.module.less. */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 3px 10px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 999px;
+  background: var(--fn-bg-secondary);
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+  transition:
+    background var(--fn-transition-fast),
+    border-color var(--fn-transition-fast),
+    color var(--fn-transition-fast);
+
+  &:hover {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
+
+.chipActive {
+  border-color: var(--fn-color-brand);
+  background: var(--fn-color-brand-bg);
+  color: var(--fn-color-brand);
+
+  &:hover {
+    color: var(--fn-color-brand);
+  }
+}
+
+.chipDisabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.chipIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.chipLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

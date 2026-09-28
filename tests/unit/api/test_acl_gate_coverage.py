@@ -38,6 +38,7 @@ GATED_FILES = [
     "routers/agents.py",
     "routers/channels.py",
     "routers/skill_packages.py",
+    "routers/projects.py",
     "routers/terminal.py",
     "routers/acp.py",
 ]

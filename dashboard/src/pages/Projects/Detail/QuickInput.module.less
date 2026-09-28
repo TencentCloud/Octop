@@ -1,0 +1,113 @@
+/* Project quick input (PLAN §3) — project domain, no chat-page styles. */
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-primary);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 18px;
+  font-size: 12px;
+}
+
+.target {
+  color: var(--fn-text-tertiary);
+}
+
+.noAgent {
+  color: var(--fn-text-tertiary);
+}
+
+.sent {
+  color: var(--fn-color-success, #16a34a);
+}
+
+.failed {
+  color: var(--fn-color-danger);
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 200px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.menuEmpty {
+  padding: 6px 8px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.menuOption {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--fn-radius-md, 6px);
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-primary);
+  }
+}
+
+.menuOptionActive {
+  color: var(--fn-color-brand);
+}
+
+.reference {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.referenceTag {
+  margin-inline-end: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.referenceRemove {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-color-danger);
+  }
+}

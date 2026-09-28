@@ -19,6 +19,12 @@ export interface Session {
   isActive?: boolean;
   hasActivity?: boolean;
   pinned?: boolean;
+  /** Owning agent, passed through from the wire row (PLAN §8.1). */
+  agentId?: string | null;
+  /** Dispatched project of this session; null when not a project chat. */
+  projectId?: string | null;
+  /** Display name of ``projectId``; null whenever ``projectId`` is null. */
+  projectName?: string | null;
   modelRef?: string | null;
   reasoningMode?: "auto" | "enabled" | "disabled" | null;
   reasoningEffort?: string | null;
@@ -49,6 +55,8 @@ export function toSession(row: {
   artifacts?: Array<string | ThreadArtifact> | null;
   artifact_refs?: ThreadArtifact[] | null;
   agent_id?: string | null;
+  project_id?: string | null;
+  project_name?: string | null;
 }): Session {
   const hasActivity =
     Boolean(row.has_messages) || Boolean(row.title) || row.last_active > 0;
@@ -68,6 +76,9 @@ export function toSession(row: {
     isActive: row.is_active ?? false,
     hasActivity,
     pinned: Boolean(row.pinned),
+    agentId: row.agent_id ?? null,
+    projectId: row.project_id ?? null,
+    projectName: row.project_name ?? null,
     modelRef: row.model_ref ?? null,
     reasoningMode: row.reasoning_mode ?? null,
     reasoningEffort: row.reasoning_effort ?? null,

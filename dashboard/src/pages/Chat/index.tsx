@@ -21,6 +21,7 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { userCan } from "../../utils/permissions";
 import { useChat } from "./hooks/useChat";
 import { useSessions, fetchAndSyncSessionArtifacts } from "./hooks/useSessions";
+import { useSessionInbox } from "./hooks/useSessionInbox";
 import * as chatStore from "./hooks/chatStore";
 import { formatRunUsage, assistantTurnsFromEnd } from "./utils/chatMessages";
 import { useChatSidebarState } from "./hooks/useChatSidebarState";
@@ -274,6 +275,33 @@ function ChatPageInner() {
     fetchAllSessions,
     ensureThreadInList,
   } = useSessions(resolvedAgentId ?? null);
+
+  // Inbox scope key (PLAN §6): user-scoped, NOT an agent id — switching agents
+  // must keep it stable so the aggregate snapshot is requested exactly once.
+  const inboxKey = user?.id ? `user:${user.id}` : "anon";
+  const {
+    inboxByAgent,
+    pinnedSessions,
+    patchSession,
+    refresh: refreshInbox,
+  } = useSessionInbox(inboxKey);
+
+  // Keep the inbox snapshot in sync with pin/rename without re-requesting it.
+  const handlePinSession = useCallback(
+    (id: string, pinned: boolean) => {
+      pinSession(id, pinned);
+      patchSession(id, { pinned });
+    },
+    [pinSession, patchSession],
+  );
+
+  const handleRenameSession = useCallback(
+    (id: string, name: string) => {
+      renameSession(id, name);
+      patchSession(id, { name });
+    },
+    [renameSession, patchSession],
+  );
 
   const handleLoadMoreSessions = useCallback(() => {
     void loadMoreSessions(activeThreadId ?? undefined);
@@ -1105,12 +1133,15 @@ function ChatPageInner() {
       sidebarElRef={sidebarElRef}
       agents={sidebarAgents}
       sessions={sessions}
+      inboxByAgent={inboxByAgent}
+      pinnedSessions={pinnedSessions}
       activeThreadId={activeThreadId}
       resolvedAgentId={resolvedAgentId}
       sessionsHasMore={sessionsHasMore}
       sessionsLoadingMore={sessionsLoadingMore}
       onLoadMoreSessions={handleLoadMoreSessions}
       onFetchAllSessions={handleFetchAllSessions}
+      onRefreshInbox={refreshInbox}
       onSelectSession={(sessionId, agentId) => {
         setActiveAgent(agentId);
         if (agentId && agentId !== resolvedAgentId) {
@@ -1127,8 +1158,8 @@ function ChatPageInner() {
         handleNewChatWithAgent(agentId);
       }}
       onDeleteSession={handleDeleteSession}
-      onRenameSession={renameSession}
-      onPinSession={pinSession}
+      onRenameSession={handleRenameSession}
+      onPinSession={handlePinSession}
       onForkSession={handleForkSession}
       forkDisabled={sessionForkDisabled}
       forkDisabledHint={sessionForkDisabledHint}

@@ -1,0 +1,190 @@
+/* 任务详情面板（PLAN §4 / G4）
+   ⚠️ 选择器**前缀无关**：本应用 `App.tsx` 设了 `prefixCls="octop"`，
+   任何 `:global(.ant-table…)` 一类 antd 类名选择器在这里都是死代码。
+   卡片边框/圆角/内边距对齐项目页既有卡片（`.section`：1px + radius-lg 12px + 16px）。 */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.headerTitle {
+  color: var(--fn-text-primary);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.back,
+.edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md, 8px);
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-primary);
+  font: inherit;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--fn-color-brand);
+    color: var(--fn-text-brand, var(--fn-text-primary));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
+
+.edit {
+  margin-left: auto;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.title {
+  margin: 0;
+  color: var(--fn-text-primary);
+  font-weight: 600;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  margin-bottom: 16px;
+}
+
+.section {
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-primary);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.sectionTitle {
+  margin-bottom: 8px;
+  color: var(--fn-text-secondary);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.description {
+  color: var(--fn-text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.inline {
+  color: var(--fn-text-primary);
+}
+
+.fieldLabel {
+  color: var(--fn-text-secondary);
+}
+
+.attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.attachmentName {
+  overflow-wrap: anywhere;
+}
+
+.iconButton {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-sm, 4px);
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-brand, var(--fn-text-primary));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
+
+/* 最小只读轨迹：竖线 + 节点，无任何编辑控件（AC-G4-4）。 */
+.timeline {
+  padding-left: 0;
+  margin: 0;
+  list-style: none;
+
+  li {
+    position: relative;
+    display: flex;
+    gap: 8px;
+    padding: 0 0 12px 16px;
+    border-left: 1px solid var(--fn-border-primary);
+
+    &:last-child {
+      padding-bottom: 0;
+    }
+
+    &::before {
+      position: absolute;
+      top: 4px;
+      left: -4px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--fn-color-brand);
+      content: "";
+    }
+  }
+}
+
+.timelineNode {
+  color: var(--fn-text-primary);
+}
+
+.timelineTime {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 32px 0;
+}
+
+.notFound {
+  padding: 32px 16px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-lg, 12px);
+  color: var(--fn-text-secondary);
+  text-align: center;
+}
