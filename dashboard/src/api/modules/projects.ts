@@ -143,11 +143,42 @@ export interface ProjectTask {
 }
 
 export interface ProjectTimelineEvent {
+  /** 稳定标识（如 `user:1`）—— ★ **不要拿它显示**；显示用 `actor_name`。 */
   actor: string;
+  /** 操作人显示名（后端 join；`null`/缺失 ⇒ UI **回退** `actor`，不得空白）。 */
+  actor_name?: string | null;
   action: string;
   task_id: string | null;
   payload: Record<string, unknown>;
   at: number;
+}
+
+/** 项目/任务讨论线的一条留言（逐字对照后端 `CommentOut`）。 */
+export interface ProjectComment {
+  comment_id: string;
+  project_id: string;
+  /** null = 项目级留言（挂在任务上时非空）。 */
+  task_id: string | null;
+  thread_id: string | null;
+  /** ``user | agent``（后端判定，不由前端选择 —— `CommentCreate` 无该字段）。 */
+  author_type: string;
+  author_id: string;
+  /** 作者显示名（后端 join；解析不到为 `null` ⇒ UI **回退** `author_type:author_id`，不得空白）。 */
+  name?: string | null;
+  body: string;
+  source: string;
+  /** ``none | conclusion``。 */
+  node_type: string;
+  concluded: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+/** `POST /projects/{pid}/comments` 请求体（逐字对照后端 `CommentCreate`）。 */
+export interface ProjectCommentCreateBody {
+  /** 空白由后端 422 拒绝（前端只做按钮禁用）。 */
+  body: string;
+  task_id?: string | null;
 }
 
 export interface ProjectCreateBody {
@@ -314,11 +345,68 @@ export const projectsApi = {
       { method: "POST" },
     ),
 
-  /** Oldest first, i.e. a replay of what happened in the project. */
-  timeline: (projectId: string, limit?: number) =>
-    request<ProjectTimelineEvent[]>(
-      limit
-        ? `${projectPath(projectId)}/timeline?limit=${limit}`
-        : `${projectPath(projectId)}/timeline`,
+  /**
+   * Oldest first, i.e. a replay of what happened in the project.
+   *
+   * 批次八：**只增** `taskId`（后端 `GET …/timeline` 已支持 `task_id` 过滤）与
+   * `limit`。★ 此前该函数**无任何调用点**（已核实），故改为可选对象不会破坏既有行为；
+   * 默认（不传）时请求 URL 与改动前**逐字相同** ✓。
+   */
+  timeline: (
+    projectId: string,
+    params?: { limit?: number; taskId?: string },
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.taskId) query.set("task_id", params.taskId);
+    const qs = query.toString();
+    return request<ProjectTimelineEvent[]>(
+      `${projectPath(projectId)}/timeline${qs ? `?${qs}` : ""}`,
+    );
+  },
+
+  // ---------- discussion / comments（批次八：逐字对照后端 4 条路由） ----------
+
+  /** `GET …/comments`（可选 `task_id` / `concluded` 过滤）。 */
+  listComments: (
+    projectId: string,
+    params?: { taskId?: string; concluded?: boolean },
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.taskId) query.set("task_id", params.taskId);
+    if (params?.concluded !== undefined)
+      query.set("concluded", String(params.concluded));
+    const qs = query.toString();
+    return request<ProjectComment[]>(
+      `${projectPath(projectId)}/comments${qs ? `?${qs}` : ""}`,
+    );
+  },
+
+  /** `POST …/comments`（201；空白 → 422，前端只禁用按钮）。 */
+  createComment: (projectId: string, body: ProjectCommentCreateBody) =>
+    request<ProjectComment>(`${projectPath(projectId)}/comments`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  /** `POST …/comments/{cid}/conclude`（幂等；标记为结论）。 */
+  concludeComment: (projectId: string, commentId: string) =>
+    request<ProjectComment>(
+      `${projectPath(projectId)}/comments/${encodeURIComponent(
+        commentId,
+      )}/conclude`,
+      { method: "POST" },
+    ),
+
+  /**
+   * `DELETE …/comments/{cid}/conclude`（幂等；取消结论标记）。
+   * ★ 与 PLAN 措辞的差异：**不是** POST —— 以真实路由为准（`projects.py:767` 是 `@router.delete`）。
+   */
+  unconcludeComment: (projectId: string, commentId: string) =>
+    request<ProjectComment>(
+      `${projectPath(projectId)}/comments/${encodeURIComponent(
+        commentId,
+      )}/conclude`,
+      { method: "DELETE" },
     ),
 };

@@ -18,9 +18,14 @@ from pydantic import BaseModel, Field, field_validator
 
 from octop.api.deps import get_server, require_permission
 from octop.api.routers.project_attachments import AttachmentOut
+from octop.infra.db.repos.project_content import (
+    COMMENT_NODE_CONCLUSION,
+    ProjectCommentRow,
+)
 from octop.infra.db.repos.project_tasks import ProjectTaskRow, TimelineEventRow
 from octop.infra.db.repos.projects import ProjectMemberRow, ProjectRow
 from octop.infra.projects.custom_fields import ProjectCustomFieldService
+from octop.infra.projects.discussion import ProjectDiscussion
 from octop.infra.projects.service import ProjectActor, ProjectService
 from octop.infra.projects.tags import ProjectTagService
 from octop.infra.server import OctopServer
@@ -161,17 +166,82 @@ class TaskOut(BaseModel):
         )
 
 
+class CommentOut(BaseModel):
+    """One message on a project (or task) discussion line."""
+
+    comment_id: str
+    project_id: str
+    task_id: str | None = Field(description="Null for a project-level comment.")
+    thread_id: str | None
+    author_type: str = Field(description="user | agent")
+    author_id: str
+    body: str
+    source: str
+    node_type: str = Field(description="none | conclusion")
+    concluded: bool = Field(description="True when this comment is the conclusion.")
+    created_at: int
+    updated_at: int
+    name: str | None = Field(
+        default=None,
+        description=(
+            "Author display name resolved from author_type/author_id (agents.name, "
+            "users.display_name then username). Null when it cannot be resolved — the "
+            "UI falls back to author_id."
+        ),
+    )
+
+    @classmethod
+    def of(cls, row: ProjectCommentRow, name: str | None = None) -> CommentOut:
+        return cls(
+            comment_id=row.id,
+            project_id=row.project_id,
+            task_id=row.task_id,
+            thread_id=row.thread_id,
+            author_type=row.author_type,
+            author_id=row.author_id,
+            body=row.body,
+            source=row.source,
+            node_type=row.node_type,
+            concluded=row.node_type == COMMENT_NODE_CONCLUSION,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            name=name,
+        )
+
+
+class CommentCreate(BaseModel):
+    body: str = Field(min_length=1, description="Comment text; blank is rejected as 422.")
+    task_id: str | None = Field(default=None, description="Attach to a task's line.")
+
+    @field_validator("body")
+    @classmethod
+    def _body_is_not_blank(cls, value: str) -> str:
+        """``"   "`` is not a comment: reject it in the request layer (422), exactly
+        like ``_title_is_not_blank`` does for tasks."""
+        if not value.strip():
+            raise ValueError("body must not be blank")
+        return value
+
+
 class TimelineEventOut(BaseModel):
-    actor: str = Field(description="Actor reference, e.g. user:12.")
+    actor: str = Field(description="Actor reference, e.g. user:12 (stable identifier).")
+    actor_name: str | None = Field(
+        default=None,
+        description=(
+            "Display name for `actor`; null when it cannot be resolved. `actor` keeps "
+            "its existing `type:id` format — this field is only the readable side."
+        ),
+    )
     action: str = Field(description="task.created | task.updated | task.status_changed | …")
     task_id: str | None
     payload: dict[str, Any]
     at: int
 
     @classmethod
-    def of(cls, row: TimelineEventRow) -> TimelineEventOut:
+    def of(cls, row: TimelineEventRow, actor_name: str | None = None) -> TimelineEventOut:
         return cls(
             actor=row.actor,
+            actor_name=actor_name,
             action=row.action,
             task_id=row.task_id,
             payload=row.payload,
@@ -632,14 +702,100 @@ async def dispatch_task(
 async def list_timeline(
     project_id: str,
     limit: int | None = Query(default=None, ge=1, le=500),
+    task_id: str | None = Query(
+        default=None, description="Only this task's events; omit for the whole project."
+    ),
     server: OctopServer = Depends(get_server),
     user: User = Depends(require_permission("projects")),
 ) -> list[TimelineEventOut]:
     """Oldest first, so the response reads as a replay of what happened."""
-    rows = _service(server).list_timeline(project_id, user=_actor(user), limit=limit)
-    return [TimelineEventOut.of(r) for r in rows]
+    service = _service(server)
+    rows = service.list_timeline(project_id, user=_actor(user), limit=limit, task_id=task_id)
+    return [TimelineEventOut.of(r, service.resolve_actor_ref_name(r.actor)) for r in rows]
 
 
 def _actor(user: User) -> ProjectActor:
     """``User`` already satisfies :class:`ProjectActor`; this keeps mypy honest."""
     return user
+
+
+# ── comments (discussion) ────────────────────────────────────────────────────
+
+
+def _discussion(server: OctopServer) -> ProjectDiscussion:
+    assert server.services is not None
+    return ProjectDiscussion(server.services)
+
+
+@router.get("/{project_id}/comments", summary="List a project's comments")
+async def list_comments(
+    project_id: str,
+    task_id: str | None = Query(default=None, description="Only this task's line."),
+    concluded: bool | None = Query(
+        default=None, description="true = only the conclusion; false = everything else."
+    ),
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("projects")),
+) -> list[CommentOut]:
+    """Oldest first. Domain rules live in ``ProjectDiscussion``; this is an adapter."""
+    discussion = _discussion(server)
+    rows = discussion.list_comments(
+        project_id, user=_actor(user), task_id=task_id, concluded=concluded
+    )
+    service = _service(server)
+    return [
+        CommentOut.of(row, service.resolve_actor_name(row.author_type, row.author_id))
+        for row in rows
+    ]
+
+
+@router.post(
+    "/{project_id}/comments",
+    summary="Add a comment to a project",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_comment(
+    project_id: str,
+    body: CommentCreate,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("projects")),
+) -> CommentOut:
+    """Requires ``write``. A blank body stays the existing 400, not an empty row."""
+    row = _discussion(server).add_comment(
+        project_id, user=_actor(user), body=body.body, task_id=body.task_id
+    )
+    return CommentOut.of(row)
+
+
+@router.post(
+    "/{project_id}/comments/{comment_id}/conclude",
+    summary="Mark a comment as the discussion conclusion",
+)
+async def conclude_comment(
+    project_id: str,
+    comment_id: str,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("projects")),
+) -> CommentOut:
+    """Idempotent: adopting the same comment twice keeps one conclusion."""
+    row = _discussion(server).set_conclusion(
+        project_id, comment_id, user=_actor(user), concluded=True
+    )
+    return CommentOut.of(row)
+
+
+@router.delete(
+    "/{project_id}/comments/{comment_id}/conclude",
+    summary="Remove the conclusion mark from a comment",
+)
+async def unconclude_comment(
+    project_id: str,
+    comment_id: str,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("projects")),
+) -> CommentOut:
+    """Idempotent: removing a mark that is not set still answers 200."""
+    row = _discussion(server).set_conclusion(
+        project_id, comment_id, user=_actor(user), concluded=False
+    )
+    return CommentOut.of(row)

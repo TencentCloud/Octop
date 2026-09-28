@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Descriptions, Space, Spin, Tag, Tooltip } from "antd";
 import { ArrowLeft, Download, Paperclip, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -6,9 +6,11 @@ import { useTranslation } from "react-i18next";
 import {
   type ProjectAttachment,
   type ProjectTask,
+  type ProjectTimelineEvent,
   projectsApi,
 } from "../../../api/modules/projects";
 import { projectMetadataApi } from "../../../api/modules/projectMetadata";
+import { useAsyncResource } from "../../../hooks/useAsyncResource";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import { STATUS_COLORS, STATUS_LABEL_KEYS } from "../utils/taskStatus";
@@ -117,6 +119,32 @@ export default function TaskDetailPanel({
     await projectsApi.updateTask(projectId, task.task_id, patch);
     await onChanged();
   };
+
+  // 完整流转史：既有端点 + `task_id`（**全量**，不传 limit ⇒ 不截断）。
+  const { data: timelineEvents, loading: historyLoading } = useAsyncResource<
+    ProjectTimelineEvent[]
+  >(
+    [],
+    () => projectsApi.timeline(projectId, { taskId: task?.task_id ?? "" }),
+    [projectId, task?.task_id],
+    {
+      enabled: Boolean(task?.task_id),
+      errorFallback: t("projects.loadFailed"),
+      t,
+      logLabel: "task-history",
+    },
+  );
+  /** 三要素（时间 / 操作人 / 前后状态）逐条归一 —— `payload` 是自由形状，安全取值。 */
+  const events = useMemo(
+    () =>
+      timelineEvents.map((event) => {
+        const payload = event.payload ?? {};
+        const from = typeof payload.from === "string" ? payload.from : "";
+        const to = typeof payload.to === "string" ? payload.to : "";
+        return { ...event, from, to };
+      }),
+    [timelineEvents],
+  );
 
   const parent = task?.parent_id
     ? tasks.find((item) => item.task_id === task.parent_id)
@@ -304,41 +332,55 @@ export default function TaskDetailPanel({
             </div>
           </section>
 
-          {/* ⚠️ 最小只读轨迹（PLAN §4.3）：仅 4 类可得事实，**不是**完整历史。 */}
-          <section className={styles.section}>
+          {/* 完整状态流转史（批次八 A+B / AC-A-5·A-6）：走既有 `…/timeline?task_id=`，
+              **全量渲染、不截断**（旧「最小只读轨迹」已按契约替换）。
+              ⚠️ 诚实边界：后端 `limit` 硬上限 `le=500` ⇒ **>500 条未定义**（不声称任意规模完整）。 */}
+          <section className={styles.section} data-testid="task-detail-history">
             <div className={styles.sectionTitle}>
               {t("projects.taskDetailTimeline")}
             </div>
-            <ul className={styles.timeline} data-testid="task-detail-timeline">
-              <li data-testid="task-detail-timeline-created">
-                <span className={styles.timelineNode}>
-                  {t("projects.taskDetailTimelineCreated")}
-                </span>
-                <span className={styles.timelineTime}>
-                  {formatServerDateTime(task.created_at, timeZone)}
-                </span>
-              </li>
-              <li data-testid="task-detail-timeline-status">
-                <span className={styles.timelineNode}>
-                  {t(STATUS_LABEL_KEYS[task.status])}
-                </span>
-              </li>
-              <li data-testid="task-detail-timeline-updated">
-                <span className={styles.timelineNode}>
-                  {t("projects.taskDetailTimelineUpdated")}
-                </span>
-                <span className={styles.timelineTime}>
-                  {formatServerDateTime(task.updated_at, timeZone)}
-                </span>
-              </li>
-              {task.thread_id ? (
-                <li data-testid="task-detail-timeline-dispatched">
-                  <span className={styles.timelineNode}>
-                    {t("projects.taskDetailTimelineDispatched")}
-                  </span>
-                </li>
-              ) : null}
-            </ul>
+            {historyLoading && events.length === 0 ? (
+              <div className={styles.loading}>
+                <Spin size="small" />
+              </div>
+            ) : events.length === 0 ? (
+              <div
+                className={styles.sectionEmpty}
+                data-testid="task-detail-timeline-empty"
+              >
+                {t("projects.taskDetailTimelineEmpty")}
+              </div>
+            ) : (
+              <ul
+                className={styles.timeline}
+                data-testid="task-detail-timeline"
+              >
+                {events.map((event, index) => (
+                  <li
+                    key={`${event.at}-${event.actor}-${index}`}
+                    data-testid="timeline-node"
+                  >
+                    <span className={styles.timelineNode}>
+                      {event.action}
+                      {event.from || event.to
+                        ? ` ${event.from || "—"} → ${event.to || "—"}`
+                        : ""}
+                    </span>
+                    <span
+                      className={styles.timelineTime}
+                      data-testid="timeline-actor"
+                    >
+                      {/* `actor` 是稳定标识（如 user:1）⇒ 显示优先 `actor_name`，拿不到才回退。
+                          与 feed 作者同一回退口径：**不得空白**。 */}
+                      {event.actor_name?.trim()
+                        ? event.actor_name
+                        : event.actor}{" "}
+                      · {formatServerDateTime(event.at, timeZone)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
 
           <TaskCreateModal

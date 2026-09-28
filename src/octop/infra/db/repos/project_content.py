@@ -36,6 +36,9 @@ COMMENT_SOURCE_AGENT = "agent"
 
 #: A plain discussion comment; requirement-node markers arrive with T3.2.
 COMMENT_NODE_NONE = "none"
+#: A comment marked as the discussion's conclusion (PLAN §5 采纳). The column has
+#: no CHECK constraint, so this is a value, not a schema change — zero migrations.
+COMMENT_NODE_CONCLUSION = "conclusion"
 
 
 # ── project_comments ─────────────────────────────────────────────────────────
@@ -108,6 +111,16 @@ class ProjectCommentRepo:
 
     # ── reads ────────────────────────────────────────────────────────────────
 
+    def set_node_type(self, comment_id: str, node_type: str) -> bool:
+        """Mark (or unmark) a comment as the conclusion. Idempotent: writing the
+        same value twice is a no-op that still reports success."""
+        with self._db.transaction() as conn:
+            cur = conn.execute(
+                "UPDATE project_comments SET node_type = ?, updated_at = ? WHERE comment_id = ?",
+                (node_type, now_ts(), comment_id),
+            )
+        return bool(cur.rowcount > 0)
+
     def get(self, comment_id: str) -> ProjectCommentRow | None:
         with self._db.connect() as conn:
             r = conn.execute(
@@ -116,25 +129,45 @@ class ProjectCommentRepo:
         return ProjectCommentRow.from_row(r) if r else None
 
     def list_by_project(
-        self, project_id: str, *, task_id: str | None = None
+        self,
+        project_id: str,
+        *,
+        task_id: str | None = None,
+        concluded: bool | None = None,
     ) -> list[ProjectCommentRow]:
-        """Chronological (oldest first) — a discussion line reads top to bottom."""
+        """Chronological (oldest first) — a discussion line reads top to bottom.
+
+        ``concluded`` narrows to (or away from) the adopted conclusion; ``None``
+        keeps every comment, which is the pre-existing behaviour.
+        """
         sql = "SELECT * FROM project_comments WHERE project_id = ?"
         params: list[object] = [project_id]
         if task_id is not None:
             sql += " AND task_id = ?"
             params.append(task_id)
+        if concluded is not None:
+            sql += " AND node_type " + ("=" if concluded else "!=") + " ?"
+            params.append(COMMENT_NODE_CONCLUSION)
         sql += " ORDER BY created_at, id"
         with self._db.connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return map_rows(rows, ProjectCommentRow)
 
-    def count_by_project(self, project_id: str, *, task_id: str | None = None) -> int:
+    def count_by_project(
+        self,
+        project_id: str,
+        *,
+        task_id: str | None = None,
+        concluded: bool | None = None,
+    ) -> int:
         sql = "SELECT COUNT(*) AS c FROM project_comments WHERE project_id = ?"
         params: list[object] = [project_id]
         if task_id is not None:
             sql += " AND task_id = ?"
             params.append(task_id)
+        if concluded is not None:
+            sql += " AND node_type " + ("=" if concluded else "!=") + " ?"
+            params.append(COMMENT_NODE_CONCLUSION)
         with self._db.connect() as conn:
             row = conn.execute(sql, params).fetchone()
         return int(row["c"]) if row else 0

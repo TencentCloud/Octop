@@ -244,6 +244,25 @@ class ProjectService:
         rows = self.list_members(project_id, user=user)
         return [(row, self._resolve_subject_name(row.subject_type, row.subject_id)) for row in rows]
 
+    def resolve_actor_name(self, actor_type: str, actor_id: str) -> str | None:
+        """Display name for a comment author / timeline actor.
+
+        Reuses :meth:`_resolve_subject_name` — the same read path the member list
+        uses — so there is one place that knows how a subject becomes a name.
+        """
+        return self._resolve_subject_name(actor_type, actor_id)
+
+    def resolve_actor_ref_name(self, actor: str) -> str | None:
+        """``"user:1"`` / ``"agent:AB"`` → display name; ``None`` when unresolvable.
+
+        ``actor`` keeps its stable ``type:id`` form (existing consumers rely on it);
+        this only adds the human-readable side.
+        """
+        actor_type, separator, actor_id = actor.partition(":")
+        if not separator or not actor_id:
+            return None
+        return self._resolve_subject_name(actor_type, actor_id)
+
     def _resolve_subject_name(self, subject_type: str, subject_id: str) -> str | None:
         if subject_type in ("agent", "team"):
             # A team *is* an ``agents`` row with ``kind='team'`` (verified on the live
@@ -903,11 +922,16 @@ class ProjectService:
         return updated
 
     def list_timeline(
-        self, project_id: str, *, user: ProjectActor, limit: int | None = None
+        self,
+        project_id: str,
+        *,
+        user: ProjectActor,
+        limit: int | None = None,
+        task_id: str | None = None,
     ) -> list[TimelineEventRow]:
-        """Chronological project timeline (oldest first)."""
+        """Chronological project timeline (oldest first); ``task_id`` narrows it."""
         self.assert_project_role(project_id, user=user, required=PROJECT_READ)
-        return self._timeline.list_by_project(project_id, limit=limit)
+        return self._timeline.list_by_project(project_id, limit=limit, task_id=task_id)
 
     def _record(
         self,

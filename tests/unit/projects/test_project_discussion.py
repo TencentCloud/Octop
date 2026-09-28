@@ -19,10 +19,13 @@ import pytest
 
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
+from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.project_content import (
     COMMENT_AUTHOR_AGENT,
     COMMENT_AUTHOR_USER,
+    COMMENT_NODE_CONCLUSION,
+    COMMENT_NODE_NONE,
     COMMENT_SOURCE_AGENT,
     COMMENT_SOURCE_DASHBOARD,
     ProjectCommentRepo,
@@ -75,6 +78,7 @@ def services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace
         knowledge_repo=KnowledgeRepo(pool),
         settings_repo=SettingsRepo(pool),
         user_repo=UserRepo(pool),
+        agent_repo=AgentRepo(pool),
         paths=PathLayout.from_env(),
     )
 
@@ -320,3 +324,113 @@ def test_comments_are_project_scoped_and_cascade_on_project_delete(
 
     assert services.project_comment_repo.get(mine.id) is None, "child rows cascade"
     assert services.project_comment_repo.get(theirs.id) is not None
+
+
+# ── batch 8 (T-B8-API): conclusion marker + concluded filter ─────────────────
+#
+# Only additions: the comment store, its service and the permission checks are the
+# ones already covered above; this covers the one new value the batch introduces.
+
+
+def test_conclusion_mark_is_idempotent_and_filterable(
+    discussion: ProjectDiscussion,
+    service: ProjectService,
+    project: Any,
+    owner: Actor,
+) -> None:
+    first = discussion.add_comment(project.id, user=owner, body="first")
+    second = discussion.add_comment(project.id, user=owner, body="second")
+
+    # Not adopted yet: everything is on the "not concluded" side.
+    assert [c.id for c in discussion.list_comments(project.id, user=owner, concluded=True)] == []
+    assert len(discussion.list_comments(project.id, user=owner, concluded=False)) == 2
+
+    marked = discussion.set_conclusion(project.id, second.id, user=owner, concluded=True)
+    assert marked.id == second.id
+    assert marked.node_type == COMMENT_NODE_CONCLUSION
+
+    # Idempotent: adopting twice keeps exactly one conclusion and one value.
+    again = discussion.set_conclusion(project.id, second.id, user=owner, concluded=True)
+    assert again.node_type == COMMENT_NODE_CONCLUSION
+    concluded = discussion.list_comments(project.id, user=owner, concluded=True)
+    assert [c.id for c in concluded] == [second.id]
+    assert [c.id for c in discussion.list_comments(project.id, user=owner, concluded=False)] == [
+        first.id
+    ]
+
+    # Un-adopting is idempotent too, and the default (no filter) still sees both.
+    for _ in range(2):
+        cleared = discussion.set_conclusion(project.id, second.id, user=owner, concluded=False)
+        assert cleared.node_type == COMMENT_NODE_NONE
+    assert len(discussion.list_comments(project.id, user=owner)) == 2
+    assert discussion.list_comments(project.id, user=owner, concluded=True) == []
+
+
+def test_conclusion_of_a_foreign_comment_is_a_404(
+    discussion: ProjectDiscussion,
+    service: ProjectService,
+    project: Any,
+    owner: Actor,
+    services: SimpleNamespace,
+) -> None:
+    """A comment id from another project is "not in this project", not a 500."""
+    other = service.create_project(owner_user=owner, name="Borealis")
+    foreign = discussion.add_comment(other.id, user=owner, body="elsewhere")
+
+    with pytest.raises(OctopError) as err:
+        discussion.set_conclusion(project.id, foreign.id, user=owner, concluded=True)
+    assert err.value.code is ErrorCode.PROJECT_NOT_FOUND
+    assert err.value.status == 404
+    assert err.value.status != 500
+    assert discussion.list_comments(other.id, user=owner, concluded=True) == []
+
+
+# ── batch 8 FIND-1: the resolved display names are asserted, not just produced ─
+#
+# The wire models carry ``CommentOut.name`` / ``TimelineEventOut.actor_name``. Both
+# come from ``ProjectService.resolve_actor_name`` → ``_resolve_subject_name``. These
+# run the same real service + real SQLite pool the endpoints use (no mocked
+# resolver): pinning the resolver to ``None`` — the exact shape of the reported
+# "row shows user:1" defect — turns these assertions red.
+
+
+def test_comment_and_timeline_names_resolve_from_real_rows(
+    discussion: ProjectDiscussion,
+    service: ProjectService,
+    project: Any,
+    owner: Actor,
+    services: SimpleNamespace,
+) -> None:
+    from octop.api.routers.projects import CommentOut, TimelineEventOut
+
+    # ① a user author resolves to its username (display_name is unset here)
+    comment = discussion.add_comment(project.id, user=owner, body="hello")
+    resolved = service.resolve_actor_name(comment.author_type, comment.author_id)
+    assert resolved == "owner", f"user comment author: {resolved!r}"
+    assert CommentOut.of(comment, resolved).name == "owner"
+
+    # ③ an agent author resolves through agents.name — the same read path
+    services.agent_repo.create(
+        agent_id="AGNAME1", user_id=owner.id, name="AI 编程实战导师", kind="expert"
+    )
+    agent_comment = discussion.add_agent_comment(
+        project.id, user=owner, agent_id="AGNAME1", body="agent says hi"
+    )
+    agent_name = service.resolve_actor_name(agent_comment.author_type, agent_comment.author_id)
+    assert agent_name == "AI 编程实战导师", agent_name
+    assert CommentOut.of(agent_comment, agent_name).name == "AI 编程实战导师"
+
+    # ② the timeline keeps the stable ``type:id`` actor **and** gains the name.
+    # A task creation is what writes the first event on a fresh project.
+    service.create_task(project.id, user=owner, title="Named timeline task")
+    events = service.list_timeline(project.id, user=owner)
+    assert events, "a freshly created project has at least one event"
+    for row in events:
+        model = TimelineEventOut.of(row, service.resolve_actor_ref_name(row.actor))
+        assert model.actor == row.actor, "actor keeps its existing stable format"
+        assert ":" in model.actor and not model.actor.startswith(":")
+        assert model.actor_name == "owner", (row.actor, model.actor_name)
+
+    # an unresolvable actor is null, never an exception
+    assert service.resolve_actor_ref_name("user:999999") is None
+    assert service.resolve_actor_name("agent", "ag_missing") is None

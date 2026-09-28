@@ -23,11 +23,14 @@ from octop.infra.db.repos.project_content import (
     COMMENT_AUTHOR_AGENT,
     COMMENT_AUTHOR_TYPES,
     COMMENT_AUTHOR_USER,
+    COMMENT_NODE_CONCLUSION,
+    COMMENT_NODE_NONE,
     COMMENT_SOURCE_AGENT,
     COMMENT_SOURCE_DASHBOARD,
     ProjectCommentRow,
 )
 from octop.infra.db.services import SharedServices
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.projects.service import (
     PROJECT_READ,
     PROJECT_WRITE,
@@ -62,10 +65,38 @@ class ProjectDiscussion:
         *,
         user: ProjectActor,
         task_id: str | None = None,
+        concluded: bool | None = None,
     ) -> list[ProjectCommentRow]:
-        """A project's comments, oldest first; ``task_id`` narrows to one task's line."""
+        """A project's comments, oldest first; ``task_id`` narrows to one task's line
+        and ``concluded`` to (or away from) the adopted conclusion."""
         self._projects.assert_project_role(project_id, user=user, required=PROJECT_READ)
-        return self._comments.list_by_project(project_id, task_id=task_id)
+        return self._comments.list_by_project(project_id, task_id=task_id, concluded=concluded)
+
+    def set_conclusion(
+        self,
+        project_id: str,
+        comment_id: str,
+        *,
+        user: ProjectActor,
+        concluded: bool,
+    ) -> ProjectCommentRow:
+        """Adopt (or un-adopt) one comment as the discussion's conclusion.
+
+        Same existing ``write`` check as every other comment write, and the same
+        ``project_comments`` row — the only new thing is the ``node_type`` value.
+        A comment id that does not live in this project is a 404, mirroring the
+        other "id not in this project" surfaces.
+        """
+        self._projects.assert_project_role(project_id, user=user, required=PROJECT_WRITE)
+        row = self._comments.get(comment_id)
+        if row is None or row.project_id != project_id:
+            raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Comment not found in this project.")
+        node_type = COMMENT_NODE_CONCLUSION if concluded else COMMENT_NODE_NONE
+        self._comments.set_node_type(comment_id, node_type)
+        refreshed = self._comments.get(comment_id)
+        if refreshed is None:  # pragma: no cover - the row was just updated
+            raise OctopError(ErrorCode.PROJECT_NOT_FOUND, "Comment not found in this project.")
+        return refreshed
 
     def count_for_task(self, project_id: str, task_id: str) -> int:
         """How many comments one task's discussion line holds (task board badge)."""

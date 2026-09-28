@@ -421,7 +421,8 @@ describe("project detail 4 tabs + right rail (T-FE-DETAIL)", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "projects.tabDynamic" }));
     expect(await screen.findByTestId("project-dynamic")).toBeInTheDocument();
-    expect(screen.getByText("projects.dynamicPlaceholder")).toBeInTheDocument();
+    // ★ 批次八 O4 改向（记账）：占位文案**保留为键但不再渲染** ⇒ 改为断言 feed 的承载面。
+    expect(screen.queryByText("projects.dynamicPlaceholder")).toBeNull();
   });
 
   it("S6：右栏常驻（空数据不隐藏整栏），且 DOM 顺序 = 主区 → 右栏", async () => {

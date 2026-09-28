@@ -444,11 +444,19 @@ class TimelineRepo:
         return TimelineEventRow.from_row(r) if r else None
 
     def list_by_project(
-        self, project_id: str, *, limit: int | None = None
+        self, project_id: str, *, limit: int | None = None, task_id: str | None = None
     ) -> list[TimelineEventRow]:
-        """Chronological order — oldest first, which is the replay order."""
-        sql = "SELECT * FROM timeline_events WHERE project_id = ? ORDER BY at, id"
+        """Chronological order — oldest first, which is the replay order.
+
+        ``task_id`` filters **in SQL** (a post-filter would interact with ``limit``
+        and drop rows); omitting it leaves the statement byte-identical to before.
+        """
+        sql = "SELECT * FROM timeline_events WHERE project_id = ?"
         params: list[object] = [project_id]
+        if task_id is not None:
+            sql += " AND task_id = ?"
+            params.append(task_id)
+        sql += " ORDER BY at, id"
         if limit is not None:
             sql += " LIMIT ?"
             params.append(limit)

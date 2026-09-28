@@ -5,7 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Only the transport is mocked: the tab must go through the shared
@@ -86,6 +86,10 @@ beforeEach(() => {
   mockedRequest.mockImplementation(async (path: string) => {
     if (path.startsWith("/knowledge-bases/kb1/documents")) return DOCS as never;
     if (path.startsWith("/knowledge-bases/kb")) return KB as never;
+    // ★ harness 补全（与 `DynamicTab.test.tsx` 同款）：成员端点**恒返回数组**（真实 API 如此）
+    //   —— 原先此处落到 `null`，`useProjectMembers` 拿到非数组 ⇒ 动态 Tab 渲染期崩、DOM 为空。
+    if (path === "/projects/p1/members") return [] as never;
+    if (path === "/projects/p1/comments") return [] as never;
     return null as never;
   });
   mockedBlob.mockReset();
@@ -172,18 +176,35 @@ describe("assets tab — data source is projects.kb_id (PLAN §19.3)", () => {
   });
 });
 
-describe("activity tab — a placeholder, not the feed (PLAN §4.1)", () => {
-  it("renders the placeholder copy and never touches the network", async () => {
-    renderTab(<DynamicTab />);
+describe("activity tab — the feed, not a placeholder (批次八 O4 改向)", () => {
+  it("renders the feed and only issues the feed's own requests", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/p1"]}>
+        <Routes>
+          <Route path="/projects/:projectId" element={<DynamicTab />} />
+        </Routes>
+      </MemoryRouter>,
+    );
 
-    expect(await screen.findByTestId("project-dynamic")).toBeInTheDocument();
-    expect(screen.getByText("projects.dynamicPlaceholder")).toBeInTheDocument();
-    expect(screen.getByText("projects.dynamicComingSoon")).toBeInTheDocument();
+    // ★ 改向（键保留、不再渲染）：占位文案为 null，代之以 feed 的承载面。
+    expect(await screen.findByTestId("feed-empty")).toHaveTextContent(
+      "projects.feedEmpty",
+    );
+    expect(screen.queryByText("projects.dynamicPlaceholder")).toBeNull();
 
-    // ★ The hard part of "this is only a placeholder": it must not fetch a feed.
-    //   The feed belongs to the next batch, so any call here would be scope
-    //   leaking into this one.
-    await waitFor(() => expect(mockedRequest).not.toHaveBeenCalled());
+    // ★ 「零请求」在新形态下**不成立**（feed 必须读留言）⇒ 改为**枚举允许的端点**：
+    //   仅 `/projects/p1/comments`（feed）与 `/projects/p1/members`（写权限 UX 门）；
+    //   **不得**放宽成「随便发」。
+    await waitFor(() => expect(mockedRequest).toHaveBeenCalled());
+    const paths = mockedRequest.mock.calls.map(([path]) => path);
+    expect(new Set(paths)).toEqual(
+      new Set(["/projects/p1/comments", "/projects/p1/members"]),
+    );
+    // ★ Z7：集合相等**不约束重复次数** ⇒ 对 feed 自身的端点补「恰好一次」
+    //   （`/members` 只约束集合：元数据与成员面可能各取一次）。
+    expect(
+      paths.filter((path) => path === "/projects/p1/comments"),
+    ).toHaveLength(1);
   });
 });
 

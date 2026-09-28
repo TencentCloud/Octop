@@ -6323,6 +6323,12 @@
     "quickInputRecipientFilter": "输入以过滤…",
     "quickInputRecipientEmpty": "无匹配的专家",
     "quickInputRecipientListLabel": "收件人",
-    "pickerEmptyTeams": "暂无可选团队"
+    "pickerEmptyTeams": "暂无可选团队",
+    "feedComposerPlaceholder": "写点什么…",
+    "feedPost": "发布",
+    "feedEmpty": "暂无留言",
+    "conclusionBadge": "结论",
+    "conclude": "采纳为结论",
+    "unconclude": "取消采纳"
   }
 }

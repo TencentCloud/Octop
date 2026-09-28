@@ -241,3 +241,79 @@ async def test_project_status_on_create_is_applied_and_validated(
     listed = await client.get(f"{PROJECTS}", headers=alice)
     names = [p["name"] for p in listed.json()]
     assert names == ["Apollo"], "the rejected project must not exist"
+
+
+# ── batch 8 (T-B8-API): comments over the wire ───────────────────────────────
+
+
+async def _project(client: httpx.AsyncClient, auth: dict[str, str], name: str = "P8") -> str:
+    created = await client.post(PROJECTS, headers=auth, json={"name": name, "status": "active"})
+    assert created.status_code == 201, created.text
+    return str(created.json()["project_id"])
+
+
+async def test_a_blank_comment_body_is_a_422_like_a_blank_task_title(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """The request layer rejects blank text for both resources, in the same shape.
+
+    ``""`` fails ``min_length``; ``"   "`` fails the field validator. Neither may
+    reach the service (where a bare ``ValueError`` would escape as a 500).
+    """
+    client, ctx = api[0], api[1]
+    auth = ctx["admin"] if "admin" in ctx else next(iter(ctx.values()))
+    pid = await _project(client, auth)
+
+    for body in ("", "   "):
+        comment = await client.post(f"{PROJECTS}/{pid}/comments", headers=auth, json={"body": body})
+        assert comment.status_code == 422, (body, comment.text)
+        assert comment.status_code != 500
+        detail = comment.json()["detail"][0]
+        assert detail["loc"] == ["body", "body"]
+        if body == "":
+            assert detail["type"] == "string_too_short"  # the min_length guard
+        else:
+            assert detail["type"] == "value_error"  # the blank-text validator
+            assert "body" in detail["msg"]
+
+    title = await client.post(f"{PROJECTS}/{pid}/tasks", headers=auth, json={"title": "   "})
+    assert title.status_code == 422, title.text
+    assert title.json()["detail"][0]["loc"] == ["body", "title"]
+    assert "title" in title.json()["detail"][0]["msg"]
+
+
+async def test_timeline_filters_in_sql_without_changing_the_default(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """No ``task_id`` ⇒ the previous result; with one ⇒ only that task's events.
+
+    The filter is applied in SQL: were it a post-filter, ``limit`` would interact
+    with it and drop rows.
+    """
+    client, ctx = api[0], api[1]
+    auth = ctx["admin"] if "admin" in ctx else next(iter(ctx.values()))
+    pid = await _project(client, auth, "P8-timeline")
+    tasks = []
+    for title in ("T1", "T2"):
+        created = await client.post(f"{PROJECTS}/{pid}/tasks", headers=auth, json={"title": title})
+        assert created.status_code == 201, created.text
+        tasks.append(created.json()["task_id"])
+
+    everything = await client.get(f"{PROJECTS}/{pid}/timeline", headers=auth)
+    assert everything.status_code == 200, everything.text
+    assert len(everything.json()) >= 2
+
+    for task_id in tasks:
+        narrowed = await client.get(
+            f"{PROJECTS}/{pid}/timeline", headers=auth, params={"task_id": task_id}
+        )
+        assert narrowed.status_code == 200, narrowed.text
+        rows = narrowed.json()
+        assert rows, f"task {task_id} has no events"
+        assert {row["task_id"] for row in rows} == {task_id}
+
+    limited = await client.get(
+        f"{PROJECTS}/{pid}/timeline", headers=auth, params={"limit": 1, "task_id": tasks[0]}
+    )
+    assert limited.status_code == 200, limited.text
+    assert len(limited.json()) == 1

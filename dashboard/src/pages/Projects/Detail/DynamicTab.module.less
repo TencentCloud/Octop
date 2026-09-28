@@ -1,0 +1,81 @@
+/* 动态 Tab（项目留言 feed）—— PLAN §1.2 / 批次八 A2。 */
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.composerInput {
+  flex: 1;
+  min-width: 0;
+  line-height: 22px;
+  resize: none;
+}
+
+.centered {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+}
+
+.list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--fn-border-primary);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.itemHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.author {
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+}
+
+.time {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: var(--fn-radius-sm, 4px);
+  background: var(--fn-bg-hover);
+  color: var(--fn-text-brand, var(--fn-text-primary));
+  font-size: 12px;
+}
+
+.body {
+  color: var(--fn-text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.concludeAction {
+  padding: 0;
+  height: auto;
+  font-size: 12px;
+}

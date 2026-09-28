@@ -6184,6 +6184,12 @@
     "quickInputRecipientFilter": "Type to filter…",
     "quickInputRecipientEmpty": "No matching expert",
     "quickInputRecipientListLabel": "Recipients",
-    "pickerEmptyTeams": "No teams available"
+    "pickerEmptyTeams": "No teams available",
+    "feedComposerPlaceholder": "Write a note…",
+    "feedPost": "Post",
+    "feedEmpty": "No notes yet",
+    "conclusionBadge": "Conclusion",
+    "conclude": "Mark as conclusion",
+    "unconclude": "Remove conclusion"
   }
 }

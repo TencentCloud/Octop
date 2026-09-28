@@ -76,6 +76,15 @@ function task(overrides: Partial<ProjectTask> = {}): ProjectTask {
   };
 }
 
+/** timeline 路由（既有端点 + `task_id`）。 */
+function mockTimeline(events: unknown[]) {
+  const previous = mockedRequest.getMockImplementation();
+  mockedRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (String(path).includes("/timeline")) return events as never;
+    return previous ? previous(path, init) : (task() as never);
+  });
+}
+
 function renderPanel(
   overrides: Partial<{
     task: ProjectTask | undefined;
@@ -128,7 +137,10 @@ describe("TaskDetailPanel — 逐字段渲染（AC-G4-2）", () => {
       "attachments",
       "timeline",
     ]) {
-      expect(screen.getByTestId(`task-detail-${field}`)).toBeInTheDocument();
+      // 「过程」区在批次八由容器 testid 承载（`task-detail-<field>` 逐字段口径保留）。
+      const testId =
+        field === "timeline" ? "task-detail-history" : `task-detail-${field}`;
+      expect(screen.getByTestId(testId)).toBeInTheDocument();
     }
 
     expect(screen.getByTestId("task-detail-description")).toHaveTextContent(
@@ -198,45 +210,87 @@ describe("TaskDetailPanel — 逐字段渲染（AC-G4-2）", () => {
   });
 });
 
-describe("TaskDetailPanel — 过程图标：最小只读轨迹（AC-G4-4 / PLAN §4.3）", () => {
-  it("4 类可得事实：创建 / 当前状态 / 最近更新（+ 有 thread_id 时「已派单」）", async () => {
-    renderPanel({
-      task: task({ thread_id: "thr_9" }),
-    });
+describe("TaskDetailPanel — 完整状态流转史（批次八 AC-A-5 / A-6 / A-7）", () => {
+  /** 12 条事件（AC-A-5：**不得截断** ⇒ 节点数 == 12）。 */
+  const EVENTS = Array.from({ length: 12 }, (_, index) => ({
+    actor: `user:${index + 1}`,
+    action: "status_change",
+    task_id: "tsk_1",
+    payload: { from: `s${index}`, to: `s${index + 1}` },
+    at: 1_750_000_000 + index * 60,
+  }));
 
-    const timeline = screen.getByTestId("task-detail-timeline");
-    expect(
-      within(timeline).getByTestId("task-detail-timeline-created"),
-    ).toHaveTextContent(formatServerDateTime(CREATED_AT, "UTC"));
-    expect(
-      within(timeline).getByTestId("task-detail-timeline-status"),
-    ).toHaveTextContent("projects.taskStatusDoing");
-    expect(
-      within(timeline).getByTestId("task-detail-timeline-updated"),
-    ).toHaveTextContent(formatServerDateTime(UPDATED_AT, "UTC"));
-    expect(
-      within(timeline).getByTestId("task-detail-timeline-dispatched"),
-    ).toBeInTheDocument();
-  });
+  it("12 条事件 → 渲染 12 个 timeline-node（**全量、不 slice**）", async () => {
+    mockTimeline(EVENTS);
+    renderPanel();
 
-  it("thread_id 为空 → 不渲染「已派单」节点（3 类事实）", async () => {
-    renderPanel({ task: task({ thread_id: null }) });
-    const timeline = screen.getByTestId("task-detail-timeline");
+    await waitFor(() =>
+      expect(screen.getAllByTestId("timeline-node")).toHaveLength(12),
+    );
+    // 走既有端点 + `task_id` 过滤（不新增端点）。
     expect(
-      within(timeline).queryByTestId("task-detail-timeline-dispatched"),
-    ).toBeNull();
-    expect(
-      within(timeline).getAllByTestId(
-        /^task-detail-timeline-(created|status|updated)$/,
+      mockedRequest.mock.calls.some(([p]) =>
+        String(p).includes("/projects/prj_1/timeline?task_id=tsk_1"),
       ),
-    ).toHaveLength(3);
+    ).toBe(true);
   });
 
-  it("★ 只读：轨迹区内没有任何编辑控件（无 button / input）", async () => {
-    renderPanel({ task: task({ thread_id: "thr_9" }) });
-    const timeline = screen.getByTestId("task-detail-timeline");
+  it("AC-A-6：每条含 时间（服务器时区）/ 操作人 / 前后状态（payload.from → to）", async () => {
+    mockTimeline(EVENTS);
+    renderPanel();
+
+    const nodes = await screen.findAllByTestId("timeline-node");
+    const first = nodes[0];
+    expect(first).toHaveTextContent("user:1");
+    expect(first).toHaveTextContent("s0 → s1");
+    expect(first).toHaveTextContent(formatServerDateTime(1_750_000_000, "UTC"));
+  });
+
+  it("★ 操作人显示【名字】而非裸标识；actor_name 缺失 ⇒ 回退 actor（不得空白）", async () => {
+    mockTimeline([
+      {
+        actor: "user:1",
+        actor_name: "李四",
+        action: "status_change",
+        task_id: "tsk_1",
+        payload: { from: "a", to: "b" },
+        at: 1_750_000_000,
+      },
+      {
+        actor: "agent:agt_9",
+        actor_name: null,
+        action: "status_change",
+        task_id: "tsk_1",
+        payload: { from: "b", to: "c" },
+        at: 1_750_000_060,
+      },
+    ]);
+    renderPanel();
+
+    const nodes = await screen.findAllByTestId("timeline-node");
+    const named = within(nodes[0]).getByTestId("timeline-actor");
+    expect(named).toHaveTextContent("李四");
+    expect(named).not.toHaveTextContent("user:1"); // ★ 不显示稳定标识
+    const bare = within(nodes[1]).getByTestId("timeline-actor");
+    expect(bare).toHaveTextContent("agent:agt_9"); // 回退（不得空白）
+  });
+
+  it("AC-A-7：无流转 → 空态（不报错、不空白）", async () => {
+    mockTimeline([]);
+    renderPanel();
+
     expect(
-      timeline.querySelectorAll("button, input, textarea, select"),
+      await screen.findByTestId("task-detail-timeline-empty"),
+    ).toHaveTextContent("projects.taskDetailTimelineEmpty");
+    expect(screen.queryAllByTestId("timeline-node")).toHaveLength(0);
+  });
+
+  it("★ 只读：流转区没有任何编辑控件（无 button / input）", async () => {
+    mockTimeline(EVENTS);
+    renderPanel();
+    const list = await screen.findByTestId("task-detail-timeline");
+    expect(
+      list.querySelectorAll("button, input, textarea, select"),
     ).toHaveLength(0);
   });
 });
