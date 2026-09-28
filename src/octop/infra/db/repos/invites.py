@@ -29,7 +29,7 @@ class InviteRow:
     used_by_user_id: int | None
     revoked_at: int | None
     role_name: str | None = None
-    user_role_id: str | None = None
+    role: str | None = None
 
     @classmethod
     def from_row(cls, row: DbRow) -> InviteRow:
@@ -47,7 +47,7 @@ class InviteRow:
             ),
             revoked_at=int(row["revoked_at"]) if row["revoked_at"] is not None else None,
             role_name=_optional_text(row["role_name"]) if "role_name" in keys else None,
-            user_role_id=(_optional_text(row["user_role_id"]) if "user_role_id" in keys else None),
+            role=_optional_text(row["role"]) if "role" in keys else None,
         )
 
     def status(self, *, now: int | None = None) -> str:
@@ -73,16 +73,16 @@ class InviteRepo:
         expires_at: int,
         note: str | None = None,
         role_name: str | None = None,
-        user_role_id: str | None = None,
+        role: str | None = None,
     ) -> InviteRow:
         ts = now_ts()
         with self._db.transaction() as conn:
             invite_id = insert_returning_id(
                 conn,
                 "INSERT INTO user_invites("
-                "code, created_by, note, created_at, expires_at, role_name, user_role_id"
+                "code, created_by, note, created_at, expires_at, role_name, role"
                 ") VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (code, created_by, note, ts, expires_at, role_name, user_role_id),
+                (code, created_by, note, ts, expires_at, role_name, role),
             )
         row = self.get(invite_id)
         assert row is not None
@@ -133,10 +133,11 @@ class InviteRepo:
         account_role: str = "user",
         permissions: list[str] | None = None,
         policies: list[tuple[str, str]] | None = None,
-        user_role_id: str | None = None,
         role_name: str | None = None,
     ) -> tuple[int, InviteRow]:
         """Create a user and mark the invite used in one transaction.
+
+        ``account_role`` is the role-template public id written to ``users.role``.
 
         Returns ``(user_id, invite)``. Caller must hold any in-memory locks.
         Raises ``LookupError`` when the invite is missing, ``ValueError`` with
@@ -170,8 +171,8 @@ class InviteRepo:
                 conn,
                 "INSERT INTO users(username, password_hash, role, display_name, locale, "
                 "email, sso_provider_id, sso_subject, disabled, created_at, permissions, "
-                "role_name, user_role_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 0, ?, ?, ?, ?)",
+                "role_name) "
+                "VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 0, ?, ?, ?)",
                 (
                     username,
                     password_hash,
@@ -182,7 +183,6 @@ class InviteRepo:
                     ts,
                     json.dumps(perm_list, ensure_ascii=False),
                     role_name if role_name is not None else invite.role_name,
-                    user_role_id if user_role_id is not None else invite.user_role_id,
                 ),
             )
             if policies:
@@ -236,5 +236,5 @@ def invite_status_payload(invite: InviteRow, *, now: int | None = None) -> dict[
         "revoked_at": invite.revoked_at,
         "status": invite.status(now=ts),
         "role_name": invite.role_name,
-        "user_role_id": invite.user_role_id,
+        "role": invite.role,
     }
