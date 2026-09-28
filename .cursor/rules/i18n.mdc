@@ -1,0 +1,21 @@
+---
+description: Backend and dashboard locale keys for zh and en
+globs: src/octop/i18n/**/*,dashboard/src/locales/**/*
+alwaysApply: false
+---
+
+# i18n
+
+Locales are `zh` and `en` (`en` is the fallback). User-facing server text — slash replies, channel status, API errors, tool names, CLI output — comes from `src/octop/i18n/`, not hard-coded English in `infra/`.
+
+- Keep the same key tree in `en.json` and `zh.json`.
+- `from octop.i18n import tr` with a full path: `tr("slash.catalog.help.label", locale)`.
+- Repeated namespaces: `octop.i18n.domains.<ns>`. Slash handlers use `from octop.i18n.domains.slash import tr`.
+- Placeholders are `str.format` (`{name}`).
+- Locale order: stored user preference, then `Accept-Language`, then channel hints (IM defaults `zh`, `telegram` → `en`). Gateway: `resolve_user_locale()`. HTTP: `resolve_request_locale()`.
+- `ErrorCode` maps to `errors.<CODE>`. Dashboard mirrors those codes under `apiErrors.*`.
+- IM tool lines: pass localized `tool_name` and `tool_hint_text` on `MessageEvent.tool_start/end`.
+
+After JSON edits: `uv run pytest tests/unit/i18n -q`.
+
+No gettext. Expert-catalog `label_zh` / `label_en` stay in source data unless that catalog is being migrated. Language is not a `config.json` key.

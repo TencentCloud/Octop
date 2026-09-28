@@ -1,0 +1,24 @@
+---
+description: Dashboard layout, API access, and server timezone
+globs: dashboard/src/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Dashboard
+
+Edit `dashboard/`. Never edit `src/octop/dashboard/` (build artifact). After UI changes run `make build-frontend` and `cd dashboard && npx tsc -b`.
+
+| Path | Owns |
+|------|------|
+| `api/` | Typed fetch (`request.ts`, `modules/*`) |
+| `pages/` | Route screens and page-local hooks |
+| `components/` | Shared widgets — no direct `fetch` |
+| `hooks/` | Reusable hooks, not one-off page logic |
+| `context/` | App context — API calls go through `api/` |
+| `locales/` | Chrome strings (`en`, `zh`) |
+
+The UI talks to Octop only over `/api`. Do not import or assume Python module layout.
+
+Timestamps users see use the server timezone: `useServerTimezone()` and `formatServerDateTime` / `formatMessageTime(..., timeZone)` in `utils/formatMessageTime.ts`. Do not call bare `toLocaleString()` / `toLocaleDateString()` / `toLocaleTimeString()` for those timestamps. `Number#toLocaleString()` for grouping is fine.
+
+`apiErrors.*` in `locales/{en,zh}.json` must match backend `errors.*`.

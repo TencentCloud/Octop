@@ -422,7 +422,7 @@ def load_config(path: Path) -> OctopConfig:
     A corrupt file raises with the path and parser position named, and is never
     treated as empty: this is the same policy as ``infra/utils/json_file.py``,
     duplicated here because ``octop.config`` must stay free of ``infra`` imports
-    (AGENTS.md §5). The message never echoes file contents — they hold database
+    (AGENTS.md). The message never echoes file contents — they hold database
     credentials.
     """
     file_defaults = _defaults_for_file()

@@ -1,6 +1,6 @@
 """Safe read/write helpers for the small JSON config files under ``OCTOP_HOME``.
 
-Leaf module (AGENTS.md §5): stdlib only, no ``infra`` imports. Callers translate
+Leaf module (AGENTS.md layout): stdlib only, no ``infra`` imports. Callers translate
 :class:`JsonFileCorruptError` into ``OctopError`` via
 ``octop.infra.errors.corrupt_config_error``.
 

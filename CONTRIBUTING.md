@@ -59,12 +59,12 @@ hotfix/* ──PR──► main (+ tag) and ──PR──► develop
 
 1. Fork (if needed) and create a feature branch from **`develop`**
 2. Open the PR with base **`develop`** (not `main`, unless it is a release or hotfix)
-3. Add or update tests for behavior changes — CI runs on **Linux and Windows**; follow the cross-platform rules in [AGENTS.md](AGENTS.md) §7 (prefer `tmp_path` / `pathlib`, `fake_bin_path` for mocked binaries, `posix_only` for Unix-only cases)
+3. Add or update tests for behavior changes — CI runs on **Linux and Windows**; follow [`.cursor/rules/testing.mdc`](.cursor/rules/testing.mdc) (prefer `tmp_path` / `pathlib`, `fake_bin_path` for mocked binaries, `posix_only` for Unix-only cases)
 4. Ensure `make install-hooks` is enabled locally; run `make all` (backend) or `make check-all` (full stack) before submitting — pre-commit enforces the same gate
 5. Update `CHANGELOG.md` when user-facing behavior changes
 6. Open a PR with a clear description and test plan
 
-See [AGENTS.md](AGENTS.md) for module boundaries and coding conventions.
+See [AGENTS.md](AGENTS.md) for module boundaries. File-scoped checklists are in [`.cursor/rules/`](.cursor/rules/).
 
 ## Releases
 
@@ -124,12 +124,12 @@ make check-all        # 全栈质量门禁
 
 1. 从 **`develop`** 创建特性分支
 2. PR 的 base 选 **`develop`**（release / hotfix 除外）
-3. 补充测试（CI 同时跑 **Linux / Windows**，路径与假二进制遵循 [AGENTS.md](AGENTS.md) §7）
+3. 补充测试（CI 同时跑 **Linux / Windows**，路径与假二进制遵循 [`.cursor/rules/testing.mdc`](.cursor/rules/testing.mdc)）
 4. 本地执行过 `make install-hooks`；提交前 `make all` 或 `make check-all` 必须绿（hooks 会强制执行）
 5. 用户可见变更时更新 `CHANGELOG.md`
 6. 提交 Pull Request
 
-模块边界与编码规范见 [AGENTS.md](AGENTS.md)。
+模块边界见 [AGENTS.md](AGENTS.md)。按文件生效的检查清单在 [`.cursor/rules/`](.cursor/rules/)。
 
 ## 发版
 

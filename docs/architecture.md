@@ -9,8 +9,8 @@ HTTP/WebSocket API, and a web UI.
 
 > Looking for the contributor-facing navigation guide (module boundaries,
 > change workflow, hard bans)? See [AGENTS.md](../AGENTS.md) at the repo
-> root. This document is the **human-readable** overview; AGENTS.md is
-> the **agent-facing** handbook.
+> root, and [`.cursor/rules/`](../.cursor/rules/) for file-scoped checklists.
+> This document is the **human-readable** overview.
 
 ## 1. Layering
 
@@ -156,6 +156,7 @@ checkpoint and are pushed to the dashboard / IM channel by
 ## See also
 
 - [AGENTS.md](../AGENTS.md) — module boundaries, hard bans, change workflow
+- [`.cursor/rules/`](../.cursor/rules/) — file-scoped agent checklists
 - [Architecture Decision Records](./adr/) — single-process, no queue (ADR 001)
 - [Configuration](configuration.md) — `~/.octop/` layout + env vars
 - [API reference](api.md) — every route, body, and error

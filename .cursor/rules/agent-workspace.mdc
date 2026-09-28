@@ -1,0 +1,25 @@
+---
+description: Agent workspace content I/O goes through BackendWorkspace
+globs: src/octop/infra/agents/**/*.py,src/octop/infra/backend/**/*.py,src/octop/infra/gateway/process/agent_resolve.py,src/octop/api/common/workspace.py,src/octop/api/common/agent_workspace.py,src/octop/api/routers/workspace.py
+alwaysApply: false
+---
+
+# Agent workspace I/O
+
+Read and write workspace **content** only through `HarnessAgent.workspace` (`BackendWorkspace` from `octop-harness`).
+
+Do not use `agent.backend`, `resolve_harness_backend`, or `Path.write_text` / `read_text` on `~/.octop/agents/<id>/` for that content. Do not branch on backend type or `virtual_mode` — path rules live in `BackendWorkspace`.
+
+Pass workspace-relative paths (`SOUL.md`, `skills/foo/SKILL.md`). `"."` is the workspace directory. `"/"` is a different backend-root path. Normalize dashboard leading-`/` paths with `workspace_api_path()` first.
+
+| Context | Entry |
+|---------|--------|
+| HTTP, agent running | `require_running_workspace()` in `api/common/workspace.py` |
+| Gateway / IM / media | `harness_workspace_for_agent()` in `infra/gateway/process/agent_resolve.py` |
+| Startup seed (SOUL, expert, plugins) | `agent.workspace` after `_start_agent` |
+
+New agents keep system files under `{workspace}/.octop/` (sessions, skill trees, `.octop/auth`). `system_files_path` is not user-configurable. Legacy agents keep auth at `{workspace}/.octop-auth`.
+
+Chat uploads go to `{workspace}/inbound/` via `api/common/attachments.py` and `api/routers/uploads.py`.
+
+Remote backends resolve in `infra/backend/resolver.py`; fast listing is `probe.py`. Docker sandbox uses `sandbox_scope` + `sandbox_prefix` (default `octop_sandbox`). See `docs/agent-backend-file-io.md`.

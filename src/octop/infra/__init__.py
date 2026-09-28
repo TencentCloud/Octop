@@ -1,6 +1,6 @@
 """Octop infrastructure — domain logic and utilities.
 
-Sub-packages (see ``AGENTS.md`` §5 for ownership boundaries):
+Sub-packages (see ``AGENTS.md`` for ownership boundaries):
     agents      — AgentManager, providers, settings, workspace, threads, experts, …
     auth        — captcha + SSO
     backend     — storage backend resolution / probe

@@ -1,0 +1,21 @@
+---
+description: Click commands — offline, embedded, and external transports
+globs: src/octop/cli/**/*.py
+alwaysApply: false
+---
+
+# CLI
+
+`cli/main.py` registers commands. Bodies live in `cli/commands/`. Domain logic stays in `infra/`.
+
+Pick one transport per command:
+
+| Layer | When | Support |
+|-------|------|---------|
+| Offline | Local `~/.octop` SQLite only | `cli/support/db.py`, `offline_ops.py` |
+| Embedded | Needs harness or gateway; boots `OctopServer` | `cli/support/embedded_ops.py` |
+| External | OS or daemon, no Octop HTTP | Ollama, QR bind, Feishu bot-creator |
+
+`octop run` (`cli/commands/run.py`) delegates to `launch.run_foreground_blocking`. There is no `octop user login` — the CLI trusts the local `~/.octop` tree. Pin the user with `octop config set-user` or `--user`; pin the agent with `octop agent use` or `--agent`. Config writes apply after restart when `octop run` is already up.
+
+Do not import `api/`.

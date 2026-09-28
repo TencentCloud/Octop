@@ -1,0 +1,21 @@
+---
+description: Cross-platform pytest rules for Linux and Windows CI
+globs: tests/**/*.py
+alwaysApply: false
+---
+
+# Tests
+
+Always `uv run pytest`, never bare `pytest`. Full suite without LLM calls: `uv run pytest -m "not live"`.
+
+CI runs on Linux and Windows.
+
+- POSIX-only cases: `@pytest.mark.skipif(os.name != "posix", reason="…")`. Prefer a module-level `posix_only` alias.
+- Do not assert POSIX paths (`/`, `/proc`, `~`) on every platform. Stub binaries with `tests.support.fakes.fake_bin_path("tool")`.
+- Use `tmp_path` and `pathlib.Path`. Compare with `Path` equality, not `"/"` prefixes.
+- Assert `chmod` bits, symlink semantics, or Unix shells only when the test is `posix_only` and production code short-circuits the same way.
+- Tests that materialize files under `OCTOP_HOME` must `monkeypatch.setenv("OCTOP_HOME", str(tmp_path))` and join paths with `Path`.
+
+```python
+assert path == tmp_path / "a" / "b"
+```
