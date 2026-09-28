@@ -310,8 +310,14 @@ describe("F3 project dialog — 清空语义与日期边界（PLAN §3）", () =
     ).toBe(false);
   });
 
+  // The date case types into antd's picker; with the default per-keystroke
+  // ``setTimeout(0)``+await each character costs a timer turn, and under six
+  // competing workers that alone can eat vitest's 5s per-test budget before the
+  // commit wait below is ever reached (V1 round 2: still 2 red in 6 full runs
+  // *with* the extended waitFor). ``delay: null`` types without the waits, and
+  // the explicit test budget keeps the wall clock from failing the case.
   it("改开始日期后按 Unix 秒提交（前端日期选择器 → 秒）", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await openEdit();
 
     fireEvent.click(
@@ -326,13 +332,28 @@ describe("F3 project dialog — 清空语义与日期边界（PLAN §3）", () =
     });
     await user.clear(input);
     await user.type(input, "2025-01-02 03:04{enter}");
+    // ★ Race guard (T-REG4 / V1 round 2): Enter only *starts* rc-picker's
+    //   parse-then-commit path, and the input already shows the typed text —
+    //   waiting on the input would prove nothing. Wait for the chip summary:
+    //   it renders the form value (`Form.useWatch("start_at")`), so it changes
+    //   only once the parsed date is really in the store (the T-REG4 mutation
+    //   probe showed this condition is not vacuous).
+    //   ★ 1000 ms (the `waitFor` default) is not a safe upper bound for a full
+    //   run: the commit is asynchronous and six workers share the CPU.
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole("button", { name: /projects\.chipStartAt/ }),
+        ).toHaveTextContent("2025-01-02 03:04"),
+      { timeout: 5000 },
+    );
     fireEvent.click(screen.getByRole("button", { name: "common.save" }));
 
     await waitFor(() => expect(callFor("PATCH", "/projects/p1")).toBeTruthy());
     expect(patchBody().start_at).toBe(
       dayjs("2025-01-02 03:04", "YYYY-MM-DD HH:mm").unix(),
     );
-  });
+  }, 20_000);
 });
 
 describe("F3 project dialog — 提交后重读与新建回归", () => {

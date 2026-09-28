@@ -239,8 +239,8 @@ def test_dashboard_projects_namespace_is_paired_and_localized():
     en = json.loads((repo / "dashboard/src/locales/en.json").read_text(encoding="utf-8"))
     zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
     assert set(en["projects"]) == set(zh["projects"])
-    # 208 after batch 2, + 4 from PLAN.md §7.1 in batch 3 = 212.
-    assert len(zh["projects"]) == 212
+    # 208 after batch 2, + 4 from PLAN.md §7.1 in batch 3, + 22 from §6.1 in batch 4 = 234.
+    assert len(zh["projects"]) == 234
     # R6 copy change: values only, keys untouched.
     assert zh["projects"]["taskStatusReview"] == "审核中"
     assert zh["projects"]["taskStatusBlocked"] == "已阻塞"
@@ -415,8 +415,8 @@ def test_batch2_projects_keys_exist_in_both_locales():
         assert key in zh["projects"], f"zh projects.{key} missing"
         assert key in en["projects"], f"en projects.{key} missing"
         assert en["projects"][key] != "", f"en projects.{key} is empty"
-    assert len(zh["projects"]) == 212
-    assert len(en["projects"]) == 212
+    assert len(zh["projects"]) == 234
+    assert len(en["projects"]) == 234
 
 
 # ── batch 3 (T-I18N3): edit-dialog labels + two rejection codes ──────────────
@@ -450,7 +450,15 @@ def test_batch3_project_keys_are_localized_per_key():
         assert zh["projects"][key] == zh_value, key
         assert en["projects"][key] == en_value, key
         assert "**" not in zh["projects"][key] and "※" not in zh["projects"][key], key
-    assert list(zh["projects"])[-4:] == list(_T_I18N3_PROJECT_KEYS), "the four land last"
+    # Batch 4 appended 22 keys *after* these four, so they are no longer the tail.
+    # The meaningful invariant is ordering: batch 3 sits before batch 4, and both
+    # are inside ``projects``.
+    order = list(zh["projects"])
+    assert all(key in order for key in _T_I18N3_PROJECT_KEYS)
+    assert all(key in order for key in _T_I18N4_PROJECT_KEYS)
+    assert max(order.index(k) for k in _T_I18N3_PROJECT_KEYS) < min(
+        order.index(k) for k in _T_I18N4_PROJECT_KEYS
+    ), "batch 3 keys precede batch 4 keys"
 
 
 def test_batch3_error_codes_are_localized_per_key():
@@ -504,3 +512,61 @@ def test_the_projects_block_is_written_once():
     for locale in ("en", "zh"):
         text = (repo / f"dashboard/src/locales/{locale}.json").read_text(encoding="utf-8")
         assert len(re.findall(r'^  "projects": \{', text, re.M)) == 1, locale
+
+
+# ── batch 4 (T-I18N4): quick-input + task-detail labels ──────────────────────
+#
+# Per-key zh assertions again (S10): 22 new keys, so a key-set comparison would
+# still be green if any single zh value silently fell back to English.
+
+_T_I18N4_PROJECT_KEYS = {
+    "quickInputPlaceholder": ("Type a message for the project agent…", "给项目智能体发消息…"),
+    "quickInputSend": ("Send", "发送"),
+    "quickInputSending": ("Sending…", "发送中…"),
+    "quickInputSent": ("Sent", "已发送"),
+    "quickInputFailed": (
+        "Failed to send. Your text is kept — please retry.",
+        "发送失败。内容已保留，请重试。",
+    ),
+    "quickInputNoAgent": (
+        "Bind an expert to this project to send messages.",
+        "请先在项目配置中绑定专家。",
+    ),
+    "quickInputTarget": ("To {{name}}", "发给 {{name}}"),
+    "quickInputRefTask": ("Reference a task", "引用任务"),
+    "quickInputRefRemoved": (
+        "The referenced task no longer exists and was removed.",
+        "引用的任务已不存在，已移除。",
+    ),
+    "taskDetailTitle": ("Task detail", "任务详情"),
+    "taskDetailBack": ("Back to list", "返回列表"),
+    "taskDetailDescription": ("Description", "描述"),
+    "taskDetailParent": ("Parent task", "父任务"),
+    "taskDetailDeps": ("Dependencies", "依赖"),
+    "taskDetailAttachments": ("Attachments", "附件"),
+    "taskDetailTimeline": ("Activity", "过程"),
+    "taskDetailTimelineCreated": ("Created", "创建"),
+    "taskDetailTimelineUpdated": ("Last updated", "最近更新"),
+    "taskDetailTimelineDispatched": ("Dispatched", "已派单"),
+    "taskDetailTimelineEmpty": ("No status changes yet", "暂无状态变更"),
+    "taskDetailNotFound": ("Task not found in this project", "该项目中不存在该任务"),
+    "taskDetailSave": ("Save", "保存"),
+}
+
+
+def test_batch4_project_keys_are_localized_per_key():
+    """22 new keys, asserted one by one in both locales (PLAN.md §6.1)."""
+    en, zh = _dash("en"), _dash("zh")
+    assert len(_T_I18N4_PROJECT_KEYS) == 22
+    for key, (en_value, zh_value) in _T_I18N4_PROJECT_KEYS.items():
+        assert key in zh["projects"], f"zh projects.{key} missing"
+        assert key in en["projects"], f"en projects.{key} missing"
+        assert zh["projects"][key] == zh_value, key
+        assert en["projects"][key] == en_value, key
+        # L10: the PLAN table's bold / footnote markers are never part of a value.
+        for value in (zh["projects"][key], en["projects"][key]):
+            assert "**" not in value and "※" not in value, key
+    assert len(zh["projects"]) == 234 and len(en["projects"]) == 234
+    # The interpolation placeholder must survive transcription verbatim.
+    assert zh["projects"]["quickInputTarget"] == "发给 {{name}}"
+    assert en["projects"]["quickInputTarget"] == "To {{name}}"

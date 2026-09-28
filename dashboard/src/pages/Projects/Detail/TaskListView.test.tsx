@@ -7,6 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Only the transport is mocked, so the view really goes through
@@ -77,6 +78,17 @@ const COLUMN_ZH = [
 function assertColumnFace(headers: string[]) {
   expect(headers).toHaveLength(8);
   expect(headers).toEqual(COLUMN_KEYS);
+}
+
+/**
+ * 卡片判据辅助（G1 AC-G1-1）——「7 张卡片且顺序 = 词表序」。
+ * 判别性对照用**同一套**辅助函数，故 ③ 的对照直接证明本判据有判别力。
+ */
+function assertSevenCards(ids: string[]) {
+  expect(ids).toHaveLength(7);
+  expect(ids).toEqual(
+    COLUMN_STATUSES.map((status) => `task-section-card-${status}`),
+  );
 }
 
 function task(overrides: Partial<ProjectTask> = {}): ProjectTask {
@@ -232,19 +244,19 @@ describe("TaskListView", () => {
     ).toBeInTheDocument();
   });
 
-  it("S8(b): 标题是纯文本；行内编辑入口仅在传入 onEditTask 时出现且回调收到 taskId", async () => {
+  it("G4 推翻 S8(b) 的「纯文本」一半：标题可点；编辑仍是独立图标按钮（S8(b) 保留项）", async () => {
     mockTasks([task({ task_id: "tsk_42", title: "Open me" })]);
     const onEditTask = vi.fn();
 
     const { view } = renderList(undefined, onEditTask);
     const title = await screen.findByTestId("task-row-title-tsk_42");
 
-    // 标题节点不是按钮、也没有 onClick（S8(b)：移除假交互）。
-    expect(title.tagName).not.toBe("BUTTON");
-    expect(title.closest("button")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Open me" }),
-    ).not.toBeInTheDocument();
+    // PLAN §4.1：标题 = 导航入口（可点元素）。★ 本条取代批次三 S8(b) 的「非 button」断言。
+    expect(title.tagName).toBe("BUTTON");
+    // 编辑入口与标题是**两个不同元素**（不得把标题变成编辑入口）。
+    const editNode = screen.getByTestId("task-row-edit-tsk_42");
+    expect(editNode).not.toBe(title);
+    expect(title.contains(editNode)).toBe(false);
 
     // 编辑入口：常显图标按钮 + 非空 aria-label + 点击回调。
     const edit = screen.getByTestId("task-row-edit-tsk_42");
@@ -612,5 +624,104 @@ describe("status mapping single source (PLAN §9)", () => {
     // Neither file re-declares the transition table or its guard.
     expect(source).not.toContain("const isTransitionAllowed");
     expect(source).not.toContain("const asTaskStatus");
+  });
+});
+
+describe("G1 分区卡片 + G4 标题可点（PLAN §4.1 FIND-11）", () => {
+  it("AC-G1-1: 7 个分区各有一张卡片 testid，顺序 = COLUMN_STATUSES；空区仍保留卡片", async () => {
+    mockTasks([
+      task({ task_id: "tsk_1", title: "Alpha", status: "todo" }),
+      task({ task_id: "tsk_2", title: "Beta", status: "doing", sort_order: 1 }),
+    ]);
+    renderList();
+    await screen.findByTestId("task-row-title-tsk_1");
+
+    const ids = screen
+      .getAllByTestId(/^task-section-card-/)
+      .map((node) => node.getAttribute("data-testid") ?? "");
+    assertSevenCards(ids);
+
+    // 空区（5 个）仍有卡片 + 计数 0 + 空态文案。
+    for (const status of COLUMN_STATUSES) {
+      const hasTasks = status === "todo" || status === "doing";
+      if (hasTasks) continue;
+      expect(
+        screen.getByTestId(`task-section-card-${status}`),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId(`task-section-count-${status}`),
+      ).toHaveTextContent("0");
+      expect(
+        screen.getByTestId(`task-section-empty-${status}`),
+      ).toHaveTextContent("projects.taskListEmpty");
+    }
+  });
+
+  it("③ 判别性对照（可复跑）：少一张 / 多一张 / 顺序错 → 卡片辅助函数必须失败", async () => {
+    mockTasks([task({ task_id: "tsk_1", title: "Alpha" })]);
+    renderList();
+    await screen.findByTestId("task-row-title-tsk_1");
+    const ids = screen
+      .getAllByTestId(/^task-section-card-/)
+      .map((node) => node.getAttribute("data-testid") ?? "");
+    // 正例：真实 DOM 走同一套辅助函数 → 通过。
+    expect(() => assertSevenCards(ids)).not.toThrow();
+    // 反例：缺一张 / 多一张 / 顺序颠倒 → 必失败。
+    expect(() => assertSevenCards(ids.slice(0, 6))).toThrow();
+    expect(() =>
+      assertSevenCards([...ids, "task-section-card-extra"]),
+    ).toThrow();
+    expect(() => assertSevenCards([...ids].reverse())).toThrow();
+  });
+
+  it("AC-G4-1: 标题是可点元素（非编辑入口）→ 点击调用 onOpenTask(task_id)", async () => {
+    mockTasks([task({ task_id: "tsk_77", title: "Open me" })]);
+    const onEditTask = vi.fn();
+    const { onOpenTask } = renderList(undefined, onEditTask);
+    const title = await screen.findByTestId("task-row-title-tsk_77");
+
+    // 可点元素：button 或 role=link（本轮推翻批次三 S8(b) 的「纯文本」）。
+    const clickable =
+      title.tagName === "BUTTON" || title.getAttribute("role") === "link";
+    expect(clickable).toBe(true);
+    // 键盘可达：可聚焦 + aria-label 含任务标题。
+    expect(title).toHaveAttribute("tabindex", "0");
+    expect(title.getAttribute("aria-label")).toContain("Open me");
+
+    await userEvent.click(title);
+    expect(onOpenTask).toHaveBeenCalledWith("tsk_77");
+    // ★ 标题**不是**编辑入口（S8(b) 保留的另一半）。
+    expect(onEditTask).not.toHaveBeenCalled();
+  });
+
+  it("AC-G4-1: 标题键盘可达 —— Enter 与 Space 都能触发 onOpenTask", async () => {
+    mockTasks([
+      task({ task_id: "tsk_e", title: "Enter me" }),
+      task({ task_id: "tsk_s", title: "Space me", sort_order: 1 }),
+    ]);
+    const { onOpenTask } = renderList();
+    const enterTitle = await screen.findByTestId("task-row-title-tsk_e");
+
+    enterTitle.focus();
+    expect(document.activeElement).toBe(enterTitle);
+    await userEvent.keyboard("{Enter}");
+    expect(onOpenTask).toHaveBeenCalledWith("tsk_e");
+
+    const spaceTitle = screen.getByTestId("task-row-title-tsk_s");
+    spaceTitle.focus();
+    await userEvent.keyboard(" ");
+    expect(onOpenTask).toHaveBeenCalledWith("tsk_s");
+  });
+
+  it("AC-G4-1: 未传 onOpenTask 时标题退化（无假交互），编辑按钮仍在", async () => {
+    mockTasks([task({ task_id: "tsk_9", title: "No open" })]);
+    const onEditTask = vi.fn();
+    render(<TaskListView projectId="prj_1" onEditTask={onEditTask} />);
+    const title = await screen.findByTestId("task-row-title-tsk_9");
+    expect(title.tagName).toBe("SPAN");
+    // 编辑入口仍是独立图标按钮（不受标题形态影响）。
+    const edit = screen.getByTestId("task-row-edit-tsk_9");
+    await userEvent.click(edit);
+    expect(onEditTask).toHaveBeenCalledWith("tsk_9");
   });
 });

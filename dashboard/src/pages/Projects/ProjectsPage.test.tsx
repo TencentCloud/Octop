@@ -456,7 +456,7 @@ describe("F2 概览压缩与主区归属（PLAN §2 / G6）", () => {
     );
   }
 
-  it("① 概览在主区容器内部（不再跨满全宽），且主区/概览各有 testid", async () => {
+  it("① 概览在右栏内（主区不再渲染），主区/概览/右栏各有 testid", async () => {
     renderF2("/projects/p1");
     await screen.findByTestId("project-overview");
 
@@ -464,19 +464,21 @@ describe("F2 概览压缩与主区归属（PLAN §2 / G6）", () => {
     const overview = screen.getByTestId("project-overview");
     const rail = screen.getByTestId("project-right-rail");
 
-    // 概览**在主区之内** → 右边缘 = 主区右边缘（与右栏对齐），而不是跨满全宽。
-    expect(main.contains(overview)).toBe(true);
-    // 主区与右栏是同一层级的两个 grid 子项（概览不得成为 grid 的直接子项）。
+    // ★ G2 改向（PLAN §2.3）：概览**已迁入右栏** → 主区不再渲染它（语义反转，非放宽）。
+    expect(main.contains(overview)).toBe(false);
+    // 保留②：主区与右栏是同一层级的两个 grid 子项（概览不得成为 grid 的直接子项）。
     expect(main.parentElement).toBe(rail.parentElement);
-    expect(rail.contains(overview)).toBe(false);
+    // ★ G2 改向（PLAN §2.3）：概览在右栏之内。
+    expect(rail.contains(overview)).toBe(true);
   });
 
-  it("① 概览位于 <TabBar> 之上（DOM 顺序）", async () => {
+  it("① 概览在 <TabBar> 之后（DOM 顺序：右栏在主区之后）", async () => {
     renderF2("/projects/p1");
     const overview = await screen.findByTestId("project-overview");
     const tabList = screen.getByRole("tablist");
+    // ★ G2 改向（PLAN §2.3）：概览迁入右栏 → 顺序关系**方向反转**（仍显式断言顺序）。
     expect(
-      overview.compareDocumentPosition(tabList) &
+      tabList.compareDocumentPosition(overview) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
@@ -533,5 +535,125 @@ describe("F2 概览压缩与主区归属（PLAN §2 / G6）", () => {
       "projects.tabTasks",
       "projects.tabAssets",
     ]);
+  });
+});
+
+/** 详情接线用的一条任务（形状取自 `ProjectTask`，只填渲染需要的字段）。 */
+const DETAIL_TASK = {
+  task_id: "tsk_1",
+  project_id: "p1",
+  parent_id: null,
+  title: "Detail me",
+  description: "",
+  status: "todo",
+  assignee_type: null,
+  assignee_id: null,
+  priority: 1,
+  deps: [],
+  thread_id: null,
+  origin_node_id: null,
+  due_at: null,
+  start_at: null,
+  tags: [],
+  custom_fields: [],
+  attachments: [],
+  sort_order: 0,
+  created_by: 1,
+  created_at: 1_750_000_000,
+  updated_at: 1_750_000_000,
+};
+
+describe("G2 概览入右栏 + 两个新组件接线（PLAN §2 / §4.1）", () => {
+  function LocationProbeG2() {
+    const location = useLocation();
+    return <span data-testid="location-search">{location.search}</span>;
+  }
+
+  function renderG2(path: string) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route
+            path="/projects/:projectId"
+            element={
+              <>
+                <ProjectDetailPage />
+                <LocationProbeG2 />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it("② 概览在右栏面板内（rail-overview）；主区原槽位 = QuickInput（在 TabBar 之上）", async () => {
+    renderG2("/projects/p1");
+    const railPanel = await screen.findByTestId("rail-overview");
+    const overview = screen.getByTestId("project-overview");
+
+    // 概览在第 7 面板之内，且该面板是右栏的第一个面板（置首）。
+    expect(railPanel.contains(overview)).toBe(true);
+    const rail = screen.getByTestId("project-right-rail");
+    expect(within(rail).getAllByTestId(/^rail-/)[0]).toBe(railPanel);
+
+    // 主区原槽位换成 QuickInput，且仍在 TabBar 之上。
+    const quickInput = screen.getByTestId("project-quick-input");
+    expect(screen.getByTestId("project-main-column").contains(quickInput)).toBe(
+      true,
+    );
+    const tabList = screen.getByRole("tablist");
+    expect(
+      quickInput.compareDocumentPosition(tabList) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("⑤ ?tab=tasks&task=<id> → 详情面板替换任务列表；未命中 → taskDetailNotFound", async () => {
+    routes["GET /projects/p1/tasks"] = () => [DETAIL_TASK];
+    renderG2("/projects/p1?tab=tasks&task=tsk_1");
+
+    expect(await screen.findByTestId("task-detail-panel")).toBeInTheDocument();
+    // 列表被替换（不是叠加）。
+    expect(screen.queryByTestId("project-task-list")).toBeNull();
+  });
+
+  it("⑤ 缺 tab 参数：?task=<id> 也进详情，且 tasks Tab 高亮", async () => {
+    routes["GET /projects/p1/tasks"] = () => [DETAIL_TASK];
+    renderG2("/projects/p1?task=tsk_1");
+
+    expect(await screen.findByTestId("task-detail-panel")).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "projects.tabTasks" }),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("⑤ 未命中的 task → 优雅降级（不白屏），返回后回到列表", async () => {
+    routes["GET /projects/p1/tasks"] = () => [DETAIL_TASK];
+    renderG2("/projects/p1?tab=tasks&task=tsk_missing");
+
+    expect(
+      await screen.findByTestId("task-detail-not-found"),
+    ).toHaveTextContent("projects.taskDetailNotFound");
+    fireEvent.click(screen.getByTestId("task-detail-back"));
+    await waitFor(() =>
+      expect(screen.getByTestId("location-search")).toHaveTextContent(
+        "?tab=tasks",
+      ),
+    );
+    expect(screen.queryByTestId("task-detail-panel")).toBeNull();
+  });
+
+  it("★ 端到端：点任务标题 → push ?tab=tasks&task=<id> → 详情渲染（openTask 已接线）", async () => {
+    routes["GET /projects/p1/tasks"] = () => [DETAIL_TASK];
+    renderG2("/projects/p1?tab=tasks");
+
+    const title = await screen.findByTestId("task-row-title-tsk_1");
+    fireEvent.click(title);
+
+    expect(await screen.findByTestId("task-detail-panel")).toBeInTheDocument();
+    const search = screen.getByTestId("location-search").textContent ?? "";
+    expect(search).toContain("tab=tasks");
+    expect(search).toContain("task=tsk_1");
   });
 });

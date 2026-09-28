@@ -471,3 +471,133 @@ async def test_task_edit_full_replacement_and_deps_are_never_cleared(
     assert row["tags"] == []
     assert row["custom_fields"] == []
     assert row["deps"] == []
+
+
+# ── batch 4 (T-INT4): G4 diff-submit over HTTP + the G3 HTTP-reachable face ──
+#
+# G3's *send* travels over the dashboard WS (`buildDashboardChatWsUrl`), not HTTP,
+# and PLAN.md §3.5 registers the project-side authorisation as **not implemented**
+# this round — the boundary is the WS ``assert_agent_access``. What HTTP can prove
+# is covered here: the refusal codes around the project/task surface and the
+# zero-agent non-error face the UI keys its disabled state off.
+
+
+async def test_task_edit_submits_only_changed_fields_and_rereads(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """A one-field patch must not disturb the rest of the row (diff submission)."""
+    client, _, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    task = await _new_task(
+        client,
+        auth,
+        pid,
+        title="Untouched",
+        description="keep me",
+        priority=2,
+        deps=["dep-a"],
+        start_at=1_700_000_000,
+    )
+
+    single = await client.patch(
+        f"{PROJECTS}/{pid}/tasks/{task['task_id']}", headers=auth, json={"priority": 4}
+    )
+    assert single.status_code == 200, single.text
+
+    row = await _board_task(client, auth, pid, task["task_id"])
+    assert row["priority"] == 4
+    assert row["title"] == "Untouched"
+    assert row["description"] == "keep me"
+    assert row["deps"] == ["dep-a"]
+    assert row["start_at"] == 1_700_000_000
+    # The socket for the batch-3 regression: an omitted `deps` key never clears it.
+    assert row["deps"] != []
+
+
+async def test_task_edit_legal_transition_persists_and_illegal_is_409(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """The state machine is the server's: a legal hop persists, an illegal one 409s."""
+    client, _, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    task = await _new_task(client, auth, pid)  # planning
+
+    legal = await client.patch(
+        f"{PROJECTS}/{pid}/tasks/{task['task_id']}", headers=auth, json={"status": "todo"}
+    )
+    assert legal.status_code == 200, legal.text
+    assert (await _board_task(client, auth, pid, task["task_id"]))["status"] == "todo"
+
+    illegal = await client.patch(
+        f"{PROJECTS}/{pid}/tasks/{task['task_id']}", headers=auth, json={"status": "done"}
+    )
+    assert illegal.status_code == 409, illegal.text
+    assert illegal.status_code != 500
+    assert illegal.json()["error"]["code"] == "PROJECT_TASK_STATUS_INVALID"
+    # The refused transition left the stored row untouched (no optimistic write).
+    assert (await _board_task(client, auth, pid, task["task_id"]))["status"] == "todo"
+
+
+async def test_g3_permission_matrix_on_the_http_face(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """viewer → role forbidden; non-member → project forbidden; both ``!= 500``."""
+    client, _, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    bob = ctx["bob"]
+    bob_id = next(
+        u["id"]
+        for u in (await client.get("/api/users", headers=auth)).json()
+        if u["username"] == "bob"
+    )
+    await _member(client, auth, pid, bob_id, "viewer")
+
+    viewer_read = await client.get(f"{PROJECTS}/{pid}/tasks", headers=bob)
+    assert viewer_read.status_code == 200, "a viewer may read the board"
+    viewer_write = await client.post(
+        f"{PROJECTS}/{pid}/tasks", headers=bob, json={"title": "viewer task"}
+    )
+    assert viewer_write.status_code == 403, viewer_write.text
+    assert viewer_write.status_code != 500
+    assert viewer_write.json()["error"]["code"] == "PROJECT_ROLE_FORBIDDEN"
+
+    outsider = await create_user(client, auth, username="dave")
+    non_member = await client.get(f"{PROJECTS}/{pid}/tasks", headers=outsider)
+    assert non_member.status_code == 403, non_member.text
+    assert non_member.status_code != 500
+    assert non_member.json()["error"]["code"] == "PROJECT_FORBIDDEN"
+
+
+async def test_archived_project_refuses_writes_but_still_reads(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    client, _, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    task = await _new_task(client, auth, pid)
+    await client.patch(f"{PROJECTS}/{pid}", headers=auth, json={"status": "archived"})
+
+    write = await client.post(f"{PROJECTS}/{pid}/tasks", headers=auth, json={"title": "late"})
+    assert write.status_code == 403, write.text
+    assert write.status_code != 500
+    assert write.json()["error"]["code"] == "PROJECT_FORBIDDEN"
+    read = await client.get(f"{PROJECTS}/{pid}/tasks", headers=auth)
+    assert read.status_code == 200, "archived is read-only, not invisible"
+    assert [row["task_id"] for row in read.json()] == [task["task_id"]]
+
+
+async def test_zero_agent_project_is_not_an_error_face(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """The G3 disabled state is derived from member data — that read must be clean."""
+    client, _, ctx = api
+    auth = ctx["admin"]
+    pid = (await client.post(PROJECTS, headers=auth, json={"name": "No agents"})).json()[
+        "project_id"
+    ]
+
+    members = await client.get(f"{PROJECTS}/{pid}/members", headers=auth)
+    assert members.status_code == 200, members.text
+    assert [m for m in members.json() if m["subject_type"] == "agent"] == []
+    board = await client.get(f"{PROJECTS}/{pid}/tasks", headers=auth)
+    assert board.status_code == 200, board.text
+    assert board.json() == []

@@ -22,3 +22,31 @@
 .rail > :last-child {
   border-bottom: none;
 }
+
+/* G2：概览面板（迁入右栏后置首），与其余 rail 面板同一套分隔线/内边距。 */
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--fn-border-primary);
+}
+
+.overviewTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 右栏窄（320px）：压缩 antd Descriptions 的标签/内容内边距，并允许长值换行。 */
+.overviewMeta {
+  :global(.octop-descriptions-item-label),
+  :global(.octop-descriptions-item-content) {
+    padding-bottom: 4px;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+}

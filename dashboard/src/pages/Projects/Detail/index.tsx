@@ -2,14 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Button,
   DatePicker,
-  Descriptions,
   Form,
   Input,
   Modal,
   Select,
   Space,
   Spin,
-  Tag,
   Tooltip,
   Typography,
 } from "antd";
@@ -40,16 +38,17 @@ import PageShell from "../../../layouts/PageShell";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { message } from "../../../utils/antdMessage";
 import { showConfirmModal } from "../../../utils/confirmModal";
-import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import Board from "./Board";
 import AssetsTab from "./AssetsTab";
 import CustomFieldsPanel from "./CustomFieldsPanel";
 import DynamicTab from "./DynamicTab";
 import RightRail from "./RightRail";
+import QuickInput from "./QuickInput";
 import TaskCreateModal, {
   type TaskCreateValues,
   type TaskPatchValues,
 } from "./TaskCreateModal";
+import TaskDetailPanel, { hasTaskDetailParam } from "./TaskDetailPanel";
 import TaskListView from "./TaskListView";
 import styles from "./index.module.less";
 import TagsManager from "./TagsManager";
@@ -150,7 +149,13 @@ function ProjectDetailPage() {
 
   // Tab 表达 = 查询参数 `?tab=`（PLAN §4）：不新增顶层路由，刷新保留。
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = parseTab(searchParams.get("tab"));
+  /** `?task=` 存在即以详情为准（缺 `tab` 参数同样进详情，见 T-G4 的判据）。 */
+  const detailOpen = hasTaskDetailParam(searchParams);
+  const detailTaskId = searchParams.get("task") ?? "";
+  // 详情在主区内替换任务列表，但 `tab=` 语义不变：进详情时高亮恒为 tasks。
+  const activeTab: DetailTabKey = detailOpen
+    ? "tasks"
+    : parseTab(searchParams.get("tab"));
   const selectTab = useCallback(
     (next: DetailTabKey) => {
       const updated = new URLSearchParams(searchParams);
@@ -226,7 +231,35 @@ function ProjectDetailPage() {
    * `TaskListView` 的行点击入口。**任务详情页属第四批范围**（PLAN §0「本轮不
    * 做」清单）→ 这里只保留入口契约，不自造详情视图；第四批接线时替换本回调。
    */
-  const openTask = useCallback((_taskId: string) => undefined, []);
+  const openTask = useCallback(
+    (taskId: string) => {
+      const updated = new URLSearchParams(searchParams);
+      updated.set("tab", "tasks");
+      updated.set("task", taskId);
+      // `push`（有意区别于 `?tab=` 的 replace）：详情是「进入下一层」，
+      // 浏览器后退可回列表（PLAN §4.1）。react-router 的 `setSearchParams`
+      // 默认即 push，故显式写 `replace: false` 表明口径。
+      setSearchParams(updated, { replace: false });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  /** 返回列表：移除 `task`，保留 `tab=tasks`（replace，不留详情历史项）。 */
+  const closeTask = useCallback(() => {
+    const updated = new URLSearchParams(searchParams);
+    updated.delete("task");
+    updated.set("tab", "tasks");
+    setSearchParams(updated, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  /**
+   * 详情数据（PLAN §4.2 路径 ①）：**只用已加载的列表数据**（`load()` 已含
+   * `listTasks`）→ 深链首次进入同样由这次加载覆盖，**不新增单任务 GET**；
+   * 未命中且不在加载中 → 面板显示 `taskDetailNotFound` 空态。
+   */
+  const detailTask = detailOpen
+    ? tasks.find((item) => item.task_id === detailTaskId)
+    : undefined;
 
   const editedTask = tasks.find((task) => task.task_id === editTaskId) ?? null;
 
@@ -364,41 +397,12 @@ function ProjectDetailPage() {
           S6 要求窄屏堆叠时 DOM 顺序即「主区 → 右栏」，不得用 CSS order 提前。 */}
       <div className={styles.detailLayout}>
         <div className={styles.mainColumn} data-testid="project-main-column">
-          {/* PLAN §2.1：概览**在主区之内**（TabBar 之上）→ 右边缘 = 主区右边缘
-              = 右栏左边缘（不再跨满全宽）。 */}
-          <section className={styles.section} data-testid="project-overview">
-            <div
-              className={styles.sectionTitle}
-              /* projectId 移出概览：作为标题的 title 属性仍可达（数据源未删）。 */
-              title={project.project_id}
-            >
-              {t("projects.overview")}
-              <Tag color={STATUS_COLORS[project.status]}>
-                {t(STATUS_LABEL_KEYS[project.status])}
-              </Tag>
-            </div>
-            {/* G6 压缩：column={2} + size="small"；8 项 → 6 项。 */}
-            <Descriptions column={2} size="small">
-              <Descriptions.Item label={t("projects.goal")} span={2}>
-                {project.goal || t("projects.noGoal")}
-              </Descriptions.Item>
-              <Descriptions.Item label={t("projects.startAt")}>
-                {formatServerDateTime(project.start_at ?? 0, timeZone)}
-              </Descriptions.Item>
-              <Descriptions.Item label={t("projects.dueAt")}>
-                {formatServerDateTime(project.due_at ?? 0, timeZone)}
-              </Descriptions.Item>
-              <Descriptions.Item label={t("projects.owner")}>
-                {project.owner_user_id}
-              </Descriptions.Item>
-              <Descriptions.Item label={t("projects.createdAt")}>
-                {formatServerDateTime(project.created_at, timeZone)}
-              </Descriptions.Item>
-              <Descriptions.Item label={t("projects.updatedAt")}>
-                {formatServerDateTime(project.updated_at, timeZone)}
-              </Descriptions.Item>
-            </Descriptions>
-          </section>
+          {/* G2（PLAN §2.3）：概览已迁入右栏 → 主区此槽位改为**快速输入**
+              （T-G3 交付；`archived` 由父层已知的项目状态传入）。 */}
+          <QuickInput
+            projectId={project.project_id}
+            archived={project.status === "archived"}
+          />
 
           <TabBar
             tabs={DETAIL_TABS}
@@ -428,7 +432,19 @@ function ProjectDetailPage() {
             </section>
           ) : null}
 
-          {activeTab === "tasks" ? (
+          {activeTab === "tasks" && detailOpen ? (
+            <TaskDetailPanel
+              projectId={project.project_id}
+              task={detailTask}
+              loading={loading}
+              canEdit={canEdit}
+              tasks={tasks}
+              onBack={closeTask}
+              onChanged={load}
+            />
+          ) : null}
+
+          {activeTab === "tasks" && !detailOpen ? (
             <>
               <TaskListView
                 projectId={project.project_id}
@@ -451,6 +467,10 @@ function ProjectDetailPage() {
 
         <RightRail
           projectId={project.project_id}
+          project={project}
+          timeZone={timeZone}
+          statusLabel={t(STATUS_LABEL_KEYS[project.status])}
+          statusColor={STATUS_COLORS[project.status]}
           canManageConfig={canManageConfig}
           canManageMembers={canManageMembers}
         />

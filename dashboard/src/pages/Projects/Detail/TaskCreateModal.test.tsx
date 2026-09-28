@@ -494,9 +494,15 @@ describe("TaskCreateModal（F4 编辑模式）", () => {
     expect(
       screen.getByRole("button", { name: /^projects\.chipAssignee/ }),
     ).toHaveTextContent("agent:agent-a");
-    expect(
-      screen.getByRole("button", { name: /^projects\.chipTags/ }),
-    ).toHaveTextContent("紧急");
+    // ★ The tag *names* come from the async definition read («listTags»), not
+    //   from ``initialValues``: ``openEdit`` only waits for the title, so under
+    //   load this summary can still be empty. Wait for the data rather than the
+    //   clock (V1 round 2: 1 red in 6 full runs, ``Test Files`` flake).
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /^projects\.chipTags/ }),
+      ).toHaveTextContent("紧急"),
+    );
     // ★ 编辑面不含 create 专属件：📎 / 继续创建（PLAN §5.3 冻结字段集）。
     expect(screen.queryByLabelText("projects.attachFile")).toBeNull();
     expect(screen.queryByText("projects.createAndContinue")).toBeNull();

@@ -80,10 +80,18 @@ function assigneeLabel(task: ProjectTask): string {
 type ListRow =
   | { key: string; kind: "section"; status: ProjectTaskStatus; count: number }
   | { key: string; kind: "empty"; status: ProjectTaskStatus }
-  | { key: string; kind: "task"; status: ProjectTaskStatus; task: ProjectTask };
+  | {
+      key: string;
+      kind: "task";
+      status: ProjectTaskStatus;
+      task: ProjectTask;
+      /** 该区最后一行 —— 卡片底边与圆角画在这里（纯外观，不改语义/列面）。 */
+      last: boolean;
+    };
 
 export default function TaskListView({
   projectId,
+  onOpenTask,
   refreshKey,
   onEditTask,
 }: TaskListViewProps): JSX.Element {
@@ -132,9 +140,15 @@ export default function TaskListView({
         out.push({ key: `empty-${status}`, kind: "empty", status });
         continue;
       }
-      for (const task of zone) {
-        out.push({ key: task.task_id, kind: "task", status, task });
-      }
+      zone.forEach((task, index) => {
+        out.push({
+          key: task.task_id,
+          kind: "task",
+          status,
+          task,
+          last: index === zone.length - 1,
+        });
+      });
     }
     return out;
   }, [tasks, statuses, keyword]);
@@ -154,7 +168,11 @@ export default function TaskListView({
       render: (_, row) => {
         if (row.kind === "section") {
           return (
-            <div className={styles.sectionHeader}>
+            <div
+              className={styles.sectionHeader}
+              /* 卡片锚点（AC-G1-1）：每区一张卡片；既有 testid 只增不改。 */
+              data-testid={`task-section-card-${row.status}`}
+            >
               <Tag color={STATUS_COLORS[row.status]}>
                 <span
                   data-testid={`task-section-title-${row.status}`}
@@ -196,13 +214,31 @@ export default function TaskListView({
       render: (_, row) =>
         isTaskRow(row) ? (
           <span className={styles.titleCell}>
-            {/* S8(b)：标题是纯文本（无 onClick、不是 button）。 */}
-            <span
-              className={styles.titleText}
-              data-testid={`task-row-title-${row.task.task_id}`}
-            >
-              {row.task.title}
-            </span>
+            {/* PLAN §4.1（本轮 G4 推翻 S8(b) 的「纯文本」一半）：标题 = **导航**入口，
+                可点击 + 键盘可达（原生 button 自带 Enter/Space）+ aria-label 含标题；
+                未传 `onOpenTask` 时退化为纯文本（不留假交互）。
+                编辑仍是**独立图标按钮**（下方 `task-row-edit-*`），标题不是编辑入口。 */}
+            {onOpenTask ? (
+              <button
+                type="button"
+                className={styles.titleLink}
+                data-testid={`task-row-title-${row.task.task_id}`}
+                tabIndex={0}
+                aria-label={`${t("projects.taskDetailTitle")}：${
+                  row.task.title
+                }`}
+                onClick={() => onOpenTask(row.task.task_id)}
+              >
+                {row.task.title}
+              </button>
+            ) : (
+              <span
+                className={styles.titleText}
+                data-testid={`task-row-title-${row.task.task_id}`}
+              >
+                {row.task.title}
+              </span>
+            )}
             {onEditTask ? (
               <Tooltip title={t("projects.editTaskTitle")}>
                 <button
@@ -320,19 +356,26 @@ export default function TaskListView({
         pagination={false}
         scroll={{ x: 1020 }}
         onRow={(row) => {
+          // 批次四 · 首个里程碑：7 个区块各自一张带边框的卡片（纯行内外观，
+          // 列面 / testid / 语义一律不动）。
           if (row.kind === "section") {
             return {
+              className: styles.zoneHeader,
               "data-testid": `task-section-${row.status}`,
               "data-section": row.status,
             } as React.HTMLAttributes<HTMLElement>;
           }
           if (row.kind === "empty") {
             return {
+              className: styles.zoneEmptyRow,
               "data-testid": `task-section-empty-row-${row.status}`,
               "data-section": row.status,
             } as React.HTMLAttributes<HTMLElement>;
           }
           return {
+            className: row.last
+              ? `${styles.zoneRow} ${styles.zoneLast}`
+              : styles.zoneRow,
             "data-testid": `task-row-${row.task.task_id}`,
             "data-section": row.status,
           } as React.HTMLAttributes<HTMLElement>;

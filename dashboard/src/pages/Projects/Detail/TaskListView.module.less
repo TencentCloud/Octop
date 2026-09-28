@@ -113,3 +113,85 @@
     outline-offset: 1px;
   }
 }
+
+/* ---------- 批次四 · 首个里程碑：7 个状态分区各自一张带边框的卡片 ----------
+   边框/圆角/内边距对齐项目页「标签」卡片（CustomFieldsPanel.module.less 的
+   `.section`：1px var(--fn-border-primary) · radius-lg 12px · padding 16px）。
+   纯行内外观：列面仍 8 列、testid 与语义（7 区恒显 / 筛选只减行）不动。
+
+   ⚠️ 选择器**前缀无关**：本应用在 `App.tsx:125` 设了 `prefixCls="octop"`，antd 的
+   类名是 `octop-table-*` 而不是 `ant-table-*` → 任何 `:global(.ant-table…)` 都落空
+   （实测渲染后边框为 `0px none`）。因此只依赖本文件自己的 `.table` + `.zone*` 行类。 */
+.table {
+  /* 卡片自带边框 → 去掉 antd 的行分隔线与 hover 底色，避免双重线。 */
+  tr > td {
+    border-bottom: none;
+    background: var(--fn-bg-primary);
+  }
+
+  /* 卡片头（区块标题 + 计数）：上、左、右三边 + 上圆角。 */
+  tr.zoneHeader > td {
+    /* antd 的 cell padding 选择器权重更高（3 类）→ 这里显式压住。 */
+    padding: 12px 16px 8px !important;
+    border: 1px solid var(--fn-border-primary);
+    border-bottom: none;
+    border-radius: var(--fn-radius-lg, 12px) var(--fn-radius-lg, 12px) 0 0;
+  }
+
+  /* 卡片体（该区任务行）：只有左右边框，行与行之间不画横线。 */
+  tr.zoneRow > td {
+    border-right: 1px solid var(--fn-border-primary);
+    border-left: 1px solid var(--fn-border-primary);
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+  }
+
+  /* 该区最后一行：补下边框 + 下圆角 = 卡片收口。 */
+  tr.zoneLast > td {
+    border-bottom: 1px solid var(--fn-border-primary);
+    padding-bottom: 12px !important;
+  }
+
+  tr.zoneLast > td:first-child {
+    border-bottom-left-radius: var(--fn-radius-lg, 12px);
+  }
+
+  tr.zoneLast > td:last-child {
+    border-bottom-right-radius: var(--fn-radius-lg, 12px);
+  }
+
+  /* 空区：同样是完整一张卡片（头 + 收口），空态文案留在卡内。 */
+  tr.zoneEmptyRow > td {
+    padding: 8px 16px 16px !important;
+    border: 1px solid var(--fn-border-primary);
+    border-top: none;
+    border-radius: 0 0 var(--fn-radius-lg, 12px) var(--fn-radius-lg, 12px);
+  }
+
+  /* 卡片之间的间距：区块头单元格的上内边距（行不能设 margin）。 */
+  tr.zoneHeader:not(:first-child) > td {
+    padding-top: 20px !important;
+  }
+}
+
+/* G4（PLAN §4.1）：标题 = 导航入口，样式像链接但语义是 button（可键盘聚焦）。 */
+.titleLink {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fn-text-brand, var(--fn-text-link, var(--fn-text-primary)));
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    border-radius: var(--fn-radius-sm, 4px);
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
