@@ -180,7 +180,11 @@ def call_memory_rpc(
         if code == -32010:  # ERR_PATH_NOT_FOUND
             raise OctopError(ErrorCode.NOT_FOUND, message)
         if code == -32602:  # ERR_INVALID_PARAMS
-            raise OctopError(ErrorCode.INTERNAL_ERROR, message, status=400)
+            # Caller-supplied filters (``order``, ``importance_min``, ...) that
+            # the bridge rejects. ``INTERNAL_ERROR`` is the code
+            # ``infra/errors._DEFAULT_STATUS`` pins to 500, so a rejected
+            # request must not borrow it.
+            raise OctopError(ErrorCode.SLASH_BAD_ARGS, message)
         if code == -32601:  # ERR_METHOD_NOT_FOUND
             raise OctopError(
                 ErrorCode.INTERNAL_ERROR,
