@@ -68,15 +68,24 @@ class MemberOut(BaseModel):
     user_id: int | None
     role: str = Field(description="owner | admin | member | viewer")
     created_at: int
+    name: str | None = Field(
+        default=None,
+        description=(
+            "Display name of the subject (agents.name / users.display_name, "
+            "username as the fallback). Null when it cannot be resolved — the UI "
+            "then falls back to subject_id."
+        ),
+    )
 
     @classmethod
-    def of(cls, row: ProjectMemberRow) -> MemberOut:
+    def of(cls, row: ProjectMemberRow, name: str | None = None) -> MemberOut:
         return cls(
             subject_type=row.subject_type,
             subject_id=row.subject_id,
             user_id=row.user_id,
             role=row.role,
             created_at=row.created_at,
+            name=name,
         )
 
 
@@ -447,8 +456,8 @@ async def list_members(
     server: OctopServer = Depends(get_server),
     user: User = Depends(require_permission("projects")),
 ) -> list[MemberOut]:
-    rows = _service(server).list_members(project_id, user=_actor(user))
-    return [MemberOut.of(r) for r in rows]
+    rows = _service(server).list_members_with_names(project_id, user=_actor(user))
+    return [MemberOut.of(row, name) for row, name in rows]
 
 
 @router.post(

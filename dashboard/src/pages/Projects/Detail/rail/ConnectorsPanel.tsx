@@ -10,6 +10,7 @@ import {
 } from "../../../../api/modules/projectConfig";
 import { apiErrorMessage } from "../../../../utils/apiError";
 import { message } from "../../../../utils/antdMessage";
+import SearchablePickerPanel from "../../../../components/ChatPicker/SearchablePickerPanel";
 import styles from "./ConnectorsPanel.module.less";
 
 const { Text } = Typography;
@@ -177,15 +178,24 @@ export default function ConnectorsPanel({
       )}
 
       {canManage && adding ? (
-        <div className={styles.addBox}>
-          {candidates.length === 0 ? (
-            <Text type="secondary">{t("projects.connectorNone")}</Text>
-          ) : (
-            candidates.map((entry) => (
+        /* 形态统一到图 2（批次六 AC-C-1）：列表交给骨架 `SearchablePickerPanel`；
+           ★ 功能不变 —— 提交仍走既有 `replaceKinds`（同签名）。 */
+        <div className={styles.addBox} data-testid="picker-panel">
+          <SearchablePickerPanel<{ kind: string; name: string }>
+            items={candidates}
+            filterFn={(entry, query) =>
+              `${entry.name}\n${entry.kind}`.toLowerCase().includes(query)
+            }
+            searchPlaceholder={t("projects.quickInputRecipientFilter")}
+            emptyMessage={t("projects.connectorNone")}
+            renderItem={(entry) => (
               <Button
                 key={entry.kind}
-                type="link"
+                type="text"
                 size="small"
+                block
+                className={styles.addOption}
+                data-testid={`picker-option-connector-${entry.kind}`}
                 disabled={saving}
                 onClick={() =>
                   void replaceKinds([...declaredKinds, entry.kind])
@@ -193,8 +203,11 @@ export default function ConnectorsPanel({
               >
                 {entry.name}
               </Button>
-            ))
-          )}
+            )}
+            footerIcon={<Plus size={15} aria-hidden />}
+            footerLabel={t("projects.connectorAdd")}
+            onFooterClick={() => undefined}
+          />
         </div>
       ) : null}
     </section>

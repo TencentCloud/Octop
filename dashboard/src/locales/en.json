@@ -6183,6 +6183,7 @@
     "quickInputRecipientTrigger": "Choose recipient",
     "quickInputRecipientFilter": "Type to filter…",
     "quickInputRecipientEmpty": "No matching expert",
-    "quickInputRecipientListLabel": "Recipients"
+    "quickInputRecipientListLabel": "Recipients",
+    "pickerEmptyTeams": "No teams available"
   }
 }

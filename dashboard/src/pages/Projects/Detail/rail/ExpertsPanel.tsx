@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Empty, Input, Select, Spin, Tag, Typography } from "antd";
+import { Button, Empty, Spin, Tag, Typography } from "antd";
 import { Plus, UserMinus } from "lucide-react";
 
 import {
@@ -8,9 +8,17 @@ import {
   type ProjectMember,
   type ProjectSubjectType,
 } from "../../../../api/modules/projects";
+import { teamsApi, type TeamRecord } from "../../../../api/modules/teams";
+import { useAgent } from "../../../../context/AgentContext";
 import { useProjectMembers } from "../../../../hooks/useProjectMembers";
 import { apiErrorMessage } from "../../../../utils/apiError";
 import { message } from "../../../../utils/antdMessage";
+import {
+  KIND_LABEL_KEYS,
+  ProjectSubjectPicker,
+  type ProjectSubjectKind,
+  type ProjectSubjectOption,
+} from "./ProjectSubjectPicker";
 import styles from "./ExpertsPanel.module.less";
 
 const { Text } = Typography;
@@ -36,9 +44,18 @@ export default function ExpertsPanel({
   /** 增删后本地覆盖，避免为一次写操作把整页重新挂载。 */
   const [override, setOverride] = useState<ProjectMember[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [subjectType, setSubjectType] = useState<ProjectSubjectType>("agent");
-  const [subjectId, setSubjectId] = useState("");
+  /** 候选类别：默认专家；团队与其行语义一致（本面板行含 agent+team）。 */
+  const [kind, setKind] = useState<ProjectSubjectKind>("agent");
+  const [teams, setTeams] = useState<TeamRecord[] | null>(null);
+  const [teamsFailed, setTeamsFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** 专家候选 = `GET /api/agents`（`AgentContext` 全局已取，零新增端点）。 */
+  const {
+    agents,
+    loading: agentsLoading,
+    error: agentsError,
+    refresh,
+  } = useAgent();
 
   useEffect(() => {
     setOverride(null);
@@ -62,24 +79,70 @@ export default function ExpertsPanel({
     [projectId],
   );
 
-  const addExpert = useCallback(async () => {
-    const id = subjectId.trim();
-    if (!id || saving) return;
-    setSaving(true);
+  const loadTeams = useCallback(async () => {
+    setTeamsFailed(false);
     try {
-      await projectsApi.addMember(projectId, {
-        subject_type: subjectType,
-        subject_id: id,
-      });
-      await reload(rows);
-      setSubjectId("");
-      setAdding(false);
-    } catch (err) {
-      message.error(apiErrorMessage(err, t("projects.expertAdd"), t));
-    } finally {
-      setSaving(false);
+      setTeams(await teamsApi.list());
+    } catch {
+      setTeamsFailed(true);
     }
-  }, [projectId, reload, rows, saving, subjectId, subjectType, t]);
+  }, []);
+
+  useEffect(() => {
+    if (adding && kind === "team" && teams === null && !teamsFailed) {
+      void loadTeams();
+    }
+  }, [adding, kind, loadTeams, teams, teamsFailed]);
+
+  const options = useMemo<ProjectSubjectOption[]>(() => {
+    const joinedIds = new Set(
+      rows
+        .filter((member) => member.subject_type === kind)
+        .map((member) => member.subject_id),
+    );
+    if (kind === "agent") {
+      return agents.map((agent) => ({
+        kind: "agent",
+        id: agent.agent_id,
+        name: agent.name,
+        description: agent.description ?? undefined,
+        joined: joinedIds.has(agent.agent_id),
+      }));
+    }
+    return (teams ?? []).map((team) => ({
+      kind: "team",
+      id: team.team_id,
+      name: team.name,
+      description: team.description ?? undefined,
+      joined: joinedIds.has(team.team_id),
+    }));
+  }, [agents, kind, rows, teams]);
+
+  /** 加入专家：**提交体与改前同签名**（`subject_type`/`subject_id`）。 */
+  const addExpert = useCallback(
+    async (nextKind: ProjectSubjectKind, subjectId: string) => {
+      const id = subjectId.trim();
+      if (!id || saving) return;
+      setSaving(true);
+      try {
+        await projectsApi.addMember(projectId, {
+          subject_type: nextKind,
+          subject_id: id,
+        });
+        await reload(rows);
+        setAdding(false);
+      } catch (err) {
+        message.error(apiErrorMessage(err, t("projects.expertAdd"), t));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [projectId, reload, rows, saving, t],
+  );
+
+  const pickerLoading =
+    kind === "agent" ? agentsLoading : teams === null && !teamsFailed;
+  const pickerFailed = kind === "agent" ? agentsError !== null : teamsFailed;
 
   const removeExpert = useCallback(
     async (type: ProjectSubjectType, id: string) => {
@@ -129,8 +192,14 @@ export default function ExpertsPanel({
               className={styles.row}
               data-testid={`expert-${expert.subject_id}`}
             >
-              <Tag className={styles.kindTag}>{expert.subject_type}</Tag>
-              <span className={styles.rowName}>{expert.subject_id}</span>
+              {/* 与 MembersPanel 同一套既有中文键（subjectAgent/subjectTeam）。 */}
+              <Tag className={styles.kindTag}>
+                {t(KIND_LABEL_KEYS[expert.subject_type as ProjectSubjectKind])}
+              </Tag>
+              {/* 同一回退规则：有名字显示名字，取不到 → subject_id（不得空白）。 */}
+              <span className={styles.rowName}>
+                {expert.name?.trim() ? expert.name : expert.subject_id}
+              </span>
               {canManageMembers ? (
                 <Button
                   type="text"
@@ -149,31 +218,29 @@ export default function ExpertsPanel({
 
       {canManageMembers && adding ? (
         <div className={styles.addBox}>
-          <Select<ProjectSubjectType>
-            size="small"
-            value={subjectType}
-            aria-label={t("projects.expertTitle")}
-            onChange={setSubjectType}
-            options={[
-              { value: "agent", label: "agent" },
-              { value: "team", label: "team" },
-            ]}
-          />
-          <Input
-            size="small"
-            value={subjectId}
-            placeholder={t("projects.expertAdd")}
-            aria-label={t("projects.expertAdd")}
-            onChange={(event) => setSubjectId(event.target.value)}
-            onPressEnter={() => void addExpert()}
-          />
-          <Button
-            type="primary"
-            size="small"
-            loading={saving}
-            disabled={!subjectId.trim()}
-            aria-label={t("projects.expertAdd")}
-            onClick={() => void addExpert()}
+          <ProjectSubjectPicker
+            kind={kind}
+            onKindChange={setKind}
+            options={options}
+            loading={pickerLoading}
+            failed={pickerFailed}
+            onRetry={() => {
+              if (kind === "agent") {
+                void refresh({ force: true });
+                return;
+              }
+              setTeams(null);
+              void loadTeams();
+            }}
+            onPick={(option) => {
+              if (option.joined) return;
+              void addExpert(option.kind, option.id);
+            }}
+            emptyMessage={
+              kind === "agent"
+                ? t("projects.expertNone")
+                : t("projects.pickerEmptyTeams")
+            }
           />
         </div>
       ) : null}

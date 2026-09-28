@@ -155,6 +155,14 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
   const [creating, setCreating] = useState(false);
   /** Full create dialog (R3); the column "+" keeps the inline quick path (R5). */
   const [createOpen, setCreateOpen] = useState(false);
+  /**
+   * Column whose header "+" opened the dialog: its status is prefilled through
+   * the dialog's existing ``initialValues`` (PLAN §3 — no prop change there).
+   * ``null`` = opened from the toolbar, i.e. the dialog's own default status.
+   */
+  const [createStatus, setCreateStatus] = useState<ProjectTaskStatus | null>(
+    null,
+  );
   const [timelineTask, setTimelineTask] = useState<ProjectTask | null>(null);
   const [timelineEvents, setTimelineEvents] = useState<ProjectTimelineEvent[]>(
     [],
@@ -507,6 +515,29 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
             {t(STATUS_LABEL_KEYS[status])}
           </Tag>
           <span className={styles.columnCount}>{columnTasks.length}</span>
+          {canEdit ? (
+            /* Second entry point (PLAN §3): the full dialog, prefilled with this
+               column's status. The inline quick create below stays untouched —
+               the two coexist on purpose (R5).
+               The accessible name repeats the column so the seven identical
+               "+ Add task" buttons stay distinguishable for screen readers. */
+            <Button
+              type="text"
+              size="small"
+              style={{ marginInlineStart: "auto" }}
+              icon={<Plus size={14} />}
+              aria-label={`${t("projects.boardAdd")} · ${t(
+                STATUS_LABEL_KEYS[status],
+              )}`}
+              data-testid={`board-column-add-${status}`}
+              onClick={() => {
+                setCreateStatus(status);
+                setCreateOpen(true);
+              }}
+            >
+              {t("projects.boardAdd")}
+            </Button>
+          ) : null}
         </div>
         <div className={styles.columnBody}>
           {columnTasks.length === 0 ? (
@@ -578,7 +609,12 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
             type="primary"
             size="small"
             icon={<Plus size={14} />}
-            onClick={() => setCreateOpen(true)}
+            onClick={() => {
+              // Toolbar entry keeps the dialog's own default status: without
+              // this reset it would inherit the last column that was used.
+              setCreateStatus(null);
+              setCreateOpen(true);
+            }}
           >
             {t("projects.createTaskSubmit")}
           </Button>
@@ -611,6 +647,10 @@ function Board({ projectId, tasks, canEdit, onChanged }: BoardProps) {
         projectId={projectId}
         tasks={tasks}
         canEdit={canEdit}
+        /* Only the column entry prefills; ``initialValues`` is read once per
+           open by the dialog, so the status is already correct on the first
+           render after the click. */
+        initialValues={createStatus ? { status: createStatus } : undefined}
         onClose={() => setCreateOpen(false)}
         onCreated={onChanged}
       />

@@ -6322,6 +6322,7 @@
     "quickInputRecipientTrigger": "选择收件人",
     "quickInputRecipientFilter": "输入以过滤…",
     "quickInputRecipientEmpty": "无匹配的专家",
-    "quickInputRecipientListLabel": "收件人"
+    "quickInputRecipientListLabel": "收件人",
+    "pickerEmptyTeams": "暂无可选团队"
   }
 }

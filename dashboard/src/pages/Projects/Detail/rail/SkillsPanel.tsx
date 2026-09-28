@@ -12,6 +12,7 @@ import { useProjectMembers } from "../../../../hooks/useProjectMembers";
 import { useSkills } from "../../../Agent/Skills/useSkills";
 import { apiErrorMessage } from "../../../../utils/apiError";
 import { message } from "../../../../utils/antdMessage";
+import SearchablePickerPanel from "../../../../components/ChatPicker/SearchablePickerPanel";
 import styles from "./SkillsPanel.module.less";
 
 const { Text } = Typography;
@@ -40,23 +41,45 @@ function InstalledSkillSelect({
 }) {
   const { t } = useTranslation();
   const { skills, loading } = useSkills(agentId);
+  /* 形态统一到图 2（AC-C-1）：列表交给骨架；★ 功能不变 —— 选中后仍由外层
+     「添加」按钮走既有 `write()`（同签名）。 */
   return (
-    <Select
-      size="small"
-      className={styles.addControl}
-      value={value ?? undefined}
-      loading={loading}
-      aria-label={t("projects.skillAdd")}
-      placeholder={t("projects.skillAdd")}
-      onChange={(next) => onChange(next ?? null)}
-      options={skills.map((skill) => ({
-        value: skill.slug,
-        label: skill.name,
-      }))}
-    />
+    <div className={styles.addControl} data-testid="picker-panel">
+      {loading ? (
+        <Spin size="small" />
+      ) : (
+        <SearchablePickerPanel<{ slug: string; name: string }>
+          items={skills.map((skill) => ({
+            slug: skill.slug,
+            name: skill.name,
+          }))}
+          filterFn={(skill, query) =>
+            `${skill.name}\n${skill.slug}`.toLowerCase().includes(query)
+          }
+          searchPlaceholder={t("projects.quickInputRecipientFilter")}
+          emptyMessage={t("projects.skillNone")}
+          renderItem={(skill) => (
+            <Button
+              key={skill.slug}
+              type="text"
+              size="small"
+              block
+              className={styles.addOption}
+              data-testid={`picker-option-skill-${skill.slug}`}
+              aria-pressed={value === skill.slug}
+              onClick={() => onChange(skill.slug)}
+            >
+              {skill.name}
+            </Button>
+          )}
+          footerIcon={<Plus size={15} aria-hidden />}
+          footerLabel={t("projects.skillAdd")}
+          onFooterClick={() => undefined}
+        />
+      )}
+    </div>
   );
 }
-
 /**
  * 右栏「技能」面板（PLAN §2.3 · Q9）。
  *

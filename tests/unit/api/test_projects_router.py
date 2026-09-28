@@ -80,3 +80,22 @@ def _walk(dependant: Any) -> list[Any]:
     for dep in list(out):
         out.extend(_walk(dep))
     return out
+
+
+async def test_member_out_carries_a_nullable_name_field(tmp_octop_home: Path) -> None:
+    """PLAN §2.2: ``MemberOut`` grows `name` (nullable) and keeps every old field."""
+    from octop.api.routers.projects import MemberOut
+
+    fields = MemberOut.model_fields
+    assert list(fields)[:5] == ["subject_type", "subject_id", "user_id", "role", "created_at"], (
+        "the existing fields keep their names and order"
+    )
+    assert "name" in fields, "MemberOut.name is the batch-6 addition"
+    annotation = str(fields["name"].annotation)
+    assert "None" in annotation, f"name must be nullable, got {annotation}"
+    schema = MemberOut.model_json_schema()
+    assert "name" in schema["properties"]
+    assert {entry.get("type") for entry in schema["properties"]["name"]["anyOf"]} == {
+        "string",
+        "null",
+    }

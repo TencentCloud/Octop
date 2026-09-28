@@ -79,9 +79,17 @@ describe("<SsoPanel />", () => {
     render(<SsoPanel />);
 
     await waitFor(() => expect(getOidcConfig).toHaveBeenCalledOnce());
-    await user.click(
-      screen.getByRole("button", { name: "adminSso.presetGoogle" }),
+    const preset = screen.getByRole("button", {
+      name: "adminSso.presetGoogle",
+    });
+    /* ★ 只在「请求已发出」之后等待会早于 `loading=false` 的那次重渲染：
+       面板此时仍被 `<Spin spinning>` 的模糊层覆盖（`pointer-events: none`），
+       全量并发下 `user.click` 会因该 CSS 直接抛错（历史 flake 的根因）。
+       ⇒ 这里**只增加等待**（等模糊层清除），不改任何期望值。 */
+    await waitFor(() =>
+      expect(getComputedStyle(preset).pointerEvents).not.toBe("none"),
     );
+    await user.click(preset);
     expect(screen.getByDisplayValue("Google")).toBeInTheDocument();
   });
 });

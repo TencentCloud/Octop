@@ -1,0 +1,84 @@
+/* 右栏「+」选择器薄封装（PLAN §1.1 / §6）—— 列表样式全部来自骨架，这里只做容器与卡片。 */
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kindRow {
+  display: flex;
+  gap: 4px;
+}
+
+.kind {
+  color: var(--fn-text-secondary);
+
+  &.kindActive {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-primary);
+    font-weight: 600;
+  }
+}
+
+.panelHost {
+  min-width: 0;
+}
+
+.centered {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+}
+
+.failed {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+}
+
+/* 骨架的 renderItem：一张可选卡片（图 2 形态）。 */
+.option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--fn-radius-md, 8px);
+  background: transparent;
+  color: var(--fn-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--fn-bg-hover);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.75;
+  }
+
+  &:focus-visible {
+    border-color: var(--fn-color-brand);
+    outline: none;
+  }
+}
+
+.optionName {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.optionDesc {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.joined {
+  display: inline-flex;
+  color: var(--fn-color-brand);
+}

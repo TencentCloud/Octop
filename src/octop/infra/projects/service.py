@@ -222,6 +222,38 @@ class ProjectService:
         self.assert_project_role(project_id, user=user, required=PROJECT_READ)
         return self._members.list_by_project(project_id)
 
+    def list_members_with_names(
+        self, project_id: str, *, user: ProjectActor
+    ) -> list[tuple[ProjectMemberRow, str | None]]:
+        """Members paired with their display name (PLAN.md §2.2).
+
+        ``agent`` → ``agents.name``; ``user`` → ``users.display_name`` then
+        ``username``; anything unresolvable (missing row, blank name, or a
+        ``team`` subject with no name source in this build) → ``None``. The caller
+        falls back to ``subject_id``; nothing here raises or turns into a 500.
+        """
+        rows = self.list_members(project_id, user=user)
+        return [(row, self._resolve_subject_name(row.subject_type, row.subject_id)) for row in rows]
+
+    def _resolve_subject_name(self, subject_type: str, subject_id: str) -> str | None:
+        if subject_type in ("agent", "team"):
+            # A team *is* an ``agents`` row with ``kind='team'`` (verified on the live
+            # DB: ``agents.kind`` = expert×2 + team×1), so both subject types resolve
+            # through the same read path. An id that is not in ``agents`` still
+            # yields ``None`` — identical to the previous behaviour, never worse.
+            agent = self._services.agent_repo.get(subject_id)
+            return (agent.name or None) if agent is not None else None
+        if subject_type == "user":
+            try:
+                user_id = int(subject_id)
+            except (TypeError, ValueError):
+                return None
+            row = self._services.user_repo.get(user_id)
+            if row is None:
+                return None
+            return (getattr(row, "display_name", None) or "").strip() or row.username or None
+        return None
+
     # ── permissions (§4.6) ───────────────────────────────────────────────────
 
     def assert_project_role(

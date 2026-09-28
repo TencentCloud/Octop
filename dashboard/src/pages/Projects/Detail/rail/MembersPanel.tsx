@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Empty, Input, Select, Spin, Tag, Typography } from "antd";
+import { Button, Empty, Select, Spin, Tag, Typography } from "antd";
 import { Plus, UserMinus } from "lucide-react";
 
 import {
@@ -9,12 +9,26 @@ import {
   type ProjectMemberRole,
   type ProjectSubjectType,
 } from "../../../../api/modules/projects";
+import { teamsApi, type TeamRecord } from "../../../../api/modules/teams";
+import { useAgent } from "../../../../context/AgentContext";
 import { useProjectMembers } from "../../../../hooks/useProjectMembers";
 import { apiErrorMessage } from "../../../../utils/apiError";
 import { message } from "../../../../utils/antdMessage";
+import { ProjectSubjectPicker } from "./ProjectSubjectPicker";
+import type {
+  ProjectSubjectKind,
+  ProjectSubjectOption,
+} from "./ProjectSubjectPicker";
 import styles from "./MembersPanel.module.less";
 
 const { Text } = Typography;
+
+/** 主体类型枚举 → **既有中文键**（批次六 PLAN §2.1；零新增键）。 */
+const SUBJECT_LABEL_KEYS: Record<ProjectSubjectType, string> = {
+  user: "projects.subjectUser",
+  agent: "projects.subjectAgent",
+  team: "projects.subjectTeam",
+};
 
 const ROLE_LABEL_KEYS: Record<ProjectMemberRole, string> = {
   owner: "projects.memberRoleOwner",
@@ -45,10 +59,19 @@ export default function MembersPanel({
   /** 增删后本地覆盖，避免为一次写操作把整页重新挂载。 */
   const [override, setOverride] = useState<ProjectMember[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [subjectType, setSubjectType] = useState<ProjectSubjectType>("user");
-  const [subjectId, setSubjectId] = useState("");
+  /** 选择器的候选类别：专家 / 团队（★ **不做「选用户」** — 批次一 `@867` 纪律）。 */
+  const [kind, setKind] = useState<ProjectSubjectKind>("agent");
+  const [teams, setTeams] = useState<TeamRecord[] | null>(null);
+  const [teamsFailed, setTeamsFailed] = useState(false);
   const [role, setRole] = useState<ProjectMemberRole>("member");
   const [saving, setSaving] = useState(false);
+  /** 候选数据源（既有端点）：专家 = `GET /api/agents`（`AgentContext` 全局已取）。 */
+  const {
+    agents,
+    loading: agentsLoading,
+    error: agentsError,
+    refresh,
+  } = useAgent();
 
   useEffect(() => {
     setOverride(null);
@@ -68,25 +91,72 @@ export default function MembersPanel({
     [projectId],
   );
 
-  const addMember = useCallback(async () => {
-    const id = subjectId.trim();
-    if (!id || saving) return;
-    setSaving(true);
+  const loadTeams = useCallback(async () => {
+    setTeamsFailed(false);
     try {
-      await projectsApi.addMember(projectId, {
-        subject_type: subjectType,
-        subject_id: id,
-        role,
-      });
-      await reload(rows);
-      setSubjectId("");
-      setAdding(false);
-    } catch (err) {
-      message.error(apiErrorMessage(err, t("projects.memberAdd"), t));
-    } finally {
-      setSaving(false);
+      setTeams(await teamsApi.list());
+    } catch {
+      setTeamsFailed(true);
     }
-  }, [projectId, reload, role, rows, saving, subjectId, subjectType, t]);
+  }, []);
+
+  // 团队候选按需取（第一次切到「团队」时）；失败 → 可重试（不静默空列表）。
+  useEffect(() => {
+    if (adding && kind === "team" && teams === null && !teamsFailed) {
+      void loadTeams();
+    }
+  }, [adding, kind, loadTeams, teams, teamsFailed]);
+
+  const options = useMemo<ProjectSubjectOption[]>(() => {
+    const joinedIds = new Set(
+      rows
+        .filter((member) => member.subject_type === kind)
+        .map((member) => member.subject_id),
+    );
+    if (kind === "agent") {
+      return agents.map((agent) => ({
+        kind: "agent",
+        id: agent.agent_id,
+        name: agent.name,
+        description: agent.description ?? undefined,
+        joined: joinedIds.has(agent.agent_id),
+      }));
+    }
+    return (teams ?? []).map((team) => ({
+      kind: "team",
+      id: team.team_id,
+      name: team.name,
+      description: team.description ?? undefined,
+      joined: joinedIds.has(team.team_id),
+    }));
+  }, [agents, kind, rows, teams]);
+
+  /** 加入成员：**提交体与改前同签名**（`subject_type`/`subject_id`/`role`）。 */
+  const addMember = useCallback(
+    async (nextKind: ProjectSubjectKind, subjectId: string) => {
+      const id = subjectId.trim();
+      if (!id || saving) return;
+      setSaving(true);
+      try {
+        await projectsApi.addMember(projectId, {
+          subject_type: nextKind,
+          subject_id: id,
+          role,
+        });
+        await reload(rows);
+        setAdding(false);
+      } catch (err) {
+        message.error(apiErrorMessage(err, t("projects.memberAdd"), t));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [projectId, reload, role, rows, saving, t],
+  );
+
+  const pickerLoading =
+    kind === "agent" ? agentsLoading : teams === null && !teamsFailed;
+  const pickerFailed = kind === "agent" ? agentsError !== null : teamsFailed;
 
   const removeMember = useCallback(
     async (type: ProjectSubjectType, id: string) => {
@@ -108,6 +178,7 @@ export default function MembersPanel({
           <Button
             type="text"
             size="small"
+            data-testid="member-add-picker"
             aria-label={t("projects.memberAdd")}
             icon={<Plus size={14} />}
             onClick={() => setAdding((value) => !value)}
@@ -141,8 +212,13 @@ export default function MembersPanel({
               className={styles.row}
               data-testid={`member-${member.subject_id}`}
             >
-              <Tag className={styles.kindTag}>{member.subject_type}</Tag>
-              <span className={styles.rowName}>{member.subject_id}</span>
+              <Tag className={styles.kindTag}>
+                {t(SUBJECT_LABEL_KEYS[member.subject_type])}
+              </Tag>
+              {/* AC-B-2/AC-B-3：有名字显示名字，取不到 → 回退 subject_id（不得空白）。 */}
+              <span className={styles.rowName}>
+                {member.name?.trim() ? member.name : member.subject_id}
+              </span>
               <Text type="secondary" className={styles.rowRole}>
                 {t(ROLE_LABEL_KEYS[member.role])}
               </Text>
@@ -164,24 +240,30 @@ export default function MembersPanel({
 
       {canManageMembers && adding ? (
         <div className={styles.addBox}>
-          <Select<ProjectSubjectType>
-            size="small"
-            value={subjectType}
-            aria-label={t("projects.memberTitle")}
-            onChange={setSubjectType}
-            options={[
-              { value: "user", label: "user" },
-              { value: "agent", label: "agent" },
-              { value: "team", label: "team" },
-            ]}
-          />
-          <Input
-            size="small"
-            value={subjectId}
-            placeholder={t("projects.memberAdd")}
-            aria-label={t("projects.memberAdd")}
-            onChange={(event) => setSubjectId(event.target.value)}
-            onPressEnter={() => void addMember()}
+          <ProjectSubjectPicker
+            kind={kind}
+            onKindChange={setKind}
+            options={options}
+            loading={pickerLoading}
+            failed={pickerFailed}
+            onRetry={() => {
+              if (kind === "agent") {
+                void refresh({ force: true });
+                return;
+              }
+              setTeams(null);
+              void loadTeams();
+            }}
+            onPick={(option) => {
+              // R13 / C12：已加入的项不可重复提交。
+              if (option.joined) return;
+              void addMember(option.kind, option.id);
+            }}
+            emptyMessage={
+              kind === "agent"
+                ? t("projects.expertNone")
+                : t("projects.pickerEmptyTeams")
+            }
           />
           <Select<ProjectMemberRole>
             size="small"
@@ -191,14 +273,6 @@ export default function MembersPanel({
             options={(["owner", "admin", "member", "viewer"] as const).map(
               (value) => ({ value, label: t(ROLE_LABEL_KEYS[value]) }),
             )}
-          />
-          <Button
-            type="primary"
-            size="small"
-            loading={saving}
-            disabled={!subjectId.trim()}
-            aria-label={t("projects.memberAdd")}
-            onClick={() => void addMember()}
           />
         </div>
       ) : null}

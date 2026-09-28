@@ -239,8 +239,8 @@ def test_dashboard_projects_namespace_is_paired_and_localized():
     en = json.loads((repo / "dashboard/src/locales/en.json").read_text(encoding="utf-8"))
     zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
     assert set(en["projects"]) == set(zh["projects"])
-    # 208 batch 2 + 4 batch 3 + 22 batch 4 + 4 (D1/D2 PLAN §4.1) = 238.
-    assert len(zh["projects"]) == 238
+    # 208 batch 2 + 4 batch 3 + 22 batch 4 + 4 D1/D2 + 1 batch 6 (PLAN §4.1) = 239.
+    assert len(zh["projects"]) == 239
     # R6 copy change: values only, keys untouched.
     assert zh["projects"]["taskStatusReview"] == "审核中"
     assert zh["projects"]["taskStatusBlocked"] == "已阻塞"
@@ -415,8 +415,8 @@ def test_batch2_projects_keys_exist_in_both_locales():
         assert key in zh["projects"], f"zh projects.{key} missing"
         assert key in en["projects"], f"en projects.{key} missing"
         assert en["projects"][key] != "", f"en projects.{key} is empty"
-    assert len(zh["projects"]) == 238
-    assert len(en["projects"]) == 238
+    assert len(zh["projects"]) == 239
+    assert len(en["projects"]) == 239
 
 
 # ── batch 3 (T-I18N3): edit-dialog labels + two rejection codes ──────────────
@@ -566,7 +566,7 @@ def test_batch4_project_keys_are_localized_per_key():
         # L10: the PLAN table's bold / footnote markers are never part of a value.
         for value in (zh["projects"][key], en["projects"][key]):
             assert "**" not in value and "※" not in value, key
-    assert len(zh["projects"]) == 238 and len(en["projects"]) == 238
+    assert len(zh["projects"]) == 239 and len(en["projects"]) == 239
     # The interpolation placeholder must survive transcription verbatim.
     assert zh["projects"]["quickInputTarget"] == "发给 {{name}}"
     assert en["projects"]["quickInputTarget"] == "To {{name}}"
@@ -629,7 +629,38 @@ def test_qi_recipient_keys_are_localized_per_key():
         assert en["projects"][key] == en_value, key
         for value in (zh["projects"][key], en["projects"][key]):
             assert "**" not in value and "※" not in value, key
-    assert len(zh["projects"]) == 238 and len(en["projects"]) == 238
+    assert len(zh["projects"]) == 239 and len(en["projects"]) == 239
     # The reused strings must keep their existing wording (no silent redefinition).
     assert zh["projects"]["quickInputTarget"] == "发给 {{name}}"
     assert zh["projects"]["quickInputNoAgent"] == "请先在项目配置中绑定专家。"
+
+
+# ── batch 6 (T-P6-I18N): team-picker empty state ─────────────────────────────
+
+_T_P6_I18N_PROJECT_KEYS = {
+    "pickerEmptyTeams": ("No teams available", "暂无可选团队"),
+}
+
+
+def test_batch6_picker_empty_teams_is_localized_per_key():
+    """The one new key of batch 6, per key, plus the reused ones it sits beside."""
+    en, zh = _dash("en"), _dash("zh")
+    for key, (en_value, zh_value) in _T_P6_I18N_PROJECT_KEYS.items():
+        assert key in zh["projects"], f"zh projects.{key} missing"
+        assert key in en["projects"], f"en projects.{key} missing"
+        assert zh["projects"][key] == zh_value, key
+        assert en["projects"][key] == en_value, key
+        for value in (zh["projects"][key], en["projects"][key]):
+            assert "**" not in value and "※" not in value, key
+    assert len(zh["projects"]) == 239 and len(en["projects"]) == 239
+    # The reused keys must keep their wording: this batch adds exactly one key.
+    assert set(_T_P6_I18N_PROJECT_KEYS) <= set(zh["projects"])
+    for reused, expected in (
+        ("subjectUser", "用户"),
+        ("subjectAgent", "专家"),
+        ("subjectTeam", "团队"),
+        ("expertNone", "暂无专家"),
+        ("memberAdd", "添加成员"),
+        ("expertAdd", "添加专家"),
+    ):
+        assert zh["projects"][reused] == expected, reused

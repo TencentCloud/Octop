@@ -839,3 +839,66 @@ async def test_the_new_endpoints_refuse_a_non_member(
     response = await client.get(f"{PROJECTS}/{pid}{path}", headers=users["auth"]["carol"])
     assert response.status_code == 403, response.text
     assert _error_code(response) == "PROJECT_FORBIDDEN"
+
+
+async def test_members_carry_display_names(
+    env: Any,
+    users: dict[str, Any],
+    owned: dict[str, Any],
+) -> None:
+    """PLAN §2.2 via real HTTP: agent → agents.name, user → display_name/username."""
+    client, _, _ = env
+    alice = users["auth"]["alice"]
+    pid = owned["project_id"]
+    await _activate(client, alice, pid)
+    agent_id = await _create_expert(client, alice, "名字来源测试专家")
+    await _add_agent_member(client, alice, pid, agent_id)
+    added = await client.post(
+        f"{PROJECTS}/{pid}/members",
+        headers=alice,
+        json={"subject_type": "user", "subject_id": str(users["id"]["bob"]), "role": "member"},
+    )
+    assert added.status_code == 201, added.text
+
+    listed = await client.get(f"{PROJECTS}/{pid}/members", headers=alice)
+    assert listed.status_code == 200, listed.text
+    rows = listed.json()
+    assert all("name" in row for row in rows), "every member row carries the field"
+    agent_row = next(r for r in rows if r["subject_type"] == "agent")
+    assert agent_row["name"] == "名字来源测试专家", agent_row
+    user_row = next(
+        r
+        for r in rows
+        if r["subject_type"] == "user" and r["subject_id"] == str(users["id"]["bob"])
+    )
+    assert user_row["name"] == "bob", f"username is the fallback: {user_row}"
+    # The owner is a plain user whose display_name is unset → username.
+    owner_row = next(r for r in rows if r["role"] == "owner")
+    assert owner_row["name"] == "alice", owner_row
+    # A team **is** an ``agents`` row with ``kind='team'`` → its name resolves too.
+    srv = env[1]
+    srv.services.agent_repo.create(
+        agent_id="TEAM01", user_id=users["id"]["alice"], name="小通 · 通用助手", kind="team"
+    )
+    team = await client.post(
+        f"{PROJECTS}/{pid}/members",
+        headers=alice,
+        json={"subject_type": "team", "subject_id": "TEAM01", "role": "viewer"},
+    )
+    assert team.status_code == 201, team.text
+    after = await client.get(f"{PROJECTS}/{pid}/members", headers=alice)
+    assert after.status_code == 200, after.text
+    team_row = next(r for r in after.json() if r["subject_id"] == "TEAM01")
+    assert team_row["name"] == "小通 · 通用助手", team_row
+
+    # A team id that is *not* in ``agents`` degrades to null (same as before).
+    ghost = await client.post(
+        f"{PROJECTS}/{pid}/members",
+        headers=alice,
+        json={"subject_type": "team", "subject_id": "team_ghost", "role": "viewer"},
+    )
+    assert ghost.status_code == 201, ghost.text
+    after2 = await client.get(f"{PROJECTS}/{pid}/members", headers=alice)
+    assert after2.status_code == 200, after2.text
+    ghost_row = next(r for r in after2.json() if r["subject_id"] == "team_ghost")
+    assert ghost_row["name"] is None, ghost_row

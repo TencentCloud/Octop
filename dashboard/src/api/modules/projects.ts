@@ -45,6 +45,12 @@ export interface ProjectMember {
   user_id: number | null;
   role: ProjectMemberRole;
   created_at: number;
+  /**
+   * 主体显示名（后端 `MemberOut.name`，批次六新增）：agent → `agents.name` ·
+   * user → `users.display_name`（`username` 兜底）· team → 团队名。
+   * **可空/可缺省** —— 解析不到时为 `null`，UI 回退显示 `subject_id`（不得空白）。
+   */
+  name?: string | null;
 }
 
 /** Tag as resolved on a task (PLAN §4: ``TaskOut.tags``). */

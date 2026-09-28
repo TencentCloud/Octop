@@ -163,6 +163,114 @@ describe("Board 7 列与全部列可建", () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
+  const COLUMN_ADD = [
+    "planning",
+    "todo",
+    "doing",
+    "review",
+    "blocked",
+    "done",
+    "cancelled",
+  ] as const;
+
+  /** The full create dialog: antd renders it as a dialog role. */
+  const dialog = () => within(screen.getByRole("dialog"));
+
+  const statusChipText = () =>
+    dialog().getByRole("button", { name: "projects.chipStatus" }).textContent ??
+    "";
+
+  it("AC-D-1: 列头「+ 新建任务」打开 TaskCreateModal（create 模式），7 列各有入口", async () => {
+    const user = userEvent.setup();
+    renderBoard();
+
+    for (const status of COLUMN_ADD) {
+      expect(
+        screen.getByTestId(`board-column-add-${status}`),
+      ).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("board-column-add-doing"));
+
+    // 打开的是复用弹窗（标题输入 + 描述），不是内联输入。
+    expect(
+      dialog().getByPlaceholderText("projects.createTaskTitle"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("projects.boardAddPlaceholder"),
+    ).not.toBeInTheDocument();
+    expect(createTaskMock).not.toHaveBeenCalled();
+  });
+
+  it("AC-D-2: doing 列 → 弹窗 status 初值 == doing；planning 列 → planning（非常量）", async () => {
+    const user = userEvent.setup();
+    renderBoard();
+
+    await user.click(screen.getByTestId("board-column-add-doing"));
+    expect(statusChipText()).toContain("projects.taskStatusDoing");
+
+    await user.click(dialog().getByRole("button", { name: "common.cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    // 换一列：预填跟随该列，而不是写死的 doing。
+    await user.click(screen.getByTestId("board-column-add-planning"));
+    expect(statusChipText()).toContain("projects.taskStatusPlanning");
+  });
+
+  it("AC-D-2: 工具栏入口仍用弹窗默认 status（不被上一次列头预填污染）", async () => {
+    const user = userEvent.setup();
+    renderBoard();
+
+    await user.click(screen.getByTestId("board-column-add-doing"));
+    expect(statusChipText()).toContain("projects.taskStatusDoing");
+    await user.click(dialog().getByRole("button", { name: "common.cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "projects.createTaskSubmit" }),
+    );
+    // 弹窗自身默认 planning（toValues(undefined)）≠ 刚才那一列。
+    expect(statusChipText()).toContain("projects.taskStatusPlanning");
+  });
+
+  it("AC-D-2/AC-D-4: 列头入口的预填进入提交载荷，并在成功后重读（非本地乐观）", async () => {
+    const user = userEvent.setup();
+    const { onChanged } = renderBoard();
+
+    await user.click(screen.getByTestId("board-column-add-doing"));
+    await user.type(
+      dialog().getByPlaceholderText("projects.createTaskTitle"),
+      "From header",
+    );
+    // 弹窗提交按钮的文本还带快捷键提示（⌘↵）→ 用正则匹配包含关系。
+    await user.click(
+      dialog().getByRole("button", { name: /projects\.createTaskSubmit/ }),
+    );
+
+    await waitFor(() => expect(createTaskMock).toHaveBeenCalledTimes(1));
+    expect(createTaskMock).toHaveBeenCalledWith(
+      "prj_1",
+      expect.objectContaining({ title: "From header", status: "doing" }),
+    );
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it("AC-D-3: 双入口并存 —— 7 个内联入口（boardAdd 精确名）与 7 个列头入口同在", async () => {
+    renderBoard();
+
+    // 内联入口的可访问名仍是 projects.boardAdd（列头按钮带上了列名，故不计入）。
+    expect(addButtons().length).toBe(7);
+    for (const button of addButtons()) expect(button).toBeEnabled();
+    for (const status of COLUMN_ADD) {
+      expect(screen.getByTestId(`board-column-add-${status}`)).toBeEnabled();
+    }
+  });
+
   it("内联创建的 Esc 取消不发请求", async () => {
     const user = userEvent.setup();
     renderBoard();

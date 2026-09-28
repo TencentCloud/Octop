@@ -601,3 +601,115 @@ async def test_zero_agent_project_is_not_an_error_face(
     board = await client.get(f"{PROJECTS}/{pid}/tasks", headers=auth)
     assert board.status_code == 200, board.text
     assert board.json() == []
+
+
+# ── batch 6 (T-P6-INT): the display-name contract over real HTTP ─────────────
+#
+# Evidence layer: **proxy** — these run the real app, real router, real SQLite and
+# real HTTP, so they prove the API shape and the join. They do NOT prove what the
+# browser renders (that is the frontend's component layer).
+
+
+async def _user_id(client: httpx.AsyncClient, auth: dict[str, str], username: str) -> int:
+    rows = (await client.get("/api/users", headers=auth)).json()
+    return next(row["id"] for row in rows if row["username"] == username)
+
+
+async def test_member_rows_expose_name_for_every_subject_type(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """agent → agents.name · user → display_name/username · team → same agents row."""
+    client, srv, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    bob_id = await _user_id(client, auth, "bob")
+    srv.services.agent_repo.create(
+        agent_id="EXPT01", user_id=1, name="AI 编程实战导师", kind="expert"
+    )
+    srv.services.agent_repo.create(agent_id="TEAM01", user_id=1, name="测试团队 T1", kind="team")
+    for subject_type, subject_id in (
+        ("user", str(bob_id)),
+        ("agent", "EXPT01"),
+        ("team", "TEAM01"),
+        ("team", "team_ghost"),  # not an agents row → None, never an error
+    ):
+        created = await client.post(
+            f"{PROJECTS}/{pid}/members",
+            headers=auth,
+            json={"subject_type": subject_type, "subject_id": subject_id, "role": "member"},
+        )
+        assert created.status_code == 201, created.text
+
+    listed = await client.get(f"{PROJECTS}/{pid}/members", headers=auth)
+    assert listed.status_code == 200, listed.text
+    names = {row["subject_id"]: row["name"] for row in listed.json()}
+    assert names[str(bob_id)] == "bob", "user → username when display_name is empty"
+    assert names["1"] == "admin", "the owner row resolves too"
+    assert names["EXPT01"] == "AI 编程实战导师"
+    assert names["TEAM01"] == "测试团队 T1", "a team is an agents row with kind='team'"
+    assert names["team_ghost"] is None, "unresolvable → null, and the call still 200s"
+
+
+async def test_member_response_shape_is_additive(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """The five pre-existing fields keep their names and order; ``name`` is new."""
+    client, _, ctx = api
+    listed = await client.get(f"{PROJECTS}/{ctx['pid']}/members", headers=ctx["admin"])
+    assert listed.status_code == 200, listed.text
+    row = listed.json()[0]
+    assert list(row)[:5] == ["subject_type", "subject_id", "user_id", "role", "created_at"]
+    assert "name" in row
+    assert row["name"] is None or isinstance(row["name"], str)
+    assert isinstance(row["subject_id"], str) and isinstance(row["role"], str)
+
+
+async def test_picker_sources_are_reachable(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """The picker's two sources answer on the real app (agent/team selection)."""
+    client, srv, ctx = api
+    auth = ctx["admin"]
+    srv.services.agent_repo.create(agent_id="EXPT02", user_id=1, name="导师二号", kind="expert")
+    srv.services.agent_repo.create(agent_id="TEAM02", user_id=1, name="团队二号", kind="team")
+
+    agents = await client.get("/api/agents", headers=auth)
+    assert agents.status_code == 200, agents.text
+    team_rows = [row for row in agents.json() if row.get("kind") == "team"]
+    assert any(row.get("name") == "导师二号" for row in agents.json()), "experts are listed"
+    assert any(row.get("name") == "团队二号" for row in team_rows), "teams are listed too"
+
+    teams = await client.get("/api/teams", headers=auth)
+    assert teams.status_code == 200, teams.text
+    assert isinstance(teams.json(), (list, dict)), teams.text
+
+
+async def test_member_add_refusals_are_403_not_500(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """viewer / non-member / archived project: 403 + a code, never 500."""
+    client, _, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+    bob_id = await _user_id(client, auth, "bob")
+    await client.post(
+        f"{PROJECTS}/{pid}/members",
+        headers=auth,
+        json={"subject_type": "user", "subject_id": str(bob_id), "role": "viewer"},
+    )
+    payload = {"subject_type": "user", "subject_id": "2", "role": "member"}
+
+    as_viewer = await client.post(f"{PROJECTS}/{pid}/members", headers=ctx["bob"], json=payload)
+    assert as_viewer.status_code == 403, as_viewer.text
+    assert as_viewer.status_code != 500
+    assert as_viewer.json()["error"]["code"] == "PROJECT_ROLE_FORBIDDEN"
+
+    outsider = await create_user(client, auth, username="erin")
+    as_outsider = await client.post(f"{PROJECTS}/{pid}/members", headers=outsider, json=payload)
+    assert as_outsider.status_code == 403, as_outsider.text
+    assert as_outsider.status_code != 500
+    assert as_outsider.json()["error"]["code"] == "PROJECT_FORBIDDEN"
+
+    await client.patch(f"{PROJECTS}/{pid}", headers=auth, json={"status": "archived"})
+    archived = await client.post(f"{PROJECTS}/{pid}/members", headers=auth, json=payload)
+    assert archived.status_code == 403, archived.text
+    assert archived.status_code != 500
+    assert archived.json()["error"]["code"] == "PROJECT_FORBIDDEN"
