@@ -8,6 +8,7 @@
 
 ### 修复
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+- 记忆迁移的 pack/adopt 接口把调用方能自行修正的输入错误标成 `INTERNAL_ERROR`（HTTP 400 却是服务端错误码，且 4xx 不落日志），改用既有的 `SLASH_BAD_ARGS`并把调用方给出的标识放进 `details`（Fixes #1289）。
 
 ## [1.0.2b3] - 2026-09-26
 

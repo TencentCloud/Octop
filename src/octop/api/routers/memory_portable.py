@@ -184,7 +184,11 @@ async def pack_agent_memory(
     except ImportError:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "octop-memory 未安装") from None
     except ValueError as exc:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc), status=400) from exc
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            str(exc),
+            details={"agent_id": agent_id},
+        ) from exc
     except Exception as exc:
         logger.exception("pack_agent_memory failed for agent_id=%s", agent_id)
         raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
@@ -239,7 +243,11 @@ async def adopt_agent_memory(
     except ImportError:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "octop-memory 未安装") from None
     except ValueError as exc:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc), status=400) from exc
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            str(exc),
+            details={"filename": pkg_file.filename},
+        ) from exc
     except Exception as exc:
         logger.exception("adopt_agent_memory failed for agent_id=%s", agent_id)
         raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
