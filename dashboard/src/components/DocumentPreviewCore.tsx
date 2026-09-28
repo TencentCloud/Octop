@@ -132,6 +132,16 @@ async function extractXlsxMediaDataUrls(
   return items;
 }
 
+/** docx-preview options; the narrow-layout CSS targets the DOM they produce. */
+export const DOCX_RENDER_OPTIONS = {
+  className: "docx-doc",
+  inWrapper: true,
+  breakPages: true,
+  ignoreWidth: false,
+  ignoreHeight: false,
+  useBase64URL: true,
+};
+
 /** Absolute lengths beyond this (≈ 27″) are treated as corrupt DOCX metrics. */
 const DOCX_MAX_LENGTH_PT = 2000;
 
@@ -435,14 +445,12 @@ export default function DocumentPreviewCore({
           }
           const { renderAsync } = await import("docx-preview");
           if (containerRef.current && !cancelled) {
-            await renderAsync(buf, containerRef.current, undefined, {
-              className: "docx-doc",
-              inWrapper: true,
-              breakPages: true,
-              ignoreWidth: false,
-              ignoreHeight: false,
-              useBase64URL: true,
-            });
+            await renderAsync(
+              buf,
+              containerRef.current,
+              undefined,
+              DOCX_RENDER_OPTIONS,
+            );
             if (!cancelled && containerRef.current) {
               neutralizeDocxPreviewChrome(containerRef.current);
               sanitizeDocxPreviewLayout(containerRef.current);

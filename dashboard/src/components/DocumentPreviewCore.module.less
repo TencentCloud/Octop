@@ -55,6 +55,22 @@
   overscroll-behavior: contain;
 }
 
+/*
+ * docx-preview centres pages with `align-items: center` on its flex wrapper.
+ * A page wider than the preview (phones, the chat side panel) then overflows
+ * to both sides, and the left overflow can never be scrolled into view.
+ * Start-align and centre with auto margins instead: they centre while the page
+ * fits and fall back to 0 once it overflows, so the extra width scrolls right.
+ */
+.docxWrap :global(.docx-doc-wrapper) {
+  align-items: flex-start;
+}
+
+.docxWrap :global(.docx-doc-wrapper > section.docx-doc) {
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .pptxWrap {
   flex: 1;
   min-height: 0;
