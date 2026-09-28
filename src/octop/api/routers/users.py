@@ -471,6 +471,9 @@ async def patch_user(
         if user_id == actor.id and role_id != Role.ADMIN:
             raise OctopError(ErrorCode.FORBIDDEN, "cannot demote yourself")
         _require_admin_to_grant_admin(actor, role_id)
+        if body.permissions is None:
+            # Template-expanded permissions are a grant too; check before ``set_role``.
+            _assert_can_assign(actor, [] if role_id == Role.ADMIN else template_perms)
         await server.user_manager.set_role(row.username, role_id)
         if "role_name" not in body.model_fields_set:
             server.services.user_repo.set_role_name(user_id, template_name)
