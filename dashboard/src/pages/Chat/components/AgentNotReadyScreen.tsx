@@ -72,8 +72,15 @@ export default function AgentNotReadyScreen({
   let subTitle = t("chat.agentNotRunningHint");
 
   if (disconnected) {
+    const inbound = Boolean(agent.bridge_inbound);
     title = t("chat.remoteExpert.disconnectedTitle");
-    subTitle = agent.bridge_connection_name
+    subTitle = inbound
+      ? agent.bridge_connection_name
+        ? t("chat.remoteExpert.waitForPeerNamed", {
+            name: agent.bridge_connection_name,
+          })
+        : t("chat.remoteExpert.waitForPeer")
+      : agent.bridge_connection_name
       ? t("chat.remoteExpert.disconnectedHintNamed", {
           name: agent.bridge_connection_name,
         })
@@ -106,7 +113,11 @@ export default function AgentNotReadyScreen({
         extra={
           disconnected ? (
             <Button type="primary" onClick={() => navigate("/bridge")}>
-              {t("chat.remoteExpert.reconnect")}
+              {t(
+                agent.bridge_inbound
+                  ? "chat.remoteExpert.openBridge"
+                  : "chat.remoteExpert.reconnect",
+              )}
             </Button>
           ) : isModelError ? (
             <Button

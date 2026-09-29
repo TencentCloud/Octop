@@ -16,6 +16,7 @@ export interface ChatAgentOption {
   bridge_connection_name?: string | null;
   bridge_connection_icon?: string | null;
   bridge_disconnected?: boolean;
+  bridge_inbound?: boolean;
 }
 
 interface ExpertAgentAvatarProps {

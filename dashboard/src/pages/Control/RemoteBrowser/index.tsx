@@ -1367,7 +1367,7 @@ export default function RemoteBrowserPage({
       </Drawer>
 
       <div className={styles.pageBody}>
-        {!embedded && activeAgent?.bridge ? (
+        {!embedded ? (
           <PeerOnlyRemoteAlert
             hintKey="peerOnlyBrowser"
             style={{ marginBottom: 0 }}

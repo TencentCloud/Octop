@@ -222,3 +222,42 @@ async def test_finalize_inbound_deleted_drops_row() -> None:
     await mgr._finalize_inbound("cid1", sess)
     mgr._repo.delete.assert_called_once_with("cid1")
     mgr._repo.update_status.assert_not_called()
+
+
+def test_inbound_default_display_name_skips_url_and_id() -> None:
+    from octop.infra.bridge.manager import inbound_default_display_name
+
+    assert (
+        inbound_default_display_name(
+            connection_id="cid1",
+            preferred_name="https://192.168.1.8:8787",
+            peer_username="alice",
+        )
+        == "alice"
+    )
+    assert (
+        inbound_default_display_name(
+            connection_id="cid1",
+            preferred_name="10.0.0.1",
+            peer_username="bob",
+        )
+        == "bob"
+    )
+    assert (
+        inbound_default_display_name(
+            connection_id="cid1",
+            preferred_name="笔记本",
+            peer_username="alice",
+            existing_name="https://peer.example",
+        )
+        == "笔记本"
+    )
+    assert (
+        inbound_default_display_name(
+            connection_id="cid1",
+            preferred_name="new",
+            existing_name="我改过的名",
+        )
+        == "我改过的名"
+    )
+    assert inbound_default_display_name(connection_id="cid1") == "cid1"

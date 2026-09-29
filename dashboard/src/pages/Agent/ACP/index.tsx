@@ -287,7 +287,7 @@ export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
 
   return (
     <>
-      {agentIdProp === undefined && activeAgent?.bridge ? (
+      {agentIdProp === undefined ? (
         <PeerOnlyRemoteAlert hintKey="peerOnlyAcp" />
       ) : null}
       <div className={styles.toolbar}>

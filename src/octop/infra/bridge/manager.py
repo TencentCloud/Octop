@@ -36,6 +36,34 @@ def _is_inbound(row: BridgeConnectionRow) -> bool:
     return not bool(row.credential_blob)
 
 
+def _looks_like_endpoint_label(name: str) -> bool:
+    """True when a display name is an auto-filled URL / IPv4, not a nickname."""
+    n = (name or "").strip()
+    if not n:
+        return True
+    low = n.lower()
+    if low.startswith("http://") or low.startswith("https://"):
+        return True
+    return n.count(".") >= 3 and any(ch.isdigit() for ch in n)
+
+
+def inbound_default_display_name(
+    *,
+    connection_id: str,
+    preferred_name: str = "",
+    peer_username: str = "",
+    existing_name: str | None = None,
+) -> str:
+    """Human label for a reverse (peer-dialed) row — never the advertised URL."""
+    existing = (existing_name or "").strip()
+    if existing and existing != connection_id and not _looks_like_endpoint_label(existing):
+        return existing
+    name = (preferred_name or "").strip() or (peer_username or "").strip() or connection_id
+    if _looks_like_endpoint_label(name):
+        name = (peer_username or "").strip() or connection_id
+    return name
+
+
 def _absolute_peer_url(base_url: str, maybe_path: str | None) -> str | None:
     raw = (maybe_path or "").strip()
     if not raw:
@@ -126,14 +154,22 @@ class BridgeManager:
             raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
         return row
 
-    def _allocate_display_name(self, *, owner_user_id: int, preferred: str) -> str:
+    def _allocate_display_name(
+        self,
+        *,
+        owner_user_id: int,
+        preferred: str,
+        exclude_connection_id: str | None = None,
+    ) -> str:
         base = preferred.strip() or "Remote"
         candidate = base
         n = 2
-        while self._repo.find_by_display_name(owner_user_id, candidate) is not None:
+        while True:
+            other = self._repo.find_by_display_name(owner_user_id, candidate)
+            if other is None or other.connection_id == exclude_connection_id:
+                return candidate
             candidate = f"{base} ({n})"
             n += 1
-        return candidate
 
     def connection_public(self, row: BridgeConnectionRow) -> dict[str, Any]:
         live = self._sessions.get(row.connection_id)
@@ -783,6 +819,7 @@ class BridgeManager:
             return
         advertise_base = str(payload.get("advertise_base_url") or "").strip() or "http://127.0.0.1"
         advertise_user = str(payload.get("advertise_username") or "").strip() or "peer"
+        preferred_name = str(payload.get("display_name") or "").strip()
         try:
             advertise_base = normalize_peer_base_url(advertise_base)
         except OctopError:
@@ -792,13 +829,17 @@ class BridgeManager:
         if existing is not None and int(existing.owner_user_id) != int(user.id):
             await websocket.close(code=4003, reason="connection owned by another user")
             return
-        if existing is None:
-            display_name = self._allocate_display_name(
-                owner_user_id=int(user.id),
-                preferred=connection_id,
-            )
-        else:
-            display_name = existing.display_name
+        preferred = inbound_default_display_name(
+            connection_id=connection_id,
+            preferred_name=preferred_name,
+            peer_username=advertise_user,
+            existing_name=existing.display_name if existing is not None else None,
+        )
+        display_name = self._allocate_display_name(
+            owner_user_id=int(user.id),
+            preferred=preferred,
+            exclude_connection_id=connection_id if existing is not None else None,
+        )
 
         self._repo.upsert_reverse(
             connection_id=connection_id,
@@ -977,6 +1018,8 @@ class BridgeManager:
             mapped["bridge_connection_name"] = row.display_name
             mapped["remote_agent_id"] = remote_id
             mapped["bridge"] = True
+            mapped["bridge_inbound"] = _is_inbound(row)
+            mapped["is_owner"] = True
             # Shadow experts are chat-ready while the bridge link is live.
             mapped["state"] = "running"
             # Keep bundled /experts/avatars and CDN URLs; proxy uploaded avatars.

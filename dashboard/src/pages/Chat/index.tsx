@@ -429,10 +429,7 @@ function ChatPageInner() {
               showConfirmModal(
                 {
                   title: t("browserWorkspace.chromeMissingTitle"),
-                  content: t(
-                    "chat.remoteExpert.manageToast",
-                    "当前是远端专家，技能 / 模型 / 知识库等请在对端 Octop 上管理",
-                  ),
+                  content: t("chat.remoteExpert.manageToast"),
                   okText: t("common.confirm"),
                   cancelText: t("common.cancel"),
                 },

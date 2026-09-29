@@ -378,36 +378,42 @@ function BridgeDisconnectButton({
 
 function BridgeDeleteButton({
   row,
+  connected,
   link,
   onDelete,
 }: {
   row: BridgeConnection;
+  connected: boolean;
   link?: boolean;
   onDelete: (row: BridgeConnection) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const inbound = isInboundConnection(row);
+  const locked = inbound && connected;
   const button = (
     <Button
       size="small"
       type={link ? "link" : "text"}
       danger
-      disabled={inbound}
+      disabled={locked}
       icon={<Trash2 size={14} />}
       aria-label={t("advancedSettings.bridge.delete")}
     >
       {link ? t("common.delete") : null}
     </Button>
   );
-  if (inbound) {
+  if (locked) {
     return <InboundLockedControl>{button}</InboundLockedControl>;
   }
   return (
     <Popconfirm
       title={t("advancedSettings.bridge.deleteConfirmTitle")}
-      description={t("advancedSettings.bridge.deleteConfirmDesc", {
-        name: row.display_name,
-      })}
+      description={t(
+        inbound
+          ? "advancedSettings.bridge.deleteConfirmDescInboundOffline"
+          : "advancedSettings.bridge.deleteConfirmDesc",
+        { name: row.display_name },
+      )}
       okText={t("common.delete")}
       cancelText={t("common.cancel")}
       okButtonProps={{ danger: true }}
@@ -494,27 +500,32 @@ function BridgeConnectionCard({
       </div>
 
       <div className={styles.backendCardInfo}>
-        <div className={styles.infoRow}>
-          <span className={styles.infoLabel}>
-            {t("advancedSettings.bridge.peerUrl")}:
-          </span>
-          <span className={styles.infoValue} title={row.peer_base_url}>
-            {row.peer_base_url}
-          </span>
-        </div>
-        <div className={styles.infoRow}>
-          <span className={styles.infoLabel}>
-            {t("advancedSettings.bridge.username")}:
-          </span>
-          <span className={styles.infoValue}>{row.peer_username}</span>
-        </div>
-        {row.notes ? (
-          <div className={styles.backendCardNote}>{row.notes}</div>
-        ) : null}
         {isInboundConnection(row) ? (
           <p className={styles.meta}>
-            {t("advancedSettings.bridge.inboundHint")}
+            {connected
+              ? t("advancedSettings.bridge.inboundHint")
+              : t("advancedSettings.bridge.inboundOfflineHint")}
           </p>
+        ) : (
+          <>
+            <div className={styles.infoRow}>
+              <span className={styles.infoLabel}>
+                {t("advancedSettings.bridge.peerUrl")}:
+              </span>
+              <span className={styles.infoValue} title={row.peer_base_url}>
+                {row.peer_base_url}
+              </span>
+            </div>
+            <div className={styles.infoRow}>
+              <span className={styles.infoLabel}>
+                {t("advancedSettings.bridge.username")}:
+              </span>
+              <span className={styles.infoValue}>{row.peer_username}</span>
+            </div>
+          </>
+        )}
+        {row.notes ? (
+          <div className={styles.backendCardNote}>{row.notes}</div>
         ) : null}
         {row.last_error ? (
           <p className={styles.metaError}>{row.last_error}</p>
@@ -523,11 +534,13 @@ function BridgeConnectionCard({
 
       <div className={styles.backendCardActions}>
         <div className={styles.backendActionsLeft}>
-          <AutoReconnectControl
-            row={row}
-            labeled
-            onToggle={actions.onToggleAutoReconnect}
-          />
+          {isInboundConnection(row) ? null : (
+            <AutoReconnectControl
+              row={row}
+              labeled
+              onToggle={actions.onToggleAutoReconnect}
+            />
+          )}
         </div>
         <div className={styles.backendActionsRight}>
           <Button
@@ -544,7 +557,11 @@ function BridgeConnectionCard({
             onDisconnect={actions.onDisconnect}
             onConnect={actions.onConnect}
           />
-          <BridgeDeleteButton row={row} onDelete={actions.onDelete} />
+          <BridgeDeleteButton
+            row={row}
+            connected={connected}
+            onDelete={actions.onDelete}
+          />
         </div>
       </div>
 
@@ -877,6 +894,7 @@ export default function BridgeSettingsPanel({
         dataIndex: "peer_base_url",
         key: "peer_base_url",
         ellipsis: true,
+        render: (url: string, row) => (isInboundConnection(row) ? "—" : url),
       },
       {
         title: t("advancedSettings.bridge.username"),
@@ -901,12 +919,15 @@ export default function BridgeSettingsPanel({
         dataIndex: "auto_reconnect",
         key: "auto_reconnect",
         width: 110,
-        render: (_value: boolean | undefined, row) => (
-          <AutoReconnectControl
-            row={row}
-            onToggle={actions.onToggleAutoReconnect}
-          />
-        ),
+        render: (_value: boolean | undefined, row) =>
+          isInboundConnection(row) ? (
+            "—"
+          ) : (
+            <AutoReconnectControl
+              row={row}
+              onToggle={actions.onToggleAutoReconnect}
+            />
+          ),
       },
       {
         title: t("advancedSettings.bridge.colAgents"),
@@ -938,7 +959,12 @@ export default function BridgeSettingsPanel({
               onDisconnect={actions.onDisconnect}
               onConnect={actions.onConnect}
             />
-            <BridgeDeleteButton row={row} link onDelete={actions.onDelete} />
+            <BridgeDeleteButton
+              row={row}
+              connected={row.status === "connected"}
+              link
+              onDelete={actions.onDelete}
+            />
           </div>
         ),
       },
@@ -1102,6 +1128,9 @@ export default function BridgeSettingsPanel({
       >
         <p className={styles.drawerHint}>
           {t("advancedSettings.bridge.drawerHint")}
+        </p>
+        <p className={styles.drawerHint}>
+          {t("advancedSettings.bridge.directionHint")}
         </p>
         <Form
           form={form}

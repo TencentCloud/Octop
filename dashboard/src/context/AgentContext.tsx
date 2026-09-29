@@ -74,6 +74,8 @@ export interface OctopAgent {
   bridge_connection_icon?: string | null;
   /** True while the cloud-collab link dropped but this shadow is still pinned. */
   bridge_disconnected?: boolean;
+  /** True when this shadow arrived via a peer-initiated (inbound) link. */
+  bridge_inbound?: boolean;
 }
 
 interface AgentContextValue {
@@ -161,6 +163,7 @@ export function projectChatAgentOption(agent: OctopAgent): {
   bridge_connection_name: string | null;
   bridge_connection_icon: string | null;
   bridge_disconnected: boolean;
+  bridge_inbound: boolean;
 } {
   return {
     agent_id: agent.agent_id,
@@ -176,6 +179,7 @@ export function projectChatAgentOption(agent: OctopAgent): {
     bridge_connection_name: agent.bridge_connection_name ?? null,
     bridge_connection_icon: agent.bridge_connection_icon ?? null,
     bridge_disconnected: Boolean(agent.bridge_disconnected),
+    bridge_inbound: Boolean(agent.bridge_inbound),
   };
 }
 
@@ -281,6 +285,8 @@ function mapBridgeAgent(
     connection_id: string;
     display_name: string;
     icon_name?: string | null;
+    inbound?: boolean;
+    has_password?: boolean;
   },
 ): OctopAgent {
   const agentId = String(agent.agent_id || agent.id || "");
@@ -306,6 +312,7 @@ function mapBridgeAgent(
     is_owner: true,
     is_shared: false,
     bridge_disconnected: false,
+    bridge_inbound: Boolean(conn.inbound) || conn.has_password === false,
     bridge_connection_id: conn.connection_id,
     bridge_connection_name: conn.display_name,
     bridge_connection_icon:
@@ -374,6 +381,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
                 a.bridge_connection_id === b.bridge_connection_id &&
                 a.bridge_connection_name === b.bridge_connection_name &&
                 a.bridge_disconnected === b.bridge_disconnected &&
+                a.bridge_inbound === b.bridge_inbound &&
                 sameMemberIds(a.member_ids, b.member_ids)
               );
             })

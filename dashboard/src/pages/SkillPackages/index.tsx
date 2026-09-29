@@ -48,6 +48,7 @@ import type {
 import { CardSkeleton } from "../../components/Skeleton";
 import { CopyableResourceId } from "../../components/CopyableResourceId";
 import { EmptyState, OctopEmptyMascot } from "../../components/EmptyState";
+import PeerOnlyRemoteAlert from "../../components/PeerOnlyRemoteAlert";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import { useHorizontalResize } from "../../hooks/useHorizontalResize";
@@ -581,6 +582,7 @@ export default function SkillPackagesPage() {
       subtitle={isMobile ? undefined : t("skillPackages.subtitle")}
       fill
     >
+      <PeerOnlyRemoteAlert hintKey="peerOnlyLocalPage" />
       {loading && packages.length === 0 ? (
         <div className={styles.emptyLayout}>
           <div className={styles.centered}>

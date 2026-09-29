@@ -213,6 +213,7 @@ function PageShell({
         {agentScoped && activeAgent?.bridge_disconnected ? (
           <RemoteDisconnectBanner
             connectionName={activeAgent.bridge_connection_name}
+            inbound={Boolean(activeAgent.bridge_inbound)}
           />
         ) : null}
         {children}

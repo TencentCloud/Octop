@@ -1,18 +1,24 @@
 import { Alert } from "antd";
 import { useTranslation } from "react-i18next";
+import { useAgent } from "../context/AgentContext";
 
 interface PeerOnlyRemoteAlertProps {
   /** i18n key under ``chat.remoteExpert``. */
-  hintKey: "peerOnlyAcp" | "peerOnlyBrowser";
+  hintKey: "peerOnlyAcp" | "peerOnlyBrowser" | "peerOnlyLocalPage";
   style?: React.CSSProperties;
 }
 
-/** Local-only surfaces (ACP runners on this host, Remote Browser install). */
+/** Local-only surfaces (ACP, host browser, connectors, knowledge, skill packages). */
 export default function PeerOnlyRemoteAlert({
   hintKey,
   style,
 }: PeerOnlyRemoteAlertProps) {
   const { t } = useTranslation();
+  const { agents, activeAgentId } = useAgent();
+  const isPeer = agents.some(
+    (agent) => agent.agent_id === activeAgentId && agent.bridge,
+  );
+  if (!isPeer) return null;
   return (
     <Alert
       type="info"
