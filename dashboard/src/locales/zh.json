@@ -3326,6 +3326,8 @@
       "probeFailed": "无法探测对端 Octop",
       "probeResultTitle": "{{name}} · {{count}} 个专家/团队",
       "noAgents": "暂无可见的对端专家或团队。",
+      "showMoreExperts": "展开更多（{{count}}）",
+      "showLessExperts": "收起",
       "kindExpert": "专家",
       "kindTeam": "团队",
       "displayName": "显示名",

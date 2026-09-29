@@ -140,6 +140,8 @@ function InboundLockedControl({ children }: { children: ReactNode }) {
   );
 }
 
+const CARD_AGENT_PREVIEW_LIMIT = 4;
+
 function AgentAvatar({
   name,
   iconUrl,
@@ -154,13 +156,15 @@ function AgentAvatar({
   return (
     <span
       className={styles.probeAvatar}
-      style={{
-        color: color || "var(--fn-color-brand, #e85d75)",
-        background: `${color || "#e85d75"}1a`,
-      }}
+      style={{ color: color || "var(--fn-color-brand, #e85d75)" }}
       aria-label={name}
     >
-      <ExpertIcon iconUrl={iconUrl} iconName={iconName} size={22} />
+      <ExpertIcon
+        iconUrl={iconUrl}
+        iconName={iconName}
+        size={40}
+        className={styles.probeAvatarImg}
+      />
     </span>
   );
 }
@@ -232,8 +236,35 @@ function AgentListItem({
   return <li className={styles.probeItem}>{body}</li>;
 }
 
+function AgentListToggle({
+  total,
+  expanded,
+  onToggle,
+}: {
+  total: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+  const hidden = total - CARD_AGENT_PREVIEW_LIMIT;
+  if (hidden <= 0) return null;
+  return (
+    <Button
+      type="link"
+      size="small"
+      className={styles.probeMoreBtn}
+      onClick={onToggle}
+    >
+      {expanded
+        ? t("advancedSettings.bridge.showLessExperts")
+        : t("advancedSettings.bridge.showMoreExperts", { count: hidden })}
+    </Button>
+  );
+}
+
 function ProbeAgentList({ agents }: { agents: BridgeProbeAgent[] }) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
   if (agents.length === 0) {
     return (
       <p className={styles.probeEmpty}>
@@ -241,21 +272,32 @@ function ProbeAgentList({ agents }: { agents: BridgeProbeAgent[] }) {
       </p>
     );
   }
+  const visible =
+    expanded || agents.length <= CARD_AGENT_PREVIEW_LIMIT
+      ? agents
+      : agents.slice(0, CARD_AGENT_PREVIEW_LIMIT);
   return (
-    <ul className={styles.probeList}>
-      {agents.map((agent) => (
-        <AgentListItem
-          key={agent.agent_id}
-          agentId={agent.agent_id}
-          name={agent.name}
-          description={agent.description}
-          iconUrl={agent.icon_url}
-          iconName={agent.icon_name}
-          color={agent.color}
-          kind={agent.kind}
-        />
-      ))}
-    </ul>
+    <>
+      <ul className={styles.probeList}>
+        {visible.map((agent) => (
+          <AgentListItem
+            key={agent.agent_id}
+            agentId={agent.agent_id}
+            name={agent.name}
+            description={agent.description}
+            iconUrl={agent.icon_url}
+            iconName={agent.icon_name}
+            color={agent.color}
+            kind={agent.kind}
+          />
+        ))}
+      </ul>
+      <AgentListToggle
+        total={agents.length}
+        expanded={expanded}
+        onToggle={() => setExpanded((open) => !open)}
+      />
+    </>
   );
 }
 
@@ -269,27 +311,41 @@ function RemoteAgentsBlock({
   onOpen: (agentId: string) => void;
 }) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
   if (agents.length > 0) {
+    const visible =
+      expanded || agents.length <= CARD_AGENT_PREVIEW_LIMIT
+        ? agents
+        : agents.slice(0, CARD_AGENT_PREVIEW_LIMIT);
     return (
-      <ul className={styles.probeList}>
-        {agents.map((agent) => (
-          <AgentListItem
-            key={agent.id}
-            agentId={agent.id}
-            name={String(agent.name || agent.remote_agent_id || agent.id)}
-            description={
-              typeof agent.description === "string" ? agent.description : null
-            }
-            iconUrl={typeof agent.icon_url === "string" ? agent.icon_url : null}
-            iconName={
-              typeof agent.icon_name === "string" ? agent.icon_name : null
-            }
-            color={typeof agent.color === "string" ? agent.color : null}
-            kind={typeof agent.kind === "string" ? agent.kind : null}
-            onClick={() => onOpen(agent.id)}
-          />
-        ))}
-      </ul>
+      <>
+        <ul className={styles.probeList}>
+          {visible.map((agent) => (
+            <AgentListItem
+              key={agent.id}
+              agentId={agent.id}
+              name={String(agent.name || agent.remote_agent_id || agent.id)}
+              description={
+                typeof agent.description === "string" ? agent.description : null
+              }
+              iconUrl={
+                typeof agent.icon_url === "string" ? agent.icon_url : null
+              }
+              iconName={
+                typeof agent.icon_name === "string" ? agent.icon_name : null
+              }
+              color={typeof agent.color === "string" ? agent.color : null}
+              kind={typeof agent.kind === "string" ? agent.kind : null}
+              onClick={() => onOpen(agent.id)}
+            />
+          ))}
+        </ul>
+        <AgentListToggle
+          total={agents.length}
+          expanded={expanded}
+          onToggle={() => setExpanded((open) => !open)}
+        />
+      </>
     );
   }
   if (row.status === "connected") {

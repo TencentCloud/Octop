@@ -3329,6 +3329,8 @@
       "probeFailed": "Could not probe the peer Octop",
       "probeResultTitle": "{{name}} · {{count}} expert(s)/team(s)",
       "noAgents": "No peer experts or teams visible.",
+      "showMoreExperts": "Show {{count}} more",
+      "showLessExperts": "Show less",
       "kindExpert": "Expert",
       "kindTeam": "Team",
       "displayName": "Display name",
