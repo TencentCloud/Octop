@@ -20,6 +20,8 @@ from octop.infra.utils.ollama_manager import (
     resolve_ollama_models_root,
 )
 
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX-only path semantics")
+
 
 def _reset_apply_state(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mod, "_original_ollama_models", mod._UNSET)
@@ -31,9 +33,22 @@ def test_normalize_models_dir_empty() -> None:
 
 
 def test_normalize_models_dir_requires_absolute(tmp_path: Path) -> None:
-    assert normalize_models_dir(str(tmp_path)) == str(tmp_path)
+    assert normalize_models_dir(str(tmp_path)) == os.path.realpath(str(tmp_path))
     with pytest.raises(ValueError, match="absolute"):
         normalize_models_dir("relative/models")
+
+
+@posix_only
+def test_normalize_models_dir_rejects_denied_prefix() -> None:
+    with pytest.raises(ValueError, match="not allowed"):
+        normalize_models_dir("/etc/ollama")
+    with pytest.raises(ValueError, match="not allowed"):
+        normalize_models_dir("/tmp/../etc/ollama")
+
+
+@posix_only
+def test_list_models_from_dir_skips_denied_prefix() -> None:
+    assert list_models_from_dir("/etc") == []
 
 
 def test_names_match_latest_alias() -> None:
@@ -60,8 +75,8 @@ def test_list_models_from_dir_reads_manifests(tmp_path: Path) -> None:
 def test_resolve_root_accepts_ollama_home(tmp_path: Path) -> None:
     models = tmp_path / "models"
     (models / "manifests").mkdir(parents=True)
-    assert resolve_ollama_models_root(str(tmp_path)) == models
-    assert resolve_ollama_models_root(str(models)) == models
+    assert resolve_ollama_models_root(str(tmp_path)) == models.resolve()
+    assert resolve_ollama_models_root(str(models)) == models.resolve()
 
 
 def test_list_models_from_dir_via_home_parent(tmp_path: Path) -> None:

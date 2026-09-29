@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -133,8 +134,9 @@ async def test_put_models_dir_without_enabled_does_not_stop(
     server = _server({})
     body = ollama_models.OllamaServiceBody(models_dir=str(tmp_path))
     status = await ollama_models.put_ollama_service(body=body, server=server, _=None)
-    server.services.settings_repo.set.assert_any_call(SETTINGS_KEY_MODELS_DIR, str(tmp_path))
-    assert status.models_dir == str(tmp_path)
+    expected = os.path.realpath(str(tmp_path))
+    server.services.settings_repo.set.assert_any_call(SETTINGS_KEY_MODELS_DIR, expected)
+    assert status.models_dir == expected
     assert status.enabled is False
     stop.assert_not_called()
     start.assert_not_called()
