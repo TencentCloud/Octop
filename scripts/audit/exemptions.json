@@ -1,0 +1,35 @@
+{
+  "schema": "octop.audit.exemptions/1",
+  "entry_count": 3,
+  "frozen_at": "2026-09-29T10:56:30+08:00",
+  "at_commit": "fccd817c",
+  "entries": [
+    {
+      "criterion": "AUD-S3",
+      "path": "src/octop/infra/agents/settings/langfuse.py",
+      "line": 126,
+      "anchor": "self._secrets.rotate(_SECRET_KEY, encoded)",
+      "value_fragment": "rotate(_SECRET_KEY, encoded)",
+      "reason": "langfuse 密钥明文往返（值来自 :123 的 secret_key.encode）· 修复 = 产品行为改动（超本批范围）",
+      "ledger_card": "T-AUDIT-GATE"
+    },
+    {
+      "criterion": "AUD-S3",
+      "path": "src/octop/infra/agents/settings/langfuse.py",
+      "line": 128,
+      "anchor": "self._secrets.get_or_create(_SECRET_KEY, lambda: encoded)",
+      "value_fragment": "lambda: encoded",
+      "reason": "同上 —— :126 与 :128 是【两个调用点】⇒ 【两条豁免】",
+      "ledger_card": "T-AUDIT-GATE"
+    },
+    {
+      "criterion": "AUD-S5",
+      "path": "src/octop/infra/connectors/gateway/adapters/fliggy.py",
+      "line": 21,
+      "anchor": "_SIGN_SECRET = \"XSbdYnucPARDc9knhD8+X6hxdD1Nh6ZGI6Hadg25kBw=\"",
+      "value_fragment": "XSbdYnucPARDc9knhD8+X6hxdD1Nh6ZGI6Hadg25kBw=",
+      "reason": "协议常量（:20 注明 public signing material from @fly-ai/flyai-cli）",
+      "ledger_card": "T-AUDIT-GATE"
+    }
+  ]
+}

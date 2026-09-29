@@ -351,3 +351,10 @@ clean-online:
 .PHONY: version
 version:
 	@$(PYTHON) -c "import pathlib, re; t = pathlib.Path('pyproject.toml').read_text(); m = re.search(r'^version\\s*=\\s*\"([^\"]+)\"', t, re.M); print(m.group(1) if m else 'unknown')"
+
+# ─── Audit（★ 独立目标 · 不并进 all · 只读）─────────────────────────────────
+
+.PHONY: audit
+audit:
+	@echo "[audit] 当前树纪律审计（只读 · 独立目标）..."
+	python3 scripts/audit/current_tree.py
