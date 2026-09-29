@@ -118,7 +118,9 @@ describe("<JournalList />", () => {
   it("renders empty state on no entries", async () => {
     api.listJournal.mockResolvedValue(listJournalResp([]));
     render(<JournalList agentId="ZYWZTD" />);
-    await waitFor(() => expect(api.listJournal).toHaveBeenCalled());
-    expect(document.querySelector(".ant-empty-image")).not.toBeNull();
+    await waitFor(() => {
+      expect(document.querySelector(".ant-empty-image")).not.toBeNull();
+      expect(api.listJournal).toHaveBeenCalled();
+    });
   });
 });
