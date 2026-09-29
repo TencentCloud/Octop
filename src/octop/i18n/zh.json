@@ -87,6 +87,32 @@
       "not_owner": "仅被提问的用户可以回答。",
       "answered_prefix": "用户回答："
     },
+    "team": {
+      "user_inactive": "该用户已无法执行操作。",
+      "usage": "用法：/team <目标> | status|task|check|detail|decision|resume|cancel|tier|learn",
+      "unknown": "无法识别的 /team 参数。",
+      "not_found": "未找到 {run} 对应的团队。",
+      "created": "已创建团队任务：{run}",
+      "status_title": "团队任务 {run}",
+      "task_done": "任务 {task} → {op}",
+      "check_title": "{run} 的门禁发现",
+      "check_clean": "{run} 没有门禁发现。",
+      "detail_title": "{run} 的阶段",
+      "decision_done": "{run} 的决策已记录：{choice}（状态 {status}）",
+      "decision_none": "{run} 当前没有待决策项。",
+      "resume_done": "团队任务 {run} 已恢复（状态 {status}）。",
+      "cancel_done": "团队任务 {run} 已取消。",
+      "tier_title": "团队任务 {run} 的档位 {tier}",
+      "learn_title": "{run} 的工件",
+      "learn_none": "{run} 暂无工件。",
+      "field": {
+        "status": "状态",
+        "phase": "阶段",
+        "tier": "档位",
+        "mode": "模式",
+        "goal": "目标"
+      }
+    },
     "title": {
       "usage": "用法：/title <标题>",
       "done": "标题已设置：{title}"
@@ -271,6 +297,10 @@
       "pending": {
         "label": "待审批",
         "description": "列出等待您决定的工具审批"
+      },
+      "team": {
+        "label": "团队任务",
+        "description": "发起或推进一次专家团任务"
       },
       "title": {
         "label": "设置标题",
@@ -472,7 +502,43 @@
     "PROJECT_CONNECTOR_INVALID": "连接器类型不存在或不可用。",
     "PROJECT_SKILL_INVALID": "只能选择该专家已安装的技能。",
     "PROJECT_CRON_INVALID": "定时任务的执行专家或归属不合法。",
-    "PROJECT_INSTRUCTION_INVALID": "指令内容不合法（超长或含非法字符）。"
+    "PROJECT_INSTRUCTION_INVALID": "指令内容不合法（超长或含非法字符）。",
+    "TEAM_RUN_NOT_FOUND": "团队运行不存在。",
+    "TEAM_RUN_PHASE_INVALID": "阶段推进不合法。",
+    "TEAM_PHASE_GATE_FAILED": "当前阶段门禁未通过。",
+    "TEAM_DECISION_PENDING": "存在待拍板决策，须先处理。",
+    "TEAM_DECISION_NOT_PENDING": "当前没有待处理的决策。",
+    "TEAM_DECISION_OPTION_INVALID": "所选的决策选项不合法。",
+    "TEAM_SPEC_BOUNDARY_EMPTY": "规格的「边界与禁止项」为空，不得进入实现阶段。",
+    "TEAM_TASK_DEPS_UNMET": "上游任务尚未完成。",
+    "TEAM_TASK_GRAPH_INVALID": "任务依赖图不合法。",
+    "TEAM_REWORK_LOOP_LIMIT": "返工轮次已达上限，须升级用户裁决。",
+    "TEAM_FINDING_REOPENED": "同一问题连续两轮未闭环，须升级用户裁决。",
+    "TEAM_ATTEMPT_STALE": "该次尝试已被更新的尝试取代。",
+    "TEAM_SCOPE_VIOLATION": "变更文件超出任务范围。",
+    "TEAM_VERDICT_FINDINGS_REQUIRED": "非通过裁决必须至少带一条问题记录。",
+    "TEAM_REVIEW_SELF_AUDIT": "审查者不得审查自己的产出。",
+    "TEAM_ARTIFACT_STALE": "工件已被他人修改，请重新加载后重试。",
+    "TEAM_ARTIFACT_OWNERSHIP_DENIED": "你不是该工件的归属写者。",
+    "TEAM_RUN_MEMBER_LIMIT": "本次运行的成员数已达上限。",
+    "TEAM_RUN_TASK_LIMIT": "本次运行的任务数已达上限。",
+    "TEAM_TIER_INVALID": "档位无法识别，不做猜测也不静默回退默认值。",
+    "TEAM_ROLE_UNKNOWN": "该角色不在固定角色表内。",
+    "TEAM_TIER_DOWNGRADE_FORBIDDEN": "不允许降档。",
+    "TEAM_RUN_CONFLICT": "同一运行已被并发请求修改。",
+    "TEAM_TASK_CLAIM_CONFLICT": "该任务已被他人认领。",
+    "TEAM_PHASE_CONFLICT": "阶段已被并发请求推进。",
+    "TEAM_CROSS_RUN_REFERENCE": "不允许跨运行引用。",
+    "TEAM_RUN_TERMINAL": "该运行已处于终态。",
+    "TEAM_TASK_TERMINAL": "该任务已处于终态。",
+    "TEAM_TASK_STATUS_INVALID": "任务状态流转不合法。",
+    "TEAM_MEMBER_NOT_IN_RUN": "你不是本次运行的成员。",
+    "TEAM_ARTIFACT_INVALID": "工件内容不合法。",
+    "TEAM_ARTIFACT_PATH_INVALID": "工件路径不合法。",
+    "TEAM_RUN_GOAL_EMPTY": "运行目标不能为空。",
+    "TEAM_RUN_GOAL_TOO_LONG": "运行目标过长。",
+    "TEAM_COMMAND_UNKNOWN": "未知的 /team 子命令。",
+    "TEAM_EFFORT_INVALID": "推理等级不在合法域内。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
@@ -832,7 +898,39 @@
     "channel_dispatched": "已请 {name} 处理，请稍候…",
     "host_briefing": "[主持人调度，不是让你代答]\n用户消息先到你这里。先消化意图、范围、约束和交付物；缺关键信息就先问一句，不要空派。专业工作必须改写成给该成员的任务说明书后再 ask_agent：写清目标、范围、交付格式和必要上下文，禁止原样转发用户原话。不同成员给不同任务。寒暄或澄清自己短答。ask_agent 返回后不要重复「已安排 / 稍等」。若当前是成员完成或失败的系统唤醒，按唤醒说明收口或改派，不要重复同一任务。",
     "member_briefing": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。",
-    "member_briefing_with_history": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。下面的群聊记录只作背景。\n\n{history}"
+    "member_briefing_with_history": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。下面的群聊记录只作背景。\n\n{history}",
+    "phase": {
+      "clarify": "澄清",
+      "research": "调研",
+      "design": "设计",
+      "spec_review": "规格评审",
+      "plan_approval": "方案确认",
+      "implement": "实现",
+      "review": "审查",
+      "test": "测试",
+      "deliver": "交付"
+    },
+    "run_status": {
+      "running": "运行中",
+      "awaiting_confirmation": "待确认",
+      "awaiting_decision": "待拍板",
+      "complete": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消"
+    },
+    "gate": {
+      "missing_artifacts": "必需工件缺失。",
+      "spec_boundary_empty": "规格的「边界与禁止项」为空。",
+      "decision_pending": "存在待拍板决策。",
+      "deps_unmet": "上游任务尚未完成。",
+      "round_limit": "轮次已达上限。",
+      "phase_invalid": "阶段推进不合法。"
+    },
+    "command": {
+      "started": "团队运行已启动。",
+      "help": "团队运行命令。",
+      "unknown_subcommand": "未知的 /team 子命令。"
+    }
   },
   "conversation_mode": {
     "plan_ready": "计划已写入 `{path}`。回复「按计划执行」开始执行，或继续改计划。",

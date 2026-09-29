@@ -27,7 +27,7 @@ def _version(pool: SqlitePool) -> int:
 def test_head_is_22(tmp_path: Path) -> None:
     pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
-    assert _version(pool) == 24
+    assert _version(pool) == 25
 
 
 def test_both_columns_exist_and_are_nullable(tmp_path: Path) -> None:
@@ -47,7 +47,7 @@ def test_rerunning_migrations_is_idempotent(tmp_path: Path) -> None:
     run_migrations(pool)
     before = _columns(pool, "project_comments")
     run_migrations(pool)  # second pass must be a no-op, not a duplicate-column error
-    assert _version(pool) == 24
+    assert _version(pool) == 25
     assert _columns(pool, "project_comments") == before
 
 

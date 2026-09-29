@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from octop.config import OctopConfig
 from octop.infra.db.pool import DatabasePool
@@ -22,6 +23,7 @@ from octop.infra.db.repos.project_content import ProjectCommentRepo
 from octop.infra.db.repos.project_custom_fields import ProjectCustomFieldRepo
 from octop.infra.db.repos.project_skills import ProjectSkillRepo
 from octop.infra.db.repos.project_tags import ProjectTagRepo
+from octop.infra.db.repos.project_task_findings import ProjectTaskFindingRepo
 from octop.infra.db.repos.project_tasks import ProjectTaskRepo, TimelineRepo
 from octop.infra.db.repos.projects import (
     ProjectMemberRepo,
@@ -34,6 +36,7 @@ from octop.infra.db.repos.sessions import SessionRepo
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.skill_packages import SkillPackageRepo
 from octop.infra.db.repos.sso import SsoRepo
+from octop.infra.db.repos.team_runs import TeamRunRepo
 from octop.infra.db.repos.thread_messages import ThreadMessageRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.trajectory_events import TrajectoryEventRepo
@@ -82,6 +85,8 @@ class RepoBundle:
     project_skill_repo: ProjectSkillRepo
     timeline_repo: TimelineRepo
     sso_repo: SsoRepo
+    team_run_repo: TeamRunRepo
+    task_finding_repo: ProjectTaskFindingRepo
 
     @classmethod
     def from_pool(cls, db: DatabasePool) -> RepoBundle:
@@ -121,6 +126,8 @@ class RepoBundle:
             project_skill_repo=ProjectSkillRepo(db),
             timeline_repo=TimelineRepo(db),
             sso_repo=SsoRepo(db),
+            team_run_repo=TeamRunRepo(db),
+            task_finding_repo=ProjectTaskFindingRepo(db),
         )
 
 
@@ -129,6 +136,13 @@ class SharedServices:
     paths: PathLayout
     config: OctopConfig
     repos: RepoBundle
+    #: Memo for :meth:`team_run_service`. A mutable *container* rather than a mutable
+    #: attribute: the dataclass stays frozen (``compare=False`` keeps equality and the
+    #: hash exactly as they were), while the service can still be resolved once. The
+    #: alternative -- dropping ``frozen=True`` here -- would have changed equality and
+    #: hashing for every user of this bundle, or forced ``object.__setattr__``, which
+    #: writes around the frozen contract instead of honouring it.
+    _team_run_service_memo: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def db(self) -> DatabasePool:
@@ -269,6 +283,39 @@ class SharedServices:
     @property
     def sso_repo(self) -> SsoRepo:
         return self.repos.sso_repo
+
+    @property
+    def team_run_repo(self) -> TeamRunRepo:
+        return self.repos.team_run_repo
+
+    @property
+    def task_finding_repo(self) -> ProjectTaskFindingRepo:
+        return self.repos.task_finding_repo
+
+    def team_run_service(self) -> Any:
+        """Construct the expert-team run service.
+
+        Imported lazily on purpose: ``TeamRunService`` lives in
+        ``infra/agents/teams/run_service.py``, which is **not** part of the DB layer
+        -- a module-level import would point ``infra/db`` at ``infra/agents`` and
+        break the inward-only dependency rule (AGENTS.md section 5). The service is
+        also built after this bundle, so a circular import would be the alternative.
+
+        **Memoised on purpose.** ``bind_runtime`` mutates the service *in place*, and the
+        server's boot does ``build once -> inject the gateway -> bind_runtime on that
+        object``. Returning a fresh instance per call therefore handed the HTTP routers
+        an unbound service: the gateway's copy had the runtime, the routes did not, and
+        rooms / dispatch / artifact I/O were dead on the HTTP face -- silently, because
+        nothing errors when the wiring is merely dangling.
+        """
+        memo = self._team_run_service_memo
+        service = memo.get("service")
+        if service is None:
+            from octop.infra.agents.teams.run_service import TeamRunService
+
+            service = TeamRunService(services=self)
+            memo["service"] = service
+        return service
 
 
 def build_shared_services(

@@ -71,6 +71,17 @@ def _dump_deps(deps: Iterable[object]) -> str:
     return json.dumps([str(d) for d in deps], ensure_ascii=False)
 
 
+def _json_array(value: object) -> object:
+    """Codec for a JSON-array column in a patch: ``UNSET`` stays ``UNSET``.
+
+    The patch semantics (``UNSET`` = leave alone, explicit value = write) decide
+    what to do *before* the codec runs, so the sentinel passes through untouched.
+    """
+    if value is UNSET:
+        return UNSET
+    return _dump_deps(cast("Iterable[object]", value))
+
+
 def _parse_payload(raw: object) -> dict[str, Any]:
     try:
         parsed = json.loads(str(raw) if raw else "{}")
@@ -103,6 +114,22 @@ class ProjectTaskRow:
     created_by: int
     created_at: int
     updated_at: int
+    # 025 team-run columns (PLAN「数据模型②·加列」). The four JSON arrays reuse the
+    # ``deps`` codec above; the claim/attempt tokens are written by ``claim`` alone
+    # so a stale writer can never move them.
+    kind: str = "work"
+    acceptance: tuple[str, ...] = ()
+    in_scope: tuple[str, ...] = ()
+    verify: tuple[str, ...] = ()
+    changed_paths: tuple[str, ...] = ()
+    round: int = 1
+    verdict: str | None = None
+    attempt: int = 0
+    attempt_id: str | None = None
+    claimed_by: str | None = None
+    claimed_at: int | None = None
+    started_at: int | None = None
+    phase: str | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> ProjectTaskRow:
@@ -126,6 +153,19 @@ class ProjectTaskRow:
             created_by=int(r["created_by"]),
             created_at=int(r["created_at"]),
             updated_at=int(r["updated_at"]),
+            kind=str(r["kind"]),
+            acceptance=_parse_deps(r["acceptance"]),
+            in_scope=_parse_deps(r["in_scope"]),
+            verify=_parse_deps(r["verify"]),
+            changed_paths=_parse_deps(r["changed_paths"]),
+            round=int(r["round"]),
+            verdict=(str(r["verdict"]) if r["verdict"] is not None else None),
+            attempt=int(r["attempt"]),
+            attempt_id=(str(r["attempt_id"]) if r["attempt_id"] is not None else None),
+            claimed_by=(str(r["claimed_by"]) if r["claimed_by"] is not None else None),
+            claimed_at=(int(r["claimed_at"]) if r["claimed_at"] is not None else None),
+            started_at=(int(r["started_at"]) if r["started_at"] is not None else None),
+            phase=(str(r["phase"]) if r["phase"] is not None else None),
         )
 
 
@@ -262,10 +302,21 @@ class ProjectTaskRepo:
         start_at: int | None = None,
         due_at: int | None = None,
         sort_order: int | None = None,
+        kind: str = "work",
+        acceptance: Iterable[object] = (),
+        in_scope: Iterable[object] = (),
+        verify: Iterable[object] = (),
+        phase: str | None = None,
+        task_id: str | None = None,
     ) -> ProjectTaskRow:
         self._assert_parent_ok(project_id, parent_id)
         self._assert_thread_exists(thread_id)
-        task_id = self._allocate_id()
+        # A caller-supplied id is honoured verbatim (the plan's API takes ``id?`` so a
+        # run can name its own tasks); omitted, the id is allocated as before -- every
+        # existing caller is untouched. Uniqueness is the caller's to enforce *before*
+        # this insert (``validate_task_graph`` does), because the UNIQUE constraint's
+        # failure would surface as a 500 rather than the plan's 409.
+        task_id = task_id or self._allocate_id()
         ts = now_ts()
         if sort_order is None:
             sort_order = self.next_sort_order(project_id)
@@ -274,8 +325,9 @@ class ProjectTaskRepo:
                 "INSERT INTO project_tasks("
                 "task_id, project_id, parent_id, title, description, status, "
                 "assignee_type, assignee_id, priority, deps, thread_id, origin_node_id, "
-                "start_at, due_at, sort_order, created_by, created_at, updated_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "start_at, due_at, sort_order, created_by, created_at, updated_at, "
+                "kind, acceptance, in_scope, verify, phase"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     task_id,
                     project_id,
@@ -295,6 +347,11 @@ class ProjectTaskRepo:
                     created_by,
                     ts,
                     ts,
+                    kind,
+                    _dump_deps(acceptance),
+                    _dump_deps(in_scope),
+                    _dump_deps(verify),
+                    phase,
                 ),
             )
         row = self.get(task_id)
@@ -319,6 +376,15 @@ class ProjectTaskRepo:
         start_at: object = UNSET,
         due_at: object = UNSET,
         sort_order: object = UNSET,
+        kind: object = UNSET,
+        acceptance: object = UNSET,
+        in_scope: object = UNSET,
+        verify: object = UNSET,
+        changed_paths: object = UNSET,
+        round: object = UNSET,
+        verdict: object = UNSET,
+        phase: object = UNSET,
+        started_at: object = UNSET,
     ) -> ProjectTaskRow | None:
         current = self.get(task_id)
         if current is None:
@@ -355,6 +421,15 @@ class ProjectTaskRepo:
                 ("start_at", start_at),
                 ("due_at", due_at),
                 ("sort_order", sort_order),
+                ("kind", kind),
+                ("acceptance", _json_array(acceptance)),
+                ("in_scope", _json_array(in_scope)),
+                ("verify", _json_array(verify)),
+                ("changed_paths", _json_array(changed_paths)),
+                ("round", round),
+                ("verdict", verdict),
+                ("phase", phase),
+                ("started_at", started_at),
             ]
         )
         if not clauses:
@@ -373,6 +448,105 @@ class ProjectTaskRepo:
         with self._db.transaction() as conn:
             cur = conn.execute("DELETE FROM project_tasks WHERE task_id = ?", (task_id,))
         return bool(cur.rowcount)
+
+    # ── attempts (claim / report) ────────────────────────────────────────────
+    #
+    # ``attempt_id`` is the token a run hands out when it claims a task and the
+    # credential every later write must present (PLAN G8): a superseded token
+    # cannot move the row. These two methods are the **only** writers of the
+    # claim/attempt columns, which is what keeps that guarantee in one place.
+
+    def _attempt_guard(self, task_id: str, expected: str | None) -> tuple[str, list[object]]:
+        """``WHERE`` body pinning the row to the attempt the caller last read.
+
+        ``attempt_id`` is nullable, so the guard is spelled in two shapes instead
+        of ``attempt_id IS ?``: the PostgreSQL proxy rewrites ``?`` to ``%s`` and
+        PostgreSQL rejects a placeholder after ``IS``. Same idiom as
+        ``ArtifactRepo.bind`` (``... AND task_id IS NULL``).
+        """
+        if expected is None:
+            return "task_id = ? AND attempt_id IS NULL", [task_id]
+        return "task_id = ? AND attempt_id = ?", [task_id, expected]
+
+    def claim(
+        self,
+        task_id: str,
+        *,
+        claimed_by: str,
+        expected_attempt_id: str | None,
+        attempt_id: str | None = None,
+    ) -> ProjectTaskRow | None:
+        """Claim *task_id* for *claimed_by* under a new attempt.
+
+        Compare-and-set, and nothing else: one ``UPDATE`` whose ``WHERE`` carries
+        the attempt the caller gated on. Two racing claims therefore cannot both
+        win — the loser's statement matches no row and gets ``None``, which the
+        caller answers with ``TEAM_TASK_CLAIM_CONFLICT``. The decision is taken by
+        the database, not by a read-then-``if`` in Python (PLAN B26: the loser
+        must never twin the owner).
+
+        *expected_attempt_id* is what the caller read **before** its gates ran
+        (``None`` until the first claim); passing a freshly re-read value instead
+        is a deliberate transfer, which the plan allows. *attempt_id* is the token
+        the new attempt runs under — omitted, a fresh one is minted; either way
+        ``attempt`` is bumped. ``None`` also covers a task that no longer exists.
+        """
+        guard, guard_params = self._attempt_guard(task_id, expected_attempt_id)
+        ts = now_ts()
+        with self._db.transaction() as conn:
+            cur = conn.execute(
+                "UPDATE project_tasks SET claimed_by = ?, claimed_at = ?, attempt_id = ?, "
+                f"attempt = attempt + 1, updated_at = ? WHERE {guard}",
+                (claimed_by, ts, attempt_id or new_short_id(), ts, *guard_params),
+            )
+        if not cur.rowcount:
+            return None
+        return self.get(task_id)
+
+    def report(
+        self,
+        task_id: str,
+        *,
+        attempt_id: str,
+        verdict: object = UNSET,
+        changed_paths: object = UNSET,
+        round: object = UNSET,
+        phase: object = UNSET,
+    ) -> ProjectTaskRow | None:
+        """Record an attempt's outcome; ``None`` when *attempt_id* is stale.
+
+        A write carrying a superseded token is refused (PLAN G8) — the row is left
+        untouched and the caller answers ``TEAM_ATTEMPT_STALE``. The guard is
+        re-checked inside the ``UPDATE`` as well, so an attempt that is superseded
+        between the read and the write is refused too. Patch semantics are the
+        same as :meth:`update`: omitted fields stay, explicit ``None`` clears.
+        """
+        current = self.get(task_id)
+        if current is None:
+            return None
+        if current.attempt_id != attempt_id:
+            return None
+        clauses, params = optional_updates(
+            [
+                ("verdict", verdict),
+                ("changed_paths", _json_array(changed_paths)),
+                ("round", round),
+                ("phase", phase),
+            ]
+        )
+        if not clauses:
+            return current
+        guard, guard_params = self._attempt_guard(task_id, current.attempt_id)
+        clauses.append("updated_at = ?")
+        params.append(now_ts())
+        with self._db.transaction() as conn:
+            cur = conn.execute(
+                f"UPDATE project_tasks SET {', '.join(clauses)} WHERE {guard}",
+                [*params, *guard_params],
+            )
+        if not cur.rowcount:
+            return None
+        return self.get(task_id)
 
 
 # ── timeline_events ──────────────────────────────────────────────────────────

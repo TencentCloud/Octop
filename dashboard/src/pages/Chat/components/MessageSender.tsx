@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Tooltip } from "antd";
+import { Tag, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import ExpertAgentAvatar from "./ExpertAgentAvatar";
 import { useChatAgentProfile } from "../ChatAgentProfileContext";
@@ -21,6 +21,55 @@ export default function MessageSender({ name, avatar }: MessageSenderProps) {
       <span className={styles.msgAvatarPlain} aria-hidden>
         {avatar}
       </span>
+    </div>
+  );
+}
+
+interface TeamSpeakerRowProps extends ExpertMessageAvatarProps {
+  /** Display name — rendered next to the avatar (T-34 ①). */
+  displayName: string;
+  /**
+   * The speaker's role, taken **verbatim from the roster data**
+   * (``team_run_members.role`` / ``manifest.members[].role``). This component keeps
+   * **no role vocabulary of its own**: inventing a list here would move "who is what"
+   * back out of the data that T-33 just put it in (AM-4).
+   */
+  role?: string | null;
+  /** ``team_run_members.is_lead`` / ``manifest.lead_agent_id`` — data, not a guess. */
+  isLead?: boolean;
+}
+
+/**
+ * One room message speaker: avatar + name + role tag (T-34 ①).
+ *
+ * The avatar half is the existing :func:`ExpertMessageAvatar` (click ⇒ profile drawer);
+ * this wrapper adds the two facts the room view was missing — the **name** and the
+ * **role**, both passed in from the run snapshot.
+ */
+export function TeamSpeakerRow({
+  displayName,
+  role,
+  isLead,
+  ...avatarProps
+}: TeamSpeakerRowProps) {
+  const { t } = useTranslation();
+  const name = displayName.trim();
+  return (
+    <div className="flex items-center gap-2" data-testid="team-speaker-row">
+      <ExpertMessageAvatar {...avatarProps} name={avatarProps.name ?? name} />
+      <span data-testid="team-speaker-name" className="text-sm">
+        {name}
+      </span>
+      {role ? (
+        <Tag data-testid="team-speaker-role" className="m-0">
+          {role}
+        </Tag>
+      ) : null}
+      {isLead ? (
+        <Tag color="gold" className="m-0" data-testid="team-speaker-lead">
+          {t("teamRuns.roster.leadBadge")}
+        </Tag>
+      ) : null}
     </div>
   );
 }

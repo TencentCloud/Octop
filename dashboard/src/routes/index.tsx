@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation, useParams } from "react-router-dom";
 
 // Lazy-loaded pages — Common
 const ExpertsPage = lazy(() => import("../pages/Experts"));
@@ -8,6 +8,7 @@ const ConnectorsPage = lazy(() => import("../pages/Agent/Connectors"));
 const SkillPackagesPage = lazy(() => import("../pages/SkillPackages"));
 const KnowledgeBasesPage = lazy(() => import("../pages/KnowledgeBases"));
 const ProjectsPage = lazy(() => import("../pages/Projects"));
+const TeamRunDetailPage = lazy(() => import("../pages/Teams/RunDetail"));
 const ProjectDetailPage = lazy(() => import("../pages/Projects/Detail"));
 const PersonalizationPage = lazy(
   () => import("../pages/Agent/Personalization"),
@@ -35,6 +36,11 @@ const AgentConfigPage = lazy(() => import("../pages/Agent/Config"));
 const PwaDebugPage = lazy(() => import("../pages/PwaDebug"));
 const NotFoundPage = lazy(() => import("../components/NotFoundPage"));
 
+function TeamRunDetailRoute() {
+  const { runId = "" } = useParams();
+  return <TeamRunDetailPage runId={runId} />;
+}
+
 function RedirectPreserveSearch({ to }: { to: string }) {
   const location = useLocation();
   return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
@@ -56,6 +62,7 @@ export const pathToKey: Record<string, string> = {
   "/skill-packages": "skill-packages",
   "/knowledge-bases": "knowledge-bases",
   "/projects": "projects",
+  "/teams/runs": "experts",
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
   "/personalization/tools": "personalization",
@@ -139,6 +146,7 @@ export function resolveSelectedKey(pathname: string): string {
   if (pathToKey[pathname]) return pathToKey[pathname];
   if (pathname.startsWith("/chat/")) return "chat";
   if (pathname.startsWith("/projects/")) return "projects";
+  if (pathname.startsWith("/teams/runs/")) return "experts";
   if (pathname.startsWith("/workbench/")) return "workbench";
   if (pathname.startsWith("/remote-desktop/")) return "remote-desktop";
   if (pathname.startsWith("/personalization/")) return "personalization";
@@ -159,6 +167,7 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/knowledge-bases", element: <KnowledgeBasesPage /> },
   { path: "/projects", element: <ProjectsPage /> },
   { path: "/projects/:projectId", element: <ProjectDetailPage /> },
+  { path: "/teams/runs/:runId", element: <TeamRunDetailRoute /> },
   {
     path: "/personalization/acp",
     element: <RedirectPreserveSearch to="/acp" />,

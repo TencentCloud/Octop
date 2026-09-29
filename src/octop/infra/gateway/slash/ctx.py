@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 from octop.infra.utils.locale import Locale, normalize_locale, resolve_locale
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from octop.infra.agents.manager import AgentManager
     from octop.infra.cron.manager import CronManager
     from octop.infra.db.repos.agents import AgentRepo, AgentRow
@@ -41,6 +43,24 @@ class SlashCtx:
     """Dashboard composer / turn ``metadata.model`` (``provider/model``), if any."""
     model_ref: str | None = None
     default_timezone: str = "Asia/Shanghai"
+    team_run_service: Any | None = None
+    """The expert-team run service (``SharedServices.team_run_service()``).
+
+    The **same object the HTTP surface calls** (``api/routers/team_runs.py``), so
+    ``/team`` cannot grow a second set of run rules. ``None`` means the wiring has
+    not reached this ctx; the handler then reports "unavailable" instead of
+    building a service of its own.
+    """
+    authorize_agent_action: Callable[[Any, int], None] | None = None
+    """Ownership predicate for one agent row, as ``(row, user_id) -> None``.
+
+    Injected rather than imported: the authority is
+    ``api/common/agent.py · assert_agent_owner``, and ``infra/`` may not import
+    ``api/`` (``AGENTS.md`` §5). Re-implementing the predicate here would be a
+    **second permission model** — exactly what the run gate must not have — so the
+    composition site passes a wrapper and the handler only calls it. ``None`` ⇒ the
+    handler refuses rather than falling back to a weaker check.
+    """
 
 
 def lang_of(ctx: SlashCtx) -> Locale:
@@ -105,6 +125,8 @@ def build_slash_ctx(
     user_locale: str | None = None,
     channel_metadata: dict[str, object] | None = None,
     default_timezone: str | None = None,
+    team_run_service: Any | None = None,
+    authorize_agent_action: Callable[[Any, int], None] | None = None,
 ) -> SlashCtx:
     """Build SlashCtx for GlobalProcessor or other gateway entry points."""
     meta = getattr(gateway, "slash_meta", None) if gateway is not None else None
@@ -166,4 +188,6 @@ def build_slash_ctx(
         server_started_at=server_started_at or (meta.started_at if meta else None),
         model_ref=model_ref,
         default_timezone=timezone,
+        team_run_service=team_run_service,
+        authorize_agent_action=authorize_agent_action,
     )

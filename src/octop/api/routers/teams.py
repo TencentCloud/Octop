@@ -21,6 +21,9 @@ from octop.infra.errors import ErrorCode, OctopError
 
 router = APIRouter()
 
+#: Sentinel meaning "``lead_agent_id`` was omitted ⇒ leave the stored lead untouched".
+_ROSTER_LEAD_UNSET: Any = object()
+
 
 class TeamCreateBody(BaseModel):
     name: str
@@ -42,6 +45,25 @@ class TeamPatchBody(BaseModel):
     icon_name: str | None = None
     welcome_message: str | None = None
     member_ids: list[str] | None = None
+
+
+class RosterMember(BaseModel):
+    """One roster row — AM-1 shape (``role`` is one of the twelve fixed ids)."""
+
+    agent_id: str
+    role: str | None = None
+
+
+class TeamRosterBody(BaseModel):
+    """``PUT /teams/{team_id}/roster``.
+
+    ``lead_agent_id`` omitted ⇒ leave the stored lead untouched; explicit ``null`` ⇒
+    the team host chairs the run itself.
+    """
+
+    members: list[RosterMember] = Field(default_factory=list)
+    lead_agent_id: str | None = None
+    clear_lead: bool = False
 
 
 def _teams(server: Any) -> Any:
@@ -161,6 +183,52 @@ async def patch_team(
     if row is None:
         raise OctopError(ErrorCode.TEAM_NOT_FOUND, f"team {team_id!r} not found")
     return cast(dict[str, Any], teams.team_payload(row))
+
+
+@router.get("/teams/{team_id}/roster", summary="Get the team roster")
+async def get_team_roster(
+    team_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Read the team-level roster from the team host's ``.octop/manifest.json``.
+
+    That file is the **single authority** for "who is in this team" (AM-1); this route
+    never reads a second store. Legacy manifests with bare member ids still load
+    (their role reads as ``null``).
+    """
+    _require_owned_team(server, user, team_id)
+    return cast(dict[str, Any], _teams(server).roster(team_id))
+
+
+@router.put("/teams/{team_id}/roster", summary="Replace the team roster")
+async def put_team_roster(
+    team_id: str,
+    body: TeamRosterBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Replace the whole roster (not incremental adds) and reload the team.
+
+    An unknown role is ``400 TEAM_ROLE_UNKNOWN``; an unusable member id is
+    ``400 TEAM_MEMBER_INVALID``; fewer than ``TEAM_MIN_MEMBERS`` usable experts is
+    ``400 TEAM_MEMBERS_TOO_FEW``. In-flight members cannot be dropped
+    (``TEAM_MEMBER_BUSY``). No new error codes: every rejection reuses an existing one.
+    """
+    _require_owned_team(server, user, team_id)
+    teams = _teams(server)
+    members_payload = [member.model_dump() for member in body.members]
+    next_ids = [str(member.agent_id or "").strip() for member in body.members]
+    teams.assert_roster_writable(team_id, teams.validate_member_ids(user, next_ids))
+    lead: Any = (
+        None
+        if body.clear_lead
+        else (body.lead_agent_id if body.lead_agent_id is not None else _ROSTER_LEAD_UNSET)
+    )
+    roster = teams.replace_roster(team_id, members_payload, lead_agent_id=lead)
+    assert server.app_runtime is not None
+    await server.app_runtime.agent_registry.reload(team_id)
+    return cast(dict[str, Any], roster)
 
 
 @router.delete("/teams/{team_id}", status_code=204, summary="Delete an expert team")

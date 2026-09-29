@@ -105,11 +105,18 @@ class Gateway:
         repos: RepoBundle,
         trajectory_service: Any | None = None,
         history_archive: Any | None = None,
+        team_run_service: Any | None = None,
+        authorize_agent_action: Callable[[Any, int], None] | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._repos = repos
         self._trajectory_service = trajectory_service
         self._history_archive = history_archive
+        # T-49: what ``/team`` needs at runtime. Both are handed to the processor and
+        # surface on ``SlashCtx`` (see ``slash/ctx.py``'s two seams); the handler
+        # refuses when either is missing, so leaving them out is visible, not silent.
+        self._team_run_service = team_run_service
+        self._authorize_agent_action = authorize_agent_action
         self._thread_registry = ThreadRegistry(
             session_repo=repos.session_repo,
             thread_repo=repos.thread_repo,
@@ -239,6 +246,8 @@ class Gateway:
             gateway=self,
             trajectory_service=self._trajectory_service,
             history_archive=self._history_archive,
+            team_run_service=self._team_run_service,
+            authorize_agent_action=self._authorize_agent_action,
         )
 
         self._channel_manager = ChannelManager(channels={})

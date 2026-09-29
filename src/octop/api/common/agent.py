@@ -1,39 +1,46 @@
-"""Shared agent ownership / existence checks for HTTP routers."""
+"""Shared agent ownership / existence checks for HTTP routers.
+
+The **predicates** now live in ``infra/agents/access.py`` — that module is the
+single source of truth, and this module re-exports them so every existing
+``from octop.api.common.agent import assert_agent_owner`` keeps working unchanged.
+
+Why they moved, and why you must not re-implement them here (or anywhere else):
+``AGENTS.md §5`` forbids ``infra/`` → ``api/``, so while the rule lived *only* in
+this file, **no infra-side entry point could reach it**. The concrete cost was a
+real privilege-escalation path — ``TeamRunService.create`` does not check
+user↔agent ownership, so the ``/team`` slash surface accepted runs that the HTTP
+surface refuses with 403. ``infra/agents/access.py``'s module docstring carries the
+full forensics, the equivalence argument, and the "no second copy" rule.
+
+What stays here is only what needs a ``server``: the row **loaders**
+(``require_agent_row`` / ``require_agent_owner_row`` / ``assert_agent_access``).
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
+from octop.infra.agents.access import (
+    AgentOwnerSubject,
+    agent_is_shared,
+    assert_agent_access_row,
+    assert_agent_owner,
+    user_may_access_agent,
+    user_owns_agent,
+)
 from octop.infra.errors import ErrorCode, OctopError
 
-
-def agent_is_shared(row: Any) -> bool:
-    return int(getattr(row, "is_shared", 0) or 0) == 1
-
-
-def user_owns_agent(row: Any, user: Any) -> bool:
-    return row.user_id is not None and row.user_id == user.id
-
-
-def assert_agent_owner(row: Any, user: Any) -> None:
-    """Raise if the user may not mutate this agent row (admin bypasses)."""
-    if user.is_admin:
-        return
-    if row.user_id is None or row.user_id != user.id:
-        raise OctopError(ErrorCode.FORBIDDEN, "agent not owned by user")
-
-
-def _user_may_access(row: Any, user: Any) -> bool:
-    if user.is_admin:
-        return True
-    if row.user_id is not None and row.user_id == user.id:
-        return True
-    return bool(agent_is_shared(row))
-
-
-def assert_agent_access_row(row: Any, user: Any) -> None:
-    if not _user_may_access(row, user):
-        raise OctopError(ErrorCode.FORBIDDEN, "agent not accessible to user")
+__all__ = [
+    "AgentOwnerSubject",
+    "agent_is_shared",
+    "assert_agent_access",
+    "assert_agent_access_row",
+    "assert_agent_owner",
+    "require_agent_owner_row",
+    "require_agent_row",
+    "user_may_access_agent",
+    "user_owns_agent",
+]
 
 
 def require_agent_row(

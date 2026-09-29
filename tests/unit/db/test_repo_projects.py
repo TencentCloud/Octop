@@ -383,3 +383,179 @@ def test_task_delete(db: SqlitePool, owner: int):
     assert tasks.delete(task.id) is True
     assert tasks.delete(task.id) is False
     assert tasks.get(task.id) is None
+
+
+# ── ProjectTaskRepo · 025 run columns and attempt tokens ─────────────────────
+
+
+def test_task_run_columns_round_trip_the_four_json_arrays(db: SqlitePool, owner: int):
+    """acceptance / in_scope / verify / changed_paths encode like ``deps``."""
+    project = ProjectRepo(db).create(owner_user_id=owner, name="A")
+    tasks = ProjectTaskRepo(db)
+    task = tasks.create(
+        project_id=project.id,
+        title="T",
+        created_by=owner,
+        kind="review",
+        acceptance=["a", "b"],
+        in_scope=["src/x.py"],
+        verify=["uv run pytest -q"],
+        phase="design",
+    )
+
+    assert task.kind == "review"
+    assert task.acceptance == ("a", "b")
+    assert task.in_scope == ("src/x.py",)
+    assert task.verify == ("uv run pytest -q",)
+    assert task.changed_paths == ()
+    assert task.phase == "design"
+
+    patched = tasks.update(
+        task.id,
+        acceptance=["c"],
+        changed_paths=["src/x.py", "src/y.py"],
+        round=2,
+        verdict="needs_revision",
+        started_at=123,
+    )
+    assert patched is not None
+    assert patched.acceptance == ("c",)
+    assert patched.changed_paths == ("src/x.py", "src/y.py")
+    assert patched.in_scope == ("src/x.py",)  # omitted stays put
+    assert (patched.round, patched.verdict, patched.started_at) == (2, "needs_revision", 123)
+
+    # Idempotent: re-dumping what was parsed yields the same tuple.
+    again = tasks.update(task.id, acceptance=list(patched.acceptance))
+    assert again is not None
+    assert again.acceptance == patched.acceptance
+
+
+def test_task_run_columns_default_to_the_migration_defaults(db: SqlitePool, owner: int):
+    project = ProjectRepo(db).create(owner_user_id=owner, name="A")
+    task = ProjectTaskRepo(db).create(project_id=project.id, title="T", created_by=owner)
+
+    assert task.kind == "work"
+    assert task.acceptance == task.in_scope == task.verify == task.changed_paths == ()
+    assert (task.round, task.attempt) == (1, 0)
+    assert (task.verdict, task.attempt_id, task.claimed_by, task.claimed_at) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    assert (task.started_at, task.phase) == (None, None)
+
+
+def test_task_json_columns_never_raise_on_a_legacy_row(db: SqlitePool, owner: int):
+    """``'[]'`` and unparsable text both decode to empty — the reader never crashes."""
+    project = ProjectRepo(db).create(owner_user_id=owner, name="A")
+    tasks = ProjectTaskRepo(db)
+    task = tasks.create(project_id=project.id, title="T", created_by=owner)
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE project_tasks SET acceptance = ?, changed_paths = ? WHERE task_id = ?",
+            ("not json", "[]", task.id),
+        )
+
+    row = tasks.get(task.id)
+    assert row is not None
+    assert row.acceptance == ()  # unparsable ⇒ empty
+    assert row.changed_paths == ()  # the migration default ⇒ empty
+
+
+def test_claim_is_a_compare_and_set_so_only_one_owner_wins(db: SqlitePool, owner: int):
+    """Two claims that gated on the same attempt cannot both write (PLAN B26)."""
+    project = ProjectRepo(db).create(owner_user_id=owner, name="A")
+    tasks = ProjectTaskRepo(db)
+    task = tasks.create(project_id=project.id, title="T", created_by=owner)
+    gated = tasks.get(task.id)
+    assert gated is not None and gated.attempt_id is None
+
+    winner = tasks.claim(task.id, claimed_by="be", expected_attempt_id=gated.attempt_id)
+    assert winner is not None
+    assert winner.claimed_by == "be"
+    assert winner.claimed_at is not None
+    assert winner.attempt == 1
+    assert winner.attempt_id  # the token later writes must present
+
+    # The loser still carries the attempt it gated on, so its UPDATE matches no
+    # row — the owner it would have twinned is untouched.
+    loser = tasks.claim(task.id, claimed_by="fe", expected_attempt_id=gated.attempt_id)
+    assert loser is None
+    after = tasks.get(task.id)
+    assert after is not None
+    assert (after.claimed_by, after.attempt, after.attempt_id) == ("be", 1, winner.attempt_id)
+
+
+def test_claim_accepts_the_dispatch_token_and_a_transfer_bumps_the_attempt(
+    db: SqlitePool, owner: int
+):
+    project = ProjectRepo(db).create(owner_user_id=owner, name="A")
+    tasks = ProjectTaskRepo(db)
+    task = tasks.create(project_id=project.id, title="T", created_by=owner)
+
+    first = tasks.claim(task.id, claimed_by="be", expected_attempt_id=None, attempt_id="att-1")
+    assert first is not None and first.attempt_id == "att-1"
+
+    # Transfer: the caller re-read, so the new attempt is legitimate.
+    assert first is not None
+    moved = tasks.claim(task.id, claimed_by="fe", expected_attempt_id=first.attempt_id)
+    assert moved is not None
+    assert (moved.claimed_by, moved.attempt) == ("fe", 2)
+    assert moved.attempt_id != "att-1"
+
+    assert tasks.claim("nope", claimed_by="be", expected_attempt_id=None) is None
+
+
+def test_claim_writes_nothing_when_the_attempt_moved(db: SqlitePool, owner: int):
+    """The guard is on the attempt, so an owner that never landed loses cleanly."""
+    project = ProjectRepo(db).create(owner_user_id=owner, name="A")
+    tasks = ProjectTaskRepo(db)
+    task = tasks.create(project_id=project.id, title="T", created_by=owner)
+
+    assert tasks.claim(task.id, claimed_by="be", expected_attempt_id=None) is not None
+    assert tasks.claim(task.id, claimed_by="fe", expected_attempt_id=None) is None
+    row = tasks.get(task.id)
+    assert row is not None and row.claimed_by == "be"
+
+
+def test_report_refuses_a_stale_attempt_and_leaves_the_row_alone(db: SqlitePool, owner: int):
+    """PLAN G8: a superseded attemptId is refused, a current one lands."""
+    project = ProjectRepo(db).create(owner_user_id=owner, name="A")
+    tasks = ProjectTaskRepo(db)
+    task = tasks.create(project_id=project.id, title="T", created_by=owner)
+    claimed = tasks.claim(task.id, claimed_by="be", expected_attempt_id=None)
+    assert claimed is not None and claimed.attempt_id is not None
+    token = claimed.attempt_id
+
+    stale = tasks.report(
+        task.id,
+        attempt_id="att-old",
+        verdict="pass",
+        changed_paths=["src/secret.py"],
+        round=2,
+    )
+    assert stale is None
+    untouched = tasks.get(task.id)
+    assert untouched is not None
+    assert (untouched.verdict, untouched.changed_paths, untouched.round) == (None, (), 1)
+
+    reported = tasks.report(
+        task.id,
+        attempt_id=token,
+        verdict="needs_revision",
+        changed_paths=["src/x.py"],
+        round=2,
+        phase="implement",
+    )
+    assert reported is not None
+    assert reported.verdict == "needs_revision"
+    assert reported.changed_paths == ("src/x.py",)
+    assert (reported.round, reported.phase) == (2, "implement")
+    assert reported.attempt_id == token  # the token itself is not rewritten here
+
+    # Same patch semantics as `update`: omitted fields stay put.
+    kept = tasks.report(task.id, attempt_id=token)
+    assert kept is not None and kept.verdict == "needs_revision"
+
+    assert tasks.report("nope", attempt_id=token) is None

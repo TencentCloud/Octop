@@ -64,7 +64,13 @@ def _map_workspace_fs_error(exc: Exception, *, operation: str, path: str) -> Oct
         return OctopError(ErrorCode.FORBIDDEN, str(exc))
     if isinstance(exc, ValueError):
         return OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc))
-    return OctopError(ErrorCode.INTERNAL_ERROR, f"cannot {operation} {path!r}: {exc}")
+    # ★ T-75：把**调用者给出的操作名**放进 details（i18n 会整条替换 message ⇒ 定位只能靠 details）。
+    # ⛔ 有意**不**放 `path`：它可能是不透明/主机绝对路径，触犯 SEC-4 黑名单（主机绝对路径）。
+    return OctopError(
+        ErrorCode.INTERNAL_ERROR,
+        f"cannot {operation} {path!r}: {exc}",
+        details={"operation": operation},
+    )
 
 
 def _ensure_editable_doc(path: str) -> DocConverter:

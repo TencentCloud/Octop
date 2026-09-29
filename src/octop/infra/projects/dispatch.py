@@ -42,6 +42,13 @@ if TYPE_CHECKING:
 #: Only these assignees have a runtime that can start a turn (§T2.5 校验).
 DISPATCH_ASSIGNEE_TYPES: tuple[str, ...] = ("agent", "team")
 
+#: ``chat_type`` of a dispatch session (SPEC B30 ①) — never ``dm``.
+DISPATCH_CHAT_TYPE = "dispatch"
+
+#: The shape of a user's private DM key (``<agent>:dashboard:<user_id>:dm``).
+#: A dispatch key that matches is refused instead of rebound (SPEC B30 ④).
+_USER_DM_SESSION_KEY = re.compile(r":dashboard:\d+:dm$")
+
 #: Plan §4.4 stores acceptance criteria in this fixed section of
 #: ``project_tasks.description`` instead of a schema column, so the dispatch
 #: message always renders the heading the plan/AC-09 names.
@@ -128,6 +135,45 @@ def require_dispatchable(task: ProjectTaskRow) -> str:
     return assignee_id
 
 
+def dispatch_session_key(*, agent_id: str, dispatch_id: str) -> str:
+    """Session key one dispatch turn runs under (SPEC B30 ①).
+
+    Deliberately **not** the dispatcher's private DM session key (the registry's
+    ``dashboard`` DM key): binding the dispatch thread to that key **rewrites the
+    user's own session in place** — one dispatch hijacks the conversation. A
+    dispatch gets a key of its own instead: dispatch-scoped (``chat_type`` is
+    :data:`DISPATCH_CHAT_TYPE`, never ``dm``) and shaped so it can never equal a
+    user DM key.
+
+    *dispatch_id* names the dispatch — the project task today, the run/role for
+    run and phase dispatch — and must not contain ``":"`` (keys are split on it).
+    """
+    return ThreadRegistry.make_key(
+        agent_id=agent_id,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        channel_subject_id=dispatch_id,
+        channel_chat_type=DISPATCH_CHAT_TYPE,
+    )
+
+
+def require_dispatch_session_key(session_key: str) -> str:
+    """Return *session_key* unless it is a user DM key, which is refused (SPEC B30 ④).
+
+    The guard for a caller-supplied dispatch key (run / phase dispatch pass their
+    own). The key of a user's private DM session is already bound to that user's
+    thread, so a dispatch may not take it over: the refusal reuses the plan's
+    same-key conflict, ``409 TEAM_RUN_CONFLICT`` with
+    ``details["reason"] == "session_key_already_bound"`` — not a new error code.
+    """
+    if _USER_DM_SESSION_KEY.search(session_key):
+        raise OctopError(
+            ErrorCode.TEAM_RUN_CONFLICT,
+            f"session key {session_key!r} is already bound to a user DM session",
+            details={"reason": "session_key_already_bound"},
+        )
+    return session_key
+
+
 class _TeamRoomBridge:
     """R17 facade: the only place the dispatch path touches ``infra/agents/teams``.
 
@@ -166,8 +212,13 @@ async def run_dispatch_turn(
     project: ProjectRow,
     task: ProjectTaskRow,
     dispatcher_user_id: int,
+    session_key: str | None = None,
 ) -> str:
     """Run steps ①-④ of plan §T2.5 and return the thread the turn ran in.
+
+    *session_key* is the key to run under — run / phase dispatch passes its own
+    run-scoped one. Omitted, the dispatch gets its own key for *task*; either way
+    a user DM key is refused (``TEAM_RUN_CONFLICT``, SPEC B30).
 
     Raises before creating anything when the task cannot be dispatched
     (``PROJECT_TASK_DISPATCH_INVALID``), or when the assignee is missing / not
@@ -178,10 +229,15 @@ async def run_dispatch_turn(
     agent_manager.get_agent(assignee_id)
     bridge = _TeamRoomBridge(agent_manager=agent_manager, gateway=gateway)
 
-    # ① A fresh thread for this dispatch, bound to the assignee's dashboard session
-    #    for the dispatcher — the same session `POST /api/agents/{id}/threads`
-    #    rebinds, which is also what carries the session serialization lock.
-    session_key = ThreadRegistry.dashboard_key(agent_id=assignee_id, user_id=dispatcher_user_id)
+    # ① A fresh thread for this dispatch, on a dispatch-only session key (SPEC B30):
+    #    the dispatcher's private DM session key belongs to their own conversation,
+    #    and the `rebind` below would rewrite that session's thread in place. A
+    #    caller that supplies its own run/phase key still cannot supply a DM key.
+    session_key = (
+        require_dispatch_session_key(session_key)
+        if session_key
+        else dispatch_session_key(agent_id=assignee_id, dispatch_id=task.id)
+    )
     thread_id = gateway.thread_registry.create_thread(
         agent_id=assignee_id,
         user_id=dispatcher_user_id,
@@ -191,7 +247,18 @@ async def run_dispatch_turn(
     )
     # `create_thread` deliberately does not rebind the session (the registry's own
     # docstring). Dispatch needs the session row to hold the lock and to mint the
-    # request, so bind the new thread to the session key here.
+    # request, so create that row here — with the dispatch chat type, which a
+    # `rebind` of a brand-new key would default to `dm`.
+    if repos.session_repo.get(session_key) is None:
+        repos.session_repo.upsert(
+            session_key=session_key,
+            agent_id=assignee_id,
+            user_id=dispatcher_user_id,
+            channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+            chat_type=DISPATCH_CHAT_TYPE,
+            thread_id=thread_id,
+        )
+    # An existing row keeps its own chat type; `rebind` only moves the binding.
     await gateway.thread_registry.rebind(
         session_key=session_key,
         thread_id=thread_id,
@@ -227,7 +294,10 @@ async def run_dispatch_turn(
 __all__ = [
     "ACCEPTANCE_HEADING",
     "DISPATCH_ASSIGNEE_TYPES",
+    "DISPATCH_CHAT_TYPE",
     "build_dispatch_prompt",
+    "dispatch_session_key",
+    "require_dispatch_session_key",
     "require_dispatchable",
     "run_dispatch_turn",
     "split_acceptance",

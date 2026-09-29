@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from octop.infra.agents.access import user_may_access_agent
 from octop.infra.agents.settings.tool_catalog import BUILTIN_TOOL_CATALOG
 from octop.infra.agents.teams.jobs import TeamJobTracker
+from octop.infra.agents.teams.pipeline import DEFAULT_TIER, RosterTrim, trim_roster
+from octop.infra.agents.teams.pipeline import ROLES as _PIPELINE_ROLES
 from octop.infra.db.repos.agents import AgentRow
 from octop.infra.db.services import RepoBundle
 from octop.infra.errors import ErrorCode, OctopError
@@ -20,6 +23,16 @@ TEAM_MIN_MEMBERS = 2
 TEAM_AVATAR_URL = "/experts/avatars/team-host.svg"
 TEMPLATE_DIR = Path(__file__).resolve().parent / "template"
 TEAM_MANIFEST_WORKSPACE = ".octop/manifest.json"
+
+#: The twelve fixed role ids — forwarded from ``pipeline.ROLES`` (its docstring declares
+#: that tuple the single authority for the role vocabulary; never re-list it here).
+TEAM_ROLES: frozenset[str] = frozenset(_PIPELINE_ROLES)
+
+#: ``manifest.json · lead_agent_id`` — ``None`` means the team host chairs the run itself.
+MANIFEST_LEAD_KEY = "lead_agent_id"
+
+#: Sentinel for "leave ``lead_agent_id`` untouched" (a caller may legitimately set ``None``).
+_UNSET: Any = object()
 
 # Hosts only dispatch and keep light memory/time — members do the work.
 HOST_TOOLS_ALLOWED: frozenset[str] = frozenset(
@@ -68,12 +81,16 @@ def team_icon_url(stored: str | None) -> str:
     return text
 
 
-def _user_may_use_member(row: AgentRow, user: Any) -> bool:
-    if getattr(user, "is_admin", False):
-        return True
-    if row.user_id is not None and row.user_id == getattr(user, "id", None):
-        return True
-    return int(getattr(row, "is_shared", 0) or 0) == 1
+#: 「这个专家能不能被编进团队」的判定 = **admin ｜ 本人 ｜ 已共享**。
+#:
+#: 这是 ``infra/agents/access.py`` 那条**可访问**规则（:func:`user_may_access_agent`）的
+#: **转发**，不是第二份实现 —— 原先这里有一份逐字相同的拷贝（``admin | 本人 | is_shared``），
+#: 而 ``api/common/agent.py`` 里还有另一份；两处同名不同命，正是"同一事实两份定义"的形状。
+#:
+#: ⚠️ 它与 :func:`octop.infra.agents.access.assert_agent_owner` **不同**（后者**不认**
+#: ``is_shared``）：**能不能用这个专家当成员** ≠ **能不能改这个 agent**。不要为了"统一"
+#: 把这条换成更窄的归属判定（会打死共享专家编队），也不要把共享旁路加到写权限上。
+_user_may_use_member = user_may_access_agent
 
 
 def _normalize_member_ids(raw: Any) -> list[str]:
@@ -90,8 +107,45 @@ def _normalize_member_ids(raw: Any) -> list[str]:
     return out
 
 
+def _normalize_roster(raw: Any) -> list[dict[str, Any]]:
+    """Normalize ``manifest.json · members`` into AM-1's ``[{"agent_id", "role"}]``.
+
+    **Both shapes are accepted** (T-32 ②：必须兼容读旧形状):
+    a bare agent id (legacy ``["a", "b"]``) reads as ``role=None``; the AM-1 object
+    shape carries the role. Duplicates and blank ids are dropped, order is kept.
+    """
+    if not isinstance(raw, list):
+        return []
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        role: str | None = None
+        if isinstance(item, Mapping):
+            member_id = str(item.get("agent_id") or "").strip()
+            raw_role = item.get("role")
+            if raw_role is not None:
+                role = str(raw_role).strip() or None
+        else:
+            member_id = str(item or "").strip()
+        if not member_id or member_id in seen:
+            continue
+        seen.add(member_id)
+        out.append({"agent_id": member_id, "role": role})
+    return out
+
+
+def _roster_from_manifest(data: dict[str, Any]) -> list[dict[str, Any]]:
+    return _normalize_roster(data.get("members") or data.get("member"))
+
+
 def _member_ids_from_manifest(data: dict[str, Any]) -> list[str]:
-    return _normalize_member_ids(data.get("members") or data.get("member"))
+    return [member["agent_id"] for member in _roster_from_manifest(data)]
+
+
+def _lead_from_manifest(data: dict[str, Any]) -> str | None:
+    raw = data.get(MANIFEST_LEAD_KEY)
+    lead = str(raw).strip() if raw is not None else ""
+    return lead or None
 
 
 async def _read_workspace_manifest(workspace: Any) -> dict[str, Any]:
@@ -149,7 +203,21 @@ class TeamService:
             return {}
         return data if isinstance(data, dict) else {}
 
-    def _write_manifest(self, team_agent_id: str, member_ids: list[str]) -> None:
+    def _write_manifest(
+        self,
+        team_agent_id: str,
+        members: list[Any],
+        *,
+        lead_agent_id: Any = _UNSET,
+    ) -> None:
+        """**The only writer** of ``.octop/manifest.json`` (T-32 ②: no second writer).
+
+        ``members`` may be bare agent ids (legacy call sites: ``replace_members`` /
+        ``drop_member``) or ``{"agent_id", "role"}`` objects. Bare ids **keep the role
+        already recorded** for that member, so a rename-only PATCH cannot silently
+        downgrade the roster back to the legacy shape. ``lead_agent_id`` is only
+        written when explicitly passed (``None`` = host chairs, which is a real value).
+        """
         workspace = self._workspace(team_agent_id)
         writer = getattr(workspace, "write_text", None) if workspace is not None else None
         if workspace is None or writer is None:
@@ -160,7 +228,29 @@ class TeamService:
             )
         data = dict(self._read_manifest(team_agent_id))
         data["kind"] = TEAM_KIND
-        data["members"] = list(member_ids)
+        known_roles = {m["agent_id"]: m["role"] for m in _roster_from_manifest(data)}
+        roster: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in members:
+            if isinstance(item, Mapping):
+                member_id = str(item.get("agent_id") or "").strip()
+                raw_role = item.get("role")
+                role = None
+                if raw_role is not None:
+                    role = str(raw_role).strip() or None
+                if role is None:
+                    role = known_roles.get(member_id)
+            else:
+                member_id = str(item or "").strip()
+                role = known_roles.get(member_id)
+            if not member_id or member_id in seen:
+                continue
+            seen.add(member_id)
+            roster.append({"agent_id": member_id, "role": role})
+        data["members"] = roster
+        if lead_agent_id is not _UNSET:
+            lead_text = str(lead_agent_id or "").strip()
+            data[MANIFEST_LEAD_KEY] = lead_text or None
         content = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
         try:
             writer(TEAM_MANIFEST_WORKSPACE, content, force=True)
@@ -249,6 +339,74 @@ class TeamService:
                 details={"member_agent_id": agent_id},
             )
 
+    def roster(self, team_agent_id: str) -> dict[str, Any]:
+        """Team-level roster = ``manifest.json`` (AM-1 唯一权威). Reads **both** shapes."""
+        data = self._read_manifest(team_agent_id)
+        return {
+            MANIFEST_LEAD_KEY: _lead_from_manifest(data),
+            "members": _roster_from_manifest(data),
+        }
+
+    def replace_roster(
+        self,
+        team_agent_id: str,
+        members: list[Any],
+        *,
+        lead_agent_id: Any = _UNSET,
+    ) -> dict[str, Any]:
+        """Validate then persist a whole roster through the single writer.
+
+        ``members`` items are ``{"agent_id", "role"}`` (or bare ids). Roles must be in
+        the twelve-role closed set — anything else is ``TEAM_ROLE_UNKNOWN`` (400, reused
+        code: **no new ErrorCode**, T-32). Member ids go through
+        :meth:`validate_member_ids` (``TEAM_MEMBER_INVALID`` / ``TEAM_MEMBERS_TOO_FEW``).
+        """
+        normalized = _normalize_roster(members)
+        unknown = sorted(
+            {m["role"] for m in normalized if m["role"] and m["role"] not in TEAM_ROLES}
+        )
+        if unknown:
+            raise OctopError(
+                ErrorCode.TEAM_ROLE_UNKNOWN,
+                "one or more roles are not in the fixed role table",
+                details={"roles": unknown, "allowed": sorted(TEAM_ROLES)},
+            )
+        next_members = [{"agent_id": m["agent_id"], "role": m["role"]} for m in normalized]
+        member_ids = [m["agent_id"] for m in next_members]
+        if lead_agent_id is not _UNSET and lead_agent_id is not None:
+            lead = str(lead_agent_id).strip()
+            if lead and lead not in set(member_ids):
+                raise OctopError(
+                    ErrorCode.TEAM_MEMBER_INVALID,
+                    "lead_agent_id must be one of the team members",
+                    details={"lead_agent_id": lead},
+                )
+        self._write_manifest(team_agent_id, next_members, lead_agent_id=lead_agent_id)
+        return self.roster(team_agent_id)
+
+    def trimmed_roster(
+        self,
+        team_agent_id: str,
+        tier: object = DEFAULT_TIER,
+        *,
+        host_agent_id: str | None = None,
+    ) -> RosterTrim:
+        """Apply the tier cap to the manifest roster (AM-1 ③).
+
+        Delegates to ``pipeline.trim_roster`` — the single implementation of the four
+        priority rules — so the cut roles stay visible via
+        :attr:`RosterTrim.skipped_roles` and callers can persist them into
+        ``gate_detail.skipped_roles``. **Cutting is the default behaviour and is not an
+        error** (only an explicit over-cap ``roles?`` request is).
+        """
+        current = self.roster(team_agent_id)
+        return trim_roster(
+            current["members"],
+            tier,
+            lead_agent_id=current[MANIFEST_LEAD_KEY],
+            host_agent_id=host_agent_id,
+        )
+
     def replace_members(self, team_agent_id: str, member_ids: list[str]) -> None:
         self._write_manifest(team_agent_id, list(member_ids))
 
@@ -333,9 +491,10 @@ async def seed_team_template(
                 data = {}
             data["kind"] = TEAM_KIND
             if roster is not None:
-                data["members"] = roster
+                data["members"] = [{"agent_id": member_id, "role": None} for member_id in roster]
             else:
-                data.setdefault("members", [])
+                data["members"] = _roster_from_manifest(data)
+            data.setdefault(MANIFEST_LEAD_KEY, None)
             pairs.append(
                 (
                     TEAM_MANIFEST_WORKSPACE,

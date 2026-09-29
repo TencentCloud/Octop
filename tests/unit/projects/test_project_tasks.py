@@ -144,16 +144,51 @@ def test_create_task_accepts_explicit_todo(
 def test_create_task_carries_optional_fields(
     service: ProjectService, project: Any, owner: Actor
 ) -> None:
+    """Optional fields ride through create — ``deps`` included.
+
+    **Changed in T-70**: this used to pass ``deps=["x"]`` with no such task on the
+    board, which the old (ungated) path accepted: the deps field was a *soft* foreign
+    key and creating a task with a dangling dependency succeeded. G6 now runs on the
+    create verb too (``validate_task_graph`` → ``missing-id``), so the dependency is a
+    **real** task here — the assertion still covers exactly what it did before (the
+    four optional fields survive create), on a legal board.
+    """
+    dependency = service.create_task(project.id, user=owner, title="dep")
     task = service.create_task(
         project.id,
         user=owner,
         title="T",
         description="d",
         priority=3,
-        deps=["x"],
+        deps=[dependency.id],
         due_at=1234,
     )
-    assert (task.description, task.priority, task.deps, task.due_at) == ("d", 3, ("x",), 1234)
+    assert (task.description, task.priority, task.deps, task.due_at) == (
+        "d",
+        3,
+        (dependency.id,),
+        1234,
+    )
+
+
+def test_create_task_refuses_a_dangling_dependency(
+    service: ProjectService, project: Any, owner: Actor
+) -> None:
+    """★ The behaviour the case above used to encode, now **explicitly denied** (T-70).
+
+    Pre-T-70 the create verb never ran G6, so ``deps=["x"]`` on a task that does not
+    exist was accepted and persisted. That is the old behaviour; this asserts its
+    opposite, with the reason (``missing-id``) and the code, so a future revert of the
+    gate cannot be silent.
+    """
+    with pytest.raises(OctopError) as err:
+        service.create_task(project.id, user=owner, title="T", deps=["nope"])
+
+    assert err.value.code is ErrorCode.TEAM_TASK_GRAPH_INVALID
+    assert err.value.status == 409
+    assert (err.value.details or {}).get("code") == "missing-id"
+    # 「拒绝」与「没写」是两件事：不留半成品行（create_task 自己的承诺）。
+    assert [t.title for t in service.list_tasks(project.id, user=owner)] == []
 
 
 def test_task_sort_order_is_per_project(

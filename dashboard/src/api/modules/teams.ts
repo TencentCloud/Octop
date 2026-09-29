@@ -60,3 +60,33 @@ export const teamsApi = {
   remove: (teamId: string) =>
     request<void>(`/teams/${teamId}`, { method: "DELETE" }),
 };
+
+/** One roster row — AM-1 shape（`{agent_id, role}`）。 */
+export interface TeamRosterMember {
+  agent_id: string;
+  role: string | null;
+}
+
+/** `GET /api/teams/{team_id}/roster` —— 读 `.octop/manifest.json`（编制的唯一权威）。 */
+export interface TeamRoster {
+  lead_agent_id: string | null;
+  members: TeamRosterMember[];
+}
+
+export function getTeamRoster(teamId: string): Promise<TeamRoster> {
+  return request<TeamRoster>(`/teams/${encodeURIComponent(teamId)}/roster`);
+}
+
+export function putTeamRoster(
+  teamId: string,
+  body: {
+    members: TeamRosterMember[];
+    lead_agent_id?: string | null;
+    clear_lead?: boolean;
+  },
+): Promise<TeamRoster> {
+  return request<TeamRoster>(`/teams/${encodeURIComponent(teamId)}/roster`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}

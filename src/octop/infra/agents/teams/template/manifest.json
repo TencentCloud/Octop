@@ -1,6 +1,7 @@
 {
   "kind": "team",
   "members": [],
+  "lead_agent_id": null,
   "welcome_message": {
     "zh": "这是一个专家团队，成员各有专长，会一起回答你的问题。",
     "en": "This is an expert team. Members bring different strengths and answer together."

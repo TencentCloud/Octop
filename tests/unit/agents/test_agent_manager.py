@@ -2170,3 +2170,62 @@ async def test_stream_and_resume_hitl_serialize_per_thread(
     await turn
     await resume
     assert peak == 1
+
+
+# ── T-17: the ownership gate must be *on the chain*, not merely written ───────
+#
+# `sec`'s T-12 suite proves the gate *decides* correctly (139 cases, green even while
+# nothing was mounted). These prove the other half, and they assert it **through the
+# real assembly path** (`_build_harness_config`) -- the middleware is never
+# instantiated here, so a "we wrote assembly code" claim cannot pass them.
+
+
+def _ownership_gate_for(manager: AgentManager, *, kind: str) -> Any | None:
+    from dataclasses import replace as dc_replace
+
+    from octop.infra.agents.middleware.team_artifact_ownership import (
+        TeamArtifactOwnershipMiddleware,
+    )
+
+    row = _row(agent_id="host" if kind == "team" else "solo")
+    cfg = manager._build_harness_config(dc_replace(row, kind=kind))
+    return next(
+        (m for m in (cfg.middleware or []) if isinstance(m, TeamArtifactOwnershipMiddleware)),
+        None,
+    )
+
+
+def test_team_agent_gets_the_artifact_ownership_gate_on_its_chain(
+    manager: AgentManager,
+) -> None:
+    assert _ownership_gate_for(manager, kind="team") is not None, (
+        "the R1 ownership gate is not mounted for a team agent -- T-12's gate would then "
+        "never see a tool call in production"
+    )
+
+
+def test_non_team_agent_does_not_get_the_ownership_gate(manager: AgentManager) -> None:
+    """Positive control: a non-team agent's tool path must be unchanged."""
+    assert _ownership_gate_for(manager, kind="expert") is None, (
+        "a non-team agent must not carry the team ownership gate"
+    )
+
+
+def test_the_mounted_gate_is_wired_to_real_run_lookups(manager: AgentManager) -> None:
+    """Presence is not enough -- an unwired gate would allow everything.
+
+    The four callables are the contract of ``OwnershipGateDeps``; this asserts the mount
+    passed real ones and that their fail-open defaults hold for an unknown run.
+    """
+    gate = _ownership_gate_for(manager, kind="team")
+    assert gate is not None
+    deps = gate._deps  # noqa: SLF001 -- asserting wiring the mount is responsible for
+
+    # Lexical only: a path outside this agent's run root is not a team target.
+    assert deps.team_root_for("/definitely/not/under/the/run/root/SPEC.md") is None
+    # Unknown run/role stay None => the gate treats it as live and allows, never a false
+    # block (that is the documented fail-open direction).
+    assert deps.run_status_for("no-such-run") is None
+    assert deps.role_for("no-such-run") is None
+    # Existence is a tri-state: a missing path is False, an unknown one would be None.
+    assert deps.exists_for("/definitely/missing/path/SPEC.md") is False

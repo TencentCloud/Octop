@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from octop.config import OctopConfig, load_config
+from octop.infra.agents.access import assert_agent_owner
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.plugins.manager import PluginManager
@@ -22,6 +23,7 @@ from octop.infra.cron.manager import CronManager
 from octop.infra.db.factory import open_database, should_defer_control_plane_db
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.services import SharedServices, build_shared_services
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.gateway import Gateway
 from octop.infra.mobile.config_probe import ensure_mobile_capabilities_probed
 from octop.infra.proactive.scheduler import ProactiveCareScheduler
@@ -259,6 +261,27 @@ class OctopServer:
     def user_manager(self) -> UserManager | None:
         return self.app_runtime.user_manager if self.app_runtime else None
 
+    def _authorize_agent_action(self, row: Any, user_id: int) -> None:
+        """Authorize an agent action addressed by **user id** — T-49's injected seam.
+
+        ``SlashCtx.authorize_agent_action`` carries a bare ``user_id`` (that is all a
+        slash context knows), while the single predicate
+        (``infra/agents/access.py · assert_agent_owner``) needs a user object exposing
+        ``is_admin`` — and ``UserRow`` has no such attribute
+        (``infra/db/repos/users.py``; ``is_admin`` is derived on
+        ``infra/users/identity.py · User``). Resolving the id **here**, where the
+        ``UserManager`` lives, is what keeps the decision in one place instead of
+        re-deriving the rule for the id-shaped seam.
+
+        A user that cannot be resolved (deleted or disabled — ``UserManager`` keeps
+        only enabled users in its cache) is refused rather than treated as a
+        non-admin: an unknown subject must not be able to act.
+        """
+        user = self.user_manager.get_by_id(user_id) if self.user_manager is not None else None
+        if user is None:
+            raise OctopError(ErrorCode.FORBIDDEN, "user not active")
+        assert_agent_owner(row, user)
+
     @property
     def sso_service(self) -> SsoService:
         """Process-level SSO service so discovery/JWKS cache survives across requests."""
@@ -277,6 +300,33 @@ class OctopServer:
     @property
     def database_bound(self) -> bool:
         return self.services is not None and self.app_runtime is not None
+
+    def _kb_archiver_factory(self, kb_id: str, artifact_id: str, *, actor_user_id: int) -> Any:
+        """Archive a workflow artifact into its project KB and bind the reference.
+
+        T-71: this is the **injector** that T-45's archival hop never had -- without it
+        `write_artifact`'s hop was dead code in production (`kb_document_id` was never
+        written). Built per call because the archiver is scoped to one
+        `(kb_id, artifact_id)` pair, and called with the **real actor** because
+        ``KnowledgeService`` authorises the write by actor (`require_owner`); recording
+        it under a system account would be both dishonest and liable to be refused.
+        """
+        from octop.infra.agents.teams.learnings import (  # noqa: PLC0415
+            KnowledgeServiceDocuments,
+            ProjectKbArchiver,
+        )
+        from octop.infra.knowledge.service import KnowledgeService  # noqa: PLC0415
+
+        services = self.services
+        assert services is not None  # the boot chain wires this before binding runtime
+        return ProjectKbArchiver(
+            documents=KnowledgeServiceDocuments(
+                KnowledgeService(services), actor_user_id=actor_user_id
+            ),
+            artifacts=services.project_artifact_repo,
+            kb_id=kb_id,
+            artifact_id=artifact_id,
+        )
 
     async def start(self) -> None:
         if self._started:
@@ -411,13 +461,29 @@ class OctopServer:
             TrajectoryLiveBus(),
         )
 
+        # T-49: the two ``/team`` runtime handles. Built **once** and handed to the
+        # gateway, because ``SharedServices.team_run_service()`` constructs a fresh
+        # instance per call — a second instance would not be the one bound below.
+        team_run_service = self.services.team_run_service()
         gateway = Gateway(
             agent_manager=registry,
             repos=self.services.repos,
             trajectory_service=trajectory_service,
             history_archive=history_archive,
+            team_run_service=team_run_service,
+            authorize_agent_action=self._authorize_agent_action,
         )
         await gateway.boot()
+
+        # T-49 ③: the run service's runtime handles. ``_open_room`` returns ``None``
+        # without a gateway, so an unbound service silently opens no room (and the
+        # decision gate can never suspend). Bound **after** the gateway exists —
+        # ``bind_runtime`` mutates in place, so the gateway already holds this object.
+        team_run_service.bind_runtime(
+            agent_manager=registry,
+            gateway=gateway,
+            kb_archiver_factory=self._kb_archiver_factory,
+        )
 
         from octop import __version__  # noqa: PLC0415
 

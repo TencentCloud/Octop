@@ -339,7 +339,10 @@ async def test_task_edit_fields_round_trip(
 ) -> None:
     client, _, ctx = api
     auth, pid = ctx["admin"], ctx["pid"]
-    task = await _new_task(client, auth, pid, description="old", priority=1, deps=["dep-a"])
+    # T-70: ``deps`` must name a task that exists -- the seed used to be the
+    # placeholder ``"dep-a"``, which only passed while the create path ran no G6.
+    dep = await _new_task(client, auth, pid, title="dep")
+    task = await _new_task(client, auth, pid, description="old", priority=1, deps=[dep["task_id"]])
 
     patched = await client.patch(
         f"{PROJECTS}/{pid}/tasks/{task['task_id']}",
@@ -358,6 +361,32 @@ async def test_task_edit_fields_round_trip(
     assert (row["title"], row["description"], row["priority"]) == ("Renamed", "new", 5)
     assert (row["start_at"], row["due_at"]) == (1_700_000_000, 1_700_003_600)
     assert row["status"] == "todo"
+
+
+async def test_task_create_refuses_a_dangling_dependency(
+    api: tuple[httpx.AsyncClient, Any, dict[str, Any]],
+) -> None:
+    """★ The seed the three cases above used to carry, now **explicitly denied** (T-70).
+
+    ``_new_task(..., deps=["dep-a"])`` used to succeed because the projects route wrote
+    ``deps`` without running G6. This asserts the opposite at the HTTP layer: a
+    dangling dependency is ``409 TEAM_TASK_GRAPH_INVALID`` with ``details.code ==
+    "missing-id"`` — and **no row is left behind** (the create is compensated).
+    """
+    client, _, ctx = api
+    auth, pid = ctx["admin"], ctx["pid"]
+
+    response = await client.post(
+        f"{PROJECTS}/{pid}/tasks", headers=auth, json={"title": "ghost", "deps": ["dep-a"]}
+    )
+
+    assert response.status_code == 409, response.text
+    error = response.json()["error"]
+    assert error["code"] == "TEAM_TASK_GRAPH_INVALID"
+    assert error["details"]["code"] == "missing-id"
+
+    rows = (await client.get(f"{PROJECTS}/{pid}/tasks", headers=auth)).json()
+    assert "ghost" not in [str(row.get("title") or "") for row in rows]
 
 
 async def test_task_edit_illegal_status_is_409(
@@ -438,7 +467,9 @@ async def test_task_edit_full_replacement_and_deps_are_never_cleared(
             json={"key": "risk", "label": "Risk", "type": "text"},
         )
     ).json()["field_id"]
-    task = await _new_task(client, auth, pid, deps=["dep-a"])
+    # T-70: same placeholder problem as above -- ``"dep-a"`` never existed.
+    dep = await _new_task(client, auth, pid, title="dep")
+    task = await _new_task(client, auth, pid, deps=[dep["task_id"]])
     tid = task["task_id"]
 
     filled = await client.patch(
@@ -450,7 +481,7 @@ async def test_task_edit_full_replacement_and_deps_are_never_cleared(
     row = await _board_task(client, auth, pid, tid)
     assert [t["tag_id"] for t in row["tags"]] == [tag]
     assert row["custom_fields"][0]["value"] == "high"
-    assert row["deps"] == ["dep-a"], "deps must survive a patch that omits the key"
+    assert row["deps"] == [dep["task_id"]], "deps must survive a patch that omits the key"
 
     # A patch without the keys changes none of the three collections.
     plain = await client.patch(
@@ -460,7 +491,7 @@ async def test_task_edit_full_replacement_and_deps_are_never_cleared(
     row = await _board_task(client, auth, pid, tid)
     assert [t["tag_id"] for t in row["tags"]] == [tag]
     assert row["custom_fields"][0]["value"] == "high"
-    assert row["deps"] == ["dep-a"]
+    assert row["deps"] == [dep["task_id"]]
 
     # Explicit empty values clear them (full replacement, not a merge).
     cleared = await client.patch(
@@ -490,6 +521,9 @@ async def test_task_edit_submits_only_changed_fields_and_rereads(
     """A one-field patch must not disturb the rest of the row (diff submission)."""
     client, _, ctx = api
     auth, pid = ctx["admin"], ctx["pid"]
+    # T-70: the deps seed is a real task now (it used to be the placeholder
+    # ``"dep-a"``, accepted only while create skipped G6).
+    dep = await _new_task(client, auth, pid, title="dep")
     task = await _new_task(
         client,
         auth,
@@ -497,7 +531,7 @@ async def test_task_edit_submits_only_changed_fields_and_rereads(
         title="Untouched",
         description="keep me",
         priority=2,
-        deps=["dep-a"],
+        deps=[dep["task_id"]],
         start_at=1_700_000_000,
     )
 
@@ -510,7 +544,7 @@ async def test_task_edit_submits_only_changed_fields_and_rereads(
     assert row["priority"] == 4
     assert row["title"] == "Untouched"
     assert row["description"] == "keep me"
-    assert row["deps"] == ["dep-a"]
+    assert row["deps"] == [dep["task_id"]]
     assert row["start_at"] == 1_700_000_000
     # The socket for the batch-3 regression: an omitted `deps` key never clears it.
     assert row["deps"] != []
