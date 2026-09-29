@@ -773,7 +773,11 @@ class AgentManager:
         return out
 
     async def update(self, agent_id: str, **kwargs: Any) -> AgentRow:
-        """Update agent config in DB and reload harness agent in the background."""
+        """Update agent config and await a changed default model's runtime reload."""
+        previous = self._repos.agent_repo.get(agent_id) if "default_model" in kwargs else None
+        wait_for_model_reload = previous is not None and previous.default_model != kwargs.get(
+            "default_model"
+        )
         runtime_updates = {
             key: kwargs.pop(key) for key in AGENT_RUNTIME_CONFIG_KEYS if key in kwargs
         }
@@ -828,7 +832,11 @@ class AgentManager:
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-        self._schedule_reload(agent_id)
+        if wait_for_model_reload and self._harness_manager is not None:
+            await self._reload_agent(agent_id)
+            row = self._repos.agent_repo.get(agent_id) or row
+        else:
+            self._schedule_reload(agent_id)
         return row
 
     async def set_shared(self, agent_id: str, shared: bool) -> AgentRow:

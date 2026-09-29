@@ -1872,6 +1872,53 @@ async def test_update_config_json_still_schedules_reload(
 
 
 @pytest.mark.asyncio
+async def test_default_model_update_waits_for_runtime_reload(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent_id = "AGT_MODEL_WAIT"
+    manager._repos.agent_repo.create(agent_id=agent_id, user_id=None, name="model-wait")
+    manager._harness_manager = MagicMock()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def delayed_reload(reloading_id: str) -> None:
+        assert reloading_id == agent_id
+        started.set()
+        await release.wait()
+
+    monkeypatch.setattr(manager, "_reload_agent", delayed_reload)
+    update = asyncio.create_task(manager.update(agent_id, default_model="provider/new-model"))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        assert not update.done(), "PATCH must wait until the new runtime is ready"
+    finally:
+        release.set()
+        await update
+
+    row = manager._repos.agent_repo.get(agent_id)
+    assert row is not None and row.default_model == "provider/new-model"
+
+
+@pytest.mark.asyncio
+async def test_unchanged_default_model_keeps_background_reload(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent_id = "AGT_MODEL_SAME"
+    manager._repos.agent_repo.create(agent_id=agent_id, user_id=None, name="model-same")
+    manager._repos.agent_repo.update_config(agent_id, default_model="provider/model")
+    manager._harness_manager = MagicMock()
+    reload_agent = AsyncMock()
+    scheduled: list[str] = []
+    monkeypatch.setattr(manager, "_reload_agent", reload_agent)
+    monkeypatch.setattr(manager, "_schedule_reload", lambda aid: scheduled.append(aid))
+
+    await manager.update(agent_id, default_model="provider/model")
+
+    assert scheduled == [agent_id]
+    reload_agent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_update_config_json_cannot_change_system_files_path(
     manager: AgentManager, monkeypatch: pytest.MonkeyPatch
 ) -> None:
