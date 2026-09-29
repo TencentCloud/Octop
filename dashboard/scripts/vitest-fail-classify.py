@@ -14,7 +14,8 @@
 用法：
     npx vitest run 2>&1 | python3 tools/vitest-fail-classify.py            # 从 stdin 读
     python3 tools/vitest-fail-classify.py --self-test                      # ★ 自证：真实片段 ⇒ 三类都能分
-退出码：★ 有 `suite-load`（= 有文件**根本没跑**）⇒ **1** ✓；只有 `case-fail` ⇒ **2**；全绿 ⇒ **0**。
+退出码：★ 有 `suite-load`（= 有文件**根本没跑**）⇒ **1** ✓；只有 `case-fail` ⇒ **2**；全绿 ⇒ **0**；
+        ★★ **无输入 / 无法解析**（`P2'` 不成立）⇒ **3** ✓（`D-8` 批新增 · ★ 见 `PLAN §3`）。
 """
 import argparse
 import pathlib
@@ -24,6 +25,17 @@ import sys
 FAIL = re.compile(r"^\s*FAIL\s+(\S+?)(\s*\[[^\]]*\])?\s*(>.*)?$")
 COUNTS = re.compile(r"^\s*(Test Files|Tests)\s+(.*)$")
 NFAIL = re.compile(r"(\d+)\s+failed")
+# ★★ `P2'` 支路 ② 的判据（`D-8` 批）：★ 摘要行必须**真的含数字化的** `passed`/`failed` ✓
+#   ★★ 不得只认 `:n` 键（= 只在 `N failed` 时才有）—— 只认它会把【真绿】`218 passed (218)`
+#   误判成「无输入」⇒ **假红** ✗（`PLAN §3` 的精确性说明）
+PASSFAIL = re.compile(r"\d+\s*(?:passed|failed)")
+# ★★ `FIND-8` 口径统一（★ 有意的分工 · **不是**不一致 ✓）：
+#   · `FAIL_PREFIX`（前缀）⇒ ★ 只用于 `P2'` 支路 ① 判「**有输入**」✓
+#   · `FAIL`（完整正则 · 带可归类组）⇒ ★ 用于**归类**（进 `sl`/`cf`）✓
+#   · ★★ 二者之间的缺口（★ 「读到了 `FAIL` 行但**归类不了**」）由 :129 的新守卫闭合 ⇒ `1` ✓
+#   ★★ **不得**把支路 ① 改成完整正则 —— 那会让 `FAIL x ???…` 变成「无输入 ⇒ `3`」✗，
+#      而 ★★ `3`（没读到输入）与 ★★ `1`（读到了但读不懂）是**两种不同语义** ✗
+FAIL_PREFIX = re.compile(r"^\s*FAIL\s")
 
 # ★★ 真实输出片段（★ 取自 `RESEARCH.md` §C/§A.4 的逐字摘录 ✓）
 FIXTURE = """\
@@ -97,9 +109,38 @@ def main() -> int:
     except ValueError:
         files_failed = tests_failed = 0
     classified = len(set(sl) | {f.split(">")[0].strip() for f in cf})
+    # ★★★ `D-8` 批（`P2'`）：★★「有输入」判据 —— 两条支路，满足任一即「有输入」✓
+    #   ① ★ ≥1 行【前缀】`^\s*FAIL\s`（`FAIL_PREFIX` · ★ 只看前缀，**不**要求可归类）✓
+    #   ② ★ 某行【同时】含 `Test Files`/`Tests` 与 `\d+\s*(?:passed|failed)`（`COUNTS` ∧ `PASSFAIL`）
+    #   ★★ 两条都不成立 ⇒ ★ **无输入 / 无法解析 ⇒ `3`**（★ 不得判全绿 ✗）
+    #   ★★ 支路 ② 【不得】只认 `:n` 键 —— 那会把【真绿】`218 passed (218)` 误判成「无输入」⇒ 假红 ✗
+    #   ★★ `FIND-8`：支路 ① 用【前缀】· 归类用【完整正则 `FAIL`】⇒ ★ **有意的分工** ✓；
+    #      两者之间的缺口由下面第三条守卫闭合（★ `FAIL x ???…` 类 ⇒ `1`，**不是** `3`）✓
+    has_input = any(FAIL_PREFIX.match(line) for line in text.splitlines()) or any(
+        COUNTS.match(line) and PASSFAIL.search(line) for line in text.splitlines())
+    if not has_input:
+        print("  ✗★ 无输入 / 无法解析：★ 既无 `FAIL` 行，也无【含数字化的 passed/failed】的 "
+              "`Test Files` / `Tests` 摘要行 ⇒ ★ **不得判全绿** ✓（★ 这是「读不到 ≠ 全绿」的落地）")
+        return 3
+    if (files_failed or tests_failed) and classified == 0:
+        print(f"  ✗★ 守卫（`AC-9`）：★ counts 报 {files_failed} 文件 / {tests_failed} 用例失败，"
+              f"而分类【一个都没认出】（classified = 0）⇒ ★ **不得判全绿** ✓")
+        return 1
     if (files_failed or tests_failed) and classified < files_failed:
         print(f"  ✗★ 未知格式守卫：★ counts 报 {files_failed} 个文件失败，"
               f"而分类只认出 {classified} 个 ⇒ ★ 【有 FAIL 行没被识别】✗ ⇒ **不得判全绿** ✓")
+        return 1
+    # ★★★ `FIND-7`（`repair-2`）：★ **有 `FAIL` 前缀行但【归类不了】** ⇒ ★ **`1`**（★ 不得判全绿 ✗）
+    #   ★ 两种形态：① ★ 不匹配完整 `FAIL` 正则（如 `FAIL x ??? weird`）
+    #               ② ★ 匹配但**无可归类组**（如裸 `FAIL  src/x.test.tsx`，既无 `[ … ]` 也无 `> …`）
+    #   ★★ 语义：★ 这是「**读到了 `FAIL` 行但读不懂**」⇒ `1`（★ 与 `3` 的「没读到输入」不同 ✓）
+    unclassified_fail = [
+        line for line in text.splitlines()
+        if FAIL_PREFIX.match(line) and not (lambda m: m and (m.group(2) or m.group(3)))(FAIL.match(line))
+    ]
+    if unclassified_fail:
+        print(f"  ✗★ 有 `FAIL` 行未被归类 ⇒ ★ 读不懂 ⇒ **不得判全绿** ✓（★ `FIND-7` · "
+              f"{len(unclassified_fail)} 行 · 首行逐字：{unclassified_fail[0].strip()!r}）")
         return 1
     if sl:
         print("  ★★ 结论：★ 有文件【没跑】⇒ 门【红】✓（★ 这正是「没跑 ≠ 跑了没过」的落地 ✓）")

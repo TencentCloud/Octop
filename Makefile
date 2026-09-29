@@ -227,12 +227,13 @@ typecheck:
 .PHONY: test-frontend
 # ★ 前端测试段（批次十四 `T-B-GATE` · `P1 = B`）：把 vitest 接进 `make all`。
 # ★ 与既有 `build-frontend`（构建）**是两件事**，两条都保留。
-# ★ 退出码语义由 `dashboard/scripts/vitest-fail-classify.py`（`D-8`）给出且**不变**：
-#   有套件加载失败（`FAIL … [ … ]`）⇒ **1** · 仅用例失败（`FAIL … > …`）⇒ **2** · 全绿 ⇒ **0**。
-# ★ `2` 也是失败 ⇒ **不得** `|| true`。
+# ★ 退出码语义由 `dashboard/scripts/vitest-fail-classify.py`（`D-8`）给出：★★ **四级**
+#   有套件加载失败（`FAIL … [ … ]`）⇒ **1** · 仅用例失败（`FAIL … > …`）⇒ **2** · 全绿 ⇒ **0**
+#   · ★ `counts` 报有失败而分类为空 ⇒ **1**（守卫 · `AC-9`）· ★★ 无输入 / 无法解析（`P2'` 不成立）⇒ **3**。
+# ★ `2` 与 `3` 也是失败 ⇒ **不得** `|| true`。
 test-frontend:
-	@echo "[test-frontend] vitest + fail-classifier (1 = suite load, 2 = case fail)..."
-	@cd $(DASHBOARD_DIR) && npx vitest run 2>&1 | tee /tmp/octop-vitest.log | python3 scripts/vitest-fail-classify.py
+	@echo "[test-frontend] vitest + fail-classifier (1 = suite load, 2 = case fail, 3 = no input)..."
+	@set -o pipefail; cd $(DASHBOARD_DIR) && npx vitest run 2>&1 | tee /tmp/octop-vitest.log | python3 scripts/vitest-fail-classify.py
 
 .PHONY: test
 test:
