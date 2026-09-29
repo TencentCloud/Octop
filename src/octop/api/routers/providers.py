@@ -36,6 +36,7 @@ from octop.infra.agents.providers.probe import (
 from octop.infra.agents.providers.reasoning import reasoning_capability
 from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
 from octop.infra.agents.providers.store import clear_stale_pins_for_provider
+from octop.infra.db.repos._base import UNSET
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
@@ -248,7 +249,11 @@ async def admin_patch_provider(
         provider_id,
         kind=body.kind,
         base_url=body.base_url,
-        api_key=body.api_key,
+        # Omitted means "keep the stored key"; an explicit ``null`` means
+        # "revoke it". ``model_fields_set`` is the same distinction
+        # ``_patch_requires_provider_rehydrate`` already uses below, and it is
+        # the only place a plain ``body.api_key`` can tell the two apart.
+        api_key=body.api_key if "api_key" in body.model_fields_set else UNSET,
         extra_json=body.extra_json,
         models_json=models_json,
         note=body.note,
