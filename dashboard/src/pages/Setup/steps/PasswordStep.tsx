@@ -18,7 +18,6 @@ export default function PasswordStep({ onVerified }: Props) {
   const [form] = Form.useForm<{ password: string }>();
   const [submitting, setSubmitting] = useState(false);
   const [fileExists, setFileExists] = useState<boolean | null>(null);
-  const [passwordPath, setPasswordPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,7 +25,6 @@ export default function PasswordStep({ onVerified }: Props) {
       .getAuthStatus()
       .then((s) => {
         setFileExists(s.wizard_password_exists);
-        setPasswordPath(s.wizard_password_path ?? null);
       })
       .catch(() => setFileExists(null));
   }, []);
@@ -71,9 +69,7 @@ export default function PasswordStep({ onVerified }: Props) {
         message={t("wizard.password.whereTitle")}
         description={
           <Paragraph style={{ marginBottom: 0, fontSize: 13 }}>
-            {passwordPath
-              ? t("wizard.password.wherePath", { path: passwordPath })
-              : t("wizard.password.whereDefault")}
+            {t("wizard.password.whereDefault")}
           </Paragraph>
         }
       />

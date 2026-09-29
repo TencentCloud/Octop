@@ -104,14 +104,19 @@ async def login(
     """Exchange username (or email) and password for a JWT access token and user profile."""
     if server.user_manager.count() == 0:
         raise OctopError(ErrorCode.SETUP_REQUIRED, "initial admin not created")
-    server.user_manager.raise_if_login_locked(body.username)
     effective = load_effective(
         server.services.settings_repo,
         server.services.secret_repo,
         current_env(),
     )
     await ensure_captcha(effective, body.captcha_token, _client_ip(request))
-    user = await server.user_manager.authenticate(body.username, body.password)
+    try:
+        server.user_manager.raise_if_login_locked(body.username)
+        user = await server.user_manager.authenticate(body.username, body.password)
+    except OctopError as exc:
+        if exc.code is not ErrorCode.LOGIN_LOCKED:
+            raise
+        user = None
     if user is None:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid credentials")
     secret = server.services.secret_repo.get("jwt")

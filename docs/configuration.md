@@ -211,8 +211,9 @@ SQLite installs **defer** opening the control-plane DB until the database
 step; password verification works without a pool. The modern flow uses
 `/api/setup/*`:
 
-1. `POST /api/setup/begin` (or `POST /api/setup/verify-password` when
-   `require_setup_password=true`) — issues a short-lived wizard token.
+1. `POST /api/setup/verify-password` — verifies the setup password and issues
+   a short-lived wizard token. `POST /api/setup/begin` does not issue a token;
+   it is retained only as a compatibility endpoint.
 2. `POST /api/setup/test-database` / `POST /api/setup/database` — choose
    SQLite or PostgreSQL, probe, persist `config.json`, bind pool + migrate.
 3. `POST /api/setup/initial-admin` — creates the seed admin (requires DB).
@@ -220,13 +221,14 @@ step; password verification works without a pool. The modern flow uses
 5. `POST /api/setup/finish` — bootstraps default `main` agent and unlocks
    the rest of the API.
 
-`GET /api/setup/status` returns `setup_required`, wizard password fields,
-plus `database_bound` / `database_driver`. `setup_lockdown` middleware
-blocks non-setup routes until the wizard completes.
+`GET /api/setup/status` returns setup state and whether password verification
+is required; it does not expose the server-side password file path. Database
+probe/bind and wizard restore operations require the short-lived wizard token.
+After `/api/setup/finish`, the server persists a completion marker and
+`setup_lockdown` blocks setup routes as well as non-setup routes.
 
 For unattended installs, use `octop init --yes` with
-`OCTOP_ADMIN_USERNAME` / `OCTOP_ADMIN_PASSWORD` (and
-`OCTOP_REQUIRE_SETUP_PASSWORD=false` if the env-var path is used). This
+`OCTOP_ADMIN_USERNAME` / `OCTOP_ADMIN_PASSWORD`. This
 runs the same migrations + admin creation without the HTTP wizard.
 
 ## Secrets

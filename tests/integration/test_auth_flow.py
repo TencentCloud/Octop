@@ -38,6 +38,17 @@ async def test_setup_again_410(client):
     assert r.status_code == 410
 
 
+async def test_setup_status_hides_wizard_path_after_initialization(client):
+    c, _, home = client
+    await bootstrap_admin(c, home, username="alice", password="TestPass12")
+
+    r = await c.get("/api/setup/status")
+
+    assert r.status_code == 200
+    assert r.json()["setup_required"] is False
+    assert "wizard_password_path" not in r.json()
+
+
 async def test_change_password(client):
     c, _, home = client
     await bootstrap_admin(c, home, username="a", password="OldPass12")
@@ -63,6 +74,19 @@ async def test_invalid_token_401(client):
     await bootstrap_admin(c, home, username="a", password="TestPass12")
     r = await c.get("/api/auth/me", headers={"Authorization": "Bearer not.a.token"})
     assert r.status_code == 401
+
+
+async def test_login_lockout_does_not_disclose_account_existence(client):
+    c, srv, home = client
+    await bootstrap_admin(c, home, username="alice", password="TestPass12")
+    row = srv.services.user_repo.get_by_username("alice")
+    assert row is not None
+    srv.services.user_repo.record_failed_login(row.id, max_attempts=1, lockout_seconds=600)
+
+    locked = await c.post("/api/auth/login", json={"username": "alice", "password": "wrong"})
+    absent = await c.post("/api/auth/login", json={"username": "nobody", "password": "wrong"})
+    assert locked.status_code == absent.status_code == 401
+    assert locked.json() == absent.json()
 
 
 async def test_health_no_auth_required(client):

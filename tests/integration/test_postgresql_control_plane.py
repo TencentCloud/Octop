@@ -252,11 +252,18 @@ async def test_setup_database_postgresql_bind(tmp_octop_home: Path) -> None:
     async with octop_client(tmp_octop_home, bind_database=False) as (client, srv):
         assert srv.database_bound is False
 
-        probed = await client.post("/api/setup/test-database", json=payload)
+        pw = read_password(tmp_octop_home.parent)
+        assert pw is not None
+        verified = await client.post("/api/setup/verify-password", json={"password": pw})
+        assert verified.status_code == 200, verified.text
+        tok = verified.json()["wizard_token"]
+        auth = {"Authorization": f"Bearer {tok}"}
+
+        probed = await client.post("/api/setup/test-database", json=payload, headers=auth)
         assert probed.status_code == 200, probed.text
         assert probed.json()["ok"] is True
 
-        bound = await client.post("/api/setup/database", json=payload)
+        bound = await client.post("/api/setup/database", json=payload, headers=auth)
         assert bound.status_code == 200, bound.text
         body = bound.json()
         assert body["ok"] is True
@@ -266,12 +273,6 @@ async def test_setup_database_postgresql_bind(tmp_octop_home: Path) -> None:
         status = await client.get("/api/setup/status")
         assert status.json()["database_bound"] is True
         assert status.json()["database_driver"] == "postgresql"
-
-        pw = read_password(tmp_octop_home.parent)
-        assert pw is not None
-        verified = await client.post("/api/setup/verify-password", json={"password": pw})
-        assert verified.status_code == 200, verified.text
-        tok = verified.json()["wizard_token"]
 
         created = await client.post(
             "/api/setup/initial-admin",

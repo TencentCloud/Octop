@@ -5,7 +5,7 @@ import {
   trajectoryApi,
   type TrajectoryEvent,
 } from "../../../api/modules/trajectory";
-import Markdown from "../../../components/Markdown/LazyMarkdown";
+import Markdown from "../../../components/Markdown";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
 import { splitMarkdownFrontmatter } from "../../../utils/markdown";

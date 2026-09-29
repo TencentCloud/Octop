@@ -88,12 +88,12 @@ async def test_start_writes_wizard_password_when_no_users(tmp_octop_home: Path) 
         await srv.stop()
 
 
-async def test_start_skips_wizard_password_when_disabled(tmp_octop_home: Path) -> None:
+async def test_start_still_writes_wizard_password_when_disabled(tmp_octop_home: Path) -> None:
     write_octop_config(tmp_octop_home, require_setup_password=False)
     srv = OctopServer(home=tmp_octop_home)
     await srv.start()
     try:
-        assert not (tmp_octop_home / "octop-login.txt").exists()
+        assert (tmp_octop_home.parent / "octop-login.txt").exists()
     finally:
         await srv.stop()
 

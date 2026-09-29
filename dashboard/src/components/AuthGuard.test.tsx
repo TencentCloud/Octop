@@ -88,9 +88,10 @@ describe("AuthGuard offline boot", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("protected-shell")).toBeInTheDocument();
     await waitFor(() => {
       expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
+      expect(authApi.me).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("protected-shell")).toBeInTheDocument();
     });
     // Give route-driven navigate identity churn a tick; gate must not re-run.
     await waitFor(() => {
