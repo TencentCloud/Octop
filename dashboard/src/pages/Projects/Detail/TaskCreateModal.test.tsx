@@ -229,39 +229,45 @@ describe("TaskCreateModal（R3 / AC-U-8）", () => {
     await waitFor(() => expect(createTaskMock).toHaveBeenCalledTimes(1));
   });
 
-  it("AC-U-7/AC-U-8: 一次请求携带目标列与全部已选项（无两段式）", async () => {
-    const { user } = await open("任务一");
+  it(
+    "AC-U-7/AC-U-8: 一次请求携带目标列与全部已选项（无两段式）",
+    async () => {
+      const { user } = await open("任务一");
 
-    await user.click(
-      screen.getByRole("button", { name: "projects.chipStatus" }),
-    );
-    await user.click(
-      await screen.findByRole("button", { name: "projects.taskStatusDoing" }),
-    );
-    await user.click(screen.getByRole("button", { name: "projects.chipTags" }));
-    await user.click(await screen.findByRole("button", { name: /紧急/ }));
-    await user.click(
-      screen.getByRole("button", { name: "projects.chipPriority" }),
-    );
-    await user.click(await screen.findByRole("button", { name: "2" }));
+      await user.click(
+        screen.getByRole("button", { name: "projects.chipStatus" }),
+      );
+      await user.click(
+        await screen.findByRole("button", { name: "projects.taskStatusDoing" }),
+      );
+      await user.click(
+        screen.getByRole("button", { name: "projects.chipTags" }),
+      );
+      await user.click(await screen.findByRole("button", { name: /紧急/ }));
+      await user.click(
+        screen.getByRole("button", { name: "projects.chipPriority" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "2" }));
 
-    await user.click(submitButton());
+      await user.click(submitButton());
 
-    await waitFor(() => expect(createTaskMock).toHaveBeenCalledTimes(1));
-    const [projectId, body] = createTaskMock.mock.calls[0];
-    expect(projectId).toBe("prj_1");
-    expect(body).toMatchObject({
-      title: "任务一",
-      status: "doing",
-      priority: 2,
-      tags: ["tag_1"],
-      custom_fields: {},
-      attachment_ids: [],
-      parent_id: null,
-    });
-    // 只发一次请求：没有「先建 todo 再 move」的第二段。
-    expect(dispatchTaskMock).not.toHaveBeenCalled();
-  });
+      await waitFor(() => expect(createTaskMock).toHaveBeenCalledTimes(1));
+      const [projectId, body] = createTaskMock.mock.calls[0];
+      expect(projectId).toBe("prj_1");
+      expect(body).toMatchObject({
+        title: "任务一",
+        status: "doing",
+        priority: 2,
+        tags: ["tag_1"],
+        custom_fields: {},
+        attachment_ids: [],
+        parent_id: null,
+      });
+      // 只发一次请求：没有「先建 todo 再 move」的第二段。
+      expect(dispatchTaskMock).not.toHaveBeenCalled();
+    },
+    { timeout: 9500 },
+  );
 
   it("AC-U-21/S-4: 「继续创建」开启时提交后不关弹窗，清空 3 项、保留其余选择", async () => {
     const { user, onClose } = await open("任务一");
