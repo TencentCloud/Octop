@@ -88,6 +88,7 @@
     "BACKUP_DRIVER_MISMATCH": "This backup was made with a different database engine (SQLite vs PostgreSQL). Switch the runtime to match the backup, or create a new backup on the current engine. Cross-engine restore is not supported.",
     "BACKUP_SCHEMA_INCOMPATIBLE": "This backup uses database schema version {{archive_schema_version}}, which cannot be restored by this Octop version (maximum supported: {{runtime_schema_version}}).",
     "BACKUP_IN_PROGRESS": "A backup or restore is already in progress. Try again shortly.",
+    "BACKUP_TOOL_MISSING": "A required PostgreSQL client tool is not installed. Install postgresql-client on the server and retry.",
     "FORBIDDEN": "Permission denied.",
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",
