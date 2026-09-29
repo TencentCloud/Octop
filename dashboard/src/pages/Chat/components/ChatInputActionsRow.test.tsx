@@ -61,8 +61,11 @@ describe("ChatInputActionsRow compact pickers", () => {
       expect(document.querySelector(".ant-popover")).toBeInTheDocument();
     });
     const popover = document.querySelector(".ant-popover");
-    expect(popover?.querySelector("svg.lucide-sparkles")).not.toBeNull();
+    // The compact model popover lists the model rows (each with its provider
+    // logo) plus a "manage models" footer. It is not the mobile overflow
+    // drawer, which is where the Sparkles shortcut icon lives.
     expect(popover?.querySelector("img")).not.toBeNull();
+    expect(popover?.querySelector("svg.lucide-sparkles")).toBeNull();
     expect(document.querySelector(".ant-drawer-content")).toBeNull();
   });
 });

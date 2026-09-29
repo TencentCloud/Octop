@@ -43,6 +43,11 @@ describe("publishedExpertsApi", () => {
       "/experts/published/expert%2F1/refresh",
       {
         method: "POST",
+        body: JSON.stringify({
+          name: "Updated",
+          description: "New description",
+          welcome_message: { zh: "欢迎", en: "Welcome" },
+        }),
       },
     );
     expect(request).toHaveBeenNthCalledWith(
