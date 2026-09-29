@@ -96,8 +96,26 @@ REPLACEMENTS = {
 }
 
 
+def already_encrypted(tree):
+    """★ L 批后仓库**自带**加密（`secret_codec.encrypt_value` 在写入点）⇒ 参照修复退化为 no-op。"""
+    for rel in REPLACEMENTS:
+        try:
+            text = (pathlib.Path(tree) / rel).read_text(encoding="utf-8")
+        except OSError:
+            return False
+        if "encrypt_value(" not in text:
+            return False
+    return True
+
+
 def apply(tree):
-    """★ 对副本树应用参照修复（★ 每处旧文本必须【恰好命中 1 次】，否则抛错 ⇒ 不静默半修）。"""
+    """★ 对副本树应用参照修复（★ 每处旧文本必须【恰好命中 1 次】，否则抛错 ⇒ 不静默半修）。
+
+    ★★ `L` 批后本仓的写入点**已自带** `encrypt_value` ⇒ ★ 本函数退化为 **no-op**（返回原因串），
+    不再改写任何文件（★ 否则会把已加密的值再包一层/或锚点失配抛错）。
+    """
+    if already_encrypted(tree):
+        return ["（no-op）L 批后写入点已自带 `secret_codec.encrypt_value` ⇒ 参照修复无需应用"]
     for rel, pairs in REPLACEMENTS.items():
         path = pathlib.Path(tree) / rel
         text = path.read_text(encoding="utf-8")

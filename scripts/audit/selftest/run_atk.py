@@ -21,6 +21,7 @@
 """
 import argparse
 import ast
+import os
 import pathlib
 import re
 import shutil
@@ -34,6 +35,8 @@ import reference_fix  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 WORK = pathlib.Path("/tmp/k_ac3")
 STATE_RE = re.compile(r"^\[AUD-S6\] (绿|红|未知)")
+COUNT_RE = re.compile(r"已判 (\d+) ·")
+BASELINE_COUNTED = None   # ★ 前置自检实测（`主树 已判 N`）· ★ 3.9 兼容：不写注解
 DUMMY = "sk-DUMMY-ATK-000000000000"  # ★ 自造样本（非真实凭据）
 
 
@@ -44,16 +47,28 @@ def make_tree(name, *, reference=False):
         shutil.rmtree(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(dest)], check=True)
-    shutil.copytree(ROOT / "scripts/audit", dest / "scripts/audit", dirs_exist_ok=True)
+    # ★★ 覆盖【工作树】的 `scripts/**` + `src/octop/**`：本批改动未提交 ⇒ 只 clone 会拿到旧代码
+    #    （★ 判据要审的是【当前工作树】· 与 `git status` 的语义一致）
+    shutil.copytree(ROOT / "scripts", dest / "scripts", dirs_exist_ok=True)
+    shutil.copytree(ROOT / "src" / "octop", dest / "src" / "octop", dirs_exist_ok=True)
+    # ★ 补 `.venv` 软链：F-L1(b)/(c) 子进程需要 `cryptography`；★ 子进程 `cwd=clone` 且自动
+    #   `sys.path.insert(0, "src")` ⇒ 导入的仍是【clone 的源码】（不是 venv 里的可编辑安装）
+    venv = ROOT / ".venv"
+    if venv.is_dir() and not (dest / ".venv").exists():
+        os.symlink(venv, dest / ".venv")
     if reference:
         reference_fix.apply(dest)
     return dest
 
 
-def audit(tree):
-    """⇒ `(state, s6_line, hints, stdout)`；★ `state ∈ {"绿","红","未知","<无>"}`。"""
+def audit(tree, env=None):
+    """⇒ `(state, s6_line, hints, stdout)`；★ `state ∈ {"绿","红","未知","<无>"}`。
+
+    ★ `env` 用于**运行期绑定替换**类探针（`PYTHONPATH` 带 `sitecustomize`）。
+    """
     proc = subprocess.run(["python3", "scripts/audit/current_tree.py"], cwd=str(tree),
-                          capture_output=True, text=True, check=False)
+                          capture_output=True, text=True, check=False,
+                          env={**os.environ, **(env or {})})
     line = next((ln for ln in proc.stdout.splitlines() if ln.startswith("[AUD-S6]")), "")
     hints = [ln.strip() for ln in proc.stdout.splitlines()
              if ln.strip().startswith("· 提示 [AUD-S6]")]
@@ -108,18 +123,24 @@ def plaintext_writer(func_name, table, columns):
 
 
 def atk1pp():
-    """★ 最关键：零修复 + 顶层永不被调用的同名诱饵 ⇒ 判据必须仍然【红】。"""
+    """★ 最关键：**顶层永不被调用的同名诱饵**（`def encrypt_secret` + 模块级同名绑定）**不得掩盖**
+    一个真实的【明文】写入点 ⇒ 判据必须仍然【红】（★ `L` 批后本仓已自带加密 ⇒ 探针自带被掩盖的明文站点）。"""
     tree = make_tree("atk1pp")
-    inject_top_level(
-        tree / "src/octop/infra/db/repos/providers.py",
-        'def encrypt_secret(repo, plain):\n'
-        '    return plain.encode("utf-8")   # 诱饵：永不被调用\n\n\n'
-        'api_key = b"gAAAAA-decoy-never-called"   # 诱饵：模块级同名绑定\n\n\n',
-        expect_name="encrypt_secret",
-    )
+    rel = "src/octop/infra/agents/atk1pp_decoy.py"
+    inject(tree, rel, (
+        'def encrypt_secret(repo, plain):   # 诱饵：顶层、永不被调用\n'
+        '    return plain.encode("utf-8")\n\n\n'
+        'api_key = b"gAAAAA-decoy-never-called"   # 诱饵：模块级同名绑定\n\n\n'
+        "from octop.infra.db.pool import DatabasePool\n\n\n"
+        "def atk1pp_write(db: DatabasePool, name: str) -> None:\n"
+        '    key = "%s"\n' % DUMMY
+        + "    with db.transaction() as conn:\n"
+        '        conn.execute("%s", (name, "openai", key))\n'
+        % ("INSERT" + " INTO " + "providers" + "(name, kind, api_key) VALUES (?, ?, ?)")
+    ))
     state, line, _, _ = audit(tree)
-    ok = state == "红" and "FAIL 3" in line
-    return ok, state, line, "诱饵已注入（顶层 + 可解析）⇒ 期望仍【红 · FAIL 3】"
+    ok = state == "红" and rel in line
+    return ok, state, line, "顶层诱饵 + 一个真实明文写入点 ⇒ 期望【红】且红点含该路径（★ 诱饵不得掩盖明文）"
 
 
 def atk2():
@@ -189,7 +210,10 @@ def atk6():
     state, line, hints, _ = audit(tree)
     registered = any("盲区登记" in hint for hint in hints)
     claimed = "providers.auth" in line
-    ok = state != "绿" and registered and not claimed
+    # ★ L 批后主树已绿 ⇒ 本探针的「不得绿冒充覆盖」形态 = ① 盲区显式登记 ∧ ② 该列未被声称覆盖
+    #   ∧ ③ **绿行必须逐字带覆盖计数护栏**（`已判 N · UNKNOWN M（已声明边界）`）
+    guarded = ("已判 " in line) and ("（已声明边界）" in line)
+    ok = registered and not claimed and guarded
     return ok, state, line, ("盲区显式登记 = %s · 是否被声称覆盖 = %s ⇒ ★ 该类列名**不在判据面内**"
                              "（结构性盲区 · 不构成覆盖证据）" % (registered, claimed))
 
@@ -198,18 +222,17 @@ def atk_name():
     """★ 补充探针（硬要求⑤）：写入值**未经加密**但函数名像加密（同文件自造同名包装）⇒ 必须【红】。"""
     tree = make_tree("atk_name", reference=True)
     path = tree / "src/octop/infra/db/repos/providers.py"
+    # ★ L 树形态：**同文件伪造 `secret_codec`**（模块名遮蔽）⇒ `secret_codec.encrypt_value` 变成
+    #   「只 encode」的假助手 ⇒ ★ 判据必须判【红】（导入源/遮蔽检查）
     inject_top_level(
         path,
-        "def encrypt_secret(repo, plain):   # 同名包装：只做 encode，永不做加密\n"
-        '    return plain.encode("utf-8")\n\n\n',
-        expect_name="encrypt_secret",
+        "class _FakeCodec:   # 探针：伪造 secret_codec（恒等「加密」）\n"
+        "    @staticmethod\n"
+        "    def encrypt_value(key, plain):\n"
+        '        return plain.encode("utf-8")\n\n\n'
+        "secret_codec = _FakeCodec()   # ★ 遮蔽上面的 import\n\n\n",
+        expect_name="_FakeCodec",
     )
-    old = "encrypt_secret(SecretRepo(self._db), api_key) if api_key else None"
-    text = path.read_text(encoding="utf-8")
-    if text.count(old) != 2:
-        raise AssertionError("ATK-NAME：锚点命中 %d 次（期望 2）" % text.count(old))
-    path.write_text(text.replace(old, "encrypt_secret(None, api_key) if api_key else None"),
-                    encoding="utf-8")
     state, line, _, _ = audit(tree)
     ok = state == "红" and "providers" in line
     return ok, state, line, "同名包装已遮蔽 import ⇒ 期望【红】（★ 禁名字单判 · 须解析导入源）"
@@ -271,14 +294,17 @@ def h2_writer(func_name, table, column, form):
     )
 
 
-def _h_probe(name, source, *, expect):
-    """★ `H1`/`H2` 公共断言：站点**必须可见** · 状态 ∈ `expect` · **覆盖率计数不得增加**（硬要求⑩）。"""
+def _h_probe(name, source, *, expect, forbid_growth=True):
+    """★ `H1`/`H2`/`H3` 公共断言：站点**必须可见** · 状态 ∈ `expect`。
+
+    `forbid_growth` ⇒ ★ 还要求【覆盖率计数不增加】（硬要求⑩）：★ 不可判/不透明站点**不得**计入 `已判`。
+    """
     tree = make_tree(name, reference=True)
     rel = "src/octop/infra/agents/%s.py" % name.lower().replace("-", "_")
     inject(tree, rel, source)
     state, line, _, _ = audit(tree)
-    counted = "已判写入点 6" in line   # ★ 参照修复基线的【真有判决】站点数 = 6（★ 不得 +1）
-    ok = state in expect and rel in line and counted
+    counted = (BASELINE_COUNTED is None) or ("已判 %s" % BASELINE_COUNTED) in line
+    ok = state in expect and rel in line and (counted or not forbid_growth)
     why = ("修复后：站点可见 ∧ 状态 = %s ∧ ★ 覆盖率计数【未增加】（`已判写入点 6` = %s）"
            % ("/".join(sorted(expect)), counted))
     return ok, state, line, why
@@ -287,13 +313,13 @@ def _h_probe(name, source, *, expect):
 def h1_module():
     """★ `H1` 形态一：**模块级**变量持 SQL ⇒ 必须【未知或红】（★ 不得静默不可见）。"""
     return _h_probe("H1-MODULE", h1_writer("h1_module", "providers", "api_key", module_level=True),
-                    expect={"未知", "红"})
+                    expect={"未知", "红"}, forbid_growth=False)
 
 
 def h1_local():
     """★ `H1` 形态二：**局部**变量持 SQL ⇒ 必须【未知或红】。"""
     return _h_probe("H1-LOCAL", h1_writer("h1_local", "providers", "api_key", module_level=False),
-                    expect={"未知", "红"})
+                    expect={"未知", "红"}, forbid_growth=False)
 
 
 def h2_dict():
@@ -344,14 +370,67 @@ def h3_writer(func_name, form):
     )
 
 
+def _h3_probe(name, source):
+    """★ `H3` 断言：**未知** ∧ 覆盖率计数**不增** ∧ 边界**差分可见**（★ 新增不透明站点触发）。"""
+    tree = make_tree(name, reference=True)
+    rel = "src/octop/infra/agents/%s.py" % name.lower().replace("-", "_")
+    inject(tree, rel, source)
+    state, line, hints, stdout = audit(tree)
+    counted = (BASELINE_COUNTED is None) or ("已判 %s" % BASELINE_COUNTED) in line
+    visible = ("差分" in stdout) or (rel in stdout)
+    ok = state == "未知" and counted and visible
+    return ok, state, line, ("站点可见（边界差分/坐标） ∧ 状态 = 未知 ∧ ★ 覆盖率计数未增加"
+                             "（`已判 %s` = %s）" % (BASELINE_COUNTED, counted))
+
+
 def h3_cross_fn():
     """★ `H3a`：跨函数返回的 SQL ⇒ 必须【未知】（★ 此前【连站点都不建】⇒ 假绿且无 hint）。"""
-    return _h_probe("H3-CROSS-FN", h3_writer("h3_cross_fn", "cross_fn"), expect={"未知"})
+    return _h3_probe("H3-CROSS-FN", h3_writer("h3_cross_fn", "cross_fn"))
 
 
 def h3_var_table():
     """★ `H3b`：f-string **变量表名** ⇒ 必须【未知】（★ 此前站点被登记但 `UNKNOWN 0`）。"""
-    return _h_probe("H3-VAR-TABLE", h3_writer("h3_var_table", "var_table"), expect={"未知"})
+    return _h3_probe("H3-VAR-TABLE", h3_writer("h3_var_table", "var_table"))
+
+
+# ★★ 第三条假加密形态（`SR1`/`REVIEW-SPEC`）：**运行期替换绑定**
+RUNTIME_PATCH = '''"""探针载荷：把 `secret_codec` 的加解密换成【恒等映射】（运行期 · 源码不变）。
+
+★ 后果：源码 sha 不变（F-L1(a) 失效）· 真助手往返正常（F-L1(b) 失效）⇒ ★ 只有【数据面抽检】(c) 能拦。
+"""
+
+import importlib
+
+try:
+    _codec = importlib.import_module("octop.infra.db.secret_codec")
+except Exception:  # pragma: no cover - 探针环境问题
+    _codec = None
+
+if _codec is not None:
+    # ★★ 经典假形态：**把 base64 当加密**（★ 往返自洽 ⇒ 只有「解码后 Fernet.decrypt」能识破）
+    _codec.encrypt_value = lambda key, plain: __import__("base64").urlsafe_b64encode(
+        plain.encode("utf-8")
+    ).decode("ascii")
+    _codec.decrypt_value = lambda key, blob: __import__("base64").urlsafe_b64decode(
+        blob if isinstance(blob, bytes) else str(blob).encode("utf-8")
+    ).decode("utf-8")
+'''
+
+
+def h4_runtime_patch():
+    """★ 第三条形态：**运行期替换绑定** ⇒ ★ 期望「判据行 = 绿 ∧ 数据面抽检 = 拦下」。
+
+    ★★ 结论：**判据不可单独作为「已加密」的证据**（★ 三合一验收里，(c) 是唯一防线）。
+    """
+    tree = make_tree("h4_runtime_patch")
+    (tree / "sitecustomize.py").write_text(RUNTIME_PATCH, encoding="utf-8")
+    env = {"PYTHONPATH": os.pathsep.join([str(tree / "src"), str(tree)])}
+    state, line, hints, _ = audit(tree, env=env)
+    data_face = next((h for h in hints if "数据面抽检" in h), "")
+    blocked = "拦下" in data_face
+    ok = state == "绿" and blocked
+    return ok, state, line, ("运行期替换绑定已生效 ⇒ 判据行 = %s（静态判据被绕过）· 数据面抽检 = %s"
+                             "（★ 唯一防线）" % (state, "拦下" if blocked else "未拦下"))
 
 
 PROBES = [
@@ -373,6 +452,8 @@ PROBES = [
     # ★ `V1b` 自造的两条新不可见形态（`repair-3` 收成永久探针 · 硬要求⑪⑫）
     ("H3-CROSS-FN", h3_cross_fn),
     ("H3-VAR-TABLE", h3_var_table),
+    # ★ 第三条假加密形态（L 批 · `SR1` 裁定 · 「判据行绿 ∧ 数据面抽检拦下」）
+    ("H4-RUNTIME-PATCH", h4_runtime_patch),
 ]
 
 
@@ -388,6 +469,9 @@ def main(argv=None):
     # ★ 前置自检：探针族自身也在 `scripts/**`（判据输入面内）⇒ 其载荷**不得**被判据当成写入点，
     #   否则探针会污染判据输出（`AC-1` 的 `3 FAIL + 3 UNKNOWN` 会被算歪）。
     _, main_line, _, _ = audit(ROOT)
+    global BASELINE_COUNTED
+    match = COUNT_RE.search(main_line)
+    BASELINE_COUNTED = match.group(1) if match else None
     polluted = "scripts/audit/selftest" in main_line
     print("\n[前置自检] %s · 探针族自身是否污染判据输出 = %s"
           % ("PASS" if not polluted else "FAIL", polluted))

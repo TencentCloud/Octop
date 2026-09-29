@@ -53,6 +53,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import os
 import sqlite3
@@ -60,11 +61,18 @@ import sys
 import time
 from pathlib import Path
 
+# ★ `src/` 入 `sys.path`：受管列 / 专用键名的唯一来源 = `octop.infra.db.secret_codec`
+#   （★ 迁移与产品走【同一份】常量与加密助手 ⇒ 不复制、不漂移）
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 try:
     from cryptography.fernet import Fernet, InvalidToken
+
+    from octop.infra.db import secret_codec
 except ImportError:  # pragma: no cover - 环境问题（缺依赖 ⇒ 不得静默空跑）
     print(
-        "★ 缺少依赖 cryptography ⇒ 请用仓库解释器：.venv/bin/python scripts/migrate_langfuse_secrets.py",
+        "★ 缺少依赖 cryptography / 源码路径 ⇒ 请用仓库解释器："
+        ".venv/bin/python scripts/migrate_langfuse_secrets.py",
         file=sys.stderr,
     )
     raise SystemExit(2) from None
@@ -74,7 +82,14 @@ EXIT_REFUSED = 1
 EXIT_USAGE = 2
 
 # ★ 自举键白名单（不进迁移面）
-BOOTSTRAP_KEYS = ("jwt", "connector_fernet", "sso_fernet", "langfuse_fernet")
+BOOTSTRAP_KEYS = (
+    "jwt",
+    "connector_fernet",
+    "sso_fernet",
+    "langfuse_fernet",
+    # ★ L 批：三类结构化凭据列的专用键（`secret_codec.BOOTSTRAP_KEYS` · 同源不复制）
+    *secret_codec.BOOTSTRAP_KEYS,
+)
 # ★ 本批新增的专用密钥行（与 connector_fernet / sso_fernet 同级）
 FERNET_KEY = "langfuse_fernet"
 # ★ 本批缺陷行：langfuse 凭据
@@ -221,12 +236,128 @@ def _backup_secrets(con: sqlite3.Connection, backup: Path) -> int:
             "INSERT INTO secrets(k, v, created_at, rotated_at) VALUES (?, ?, ?, ?)",
             [tuple(r) for r in rows],
         )
+        backed_columns = _backup_columns(con, dest)
         dest.execute("COMMIT")
     finally:
         dest.close()
     # ★ 第二步：收尾 chmod 兜底（含 SQLite 重建文件的情况）
     os.chmod(backup, 0o600)
+    print(f"★ 备份另含四个受管列 {backed_columns} 行（`secrets_columns` 表）")
     return len(rows)
+
+
+# ★★ L 批：三表四列的受管列（★ 唯一清单 = `secret_codec.managed_columns()`）
+MANAGED_COLUMNS = secret_codec.managed_columns()
+
+
+def _column_rows(con: sqlite3.Connection) -> dict[str, list[tuple[int, object]]]:
+    """★ 只读盘点四个受管列（★ SQL 一律【字面量】⇒ 不引入不透明站点）。"""
+    out: dict[str, list[tuple[int, object]]] = {}
+    out["providers.api_key"] = con.execute(
+        "SELECT id, api_key FROM providers WHERE api_key IS NOT NULL"
+    ).fetchall()
+    out["voice_providers.api_key"] = con.execute(
+        "SELECT id, api_key FROM voice_providers WHERE api_key IS NOT NULL"
+    ).fetchall()
+    out["storage_backends.access_key"] = con.execute(
+        "SELECT id, access_key FROM storage_backends WHERE access_key IS NOT NULL"
+    ).fetchall()
+    out["storage_backends.secret_key"] = con.execute(
+        "SELECT id, secret_key FROM storage_backends WHERE secret_key IS NOT NULL"
+    ).fetchall()
+    return out
+
+
+def _column_state(
+    con: sqlite3.Connection, keys: dict[str, bytes | None]
+) -> dict[str, dict[str, list]]:
+    """★ 每列的 [已是密文 / 待迁移 / 孤立(Fernet 形态但无键)]（★ 有键时**唯一判定 = try-decrypt**）。"""
+    state: dict[str, dict[str, list]] = {}
+    rows_by_label = _column_rows(con)
+    for ref in MANAGED_COLUMNS:
+        label = ref.label
+        entry = {"done": [], "todo": [], "stranded": []}
+        key = keys.get(ref.key_name)
+        for row_id, value in rows_by_label[label]:
+            raw = _as_bytes(value)
+            if key is not None:
+                # ★ `repair-2`：唯一判定 = **base64 解码后** try-decrypt（★ 与回写、自检同口径）
+                if _decryptable(key, value):
+                    entry["done"].append((row_id, raw))
+                else:
+                    entry["todo"].append((row_id, raw))
+            elif _looks_raw_token(value):
+                raise Refused(
+                    "检出【原始字节 Fernet】形态的落库值（`I1` 未发布的过渡形态）⇒ 拒绝继续："
+                    "★ 直接把它当明文再加密会破坏数据 ⇒ 请先按 base64 文本形态重写该列"
+                )
+            elif _looks_stored_ciphertext(value):
+                entry["stranded"].append((row_id, raw))
+            else:
+                entry["todo"].append((row_id, raw))
+        state[label] = entry
+    return state
+
+
+def _stored_token(value: object) -> bytes:
+    """★ 落库值 ⇒ Fernet token：**base64 解码**（`repair-2` 形态）。
+
+    ★ 解码失败 ⇒ 抛 `ValueError`（调用方按「非密文」处理）· ★ 不用前缀/长度判定。
+    """
+    raw = value if isinstance(value, bytes) else str(value).encode("utf-8")
+    return base64.urlsafe_b64decode(raw)
+
+
+def _decryptable(key: bytes | None, value: object) -> bool:
+    """★ 唯一判定 = **base64 解码后** `try-decrypt`（成功 ⇒ 已是密文 ⇒ 幂等跳过）。"""
+    if key is None:
+        return False
+    try:
+        Fernet(key).decrypt(_stored_token(value))
+    except (InvalidToken, ValueError, TypeError):
+        return False
+    return True
+
+
+def _looks_stored_ciphertext(value: object) -> bool:
+    """★ 快筛（**不作判定**）：base64 解码后是否为 Fernet token 形态。"""
+    try:
+        return _stored_token(value).startswith(TOKEN_PREFIX)
+    except (ValueError, TypeError):
+        return False
+
+
+def _looks_raw_token(value: object) -> bool:
+    """★ 检出【原始字节 Fernet】形态（`I1` 未发布的过渡形态）⇒ ★ 拒绝继续（否则会被当明文再加密）。"""
+    return isinstance(value, bytes) and value.startswith(TOKEN_PREFIX)
+
+
+def _as_plain(value: object) -> str:
+    return value.decode("utf-8") if isinstance(value, bytes) else str(value)
+
+
+def _key_row(con: sqlite3.Connection, key_name: str) -> bytes | None:
+    row = con.execute("SELECT v FROM secrets WHERE k = ?", (key_name,)).fetchone()
+    return None if row is None else _as_bytes(row[0])
+
+
+def _backup_columns(con: sqlite3.Connection, dest: sqlite3.Connection) -> int:
+    """★ 备份四个受管列（迁移前值）⇒ 回滚/对账用（★ 备份即明文副本 ⇒ 0600）。"""
+    dest.execute(
+        "CREATE TABLE secrets_columns ("
+        "  label TEXT NOT NULL,"
+        "  row_id INTEGER NOT NULL,"
+        "  value BLOB"
+        ")"
+    )
+    pairs: list[tuple[str, int, object]] = []
+    for label, rows in _column_rows(con).items():
+        for row_id, value in rows:
+            pairs.append((label, int(row_id), value))
+    dest.executemany(
+        "INSERT INTO secrets_columns(label, row_id, value) VALUES (?, ?, ?)", pairs
+    )
+    return len(pairs)
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -258,18 +389,42 @@ def _run(args: argparse.Namespace) -> int:
         if ciphertext:
             print(f"★ 已是密文（原样不动）：{', '.join(f'{k}@{owner}' for k, owner in ciphertext)}")
 
+        # ★★ L 批：三表四列盘点（★ 只读 · 有键 ⇒ `try-decrypt` 唯一判定；无键 ⇒ Fernet 形态 = 孤立）
+        keys_now = {
+            secret_codec.PROVIDERS_KEY: _key_row(con, secret_codec.PROVIDERS_KEY),
+            secret_codec.STORAGE_KEY: _key_row(con, secret_codec.STORAGE_KEY),
+        }
+        column_state = _column_state(con, keys_now)
+        todo_columns = {label: st["todo"] for label, st in column_state.items() if st["todo"]}
+        stranded_columns = {label: st["stranded"] for label, st in column_state.items() if st["stranded"]}
+        print("★ 三表四列盘点：" + " · ".join(
+            "%s 共 %d（已密文 %d / 待迁移 %d / 孤立 %d）"
+            % (label, len(st["done"]) + len(st["todo"]) + len(st["stranded"]),
+               len(st["done"]), len(st["todo"]), len(st["stranded"]))
+            for label, st in sorted(column_state.items())))
+        print("★ 专用键指纹：" + " · ".join(
+            "%s=%s" % (name, _fingerprint(value)) for name, value in sorted(keys_now.items())))
+
+        if stranded_columns:
+            raise Refused(
+                "检出 Fernet 形态的落库值而专用键行缺失 ⇒ 拒绝静默生成新钥（SL-2）："
+                + " · ".join("%s %d 行" % (label, len(rows_)) for label, rows_ in sorted(stranded_columns.items()))
+            )
         if stranded:
             raise Refused(
                 "检出 Fernet 形态的密文而行对应密钥行缺失 ⇒ 拒绝静默生成新钥（SL-2）"
                 f"（受影响键名：{', '.join(sorted(stranded))}）"
             )
 
-        if not plaintext:
+        if not plaintext and not todo_columns:
             print("★ 迁移面 = 0 行 ⇒ 无事可做（幂等：已迁移或无需迁移）· 未写库")
             return EXIT_OK
 
         if args.dry_run:
-            print(f"★ dry-run：待迁移键名 = {', '.join(sorted(plaintext))}")
+            print(f"★ dry-run：secrets 待迁移键名 = {', '.join(sorted(plaintext)) or '（无）'}")
+            print("★ dry-run：三表四列待迁移 = "
+                  + (" · ".join("%s %d 行" % (label, len(rows_)) for label, rows_ in sorted(todo_columns.items()))
+                     or "（无）"))
             print("★ dry-run：不写库 / 不备份 / 不 checkpoint")
             return EXIT_OK
 
@@ -333,6 +488,80 @@ def _run(args: argparse.Namespace) -> int:
                 )
                 migrated.append(name)
 
+
+            # ★★ L 批：专用键自举（★ 有孤立密文 ⇒ 上面已拒绝；此处仅「无密文且缺键」）
+            if keys_now[secret_codec.PROVIDERS_KEY] is None:
+                new_key = Fernet.generate_key()
+                con.execute(
+                    "INSERT INTO secrets(k, v, created_at) VALUES (?, ?, ?)",
+                    (secret_codec.PROVIDERS_KEY, new_key, now),
+                )
+                print("★ 键行缺失且无孤立密文 ⇒ 生成专用密钥 k=" + secret_codec.PROVIDERS_KEY)
+            if keys_now[secret_codec.STORAGE_KEY] is None:
+                new_key = Fernet.generate_key()
+                con.execute(
+                    "INSERT INTO secrets(k, v, created_at) VALUES (?, ?, ?)",
+                    (secret_codec.STORAGE_KEY, new_key, now),
+                )
+                print("★ 键行缺失且无孤立密文 ⇒ 生成专用密钥 k=" + secret_codec.STORAGE_KEY)
+            key_providers = _key_row(con, secret_codec.PROVIDERS_KEY)
+            key_storage = _key_row(con, secret_codec.STORAGE_KEY)
+
+            # ★★ 三表四列逐行回写（★ 事务内 SELECT → UPDATE · ★ 唯一判定 = try-decrypt ⇒ 幂等）
+            column_migrated: list[str] = []
+            for row_id, value in con.execute(
+                "SELECT id, api_key FROM providers WHERE api_key IS NOT NULL"
+            ).fetchall():
+                if _decryptable(key_providers, value):
+                    continue
+                token_providers_api_key = secret_codec.encrypt_value(
+                    key_providers, _as_plain(value)
+                )
+                con.execute(
+                    "UPDATE providers SET api_key = ? WHERE id = ?",
+                    (token_providers_api_key, row_id),
+                )
+                column_migrated.append("providers.api_key")
+            for row_id, value in con.execute(
+                "SELECT id, api_key FROM voice_providers WHERE api_key IS NOT NULL"
+            ).fetchall():
+                if _decryptable(key_providers, value):
+                    continue
+                token_voice_api_key = secret_codec.encrypt_value(
+                    key_providers, _as_plain(value)
+                )
+                con.execute(
+                    "UPDATE voice_providers SET api_key = ? WHERE id = ?",
+                    (token_voice_api_key, row_id),
+                )
+                column_migrated.append("voice_providers.api_key")
+            for row_id, value in con.execute(
+                "SELECT id, access_key FROM storage_backends WHERE access_key IS NOT NULL"
+            ).fetchall():
+                if _decryptable(key_storage, value):
+                    continue
+                token_storage_access_key = secret_codec.encrypt_value(
+                    key_storage, _as_plain(value)
+                )
+                con.execute(
+                    "UPDATE storage_backends SET access_key = ? WHERE id = ?",
+                    (token_storage_access_key, row_id),
+                )
+                column_migrated.append("storage_backends.access_key")
+            for row_id, value in con.execute(
+                "SELECT id, secret_key FROM storage_backends WHERE secret_key IS NOT NULL"
+            ).fetchall():
+                if _decryptable(key_storage, value):
+                    continue
+                token_storage_secret_key = secret_codec.encrypt_value(
+                    key_storage, _as_plain(value)
+                )
+                con.execute(
+                    "UPDATE storage_backends SET secret_key = ? WHERE id = ?",
+                    (token_storage_secret_key, row_id),
+                )
+                column_migrated.append("storage_backends.secret_key")
+
             # ★ 事务内自检：不可解密行数 = 0（非 0 ⇒ 抛错 ⇒ 整批回滚）
             fernets_after = dict(fernets)
             fernets_after[FERNET_KEY] = fernet
@@ -346,6 +575,24 @@ def _run(args: argparse.Namespace) -> int:
                     "事务内自检失败：不可解密行 = %d（%s）⇒ 整批回滚，禁跳过失败行"
                     % (len(undecryptable), ", ".join(sorted(undecryptable)))
                 )
+            # ★★ L 批：三表四列同样自检（不可解密行 = 0 ⇒ 非 0 抛错 ⇒ 整批回滚）
+            bad_columns = 0
+            for _row_id, value in con.execute("SELECT id, api_key FROM providers").fetchall():
+                if value is not None and not _decryptable(key_providers, value):
+                    bad_columns += 1
+            for _row_id, value in con.execute("SELECT id, api_key FROM voice_providers").fetchall():
+                if value is not None and not _decryptable(key_providers, value):
+                    bad_columns += 1
+            for _row_id, value in con.execute("SELECT id, access_key FROM storage_backends").fetchall():
+                if value is not None and not _decryptable(key_storage, value):
+                    bad_columns += 1
+            for _row_id, value in con.execute("SELECT id, secret_key FROM storage_backends").fetchall():
+                if value is not None and not _decryptable(key_storage, value):
+                    bad_columns += 1
+            if bad_columns:
+                raise Refused(
+                    "三表四列事务内自检失败：不可解密行 = %d ⇒ 整批回滚，禁跳过失败行" % bad_columns
+                )
             con.execute("COMMIT")
         except BaseException:
             try:
@@ -355,7 +602,13 @@ def _run(args: argparse.Namespace) -> int:
             raise
 
         after_rows = _secrets_rows(con)
+        column_tally = {
+            label: column_migrated.count(label) for label in sorted(set(column_migrated))
+        }
         print(f"★ 已迁移 = {len(migrated)} 行（{'、'.join(migrated) or '无'}）")
+        print("★ 三表四列已回写 = %d 行（%s）"
+              % (len(column_migrated),
+                 " · ".join("%s %d" % (label, count) for label, count in column_tally.items()) or "无"))
         print(f"★ 行数对照：迁移前 {len(rows)} 行 ⇒ 迁移后 {len(after_rows)} 行")
         print(f"★ 密钥 k={FERNET_KEY} 指纹（迁移后）= {_fingerprint(dict(after_rows).get(FERNET_KEY))}")
         print("★ 事务内自检：不可解密行 = 0")

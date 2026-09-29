@@ -47,8 +47,11 @@
   · `AUD-S6` 只覆盖【代码写入点】·**不覆盖库里已有数据** ⇒ 「判据变绿 ≠ 已加密」（存量可能仍明文）。
 """
 import ast
+import hashlib
 import pathlib
 import re
+import subprocess
+import sys
 
 from .. import registry as reg
 
@@ -70,7 +73,72 @@ BENIGN_COLUMNS = {}
 ENCRYPT_SOURCES = {
     "octop.infra.connectors.crypto": frozenset({"encrypt_credentials"}),
     "octop.infra.auth.sso.crypto": frozenset({"encrypt_secret"}),
+    # ★ L 批：三类结构化凭据列走 `infra/db/secret_codec.py`（★ 不增补 ⇒ 加了密判据仍红）
+    "octop.infra.db.secret_codec": frozenset({"encrypt_value"}),
 }
+
+# ★★ F-L1(a)：验证源【源码 `sha256[:12]` 冻结】—— 源一变 ⇒ 红/未知（破「改验证源本体」）
+#   ★ 值由 L 批 I1 落盘时实测回填（★ 任一不等 ⇒ 判据【未知】· 不得记绿）
+FROZEN_SOURCE_SHA = {
+    "src/octop/infra/db/secret_codec.py": "87fb41ed9812",
+    "src/octop/infra/connectors/crypto.py": "c79abd7686aa",
+    "src/octop/infra/auth/sso/crypto.py": "47d71b3116aa",
+}
+
+# ★★ 边界桶基线（`SL-5`）：桶③ = 【其它表】的本质动态 SQL 站点数
+#   ★ 逐次比对：实测 > 基线 ⇒ ★ 至少 `UNKNOWN`（或红）+ 打印差分（★ 防边界桶变垃圾桶）
+#   ★ 锚 = `HEAD = 1808f918` · L 批判据（`Name → 常量` 转为静态可判 ⇒ 19 处从「不透明」转入判定面）
+#   ★★ 重锚记录：契约初值 91（判据 sha `0a7ee69e19f0`）⇒ 本批判据变更后【重测 = 72】⇒ 冻结 72
+#   ★ 为什么必须重锚：基线是「已声明边界」的**上界** ⇒ 判据变强后若沿用旧上界 ⇒ 新增 19 处不透明
+#     站点将被旧上界吞掉（★ 与「增长即 UNKNOWN」的防线冲突）✗
+BOUNDARY_BASELINE = 72
+
+# ★★ F-L1(b) 往返自检 / (c) 数据面抽检：★ 需要 `cryptography` ⇒ 一律走【仓库解释器】子进程
+ROUNDTRIP_CODE = """import sys
+sys.path.insert(0, "src")
+from octop.infra.db import secret_codec as sc
+key = sc.get_key_for_selfcheck()
+value = "x-" + "1" * 8
+assert sc.decrypt_value(key, sc.encrypt_value(key, value)) == value
+print("OK")
+"""
+# ★★ F-L1(c)：★★ 必须读【真实落库值】（★ 不得只测助手 · 不得只看行状态）
+#   ★ `repair-2`：落库形态 = **base64 文本**（Fernet 密文的传输编码）⇒ 抽检【先 base64 解码再
+#     `Fernet.decrypt`】，且**不调用产品助手**（助手可被运行期替换 ⇒ 这正是第三条形态的破点）
+DATA_FACE_CODE = """import base64, pathlib, sys, tempfile
+sys.path.insert(0, "src")
+from cryptography.fernet import Fernet, InvalidToken
+from octop.infra.db.migrate import run_migrations
+from octop.infra.db.pool import SqlitePool
+from octop.infra.db.repos.providers import ProviderRepo
+plain = "sk-DUMMY-DATAFACE-0001"
+root = pathlib.Path(tempfile.mkdtemp(prefix="aud_s6_"))
+pool = SqlitePool(root / "octop.db")
+run_migrations(pool)
+ProviderRepo(pool).create(name="s6", kind="openai", api_key=plain)
+with SqlitePool(root / "octop.db").connect() as conn:
+    cell = conn.execute("SELECT api_key FROM providers").fetchone()[0]
+    key_cell = conn.execute(
+        "SELECT v FROM secrets WHERE k = 'providers_fernet'"
+    ).fetchone()[0]
+column = cell if isinstance(cell, bytes) else str(cell).encode("utf-8")
+key = bytes(key_cell) if isinstance(key_cell, bytes) else str(key_cell).encode("utf-8")
+# ★★ 抽检【不调用产品助手】（可被运行期替换）⇒ 自己 base64 解码 + 自己 Fernet.decrypt
+try:
+    token = base64.urlsafe_b64decode(column)
+    decryptable = Fernet(key).decrypt(token).decode("utf-8") == plain
+except (InvalidToken, ValueError, TypeError):
+    decryptable = False
+# ★ 形态断言：落库列必须是【base64 文本】（ASCII 可打印 · 且解码后是 Fernet token）
+try:
+    column.decode("ascii")
+    ascii_text = True
+except UnicodeDecodeError:
+    ascii_text = False
+has_plain = plain.encode("utf-8") in column
+print("decryptable=%s has_plaintext=%s ascii_text=%s" % (decryptable, has_plain, ascii_text))
+raise SystemExit(0 if (decryptable and not has_plain and ascii_text) else 1)
+"""
 INPUT_FACES = ("src/octop", "scripts")
 DDL_DIR = "src/octop/infra/db/migrations"
 
@@ -115,8 +183,9 @@ RESIDUAL_BLIND_SPOTS = (
     "等价加密实现的漏认（只认两个已验证导入源的 `encrypt_credentials`/`encrypt_secret`）",
 )
 COVERAGE_NOTE = (
-    "★ 覆盖计数（★ 坚持打印 · 不得用绿冒充完备）：已判写入点 = %d（真有判决：红 / 全加密）· "
-    "UNKNOWN = %d（不可判/不透明站点 · **不计入覆盖**）⇒ ★ 本判据**不是**完备证明"
+    "★ 覆盖计数（★ 坚持打印 · 不得用绿冒充完备）：已判 = %d（真有判决：红 / 全加密）· "
+    "桶③边界 = %d（已声明边界 · **不计入覆盖** · 不逼 exit 2）· 桶②不可判 = %d（⇒ 仍逼 exit 2）"
+    "⇒ ★ 本判据**不是**完备证明（★ 见「残余盲区」）"
 )
 BLIND_SPOTS_HINT = "★ 残余盲区枚举（★ 不可能穷尽 · 写下来并被输出暴露 · 不声称完备）：" + " · ".join(
     "%d) %s" % (i + 1, item) for i, item in enumerate(RESIDUAL_BLIND_SPOTS)
@@ -500,10 +569,15 @@ def _sql_texts(expr, scope, module_assigns, depth=0):
         if not values:
             values = module_assigns.get(expr.id, [])
         out = []
+        # ★ L 批：**名字**（模块级/同函数常量模板，如 `_UPDATE_SQL`）解析到【单个常量】⇒ ★ 静态可判
+        #   （★ 静态化的 `conn.execute(_UPDATE_SQL, params)` 必须能被判值 ⇒ 否则桶② 永远 ≠ 0）
+        #   ★ 但 **f-string / 调用 / 拼接** 仍一律 `is_constant=False`（硬要求②：动态 ⇒ UNKNOWN）
+        resolved_constant = bool(values)
         for value in values:
-            sub, _ = _sql_texts(value, scope, module_assigns, depth + 1)
+            sub, sub_constant = _sql_texts(value, scope, module_assigns, depth + 1)
             out.extend(sub)
-        return out, False
+            resolved_constant = resolved_constant and sub_constant
+        return out, resolved_constant
     return [" ".join(_literal_parts(expr))], False
 
 
@@ -576,9 +650,16 @@ def _sites_in_file(path, rel, target_tables):
         dynamic = not is_constant
         cols = {}
         if not dynamic:
+            # ★ 静态 SQL 文本 = 字面量本身，或【解析自常量变量】的唯一文本
+            static_sql = (
+                sql_arg.value
+                if isinstance(sql_arg, ast.Constant)
+                else (texts[0] if len(texts) == 1 else None)
+            )
             value_args = list(node.args[(sql_index + 1) if sql_index is not None else 0 :])
             value_args += [kw.value for kw in node.keywords if kw.arg not in {"sql", "query", "statement"}]
-            cols = _bind_columns(sql_arg.value, value_args, scope)
+            if static_sql is not None:
+                cols = _bind_columns(static_sql, value_args, scope)
         sites.append({"table": bound, "rel": rel, "line": sql_arg.lineno, "dynamic": dynamic,
                       "cols": cols, "scope": scope})
     return sites
@@ -625,11 +706,14 @@ def _bind_columns(sql, value_args, scope):
                 continue
             column, _, remainder = item.partition("=")
             column = column.strip().strip('"').lower()
-            holes = len(PLACEHOLDER_RE.findall(remainder))
+            holes = PLACEHOLDER_RE.findall(remainder)
             if holes:
-                if index < len(params):
-                    out[column] = params[index]
-                index += holes
+                # ★ L 批静态化形态 `col = CASE WHEN ? = 1 THEN col ELSE ? END`：★ 值 = **最后一个**占位符
+                #   （★ 第 1 个是「是否提供」标志）· 旧形态 `col = ?` ⇒ 仍是同一个 ⇒ 语义不回退
+                slot = index + len(holes) - 1
+                if slot < len(params):
+                    out[column] = params[slot]
+                index += len(holes)
         return out
     return {}
 
@@ -690,6 +774,31 @@ def _resolve_param_leaves(root, py_files, scope, param_name, seen, depth=0):
         else:
             leaves.append(verdict)
     return leaves
+
+
+def _source_shas(root):
+    """★ F-L1(a)：`{相对路径: sha256[:12]}`（★ 只读 · 缺文件记 `missing`）。"""
+    out = {}
+    for rel in FROZEN_SOURCE_SHA:
+        path = pathlib.Path(root) / rel
+        try:
+            out[rel] = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+        except OSError:
+            out[rel] = "missing"
+    return out
+
+
+def _run_python(root, code, timeout=120):
+    """★ 用【仓库解释器】跑自检代码 ⇒ `(exit, output)`；★ 判据自身只用标准库 ⇒ 需要
+    `cryptography` 的检查必须走子进程（★ 裸 `python3` 无该依赖 ⇒ 空跑即假绿）。"""
+    venv = pathlib.Path(root) / ".venv" / "bin" / "python"
+    exe = str(venv) if venv.is_file() else sys.executable
+    try:
+        done = subprocess.run([exe, "-c", code], cwd=str(root), capture_output=True,
+                              text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return 127, "自检不可执行（%s）⇒ 不得记绿" % type(exc).__name__
+    return done.returncode, (done.stdout or "") + (done.stderr or "")
 
 
 @reg.criterion("AUD-S6", reg.HARD)
@@ -830,24 +939,69 @@ def check_plaintext_columns(ctx):
         else:
             judged_sites.append((site["rel"], site["line"]))
 
-    unknown_sites += len(opaque)
-    if opaque:
-        unknown_entries.append(
-            "不透明执行器站点 %d 处（非常量 SQL ∧ 表不可静态绑定 ⇒ ★ 不可见即未知 · 硬要求⑨⑪）：%s%s"
-            % (len(opaque), " · ".join("%s:%d" % (s["rel"], s["line"]) for s in opaque[:6]),
-               " …" if len(opaque) > 6 else "")
+    # ★★ 三桶（L 批 · `Lead` 裁定 · ★ 不改全局退出规则）：
+    #   桶① = 判定面（4 列 / 6 个候选表站点）有判决 ⇒ ★ 决定行状态
+    #   桶② = 判定面内【不可判】（未静态化的非常量 SQL / 列绑定不可确定）⇒ `UNKNOWN` ⇒ ★ 仍逼 exit 2
+    #   桶③ = 【已声明边界】（其它表的本质动态 SQL 站点 · 表不可绑定）⇒ 逐条打印 + 不计入覆盖
+    #          ⇒ ★ 不逼 exit 2（★ 口径澄清 · 非放宽：其它表判不了 ≠ 这 4 列没被覆盖）
+    boundary = list(opaque)
+    boundary_entries: list[str] = []
+    for site in boundary[:8]:
+        boundary_entries.append("%s:%d" % (site["rel"], site["line"]))
+    boundary_overflow = " …（全量见 `--json`）" if len(boundary) > 8 else ""
+    if boundary:
+        hints.append(
+            "★ 桶③【已声明边界】不透明站点 %d 处（非常量 SQL ∧ 表不可绑定 ⇒ ★ 逐条登记 · "
+            "★ **不计入覆盖数** · ★ 不逼 exit 2）：%s%s"
+            % (len(boundary), " · ".join(boundary_entries), boundary_overflow)
         )
+    boundary_note = ""
+    if len(boundary) < BOUNDARY_BASELINE:
+        boundary_note = " · ★ 边界【缩小】%d < 冻结基线 %d（差分 %d ⇒ 判据加严/静态化收益）" % (
+            len(boundary), BOUNDARY_BASELINE, len(boundary) - BOUNDARY_BASELINE)
+    if len(boundary) > BOUNDARY_BASELINE:
+        diff = len(boundary) - BOUNDARY_BASELINE
+        boundary_note = " · ★ 边界基线告警：实测 %d > 基线 %d（差分 +%d）⇒ 至少 UNKNOWN" % (
+            len(boundary), BOUNDARY_BASELINE, diff)
+        hints.append("★ 边界基线（`SL-5`）差分 +%d ⇒ 新增不透明站点：%s" % (
+            diff, " · ".join("%s:%d" % (s["rel"], s["line"]) for s in boundary[:8])))
 
-    counts = ("候选列 %d（判定面 %d · 已加密正例 %d）· 已判写入点 %d · FAIL %d · UNKNOWN %d"
-              % (len(candidates), len(judged), len(verified), len(judged_sites),
-                 len(fails), unknown_sites))
+    # ★★ F-L1 三条加固（★ 缺一不可）：(a) 验证源码 sha 冻结 · (b) 加密助手往返自检 · (c) 数据面抽检
+    hardened: list[str] = []
+    live_sha = _source_shas(root)
+    sha_bad = [rel for rel, want in FROZEN_SOURCE_SHA.items() if live_sha.get(rel) != want]
+    if sha_bad:
+        hardened.append(
+            "★ F-L1(a) 验证源源码 sha 冻结【不符】：%s ⇒ 不得记绿（★ 破「改验证源本体」）"
+            % " · ".join("%s(冻结 %s / 实测 %s)" % (rel, FROZEN_SOURCE_SHA[rel], live_sha.get(rel))
+                         for rel in sha_bad)
+        )
+    rt_code, rt_out = _run_python(root, ROUNDTRIP_CODE)
+    roundtrip_ok = rt_code == 0 and "OK" in rt_out
+    if not roundtrip_ok:
+        hardened.append("★ F-L1(b) 往返自检失败（exit=%d · %s）⇒ 不得记绿"
+                        % (rt_code, rt_out.strip().replace("\n", " ")[:160]))
+    df_code, df_out = _run_python(root, DATA_FACE_CODE)
+    data_face_ok = df_code == 0
+    data_face_note = "通过" if data_face_ok else "★ 拦下"
+    hints.append(
+        "★ F-L1(c) 数据面抽检（★ **读真实落库值**）：%s（exit=%d · %s）⇒ ★ 判据行**不可单独**作为"
+        "「已加密」的证据（★ 三合一验收项之一 · 运行期替换绑定形态下唯一防线）"
+        % (data_face_note, df_code, df_out.strip().replace("\n", " ")[:120])
+    )
+
+    counts = ("候选列 %d（判定面 %d · 已加密正例 %d）· 已判 %d · UNKNOWN %d（已声明边界）· "
+              "桶②不可判 %d · FAIL %d · 边界基线 %d · 数据面抽检=%s（★ base64 文本形态）%s"
+              % (len(candidates), len(judged), len(verified), len(judged_sites), len(boundary),
+                 unknown_sites, len(fails), BOUNDARY_BASELINE, data_face_note, boundary_note))
     detail = " · ".join(fails + unknown_entries) if (fails or unknown_entries) else "写入值均经已验证的加密调用"
     if fails:
         state = reg.FAIL
-    elif unknown_sites:
+    elif unknown_sites or hardened or len(boundary) > BOUNDARY_BASELINE:
         state = reg.UNKNOWN
     else:
         state = reg.OK
-    hints.append(COVERAGE_NOTE % (len(judged_sites), unknown_sites))
+    hints.extend(hardened)
+    hints.append(COVERAGE_NOTE % (len(judged_sites), len(boundary), unknown_sites))
     return reg.Result("AUD-S6", reg.HARD, state, checked=len(judged_sites),
                       message="%s · %s" % (counts, detail), files=rel_files, hints=hints)
