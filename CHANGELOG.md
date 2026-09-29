@@ -10,6 +10,7 @@
 - Ollama 可指定本地模型下载目录，用于识别已下载模型（#1266）
 
 ### 修复
+- 服务器缺少 pg_dump/pg_restore 时备份不再报 500「服务器内部错误」：改抛 `BACKUP_TOOL_MISSING`（400）并在消息中给出安装 postgresql-client 的指引（#1301）。
 - Ollama 本机守护进程已在运行时，即使 Octop 本地服务开关关闭，也按已下载识别模型（#1266）
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 - 安装或启用仍 `import harness_agent` 的旧插件时，不再因运行时包改名为 `octop_harness` 而失败。
