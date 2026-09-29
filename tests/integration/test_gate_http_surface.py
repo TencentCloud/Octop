@@ -202,7 +202,7 @@ async def test_g10_unknown_tier_is_shadowed_by_the_http_schema(run_env: tuple[An
 
     服务层的 `normalize_tier` 承诺"认不出**不猜、不静默退回默认**"（G10），而
     `POST /team/runs` 的请求体把 `tier` 声明成
-    `Literal["quick", "standard", "strict"] | None`（`team_runs.py:68`）
+    `Literal["quick", "standard", "strict"] | None`（`team_runs.py` 的 `mode` 字段）
     ⇒ **任何别的取值在进服务层之前就被 Pydantic 判成 422**，`TEAM_TIER_INVALID` **永远返回不了**。
 
     ⇒ 这是"**服务层可达、HTTP 层不可达**"的干净实例（本卡要抓的那一类），
@@ -403,13 +403,15 @@ def test_only_one_details_site_can_collide_with_the_signature() -> None:
 
     结论（源码级扫描，`src/` 全量）：
     * 字面量 `details={...}` 站点里，**只有 1 处**用了撞名键 ——
-      `pipeline.py:640` 的 `"code"`（G6 的四条码）**⇒ 这就是 P1 的全部爆炸半径**；
+      `pipeline.py` 里 G6 四条码那个 `"code"` **⇒ 这就是 P1 的全部爆炸半径**；
     * **没有任何站点用 `locale`**（lead 点名的同族风险，实测为空）；
-    * 非字面量站点里唯一与门禁相关的是 `pipeline.py:712 as_details()`（G16），
+    * 非字面量站点里唯一与门禁相关的是 `pipeline.py` 的 `as_details()`（G16），
       它产出 `{title, rounds, raw_titles, decision}` ⇒ **不撞名**。
     ⇒ 所以"其余 14 条门会被这个根因波及"**不成立**；受影响的只有 **G6**。
 
-    **task-86 落地后**：本用例的"1 处"会变成"0 处" ⇒ 请同步更新这个数字。
+    **不绑定行号**：断言唯一撞名站点 = `pipeline.py` 的 `code` 键 —— 对形如
+    `"<file>:<line>:<key>"` 的串按 `:` 切分后比 `file` 与 `key`，**不比 `line`**；
+    行号随实现漂移不构成回归（「恰好 1 处 + 文件 + 键」三约束一个都没放宽）。
     """
     import pathlib
     import re
@@ -424,8 +426,15 @@ def test_only_one_details_site_can_collide_with_the_signature() -> None:
                 if key in ("code", "locale"):
                     collisions.append(f"{path.name}:{text[: m.start()].count(chr(10)) + 1}:{key}")
 
-    assert collisions == ["pipeline.py:640:code"], (
-        f"撞名站点集合变了（task-86 落地后应为空）：{collisions}"
+    # 约束一：**恰好 1 处**撞名站点（不放宽成 "≤1" / "包含"）
+    assert len(collisions) == 1, f"撞名站点不是恰好 1 处：{collisions}"
+    # 约束二/三：只比 `<file>` 与 `<key>`，**不比 `<line>`**（行号随实现漂移不构成回归）
+    sites = []
+    for entry in collisions:
+        parts = entry.rsplit(":", 2)
+        sites.append((parts[0], parts[2]))
+    assert sites == [("pipeline.py", "code")], (
+        f"唯一撞名站点变了（应为 pipeline.py 的 code 键）：{collisions}"
     )
 
 
