@@ -505,8 +505,17 @@ def test_threads_of_other_users_are_invisible(server: _Server) -> None:
     assert statuses["a1"]["latest_thread"] is None
 
 
-def test_hitl_store_lists_pending_by_user() -> None:
+def test_hitl_store_lists_pending_by_user(monkeypatch: pytest.MonkeyPatch) -> None:
     from octop.infra.gateway.hitl.store import HitlPendingStore
+
+    # Windows CI often resolves consecutive time.time() calls to the same float;
+    # pin a monotonic clock so newest-first order is deterministic.
+    clock = {"t": 1_700_000_000.0}
+
+    def _fake_time() -> float:
+        return clock["t"]
+
+    monkeypatch.setattr("octop.infra.gateway.hitl.store.time.time", _fake_time)
 
     store = HitlPendingStore()
     for thread_id in ("t2", "t1"):
@@ -519,6 +528,7 @@ def test_hitl_store_lists_pending_by_user() -> None:
             action_requests=[],
             review_configs=None,
         )
+        clock["t"] += 1.0
     store.register(
         thread_id="t3",
         agent_id="a2",
