@@ -9,7 +9,10 @@ import {
 import type { ReactNode } from "react";
 import { setActiveAgentId } from "../api/request";
 import { agentApi as legacyAgentApi } from "../api/modules/agent";
-import { retainDisconnectedBridgeAgents } from "../utils/remoteExpert";
+import {
+  retainDisconnectedBridgeAgents,
+  toBridgeShadowAgentId,
+} from "../utils/remoteExpert";
 
 /**
  * Multi-Agent navigation state.
@@ -280,6 +283,7 @@ function mapBridgeAgent(
     color?: string | null;
     kind?: string | null;
     state?: string | null;
+    member_ids?: unknown;
   },
   conn: {
     connection_id: string;
@@ -290,6 +294,13 @@ function mapBridgeAgent(
   },
 ): OctopAgent {
   const agentId = String(agent.agent_id || agent.id || "");
+  const memberIds = Array.isArray(agent.member_ids)
+    ? agent.member_ids
+        .map((id) =>
+          toBridgeShadowAgentId(conn.connection_id, String(id ?? "")),
+        )
+        .filter((id): id is string => Boolean(id))
+    : undefined;
   return {
     id: 0,
     agent_id: agentId,
@@ -308,6 +319,7 @@ function mapBridgeAgent(
     color: typeof agent.color === "string" ? agent.color : null,
     config: {},
     kind: agent.kind === "team" ? "team" : "expert",
+    member_ids: memberIds,
     bridge: true,
     is_owner: true,
     is_shared: false,

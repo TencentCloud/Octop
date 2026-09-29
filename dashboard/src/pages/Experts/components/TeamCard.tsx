@@ -33,6 +33,7 @@ import {
   isAgentModelConfigError,
 } from "../../../utils/agentError";
 import { TEAM_ICON_NAME, teamPortraitUrl } from "../../../utils/teamAgent";
+import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import styles from "../index.module.less";
 
 const STATE_META: Record<
@@ -230,6 +231,7 @@ export const TeamCard = memo(function TeamCard({
                 <Users size={10} strokeWidth={2.4} aria-hidden />
                 {t("chat.teamBadge")}
               </span>
+              <RemoteExpertHint agent={agent} />
               <Tooltip title={formatAgentState(localState, t)}>
                 <span
                   className={

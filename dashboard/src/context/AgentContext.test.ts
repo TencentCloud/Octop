@@ -125,6 +125,7 @@ describe("projectChatAgentOption", () => {
       bridge_connection_name: "lab",
       bridge_connection_icon: null,
       bridge_disconnected: false,
+      bridge_inbound: false,
     });
   });
 
@@ -138,6 +139,7 @@ describe("projectChatAgentOption", () => {
     expect(projected.bridge_connection_name).toBeNull();
     expect(projected.bridge_connection_icon).toBeNull();
     expect(projected.bridge_disconnected).toBe(false);
+    expect(projected.bridge_inbound).toBe(false);
   });
 
   it("keeps a disconnected remote expert in the enabled list", () => {

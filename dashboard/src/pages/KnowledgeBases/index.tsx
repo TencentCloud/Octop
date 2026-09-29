@@ -76,7 +76,6 @@ import {
   type KnowledgeOnnxModel,
 } from "../../api/modules/knowledgeBases";
 import { OctopEmptyMascot } from "../../components/EmptyState";
-import PeerOnlyRemoteAlert from "../../components/PeerOnlyRemoteAlert";
 import DocumentPreviewCore from "../../components/DocumentPreviewCore";
 import DocumentPreviewLoading from "../../components/DocumentPreviewLoading";
 import Markdown from "../../components/Markdown";
@@ -1878,7 +1877,6 @@ export default function KnowledgeBasesPage() {
         ) : undefined
       }
     >
-      <PeerOnlyRemoteAlert hintKey="peerOnlyLocalPage" />
       {loading ? (
         <div className={emptyLayoutClassName}>
           <div className={styles.centered}>

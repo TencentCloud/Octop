@@ -453,7 +453,7 @@
     "CONFIG_FILE_CORRUPT": "Cannot update {path}: the file is not valid JSON ({detail}). Fix the syntax and retry — no settings were changed.",
     "TEAM_NOT_FOUND": "Team not found.",
     "TEAM_MEMBERS_TOO_FEW": "A team needs at least two members.",
-    "TEAM_MEMBER_INVALID": "The selected roster is not valid.",
+    "TEAM_MEMBER_INVALID": "Those experts cannot join a team on this instance. Peer experts, other teams, and deleted experts are not allowed.",
     "TEAM_MEMBER_BUSY": "This expert has an in-flight team job. Wait until it finishes.",
     "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version."
   },

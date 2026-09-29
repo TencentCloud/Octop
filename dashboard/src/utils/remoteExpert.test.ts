@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   groupExpertsByConnection,
   isBridgeAgentId,
+  rewritePeerSpeakerId,
+  toBridgeShadowAgentId,
   isRemotePeerOnly,
   remoteSurfaceMode,
   retainDisconnectedBridgeAgents,
@@ -12,6 +14,19 @@ describe("isBridgeAgentId", () => {
     expect(isBridgeAgentId("bridge:abc:aid")).toBe(true);
     expect(isBridgeAgentId("01LOCAL")).toBe(false);
     expect(isBridgeAgentId(null)).toBe(false);
+  });
+});
+
+describe("rewritePeerSpeakerId", () => {
+  it("maps peer-local speakers onto the room shadow id", () => {
+    expect(toBridgeShadowAgentId("cid", "doctor")).toBe("bridge:cid:doctor");
+    expect(rewritePeerSpeakerId("bridge:cid:team", "doctor")).toBe(
+      "bridge:cid:doctor",
+    );
+    expect(rewritePeerSpeakerId("bridge:cid:team", "team")).toBe(
+      "bridge:cid:team",
+    );
+    expect(rewritePeerSpeakerId("local-host", "doctor")).toBe("doctor");
   });
 });
 

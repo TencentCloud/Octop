@@ -252,6 +252,10 @@ export default function ExpertsPage() {
       ),
     [agents],
   );
+  const localTeamMembers = useMemo(
+    () => pickableExperts.filter((item) => !item.bridge),
+    [pickableExperts],
+  );
   const [newAgentId, setNewAgentId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -563,7 +567,7 @@ export default function ExpertsPage() {
 
   const teamsContent = useMemo(() => {
     if (teamAgents.length === 0) {
-      const canCreate = pickableExperts.length >= 2;
+      const canCreate = localTeamMembers.length >= 2;
       return (
         <div
           className={`${styles.emptyLayout}${
@@ -631,6 +635,10 @@ export default function ExpertsPage() {
                   experts={pickableExperts}
                   onEdit={(id) => {
                     const row = teamAgents.find((item) => item.agent_id === id);
+                    if (row?.bridge) {
+                      message.info(t("chat.remoteExpert.manageToast"));
+                      return;
+                    }
                     if (row) setTeamDrawer({ mode: "edit", team: row });
                   }}
                   onDeleted={handleDeleted}
@@ -646,6 +654,7 @@ export default function ExpertsPage() {
     handleDeleted,
     handleStateChange,
     isMobile,
+    localTeamMembers,
     pickableExperts,
     refreshButton,
     t,
@@ -877,7 +886,7 @@ export default function ExpertsPage() {
         open={!!teamDrawer}
         mode={teamDrawer?.mode ?? "create"}
         team={teamDrawer?.mode === "edit" ? teamDrawer.team : null}
-        experts={pickableExperts}
+        experts={localTeamMembers}
         onClose={() => setTeamDrawer(null)}
         onSaved={(saved: TeamRecord) => {
           setTeamDrawer(null);

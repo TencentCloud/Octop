@@ -4,11 +4,11 @@ import { useAgent } from "../context/AgentContext";
 
 interface PeerOnlyRemoteAlertProps {
   /** i18n key under ``chat.remoteExpert``. */
-  hintKey: "peerOnlyAcp" | "peerOnlyBrowser" | "peerOnlyLocalPage";
+  hintKey: "peerOnlyAcp" | "peerOnlyBrowser";
   style?: React.CSSProperties;
 }
 
-/** Local-only surfaces (ACP, host browser, connectors, knowledge, skill packages). */
+/** Host-only surfaces (ACP runners on this machine, Remote Browser). */
 export default function PeerOnlyRemoteAlert({
   hintKey,
   style,

@@ -194,7 +194,7 @@
     "CONFIG_FILE_CORRUPT": "Cannot update {{path}}: the file is not valid JSON ({{detail}}). Fix the syntax and retry — no settings were changed.",
     "TEAM_NOT_FOUND": "Team not found.",
     "TEAM_MEMBERS_TOO_FEW": "A team needs at least two members.",
-    "TEAM_MEMBER_INVALID": "The selected roster is not valid.",
+    "TEAM_MEMBER_INVALID": "Those experts cannot join a team on this instance. Peer experts, other teams, and deleted experts are not allowed.",
     "TEAM_MEMBER_BUSY": "This expert has an in-flight team job. Wait until it finishes.",
     "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version."
   },
@@ -816,7 +816,7 @@
       "membersSearch": "Search experts",
       "membersEmpty": "No experts available",
       "membersSelected": "{{count}} selected",
-      "membersHint": "Save applies the current selection as the full roster. At least two members.",
+      "membersHint": "Only local experts can join a team on this instance — peer experts cannot. Save applies the current selection as the full roster. At least two members.",
       "memberAvatars": "Members",
       "memberMore": "+{{count}}",
       "memoryBtn": "Team memory",
@@ -1210,8 +1210,7 @@
       "openBridge": "View connection",
       "peerOnlyTitle": "This page stays on this instance",
       "peerOnlyAcp": "ACP runners listed here belong to this Octop. Pick a local expert to toggle its ACP tool, or open the peer expert’s Tools tab to manage the peer.",
-      "peerOnlyBrowser": "This page controls the browser on this host. For a peer expert, open the browser dock in chat instead.",
-      "peerOnlyLocalPage": "A peer expert is selected. This page only manages resources on this instance, not the peer."
+      "peerOnlyBrowser": "This page controls the browser on this host. For a peer expert, open the browser dock in chat instead."
     },
     "pushToast": {
       "title": "{{name}} sent a reminder",

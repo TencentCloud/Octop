@@ -20,7 +20,6 @@ import {
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
-import PeerOnlyRemoteAlert from "../../../components/PeerOnlyRemoteAlert";
 import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
@@ -2287,7 +2286,6 @@ export default function ConnectorsPage() {
         />
       }
     >
-      <PeerOnlyRemoteAlert hintKey="peerOnlyLocalPage" />
       {activeTab === "custom" ? (
         <CustomMcpTab focusServerName={customFocusServerName} />
       ) : activeTab === "enabled" ? (

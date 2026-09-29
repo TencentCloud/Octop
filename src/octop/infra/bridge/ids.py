@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 BRIDGE_AGENT_PREFIX = "bridge:"
 _BRIDGE_PROTOCOL_VERSION = 1
@@ -46,3 +47,39 @@ def parse_bridge_agent_id(agent_id: str) -> BridgeAgentRef | None:
 
 def is_bridge_agent_id(agent_id: str) -> bool:
     return parse_bridge_agent_id(agent_id) is not None
+
+
+def rewrite_peer_agent_id(connection_id: str, peer_agent_id: str | None) -> str | None:
+    """Map a peer-local agent id onto the local Bridge shadow id."""
+    raw = (peer_agent_id or "").strip()
+    if not raw:
+        return None
+    if is_bridge_agent_id(raw):
+        return raw
+    return format_bridge_agent_id(connection_id, raw)
+
+
+def rewrite_peer_agent_ids(connection_id: str, ids: list[object]) -> list[str]:
+    """Rewrite a roster of peer-local ids; skip blanks and duplicates."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in ids:
+        mapped = rewrite_peer_agent_id(connection_id, str(item) if item is not None else None)
+        if mapped is None or mapped in seen:
+            continue
+        seen.add(mapped)
+        out.append(mapped)
+    return out
+
+
+def rewrite_peer_payload_agent_id(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Rewrite ``agent_id`` on a peer stream/history payload onto the local shadow."""
+    mapped = rewrite_peer_agent_id(
+        connection_id,
+        str(payload["agent_id"]) if payload.get("agent_id") is not None else None,
+    )
+    if mapped is None or mapped == payload.get("agent_id"):
+        return payload
+    out = dict(payload)
+    out["agent_id"] = mapped
+    return out

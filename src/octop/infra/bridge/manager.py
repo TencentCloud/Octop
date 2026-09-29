@@ -15,7 +15,12 @@ import websockets
 from octop.infra.bridge.crypto import decrypt_payload, encrypt_payload
 from octop.infra.bridge.http_tunnel import decode_body_b64, execute_local_http
 from octop.infra.bridge.icons import rewrite_remote_icon_url
-from octop.infra.bridge.ids import PROTOCOL_VERSION, format_bridge_agent_id
+from octop.infra.bridge.ids import (
+    PROTOCOL_VERSION,
+    format_bridge_agent_id,
+    rewrite_peer_agent_ids,
+    rewrite_peer_payload_agent_id,
+)
 from octop.infra.bridge.peer_auth import login_peer, normalize_peer_base_url, peer_ws_url
 from octop.infra.bridge.transport import BridgeSession
 from octop.infra.db.repos.bridge_connections import BridgeConnectionRepo, BridgeConnectionRow
@@ -1028,6 +1033,9 @@ class BridgeManager:
                 remote_agent_id=remote_id,
                 bridge_agent_id=str(mapped["id"]),
             )
+            members = mapped.get("member_ids")
+            if isinstance(members, list):
+                mapped["member_ids"] = rewrite_peer_agent_ids(connection_id, members)
             out.append(mapped)
         return out
 
@@ -1381,7 +1389,7 @@ class BridgeManager:
                 if msg_type == "turn.chunk":
                     frame = msg.get("frame")
                     if isinstance(frame, dict):
-                        await on_frame(frame)
+                        await on_frame(rewrite_peer_payload_agent_id(connection_id, frame))
                 elif msg_type == "turn.error":
                     await on_frame(
                         {

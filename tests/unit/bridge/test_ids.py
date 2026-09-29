@@ -8,6 +8,9 @@ from octop.infra.bridge.ids import (
     format_bridge_agent_id,
     is_bridge_agent_id,
     parse_bridge_agent_id,
+    rewrite_peer_agent_id,
+    rewrite_peer_agent_ids,
+    rewrite_peer_payload_agent_id,
 )
 
 
@@ -29,3 +32,20 @@ def test_parse_rejects_local_ids() -> None:
 def test_format_rejects_colon_in_connection_id() -> None:
     with pytest.raises(ValueError):
         format_bridge_agent_id("bad:id", "agent")
+
+
+def test_rewrite_peer_agent_ids_maps_roster() -> None:
+    assert rewrite_peer_agent_id("CID", "mem-1") == "bridge:CID:mem-1"
+    assert rewrite_peer_agent_id("CID", "bridge:CID:mem-1") == "bridge:CID:mem-1"
+    assert rewrite_peer_agent_ids("CID", ["a", "a", "", "b"]) == [
+        "bridge:CID:a",
+        "bridge:CID:b",
+    ]
+
+
+def test_rewrite_peer_payload_agent_id_maps_speaker() -> None:
+    frame = {"type": "token", "agent_id": "doctor", "content": "ok"}
+    out = rewrite_peer_payload_agent_id("CID", frame)
+    assert out["agent_id"] == "bridge:CID:doctor"
+    unlabeled = {"type": "token", "content": "host"}
+    assert rewrite_peer_payload_agent_id("CID", unlabeled) is unlabeled

@@ -5,7 +5,47 @@
  * be gated in the UI instead of failing after the user clicks.
  */
 export function isBridgeAgentId(id: string | null | undefined): boolean {
-  return Boolean((id ?? "").startsWith("bridge:"));
+  return Boolean(parseBridgeAgentId(id));
+}
+
+export function parseBridgeAgentId(
+  agentId: string | null | undefined,
+): { connectionId: string; remoteAgentId: string } | null {
+  const raw = (agentId ?? "").trim();
+  if (!raw.startsWith("bridge:")) return null;
+  const rest = raw.slice("bridge:".length);
+  const colon = rest.indexOf(":");
+  if (colon <= 0 || colon >= rest.length - 1) return null;
+  const connectionId = rest.slice(0, colon).trim();
+  const remoteAgentId = rest.slice(colon + 1).trim();
+  if (!connectionId || !remoteAgentId) return null;
+  return { connectionId, remoteAgentId };
+}
+
+/** Map a peer-local agent id onto the local Bridge shadow id. */
+export function toBridgeShadowAgentId(
+  connectionId: string | null | undefined,
+  peerAgentId: string | null | undefined,
+): string | undefined {
+  const cid = (connectionId ?? "").trim();
+  const raw = (peerAgentId ?? "").trim();
+  if (!raw) return undefined;
+  if (parseBridgeAgentId(raw)) return raw;
+  if (!cid) return raw;
+  return `bridge:${cid}:${raw}`;
+}
+
+/** Rewrite a speaker/member id from a peer team room onto the local shadow. */
+export function rewritePeerSpeakerId(
+  roomAgentId: string | null | undefined,
+  speakerId: string | null | undefined,
+): string | undefined {
+  const parsed = parseBridgeAgentId(roomAgentId);
+  if (!parsed) {
+    const raw = (speakerId ?? "").trim();
+    return raw || undefined;
+  }
+  return toBridgeShadowAgentId(parsed.connectionId, speakerId);
 }
 
 export type RemoteExpertSurface =
