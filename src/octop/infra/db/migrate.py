@@ -1558,6 +1558,12 @@ def _ensure_thread_conversation_mode_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "hitl_policy", "TEXT")
 
 
+def _ensure_skill_copy_policy_schema(db: DatabasePool) -> None:
+    if not _table_exists(db, "skill_packages"):
+        return
+    _ensure_column(db, "skill_packages", "copy_policy", "TEXT NOT NULL DEFAULT 'snapshot'")
+
+
 def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
     """Fold notes + unique display_name + auto_reconnect into unreleased v19."""
     if not _table_exists(db, "bridge_connections"):
@@ -1889,6 +1895,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         return
     if version == 17:
         _ensure_thread_conversation_mode_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
+    if version == 20:
+        _ensure_skill_copy_policy_schema(db)
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return

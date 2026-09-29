@@ -321,6 +321,12 @@ export default function SkillPackagesTab({
                     <button
                       type="button"
                       className={styles.detailBtn}
+                      disabled={pack.can_copy === false}
+                      title={
+                        pack.can_copy === false
+                          ? t("skills.copyDenied")
+                          : undefined
+                      }
                       onClick={() => void openCopyModal(pack)}
                     >
                       <Copy size={14} />
