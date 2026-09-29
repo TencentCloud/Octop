@@ -19,7 +19,7 @@ from octop.infra.bridge.ids import (
     PROTOCOL_VERSION,
     format_bridge_agent_id,
     rewrite_peer_agent_ids,
-    rewrite_peer_payload_agent_id,
+    rewrite_peer_stream_frame,
 )
 from octop.infra.bridge.peer_auth import login_peer, normalize_peer_base_url, peer_ws_url
 from octop.infra.bridge.transport import BridgeSession
@@ -39,6 +39,21 @@ _AUTO_RECONNECT_BACKOFF_SEC = (2.0, 4.0, 8.0, 16.0, 30.0)
 def _is_inbound(row: BridgeConnectionRow) -> bool:
     """Peer-dialed reverse rows store no password and cannot redial."""
     return not bool(row.credential_blob)
+
+
+def _bridge_turn_ws_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Copy dashboard turn fields off a ``turn.start`` frame.
+
+    Hub relays the full ``user_turn`` body; dropping keys here would silently
+    ignore knowledge bases, HITL policy, and conversation mode.
+    """
+    from octop.api.routers.chat.models import UserTurnWsFrame
+
+    fields = UserTurnWsFrame.model_fields
+    out = {key: value for key, value in payload.items() if key in fields}
+    out["type"] = "user_turn"
+    out.setdefault("text", payload.get("text") or "")
+    return out
 
 
 def _looks_like_endpoint_label(name: str) -> bool:
@@ -1283,18 +1298,7 @@ class BridgeManager:
 
         hub.register(bridge_conn_id, send_frame, user_id=user.id)
         try:
-            frame = UserTurnWsFrame.model_validate(
-                {
-                    "type": "user_turn",
-                    "text": payload.get("text") or "",
-                    "thread_id": payload.get("thread_id"),
-                    "messages": payload.get("messages"),
-                    "attachments": payload.get("attachments"),
-                    "mcp_servers": payload.get("mcp_servers"),
-                    "skills": payload.get("skills"),
-                    "model": payload.get("model"),
-                }
-            )
+            frame = UserTurnWsFrame.model_validate(_bridge_turn_ws_payload(payload))
             turn = frame.to_turn_body()
             if not turn_has_content(turn):
                 await sess.send_json(
@@ -1389,7 +1393,13 @@ class BridgeManager:
                 if msg_type == "turn.chunk":
                     frame = msg.get("frame")
                     if isinstance(frame, dict):
-                        await on_frame(rewrite_peer_payload_agent_id(connection_id, frame))
+                        await on_frame(
+                            rewrite_peer_stream_frame(
+                                connection_id,
+                                frame,
+                                remote_agent_id=remote_agent_id,
+                            )
+                        )
                 elif msg_type == "turn.error":
                     await on_frame(
                         {

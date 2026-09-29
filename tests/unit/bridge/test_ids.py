@@ -12,6 +12,7 @@ from octop.infra.bridge.ids import (
     rewrite_peer_agent_id,
     rewrite_peer_agent_ids,
     rewrite_peer_payload_agent_id,
+    rewrite_peer_stream_frame,
     rewrite_tunneled_json,
 )
 
@@ -72,7 +73,7 @@ def test_rewrite_tunneled_json_keeps_peer_thread_and_session_ids() -> None:
     assert out["agent_id"] == "bridge:cid:doctor"
     assert out["content"] == "ask doctor"
     assert out["icon_url"] == "/api/agents/bridge:cid:doctor/avatar"
-    assert out["member_ids"] == ["bridge:cid:doctor", "nurse"]
+    assert out["member_ids"] == ["bridge:cid:doctor", "bridge:cid:nurse"]
 
 
 def test_restore_peer_path_ids_unwraps_stale_shadow_thread() -> None:
@@ -85,3 +86,49 @@ def test_restore_peer_path_ids_unwraps_stale_shadow_thread() -> None:
         )
         == "/threads/01ROOM~doctor/history"
     )
+
+
+def test_rewrite_tunneled_json_rewrites_member_media_urls() -> None:
+    payload = {
+        "thread_id": "01ROOM~doctor",
+        "session_key": "main:dashboard:1:dm:01ROOM",
+        "agent_id": "main",
+        "url": "/api/agents/doctor/media/preview?source=outbound%2Fnote.pdf",
+        "preview_url": "/api/agents/main/workspace/download?path=outbound/note.pdf",
+        "output": '{"preview_url":"/api/agents/doctor/media/preview?source=outbound/a.png"}',
+    }
+    out = rewrite_tunneled_json(
+        payload,
+        remote_agent_id="main",
+        bridge_agent_id="bridge:cid:main",
+    )
+    assert out["thread_id"] == "01ROOM~doctor"
+    assert out["session_key"] == "main:dashboard:1:dm:01ROOM"
+    assert out["agent_id"] == "bridge:cid:main"
+    assert out["url"] == "/api/agents/bridge:cid:doctor/media/preview?source=outbound%2Fnote.pdf"
+    assert out["preview_url"] == (
+        "/api/agents/bridge:cid:main/workspace/download?path=outbound/note.pdf"
+    )
+    assert "/api/agents/bridge:cid:doctor/media/preview" in out["output"]
+    assert "/api/agents/doctor/" not in out["output"]
+
+
+def test_rewrite_peer_stream_frame_rewrites_attachment_urls() -> None:
+    frame = {
+        "type": "attachment",
+        "agent_id": "doctor",
+        "kind": "file",
+        "url": "/api/agents/doctor/workspace/download?path=outbound/note.pdf",
+        "preview_url": "/api/agents/doctor/workspace/download?path=outbound/note.pdf",
+        "filename": "note.pdf",
+    }
+    out = rewrite_peer_stream_frame("cid", frame, remote_agent_id="main")
+    assert out["agent_id"] == "bridge:cid:doctor"
+    assert out["url"] == "/api/agents/bridge:cid:doctor/workspace/download?path=outbound/note.pdf"
+    assert out["preview_url"] == out["url"]
+    already = {
+        "type": "attachment",
+        "url": "/api/agents/bridge:cid:main/media/preview?source=outbound/a.png",
+    }
+    unchanged = rewrite_peer_stream_frame("cid", already, remote_agent_id="main")
+    assert unchanged["url"] == already["url"]

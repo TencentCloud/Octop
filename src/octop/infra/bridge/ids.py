@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import unquote
 
 BRIDGE_AGENT_PREFIX = "bridge:"
 _BRIDGE_PROTOCOL_VERSION = 1
@@ -96,15 +98,44 @@ _TUNNEL_AGENT_ID_KEYS = frozenset(
     }
 )
 _TUNNEL_AGENT_ID_LIST_KEYS = frozenset({"member_ids", "target_agent_ids"})
-_TUNNEL_URL_KEYS = frozenset({"icon_url", "icon", "url", "preview_url"})
+_TUNNEL_URL_KEYS = frozenset(
+    {
+        "icon_url",
+        "icon",
+        "url",
+        "preview_url",
+        "access_url",
+        "image_url",
+    }
+)
+_AGENT_API_PATH_RE = re.compile(r"(/api/(?:plugins/)?agents/)(?!bridge:)([^/?#]+)")
 
 
 def rewrite_agent_url_segment(text: str, *, remote_agent_id: str, bridge_agent_id: str) -> str:
-    """Rewrite ``/api/agents/{peer}`` path segments onto the local shadow id."""
+    """Rewrite ``/api/agents/{peer}`` path segments onto the local shadow id.
+
+    Any non-bridge agent segment is remapped with the connection id from
+    ``bridge_agent_id``, so team-member media (``/api/agents/doctor/…``)
+    still tunnels when the room id is ``main``.
+    """
     raw = str(text or "")
-    remote = (remote_agent_id or "").strip()
     shadow = (bridge_agent_id or "").strip()
-    if not raw or not remote or not shadow:
+    if not raw or not shadow:
+        return raw
+    ref = parse_bridge_agent_id(shadow)
+    if ref is not None:
+
+        def _repl(match: re.Match[str]) -> str:
+            prefix, aid = match.group(1), match.group(2)
+            local = unquote(aid).strip()
+            if not local:
+                return match.group(0)
+            return f"{prefix}{format_bridge_agent_id(ref.connection_id, local)}"
+
+        return _AGENT_API_PATH_RE.sub(_repl, raw)
+
+    remote = (remote_agent_id or "").strip()
+    if not remote:
         return raw
     out = raw
     for prefix in ("/api/agents/", "/api/plugins/agents/"):
@@ -125,11 +156,24 @@ def rewrite_tunneled_json(
     Do **not** substring-replace the peer agent id: team member threads are
     ``{room}~{member}`` and session keys start with ``{agent_id}:``. A blanket
     replace would make those ids unreadable on the peer.
+
+    Identity keys (including team ``member_ids``) map every peer-local id onto
+    the same connection's shadow; URL path segments follow the same rule.
     """
     remote = (remote_agent_id or "").strip()
     shadow = (bridge_agent_id or "").strip()
     if not remote or not shadow:
         return payload
+    ref = parse_bridge_agent_id(shadow)
+
+    def map_agent(value: str) -> str:
+        raw = value.strip()
+        if not raw:
+            return value
+        if ref is not None:
+            mapped = rewrite_peer_agent_id(ref.connection_id, raw)
+            return mapped if mapped is not None else value
+        return shadow if raw == remote else value
 
     def walk(value: Any, key: str | None) -> Any:
         if isinstance(value, dict):
@@ -138,15 +182,28 @@ def rewrite_tunneled_json(
             return [walk(item, key) for item in value]
         if not isinstance(value, str):
             return value
-        if (
-            key in _TUNNEL_AGENT_ID_KEYS or key in _TUNNEL_AGENT_ID_LIST_KEYS
-        ) and value.strip() == remote:
-            return shadow
-        if key in _TUNNEL_URL_KEYS:
+        if key in _TUNNEL_AGENT_ID_KEYS or key in _TUNNEL_AGENT_ID_LIST_KEYS:
+            return map_agent(value)
+        if key in _TUNNEL_URL_KEYS or "/api/agents/" in value or "/api/plugins/agents/" in value:
             return rewrite_agent_url_segment(value, remote_agent_id=remote, bridge_agent_id=shadow)
         return value
 
     return walk(payload, None)
+
+
+def rewrite_peer_stream_frame(
+    connection_id: str,
+    frame: dict[str, Any],
+    *,
+    remote_agent_id: str,
+) -> dict[str, Any]:
+    """Rewrite speaker ids and media URLs on a peer live-stream frame."""
+    rewritten = rewrite_tunneled_json(
+        frame,
+        remote_agent_id=remote_agent_id,
+        bridge_agent_id=format_bridge_agent_id(connection_id, remote_agent_id),
+    )
+    return rewritten if isinstance(rewritten, dict) else frame
 
 
 def restore_peer_path_ids(rest: str, *, bridge_agent_id: str, remote_agent_id: str) -> str:
