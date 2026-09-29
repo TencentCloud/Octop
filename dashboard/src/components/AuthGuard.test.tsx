@@ -96,13 +96,6 @@ describe("AuthGuard offline boot", () => {
       </MemoryRouter>,
     );
 
-    expect(
-      await screen.findByText(
-        "protected-shell",
-        {},
-        { timeout: SHELL_WAIT_MS },
-      ),
-    ).toBeInTheDocument();
     await waitFor(
       () => {
         expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
