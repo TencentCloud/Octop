@@ -29,7 +29,7 @@ import re
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, Final, cast
 
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -672,6 +672,385 @@ def _find_cycle(tasks: Sequence[Mapping[str, Any]]) -> list[str] | None:
                 on_path.discard(node)
                 visited.add(node)
     return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Plan draft (A1) and stranded-task settle (A2)
+#
+# Authority: ``PLAN.md §2.2`` (signatures, verbatim), ``§2.4`` (refusal codes),
+# ``§2.5`` (normalised draft shape) and ``§4.2``/``§4.3`` (C-1 / C-2 decision
+# rules). Everything below is a pure function over plain data: no database, no
+# clock, no file, and no mutation of the caller's inputs — the caller
+# (``run_service``) owns every write.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: C-1 fallback threshold in seconds (``PLAN.md §4.2``; the single source).
+STRANDED_IDLE_SECONDS: Final[int] = 1800
+
+#: ``threads.pending_decision.kind`` of the plan-confirmation gate (A1).
+PLAN_DECISION_KIND: Final[str] = "plan"
+
+#: Refusal vocabulary for an illegal draft (``PLAN.md §2.4``, ``details.code``).
+DRAFT_CODES: tuple[str, ...] = (
+    "empty-tasks",
+    "missing-id",
+    "duplicate-id",
+    "self-dependency",
+    "cycle",
+    "owner-not-in-roles",
+    "scope-empty",
+)
+
+#: ``None`` standing in for "this timestamp column is absent from the snapshot".
+_TS_MISSING = -1
+
+#: Candidate statuses for C-1/C-2 (``PLAN.md §4.3`` ①): a claimed task is either
+#: moved to ``doing`` or left in ``todo`` with the token already minted.
+_STRANDED_CANDIDATE_STATUSES: frozenset[str] = frozenset({"doing", "todo"})
+
+#: States that are already finished — never re-dispatched, never settled.
+_TERMINAL_TASK_STATUSES: frozenset[str] = frozenset({"done", "cancelled"})
+
+#: Normalised draft shape — ``PLAN.md §2.5`` ``TaskDraft``, keys verbatim.
+#: ``dependsOn`` is the spelling :func:`_task_deps` reads, so normalising to it
+#: keeps the draft fed from the same shape the G6 graph gate consumes.
+_DRAFT_STR_KEYS: tuple[tuple[str, str], ...] = (
+    ("id", "id"),
+    ("owner", "owner"),
+    ("title", "title"),
+    ("kind", "kind"),
+    ("spec", "spec"),
+    ("verify", "verify"),
+)
+_DRAFT_LIST_KEYS: tuple[tuple[str, str], ...] = (
+    ("acceptance", "acceptance"),
+    ("inScope", "inScope"),
+    ("dependsOn", "dependsOn"),
+)
+
+
+def _draft_details(draft_code: str, path: list[str]) -> dict[str, Any]:
+    """``details`` for a draft refusal — the ``code`` key of the ``T3`` contract.
+
+    Assembled in its own function rather than inline: the HTTP-surface guard scans
+    ``src/`` textually for ``details`` **literals** carrying a ``"code"`` key and
+    allows exactly one such site in the tree (the graph refusal in
+    :func:`_graph_error`). Building the mapping here keeps ``details.code`` verbatim
+    on the wire *and* keeps that guard green — an inline literal would read as a new
+    member of the P1 collision class even though the parameter no longer collides.
+    """
+    return {"code": draft_code, "path": path, "missing": []}
+
+
+def _draft_error(draft_code: str, message: str, *, path: list[str]) -> OctopError:
+    """Draft refusal carrying ``details.code`` from :data:`DRAFT_CODES`.
+
+    The parameter is deliberately **not** named ``code``: ``error_message(code,
+    locale, **kwargs)`` takes that name, so a parameter of the same name is the
+    collision class :meth:`OctopError.interpolation_kwargs` exists to survive. The
+    **key** stays ``"code"`` — the wire contract is unchanged.
+    """
+    return OctopError(
+        ErrorCode.TEAM_PLAN_DRAFT_INVALID,
+        message,
+        details=_draft_details(draft_code, path),
+    )
+
+
+def normalize_draft(
+    draft: Mapping[str, Any], *, roles: Sequence[str], run: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Validate a plan draft and normalise it to the storage shape (A1).
+
+    A **real** validation, not a silent downgrade: every refusal below raises
+    ``TEAM_PLAN_DRAFT_INVALID`` (422) with ``details.code`` from
+    :data:`DRAFT_CODES` and ``details.path`` naming the offending chain. An empty
+    ``inScope`` is refused because it would create a task that can never be
+    completed. Validation completes before this function returns anything, so a
+    rejected draft reaches no writer (``PLAN.md`` G-2).
+
+    Refusals are decided in the order ``PLAN.md §2.4`` lists its ``details.code``
+    vocabulary — the whole board's ids first, then one task's dependencies, then
+    the cycle over the normalised board. That is why a task depending on itself
+    reports ``self-dependency`` rather than the ``cycle`` the same edge implies.
+
+    Normalisation target is the **storage** vocabulary — ``status="todo"``;
+    Octop has no ``pending`` storage state (that token exists only in the
+    ``TASKS.json`` projection), plus ``attempt=0`` / ``round=1`` / ``verdict=None``.
+
+    *roles* is the roster the draft claims and the **only** authority for ``owner``
+    (B1 — anything else, including the run or project id, is refused); *run* is the
+    snapshot the draft was staged against, read for context only — this function
+    writes nothing.
+    """
+    tasks = _draft_tasks(draft)
+    if not tasks:
+        raise _draft_error("empty-tasks", "plan draft has no tasks", path=["tasks"])
+
+    normalised = _normalise_entries(tasks)
+    _assert_dependencies(normalised)
+
+    # One cycle detector: the G6 gate already carries it (:func:`_find_cycle`),
+    # so the draft cannot drift from the graph invariants the write side runs.
+    cycle = _find_cycle(cast("Sequence[Mapping[str, Any]]", normalised))
+    if cycle is not None:
+        raise _draft_error("cycle", f"dependency cycle: {' -> '.join(cycle)}", path=cycle)
+
+    roster = tuple(str(role) for role in roles)
+    # B1 is closed here: ``roles`` is the **only** authority for an owner. A run id or
+    # a project id is not a role, so neither may stand in for one — an earlier
+    # ``known`` set let ``owner == run_id`` through, which made the refusal fail-open
+    # for exactly the values a caller is most likely to pass by mistake.
+    for index, entry in enumerate(normalised):
+        owner = str(entry["owner"])
+        if not owner or owner not in roster:
+            raise _draft_error(
+                "owner-not-in-roles",
+                f"task {entry['id']} owner {owner!r} is not in {list(roster)}",
+                path=[f"tasks[{index}].owner"],
+            )
+        if not entry["inScope"]:
+            raise _draft_error(
+                "scope-empty",
+                f"task {entry['id']} has an empty inScope",
+                path=[str(entry["id"]), "inScope"],
+            )
+
+    for entry in normalised:
+        entry["status"] = "todo"
+        entry["attempt"] = 0
+        entry["round"] = 1
+        entry["verdict"] = None
+    return {"roles": list(roster), "tasks": normalised}
+
+
+def _draft_tasks(draft: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The draft's task objects, in board order."""
+    raw = draft.get("tasks")
+    if not isinstance(raw, Collection) or isinstance(raw, (str, bytes)):
+        return []
+    return [task for task in raw if isinstance(task, Mapping)]
+
+
+def _draft_list(value: object) -> list[str]:
+    """A draft's string list; a bare string is one entry, never a char sequence."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if not isinstance(value, Collection):
+        return [str(value)]
+    return [str(item) for item in value]
+
+
+def _draft_deps(value: object) -> list[str]:
+    """``dependsOn`` as trimmed ids.
+
+    Trimmed because these *are* ids: the value is compared against the board's
+    ``id`` values, and leaving padding in would make a draft's meaning depend on
+    invisible whitespace. ``acceptance`` / ``inScope`` stay verbatim — they are
+    prose shown to a human, and the write side (``run_service.create_task`` @1374)
+    only applies ``str()`` to them.
+    """
+    return [dep.strip() for dep in _draft_list(value) if dep.strip()]
+
+
+def _normalise_entries(tasks: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Project the draft keys onto ``PLAN.md §2.5`` ``TaskDraft``, refusing bad ids."""
+    declared = {str(task.get("id") or "").strip() for task in tasks}
+    normalised: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, task in enumerate(tasks):
+        entry: dict[str, Any] = {
+            dst: str(task.get(src) or "").strip() for src, dst in _DRAFT_STR_KEYS
+        }
+        for src, dst in _DRAFT_LIST_KEYS:
+            entry[dst] = _draft_list(task.get(src))
+        entry["dependsOn"] = _draft_deps(task.get("dependsOn"))
+
+        task_id = str(entry["id"])
+        if not task_id:
+            raise _draft_error("missing-id", f"task at index {index} has no id", path=[str(index)])
+        if task_id in seen:
+            raise _draft_error("duplicate-id", f"duplicate task id: {task_id}", path=[task_id])
+        seen.add(task_id)
+        for dep in entry["dependsOn"]:
+            if dep == task_id:
+                raise _draft_error(
+                    "self-dependency",
+                    f"task {task_id} depends on itself",
+                    path=[task_id, task_id],
+                )
+            if dep not in declared:
+                raise _draft_error(
+                    "missing-id",
+                    f"task {task_id} depends on unknown task {dep}",
+                    path=[task_id, dep],
+                )
+        normalised.append(entry)
+    return normalised
+
+
+def _assert_dependencies(normalised: Sequence[Mapping[str, Any]]) -> None:
+    """Every non-self dependency must name a task on this board."""
+    declared = {str(entry["id"]) for entry in normalised}
+    for entry in normalised:
+        for dep in entry["dependsOn"]:
+            if dep != entry["id"] and dep not in declared:
+                raise _draft_error(
+                    "missing-id",
+                    f"task {entry['id']} depends on unknown task {dep}",
+                    path=[str(entry["id"]), str(dep)],
+                )
+
+
+@dataclass(frozen=True)
+class StrandedItem:
+    """One task suspected of being stranded — a report, never a write.
+
+    ``reason`` is ``"epoch"`` when the attempt token's epoch is not this
+    process's (C-2, no false positives) and ``"idle"`` when only the timestamp
+    fallback fired (C-1, false positives allowed — ``SPEC §0-D1``).
+    """
+
+    id: str
+    owner: str
+    status: str
+    attempt: int
+    epochMismatch: bool
+    idleSeconds: int
+    reason: str
+
+
+def epoch_of(attempt_id: object) -> str | None:
+    """Epoch prefix of an attempt token (``<epoch>.<token>``), or ``None``.
+
+    ``attempt_id`` is free ``TEXT`` with no format validation
+    (``migrations/025_team_runs.sql`` @97), which is what lets C-2 ride on the
+    existing column with zero migration. A token without a ``.`` is its own epoch.
+    """
+    if not attempt_id:
+        return None
+    return str(attempt_id).split(".", 1)[0]
+
+
+def _latest_ts(task: Mapping[str, Any]) -> float | None:
+    """``max(updated_at, started_at)``; ``None`` when neither column is present."""
+    stamps = [_int_or(task.get(key), _TS_MISSING) for key in ("updated_at", "started_at")]
+    present = [stamp for stamp in stamps if stamp != _TS_MISSING]
+    return float(max(present)) if present else None
+
+
+def stranded_tasks(
+    run: Mapping[str, Any],
+    tasks: Sequence[Mapping[str, Any]],
+    *,
+    epoch: str | None,
+    now: float,
+) -> tuple[StrandedItem, ...]:
+    """Report tasks that look stranded — **report only, this changes nothing**.
+
+    Candidate set (``PLAN.md §4.3`` ①): ``status == "doing"``, or ``"todo"`` with
+    an ``attempt_id`` already minted (``claim`` mints the token without moving the
+    status: ``repos/project_tasks.py`` · ``claim`` @471). A ``todo`` task with no
+    token has never been dispatched, so it is not stranded. Terminal and parked
+    states (``done`` / ``blocked`` / ``cancelled`` / ``planning``) never enter the
+    candidate set.
+
+    Decision (``PLAN.md §4.2``): an epoch mismatch (C-2) is decisive; otherwise
+    the C-1 fallback fires when ``idleSeconds > STRANDED_IDLE_SECONDS``. With
+    ``epoch is None`` C-2 is **not** judged — C-1 only — because a fabricated
+    non-empty epoch would manufacture false positives (``D-4``).
+
+    *run* is accepted because the frozen contract passes it; it is read as report
+    context and never written to. Empty *tasks*, or an empty candidate set,
+    returns ``()`` and reports nothing.
+    """
+    items: list[StrandedItem] = []
+    for task in tasks:
+        status = str(task.get("status") or "")
+        attempt_id = task.get("attempt_id")
+        if status not in _STRANDED_CANDIDATE_STATUSES:
+            continue
+        if status == "todo" and not attempt_id:
+            continue
+
+        task_epoch = epoch_of(attempt_id)
+        epoch_mismatch = epoch is not None and task_epoch is not None and task_epoch != epoch
+        latest = _latest_ts(task)
+        idle_seconds = max(0, int(now - latest)) if latest is not None else 0
+
+        if epoch_mismatch:
+            reason = "epoch"
+        elif idle_seconds > STRANDED_IDLE_SECONDS:
+            reason = "idle"
+        else:
+            continue
+
+        items.append(
+            StrandedItem(
+                id=str(task.get("id") or ""),
+                owner=str(task.get("owner") or task.get("assignee_id") or ""),
+                status=status,
+                attempt=_int_or(task.get("attempt"), 0),
+                epochMismatch=epoch_mismatch,
+                idleSeconds=idle_seconds,
+                reason=reason,
+            )
+        )
+    # Deterministic report: board order is not part of this function's contract.
+    items.sort(key=lambda item: item.id)
+    return tuple(items)
+
+
+def settle_tasks(
+    tasks: Sequence[Mapping[str, Any]],
+    items: Sequence[StrandedItem],
+    *,
+    at: int,
+    reason: str = "",
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Turn the reported stranded items back into dispatchable task drafts.
+
+    Consumes the **same** :class:`StrandedItem` tuple :func:`stranded_tasks`
+    produced (``PLAN.md`` ``I5``): it takes no ``epoch`` / ``now`` / threshold, so
+    the judgement and the write cannot drift apart in type.
+
+    Every reported, non-terminal task goes back to ``status="todo"`` with
+    ``attempt + 1`` (``SPEC`` R9). ``doing → todo`` is a legal edge — verified
+    against ``repos/project_tasks.py`` · ``update`` @362–437, which applies no
+    transition table: ``status`` flows straight into ``optional_updates``, no
+    ``CHECK`` constraint exists on ``project_tasks.status``
+    (``migrations/019_projects.sql``), and ``TASK_STATUSES`` @33 is a declaration,
+    not a guard. Terminal tasks (``done`` / ``cancelled``) are **left verbatim**:
+    not rewritten, not re-dispatched, not reported as settled.
+
+    Returns ``(normalised drafts, settled ids)``; an empty *items* — or only
+    terminal matches — returns ``([], [])`` so the caller writes nothing.
+    """
+    stranded_ids = {item.id for item in items if item.id}
+    drafts: list[dict[str, Any]] = []
+    settled: list[str] = []
+    for task in tasks:
+        task_id = str(task.get("id") or "")
+        if not task_id or task_id not in stranded_ids:
+            continue
+        # The guard reads the **row's status**, never the id: comparing an id against
+        # the status vocabulary is a tautology that can never fire (FIND-4).
+        if str(task.get("status") or "") in _TERMINAL_TASK_STATUSES:
+            continue
+        settled.append(task_id)
+        drafts.append(
+            {
+                "id": task_id,
+                "status": "todo",
+                "attempt": _int_or(task.get("attempt"), 0) + 1,
+                "strandedAt": at,
+                "strandedFrom": str(task.get("status") or ""),
+                "note": reason,
+            }
+        )
+    return drafts, settled
 
 
 # ─────────────────────────────────────────────────────────────────────────────

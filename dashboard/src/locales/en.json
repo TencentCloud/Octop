@@ -217,6 +217,8 @@
     "TEAM_RUN_NOT_FOUND": "Team run not found.",
     "TEAM_RUN_PHASE_INVALID": "Phase transition is not allowed.",
     "TEAM_PHASE_GATE_FAILED": "The current phase gate is not satisfied.",
+    "TEAM_PLAN_DRAFT_INVALID": "plan draft invalid: task owner is not in the role list",
+    "TEAM_PLAN_DRAFT_MISSING": "no plan draft awaiting approval",
     "TEAM_DECISION_PENDING": "A pending decision must be resolved first.",
     "TEAM_DECISION_NOT_PENDING": "There is no pending decision to resolve.",
     "TEAM_DECISION_OPTION_INVALID": "The selected decision option is not valid.",

@@ -89,7 +89,7 @@
     },
     "team": {
       "user_inactive": "该用户已无法执行操作。",
-      "usage": "用法：/team <目标> | status|task|check|detail|decision|resume|cancel|tier|learn",
+      "usage": "用法：/team <目标> | status|task|check|detail|decision|resume|cancel|tier|learn|settle",
       "unknown": "无法识别的 /team 参数。",
       "not_found": "未找到 {run} 对应的团队。",
       "created": "已创建团队任务：{run}",
@@ -105,12 +105,15 @@
       "tier_title": "团队任务 {run} 的档位 {tier}",
       "learn_title": "{run} 的工件",
       "learn_none": "{run} 暂无工件。",
+      "settle_title": "已清算 {run} 的 {count} 个任务",
+      "settle_none": "{run} 无可清算的任务。",
       "field": {
         "status": "状态",
         "phase": "阶段",
         "tier": "档位",
         "mode": "模式",
-        "goal": "目标"
+        "goal": "目标",
+        "stranded": "搁浅"
       }
     },
     "title": {
@@ -522,6 +525,8 @@
     "TEAM_ARTIFACT_OWNERSHIP_DENIED": "你不是该工件的归属写者。",
     "TEAM_RUN_MEMBER_LIMIT": "本次运行的成员数已达上限。",
     "TEAM_RUN_TASK_LIMIT": "本次运行的任务数已达上限。",
+    "TEAM_PLAN_DRAFT_INVALID": "计划草稿非法：任务负责人不在角色清单内",
+    "TEAM_PLAN_DRAFT_MISSING": "没有待批准的计划草稿",
     "TEAM_TIER_INVALID": "档位无法识别，不做猜测也不静默回退默认值。",
     "TEAM_ROLE_UNKNOWN": "该角色不在固定角色表内。",
     "TEAM_TIER_DOWNGRADE_FORBIDDEN": "不允许降档。",

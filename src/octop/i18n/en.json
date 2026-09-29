@@ -89,7 +89,7 @@
     },
     "team": {
       "user_inactive": "This user can no longer act.",
-      "usage": "Usage: /team <goal> | status|task|check|detail|decision|resume|cancel|tier|learn",
+      "usage": "Usage: /team <goal> | status|task|check|detail|decision|resume|cancel|tier|learn|settle",
       "unknown": "Unknown /team argument.",
       "not_found": "No team found for {run}.",
       "created": "Team run created: {run}",
@@ -105,12 +105,15 @@
       "tier_title": "Tier {tier} for run {run}",
       "learn_title": "Artifacts for {run}",
       "learn_none": "No artifacts yet for {run}.",
+      "settle_title": "Settled {count} task(s) for {run}",
+      "settle_none": "Nothing to settle for {run}.",
       "field": {
         "status": "status",
         "phase": "phase",
         "tier": "tier",
         "mode": "mode",
-        "goal": "goal"
+        "goal": "goal",
+        "stranded": "stranded"
       }
     },
     "title": {
@@ -522,6 +525,8 @@
     "TEAM_ARTIFACT_OWNERSHIP_DENIED": "You are not the owner of this artifact.",
     "TEAM_RUN_MEMBER_LIMIT": "The run member limit has been reached.",
     "TEAM_RUN_TASK_LIMIT": "The run task limit has been reached.",
+    "TEAM_PLAN_DRAFT_INVALID": "plan draft invalid: task owner is not in the role list",
+    "TEAM_PLAN_DRAFT_MISSING": "no plan draft awaiting approval",
     "TEAM_TIER_INVALID": "Unknown tier; it is not guessed or silently defaulted.",
     "TEAM_ROLE_UNKNOWN": "The role is not in the fixed role table.",
     "TEAM_TIER_DOWNGRADE_FORBIDDEN": "Downgrading the tier is not allowed.",

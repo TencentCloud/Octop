@@ -192,6 +192,14 @@ class RunSummaryOut(BaseModel):
     max_review_rounds: int
     created_at: int
     updated_at: int
+    strandedCount: int = Field(
+        default=0,
+        description=(
+            "Reported stranded tasks right now (idle past the threshold, or claimed by "
+            "a previous process generation). Reported, never settled: only an explicit "
+            "`POST /{run_id}:settle` writes."
+        ),
+    )
 
 
 class RunDetailOut(RunSummaryOut):
@@ -238,11 +246,77 @@ class TaskBoardOut(BaseModel):
     violations: list[ViolationOut]
 
 
+class StrandedOut(BaseModel):
+    """Count / ids / reasons only — never task bodies or file paths (SPEC §5.3 ⑩)."""
+
+    count: int = 0
+    ids: list[str] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list, description="`idle` or `epoch`, per id.")
+
+    @classmethod
+    def from_items(cls, items: Sequence[Any]) -> StrandedOut:
+        return cls(
+            count=len(items),
+            ids=[str(item.id) for item in items],
+            reasons=[str(item.reason) for item in items],
+        )
+
+
 class CheckOut(BaseModel):
     violations: list[str] = Field(
         description="Read-side warning keys (V1/V3/V4 …): reported, never blocking."
     )
     finding_reopened: dict[str, Any] | None = None
+    stranded: StrandedOut = Field(
+        default_factory=lambda: StrandedOut(),
+        description=(
+            "Stranded tasks, computed by the route next to the check report. This is a "
+            "**field, not a violation key** — `violations` above stays byte-identical, "
+            "so a run that predates these rules never turns red. Reports, never blocks."
+        ),
+    )
+
+
+class PlanDraft(BaseModel):
+    """The staged plan draft, verbatim as it sits on the pending decision payload."""
+
+    roles: list[str] = Field(default_factory=list)
+    tasks: list[dict[str, Any]] = Field(default_factory=list)
+    updatedAt: int | None = None
+    planStatus: str | None = Field(default=None, description="`staged` while unapproved.")
+    discarded: dict[str, Any] | None = Field(
+        default=None, description="`{at, reason, taskCount}` once `:discard` released the draft."
+    )
+
+
+class PlanDraftBody(BaseModel):
+    draft: dict[str, Any] = Field(
+        description="`{roles: list[str], tasks: list[dict]}` — validated by the service."
+    )
+
+
+class DiscardBody(BaseModel):
+    reason: str = ""
+
+
+class SettleBody(BaseModel):
+    taskIds: list[str] = Field(
+        default_factory=list, description="Empty = every reported stranded task."
+    )
+    reason: str = ""
+
+
+class PlanDraftOut(BaseModel):
+    draft: PlanDraft
+
+
+class PlanApproveOut(BaseModel):
+    tasks: list[TaskNodeOut]
+    settledKept: list[str] = Field(description="Settled task ids the merge kept.")
+
+
+class SettleOut(BaseModel):
+    settled: list[str] = Field(description="Task ids returned to the board; `[]` = no write.")
 
 
 class ArtifactItemOut(BaseModel):
@@ -612,6 +686,9 @@ async def get_state(
             finding_reopened=(
                 report.finding_reopened.as_details() if report.finding_reopened else None
             ),
+            # The same field the `/check` route adds: one `CheckOut` shape, one meaning
+            # (reported, never blocking, never a violation key).
+            stranded=StrandedOut.from_items(service.stranded(run_id)),
         )
     return out
 
@@ -693,6 +770,102 @@ async def create_task(
         user=user,
     )
     return _task_out(task)
+
+
+@router.post(
+    "/{run_id}:plan",
+    response_model=PlanDraftOut,
+    summary="Stage a plan draft on the run's decision gate",
+    description=(
+        "Validates the draft first (owners inside `roles`, dependency graph, `inScope`, "
+        "caps), so an invalid draft writes nothing and answers 422 "
+        "`TEAM_PLAN_DRAFT_INVALID` — a draft over the tier's task cap answers 409 "
+        "`TEAM_RUN_TASK_LIMIT` instead, judged on the draft's own task count. A valid "
+        "draft is parked **inside** the pending "
+        "decision, which keeps `:advance` refused (409 `TEAM_DECISION_PENDING`) until it "
+        "is approved or discarded. Re-staging overwrites: one draft, last write wins."
+    ),
+)
+async def stage_plan_route(
+    run_id: str,
+    body: PlanDraftBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> PlanDraftOut:
+    _require_owned_run(server, user, run_id)
+    payload = _service(server).stage_plan(run_id, draft=body.draft, user=user)
+    return PlanDraftOut(draft=PlanDraft.model_validate(payload.get("draft") or {}))
+
+
+@router.post(
+    "/{run_id}:approve",
+    response_model=PlanApproveOut,
+    summary="Approve the staged plan draft and write its tasks",
+    description=(
+        "One merge write: the settled tasks (`done` / `blocked` / `cancelled`) are kept "
+        "verbatim and every other existing task is replaced by the draft. Both sides of "
+        "the merge are judged before the first write, so a refusal leaves the board "
+        "untouched. No draft staged (or the same call twice) is 409 "
+        "`TEAM_PLAN_DRAFT_MISSING`. `TASKS.json` is a projection and is not written here."
+    ),
+)
+async def approve_plan_route(
+    run_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> PlanApproveOut:
+    _require_owned_run(server, user, run_id)
+    service = _service(server)
+    created = service.approve_plan(run_id, user=user)
+    created_ids = {task.id for task in created}
+    # The service returns the draft rows only; what the merge *kept* is the settled
+    # remainder of the board once the write landed (T4 interface note).
+    settled_kept = [task.id for task in service.list_tasks(run_id) if task.id not in created_ids]
+    return PlanApproveOut(tasks=[_task_out(task) for task in created], settledKept=settled_kept)
+
+
+@router.post(
+    "/{run_id}:discard",
+    response_model=PlanDraftOut,
+    summary="Discard the staged plan draft",
+    description=(
+        "Run-level, the only scope Octop has. The pending decision is cancelled "
+        "(`discarded: {at, reason, taskCount}`) and the `draft` key is removed; "
+        "`team_runs.status` is left alone, so unparking stays `:resume`'s call. No draft "
+        "staged — including a repeated discard — is 409 `TEAM_PLAN_DRAFT_MISSING`."
+    ),
+)
+async def discard_plan_route(
+    run_id: str,
+    body: DiscardBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> PlanDraftOut:
+    _require_owned_run(server, user, run_id)
+    payload = _service(server).discard_plan(run_id, reason=body.reason, user=user)
+    return PlanDraftOut(draft=PlanDraft(discarded=payload.get("discarded")))
+
+
+@router.post(
+    "/{run_id}:settle",
+    response_model=SettleOut,
+    summary="Settle reported stranded tasks back onto the board",
+    description=(
+        "The only stranded write: each selected task returns to `todo` as a fresh "
+        "attempt (`attempt + 1`, rotated `attemptId`), which is what leaves a previous "
+        "holder's token stale (409 `TEAM_ATTEMPT_STALE`). Nothing stranded or nothing "
+        "selected writes nothing and is an empty list, not an error."
+    ),
+)
+async def settle_run(
+    run_id: str,
+    body: SettleBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> SettleOut:
+    _require_owned_run(server, user, run_id)
+    settled = _service(server).settle(run_id, task_ids=body.taskIds, reason=body.reason, user=user)
+    return SettleOut(settled=[str(task_id) for task_id in settled])
 
 
 @router.patch(
@@ -884,7 +1057,10 @@ async def export_run_route(
     description=(
         "V1/V3/V4 warnings plus the reopened-finding report. `advance` enforces the "
         "blocking half; this endpoint is how the panel stays honest about runs that "
-        "predate the current rules."
+        "predate the current rules.\n\n"
+        "`stranded` is a **response field computed here**, not a violation key: "
+        "`violations` is byte-identical to what it was before the field existed, so an "
+        "old run never turns red — this endpoint reports, never blocks, and never writes."
     ),
 )
 async def check_run(
@@ -893,12 +1069,14 @@ async def check_run(
     server: Any = Depends(get_server),
 ) -> CheckOut:
     _require_owned_run(server, user, run_id)
-    report = _service(server).check(run_id)
+    service = _service(server)
+    report = service.check(run_id)
     return CheckOut(
         violations=list(report.violations),
         finding_reopened=(
             report.finding_reopened.as_details() if report.finding_reopened else None
         ),
+        stranded=StrandedOut.from_items(service.stranded(run_id)),
     )
 
 
@@ -1002,7 +1180,11 @@ async def decide_run(
     "/{run_id}:resume",
     response_model=RunSummaryOut,
     summary="Resume a parked run",
-    description="Only from a non-terminal state; a finished run is `TEAM_RUN_TERMINAL`.",
+    description=(
+        "Only from a non-terminal state; a finished run is `TEAM_RUN_TERMINAL`. The "
+        "response adds `strandedCount` — reported, **not** settled: only an explicit "
+        "`POST /{run_id}:settle` returns a stranded task to the board."
+    ),
 )
 async def resume_run(
     run_id: str,
@@ -1010,7 +1192,10 @@ async def resume_run(
     server: Any = Depends(get_server),
 ) -> RunSummaryOut:
     _require_owned_run(server, user, run_id)
-    return _run_out(_service(server).resume(run_id, user=user))
+    service = _service(server)
+    out = _run_out(service.resume(run_id, user=user))
+    out.strandedCount = len(service.stranded(run_id))
+    return out
 
 
 @router.post(

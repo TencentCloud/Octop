@@ -65,15 +65,20 @@ from octop.infra.agents.teams.learnings import (
 )
 from octop.infra.agents.teams.pipeline import (
     DEFAULT_MAX_REVIEW_ROUNDS,
+    PLAN_DECISION_KIND,
     ROLLBACK_TRANSITIONS,
     TASK_DONE,
+    StrandedItem,
     advance_gate,
     allowed_next_phases,
     assert_capacity,
     check_run,
     decision_gate,
+    normalize_draft,
     normalize_tier,
     phase_sequence,
+    settle_tasks,
+    stranded_tasks,
     validate_task_graph,
 )
 from octop.infra.agents.teams.service import TeamService
@@ -123,6 +128,15 @@ TIMELINE_RUN_DECISION_RESOLVED = "run.decision_resolved"
 TIMELINE_RUN_ARTIFACT_WRITTEN = "run.artifact_written"
 TIMELINE_RUN_ARCHIVE_FAILED = "run.archive_failed"
 TIMELINE_RUN_DISPATCHED = "run.dispatched"
+TIMELINE_RUN_TASK_SETTLED = "run.task_settled"
+
+#: Reason carried by a plan decision this service stages itself (``PLAN §2.5``).
+PLAN_DECISION_REASON = "方案确认"
+
+#: Storage statuses the ``:approve`` merge keeps verbatim (``SPEC §3`` R4: the
+#: settle set is exactly ``done`` / ``blocked`` / ``cancelled``); every other old
+#: task is replaced by the draft.
+PLAN_SETTLED_STATUSES: frozenset[str] = frozenset({"done", "blocked", "cancelled"})
 
 #: Phases that need the user before the run may continue (status mirrors that).
 AWAITING_STATUS_BY_PHASE: Mapping[str, str] = {"方案确认": "awaiting_confirmation"}
@@ -250,6 +264,17 @@ def revision_of(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
 
 
+def _verify_list(value: object) -> list[str]:
+    """A draft's single ``verify`` command as the row's ``verify[]`` array.
+
+    The draft carries one command (``SPEC §3``: ``verify: str``) while the column is
+    a JSON array; an empty command becomes ``[]`` rather than ``[""]``, so "no
+    verification recorded" cannot masquerade as one.
+    """
+    text = str(value or "").strip()
+    return [text] if text else []
+
+
 def _in_scope(path: str) -> str:
     return str(path).strip().replace("\\", "/").lstrip("./")
 
@@ -346,6 +371,10 @@ class TeamRunService:
         # T-96. Default None means 丙-only, exactly as PLAN 2.4(b) registers it; this
         # module never calls a model itself.
         self._learnings_distill = learnings_distill
+        # This process's generation (C-2). Minted once by ``bind_runtime``; ``None``
+        # until then, and an unbound service does **not** judge epoch mismatch rather
+        # than inventing a generation (``PLAN §4.1`` / ``D-4``).
+        self._runtime_epoch: str | None = None
 
     # ── wiring (T-17 binds the runtime after boot) ───────────────────────────
 
@@ -377,6 +406,11 @@ class TeamRunService:
             self._host_workspace_for = host_workspace_for
         if learnings_distill is not None:
             self._learnings_distill = learnings_distill
+        # One generation per bound process: every attempt token handed out from here
+        # carries it as a ``<epoch>.`` prefix, so a token minted before a restart is
+        # provably stale with no new column and no migration (``PLAN §4.1``).
+        if self._runtime_epoch is None:
+            self._runtime_epoch = new_short_id()
 
     def _workspace_accessor(self) -> Callable[[str], Any] | None:
         """Resolve the accessor for a team agent's workspace.
@@ -990,7 +1024,12 @@ class TeamRunService:
         attempt instead is an explicit transfer, which the plan allows.
         """
         task = self.assert_startable(run_id, task_id)
-        claimed = self._tasks.claim(task_id, claimed_by=role, expected_attempt_id=task.attempt_id)
+        claimed = self._tasks.claim(
+            task_id,
+            claimed_by=role,
+            expected_attempt_id=task.attempt_id,
+            attempt_id=self._attempt_token(),
+        )
         if claimed is None:
             raise OctopError(
                 ErrorCode.TEAM_TASK_CLAIM_CONFLICT,
@@ -1513,6 +1552,398 @@ class TeamRunService:
             actor=self._actor(user, run),
         )
         return resolved
+
+    # ── plan gate (A1: stage / approve / discard) ────────────────────────────
+
+    def _attempt_token(self) -> str | None:
+        """A fresh attempt token carrying this process's generation, or ``None``.
+
+        ``attempt_id`` is free ``TEXT`` with no format validation, which is what
+        lets the generation ride on the existing column with zero migration
+        (``PLAN §4.1``). ``None`` leaves the repo to mint a bare token, which is
+        what an unbound service gets.
+        """
+        if self._runtime_epoch is None:
+            return None
+        return f"{self._runtime_epoch}.{new_short_id()}"
+
+    def _roster_roles(self, run_id: str) -> list[str]:
+        """The roles this run may hand work to — the member rows are the authority."""
+        return [str(member.role) for member in self._runs.list_members(run_id)]
+
+    def _staged_draft(self, run_id: str) -> tuple[dict[str, Any], Mapping[str, Any]] | None:
+        """``(pending payload, draft)`` while a draft is staged, else ``None``.
+
+        Staged means the decision is still ``pending`` **and** carries a ``draft``
+        key — exactly the predicate that decides whether the gate blocks, so the
+        three verbs cannot disagree about what is staged.
+        """
+        pending = self._runs.get_pending_decision(run_id)
+        if not isinstance(pending, Mapping) or str(pending.get("status") or "") != "pending":
+            return None
+        draft = pending.get("draft")
+        if not isinstance(draft, Mapping):
+            return None
+        return dict(pending), draft
+
+    def _assert_open(self, run: TeamRunRow) -> None:
+        """Refuse a plan write on a terminal run (``TEAM_RUN_TERMINAL``, 409)."""
+        if run.status in {"complete", "failed", "cancelled"}:
+            raise OctopError(
+                ErrorCode.TEAM_RUN_TERMINAL,
+                f"run is {run.status}; a terminal run accepts no plan write",
+                details={"status": run.status},
+            )
+
+    def stage_plan(
+        self, run_id: str, *, draft: Mapping[str, Any], user: ProjectActor | None = None
+    ) -> dict[str, Any]:
+        """Stage a plan draft **inside** the pending decision (A1, zero migration).
+
+        The draft is a ``draft`` key on the ``threads.pending_decision`` payload —
+        not a column, not a sibling of the decision. That is load-bearing rather
+        than stylistic: ``pipeline._pending_decision`` reads only ``status``, so a
+        staged draft keeps every ``advance`` refused (``TEAM_DECISION_PENDING``) for
+        free, while a draft stored anywhere else would be a gate nothing consults.
+
+        Validation runs first (``normalize_draft``, G-2; then G9 capacity over the
+        draft's own task count), so a refused draft reaches no writer: an over-cap
+        draft answers 409 ``TEAM_RUN_TASK_LIMIT``. That check is deliberately the
+        **weaker** of the two board counts — it sees the draft alone, while
+        ``approve_plan`` re-judges ``settled ∪ draft`` before its own first write, so
+        nothing this check admits escapes the merged-board gate. Re-staging
+        overwrites the one ``draft`` key and reuses the decision that is already
+        pending: no second decision, no revision field, last write wins (R13).
+        """
+        run = self.require_run(run_id)
+        self._assert_open(run)
+        normalised = normalize_draft(
+            draft,
+            roles=self._roster_roles(run_id),
+            run={"run_id": run.run_id, "project_id": run.project_id},
+        )
+        # G9 at the gate that writes nothing: SPEC §3-R3 lists over-capacity among the
+        # `:plan` refusals. Counted on the draft's own tasks — `approve_plan` keeps the
+        # authoritative `settled ∪ draft` count, still ahead of its first write.
+        entries = [entry for entry in normalised.get("tasks") or [] if isinstance(entry, Mapping)]
+        assert_capacity({"tier": run.tier}, task_count=len(entries))
+        staged = {**normalised, "updatedAt": int(time.time()), "planStatus": "staged"}
+        actor = self._actor(user, run)
+        current = self._runs.get_pending_decision(run_id)
+        if isinstance(current, Mapping) and str(current.get("status") or "") == "pending":
+            # R1: merge into the payload that is already pending, preserving every
+            # field it carries (id / kind / reason / options / context).
+            payload = {**current, "draft": staged}
+            self._record(
+                run,
+                TIMELINE_RUN_DECISION_RAISED,
+                {
+                    "decision_id": str(current.get("id") or ""),
+                    "kind": str(current.get("kind") or ""),
+                    "reason": str(current.get("reason") or ""),
+                },
+                actor=actor,
+            )
+        else:
+            payload = {
+                **self.raise_decision(
+                    run_id,
+                    kind=PLAN_DECISION_KIND,
+                    reason=PLAN_DECISION_REASON,
+                    options=("approve", "discard"),
+                    actor=actor,
+                ),
+                "draft": staged,
+            }
+        if not self._runs.set_pending_decision(run_id, payload):
+            raise OctopError(
+                ErrorCode.TEAM_DECISION_PENDING,
+                f"run {run_id!r} has no room thread to stage a plan on",
+                details={"run_id": run_id},
+            )
+        return payload
+
+    def _board_node(self, task: ProjectTaskRow) -> dict[str, Any]:
+        """One existing row as the graph node ``validate_task_graph`` reads."""
+        return {
+            "id": task.id,
+            "dependsOn": list(task.deps),
+            "status": task.status,
+            "kind": task.kind,
+            "verify": list(task.verify),
+            "role": task.claimed_by or "",
+            "round": task.round,
+        }
+
+    def _draft_node(self, entry: Mapping[str, Any]) -> dict[str, Any]:
+        """One normalised draft task as a graph node — created in ``todo``."""
+        return {
+            "id": str(entry.get("id") or ""),
+            "dependsOn": [str(dep) for dep in entry.get("dependsOn") or []],
+            "status": "todo",
+            "kind": str(entry.get("kind") or "work"),
+            "verify": _verify_list(entry.get("verify")),
+            "role": str(entry.get("owner") or ""),
+            "round": int(entry.get("round") or 1),
+        }
+
+    def _create_from_draft(
+        self, run_id: str, entry: Mapping[str, Any], *, user: ProjectActor | None
+    ) -> ProjectTaskRow:
+        """One draft task → one database row, with the camelCase → storage translation.
+
+        ``inScope`` → ``in_scope``, ``verify: str`` → ``verify: list[str]`` (the
+        column is a JSON array), ``dependsOn`` → the argument ``create_task`` writes
+        as the row's ``deps``. The draft's ``status`` is not passed: ``create_task``
+        always creates in ``todo``, which is what ``normalize_draft`` normalised the
+        draft to.
+        """
+        return self.create_task(
+            run_id,
+            task_id=str(entry.get("id") or ""),
+            title=str(entry.get("title") or ""),
+            kind=str(entry.get("kind") or "work"),
+            role=str(entry.get("owner") or ""),
+            spec=str(entry.get("spec") or ""),
+            acceptance=[str(item) for item in entry.get("acceptance") or []],
+            in_scope=[str(item) for item in entry.get("inScope") or []],
+            verify=_verify_list(entry.get("verify")),
+            depends_on=[str(dep) for dep in entry.get("dependsOn") or []],
+            round=int(entry.get("round") or 1),
+            user=user,
+        )
+
+    def approve_plan(
+        self, run_id: str, *, user: ProjectActor | None = None
+    ) -> list[ProjectTaskRow]:
+        """Turn the staged draft into database rows — the merge is ``settled ∪ draft``.
+
+        ``SPEC §3`` R4: old tasks in ``done`` / ``blocked`` / ``cancelled`` are kept
+        verbatim and **every other old task is replaced by the draft** (the draft is
+        the new board, not an addition to it). Rows go in one by one through
+        ``create_task``, so G6 / G7 / G9 keep running on the real writer.
+
+        Both sides of the merge are judged **before the first write** (G-2): the G6
+        graph and the G9 capacity run on the merged board, so a refusal leaves the
+        board byte-identical with the draft still staged. Superseded rows are deleted
+        rather than flipped to ``cancelled`` on purpose — a superseded row still
+        counts inside ``create_task``'s own G9 board, so leaving them alive would let
+        a capped board refuse *mid-merge*, after some rows were already written.
+
+        ``TASKS.json`` is **not** written here: it is a runtime-only projection
+        (``artifacts.ARTIFACT_OWNERS``) that follows the rows, and writing it would
+        make a second source of truth that the next projection overwrites.
+        """
+        run = self.require_run(run_id)
+        self._assert_open(run)
+        staged = self._staged_draft(run_id)
+        if staged is None:
+            raise OctopError(
+                ErrorCode.TEAM_PLAN_DRAFT_MISSING,
+                f"run {run_id!r} has no staged plan draft to approve",
+                details={"run_id": run_id},
+            )
+        pending, draft = staged
+        entries = [dict(entry) for entry in draft.get("tasks") or [] if isinstance(entry, Mapping)]
+        existing = self.list_tasks(run_id)
+        superseded = [task for task in existing if task.status not in PLAN_SETTLED_STATUSES]
+        merged = [
+            self._board_node(task) for task in existing if task.status in PLAN_SETTLED_STATUSES
+        ]
+        merged.extend(self._draft_node(entry) for entry in entries)
+        try:
+            validate_task_graph(merged)
+        except OctopError as exc:
+            # B9: superseding an unsettled task can leave a dependency dangling, and
+            # that refusal belongs to the draft vocabulary — 422
+            # ``TEAM_PLAN_DRAFT_INVALID`` with ``details.code`` carried over verbatim
+            # (``missing-id`` for a dangling edge), not the graph gate's 409. No new
+            # code is minted: the merged board is the draft's own board.
+            raise OctopError(
+                ErrorCode.TEAM_PLAN_DRAFT_INVALID,
+                exc.message,
+                details=dict(exc.details or {}),
+            ) from exc
+        assert_capacity({"tier": run.tier}, task_count=len(merged))
+        # ── the gates are all behind us: everything below is the one merge write ──
+        writer = user or _RunActor(run.created_by)
+        for task in superseded:
+            self._project_service().delete_task(run.project_id, task.id, user=writer)
+        created = [self._create_from_draft(run_id, entry, user=user) for entry in entries]
+        resolved = {**pending, "status": "resolved", "planApprovedAt": int(time.time())}
+        resolved.pop("draft", None)
+        if not self._runs.set_pending_decision(run_id, resolved):
+            raise OctopError(
+                ErrorCode.TEAM_DECISION_PENDING,
+                f"run {run_id!r} has no room thread to clear the plan on",
+                details={"run_id": run_id},
+            )
+        if run.status in {"awaiting_decision", "awaiting_confirmation"}:
+            self._runs.update_status(run_id, "running")
+        self._record(
+            run,
+            TIMELINE_RUN_DECISION_RESOLVED,
+            {
+                "decision_id": str(pending.get("id") or ""),
+                "choice": "approve",
+                "task_ids": [task.id for task in created],
+            },
+            actor=self._actor(user, run),
+        )
+        return created
+
+    def discard_plan(
+        self, run_id: str, *, reason: str = "", user: ProjectActor | None = None
+    ) -> dict[str, Any]:
+        """Cancel the staged draft — **run-level**, the only scope Octop has.
+
+        ``SPEC §0`` D2 records that Octop has no cross-run goal key, so there is no
+        wider target for a discard to reach: it releases exactly the run it was
+        addressed to, and nothing else.
+
+        The decision is cancelled, not resolved: ``status="cancelled"`` plus a
+        ``discarded`` record (``at`` / ``reason`` / ``taskCount``, ``PLAN §2.5``),
+        with the ``draft`` key removed. ``team_runs.status`` is deliberately left
+        alone — ``PLAN §3`` gives that column to ``raise_decision`` and
+        ``approve_plan``, so unparking a discarded run stays ``resume``'s call.
+        """
+        run = self.require_run(run_id)
+        self._assert_open(run)
+        staged = self._staged_draft(run_id)
+        if staged is None:
+            raise OctopError(
+                ErrorCode.TEAM_PLAN_DRAFT_MISSING,
+                f"run {run_id!r} has no staged plan draft to discard",
+                details={"run_id": run_id},
+            )
+        pending, draft = staged
+        tasks = [entry for entry in draft.get("tasks") or [] if isinstance(entry, Mapping)]
+        payload = {
+            **pending,
+            "status": "cancelled",
+            "discarded": {"at": int(time.time()), "reason": reason, "taskCount": len(tasks)},
+        }
+        payload.pop("draft", None)
+        if not self._runs.set_pending_decision(run_id, payload):
+            raise OctopError(
+                ErrorCode.TEAM_DECISION_PENDING,
+                f"run {run_id!r} has no room thread to cancel the plan on",
+                details={"run_id": run_id},
+            )
+        self._record(
+            run,
+            TIMELINE_RUN_DECISION_RESOLVED,
+            {
+                "decision_id": str(pending.get("id") or ""),
+                "choice": "discard",
+                "reason": reason,
+            },
+            actor=self._actor(user, run),
+        )
+        return payload
+
+    # ── stranded / settle (A2) ───────────────────────────────────────────────
+
+    def stranded(self, run_id: str, *, now: float | None = None) -> tuple[StrandedItem, ...]:
+        """Report tasks that look stranded — this writes nothing (``I7``).
+
+        The judgement lives in :func:`pipeline.stranded_tasks` so that the report and
+        the settle write consume the **same** tuple (``I5``); this method is the one
+        place that reads a clock and this process's generation (``PLAN §4.4``). An
+        unbound service passes ``epoch=None``, which switches C-2 off instead of
+        fabricating a generation (D-4).
+        """
+        run = self.require_run(run_id)
+        return stranded_tasks(
+            {"run_id": run.run_id, "project_id": run.project_id, "status": run.status},
+            [self._stranded_view(task) for task in self.list_tasks(run_id)],
+            epoch=self._runtime_epoch,
+            now=time.time() if now is None else now,
+        )
+
+    def _stranded_view(self, task: ProjectTaskRow) -> dict[str, Any]:
+        """The columns ``stranded_tasks`` judges (``PLAN §4.2`` / ``§4.3``)."""
+        return {
+            "id": task.id,
+            "status": task.status,
+            "owner": task.assignee_id or "",
+            "attempt": task.attempt,
+            "attempt_id": task.attempt_id,
+            "updated_at": task.updated_at,
+            "started_at": task.started_at,
+        }
+
+    def settle(
+        self,
+        run_id: str,
+        *,
+        task_ids: Sequence[str] = (),
+        reason: str = "",
+        user: ProjectActor | None = None,
+    ) -> list[str]:
+        """Return reported stranded tasks to the board as fresh attempts (A2, R9).
+
+        Consumes the **same** tuple :meth:`stranded` just produced — ``settle_tasks``
+        takes neither ``epoch`` nor ``now``, so the judgement and the write cannot
+        drift apart (``I5``). Nothing stranded, or nothing selected, writes nothing at
+        all, and there is no "nothing to settle" refusal code: the answer is an empty
+        list (``I6``).
+
+        Each settled row goes back to ``todo`` with ``attempt + 1``. ``attempt_id`` is
+        rotated to a token of **this** generation, which is what leaves the previous
+        holder's token stale (``TEAM_ATTEMPT_STALE``, G8); the repo's ``claim`` is the
+        only existing writer of that column, and its compare-and-set on the token this
+        method read keeps a concurrent writer from being clobbered silently.
+        """
+        run = self.require_run(run_id)
+        self._assert_open(run)
+        items = self.stranded(run_id)
+        if task_ids:
+            wanted = {str(task_id) for task_id in task_ids}
+            items = tuple(item for item in items if item.id in wanted)
+        tasks = self.list_tasks(run_id)
+        drafts, settled = settle_tasks(
+            [{"id": task.id, "status": task.status, "attempt": task.attempt} for task in tasks],
+            items,
+            at=int(time.time()),
+            reason=reason,
+        )
+        if not settled:
+            return []
+        by_id = {task.id: task for task in tasks}
+        provenance: list[dict[str, Any]] = []
+        for draft in drafts:
+            current = by_id.get(str(draft["id"]))
+            if current is None:
+                continue
+            self._tasks.update(current.id, status=str(draft["status"]))
+            self._tasks.claim(
+                current.id,
+                claimed_by=current.claimed_by or current.assignee_id or "",
+                expected_attempt_id=current.attempt_id,
+                attempt_id=self._attempt_token(),
+            )
+            # I5 lands here: ``settle_tasks`` derived these three keys from the same
+            # ``items`` this method handed it, and ``repos/project_tasks.py`` ·
+            # ``update`` has no slot for them (``repos/**`` is zero-change this batch,
+            # so no column may be added either). They are therefore persisted verbatim
+            # on the one timeline row ``settle`` records — computed and written from a
+            # single source, never dropped between the two.
+            provenance.append(
+                {
+                    "id": str(draft["id"]),
+                    "strandedAt": draft["strandedAt"],
+                    "strandedFrom": draft["strandedFrom"],
+                    "note": draft["note"],
+                }
+            )
+        self._record(
+            run,
+            TIMELINE_RUN_TASK_SETTLED,
+            {"task_ids": list(settled), "reason": reason, "tasks": provenance},
+            actor=self._actor(user, run),
+        )
+        return settled
 
     # ── artifacts (G14) ──────────────────────────────────────────────────────
 

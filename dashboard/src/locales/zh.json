@@ -217,6 +217,8 @@
     "TEAM_RUN_NOT_FOUND": "团队运行不存在。",
     "TEAM_RUN_PHASE_INVALID": "阶段推进不合法。",
     "TEAM_PHASE_GATE_FAILED": "当前阶段门禁未通过。",
+    "TEAM_PLAN_DRAFT_INVALID": "计划草稿非法：任务负责人不在角色清单内",
+    "TEAM_PLAN_DRAFT_MISSING": "没有待批准的计划草稿",
     "TEAM_DECISION_PENDING": "存在待拍板决策，须先处理。",
     "TEAM_DECISION_NOT_PENDING": "当前没有待处理的决策。",
     "TEAM_DECISION_OPTION_INVALID": "所选的决策选项不合法。",
