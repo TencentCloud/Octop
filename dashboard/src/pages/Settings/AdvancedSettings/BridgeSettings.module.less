@@ -197,6 +197,16 @@
   cursor: default;
 }
 
+.inboundLocked {
+  display: inline-flex;
+  align-items: center;
+  cursor: not-allowed;
+
+  > * {
+    pointer-events: none;
+  }
+}
+
 .statusBadgeOk,
 .statusBadgeWarn {
   display: inline-flex;

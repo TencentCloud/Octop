@@ -32,9 +32,9 @@ export default function RemoteExpertHint({
     (connectionName ?? agent?.bridge_connection_name ?? "").trim() || "";
   const icon =
     (connectionIcon ?? agent?.bridge_connection_icon ?? "").trim() || "cloudy";
-  const tip = name
-    ? t("chat.remoteExpert.banner", { name })
-    : t("chat.remoteExpert.flag");
+  const flag = t("chat.remoteExpert.flag");
+  const tip = name ? t("chat.remoteExpert.banner", { name }) : flag;
+  const label = compact ? null : name ? `${flag} · ${name}` : flag;
   return (
     <Tooltip title={tip} mouseEnterDelay={0.35}>
       <span
@@ -47,8 +47,8 @@ export default function RemoteExpertHint({
         <span className={styles.remoteExpertIcon} aria-hidden>
           {iconForName(icon, 11)}
         </span>
-        {name && !compact ? (
-          <span className={styles.remoteExpertName}>{name}</span>
+        {label ? (
+          <span className={styles.remoteExpertName}>{label}</span>
         ) : null}
       </span>
     </Tooltip>

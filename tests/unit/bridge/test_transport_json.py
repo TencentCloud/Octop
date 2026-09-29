@@ -36,6 +36,17 @@ async def test_send_json_serializes_human_message() -> None:
     assert msgs[1]["content"] == "yo"
 
 
+@pytest.mark.asyncio
+async def test_close_frame_records_deleted_reason() -> None:
+    async def noop(_text: str) -> None:
+        return None
+
+    sess = BridgeSession(connection_id="c1", send_text=noop)
+    await sess.handle_message(json.dumps({"type": "close", "reason": "deleted"}))
+    assert sess.close_reason == "deleted"
+    assert sess.closed is True
+
+
 def test_bridge_json_default_falls_back_to_repr() -> None:
     class Weird:
         def __repr__(self) -> str:

@@ -391,6 +391,7 @@
     "BRIDGE_TUNNEL_FAILED": "Cloud collab request failed. The link may have dropped — reconnect and try again.",
     "BRIDGE_REMOTE_UNSUPPORTED": "This action is not available on the remote expert. Manage it on the peer Octop.",
     "BRIDGE_DISPLAY_NAME_TAKEN": "Display name \"{{name}}\" is already in use. Choose another.",
+    "BRIDGE_INBOUND_PASSIVE": "This link was opened by the peer. This side cannot change the address or dial out. After disconnect, the peer must reopen it.",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
     "SLASH_UNKNOWN": "Unknown slash command.",
     "SLASH_BAD_ARGS": "Invalid arguments.",

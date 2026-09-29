@@ -132,6 +132,7 @@
     "BRIDGE_TUNNEL_FAILED": "Cloud collab request failed. The link may have dropped — reconnect and try again.",
     "BRIDGE_REMOTE_UNSUPPORTED": "This action is not available on the remote expert. Manage it on the peer Octop.",
     "BRIDGE_DISPLAY_NAME_TAKEN": "Display name \"{{name}}\" is already in use. Choose another.",
+    "BRIDGE_INBOUND_PASSIVE": "This link was opened by the peer. This side cannot change the address or dial out. After disconnect, the peer must reopen it.",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
     "SLASH_UNKNOWN": "Unknown slash command.",
     "SLASH_BAD_ARGS": "Invalid arguments.",
@@ -1190,8 +1191,8 @@
       "flag": "Shared"
     },
     "remoteExpert": {
-      "banner": "Remote expert · via “{{name}}”",
-      "flag": "Remote",
+      "banner": "Peer expert · via “{{name}}”",
+      "flag": "Peer",
       "manageOnPeer": "Edit on the remote instance",
       "manageToast": "This is a remote expert. Manage skills, models, knowledge bases, and related settings on the peer Octop.",
       "editBanner": "You are editing a remote expert. Changes are saved on the peer Octop.",
@@ -1573,7 +1574,7 @@
     "dockFileList": "File changes",
     "dockAddTab": "Add panel",
     "expertSharedBadge": "Shared",
-    "expertRemoteBadge": "Remote",
+    "expertRemoteBadge": "Peer",
     "dockFileListEmpty": "No files from tools yet",
     "dockFileListCount": "{{count}} files",
     "dockFileListHint": "This list only shows files produced during execution. They are not guaranteed to be kept, and the model may delete them after processing finishes.",
@@ -3295,6 +3296,12 @@
       "loadFailed": "Could not load cloud collab connections",
       "connect": "Reconnect",
       "disconnect": "Disconnect",
+      "disconnectTitle": "Disconnect this cloud collab?",
+      "disconnectDesc": "This disconnects “{{name}}”. You can reconnect from this side anytime.",
+      "inboundTag": "Peer-initiated",
+      "inboundHint": "Opened by the peer. You can only change the display name, icon, and notes.",
+      "inboundActionDisabled": "Peer-initiated links are kept by the peer. This side cannot disconnect, delete, or auto-reconnect.",
+      "editHintInbound": "Peer-initiated links can only change display name, icon, and notes. Address and account stay on the peer.",
       "delete": "Delete connection",
       "deleted": "Cloud collab connection deleted",
       "deleteFailed": "Could not delete the cloud collab connection",
@@ -3350,6 +3357,7 @@
       "status": {
         "connected": "Connected",
         "disconnected": "Disconnected",
+        "offline": "Offline",
         "connecting": "Connecting",
         "error": "Error"
       },

@@ -299,13 +299,16 @@ class BridgeConnectionRepo:
                 display_name=display_name,
                 notes=notes,
                 status=status,
+                auto_reconnect=False,
             )
         with self._db.transaction() as conn:
             # Keep the owner's chosen display_name / notes on reverse reconnect.
+            # Reverse rows cannot dial out — never enable auto-reconnect.
             conn.execute(
                 "UPDATE bridge_connections SET "
                 "owner_user_id = ?, peer_base_url = ?, peer_username = ?, "
-                "status = ?, last_error = NULL, last_seen_at = ?, updated_at = ? "
+                "status = ?, last_error = NULL, last_seen_at = ?, updated_at = ?, "
+                "auto_reconnect = 0 "
                 "WHERE connection_id = ?",
                 (
                     owner_user_id,

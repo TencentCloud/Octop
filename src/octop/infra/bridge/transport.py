@@ -60,6 +60,7 @@ class BridgeSession:
         self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._closed = asyncio.Event()
         self._lock = asyncio.Lock()
+        self.close_reason: str | None = None
 
     @property
     def closed(self) -> bool:
@@ -89,6 +90,10 @@ class BridgeSession:
         if not isinstance(payload, dict):
             return
         msg_type = str(payload.get("type") or "")
+        if msg_type == "close":
+            self.close_reason = str(payload.get("reason") or "").strip() or None
+            await self.close()
+            return
         if msg_type == "tunnel.request" and self._on_tunnel_request is not None:
             req_id = str(payload.get("id") or "")
             try:

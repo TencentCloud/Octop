@@ -31,6 +31,11 @@ _AUTO_RECONNECT_MAX_FAILURES = 5
 _AUTO_RECONNECT_BACKOFF_SEC = (2.0, 4.0, 8.0, 16.0, 30.0)
 
 
+def _is_inbound(row: BridgeConnectionRow) -> bool:
+    """Peer-dialed reverse rows store no password and cannot redial."""
+    return not bool(row.credential_blob)
+
+
 def _absolute_peer_url(base_url: str, maybe_path: str | None) -> str | None:
     raw = (maybe_path or "").strip()
     if not raw:
@@ -151,6 +156,7 @@ class BridgeManager:
             "created_at": row.created_at,
             "updated_at": row.updated_at,
             "has_password": bool(row.credential_blob),
+            "inbound": _is_inbound(row),
         }
 
     async def probe_peer(
@@ -231,6 +237,11 @@ class BridgeManager:
     ) -> dict[str, Any]:
         """Probe using the form endpoint; empty password reuses the stored secret."""
         row = self.get_owned(connection_id, owner_user_id)
+        if _is_inbound(row):
+            raise OctopError(
+                ErrorCode.BRIDGE_INBOUND_PASSIVE,
+                "inbound bridge cannot probe peer",
+            )
         secret = (password or "").strip() or self._stored_peer_password(row)
         return await self.probe_peer(
             peer_base_url=peer_base_url,
@@ -324,11 +335,21 @@ class BridgeManager:
 
     async def delete_connection(self, connection_id: str, *, owner_user_id: int) -> None:
         self.get_owned(connection_id, owner_user_id)
+        sess = self._sessions.get(connection_id)
+        if sess is not None and not sess.closed:
+            with suppress(Exception):
+                await sess.send_json({"type": "close", "reason": "deleted"})
+                await asyncio.sleep(0.1)
         await self.disconnect(connection_id)
         self._repo.delete(connection_id)
 
     async def connect(self, connection_id: str, *, owner_user_id: int) -> BridgeConnectionRow:
         row = self.get_owned(connection_id, owner_user_id)
+        if _is_inbound(row):
+            raise OctopError(
+                ErrorCode.BRIDGE_INBOUND_PASSIVE,
+                "inbound bridge cannot dial out",
+            )
         self._user_stopped.discard(connection_id)
         async with self._lock:
             existing = self._sessions.get(connection_id)
@@ -384,6 +405,11 @@ class BridgeManager:
         self, connection_id: str, *, owner_user_id: int, enabled: bool
     ) -> BridgeConnectionRow:
         row = self.get_owned(connection_id, owner_user_id)
+        if enabled and _is_inbound(row):
+            raise OctopError(
+                ErrorCode.BRIDGE_INBOUND_PASSIVE,
+                "inbound bridge cannot auto-reconnect",
+            )
         self._repo.set_auto_reconnect(connection_id, enabled)
         if enabled:
             self._user_stopped.discard(connection_id)
@@ -413,6 +439,20 @@ class BridgeManager:
         bounce the live Bridge session if it was connected.
         """
         row = self.get_owned(connection_id, owner_user_id)
+        if _is_inbound(row):
+            url_touch = peer_base_url is not None and peer_base_url.strip().rstrip(
+                "/"
+            ) != row.peer_base_url.rstrip("/")
+            user_touch = peer_username is not None and peer_username.strip() != row.peer_username
+            pwd_touch = bool((password or "").strip())
+            if url_touch or user_touch or pwd_touch:
+                raise OctopError(
+                    ErrorCode.BRIDGE_INBOUND_PASSIVE,
+                    "inbound bridge cannot change peer credentials",
+                )
+            peer_base_url = None
+            peer_username = None
+            password = None
         name = row.display_name
         if display_name is not None:
             name = display_name.strip()
@@ -514,6 +554,8 @@ class BridgeManager:
     async def resume_auto_connections(self) -> None:
         """Boot-time: dial every connection with auto_reconnect enabled."""
         for row in self._repo.list_auto_reconnect():
+            if _is_inbound(row):
+                continue
             if row.connection_id in self._user_stopped:
                 continue
             live = self._sessions.get(row.connection_id)
@@ -741,7 +783,6 @@ class BridgeManager:
             return
         advertise_base = str(payload.get("advertise_base_url") or "").strip() or "http://127.0.0.1"
         advertise_user = str(payload.get("advertise_username") or "").strip() or "peer"
-        preferred_name = str(payload.get("display_name") or "").strip()
         try:
             advertise_base = normalize_peer_base_url(advertise_base)
         except OctopError:
@@ -754,7 +795,7 @@ class BridgeManager:
         if existing is None:
             display_name = self._allocate_display_name(
                 owner_user_id=int(user.id),
-                preferred=preferred_name or advertise_user or advertise_base,
+                preferred=connection_id,
             )
         else:
             display_name = existing.display_name
@@ -788,12 +829,13 @@ class BridgeManager:
             while True:
                 message = await websocket.receive_text()
                 await session.handle_message(message)
+                if session.closed:
+                    break
         except Exception:
             logger.info("bridge inbound closed connection=%s", connection_id)
         finally:
             if connection_id:
-                await self._unregister_session(connection_id)
-                self._repo.update_status(connection_id, status="disconnected")
+                await self._finalize_inbound(connection_id, session)
 
     async def _register_session(self, connection_id: str, session: BridgeSession) -> None:
         old = self._sessions.get(connection_id)
@@ -805,6 +847,14 @@ class BridgeManager:
         sess = self._sessions.pop(connection_id, None)
         if sess is not None:
             await sess.close()
+
+    async def _finalize_inbound(self, connection_id: str, session: BridgeSession | None) -> None:
+        await self._unregister_session(connection_id)
+        if session is not None and session.close_reason == "deleted":
+            self._repo.delete(connection_id)
+            return
+        if self._repo.get(connection_id) is not None:
+            self._repo.update_status(connection_id, status="disconnected")
 
     # -- tunnel --------------------------------------------------------------
 

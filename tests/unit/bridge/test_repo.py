@@ -50,6 +50,35 @@ def test_bridge_connection_crud(tmp_path: Path) -> None:
     assert repo.get(cid) is None
 
 
+def test_upsert_reverse_disables_auto_reconnect(tmp_path: Path) -> None:
+    pool = SqlitePool(tmp_path / "octop.db")
+    run_migrations(pool)
+    users = UserRepo(pool)
+    uid = users.create(username="alice", password_hash="x", role="user")
+    repo = BridgeConnectionRepo(pool)
+    cid = new_ulid()
+    created = repo.upsert_reverse(
+        connection_id=cid,
+        owner_user_id=uid,
+        peer_base_url="http://127.0.0.1",
+        peer_username="peer",
+        display_name="Inbound",
+        status="connected",
+    )
+    assert created.auto_reconnect is False
+    assert created.credential_blob is None
+    repo.set_auto_reconnect(cid, True)
+    again = repo.upsert_reverse(
+        connection_id=cid,
+        owner_user_id=uid,
+        peer_base_url="http://127.0.0.1",
+        peer_username="peer",
+        display_name="Inbound",
+        status="connected",
+    )
+    assert again.auto_reconnect is False
+
+
 def test_ensure_bridge_dedupes_duplicate_display_names(tmp_path: Path) -> None:
     pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)

@@ -16,6 +16,8 @@ export interface BridgeConnection {
   created_at: number;
   updated_at: number;
   has_password: boolean;
+  /** Peer-dialed reverse row: no stored password, this side cannot redial. */
+  inbound?: boolean;
 }
 
 export interface BridgeRemoteAgent {

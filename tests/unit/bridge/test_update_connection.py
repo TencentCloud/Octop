@@ -116,6 +116,16 @@ async def test_update_endpoint_reauths_and_reconnects(
     mgr.connect.assert_awaited_once()
 
 
+def test_connection_public_marks_inbound() -> None:
+    mgr = _mgr()
+    inbound = mgr.connection_public(_row(credential_blob=None))
+    assert inbound["inbound"] is True
+    assert inbound["has_password"] is False
+    outbound = mgr.connection_public(_row())
+    assert outbound["inbound"] is False
+    assert outbound["has_password"] is True
+
+
 @pytest.mark.asyncio
 async def test_update_password_required_when_no_stored_secret() -> None:
     mgr = _mgr()
@@ -129,4 +139,86 @@ async def test_update_password_required_when_no_stored_secret() -> None:
             peer_base_url="https://other.example",
             password="",
         )
-    assert ei.value.code == ErrorCode.BRIDGE_AUTH_FAILED
+    assert ei.value.code == ErrorCode.BRIDGE_INBOUND_PASSIVE
+
+
+@pytest.mark.asyncio
+async def test_inbound_update_display_only() -> None:
+    mgr = _mgr()
+    row = _row(credential_blob=None, auto_reconnect=False)
+    updated = _row(credential_blob=None, display_name="对端机", notes="n")
+    mgr.get_owned = MagicMock(return_value=row)  # type: ignore[method-assign]
+    mgr._repo.find_by_display_name = MagicMock(return_value=None)
+    mgr._repo.update_settings = MagicMock(return_value=updated)
+    out = await mgr.update_connection_meta(
+        "cid1",
+        owner_user_id=1,
+        display_name="对端机",
+        notes="n",
+        update_notes=True,
+        peer_base_url=row.peer_base_url,
+        peer_username=row.peer_username,
+        password="",
+    )
+    assert out.display_name == "对端机"
+    mgr._repo.update_settings.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_inbound_connect_rejected() -> None:
+    mgr = _mgr()
+    mgr.get_owned = MagicMock(return_value=_row(credential_blob=None))  # type: ignore[method-assign]
+    with pytest.raises(OctopError) as ei:
+        await mgr.connect("cid1", owner_user_id=1)
+    assert ei.value.code == ErrorCode.BRIDGE_INBOUND_PASSIVE
+
+
+@pytest.mark.asyncio
+async def test_inbound_auto_reconnect_rejected() -> None:
+    mgr = _mgr()
+    mgr.get_owned = MagicMock(return_value=_row(credential_blob=None))  # type: ignore[method-assign]
+    with pytest.raises(OctopError) as ei:
+        await mgr.set_auto_reconnect("cid1", owner_user_id=1, enabled=True)
+    assert ei.value.code == ErrorCode.BRIDGE_INBOUND_PASSIVE
+
+
+@pytest.mark.asyncio
+async def test_delete_notifies_peer_before_disconnect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mgr = _mgr()
+    mgr.get_owned = MagicMock(return_value=_row())  # type: ignore[method-assign]
+    sess = MagicMock()
+    sess.closed = False
+    sess.send_json = AsyncMock()
+    mgr._sessions["cid1"] = sess
+    mgr.disconnect = AsyncMock()  # type: ignore[method-assign]
+    monkeypatch.setattr("octop.infra.bridge.manager.asyncio.sleep", AsyncMock())
+    await mgr.delete_connection("cid1", owner_user_id=1)
+    sess.send_json.assert_awaited_once_with({"type": "close", "reason": "deleted"})
+    mgr.disconnect.assert_awaited_once_with("cid1")
+    mgr._repo.delete.assert_called_once_with("cid1")
+
+
+@pytest.mark.asyncio
+async def test_finalize_inbound_offline_keeps_row() -> None:
+    from octop.infra.bridge.transport import BridgeSession
+
+    mgr = _mgr()
+    mgr._repo.get = MagicMock(return_value=_row(credential_blob=None))
+    sess = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    await mgr._finalize_inbound("cid1", sess)
+    mgr._repo.delete.assert_not_called()
+    mgr._repo.update_status.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_finalize_inbound_deleted_drops_row() -> None:
+    from octop.infra.bridge.transport import BridgeSession
+
+    mgr = _mgr()
+    sess = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    sess.close_reason = "deleted"
+    await mgr._finalize_inbound("cid1", sess)
+    mgr._repo.delete.assert_called_once_with("cid1")
+    mgr._repo.update_status.assert_not_called()

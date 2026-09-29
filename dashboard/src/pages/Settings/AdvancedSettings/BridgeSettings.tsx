@@ -4,6 +4,7 @@ import {
   useMemo,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import {
   Button,
@@ -114,6 +115,29 @@ function statusColor(status: string): string {
   if (status === "connected") return "success";
   if (status === "connecting" || status === "error") return "warning";
   return "default";
+}
+
+function isInboundConnection(row: BridgeConnection): boolean {
+  return Boolean(row.inbound) || !row.has_password;
+}
+
+function connectionStatusText(
+  row: BridgeConnection,
+  t: (key: string) => string,
+): string {
+  if (isInboundConnection(row) && row.status !== "connected") {
+    return t("advancedSettings.bridge.status.offline");
+  }
+  return t(`advancedSettings.bridge.status.${row.status}`);
+}
+
+function InboundLockedControl({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
+  return (
+    <Tooltip title={t("advancedSettings.bridge.inboundActionDisabled")}>
+      <span className={styles.inboundLocked}>{children}</span>
+    </Tooltip>
+  );
 }
 
 function AgentAvatar({
@@ -288,6 +312,146 @@ interface ConnectionActions {
   onOpenAgent: (agentId: string) => void;
 }
 
+function BridgeDisconnectButton({
+  row,
+  connected,
+  link,
+  onDisconnect,
+  onConnect,
+}: {
+  row: BridgeConnection;
+  connected: boolean;
+  link?: boolean;
+  onDisconnect: (row: BridgeConnection) => Promise<void>;
+  onConnect: (row: BridgeConnection) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const inbound = isInboundConnection(row);
+  const buttonType = link ? "link" : "text";
+  if (inbound) {
+    return (
+      <InboundLockedControl>
+        <Button
+          size="small"
+          type={buttonType}
+          disabled
+          icon={connected ? <Unplug size={14} /> : <Cloudy size={14} />}
+        >
+          {t(
+            connected
+              ? "advancedSettings.bridge.disconnect"
+              : "advancedSettings.bridge.connect",
+          )}
+        </Button>
+      </InboundLockedControl>
+    );
+  }
+  if (!connected) {
+    return (
+      <Button
+        size="small"
+        type={buttonType}
+        icon={<Cloudy size={14} />}
+        onClick={() => void onConnect(row)}
+      >
+        {t("advancedSettings.bridge.connect")}
+      </Button>
+    );
+  }
+  return (
+    <Popconfirm
+      title={t("advancedSettings.bridge.disconnectTitle")}
+      description={t("advancedSettings.bridge.disconnectDesc", {
+        name: row.display_name,
+      })}
+      okText={t("advancedSettings.bridge.disconnect")}
+      cancelText={t("common.cancel")}
+      okButtonProps={{ danger: true }}
+      onConfirm={() => void onDisconnect(row)}
+    >
+      <Button size="small" type={buttonType} icon={<Unplug size={14} />}>
+        {t("advancedSettings.bridge.disconnect")}
+      </Button>
+    </Popconfirm>
+  );
+}
+
+function BridgeDeleteButton({
+  row,
+  link,
+  onDelete,
+}: {
+  row: BridgeConnection;
+  link?: boolean;
+  onDelete: (row: BridgeConnection) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const inbound = isInboundConnection(row);
+  const button = (
+    <Button
+      size="small"
+      type={link ? "link" : "text"}
+      danger
+      disabled={inbound}
+      icon={<Trash2 size={14} />}
+      aria-label={t("advancedSettings.bridge.delete")}
+    >
+      {link ? t("common.delete") : null}
+    </Button>
+  );
+  if (inbound) {
+    return <InboundLockedControl>{button}</InboundLockedControl>;
+  }
+  return (
+    <Popconfirm
+      title={t("advancedSettings.bridge.deleteConfirmTitle")}
+      description={t("advancedSettings.bridge.deleteConfirmDesc", {
+        name: row.display_name,
+      })}
+      okText={t("common.delete")}
+      cancelText={t("common.cancel")}
+      okButtonProps={{ danger: true }}
+      onConfirm={() => void onDelete(row)}
+    >
+      {button}
+    </Popconfirm>
+  );
+}
+
+function AutoReconnectControl({
+  row,
+  labeled,
+  onToggle,
+}: {
+  row: BridgeConnection;
+  labeled?: boolean;
+  onToggle: (row: BridgeConnection, enabled: boolean) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const inbound = isInboundConnection(row);
+  const control = (
+    <span className={labeled ? styles.autoReconnectInline : undefined}>
+      <Switch
+        size="small"
+        disabled={inbound}
+        checked={inbound ? false : row.auto_reconnect !== false}
+        onChange={(checked) => void onToggle(row, checked)}
+      />
+      {labeled ? (
+        <span>{t("advancedSettings.bridge.autoReconnect")}</span>
+      ) : null}
+    </span>
+  );
+  if (inbound) {
+    return <InboundLockedControl>{control}</InboundLockedControl>;
+  }
+  return (
+    <Tooltip title={t("advancedSettings.bridge.autoReconnectHint")}>
+      {control}
+    </Tooltip>
+  );
+}
+
 function BridgeConnectionCard({
   row,
   agents,
@@ -314,17 +478,18 @@ function BridgeConnectionCard({
               {row.display_name}
             </span>
             <span className={styles.backendCardUser}>{row.peer_username}</span>
+            {isInboundConnection(row) ? (
+              <Tag style={{ marginInlineEnd: 0 }}>
+                {t("advancedSettings.bridge.inboundTag")}
+              </Tag>
+            ) : null}
           </div>
         </div>
         <div
           className={connected ? styles.statusBadgeOk : styles.statusBadgeWarn}
         >
           {connected ? <CheckCircle size={11} /> : <AlertCircle size={11} />}
-          <span>
-            {t(`advancedSettings.bridge.status.${row.status}`, {
-              defaultValue: row.status,
-            })}
-          </span>
+          <span>{connectionStatusText(row, t)}</span>
         </div>
       </div>
 
@@ -346,6 +511,11 @@ function BridgeConnectionCard({
         {row.notes ? (
           <div className={styles.backendCardNote}>{row.notes}</div>
         ) : null}
+        {isInboundConnection(row) ? (
+          <p className={styles.meta}>
+            {t("advancedSettings.bridge.inboundHint")}
+          </p>
+        ) : null}
         {row.last_error ? (
           <p className={styles.metaError}>{row.last_error}</p>
         ) : null}
@@ -353,18 +523,11 @@ function BridgeConnectionCard({
 
       <div className={styles.backendCardActions}>
         <div className={styles.backendActionsLeft}>
-          <Tooltip title={t("advancedSettings.bridge.autoReconnectHint")}>
-            <span className={styles.autoReconnectInline}>
-              <Switch
-                size="small"
-                checked={row.auto_reconnect !== false}
-                onChange={(checked) =>
-                  void actions.onToggleAutoReconnect(row, checked)
-                }
-              />
-              <span>{t("advancedSettings.bridge.autoReconnect")}</span>
-            </span>
-          </Tooltip>
+          <AutoReconnectControl
+            row={row}
+            labeled
+            onToggle={actions.onToggleAutoReconnect}
+          />
         </div>
         <div className={styles.backendActionsRight}>
           <Button
@@ -375,43 +538,13 @@ function BridgeConnectionCard({
           >
             {t("common.edit")}
           </Button>
-          {connected ? (
-            <Button
-              size="small"
-              type="text"
-              icon={<Unplug size={14} />}
-              onClick={() => void actions.onDisconnect(row)}
-            >
-              {t("advancedSettings.bridge.disconnect")}
-            </Button>
-          ) : (
-            <Button
-              size="small"
-              type="text"
-              icon={<Cloudy size={14} />}
-              onClick={() => void actions.onConnect(row)}
-            >
-              {t("advancedSettings.bridge.connect")}
-            </Button>
-          )}
-          <Popconfirm
-            title={t("advancedSettings.bridge.deleteConfirmTitle")}
-            description={t("advancedSettings.bridge.deleteConfirmDesc", {
-              name: row.display_name,
-            })}
-            okText={t("common.delete")}
-            cancelText={t("common.cancel")}
-            okButtonProps={{ danger: true }}
-            onConfirm={() => void actions.onDelete(row)}
-          >
-            <Button
-              size="small"
-              type="text"
-              danger
-              icon={<Trash2 size={14} />}
-              aria-label={t("advancedSettings.bridge.delete")}
-            />
-          </Popconfirm>
+          <BridgeDisconnectButton
+            row={row}
+            connected={connected}
+            onDisconnect={actions.onDisconnect}
+            onConnect={actions.onConnect}
+          />
+          <BridgeDeleteButton row={row} onDelete={actions.onDelete} />
         </div>
       </div>
 
@@ -483,53 +616,75 @@ export default function BridgeSettingsPanel({
     editForm.resetFields();
   };
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await bridgeApi.list();
-      setRows(list);
-      const next: Record<string, BridgeRemoteAgent[]> = {};
-      await Promise.all(
-        list
-          .filter((c) => c.status === "connected")
-          .map(async (c) => {
-            try {
-              next[c.connection_id] = await bridgeApi.listAgents(
-                c.connection_id,
-              );
-            } catch {
-              next[c.connection_id] = [];
-            }
-          }),
-      );
-      setAgentsByConn(next);
-    } catch (err) {
-      message.error(
-        apiErrorMessage(err, t("advancedSettings.bridge.loadFailed"), t),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const reload = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = Boolean(opts?.silent);
+      if (!silent) setLoading(true);
+      try {
+        const list = await bridgeApi.list();
+        setRows(list);
+        const next: Record<string, BridgeRemoteAgent[]> = {};
+        await Promise.all(
+          list
+            .filter((c) => c.status === "connected")
+            .map(async (c) => {
+              try {
+                next[c.connection_id] = await bridgeApi.listAgents(
+                  c.connection_id,
+                );
+              } catch {
+                next[c.connection_id] = [];
+              }
+            }),
+        );
+        setAgentsByConn(next);
+      } catch (err) {
+        if (!silent) {
+          message.error(
+            apiErrorMessage(err, t("advancedSettings.bridge.loadFailed"), t),
+          );
+        }
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     void reload();
+    const timer = window.setInterval(() => {
+      void reload({ silent: true });
+    }, 5000);
+    return () => window.clearInterval(timer);
   }, [reload]);
 
   const onSaveEdit = async () => {
     if (!editTarget) return;
     try {
-      const values = await editForm.validateFields();
+      const inbound = isInboundConnection(editTarget);
+      const values = inbound
+        ? await editForm.validateFields(["display_name", "notes", "icon_name"])
+        : await editForm.validateFields();
       setEditing(true);
       const password = String(values.password || "").trim();
-      await bridgeApi.patch(editTarget.connection_id, {
-        display_name: values.display_name,
-        notes: values.notes ?? "",
-        icon_name: values.icon_name || DEFAULT_BRIDGE_ICON,
-        peer_base_url: values.peer_base_url,
-        peer_username: values.peer_username,
-        ...(password ? { password } : {}),
-      });
+      await bridgeApi.patch(
+        editTarget.connection_id,
+        inbound
+          ? {
+              display_name: values.display_name,
+              notes: values.notes ?? "",
+              icon_name: values.icon_name || DEFAULT_BRIDGE_ICON,
+            }
+          : {
+              display_name: values.display_name,
+              notes: values.notes ?? "",
+              icon_name: values.icon_name || DEFAULT_BRIDGE_ICON,
+              peer_base_url: values.peer_base_url,
+              peer_username: values.peer_username,
+              ...(password ? { password } : {}),
+            },
+      );
       message.success(t("advancedSettings.bridge.editSaved"));
       closeEditDrawer();
       await reload();
@@ -705,6 +860,11 @@ export default function BridgeSettingsPanel({
             </span>
             <div className={styles.tableNameText}>
               <strong>{name}</strong>
+              {isInboundConnection(row) ? (
+                <Tag style={{ marginInlineStart: 6, marginInlineEnd: 0 }}>
+                  {t("advancedSettings.bridge.inboundTag")}
+                </Tag>
+              ) : null}
               {row.notes ? (
                 <span className={styles.tableNameNote}>{row.notes}</span>
               ) : null}
@@ -730,11 +890,9 @@ export default function BridgeSettingsPanel({
         dataIndex: "status",
         key: "status",
         width: 110,
-        render: (status: string) => (
-          <Tag color={statusColor(status)}>
-            {t(`advancedSettings.bridge.status.${status}`, {
-              defaultValue: status,
-            })}
+        render: (_status: string, row) => (
+          <Tag color={statusColor(row.status)}>
+            {connectionStatusText(row, t)}
           </Tag>
         ),
       },
@@ -743,13 +901,10 @@ export default function BridgeSettingsPanel({
         dataIndex: "auto_reconnect",
         key: "auto_reconnect",
         width: 110,
-        render: (value: boolean | undefined, row) => (
-          <Switch
-            size="small"
-            checked={value !== false}
-            onChange={(checked) =>
-              void actions.onToggleAutoReconnect(row, checked)
-            }
+        render: (_value: boolean | undefined, row) => (
+          <AutoReconnectControl
+            row={row}
+            onToggle={actions.onToggleAutoReconnect}
           />
         ),
       },
@@ -776,44 +931,14 @@ export default function BridgeSettingsPanel({
             >
               {t("common.edit")}
             </Button>
-            {row.status === "connected" ? (
-              <Button
-                size="small"
-                type="link"
-                icon={<Unplug size={14} />}
-                onClick={() => void actions.onDisconnect(row)}
-              >
-                {t("advancedSettings.bridge.disconnect")}
-              </Button>
-            ) : (
-              <Button
-                size="small"
-                type="link"
-                icon={<Cloudy size={14} />}
-                onClick={() => void actions.onConnect(row)}
-              >
-                {t("advancedSettings.bridge.connect")}
-              </Button>
-            )}
-            <Popconfirm
-              title={t("advancedSettings.bridge.deleteConfirmTitle")}
-              description={t("advancedSettings.bridge.deleteConfirmDesc", {
-                name: row.display_name,
-              })}
-              okText={t("common.delete")}
-              cancelText={t("common.cancel")}
-              okButtonProps={{ danger: true }}
-              onConfirm={() => void actions.onDelete(row)}
-            >
-              <Button
-                size="small"
-                type="link"
-                danger
-                icon={<Trash2 size={14} />}
-              >
-                {t("common.delete")}
-              </Button>
-            </Popconfirm>
+            <BridgeDisconnectButton
+              row={row}
+              connected={row.status === "connected"}
+              link
+              onDisconnect={actions.onDisconnect}
+              onConnect={actions.onConnect}
+            />
+            <BridgeDeleteButton row={row} link onDelete={actions.onDelete} />
           </div>
         ),
       },
@@ -1112,13 +1237,15 @@ export default function BridgeSettingsPanel({
         footer={
           <div className={styles.drawerFooter}>
             <Button onClick={closeEditDrawer}>{t("common.cancel")}</Button>
-            <Button
-              loading={editProbing}
-              onClick={() => void onEditProbe()}
-              icon={<Activity size={14} />}
-            >
-              {t("advancedSettings.bridge.probe")}
-            </Button>
+            {editTarget && !isInboundConnection(editTarget) ? (
+              <Button
+                loading={editProbing}
+                onClick={() => void onEditProbe()}
+                icon={<Activity size={14} />}
+              >
+                {t("advancedSettings.bridge.probe")}
+              </Button>
+            ) : null}
             <Button
               type="primary"
               loading={editing}
@@ -1131,7 +1258,11 @@ export default function BridgeSettingsPanel({
         }
       >
         <p className={styles.drawerHint}>
-          {t("advancedSettings.bridge.editHint")}
+          {t(
+            editTarget && isInboundConnection(editTarget)
+              ? "advancedSettings.bridge.editHintInbound"
+              : "advancedSettings.bridge.editHint",
+          )}
         </p>
         <Form
           form={editForm}
@@ -1186,59 +1317,61 @@ export default function BridgeSettingsPanel({
             </Form.Item>
           </div>
 
-          <div className={styles.createSection}>
-            <div className={styles.createSectionTitle}>
-              {t("advancedSettings.bridge.sectionRemote")}
+          {editTarget && !isInboundConnection(editTarget) ? (
+            <div className={styles.createSection}>
+              <div className={styles.createSectionTitle}>
+                {t("advancedSettings.bridge.sectionRemote")}
+              </div>
+              <Form.Item
+                name="peer_base_url"
+                label={t("advancedSettings.bridge.peerUrl")}
+                rules={[
+                  {
+                    required: true,
+                    whitespace: true,
+                    message: t("advancedSettings.bridge.peerUrlRequired"),
+                  },
+                ]}
+              >
+                <Input
+                  prefix={<Globe {...FIELD_ICON} />}
+                  placeholder={t("advancedSettings.bridge.peerUrlPlaceholder")}
+                  autoComplete="url"
+                />
+              </Form.Item>
+              <Form.Item
+                name="peer_username"
+                label={t("advancedSettings.bridge.username")}
+                rules={[
+                  {
+                    required: true,
+                    whitespace: true,
+                    message: t("advancedSettings.bridge.usernameRequired"),
+                  },
+                ]}
+              >
+                <Input
+                  prefix={<User {...FIELD_ICON} />}
+                  placeholder={t("advancedSettings.bridge.username")}
+                  autoComplete="username"
+                />
+              </Form.Item>
+              <Form.Item
+                name="password"
+                label={t("advancedSettings.bridge.password")}
+                extra={t("advancedSettings.bridge.passwordKeepHint")}
+                rules={[{ max: 256 }]}
+              >
+                <Input.Password
+                  prefix={<Lock {...FIELD_ICON} />}
+                  placeholder={t(
+                    "advancedSettings.bridge.passwordKeepPlaceholder",
+                  )}
+                  autoComplete="new-password"
+                />
+              </Form.Item>
             </div>
-            <Form.Item
-              name="peer_base_url"
-              label={t("advancedSettings.bridge.peerUrl")}
-              rules={[
-                {
-                  required: true,
-                  whitespace: true,
-                  message: t("advancedSettings.bridge.peerUrlRequired"),
-                },
-              ]}
-            >
-              <Input
-                prefix={<Globe {...FIELD_ICON} />}
-                placeholder={t("advancedSettings.bridge.peerUrlPlaceholder")}
-                autoComplete="url"
-              />
-            </Form.Item>
-            <Form.Item
-              name="peer_username"
-              label={t("advancedSettings.bridge.username")}
-              rules={[
-                {
-                  required: true,
-                  whitespace: true,
-                  message: t("advancedSettings.bridge.usernameRequired"),
-                },
-              ]}
-            >
-              <Input
-                prefix={<User {...FIELD_ICON} />}
-                placeholder={t("advancedSettings.bridge.username")}
-                autoComplete="username"
-              />
-            </Form.Item>
-            <Form.Item
-              name="password"
-              label={t("advancedSettings.bridge.password")}
-              extra={t("advancedSettings.bridge.passwordKeepHint")}
-              rules={[{ max: 256 }]}
-            >
-              <Input.Password
-                prefix={<Lock {...FIELD_ICON} />}
-                placeholder={t(
-                  "advancedSettings.bridge.passwordKeepPlaceholder",
-                )}
-                autoComplete="new-password"
-              />
-            </Form.Item>
-          </div>
+          ) : null}
         </Form>
 
         {editProbeResult ? (
