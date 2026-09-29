@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response
 
 from octop.infra.bridge.ids import (
-    BRIDGE_AGENT_PREFIX,
     BridgeAgentRef,
     parse_bridge_agent_id,
+    restore_peer_path_ids,
+    rewrite_tunneled_json,
 )
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -67,6 +69,29 @@ def _is_header_tunneled_path(path: str) -> bool:
     return raw == "/api/acp" or raw.startswith("/api/acp/")
 
 
+def _restore_shadow_in_rest(rest: str, *, token: str, ref: BridgeAgentRef) -> str:
+    """Undo a stale hub thread/session segment that embedded the shadow id."""
+    out = restore_peer_path_ids(
+        rest,
+        bridge_agent_id=ref.agent_id,
+        remote_agent_id=ref.remote_agent_id,
+    )
+    if token != ref.agent_id:
+        out = restore_peer_path_ids(
+            out,
+            bridge_agent_id=token,
+            remote_agent_id=ref.remote_agent_id,
+        )
+    encoded = quote(ref.agent_id, safe="")
+    if encoded != ref.agent_id:
+        out = restore_peer_path_ids(
+            out,
+            bridge_agent_id=encoded,
+            remote_agent_id=ref.remote_agent_id,
+        )
+    return out
+
+
 def resolve_tunnel_target(
     path: str,
     agent_header: str | None = None,
@@ -79,7 +104,11 @@ def resolve_tunnel_target(
         token = unquote(match.group(1))
         ref = parse_bridge_agent_id(token)
         if ref is not None:
-            rest = match.group(2) or ""
+            rest = _restore_shadow_in_rest(
+                match.group(2) or "",
+                token=token,
+                ref=ref,
+            )
             return TunnelTarget(
                 ref=ref,
                 agent_token=token,
@@ -92,7 +121,11 @@ def resolve_tunnel_target(
         token = unquote(match.group(1))
         ref = parse_bridge_agent_id(token)
         if ref is not None:
-            rest = match.group(2) or ""
+            rest = _restore_shadow_in_rest(
+                match.group(2) or "",
+                token=token,
+                ref=ref,
+            )
             return TunnelTarget(
                 ref=ref,
                 agent_token=token,
@@ -245,21 +278,20 @@ def install(app: Any, server: Any) -> None:
                 },
             )
 
-        # Rewrite absolute preview URLs that embed the remote agent id when present
         content = peer_resp.content
         media = peer_resp.headers.get("content-type", "")
-        if "json" in media and BRIDGE_AGENT_PREFIX.encode() not in content:
-            # Remap remote agent id strings in JSON bodies back to bridge ids
+        if "json" in media:
             try:
-                text = content.decode("utf-8")
-                if target.ref.remote_agent_id in text:
-                    text = text.replace(
-                        target.ref.remote_agent_id,
-                        target.agent_token,
-                    )
-                    content = text.encode("utf-8")
-            except UnicodeDecodeError:
-                pass
+                data = json.loads(content.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                data = None
+            if data is not None:
+                rewritten = rewrite_tunneled_json(
+                    data,
+                    remote_agent_id=target.ref.remote_agent_id,
+                    bridge_agent_id=target.ref.agent_id,
+                )
+                content = json.dumps(rewritten, ensure_ascii=False).encode("utf-8")
 
         out_headers = {
             k: v

@@ -65,6 +65,20 @@ def test_resolve_agents_and_plugins_path() -> None:
     assert plugins.remote_path == "/api/plugins/agents/aid1/tools"
 
 
+def test_resolve_unwraps_stale_shadow_thread_id() -> None:
+    target = resolve_tunnel_target(
+        "/api/agents/bridge:cid1:doctor/threads/01ROOM~bridge:cid1:doctor/history"
+    )
+    assert target is not None
+    assert target.remote_path == "/api/agents/doctor/threads/01ROOM~doctor/history"
+
+    encoded = resolve_tunnel_target(
+        "/api/agents/bridge%3Acid1%3Adoctor/threads/01ROOM~bridge%3Acid1%3Adoctor/history"
+    )
+    assert encoded is not None
+    assert encoded.remote_path == "/api/agents/doctor/threads/01ROOM~doctor/history"
+
+
 def test_resolve_header_tunneled_paths() -> None:
     mbti = resolve_tunnel_target("/api/mbti/current", "bridge:cid1:aid1")
     assert mbti is not None

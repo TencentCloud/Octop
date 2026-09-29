@@ -83,3 +83,80 @@ def rewrite_peer_payload_agent_id(connection_id: str, payload: dict[str, Any]) -
     out = dict(payload)
     out["agent_id"] = mapped
     return out
+
+
+_TUNNEL_AGENT_ID_KEYS = frozenset(
+    {
+        "agent_id",
+        "speaker_agent_id",
+        "from_agent_id",
+        "to_agent_id",
+        "host_agent_id",
+        "remote_agent_id",
+    }
+)
+_TUNNEL_AGENT_ID_LIST_KEYS = frozenset({"member_ids", "target_agent_ids"})
+_TUNNEL_URL_KEYS = frozenset({"icon_url", "icon", "url", "preview_url"})
+
+
+def rewrite_agent_url_segment(text: str, *, remote_agent_id: str, bridge_agent_id: str) -> str:
+    """Rewrite ``/api/agents/{peer}`` path segments onto the local shadow id."""
+    raw = str(text or "")
+    remote = (remote_agent_id or "").strip()
+    shadow = (bridge_agent_id or "").strip()
+    if not raw or not remote or not shadow:
+        return raw
+    out = raw
+    for prefix in ("/api/agents/", "/api/plugins/agents/"):
+        token = f"{prefix}{remote}"
+        if token in out:
+            out = out.replace(token, f"{prefix}{shadow}")
+    return out
+
+
+def rewrite_tunneled_json(
+    payload: Any,
+    *,
+    remote_agent_id: str,
+    bridge_agent_id: str,
+) -> Any:
+    """Rewrite agent identity fields in a tunneled JSON body.
+
+    Do **not** substring-replace the peer agent id: team member threads are
+    ``{room}~{member}`` and session keys start with ``{agent_id}:``. A blanket
+    replace would make those ids unreadable on the peer.
+    """
+    remote = (remote_agent_id or "").strip()
+    shadow = (bridge_agent_id or "").strip()
+    if not remote or not shadow:
+        return payload
+
+    def walk(value: Any, key: str | None) -> Any:
+        if isinstance(value, dict):
+            return {k: walk(v, k) for k, v in value.items()}
+        if isinstance(value, list):
+            return [walk(item, key) for item in value]
+        if not isinstance(value, str):
+            return value
+        if (
+            key in _TUNNEL_AGENT_ID_KEYS or key in _TUNNEL_AGENT_ID_LIST_KEYS
+        ) and value.strip() == remote:
+            return shadow
+        if key in _TUNNEL_URL_KEYS:
+            return rewrite_agent_url_segment(value, remote_agent_id=remote, bridge_agent_id=shadow)
+        return value
+
+    return walk(payload, None)
+
+
+def restore_peer_path_ids(rest: str, *, bridge_agent_id: str, remote_agent_id: str) -> str:
+    """Map a hub path suffix that embedded the shadow id back to the peer id.
+
+    Lets a stale tab still load ``…/threads/{room}~bridge:cid:member/history``.
+    """
+    out = rest or ""
+    shadow = (bridge_agent_id or "").strip()
+    remote = (remote_agent_id or "").strip()
+    if not out or not shadow or not remote or shadow not in out:
+        return out
+    return out.replace(shadow, remote)
