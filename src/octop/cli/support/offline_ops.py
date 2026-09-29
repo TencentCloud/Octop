@@ -49,11 +49,35 @@ def _provider_row_to_dict(row: Any) -> dict[str, Any]:
     }
 
 
-def _channel_row_to_dict(row: Any) -> dict[str, Any]:
+def _decode_channel_config(config_json: str | None) -> dict[str, Any]:
+    """Decode a stored ``config_json`` column, tolerating an undecodable value."""
     try:
-        config = json.loads(row.config_json or "{}")
+        config = json.loads(config_json or "{}")
     except json.JSONDecodeError:
-        config = {}
+        return {}
+    return config if isinstance(config, dict) else {}
+
+
+def _merge_channel_config(stored: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Deep-merge ``patch`` into ``stored`` so untouched keys survive.
+
+    ``channel patch --config`` is documented as a *patch*, so a nested object in
+    the patch is merged key by key instead of replacing its sibling keys
+    wholesale. A non-object value always wins over the stored one, which is how
+    a key is deliberately retyped or cleared.
+    """
+    merged = dict(stored)
+    for key, value in patch.items():
+        current = merged.get(key)
+        if isinstance(value, dict) and isinstance(current, dict):
+            merged[key] = _merge_channel_config(current, value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _channel_row_to_dict(row: Any) -> dict[str, Any]:
+    config = _decode_channel_config(row.config_json)
     return {
         "id": row.channel_id,
         "channel_id": row.channel_id,
@@ -479,10 +503,14 @@ def patch_channel_offline(
         row = svc.channel_repo.get(channel_id)
         if row is None or row.agent_id != agent_id:
             raise OctopError(ErrorCode.NOT_FOUND, f"channel {channel_id!r} not found")
+        config_json = None
+        if config is not None:
+            merged = _merge_channel_config(_decode_channel_config(row.config_json), config)
+            config_json = json.dumps(merged)
         svc.channel_repo.update(
             channel_id,
             name=name,
-            config_json=json.dumps(config) if config is not None else None,
+            config_json=config_json,
             enabled=enabled,
         )
         updated = svc.channel_repo.get(channel_id)

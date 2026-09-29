@@ -14,6 +14,7 @@
 
 ### 修复
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
+- `octop channel patch --config` 改为深合并进已存配置：此前整列 `config_json` 被覆盖，只传一个嵌套字段（如 `group_context`）会连带清空 `app_id` / `app_secret` 等凭据，故障直到重启后网关注册时才在日志里暴露（Fixes #1190）。
 
 ## [1.0.2b5] - 2026-09-29
 

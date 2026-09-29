@@ -129,7 +129,12 @@ def create(
 @click.argument("channel_id")
 @click.option("--name", default=None)
 @click.option("--enabled/--disabled", default=None)
-@click.option("--config", "config_json", default=None, help="JSON config patch")
+@click.option(
+    "--config",
+    "config_json",
+    default=None,
+    help="JSON config patch, deep-merged into the stored config",
+)
 @click.option("--user", "as_user", default=None)
 def patch_channel(
     agent_id: str | None,
