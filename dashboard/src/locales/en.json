@@ -195,6 +195,7 @@
     "common": "Common",
     "control": "Control",
     "experts": "Experts",
+    "kanban": "Board",
     "tasks": "Automation",
     "connectors": "Connectors",
     "acp": "ACP",
@@ -680,6 +681,28 @@
       "logs": "Installation Logs",
       "skipHint": "You can skip this step. Web browsing, screenshots, and online automation features will not be available until a browser is installed."
     }
+  },
+  "kanban": {
+    "title": "Expert Board",
+    "subtitle": "Live status across every expert: needs you, working, done, idle.",
+    "searchPlaceholder": "Search experts",
+    "filterAll": "All",
+    "filterExperts": "Experts",
+    "filterTeams": "Teams",
+    "refresh": "Refresh",
+    "needsYou": "Needs You",
+    "working": "Working",
+    "done": "Done",
+    "idle": "Idle",
+    "teamTag": "Team",
+    "hitlPending": "Awaiting approval",
+    "pendingPlan": "Plan awaiting approval",
+    "noConversation": "No conversation",
+    "loadFailed": "Failed to load board",
+    "emptyColumn": "No experts",
+    "emptyTitle": "No experts yet",
+    "emptyDescription": "Create your first expert and come back to watch its live status.",
+    "emptyAction": "Create an expert"
   },
   "experts": {
     "subtitle": "Spin up a pre-configured agent (with identity / soul / heartbeat baked in) from a scenario template. Each expert ships with its own system prompt — once created, just bind a provider and start it.",

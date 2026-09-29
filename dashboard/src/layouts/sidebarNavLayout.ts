@@ -114,7 +114,10 @@ export function editorFromCatalog(
     }
   }
   for (const key of defaultKeyOrder(base)) {
-    if (!seen.has(key)) hidden.push(key);
+    // Keys added after this layout was saved (e.g. a nav entry introduced by
+    // a newer build) stay visible in the ungrouped block instead of silently
+    // disappearing; explicit hides are persisted as hidden:true above.
+    if (!seen.has(key)) ungrouped.push(key);
   }
   return { groups, ungrouped, itemsByGroup, hidden };
 }

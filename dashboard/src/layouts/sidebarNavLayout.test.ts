@@ -37,6 +37,7 @@ describe("sidebarNavLayout", () => {
     expect(editor.ungrouped).toEqual([
       "chat",
       "experts",
+      "kanban",
       "tasks",
       "token-usage",
     ]);
@@ -56,11 +57,32 @@ describe("sidebarNavLayout", () => {
         { id: "control" },
         { id: "c_emptygrp1", name: "空组" },
       ],
+      // Real saves persist the whole catalog: visible items here, every
+      // other key explicitly hidden below.
       items: [
         { key: "chat" },
         { key: "personalization", group: "settings" },
-        { key: "token-usage", hidden: true },
         { key: "workbench", group: "control" },
+        ...(
+          [
+            "experts",
+            "kanban",
+            "tasks",
+            "token-usage",
+            "channels",
+            "connectors",
+            "skill-packages",
+            "knowledge-bases",
+            "remote-desktop",
+            "acp",
+            "admin-users",
+            "models",
+            "admin-storage",
+            "admin-plugins",
+            "admin-security",
+            "admin-advanced",
+          ] as const
+        ).map((key) => ({ key, hidden: true })),
       ],
     });
     expect(applied.map((section) => section.id ?? "front")).toEqual([
@@ -76,14 +98,16 @@ describe("sidebarNavLayout", () => {
     expect(applied[2]?.groupKey).toBe("nav.control");
   });
 
-  it("sends keys missing from a saved layout to hidden", () => {
+  it("keeps keys missing from a saved layout visible in the ungrouped block", () => {
     const editor = editorFromCatalog(catalog(), {
       groups: [{ id: "settings" }],
       items: [{ key: "chat" }],
     });
-    expect(editor.ungrouped).toEqual(["chat"]);
-    expect(editor.hidden).toContain("experts");
-    expect(editor.hidden).toContain("personalization");
+    expect(editor.ungrouped).toContain("chat");
+    // Keys the saved layout never saw (added by a newer build) must not
+    // silently disappear — they land after the saved ones.
+    expect(editor.ungrouped).toContain("experts");
+    expect(editor.hidden).toEqual([]);
     expect(
       sectionsFromLayout(catalog(), {
         groups: [{ id: "settings" }],
@@ -91,7 +115,7 @@ describe("sidebarNavLayout", () => {
       })
         .flatMap((section) => section.items.map((item) => item.key))
         .includes("experts"),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("moves a deleted group's items to the front of the ungrouped list", () => {

@@ -21,6 +21,7 @@ from octop.infra.agents.experts.avatar import (
     read_workspace_avatar,
     write_workspace_avatar,
 )
+from octop.infra.agents.overview import agent_kanban_statuses
 from octop.infra.agents.settings.profile import (
     id_list_from_row,
     parse_config_json,
@@ -206,6 +207,22 @@ def _row_dict(
     return payload
 
 
+def _mine_scoped_rows(server: Any, user_id: int) -> tuple[list[Any], dict[int, str]]:
+    """Agents the viewer owns plus shared ones, with shared owners' usernames."""
+    assert server.app_runtime is not None
+    owned = server.app_runtime.agent_registry.list_agents(user_id)
+    shared = server.services.agent_repo.list_shared(exclude_user_id=user_id)
+    rows = list({row.agent_id: row for row in [*shared, *owned]}.values())
+    owner_username_by_id: dict[int, str] = {}
+    for row in shared:
+        if row.user_id is None or row.user_id in owner_username_by_id:
+            continue
+        owner = server.services.user_repo.get(row.user_id)
+        if owner is not None:
+            owner_username_by_id[row.user_id] = owner.username
+    return rows, owner_username_by_id
+
+
 @router.get("", summary="List agents")
 async def list_agents(
     user: Any = Depends(current_user),
@@ -250,16 +267,7 @@ async def list_agents(
         ]
         return _attach_unread_counts(server, user.id, payloads)
 
-    owned = registry.list_agents(user.id)
-    shared = server.services.agent_repo.list_shared(exclude_user_id=user.id)
-    rows = list({row.agent_id: row for row in [*shared, *owned]}.values())
-    shared_owner_username_by_id: dict[int, str] = {}
-    for row in shared:
-        if row.user_id is None or row.user_id in shared_owner_username_by_id:
-            continue
-        owner = server.services.user_repo.get(row.user_id)
-        if owner is not None:
-            shared_owner_username_by_id[row.user_id] = owner.username
+    rows, owner_username_by_id = _mine_scoped_rows(server, user.id)
     return _attach_unread_counts(
         server,
         user.id,
@@ -268,7 +276,7 @@ async def list_agents(
                 r,
                 viewer_user_id=user.id,
                 owner_username=(
-                    shared_owner_username_by_id.get(r.user_id) if r.user_id is not None else None
+                    owner_username_by_id.get(r.user_id) if r.user_id is not None else None
                 ),
                 bootstrap_pending=_bootstrap_pending_for(server, r.agent_id),
                 server=server,
@@ -276,6 +284,42 @@ async def list_agents(
             for r in rows
         ],
     )
+
+
+@router.get("/overview", summary="Agent kanban overview")
+async def agent_overview(
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> list[dict[str, Any]]:
+    """Agents for the kanban dashboard: list-agents fields plus live status.
+
+    Same scope as ``GET /api/agents?scope=mine`` (owned + shared). Each payload
+    additionally carries ``kanban_status`` (``needs_you`` | ``working`` |
+    ``done`` | ``idle``, priority in that order), ``busy`` (turn in flight),
+    ``hitl_pending`` (pending approvals/questions for this viewer),
+    ``pending_plan`` (thread awaiting plan approval) and ``latest_thread``
+    (newest thread with title, ``last_active`` and a last-message snippet).
+    """
+    assert server.app_runtime is not None
+    rows, owner_username_by_id = _mine_scoped_rows(server, user.id)
+    agent_ids = [row.agent_id for row in rows]
+    totals = server.services.session_repo.unread_totals_by_agent(user.id, agent_ids)
+    statuses = agent_kanban_statuses(server, user.id, rows, unread_by_agent=totals)
+    payloads = []
+    for row in rows:
+        payload = _row_dict(
+            row,
+            viewer_user_id=user.id,
+            owner_username=(
+                owner_username_by_id.get(row.user_id) if row.user_id is not None else None
+            ),
+            bootstrap_pending=_bootstrap_pending_for(server, row.agent_id),
+            server=server,
+        )
+        payload["unread_count"] = totals.get(row.agent_id, 0)
+        payload.update(statuses[row.agent_id])
+        payloads.append(payload)
+    return payloads
 
 
 @router.post("", status_code=201, summary="Create agent")

@@ -7,7 +7,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from octop.infra.db.pool import DatabasePool
-from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
+from octop.infra.db.repos._base import (
+    DbRow,
+    bool_int,
+    map_rows,
+    now_ts,
+    sql_in_placeholders,
+)
 from octop.infra.utils.thread_artifact import (
     MAX_THREAD_ARTIFACTS,
     ThreadArtifact,
@@ -216,6 +222,26 @@ class ThreadRepo:
                 (agent_id, user_id, limit),
             ).fetchall()
         return map_rows(rows, ThreadRow)
+
+    def pending_plan_thread_ids(
+        self, *, agent_ids: list[str], user_id: int
+    ) -> dict[str, list[str]]:
+        """Threads with an unapproved plan, grouped by agent_id (newest first)."""
+        if not agent_ids:
+            return {}
+        placeholders = sql_in_placeholders(len(agent_ids))
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT agent_id, thread_id FROM threads "
+                "WHERE user_id = ? AND pending_plan_path IS NOT NULL "
+                f"AND pending_plan_path != '' AND agent_id IN ({placeholders}) "
+                "ORDER BY last_active DESC",
+                (user_id, *agent_ids),
+            ).fetchall()
+        grouped: dict[str, list[str]] = {}
+        for row in rows:
+            grouped.setdefault(str(row["agent_id"]), []).append(str(row["thread_id"]))
+        return grouped
 
     def list_by_session(self, *, session_key: str, limit: int = 50) -> list[ThreadRow]:
         with self._db.connect() as conn:

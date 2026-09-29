@@ -162,6 +162,13 @@ class HitlPendingStore:
         rows.sort(key=lambda r: r.created_at, reverse=True)
         return rows
 
+    def list_pending_by_user(self, user_id: int) -> list[HitlPendingRecord]:
+        """All pending records for one user across agents (dashboard overview)."""
+        self._gc()
+        rows = [r for r in self._records.values() if r.user_id == user_id and r.status == "pending"]
+        rows.sort(key=lambda r: r.created_at, reverse=True)
+        return rows
+
     def expire_pending_for_thread(
         self,
         thread_id: str,

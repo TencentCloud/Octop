@@ -18,6 +18,7 @@ import {
   GraduationCap,
   Shield,
   PanelsTopLeft,
+  SquareKanban,
 } from "lucide-react";
 import type { OctopUser } from "../api/modules/auth";
 import { navAllowed, userCan } from "../utils/permissions";
@@ -50,6 +51,7 @@ export interface NavSection {
 export const SIDEBAR_NAV_KEYS = [
   "chat",
   "experts",
+  "kanban",
   "tasks",
   "token-usage",
   "personalization",
@@ -146,6 +148,12 @@ export function buildNavSections(
           path: "/experts",
           icon: <GraduationCap size={iconSize} strokeWidth={iconStroke} />,
           labelKey: "nav.experts",
+        },
+        {
+          key: "kanban",
+          path: "/kanban",
+          icon: <SquareKanban size={iconSize} strokeWidth={iconStroke} />,
+          labelKey: "nav.kanban",
         },
         {
           key: "tasks",

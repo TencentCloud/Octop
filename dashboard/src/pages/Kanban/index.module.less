@@ -1,0 +1,287 @@
+// dashboard/src/pages/Kanban/index.module.less — Trello-style board.
+@card-radius: 8px;
+@column-radius: 12px;
+@column-width: 272px;
+@ease-out: cubic-bezier(0.2, 0, 0, 1);
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.searchInput {
+  width: 180px;
+}
+
+.kindSelect {
+  width: 110px;
+}
+
+/* Board: full-height horizontal rail of list panels (Trello board canvas). */
+.board {
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.column {
+  flex: 0 0 @column-width;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--fn-bg-secondary);
+  border-radius: @column-radius;
+  padding: 8px;
+}
+
+.columnHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 10px;
+}
+
+.columnDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 0 3px rgba(127, 127, 127, 0.12);
+}
+
+.columnTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fn-text-primary);
+}
+
+.columnCount {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fn-text-secondary);
+  background: var(--fn-bg-active);
+  border-radius: 10px;
+  padding: 0 8px;
+  line-height: 18px;
+}
+
+.columnBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 2px 2px;
+}
+
+/* Trello lists are blank when empty — keep only a whisper of guidance. */
+.columnEmpty {
+  padding: 14px 6px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--fn-text-placeholder);
+}
+
+/* Card: elevation only, no borders (Trello card language). */
+.card {
+  position: relative;
+  background: var(--fn-bg-elevated);
+  border-radius: @card-radius;
+  box-shadow:
+    0 1px 2px rgba(9, 30, 66, 0.16),
+    0 0 1px rgba(9, 30, 66, 0.12);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  transition:
+    transform 0.14s @ease-out,
+    box-shadow 0.14s @ease-out;
+
+  &:hover,
+  &:focus-visible {
+    transform: translateY(-2px);
+    box-shadow:
+      0 4px 12px rgba(9, 30, 66, 0.18),
+      0 0 1px rgba(9, 30, 66, 0.14);
+    outline: none;
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow:
+      0 1px 2px rgba(9, 30, 66, 0.2),
+      0 0 1px rgba(9, 30, 66, 0.14);
+  }
+
+  :global([data-theme="dark"]) & {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.45),
+      0 0 1px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* Trello labels: small color pills on top of the card. */
+.labels {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  border-radius: 4px;
+  padding: 0 7px;
+}
+
+.labelHitl {
+  color: #9a6700;
+  background: rgba(255, 196, 0, 0.28);
+}
+
+.labelPlan {
+  color: #0055cc;
+  background: rgba(0, 101, 255, 0.14);
+}
+
+.labelError {
+  color: #cf222e;
+  background: rgba(255, 129, 144, 0.24);
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cardIcon {
+  flex: none;
+}
+
+.cardName {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fn-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.teamTag {
+  flex: none;
+  font-size: 11px;
+  color: var(--fn-text-secondary);
+  border-radius: 4px;
+  padding: 0 6px;
+  line-height: 18px;
+  background: var(--fn-bg-secondary);
+}
+
+.errorLine {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #d03946;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.snippet {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.snippetEmpty {
+  font-size: 12px;
+  color: var(--fn-text-placeholder);
+}
+
+/* Trello badge row: quiet metadata at the card foot. */
+.cardFooter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.stateBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+}
+
+.stateDot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.stateDotSpin {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  animation: kanbanPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes kanbanPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.cardTime {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.unreadBadge {
+  flex: none;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--fn-color-brand);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  padding: 0 5px;
+  box-shadow: 0 1px 2px rgba(232, 93, 117, 0.35);
+}

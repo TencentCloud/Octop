@@ -195,6 +195,7 @@
     "common": "常用",
     "control": "控制",
     "experts": "专家",
+    "kanban": "看板",
     "tasks": "自动化",
     "connectors": "连接器",
     "acp": "ACP",
@@ -680,6 +681,28 @@
       "logs": "安装日志",
       "skipHint": "你可以跳过此步骤。在安装浏览器之前，网页浏览、截图和在线自动化功能将不可用。"
     }
+  },
+  "kanban": {
+    "title": "专家看板",
+    "subtitle": "全部专家的实时状态一览：需要你、工作中、已完成、空闲。",
+    "searchPlaceholder": "搜索专家",
+    "filterAll": "全部",
+    "filterExperts": "专家",
+    "filterTeams": "团队",
+    "refresh": "刷新",
+    "needsYou": "需要你",
+    "working": "工作中",
+    "done": "已完成",
+    "idle": "空闲",
+    "teamTag": "团队",
+    "hitlPending": "等待审批",
+    "pendingPlan": "计划待批准",
+    "noConversation": "暂无会话",
+    "loadFailed": "加载看板失败",
+    "emptyColumn": "暂无专家",
+    "emptyTitle": "还没有专家",
+    "emptyDescription": "创建你的第一个专家，回来这里查看它的实时状态。",
+    "emptyAction": "去创建专家"
   },
   "experts": {
     "subtitle": "基于已配置的场景模板,一键创建预置身份/灵魂/心跳的智能体。每个专家自带 system prompt,新建后再绑定 provider 并启动即可。",

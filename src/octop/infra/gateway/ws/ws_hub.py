@@ -111,6 +111,10 @@ class WebSocketHub:
     def is_turn_active(self, thread_id: str) -> bool:
         return thread_id.strip() in self._active_turns
 
+    def active_turn_thread_ids(self) -> set[str]:
+        """Snapshot of threads with an in-flight turn (dashboard overview)."""
+        return set(self._active_turns)
+
     def has_subscribers(self, thread_id: str) -> bool:
         """True when at least one Dashboard socket is bound to *thread_id*."""
         tid = thread_id.strip()
