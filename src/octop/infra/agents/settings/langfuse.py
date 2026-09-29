@@ -11,6 +11,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from cryptography.fernet import Fernet, InvalidToken
+
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.errors import ErrorCode, OctopError
@@ -21,6 +23,11 @@ _KEY_ENABLED = "observability_langfuse_enabled"
 _KEY_PUBLIC = "observability_langfuse_public_key"
 _KEY_HOST = "observability_langfuse_host"
 _SECRET_KEY = "langfuse_secret_key"
+# Dedicated Fernet key row (same shape as ``connector_fernet`` / ``sso_fernet``) so a
+# Langfuse credential never inherits the SSO key lifecycle.
+_FERNET_KEY = "langfuse_fernet"
+# Fernet token fast-sieve only -- never the decision (the decision is ``Fernet.decrypt``).
+_FERNET_TOKEN_PREFIX = b"gAAAAA"
 
 
 def verify_langfuse_credentials(host: str, public_key: str, secret_key: str) -> dict[str, Any]:
@@ -83,6 +90,67 @@ class LangfuseSettingsStore:
         self._settings = settings_repo
         self._secrets = secret_repo
 
+    def _fernet(self) -> Fernet:
+        """Existing dedicated Fernet for the stored Langfuse credential.
+
+        Fail-closed: a missing or malformed key row raises -- it must never be silently
+        regenerated, because that would leave already-stored ciphertext undecryptable.
+        """
+        raw_key = self._secrets.get(_FERNET_KEY)
+        if raw_key is None:
+            raise OctopError(
+                ErrorCode.INTERNAL_ERROR,
+                f"secrets row k={_FERNET_KEY} is missing: stored Langfuse credential "
+                "cannot be decrypted (run the migration before serving requests)",
+            )
+        try:
+            return Fernet(raw_key)
+        except (TypeError, ValueError) as exc:
+            logger.error("langfuse key row unusable (k=%s · %s)", _FERNET_KEY, type(exc).__name__)
+            raise OctopError(
+                ErrorCode.INTERNAL_ERROR,
+                f"secrets row k={_FERNET_KEY} is not a valid Fernet key: stored Langfuse "
+                "credential cannot be decrypted",
+            ) from None
+
+    def _write_fernet(self) -> Fernet:
+        """Fernet used on the write path -- creates the key only when that is lossless.
+
+        Ordering: the key must exist before any ciphertext is written, and a credential
+        that already looks encrypted must never be orphaned by generating a fresh key.
+        """
+        if self._secrets.get(_FERNET_KEY) is not None:
+            return self._fernet()
+        stored = self._secrets.get(_SECRET_KEY)
+        if stored is not None and stored.startswith(_FERNET_TOKEN_PREFIX):
+            raise OctopError(
+                ErrorCode.INTERNAL_ERROR,
+                f"secrets row k={_SECRET_KEY} looks encrypted but k={_FERNET_KEY} is missing: "
+                "refusing to generate a new key (the old ciphertext would become undecryptable)",
+            )
+        created = self._secrets.get_or_create(_FERNET_KEY, Fernet.generate_key)
+        return Fernet(created)
+
+    def _decrypt(self, token: bytes) -> str:
+        """Decrypt a stored credential; every failure raises (no plaintext fallback)."""
+        fernet = self._fernet()
+        try:
+            return fernet.decrypt(token).decode("utf-8")
+        except InvalidToken:
+            logger.error("langfuse credential not decryptable (k=%s · InvalidToken)", _SECRET_KEY)
+            raise OctopError(
+                ErrorCode.INTERNAL_ERROR,
+                f"secrets row k={_SECRET_KEY} is not decryptable: key mismatch or corrupted value",
+            ) from None
+        except ValueError as exc:
+            logger.error(
+                "langfuse credential undecodable (k=%s · %s)", _SECRET_KEY, type(exc).__name__
+            )
+            raise OctopError(
+                ErrorCode.INTERNAL_ERROR,
+                f"secrets row k={_SECRET_KEY} is not a valid UTF-8 credential after decryption",
+            ) from None
+
     def load(self) -> LangfuseSettings:
         enabled = (self._settings.get(_KEY_ENABLED) or "").lower() in {"1", "true", "yes"}
         public_key = (self._settings.get(_KEY_PUBLIC) or "").strip()
@@ -120,12 +188,12 @@ class LangfuseSettingsStore:
         self._settings.set(_KEY_PUBLIC, public_key)
         self._settings.set(_KEY_HOST, host)
         if secret_key:
-            encoded = secret_key.encode("utf-8")
+            token = self._write_fernet().encrypt(secret_key.encode("utf-8"))
             existing = self._secrets.get(_SECRET_KEY)
             if existing is not None:
-                self._secrets.rotate(_SECRET_KEY, encoded)
+                self._secrets.rotate(_SECRET_KEY, token)
             else:
-                self._secrets.get_or_create(_SECRET_KEY, lambda: encoded)
+                self._secrets.get_or_create(_SECRET_KEY, lambda: token)
         return self.load()
 
     async def test_connection(
@@ -140,8 +208,8 @@ class LangfuseSettingsStore:
         h = (host or stored.host).strip().rstrip("/")
         sk = secret_key
         if sk is None:
-            raw = self._secrets.get(_SECRET_KEY)
-            sk = raw.decode("utf-8") if raw else None
+            token = self._secrets.get(_SECRET_KEY)
+            sk = self._decrypt(token) if token is not None else None
         if not pk or not h or not sk:
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "Langfuse credentials are incomplete")
 
@@ -155,12 +223,12 @@ class LangfuseSettingsStore:
         view = self.load()
         if not view.enabled:
             return LangfuseConfig(enabled=False)
-        raw = self._secrets.get(_SECRET_KEY)
-        if not view.configured or raw is None:
+        token = self._secrets.get(_SECRET_KEY)
+        if not view.configured or token is None:
             return None
         return LangfuseConfig(
             enabled=True,
             public_key=view.public_key,
             host=view.host,
-            secret_key=raw.decode("utf-8"),
+            secret_key=self._decrypt(token),
         )
