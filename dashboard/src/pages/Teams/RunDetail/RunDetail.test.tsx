@@ -514,3 +514,91 @@ describe("decision lifecycle (T-53)", () => {
     expect(screen.getByTestId("gate-clear")).toBeTruthy();
   });
 });
+
+// ─────── T8-REV · FIND-1：计划写入被拒时上屏本地化文案，不是 request() 的原始信封 ───────
+//
+// `request()` 抛出的 message 形如 `Request failed: 422 Error - {json}`（`request.ts:366-371`），
+// 所以写入路径必须经过 `apiErrorMessage`（`utils/apiError.ts:68-93`）：它读信封里的 `code`，
+// 优先渲染 `apiErrors.<code>`。★ 本文件的 `t` 来自 vitest 的全局 react-i18next mock（无
+// fallback ⇒ 返回 key），所以 `apiErrors.*` 分支在测试里回落到 `error.message`；生产里走的是
+// 同一个调用点的 `apiErrors.*` 分支（`locales/zh.json` 的 `TEAM_PLAN_DRAFT_INVALID`）。
+// 判别性：把 `setPlanError` 改回 `cause.message`，第一个用例立刻红。
+
+describe("plan write refusal (T8-REV · FIND-1)", () => {
+  const STAGED_DRAFT = {
+    roles: ["pm"],
+    planStatus: "staged",
+    tasks: [{ id: "t1", title: "导出只读投影", owner: "pm", deps: [] }],
+  };
+
+  it("a 422 draft refusal shows localized copy, never request()'s raw envelope", async () => {
+    stubFetch({
+      // 放在最前：`:plan` 是 stage 路由自己的后缀，别被下面更宽的 run 路径先吃掉。
+      ":plan": {
+        status: 422,
+        body: {
+          error: {
+            code: "TEAM_PLAN_DRAFT_INVALID",
+            message: "计划草稿非法：任务负责人不在角色清单内",
+            details: { code: "missing-id", path: ["tasks", "0", "owner"] },
+          },
+        },
+      },
+      "/state?section=check": {
+        status: 200,
+        body: {
+          section: "check",
+          check: { violations: [], finding_reopened: null },
+        },
+      },
+      "/tasks": { status: 200, body: { nodes: [], edges: [], violations: [] } },
+      "/artifacts": { status: 200, body: { items: [] } },
+      "/metrics": { status: 200, body: { sections: [], rendered: "" } },
+      "/team/runs/2026-09-28-145847": {
+        status: 200,
+        body: {
+          ...RUN_FIXTURE,
+          pending_decision: {
+            decision_id: "d-7",
+            status: "pending",
+            kind: "tier",
+            draft: STAGED_DRAFT,
+          },
+        },
+      },
+    });
+    render(<RunDetail runId="2026-09-28-145847" />);
+    await screen.findByTestId("run-detail");
+    // DecisionCard 活在 `decision` 页签里，而 `Tabs` 没有 `defaultActiveKey`（默认第一个页签）
+    // ⇒ 先切页签，编辑器与三个写入按钮才会挂载。页签标签在 i18n mock 下就是它的 key。
+    const decisionTab = screen.getAllByText("teamRuns.tab.decision")[0];
+    decisionTab.click();
+    await screen.findByTestId("plan-stage");
+
+    (screen.getByTestId("plan-stage") as HTMLButtonElement).click();
+
+    const shown = (await screen.findByTestId("plan-error")).textContent ?? "";
+    // 原始信封的签名一个都不许出现……
+    expect(shown).not.toContain("Request failed");
+    expect(shown).not.toContain("missing-id");
+    // ……上屏的是给人看的本地化文案。
+    expect(shown).toContain("计划草稿非法");
+  });
+
+  it("both plan-draft codes are consumed by the localized apiErrors.* path", async () => {
+    const { apiErrorMessage } = await import("../../../utils/apiError");
+    const zh: Record<string, string> = {
+      TEAM_PLAN_DRAFT_INVALID: "计划草稿非法：任务负责人不在角色清单内",
+      TEAM_PLAN_DRAFT_MISSING: "没有待批准的计划草稿",
+    };
+    const lookup = (key: string) => zh[key.replace("apiErrors.", "")] ?? key;
+    const i18n = lookup as unknown as Parameters<typeof apiErrorMessage>[2];
+    for (const code of ["TEAM_PLAN_DRAFT_INVALID", "TEAM_PLAN_DRAFT_MISSING"]) {
+      const envelope = { error: { code, message: zh[code], details: {} } };
+      const raw = `Request failed: 422 Error - ${JSON.stringify(envelope)}`;
+      const shown = apiErrorMessage(new Error(raw), "fallback", i18n);
+      expect(shown).toBe(zh[code]);
+      expect(shown).not.toContain("Request failed");
+    }
+  });
+});

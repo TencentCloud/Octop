@@ -185,6 +185,75 @@ export function isDecisionPending(
   return decision?.status === "pending";
 }
 
+/**
+ * A draft task row. Its field set is owned by the backend (`PlanDraft.tasks` is
+ * `list[dict[str, Any]]`, validated by `normalize_draft`), so an edit must copy the row
+ * and patch it in place — unknown keys survive the round trip instead of being rebuilt.
+ */
+export interface PlanTaskDraft {
+  id: string;
+  owner: string;
+  title: string;
+  kind: string;
+  spec: string;
+  acceptance: string[];
+  inScope: string[];
+  /**
+   * The draft carries **one** verify command, not a list: `normalize_draft`
+   * (`pipeline.py · _DRAFT_STR_KEYS`) projects this key with `str(...).strip()`, so an
+   * array would be stored verbatim as the string `"[]"` and then land in the row's
+   * `verify[]` as `["[]"]`. The array form is the *row* shape (`TaskNodeWire.verify`),
+   * produced by `run_service._verify_list` — never send it here.
+   */
+  verify: string;
+  dependsOn: string[];
+  status: "todo";
+  attempt: 0;
+  round: 1;
+  verdict: null;
+  [key: string]: unknown;
+}
+
+/** The staged plan draft, verbatim as the backend stores it (`PlanDraft`). */
+export interface PlanDraft {
+  roles: string[];
+  tasks: PlanTaskDraft[];
+  updatedAt?: number | null;
+  planStatus?: string | null;
+  discarded?: { at?: number; reason?: string; taskCount?: number } | null;
+}
+
+/** Shared response shell of the three plan write routes (`PlanDraftOut`). */
+export interface PlanDraftOut {
+  draft: PlanDraft;
+}
+
+/**
+ * The **derived** half of the plan gate — an extension of the single predicate above,
+ * not a second parallel one: `isDecisionPending` stays the only place that reads the
+ * decision status, and this only adds "and a draft is attached to it". Pass the payload
+ * through both, so a draft left behind on a `resolved` decision never renders an editor.
+ */
+export function isPlanStaged(
+  pending: Record<string, unknown> | null | undefined,
+): boolean {
+  return isDecisionPending(pending) && pending.draft != null;
+}
+
+/**
+ * The only reader of the draft: it rides on `RunDetailOut.pending_decision`, there is no
+ * dedicated read route. Gated by `isPlanStaged`, so a draft stranded on a resolved
+ * payload reads as `null` and the caller keeps its read-only branch.
+ */
+export function readPlanDraft(run: RunDetailWire): PlanDraft | null {
+  const pending = run.pending_decision;
+  if (!isPlanStaged(pending)) {
+    return null;
+  }
+  const draft = run.pending_decision?.draft;
+  return draft == null ? null : (draft as PlanDraft);
+}
+
 export interface RunStateWire {
   section: string;
   run: RunSummaryWire;
@@ -456,6 +525,54 @@ export function dispatchTask(
       taskId,
     )}:dispatch`,
     { method: "POST" },
+  );
+}
+
+/**
+ * Stage (or re-stage) the plan draft: body `{ draft }`, one draft per run, last write
+ * wins — a repeat call overwrites rather than queues. The draft parks the run inside
+ * `pending_decision`, so `run.advance` keeps refusing until this is approved or dropped.
+ */
+export function planDraft(
+  runId: string,
+  draft: PlanDraft,
+): Promise<PlanDraftOut> {
+  return request<PlanDraftOut>(`/team/runs/${encodeURIComponent(runId)}:plan`, {
+    method: "POST",
+    body: JSON.stringify({ draft }),
+  });
+}
+
+/**
+ * Approve the staged draft. One merge write: rows already terminal are kept verbatim,
+ * the rest are replaced by the draft, and both sides are judged before the first write so
+ * a refusal leaves the board untouched. Returns the merged rows plus the kept settled ids
+ * — for a count only; the task board must still be re-read from the tasks route.
+ */
+export function approvePlan(
+  runId: string,
+): Promise<{ tasks: TaskNodeWire[]; settledKept: string[] }> {
+  return request<{ tasks: TaskNodeWire[]; settledKept: string[] }>(
+    `/team/runs/${encodeURIComponent(runId)}:approve`,
+    { method: "POST" },
+  );
+}
+
+/**
+ * Release the staged draft and cancel the pending decision. Run-level: the `draft` key is
+ * removed but `team_runs.status` is untouched, so this is **not** an unpark — that stays
+ * the resume route's call. The response only fills `discarded`; a repeat call is a 409.
+ */
+export function discardPlan(
+  runId: string,
+  reason?: string,
+): Promise<PlanDraftOut> {
+  return request<PlanDraftOut>(
+    `/team/runs/${encodeURIComponent(runId)}:discard`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason: reason ?? "" }),
+    },
   );
 }
 

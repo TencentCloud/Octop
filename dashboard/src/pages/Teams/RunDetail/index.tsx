@@ -30,18 +30,24 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
+  approvePlan,
+  discardPlan,
   getMetrics,
   getRun,
   getRunState,
   isDecisionPending,
   listArtifacts,
   listTasks,
+  planDraft,
+  readPlanDraft,
   type ArtifactItemWire,
   type MetricsWire,
+  type PlanDraft,
   type RunDetailWire,
   type TaskBoardWire,
   type TaskNodeWire,
 } from "../../../api/modules/teamRuns";
+import { apiErrorMessage } from "../../../utils/apiError";
 import ArtifactPanel from "./ArtifactPanel";
 import DecisionCard from "./DecisionCard";
 import MetricsTab from "./MetricsTab";
@@ -80,6 +86,10 @@ export default function RunDetail({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  // The plan writes get their **own** in-flight bit: sharing `loading` would let a refresh
+  // and a write overwrite each other's disabled/spinner state.
+  const [planBusy, setPlanBusy] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,6 +132,44 @@ export default function RunDetail({
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * One write path for the three plan actions. It holds a single in-flight bit (the three
+   * buttons share it, so a second click cannot fire), surfaces a refusal through the shared
+   * localization — `apiErrorMessage` pulls `code` out of the thrown envelope and renders
+   * `apiErrors.<code>`, so the raw `Request failed: <status> … - <body>` string `request()`
+   * builds never reaches the alert (T8-REV · FIND-1) — and **always** ends in a re-read: the
+   * server owns the board, and a 409 "no draft staged" still has to show the state it
+   * refused against. No branch here patches `tasks` / `board` from a response.
+   */
+  const runPlanWrite = useCallback(
+    async (write: () => Promise<unknown>) => {
+      setPlanBusy(true);
+      setPlanError(null);
+      try {
+        await write();
+      } catch (cause) {
+        setPlanError(apiErrorMessage(cause, t("common.unknownError"), t));
+      } finally {
+        setPlanBusy(false);
+        await load();
+      }
+    },
+    [load, t],
+  );
+
+  const stageDraft = useCallback(
+    (draft: PlanDraft) => runPlanWrite(() => planDraft(runId, draft)),
+    [runPlanWrite, runId],
+  );
+  const approveStaged = useCallback(
+    () => runPlanWrite(() => approvePlan(runId)),
+    [runPlanWrite, runId],
+  );
+  const discardStaged = useCallback(
+    (reason?: string) => runPlanWrite(() => discardPlan(runId, reason)),
+    [runPlanWrite, runId],
+  );
 
   const skipped = useMemo(
     () => (detail ? allSkippedRoles(detail.phases) : []),
@@ -243,7 +291,30 @@ export default function RunDetail({
           {
             key: "decision",
             label: t("teamRuns.tab.decision"),
-            children: <DecisionCard pendingDecision={pendingDecision} />,
+            children: (
+              <>
+                {/* The draft rides on `pending_decision`; `readPlanDraft` is its only
+                    reader, and the card's own `isPlanStaged` gate means a draft left on a
+                    resolved decision still renders the read-only branch. The refusal alert
+                    sits **beside** the card so the card keeps its documented props. */}
+                <DecisionCard
+                  pendingDecision={pendingDecision}
+                  draft={readPlanDraft(detail)}
+                  onStageDraft={stageDraft}
+                  onApprovePlan={approveStaged}
+                  onDiscardPlan={discardStaged}
+                  busy={planBusy}
+                />
+                {planError ? (
+                  <Alert
+                    type="error"
+                    showIcon
+                    data-testid="plan-error"
+                    message={planError}
+                  />
+                ) : null}
+              </>
+            ),
           },
           {
             key: "metrics",
