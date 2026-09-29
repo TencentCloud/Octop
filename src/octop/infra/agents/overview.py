@@ -4,6 +4,29 @@ Signals come from Octop's own infra layer (not the harness runtime):
 lifecycle state in ``agents.last_state``, live invocation tracking in
 ``AgentManager``, pending HITL records in the gateway coordinator's store,
 turn flags in ``WebSocketHub``, and thread/message persistence in the repos.
+
+Kanban FSM (two-layer, aligned with the industry agent-board pattern):
+
+1. **activity_state** — mutually exclusive live state::
+
+       blocked  → HITL pending, or agent failed
+       waiting  → plan awaiting approval (and not currently executing)
+       working  → turn in flight / starting
+       done     → latest turn finished on an assistant reply
+       idle     → nothing to show
+
+2. **unseen** — the current activity has not been acknowledged
+   (``sessions.last_read_at`` / unread). Opening chat mark-reads.
+
+3. **display_state** — ``done && !unseen → idle``; otherwise ``activity_state``.
+   Completed work stays in Done until the user opens it, then settles to Idle.
+
+4. **kanban_status** (bucket) — column for the card::
+
+       blocked|waiting → needs_you
+       working         → working
+       done            → done
+       idle            → idle
 """
 
 from __future__ import annotations
@@ -11,9 +34,8 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -24,20 +46,32 @@ KANBAN_IDLE = "idle"
 
 KANBAN_STATUSES = (KANBAN_NEEDS_YOU, KANBAN_WORKING, KANBAN_DONE, KANBAN_IDLE)
 
+ActivityState = Literal["working", "blocked", "waiting", "done", "idle"]
+ACTIVITY_WORKING: ActivityState = "working"
+ACTIVITY_BLOCKED: ActivityState = "blocked"
+ACTIVITY_WAITING: ActivityState = "waiting"
+ACTIVITY_DONE: ActivityState = "done"
+ACTIVITY_IDLE: ActivityState = "idle"
+
 _SNIPPET_MAX_CHARS = 80
 _SNIPPET_SOURCE_ROLES = frozenset({"human", "user", "ai", "assistant"})
 _SNIPPET_FETCH_ROWS = 5
-# A reply that just landed reads as "done" even without unread (interactive
-# dashboard turns never bump unread — only cron/proactive pushes and team
-# replies do). Older resting conversations decay back to idle.
-_DONE_WINDOW_SECONDS = 10 * 60
 
 
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+# Card previews are plain text — strip common markdown emphasis markers.
+_MD_BOLD_RE = re.compile(r"(\*\*|__)(.+?)\1")
+_MD_CODE_RE = re.compile(r"`([^`]+)`")
 
 
 def _clean_block_text(text: str) -> str:
     return _THINK_BLOCK_RE.sub("", text).strip()
+
+
+def _plain_snippet_text(text: str) -> str:
+    """Collapse light markdown so Kanban cards do not show raw ``**`` / backticks."""
+    plain = _MD_BOLD_RE.sub(r"\2", text)
+    return _MD_CODE_RE.sub(r"\1", plain)
 
 
 def _wire_text(wire: Any) -> str:
@@ -68,9 +102,10 @@ def _wire_text(wire: Any) -> str:
 
 
 def _clip_snippet(text: str) -> str:
-    if len(text) <= _SNIPPET_MAX_CHARS:
-        return text
-    return text[: _SNIPPET_MAX_CHARS - 1].rstrip() + "…"
+    plain = _plain_snippet_text(text)
+    if len(plain) <= _SNIPPET_MAX_CHARS:
+        return plain
+    return plain[: _SNIPPET_MAX_CHARS - 1].rstrip() + "…"
 
 
 def _display_role(role: str) -> str:
@@ -105,13 +140,69 @@ def _hitl_pending_payload(records: Sequence[Any]) -> dict[str, Any]:
     }
 
 
-def _recently_replied(latest: Any, snippet: dict[str, Any] | None) -> bool:
-    """True when the newest thread rests on a fresh assistant reply."""
-    if latest is None or snippet is None:
-        return False
-    if snippet.get("role") != "assistant":
-        return False
-    return (latest.last_active or 0) >= time.time() - _DONE_WINDOW_SECONDS
+def resolve_activity_state(
+    *,
+    hitl_pending: bool,
+    failed: bool,
+    awaiting_plan: bool,
+    busy: bool,
+    assistant_last: bool,
+    has_unread: bool = False,
+) -> ActivityState:
+    """Mutually exclusive live state (priority: blocked > working > waiting > done > idle).
+
+    Working outranks a leftover plan wait: once execution has started, the card
+    must not stay in attention for a stale ``pending_plan_path``. Unread without
+    a snippet still counts as a finished turn waiting to be opened.
+    """
+    if hitl_pending or failed:
+        return ACTIVITY_BLOCKED
+    if busy:
+        return ACTIVITY_WORKING
+    if awaiting_plan:
+        return ACTIVITY_WAITING
+    if assistant_last or has_unread:
+        return ACTIVITY_DONE
+    return ACTIVITY_IDLE
+
+
+def resolve_unseen(
+    *,
+    activity: ActivityState,
+    unread: int,
+    latest_active: int,
+    last_read_at: int,
+) -> bool:
+    """Whether the current activity still needs the user's eyes.
+
+    Attention (blocked/waiting) is always unseen while the wait exists.
+    Done is unseen until mark-read moves ``last_read_at`` past the turn, or
+    while unread remains. Working/idle do not pin the Done column.
+    """
+    if activity in (ACTIVITY_BLOCKED, ACTIVITY_WAITING):
+        return True
+    if unread > 0:
+        return True
+    if activity == ACTIVITY_DONE:
+        return latest_active > last_read_at
+    return False
+
+
+def resolve_display_state(activity: ActivityState, *, unseen: bool) -> ActivityState:
+    """Completed work settles to idle once acknowledged."""
+    if activity == ACTIVITY_DONE and not unseen:
+        return ACTIVITY_IDLE
+    return activity
+
+
+def bucket_for_display_state(display: ActivityState) -> str:
+    if display in (ACTIVITY_BLOCKED, ACTIVITY_WAITING):
+        return KANBAN_NEEDS_YOU
+    if display == ACTIVITY_WORKING:
+        return KANBAN_WORKING
+    if display == ACTIVITY_DONE:
+        return KANBAN_DONE
+    return KANBAN_IDLE
 
 
 def agent_kanban_statuses(
@@ -127,6 +218,7 @@ def agent_kanban_statuses(
     gateway = app_runtime.gateway
     services = server.services
     agent_ids = {row.agent_id for row in agent_rows}
+    sorted_ids = sorted(agent_ids)
 
     hitl_by_agent: dict[str, list[Any]] = {}
     for record in gateway.processor.hitl_coordinator.store.list_pending_by_user(user_id):
@@ -139,8 +231,9 @@ def agent_kanban_statuses(
             busy_agents.add(thread_row.agent_id)
 
     pending_plans = services.thread_repo.pending_plan_thread_ids(
-        agent_ids=sorted(agent_ids), user_id=user_id
+        agent_ids=sorted_ids, user_id=user_id
     )
+    last_read_by_agent = services.session_repo.last_read_at_by_agent(user_id, sorted_ids)
 
     statuses: dict[str, dict[str, Any]] = {}
     for row in agent_rows:
@@ -153,31 +246,47 @@ def agent_kanban_statuses(
         latest = threads[0] if threads else None
         snippet = _latest_message_snippet(services, latest.thread_id) if latest else None
         unread = unread_by_agent.get(row.agent_id, 0)
+        last_read_at = last_read_by_agent.get(row.agent_id, 0)
 
-        if hitl_records or plan_thread_ids or state == "failed":
-            bucket = KANBAN_NEEDS_YOU
-        elif row.agent_id in busy_agents or state == "starting":
-            bucket = KANBAN_WORKING
-        elif unread > 0 or _recently_replied(latest, snippet):
-            bucket = KANBAN_DONE
-        else:
-            bucket = KANBAN_IDLE
+        busy = row.agent_id in busy_agents or state == "starting"
+        # Stale pending_plan_path must not pin attention once execution started.
+        awaiting_plan = bool(plan_thread_ids) and not busy
+        assistant_last = bool(snippet and snippet.get("role") == "assistant")
+
+        activity = resolve_activity_state(
+            hitl_pending=bool(hitl_records),
+            failed=state == "failed",
+            awaiting_plan=awaiting_plan,
+            busy=busy,
+            assistant_last=assistant_last,
+            has_unread=unread > 0,
+        )
+        unseen = resolve_unseen(
+            activity=activity,
+            unread=unread,
+            latest_active=(latest.last_active or 0) if latest is not None else 0,
+            last_read_at=last_read_at,
+        )
+        display = resolve_display_state(activity, unseen=unseen)
+        bucket = bucket_for_display_state(display)
 
         # Cards deep-link to the conversation that needs the user, not just
         # the newest one: pending approval first, pending plan second.
         attention_thread_id: str | None = None
         if hitl_records:
             attention_thread_id = hitl_records[0].thread_id
-        elif plan_thread_ids:
+        elif awaiting_plan:
             attention_thread_id = plan_thread_ids[0]
         elif latest is not None:
             attention_thread_id = latest.thread_id
 
         statuses[row.agent_id] = {
             "kanban_status": bucket,
+            "activity_state": activity,
+            "unseen": unseen,
             "busy": row.agent_id in busy_agents,
             "hitl_pending": _hitl_pending_payload(hitl_records) if hitl_records else None,
-            "pending_plan": bool(plan_thread_ids),
+            "pending_plan": awaiting_plan,
             "attention_thread_id": attention_thread_id,
             "latest_thread": (
                 None

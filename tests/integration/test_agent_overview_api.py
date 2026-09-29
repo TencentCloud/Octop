@@ -5,6 +5,7 @@ from __future__ import annotations
 from tests.support.auth import resolve_user_id
 
 _KANBAN_STATUSES = {"needs_you", "working", "done", "idle"}
+_ACTIVITY_STATES = {"working", "blocked", "waiting", "done", "idle"}
 
 
 async def _overview(client, auth) -> dict[str, dict]:
@@ -19,6 +20,8 @@ async def test_overview_returns_kanban_fields(env_with_main_agent) -> None:
     assert agent_id in rows
     row = rows[agent_id]
     assert row["kanban_status"] in _KANBAN_STATUSES
+    assert row["activity_state"] in _ACTIVITY_STATES
+    assert isinstance(row["unseen"], bool)
     assert isinstance(row["busy"], bool)
     assert row["hitl_pending"] is None
     assert row["pending_plan"] is False

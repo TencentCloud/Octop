@@ -90,6 +90,40 @@ async def test_dashboard_execute_overwrites_user_text() -> None:
 
 
 @pytest.mark.asyncio
+async def test_execute_clears_pending_even_when_sticky_is_craft() -> None:
+    processor = _processor(
+        thread=SimpleNamespace(
+            conversation_mode="craft",
+            pending_plan_path="plans/foo.md",
+            model_ref=None,
+        )
+    )
+    msg = InboundMessage(
+        channel_id="ws",
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="没问题，可以执行")],
+        metadata={},
+    )
+    request = await processor._build_dashboard_request(
+        msg,
+        agent_id="agent-1",
+        user_id=1,
+        session_key="sk",
+        thread_id="thr",
+        meta={},
+    )
+    assert request["conversation_mode"] == "craft"
+    assert request["messages"][0]["content"] == "请按 plans/foo.md 执行"
+    processor._thread_registry.update_composer.assert_called_once_with(
+        "thr",
+        conversation_mode="craft",
+        pending_plan_path=None,
+    )
+
+
+@pytest.mark.asyncio
 async def test_dashboard_mode_switch_keeps_pending_plan() -> None:
     processor = _processor(
         thread=SimpleNamespace(

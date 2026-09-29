@@ -97,9 +97,17 @@ export function useChatNavigation({
         event.sessionId === (activeThreadId ?? "")
       ) {
         void fetchSessions(activeThreadId ?? undefined);
+        // Re-ack after the turn finishes so kanban Done does not stick while
+        // the user is already watching this conversation.
+        if (resolvedAgentId) {
+          void octopAgentsApi
+            .markRead(resolvedAgentId)
+            .then(() => refreshAgents({ silent: true }))
+            .catch(() => {});
+        }
       }
     });
-  }, [activeThreadId, fetchSessions]);
+  }, [activeThreadId, fetchSessions, resolvedAgentId, refreshAgents]);
 
   // A proactive run (cron) created or wrote to a thread outside the chat socket:
   // refresh the list — and the open thread's history — without a page reload.

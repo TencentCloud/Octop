@@ -1319,7 +1319,9 @@ class GlobalProcessor:
         pending = (thread.pending_plan_path if thread is not None else None) or ""
         explicit = (meta or {}).get("conversation_mode")
         sticky = parse_conversation_mode(thread_mode)
-        if pending and sticky == "plan" and is_plan_execute_utterance(user_text):
+        # Clear on execute utterance regardless of sticky mode — mode can drift
+        # to craft while pending_plan_path is left behind (seed/reload races).
+        if pending and is_plan_execute_utterance(user_text):
             self._thread_registry.update_composer(
                 thread_id,
                 conversation_mode="craft",
@@ -1328,10 +1330,17 @@ class GlobalProcessor:
             return "craft", pending
         mode = resolve_conversation_mode(explicit=explicit, thread_mode=thread_mode)
         if isinstance(explicit, str) and explicit in ("ask", "plan", "craft"):
+            # Dashboard "Execute plan" sends craft + execute text; also drop a
+            # stale pending path when the user already left plan mode.
+            clear_stale = bool(pending) and explicit == "craft" and sticky != "plan"
             self._thread_registry.update_composer(
                 thread_id,
                 conversation_mode=explicit,
+                **({"pending_plan_path": None} if clear_stale else {}),
             )
+        elif pending and sticky == "craft":
+            # Free-form follow-up after mode already left plan — plan wait is over.
+            self._thread_registry.update_composer(thread_id, pending_plan_path=None)
         return mode, None
 
     def _stamp_turn_conversation_mode(

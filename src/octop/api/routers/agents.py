@@ -295,10 +295,10 @@ async def agent_overview(
 
     Same scope as ``GET /api/agents?scope=mine`` (owned + shared). Each payload
     additionally carries ``kanban_status`` (``needs_you`` | ``working`` |
-    ``done`` | ``idle``, priority in that order), ``busy`` (turn in flight),
-    ``hitl_pending`` (pending approvals/questions for this viewer),
-    ``pending_plan`` (thread awaiting plan approval) and ``latest_thread``
-    (newest thread with title, ``last_active`` and a last-message snippet).
+    ``done`` | ``idle``), ``activity_state`` (``blocked`` | ``waiting`` |
+    ``working`` | ``done`` | ``idle``), ``unseen`` (not yet mark-read;
+    ``done && !unseen`` settles to idle), ``busy``, ``hitl_pending``,
+    ``pending_plan``, and ``latest_thread``.
     """
     assert server.app_runtime is not None
     rows, owner_username_by_id = _mine_scoped_rows(server, user.id)

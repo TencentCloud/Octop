@@ -65,6 +65,7 @@ class SessionRow:
     channel_metadata: dict[str, Any] | None = None
     channel_id: str | None = None
     unread_count: int = 0
+    last_read_at: int = 0
 
     @classmethod
     def from_row(cls, r: DbRow) -> SessionRow:
@@ -79,6 +80,10 @@ class SessionRow:
             channel_metadata=metadata,
         )
         channel_id = r["channel_id"]
+        try:
+            last_read_at = int(r["last_read_at"] or 0)
+        except (KeyError, IndexError, TypeError):
+            last_read_at = 0
         return cls(
             id=r["id"],
             session_key=r["session_key"],
@@ -93,6 +98,7 @@ class SessionRow:
             channel_metadata=metadata,
             channel_id=str(channel_id) if channel_id else None,
             unread_count=int(r["unread_count"]),
+            last_read_at=last_read_at,
         )
 
     def to_channel_subject(self) -> ChannelSubject:
@@ -197,18 +203,35 @@ class SessionRepo:
             )
 
     def clear_unread_for_thread(self, thread_id: str) -> None:
+        ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
-                "UPDATE sessions SET unread_count = 0 WHERE thread_id = ?",
-                (thread_id,),
+                "UPDATE sessions SET unread_count = 0, last_read_at = ? WHERE thread_id = ?",
+                (ts, thread_id),
             )
 
     def clear_unread_for_agent(self, agent_id: str, user_id: int) -> None:
+        ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
-                "UPDATE sessions SET unread_count = 0 WHERE agent_id = ? AND user_id = ?",
-                (agent_id, user_id),
+                "UPDATE sessions SET unread_count = 0, last_read_at = ? "
+                "WHERE agent_id = ? AND user_id = ?",
+                (ts, agent_id, user_id),
             )
+
+    def last_read_at_by_agent(self, user_id: int, agent_ids: list[str]) -> dict[str, int]:
+        """Newest view watermark per agent (0 when the user has never opened one)."""
+        if not agent_ids:
+            return {}
+        placeholders = sql_in_placeholders(len(agent_ids))
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                f"SELECT agent_id, MAX(last_read_at) AS last_read_at FROM sessions "
+                f"WHERE user_id = ? AND agent_id IN ({placeholders}) "
+                f"GROUP BY agent_id",
+                (user_id, *agent_ids),
+            ).fetchall()
+        return {str(r["agent_id"]): int(r["last_read_at"] or 0) for r in rows}
 
     def list_by_thread(self, thread_id: str) -> list[SessionRow]:
         """Sessions currently bound to *thread_id* (dashboard, CLI, and IM)."""

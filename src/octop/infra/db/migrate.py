@@ -1558,6 +1558,22 @@ def _ensure_thread_conversation_mode_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "hitl_policy", "TEXT")
 
 
+def _ensure_session_last_read_at_schema(db: DatabasePool) -> None:
+    """Ack watermark so kanban Done settles to Idle after the user views a turn."""
+    if not _table_exists(db, "sessions"):
+        return
+    had_column = "last_read_at" in _table_columns(db, "sessions")
+    _ensure_column(db, "sessions", "last_read_at", "INTEGER NOT NULL DEFAULT 0")
+    if had_column:
+        return
+    # First add: treat existing sessions as already viewed at last touch.
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE sessions SET last_read_at = updated_at "
+            "WHERE last_read_at = 0 AND updated_at > 0"
+        )
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -1645,6 +1661,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_thread_conversation_mode_schema(db)
             if max_version >= 18:
                 _ensure_user_role_schema(db)
+            if max_version >= 19:
+                _ensure_session_last_read_at_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -1689,6 +1707,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_thread_conversation_mode_schema(db)
     if max_version >= 18:
         _ensure_user_role_schema(db)
+    if max_version >= 19:
+        _ensure_session_last_read_at_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -1729,6 +1749,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     Version 16 adds ``agents.kind`` so team hosts can be listed.
     Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
     Version 18 adds ``user_role`` templates and non-FK role id/name snapshots.
+    Version 19 adds ``sessions.last_read_at`` so kanban Done returns to Idle after view.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1844,6 +1865,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 19:
+        _ensure_session_last_read_at_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -1859,6 +1885,14 @@ def run_migrations(db: DatabasePool) -> None:
         # dialects so restores from pre-invite physical schemas do not fail.
         if version == 18:
             _ensure_user_role_schema(db)
+            with db.connect() as conn:
+                if db.dialect == "postgresql":
+                    conn.execute("UPDATE _schema_version SET version = %s", (version,))
+                else:
+                    conn.execute("UPDATE _schema_version SET version = ?", (version,))
+            continue
+        if version == 19:
+            _ensure_session_last_read_at_schema(db)
             with db.connect() as conn:
                 if db.dialect == "postgresql":
                     conn.execute("UPDATE _schema_version SET version = %s", (version,))
@@ -1900,3 +1934,4 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_agent_profile_columns(db)
     _ensure_sso_provider_kind_schema(db)
     _ensure_user_role_schema(db)
+    _ensure_session_last_read_at_schema(db)

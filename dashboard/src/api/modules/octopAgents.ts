@@ -4,9 +4,21 @@ import { request, requestUpload } from "../request";
 /** Kanban bucket an agent lands in on the overview board (priority order). */
 export type KanbanStatus = "needs_you" | "working" | "done" | "idle";
 
+/** Live activity behind the card (before unseen→idle settling). */
+export type KanbanActivityState =
+  | "working"
+  | "blocked"
+  | "waiting"
+  | "done"
+  | "idle";
+
 /** Live kanban extras merged onto each agent row by ``GET /api/agents/overview``. */
 export interface KanbanOverviewAgent extends OctopAgent {
   kanban_status: KanbanStatus;
+  /** Mutually exclusive live state: blocked|waiting|working|done|idle. */
+  activity_state: KanbanActivityState;
+  /** Current activity has not been acknowledged (mark-read / open chat). */
+  unseen: boolean;
   /** True while a turn is in flight for this agent. */
   busy: boolean;
   /** Pending HITL approvals/questions for the current viewer, if any. */

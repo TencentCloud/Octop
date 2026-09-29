@@ -25,6 +25,9 @@ _EXECUTE_EXACT = frozenset(
         "开始执行",
         "干吧",
         "开干",
+        "可以执行",
+        "没问题可以执行",
+        "没问题执行",
         "executeplan",
         "executetheplan",
     }

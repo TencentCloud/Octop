@@ -11,15 +11,25 @@ from typing import Any
 import pytest
 
 from octop.infra.agents.overview import (
+    ACTIVITY_BLOCKED,
+    ACTIVITY_DONE,
+    ACTIVITY_IDLE,
+    ACTIVITY_WAITING,
+    ACTIVITY_WORKING,
     KANBAN_DONE,
     KANBAN_IDLE,
     KANBAN_NEEDS_YOU,
     KANBAN_WORKING,
     agent_kanban_statuses,
+    bucket_for_display_state,
+    resolve_activity_state,
+    resolve_display_state,
+    resolve_unseen,
 )
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
+from octop.infra.db.repos.sessions import SessionRepo
 from octop.infra.db.repos.thread_messages import ThreadMessageInput, ThreadMessageRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.users import UserRepo
@@ -72,6 +82,7 @@ class _AppRuntime:
 class _Services:
     thread_repo: ThreadRepo
     thread_message_repo: ThreadMessageRepo
+    session_repo: SessionRepo
 
 
 @dataclass
@@ -119,20 +130,33 @@ def server(tmp_path: Path) -> _Server:
                 thread_registry=_ThreadRegistry(),
             ),
         ),
-        services=_Services(thread_repo=ThreadRepo(db), thread_message_repo=ThreadMessageRepo(db)),
+        services=_Services(
+            thread_repo=ThreadRepo(db),
+            thread_message_repo=ThreadMessageRepo(db),
+            session_repo=SessionRepo(db),
+        ),
     )
 
 
 def _seed_thread(
     server: _Server, *, agent_id: str, thread_id: str, user_id: int = 1, title: str | None = None
 ) -> None:
+    session_key = f"{agent_id}:dashboard:{user_id}"
     server.services.thread_repo.insert(
         thread_id=thread_id,
         agent_id=agent_id,
         user_id=user_id,
         channel_type="dashboard",
-        session_key=f"{agent_id}:dashboard:{thread_id}",
+        session_key=session_key,
         title=title,
+    )
+    server.services.session_repo.upsert(
+        session_key=session_key,
+        agent_id=agent_id,
+        user_id=user_id,
+        channel_type="dashboard",
+        chat_type="single",
+        thread_id=thread_id,
     )
 
 
@@ -148,6 +172,88 @@ def _statuses(server: _Server, rows: list[_AgentRow], unread: dict[str, int] | N
     return agent_kanban_statuses(server, 1, rows, unread_by_agent=unread or {})
 
 
+def test_fsm_activity_priority() -> None:
+    assert (
+        resolve_activity_state(
+            hitl_pending=True,
+            failed=False,
+            awaiting_plan=True,
+            busy=True,
+            assistant_last=True,
+        )
+        == ACTIVITY_BLOCKED
+    )
+    assert (
+        resolve_activity_state(
+            hitl_pending=False,
+            failed=False,
+            awaiting_plan=True,
+            busy=True,
+            assistant_last=True,
+        )
+        == ACTIVITY_WORKING
+    )
+    assert (
+        resolve_activity_state(
+            hitl_pending=False,
+            failed=False,
+            awaiting_plan=True,
+            busy=False,
+            assistant_last=True,
+        )
+        == ACTIVITY_WAITING
+    )
+    assert (
+        resolve_activity_state(
+            hitl_pending=False,
+            failed=False,
+            awaiting_plan=False,
+            busy=False,
+            assistant_last=True,
+        )
+        == ACTIVITY_DONE
+    )
+    assert (
+        resolve_activity_state(
+            hitl_pending=False,
+            failed=False,
+            awaiting_plan=False,
+            busy=False,
+            assistant_last=False,
+        )
+        == ACTIVITY_IDLE
+    )
+    assert (
+        resolve_activity_state(
+            hitl_pending=False,
+            failed=False,
+            awaiting_plan=False,
+            busy=False,
+            assistant_last=False,
+            has_unread=True,
+        )
+        == ACTIVITY_DONE
+    )
+
+
+def test_fsm_done_settles_to_idle_when_seen() -> None:
+    unseen = resolve_unseen(activity=ACTIVITY_DONE, unread=0, latest_active=100, last_read_at=50)
+    assert unseen is True
+    assert resolve_display_state(ACTIVITY_DONE, unseen=True) == ACTIVITY_DONE
+    assert bucket_for_display_state(ACTIVITY_DONE) == KANBAN_DONE
+
+    seen = resolve_unseen(activity=ACTIVITY_DONE, unread=0, latest_active=100, last_read_at=100)
+    assert seen is False
+    assert resolve_display_state(ACTIVITY_DONE, unseen=False) == ACTIVITY_IDLE
+    assert bucket_for_display_state(ACTIVITY_IDLE) == KANBAN_IDLE
+
+
+def test_fsm_attention_stays_needs_you() -> None:
+    assert bucket_for_display_state(ACTIVITY_BLOCKED) == KANBAN_NEEDS_YOU
+    assert bucket_for_display_state(ACTIVITY_WAITING) == KANBAN_NEEDS_YOU
+    assert bucket_for_display_state(ACTIVITY_WORKING) == KANBAN_WORKING
+
+
 def test_idle_when_quiet(server: _Server) -> None:
     statuses = _statuses(server, [_AgentRow("a1")])
     assert statuses["a1"]["kanban_status"] == KANBAN_IDLE
@@ -155,12 +261,19 @@ def test_idle_when_quiet(server: _Server) -> None:
     assert statuses["a1"]["latest_thread"] is None
 
 
-def test_done_when_assistant_replied_recently(server: _Server) -> None:
+def test_unseen_assistant_reply_is_done_until_mark_read(server: _Server) -> None:
+    """A finished turn stays in Done until the user opens the chat (mark-read)."""
     _seed_thread(server, agent_id="a1", thread_id="t1", user_id=1)
+    active_at = int(time.time()) - 60
     with server.services.thread_repo._db.transaction() as conn:  # noqa: SLF001
         conn.execute(
             "UPDATE threads SET last_active = ? WHERE thread_id = ?",
-            (int(time.time()) - 60, "t1"),
+            (active_at, "t1"),
+        )
+        # Session was touched before the reply finished → still unseen.
+        conn.execute(
+            "UPDATE sessions SET last_read_at = ? WHERE agent_id = ?",
+            (active_at - 120, "a1"),
         )
     server.services.thread_message_repo.append_legacy_interval(
         "t1",
@@ -170,23 +283,17 @@ def test_done_when_assistant_replied_recently(server: _Server) -> None:
         ],
     )
     statuses = _statuses(server, [_AgentRow("a1")])
+    assert statuses["a1"]["activity_state"] == ACTIVITY_DONE
+    assert statuses["a1"]["unseen"] is True
     assert statuses["a1"]["kanban_status"] == KANBAN_DONE
     snippet = statuses["a1"]["latest_thread"]["message"]
     assert snippet["role"] == "assistant"
     assert snippet["text"] == "简报已完成并保存。"
 
-
-def test_idle_when_assistant_reply_is_stale(server: _Server) -> None:
-    _seed_thread(server, agent_id="a1", thread_id="t1", user_id=1)
-    with server.services.thread_repo._db.transaction() as conn:  # noqa: SLF001
-        conn.execute(
-            "UPDATE threads SET last_active = ? WHERE thread_id = ?",
-            (int(time.time()) - 3600, "t1"),
-        )
-    server.services.thread_message_repo.append_legacy_interval(
-        "t1", [_message("human", "hi"), _message("ai", "old answer")]
-    )
+    server.services.session_repo.clear_unread_for_agent("a1", 1)
     statuses = _statuses(server, [_AgentRow("a1")])
+    assert statuses["a1"]["activity_state"] == ACTIVITY_DONE
+    assert statuses["a1"]["unseen"] is False
     assert statuses["a1"]["kanban_status"] == KANBAN_IDLE
 
 
@@ -282,6 +389,17 @@ def test_needs_you_when_plan_pending(server: _Server) -> None:
     assert statuses["a1"]["pending_plan"] is True
 
 
+def test_working_wins_over_stale_pending_plan(server: _Server) -> None:
+    """Once a turn is running, a leftover pending_plan_path must not pin needs_you."""
+    _seed_thread(server, agent_id="a1", thread_id="t1")
+    _set_pending_plan(server, "t1")
+    server.app_runtime.agent_registry.active.add("a1")
+    statuses = _statuses(server, [_AgentRow("a1")])
+    assert statuses["a1"]["kanban_status"] == KANBAN_WORKING
+    assert statuses["a1"]["busy"] is True
+    assert statuses["a1"]["pending_plan"] is False
+
+
 def test_attention_thread_prefers_pending_over_newest(server: _Server) -> None:
     """Card deep-links to the plan-pending thread, not the latest chat."""
     _seed_thread(server, agent_id="a1", thread_id="t-plan")
@@ -362,6 +480,23 @@ def test_snippet_clipped_to_limit(server: _Server) -> None:
     text = latest["message"]["text"]
     assert len(text) <= 80
     assert text.endswith("…")
+
+
+def test_snippet_strips_markdown_emphasis(server: _Server) -> None:
+    _seed_thread(server, agent_id="a1", thread_id="t1")
+    server.services.thread_message_repo.append_legacy_interval(
+        "t1",
+        [_message("ai", "请问**什么方面**的 `还有哪些` 呢？")],
+    )
+    statuses = _statuses(server, [_AgentRow("a1")])
+    latest = statuses["a1"]["latest_thread"]
+    assert latest is not None
+    assert latest["message"] is not None
+    text = latest["message"]["text"]
+    assert "**" not in text
+    assert "`" not in text
+    assert "什么方面" in text
+    assert "还有哪些" in text
 
 
 def test_threads_of_other_users_are_invisible(server: _Server) -> None:

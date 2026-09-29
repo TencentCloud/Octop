@@ -39,6 +39,8 @@ def test_execute_user_message() -> None:
 def test_is_plan_execute_utterance() -> None:
     assert is_plan_execute_utterance("按计划执行")
     assert is_plan_execute_utterance("执行计划")
+    assert is_plan_execute_utterance("可以执行")
+    assert is_plan_execute_utterance("没问题，可以执行")
     assert is_plan_execute_utterance("execute the plan")
     assert is_plan_execute_utterance("start executing")
     assert is_plan_execute_utterance("请按 plans/foo.md 执行")

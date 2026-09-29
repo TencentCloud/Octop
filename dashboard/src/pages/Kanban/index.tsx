@@ -1,6 +1,7 @@
-// dashboard/src/pages/Kanban/index.tsx — Trello-style expert status board.
+// dashboard/src/pages/Kanban/index.tsx — Live expert status board.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useNavigate } from "react-router-dom";
 import { Button, Input, Select } from "antd";
 import { RefreshCw, Search } from "lucide-react";
@@ -11,6 +12,7 @@ import { useAgent } from "../../context/AgentContext";
 import { useServerTimezone } from "../../hooks/useServerTimezone";
 import {
   octopAgentsApi,
+  type KanbanActivityState,
   type KanbanOverviewAgent,
   type KanbanStatus,
 } from "../../api/modules/octopAgents";
@@ -23,27 +25,51 @@ import styles from "./index.module.less";
 
 const POLL_INTERVAL_MS = 10_000;
 
-const STATE_DOT: Record<string, { color: string; spin?: boolean }> = {
-  running: { color: "#52c41a" },
-  stopped: { color: "#8c8c8c" },
-  created: { color: "#8c8c8c" },
-  failed: { color: "#ff4d4f" },
-  starting: { color: "#1677ff", spin: true },
-  stopping: { color: "#1677ff", spin: true },
-};
-
 const COLUMN_META: Array<{
   status: KanbanStatus;
   labelKey: string;
-  color: string;
 }> = [
-  { status: "needs_you", labelKey: "kanban.needsYou", color: "#faad14" },
-  { status: "working", labelKey: "kanban.working", color: "#1677ff" },
-  { status: "done", labelKey: "kanban.done", color: "#52c41a" },
-  { status: "idle", labelKey: "kanban.idle", color: "#8c8c8c" },
+  { status: "needs_you", labelKey: "kanban.needsYou" },
+  { status: "working", labelKey: "kanban.working" },
+  { status: "done", labelKey: "kanban.done" },
+  { status: "idle", labelKey: "kanban.idle" },
 ];
 
 type KindFilter = "all" | "expert" | "team";
+
+function displayActivity(
+  activity: KanbanActivityState,
+  unseen: boolean | undefined,
+): KanbanActivityState {
+  // Mirror server FSM: completed work settles to idle once acknowledged.
+  if (activity === "done" && unseen === false) {
+    return "idle";
+  }
+  return activity;
+}
+
+function activityLabel(
+  activity: KanbanActivityState,
+  agent: KanbanOverviewAgent,
+  t: TFunction,
+): string {
+  switch (activity) {
+    case "working":
+      return t("kanban.working");
+    case "done":
+      return t("kanban.done");
+    case "idle":
+      return t("kanban.idle");
+    case "waiting":
+      return t("kanban.activityWaiting");
+    case "blocked":
+      return agent.hitl_pending
+        ? t("kanban.hitlPending")
+        : agent.state === "failed"
+        ? formatAgentState(agent.state, t)
+        : t("kanban.activityBlocked");
+  }
+}
 
 function KanbanCard({
   agent,
@@ -57,18 +83,46 @@ function KanbanCard({
   const { t } = useTranslation();
   const latest = agent.latest_thread;
   const snippet = latest?.message?.text ?? latest?.title ?? null;
-  const dot = STATE_DOT[agent.state] ?? STATE_DOT.stopped;
+  const activity = displayActivity(
+    agent.activity_state ?? "idle",
+    agent.unseen,
+  );
+  const hasAttention =
+    !!agent.hitl_pending || !!agent.pending_plan || agent.state === "failed";
+  const statusText = activityLabel(activity, agent, t);
+  // Avoid repeating the same attention phrase in aria (chip + footer).
+  const ariaLabel = [
+    agent.name,
+    agent.kind === "team" ? t("kanban.teamTag") : null,
+    statusText,
+    agent.hitl_pending && activity !== "blocked"
+      ? t("kanban.hitlPending")
+      : null,
+    agent.pending_plan && activity !== "waiting"
+      ? t("kanban.pendingPlan")
+      : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
   return (
     <div
       className={styles.card}
+      data-status={agent.kanban_status}
+      data-unseen={agent.unseen ? "true" : "false"}
+      data-activity={activity}
       onClick={() => onOpen(agent)}
       role="button"
       tabIndex={0}
+      aria-label={ariaLabel}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onOpen(agent);
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(agent);
+        }
       }}
     >
-      {agent.hitl_pending || agent.pending_plan || agent.state === "failed" ? (
+      {hasAttention ? (
         <div className={styles.labels}>
           {agent.hitl_pending ? (
             <span className={`${styles.label} ${styles.labelHitl}`}>
@@ -78,7 +132,8 @@ function KanbanCard({
                 : ""}
             </span>
           ) : null}
-          {agent.pending_plan ? (
+          {/* Plan wait is already the footer activity label — skip duplicate chip. */}
+          {agent.pending_plan && activity !== "waiting" ? (
             <span className={`${styles.label} ${styles.labelPlan}`}>
               {t("kanban.pendingPlan")}
             </span>
@@ -121,10 +176,12 @@ function KanbanCard({
       <div className={styles.cardFooter}>
         <span className={styles.stateBadge}>
           <span
-            className={dot.spin ? styles.stateDotSpin : styles.stateDot}
-            style={{ backgroundColor: dot.color }}
+            className={
+              activity === "working" ? styles.stateDotSpin : styles.stateDot
+            }
+            data-activity={activity}
           />
-          {formatAgentState(agent.state, t)}
+          {statusText}
         </span>
         <span className={styles.cardTime}>
           {latest ? formatServerDateTime(latest.last_active, timezone) : ""}
@@ -152,11 +209,15 @@ export default function KanbanPage() {
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
-      if (!opts?.silent) setRefreshing(true);
+      const silent = opts?.silent ?? false;
+      if (!silent) setRefreshing(true);
       try {
         setAgents(await octopAgentsApi.overview());
       } catch (err) {
-        message.error(apiErrorMessage(err, t("kanban.loadFailed"), t));
+        // Background polls should stay quiet — toast only on user-initiated loads.
+        if (!silent) {
+          message.error(apiErrorMessage(err, t("kanban.loadFailed"), t));
+        }
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -212,6 +273,9 @@ export default function KanbanPage() {
   const openChat = useCallback(
     (agent: KanbanOverviewAgent) => {
       setActiveAgent(agent.agent_id);
+      // Clear unread immediately so returning to the board does not keep
+      // the card in 已完成 after the user has opened the conversation.
+      void octopAgentsApi.markRead(agent.agent_id).catch(() => {});
       const targetThreadId =
         agent.attention_thread_id ?? agent.latest_thread?.thread_id ?? null;
       navigate(
@@ -223,6 +287,10 @@ export default function KanbanPage() {
     [navigate, setActiveAgent],
   );
 
+  const hasAgents = (agents ?? []).length > 0;
+  const hasFilter = search.trim().length > 0 || kindFilter !== "all";
+  const filterEmpty = hasAgents && filtered.length === 0 && hasFilter;
+
   return (
     <PageShell
       title={t("kanban.title")}
@@ -233,24 +301,27 @@ export default function KanbanPage() {
           <Input
             allowClear
             className={styles.searchInput}
-            prefix={<Search size={14} />}
+            prefix={<Search size={14} aria-hidden />}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("kanban.searchPlaceholder")}
+            aria-label={t("kanban.searchPlaceholder")}
           />
           <Select<KindFilter>
             value={kindFilter}
             onChange={setKindFilter}
             className={styles.kindSelect}
+            aria-label={t("kanban.filterKind")}
             options={[
               { value: "all", label: t("kanban.filterAll") },
               { value: "expert", label: t("kanban.filterExperts") },
               { value: "team", label: t("kanban.filterTeams") },
             ]}
           />
+
           <Button
-            icon={<RefreshCw size={14} />}
-            loading={refreshing}
+            icon={<RefreshCw size={14} aria-hidden />}
+            loading={refreshing && !loading}
             onClick={() => void load()}
           >
             {t("kanban.refresh")}
@@ -260,7 +331,7 @@ export default function KanbanPage() {
     >
       {loading ? (
         <CardSkeleton count={4} />
-      ) : (agents ?? []).length === 0 ? (
+      ) : !hasAgents ? (
         <EmptyState
           variant="mascot"
           title={t("kanban.emptyTitle")}
@@ -268,15 +339,27 @@ export default function KanbanPage() {
           actionLabel={t("kanban.emptyAction")}
           onAction={() => navigate("/experts")}
         />
+      ) : filterEmpty ? (
+        <EmptyState
+          title={t("kanban.noMatchesTitle")}
+          description={t("kanban.noMatchesDescription")}
+          actionLabel={t("kanban.clearFilters")}
+          onAction={() => {
+            setSearch("");
+            setKindFilter("all");
+          }}
+        />
       ) : (
         <div className={styles.board}>
           {columns.map((col) => (
-            <div key={col.status} className={styles.column}>
+            <section
+              key={col.status}
+              className={styles.column}
+              data-status={col.status}
+              aria-label={`${t(col.labelKey)}, ${col.cards.length}`}
+            >
               <div className={styles.columnHeader}>
-                <span
-                  className={styles.columnDot}
-                  style={{ backgroundColor: col.color }}
-                />
+                <span className={styles.columnDot} aria-hidden />
                 <span className={styles.columnTitle}>{t(col.labelKey)}</span>
                 <span className={styles.columnCount}>{col.cards.length}</span>
               </div>
@@ -296,7 +379,7 @@ export default function KanbanPage() {
                   ))
                 )}
               </div>
-            </div>
+            </section>
           ))}
         </div>
       )}
