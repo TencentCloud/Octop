@@ -8,6 +8,7 @@
 
 ### 新增
 - 专家状态看板（Trello 风格，侧边栏「看板」）：四列（待处理 / 工作中 / 已完成 / 空闲）；两层 FSM（`activity_state` → `unseen` → 列桶），已完成在 mark-read 后落回空闲；卡片展示活动态而非进程「运行中」；新增 `GET /api/agents/overview` 与 `sessions.last_read_at`。
+- Ollama 可指定本地模型下载目录，用于识别已下载模型（#1266）
 
 ### 变更
 - 已保存自定义侧边栏布局的账号也能看到新增的导航项（保存布局中缺失的 key 不再被静默隐藏）。
@@ -16,7 +17,11 @@
 - 专家看板：计划已开始执行时仍卡在「待处理 / 计划待批准」——执行中优先归入「工作中」，并在确认执行时清掉残留的 `pending_plan_path`。
 - 专家看板：对齐完整活动态 FSM（blocked/waiting/working/done/idle + unseen 确认），点进会话后已完成回空闲；卡片不再误显进程「运行中」。
 - 专家看板：卡片摘要去掉 `**` / 反引号等轻量 Markdown 标记；类型筛选控件 `aria-label` 改为固定的「按类型筛选」，不再误报「全部」。
+- Ollama 本机守护进程已在运行时，即使 Octop 本地服务开关关闭，也按已下载识别模型（#1266）
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+- 安装或启用仍 `import harness_agent` 的旧插件时，不再因运行时包改名为 `octop_harness` 而失败。
+- 恢复工作区 zip 导入对 Octop 自有 `_builtin_skills` 前缀的过滤（#1105 的修复曾被连带删除，含回归测试），修复后导入不再植入无法通过 API 删除的内置技能条目（Fixes #1254）。
+- Dashboard 约 30 个被引用却从未定义的设计系统 token（`--fn-surface-sunken`、`--fn-color-error` 等）导致沉底面板透明、暗色主题错色：在 light/dark 主题中补齐定义，并修正 `--text-secondary`/`--border-color` 拼写笔误（Fixes #1239）。
 
 ## [1.0.2b3] - 2026-09-26
 
