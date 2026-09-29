@@ -12,6 +12,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from octop.infra.utils.host_dirs import assert_safe_host_path
+
 logger = logging.getLogger(__name__)
 
 _OLLAMA_SERVER_STARTED = False
@@ -80,15 +82,18 @@ def is_ollama_sdk_available() -> bool:
 def normalize_models_dir(raw: str) -> str:
     """Return an absolute models-dir path, or ``""`` to use Ollama's default.
 
-    Raises ``ValueError`` when a non-empty value is not an absolute path.
+    Raises ``ValueError`` when a non-empty value is not an absolute path
+    (after ``~`` expansion) or points at a disallowed host location.
     """
     text = raw.strip()
     if not text:
         return ""
-    path = Path(text).expanduser()
-    if not path.is_absolute():
+    expanded = os.path.expanduser(text)
+    if not os.path.isabs(expanded):
         raise ValueError("Ollama models directory must be an absolute path")
-    return str(path)
+    # ``assert_safe_host_path`` realpath + denylist is the CodeQL-recognized
+    # barrier for ``py/path-injection`` (unlike ``Path.expanduser`` alone).
+    return os.fspath(assert_safe_host_path(text))
 
 
 def apply_models_dir(path: str | None) -> str | None:
@@ -118,7 +123,7 @@ def resolve_ollama_models_root(path: str) -> Path:
     Users sometimes pick the Ollama home (parent of ``models/``) rather than
     ``OLLAMA_MODELS`` itself.
     """
-    root = Path(path)
+    root = assert_safe_host_path(path)
     if (root / "manifests").is_dir():
         return root
     nested = root / "models"
@@ -170,7 +175,10 @@ def list_models_from_dir(path: str | None) -> list[OllamaModelInfo]:
     text = (path or "").strip()
     if not text:
         return []
-    root = resolve_ollama_models_root(text)
+    try:
+        root = resolve_ollama_models_root(text)
+    except ValueError:
+        return []
     manifests = root / "manifests"
     if not manifests.is_dir():
         return []
