@@ -4013,9 +4013,9 @@
       "indexedEntitiesHint": "可在记忆库中按主题展开查看",
       "profileEyebrow": "用户画像",
       "heroTitle": "用户画像",
-      "profileSubtitle": "基于已有记忆整理的偏好、当前重点、关键事实与高频人事物。",
+      "profileSubtitle": "AI 当前对你的结构化理解，只展示高价值结论，并非完整记忆库。",
       "memories": "条记忆",
-      "entitiesShort": "个主题",
+      "entitiesShort": "个人物/事物",
       "atomsDelta7dShort": "条近7天新增",
       "episodesShort": "段对话片段",
       "reviewAction": "整理画像",
@@ -4046,7 +4046,7 @@
       "conflict": "可能冲突"
     },
     "entityType": {
-      "person": "人",
+      "person": "人物",
       "place": "地点",
       "project": "项目",
       "tool": "工具",
@@ -4057,9 +4057,9 @@
     },
     "importance": {
       "title": "重要程度",
-      "high": "高",
-      "medium": "中",
-      "low": "低"
+      "high": "非常重要",
+      "medium": "重要",
+      "low": "一般"
     },
     "list": {
       "kind": "类型",
