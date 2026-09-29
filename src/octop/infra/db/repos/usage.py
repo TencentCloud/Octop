@@ -1,4 +1,4 @@
-"""Token usage ledger access."""
+﻿"""Token usage ledger access."""
 
 from __future__ import annotations
 
@@ -265,7 +265,7 @@ class UsageRepo:
 
             buckets: list[dict[str, Any]] = []
             if granularity == "by_day":
-                day_expr = sql_unix_day_bucket("ts", dialect=self._db.dialect)
+                day_expr = sql_unix_day_bucket("ts", dialect=self._db.dialect, timezone=timezone)
                 bucket_rows = conn.execute(
                     f"""
                     SELECT
@@ -499,3 +499,4 @@ class UsageRepo:
                 (user_id,),
             ).fetchone()
         return int(row["total"] if row is not None else 0)
+
