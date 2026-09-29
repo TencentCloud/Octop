@@ -198,7 +198,7 @@ run-online:
 # ─── Quality (backend) ───────────────────────────────────────────────────────
 
 .PHONY: all
-all: format-all lint typecheck test
+all: format-all lint lint-frontend typecheck test test-frontend
 
 .PHONY: lint
 lint:
@@ -223,6 +223,11 @@ test:
 	@echo "[test] pytest (not live, -n $(PYTEST_JOBS))..."
 	$(RUN) pytest -n $(PYTEST_JOBS) -m "not live"
 
+.PHONY: test-frontend
+test-frontend:
+	@echo "[test-frontend] Vitest..."
+	cd $(DASHBOARD_DIR) && npm run test
+
 .PHONY: test-fast
 test-fast:
 	@echo "[test-fast] pytest (not live, not slow, -n $(PYTEST_JOBS))..."
@@ -238,7 +243,7 @@ test-live:
 # pytest-testmon. The full suite still runs in CI (`make all`); this is local
 # feedback only, so a missed cross-module impact is caught there.
 .PHONY: precommit
-precommit: format-all lint typecheck test-affected
+precommit: format-all lint lint-frontend typecheck test-affected
 
 # NOTE: do NOT pass `-m` here — pytest-testmon deactivates its affected-test
 # selection whenever a marker expression is present, which would fall back to
@@ -287,7 +292,7 @@ format-all: format format-frontend
 typecheck-all: typecheck typecheck-frontend
 
 .PHONY: check-all
-check-all: lint-all typecheck-all test
+check-all: lint-all typecheck-all test test-frontend
 
 # ─── Utilities ───────────────────────────────────────────────────────────────
 
