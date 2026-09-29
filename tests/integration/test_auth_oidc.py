@@ -118,13 +118,17 @@ async def test_oidc_config_requires_admin_and_returns_public_callback_url(
     assert update.json()["redirect_uri"] == "http://testserver/api/auth/oidc/callback"
     assert "client_secret" not in update.json()
 
+    # A forwarded origin from an untrusted peer is ignored. The ASGI server
+    # only rewrites the scheme for peers in ``forwarded_allow_ips``, and the
+    # public origin is built from the Host header the proxy must pass through.
+    # Covered from the trusted side in tests/unit/api/test_proxy_trust.py.
     config = await c.get(
         "/api/auth/oidc/config",
         headers={**bearer(token), "X-Forwarded-Proto": "https", "X-Forwarded-Host": "api.example"},
     )
     assert config.status_code == 200
     assert config.json()["dashboard_origin"] == "https://dashboard.example"
-    assert config.json()["redirect_uri"] == "https://api.example/api/auth/oidc/callback"
+    assert config.json()["redirect_uri"] == "http://testserver/api/auth/oidc/callback"
 
     monkeypatch.setattr(
         SsoService, "test_connection", lambda self: {"ok": True, "detail": "reachable"}

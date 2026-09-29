@@ -89,9 +89,14 @@ async def get_captcha(server: Any = Depends(get_server)) -> CaptchaPublicRespons
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",", 1)[0].strip() or "unknown"
+    """Client address for the login captcha limiter.
+
+    ``request.client`` is the real peer unless a trusted reverse proxy
+    rewrote it (Starlette ``ProxyHeadersMiddleware``, configured from
+    ``trusted_proxies``). Never read ``X-Forwarded-For`` here: on a
+    directly-exposed install the client controls that header, which would
+    make the limiter trivially bypassable.
+    """
     if request.client and request.client.host:
         return request.client.host
     return "unknown"

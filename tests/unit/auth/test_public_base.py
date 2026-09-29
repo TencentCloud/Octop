@@ -20,7 +20,19 @@ def _request(*, scheme: str = "http", headers: list[tuple[bytes, bytes]] | None 
     )
 
 
-def test_resolve_public_base_uses_forwarded_proxy_headers() -> None:
+def test_resolve_public_base_uses_the_server_resolved_scheme() -> None:
+    """Behind a trusted proxy the ASGI server has already set ``scope['scheme']``.
+
+    ``X-Forwarded-Proto`` is not read here: uvicorn applies it, and only for
+    peers in ``forwarded_allow_ips``.
+    """
+    request = _request(scheme="https", headers=[(b"host", b"octop.example")])
+
+    assert resolve_public_base(request) == "https://octop.example"
+
+
+def test_resolve_public_base_ignores_forwarded_headers_from_any_peer() -> None:
+    """A client cannot talk Octop into building someone else's OIDC origin."""
     request = _request(
         headers=[
             (b"host", b"internal.example:8080"),
@@ -29,7 +41,7 @@ def test_resolve_public_base_uses_forwarded_proxy_headers() -> None:
         ]
     )
 
-    assert resolve_public_base(request) == "https://octop.example"
+    assert resolve_public_base(request) == "http://internal.example:8080"
 
 
 def test_resolve_public_base_uses_request_url_without_proxy_headers() -> None:

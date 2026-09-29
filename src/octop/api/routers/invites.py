@@ -31,9 +31,11 @@ def _service(server: Any) -> InviteService:
 
 
 def _client_id(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",", 1)[0].strip() or "unknown"
+    """Client address for the invite rate limiter.
+
+    See ``auth._client_ip`` — the address comes from ``request.client``,
+    which only a trusted proxy may have rewritten.
+    """
     if request.client and request.client.host:
         return request.client.host
     return "unknown"
