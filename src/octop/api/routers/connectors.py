@@ -727,7 +727,7 @@ async def create_instance(
         raise OctopError(
             ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
             str(exc),
-            details={"reason": str(exc)},
+            details={"reason": type(exc).__name__},
         ) from exc
 
     instance_id = new_ulid()
@@ -847,7 +847,7 @@ async def patch_instance(
             raise OctopError(
                 ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
                 str(exc),
-                details={"reason": str(exc)},
+                details={"reason": type(exc).__name__},
             ) from exc
         svc.encrypt_and_store(instance_id=instance_id, payload=prepared)
     if body.status is not None:
@@ -1011,7 +1011,7 @@ async def test_credentials(
         raise OctopError(
             ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
             str(exc),
-            details={"reason": str(exc)},
+            details={"reason": type(exc).__name__},
         ) from exc
     try:
         return await probe_connector(
@@ -1090,7 +1090,7 @@ async def feishu_cli_user_auth_start(
         raise OctopError(
             ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
             str(exc),
-            details={"reason": str(exc)},
+            details={"reason": type(exc).__name__},
         ) from exc
 
 
@@ -1117,7 +1117,7 @@ async def feishu_cli_user_auth_complete(
         raise OctopError(
             ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
             str(exc),
-            details={"reason": str(exc)},
+            details={"reason": type(exc).__name__},
         ) from exc
 
 
@@ -1143,7 +1143,7 @@ async def feishu_cli_user_auth_start_instance(
         raise OctopError(
             ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
             str(exc),
-            details={"reason": str(exc)},
+            details={"reason": type(exc).__name__},
         ) from exc
 
 
@@ -1169,7 +1169,7 @@ async def feishu_cli_user_auth_complete_instance(
         raise OctopError(
             ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
             str(exc),
-            details={"reason": str(exc)},
+            details={"reason": type(exc).__name__},
         ) from exc
     _schedule_connector_reload(server, user.id)
     return result

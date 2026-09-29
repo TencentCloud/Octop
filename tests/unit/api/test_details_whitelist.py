@@ -24,30 +24,29 @@ from octop.infra.errors import ErrorCode, OctopError
 
 _SRC = Path(__file__).resolve().parents[3] / "src" / "octop"
 
-#: ★ 既有（**本卡之前就有**）的黑名单命中：`str(exc)` 进了 `details`。
-#: 它们**不在** T-75 的「本轮新增/改动」集合里（`T-75` 只要求**新增/改动**的 details 干净），
-#: 且修它们会改这些端点的响应体 ⇒ **只登记不代改**，已上报 lead。
-#: **双向绑定**：清单里的条目若已修好 ⇒ 测试红（强迫清单在收敛时变短）；
-#: 新出现的命中 ⇒ 测试红。
-_KNOWN_BLACKLIST_VIOLATIONS = {
-    "src/octop/api/routers/connectors.py:727": "既有：连接器 MCP 错误回传上游原文",
-    "src/octop/api/routers/connectors.py:847": "既有",
-    "src/octop/api/routers/connectors.py:1011": "既有",
-    "src/octop/api/routers/connectors.py:1090": "既有",
-    "src/octop/api/routers/connectors.py:1117": "既有",
-    "src/octop/api/routers/connectors.py:1143": "既有",
-    "src/octop/api/routers/connectors.py:1169": "既有",
-    "src/octop/api/routers/plugins.py:147": "既有",
-    "src/octop/api/routers/plugins.py:189": "既有",
-    "src/octop/api/routers/plugins.py:235": "既有",
-    "src/octop/infra/agents/plugins/manager.py:523": "既有",
-    "src/octop/infra/agents/plugins/manager.py:626": "既有",
-    "src/octop/infra/agents/plugins/manager.py:692": "既有",
-    "src/octop/infra/connectors/custom_mcp.py:161": "既有",
-}
+#: ★ `T-88` 已把 15 处（机检清单 14 处 ＋ 机检**看不见**的第 15 处 = `manager.py` ·
+#: `install_url` 的 `URLError` 分支）**全部处置**（承重 8 处换值不删键 / 不承重 7 处换值）
+#: ⇒ 清单**收敛为空**。**双向绑定**仍然生效：清单里的条目修好了没删 ⇒
+#: `test_known_blacklist_entries_are_still_present` 红；新出现的命中 ⇒
+#: `test_no_unknown_blacklist_hits` 红。
+#: ★★ 硬判据 = `len(_KNOWN_BLACKLIST_VIOLATIONS) == 0`
+#: （见 `test_known_blacklist_violations_is_empty` —— 只跑上面两条集合差用例在 14 条未处置时
+#: **已为 True** ⇒ 那是假绿）。
+_KNOWN_BLACKLIST_VIOLATIONS: dict[str, str] = {}
 
 #: 黑名单**值**的形态（A6）：异常原文不得进 `details`。
-_BLACKLISTED_VALUE_MARKERS = ("str(exc", "str(err", "{exc}", "{err}", "traceback", "Traceback")
+_BLACKLISTED_VALUE_MARKERS = (
+    "str(exc",
+    "str(err",
+    # ★ `T-88`：补上第 15 处的**原始形态**（`manager.py` · `URLError` 分支 ·
+    # `details={"reason": str(reason)}`）—— 旧标记表不含 `str(reason` ⇒ `scan_blacklist`
+    # 对那一处**两头都看不见**（`SEC-14` 的机检盲区）。
+    "str(reason",
+    "{exc}",
+    "{err}",
+    "traceback",
+    "Traceback",
+)
 
 
 def _is_octop_error(node: ast.AST) -> bool:
@@ -134,6 +133,63 @@ def test_known_blacklist_entries_are_still_present() -> None:
     hits = set(_scan_tree())
     stale = [entry for entry in _KNOWN_BLACKLIST_VIOLATIONS if entry not in hits]
     assert stale == [], f"这些已知项已经修好了，请把条目删掉：{stale}"
+
+
+#: `T-88` 处置过的四个文件（承重 8 处 ＋ 不承重 7 处）。
+_REMEDIATED_FILES = (
+    "api/routers/connectors.py",
+    "api/routers/plugins.py",
+    "infra/agents/plugins/manager.py",
+    "infra/connectors/custom_mcp.py",
+)
+
+
+def test_known_blacklist_violations_is_empty() -> None:
+    """★ `T-88` 硬判据（可机判）：清单为空 **且** 全仓扫描零命中。
+
+    ★ 判别性：上面两条集合差用例在 14 条**未处置**时**已为 True** ⇒ 只跑它们 = 假绿。
+    """
+    assert len(_KNOWN_BLACKLIST_VIOLATIONS) == 0, _KNOWN_BLACKLIST_VIOLATIONS
+    assert _KNOWN_BLACKLIST_VIOLATIONS == {}
+    assert _scan_tree() == []
+
+
+def _details_dicts_in(rel: str) -> list[tuple[set[str], list[str]]]:
+    """某文件里每个 `details={...}` 字面量的（键集合, 值源码列表）—— 用于正对照。"""
+    out: list[tuple[set[str], list[str]]] = []
+    tree = ast.parse((_SRC / rel).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if _is_octop_error(node):
+            for kw in node.keywords:
+                if kw.arg == "details" and isinstance(kw.value, ast.Dict):
+                    keys = {k.value for k in kw.value.keys if isinstance(k, ast.Constant)}
+                    out.append((keys, [ast.unparse(v) for v in kw.value.values]))
+    return out
+
+
+def test_remediated_details_still_carry_a_machine_readable_category() -> None:
+    """★ 正对照（`T-88`）：**换值 ≠ 删键** ⇒ 定位能力没有归零。
+
+    ① 四个文件里带 `reason` 键的 `details` 字面量共 **19** 处（= 15 处处置后**仍留键**
+       ＋ 3 处既有公开字面量 `custom_mcp.py` ＋ 1 处 `B-19-15` 允许留痕的 `HTTP {code}`）；
+       少一处就说明有人为了过扫描**删了键**。
+    ② 承重两码仍能插值：值换成类别串后 `message` 仍填得上 `{reason}`，**不会**印出字面量。
+    """
+    kept = sum(
+        1 for rel in _REMEDIATED_FILES for keys, _ in _details_dicts_in(rel) if "reason" in keys
+    )
+    assert kept == 19, f"`reason` 键被删掉了（应保留 19 处，实测 {kept}）"
+    for rel in _REMEDIATED_FILES:
+        for keys, values in _details_dicts_in(rel):
+            if "reason" in keys:
+                assert values and all(values), f"{rel}: `reason` 键的值为空"
+
+    for code in (ErrorCode.PLUGIN_INSTALL_FAILED, ErrorCode.CONNECTOR_MCP_URL_INVALID):
+        for locale in ("zh", "en"):
+            err = OctopError(code, "raise-site", details={"reason": type(ValueError()).__name__})
+            message = err.to_envelope(locale=locale)["error"]["message"]
+            assert "{reason}" not in message, message
+            assert "ValueError" in message, message
 
 
 def _details_keys_in(rel: str) -> set[str]:
