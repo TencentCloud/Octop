@@ -19,8 +19,7 @@
 set -euo pipefail
 
 export HOME="${HOME:-/data}"
-OCTOP_HOME="${HOME}/.octop"
-DB_FILE="${OCTOP_HOME}/octop.db"
+OCTOP_HOME="${OCTOP_HOME:-${HOME}/.octop}"
 CREDENTIAL_FILE="${OCTOP_HOME}/credential.txt"
 ADMIN_USERNAME="${OCTOP_ADMIN_USERNAME:-admin}"
 ADMIN_DISPLAY_NAME="${OCTOP_ADMIN_DISPLAY_NAME:-Admin}"
@@ -44,7 +43,26 @@ octop_random_password() {
 
 DEFAULT_PASSWORD="${OCTOP_DEFAULT_PASSWORD:-}"
 
-if [ ! -f "$DB_FILE" ]; then
+# Query the configured backend. credential.txt may be removed after the first login.
+DB_INITIALIZED="$(python - <<'PY'
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from octop.config import load_config
+from octop.infra.db.factory import is_database_initialized
+from octop.infra.utils.env_file import apply_env_file, env_file_path
+from octop.infra.utils.paths import PathLayout
+
+paths = PathLayout.from_env()
+apply_env_file(env_file_path(paths.root))
+with TemporaryDirectory() as temporary_dir:
+    # load_config writes defaults for missing files; keep first boot's data dir empty.
+    config_path = paths.config if paths.config.exists() else Path(temporary_dir) / "config.json"
+    config = load_config(config_path)
+    print("yes" if is_database_initialized(config, paths) else "no")
+PY
+)"
+if [ "$DB_INITIALIZED" = "no" ]; then
     echo "[entrypoint] 首次启动，正在初始化 Octop..."
 
     if [ -z "$DEFAULT_PASSWORD" ]; then

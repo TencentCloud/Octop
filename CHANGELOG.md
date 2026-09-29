@@ -10,6 +10,7 @@
 - Ollama 可指定本地模型下载目录，用于识别已下载模型（#1266）
 
 ### 修复
+- Docker 使用 PostgreSQL 或自定义 SQLite 路径时，容器重启不再重复执行初始化而启动失败。
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 - 安装或启用仍 `import harness_agent` 的旧插件时，不再因运行时包改名为 `octop_harness` 而失败。
 - 恢复工作区 zip 导入对 Octop 自有 `_builtin_skills` 前缀的过滤（#1105 的修复曾被连带删除，含回归测试），修复后导入不再植入无法通过 API 删除的内置技能条目（Fixes #1254）。

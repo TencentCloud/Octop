@@ -7,8 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from octop.config import load_config
-from octop.infra.db.factory import open_database, should_defer_control_plane_db
+from octop.config import DatabaseConfig, OctopConfig, load_config
+from octop.infra.db.factory import (
+    is_database_initialized,
+    open_database,
+    should_defer_control_plane_db,
+)
 from octop.infra.utils.paths import PathLayout
 
 
@@ -152,3 +156,64 @@ def test_postgresql_returns_postgres_pool(tmp_path: Path, monkeypatch: pytest.Mo
     pool = open_database(cfg, paths)
     assert pool.dialect == "postgresql"
     assert "octop" in created["conninfo"]
+
+
+def test_database_initialized_uses_configured_sqlite_path(tmp_path: Path) -> None:
+    paths = PathLayout(tmp_path)
+    config = OctopConfig(
+        database=DatabaseConfig(driver="sqlite", sqlite_path="custom.db"),
+        database_in_file=True,
+    )
+    assert is_database_initialized(config, paths) is False
+    assert not (tmp_path / "custom.db").exists()
+    (tmp_path / "custom.db").touch()
+    assert is_database_initialized(config, paths) is True
+
+
+@pytest.mark.parametrize(
+    ("table_exists", "has_user", "expected"),
+    [(False, False, False), (True, False, False), (True, True, True)],
+)
+def test_database_initialized_checks_postgres_users(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    table_exists: bool,
+    has_user: bool,
+    expected: bool,
+) -> None:
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    from typing import Any
+
+    from octop.infra.db import factory as factory_mod
+
+    queries: list[str] = []
+    closed = False
+
+    class FakeConnection:
+        def execute(self, sql: str) -> Any:
+            queries.append(sql)
+            row = ("users",) if table_exists else (None,)
+            if sql.startswith("SELECT 1 FROM users"):
+                row = (1,) if has_user else None
+            return SimpleNamespace(fetchone=lambda: row)
+
+    class FakePool:
+        @contextmanager
+        def connect(self) -> Any:
+            yield FakeConnection()
+
+        def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    monkeypatch.setattr(factory_mod, "open_database", lambda _config, _paths: FakePool())
+    config = OctopConfig(database=DatabaseConfig(driver="postgresql"))
+
+    assert is_database_initialized(config, PathLayout(tmp_path)) is expected
+    assert closed
+    assert queries == (
+        ["SELECT to_regclass('users')", "SELECT 1 FROM users LIMIT 1"]
+        if table_exists
+        else ["SELECT to_regclass('users')"]
+    )
