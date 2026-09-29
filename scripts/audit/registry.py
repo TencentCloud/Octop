@@ -20,9 +20,11 @@ REGRESSION = "regression"
 
 STATE_LABEL = {OK: "绿", FAIL: "红", UNKNOWN: "未知"}
 
-# ★ 冻结的 9 条 id（`SL-1`）· 冻结的 7 条硬判（`SL-2`）
-FROZEN_IDS = ("AUD-1", "AUD-2", "AUD-S1", "AUD-S2", "AUD-S3", "AUD-S4", "AUD-S5", "AUD-G1", "AUD-G2")
-HARD_IDS = ("AUD-1", "AUD-2", "AUD-S1", "AUD-S2", "AUD-S3", "AUD-S4", "AUD-S5")
+# ★ 冻结的 10 条 id（`SL-1` · `K` 批追加 `AUD-S6`）· 冻结的 8 条硬判（`SL-2`）
+# ★ `FROZEN_IDS` 有顺序语义（`current_tree.py` 按它排序）⇒ `AUD-S6` 追加在末尾，不打乱既有顺序
+FROZEN_IDS = ("AUD-1", "AUD-2", "AUD-S1", "AUD-S2", "AUD-S3", "AUD-S4", "AUD-S5", "AUD-G1", "AUD-G2",
+              "AUD-S6")
+HARD_IDS = ("AUD-1", "AUD-2", "AUD-S1", "AUD-S2", "AUD-S3", "AUD-S4", "AUD-S5", "AUD-S6")
 
 # ★ `AUD-G2` 的冻结锚点（`Makefile @207` 逐字）
 MAKEFILE_NAME = "Makefile"
