@@ -13,6 +13,7 @@ from octop.infra.errors import ErrorCode, OctopError
 def _require_tool(name: str) -> str:
     path = shutil.which(name)
     if not path:
+        # no-details: message 自带调用者输入（字段名/操作名）；其值属凭据或可能为主机路径，不入 details
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
             f"{name} not found on PATH; required for PostgreSQL backup/restore",
@@ -38,6 +39,7 @@ def dump_postgres(
         check=False,
     )
     if proc.returncode != 0:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
             f"pg_dump failed: {proc.stderr.strip() or proc.stdout.strip()}",
@@ -62,6 +64,7 @@ def restore_postgres(conninfo: str, dump_file: Path) -> None:
     )
     # pg_restore may return 1 with warnings; treat only >=2 as hard fail.
     if proc.returncode >= 2:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
             f"pg_restore failed: {proc.stderr.strip() or proc.stdout.strip()}",

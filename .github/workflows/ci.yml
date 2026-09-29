@@ -29,17 +29,38 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
+      # Frontend legs of `make all`, spelled out as explicit steps rather than one
+      # `make all` call: that target starts with `format-all`, which rewrites the
+      # tree (`ruff check --fix`, `prettier --write`) and would turn CI's two
+      # format *checks* (`make lint`, `make lint-frontend`) into no-ops.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
       - name: Install dependencies
         run: make install
 
+      # `make install` syncs Python deps only; the dashboard toolchain needs npm.
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: dashboard
+
       - name: Lint
         run: make lint
+
+      - name: Lint frontend
+        run: make lint-frontend
 
       - name: Type check
         run: make typecheck
 
       - name: Test
         run: make test
+
+      - name: Test frontend
+        run: make test-frontend
 
   test-windows:
     name: Windows / Python 3.12
@@ -53,17 +74,36 @@ jobs:
           enable-cache: true
           python-version: "3.12"
 
+      # Frontend legs of `make all` (see the `quality` job for why not `make all`
+      # itself: its leading `format-all` would make CI's format checks no-ops).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
       - name: Install dependencies
         run: make install
 
+      # `make install` syncs Python deps only; the dashboard toolchain needs npm.
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: dashboard
+
       - name: Lint
         run: make lint
+
+      - name: Lint frontend
+        run: make lint-frontend
 
       - name: Type check
         run: make typecheck
 
       - name: Test
         run: make test
+
+      - name: Test frontend
+        run: make test-frontend
 
   live-tests:
     name: "Live tests (real credentials)"

@@ -149,7 +149,11 @@ def test_roster_lives_in_workspace_manifest(team_env: dict[str, object]) -> None
     assert raw is not None
     manifest = json.loads(raw)
     assert manifest["kind"] == "team"
-    assert manifest["members"] == ["a", "b"]
+    # AM-1 (T-32): the writer emits the object shape; ids are still what callers read.
+    assert manifest["members"] == [
+        {"agent_id": "a", "role": None},
+        {"agent_id": "b", "role": None},
+    ]
     listed = teams.list_for_user(1)
     assert [item["agent_id"] for item in listed] == ["host", "other-team"]
     assert listed[0]["member_ids"] == ["a", "b"]
@@ -189,4 +193,9 @@ async def test_seed_team_template_writes_octop_manifest() -> None:
     raw = uploaded[".octop/manifest.json"]
     data = json.loads(raw.decode("utf-8"))
     assert data["kind"] == "team"
-    assert data["members"] == ["a", "b"]
+    # AM-1 (T-32): manifest members are objects now — one write shape for the authority.
+    assert data["members"] == [
+        {"agent_id": "a", "role": None},
+        {"agent_id": "b", "role": None},
+    ]
+    assert data["lead_agent_id"] is None

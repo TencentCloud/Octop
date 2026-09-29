@@ -27,7 +27,7 @@ def _columns(pool: SqlitePool, table: str) -> set[str]:
 def test_head_is_23(tmp_path: Path) -> None:
     pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
-    assert _version(pool) == 24
+    assert _version(pool) == 25
 
 
 def test_comment_id_exists_and_is_nullable(tmp_path: Path) -> None:
@@ -45,7 +45,7 @@ def test_rerunning_migrations_is_idempotent(tmp_path: Path) -> None:
     run_migrations(pool)
     before = _columns(pool, "project_artifacts")
     run_migrations(pool)
-    assert _version(pool) == 24
+    assert _version(pool) == 25
     assert _columns(pool, "project_artifacts") == before
 
 

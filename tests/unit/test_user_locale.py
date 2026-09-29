@@ -71,6 +71,27 @@ def test_legacy_users_table_gets_locale_column(tmp_path: Path):
               updated_at    INTEGER NOT NULL
             );
             CREATE TABLE _schema_version (version INTEGER NOT NULL);
+            -- Same reasoning one level down: 025 alters ``threads`` (also a 001 base
+            -- table), so it must exist here too. The shape modelled is the true v8
+            -- one -- 001's columns plus what the pre-v8 migrations add: 004 gives the
+            -- composer preferences (``model_ref`` / ``reasoning_mode`` /
+            -- ``reasoning_effort``) and 007 gives ``artifacts``.
+            CREATE TABLE threads (
+              id               INTEGER PRIMARY KEY AUTOINCREMENT,
+              thread_id        TEXT NOT NULL UNIQUE,
+              agent_id         TEXT NOT NULL,
+              user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              channel_type     TEXT NOT NULL,
+              session_key      TEXT NOT NULL,
+              title            TEXT,
+              pinned           INTEGER NOT NULL DEFAULT 0,
+              last_active      INTEGER NOT NULL,
+              created_at       INTEGER NOT NULL,
+              model_ref        TEXT,
+              reasoning_mode   TEXT,
+              reasoning_effort TEXT,
+              artifacts        TEXT NOT NULL DEFAULT '[]'
+            );
             INSERT INTO _schema_version(version) VALUES (8);
             INSERT INTO users(username, password_hash, role, created_at)
             VALUES ('legacy', 'h', 'admin', 0);

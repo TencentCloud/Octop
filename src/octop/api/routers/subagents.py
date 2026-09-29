@@ -31,6 +31,7 @@ from octop.api.common.workspace import require_running_workspace
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.subagents.catalog import SubagentDefinition
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.skills.skill_packages import SkillPackageError, validate_skill_slug
 from octop.infra.utils.locale import (
     Locale,
     normalize_locale,
@@ -78,6 +79,7 @@ def _summary_dict(defn: SubagentDefinition) -> dict[str, Any]:
 def _require_catalog(server: Any) -> Any:
     catalog = server.subagent_catalog
     if catalog is None:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "subagent catalog not loaded")
     return catalog
 
@@ -183,12 +185,15 @@ async def install_subagent(
     installed. Missing translations fall back to English and are logged
     so translation progress can be tracked.
     """
-    slug = body.slug.strip()
-    if not slug or "/" in slug or slug.startswith("."):
+    # SCOPE-2W: reuse the skills slug judge so "\" and NUL are rejected too,
+    # not just "/" and a leading "." (a backend may treat "\" as a separator).
+    try:
+        slug = validate_skill_slug(body.slug)
+    except SkillPackageError:
         raise HTTPException(
             status_code=400,
             detail="slug is required and must not contain / or start with .",
-        )
+        ) from None
 
     require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     catalog = _require_catalog(server)

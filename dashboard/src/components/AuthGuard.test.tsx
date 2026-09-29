@@ -5,6 +5,9 @@ import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import AuthGuard from "./AuthGuard";
 
+
+// 与 HEAD 侧一致的等待预算（合并两边意图：可重试查询 + 显式超时）
+const SHELL_WAIT_MS = 5000;
 vi.mock("../api/modules/auth", () => ({
   authApi: {
     getAuthStatus: vi.fn(),
@@ -23,14 +26,6 @@ vi.mock("../utils/locale", () => ({
 
 import { authApi } from "../api/modules/auth";
 import { getAuthToken } from "../api/request";
-
-// The shell mounts asynchronously; under load (this repo's CI box runs several
-// suites at once, load average >14) the *default* findBy/waitFor window (1000ms)
-// is not enough. Measured: 4/10 failures on the current tree with the default
-// window, both with and without the current `setup.ts` (baseline arm: 2/10), so
-// the window — not the setup — was the variable. Aligned with vitest's own
-// `test.timeout` default (5000ms) so the wait can never outlive the test.
-const SHELL_WAIT_MS = 5000;
 
 describe("AuthGuard offline boot", () => {
   beforeEach(() => {
@@ -96,6 +91,15 @@ describe("AuthGuard offline boot", () => {
       </MemoryRouter>,
     );
 
+    // ``NavProbe`` fires ``navigate("/b")`` from an effect as soon as the gate
+    // mounts children, so the ``/a`` node that ``findByText`` matches can be
+    // unmounted by that same navigation before a bare
+    // ``expect(...).toBeInTheDocument()`` runs — the awaited element is then
+    // detached and the assertion fails regardless of how long we waited.
+    // Retry the whole query+assert so it binds to the node currently mounted.
+    await waitFor(() => {
+      expect(screen.getByText("protected-shell")).toBeInTheDocument();
+    });
     await waitFor(
       () => {
         expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
@@ -103,12 +107,9 @@ describe("AuthGuard offline boot", () => {
       { timeout: SHELL_WAIT_MS },
     );
     // Give route-driven navigate identity churn a tick; gate must not re-run.
-    await waitFor(
-      () => {
-        expect(screen.getByText("protected-shell")).toBeInTheDocument();
-      },
-      { timeout: SHELL_WAIT_MS },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("protected-shell")).toBeInTheDocument();
+    });
     expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
     expect(authApi.me).toHaveBeenCalledTimes(1);
   });

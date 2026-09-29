@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -146,6 +146,8 @@ class GlobalProcessor:
         hitl: HitlChannelCoordinator | None = None,
         trajectory_service: Any | None = None,
         history_archive: Any | None = None,
+        team_run_service: Any | None = None,
+        authorize_agent_action: Callable[[Any, int], None] | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._thread_registry = thread_registry
@@ -169,6 +171,9 @@ class GlobalProcessor:
         self._hitl = hitl or HitlChannelCoordinator()
         self._trajectory_service = trajectory_service
         self._history_archive = history_archive
+        # T-49: both surface on ``SlashCtx`` via ``_slash_ctx`` (see that method).
+        self._team_run_service = team_run_service
+        self._authorize_agent_action = authorize_agent_action
         self.teams = TeamManager(
             agent_manager=agent_manager,
             thread_registry=thread_registry,
@@ -487,6 +492,10 @@ class GlobalProcessor:
             metadata=metadata,
             paths=self._agent_manager.paths,
             default_timezone=self._agent_manager.octop_config.default_timezone,
+            # T-49: the two ``/team`` runtime handles. ``handlers/team.py`` refuses
+            # with ``reason: *_unwired`` when either is ``None``.
+            team_run_service=self._team_run_service,
+            authorize_agent_action=self._authorize_agent_action,
         )
 
     @staticmethod
@@ -1457,6 +1466,7 @@ class GlobalProcessor:
         if failed:
             detail = f"mcp load failed: {', '.join(failed)}"
             if raise_on_failure:
+                # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
                 raise OctopError(ErrorCode.CONNECTOR_MCP_LOAD_FAILED, detail)
             logger.warning(
                 "skipping turn MCP for agent=%s user=%s (%s)",

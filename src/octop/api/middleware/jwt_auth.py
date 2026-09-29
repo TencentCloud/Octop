@@ -59,7 +59,12 @@ def install(app: Any, server: Any) -> None:
                     exc.message,
                     exc_info=exc,
                 )
-            return JSONResponse(status_code=exc.status, content=exc.to_envelope())
+            # Same rendering path and same `details` exposure as `api/app.py`'s OctopError
+            # handler, so it must share that module's guard (SEC-17). Imported lazily
+            # because `api/app.py` imports this module.
+            from octop.api.app import _renderable_envelope
+
+            return JSONResponse(status_code=exc.status, content=_renderable_envelope(exc))
 
         response = await call_next(request)
         if raw is not None:

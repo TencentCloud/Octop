@@ -161,6 +161,7 @@ async def _bootstrap_default_agent(server: Any, *, user_id: int, locale: str = "
     )
 
     if server.app_runtime is None:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "app_runtime not ready")
     await bootstrap_default_agent(
         server.app_runtime.agent_registry,
@@ -433,6 +434,7 @@ async def finish(
             raise
         except Exception as exc:
             logger.exception("setup provider bootstrap failed")
+            # no-details: 上游异常原文已在 message；入 details 触犯 SEC-4 黑名单（异常原文/上游响应原文）
             raise OctopError(
                 ErrorCode.INTERNAL_ERROR,
                 f"failed to save provider: {exc}",

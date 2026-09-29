@@ -267,11 +267,14 @@ async def polish_prompt(
             timeout=30.0,
         )
     except TimeoutError:
+        # no-details: 上游/模型侧结果状态：无资源标识可加
         raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request timed out") from None
     except Exception:
         logger.exception("polish failed agent=%s model=%s", agent_id, model_ref)
+        # no-details: 上游/模型侧结果状态：无资源标识可加
         raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request failed") from None
 
     if not polished:
+        # no-details: 上游/模型侧结果状态：无资源标识可加
         raise OctopError(ErrorCode.INTERNAL_ERROR, "model returned empty polish result")
     return {"text": polished}

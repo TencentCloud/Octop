@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Pre-commit gate: make precommit (format BE+FE + lint + typecheck + testmon-scoped
-# tests) + dashboard build. The full suite still runs in CI (`make all`); this is a
+# Pre-commit gate: make precommit (format BE+FE + lint + lint-frontend + typecheck +
+# testmon-scoped tests) + dashboard build. CI runs those same legs unscoped and
+# read-only (make lint / lint-frontend / typecheck / test / test-frontend); this is a
 # fast, change-aware local gate so commits don't wait on the whole test matrix.
 # Enable once per clone:  make install-hooks
 # Bypass (emergency only): SKIP_PRECOMMIT=1 git commit ...

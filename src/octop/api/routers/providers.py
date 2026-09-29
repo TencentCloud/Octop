@@ -452,6 +452,7 @@ async def codex_oauth_pending(
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "corrupt oauth pending") from None
     flow_user = payload.get("user_id")
     if flow_user is not None and flow_user != user.id:

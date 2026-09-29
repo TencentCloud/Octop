@@ -535,6 +535,7 @@ describe("F2 概览压缩与主区归属（PLAN §2 / G6）", () => {
       "projects.tabPlan",
       "projects.tabTasks",
       "projects.tabAssets",
+      "projects.tabMemory",
     ]);
   });
 });

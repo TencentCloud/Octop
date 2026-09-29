@@ -523,7 +523,7 @@ class PluginManager:
                     raise OctopError(
                         ErrorCode.PLUGIN_INSTALL_FAILED,
                         f"failed to load plugin: {exc}",
-                        details={"reason": str(exc)},
+                        details={"reason": type(exc).__name__},
                     ) from exc
         else:
             loaded = PluginRegistry().get(plugin_id)
@@ -626,7 +626,7 @@ class PluginManager:
             raise OctopError(
                 ErrorCode.PLUGIN_INSTALL_FAILED,
                 f"failed to load plugin: {exc}",
-                details={"reason": str(exc)},
+                details={"reason": type(exc).__name__},
             ) from exc
 
     def install_archive(self, archive: Path, *, force: bool = False) -> LoadedPlugin:
@@ -683,16 +683,17 @@ class PluginManager:
                 ) from exc
             except urllib.error.URLError as exc:
                 reason = getattr(exc, "reason", None) or str(exc)
+                cause = getattr(exc, "reason", None) or exc
                 raise OctopError(
                     ErrorCode.PLUGIN_INSTALL_FAILED,
                     f"download failed: {reason}",
-                    details={"reason": str(reason)},
+                    details={"reason": type(cause).__name__},
                 ) from exc
             except OSError as exc:
                 raise OctopError(
                     ErrorCode.PLUGIN_INSTALL_FAILED,
                     f"download failed: {exc}",
-                    details={"reason": str(exc)},
+                    details={"reason": type(exc).__name__},
                 ) from exc
             try:
                 return self.install_archive(archive, force=force)

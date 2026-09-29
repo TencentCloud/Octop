@@ -15,6 +15,7 @@ import dayjs, { type Dayjs } from "dayjs";
 import {
   Activity,
   BookOpen,
+  Brain,
   LayoutGrid,
   List,
   Pencil,
@@ -42,6 +43,7 @@ import Board from "./Board";
 import AssetsTab from "./AssetsTab";
 import CustomFieldsPanel from "./CustomFieldsPanel";
 import DynamicTab from "./DynamicTab";
+import ProjectMemoryTab from "./ProjectMemoryTab";
 import RightRail from "./RightRail";
 import QuickInput from "./QuickInput";
 import TaskCreateModal, {
@@ -97,14 +99,18 @@ interface ProjectFormValues {
   due_at?: Dayjs | null;
 }
 
-/** 4 Tab（PLAN §4.1）：动态占位 / 计划看板 / 任务列表 / 资产。 */
-type DetailTabKey = "dynamic" | "plan" | "tasks" | "assets";
+/**
+ * Tab 键（PLAN §4.1 的 4 Tab ＋ T-86 的「项目记忆」）：动态占位 / 计划看板 /
+ * 任务列表 / 资产 / 项目记忆。原有 4 个的 key、顺序与语义均未改动，新 Tab 追加在末位。
+ */
+type DetailTabKey = "dynamic" | "plan" | "tasks" | "assets" | "memory";
 
 const DETAIL_TABS: TabBarItem<DetailTabKey>[] = [
   { key: "dynamic", labelKey: "projects.tabDynamic", icon: Activity },
   { key: "plan", labelKey: "projects.tabPlan", icon: LayoutGrid },
   { key: "tasks", labelKey: "projects.tabTasks", icon: List },
   { key: "assets", labelKey: "projects.tabAssets", icon: BookOpen },
+  { key: "memory", labelKey: "projects.tabMemory", icon: Brain },
 ];
 
 /** S5：缺省与非法值（含空串）一律回落 `plan`，且不把非法值写回 URL。 */
@@ -463,6 +469,12 @@ function ProjectDetailPage() {
           ) : null}
 
           {activeTab === "assets" ? <AssetsTab kbId={project.kb_id} /> : null}
+
+          {/* T-86：项目记忆。空态 / 403 / 无 agent 都是**状态**，不是错误 →
+              组件内部各自渲染（`ProjectMemoryTab.tsx` 的 docstring 逐条说明）。 */}
+          {activeTab === "memory" ? (
+            <ProjectMemoryTab projectId={project.project_id} />
+          ) : null}
         </div>
 
         <RightRail

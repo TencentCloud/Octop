@@ -111,6 +111,7 @@ class InviteService:
                     target=code,
                 )
                 return row
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "failed to allocate invite code")
 
     def list_all(self) -> list[dict[str, object]]:

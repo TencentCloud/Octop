@@ -141,6 +141,7 @@ class RenameDocumentBody(BaseModel):
 
 def _knowledge_service(server: OctopServer) -> KnowledgeService:
     if server.services is None:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "knowledge services are not initialized")
     # 门二 (PLAN.md §2): a base that is not owner/shared/admin-readable is still
     # readable by a member of a project bound to it. The decision itself lives in

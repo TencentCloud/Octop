@@ -125,6 +125,20 @@ conversation_id = 主持人 thread_id
 
 房间 WS 逐 token 转播成员回复；fan-in 只在未 live 推送时补一条 snapshot。流式帧用 `agent` / `agent_id` 标识说话人。IM 通道看不到房间 WS：派工成功后会立刻推一条「已请 {成员} 处理，请稍候…」；成员收口后再推带说话人姓名的完整消息；主持人收口补推为「【主持人总结】…」。团队主持人绑定的通道在注册时强制 `response_mode=stream`，避免 invoke 折叠丢掉派工叙述。
 
+### 读回房间内容（排障用）
+
+房间和派工 thread 就是普通 thread，**没有专用端点、也不需要新增**（本 run `B-12`）。判断「房间里有没有内容 / 有没有回合」用既有的 agent 作用域读口：
+
+```text
+GET /api/agents/{agent_id}/threads/{thread_id}/history
+```
+
+- 房间：`agent_id` = 团队主持人 id，`thread_id` = run 的 `room_thread_id`
+- 响应含 **`messages`**（消息列表）、**`turn_active`**（服务端是否仍在流式输出；重连的客户端据此决定要不要重新订阅 WS）、**`next_cursor`**（翻页）
+- 鉴权走 `_require_thread`（`src/octop/api/routers/chat/history.py @94`）：先查 agent 访问权，再要求 thread 属于该 agent，**最后要求调用者是该 thread 的属主** ⇒ 房间由建 run 的人创建，因此**只有建 run 的人能读回**；其他团队成员与平台 admin 一律 `403`（既有语义，本轮不改）
+
+> ⚠️ **幽灵路径**：`/api/threads/{thread_id}/history` 与 `/api/threads/{id}/messages` **不是**房间历史的读法 —— 本仓不存在这两个路由（⇒ `404`）。`/api/threads/*` 命名空间下**只有** `GET /api/threads/summary`（`src/octop/api/routers/chat/sessions.py @73`），它按 `threads.user_id` 过滤，**不是**历史读口。
+
 ## HTTP
 
 | 方法 | 路径 | 说明 |
@@ -134,6 +148,7 @@ conversation_id = 主持人 thread_id
 | GET | `/api/teams/{team_id}` | 详情 |
 | PATCH | `/api/teams/{team_id}` | 改名称/模型/欢迎语/成员（在途则拒改该成员） |
 | DELETE | `/api/teams/{team_id}` | 删除团队主持人 |
+| GET | `/api/agents/{agent_id}/threads/{thread_id}/history` | **房间 / 派工 thread 的历史**（`messages` + `turn_active` + `next_cursor`）；见「房间与转播 · 读回房间内容」 |
 
 `GET /api/agents` 增加 `kind`；团队行带 `member_ids`。`kind=team` 不可 `is_shared`。
 

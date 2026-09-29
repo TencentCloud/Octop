@@ -231,6 +231,14 @@ export interface PromoteCandidateResponse {
   needs_review: number;
   dropped: number;
   llm_calls: number;
+  /** Present only for a project-directed adoption (T-50). */
+  target_layer?: string;
+}
+
+export interface RecordAtomToProjectResponse {
+  recorded: boolean;
+  atom_id: string;
+  target_layer: string;
 }
 
 export interface RejectCandidateResponse {
@@ -442,6 +450,29 @@ export const memoryDashboardApi = {
     request<PromoteCandidateResponse>(
       `${base(aid)}/candidates/${encodeURIComponent(candidateId)}:promote`,
       { method: "POST" },
+    ),
+
+  /**
+   * T-50: adopt the candidate into ``project_{projectId}`` instead of the agent's
+   * private layer. Kept separate from {@link promoteCandidate} on purpose — the
+   * default path stays a body-less two-argument call (T-41's component test pins
+   * that shape), and the project target travels in the body.
+   */
+  promoteCandidateToProject: (
+    aid: string,
+    candidateId: string,
+    projectId: string,
+  ) =>
+    request<PromoteCandidateResponse>(
+      `${base(aid)}/candidates/${encodeURIComponent(candidateId)}:promote`,
+      { method: "POST", body: JSON.stringify({ project_id: projectId }) },
+    ),
+
+  /** T-50 「记到项目」: copy one existing memory into ``project_{projectId}``. */
+  recordAtomToProject: (aid: string, atomId: string, projectId: string) =>
+    request<RecordAtomToProjectResponse>(
+      `${base(aid)}/atoms/${encodeURIComponent(atomId)}:record-to-project`,
+      { method: "POST", body: JSON.stringify({ project_id: projectId }) },
     ),
 
   rejectCandidate: (

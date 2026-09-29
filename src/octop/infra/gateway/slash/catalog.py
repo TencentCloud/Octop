@@ -266,6 +266,13 @@ CATALOG: tuple[SlashCommandSpec, ...] = (
         origins=frozenset({"cli"}),
         hidden=True,
     ),
+    SlashCommandSpec(
+        name="team",
+        usage="/team <goal> | status|task|check|detail|decision|resume|cancel|tier|learn|settle",
+        icon="Users",
+        tone="violet",
+        category="core",
+    ),
 )
 
 _CATALOG_BY_NAME: dict[str, SlashCommandSpec] = {}

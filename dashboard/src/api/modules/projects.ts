@@ -270,6 +270,28 @@ function projectPath(projectId: string): string {
   return `/projects/${encodeURIComponent(projectId)}`;
 }
 
+/**
+ * One row of ``project_{id}`` memory as the T-37 aggregation returns it.
+ *
+ * Deliberately a **structural view of the wire type**: the layer/namespace come
+ * from the backend's per-namespace read, so nothing here re-derives them.
+ */
+export interface ProjectMemoryRow {
+  id: string;
+  text: string;
+  source_layer: string;
+  namespace: string;
+  created_at?: string | null;
+  importance?: string | null;
+}
+
+/** ``GET /projects/{project_id}/memory`` (T-37 read route, plan §API 面③). */
+export interface ProjectMemoryPage {
+  project_id: string;
+  items: ProjectMemoryRow[];
+  next_cursor: string | null;
+}
+
 export const projectsApi = {
   /** Projects the caller is a member of (the API never lists anything else). */
   list: () => request<ProjectOut[]>("/projects"),
@@ -478,4 +500,25 @@ export const projectsApi = {
       )}/conclude`,
       { method: "DELETE" },
     ),
+
+  /**
+   * `GET …/memory` — the project layer's memory, grouped by the backend.
+   *
+   * ★ `agent_id` is **required by the route** (`api/routers/memory.py`):
+   * a project namespace physically lives inside one agent's memory backend, and
+   * the project row does not record the host yet. The tab passes the dashboard's
+   * active agent; that is a *locator*, never a permission (#2 of the card: the
+   * read decision is the backend's `PROJECT_READ` check).
+   */
+  fetchMemory: (
+    projectId: string,
+    params: { agentId: string; cursor?: string; limit?: number },
+  ) => {
+    const query = new URLSearchParams({ agent_id: params.agentId });
+    if (params.cursor) query.set("cursor", params.cursor);
+    if (params.limit) query.set("limit", String(params.limit));
+    return request<ProjectMemoryPage>(
+      `${projectPath(projectId)}/memory?${query.toString()}`,
+    );
+  },
 };

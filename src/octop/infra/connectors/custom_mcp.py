@@ -161,7 +161,7 @@ def validate_mcp_http_url(url: str) -> str:
         raise OctopError(
             ErrorCode.CONNECTOR_MCP_URL_INVALID,
             str(exc),
-            details={"reason": str(exc)},
+            details={"reason": type(exc).__name__},
         ) from exc
     return text
 

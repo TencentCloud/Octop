@@ -36,15 +36,20 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, cast
+from collections.abc import Sequence
+from datetime import datetime
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner, require_agent_owner_row
+from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.memory_client import call_memory_rpc
 from octop.api.deps import current_user, get_server
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.projects.service import PROJECT_WRITE, ProjectActor, ProjectService
+from octop.infra.users.identity import User
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +201,26 @@ class _ExtractConfigBody(BaseModel):
 class _RejectCandidateBody(BaseModel):
     reason: str | None = None
     actor: str | None = Field(default=None, description="user / auto / rule (defaults user)")
+
+
+class _PromoteCandidateBody(BaseModel):
+    """Adoption target (T-50).
+
+    Omitted ⇒ the pre-existing behaviour: the candidate is adopted into the
+    agent's own private layer ``agent_{agent_id}`` through exactly the same
+    single ``call_memory_rpc`` the two-argument client already made.
+    """
+
+    project_id: str | None = Field(
+        default=None,
+        description="Adopt into project_{project_id} instead of the agent's private layer",
+    )
+
+
+class _RecordToProjectBody(BaseModel):
+    """Target of 「记到项目」 (T-50; PLAN 「写入路径」 row 4)."""
+
+    project_id: str = Field(description="Target project; write access is checked on it")
 
 
 class _DeprecateAtomBody(BaseModel):
@@ -573,21 +598,86 @@ async def recent_journal(
 async def promote_candidate(
     agent_id: str,
     candidate_id: str,
+    body: _PromoteCandidateBody = Body(default_factory=_PromoteCandidateBody),
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    return cast(
-        dict[str, Any],
-        call_memory_rpc(
-            agent_id=agent_id,
-            method="promote_candidate",
-            params={"candidate_id": candidate_id},
-            user=user,
-            as_user=as_user,
-            server=server,
-        ),
-    )
+    """Adopt a candidate — into the agent's private layer, or into a project layer.
+
+    Without ``project_id`` this is the pre-existing call, byte for byte: one
+    ``promote_candidate`` RPC on the agent's own store, so the two-argument
+    client shape (and its test) is untouched.
+
+    With ``project_id`` the candidate is copied into ``project_{project_id}`` and
+    adopted **there** through the same library operation (T-50). The gate is the
+    project's **write** action — not its read action: SPEC B38 keeps the two
+    separate, so a ``viewer`` (who may read the project) is refused here while a
+    ``member`` / ``admin`` / ``owner`` succeeds.
+    """
+    if body.project_id is None:
+        return cast(
+            dict[str, Any],
+            call_memory_rpc(
+                agent_id=agent_id,
+                method="promote_candidate",
+                params={"candidate_id": candidate_id},
+                user=user,
+                as_user=as_user,
+                server=server,
+            ),
+        )
+
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    project = _project_write_target(server, user=user, project_id=body.project_id)
+    recall = _open_recall(server, agent_id, team_id=None)
+    try:
+        from octop.infra.agents.memory.project_writes import (  # noqa: PLC0415 - lazy, optional dep
+            promote_candidate_into_project,
+        )
+
+        return promote_candidate_into_project(
+            recall=recall,
+            project_id=project.id,
+            project_namespace=project.memory_namespace,
+            candidate_id=candidate_id,
+        )
+    finally:
+        recall.close()
+
+
+@router.post("/agents/{agent_id}/memory/atoms/{atom_id}:record-to-project")
+async def record_atom_to_project(
+    agent_id: str,
+    atom_id: str,
+    body: _RecordToProjectBody,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Copy one existing memory from the agent layer into ``project_{project_id}``.
+
+    PLAN 「写入路径」 row 4 (显式「记到项目」). The gate is the project's **write**
+    action (SPEC B38) — reading the project's memory does not imply being allowed
+    to move a memory into it. Idempotent: a row already present in the project
+    layer is reported with ``recorded=false`` instead of being written twice.
+    """
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    project = _project_write_target(server, user=user, project_id=body.project_id)
+    recall = _open_recall(server, agent_id, team_id=None)
+    try:
+        from octop.infra.agents.memory.project_writes import (  # noqa: PLC0415 - lazy, optional dep
+            record_atom_into_project,
+        )
+
+        return record_atom_into_project(
+            recall=recall,
+            project_id=project.id,
+            project_namespace=project.memory_namespace,
+            atom_id=atom_id,
+        )
+    finally:
+        recall.close()
 
 
 @router.post("/agents/{agent_id}/memory/candidates/{candidate_id}:reject")
@@ -866,6 +956,324 @@ async def put_extract_config(
 
     await registry.update(agent_id, config_json=json.dumps(cfg))
     return merged
+
+
+# ---------------------------------------------------------------------------
+# Namespace-scoped aggregation (plan T-37)
+# ---------------------------------------------------------------------------
+
+ScopeName = Literal["project", "team", "agent"]
+ScopeFilter = Literal["project", "team", "agent", "all"]
+
+
+class MemoryScopeItem(BaseModel):
+    """One memory row, tagged with the namespace layer it was read from."""
+
+    id: str
+    text: str
+    source_layer: str = Field(description="Which layer this row came from: project | team | agent")
+    namespace: str = Field(description="The memory namespace the row was read from")
+    created_at: str | None = None
+    importance: str | None = None
+    entity_id: str | None = None
+    project_id: str | None = Field(
+        default=None, description="Owning project, set for rows from the project layer"
+    )
+
+
+class MemoryScopeGroup(BaseModel):
+    """One namespace layer: its namespace, its size, and its rows."""
+
+    source_layer: str
+    namespace: str
+    total: int
+    items: list[MemoryScopeItem]
+
+
+class MemoryScopesOut(BaseModel):
+    agent_id: str
+    groups: list[MemoryScopeGroup]
+
+
+class ProjectMemoryOut(BaseModel):
+    project_id: str
+    items: list[MemoryScopeItem]
+    next_cursor: str | None = None
+
+
+def _actor(user: User) -> ProjectActor:
+    """``User`` already satisfies :class:`ProjectActor`; this keeps mypy honest."""
+    return user
+
+
+def _project_write_target(server: Any, *, user: User, project_id: str) -> Any:
+    """Authorise a **project-directed memory write** and return the project row.
+
+    Two separate gates, deliberately not merged (SPEC B38 / §11.3):
+
+    * **write** — ``PROJECT_WRITE`` on the project role table; this is the gate
+      that decides. A ``viewer`` is refused here even though they may read the
+      project's memory, so "readable" never implies "writable".
+    * **read** — ``get_project`` re-checks ``PROJECT_READ`` only to hand back the
+      authorised row; it is not the write decision, and it never widens it.
+
+    The returned row is also where the namespace comes from, so a caller who may
+    not write the project never learns its ``memory_namespace`` from a write
+    request (same discipline as the read routes).
+    """
+    service = ProjectService(server.services)
+    service.assert_project_role(project_id, user=_actor(user), required=PROJECT_WRITE)
+    return service.get_project(project_id, user=_actor(user))
+
+
+def _agent_memory_cfg(server: Any, agent_id: str) -> dict[str, Any]:
+    """Return the agent's parsed ``config_json`` (its memory backend lives here)."""
+    row = server.services.agent_repo.get(agent_id)
+    raw = getattr(row, "config_json", None) if row is not None else None
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _open_recall(server: Any, agent_id: str, team_id: str | None) -> Any:
+    """Build the cross-namespace merge layer over the agent's own memory backend."""
+    from octop.infra.agents.memory.multi_ns import MemoryScope, MultiNsRecall
+
+    scope = MemoryScope(
+        agent_id=agent_id,
+        cfg=_agent_memory_cfg(server, agent_id),
+        octop_config=server.services.config,
+        workspace_dir=resolve_agent_workspace_dir(server, agent_id),
+        team_agent_id=team_id,
+    )
+    return MultiNsRecall(scope)
+
+
+def _list_layer_atoms(memory: Any, layer: str, *, limit: int, stopwatch: Any) -> list[Any]:
+    """Read one layer's atoms under its own deadline.
+
+    Each namespace is treated as one recall source: a namespace that times out
+    or fails at the driver contributes no rows and the other layers still
+    answer (same discipline as ``multi_ns``'s per-namespace gather).
+    """
+    from octop_memory.pipeline.recall.timeout import (
+        DEFAULT_ATOM_BUDGET_MS,
+        TimeoutExceededError,
+        with_deadline,
+    )
+    from octop_memory.storage.driver_errors import DRIVER_ERRORS
+
+    try:
+        atoms: list[Any] = with_deadline(
+            lambda: memory.list_atoms(limit=limit),
+            stage=f"ns:{layer}",
+            budget_ms=min(DEFAULT_ATOM_BUDGET_MS, max(1, stopwatch.remaining_ms)),
+        )
+    except TimeoutExceededError:
+        logger.warning("memory scope listing timed out layer=%s", layer)
+        return []
+    except DRIVER_ERRORS:
+        logger.warning("memory scope listing failed layer=%s", layer, exc_info=True)
+        return []
+    stopwatch.split(f"ns:{layer}")
+    return atoms
+
+
+def _iso(value: Any) -> str | None:
+    return value.isoformat() if isinstance(value, datetime) else None
+
+
+def _scope_groups(
+    recall: Any,
+    *,
+    project_id: str | None,
+    project_namespace: str | None,
+    limit: int,
+    scopes: Sequence[ScopeName] | None = None,
+) -> list[MemoryScopeGroup]:
+    """Group each namespace's memories, deduped in project → team → agent order.
+
+    The same fact can live in more than one namespace: the project layer inherits
+    the team layer, and both inherit the agent's private layer. Layers are
+    therefore merged with the *same* identity rule the recall path uses — memory
+    id or normalized text — and the first (highest) layer wins. Concatenating the
+    three namespaces would report one memory up to three times (plan R17).
+    """
+    from octop_memory.pipeline.recall.timeout import DEFAULT_TOTAL_BUDGET_MS, Stopwatch
+
+    from octop.infra.agents.memory.multi_ns import normalize_memory_text
+
+    wanted = set(scopes) if scopes is not None else None
+    stopwatch = Stopwatch(total_budget_ms=DEFAULT_TOTAL_BUDGET_MS)
+    seen_ids: set[str] = set()
+    seen_texts: set[str] = set()
+    groups: list[MemoryScopeGroup] = []
+    for layer in recall.layers(project_id=project_id):
+        if wanted is not None and layer not in wanted:
+            continue
+        if stopwatch.expired:
+            break
+        memory = recall.memory_for(
+            layer, project_id=project_id, project_namespace=project_namespace
+        )
+        namespace = str(getattr(memory, "namespace", ""))
+        items: list[MemoryScopeItem] = []
+        for atom in _list_layer_atoms(memory, layer, limit=limit, stopwatch=stopwatch):
+            atom_id = str(getattr(atom, "id", "") or "")
+            text = str(getattr(atom, "assertion", "") or "")
+            text_key = normalize_memory_text(text)
+            if atom_id and atom_id in seen_ids:
+                continue
+            # A blank snippet carries no identity, so it must not dedupe
+            # against another blank one.
+            if text_key and text_key in seen_texts:
+                continue
+            if atom_id:
+                seen_ids.add(atom_id)
+            if text_key:
+                seen_texts.add(text_key)
+            items.append(
+                MemoryScopeItem(
+                    id=atom_id,
+                    text=text,
+                    source_layer=layer,
+                    namespace=namespace,
+                    created_at=_iso(getattr(atom, "created_at", None)),
+                    importance=getattr(atom, "importance", None),
+                    entity_id=getattr(atom, "entity_id", None),
+                    project_id=project_id if layer == "project" else None,
+                )
+            )
+        groups.append(
+            MemoryScopeGroup(
+                source_layer=layer,
+                namespace=namespace,
+                total=len(items),
+                items=items,
+            )
+        )
+    return groups
+
+
+def _decode_cursor(cursor: str | None) -> int:
+    if not cursor:
+        return 0
+    try:
+        offset = int(cursor)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="cursor must be an integer offset") from exc
+    return max(0, offset)
+
+
+@router.get(
+    "/agents/{agent_id}/memory/scopes",
+    summary="List memory grouped by namespace scope",
+    response_model=MemoryScopesOut,
+)
+async def list_memory_scopes(
+    agent_id: str,
+    project_id: str | None = Query(
+        default=None,
+        description="Project context; the project layer is skipped entirely when omitted",
+    ),
+    team_id: str | None = Query(
+        default=None, description="Team host agent id; omit when the agent belongs to no team"
+    ),
+    limit: int = Query(default=50, ge=1, le=500),
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> MemoryScopesOut:
+    """Read the agent's memory grouped by ``agent_{id}`` / ``team_{id}`` / ``project_{id}``.
+
+    The project group appears **only** when ``project_id`` is supplied — the
+    project layer is never guessed — and an empty group is an empty state, not an
+    error. Rows already contributed by a higher layer are not repeated in a lower
+    one (plan R17), so a row shown under ``agent`` is one that is not yet in the
+    team or project layer.
+
+    Supplying ``project_id`` requires ``PROJECT_READ`` on that project, exactly
+    as on the project-scoped route: reading ``project_{id}`` memory is gated by
+    ``project_members`` on **every** path, not only the project one (SPEC §11.3 /
+    B38). The namespace is taken from the authorised row, so a non-member never
+    learns the project's ``memory_namespace``.
+    """
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    project_namespace: str | None = None
+    if project_id is not None:
+        project_namespace = (
+            ProjectService(server.services)
+            .get_project(project_id, user=_actor(user))
+            .memory_namespace
+        )
+    recall = _open_recall(server, agent_id, team_id)
+    try:
+        groups = _scope_groups(
+            recall,
+            project_id=project_id,
+            project_namespace=project_namespace,
+            limit=limit,
+        )
+    finally:
+        recall.close()
+    return MemoryScopesOut(agent_id=agent_id, groups=groups)
+
+
+@router.get(
+    "/projects/{project_id}/memory",
+    summary="List a project's memory",
+    tags=["projects"],
+    response_model=ProjectMemoryOut,
+)
+async def list_project_memory(
+    project_id: str,
+    agent_id: str = Query(
+        description="Host agent whose memory backend holds the project's namespace"
+    ),
+    scope: ScopeFilter = Query(default="project"),
+    team_id: str | None = Query(default=None, description="Team host agent id, for team scope"),
+    cursor: str | None = Query(default=None, description="Opaque offset from a previous page"),
+    limit: int = Query(default=50, ge=1, le=500),
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> ProjectMemoryOut:
+    """Read ``project_{project_id}`` memory for anyone with ``PROJECT_READ``.
+
+    Membership — not the platform admin flag — guards project data, so a
+    non-member is rejected with ``403 PROJECT_FORBIDDEN`` even when it is an
+    admin (``ProjectService.assert_project_role``'s documented semantics). A
+    project that has no memory yet is an empty state, not an error.
+
+    ``agent_id`` locates the backend only: a project namespace lives inside the
+    host agent's workspace, and the run's host is not recorded on the project row
+    yet (``team_runs.host_agent_id`` arrives with migration 022), so the caller
+    supplies it.
+    """
+    project = ProjectService(server.services).get_project(project_id, user=_actor(user))
+
+    offset = _decode_cursor(cursor)
+    recall = _open_recall(server, agent_id, team_id)
+    try:
+        groups = _scope_groups(
+            recall,
+            project_id=project_id,
+            project_namespace=project.memory_namespace,
+            # One row past the page, so "is there another page" is answerable
+            # without reading the whole layer.
+            limit=offset + limit + 1,
+            scopes=None if scope == "all" else (scope,),
+        )
+    finally:
+        recall.close()
+
+    items = [item for group in groups for item in group.items]
+    page = items[offset : offset + limit]
+    next_cursor = str(offset + limit) if len(items) > offset + limit else None
+    return ProjectMemoryOut(project_id=project_id, items=page, next_cursor=next_cursor)
 
 
 __all__ = ["router"]

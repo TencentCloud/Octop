@@ -239,8 +239,9 @@ def test_dashboard_projects_namespace_is_paired_and_localized():
     en = json.loads((repo / "dashboard/src/locales/en.json").read_text(encoding="utf-8"))
     zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
     assert set(en["projects"]) == set(zh["projects"])
-    # 208+4+22+4+1 = 239, + 6 batch 8 (PLAN §5) = 245, + 2 batch 19 = 247, + 7 batch 12 = 254.
-    assert len(zh["projects"]) == 254
+    # 208+4+22+4+1 = 239, + 6 batch 8 (PLAN §5) = 245, + 2 batch 19 = 247, + 7 batch 12 = 254,
+    # + 8 batch 20 (T-86 项目记忆 Tab：tabMemory + memoryEmpty/Hint/Denied/Hint/Error/NoAgent/Hint) = 262.
+    assert len(zh["projects"]) == 262
     # R6 copy change: values only, keys untouched.
     assert zh["projects"]["taskStatusReview"] == "审核中"
     assert zh["projects"]["taskStatusBlocked"] == "已阻塞"
@@ -415,8 +416,8 @@ def test_batch2_projects_keys_exist_in_both_locales():
         assert key in zh["projects"], f"zh projects.{key} missing"
         assert key in en["projects"], f"en projects.{key} missing"
         assert en["projects"][key] != "", f"en projects.{key} is empty"
-    assert len(zh["projects"]) == 254
-    assert len(en["projects"]) == 254
+    assert len(zh["projects"]) == 262
+    assert len(en["projects"]) == 262
 
 
 # ── batch 3 (T-I18N3): edit-dialog labels + two rejection codes ──────────────
@@ -504,7 +505,11 @@ def test_no_duplicate_keys_inside_any_dashboard_object():
         path = repo / f"dashboard/src/locales/{locale}.json"
         assert _duplicate_keys_in_one_object(path) == [], locale
         data = json.loads(path.read_text(encoding="utf-8"))
-        assert len(data) == 81 and len(data["chat"]) == 211, locale
+        # 82 = 81 + the `teamRuns` namespace added by T-20 (RunDetail page). This guard
+        # exists to catch a duplicated *top-level block* from concurrent writers; an
+        # intentional new namespace moves the number on purpose. Whoever adds the next
+        # namespace bumps it again (and says so).
+        assert len(data) == 82 and len(data["chat"]) == 211, locale
 
 
 def test_the_projects_block_is_written_once():
@@ -566,7 +571,7 @@ def test_batch4_project_keys_are_localized_per_key():
         # L10: the PLAN table's bold / footnote markers are never part of a value.
         for value in (zh["projects"][key], en["projects"][key]):
             assert "**" not in value and "※" not in value, key
-    assert len(zh["projects"]) == 254 and len(en["projects"]) == 254
+    assert len(zh["projects"]) == 262 and len(en["projects"]) == 262
     # The interpolation placeholder must survive transcription verbatim.
     assert zh["projects"]["quickInputTarget"] == "发给 {{name}}"
     assert en["projects"]["quickInputTarget"] == "To {{name}}"
@@ -629,7 +634,7 @@ def test_qi_recipient_keys_are_localized_per_key():
         assert en["projects"][key] == en_value, key
         for value in (zh["projects"][key], en["projects"][key]):
             assert "**" not in value and "※" not in value, key
-    assert len(zh["projects"]) == 254 and len(en["projects"]) == 254
+    assert len(zh["projects"]) == 262 and len(en["projects"]) == 262
     # The reused strings must keep their existing wording (no silent redefinition).
     assert zh["projects"]["quickInputTarget"] == "发给 {{name}}"
     assert zh["projects"]["quickInputNoAgent"] == "请先在项目配置中绑定专家。"
@@ -652,7 +657,7 @@ def test_batch6_picker_empty_teams_is_localized_per_key():
         assert en["projects"][key] == en_value, key
         for value in (zh["projects"][key], en["projects"][key]):
             assert "**" not in value and "※" not in value, key
-    assert len(zh["projects"]) == 254 and len(en["projects"]) == 254
+    assert len(zh["projects"]) == 262 and len(en["projects"]) == 262
     # The reused keys must keep their wording: this batch adds exactly one key.
     assert set(_T_P6_I18N_PROJECT_KEYS) <= set(zh["projects"])
     for reused, expected in (
@@ -690,7 +695,7 @@ def test_batch8_feed_keys_are_localized_per_key():
         assert en["projects"][key] == en_value, key
         for value in (zh["projects"][key], en["projects"][key]):
             assert "**" not in value and "※" not in value, key
-    assert len(zh["projects"]) == 254 and len(en["projects"]) == 254
+    assert len(zh["projects"]) == 262 and len(en["projects"]) == 262
     # Keys the feed keeps rendering must survive (reused, never redefined).
     for reused in ("tabDynamic", "dynamicPlaceholder", "taskDetailTimeline"):
         assert reused in zh["projects"], reused
@@ -743,3 +748,162 @@ def test_batch12_feed_filter_keys_are_localized_per_key():
         assert en["projects"][key] == en_value, key
     assert zh["projects"]["feedEmptyRelevance"] != zh["projects"]["feedEmptyFiltered"]
     assert en["projects"]["feedEmptyRelevance"] != en["projects"]["feedEmptyFiltered"]
+
+
+# ── expert-team run/pipeline rejection codes (T-15 / PLAN.md 拒绝码词表) ───────
+#
+# 为什么还要这三条：既有 97 条是**遍历 ErrorCode / 键集合**的形态（断言基数
+# 136 → 172，判别力变广），但存在一个真缺口 —— 若有人**同时**从 errors.py 与
+# locale 里删掉同一个码，那些遍历式用例会**照样全绿**。下面三条把 36 个码名、
+# 4 个非码名与 36 条状态映射**显式钉死**，删/改任一处即红。
+#
+# 只追加，不改任何既有断言。状态映射的权威 = PLAN.md「拒绝码词表」
+# （A 组 20 = 门禁/API 码；B 组 16 = 生效边界码 B1–B29）。
+
+_TEAM_CODES_A20 = (
+    "TEAM_RUN_NOT_FOUND",
+    "TEAM_RUN_PHASE_INVALID",
+    "TEAM_PHASE_GATE_FAILED",
+    "TEAM_DECISION_PENDING",
+    "TEAM_DECISION_NOT_PENDING",
+    "TEAM_DECISION_OPTION_INVALID",
+    "TEAM_SPEC_BOUNDARY_EMPTY",
+    "TEAM_TASK_DEPS_UNMET",
+    "TEAM_TASK_GRAPH_INVALID",
+    "TEAM_REWORK_LOOP_LIMIT",
+    "TEAM_FINDING_REOPENED",
+    "TEAM_ATTEMPT_STALE",
+    "TEAM_SCOPE_VIOLATION",
+    "TEAM_VERDICT_FINDINGS_REQUIRED",
+    "TEAM_REVIEW_SELF_AUDIT",
+    "TEAM_ARTIFACT_STALE",
+    "TEAM_ARTIFACT_OWNERSHIP_DENIED",
+    "TEAM_RUN_MEMBER_LIMIT",
+    "TEAM_RUN_TASK_LIMIT",
+    "TEAM_TIER_INVALID",
+)
+
+_TEAM_CODES_B16 = (
+    "TEAM_ROLE_UNKNOWN",
+    "TEAM_TIER_DOWNGRADE_FORBIDDEN",
+    "TEAM_RUN_CONFLICT",
+    "TEAM_TASK_CLAIM_CONFLICT",
+    "TEAM_PHASE_CONFLICT",
+    "TEAM_CROSS_RUN_REFERENCE",
+    "TEAM_RUN_TERMINAL",
+    "TEAM_TASK_TERMINAL",
+    "TEAM_TASK_STATUS_INVALID",
+    "TEAM_MEMBER_NOT_IN_RUN",
+    "TEAM_ARTIFACT_INVALID",
+    "TEAM_ARTIFACT_PATH_INVALID",
+    "TEAM_RUN_GOAL_EMPTY",
+    "TEAM_RUN_GOAL_TOO_LONG",
+    "TEAM_COMMAND_UNKNOWN",
+    "TEAM_EFFORT_INVALID",
+)
+
+_TEAM_CODES_36 = _TEAM_CODES_A20 + _TEAM_CODES_B16
+
+#: PLAN.md 拒绝码词表的 HTTP 状态，逐值冻结（防后人改状态）。
+_TEAM_CODE_STATUS_36 = {
+    # A 组 20
+    "TEAM_RUN_NOT_FOUND": 404,
+    "TEAM_RUN_PHASE_INVALID": 409,
+    "TEAM_PHASE_GATE_FAILED": 409,
+    "TEAM_DECISION_PENDING": 409,
+    "TEAM_DECISION_NOT_PENDING": 409,
+    "TEAM_DECISION_OPTION_INVALID": 400,
+    "TEAM_SPEC_BOUNDARY_EMPTY": 409,
+    "TEAM_TASK_DEPS_UNMET": 409,
+    "TEAM_TASK_GRAPH_INVALID": 409,
+    "TEAM_REWORK_LOOP_LIMIT": 409,
+    "TEAM_FINDING_REOPENED": 409,
+    "TEAM_ATTEMPT_STALE": 409,
+    "TEAM_SCOPE_VIOLATION": 409,
+    "TEAM_VERDICT_FINDINGS_REQUIRED": 409,
+    "TEAM_REVIEW_SELF_AUDIT": 409,
+    "TEAM_ARTIFACT_STALE": 409,
+    "TEAM_ARTIFACT_OWNERSHIP_DENIED": 409,
+    "TEAM_RUN_MEMBER_LIMIT": 409,
+    "TEAM_RUN_TASK_LIMIT": 409,
+    "TEAM_TIER_INVALID": 400,
+    # B 组 16（生效边界码）
+    "TEAM_ROLE_UNKNOWN": 400,
+    "TEAM_TIER_DOWNGRADE_FORBIDDEN": 400,
+    "TEAM_RUN_CONFLICT": 409,
+    "TEAM_TASK_CLAIM_CONFLICT": 409,
+    "TEAM_PHASE_CONFLICT": 409,
+    "TEAM_CROSS_RUN_REFERENCE": 403,
+    "TEAM_RUN_TERMINAL": 409,
+    "TEAM_TASK_TERMINAL": 409,
+    "TEAM_TASK_STATUS_INVALID": 409,
+    "TEAM_MEMBER_NOT_IN_RUN": 403,
+    "TEAM_ARTIFACT_INVALID": 400,
+    "TEAM_ARTIFACT_PATH_INVALID": 400,
+    "TEAM_RUN_GOAL_EMPTY": 400,
+    "TEAM_RUN_GOAL_TOO_LONG": 400,
+    "TEAM_COMMAND_UNKNOWN": 400,
+    "TEAM_EFFORT_INVALID": 400,
+}
+
+#: 这四个名字**不得**是 ErrorCode 成员：前两个是上游别名（只登记映射），
+#: 后两个已撤销为「读侧告警、无码」。
+_TEAM_NON_CODES = (
+    "TEAM_MEMBER_LIMIT",
+    "TEAM_TASK_LIMIT",
+    "TEAM_TASK_KIND_INVALID",
+    "TEAM_TASK_VERIFY_UNRUN",
+)
+
+
+def test_team_rejection_codes_exist_in_all_four_places():
+    """36 个码名逐个存在 —— 从任意一处删掉任一个即红（遍历式用例抓不到这种删除）。"""
+    from octop.infra.errors import ErrorCode
+
+    assert len(_TEAM_CODES_A20) == 20
+    assert len(_TEAM_CODES_B16) == 16
+    assert len(_TEAM_CODES_36) == 36
+    assert len(set(_TEAM_CODES_36)) == 36
+
+    repo = Path(__file__).resolve().parents[3]
+    backend_en = json.loads((repo / "src/octop/i18n/en.json").read_text(encoding="utf-8"))
+    backend_zh = json.loads((repo / "src/octop/i18n/zh.json").read_text(encoding="utf-8"))
+    dash_en = json.loads((repo / "dashboard/src/locales/en.json").read_text(encoding="utf-8"))
+    dash_zh = json.loads((repo / "dashboard/src/locales/zh.json").read_text(encoding="utf-8"))
+
+    for code in _TEAM_CODES_36:
+        assert code in ErrorCode.__members__, f"ErrorCode 缺少 {code}"
+        assert backend_en["errors"].get(code), f"en errors.{code} 缺失或为空"
+        assert backend_zh["errors"].get(code), f"zh errors.{code} 缺失或为空"
+        assert dash_en["apiErrors"].get(code), f"en apiErrors.{code} 缺失或为空"
+        assert dash_zh["apiErrors"].get(code), f"zh apiErrors.{code} 缺失或为空"
+
+    # 两个易漏码单独点名（PLAN 明示）：删掉它们必须红。
+    assert "TEAM_FINDING_REOPENED" in ErrorCode.__members__
+    assert "TEAM_REVIEW_SELF_AUDIT" in ErrorCode.__members__
+
+
+def test_team_non_codes_are_absent_from_error_code():
+    """上游别名与已撤销码**必须不在** ErrorCode 里，且也不得有 i18n 键。"""
+    from octop.infra.errors import ErrorCode
+
+    repo = Path(__file__).resolve().parents[3]
+    backend_en = json.loads((repo / "src/octop/i18n/en.json").read_text(encoding="utf-8"))
+    dash_en = json.loads((repo / "dashboard/src/locales/en.json").read_text(encoding="utf-8"))
+
+    for name in _TEAM_NON_CODES:
+        assert name not in ErrorCode.__members__, f"{name} 不得成为 ErrorCode 成员"
+        assert name not in backend_en["errors"], f"{name} 不得出现在后端 errors.*"
+        assert name not in dash_en["apiErrors"], f"{name} 不得出现在 dashboard apiErrors.*"
+
+
+def test_team_code_status_mapping_matches_plan():
+    """36 条状态映射逐值冻结 —— 改状态即红（`_DEFAULT_STATUS` 是构造期真源）。"""
+    from octop.infra.errors import _DEFAULT_STATUS, ErrorCode, OctopError
+
+    assert set(_TEAM_CODE_STATUS_36) == set(_TEAM_CODES_36)
+    for code, expected in _TEAM_CODE_STATUS_36.items():
+        member = ErrorCode[code]
+        assert _DEFAULT_STATUS[member] == expected, f"{code} 默认状态应为 {expected}"
+        # 构造期路径同样成立（__post_init__ 读 _DEFAULT_STATUS；漏登记会 KeyError）。
+        assert OctopError(member, "x").status == expected, code

@@ -87,6 +87,35 @@
       "not_owner": "Only the user who was asked can answer.",
       "answered_prefix": "User answered: "
     },
+    "team": {
+      "user_inactive": "This user can no longer act.",
+      "usage": "Usage: /team <goal> | status|task|check|detail|decision|resume|cancel|tier|learn|settle",
+      "unknown": "Unknown /team argument.",
+      "not_found": "No team found for {run}.",
+      "created": "Team run created: {run}",
+      "status_title": "Team run {run}",
+      "task_done": "Task {task} → {op}",
+      "check_title": "Gate findings for {run}",
+      "check_clean": "No gate findings for {run}.",
+      "detail_title": "Run {run} phases",
+      "decision_done": "Decision for {run} recorded: {choice} (status {status})",
+      "decision_none": "No pending decision for {run}.",
+      "resume_done": "Run {run} resumed (status {status}).",
+      "cancel_done": "Run {run} cancelled.",
+      "tier_title": "Tier {tier} for run {run}",
+      "learn_title": "Artifacts for {run}",
+      "learn_none": "No artifacts yet for {run}.",
+      "settle_title": "Settled {count} task(s) for {run}",
+      "settle_none": "Nothing to settle for {run}.",
+      "field": {
+        "status": "status",
+        "phase": "phase",
+        "tier": "tier",
+        "mode": "mode",
+        "goal": "goal",
+        "stranded": "stranded"
+      }
+    },
     "title": {
       "usage": "Usage: /title <text>",
       "done": "Title set: {title}"
@@ -271,6 +300,10 @@
       "pending": {
         "label": "Pending approvals",
         "description": "List tool approvals waiting for your decision"
+      },
+      "team": {
+        "label": "Team run",
+        "description": "Start or drive an expert-team run"
       },
       "title": {
         "label": "Set title",
@@ -472,7 +505,45 @@
     "PROJECT_CONNECTOR_INVALID": "That connector type does not exist or is not available.",
     "PROJECT_SKILL_INVALID": "Only skills installed on that expert can be selected.",
     "PROJECT_CRON_INVALID": "The scheduled task's expert or project ownership is not valid.",
-    "PROJECT_INSTRUCTION_INVALID": "The instructions are not valid (too long or containing illegal characters)."
+    "PROJECT_INSTRUCTION_INVALID": "The instructions are not valid (too long or containing illegal characters).",
+    "TEAM_RUN_NOT_FOUND": "Team run not found.",
+    "TEAM_RUN_PHASE_INVALID": "Phase transition is not allowed.",
+    "TEAM_PHASE_GATE_FAILED": "The current phase gate is not satisfied.",
+    "TEAM_DECISION_PENDING": "A pending decision must be resolved first.",
+    "TEAM_DECISION_NOT_PENDING": "There is no pending decision to resolve.",
+    "TEAM_DECISION_OPTION_INVALID": "The selected decision option is not valid.",
+    "TEAM_SPEC_BOUNDARY_EMPTY": "The spec boundary table is empty; implementation cannot start.",
+    "TEAM_TASK_DEPS_UNMET": "Upstream tasks are not done yet.",
+    "TEAM_TASK_GRAPH_INVALID": "The task graph is invalid.",
+    "TEAM_REWORK_LOOP_LIMIT": "The rework round limit has been reached; escalate to the user.",
+    "TEAM_FINDING_REOPENED": "The same finding is still open across two rounds; escalate to the user.",
+    "TEAM_ATTEMPT_STALE": "This attempt has been superseded by a newer one.",
+    "TEAM_SCOPE_VIOLATION": "Changed paths fall outside the task scope.",
+    "TEAM_VERDICT_FINDINGS_REQUIRED": "A non-pass verdict must carry at least one finding.",
+    "TEAM_REVIEW_SELF_AUDIT": "A reviewer cannot audit their own output.",
+    "TEAM_ARTIFACT_STALE": "The artifact was changed by someone else; reload and retry.",
+    "TEAM_ARTIFACT_OWNERSHIP_DENIED": "You are not the owner of this artifact.",
+    "TEAM_RUN_MEMBER_LIMIT": "The run member limit has been reached.",
+    "TEAM_RUN_TASK_LIMIT": "The run task limit has been reached.",
+    "TEAM_PLAN_DRAFT_INVALID": "plan draft invalid: task owner is not in the role list",
+    "TEAM_PLAN_DRAFT_MISSING": "no plan draft awaiting approval",
+    "TEAM_TIER_INVALID": "Unknown tier; it is not guessed or silently defaulted.",
+    "TEAM_ROLE_UNKNOWN": "The role is not in the fixed role table.",
+    "TEAM_TIER_DOWNGRADE_FORBIDDEN": "Downgrading the tier is not allowed.",
+    "TEAM_RUN_CONFLICT": "The run was already modified by a concurrent request.",
+    "TEAM_TASK_CLAIM_CONFLICT": "The task was already claimed by someone else.",
+    "TEAM_PHASE_CONFLICT": "The phase was already advanced by a concurrent request.",
+    "TEAM_CROSS_RUN_REFERENCE": "Cross-run references are not allowed.",
+    "TEAM_RUN_TERMINAL": "This run is already in a terminal state.",
+    "TEAM_TASK_TERMINAL": "This task is already in a terminal state.",
+    "TEAM_TASK_STATUS_INVALID": "The task status transition is not allowed.",
+    "TEAM_MEMBER_NOT_IN_RUN": "You are not a member of this run.",
+    "TEAM_ARTIFACT_INVALID": "The artifact content is not valid.",
+    "TEAM_ARTIFACT_PATH_INVALID": "The artifact path is not allowed.",
+    "TEAM_RUN_GOAL_EMPTY": "The run goal must not be empty.",
+    "TEAM_RUN_GOAL_TOO_LONG": "The run goal is too long.",
+    "TEAM_COMMAND_UNKNOWN": "Unknown /team subcommand.",
+    "TEAM_EFFORT_INVALID": "Unknown reasoning effort."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -832,7 +903,39 @@
     "channel_dispatched": "Asked {name} to handle this — please wait…",
     "host_briefing": "[Host dispatch — do not do the work yourself]\nUser messages arrive here first. Digest intent, scope, constraints, and the deliverable; ask one clarifying question if a key fact is missing. For real work, rewrite a self-contained assignment for that member before ask_agent: goal, scope, delivery format, and needed context. Never paste the user's wording unchanged. Tailor each member's task. Answer greetings or clarifications yourself in one or two sentences. After ask_agent returns, do not repeat that you assigned someone. If this turn is a member-finished wake-up, wrap up or reassign per that notice — do not repeat the same task.",
     "member_briefing": "[Team assignment, not a direct user question]\nYou are a member of this expert team. The host has already processed the user's request and assigned you this task. Do the work and deliver the result. Do not treat the user's original wording as a one-to-one question to you, and do not speak as the host.",
-    "member_briefing_with_history": "[Team assignment, not a direct user question]\nYou are a member of this expert team. The host has already processed the user's request and assigned you this task. Do the work and deliver the result. Do not treat the user's original wording as a one-to-one question to you, and do not speak as the host. The group transcript below is background only.\n\n{history}"
+    "member_briefing_with_history": "[Team assignment, not a direct user question]\nYou are a member of this expert team. The host has already processed the user's request and assigned you this task. Do the work and deliver the result. Do not treat the user's original wording as a one-to-one question to you, and do not speak as the host. The group transcript below is background only.\n\n{history}",
+    "phase": {
+      "clarify": "Clarify",
+      "research": "Research",
+      "design": "Design",
+      "spec_review": "Spec review",
+      "plan_approval": "Plan approval",
+      "implement": "Implement",
+      "review": "Review",
+      "test": "Test",
+      "deliver": "Deliver"
+    },
+    "run_status": {
+      "running": "Running",
+      "awaiting_confirmation": "Awaiting confirmation",
+      "awaiting_decision": "Awaiting decision",
+      "complete": "Complete",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "gate": {
+      "missing_artifacts": "Required artifacts are missing.",
+      "spec_boundary_empty": "The spec boundary table is empty.",
+      "decision_pending": "A decision is pending.",
+      "deps_unmet": "Upstream tasks are not done yet.",
+      "round_limit": "The round limit has been reached.",
+      "phase_invalid": "The phase transition is not allowed."
+    },
+    "command": {
+      "started": "Team run started.",
+      "help": "Team run commands.",
+      "unknown_subcommand": "Unknown /team subcommand."
+    }
   },
   "conversation_mode": {
     "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",

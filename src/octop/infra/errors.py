@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
 from octop.i18n import error_message as i18n_error_message
 from octop.infra.utils.locale import Locale, normalize_locale
+
+#: The names ``error_message`` already owns. A ``details`` key with one of these
+#: names must not be forwarded as an interpolation kwarg (see
+#: ``OctopError.interpolation_kwargs``); derived from the signature so it cannot go
+#: stale.
+_ERROR_MESSAGE_PARAMS = frozenset(inspect.signature(i18n_error_message).parameters)
 
 
 class ErrorCode(StrEnum):
@@ -122,6 +129,48 @@ class ErrorCode(StrEnum):
     TEAM_MEMBER_INVALID = "TEAM_MEMBER_INVALID"
     TEAM_MEMBER_BUSY = "TEAM_MEMBER_BUSY"
     TEAM_NOT_SHAREABLE = "TEAM_NOT_SHAREABLE"
+    # --- expert-team run/pipeline rejection codes (T-15; authority = PLAN.md 拒绝码词表) ---
+    # A 组 20：门禁 / API 码
+    TEAM_RUN_NOT_FOUND = "TEAM_RUN_NOT_FOUND"
+    TEAM_RUN_PHASE_INVALID = "TEAM_RUN_PHASE_INVALID"
+    TEAM_PHASE_GATE_FAILED = "TEAM_PHASE_GATE_FAILED"
+    TEAM_DECISION_PENDING = "TEAM_DECISION_PENDING"
+    TEAM_DECISION_NOT_PENDING = "TEAM_DECISION_NOT_PENDING"
+    TEAM_DECISION_OPTION_INVALID = "TEAM_DECISION_OPTION_INVALID"
+    TEAM_SPEC_BOUNDARY_EMPTY = "TEAM_SPEC_BOUNDARY_EMPTY"
+    TEAM_TASK_DEPS_UNMET = "TEAM_TASK_DEPS_UNMET"
+    TEAM_TASK_GRAPH_INVALID = "TEAM_TASK_GRAPH_INVALID"
+    TEAM_REWORK_LOOP_LIMIT = "TEAM_REWORK_LOOP_LIMIT"
+    TEAM_FINDING_REOPENED = "TEAM_FINDING_REOPENED"
+    TEAM_ATTEMPT_STALE = "TEAM_ATTEMPT_STALE"
+    TEAM_SCOPE_VIOLATION = "TEAM_SCOPE_VIOLATION"
+    TEAM_VERDICT_FINDINGS_REQUIRED = "TEAM_VERDICT_FINDINGS_REQUIRED"
+    TEAM_REVIEW_SELF_AUDIT = "TEAM_REVIEW_SELF_AUDIT"
+    TEAM_ARTIFACT_STALE = "TEAM_ARTIFACT_STALE"
+    TEAM_ARTIFACT_OWNERSHIP_DENIED = "TEAM_ARTIFACT_OWNERSHIP_DENIED"
+    TEAM_RUN_MEMBER_LIMIT = "TEAM_RUN_MEMBER_LIMIT"
+    TEAM_RUN_TASK_LIMIT = "TEAM_RUN_TASK_LIMIT"
+    # --- plan gate (T2; authority = PLAN.md §2.4 拒绝码与状态 — 本批只新增这 2 个) ---
+    TEAM_PLAN_DRAFT_INVALID = "TEAM_PLAN_DRAFT_INVALID"
+    TEAM_PLAN_DRAFT_MISSING = "TEAM_PLAN_DRAFT_MISSING"
+    TEAM_TIER_INVALID = "TEAM_TIER_INVALID"
+    # B 组 16：生效边界码（B1–B29）
+    TEAM_ROLE_UNKNOWN = "TEAM_ROLE_UNKNOWN"
+    TEAM_TIER_DOWNGRADE_FORBIDDEN = "TEAM_TIER_DOWNGRADE_FORBIDDEN"
+    TEAM_RUN_CONFLICT = "TEAM_RUN_CONFLICT"
+    TEAM_TASK_CLAIM_CONFLICT = "TEAM_TASK_CLAIM_CONFLICT"
+    TEAM_PHASE_CONFLICT = "TEAM_PHASE_CONFLICT"
+    TEAM_CROSS_RUN_REFERENCE = "TEAM_CROSS_RUN_REFERENCE"
+    TEAM_RUN_TERMINAL = "TEAM_RUN_TERMINAL"
+    TEAM_TASK_TERMINAL = "TEAM_TASK_TERMINAL"
+    TEAM_TASK_STATUS_INVALID = "TEAM_TASK_STATUS_INVALID"
+    TEAM_MEMBER_NOT_IN_RUN = "TEAM_MEMBER_NOT_IN_RUN"
+    TEAM_ARTIFACT_INVALID = "TEAM_ARTIFACT_INVALID"
+    TEAM_ARTIFACT_PATH_INVALID = "TEAM_ARTIFACT_PATH_INVALID"
+    TEAM_RUN_GOAL_EMPTY = "TEAM_RUN_GOAL_EMPTY"
+    TEAM_RUN_GOAL_TOO_LONG = "TEAM_RUN_GOAL_TOO_LONG"
+    TEAM_COMMAND_UNKNOWN = "TEAM_COMMAND_UNKNOWN"
+    TEAM_EFFORT_INVALID = "TEAM_EFFORT_INVALID"
     PROJECT_NOT_FOUND = "PROJECT_NOT_FOUND"
     PROJECT_FORBIDDEN = "PROJECT_FORBIDDEN"
     PROJECT_ROLE_FORBIDDEN = "PROJECT_ROLE_FORBIDDEN"
@@ -261,6 +310,45 @@ _DEFAULT_STATUS: dict[ErrorCode, int] = {
     ErrorCode.TEAM_MEMBER_INVALID: 400,
     ErrorCode.TEAM_MEMBER_BUSY: 409,
     ErrorCode.TEAM_NOT_SHAREABLE: 400,
+    ErrorCode.TEAM_RUN_NOT_FOUND: 404,
+    ErrorCode.TEAM_RUN_PHASE_INVALID: 409,
+    ErrorCode.TEAM_PHASE_GATE_FAILED: 409,
+    ErrorCode.TEAM_DECISION_PENDING: 409,
+    ErrorCode.TEAM_DECISION_NOT_PENDING: 409,
+    ErrorCode.TEAM_DECISION_OPTION_INVALID: 400,
+    ErrorCode.TEAM_SPEC_BOUNDARY_EMPTY: 409,
+    ErrorCode.TEAM_TASK_DEPS_UNMET: 409,
+    ErrorCode.TEAM_TASK_GRAPH_INVALID: 409,
+    ErrorCode.TEAM_REWORK_LOOP_LIMIT: 409,
+    ErrorCode.TEAM_FINDING_REOPENED: 409,
+    ErrorCode.TEAM_ATTEMPT_STALE: 409,
+    ErrorCode.TEAM_SCOPE_VIOLATION: 409,
+    ErrorCode.TEAM_VERDICT_FINDINGS_REQUIRED: 409,
+    ErrorCode.TEAM_REVIEW_SELF_AUDIT: 409,
+    ErrorCode.TEAM_ARTIFACT_STALE: 409,
+    ErrorCode.TEAM_ARTIFACT_OWNERSHIP_DENIED: 409,
+    ErrorCode.TEAM_RUN_MEMBER_LIMIT: 409,
+    ErrorCode.TEAM_RUN_TASK_LIMIT: 409,
+    # Plan gate (T2): 草稿非法 = 422（不可处理实体），无草稿可批/可丢 = 409（状态冲突）。
+    ErrorCode.TEAM_PLAN_DRAFT_INVALID: 422,
+    ErrorCode.TEAM_PLAN_DRAFT_MISSING: 409,
+    ErrorCode.TEAM_TIER_INVALID: 400,
+    ErrorCode.TEAM_ROLE_UNKNOWN: 400,
+    ErrorCode.TEAM_TIER_DOWNGRADE_FORBIDDEN: 400,
+    ErrorCode.TEAM_RUN_CONFLICT: 409,
+    ErrorCode.TEAM_TASK_CLAIM_CONFLICT: 409,
+    ErrorCode.TEAM_PHASE_CONFLICT: 409,
+    ErrorCode.TEAM_CROSS_RUN_REFERENCE: 403,
+    ErrorCode.TEAM_RUN_TERMINAL: 409,
+    ErrorCode.TEAM_TASK_TERMINAL: 409,
+    ErrorCode.TEAM_TASK_STATUS_INVALID: 409,
+    ErrorCode.TEAM_MEMBER_NOT_IN_RUN: 403,
+    ErrorCode.TEAM_ARTIFACT_INVALID: 400,
+    ErrorCode.TEAM_ARTIFACT_PATH_INVALID: 400,
+    ErrorCode.TEAM_RUN_GOAL_EMPTY: 400,
+    ErrorCode.TEAM_RUN_GOAL_TOO_LONG: 400,
+    ErrorCode.TEAM_COMMAND_UNKNOWN: 400,
+    ErrorCode.TEAM_EFFORT_INVALID: 400,
     ErrorCode.PROJECT_NOT_FOUND: 404,
     ErrorCode.PROJECT_FORBIDDEN: 403,
     ErrorCode.PROJECT_ROLE_FORBIDDEN: 403,
@@ -303,10 +391,31 @@ class OctopError(Exception):
             self.status = _DEFAULT_STATUS[self.code]
         super().__init__(self.message)
 
+    def interpolation_kwargs(self, **kwargs: object) -> dict[str, object]:
+        """``details`` minus the keys that name ``error_message``'s own parameters.
+
+        ``error_message(code, locale, **kwargs)`` takes the code positionally, so a
+        ``details["code"]`` -- which G6's graph refusal carries on purpose, it is part
+        of that error's contract -- collided with the parameter and raised
+        ``TypeError`` **at serialization time**: the refusal existed but could never
+        reach a client. The reserved names are derived from the function's signature
+        instead of being hard-coded, so a future parameter is covered automatically.
+
+        The keys are **not** dropped from the envelope -- only from message
+        interpolation -- so ``detail.code`` still reaches the caller.
+
+        Deliberately **no** ``except TypeError`` around the interpolation: a broad
+        except here would swallow genuine failures and turn a crash into a silently
+        wrong message. This fixes the *class* "interpolation argument mismatch", not
+        one code's symptom.
+        """
+        merged = {**self.details, **kwargs}
+        return {key: value for key, value in merged.items() if key not in _ERROR_MESSAGE_PARAMS}
+
     def localized_message(self, locale: str | Locale, **kwargs: object) -> str:
         loc = normalize_locale(str(locale))
         try:
-            return i18n_error_message(self.code.value, loc, **{**self.details, **kwargs})
+            return i18n_error_message(self.code.value, loc, **self.interpolation_kwargs(**kwargs))
         except KeyError:
             return self.message
 

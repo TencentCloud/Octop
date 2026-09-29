@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Empty, Segmented, Tabs } from "antd";
+import { Empty, Segmented, Select, Tabs } from "antd";
 import type { LucideIcon } from "lucide-react";
 import {
   Bell,
@@ -33,6 +33,9 @@ import ProactiveConfig from "./ProactiveConfig";
 import MemorySettings from "./MemorySettings";
 
 import memoryDashboardApi from "../../../api/modules/memoryDashboard";
+import { projectsApi, type ProjectOut } from "../../../api/modules/projects";
+import ScopedMemoryView from "./ScopedMemoryView";
+import type { MemorySourceLayer } from "./memoryScopes";
 import styles from "./index.module.less";
 
 type MemoryTab =
@@ -47,6 +50,13 @@ type MemoryTab =
   | "settings";
 
 type LibraryView = "tree" | "atoms" | "raw";
+
+/**
+ * T-38 — which namespace layer the library shows. ``agent`` is the default so the
+ * pre-existing tree/atoms/raw behaviour is untouched; ``team`` and ``project``
+ * are the read-only "scope" views (no write affordance — SPEC B38).
+ */
+type ScopeLayer = MemorySourceLayer;
 
 interface TabDef {
   key: MemoryTab;
@@ -128,6 +138,13 @@ export default function MemoryPanel({
 
   const [activeTab, setActiveTab] = useState<MemoryTab>("overview");
   const [libraryView, setLibraryView] = useState<LibraryView>("tree");
+  const [scope, setScope] = useState<ScopeLayer>("agent");
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<ProjectOut[]>([]);
+  // T-50 「记到项目」: the host owns the write. `scopeReloadKey` re-runs the scope
+  // view's read after a successful move, so the row shows up under 项目层.
+  const [scopeReloadKey, setScopeReloadKey] = useState(0);
+  const [recordHint, setRecordHint] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [expandEntityId, setExpandEntityId] = useState<string | undefined>(
     undefined,
@@ -153,32 +170,91 @@ export default function MemoryPanel({
     };
   }, [agentId, activeTab]);
 
+  // Projects are only needed once the user switches to the 项目 scope, so the
+  // list is fetched lazily and a failure leaves the other scopes working.
+  useEffect(() => {
+    if (scope !== "project" || projects.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await projectsApi.list();
+        if (!cancelled) setProjects(list);
+      } catch {
+        if (!cancelled) setProjects([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [scope, projects.length]);
+
   const tabItems = useMemo(() => {
     if (!agentId) return [];
 
     const library = (
       <div>
+        {/* T-38 — read-only namespace scope. The default `agent` leaves the
+            existing tree/atoms/raw behaviour exactly as it was; the other two
+            values swap in the scoped, layer-labelled read-only view. */}
         <div className={styles.librarySwitchRow}>
           <Segmented
-            value={libraryView}
-            onChange={(v) => setLibraryView(v as LibraryView)}
+            value={scope}
+            onChange={(v) => setScope(v as ScopeLayer)}
             options={[
               {
-                label: t("memory.library.viewTree", "主题视图"),
-                value: "tree",
+                label: t("memory.scope.agentLayer", "我的记忆"),
+                value: "agent",
               },
+              { label: t("memory.scope.teamLayer", "团队"), value: "team" },
               {
-                label: t("memory.library.viewAtoms", "列表视图"),
-                value: "atoms",
-              },
-              {
-                label: t("memory.library.viewRaw", "原始素材"),
-                value: "raw",
+                label: t("memory.scope.projectLayer", "项目"),
+                value: "project",
               },
             ]}
           />
+          {scope === "agent" ? (
+            <Segmented
+              value={libraryView}
+              onChange={(v) => setLibraryView(v as LibraryView)}
+              options={[
+                {
+                  label: t("memory.library.viewTree", "主题视图"),
+                  value: "tree",
+                },
+                {
+                  label: t("memory.library.viewAtoms", "列表视图"),
+                  value: "atoms",
+                },
+                {
+                  label: t("memory.library.viewRaw", "原始素材"),
+                  value: "raw",
+                },
+              ]}
+            />
+          ) : null}
+          {scope === "project" ? (
+            <Select
+              value={projectId ?? undefined}
+              onChange={(v) => setProjectId(v ?? null)}
+              placeholder={t("memory.scope.pickProject", "选择项目")}
+              style={{ minWidth: 200 }}
+              showSearch
+              optionFilterProp="label"
+              allowClear
+              data-testid="memory-scope-project-select"
+              options={projects.map((p) => ({
+                label: p.name,
+                value: p.project_id,
+              }))}
+            />
+          ) : null}
           <span className={styles.librarySwitchHint}>
-            {libraryView === "tree"
+            {scope !== "agent"
+              ? t(
+                  "memory.scope.hintScoped",
+                  "按命名空间层只读浏览：项目层 → 团队层 → agent 私有层",
+                )
+              : libraryView === "tree"
               ? t(
                   "memory.library.hintTree",
                   "按人、项目、工具等主题，分组浏览相关记忆",
@@ -194,7 +270,38 @@ export default function MemoryPanel({
                 )}
           </span>
         </div>
-        {libraryView === "tree" ? (
+        {scope !== "agent" ? (
+          <ScopedMemoryView
+            agentId={agentId}
+            scope={scope}
+            projectId={projectId}
+            reloadKey={scopeReloadKey}
+            onRecordToProject={
+              scope === "project" && projectId
+                ? (item) => {
+                    setRecordHint(null);
+                    void memoryDashboardApi
+                      .recordAtomToProject(agentId, item.id, projectId)
+                      .then(() => setScopeReloadKey((k) => k + 1))
+                      .catch((err: unknown) =>
+                        setRecordHint(
+                          err instanceof Error ? err.message : String(err),
+                        ),
+                      );
+                  }
+                : undefined
+            }
+            recordToProjectHint={
+              scope === "project" && projectId
+                ? recordHint ??
+                  t(
+                    "memory.scope.recordToProjectHint",
+                    "写入项目层需要该项目的写入权限：读得出不等于写得进。",
+                  )
+                : null
+            }
+          />
+        ) : libraryView === "tree" ? (
           <MemoryTree
             key={expandKey}
             agentId={agentId}
@@ -252,7 +359,25 @@ export default function MemoryPanel({
           children = <EpisodesList agentId={agentId} />;
           break;
         case "candidates":
-          children = <CandidatesReview agentId={agentId} />;
+          // T-50: the host owns the project-directed write. The reusable project
+          // list already loaded for the scope switcher is the 「归属项目」 menu, and
+          // the request goes through the single network exit (no fetch here).
+          children = (
+            <CandidatesReview
+              agentId={agentId}
+              projects={projects.map((p) => ({
+                id: p.project_id,
+                name: p.name,
+              }))}
+              onPromoteToProject={async (candidate, projectId) => {
+                await memoryDashboardApi.promoteCandidateToProject(
+                  agentId,
+                  candidate.id,
+                  projectId,
+                );
+              }}
+            />
+          );
           break;
         case "journal":
           children = <JournalList agentId={agentId} />;
@@ -275,7 +400,17 @@ export default function MemoryPanel({
 
       return { key: tab.key, label, children };
     });
-  }, [agentId, expandEntityId, expandKey, libraryView, pendingCount, t]);
+  }, [
+    agentId,
+    expandEntityId,
+    expandKey,
+    libraryView,
+    pendingCount,
+    projectId,
+    projects,
+    scope,
+    t,
+  ]);
 
   if (!agentId) {
     return (

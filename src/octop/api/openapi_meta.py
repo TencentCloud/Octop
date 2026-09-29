@@ -132,6 +132,13 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "name": "teams",
         "description": "Expert teams: roster, create/edit, and member dispatch.",
     },
+    {
+        "name": "team-runs",
+        "description": (
+            "Expert-team runs: the gated pipeline (phases, decisions) over a run's task "
+            "board, its artifacts, and the room it works in."
+        ),
+    },
     {"name": "workspace", "description": "Agent workspace file tree: list, read, write, upload."},
     {"name": "agent_files", "description": "Agent-owned configuration files (SOUL.md, skills, …)."},
     {"name": "usage", "description": "Token usage summaries for billing and dashboards."},

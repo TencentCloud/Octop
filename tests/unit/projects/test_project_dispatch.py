@@ -48,7 +48,15 @@ from octop.infra.db.repos.usage import UsageRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.threads import ThreadRegistry
-from octop.infra.projects.dispatch import build_dispatch_prompt, split_acceptance, task_link
+from octop.infra.projects.dispatch import (
+    DISPATCH_CHAT_TYPE,
+    build_dispatch_prompt,
+    dispatch_session_key,
+    require_dispatch_session_key,
+    run_dispatch_turn,
+    split_acceptance,
+    task_link,
+)
 from octop.infra.projects.service import ProjectService
 
 EXPERT_ID = "ag-expert"
@@ -204,6 +212,7 @@ def services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace
     knowledge_repo = KnowledgeRepo(pool)
     usage_repo = UsageRepo(pool)
     thread_message_repo = ThreadMessageRepo(pool)
+    session_repo = SessionRepo(pool)
     return SimpleNamespace(
         db=pool,
         project_repo=ProjectRepo(pool),
@@ -215,15 +224,17 @@ def services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace
         user_repo=user_repo,
         agent_repo=AgentRepo(pool),
         thread_repo=ThreadRepo(pool),
-        session_repo=SessionRepo(pool),
+        session_repo=session_repo,
         thread_message_repo=thread_message_repo,
         usage_repo=usage_repo,
-        # The slice of ``RepoBundle`` the shared cron turn path reads.
+        # The slice of ``RepoBundle`` the shared cron turn path reads, plus the
+        # session repo the dispatch path creates its own dispatch session with.
         repos=SimpleNamespace(
             user_repo=user_repo,
             knowledge_repo=knowledge_repo,
             usage_repo=usage_repo,
             thread_message_repo=thread_message_repo,
+            session_repo=session_repo,
         ),
     )
 
@@ -471,12 +482,14 @@ async def test_dispatch_creates_a_thread_binds_the_task_and_records_the_timeline
 
     dispatched = await service.dispatch_task(project.id, task.id, user=owner)
 
-    # ① thread created for the assignee, bound to the dispatcher's dashboard session.
+    # ① thread created for the assignee, on its own dispatch session (SPEC B30) —
+    #    never the dispatcher's private DM session.
     assert dispatched.thread_id is not None
     thread = services.thread_repo.get(dispatched.thread_id)
     assert thread is not None
     assert (thread.agent_id, thread.user_id) == (EXPERT_ID, owner.id)
-    assert thread.session_key == ThreadRegistry.dashboard_key(agent_id=EXPERT_ID, user_id=owner.id)
+    assert thread.session_key == dispatch_session_key(agent_id=EXPERT_ID, dispatch_id=task.id)
+    assert thread.session_key != ThreadRegistry.dashboard_key(agent_id=EXPERT_ID, user_id=owner.id)
 
     # ⑤ the task carries the thread.
     assert service.get_task(project.id, task.id, user=owner).thread_id == dispatched.thread_id
@@ -560,6 +573,139 @@ async def test_dispatch_writes_nothing_when_the_turn_fails(
     assert [agent_id for agent_id, _ in manager.streams] == [EXPERT_ID]
     assert service.get_task(project.id, task.id, user=owner).thread_id is None
     assert actions(service, project.id, owner) == [TIMELINE_TASK_CREATED]
+
+
+# ── SPEC B30: a dispatch runs on its own key, never on the user's private DM ──
+
+
+def test_dispatch_session_key_never_takes_the_user_dm_shape() -> None:
+    """B30 ① — pure: the dispatch key is dispatch-scoped for every assignee."""
+    for agent_id in ("ag-1", "CGV8GA"):
+        key = dispatch_session_key(agent_id=agent_id, dispatch_id="tsk_1")
+        assert key == f"{agent_id}:dashboard:tsk_1:dispatch"
+        assert key != ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=1)
+        # A non-DM key passes the guard untouched.
+        assert require_dispatch_session_key(key) == key
+
+
+async def test_dispatch_keeps_the_user_dm_session_thread_id_verbatim(
+    services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    """B30 ① — one dispatch must not rebind the dispatcher's private DM session.
+
+    The DM session exists first (as it does in production: the user has chatted
+    with the assignee); after a dispatch its bound thread has to be the very same
+    id, because that binding *is* the conversation.
+    """
+    service, _, gateway = build(services)
+    create_agents(services, owner.id)
+    task = make_task(service, project, owner)
+
+    dm_key = ThreadRegistry.dashboard_key(agent_id=EXPERT_ID, user_id=owner.id)
+    dm_thread_id = await gateway.thread_registry.get_or_create(
+        agent_id=EXPERT_ID,
+        user_id=owner.id,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        channel_subject_id=str(owner.id),
+        channel_chat_type=ThreadRegistry.CHAT_TYPE_DM,
+    )
+    before = services.session_repo.get(dm_key)
+    assert before is not None
+    assert before.thread_id == dm_thread_id
+
+    dispatched = await service.dispatch_task(project.id, task.id, user=owner)
+
+    after = services.session_repo.get(dm_key)
+    assert after is not None
+    assert after.thread_id == before.thread_id == dm_thread_id
+    assert after.chat_type == ThreadRegistry.CHAT_TYPE_DM
+    assert dispatched.thread_id != dm_thread_id
+
+
+async def test_dispatch_reuses_its_own_session_without_touching_the_user_dm(
+    services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    """A re-dispatch keeps the dispatch session — its chat type is never rewritten."""
+    service, _, gateway = build(services)
+    create_agents(services, owner.id)
+    task = make_task(service, project, owner)
+    dm_key = ThreadRegistry.dashboard_key(agent_id=EXPERT_ID, user_id=owner.id)
+    await gateway.thread_registry.get_or_create(
+        agent_id=EXPERT_ID,
+        user_id=owner.id,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        channel_subject_id=str(owner.id),
+        channel_chat_type=ThreadRegistry.CHAT_TYPE_DM,
+    )
+    dm_before = services.session_repo.get(dm_key)
+    assert dm_before is not None
+
+    first = await service.dispatch_task(project.id, task.id, user=owner)
+    second = await service.dispatch_task(project.id, task.id, user=owner)
+
+    session = services.session_repo.get(
+        dispatch_session_key(agent_id=EXPERT_ID, dispatch_id=task.id)
+    )
+    assert session is not None
+    assert session.chat_type == DISPATCH_CHAT_TYPE
+    assert session.thread_id == second.thread_id
+    assert first.thread_id != second.thread_id
+    dm_after = services.session_repo.get(dm_key)
+    assert dm_after is not None
+    assert dm_after.thread_id == dm_before.thread_id
+
+
+async def test_dispatch_thread_runs_on_a_dispatch_session_not_a_dm_one(
+    services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    """B30 ② — the dispatch thread's session key is not a DM key, chat_type ≠ dm."""
+    service, _, _ = build(services)
+    create_agents(services, owner.id)
+    task = make_task(service, project, owner)
+
+    dispatched = await service.dispatch_task(project.id, task.id, user=owner)
+
+    assert dispatched.thread_id is not None
+    thread = services.thread_repo.get(dispatched.thread_id)
+    assert thread is not None
+    session = services.session_repo.get(thread.session_key)
+    assert session is not None
+
+    assert thread.session_key != ThreadRegistry.dashboard_key(agent_id=EXPERT_ID, user_id=owner.id)
+    assert thread.session_key == dispatch_session_key(agent_id=EXPERT_ID, dispatch_id=task.id)
+    assert session.chat_type == DISPATCH_CHAT_TYPE
+    assert session.chat_type != ThreadRegistry.CHAT_TYPE_DM
+    assert session.thread_id == dispatched.thread_id
+
+
+async def test_dispatch_refuses_a_user_dm_key_as_the_dispatch_key(
+    services: SimpleNamespace, project: Any, owner: Actor
+) -> None:
+    """B30 ④ — a caller-supplied DM key is a same-key conflict, never a rebind."""
+    service, manager, gateway = build(services)
+    create_agents(services, owner.id)
+    task = make_task(service, project, owner)
+    dm_key = ThreadRegistry.dashboard_key(agent_id=EXPERT_ID, user_id=owner.id)
+
+    with pytest.raises(OctopError) as err:
+        await run_dispatch_turn(
+            repos=services.repos,
+            agent_manager=manager,
+            gateway=gateway,
+            project=project,
+            task=task,
+            dispatcher_user_id=owner.id,
+            session_key=dm_key,
+        )
+
+    assert err.value.code is ErrorCode.TEAM_RUN_CONFLICT
+    assert err.value.status == 409
+    assert err.value.details == {"reason": "session_key_already_bound"}
+    # Refused before step ①: no thread, no session, no turn.
+    assert services.thread_repo.list_by_agent(agent_id=EXPERT_ID) == []
+    assert services.session_repo.get(dm_key) is None
+    assert manager.streams == []
+    assert gateway.locked == []
 
 
 # ── routing: the ":dispatch" action suffix is literal, not part of {task_id} ──

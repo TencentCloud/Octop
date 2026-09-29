@@ -394,6 +394,7 @@ async def _unique_inbound_path(workspace: BackendWorkspace, stored_name: str) ->
         alt = f"{INBOUND_DIR}/{stem}-{index}{suffix}"
         if not await workspace.aexists(alt):
             return alt
+    # no-details: message 自带调用者输入（字段名/操作名）；其值属凭据或可能为主机路径，不入 details
     raise OctopError(ErrorCode.INTERNAL_ERROR, f"cannot allocate unique path for {stored_name!r}")
 
 

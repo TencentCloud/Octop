@@ -20,7 +20,10 @@ from octop_harness.registry import AgentEntry
 from octop_harness.security.models import SecurityPolicy
 
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
-from octop.infra.agents.memory.backend import memory_backend_from_agent_config
+from octop.infra.agents.memory.backend import (
+    agent_memory_namespace,
+    memory_backend_from_agent_config,
+)
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
 from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
@@ -97,7 +100,8 @@ _PROVIDER_RELOAD_CONCURRENCY = 6
 
 # octop-memory builds SQLite table names as ``{namespace}_*``. The namespace
 # must be a valid bare SQL identifier: start with a letter, only [A-Za-z0-9_].
-_MEMORY_NS_PREFIX = "agent_"
+# The ``agent_`` prefix is **not** restated here: the single authority is
+# ``infra/agents/memory/backend.py · agent_memory_namespace`` (T-62).
 
 _AGENT_STATES_NEEDING_MODEL_RELOAD = frozenset({"failed", "created"})
 
@@ -105,7 +109,8 @@ _HARNESS_AGENT_CONFIG_FIELDS = frozenset(item.name for item in fields(HarnessAge
 
 
 def _memory_namespace(agent_id: str) -> str:
-    return f"{_MEMORY_NS_PREFIX}{agent_id}"
+    """The private namespace of ``agent_id`` — delegated to the authority (T-62)."""
+    return agent_memory_namespace(agent_id)
 
 
 def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
@@ -1134,7 +1139,17 @@ class AgentManager:
             return OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         state = (row.last_state or "").strip().lower()
         if state in ("failed", "error"):
-            return OctopError(ErrorCode.AGENT_FAILED, f"agent {agent_id!r} failed to start")
+            # T-74: ``AGENT_FAILED`` is a 500, so the client gets the *localized* message
+            # (``errors.AGENT_FAILED`` → "Agent 启动失败。") and the raise-site text above
+            # is dropped from the envelope (``OctopError.to_envelope`` localizes it away;
+            # only ``details`` survives). Without ``details`` an operator holding just the
+            # HTTP response cannot tell *which* agent failed — the facts must ride in
+            # ``details``, exactly as ``corrupt_config_error`` already does.
+            return OctopError(
+                ErrorCode.AGENT_FAILED,
+                f"agent {agent_id!r} failed to start",
+                details={"agent_id": agent_id, "last_state": state},
+            )
         return OctopError(ErrorCode.AGENT_NOT_RUNNING, f"agent {agent_id!r} not running")
 
     async def delete_thread_checkpoint(self, agent_id: str, thread_id: str) -> bool:
@@ -3149,6 +3164,71 @@ class AgentManager:
             OctopUiOffloadMiddleware(),
         ]
 
+        # R1 artifact-ownership hard gate (T-17): mounted **only for team agents**, so a
+        # non-team agent's tool path is byte-for-byte unchanged. Without this mount the
+        # gate `sec` wrote in T-12 never sees a tool call in production -- its unit tests
+        # stay green while nothing is ever blocked.
+        #
+        # The four callables are exactly the wiring ``OwnershipGateDeps`` asks for: the
+        # middleware takes queries, never repos, so it stays testable without a DB.
+        if team_host:
+            from octop.infra.agents.middleware.team_artifact_ownership import (  # noqa: PLC0415
+                OwnershipGateDeps,
+                TeamArtifactOwnershipMiddleware,
+            )
+
+            _runs = self._repos.team_run_repo
+            _writer_agent_id = row.agent_id
+            _workspace_dir = str(harness_workspace)
+
+            def _team_root_for(raw_path: str) -> str | None:
+                # The root ``run_scoped_target`` needs is ``<root>/<runId>/<file>``'s
+                # ``<root>`` -- ``team`` for a host run, the declared absolute root for an
+                # ``explicit:`` run. It comes from ``run_service.run_root_for`` so the
+                # wiring and the tests resolve it with **one** function: this closure used
+                # to hand over the workspace directory (one level too high) and to refuse
+                # relative paths, which made the gate allow both forms while the tests --
+                # each building its own conforming root -- stayed green.
+                from octop.infra.agents.teams.run_service import (  # noqa: PLC0415
+                    run_root_for,
+                )
+
+                def _declared(run_id: str) -> str | None:
+                    run = _runs.get(run_id)
+                    return run.run_root if run is not None else None
+
+                return run_root_for(raw_path, workspace_dir=_workspace_dir, run_root_of=_declared)
+
+            def _run_status_for(run_id: str) -> str | None:
+                run = _runs.get(run_id)
+                return run.status if run is not None else None
+
+            def _role_for(run_id: str) -> str | None:
+                # The writer's role *in that run*: match the mounted agent against the run
+                # snapshot. An unrecognised role must stay ``None`` -- there the gate is
+                # fail-open by contract.
+                for member in _runs.list_members(run_id):
+                    if member.agent_id == _writer_agent_id:
+                        return member.role
+                return None
+
+            def _exists_for(abs_path: str) -> bool | None:
+                try:
+                    return bool(Path(abs_path).exists())
+                except OSError:
+                    return None  # unknown -> the gate allows and leaves a trace
+
+            agent_middleware.append(
+                TeamArtifactOwnershipMiddleware(
+                    deps=OwnershipGateDeps(
+                        team_root_for=_team_root_for,
+                        run_status_for=_run_status_for,
+                        role_for=_role_for,
+                        exists_for=_exists_for,
+                    )
+                )
+            )
+
         merged_tools: list[Any] = []
         if cron_tools:
             merged_tools.extend(cron_tools)
@@ -3292,7 +3372,7 @@ class AgentManager:
                 disabled = set(host_tools_disabled(disabled))
             harness_cfg.tools_disabled = frozenset(disabled)
         applied = policy.apply_to_config(harness_cfg)
-        applied = self._apply_team_host_config(applied, row)
+        applied = self._apply_team_host_config(applied, row, host_workspace=harness_workspace)
         interrupt_on = apply_session_bypass(applied.interrupt_on, self._hitl_session_store)
         if interrupt_on is not applied.interrupt_on:
             applied = replace(applied, interrupt_on=interrupt_on)
@@ -3325,8 +3405,29 @@ class AgentManager:
             or getattr(proc, "take_team_peer_prompt", None),
         )
 
-    def _apply_team_host_config(self, cfg: HarnessAgentConfig, row: Any) -> HarnessAgentConfig:
+    def _apply_team_host_config(
+        self,
+        cfg: HarnessAgentConfig,
+        row: Any,
+        *,
+        host_workspace: Path | None = None,
+    ) -> HarnessAgentConfig:
+        """Team-host overrides on a harness config.
+
+        ``host_workspace`` is the **harness-side** workspace (``harness_workspace_path``,
+        computed once in :meth:`_build_harness_config`) -- deliberately not the host-side
+        join from :meth:`resolve_workspace_dir`, which that method's docstring forbids
+        routing harness through. It feeds the team-memory injection: the recall block
+        reads ``<host_workspace>/.octop/team/LEARNINGS.md``.
+
+        ★ **Production must pass it**: the single call site does. The ``None`` default
+        exists only for non-production (direct) calls; with it the memory block is
+        simply not injected, which is why the call site is asserted to pass it.
+        """
         from octop.infra.agents.teams import host_system_prompt, host_tools_disabled, is_team_agent
+        from octop.infra.agents.teams.learnings import (  # noqa: PLC0415
+            build_host_memory_block,
+        )
 
         if not is_team_agent(row):
             if "peer_invoke_mode" in _HARNESS_AGENT_CONFIG_FIELDS:
@@ -3352,5 +3453,10 @@ class AgentManager:
         if "bootstrap_enabled" in _HARNESS_AGENT_CONFIG_FIELDS:
             updates["bootstrap_enabled"] = False
         if "system_prompt" in _HARNESS_AGENT_CONFIG_FIELDS:
-            updates["system_prompt"] = host_system_prompt(row, self._repos.user_repo)
+            prompt = host_system_prompt(row, self._repos.user_repo)
+            if host_workspace is not None:
+                # Team-layer recall; empty when there is nothing to inject, so no
+                # extra "has content" branch is needed.
+                prompt = prompt + build_host_memory_block(host_workspace=host_workspace)
+            updates["system_prompt"] = prompt
         return replace(cfg, **updates) if updates else cfg

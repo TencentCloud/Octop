@@ -70,11 +70,40 @@ const KIND_OPTIONS: { value: AtomKind | ""; label: string }[] = [
   { value: "ConflictCandidate", label: "可能冲突" },
 ];
 
-interface Props {
-  agentId: string;
+/** One selectable 「归属项目」 target (T-41 write half). */
+export interface ProjectOption {
+  id: string;
+  name: string;
 }
 
-export default function CandidatesReview({ agentId }: Props) {
+interface Props {
+  agentId: string;
+  /**
+   * T-41 (write half): projects a candidate may be adopted **into**. Omit it and
+   * the only adoptable target is this agent's private layer — i.e. exactly the
+   * behaviour before T-41.
+   */
+  projects?: ProjectOption[];
+  /**
+   * T-41 (write half): adopt the candidate into ``project_{projectId}``.
+   *
+   * Injected by the host **on purpose**. Read permission does not imply write
+   * permission (SPEC B38: 读按 ``project_members`` —— ``viewer`` 也算成员；写按团队
+   * owner / 项目角色，两者**不合并**). The backend has no project-targeted adopt yet
+   * (`promote_candidate` takes no namespace), so this component must not fake one:
+   * with no callback the 归属项目 option stays disabled and **no request is sent**.
+   */
+  onPromoteToProject?: (
+    candidate: CandidateItem,
+    projectId: string,
+  ) => Promise<void>;
+}
+
+export default function CandidatesReview({
+  agentId,
+  projects,
+  onPromoteToProject,
+}: Props) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const [items, setItems] = useState<CandidateItem[]>([]);
@@ -92,6 +121,17 @@ export default function CandidatesReview({ agentId }: Props) {
 
   // per-row pending state so the spinning button is local, not global
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // T-41 (write half): where an adopted candidate lands. ``agent`` is the
+  // pre-existing behaviour (the private layer); ``project`` additionally needs a
+  // host-injected write callback — see the ``onPromoteToProject`` docs.
+  const [promoteTarget, setPromoteTarget] = useState<"agent" | "project">(
+    "agent",
+  );
+  const [promoteProjectId, setPromoteProjectId] = useState<string | null>(null);
+  const projectOptions = projects ?? [];
+  const canWriteProject =
+    projectOptions.length > 0 && typeof onPromoteToProject === "function";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,6 +161,37 @@ export default function CandidatesReview({ agentId }: Props) {
   }, [agentId, load]);
 
   const handlePromote = async (c: CandidateItem) => {
+    if (promoteTarget === "project") {
+      if (!canWriteProject || !promoteProjectId || !onPromoteToProject) {
+        // SPEC B38 — 读得出 **不等于** 写得进。这里在**发出任何请求之前**拒绝，
+        // 并且**绝不**回落到本 agent 的命名空间：那会把内容悄悄写到另一个 ns，
+        // 而界面还声称「已归到项目」。
+        message.warning(
+          t(
+            "memory.candidates.scopeProjectBlocked",
+            "项目归属当前不可写：请先选择项目，并确认你对该项目有写入权限。本次未发出任何写入请求。",
+          ),
+        );
+        return;
+      }
+      setBusyId(c.id);
+      try {
+        await onPromoteToProject(c, promoteProjectId);
+        message.success(
+          t("memory.candidates.promoteOk", "已采纳") +
+            ` · ${t("memory.candidates.scopeProject", "归属项目")}`,
+        );
+        void load();
+      } catch (e) {
+        message.error((e as Error).message ?? "操作失败");
+      } finally {
+        setBusyId(null);
+      }
+      return;
+    }
+
+    // 默认路径（本 agent 私有层）：与 T-41 之前**逐字一致** —— 仍是不带任何
+    // namespace 参数的两参调用（`promote_candidate` 目前也只接受这两参）。
     setBusyId(c.id);
     try {
       const r = await memoryDashboardApi.promoteCandidate(agentId, c.id);
@@ -162,6 +233,71 @@ export default function CandidatesReview({ agentId }: Props) {
   return (
     <Card size="small" className={styles.candidatesCard}>
       <GuidanceBanner status={status} />
+      {/*
+        T-41 (write half) — 采纳归属。默认落在本 agent 的私有层（`agent_{id}`，
+        即 T-41 之前的行为）；「归属项目」只有在宿主同时给了项目列表**和**写入
+        回调时才可选 —— 因为后端还没有项目定向的采纳端点，而 SPEC B38 明确禁止
+        把"读得到"当成"写得进"。不可写时把入口**显示为禁用并说明原因**，不隐藏。
+      */}
+      <div
+        className={styles.candidatesFilters}
+        data-testid="memory-candidates-target"
+      >
+        <div className={styles.candidatesFilterField}>
+          <span className={styles.candidatesFilterLabel}>
+            {t("memory.candidates.targetLabel", "采纳归属")}
+          </span>
+          <Select
+            className={styles.candidatesFilterSelect}
+            value={promoteTarget}
+            onChange={(v) => setPromoteTarget(v)}
+            options={[
+              {
+                value: "agent",
+                label: t("memory.candidates.scopeAgent", "本 agent 私有"),
+              },
+              {
+                value: "project",
+                label: t("memory.candidates.scopeProject", "归属项目"),
+                disabled: !canWriteProject,
+              },
+            ]}
+          />
+        </div>
+        {promoteTarget === "project" && canWriteProject ? (
+          <div className={styles.candidatesFilterField}>
+            <span className={styles.candidatesFilterLabel}>
+              {t("memory.candidates.projectLabel", "项目")}
+            </span>
+            <Select
+              className={styles.candidatesFilterSelect}
+              value={promoteProjectId}
+              onChange={(v) => setPromoteProjectId(v)}
+              placeholder={t(
+                "memory.candidates.projectPlaceholder",
+                "选择项目",
+              )}
+              options={projectOptions.map((p) => ({
+                value: p.id,
+                label: p.name,
+              }))}
+            />
+          </div>
+        ) : null}
+      </div>
+      {!canWriteProject ? (
+        <Alert
+          type="info"
+          showIcon
+          data-testid="memory-candidates-project-unwritable"
+          message={t("memory.candidates.projectUnwritable", "项目归属暂不可选")}
+          description={t(
+            "memory.candidates.projectUnwritableHint",
+            "能读项目记忆不等于能写：写权限按团队 owner / 项目角色判定，且后端尚无项目定向写入面。此处不会发出写入请求。",
+          )}
+          style={{ marginBottom: 12 }}
+        />
+      ) : null}
       <div className={styles.candidatesFilters}>
         <div className={styles.candidatesFilterField}>
           <span className={styles.candidatesFilterLabel}>

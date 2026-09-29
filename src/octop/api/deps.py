@@ -100,6 +100,7 @@ def is_jwt_exempt_request(request: Request) -> bool:
 def get_server(request: Request) -> OctopServer:
     server: OctopServer = request.app.state.octop_server
     if not getattr(server, "_started", False):
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "server not started")
     return server
 
@@ -107,6 +108,7 @@ def get_server(request: Request) -> OctopServer:
 def require_database(server: OctopServer) -> None:
     """Raise when the control-plane DB has not been bound yet (deferred setup)."""
     if not server.database_bound:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(
             ErrorCode.SETUP_REQUIRED,
             "control-plane database not configured yet",
@@ -130,6 +132,7 @@ def _decode(server: OctopServer, token: str) -> dict[str, Any]:
     assert server.services is not None
     secret = server.services.secret_repo.get("jwt")
     if secret is None:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "jwt secret missing")
     try:
         return decode_token(secret, token)
@@ -163,6 +166,7 @@ def maybe_sliding_renew_token(server: OctopServer, token: str, user: User) -> st
         return None
     secret = server.services.secret_repo.get("jwt")
     if secret is None:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "jwt secret missing")
     return sign_token(
         secret,

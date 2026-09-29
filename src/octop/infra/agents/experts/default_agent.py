@@ -64,9 +64,11 @@ async def bootstrap_default_agent(
     if registry.list_agents(user_id):
         return None
     if catalog is None:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "expert catalog not available")
     expert = catalog.get(DEFAULT_EXPERT_ID)
     if expert is None:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
             f"{DEFAULT_EXPERT_ID} expert template missing",

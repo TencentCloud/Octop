@@ -92,6 +92,7 @@ class AgentPluginsPatch(BaseModel):
 def _plugin_manager(server: OctopServer) -> PluginManager:
     mgr = server.plugin_manager
     if mgr is None:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "plugin manager not initialized")
     return mgr
 
@@ -146,7 +147,7 @@ async def install_plugin(
         raise OctopError(
             ErrorCode.PLUGIN_INSTALL_FAILED,
             f"plugin install failed: {exc}",
-            details={"reason": str(exc)},
+            details={"reason": type(exc).__name__},
         ) from exc
     if server.app_runtime is not None:
         mgr.load_installed(install_deps=False)
@@ -188,7 +189,7 @@ async def upload_plugin(
         raise OctopError(
             ErrorCode.PLUGIN_INSTALL_FAILED,
             f"plugin install failed: {exc}",
-            details={"reason": str(exc)},
+            details={"reason": type(exc).__name__},
         ) from exc
     if server.app_runtime is not None:
         mgr.load_installed(install_deps=False)
@@ -234,7 +235,7 @@ async def install_market_plugin(
         raise OctopError(
             ErrorCode.PLUGIN_INSTALL_FAILED,
             f"plugin install failed: {exc}",
-            details={"reason": str(exc)},
+            details={"reason": type(exc).__name__},
         ) from exc
     # install_from_market already loads the plugin into the process registry.
     if server.app_runtime is not None:
