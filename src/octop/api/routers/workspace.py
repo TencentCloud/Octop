@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from octop_harness.backends.utils import BackendOperationNotSupportedError
+from octop_harness.backends.workspace import BackendWorkspace
 from pydantic import BaseModel
 
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
@@ -60,6 +62,104 @@ def _normalize_rel_posix(path: str) -> str:
     return "/".join(parts)
 
 
+_ASCII_FOLD = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
+def _fold_segment(seg: str) -> str:
+    """★ 段折叠（唯一折点）= **ASCII 大小写折叠**（PLAN §2.2 · 用户拍板 ①）。
+
+    ★ **不做** Unicode 归一（NFC/NFD）：保护名全 ASCII（``.octop`` / ``team`` /
+    ``_builtin_skills``）⇒ 归一化对本判据零拒绝力。折叠是**收紧**（fail-closed）：大小写
+    敏感卷上 ``_BUILTIN_SKILLS/x`` 本是另一个目录 ⇒ 拒绝是有意为之。
+    """
+    return seg.translate(_ASCII_FOLD)
+
+
+def _protected_write_segments(io_path: str) -> list[str]:
+    """有效后端目标的归一化 + 折叠段序列 —— 判据的唯一内核（不得再写第二份段比较）。"""
+    rel = _normalize_rel_posix(io_path)
+    return [_fold_segment(seg) for seg in rel.split("/") if seg]
+
+
+def _team_memory_pair_hit(segments: list[str]) -> bool:
+    """相邻段对 ``(".octop", "team")``（作用于**折叠后**段）。"""
+    return any(
+        segments[i] == ".octop" and segments[i + 1] == "team" for i in range(len(segments) - 1)
+    )
+
+
+def _builtin_skills_hit(segments: list[str]) -> bool:
+    """★ 精确两形状：① 首段 == ``_builtin_skills``；② 相邻段对 ``(".octop", "_builtin_skills")``。
+
+    ★ **不得**用「任一段相等」的粗口径：那会把 ``notes/_builtin_skills/x`` 由放行变 403。
+    """
+    return segments[:1] == [_PROTECTED_PREFIX] or any(
+        segments[i] == ".octop" and segments[i + 1] == _PROTECTED_PREFIX
+        for i in range(len(segments) - 1)
+    )
+
+
+def _relativize_to_workspace(io_path: str, workspace_dir: str | Path | None) -> str:
+    """★ 主机绝对形态 ⇒ 先**相对工作区根**，再套既有精确两形状（contract：`file://` 不豁免）。
+
+    ``file://`` 与主机绝对拼写经 ``_workspace_io_path`` 后带盘符/用户前缀（首段 == `/` 后的
+    前缀），两形状都不命中 ⇒ 必须剥掉工作区根前缀后再判。★ 判据仍是既有两形状，**不**放宽成
+    「任一段相等」（那会把 ``notes/_builtin_skills/x.md`` 由放行变 403）。
+
+    工作区根不可得 / 目标本就是相对形态 / 目标在工作区根**之外** ⇒ 原样返回（越界由
+    ``_assert_workspace_write_resolved`` 的解析分支兜底）。按**路径分量**相对化，故
+    ``/data/ws_backup`` 不会被 ``/data/ws`` 误判为工作区内。
+    """
+    if workspace_dir is None or str(workspace_dir) == "":
+        return io_path
+    root = Path(str(workspace_dir)).expanduser()
+    target = Path(io_path)
+    if not root.is_absolute() or not target.is_absolute():
+        return io_path
+    try:
+        rel = target.resolve(strict=False).relative_to(root.resolve(strict=False))
+    except (OSError, RuntimeError, ValueError):
+        return io_path
+    return rel.as_posix()
+
+
+def _assert_write_target_allowed(io_path: str, *, workspace_dir: str | Path | None = None) -> str:
+    """★ 判据唯一落点：作用于**有效目标**串（根 / team 面 / builtin 面），返回同一串。
+
+    顺序冻结（PLAN §2.3）：根分支最先 ⇒ team 面次之 ⇒ builtin 面最后。拒绝文案只含常量
+    段，**不回显** ``path``（沿用 ``_map_workspace_fs_error`` 的防主机结构泄漏约定）。
+    ``workspace_dir`` 只用于把主机绝对目标**相对化**后再判（见 ``_relativize_to_workspace``）；
+    返回值恒为 ``io_path`` 原串 ⇒ 落盘目标不因判据而变。
+    """
+    judged = _relativize_to_workspace(io_path, workspace_dir)
+    segments = _protected_write_segments(judged)
+    if judged == "." or not segments:  # ★ 既有 workspace root 分支必须保留
+        raise OctopError(ErrorCode.FORBIDDEN, "cannot modify workspace root")
+    if _team_memory_pair_hit(segments):
+        raise OctopError(
+            ErrorCode.TEAM_ARTIFACT_OWNERSHIP_DENIED,
+            f"cannot modify {_TEAM_MEMORY_PREFIX!r} paths",
+        )
+    if _builtin_skills_hit(segments):
+        raise OctopError(ErrorCode.FORBIDDEN, f"cannot modify {_PROTECTED_PREFIX!r} paths")
+    return io_path
+
+
+def _assert_workspace_write_allowed(
+    path: str, *, from_workspace: bool, workspace_dir: str | Path | None = None
+) -> str:
+    """★ 唯一入口：判根 / 两个受保护面，**返回有效后端目标 = 调用者必须落盘的那个串**。
+
+    先 ``_workspace_io_path`` 取有效目标（`file://` 与主机绝对形态**不豁免**），再归一化 +
+    ASCII 折叠后判两面 ⇒ 三拼写（相对 / 主机绝对 / ``file://``）同判同码。
+
+    ★ ``workspace_dir``（调用点已有 ``ws.workspace_dir``）**必传**：主机绝对目标先相对化再判，
+    否则带主机前缀的两形状不命中 ⇒ ``file://…/_builtin_skills/x`` 会漏判放行。
+    """
+    io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    return _assert_write_target_allowed(io_path, workspace_dir=workspace_dir)
+
+
 def _assert_team_memory_writable(path: str, *, from_workspace: bool = False) -> str:
     """Reject writes whose **effective backend target** is team memory (``.octop/team/**``).
 
@@ -84,8 +184,7 @@ def _assert_team_memory_writable(path: str, *, from_workspace: bool = False) -> 
     and keep passing.
     """
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
-    segments = _normalize_rel_posix(io_path).split("/")
-    if any(segments[i] == ".octop" and segments[i + 1] == "team" for i in range(len(segments) - 1)):
+    if _team_memory_pair_hit(_protected_write_segments(io_path)):
         raise OctopError(
             ErrorCode.TEAM_ARTIFACT_OWNERSHIP_DENIED,
             f"cannot modify {_TEAM_MEMORY_PREFIX!r} paths",
@@ -99,15 +198,78 @@ def _assert_workspace_mutable(path: str) -> str:
     if rel == ".":
         raise OctopError(ErrorCode.FORBIDDEN, "cannot modify workspace root")
     # SEC-10: judge the *normalized* path so ``./`` / ``x/../`` / ``//`` cannot bypass.
-    posix = _normalize_rel_posix(rel)
-    if (
-        posix == _PROTECTED_PREFIX
-        or posix.startswith(f"{_PROTECTED_PREFIX}/")
-        or posix == f".octop/{_PROTECTED_PREFIX}"
-        or posix.startswith(f".octop/{_PROTECTED_PREFIX}/")
-    ):
+    if _builtin_skills_hit(_protected_write_segments(rel)):
         raise OctopError(ErrorCode.FORBIDDEN, f"cannot modify {_PROTECTED_PREFIX!r} paths")
     return rel
+
+
+_GUARD_RESOLVE_SKIPPED = "workspace-guard-resolve-skipped"
+_GUARD_RESOLVE_OUTSIDE = "workspace-guard-resolve-outside"
+_GUARD_RESOLVE_ERROR = "workspace-guard-resolve-error"
+
+
+def _host_resolve_enabled(workspace: BackendWorkspace) -> bool:
+    """★ 解析闸门（唯一判据源）：**只有拿到后端类型信息**且该后端是宿主路径类 ⇒ True。
+
+    读口 = 调用点已有的 ``workspace`` 对象（``BackendWorkspace.workspace_dir`` 是 public
+    property）。宿主路径类 = harness 本地后端（``FilesystemBackend`` 及其子类
+    ``HarnessLocalShellBackend`` / ``BubbledLocalShellBackend``）；云端虚拟键（COS/S3/OSS/
+    OBS）· docker / opensandbox 沙箱 · composite / state / store ⇒ False。
+    ★ 本函数只读**类型信息**做「能否解析」闸门，**不**在此复制任何路径规则。
+    """
+    backend = getattr(workspace, "backend", None)
+    if backend is None:
+        return False
+    try:
+        from deepagents.backends.filesystem import FilesystemBackend
+    except ImportError:  # pragma: no cover - 拿不到后端类型信息 ⇒ 闸门关
+        return False
+    return isinstance(backend, FilesystemBackend)
+
+
+def _assert_workspace_write_resolved(
+    io_path: str, *, workspace_dir: str | Path | None, resolve_ok: bool
+) -> str:
+    """★ 相位 B：闸门开 ⇒ 真实解析后再判一次；闸门关 ⇒ **不解析**、按文本口径判。
+
+    ★ **绝不**把「解析不了」实现成放行。闸门关（远端 / docker / 拿不到后端类型信息 / 宿主
+    根不可得）⇒ 不解析，仍走 ``_assert_write_target_allowed`` 的根 + 两面判据后**原样返回
+    入参**，并留痕 ``_GUARD_RESOLVE_SKIPPED`` —— ★ **逐字登记：符号链接面未覆盖**（闸门关
+    时软链别名判不出）。解析抛 ``OSError`` / ``RuntimeError`` ⇒ 403 ``cannot resolve write
+    target``（token ``_GUARD_RESOLVE_ERROR``）；解析成功但越出工作区根 ⇒ 403 ``cannot
+    modify paths outside the workspace``（token ``_GUARD_RESOLVE_OUTSIDE``）。解析成功且未
+    命中 ⇒ 返回**解析后的相对串**（= 调用者落盘串）。留痕只进日志、**不进**错误体。
+    """
+    if not resolve_ok or workspace_dir is None or str(workspace_dir) == "":
+        logger.warning(
+            "%s io_path=%s symlink surface uncovered (text-only judgement)",
+            _GUARD_RESOLVE_SKIPPED,
+            io_path,
+        )
+        return _assert_write_target_allowed(io_path, workspace_dir=workspace_dir)
+    root = Path(str(workspace_dir)).expanduser()
+    if not root.is_absolute():  # 闸门开的前置 = 宿主根可得
+        logger.warning(
+            "%s io_path=%s symlink surface uncovered (text-only judgement)",
+            _GUARD_RESOLVE_SKIPPED,
+            io_path,
+        )
+        return _assert_write_target_allowed(io_path, workspace_dir=workspace_dir)
+    resolved_root = root.resolve(strict=False)
+    target = Path(io_path)
+    if not target.is_absolute():
+        target = resolved_root / _normalize_rel_posix(io_path)
+    try:
+        resolved = target.resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        logger.warning("%s io_path=%s", _GUARD_RESOLVE_ERROR, io_path)
+        raise OctopError(ErrorCode.FORBIDDEN, "cannot resolve write target") from None
+    try:
+        rel = resolved.relative_to(resolved_root).as_posix()
+    except ValueError:
+        logger.warning("%s io_path=%s", _GUARD_RESOLVE_OUTSIDE, io_path)
+        raise OctopError(ErrorCode.FORBIDDEN, "cannot modify paths outside the workspace") from None
+    return _assert_write_target_allowed(rel)
 
 
 def _map_workspace_fs_error(exc: Exception, *, operation: str, path: str) -> OctopError:
@@ -243,9 +405,17 @@ async def write_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Overwrite ``path`` with ``body.content`` (text)."""
-    io_path = _assert_team_memory_writable(path, from_workspace=from_workspace)
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
+    # ★ 相位 A（文本相位）放在鉴权后：判据需要 ``ws.workspace_dir`` 才能把主机绝对 / `file://`
+    # 拼写相对化后再套精确两形状（SEC-2：`file://` 不豁免）。响应体 ``path`` 仍用请求侧串。
+    io_path = _assert_workspace_write_allowed(
+        path, from_workspace=from_workspace, workspace_dir=ws.workspace_dir
+    )
+    # ★ 相位 B（解析相位）：判据与落盘同源，落盘用本行返回值（R11）。
+    io_path = _assert_workspace_write_resolved(
+        io_path, workspace_dir=ws.workspace_dir, resolve_ok=_host_resolve_enabled(ws)
     )
     converter = get_doc_converter(path)
     if converter is not None:
@@ -292,9 +462,13 @@ async def mkdir_workspace_dir(
 ) -> dict[str, Any]:
     """Create a directory (and parents) under the agent workspace."""
     _ = from_workspace  # API surface; mutations always use workspace-relative paths.
-    rel = _assert_workspace_mutable(path)
+    rel = _assert_workspace_write_allowed(path, from_workspace=True)
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
+    # ★ 相位 B（解析相位）· 范围①：落盘用本行返回值（R11），响应体 ``path`` 仍用请求侧。
+    rel = _assert_workspace_write_resolved(
+        rel, workspace_dir=ws.workspace_dir, resolve_ok=_host_resolve_enabled(ws)
     )
     try:
         await ws.amkdir(rel)
@@ -322,9 +496,13 @@ async def delete_workspace_file(
 ) -> Response:
     """Remove a file or directory tree from the agent workspace."""
     _ = from_workspace
-    rel = _assert_workspace_mutable(path)
+    rel = _assert_workspace_write_allowed(path, from_workspace=True)
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
+    # ★ 相位 B（解析相位）· 范围①：落盘用本行返回值（R11）。
+    rel = _assert_workspace_write_resolved(
+        rel, workspace_dir=ws.workspace_dir, resolve_ok=_host_resolve_enabled(ws)
     )
     try:
         await ws.adelete(rel)
@@ -351,10 +529,18 @@ async def move_workspace_file(
 ) -> dict[str, Any]:
     """Move ``path`` to ``body.destination`` (rename when the parent directory is unchanged)."""
     _ = from_workspace
-    src = _assert_workspace_mutable(path)
-    dest = _assert_workspace_mutable(body.destination)
+    src = _assert_workspace_write_allowed(path, from_workspace=True)
+    dest = _assert_workspace_write_allowed(body.destination, from_workspace=True)
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
+    # ★ 相位 B（解析相位）· 范围①：**两个值都解析**，落盘用解析后的 src/dest（R11）。
+    resolve_ok = _host_resolve_enabled(ws)
+    src = _assert_workspace_write_resolved(
+        src, workspace_dir=ws.workspace_dir, resolve_ok=resolve_ok
+    )
+    dest = _assert_workspace_write_resolved(
+        dest, workspace_dir=ws.workspace_dir, resolve_ok=resolve_ok
     )
     try:
         await ws.amove(src, dest)
@@ -379,7 +565,13 @@ async def upload_file(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
     target = path or f"/{file.filename or 'upload.bin'}"
-    io_path = _assert_team_memory_writable(target, from_workspace=from_workspace)
+    io_path = _assert_workspace_write_allowed(
+        target, from_workspace=from_workspace, workspace_dir=ws.workspace_dir
+    )
+    # ★ 相位 B（解析相位）：落盘用本行返回值（R11）；响应体 ``path`` 仍用请求侧 ``target``。
+    io_path = _assert_workspace_write_resolved(
+        io_path, workspace_dir=ws.workspace_dir, resolve_ok=_host_resolve_enabled(ws)
+    )
     data = await file.read()
     try:
         await ws.aupload_bytes(
@@ -471,9 +663,13 @@ async def write_doc(
 ) -> dict[str, Any]:
     """Convert Markdown *content* back to the document format and overwrite *path*."""
     _ = from_workspace  # Mutations always use workspace-relative paths.
-    rel = _assert_workspace_mutable(path)
+    rel = _assert_workspace_write_allowed(path, from_workspace=True)
     converter = _ensure_editable_doc(path)
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    # ★ 相位 B（解析相位）· 范围①：落盘用本行返回值（R11），响应体 ``path`` 仍用请求侧。
+    rel = _assert_workspace_write_resolved(
+        rel, workspace_dir=ws.workspace_dir, resolve_ok=_host_resolve_enabled(ws)
+    )
     try:
         data = converter.from_markdown(body.content)
     except Exception as exc:
