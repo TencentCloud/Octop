@@ -372,10 +372,10 @@ async def probe_streamable_http_mcp(
             logger.warning("%s streamable HTTP probe connection failure, retrying: %s", kind, exc)
             continue
         except BaseExceptionGroup as exc:
-            result = _unwrap_probe_exception_group(exc, kind=kind)
-            if result is not None:
-                if result.get("error_type") != "connection" or attempt > 0:
-                    return result
+            unwrapped = _unwrap_probe_exception_group(exc, kind=kind)
+            if unwrapped is not None:
+                if unwrapped.get("error_type") != "connection" or attempt > 0:
+                    return unwrapped
                 logger.warning(
                     "%s streamable HTTP probe connection failure, retrying: %s", kind, exc
                 )
