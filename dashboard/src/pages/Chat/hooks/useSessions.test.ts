@@ -10,16 +10,24 @@ import {
 
 const listMock = vi.fn();
 
-vi.mock("../../../api/modules/octopThreads", () => ({
-  octopThreadsApi: {
-    list: (...args: unknown[]) => listMock(...args),
-    create: vi.fn(),
-    delete: vi.fn(),
-    patch: vi.fn(),
-    rename: vi.fn(),
-    rebind: vi.fn(),
-  },
-}));
+vi.mock("../../../api/modules/octopThreads", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("../../../api/modules/octopThreads")
+  >();
+  return {
+    // Spread the real module so its pure helpers (normalizeThreadArtifacts,
+    // CHAT_HISTORY_PAGE_SIZE) cannot drift out of sync with this mock again.
+    ...actual,
+    octopThreadsApi: {
+      list: (...args: unknown[]) => listMock(...args),
+      create: vi.fn(),
+      delete: vi.fn(),
+      patch: vi.fn(),
+      rename: vi.fn(),
+      rebind: vi.fn(),
+    },
+  };
+});
 
 function threadRow(threadId: string, agentExtra?: Partial<{ title: string }>) {
   return {

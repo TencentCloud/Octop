@@ -108,6 +108,101 @@ if (typeof window !== "undefined") {
     ).IntersectionObserver = _IntersectionObserver;
   }
 
+  // jsdom ships no ``DOMMatrix``, but pdfjs-dist instantiates one at module
+  // load (``const SCALE_MATRIX = new DOMMatrix()``) — so importing the PDF
+  // preview chain threw ``ReferenceError: DOMMatrix is not defined`` and
+  // failed the whole suite before a single test ran. Minimal 2D subset
+  // covering exactly what pdfjs touches: the identity / 6-element
+  // constructor, the writable ``a``-``f`` fields, and the five 2D methods it
+  // calls. Semantics follow the DOM spec; the guard below leaves a native
+  // ``DOMMatrix`` (real browser, newer jsdom) untouched.
+  type Matrix2D = {
+    a: number;
+    b: number;
+    c: number;
+    d: number;
+    e: number;
+    f: number;
+  };
+
+  // Row-vector product ``m1 × m2`` — the convention the DOM spec uses for
+  // ``multiplySelf`` / ``preMultiplySelf``.
+  const multiply2D = (m1: Matrix2D, m2: Matrix2D): number[] => [
+    m1.a * m2.a + m1.b * m2.c,
+    m1.a * m2.b + m1.b * m2.d,
+    m1.c * m2.a + m1.d * m2.c,
+    m1.c * m2.b + m1.d * m2.d,
+    m1.e * m2.a + m1.f * m2.c + m2.e,
+    m1.e * m2.b + m1.f * m2.d + m2.f,
+  ];
+
+  const set2D = <T extends Matrix2D>(target: T, values: number[]): T => {
+    target.a = values[0];
+    target.b = values[1];
+    target.c = values[2];
+    target.d = values[3];
+    target.e = values[4];
+    target.f = values[5];
+    return target;
+  };
+
+  class _DOMMatrix implements Matrix2D {
+    a = 1;
+    b = 0;
+    c = 0;
+    d = 1;
+    e = 0;
+    f = 0;
+
+    constructor(init?: ArrayLike<number>) {
+      if (init && init.length >= 6) {
+        set2D(this, [init[0], init[1], init[2], init[3], init[4], init[5]]);
+      }
+    }
+
+    multiplySelf(other: Matrix2D): this {
+      return set2D(this, multiply2D(this, other));
+    }
+
+    preMultiplySelf(other: Matrix2D): this {
+      return set2D(this, multiply2D(other, this));
+    }
+
+    translate(tx = 0, ty = 0): _DOMMatrix {
+      return new _DOMMatrix(
+        multiply2D(this, { a: 1, b: 0, c: 0, d: 1, e: tx, f: ty }),
+      );
+    }
+
+    scale(sx = 1, sy = sx): _DOMMatrix {
+      return new _DOMMatrix(
+        multiply2D(this, { a: sx, b: 0, c: 0, d: sy, e: 0, f: 0 }),
+      );
+    }
+
+    invertSelf(): this {
+      const det = this.a * this.d - this.b * this.c;
+      if (!Number.isFinite(det) || det === 0) {
+        // The DOM spec leaves a non-invertible matrix as all-NaN rather than
+        // throwing; match that so pdfjs's own guards see the same input.
+        return set2D(this, [NaN, NaN, NaN, NaN, NaN, NaN]);
+      }
+      return set2D(this, [
+        this.d / det,
+        -this.b / det,
+        -this.c / det,
+        this.a / det,
+        (this.c * this.f - this.d * this.e) / det,
+        (this.b * this.e - this.a * this.f) / det,
+      ]);
+    }
+  }
+
+  if (!("DOMMatrix" in globalThis)) {
+    (globalThis as unknown as { DOMMatrix: typeof _DOMMatrix }).DOMMatrix =
+      _DOMMatrix;
+  }
+
   // jsdom doesn't implement ``getComputedStyle().transition`` properly,
   // so antd's wave / motion can throw — silence that one noisy console
   // warning without hiding real errors.

@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { fireEvent, render, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { ResolvedModel } from "../../../api/types";
@@ -57,12 +57,18 @@ describe("ChatInputActionsRow compact pickers", () => {
 
     fireEvent.click(modelButton!);
 
+    // Retryable + icon-agnostic anchor: the model menu's "Auto" entry (role and
+    // accessible name) plus the provider icon. The Auto entry's icon was changed
+    // from `lucide-sparkles` to `lucide-route` in c7f82867, so pinning the icon
+    // class re-breaks this test without adding discrimination.
     await waitFor(() => {
-      expect(document.querySelector(".ant-popover")).toBeInTheDocument();
+      const popover = document.querySelector(".ant-popover");
+      expect(popover).not.toBeNull();
+      expect(
+        within(popover as HTMLElement).getByRole("button", { name: /Auto/ }),
+      ).toBeInTheDocument();
+      expect(popover?.querySelector("img")).not.toBeNull();
     });
-    const popover = document.querySelector(".ant-popover");
-    expect(popover?.querySelector("svg.lucide-sparkles")).not.toBeNull();
-    expect(popover?.querySelector("img")).not.toBeNull();
     expect(document.querySelector(".ant-drawer-content")).toBeNull();
   });
 });

@@ -88,7 +88,15 @@ describe("AuthGuard offline boot", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("protected-shell")).toBeInTheDocument();
+    // ``NavProbe`` fires ``navigate("/b")`` from an effect as soon as the gate
+    // mounts children, so the ``/a`` node that ``findByText`` matches can be
+    // unmounted by that same navigation before a bare
+    // ``expect(...).toBeInTheDocument()`` runs — the awaited element is then
+    // detached and the assertion fails regardless of how long we waited.
+    // Retry the whole query+assert so it binds to the node currently mounted.
+    await waitFor(() => {
+      expect(screen.getByText("protected-shell")).toBeInTheDocument();
+    });
     await waitFor(() => {
       expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
     });
