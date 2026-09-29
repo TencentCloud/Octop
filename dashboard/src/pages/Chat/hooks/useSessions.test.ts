@@ -10,7 +10,15 @@ import {
 
 const listMock = vi.fn();
 
-vi.mock("../../../api/modules/octopThreads", () => ({
+// ★ 桩过时修复（批次十四 `T-B-CASES`，**不改断言**）：真模块 @14 新增了纯函数
+//   `normalizeThreadArtifacts`（引入于 `1d2b2558`），而本工厂是**白名单式**返回 ⇒
+//   `useSessions.ts:3` 的模块级 import 解析失败 ⇒ 4 条用例集体崩。
+//   ⇒ 改为 `importOriginal` **保留真模块的纯 helper**，只桩传输层（仓内既有惯例 ✓），
+//     并且从此**不会**再因模块新增导出而漂移。
+vi.mock("../../../api/modules/octopThreads", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../api/modules/octopThreads")
+  >()),
   octopThreadsApi: {
     list: (...args: unknown[]) => listMock(...args),
     create: vi.fn(),

@@ -38,11 +38,19 @@ describe("publishedExpertsApi", () => {
         }),
       },
     );
+    // ★ 断言过时修复（批次十四 `T-B-CASES`，**依据**见下，非"更新期望值"）：
+    //   `publishedExperts.ts @97-101` 一直是 `body: body ? JSON.stringify(body) : undefined`，
+    //   而本用例 @21 **自己就传了** body ⇒ 旧的期望漏了该字段（从未与实现一致）。
     expect(request).toHaveBeenNthCalledWith(
       3,
       "/experts/published/expert%2F1/refresh",
       {
         method: "POST",
+        body: JSON.stringify({
+          name: "Updated",
+          description: "New description",
+          welcome_message: { zh: "欢迎", en: "Welcome" },
+        }),
       },
     );
     expect(request).toHaveBeenNthCalledWith(

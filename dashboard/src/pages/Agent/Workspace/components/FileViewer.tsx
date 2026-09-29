@@ -16,12 +16,20 @@
  * about persistence.
  */
 
+import { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import FilePreview, { getPreviewKind } from "./FilePreview";
-import MediaPreview from "./MediaPreview";
-import CodeEditor from "./CodeEditor";
-import DocumentPreview from "./DocumentPreview";
 import DocumentPreviewLoading from "../../../../components/DocumentPreviewLoading";
+
+// ★ 三路预览改**懒加载**（批次十四 `T-B-LAZY`）：此前是**静态全量分发器** ——
+//   模块加载期就把三种预览（其中 `DocumentPreview → DocumentPreviewCore → react-pdf`）
+//   全部拉进依赖图 ⇒ 即便只想看一张图片，也会在加载期要求 pdfjs 的全部全局
+//   （实测：`ReferenceError: DOMMatrix is not defined`）。
+//   ★ 改后**该边不再存在于模块加载期**；fallback 沿用既有 `DocumentPreviewLoading`，
+//   **不新增 spinner**。
+const MediaPreview = lazy(() => import("./MediaPreview"));
+const CodeEditor = lazy(() => import("./CodeEditor"));
+const DocumentPreview = lazy(() => import("./DocumentPreview"));
 import { getMediaKind } from "../utils/mediaKind";
 import {
   getDocKind,
@@ -71,25 +79,29 @@ export default function FileViewer({
 
   if (mediaKind) {
     return (
-      <MediaPreview
-        agentId={agentId}
-        path={path}
-        kind={mediaKind}
-        refreshToken={refreshToken}
-        fromWorkspace={fromWorkspace}
-      />
+      <Suspense fallback={<DocumentPreviewLoading phase="file" />}>
+        <MediaPreview
+          agentId={agentId}
+          path={path}
+          kind={mediaKind}
+          refreshToken={refreshToken}
+          fromWorkspace={fromWorkspace}
+        />
+      </Suspense>
     );
   }
 
   if (docKind && !editingDoc) {
     return (
-      <DocumentPreview
-        key={`${path}:${refreshToken}`}
-        agentId={agentId}
-        path={path}
-        kind={docKind}
-        fromWorkspace={fromWorkspace}
-      />
+      <Suspense fallback={<DocumentPreviewLoading phase="file" />}>
+        <DocumentPreview
+          key={`${path}:${refreshToken}`}
+          agentId={agentId}
+          path={path}
+          kind={docKind}
+          fromWorkspace={fromWorkspace}
+        />
+      </Suspense>
     );
   }
 
@@ -109,14 +121,16 @@ export default function FileViewer({
 
   if (editMode) {
     return (
-      <CodeEditor
-        path={path}
-        value={value}
-        onChange={onChange}
-        language={
-          editableDoc ? getEditableDocLanguage(path) ?? "markdown" : undefined
-        }
-      />
+      <Suspense fallback={<DocumentPreviewLoading phase="file" />}>
+        <CodeEditor
+          path={path}
+          value={value}
+          onChange={onChange}
+          language={
+            editableDoc ? getEditableDocLanguage(path) ?? "markdown" : undefined
+          }
+        />
+      </Suspense>
     );
   }
 

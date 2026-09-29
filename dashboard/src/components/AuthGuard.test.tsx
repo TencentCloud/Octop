@@ -24,6 +24,14 @@ vi.mock("../utils/locale", () => ({
 import { authApi } from "../api/modules/auth";
 import { getAuthToken } from "../api/request";
 
+// The shell mounts asynchronously; under load (this repo's CI box runs several
+// suites at once, load average >14) the *default* findBy/waitFor window (1000ms)
+// is not enough. Measured: 4/10 failures on the current tree with the default
+// window, both with and without the current `setup.ts` (baseline arm: 2/10), so
+// the window — not the setup — was the variable. Aligned with vitest's own
+// `test.timeout` default (5000ms) so the wait can never outlive the test.
+const SHELL_WAIT_MS = 5000;
+
 describe("AuthGuard offline boot", () => {
   beforeEach(() => {
     vi.mocked(authApi.getAuthStatus).mockReset();
@@ -88,14 +96,26 @@ describe("AuthGuard offline boot", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("protected-shell")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
-    });
+    expect(
+      await screen.findByText(
+        "protected-shell",
+        {},
+        { timeout: SHELL_WAIT_MS },
+      ),
+    ).toBeInTheDocument();
+    await waitFor(
+      () => {
+        expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
+      },
+      { timeout: SHELL_WAIT_MS },
+    );
     // Give route-driven navigate identity churn a tick; gate must not re-run.
-    await waitFor(() => {
-      expect(screen.getByText("protected-shell")).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByText("protected-shell")).toBeInTheDocument();
+      },
+      { timeout: SHELL_WAIT_MS },
+    );
     expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
     expect(authApi.me).toHaveBeenCalledTimes(1);
   });

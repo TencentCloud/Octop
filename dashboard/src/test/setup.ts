@@ -108,6 +108,122 @@ if (typeof window !== "undefined") {
     ).IntersectionObserver = _IntersectionObserver;
   }
 
+  // DOMMatrix —— ``react-pdf`` / ``pdfjs`` 在 jsdom 下缺这个全局。
+  //
+  // ★ 统一补（批次十四 `T-B-SETUP`）：此前是**各测试文件各自** ``vi.mock("react-pdf")``
+  //   绕过（`AssetsTab.test.tsx` / `ProjectsPage.test.tsx`），本卡改为**一处补齐**，
+  //   并删除局部绕过 —— 局部绕过会让"该模块从未真正加载"变成常态，
+  //   从而**静默**掩盖真实的模块加载期缺陷。
+  //
+  // ★ 开关：``OCTOP_TEST_NO_DOMMATRIX=1`` ⇒ **故意不补**，供 `T-B-LAZY` 的
+  //   「判据自足」（不依赖本卡先后顺序）使用：那条用例自己显式去掉 polyfill。
+  // ★ 只补到"能加载/能构造"为止（**不为让 PDF 真渲染而补** —— 见卡面 contract）。
+  if (
+    process.env.OCTOP_TEST_NO_DOMMATRIX !== "1" &&
+    typeof globalThis.DOMMatrix === "undefined"
+  ) {
+    class _DOMMatrix {
+      a = 1;
+      b = 0;
+      c = 0;
+      d = 1;
+      e = 0;
+      f = 0;
+      constructor(init?: number[] | _DOMMatrix) {
+        if (Array.isArray(init) && init.length >= 6) {
+          [this.a, this.b, this.c, this.d, this.e, this.f] = init;
+        } else if (init instanceof _DOMMatrix) {
+          this.a = init.a;
+          this.b = init.b;
+          this.c = init.c;
+          this.d = init.d;
+          this.e = init.e;
+          this.f = init.f;
+        }
+      }
+      static fromMatrix(other?: _DOMMatrix) {
+        return new _DOMMatrix(other ?? undefined);
+      }
+      static fromFloat32Array(values: Float32Array) {
+        return new _DOMMatrix(Array.from(values));
+      }
+      static fromFloat64Array(values: Float64Array) {
+        return new _DOMMatrix(Array.from(values));
+      }
+      multiply(other: _DOMMatrix) {
+        return new _DOMMatrix([
+          this.a * other.a + this.c * other.b,
+          this.b * other.a + this.d * other.b,
+          this.a * other.c + this.c * other.d,
+          this.b * other.c + this.d * other.d,
+          this.a * other.e + this.c * other.f + this.e,
+          this.b * other.e + this.d * other.f + this.f,
+        ]);
+      }
+      translate(x = 0, y = 0) {
+        return this.multiply(new _DOMMatrix([1, 0, 0, 1, x, y]));
+      }
+      scale(value = 1) {
+        return this.multiply(new _DOMMatrix([value, 0, 0, value, 0, 0]));
+      }
+      inverse() {
+        const det = this.a * this.d - this.b * this.c || 1;
+        return new _DOMMatrix([
+          this.d / det,
+          -this.b / det,
+          -this.c / det,
+          this.a / det,
+          (this.c * this.f - this.d * this.e) / det,
+          (this.b * this.e - this.a * this.f) / det,
+        ]);
+      }
+      get isIdentity() {
+        return (
+          this.a === 1 &&
+          this.b === 0 &&
+          this.c === 0 &&
+          this.d === 1 &&
+          this.e === 0 &&
+          this.f === 0
+        );
+      }
+      toString() {
+        return `matrix(${this.a}, ${this.b}, ${this.c}, ${this.d}, ${this.e}, ${this.f})`;
+      }
+    }
+    (globalThis as unknown as { DOMMatrix: typeof _DOMMatrix }).DOMMatrix =
+      _DOMMatrix;
+  }
+
+  // ``Promise.withResolvers`` —— pdfjs（react-pdf 传递依赖）在**模块加载期**就会用到，
+  // 本仓 Node 版本下缺失 ⇒ 未补时整个 pdf 边加载即抛
+  // （实测：`TypeError: Promise.withResolvers is not a function`）。
+  // ★ 与 DOMMatrix 同一个开关：``OCTOP_TEST_NO_DOMMATRIX=1`` ⇒ 一并**不补**
+  //   （`T-B-LAZY` 的判据自足用例据此证明"该边在模块加载期不存在"）。
+  if (
+    process.env.OCTOP_TEST_NO_DOMMATRIX !== "1" &&
+    typeof (Promise as unknown as { withResolvers?: unknown }).withResolvers !==
+      "function"
+  ) {
+    (
+      Promise as unknown as {
+        withResolvers: <T>() => {
+          promise: Promise<T>;
+          resolve: (value: T | PromiseLike<T>) => void;
+          reject: (reason?: unknown) => void;
+        };
+      }
+    ).withResolvers = <T>() => {
+      let resolve!: (value: T | PromiseLike<T>) => void;
+      let reject!: (reason?: unknown) => void;
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    };
+  }
+
   // jsdom doesn't implement ``getComputedStyle().transition`` properly,
   // so antd's wave / motion can throw — silence that one noisy console
   // warning without hiding real errors.

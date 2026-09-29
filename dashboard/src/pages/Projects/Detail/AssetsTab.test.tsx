@@ -11,14 +11,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Only the transport is mocked: the tab must go through the shared
 // ``knowledgeBasesApi`` wrapper, so asserting on ``request`` proves the real
 // path and proves that the empty branch issues nothing at all.
-// 仓内既有惯例（`DocumentPreviewCore.pdfSkeleton.test.tsx` 同款）：真实挂载
-// `DocumentPreviewCore`，只把 pdfjs 渲染器打桩 —— jsdom 无 `DOMMatrix`。
-vi.mock("react-pdf", () => ({
-  Document: () => <div data-testid="pdf-document" />,
-  Page: () => <div data-testid="pdf-page" />,
-  pdfjs: { GlobalWorkerOptions: { workerSrc: "" } },
-}));
-
 vi.mock("../../../api/request", () => ({
   request: vi.fn(),
   requestBlob: vi.fn(),
@@ -392,12 +384,10 @@ describe("批次七真机修复 · 预览通道对齐顶层知识库页（活库
   });
 
   it("② .jpg → 【图片通道】直接渲染（既有取原文件 inline 端点）", async () => {
-    const createObjectURL = vi.fn(() => "blob:asset-image");
-    vi.stubGlobal("URL", {
-      ...URL,
-      createObjectURL,
-      revokeObjectURL: vi.fn(),
-    });
+    // ★ 不再整体替换全局 `URL`（`{...URL}` 会把**类**展平成普通对象 ⇒ 真 pdfjs 的
+    //   `src instanceof URL` 抛 "Right-hand side of 'instanceof' is not callable"，
+    //   且 `vi.stubGlobal` 未还原 ⇒ 跨用例泄漏）。文件级 `beforeEach` 已注入
+    //   `URL.createObjectURL` / `revokeObjectURL` 两个方法，此处无需再桩。
     mockedRequest.mockImplementation(
       async (path: string) =>
         (path.startsWith("/knowledge-bases/kb1/documents")

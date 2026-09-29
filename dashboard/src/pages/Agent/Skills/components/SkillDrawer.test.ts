@@ -1,10 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   buildSkillMarkdown,
   isValidSkillName,
   OCTOP_EMOJI_META_KEY,
   parseSkillEmojiAndMetadata,
 } from "./SkillDrawer";
+
+// ★★ 判据【自足】（批次十四 `T-B-LAZY` · 评审 `L-2`）：
+//   本文件**自己显式**去掉 `T-B-SETUP` 的 polyfill ⇒ **不依赖两张卡的先后**
+//   （★「顺序是调度约束 ✗ · 判据自足是语义约束 ✓」——两卡 `blocked_by` 都是 `[]`，谁先落不确定）。
+//   ★ 本文件仍然绿 ⇒ **直接证明**「三路预览改懒加载后，pdfjs 那条边**不在模块加载期**」✓。
+//   ★ 反向：把 `FileViewer` 的 `lazy` 改回静态 `import` ⇒ 本文件必红（钉回见回报）。
+beforeAll(() => {
+  delete (globalThis as { DOMMatrix?: unknown }).DOMMatrix;
+  delete (Promise as unknown as { withResolvers?: unknown }).withResolvers;
+});
 
 describe("isValidSkillName", () => {
   it("accepts CJK, letters, digits and . _ -", () => {

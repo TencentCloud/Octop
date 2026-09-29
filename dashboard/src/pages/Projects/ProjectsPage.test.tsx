@@ -11,15 +11,6 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 // Only the transport is mocked: both pages must go through ``projectsApi`` /
 // ``projectMetadataApi``, so asserting on ``request`` proves the real paths and
 // request bodies (R4 field set, PLAN §6.3 wrapper reuse).
-// 页面测试会经 `Detail/index.tsx → AssetsTab → DocumentPreviewCore` 传递性引入
-// `react-pdf`；jsdom 无 `DOMMatrix` ⇒ 按仓内惯例（`DocumentPreviewCore.pdfSkeleton.test.tsx`）
-// 只把 pdfjs 渲染器打桩，**不改任何断言**。
-vi.mock("react-pdf", () => ({
-  Document: () => <div data-testid="pdf-document" />,
-  Page: () => <div data-testid="pdf-page" />,
-  pdfjs: { GlobalWorkerOptions: { workerSrc: "" } },
-}));
-
 vi.mock("../../api/request", () => ({
   request: vi.fn(),
   requestBlob: vi.fn(),

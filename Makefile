@@ -16,6 +16,12 @@ SHELL := /bin/bash
 
 REPO_ROOT     := $(shell pwd)
 DASHBOARD_DIR := $(REPO_ROOT)/dashboard
+
+# ★ 显式串行（批次十四 `T-B-GATE` ⑧）：`all` 的依赖里既有后端 `test`（pytest 全量）
+# 也有前端 `test-frontend`（vitest）。make **默认**就是串行，但一旦有人 `make -j`，
+# 两者会**并发** ⇒ 前端 collect/tests 超时更紧，而 `AuthGuard` 的 flake 正是**负载敏感**的
+# （实测：并发负载下会红）⇒ 这里显式声明**不可并行**，行为与默认**等价**。
+.NOTPARALLEL:
 DASHBOARD_DEST := $(REPO_ROOT)/src/octop/dashboard
 DIST_DIR      := $(REPO_ROOT)/dist
 
@@ -198,7 +204,7 @@ run-online:
 # ─── Quality (backend) ───────────────────────────────────────────────────────
 
 .PHONY: all
-all: format-all lint typecheck test
+all: format-all lint typecheck test test-frontend
 
 .PHONY: lint
 lint:
@@ -217,6 +223,16 @@ format:
 typecheck:
 	@echo "[typecheck] mypy..."
 	$(RUN) mypy src/octop
+
+.PHONY: test-frontend
+# ★ 前端测试段（批次十四 `T-B-GATE` · `P1 = B`）：把 vitest 接进 `make all`。
+# ★ 与既有 `build-frontend`（构建）**是两件事**，两条都保留。
+# ★ 退出码语义由 `dashboard/scripts/vitest-fail-classify.py`（`D-8`）给出且**不变**：
+#   有套件加载失败（`FAIL … [ … ]`）⇒ **1** · 仅用例失败（`FAIL … > …`）⇒ **2** · 全绿 ⇒ **0**。
+# ★ `2` 也是失败 ⇒ **不得** `|| true`。
+test-frontend:
+	@echo "[test-frontend] vitest + fail-classifier (1 = suite load, 2 = case fail)..."
+	@cd $(DASHBOARD_DIR) && npx vitest run 2>&1 | tee /tmp/octop-vitest.log | python3 scripts/vitest-fail-classify.py
 
 .PHONY: test
 test:
