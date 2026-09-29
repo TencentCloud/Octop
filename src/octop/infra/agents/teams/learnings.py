@@ -46,6 +46,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
@@ -702,10 +703,256 @@ def distill_and_append(
     )
 
 
+# ── deliver 候选：生产入口 + 准入层（T-85B · `S-1`/`S-2`/`S-3`）─────────────────
+
+#: `S-3` 低置信事件（经既有 :func:`_log_event`；**不是** ``ErrorCode``，不新增码）。
+LOW_CONFIDENCE_EVENT = "learnings.low_confidence"
+
+#: ★ 候选首行标签的**闭集**：与 ``team/按照建议执行-045423/tools/sediment-diff.py`` 的
+#: ``_TAGS_RE`` **逐字同一个正则**（``D-n`` / ``X-n`` / ``G-n`` / ``R-<单字母>``）。
+_CANDIDATE_TAG_RE = re.compile(r"\b(?:D-\d+|X-\d+|G-\d+|R-[A-Z])\b")
+
+#: 候选首行的形态（`S-1` 的载体）：``[<标签>] <标题>``，其后可选正文行。
+_CANDIDATE_HEAD_RE = re.compile(r"^\[(?P<tag>[^\]]*)\]\s*(?P<title>.*)$")
+
+#: `S-2`（用户拍板 · 口径 `C-2`）的**冻结值**：每 run ≤5 条 · 单条 ≤200 字。
+#: ★ **不是**本卡自造的启发式阈值；超限行为 = **丢弃**（不截断、不拒绝）。
+_ADMIT_MAX_ITEMS = 5
+_ADMIT_MAX_CHARS = 200
+
+#: 乙（交付时 LLM 提炼）未注入时的降级理由（`PLAN.md` §2.4(b)：乙在主路径上默认不可达）。
+_DISTILL_UNAVAILABLE = "distill-unavailable"
+
+#: 丙只读这三份**结构化痕迹**（`SPEC.md` §7 `R2` 行）；元组顺序即候选产出顺序。
+_TRACE_FILES = ("TASKS.json", "SUMMARY.md", "RUN.log.md")
+
+
+def _candidate_key(text: str) -> tuple[str, str] | None:
+    """`S-1` 去重键 = ``(标签, norm_learning(标题))``；``None`` = 低置信（`S-3` 唯一判据）。
+
+    标签取自 ``_CANDIDATE_TAG_RE`` 的**闭集**：标签缺失 / 不在闭集 / 规范化标题为空
+    ⇒ ``None`` ⇒ 该候选**不进** ``candidates``（由 :func:`collect_deliver_candidates`
+    记低置信事件）。★ ``norm_learning`` **只用于算键**，**不得**用它改写落盘文本
+    （它会小写化 + 去空白，会污染 LEARNINGS 行形态）。
+    """
+    head = str(text).splitlines()[0].strip() if str(text).strip() else ""
+    match = _CANDIDATE_HEAD_RE.match(head)
+    if match is None:
+        return None
+    tag = _CANDIDATE_TAG_RE.fullmatch(match.group("tag").strip())
+    if tag is None:
+        return None
+    title = norm_learning(match.group("title"))
+    if not title:
+        return None
+    return tag.group(0), title
+
+
+def _admit_candidates(
+    candidates: Sequence[LearningCandidate],
+) -> tuple[tuple[LearningCandidate, ...], tuple[str, ...]]:
+    """`S-2` 整流（顺序逐字裁定）：① `S-1` 去重 → ② 单条 >200 字丢弃 → ③ 超 5 条丢**尾部**。
+
+    ① 键相同 ⇒ 去重、**保留首见**（同标签的**不同**经验各有各的键 ⇒ 不被误删）；
+    ② / ③ 只**丢弃**，不截断、不拒绝；保留产出顺序 ⇒ 丢弃集合确定、可逐条断言。
+    键为 ``None`` 的候选（低置信）由 :func:`collect_deliver_candidates` 在**更早一层**
+    记账（`S-3`），这里跳过、不重复记 —— 低置信判据只有一处。
+    """
+    keyed: list[tuple[LearningCandidate, tuple[str, str]]] = []
+    seen: set[tuple[str, str]] = set()
+    dropped: list[str] = []
+    for candidate in candidates:
+        key = _candidate_key(str(candidate.text))
+        if key is None:
+            continue
+        if key in seen:
+            dropped.append(f"duplicate:{key[0]}:{key[1]}")
+            continue
+        seen.add(key)
+        keyed.append((candidate, key))
+
+    sized = [(item, key) for item, key in keyed if len(str(item.text)) <= _ADMIT_MAX_CHARS]
+    dropped.extend(
+        f"too-long:{key[0]}:{key[1]}"
+        for item, key in keyed
+        if len(str(item.text)) > _ADMIT_MAX_CHARS
+    )
+    dropped.extend(f"over-limit:{key[0]}:{key[1]}" for _, key in sized[_ADMIT_MAX_ITEMS:])
+    return tuple(item for item, _ in sized[:_ADMIT_MAX_ITEMS]), tuple(dropped)
+
+
+def _screen_candidates(
+    candidates: Sequence[LearningCandidate],
+) -> tuple[tuple[LearningCandidate, ...], tuple[str, ...]]:
+    """准入层的两道否决（都在 ``distill_and_append`` **之前**，`C-3` 纵深防御）。
+
+    * **低置信**（``_candidate_key`` 返回 ``None``）⇒ 不进 ``candidates`` + 经既有
+      :func:`_log_event` 记 ``learnings.low_confidence``，payload ``{"norm": …}``
+      （另记一条 ``low-confidence:<norm>`` 降级理由，与冲突同走 ``dropped_reasons``）；
+    * **冲突**（同标签下 ``norm_learning`` 相同而**原文不同** = 互斥条目）⇒ 该组**都不写入**
+      （挂人审：``pending-decision:<norm>``），★ 人审入口 = 日志 + 返回值，**不新增持久化**。
+    """
+    keyed: list[tuple[LearningCandidate, tuple[str, str], str]] = []
+    groups: dict[tuple[str, str], list[str]] = {}
+    dropped: list[str] = []
+    for candidate in candidates:
+        text = str(candidate.text)
+        key = _candidate_key(text)
+        norm = norm_learning(text)
+        if key is None:
+            _log_event(LOW_CONFIDENCE_EVENT, {"norm": norm})
+            dropped.append(f"low-confidence:{norm}")
+            continue
+        keyed.append((candidate, key, norm))
+        groups.setdefault((key[0], norm), []).append(text)
+
+    conflicts = sorted(group for group, texts in groups.items() if len(set(texts)) > 1)
+    dropped.extend(f"pending-decision:{norm}" for _, norm in conflicts)
+    conflict_set = set(conflicts)
+    kept = tuple(candidate for candidate, key, norm in keyed if (key[0], norm) not in conflict_set)
+    return kept, tuple(dropped)
+
+
+def _trace_text(run_dir: Path, name: str) -> str:
+    """读 ``run_dir`` 里的一份结构化痕迹；缺失 ⇒ 空串（候选为空 + 记因，**不**记绿）。"""
+    path = run_dir / name
+    if not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def _verdict_lines(raw: str) -> tuple[str, ...]:
+    """``TASKS.json`` 里**已裁决**（``verdict`` 非空）的卡 ⇒ 每卡一行痕迹。"""
+    if not raw.strip():
+        return ()
+    try:
+        payload = json.loads(raw)
+    except ValueError:
+        return ()
+    tasks = payload.get("tasks") if isinstance(payload, dict) else None
+    if not isinstance(tasks, list):
+        return ()
+    return tuple(
+        f"{card.get('id')} {card.get('title')} — verdict={card.get('verdict')}"
+        for card in tasks
+        if isinstance(card, dict) and str(card.get("verdict") or "").strip()
+    )
+
+
+def _tagged_candidates(lines: Iterable[str]) -> tuple[LearningCandidate, ...]:
+    """丙的规则：**只**把带闭集标签的行变成候选 —— 文本 = ``[<标签>] <该行去掉标签文本>``。
+
+    非标签行**不是**候选（丙不产出低置信候选）；标签单独成行 ⇒ 标题为空 ⇒ 由
+    ``_candidate_key`` 归入低置信分支（判据仍只有一处）。标题 = 该行去掉标签文本后
+    折叠空白（**只**折叠空白：不改大小写、不删词 —— 不借 ``norm_learning`` 改写落盘文本）。
+    """
+    out: list[LearningCandidate] = []
+    for line in lines:
+        match = _CANDIDATE_TAG_RE.search(line)
+        if match is None:
+            continue
+        title = " ".join(f"{line[: match.start()]} {line[match.end() :]}".split())
+        out.append(LearningCandidate(text=f"[{match.group(0)}] {title}"))
+    return tuple(out)
+
+
+def _promotion_first(
+    host_workspace: Path, project_id: str, candidates: Iterable[LearningCandidate]
+) -> tuple[LearningCandidate, ...]:
+    """可上浮到团队层的候选排前（其余保序）—— **只复用**既有纯函数，不新增规则/阈值。
+
+    复用 :func:`count_project_occurrences` + :func:`should_promote_to_team`（其 ``general-marker``
+    一支由既有 ``_GENERAL_MARKERS`` 判定，本卡一个字节不改）：`S-2` 的尾部丢弃因此
+    先丢**项目私有**项，可跨项目复用的先占住 ≤5 名额。
+    """
+    first: list[LearningCandidate] = []
+    rest: list[LearningCandidate] = []
+    for candidate in candidates:
+        text = str(candidate.text).strip()
+        recurrence = count_project_occurrences(host_workspace, text, exclude=project_id)
+        promote, _reason = should_promote_to_team(text, recurrence=recurrence)
+        (first if promote else rest).append(candidate)
+    return (*first, *rest)
+
+
+def _distilled_candidates(
+    distill: Callable[[str], str], run_dir: Path
+) -> tuple[LearningCandidate, ...]:
+    """乙：**只**经注入的 ``distill`` 回调取文本，再逐行当候选（形态不符 ⇒ 低置信分支）。
+
+    ★ 结构保证「模型产出**不得**绕过授权判据」：回调只能给出**文本**，产不出"已准入的候选"
+    —— 乙与丙走**同一个** :func:`_candidate_key` + :func:`_admit_candidates`。
+    """
+    material = "\n\n".join(f"## {name}\n{_trace_text(run_dir, name)}" for name in _TRACE_FILES)
+    try:
+        produced = str(distill(material))
+    except Exception:  # noqa: BLE001 - 可选能力失败只降级，不阻塞交付
+        logger.warning("learnings distill callback failed", exc_info=True)
+        _log_event(DEGRADED_EVENT, {"reason": "distill:failed"})
+        return ()
+    return tuple(
+        LearningCandidate(text=line.strip()) for line in produced.splitlines() if line.strip()
+    )
+
+
+def collect_deliver_candidates(
+    *,
+    host_workspace: Path,
+    project_id: str,
+    run_id: str,
+    run_dir: Path,
+    distill: Callable[[str], str] | None = None,
+) -> tuple[tuple[LearningCandidate, ...], tuple[str, ...]]:
+    """deliver 时产出候选并过**准入层**（本批的**唯一**候选产出点）。
+
+    * **丙**（规则式，本批唯一实际可达）：只读 ``run_dir`` 的结构化痕迹
+      （`TASKS.json` 的 ``verdict`` / `SUMMARY.md` / `RUN.log.md` 的**标签行**），
+      零模型调用；
+    * **乙**（注入点，默认 ``None`` ⇒ 只走丙）：**只**经注入的 ``distill`` 回调；
+      ``None`` 时**不报错**，把 ``"distill-unavailable"`` 记进 ``dropped_reasons``。
+      ★ 真实 LLM 接线立卡下一批（``T-96``）；本函数**不发起任何模型调用**；
+    * **准入层**（在 :func:`distill_and_append` **之前**，`C-3`）：低置信 ⇒ 不进 ``candidates``
+      + 记 ``learnings.low_confidence``；冲突 ⇒ 不进 ``candidates`` + ``pending-decision:<norm>``；
+      其余 ⇒ :func:`_admit_candidates`（`S-1` 去重 → `S-2` 字数 → `S-2` 条数）。
+
+    ``run_id`` 只作**归属**（哪次交付的候选）：落盘路径由 :func:`distill_and_append` 决定，
+    本函数**不写任何文件**。
+    """
+    produced = list(
+        _promotion_first(
+            host_workspace,
+            project_id,
+            _tagged_candidates(
+                [
+                    *_verdict_lines(_trace_text(run_dir, _TRACE_FILES[0])),
+                    *(
+                        line
+                        for name in _TRACE_FILES[1:]
+                        for line in _trace_text(run_dir, name).splitlines()
+                    ),
+                ]
+            ),
+        )
+    )
+    dropped: list[str] = []
+    if distill is None:
+        dropped.append(_DISTILL_UNAVAILABLE)
+    else:
+        produced.extend(_distilled_candidates(distill, run_dir))
+
+    admitted_survivors, screen_reasons = _screen_candidates(produced)
+    admitted, admit_reasons = _admit_candidates(admitted_survivors)
+    dropped.extend(screen_reasons)
+    dropped.extend(admit_reasons)
+    logger.debug("learnings candidates for run %s: %d", run_id, len(admitted))
+    return admitted, tuple(dropped)
+
+
 __all__ = [
     "DEFAULT_TITLE",
     "DEGRADED_EVENT",
     "INJECTION_HEADER",
+    "LOW_CONFIDENCE_EVENT",
     "PROJECTS_DIRNAME",
     "TEAM_DIR_PARTS",
     "TEAM_LEARNINGS_NAME",
@@ -724,6 +971,7 @@ __all__ = [
     "StructuredMemoryWriter",
     "append_learnings",
     "build_host_memory_block",
+    "collect_deliver_candidates",
     "count_project_occurrences",
     "dedupe_by_digest",
     "distill_and_append",

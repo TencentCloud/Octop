@@ -14,6 +14,7 @@ out where it matters).
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -24,6 +25,9 @@ from typing import Any
 import pytest
 
 from octop.config import OctopConfig
+from octop.infra.agents.manager import AgentManager
+from octop.infra.agents.teams import learnings as L
+from octop.infra.agents.teams import run_service as run_service_module
 from octop.infra.agents.teams.pipeline import ROLES
 from octop.infra.agents.teams.run_service import (
     ROOM_CHAT_TYPE,
@@ -117,6 +121,7 @@ class Harness:
     user: Actor
     gateway: _StubGateway
     dispatches: list[dict[str, Any]] = field(default_factory=list)
+    host: Path | None = None
 
     def create_run(self, **fields: Any) -> Any:
         return self.service.create(team_agent_id=TEAM_ID, user=self.user, **fields)
@@ -180,6 +185,22 @@ def harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Harness
         user=Actor(user),
         gateway=gateway,
     )
+
+
+@pytest.fixture
+def deliver_harness(harness: Harness, tmp_path: Path) -> Harness:
+    """``harness`` + the run's **host** workspace — T-85B's deliver hook writes there.
+
+    ``bind_runtime`` is the documented way to attach a runtime handle after boot, so the
+    fixture reuses the whole harness instead of building a second service.
+    """
+    host = tmp_path / "host"
+    host.mkdir()
+    harness.service.bind_runtime(
+        host_workspace_for=lambda agent_id: host if agent_id == TEAM_ID else None
+    )
+    harness.host = host
+    return harness
 
 
 def assert_code(err: Any, code: ErrorCode, *, status: int | None = None) -> None:
@@ -1282,3 +1303,179 @@ def test_run_id_is_the_directory_name_shape() -> None:
     """SPEC R22: the id is `<YYYY-MM-DD-HHMMSS>` — no suffix, no colon."""
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}-\d{6}", run_id_for())
     assert "reviewer" in ROLES
+
+
+# ── T-85B: the deliver learnings hook (S-1 / S-2 / S-3) ──────────────────────
+
+
+def _advance_to_test(harness: Harness) -> Any:
+    """Walk a quick run to ``test`` (the phase before ``deliver``) with its artifacts."""
+    run = harness.create_run(goal="沉淀经验", tier="quick")
+    harness.write(run, "SPEC.md", FILLED_SPEC)
+    harness.write(run, "TASKS.json", '{"tasks": []}')
+    harness.write(run, "TEST.md", "# TEST\n")
+    for phase in ("implement", "test"):
+        harness.service.advance(run.run_id, to_phase=phase, user=harness.user)
+    return harness.service.require_run(run.run_id)
+
+
+def _count_distill(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """Count ``distill_and_append`` calls (S-2's counting entity) around the real one."""
+    calls: list[dict[str, Any]] = []
+    real = run_service_module.distill_and_append
+
+    def counting(**kwargs: Any) -> Any:
+        calls.append(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(run_service_module, "distill_and_append", counting)
+    return calls
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "missing"
+
+
+def _write_traces(harness: Harness, run: Any, *, run_log: str) -> Path:
+    """Structured traces live in the **host** run directory (the 丙 source)."""
+    run_dir = Path(harness.host) / run_directory(run)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "RUN.log.md").write_text(run_log, encoding="utf-8")
+    return run_dir
+
+
+def test_a_true_phase_change_distills_once_and_a_real_candidate_lands_on_disk(
+    deliver_harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S-2 counting entity == 1, and the chain is **not** idle: a real candidate is written."""
+    harness = deliver_harness
+    run = _advance_to_test(harness)
+    _write_traces(harness, run, run_log="- G-1 团队层写入点恰好 1 处\n")
+    calls = _count_distill(monkeypatch)
+    target = L.project_learnings_path(Path(harness.host), run.project_id)
+    assert not target.exists()
+
+    moved = harness.service.advance(run.run_id, to_phase="deliver", user=harness.user)
+
+    assert moved.phase == "deliver"
+    assert len(calls) == 1, "S-2：每 run distill_and_append 调用次数 == 1"
+    written = target.read_text(encoding="utf-8")
+    assert "- [G-1] - 团队层写入点恰好 1 处" in written
+
+
+def test_a_repeated_deliver_writes_nothing_and_calls_the_distiller_zero_times(
+    deliver_harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The phase is already ``deliver`` ⇒ count 0 and the target file is byte-identical."""
+    harness = deliver_harness
+    run = _advance_to_test(harness)
+    _write_traces(harness, run, run_log="- G-1 团队层写入点恰好 1 处\n")
+    calls = _count_distill(monkeypatch)
+    harness.service.advance(run.run_id, to_phase="deliver", user=harness.user)
+    target = L.project_learnings_path(Path(harness.host), run.project_id)
+    before = _sha256(target)
+    calls.clear()
+
+    with pytest.raises(OctopError) as err:
+        harness.service.advance(run.run_id, to_phase="deliver", user=harness.user)
+
+    assert_code(err, ErrorCode.TEAM_RUN_PHASE_INVALID, status=409)
+    assert calls == [], "相位已是 deliver ⇒ 调用计数 == 0"
+    assert _sha256(target) == before
+    assert harness.service.require_run(run.run_id).phase == "deliver"
+
+
+def test_terminal_and_invalid_phases_are_refused_without_writing(
+    deliver_harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Existing codes only (no new ErrorCode) and **zero** writes (sha256 unchanged)."""
+    harness = deliver_harness
+    run = _advance_to_test(harness)
+    _write_traces(harness, run, run_log="- G-1 团队层写入点恰好 1 处\n")
+    calls = _count_distill(monkeypatch)
+    target = L.project_learnings_path(Path(harness.host), run.project_id)
+
+    with pytest.raises(OctopError) as invalid:
+        harness.service.advance(run.run_id, to_phase="deliver-typo", user=harness.user)
+    assert_code(invalid, ErrorCode.TEAM_RUN_PHASE_INVALID, status=409)
+
+    harness.services.team_run_repo.update_status(run.run_id, "cancelled")
+    with pytest.raises(OctopError) as terminal:
+        harness.service.advance(run.run_id, to_phase="deliver", user=harness.user)
+    assert_code(terminal, ErrorCode.TEAM_RUN_TERMINAL, status=409)
+
+    assert calls == []
+    assert _sha256(target) == "missing"
+
+
+def test_the_deliver_hook_holds_low_confidence_and_conflicting_candidates(
+    deliver_harness: Harness, caplog: pytest.LogCaptureFixture
+) -> None:
+    """C-2/C-3 through the production entry: log event + ``pending-decision`` + no write."""
+    harness = deliver_harness
+    first, second = "[D-1] 先跑测试。", "[D-1] 先跑测试!"
+    harness.service.bind_runtime(
+        learnings_distill=lambda _material: f"无标签的一行\n{first}\n{second}"
+    )
+    run = _advance_to_test(harness)
+    target = L.project_learnings_path(Path(harness.host), run.project_id)
+
+    with caplog.at_level(logging.WARNING, logger="octop.infra.agents.teams.learnings"):
+        harness.service.advance(run.run_id, to_phase="deliver", user=harness.user)
+
+    assert L.LOW_CONFIDENCE_EVENT in caplog.text
+    assert L.norm_learning("无标签的一行") in caplog.text
+    assert f"pending-decision:{L.norm_learning(first)}" in caplog.text
+    assert not target.exists(), "低置信 + 冲突 ⇒ 一个字节都不写"
+
+
+def test_an_unbound_host_workspace_skips_the_hook(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No host write face ⇒ skip (never guess a path): the phase still moves, count stays 0.
+
+    "Unbound" here is the *whole* runtime being unbound (no registry either) — the
+    pre-T-85B semantics, which must not change.
+    """
+    run = _advance_to_test(harness)
+    calls = _count_distill(monkeypatch)
+
+    moved = harness.service.advance(run.run_id, to_phase="deliver", user=harness.user)
+
+    assert moved.phase == "deliver"
+    assert calls == []
+
+
+def test_the_production_binding_reaches_the_host_write_face_without_a_seat(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T-85B on the **production composition path**: only ``bind_runtime(agent_manager=…)``.
+
+    ``server.py`` binds the real registry and never passes ``host_workspace_for``, so
+    injection-seat-only coverage (``deliver_harness``) proved nothing about production:
+    the write face has to be reachable from the bound registry, and a real candidate has
+    to land on disk through ``distill_and_append``. The `agent_manager` here is the real
+    ``AgentManager`` (the class the server binds), not a hand-rolled host-path stub, and
+    nothing stubs either accessor — so this case fails if the fallback is removed.
+    """
+    manager = AgentManager(repos=harness.services.repos, paths=harness.services.paths)
+    harness.service.bind_runtime(agent_manager=manager)
+    host = manager.resolve_workspace_dir(TEAM_ID, persist_if_missing=False)
+    run = _advance_to_test(harness)
+    run_dir = host / run_directory(run)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "RUN.log.md").write_text("- G-1 团队层写入点恰好 1 处\n", encoding="utf-8")
+    calls = _count_distill(monkeypatch)
+    target = L.project_learnings_path(host, run.project_id)
+    assert harness.service._learnings_home(run) == host  # noqa: SLF001
+    assert not target.exists()
+
+    moved = harness.service.advance(run.run_id, to_phase="deliver", user=harness.user)
+
+    assert moved.phase == "deliver"
+    assert len(calls) == 1, "S-2：每 run distill_and_append 调用次数 == 1"
+    assert calls[0]["host_workspace"] == host, "写面必须来自绑定的注册表，而非注入座"
+    written = target.read_text(encoding="utf-8")
+    assert "- [G-1] - 团队层写入点恰好 1 处" in written, "候选必须真的落盘"

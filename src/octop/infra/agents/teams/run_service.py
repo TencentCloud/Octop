@@ -42,6 +42,7 @@ docstring). ``bash`` redirection is outside both — unchanged and intended.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -57,6 +58,10 @@ from octop.infra.agents.teams.artifacts import (
     normalize_owner_role,
     owner_violation,
     owners_of,
+)
+from octop.infra.agents.teams.learnings import (
+    collect_deliver_candidates,
+    distill_and_append,
 )
 from octop.infra.agents.teams.pipeline import (
     DEFAULT_MAX_REVIEW_ROUNDS,
@@ -85,6 +90,8 @@ if TYPE_CHECKING:
     from octop.infra.gateway.gateway import Gateway
     from octop.infra.projects.service import ProjectActor
 
+logger = logging.getLogger(__name__)
+
 #: ``run_root`` value meaning "the host's workspace, workspace-relative ``team/``".
 RUN_ROOT_HOST_WORKSPACE = "host_workspace"
 #: ``run_root`` prefix for an explicitly chosen absolute backend root.
@@ -93,6 +100,9 @@ RUN_ROOT_EXPLICIT_PREFIX = "explicit:"
 RUN_DIR_PREFIX = "team"
 #: ``chat_type`` of a run's room session — run-scoped, never ``dm`` (SPEC B30 ①).
 ROOM_CHAT_TYPE = "team-run"
+
+#: The deliver phase — the single phase carrying the learnings hook (T-85B).
+DELIVER_PHASE = "deliver"
 
 #: Goal limits (PLAN 边界 Case「空输入 / 非法输入」): refuse, never truncate.
 GOAL_MAX_LENGTH = 4000
@@ -311,6 +321,8 @@ class TeamRunService:
         workspace_for: Callable[[str], Any] | None = None,
         team_service: TeamService | None = None,
         kb_archiver_factory: KbArchiverFactory | None = None,
+        host_workspace_for: Callable[[str], Path | None] | None = None,
+        learnings_distill: Callable[[str], str] | None = None,
     ) -> None:
         self._services = services
         self._runs = services.team_run_repo
@@ -326,6 +338,14 @@ class TeamRunService:
         # the archiver lives with the memory wiring and teams/ must not reach into the
         # knowledge domain (AGENTS.md section 5); T-18's ProjectKbArchiver satisfies it.
         self._kb_archiver_factory = kb_archiver_factory
+        # The deliver hook (T-85B) writes through ``learnings.distill_and_append``, which
+        # takes a **host** path. This service never guesses one: without the accessor
+        # there is no write face, so the hook skips instead of inventing a location.
+        self._host_workspace_for = host_workspace_for
+        # 乙 (deliver-time LLM distillation) rides in as a callback only — the seat for
+        # T-96. Default None means 丙-only, exactly as PLAN 2.4(b) registers it; this
+        # module never calls a model itself.
+        self._learnings_distill = learnings_distill
 
     # ── wiring (T-17 binds the runtime after boot) ───────────────────────────
 
@@ -336,6 +356,8 @@ class TeamRunService:
         gateway: Gateway | None = None,
         workspace_for: Callable[[str], Any] | None = None,
         kb_archiver_factory: KbArchiverFactory | None = None,
+        host_workspace_for: Callable[[str], Path | None] | None = None,
+        learnings_distill: Callable[[str], str] | None = None,
     ) -> None:
         """Attach the runtime handles dispatch and artifact I/O need.
 
@@ -351,6 +373,10 @@ class TeamRunService:
             self._workspace_for = workspace_for
         if kb_archiver_factory is not None:
             self._kb_archiver_factory = kb_archiver_factory
+        if host_workspace_for is not None:
+            self._host_workspace_for = host_workspace_for
+        if learnings_distill is not None:
+            self._learnings_distill = learnings_distill
 
     def _workspace_accessor(self) -> Callable[[str], Any] | None:
         """Resolve the accessor for a team agent's workspace.
@@ -791,6 +817,11 @@ class TeamRunService:
         previous = run.phase
         rollback = to_phase in ROLLBACK_TRANSITIONS.get(previous, ())
         updated = self._set_phase(run, to_phase, rollback=rollback, actor=self._actor(user, run))
+        if to_phase == DELIVER_PHASE and previous != to_phase:
+            # T-85B: the **only** trigger. A phase that truly changed is the run-level
+            # marker S-2 counts ("one distillation per run" == one distill_and_append
+            # call); a re-entered deliver never reaches here, so the count stays 0.
+            self._distill_deliver_learnings(updated)
         return updated
 
     def _set_phase(
@@ -848,6 +879,80 @@ class TeamRunService:
             actor=actor,
         )
         return updated
+
+    def _distill_deliver_learnings(self, run: TeamRunRow) -> None:
+        """Deliver hook (T-85B): hand this run's candidates to the one write path.
+
+        ``advance`` calls this **only** when ``deliver`` is entered and the phase truly
+        changed, so the count of :func:`learnings.distill_and_append` calls is exactly
+        one per run (S-2's counting entity). The candidates come from
+        :func:`learnings.collect_deliver_candidates`, whose admission layer (S-1/S-2/S-3)
+        runs *before* the write; its dropped reasons are merged into
+        ``DistillResult.degraded`` so a conflict still reaches the human-review entry.
+
+        A host workspace that cannot be named means no host write face — the hook skips
+        rather than guessing a path (nothing to write to, nothing written), and says so
+        on the log: a silent skip is exactly what made this hook look wired while
+        production wrote nothing.
+        """
+        home = self._learnings_home(run)
+        if home is None:
+            logger.warning(
+                "learnings deliver distillation skipped for run %s (team agent %s): "
+                "no host workspace",
+                run.run_id,
+                run.team_agent_id,
+            )
+            return
+        candidates, reasons = collect_deliver_candidates(
+            host_workspace=home,
+            project_id=run.project_id,
+            run_id=run.run_id,
+            run_dir=home / run_directory(run),
+            distill=self._learnings_distill,
+        )
+        result = distill_and_append(
+            host_workspace=home,
+            project_id=run.project_id,
+            run_id=run.run_id,
+            candidates=candidates,
+        )
+        degraded = (*reasons, *result.degraded)
+        if degraded:
+            logger.warning("learnings deliver degraded: %s", list(degraded))
+
+    def _learnings_home(self, run: TeamRunRow) -> Path | None:
+        """The run's host workspace (the team host agent's), or ``None`` when unreachable.
+
+        An injected ``host_workspace_for`` wins; without one the **host** path comes from
+        a bound agent registry, mirroring :meth:`_workspace_accessor`. The accessor is
+        :meth:`AgentManager.resolve_workspace_dir` — the existing "on-disk workspace for
+        Octop host FS ops" entry point — because ``distill_and_append`` writes through
+        plain host file I/O and therefore needs a host path, not a ``BackendWorkspace``.
+        ``persist_if_missing=False`` keeps the lookup read-only: entering ``deliver`` must
+        not write config as a side effect.
+
+        A remote / docker backend may have no host path at all (the workspace lives in
+        the sandbox or a bucket). That is registered honestly as a degraded skip instead
+        of being papered over with a guessed ``~/.octop/agents/<id>`` string.
+        """
+        agent_id = run.team_agent_id
+        if self._host_workspace_for is not None:
+            home = self._host_workspace_for(agent_id)
+        elif self._agent_manager is None:
+            # No runtime at all: unchanged pre-T-85B semantics — no seat, no write face.
+            return None
+        else:
+            try:
+                home = self._agent_manager.resolve_workspace_dir(agent_id, persist_if_missing=False)
+            except Exception:
+                logger.warning(
+                    "learnings deliver: host workspace lookup failed for team agent %s",
+                    agent_id,
+                    exc_info=True,
+                )
+                return None
+        return None if home is None else Path(home)
 
     def allowed_phases(self, run_id: str) -> tuple[str, ...]:
         """What ``advance`` would accept right now (``details.allowed`` on refusal)."""

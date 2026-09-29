@@ -6,11 +6,14 @@ through ``agent.workspace`` backed by ``local_shell`` on the agent dir.
 
 from __future__ import annotations
 
+import zipfile
 from io import BytesIO
 from typing import Any
 
 import pytest
 from docx import Document
+
+from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 
 # Workspace UI semantics: leading '/' is relative to agent workspace.
 FROM_WORKSPACE = {"from_workspace": "true"}
@@ -528,3 +531,235 @@ async def test_doc_write_invalid_content_400(env: Any) -> None:
         headers=auth,
     )
     assert r.status_code == 400
+
+
+# --- B-19-A: team memory writes are denied (409) ----------------------------
+
+TEAM_LEARNINGS = ".octop/team/LEARNINGS.md"
+TEAM_MEMORY_DENIED_EN = "You are not the owner of this artifact."
+TEAM_MEMORY_DENIED_ZH = "你不是该工件的归属写者。"
+# Direct spelling plus the three bypass spellings that defeat a raw-prefix check.
+TEAM_MEMORY_SPELLINGS = [
+    "/.octop/team/LEARNINGS.md",
+    "/./.octop/team/LEARNINGS.md",  # ./ bypass
+    "/x/../.octop/team/LEARNINGS.md",  # x/../ bypass
+    "//.octop/team/LEARNINGS.md",  # // bypass
+]
+
+
+def _zip_with(entries: dict[str, bytes]) -> bytes:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, blob in entries.items():
+            archive.writestr(name, blob)
+    return buffer.getvalue()
+
+
+async def _team_memory_write(
+    c: Any, auth: dict[str, str], aid: str, *, method: str, path: str, locale: str
+) -> Any:
+    headers = {**auth, "Accept-Language": locale}
+    params = {**FROM_WORKSPACE, "path": path}
+    if method == "put":
+        return await c.put(
+            f"/api/agents/{aid}/workspace/file",
+            params=params,
+            headers=headers,
+            json={"content": "forged\n"},
+        )
+    return await c.post(
+        f"/api/agents/{aid}/workspace/upload",
+        params=params,
+        headers=headers,
+        files={"file": ("LEARNINGS.md", b"forged\n", "text/markdown")},
+    )
+
+
+async def _assert_not_on_disk(c: Any, auth: dict[str, str], aid: str) -> None:
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": f"/{TEAM_LEARNINGS}"},
+        headers=auth,
+    )
+    assert r.status_code == 404, r.text
+
+
+@pytest.mark.parametrize("method", ["put", "post"])
+@pytest.mark.parametrize("path", TEAM_MEMORY_SPELLINGS)
+async def test_team_memory_write_denied_409(env: Any, method: str, path: str) -> None:
+    c, _srv, auth, aid = env
+    r = await _team_memory_write(c, auth, aid, method=method, path=path, locale="en")
+    assert r.status_code == 409, r.text
+    body = r.json()["error"]
+    assert body["code"] == "TEAM_ARTIFACT_OWNERSHIP_DENIED"
+    assert body["message"] == TEAM_MEMORY_DENIED_EN
+    await _assert_not_on_disk(c, auth, aid)
+
+
+@pytest.mark.parametrize("method", ["put", "post"])
+async def test_team_memory_write_denied_copy_is_localized(env: Any, method: str) -> None:
+    c, _srv, auth, aid = env
+    r = await _team_memory_write(
+        c, auth, aid, method=method, path=f"/{TEAM_LEARNINGS}", locale="zh"
+    )
+    assert r.status_code == 409, r.text
+    assert r.json()["error"]["message"] == TEAM_MEMORY_DENIED_ZH
+
+
+async def _seed_team_memory(c: Any, auth: dict[str, str], aid: str, blob: bytes) -> None:
+    """Seed via the sanctioned writer (archive restore) so the bytes are observable."""
+    r = await c.post(
+        f"/api/agents/{aid}/workspace/archive",
+        params={"mode": "merge"},
+        headers=auth,
+        files={"file": ("workspace.zip", _zip_with({TEAM_LEARNINGS: blob}), "application/zip")},
+    )
+    assert r.status_code == 200, r.text
+
+
+async def _read_team_memory(c: Any, auth: dict[str, str], aid: str) -> Any:
+    return await c.get(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": f"/{TEAM_LEARNINGS}"},
+        headers=auth,
+    )
+
+
+def _default_param_team_spellings(srv: Any, aid: str) -> dict[str, str]:
+    """Three spellings that reach ``.octop/team/LEARNINGS.md`` for the same agent.
+
+    ``host_absolute`` is the FIND-20 hole: with ``from_workspace`` omitted (default
+    ``false``) a leading ``/`` is a **host** path, so the guard used to see
+    ``Users/…/.octop/team/…`` and miss the protected surface. ``file_url`` is the
+    FIND-21 spelling, which always resolves host-absolute.
+    """
+    host = resolve_agent_workspace_dir(srv, aid) / TEAM_LEARNINGS
+    return {
+        "relative": TEAM_LEARNINGS,
+        "host_absolute": host.as_posix(),
+        "file_url": host.as_uri(),
+    }
+
+
+async def _default_param_team_write(
+    c: Any, auth: dict[str, str], aid: str, *, method: str, path: str
+) -> Any:
+    """``from_workspace`` is deliberately **omitted** — that is the defect under test."""
+    headers = {**auth, "Accept-Language": "en"}
+    if method == "put":
+        return await c.put(
+            f"/api/agents/{aid}/workspace/file",
+            params={"path": path},
+            headers=headers,
+            json={"content": "forged\n"},
+        )
+    return await c.post(
+        f"/api/agents/{aid}/workspace/upload",
+        params={"path": path},
+        headers=headers,
+        files={"file": ("LEARNINGS.md", b"forged\n", "text/markdown")},
+    )
+
+
+@pytest.mark.parametrize("method", ["put", "post"])
+@pytest.mark.parametrize("shape", ["relative", "host_absolute", "file_url"])
+async def test_team_memory_write_denied_with_default_params_409(
+    env: Any, method: str, shape: str
+) -> None:
+    """Default ``from_workspace`` + 3 spellings ⇒ 409 (code + copy verbatim), nothing written."""
+    c, srv, auth, aid = env
+    sentinel = b"# owned by the team runtime\n"
+    await _seed_team_memory(c, auth, aid, sentinel)
+    path = _default_param_team_spellings(srv, aid)[shape]
+    r = await _default_param_team_write(c, auth, aid, method=method, path=path)
+    assert r.status_code == 409, r.text
+    body = r.json()["error"]
+    assert body["code"] == "TEAM_ARTIFACT_OWNERSHIP_DENIED"
+    assert body["message"] == TEAM_MEMORY_DENIED_EN
+    after = await _read_team_memory(c, auth, aid)
+    assert after.status_code == 200, after.text
+    assert after.json()["content"].encode() == sentinel  # bytes unchanged
+
+
+@pytest.mark.parametrize("from_workspace_default", [True, False])
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "SOUL.md",
+        "outbound/a.txt",
+        "skills/demo/SKILL.md",
+        ".octop/sessions/state.db",  # in ``.octop`` but not ``.octop/team``
+        ".octop/auth/token.json",  # in ``.octop`` but not ``.octop/team``
+    ],
+)
+async def test_ordinary_files_still_writable_in_both_modes(
+    env: Any, rel: str, from_workspace_default: bool
+) -> None:
+    """Positive control: the widened guard must not touch ordinary or ``.octop`` siblings."""
+    c, _srv, auth, aid = env
+    path = f"/{rel}" if from_workspace_default else rel
+    params = {"path": path}
+    if from_workspace_default:
+        params["from_workspace"] = "true"
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params=params,
+        headers=auth,
+        json={"content": "ok\n"},
+    )
+    assert r.status_code == 200, r.text
+    back = await c.get(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": f"/{rel}"},
+        headers=auth,
+    )
+    assert back.status_code == 200, back.text
+    assert back.json()["content"] == "ok\n"
+
+
+async def test_archive_import_still_writes_team_memory(env: Any) -> None:
+    """Positive control: the registered archive-restore exemption keeps writing ``.octop/**``."""
+    c, _srv, auth, aid = env
+    r = await c.post(
+        f"/api/agents/{aid}/workspace/archive",
+        params={"mode": "merge"},
+        headers=auth,
+        files={
+            "file": (
+                "workspace.zip",
+                _zip_with({TEAM_LEARNINGS: b"# restored\n"}),
+                "application/zip",
+            )
+        },
+    )
+    assert r.status_code == 200, r.text
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": f"/{TEAM_LEARNINGS}"},
+        headers=auth,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["content"] == "# restored\n"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/./_builtin_skills/foo/SKILL.md",
+        "/x/../_builtin_skills/foo/SKILL.md",
+        "//_builtin_skills/foo/SKILL.md",
+    ],
+)
+async def test_builtin_skills_bypass_spellings_forbidden(env: Any, path: str) -> None:
+    """SEC-10: the shared normalizer closes these bypasses on the pre-existing 403 guard.
+
+    ``delete`` is the endpoint that already carried ``_assert_workspace_mutable``
+    (``write_file`` / ``upload_file`` never guarded ``_builtin_skills`` at all).
+    """
+    c, _srv, auth, aid = env
+    r = await c.delete(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": path},
+        headers=auth,
+    )
+    assert r.status_code == 403, r.text

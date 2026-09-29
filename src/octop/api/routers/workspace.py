@@ -37,12 +37,69 @@ logger = logging.getLogger(__name__)
 _PROTECTED_PREFIX = "_builtin_skills"
 
 
+# Team memory surface (B-19-A): owned by the team runtime, not by REST writers.
+_TEAM_MEMORY_PREFIX = ".octop/team"
+
+
+def _normalize_rel_posix(path: str) -> str:
+    """Fold ``path`` into a workspace-relative POSIX form for prefix checks.
+
+    Shared by both guards so their path judgements cannot drift: ``\\`` folds to
+    ``/`` first (Windows spellings are then judged on the same components), then
+    ``.`` / ``..`` / repeated ``/`` fold away and any leading/trailing ``/`` drops.
+    """
+    parts: list[str] = []
+    for part in path.replace("\\", "/").split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(part)
+    return "/".join(parts)
+
+
+def _assert_team_memory_writable(path: str, *, from_workspace: bool = False) -> str:
+    """Reject writes whose **effective backend target** is team memory (``.octop/team/**``).
+
+    Returns the resolved I/O path so the caller writes to *exactly* the string this
+    guard just judged (same ``_workspace_io_path`` call, same ``from_workspace``).
+
+    The judgement is made on the resolved target rather than on the raw argument,
+    because the raw argument can reach the same file by three different spellings:
+
+    * workspace-relative ``.octop/team/**``;
+    * host-absolute ``/…/.octop/team/**`` (``from_workspace=false``, the default);
+    * ``file:///…/.octop/team/**`` (``file://`` always resolves host-absolute).
+
+    Criterion: the normalized target contains the **adjacent segment pair**
+    ``(".octop", "team")`` at any position (any prefix + ``/.octop/team`` + optional
+    trailing segments). A relative prefix test (``posix.startswith(".octop/team")``)
+    is not enough: it only sees the workspace-relative spelling, while the two
+    absolute spellings carry a host prefix before the pair (``Users/…/.octop/team/…``,
+    ``file:/…/.octop/team/…``) and would slip through. The pair test needs no
+    knowledge of the caller's arguments, so it holds for all three at once; and it
+    stays precise — ``.octop/sessions/…`` / ``.octop/auth/…`` are not ``.octop/team``
+    and keep passing.
+    """
+    io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    segments = _normalize_rel_posix(io_path).split("/")
+    if any(segments[i] == ".octop" and segments[i + 1] == "team" for i in range(len(segments) - 1)):
+        raise OctopError(
+            ErrorCode.TEAM_ARTIFACT_OWNERSHIP_DENIED,
+            f"cannot modify {_TEAM_MEMORY_PREFIX!r} paths",
+        )
+    return io_path
+
+
 def _assert_workspace_mutable(path: str) -> str:
     """Mutating ops always treat paths as workspace-relative (``from_workspace=true``)."""
     rel = _workspace_io_path(path, from_workspace=True)
     if rel == ".":
         raise OctopError(ErrorCode.FORBIDDEN, "cannot modify workspace root")
-    posix = rel.replace("\\", "/").strip("/")
+    # SEC-10: judge the *normalized* path so ``./`` / ``x/../`` / ``//`` cannot bypass.
+    posix = _normalize_rel_posix(rel)
     if (
         posix == _PROTECTED_PREFIX
         or posix.startswith(f"{_PROTECTED_PREFIX}/")
@@ -186,6 +243,7 @@ async def write_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Overwrite ``path`` with ``body.content`` (text)."""
+    io_path = _assert_team_memory_writable(path, from_workspace=from_workspace)
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
@@ -205,7 +263,7 @@ async def write_file(
     else:
         data = body.content.encode("utf-8")
     try:
-        await ws.aupload_bytes(_workspace_io_path(path, from_workspace=from_workspace), data)
+        await ws.aupload_bytes(io_path, data)
     except Exception as exc:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot write {path!r}: {exc}") from exc
     return {"path": path, "size": len(data)}
@@ -321,10 +379,11 @@ async def upload_file(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
     target = path or f"/{file.filename or 'upload.bin'}"
+    io_path = _assert_team_memory_writable(target, from_workspace=from_workspace)
     data = await file.read()
     try:
         await ws.aupload_bytes(
-            _workspace_io_path(target, from_workspace=from_workspace),
+            io_path,
             data,
         )
     except Exception as exc:

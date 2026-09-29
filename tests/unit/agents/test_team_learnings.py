@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -642,3 +643,168 @@ def test_distill_result_is_json_serialisable_for_the_timeline(tmp_path: Path) ->
         "degraded": list(result.degraded),
     }
     assert json.loads(json.dumps(payload))["project_added"] == ["可序列化的经验"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T-85B —— deliver 候选生产 + 准入层（`S-1` 去重 / `S-2` 上限 / `S-3` 低置信 + 冲突）
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _run_dir(tmp_path: Path, *, run_log: str = "", summary: str = "", tasks: str = "") -> Path:
+    """造一份运行痕迹目录 —— 丙的**唯一**来源（`TASKS.json` / `SUMMARY.md` / `RUN.log.md`）。"""
+    run_dir = tmp_path / "team" / RUN_ID
+    run_dir.mkdir(parents=True, exist_ok=True)
+    for name, text in (("TASKS.json", tasks), ("SUMMARY.md", summary), ("RUN.log.md", run_log)):
+        if text:
+            (run_dir / name).write_text(text, encoding="utf-8")
+    return run_dir
+
+
+def _collect(
+    workspace: Path, run_dir: Path, *, distill: Any = None
+) -> tuple[tuple[L.LearningCandidate, ...], tuple[str, ...]]:
+    """经**生产入口**（`collect_deliver_candidates`）取候选，不手搓准入结果。"""
+    return L.collect_deliver_candidates(
+        host_workspace=workspace,
+        project_id=PROJECT_ID,
+        run_id=RUN_ID,
+        run_dir=run_dir,
+        distill=distill,
+    )
+
+
+def test_c1_the_admission_layer_dedupes_on_tag_plus_normalized_title(tmp_path: Path) -> None:
+    """`C-1` 单列断言：键相同 ⇒ 只留**首见**一条；同标签的**不同**经验不被误删。"""
+    first = L.LearningCandidate(text="[G-1] 团队层写入点恰好 1 处\n正文甲")
+    second = L.LearningCandidate(text="[G-1] 团队层写入点恰好 1 处\n正文乙")
+    other = L.LearningCandidate(text="[G-1] 另一条经验")
+
+    admitted, reasons = L._admit_candidates([first, second, other])
+
+    assert [item.text for item in admitted] == [first.text, other.text]
+    assert reasons == (f"duplicate:G-1:{L.norm_learning('团队层写入点恰好 1 处')}",)
+
+
+def test_c1_the_same_tagged_line_twice_yields_one_candidate(tmp_path: Path) -> None:
+    """同一批里两条键相同的候选 ⇒ 准入层只放行一条（产出侧同屏断言）。"""
+    run_dir = _run_dir(
+        tmp_path, run_log="- G-1 团队层写入点恰好 1 处\n- G-1 团队层写入点恰好 1 处\n"
+    )
+
+    admitted, reasons = _collect(tmp_path, run_dir)
+
+    assert [item.text for item in admitted] == ["[G-1] - 团队层写入点恰好 1 处"]
+    assert any(reason.startswith("duplicate:G-1:") for reason in reasons)
+
+
+def test_c1_the_existing_layer_skips_a_second_identical_batch(tmp_path: Path) -> None:
+    """`C-1` 第二层（既有 `append_learnings` 口径①）：同一批连喂两次 ⇒ 第二次 `added` 为空。"""
+    candidates = [L.LearningCandidate(text="[G-1] 团队层写入点恰好 1 处")]
+
+    first = _distill(tmp_path, candidates=candidates)
+    second = _distill(tmp_path, candidates=candidates)
+
+    assert first.project_added == ("[G-1] 团队层写入点恰好 1 处",)
+    assert second.project_added == ()
+    assert second.project_skipped == ("[G-1] 团队层写入点恰好 1 处",)
+
+
+def test_c2_caps_drop_the_tail_and_never_truncate(tmp_path: Path) -> None:
+    """`S-2`：6 条 ⇒ 只留 5 条（丢**尾部**）；单条 201 字 ⇒ **整条**丢弃（不截断）。"""
+    long_text = "[D-9] " + "长" * 195
+    assert len(long_text) == 201
+    lines = [f"[D-{i}] 第 {i} 条经验" for i in range(1, 6)]
+    lines.insert(2, long_text)
+    lines.append("[D-6] 第六条经验")
+
+    admitted, reasons = _collect(
+        tmp_path, tmp_path / "team" / RUN_ID, distill=lambda _material: "\n".join(lines)
+    )
+
+    assert len(admitted) == 5
+    assert all(len(item.text) <= 200 for item in admitted)
+    assert long_text not in [item.text for item in admitted]
+    assert any(reason.startswith("too-long:D-9:") for reason in reasons)
+    assert any(reason.startswith("over-limit:D-6:") for reason in reasons)
+
+
+def test_c3_low_confidence_is_logged_and_the_tagged_control_is_not(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """判别性对照（两条同屏）：无标签 ⇒ **必进**低置信；闭集标签 ⇒ **必不进**。"""
+    tagless = "先跑测试，不写标签"
+    tagged = "[G-1] 团队层写入点恰好 1 处"
+
+    with caplog.at_level(logging.WARNING, logger="octop.infra.agents.teams.learnings"):
+        admitted, reasons = _collect(
+            tmp_path,
+            tmp_path / "team" / RUN_ID,
+            distill=lambda _material: f"{tagless}\n{tagged}",
+        )
+
+    assert [item.text for item in admitted] == [tagged]
+    events = [
+        record.getMessage()
+        for record in caplog.records
+        if L.LOW_CONFIDENCE_EVENT in record.getMessage()
+    ]
+    assert len(events) == 1, "带闭集标签的候选不得进低置信分支"
+    assert L.norm_learning(tagless) in events[0]
+    assert f"low-confidence:{L.norm_learning(tagless)}" in reasons
+
+
+def test_c3_conflicting_entries_are_held_for_human_review(tmp_path: Path) -> None:
+    """同标签同 `norm` 而异文本 ⇒ **不写入** + `pending-decision:<norm>`（升人审）。"""
+    first, second = "[D-1] 先跑测试。", "[D-1] 先跑测试!"
+    assert first != second
+    assert L.norm_learning(first) == L.norm_learning(second), "冲突判据的前提：norm 相同"
+
+    admitted, reasons = _collect(
+        tmp_path,
+        tmp_path / "team" / RUN_ID,
+        distill=lambda _material: f"{first}\n{second}",
+    )
+
+    assert admitted == ()
+    assert reasons == (f"pending-decision:{L.norm_learning(first)}",)
+
+
+def test_the_rule_side_reads_the_three_traces_without_any_model_call(tmp_path: Path) -> None:
+    """丙：`TASKS.json` 的 `verdict` / `SUMMARY.md` / `RUN.log.md` 的标签行 ⇒ 候选。"""
+    run_dir = _run_dir(
+        tmp_path,
+        tasks=json.dumps(
+            {"tasks": [{"id": "G-2", "title": "闸门经验", "verdict": "pass"}]},
+            ensure_ascii=False,
+        ),
+        summary="- D-2 摘要里的经验\n",
+        run_log="G-1 日志里的经验\n",
+    )
+
+    admitted, reasons = _collect(tmp_path, run_dir)
+
+    assert reasons == ("distill-unavailable",), "`distill=None` ⇒ 只走丙、不报错、记因"
+    assert [item.text for item in admitted] == [
+        "[G-2] 闸门经验 — verdict=pass",
+        "[D-2] - 摘要里的经验",
+        "[G-1] 日志里的经验",
+    ]
+
+
+def test_a_project_private_candidate_stays_out_of_the_team_file(tmp_path: Path) -> None:
+    """正对照：项目私有 ⇒ 团队层**无**该行；通用标记 ⇒ 上浮（既有判据一字不改）。"""
+    private = "[D-7] 本项目的私有做法"
+    general = "[D-8] 通用 所有项目都要跑回归"
+
+    L.distill_and_append(
+        host_workspace=tmp_path,
+        project_id=PROJECT_ID,
+        run_id=RUN_ID,
+        candidates=[L.LearningCandidate(text=private), L.LearningCandidate(text=general)],
+        on_date=DAY,
+    )
+
+    team_text = L.team_learnings_path(tmp_path).read_text(encoding="utf-8")
+    assert general in team_text
+    assert private not in team_text
+    assert L.should_promote_to_team(private) == (False, "project-specific")
