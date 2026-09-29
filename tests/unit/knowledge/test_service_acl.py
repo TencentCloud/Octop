@@ -1,4 +1,4 @@
-"""Unit tests for knowledge-base access control and document orchestration."""
+﻿"""Unit tests for knowledge-base access control and document orchestration."""
 
 from __future__ import annotations
 
@@ -258,6 +258,31 @@ def test_shared_reader_cannot_rename(service: KnowledgeService) -> None:
         service.rename_document(kb.id, folder.id, actor_user_id=viewer, new_name="b")
 
 
+def test_rename_document_preserves_original_extension(service: KnowledgeService) -> None:
+    """Renaming a file must keep its on-disk extension, because the stored
+    bytes are keyed by <doc_id><original-suffix>. Dropping the suffix would
+    make downloads 404 and delete leak the file."""
+    from octop.infra.knowledge.files import document_path
+
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    doc = service.upload_document(
+        kb.id, actor_user_id=owner, filename="report.pdf",
+        content_type="application/pdf", content=b"%PDF-1.4",
+    )
+    stored = document_path(kb.id, doc.id, doc.filename)
+    assert stored.is_file()
+
+    renamed = service.rename_document(
+        kb.id, doc.id, actor_user_id=owner, new_name="quarterly report"
+    )
+
+    # The .pdf suffix must survive, otherwise the row points at a non-existent file.
+    assert renamed.filename.lower().endswith(".pdf")
+    assert service.document_has_original(renamed) is True
+
+
 def test_update_base_validates_max_documents_range(service: KnowledgeService) -> None:
     users = service._services.user_repo
     owner = users.create(username="ow", password_hash="h", role="user")
@@ -277,3 +302,4 @@ def test_update_base_validates_max_documents_range(service: KnowledgeService) ->
     # Omit keeps value
     service.update_base(kb.id, actor_user_id=owner, description="keep")
     assert service.get_readable_base(kb.id, actor_user_id=owner).max_documents == 10_000
+
