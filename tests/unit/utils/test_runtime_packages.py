@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import site
 import subprocess
 import sys
+from importlib import import_module
 
 import pytest
 
@@ -63,6 +65,46 @@ def test_install_packages_uses_uv_then_pip(monkeypatch) -> None:
     monkeypatch.setattr(subprocess, "run", fake_run)
     assert mod.install_packages(["pkg>=1"], is_satisfied=lambda: state["ready"]) == "installed"
     assert calls[0][0] == "/usr/bin/uv"
+
+
+def test_install_packages_loads_new_user_site_in_running_process(monkeypatch, tmp_path) -> None:
+    user_site = tmp_path / "user-site"
+    module_name = "octop_runtime_user_site_probe"
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setattr(site, "ENABLE_USER_SITE", True)
+    monkeypatch.setattr(site, "getusersitepackages", lambda: str(user_site))
+    monkeypatch.setattr(mod, "find_uv_binary", lambda: "/usr/bin/uv")
+
+    class FakeProc:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(_cmd, **_kwargs):  # type: ignore[no-untyped-def]
+        package_dir = user_site / module_name
+        package_dir.mkdir(parents=True)
+        (package_dir / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
+        return FakeProc()
+
+    def is_satisfied() -> bool:
+        try:
+            import_module(module_name)
+        except ModuleNotFoundError:
+            return False
+        return True
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    try:
+        assert not user_site.exists()
+        assert (
+            mod.install_packages(
+                [module_name], is_satisfied=is_satisfied, import_modules=(module_name,)
+            )
+            == "installed"
+        )
+        assert str(user_site) in sys.path
+    finally:
+        sys.modules.pop(module_name, None)
 
 
 def test_install_packages_bootstraps_pip_on_missing_module(monkeypatch) -> None:
