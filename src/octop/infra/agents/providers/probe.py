@@ -38,6 +38,14 @@ def provider_headers(row: Any) -> dict[str, str]:
     return dict(headers) if isinstance(headers, dict) else {}
 
 
+def provider_proxy(row: Any) -> str | None:
+    """Return the optional ``extra_json.proxy`` value (trimmed) or ``None``."""
+    proxy = parse_provider_extra(row).get("proxy")
+    if not proxy:
+        return None
+    return str(proxy).strip() or None
+
+
 def _is_codex_base_url(base_url: str | None) -> bool:
     return bool(base_url and "chatgpt.com/backend-api/codex" in base_url)
 
@@ -67,6 +75,12 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
         }
         if headers:
             kwargs["default_headers"] = dict(headers)
+        proxy = provider_proxy(row)
+        if proxy:
+            import httpx
+
+            kwargs["http_client"] = httpx.Client(proxy=proxy, trust_env=False)
+            kwargs["http_async_client"] = httpx.AsyncClient(proxy=proxy, trust_env=False)
         return ChatOpenAI(**kwargs)
 
     from octop.infra.agents.providers.store import resolve_provider_stream_usage
@@ -82,6 +96,7 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
             provider_name=row.name,
             extra=parse_provider_extra(row),
         ),
+        proxy=provider_proxy(row),
     )
     return build_chat_model(provider, model)
 

@@ -73,6 +73,7 @@ export interface ProviderRow {
   enabled: boolean;
   /** Resolved: custom defaults off, bundled presets default on. */
   stream_usage?: boolean;
+  extra_json?: string | null;
 }
 
 export interface UseProvidersResult {

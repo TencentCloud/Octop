@@ -189,6 +189,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "note": r.note,
         "enabled": bool(r.enabled),
         "stream_usage": resolve_provider_stream_usage(provider_name=r.name, extra=extra),
+        "extra_json": r.extra_json,
     }
 
 
