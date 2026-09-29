@@ -53,6 +53,7 @@ SUBCOMMANDS: tuple[str, ...] = (
     "cancel",
     "tier",
     "learn",
+    "settle",
 )
 
 __all__ = ["SUBCOMMANDS", "TASK_OPS", "cmd_team"]
@@ -162,6 +163,7 @@ async def _status(
                 (tr("team.field.phase", lang), str(run.phase)),
                 (tr("team.field.tier", lang), str(run.tier)),
                 (tr("team.field.goal", lang), run.goal[:80]),
+                (tr("team.field.stranded", lang), str(len(service.stranded(run.run_id)))),
             ],
         )
     )
@@ -272,8 +274,35 @@ async def _learn(
     await sink.text(markdown_bullets(tr("team.learn_title", lang, run=run.run_id), names[:20]))
 
 
+async def _settle(
+    ctx: SlashCtx, service: Any, args: Sequence[str], sink: SlashSink, lang: Locale
+) -> None:
+    """``/team settle <run_id> [task_id …]`` — the write the HTTP ``:settle`` does.
+
+    The judgement is **not** repeated here (``I5``): the service settles the tuple its
+    own ``stranded()`` produced, so what ``/team status`` counts and what this command
+    writes cannot drift apart. An empty result is an answer, not a refusal — the reply
+    says there was nothing to settle and nothing was written (``SPEC §5.2-2``).
+
+    Extra arguments are task ids to narrow the set; no reason syntax is invented on the
+    slash face, because the service's default (``reason=""``) is already the full set.
+    """
+    run = _authorize_run(ctx, lang, service, _run_id(args, lang))
+    settled = service.settle(run.run_id, task_ids=list(args[1:]), user=_actor(ctx, lang))
+    if not settled:
+        await sink.text(tr("team.settle_none", lang, run=run.run_id))
+        return
+    await sink.text(
+        markdown_bullets(
+            tr("team.settle_title", lang, run=run.run_id, count=len(settled)),
+            [f"`{task_id}`" for task_id in settled],
+        )
+    )
+
+
 _DISPATCH: dict[str, Any] = {
     "status": _status,
+    "settle": _settle,
     "task": _task,
     "check": _check,
     "detail": _detail,

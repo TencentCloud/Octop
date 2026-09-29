@@ -268,7 +268,7 @@ CATALOG: tuple[SlashCommandSpec, ...] = (
     ),
     SlashCommandSpec(
         name="team",
-        usage="/team <goal> | status|task|check|detail|decision|resume|cancel|tier|learn",
+        usage="/team <goal> | status|task|check|detail|decision|resume|cancel|tier|learn|settle",
         icon="Users",
         tone="violet",
         category="core",
