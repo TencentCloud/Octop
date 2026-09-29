@@ -84,6 +84,7 @@ async def list_ollama_models(
         OllamaModelInfo,
         OllamaModelManager,
         apply_models_dir,
+        is_ollama_reachable,
         list_models_from_dir,
         merge_model_lists,
     )
@@ -94,9 +95,16 @@ async def list_ollama_models(
 
     api_models: list[OllamaModelInfo] = []
     api_exc: Exception | None = None
-    if _ollama_service_enabled(server):
+    service_on = _ollama_service_enabled(server)
+    daemon_up = False
+    if not service_on:
         try:
-            api_models = OllamaModelManager.list_models()
+            daemon_up = is_ollama_reachable()
+        except Exception:
+            daemon_up = False
+    if service_on or daemon_up:
+        try:
+            api_models = OllamaModelManager.list_models(start_if_needed=service_on)
         except (OSError, ImportError) as exc:
             api_exc = exc
             logger.warning("Ollama bootstrap failed: %s", exc)

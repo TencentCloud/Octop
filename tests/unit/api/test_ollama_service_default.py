@@ -71,6 +71,38 @@ async def test_list_uses_models_dir_when_service_disabled(
 
 
 @pytest.mark.asyncio
+async def test_list_uses_running_daemon_when_service_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.utils import ollama_manager as om
+    from octop.infra.utils.ollama_manager import OllamaModelInfo
+
+    monkeypatch.setattr(om, "is_ollama_reachable", lambda: True)
+    listed = MagicMock(return_value=[OllamaModelInfo(name="llama3.2:latest", size=2_000_000_000)])
+    monkeypatch.setattr(om.OllamaModelManager, "list_models", listed)
+    server = _server({ollama_models._SETTINGS_KEY_OLLAMA_SERVICE: "false"})
+    result = await ollama_models.list_ollama_models(server=server, _=None)
+    assert [m.name for m in result] == ["llama3.2:latest"]
+    listed.assert_called_once_with(start_if_needed=False)
+
+
+@pytest.mark.asyncio
+async def test_list_does_not_start_daemon_when_service_off_and_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.utils import ollama_manager as om
+
+    monkeypatch.setattr(om, "is_ollama_reachable", lambda: False)
+    listed = MagicMock()
+    monkeypatch.setattr(om.OllamaModelManager, "list_models", listed)
+    server = _server({})
+    with pytest.raises(HTTPException) as exc_info:
+        await ollama_models.list_ollama_models(server=server, _=None)
+    assert exc_info.value.status_code == 503
+    listed.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_put_service_rejects_relative_models_dir() -> None:
     server = _server({})
     body = ollama_models.OllamaServiceBody(models_dir="relative/models")

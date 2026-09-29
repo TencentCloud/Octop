@@ -925,6 +925,11 @@ export function ProviderConfigModal({
         return;
       }
       const fetched = result.models ?? [];
+      if (isOllama && fetched.length > 0) {
+        setDownloadedIds((prev) =>
+          expandOllamaDownloadedIds([...prev, ...fetched.map((m) => m.id)]),
+        );
+      }
       if (fetched.length === 0) {
         message.info(t("models.fetchModelsNoNew"));
         return;

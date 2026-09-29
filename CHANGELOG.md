@@ -10,11 +10,13 @@
 - Ollama 可指定本地模型下载目录，用于识别已下载模型（#1266）
 
 ### 修复
+- Ollama 本机守护进程已在运行时，即使 Octop 本地服务开关关闭，也按已下载识别模型（#1266）
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 - 安装或启用仍 `import harness_agent` 的旧插件时，不再因运行时包改名为 `octop_harness` 而失败。
 - 恢复工作区 zip 导入对 Octop 自有 `_builtin_skills` 前缀的过滤（#1105 的修复曾被连带删除，含回归测试），修复后导入不再植入无法通过 API 删除的内置技能条目（Fixes #1254）。
 - Dashboard 约 30 个被引用却从未定义的设计系统 token（`--fn-surface-sunken`、`--fn-color-error` 等）导致沉底面板透明、暗色主题错色：在 light/dark 主题中补齐定义，并修正 `--text-secondary`/`--border-color` 拼写笔误（Fixes #1239）。
 - 媒体预览响应补上 `Content-Security-Policy: sandbox` 与 `X-Content-Type-Options: nosniff`：用户上传的 SVG 等内容以内联文档打开时不再可能在应用同源执行脚本，图片/视频预览不受影响（Fixes #1242）。
+- `.env.example` 与 docker-compose 里的 Langfuse 开关改为 SDK 真正读取的 `LANGFUSE_TRACING_ENABLED`：原 `OCTOP_LANGFUSE_ENABLED` 无任何代码读取，设成什么值都不生效（启用开关在 Dashboard → 设置 → 可观测）。
 
 ## [1.0.2b3] - 2026-09-26
 
