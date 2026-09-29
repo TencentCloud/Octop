@@ -141,11 +141,15 @@ class ProviderStore:
             if not models:
                 continue
             headers: dict[str, str] = {}
+            proxy: str | None = None
             if row.extra_json:
                 try:
                     extra = json.loads(row.extra_json)
-                    if isinstance(extra, dict) and isinstance(extra.get("headers"), dict):
-                        headers = {str(k): str(v) for k, v in extra["headers"].items()}
+                    if isinstance(extra, dict):
+                        if isinstance(extra.get("headers"), dict):
+                            headers = {str(k): str(v) for k, v in extra["headers"].items()}
+                        if extra.get("proxy"):
+                            proxy = str(extra["proxy"]).strip() or None
                 except Exception:
                     pass
             out.append(
@@ -157,6 +161,7 @@ class ProviderStore:
                     name=row.name,
                     models=models,
                     headers=headers,
+                    proxy=proxy,
                     session_header=session_header_for_provider(row.name, row.base_url),
                 )
             )
