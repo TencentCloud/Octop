@@ -44,7 +44,9 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import time
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from fnmatch import fnmatch
@@ -54,6 +56,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from psycopg import IntegrityError as PsycopgIntegrityError
 
+from octop.infra.agents.teams import evidence
 from octop.infra.agents.teams.artifacts import (
     normalize_owner_role,
     owner_violation,
@@ -129,6 +132,15 @@ TIMELINE_RUN_ARTIFACT_WRITTEN = "run.artifact_written"
 TIMELINE_RUN_ARCHIVE_FAILED = "run.archive_failed"
 TIMELINE_RUN_DISPATCHED = "run.dispatched"
 TIMELINE_RUN_TASK_SETTLED = "run.task_settled"
+#: SPEC R11 / PLAN §3.1: one event per **newly appended** ``scan:`` line, so the
+#: single-source section renders real numbers instead of its explicit empty state.
+#: The literal is frozen — it is the contract with the rendering side.
+TIMELINE_RUN_SCAN = "scan:single-source"
+
+#: SPEC R11 verbatim line shape: ``scan:single-source — <事实名> · 命中 N 处``.
+SCAN_LINE_RE = re.compile(
+    r"^\s*scan:single-source\s*—\s*(?P<fact>.+?)\s*·\s*命中\s*(?P<hits>\d+)\s*处\s*$"
+)
 
 #: Reason carried by a plan decision this service stages itself (``PLAN §2.5``).
 PLAN_DECISION_REASON = "方案确认"
@@ -532,8 +544,10 @@ class TeamRunService:
         """
         workspace = self._workspace(run)
         spec_text: str | None = None
+        review_spec_text: str | None = None
         if workspace is not None:
             spec_text = workspace.read_text(f"{run_directory(run)}/SPEC.md")
+            review_spec_text = workspace.read_text(f"{run_directory(run)}/REVIEW-SPEC.md")
         return {
             "phase": run.phase,
             "status": run.status,
@@ -541,11 +555,36 @@ class TeamRunService:
             "max_review_rounds": run.max_review_rounds,
             "pending_decision": self._runs.get_pending_decision(run.run_id),
             "spec_text": spec_text,
+            "review_spec_text": review_spec_text,
+            "evidence_summary": self._evidence_summary(run, workspace, review_spec_text),
             "present_artifacts": self.present_artifacts(run),
             "rollback_count": self._rollback_count(run),
             "finding_rounds": self.finding_rounds(run),
             "escalated": self._escalated(run),
             "tasks": [self._task_view(task) for task in self.list_tasks(run.run_id)],
+        }
+
+    def _evidence_summary(
+        self, run: TeamRunRow, workspace: Any | None, text: str | None
+    ) -> dict[str, int]:
+        """Anchor counters of the ``REVIEW-SPEC.md`` body (PLAN §3 M3, read-only).
+
+        The anchor paths inside the artifact are workspace-relative, so they are
+        resolved against the directory behind the accessor. Without a workspace — or
+        with one that cannot name a directory — there is nothing to resolve against and
+        every counter stays 0: an empty summary, **not** a claim that the evidence is
+        clean (the baseline is 0 by fail-closed default in ``evidence.load_baseline``,
+        I7).
+        """
+        root = getattr(workspace, "workspace_dir", None)
+        if text is None or root is None:
+            return {"exact": 0, "fragmentOnly": 0, "missing": 0, "baseline": 0}
+        report = evidence.anchors(text, root, evidence.load_baseline(root, run.run_id))
+        return {
+            "exact": report.exact,
+            "fragmentOnly": report.fragment_only,
+            "missing": report.missing,
+            "baseline": report.baseline,
         }
 
     def finding_rounds(self, run: TeamRunRow) -> list[dict[str, Any]]:
@@ -2070,6 +2109,17 @@ class TeamRunService:
             },
             actor=self._actor(user, run),
         )
+        # PLAN §3.1: every ``scan:`` line this write **added** becomes a timeline event,
+        # which is the only path those events have into the metrics rollup (M5 → M6).
+        # Same channel as every other state write (``_record``), no allow-list filter:
+        # an unfiltered action is what lets the section render real numbers.
+        for number, fact, hits in _new_scan_lines(current, content):
+            self._record(
+                run,
+                TIMELINE_RUN_SCAN,
+                {"id": f"{written}#{number}", "fact": fact, "hits": hits},
+                actor=self._actor(user, run),
+            )
         # ── the reference hop: archive the body into the project KB and bind the
         # reference to the row just written (T-18's archiver is the only writer of
         # `kb_document_id`). No rollback: the artifact is already on disk and indexed,
@@ -2246,6 +2296,27 @@ class TeamRunService:
             task_id=task_id,
             payload=dict(payload),
         )
+
+
+def _new_scan_lines(before: str | None, after: str) -> list[tuple[int, str, int]]:
+    """Newly appended ``scan:`` lines as ``(行号, 事实名, 命中数)`` (PLAN §3.1).
+
+    Only lines *after* gained emit an event: a line already present in *before* was
+    recorded by the write that introduced it. Line numbers are 1-based positions in
+    *after*; together with the content-addressed revision they form the ``payload.id``
+    that makes a rewrite of the same body idempotent (SPEC R11 / Q5).
+    """
+    seen = Counter(before.splitlines()) if before else Counter()
+    out: list[tuple[int, str, int]] = []
+    for number, line in enumerate(after.splitlines(), start=1):
+        match = SCAN_LINE_RE.match(line)
+        if match is None:
+            continue
+        if seen[line] > 0:
+            seen[line] -= 1
+            continue
+        out.append((number, match.group("fact"), int(match.group("hits"))))
+    return out
 
 
 def _owner_role_for(name: str, writer_role: str) -> str:

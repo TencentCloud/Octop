@@ -3,7 +3,7 @@
 本模块是三层门禁共用的**唯一**机读真源（对齐上游 ``lib/artifact-ownership.js``）：
 
 * **归属表** —— ``ARTIFACT_OWNERS`` / :func:`owners_of` / :func:`owner_violation`
-* **模板清单** —— ``RUN_TEMPLATE_NAMES`` / ``RUN_TEMPLATE_DIR``（13 份骨架）
+* **模板清单** —— ``RUN_TEMPLATE_NAMES`` / ``RUN_TEMPLATE_DIR``（14 份骨架）
 * **路径作用域** —— :func:`run_scoped_target`
 * **流程工件取值域** —— ``WORKFLOW_ARTIFACT_KINDS``
 
@@ -17,7 +17,7 @@
 
 ── 为什么判据是「创建放行、覆写才拦」────────────────────────────────────────
 
-建 run 时**首个成员**要按模板一次性把 13 份骨架落到 ``<run_root>/<runId>/``，其中大多数
+建 run 时**首个成员**要按模板一次性把 14 份骨架落到 ``<run_root>/<runId>/``，其中大多数
 **不属于它**。若判据写成「角色 ≠ 负责人 ⇒ 拦」，会**直接打死建 run**。因此判据是：
 **目标不存在（创建）⇒ 放行；已存在且写者不是它的负责人 ⇒ 拒绝。** 这条判据只需一次
 存在性查询、**不读内容**，所以能放在写盘**之前**。
@@ -97,13 +97,15 @@ KNOWN_ROLES: Final[frozenset[str]] = frozenset(
     TEAM_ROLES | {role for owners in ARTIFACT_OWNERS.values() for role in owners}
 )
 
-#: 13 份 run 骨架模板的文件名；顺序与上游 ``lib/command.js · ARTIFACT_TEMPLATES @ 42`` 逐字一致
-#: （``RESEARCH-UPSTREAM.md §5.2`` 的 ``ls`` 输出同为这 13 个）。
+#: 14 份 run 骨架模板的文件名：其中 13 份对齐上游
+#: ``lib/command.js · ARTIFACT_TEMPLATES @ 42``（``RESEARCH-UPSTREAM.md §5.2`` 的 ``ls``
+#: 输出同为这 13 个），外加本仓新增 ``REVIEW-SPEC.md``（``B1`` 沉默清单载体，
+#: ``pipeline.py`` 的 ``spec-review`` 阶段要求该工件存在）。
 #:
 #: ⚠️ **与「必需 11 项」不是同一个清单**：``PLAN.md §run 目录结构`` 的必需 11 项含
-#: ``RUN.log.md``，而它**不在**这 13 份模板里 —— 它由 ``/team`` 建 run 时直接创建
+#: ``RUN.log.md``，而它**不在**这份清单里 —— 它由 ``/team`` 建 run 时直接创建
 #: （``PLAN.md`` 工件表：`RUN.log.md` 的写者是「``/team`` 建；事件由产出角色落盘」）。
-#: 本模块**只**回答「模板有哪 13 份」，不回答「骨架必须落哪 11 项」。
+#: 本模块**只**回答「模板有哪 14 份」，不回答「骨架必须落哪 11 项」。
 RUN_TEMPLATE_NAMES: Final[tuple[str, ...]] = (
     "TASK.md",
     "ROSTER.json",
@@ -113,6 +115,7 @@ RUN_TEMPLATE_NAMES: Final[tuple[str, ...]] = (
     "PLAN.md",
     "RESEARCH.md",
     "TASKS.json",
+    "REVIEW-SPEC.md",
     "REVIEW.md",
     "TEST.md",
     "SUMMARY.md",

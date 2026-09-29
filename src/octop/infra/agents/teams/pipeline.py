@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final, cast
 
+from octop.infra.agents.teams import evidence, silence_list
 from octop.infra.errors import ErrorCode, OctopError
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -214,6 +215,8 @@ RUN_SNAPSHOT_KEYS = (
     "tier",
     "pending_decision",
     "spec_text",
+    "review_spec_text",
+    "evidence_summary",
     "present_artifacts",
     "rollback_count",
     "finding_rounds",
@@ -223,7 +226,14 @@ RUN_SNAPSHOT_KEYS = (
 )
 """The mapping keys the gates read. Missing keys take the documented default —
 except ``spec_text`` for the spec-boundary gate, which fails closed (G4 is a hard
-gate: absence of input is not evidence of a filled boundary table)."""
+gate: absence of input is not evidence of a filled boundary table).
+
+``review_spec_text`` (the ``REVIEW-SPEC.md`` body) fails closed the same way: a run
+whose snapshot has no such key reads as an **empty** silence list and is reported as
+``SILENCE_LIST_MISSING``. ``evidence_summary`` is the deliberate exception — when the
+key is absent entirely, no evidence code is appended (PLAN §4 known trade-off / R1),
+because a historical run may only gain **one** new code.
+"""
 
 DEFAULT_MAX_REVIEW_ROUNDS = 3
 
@@ -234,6 +244,13 @@ V_KIND_UNKNOWN = "kind_unknown"
 V_QUALITY_OWNER_INVALID = "quality_owner_invalid"
 V_VERIFY_MISSING = "verify_missing"
 V_FINDING_REOPENED_INPUT_MISSING = "FINDING_REOPENED_INPUT_MISSING"
+
+# Batch B read-side codes (PLAN §2.4). The **mapping** is not re-listed here: the two
+# silence codes come from ``silence_list`` and the two evidence codes from
+# ``evidence.ratchet_codes``, so a second copy of the judgement cannot drift from this
+# report (PLAN §4.3 "唯一真源").
+V_SILENCE_LIST_MISSING = silence_list.CODE_MISSING
+V_SILENCE_LIST_INCOMPLETE = silence_list.CODE_INCOMPLETE
 
 # The four hard graph-invariant codes (PLAN G6 / upstream ``HARD_GRAPH_CODES``).
 GRAPH_CODES: tuple[str, ...] = ("missing-id", "duplicate-id", "self-dependency", "cycle")
@@ -1209,6 +1226,26 @@ def check_run(run: Mapping[str, Any]) -> CheckReport:
 
     if run.get("finding_rounds") is None:
         violations.append(V_FINDING_REOPENED_INPUT_MISSING)
+
+    # ── batch B (PLAN §2.4): silence list + evidence anchors, read side only ──
+    # ``review_spec_text`` missing / ``None`` reads as ``""`` ⇒ ``SILENCE_LIST_MISSING``
+    # (fail closed, I8): a run that never carried the key cannot claim a filled list.
+    # This is the **single** code a historical run may gain.
+    silence = silence_list.missing(str(run.get("review_spec_text") or ""))
+    violations.extend(silence.missing)
+    violations.extend(silence.incomplete)
+    # ``evidence_summary`` absent as a whole ⇒ no evidence code at all (the approved
+    # trade-off of PLAN §4 / §7 R1 / §9 H5). When it is present, the codes come from
+    # ``evidence.ratchet_codes`` — never from a second copy of the judgement here.
+    summary = run.get("evidence_summary")
+    if isinstance(summary, Mapping):
+        violations.extend(
+            evidence.ratchet_codes(
+                _int_or(summary.get("fragmentOnly"), 0),
+                _int_or(summary.get("missing"), 0),
+                _int_or(summary.get("baseline"), 0),
+            )
+        )
 
     return CheckReport(
         violations=tuple(dict.fromkeys(violations)),

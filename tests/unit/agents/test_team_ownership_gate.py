@@ -282,7 +282,7 @@ def test_normalize_owner_role_strips_member_suffix(raw: str | None, expected: st
 
 
 def test_owner_violation_allows_creation() -> None:
-    """放行路径 ① 创建放行 —— 建 run 时要一次性落 13 份骨架，收紧它会把建 run 直接打死。"""
+    """放行路径 ① 创建放行 —— 建 run 时要一次性落 14 份骨架，收紧它会把建 run 直接打死。"""
     assert art.owner_violation(role="backend", base="SPEC.md", exists=False) is None
 
 
@@ -425,12 +425,12 @@ def test_run_scoped_target_result_is_frozen(tmp_path: Path) -> None:
         target.base = "OTHER.md"  # type: ignore[misc]
 
 
-# ── 模板清单：13 份齐备 ─────────────────────────────────────────────────────
+# ── 模板清单：14 份齐备 ─────────────────────────────────────────────────────
 
 
-def test_run_template_names_are_exactly_thirteen() -> None:
-    assert len(art.RUN_TEMPLATE_NAMES) == 13
-    assert len(set(art.RUN_TEMPLATE_NAMES)) == 13
+def test_run_template_names_are_exactly_fourteen() -> None:
+    assert len(art.RUN_TEMPLATE_NAMES) == 14
+    assert len(set(art.RUN_TEMPLATE_NAMES)) == 14
     assert art.RUN_TEMPLATE_NAMES == (
         "TASK.md",
         "ROSTER.json",
@@ -440,6 +440,7 @@ def test_run_template_names_are_exactly_thirteen() -> None:
         "PLAN.md",
         "RESEARCH.md",
         "TASKS.json",
+        "REVIEW-SPEC.md",
         "REVIEW.md",
         "TEST.md",
         "SUMMARY.md",
@@ -455,7 +456,7 @@ def test_run_template_dir_is_built_with_pathlib() -> None:
     assert art.RUN_TEMPLATE_DIR.is_dir()
 
 
-def test_all_thirteen_templates_exist_and_are_non_empty() -> None:
+def test_all_fourteen_templates_exist_and_are_non_empty() -> None:
     on_disk = sorted(p.name for p in art.RUN_TEMPLATE_DIR.iterdir() if p.is_file())
     assert on_disk == sorted(art.RUN_TEMPLATE_NAMES)
     for name in art.RUN_TEMPLATE_NAMES:
@@ -637,7 +638,7 @@ async def test_runtime_exclusive_artifacts_are_denied_in_the_tool_channel(
 
 
 async def test_allows_creation_and_calls_handler(tmp_path: Path) -> None:
-    """fail-open ① 目标**不存在**（创建）⇒ 放行。建 run 时首个成员要一次性落 13 份骨架，
+    """fail-open ① 目标**不存在**（创建）⇒ 放行。建 run 时首个成员要一次性落 14 份骨架，
     收紧这条会把建 run 直接打死。"""
     mw = _gate(team_root=str(_run_root(tmp_path)), role="backend", exists=False)
     handler = _Handler()

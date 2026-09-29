@@ -295,12 +295,60 @@ def _decisions(src: RollupSources) -> list[str]:
     ]
 
 
+#: SPEC A6: with no ``scan:*`` event this section must still carry this string
+#: **verbatim** -- a static "还没写过" sentence would keep A6's no-event branch red.
+SINGLE_SOURCE_EMPTY = "暂无 scan:single-source 事件族"
+
+
+def _scan_events(events: list[DbRow]) -> list[tuple[str, str, int]]:
+    """Deduped ``scan:*`` rows as ``(key, fact, hits)``.
+
+    The dedup口径 is ``_decisions``' own (``payload.id`` → ``payload.decision_id``);
+    an event without an id cannot be deduped, so it is **not counted** and the section
+    stays visibly short instead of double counting (SPEC Q5 "漏写 id 的事件不计入").
+    """
+    seen: dict[str, tuple[str, int]] = {}
+    for action, _at, payload in _actions(events):
+        if not action.startswith("scan:"):
+            continue
+        key = str(payload.get("id") or payload.get("decision_id") or "")
+        if not key:
+            continue
+        hits_raw = payload.get("hits")
+        seen[key] = (
+            str(payload.get("fact") or action),
+            hits_raw if isinstance(hits_raw, int) else 0,
+        )
+    return [(key, fact, hits) for key, (fact, hits) in sorted(seen.items())]
+
+
 def _single_source_scan(src: RollupSources) -> list[str]:
-    return [
-        "- （无单源化总扫登记：`scan:single-source` 事件一个都还没写过）",
-        "- ⚠️ **待收口**：上游明确说这条义务**没有代码能强制**（要求 lead 发现第一个副本时当轮全仓总扫），"
-        "唯一抓手是「让它可见」—— 所以**没人登记本身就是一种可见状态**，不得静默省略",
+    """Section 10 -- **real** numbers from ``scan:*`` events, or one explicit empty line.
+
+    Pure rendering (PLAN I5): no filesystem IO here, the scan itself is
+    ``single_source.scan`` and its result reaches this function only as a timeline row.
+    """
+    rows = _scan_events(src.events)
+    if not rows:
+        return [
+            f"- （{SINGLE_SOURCE_EMPTY}）",
+            "- ⚠️ **待收口**（空态不等于没有可扫的）：上游明确说这条义务**没有代码能强制**"
+            "（要求 lead 发现第一个副本时当轮全仓总扫），唯一抓手是「让它可见」——"
+            " 所以**没人登记本身就是一种可见状态**，不得静默省略；"
+            "登记写入方 = `RunService.write_artifact`（PLAN §3.1），"
+            "格式逐字 `scan:single-source — <事实名> · 命中 N 处`",
+        ]
+    per_fact: dict[str, int] = {}
+    for _key, fact, hits in rows:
+        per_fact[fact] = per_fact.get(fact, 0) + hits
+    lines = [f"- 已登记扫描（按 `payload.id` 去重）：{len(rows)} 条"]
+    lines += [f"- `{fact}`：命中 {hits} 处" for fact, hits in sorted(per_fact.items())]
+    lines += [
+        f"- 覆盖事实：{len(per_fact)} 个 · 命中合计：{sum(per_fact.values())} 处",
+        "- 口径：事件 = `scan:single-source` 的 `payload.id` / `fact` / `hits`，"
+        "去重与决策节同一口径；缺 `payload.id` 的事件**不计入**（显式可见，不静默）",
     ]
+    return lines
 
 
 def _review_efficiency(src: RollupSources) -> list[str]:

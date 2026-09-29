@@ -17,12 +17,16 @@ inside the host — so they are **not counted**. That boundary is stated in the 
 own note as well, because an unstated gap reads as "no consumption" when the truth is
 "that channel is not metered here".
 
-**Section states (PLAN · AM-26).** Five event families the upstream metrics need do not
-exist in the timeline vocabulary (``first-runnable`` / ``freeze`` / ``error:*`` / ``ask``
-/ ``scan:single-source``), so several sections cannot carry a true value. Every section
-is therefore labelled ``measured`` / ``proxy`` / ``empty`` / ``partial`` — an empty
-section must never be silently indistinguishable from a section nobody registered, which
-is the same discipline as the token section's three states.
+**Section states (PLAN · AM-26).** Four event families the upstream metrics need do not
+exist in the timeline vocabulary (``first-runnable`` / ``freeze`` / ``error:*`` / ``ask``),
+so several sections cannot carry a true value. ``scan:single-source`` used to be the
+fifth: batch B2 gave it a producer (``RunService.write_artifact`` → ``_append_timeline``,
+PLAN §3.1), and ``load_sources`` pipes **every** timeline row into
+``RollupSources.events`` -- with **no whitelist**, on purpose -- so the section carries
+real numbers the moment such a row exists. Every section is still labelled ``measured``
+/ ``proxy`` / ``empty`` / ``partial`` — an empty section must never be silently
+indistinguishable from a section nobody registered, which is the same discipline as the
+token section's three states.
 """
 
 from __future__ import annotations
@@ -46,7 +50,7 @@ SECTION_STATES: Mapping[str, str] = {
     "高频卡点（error / 返工，去重）": "empty",
     "用户高频提问（ask，去重）": "empty",
     "决策记录（decision，去重）": "measured",
-    "单源化总扫（见一个，扫全部）": "empty",
+    "单源化总扫（见一个，扫全部）": "measured",
     "评审效率（轮次 / 撤销率）": "partial",
     "token 成本与上下文峰值": "measured",
 }
@@ -57,7 +61,10 @@ SECTION_NOTES: Mapping[str, str] = {
     "收尾预算（实现期 = 首产物→冻结 · 收尾 = 冻结→交付）": "暂无 freeze 事件，按交付时间代理",
     "高频卡点（error / 返工，去重）": "暂无 error:* 事件族 —— 空态不等于没有卡点",
     "用户高频提问（ask，去重）": "暂无 ask 事件族 —— 空态不等于没有提问",
-    "单源化总扫（见一个，扫全部）": "暂无 scan:single-source 事件族 —— 空态不等于没有可扫的",
+    "单源化总扫（见一个，扫全部）": (
+        "scan:* 事件已接线（写入方 write_artifact → _append_timeline，PLAN §3.1）；"
+        "无事件时该节逐字写「暂无 scan:single-source 事件族」（显式空行，不得静默）"
+    ),
     "评审效率（轮次 / 撤销率）": "轮次为真值；撤销率暂无 revert 事件（显式空态）",
     "token 成本与上下文峰值": (
         "usage_log 三态：有值 / 暂无 token 口径 / 该 provider 不回填；"

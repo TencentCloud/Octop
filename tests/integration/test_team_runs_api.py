@@ -533,13 +533,22 @@ async def test_metrics_reaches_the_twelve_sections_over_http(
     # Real values: the timeline/task rows exist.
     assert states["阶段覆盖"] == "measured"
     assert states["角色结果（pass=交付 / rework=返工件 / fail=失败）"] == "measured"
+    # `B2` 接线后该节有产出方 ⇒ `measured`（`T01`/`T04`，lead 裁定 2026-09-30 02:35 CST）
+    assert states["单源化总扫（见一个，扫全部）"] == "measured"
     # Proxies and explicit empty states (PLAN AM-26) — never silently omitted.
     assert states["首产物（首个可运行产物耗时）"] == "proxy"
     assert states["收尾预算（实现期 = 首产物→冻结 · 收尾 = 冻结→交付）"] == "proxy"
+    # Section 10 left this set once `scan:*` got a writer; these two are still
+    # genuinely producer-less, so they remain the `empty` positives of the family.
     assert states["高频卡点（error / 返工，去重）"] == "empty"
     assert states["用户高频提问（ask，去重）"] == "empty"
-    assert states["单源化总扫（见一个，扫全部）"] == "empty"
     assert states["评审效率（轮次 / 撤销率）"] == "partial"
+    # ...and section 10 keeps its original point on the *body*: with no `scan:*` event
+    # yet, the section must still be shown and say the empty case verbatim — an
+    # explicit line, never a silent omission and never a fabricated 0.
+    scan_index = titles.index("单源化总扫（见一个，扫全部）")
+    scan_lines = payload["sections"][scan_index]["lines"]
+    assert any("暂无 scan:single-source 事件族" in line for line in scan_lines)
     # No usage row ⇒ the token section must say so, not print 0.
     token_lines = next(
         s["lines"] for s in payload["sections"] if s["title"] == "token 成本与上下文峰值"
