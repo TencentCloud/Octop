@@ -88,6 +88,7 @@ async def resolve_harness_session(
         from octop_browser import BrowserSession
         from octop_browser.tool_interface import _registry
     except ImportError as exc:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
             "octop-browser not installed",
@@ -185,16 +186,20 @@ async def resolve_harness_session(
                     profile_manager=profile_manager,
                 )
             except Exception as retry_exc:
+                # ★ T-75：`profile` 是**调用者本次给出的定位符** ⇒ 放进 details（i18n 会替换 message）；
+                # 上游异常原文（retry_exc）**只留在 message**，入 details 会触犯 SEC-4 黑名单。
                 raise OctopError(
                     ErrorCode.INTERNAL_ERROR,
                     f"failed to attach browser profile {profile!r}: {retry_exc}",
                     status=503,
+                    details={"profile": profile},
                 ) from retry_exc
         else:
             raise OctopError(
                 ErrorCode.INTERNAL_ERROR,
                 f"failed to attach browser profile {profile!r}: {exc}",
                 status=503,
+                details={"profile": profile},
             ) from exc
     _registry[profile] = sess
     return sess
@@ -348,6 +353,7 @@ async def shutdown_browser(user: Any = Depends(current_user)) -> dict[str, Any]:
     try:
         from octop_browser.tool_interface import browser_tool
     except ImportError as exc:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
             "octop-browser not installed",
@@ -359,9 +365,12 @@ async def shutdown_browser(user: Any = Depends(current_user)) -> dict[str, Any]:
     result = await browser_tool(action="close_session", profile=hint, kill=True)
     _CONTROL_OWNERS.pop(hint, None)
     if not result.success:
+        # ★ T-75：`hint`（本用户的 browser profile 名）是被 i18n 替换掉的那个定位符 ⇒ 进 details；
+        # `result.error` 是上游原文，只在 message 里出现。
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
             result.error or f"failed to stop browser profile {hint!r}",
             status=503,
+            details={"profile": hint},
         )
     return {"ok": True, "profile": hint}

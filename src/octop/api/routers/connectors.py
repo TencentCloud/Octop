@@ -1424,6 +1424,7 @@ async def oauth_pending(
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "corrupt pending oauth") from exc
     if int(data.get("user_id") or 0) != user.id:
         raise OctopError(ErrorCode.FORBIDDEN, "not your oauth session")

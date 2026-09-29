@@ -418,8 +418,10 @@ async def restart_service_endpoint(
                 f"octop system service is not installed (expected unit for mode={runtime.mode})"
             )
     except RuntimeError as exc:
+        # no-details: 上游异常原文已在 message；入 details 触犯 SEC-4 黑名单（异常原文/上游响应原文）
         raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
     except Exception as exc:
+        # no-details: 上游异常原文已在 message；入 details 触犯 SEC-4 黑名单（异常原文/上游响应原文）
         raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
     background_tasks.add_task(_restart_service_task, runtime)
     return {"status": "restarting", "service_mode": mode}

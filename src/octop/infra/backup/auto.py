@@ -100,6 +100,7 @@ def persist_backup_config(config_path: Path, backup: BackupConfig) -> OctopConfi
     if config_path.exists():
         raw = json.loads(config_path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
+            # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
             raise OctopError(ErrorCode.INTERNAL_ERROR, "config.json must be a JSON object")
     else:
         raw = {}

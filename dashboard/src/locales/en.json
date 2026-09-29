@@ -213,7 +213,43 @@
     "PROJECT_CONNECTOR_INVALID": "That connector type does not exist or is not available.",
     "PROJECT_SKILL_INVALID": "Only skills installed on that expert can be selected.",
     "PROJECT_CRON_INVALID": "The scheduled task's expert or project ownership is not valid.",
-    "PROJECT_INSTRUCTION_INVALID": "The instructions are not valid (too long or containing illegal characters)."
+    "PROJECT_INSTRUCTION_INVALID": "The instructions are not valid (too long or containing illegal characters).",
+    "TEAM_RUN_NOT_FOUND": "Team run not found.",
+    "TEAM_RUN_PHASE_INVALID": "Phase transition is not allowed.",
+    "TEAM_PHASE_GATE_FAILED": "The current phase gate is not satisfied.",
+    "TEAM_DECISION_PENDING": "A pending decision must be resolved first.",
+    "TEAM_DECISION_NOT_PENDING": "There is no pending decision to resolve.",
+    "TEAM_DECISION_OPTION_INVALID": "The selected decision option is not valid.",
+    "TEAM_SPEC_BOUNDARY_EMPTY": "The spec boundary table is empty; implementation cannot start.",
+    "TEAM_TASK_DEPS_UNMET": "Upstream tasks are not done yet.",
+    "TEAM_TASK_GRAPH_INVALID": "The task graph is invalid.",
+    "TEAM_REWORK_LOOP_LIMIT": "The rework round limit has been reached; escalate to the user.",
+    "TEAM_FINDING_REOPENED": "The same finding is still open across two rounds; escalate to the user.",
+    "TEAM_ATTEMPT_STALE": "This attempt has been superseded by a newer one.",
+    "TEAM_SCOPE_VIOLATION": "Changed paths fall outside the task scope.",
+    "TEAM_VERDICT_FINDINGS_REQUIRED": "A non-pass verdict must carry at least one finding.",
+    "TEAM_REVIEW_SELF_AUDIT": "A reviewer cannot audit their own output.",
+    "TEAM_ARTIFACT_STALE": "The artifact was changed by someone else; reload and retry.",
+    "TEAM_ARTIFACT_OWNERSHIP_DENIED": "You are not the owner of this artifact.",
+    "TEAM_RUN_MEMBER_LIMIT": "The run member limit has been reached.",
+    "TEAM_RUN_TASK_LIMIT": "The run task limit has been reached.",
+    "TEAM_TIER_INVALID": "Unknown tier; it is not guessed or silently defaulted.",
+    "TEAM_ROLE_UNKNOWN": "The role is not in the fixed role table.",
+    "TEAM_TIER_DOWNGRADE_FORBIDDEN": "Downgrading the tier is not allowed.",
+    "TEAM_RUN_CONFLICT": "The run was already modified by a concurrent request.",
+    "TEAM_TASK_CLAIM_CONFLICT": "The task was already claimed by someone else.",
+    "TEAM_PHASE_CONFLICT": "The phase was already advanced by a concurrent request.",
+    "TEAM_CROSS_RUN_REFERENCE": "Cross-run references are not allowed.",
+    "TEAM_RUN_TERMINAL": "This run is already in a terminal state.",
+    "TEAM_TASK_TERMINAL": "This task is already in a terminal state.",
+    "TEAM_TASK_STATUS_INVALID": "The task status transition is not allowed.",
+    "TEAM_MEMBER_NOT_IN_RUN": "You are not a member of this run.",
+    "TEAM_ARTIFACT_INVALID": "The artifact content is not valid.",
+    "TEAM_ARTIFACT_PATH_INVALID": "The artifact path is not allowed.",
+    "TEAM_RUN_GOAL_EMPTY": "The run goal must not be empty.",
+    "TEAM_RUN_GOAL_TOO_LONG": "The run goal is too long.",
+    "TEAM_COMMAND_UNKNOWN": "Unknown /team subcommand.",
+    "TEAM_EFFORT_INVALID": "Unknown reasoning effort."
   },
   "nav": {
     "chat": "Conversation",
@@ -3861,6 +3897,24 @@
       "viewRaw": "Raw material",
       "hintRaw": "Raw conversation material captured before distillation (counts don't map 1:1 to Conversations)"
     },
+    "scope": {
+      "agentLayer": "My memory",
+      "teamLayer": "Team",
+      "projectLayer": "Project",
+      "pickProject": "Select a project",
+      "hintScoped": "Read-only browse by namespace layer: project → team → agent private",
+      "layerProject": "Project layer",
+      "layerTeam": "Team layer",
+      "layerAgent": "Agent-private layer",
+      "agentOnly": "Agent-private only · not in the team / project layer yet",
+      "itemCount": "{{count}} items",
+      "empty": "No memory in this layer yet",
+      "emptyHint": "Empty is the normal starting point: writing happens in a later step, so this view is read-only.",
+      "noAccess": "You cannot view this project's memory",
+      "noAccessHint": "Project memory is granted per project member; ask the project owner to add you.",
+      "loadFailed": "Failed to load memory",
+      "retry": "Retry"
+    },
     "raw": {
       "typeFilter": "Type",
       "typeAll": "All types",
@@ -6200,6 +6254,162 @@
     "feedFilterClear": "Clear filter",
     "feedMentions": "Mention",
     "feedEmptyRelevance": "No notes relevant to you",
-    "feedEmptyFiltered": "No notes match this filter"
+    "feedEmptyFiltered": "No notes match this filter",
+    "tabMemory": "Project memory",
+    "memoryEmpty": "No project memory yet",
+    "memoryEmptyHint": "Use 「Record to project」 on a candidate or memory in the Memory page and it shows up here.",
+    "memoryDenied": "You cannot view this project's memory",
+    "memoryDeniedHint": "Project memory is authorised by project membership; ask the project owner to add you.",
+    "memoryError": "Could not load project memory",
+    "memoryNoAgent": "Pick an agent first",
+    "memoryNoAgentHint": "Project memory lives in an agent's memory backend; choose one to see it here."
+  },
+  "teamRuns": {
+    "roster": {
+      "title": "Team roster",
+      "save": "Save roster",
+      "leadBadge": "Lead / chair",
+      "hostChairs": "The team host chairs this team (manifest.lead_agent_id is null)",
+      "none": "Roster is empty",
+      "role": "Role",
+      "roleMissing": "Unset (legacy member)",
+      "agent": "Member",
+      "tasks": "In flight / total",
+      "loadUnknown": "—",
+      "skippedTitle": "Cut roles (tier cap)",
+      "skippedHint": "A roster larger than the tier cap is trimmed to it; the roles cut are listed here (never dropped silently)",
+      "loadSource": "Load comes from DB in-flight tasks",
+      "loadSourceHint": "Not from TeamJobTracker (an in-process view that goes stale on restart)"
+    },
+    "phaseName": {
+      "clarify": "Clarify",
+      "research": "Research",
+      "design": "Design",
+      "spec_review": "Spec review",
+      "confirm": "Plan confirmation",
+      "implement": "Implement",
+      "review": "Review",
+      "test": "Test",
+      "deliver": "Deliver"
+    },
+    "phaseStatus": {
+      "pending": "Not started",
+      "active": "Active",
+      "passed": "Passed",
+      "failed": "Failed",
+      "skipped": "Skipped (tier cap)"
+    },
+    "runStatus": {
+      "running": "Running",
+      "awaiting_confirmation": "Awaiting confirmation",
+      "awaiting_decision": "Awaiting decision",
+      "complete": "Complete",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "taskStatus": {
+      "planning": "Planning",
+      "todo": "Todo",
+      "doing": "In progress",
+      "review": "In review",
+      "blocked": "Blocked",
+      "done": "Done",
+      "cancelled": "Cancelled"
+    },
+    "notFound": {
+      "title": "Run not found",
+      "hint": "No run with this id on this server, or you cannot access it.",
+      "back": "Back to runs"
+    },
+    "action": {
+      "refresh": "Refresh",
+      "advance": "Advance phase",
+      "decide": "Submit decision",
+      "resume": "Resume run",
+      "cancel": "Cancel run",
+      "dispatch": "Dispatch",
+      "export": "Export projection"
+    },
+    "gate": {
+      "detailLabel": "Gate detail",
+      "blockers": "Blockers",
+      "pendingDecision": "Run parked: waiting for confirmation or a decision",
+      "skippedRoles": "Tier cap: these roles are not part of this run (cuts stay visible, never dropped silently)",
+      "clear": "No pending decision, no cut roles",
+      "checkViolations": "{{count}} read-side warning(s)"
+    },
+    "phase": {
+      "pendingDecision": "awaiting decision",
+      "skippedHint": "The tier cap cut these roles (gate_detail.skipped_roles)",
+      "skippedLabel": "cut roles",
+      "none": "This run has no phase rows yet"
+    },
+    "tab": {
+      "people": "People",
+      "tasks": "Tasks",
+      "artifacts": "Artifacts",
+      "decision": "Decision",
+      "metrics": "Metrics"
+    },
+    "people": {
+      "loading": "Loading members…",
+      "none": "This run has no member snapshot",
+      "role": "Role",
+      "agent": "Member",
+      "tasks": "Tasks",
+      "inFlight": "In flight",
+      "lead": "Lead",
+      "boardEmpty": "Task board is empty — the 0 above means unassigned, not idle"
+    },
+    "tasks": {
+      "loading": "Loading the task board…",
+      "notLoaded": "Task board not loaded",
+      "none": "No tasks registered for this run",
+      "id": "Task",
+      "title": "Title",
+      "owner": "Role",
+      "status": "Status",
+      "roundAttempt": "Round / attempt",
+      "dependsOn": "Depends on",
+      "violations": "{{count}} read-side violation(s) (reported, never blocking)",
+      "edgeCount": "{{count}} dependency edge(s)",
+      "noEdges": "Nodes but no edges — dependencies not registered yet"
+    },
+    "artifacts": {
+      "loading": "Loading artifacts…",
+      "none": "No artifacts registered for this run",
+      "name": "Artifact",
+      "owners": "May overwrite",
+      "absent": "not on disk",
+      "unrestricted": "unrestricted",
+      "runtimeOnly": "runtime only",
+      "runtimeOnlyHint": "owners == [] ⇒ no business role may overwrite it (creation still allowed)",
+      "awaitingWriter": "awaiting writer",
+      "field": {
+        "phase": "Phase",
+        "version": "Version",
+        "hash": "Hash",
+        "created_at": "Created"
+      }
+    },
+    "decision": {
+      "none": "No pending decision",
+      "pending": "This run is waiting on a decision",
+      "pendingHint": "No phase advances until it is resolved",
+      "id": "Decision ID",
+      "idMissing": "Payload carries no decision_id",
+      "kind": "Kind",
+      "kindMissing": "Payload carries no kind",
+      "noOptions": "This card invents no options — the caller supplies them"
+    },
+    "metrics": {
+      "loading": "Loading metrics…",
+      "notLoaded": "Metrics not loaded",
+      "eventFamilyMissing": "No such event family yet",
+      "eventFamilyMissingHint": "The event family this section needs does not exist in the vocabulary (PLAN AM-26) — that is \"nothing registered\", not \"0\"",
+      "proxyHint": "Proxy value (not a direct measurement)",
+      "partialHint": "Incomplete window — indicative only",
+      "noLines": "This section has no data lines"
+    }
   }
 }

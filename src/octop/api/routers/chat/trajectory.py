@@ -93,6 +93,7 @@ def _trajectory_service(server: Any) -> TrajectoryService:
     runtime = getattr(server, "app_runtime", None)
     service = getattr(runtime, "trajectory_service", None) if runtime is not None else None
     if not isinstance(service, TrajectoryService):
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "trajectory service unavailable")
     return service
 

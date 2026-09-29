@@ -78,6 +78,7 @@ def _summary_dict(defn: SubagentDefinition) -> dict[str, Any]:
 def _require_catalog(server: Any) -> Any:
     catalog = server.subagent_catalog
     if catalog is None:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "subagent catalog not loaded")
     return catalog
 

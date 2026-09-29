@@ -92,6 +92,7 @@ class AgentPluginsPatch(BaseModel):
 def _plugin_manager(server: OctopServer) -> PluginManager:
     mgr = server.plugin_manager
     if mgr is None:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "plugin manager not initialized")
     return mgr
 

@@ -32,6 +32,7 @@ def persist_database_config(config_path: Path, db_config: DatabaseConfig) -> Oct
     if config_path.exists():
         raw = json.loads(config_path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
+            # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
             raise OctopError(ErrorCode.INTERNAL_ERROR, "config.json must be a JSON object")
     else:
         raw = {}
@@ -106,6 +107,7 @@ def rebind_control_plane(server: OctopServer) -> None:
     be empty (greenfield); otherwise raise ``DATABASE_NOT_EMPTY`` without swapping.
     """
     if server.user_manager is None or server.services is None:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "server not started")
     if server.user_manager.count() != 0:
         raise OctopError(

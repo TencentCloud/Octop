@@ -48,6 +48,7 @@ async def ensure_record_daemon() -> dict[str, Any]:
     try:
         from octop_browser.record.daemon import ensure_daemon
     except ImportError as exc:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
             "octop-browser record/replay is not installed",
@@ -60,6 +61,7 @@ async def send_record_request(request: dict[str, Any]) -> dict[str, Any]:
     try:
         from octop_browser.record.daemon import send_request
     except ImportError as exc:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
             "octop-browser record/replay is not installed",
@@ -77,6 +79,7 @@ async def run_replay_recording(
     try:
         from octop_browser.record.replay import ReplayRunner
     except ImportError as exc:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
             "octop-browser record/replay is not installed",
@@ -103,6 +106,7 @@ def _require_owned_recording(recording_id: str, profile: str) -> Any:
     try:
         from octop_browser.record.store import RecordingStore
     except ImportError as exc:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
             "octop-browser record/replay is not installed",

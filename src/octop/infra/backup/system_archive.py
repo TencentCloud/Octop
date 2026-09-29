@@ -218,6 +218,7 @@ def create_system_backup(
         database_driver = "sqlite"
         database_dump_format = "sqlite_file"
         if not isinstance(pool, SqlitePool):
+            # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
             raise OctopError(ErrorCode.INTERNAL_ERROR, "sqlite backup requires SqlitePool")
         if not pool.path.is_file():
             raise OctopError(ErrorCode.NOT_FOUND, f"database not found: {pool.path}")
@@ -525,6 +526,7 @@ def restore_system_backup(
             if isinstance(pool, SqlitePool):
                 restore_sqlite_into_pool(db_path, pool)
             else:
+                # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
                 raise OctopError(ErrorCode.INTERNAL_ERROR, "sqlite restore requires SqlitePool")
 
         # Upgrade the restored database before any current-version repository or

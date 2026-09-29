@@ -14,18 +14,20 @@ from pathlib import Path
 from typing import Any
 
 from octop.api.common.agent import require_agent_owner_row
-from octop.infra.agents.memory.backend import open_memory_kwargs
+from octop.infra.agents.memory.backend import agent_memory_namespace, open_memory_kwargs
 from octop.infra.agents.workspace.dir import host_system_dir
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
 
-_MEMORY_NS_PREFIX = "agent_"
-
 
 def memory_namespace(agent_id: str) -> str:
-    """Return the memory namespace octop-memory uses for ``agent_id``."""
-    return f"{_MEMORY_NS_PREFIX}{agent_id}"
+    """Return the memory namespace octop-memory uses for ``agent_id``.
+
+    Delegates to the single authority (``infra/agents/memory/backend.py``) so the
+    ``agent_`` prefix cannot drift between the two (T-62).
+    """
+    return agent_memory_namespace(agent_id)
 
 
 def memory_db_path(workspace_dir: Path) -> Path:
@@ -182,10 +184,14 @@ def call_memory_rpc(
         if code == -32602:  # ERR_INVALID_PARAMS
             raise OctopError(ErrorCode.INTERNAL_ERROR, message, status=400)
         if code == -32601:  # ERR_METHOD_NOT_FOUND
+            # 定位信息必须落在 details 里：app handler 走 to_envelope(locale=…) 时
+            # message 会被 errors.* 整条替换，只有 details 幸存（T-75 / SPEC S6）。
             raise OctopError(
                 ErrorCode.INTERNAL_ERROR,
                 f"unknown memory dashboard method: {method!r}",
+                details={"method": method},
             )
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, message)
     return response["result"]
 

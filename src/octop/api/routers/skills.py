@@ -546,6 +546,7 @@ async def replace_skill_package_mounts(
 
 def _skill_package_store(server: Any) -> SkillPackageStore:
     if server.services is None:
+        # no-details: 服务端自身状态/依赖缺失：无调用者可见标识可加（message 已是全部定位）
         raise OctopError(ErrorCode.INTERNAL_ERROR, "skill package store not initialized")
     return SkillPackageStore(
         repo=server.services.skill_package_repo,

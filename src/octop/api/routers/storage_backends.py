@@ -22,6 +22,7 @@ def _ensure_opensandbox_sdk(kind: str) -> None:
     try:
         ensure_opensandbox_deps(allow_install=True)
     except RuntimeError as exc:
+        # no-details: 上游异常原文已在 message；入 details 触犯 SEC-4 黑名单（异常原文/上游响应原文）
         raise OctopError(ErrorCode.STORAGE_BACKEND_DEPS_FAILED, str(exc)) from exc
 
 
