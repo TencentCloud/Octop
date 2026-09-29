@@ -61,6 +61,7 @@ class SkillHubMarketAgentCreateOptions:
     top_p: float | None = None
     max_tokens: int | None = None
     enable_trajectory: bool = True
+    conversation_mode: str | None = None
     workspace_patch: Any = None
     composer_copies: tuple[tuple[str, Any], ...] = ()
     composer_report: Any = None
@@ -296,6 +297,8 @@ async def create_agent_from_skillhub_skillset(
     if options.backend:
         config_extra["backend"] = options.backend
     apply_enable_trajectory(config_extra, options.enable_trajectory)
+    if options.conversation_mode:
+        config_extra["conversation_mode"] = options.conversation_mode
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,

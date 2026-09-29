@@ -58,6 +58,9 @@ export function useChatComposerResources(
   const currentUserId = user?.id ?? null;
   const { agents } = useAgent();
   const expert = agents.find((item) => item.agent_id === resolvedAgentId);
+  const expertDefaultMode = parseConversationMode(
+    expert?.config?.conversation_mode,
+  );
   const teamHost = isTeamAgent(expert);
   const bridgeConnectionId =
     expert?.bridge && expert.bridge_connection_id
@@ -182,10 +185,10 @@ export function useChatComposerResources(
   useEffect(() => {
     setConversationMode(
       isNewSession
-        ? DEFAULT_CONVERSATION_MODE
+        ? expertDefaultMode
         : parseConversationMode(stickyConversationMode),
     );
-  }, [isNewSession, stickyConversationMode, activeThreadId]);
+  }, [isNewSession, stickyConversationMode, activeThreadId, expertDefaultMode]);
 
   useEffect(() => {
     setHitlPolicy(
