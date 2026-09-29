@@ -140,22 +140,48 @@ def head_commit(root):
     return head or None
 
 
-def digest_files(root, relpaths):
-    """★ 输入指纹 = 文件清单 + 各文件内容 sha256（确定性 · 与时刻无关）。"""
-    h = hashlib.sha256()
-    for item in sorted(set(relpaths)):
-        h.update(item.encode("utf-8"))
-        h.update(b"\0")
-        try:
-            h.update(hashlib.sha256((pathlib.Path(root) / item).read_bytes()).hexdigest().encode("ascii"))
-        except OSError:
-            h.update(b"<unreadable>")
-        h.update(b"\n")
-    return h.hexdigest()
+def _git(root, args):
+    """★ 只读 git 调用；★ 不可用 ⇒ `None`（调用方按 fail-closed 处理）。"""
+    try:
+        return subprocess.run(["git", "-C", str(root)] + args, capture_output=True, text=True, check=False)
+    except OSError:
+        return None
+
+
+def is_ancestor(root, ancestor, descendant):
+    """★ `ancestor` 是否为 `descendant` 的祖先（★ 只读 · `merge-base --is-ancestor`）。
+
+    ★ 返回 `None` = git 不可用（⇒ 调用方 fail-closed）；`True`/`False` = 判定结果。
+    """
+    out = _git(root, ["merge-base", "--is-ancestor", str(ancestor), str(descendant)])
+    if out is None:
+        return None
+    if out.returncode == 0:
+        return True
+    if out.returncode == 1:
+        return False
+    return False          # ★ 129 = 对象不存在 / 其它错误 ⇒ ★ 一律按「非祖先」判红（fail-closed）
+
+
+def changed_since(root, since, path):
+    """★ `path` 自 `since` 到 `HEAD` 是否【有改动】（★ 只读 · `git diff --quiet`）。
+
+    ★ 返回 `None` = git 不可用（⇒ fail-closed）；`True` = 有改动（⇒ 判红）；`False` = 未改动。
+    """
+    out = _git(root, ["diff", "--quiet", "%s..HEAD" % since, "--", str(path)])
+    if out is None:
+        return None
+    return out.returncode != 0      # ★ 0 = 无改动 · 非 0（含 128 路径/版本错误）= 判红（fail-closed）
 
 
 def load_exemptions(root):
-    """★ 载入豁免表 + 结构级校验（`H1`/`H2`/`H9`/`H10`）⇒ (table|None, violations)。"""
+    """★ 载入豁免表 + 结构级校验（`H1`/`H2`/`H9`/`H10`）⇒ (table|None, violations)。
+
+    ★★ `H2`（`repair-6` · 提交态可用）：① `at_commit` 必须是 **`HEAD` 的祖先**；
+    ② ★ **且**被豁免坐标**所在文件**自 `at_commit` 起**未被改动** ⇒ 否则 ⇒ **红**。
+    ★ 为什么：★ 旧口径「`at_commit` == 当前 `HEAD`」在**提交态下恒红**（= **不动点冲突**，不是判据）✗。
+    ★ 无 `.git` 的副本 ⇒ ★ **保持 fail-closed（`exit 2`）不变** ✓。
+    """
     path = pathlib.Path(root) / EXEMPTIONS_REL
     if not path.is_file():
         return None, ["豁免表缺失：%s" % EXEMPTIONS_REL]
@@ -174,9 +200,28 @@ def load_exemptions(root):
     head = head_commit(root)
     at_commit = table.get("at_commit")
     if head is None:
-        violations.append("H2 无法取 HEAD（git 不可用）⇒ 豁免表坐标不可校验")
-    elif not isinstance(at_commit, str) or not head.startswith(at_commit):
-        violations.append("H2 at_commit=%r 与当前 HEAD=%r 不符" % (at_commit, head))
+        violations.append("H2 无法取 HEAD（git 不可用）⇒ 提交态判定不可用 ⇒ fail-closed（不得记绿）")
+    elif not isinstance(at_commit, str) or not SHA_RE.match(at_commit):
+        violations.append("H2 at_commit 不可用于祖先判定（非空/格式不合法）：%r" % (at_commit,))
+    else:
+        ancestor = is_ancestor(root, at_commit, "HEAD")
+        if ancestor is None:
+            violations.append("H2 无法执行祖先判定（git 不可用）⇒ fail-closed（不得记绿）")
+        elif not ancestor:
+            violations.append(
+                "H2 at_commit=%r **不是**当前 HEAD=%r 的祖先（或该对象不存在）⇒ 豁免表的冻结坐标不可信"
+                % (at_commit, head))
+        else:
+            for entry in entries:
+                target = entry.get("path")
+                if not isinstance(target, str) or not target:
+                    continue
+                dirty = changed_since(root, at_commit, target)
+                if dirty is None:
+                    violations.append("H2 无法执行「文件未改动」判定（git 不可用）⇒ fail-closed（不得记绿）")
+                elif dirty:
+                    violations.append(
+                        "H2 **豁免后文件又改了**：%s 自 at_commit=%s 起有改动 ⇒ 豁免必须重新复核/重签" % (target, at_commit))
     frozen_at = table.get("frozen_at")
     if not isinstance(frozen_at, str) or not ISO_RE.match(frozen_at):
         violations.append("H10 frozen_at 非空/格式不合法：%r" % (frozen_at,))
@@ -190,6 +235,20 @@ def load_exemptions(root):
         if not isinstance(line, int) or isinstance(line, bool) or line < 1:
             violations.append("H4 line 必须 ≥ 1 的整数：%r" % (line,))
     return table, violations
+
+
+def digest_files(root, relpaths):
+    """★ 输入指纹 = 文件清单 + 各文件内容 sha256（确定性 · 与时刻无关）。"""
+    h = hashlib.sha256()
+    for item in sorted(set(relpaths)):
+        h.update(item.encode("utf-8"))
+        h.update(b"\0")
+        try:
+            h.update(hashlib.sha256((pathlib.Path(root) / item).read_bytes()).hexdigest().encode("ascii"))
+        except OSError:
+            h.update(b"<unreadable>")
+        h.update(b"\n")
+    return h.hexdigest()
 
 
 def exemption_index(table):
