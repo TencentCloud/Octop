@@ -96,6 +96,7 @@ export interface UseAutoScrollReturn {
    */
   scrollToBottom: (instant?: boolean, sync?: boolean) => void;
   resumeAutoScroll: () => void;
+  pauseAutoScroll: () => void;
   armProgrammaticGuard: (ms?: number) => void;
   handleAtBottomChange: (bottom: boolean) => void;
 }
@@ -561,6 +562,7 @@ export function useAutoScroll({
     isFollowMode,
     scrollToBottom,
     resumeAutoScroll,
+    pauseAutoScroll: enterFreeMode,
     armProgrammaticGuard,
     handleAtBottomChange,
   };
