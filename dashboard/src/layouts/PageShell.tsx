@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Segmented, Typography } from "antd";
 import AgentSelector from "../components/AgentSelector";
+import RemoteDisconnectBanner from "../components/RemoteDisconnectBanner";
+import { useAgent } from "../context/AgentContext";
 import { useIsMobile } from "../hooks/useIsMobile";
 import {
   titleRowEndPadding,
@@ -96,6 +98,7 @@ function PageShell({
   children,
 }: PageShellProps) {
   const isMobile = useIsMobile();
+  const { activeAgent } = useAgent();
   const outerPad = isMobile ? 12 : 32;
   const outerPadTop = isMobile ? 12 : 24;
   const contentPad = isMobile ? 12 : 24;
@@ -207,6 +210,12 @@ function PageShell({
             <PathTabsSegmented pathTabs={pathTabs} isMobile />
           </div>
         )}
+        {agentScoped && activeAgent?.bridge_disconnected ? (
+          <RemoteDisconnectBanner
+            connectionName={activeAgent.bridge_connection_name}
+            inbound={Boolean(activeAgent.bridge_inbound)}
+          />
+        ) : null}
         {children}
       </div>
     </div>

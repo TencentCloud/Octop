@@ -129,8 +129,16 @@ def build_app(server: OctopServer) -> FastAPI:
             expose_headers=[ACCESS_TOKEN_RESPONSE_HEADER],
         )
 
+    from octop.api.middleware.bridge_proxy import install as install_bridge_proxy
+
+    # Bridge proxy must sit inside JWT auth so ``request.state.octop_user`` is set
+    # (Starlette runs the last-added middleware first).
+    install_bridge_proxy(app, server)
     install_jwt_auth(app, server)
     install_setup_lockdown(app, server)
+
+    if server.app_runtime is not None and server.app_runtime.bridge_manager is not None:
+        server.app_runtime.bridge_manager.bind_asgi_app(app)
 
     from octop.infra.setup.tls.challenge import challenge_store
 
@@ -151,6 +159,7 @@ def build_app(server: OctopServer) -> FastAPI:
         auth_oauth,
         auth_oidc,
         backup,
+        bridge,
         browser,
         channels,
         chat,
@@ -221,6 +230,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(chat.router, "/api", ["chat"]),
             _RouterMount(slash.router, "/api", ["slash"]),
             _RouterMount(connectors.router, "/api", ["connectors"]),
+            _RouterMount(bridge.router, "/api", ["bridge"]),
             _RouterMount(knowledge_bases.router, "/api", ["knowledge"]),
             _RouterMount(internal_mcp.router, "/api", ["internal-mcp"]),
             _RouterMount(channels.router, "/api", ["channels"]),
