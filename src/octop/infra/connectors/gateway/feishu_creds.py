@@ -51,7 +51,7 @@ def ensure_feishu_cli_config(
     env: dict[str, str],
     default_as: str = "bot",
 ) -> None:
-    """Write/refresh lark-cli config via ``config init``.
+    """Write/refresh lark-cli config, reusing an Agent binding when present.
 
     Do **not** set ``LARKSUITE_CLI_APP_ID`` / ``LARKSUITE_CLI_APP_SECRET`` in the
     process environment: those put lark-cli into "external credentials" mode where
@@ -63,13 +63,36 @@ def ensure_feishu_cli_config(
     identity = _normalize_default_as(default_as)
     fingerprint = credential_fingerprint(app_id, app_secret)
     marker = config_dir / _FINGERPRINT_NAME
-    config_path = config_dir / "config.json"
+    source = _agent_source(env)
+    config_path = _workspace_config_path(config_dir, source)
     if (
         marker.is_file()
         and config_path.is_file()
         and marker.read_text(encoding="utf-8").strip() == fingerprint
     ):
         _ensure_default_as(binary, env, identity)
+        return
+
+    if source is not None:
+        # lark-cli deliberately rejects config init inside Agent workspaces.
+        # Bind to the host Agent's existing app instead of creating a shadow app.
+        run_cli(
+            [
+                binary,
+                "config",
+                "bind",
+                "--source",
+                source,
+                "--app-id",
+                app_id,
+                "--identity",
+                _bind_identity(identity),
+            ],
+            env=env,
+            timeout_s=60.0,
+        )
+        marker.write_text(fingerprint + "\n", encoding="utf-8")
+        marker.chmod(0o600)
         return
 
     # config init reads App Secret from stdin (--app-secret-stdin).
@@ -96,6 +119,43 @@ def ensure_feishu_cli_config(
 def _normalize_default_as(value: str) -> str:
     raw = str(value or "bot").strip().lower()
     return "user" if raw == "user" else "bot"
+
+
+def _agent_source(env: dict[str, str]) -> str | None:
+    """Return the official CLI Agent workspace detected in the environment."""
+    if any(
+        str(env.get(name) or "").strip()
+        for name in (
+            "OPENCLAW_CLI",
+            "OPENCLAW_HOME",
+            "OPENCLAW_STATE_DIR",
+            "OPENCLAW_CONFIG_PATH",
+            "OPENCLAW_SERVICE_MARKER",
+            "OPENCLAW_SERVICE_VERSION",
+            "OPENCLAW_GATEWAY_PORT",
+            "OPENCLAW_SHELL",
+        )
+    ):
+        return "openclaw"
+    if (
+        str(env.get("HERMES_HOME") or "").strip()
+        or str(env.get("HERMES_QUIET") or "") == "1"
+        or str(env.get("HERMES_EXEC_ASK") or "") == "1"
+        or str(env.get("HERMES_GATEWAY_TOKEN") or "").strip()
+        or str(env.get("HERMES_SESSION_KEY") or "").strip()
+    ):
+        return "hermes"
+    if str(env.get("LARK_CHANNEL") or "") == "1":
+        return "lark-channel"
+    return None
+
+
+def _workspace_config_path(config_dir: Path, source: str | None) -> Path:
+    return config_dir / source / "config.json" if source else config_dir / "config.json"
+
+
+def _bind_identity(identity: str) -> str:
+    return "user-default" if identity == "user" else "bot-only"
 
 
 def _ensure_default_as(binary: str, env: dict[str, str], identity: str) -> None:

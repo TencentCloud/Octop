@@ -61,6 +61,7 @@ def test_start_user_login_parses_device_flow(
     assert "--scope" in login
     scope_idx = login.index("--scope")
     assert "search:docs:read" in login[scope_idx + 1]
+    assert any(c[1:4] == ["config", "default-as", "user"] for c in calls)
 
 
 def test_complete_user_login_sets_default_as_user(
@@ -153,3 +154,69 @@ def test_ensure_feishu_respects_default_as_user(
     )
     assert any(c[1:4] == ["config", "default-as", "user"] for c in calls)
     assert not any(c[1:4] == ["config", "default-as", "bot"] for c in calls)
+
+
+@pytest.mark.parametrize(
+    ("default_as", "expected_identity"),
+    [("bot", "bot-only"), ("user", "user-default")],
+)
+def test_ensure_feishu_binds_existing_agent_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    default_as: str,
+    expected_identity: str,
+) -> None:
+    calls: list[list[str]] = []
+
+    def _fake_run(
+        argv: list[str],
+        *,
+        env: dict[str, str] | None = None,
+        timeout_s: float = 30.0,
+        cwd: str | None = None,
+        stdin_text: str | None = None,
+    ) -> str:
+        del env, timeout_s, cwd, stdin_text
+        calls.append(list(argv))
+        return "{}"
+
+    monkeypatch.setattr(feishu_creds, "run_cli", _fake_run)
+    env = {"HERMES_HOME": str(tmp_path / "hermes")}
+    feishu_creds.ensure_feishu_cli_config(
+        tmp_path,
+        binary=fake_bin_path("lark-cli"),
+        app_id="cli_x",
+        app_secret="sec",
+        env=env,
+        default_as=default_as,
+    )
+
+    assert calls == [
+        [
+            fake_bin_path("lark-cli"),
+            "config",
+            "bind",
+            "--source",
+            "hermes",
+            "--app-id",
+            "cli_x",
+            "--identity",
+            expected_identity,
+        ]
+    ]
+    assert not (tmp_path / "config.json").exists()
+    assert (tmp_path / ".octop_feishu_fingerprint").is_file()
+
+
+@pytest.mark.parametrize(
+    ("env", "expected_source"),
+    [
+        ({"HERMES_QUIET": "1"}, "hermes"),
+        ({"OPENCLAW_GATEWAY_PORT": "18789"}, "openclaw"),
+        ({"LARK_CHANNEL": "1"}, "lark-channel"),
+    ],
+)
+def test_agent_source_matches_lark_cli_workspace_signals(
+    env: dict[str, str], expected_source: str
+) -> None:
+    assert feishu_creds._agent_source(env) == expected_source  # noqa: SLF001
