@@ -3194,6 +3194,8 @@
     "nameLabel": "Name",
     "namePlaceholder": "e.g., my-openai",
     "baseUrlExtra": "OpenAI-compatible endpoint base URL. Leave blank to use the official default.",
+    "httpProxyLabel": "HTTP Proxy",
+    "httpProxyExtra": "Optional proxy for this provider's model requests only (e.g. http://127.0.0.1:7890). Leave empty for a direct connection.",
     "defaultModelLabel": "Default Model",
     "defaultModelPlaceholder": "e.g., gpt-4o-mini",
     "noteLabel": "Note (optional)",

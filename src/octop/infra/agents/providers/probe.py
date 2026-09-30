@@ -35,6 +35,21 @@ def provider_headers(row: Any) -> dict[str, str]:
     return dict(headers) if isinstance(headers, dict) else {}
 
 
+def provider_proxy(row: Any) -> str | None:
+    """Return the optional ``extra_json.proxy`` value (trimmed) or ``None``."""
+    raw = getattr(row, "extra_json", None)
+    if not raw:
+        return None
+    try:
+        extra = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(extra, dict) or not extra.get("proxy"):
+        return None
+    proxy = str(extra["proxy"]).strip()
+    return proxy or None
+
+
 def _is_codex_base_url(base_url: str | None) -> bool:
     return bool(base_url and "chatgpt.com/backend-api/codex" in base_url)
 
@@ -64,6 +79,12 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
         }
         if headers:
             kwargs["default_headers"] = dict(headers)
+        proxy = provider_proxy(row)
+        if proxy:
+            import httpx
+
+            kwargs["http_client"] = httpx.Client(proxy=proxy, trust_env=False)
+            kwargs["http_async_client"] = httpx.AsyncClient(proxy=proxy, trust_env=False)
         return ChatOpenAI(**kwargs)
 
     provider = ProviderConfig(
@@ -73,6 +94,7 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
         base_url=base_url,
         api_key=row.api_key or "",
         headers=headers,
+        proxy=provider_proxy(row),
     )
     return build_chat_model(provider, model)
 

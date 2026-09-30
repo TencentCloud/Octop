@@ -28,6 +28,12 @@ const KINDS = [
   { value: "bedrock", labelKey: "bedrock" as const },
 ];
 
+/** Build ``extra_json`` from a draft proxy value (empty → ``null``). */
+function proxyExtraJson(proxy?: string): string | null {
+  const trimmed = proxy?.trim();
+  return trimmed ? JSON.stringify({ proxy: trimmed }) : null;
+}
+
 export function CustomProviderModal({
   open,
   onClose,
@@ -44,6 +50,7 @@ export function CustomProviderModal({
     base_url?: string;
     api_key?: string;
     note?: string;
+    proxy?: string;
   }>();
   const name = Form.useWatch("name", form) as string | undefined;
   const kind = Form.useWatch("kind", form) as string | undefined;
@@ -92,6 +99,7 @@ export function CustomProviderModal({
       base_url: values.base_url?.trim() || null,
       model_id: modelId,
       embedding: isEmbeddingModel(models.find((m) => m.id === modelId)),
+      extra_json: proxyExtraJson(values.proxy),
     });
   };
 
@@ -112,6 +120,7 @@ export function CustomProviderModal({
         kind: "openai",
         api_key: apiKey,
         base_url: (values.base_url as string | undefined)?.trim() || null,
+        extra_json: proxyExtraJson(values.proxy as string | undefined),
       });
       if (!result.ok) {
         message.error(
@@ -184,6 +193,7 @@ export function CustomProviderModal({
           api_key: (values.api_key as string | undefined)?.trim() || null,
           models: modelEntries.length > 0 ? modelEntries : [],
           note: (values.note as string | undefined)?.trim() || null,
+          extra_json: proxyExtraJson(values.proxy as string | undefined),
         }),
       });
       message.success(
@@ -260,6 +270,14 @@ export function CustomProviderModal({
           extra={t("models.baseUrlExtra")}
         >
           <Input placeholder="https://api.openai.com/v1" />
+        </Form.Item>
+
+        <Form.Item
+          name="proxy"
+          label={t("models.httpProxyLabel")}
+          extra={t("models.httpProxyExtra")}
+        >
+          <Input placeholder="http://127.0.0.1:7890" />
         </Form.Item>
 
         <Form.Item name="api_key" label="API Key">

@@ -71,6 +71,7 @@ export interface ProviderRow {
   models: ProviderModel[];
   note: string | null;
   enabled: boolean;
+  extra_json?: string | null;
 }
 
 export interface UseProvidersResult {

@@ -135,6 +135,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "models": models,
         "note": r.note,
         "enabled": bool(r.enabled),
+        "extra_json": r.extra_json,
     }
 
 

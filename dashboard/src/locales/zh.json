@@ -3192,6 +3192,8 @@
     "nameLabel": "名称",
     "namePlaceholder": "例如:my-openai",
     "baseUrlExtra": "OpenAI 兼容 endpoint 的 base URL,留空则使用官方默认。",
+    "httpProxyLabel": "HTTP 代理",
+    "httpProxyExtra": "可选：仅该供应商的模型请求走此代理（如 http://127.0.0.1:7890），留空则直连。",
     "defaultModelLabel": "默认模型",
     "defaultModelPlaceholder": "例如:gpt-4o-mini",
     "noteLabel": "备注(可选)",
