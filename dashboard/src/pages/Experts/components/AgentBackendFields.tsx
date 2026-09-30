@@ -172,6 +172,7 @@ export default function AgentBackendFields({
           >
             <RootDirSelect
               treeRoot={treeRoot}
+              treeRoots={fsDefaults?.tree_roots}
               disabled={disabled || rootDirMode === "edit"}
             />
           </Form.Item>

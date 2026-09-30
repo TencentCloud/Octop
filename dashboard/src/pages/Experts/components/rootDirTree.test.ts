@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  appendChildren,
   ancestorDirPaths,
+  ancestorDirPathsInForest,
+  appendChildren,
+  commitTypedAbsolutePath,
   insertChild,
+  isExplicitAbsolutePath,
   isPathUnderHome,
   pathExistsInTree,
   renameNode,
+  sanitizeForest,
   sanitizeTree,
   type DirTreeNode,
 } from "./rootDirTree";
@@ -226,5 +230,43 @@ describe("rootDirTree helpers", () => {
       "/Users/jubaoliang/新建文件夹",
     ]);
     expect(next[1].children).toBeUndefined();
+  });
+
+  it("sanitizeForest keeps each volume and drops a duplicate child key", () => {
+    const nodes: DirTreeNode[] = [
+      {
+        value: "C:/",
+        title: "C:",
+        isLeaf: false,
+        children: [{ value: "C:/work", title: "work", isLeaf: false }],
+      },
+      {
+        value: "D:/",
+        title: "D:",
+        isLeaf: false,
+        children: [{ value: "D:/data", title: "data", isLeaf: false }],
+      },
+      { value: "C:/work", title: "orphan", isLeaf: false },
+    ];
+    const next = sanitizeForest(nodes, ["C:/", "D:/", "c:/"]);
+    expect(next.map((node) => node.value)).toEqual(["C:/", "D:/"]);
+    expect(pathExistsInTree(next, "C:/work")).toBe(true);
+    expect(pathExistsInTree(next, "D:/data")).toBe(true);
+  });
+
+  it("ancestorDirPathsInForest starts at the matching volume", () => {
+    expect(ancestorDirPathsInForest("D:/work/app", ["C:/", "D:/"])).toEqual([
+      "D:/",
+      "D:/work",
+    ]);
+    expect(ancestorDirPathsInForest("E:/other", ["C:/", "D:/"])).toEqual([]);
+  });
+
+  it("typed absolute paths stay fully qualified", () => {
+    expect(isExplicitAbsolutePath("C:/work/data/a.txt")).toBe(true);
+    expect(isExplicitAbsolutePath("D:")).toBe(false);
+    expect(isExplicitAbsolutePath("D:work")).toBe(false);
+    expect(commitTypedAbsolutePath("D:\\work\\")).toBe("D:/work");
+    expect(commitTypedAbsolutePath("D:")).toBe("D:");
   });
 });

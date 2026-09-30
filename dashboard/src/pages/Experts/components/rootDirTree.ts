@@ -97,6 +97,74 @@ export function sanitizeTree(
   return cleaned ? [cleaned] : [root];
 }
 
+/** One node per browse root. Missing roots stay expandable. */
+export function sanitizeForest(nodes: DirTreeNode[], roots: string[]): DirTreeNode[] {
+  const forest: DirTreeNode[] = [];
+  for (const raw of roots) {
+    const rootValue = normalizeTreeRoot(raw);
+    const rootKey = compareKey(rootValue);
+    if (forest.some((node) => compareKey(node.value) === rootKey)) continue;
+    const existing = nodes.find((node) => compareKey(node.value) === rootKey);
+    if (!existing) {
+      forest.push(makeRootNode(rootValue));
+      continue;
+    }
+    const cleaned = sanitizeTree([existing], rootValue);
+    forest.push(cleaned[0] ?? makeRootNode(rootValue));
+  }
+  return forest;
+}
+
+export function uniqueTreeRoots(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of paths) {
+    const value = normalizeTreeRoot(item);
+    const key = compareKey(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+export function isListedRoot(path: string, roots: string[]): boolean {
+  const key = compareKey(path);
+  return roots.some((root) => compareKey(root) === key);
+}
+
+/** Ancestors under the volume that actually contains *path*. */
+export function ancestorDirPathsInForest(path: string, roots: string[]): string[] {
+  const normalized = normalizeTreeRoot(path);
+  let match: string | null = null;
+  for (const root of roots) {
+    const value = normalizeTreeRoot(root);
+    const under =
+      compareKey(normalized) === compareKey(value) || isPathUnderHome(normalized, value);
+    if (!under) continue;
+    if (match == null || value.length > match.length) match = value;
+  }
+  if (match == null) return [];
+  return ancestorDirPaths(normalized, match);
+}
+
+/** Fully qualified host path. ``D:`` and ``D:work`` stay incomplete. */
+export function isExplicitAbsolutePath(path: string): boolean {
+  const text = path.trim();
+  if (!text) return false;
+  if (/^[A-Za-z]:[/\\]/.test(text)) return true;
+  if (/^[A-Za-z]:/.test(text)) return false;
+  return text.startsWith("/") || text.startsWith("\\");
+}
+
+/** Keep a typed absolute path. Do not turn ``D:`` into ``D:/``. */
+export function commitTypedAbsolutePath(path: string): string {
+  const text = path.trim();
+  if (/^[A-Za-z]:[/\\]/.test(text)) return normalizeTreeRoot(text);
+  if (text.startsWith("\\") || text.startsWith("/")) return text.replace(/\\/g, "/");
+  return text;
+}
+
 /**
  * Ancestor directories from *treeRoot* down to the parent of *path* (excludes *path*).
  */

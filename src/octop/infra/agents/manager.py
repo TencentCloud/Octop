@@ -104,6 +104,16 @@ _AGENT_STATES_NEEDING_MODEL_RELOAD = frozenset({"failed", "created"})
 _HARNESS_AGENT_CONFIG_FIELDS = frozenset(item.name for item in fields(HarnessAgentConfig))
 
 
+def _require_explicit_virtual_paths_runtime() -> None:
+    """Subtree experts need the harness flag. Missing it is a hard failure."""
+    if "explicit_virtual_paths" not in _HARNESS_AGENT_CONFIG_FIELDS:
+        raise OctopError(
+            ErrorCode.WORKSPACE_OP_UNSUPPORTED,
+            "installed octop-harness has no explicit_virtual_paths; "
+            "refusing to create or load a subtree expert",
+        )
+
+
 def _memory_namespace(agent_id: str) -> str:
     return f"{_MEMORY_NS_PREFIX}{agent_id}"
 
@@ -582,8 +592,43 @@ class AgentManager:
                 raise_if_backend_outside_user_root,
             )
 
+            kind = spec.kind if spec.kind in {"expert", "team"} else "expert"
+            from octop.infra.agents.workspace.windows_root import (  # noqa: PLC0415
+                classify_new_windows_backend,
+                stamp_new_windows_subtree,
+                windows_new_expert_subtree_enabled,
+            )
+
+            if windows_new_expert_subtree_enabled() and kind == "expert":
+                try:
+                    backend_class = classify_new_windows_backend(config)
+                except ValueError as exc:
+                    raise OctopError(ErrorCode.WORKSPACE_ROOT_RESTRICTED, str(exc)) from exc
+                if backend_class == "local":
+                    _require_explicit_virtual_paths_runtime()
+                    from octop.infra.users.resource_policy import (  # noqa: PLC0415
+                        POLICY_WORKSPACE_ROOT_DIR,
+                        effective_workspace_root_dir,
+                    )
+                    from octop.infra.utils.host_dirs import host_home_dir, host_path_text
+
+                    policy_root = None
+                    if spec.user_id is not None:
+                        policy_root = effective_workspace_root_dir(
+                            self._repos.user_policy_repo.get(
+                                spec.user_id, POLICY_WORKSPACE_ROOT_DIR
+                            )
+                        )
+                    try:
+                        stamp_new_windows_subtree(
+                            config,
+                            home=host_path_text(host_home_dir()),
+                            policy_root=policy_root,
+                        )
+                    except ValueError as exc:
+                        raise OctopError(ErrorCode.WORKSPACE_ROOT_RESTRICTED, str(exc)) from exc
+
             if spec.user_id is not None:
-                kind = spec.kind if spec.kind in {"expert", "team"} else "expert"
                 if kind == "expert":
                     assert_agent_quota_available(
                         self._repos.user_policy_repo,
@@ -598,7 +643,12 @@ class AgentManager:
 
             # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
             # After insert, resolve_workspace_dir reads the DB value as source of truth.
-            seed_workspace_dir_on_create(config, paths=self._paths, agent_id=agent_id)
+            try:
+                seed_workspace_dir_on_create(config, paths=self._paths, agent_id=agent_id)
+            except ValueError as exc:
+                if config.get("root_semantics") == "subtree":
+                    raise OctopError(ErrorCode.WORKSPACE_ROOT_RESTRICTED, str(exc)) from exc
+                raise
             # ``system_files_path`` is an internal layout control and must not
             # be user-configurable. New agents always use the default prefix.
             config.pop("system_files_path", None)
@@ -748,6 +798,10 @@ class AgentManager:
         ``system_files_path`` stays exactly as stored: a legacy agent without it keeps the root
         layout, so a value a client invents is dropped.
 
+        ``root_semantics`` is the same kind of internal mark. A subtree record keeps the stored
+        value when an update omits, clears, or replaces it. A record that never had the key stays
+        without it.
+
         ``pin_workspace_dir`` additionally pins ``workspace_dir`` to the stored value. User-facing
         updates need it — rewriting the directory silently relocates the agent's workspace, so a
         scoped or container agent would resolve to the classic layout and lose sight of its
@@ -761,6 +815,10 @@ class AgentManager:
             out["system_files_path"] = current_raw["system_files_path"]
         else:
             out.pop("system_files_path", None)
+        if "root_semantics" in current_raw:
+            out["root_semantics"] = current_raw["root_semantics"]
+        else:
+            out.pop("root_semantics", None)
         if pin_workspace_dir and "workspace_dir" in current_raw:
             out["workspace_dir"] = current_raw["workspace_dir"]
         return out
@@ -2983,9 +3041,12 @@ class AgentManager:
             harness_workspace_path,
             resolve_workspace_host_path,
             system_files_path_from_config,
+            uses_subtree_root,
         )
 
         cfg = self._agent_config_dict(row)
+        if uses_subtree_root(cfg):
+            _require_explicit_virtual_paths_runtime()
         raw = cfg.get("workspace_dir")
         if isinstance(raw, str) and raw.strip():
             # Persisted value goes to harness as-is; host map is Octop-local only.
@@ -3284,10 +3345,12 @@ class AgentManager:
         interrupt_on = apply_session_bypass(applied.interrupt_on, self._hitl_session_store)
         if interrupt_on is not applied.interrupt_on:
             applied = replace(applied, interrupt_on=interrupt_on)
-        return replace(
-            applied,
-            tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),
-        )
+        updates: dict[str, Any] = {
+            "tool_guard_rules_dir": str(self._tool_guard_rules.rules_dir),
+        }
+        if uses_subtree_root(cfg):
+            updates["explicit_virtual_paths"] = True
+        return replace(applied, **updates)
 
     def _install_team_host_dispatch(self) -> None:
         """Team hosts always enqueue inbox work, even on harness 1.0.8 (default sync)."""

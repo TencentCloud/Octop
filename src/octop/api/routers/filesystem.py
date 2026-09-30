@@ -18,6 +18,7 @@ Security notes:
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -35,6 +36,7 @@ from octop.infra.utils.docker_env import docker_status, ensure_docker
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
     host_fs_tree_root,
+    host_home_dir,
     host_path_text,
     list_host_subdirs,
     mkdir_host_subdir,
@@ -85,11 +87,27 @@ async def filesystem_defaults(
     in_container = running_in_container()
     allowed = _user_workspace_root(server, user)
     if allowed:
-        return {
+        payload: dict[str, Any] = {
             "default_root_dir": allowed,
             "tree_root": allowed,
             "in_container": in_container,
         }
+        if os.name == "nt":
+            payload["tree_roots"] = [allowed]
+        return payload
+    if os.name == "nt":
+        from octop.infra.agents.workspace.windows_root import (  # noqa: PLC0415
+            windows_picker_defaults,
+        )
+
+        drives = list(os.listdrives()) if hasattr(os, "listdrives") else []
+        payload = windows_picker_defaults(
+            home=host_path_text(host_home_dir()),
+            drives=drives,
+            legacy_tree_root=host_fs_tree_root(),
+        )
+        payload["in_container"] = in_container
+        return payload
     root = host_fs_tree_root()
     return {
         "default_root_dir": root,
