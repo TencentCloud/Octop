@@ -803,7 +803,15 @@ export default function MessageList(props: MessageListProps) {
   }
 
   return (
-    <div ref={wrapperRef} className={styles.messageListWrapper}>
+    <div
+      ref={wrapperRef}
+      className={styles.messageListWrapper}
+      role="log"
+      aria-live="polite"
+      aria-relevant="additions text"
+      aria-busy={isStreaming}
+      aria-label={t("chat.messageLog")}
+    >
       <TurnTimelineRail
         messages={messages}
         messageGroups={messageGroups}

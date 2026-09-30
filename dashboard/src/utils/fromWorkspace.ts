@@ -1,10 +1,13 @@
-/** Query flag for agent workspace UI: leading ``/`` is workspace-relative. */
+/**
+ * SEC-2 durable fix: the ``from_workspace`` query parameter was removed from
+ * the workspace I/O HTTP surface — paths always resolve workspace-relative
+ * (leading ``/`` = workspace root). This helper is kept as a pass-through so
+ * existing call sites keep compiling; new code should not use it.
+ */
 export const FROM_WORKSPACE_QS = "from_workspace=true";
 
-/** Append ``from_workspace=true`` to an agent workspace API URL. */
+/** No-op: the parameter no longer exists on the API. Kept for call-site
+ * compatibility; will be removed in a follow-up cleanup. */
 export function withFromWorkspace(url: string): string {
-  if (url.includes("from_workspace=")) return url;
-  return url.includes("?")
-    ? `${url}&${FROM_WORKSPACE_QS}`
-    : `${url}?${FROM_WORKSPACE_QS}`;
+  return url;
 }

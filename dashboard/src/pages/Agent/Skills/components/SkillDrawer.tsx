@@ -762,7 +762,6 @@ export function SkillDrawer({
           <FileViewer
             agentId={agentId}
             path={selectedFilePath}
-            fromWorkspace
             editMode={false}
             value={siblingContent}
             onChange={() => {}}

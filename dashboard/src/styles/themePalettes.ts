@@ -44,7 +44,7 @@ export const PALETTE_STORAGE_KEY = LEGACY_PALETTE_STORAGE_KEY;
 
 /** Swatch color shown in the palette picker (light brand). */
 export const PALETTE_SWATCH: Record<ThemePalette, string> = {
-  rose: "#E85D75",
+  rose: "#B83A50",
   tech: "#4B74FA",
   indigo: "#6366F1",
   teal: "#0D9488",
@@ -76,17 +76,17 @@ export const ANTD_BRAND_TOKENS: Record<
 > = {
   rose: {
     light: {
-      colorPrimary: "#E85D75",
-      colorPrimaryHover: "#D14A62",
-      colorPrimaryActive: "#B83A50",
-      colorLink: "#E85D75",
+      colorPrimary: "#B83A50",
+      colorPrimaryHover: "#A63448",
+      colorPrimaryActive: "#932E40",
+      colorLink: "#B83A50",
     },
     dark: {
       colorPrimary: "#F08B9A",
-      colorPrimaryBg: "rgba(232, 93, 117, 0.12)",
-      colorPrimaryBgHover: "rgba(232, 93, 117, 0.16)",
-      colorPrimaryBorder: "rgba(232, 93, 117, 0.25)",
-      colorPrimaryBorderHover: "rgba(232, 93, 117, 0.35)",
+      colorPrimaryBg: "rgba(184, 58, 80, 0.12)",
+      colorPrimaryBgHover: "rgba(184, 58, 80, 0.16)",
+      colorPrimaryBorder: "rgba(184, 58, 80, 0.25)",
+      colorPrimaryBorderHover: "rgba(184, 58, 80, 0.35)",
       colorPrimaryHover: "#F5A8B4",
       colorPrimaryActive: "#E85D75",
       colorPrimaryText: "#F08B9A",

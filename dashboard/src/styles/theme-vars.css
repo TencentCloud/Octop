@@ -15,9 +15,9 @@ html[data-theme="light"] {
   --fn-bg-elevated: #ffffff;
   --fn-bg-layout: #f5f6f8;
   --fn-bg-container: #ffffff;
-  --fn-bg-hover: rgba(232, 93, 117, 0.04);
-  --fn-bg-active: rgba(232, 93, 117, 0.08);
-  --fn-bg-selected: rgba(232, 93, 117, 0.06);
+  --fn-bg-hover: rgba(184, 58, 80, 0.04);
+  --fn-bg-active: rgba(184, 58, 80, 0.08);
+  --fn-bg-selected: rgba(184, 58, 80, 0.06);
   --fn-bg-code: #f5f6f8;
   --fn-bg-toolbar: #fafbfc;
   --fn-bg-toolbar-hover: #f0f1f3;
@@ -39,15 +39,51 @@ html[data-theme="light"] {
   --fn-fill-hover: rgba(0, 0, 0, 0.04);
   --fn-fill-tertiary: #f2f3f5;
 
+  /* Aliases for tokens referenced across feature stylesheets but never
+     defined (audit UI-2). Keep the alias targets canonical tokens so they
+     follow theme and palette switches automatically. */
+  --fn-bg-container: var(--fn-bg-elevated);
+  --fn-surface: var(--fn-bg-elevated);
+  --fn-surface-sunken: var(--fn-bg-tertiary);
+  --fn-bg-page: var(--fn-bg-layout);
+  --fn-bg-base: var(--fn-bg-primary);
+  --fn-bg-subtle: var(--fn-bg-tertiary);
+  --fn-bg-quaternary: var(--fn-bg-tertiary);
+  --fn-bg-secondary-hover: var(--fn-bg-hover);
+  --fn-bg-secondary-active: var(--fn-bg-active);
+  --fn-fill-hover: var(--fn-bg-hover);
+  --fn-fill-tertiary: var(--fn-bg-tertiary);
+  --fn-border: var(--fn-border-primary);
+  --fn-border-color: var(--fn-border-primary);
+  --fn-border-subtle: var(--fn-border-secondary);
+  --fn-border-strong: var(--fn-border-input);
+  --fn-border-success: var(--fn-color-success-border);
+  --fn-color-error: var(--fn-color-danger);
+  --fn-color-error-border: var(--fn-color-danger-border);
+  --fn-color-error-bg: var(--fn-bg-danger-light);
+  --fn-color-primary: var(--fn-text-brand);
+  --fn-primary: var(--fn-text-brand);
+  --fn-primary-bg: var(--fn-color-brand-bg);
+  --fn-success: var(--fn-color-success);
+  --fn-success-bg: var(--fn-bg-success-light);
+  --fn-success-border: var(--fn-color-success-border);
+  --fn-danger: var(--fn-color-danger);
+  --fn-warning-color: var(--fn-color-warning-text);
+  --fn-text-danger: var(--fn-color-danger);
+  --fn-text-link: var(--fn-text-brand);
+  --fn-accent: var(--fn-text-brand);
+  --fn-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+
   /* ---- Text ---- */
   --fn-text-primary: #111827;
   --fn-text-secondary: #4b5563;
-  --fn-text-tertiary: #9ca3af;
+  --fn-text-tertiary: #6b7280;
   --fn-text-quaternary: #d1d5db;
-  --fn-text-placeholder: #c0c5ce;
+  --fn-text-placeholder: #6b7280;
   --fn-text-disabled: #d1d5db;
   --fn-text-inverse: #ffffff;
-  --fn-text-brand: #e85d75;
+  --fn-text-brand: #b83a50;
   --fn-text-danger: #ef4444;
   --fn-text-link: var(--fn-text-brand);
   --fn-logo-color: #e05040;
@@ -60,7 +96,7 @@ html[data-theme="light"] {
   --fn-border-tertiary: #f9fafb;
   --fn-border-input: #d1d5db;
   --fn-border-input-alt: #e5e7eb;
-  --fn-border-focus: #e85d75;
+  --fn-border-focus: #b83a50;
   --fn-border: #e5e7eb;
   --fn-border-color: #e5e7eb;
   --fn-border-strong: #d1d5db;
@@ -68,9 +104,9 @@ html[data-theme="light"] {
   --fn-border-success: #6ee7b7;
 
   /* ---- Brand (rose) ---- */
-  --fn-color-brand: #e85d75;
-  --fn-color-brand-hover: #d14a62;
-  --fn-color-brand-soft: #d14a62;
+  --fn-color-brand: #b83a50;
+  --fn-color-brand-hover: #a63448;
+  --fn-color-brand-soft: #a63448;
   --fn-accent: var(--fn-color-brand);
   --fn-primary: var(--fn-color-brand);
   --fn-primary-bg: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
@@ -81,10 +117,10 @@ html[data-theme="light"] {
     transparent
   );
   --fn-color-on-brand: #ffffff;
-  --fn-color-brand-bg: rgba(232, 93, 117, 0.06);
+  --fn-color-brand-bg: rgba(184, 58, 80, 0.06);
   --fn-color-brand-light: #fde8ec;
-  --fn-color-brand-shadow: rgba(232, 93, 117, 0.15);
-  --fn-color-brand-glow: rgba(232, 93, 117, 0.08);
+  --fn-color-brand-shadow: rgba(184, 58, 80, 0.15);
+  --fn-color-brand-glow: rgba(184, 58, 80, 0.08);
 
   /* ---- AI message bubble (frosted glass) ---- */
   --fn-assistant-bubble-bg: rgba(255, 255, 255, 0.45);
@@ -94,8 +130,8 @@ html[data-theme="light"] {
     rgba(255, 255, 255, 0.35) 50%,
     rgba(255, 243, 245, 0.5) 100%
   );
-  --fn-assistant-bubble-border: rgba(232, 93, 117, 0.12);
-  --fn-assistant-glow-color: 232, 93, 117;
+  --fn-assistant-bubble-border: rgba(184, 58, 80, 0.12);
+  --fn-assistant-glow-color: 184, 58, 80;
 
   /* ---- Semantic ---- */
   --fn-color-success: #10b981;
@@ -105,7 +141,7 @@ html[data-theme="light"] {
   --fn-color-danger-border: #fca5a5;
   --fn-color-warning: #f59e0b;
   --fn-color-warning-border: #fcd34d;
-  --fn-color-warning-text: #d97706;
+  --fn-color-warning-text: #b45309;
   --fn-color-info: #3b82f6;
   --fn-color-info-border: #93c5fd;
   --fn-color-error: #ef4444;
@@ -128,7 +164,7 @@ html[data-theme="light"] {
   --fn-tag-remote-bg: #fff7ed;
   --fn-tag-remote-text: #f97316;
   --fn-tag-remote-border: #fed7aa;
-  --fn-tag-channel-text: #e85d75;
+  --fn-tag-channel-text: #b83a50;
 
   /* ---- Shadows ---- */
   --fn-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -139,15 +175,15 @@ html[data-theme="light"] {
     0 4px 6px -4px rgba(0, 0, 0, 0.04);
   --fn-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.07),
     0 8px 10px -6px rgba(0, 0, 0, 0.04);
-  --fn-shadow-brand: 0 4px 14px rgba(232, 93, 117, 0.18);
-  --fn-shadow-brand-lg: 0 8px 24px rgba(232, 93, 117, 0.24);
+  --fn-shadow-brand: 0 4px 14px rgba(184, 58, 80, 0.18);
+  --fn-shadow-brand-lg: 0 8px 24px rgba(184, 58, 80, 0.24);
 
   /* ---- Selected row ---- */
-  --fn-row-selected-bg: rgba(232, 93, 117, 0.05);
-  --fn-row-selected-hover: rgba(232, 93, 117, 0.09);
-  --fn-row-selected-alt-bg: rgba(232, 93, 117, 0.04);
-  --fn-row-selected-alt-hover: rgba(232, 93, 117, 0.08);
-  --fn-row-selected-border: #e85d75;
+  --fn-row-selected-bg: rgba(184, 58, 80, 0.05);
+  --fn-row-selected-hover: rgba(184, 58, 80, 0.09);
+  --fn-row-selected-alt-bg: rgba(184, 58, 80, 0.04);
+  --fn-row-selected-alt-hover: rgba(184, 58, 80, 0.08);
+  --fn-row-selected-border: #b83a50;
 
   /* ---- Cards ---- */
   --fn-card-border-normal: #e5e7eb;
@@ -160,8 +196,8 @@ html[data-theme="light"] {
   --fn-sidebar-border: #ebebeb;
   --fn-sidebar-item-hover: #f5f5f5;
   --fn-sidebar-item-active-bg: #fde8ec;
-  --fn-sidebar-item-active: rgba(232, 93, 117, 0.08);
-  --fn-sidebar-item-active-text: #e85d75;
+  --fn-sidebar-item-active: rgba(184, 58, 80, 0.08);
+  --fn-sidebar-item-active-text: #b83a50;
   --fn-sidebar-group-text: #b0b5be;
 
   /* ---- Header ---- */
@@ -199,9 +235,9 @@ html[data-theme="dark"] {
   --fn-bg-elevated: #1e1e1e;
   --fn-bg-layout: #0e0e0e;
   --fn-bg-container: #141414;
-  --fn-bg-hover: rgba(232, 93, 117, 0.08);
-  --fn-bg-active: rgba(232, 93, 117, 0.14);
-  --fn-bg-selected: rgba(232, 93, 117, 0.1);
+  --fn-bg-hover: rgba(184, 58, 80, 0.08);
+  --fn-bg-active: rgba(184, 58, 80, 0.14);
+  --fn-bg-selected: rgba(184, 58, 80, 0.1);
   --fn-bg-code: #1e1e1e;
   --fn-bg-toolbar: #161616;
   --fn-bg-toolbar-hover: #222222;
@@ -223,12 +259,46 @@ html[data-theme="dark"] {
   --fn-fill-hover: rgba(255, 255, 255, 0.08);
   --fn-fill-tertiary: rgba(255, 255, 255, 0.06);
 
+  /* Same alias set as light mode — see the light block for rationale. */
+  --fn-bg-container: var(--fn-bg-elevated);
+  --fn-surface: var(--fn-bg-elevated);
+  --fn-surface-sunken: var(--fn-bg-tertiary);
+  --fn-bg-page: var(--fn-bg-layout);
+  --fn-bg-base: var(--fn-bg-primary);
+  --fn-bg-subtle: var(--fn-bg-tertiary);
+  --fn-bg-quaternary: var(--fn-bg-tertiary);
+  --fn-bg-secondary-hover: var(--fn-bg-hover);
+  --fn-bg-secondary-active: var(--fn-bg-active);
+  --fn-fill-hover: var(--fn-bg-hover);
+  --fn-fill-tertiary: var(--fn-bg-tertiary);
+  --fn-border: var(--fn-border-primary);
+  --fn-border-color: var(--fn-border-primary);
+  --fn-border-subtle: var(--fn-border-secondary);
+  --fn-border-strong: var(--fn-border-input);
+  --fn-border-success: var(--fn-color-success-border);
+  --fn-color-error: var(--fn-color-danger);
+  --fn-color-error-border: var(--fn-color-danger-border);
+  --fn-color-error-bg: var(--fn-bg-danger-light);
+  --fn-color-primary: var(--fn-text-brand);
+  --fn-primary: var(--fn-text-brand);
+  --fn-primary-bg: var(--fn-color-brand-bg);
+  --fn-success: var(--fn-color-success);
+  --fn-success-bg: var(--fn-bg-success-light);
+  --fn-success-border: var(--fn-color-success-border);
+  --fn-danger: var(--fn-color-danger);
+  --fn-warning-color: var(--fn-color-warning-text);
+  --fn-text-danger: var(--fn-color-danger);
+  --fn-text-link: var(--fn-text-brand);
+  --fn-accent: var(--fn-text-brand);
+  --fn-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+
   /* ---- Text ---- */
   --fn-text-primary: rgba(255, 255, 255, 0.9);
   --fn-text-secondary: rgba(255, 255, 255, 0.6);
-  --fn-text-tertiary: rgba(255, 255, 255, 0.35);
+  --fn-text-tertiary: rgba(255, 255, 255, 0.55);
   --fn-text-quaternary: rgba(255, 255, 255, 0.2);
-  --fn-text-placeholder: rgba(255, 255, 255, 0.16);
+  --fn-text-placeholder: rgba(255, 255, 255, 0.55);
   --fn-text-disabled: rgba(255, 255, 255, 0.16);
   --fn-text-inverse: #0e0e0e;
   --fn-text-brand: #f08b9a;
@@ -264,11 +334,13 @@ html[data-theme="dark"] {
     var(--fn-color-brand) 35%,
     transparent
   );
-  --fn-color-on-brand: #ffffff;
-  --fn-color-brand-bg: rgba(232, 93, 117, 0.12);
-  --fn-color-brand-light: rgba(232, 93, 117, 0.16);
-  --fn-color-brand-shadow: rgba(232, 93, 117, 0.25);
-  --fn-color-brand-glow: rgba(232, 93, 117, 0.08);
+  /* Dark fills keep the lightened rose; white text on it is only 2.37:1, so
+     on-brand text switches to near-black (audit A11Y-6). */
+  --fn-color-on-brand: #0e0e0e;
+  --fn-color-brand-bg: rgba(184, 58, 80, 0.12);
+  --fn-color-brand-light: rgba(184, 58, 80, 0.16);
+  --fn-color-brand-shadow: rgba(184, 58, 80, 0.25);
+  --fn-color-brand-glow: rgba(184, 58, 80, 0.08);
 
   /* ---- AI message bubble (frosted glass) ---- */
   --fn-assistant-bubble-bg: rgba(255, 255, 255, 0.06);
@@ -320,14 +392,14 @@ html[data-theme="dark"] {
   --fn-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.22);
   --fn-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.35), 0 4px 6px rgba(0, 0, 0, 0.22);
   --fn-shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.4), 0 8px 10px rgba(0, 0, 0, 0.25);
-  --fn-shadow-brand: 0 4px 14px rgba(232, 93, 117, 0.22);
-  --fn-shadow-brand-lg: 0 8px 24px rgba(232, 93, 117, 0.3);
+  --fn-shadow-brand: 0 4px 14px rgba(184, 58, 80, 0.22);
+  --fn-shadow-brand-lg: 0 8px 24px rgba(184, 58, 80, 0.3);
 
   /* ---- Selected row ---- */
-  --fn-row-selected-bg: rgba(232, 93, 117, 0.1);
-  --fn-row-selected-hover: rgba(232, 93, 117, 0.16);
-  --fn-row-selected-alt-bg: rgba(232, 93, 117, 0.08);
-  --fn-row-selected-alt-hover: rgba(232, 93, 117, 0.13);
+  --fn-row-selected-bg: rgba(184, 58, 80, 0.1);
+  --fn-row-selected-hover: rgba(184, 58, 80, 0.16);
+  --fn-row-selected-alt-bg: rgba(184, 58, 80, 0.08);
+  --fn-row-selected-alt-hover: rgba(184, 58, 80, 0.13);
   --fn-row-selected-border: #f08b9a;
 
   /* ---- Cards ---- */
@@ -340,8 +412,8 @@ html[data-theme="dark"] {
   --fn-sidebar-bg: #141414;
   --fn-sidebar-border: rgba(255, 255, 255, 0.06);
   --fn-sidebar-item-hover: rgba(255, 255, 255, 0.05);
-  --fn-sidebar-item-active-bg: rgba(232, 93, 117, 0.14);
-  --fn-sidebar-item-active: rgba(232, 93, 117, 0.14);
+  --fn-sidebar-item-active-bg: rgba(184, 58, 80, 0.14);
+  --fn-sidebar-item-active: rgba(184, 58, 80, 0.14);
   --fn-sidebar-item-active-text: #f08b9a;
   --fn-sidebar-group-text: rgba(255, 255, 255, 0.28);
 

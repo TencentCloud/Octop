@@ -72,23 +72,40 @@ export function isSessionOnlyAuth(): boolean {
  * post the token back to the opener — ``sessionStorage`` is not shared.
  */
 export function setAuthToken(token: string, remember: boolean = true) {
-  if (remember) {
-    localStorage.setItem(AUTH_TOKEN_KEY, token);
-    sessionStorage.removeItem(AUTH_TOKEN_KEY);
-  } else {
-    sessionStorage.setItem(AUTH_TOKEN_KEY, token);
-    localStorage.removeItem(AUTH_TOKEN_KEY);
+  // FE-14: storage-restricted environments (Safari private mode, enterprise
+  // policy) throw SecurityError. Keep the session usable in-page instead of
+  // failing the login outright.
+  try {
+    if (remember) {
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+      sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    } else {
+      sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+  } catch {
+    /* storage unavailable — the token stays in memory for this page only */
   }
   clearSetupRequired();
+  // FE-1: a successful login/refresh re-arms the one-shot redirect latch —
+  // without this, one 401 anywhere permanently breaks later 401 handling.
+  _redirectingToLogin = false;
 }
 
 /** Get JWT token from localStorage or (session-only) sessionStorage. */
 export function getAuthToken(): string {
-  return (
-    localStorage.getItem(AUTH_TOKEN_KEY) ||
-    sessionStorage.getItem(AUTH_TOKEN_KEY) ||
-    ""
-  );
+  // FE-14: storage-restricted environments throw SecurityError on access.
+  // Callers treat "" as "no token", so swallow instead of breaking every
+  // request/stream.
+  try {
+    return (
+      localStorage.getItem(AUTH_TOKEN_KEY) ||
+      sessionStorage.getItem(AUTH_TOKEN_KEY) ||
+      ""
+    );
+  } catch {
+    return "";
+  }
 }
 
 /** Remove JWT token from both storages. */
