@@ -160,6 +160,7 @@ async def iter_dashboard_hitl_resume_sse(
         # leave the record looking like a successful approve/reject.
         if pending is not None:
             hitl_coordinator.store.mark_resolved(pending.pending_id, "expired")
+        logger.exception("dashboard hitl resume failed agent=%s thread=%s", agent_id, thread_id)
         yield format_sse(
             "chunk",
             {"type": "error", "message": format_stream_error(exc, locale)},

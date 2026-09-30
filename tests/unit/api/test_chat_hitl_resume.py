@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -201,3 +202,38 @@ async def test_dashboard_hitl_resume_marks_pending_resolved_when_stream_errors()
     assert resolved is not None
     assert resolved.status == "expired"
     assert hitl.store.resolve_pending_for_thread("thr-err", agent_id="agent-1", user_id=1) is None
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hitl_resume_logs_stream_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def _resume(*_args: object, **_kwargs: object):
+        raise RuntimeError("boom")
+        yield  # pragma: no cover - unreachable, keeps this an async generator
+
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = _resume
+    hitl = HitlChannelCoordinator()
+
+    with caplog.at_level(logging.ERROR, logger="octop.api.routers.chat.routes"):
+        frames = [
+            frame
+            async for frame in iter_dashboard_hitl_resume_sse(
+                processor=processor,
+                hitl_coordinator=hitl,
+                agent_id="agent-1",
+                thread_id="thr-failed",
+                user_id=9,
+                decisions=[{"type": "approve"}],
+                pending=None,
+                session_key="sk-failed",
+                channel_type="dashboard",
+                locale="en",
+                is_disconnected=AsyncMock(return_value=False),
+            )
+        ]
+
+    chunks = _parse_sse_chunks("".join(frames))
+    assert any(c.get("type") == "error" for c in chunks)
+    assert any(record.levelno >= logging.ERROR for record in caplog.records)
