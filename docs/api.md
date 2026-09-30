@@ -447,7 +447,8 @@ endpoint (public, mounted directly in `api/app.py`).
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`/`POST` | `/update/status`, `/check`, `/upgrade`, `/progress`, `/restart` | admin | in-place server update flow |
-| `GET`/`POST`/`DELETE` | `/ollama/...` | user | Ollama model discovery + downloads |
+| `GET`/`POST`/`DELETE` | `/ollama-models/...` | `ollama_models` | Ollama model discovery + downloads |
+| `GET`/`PUT` | `/ollama-models/service` | `ollama_models` | Local daemon toggle; omit `enabled` to set `models_dir` only |
 | `GET` | `/i18n/tools` | user | server-owned tool display names (locale-aware) |
 | `GET` | `/i18n/locales` | public | available locales + fallback chain |
 | `GET` | `/i18n/locales/{locale}/{namespace}` | public | one namespace bundle (errors, tools, channel, slash) |

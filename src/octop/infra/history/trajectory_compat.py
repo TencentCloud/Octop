@@ -42,9 +42,15 @@ class ArchiveTrajectoryStore(TrajectoryStore):
         return self._write(event, upsert=True)
 
     def _write(self, event: TrajectoryEvent, *, upsert: bool) -> bool:
-        turn = self.archive.store.turn(event.thread_id)
+        # Caps are applied before routing: the v2 branch writes its own document
+        # and never reaches TrajectoryStore.append's clipped repo call.
+        bounded = self._bounded(event)
+        turn = self.archive.store.turn(bounded.thread_id)
         if turn is None or turn["format"] != "v2":
-            return super().upsert(event) if upsert else super().append(event)
+            return super().upsert(bounded) if upsert else super().append(bounded)
+        return self._put_v2_event(bounded, turn)
+
+    def _put_v2_event(self, event: TrajectoryEvent, turn: dict[str, Any]) -> bool:
         with self.archive.store.transaction() as conn:
             self.archive.store.put_document(
                 conn,
