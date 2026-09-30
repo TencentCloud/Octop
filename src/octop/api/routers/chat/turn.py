@@ -263,24 +263,27 @@ async def prepare_dashboard_turn(
         thread_id=turn.thread_id,
         session_key=turn.session_key,
     )
-    model_ref = (turn.default_model or "").strip() or None
+    selected_model_ref = (turn.default_model or "").strip() or None
     if (
-        model_ref is not None
-        and not server.app_runtime.agent_registry.providers.is_model_ref_usable(model_ref)
+        selected_model_ref is not None
+        and selected_model_ref != "auto"
+        and not server.app_runtime.agent_registry.providers.is_model_ref_usable(selected_model_ref)
     ):
         raise OctopError(
             ErrorCode.SLASH_BAD_ARGS,
             "default_model must reference an enabled model",
         )
     composer_updates: dict[str, Any] = {}
-    if model_ref is not None:
-        composer_updates["model_ref"] = model_ref
+    if selected_model_ref is not None:
+        composer_updates["model_ref"] = selected_model_ref
     if turn.reasoning_mode is not None:
         composer_updates["reasoning_mode"] = turn.reasoning_mode
     if turn.reasoning_effort is not None:
         composer_updates["reasoning_effort"] = turn.reasoning_effort.strip().lower() or None
     if composer_updates:
         thread_registry.update_composer(thread_id, **composer_updates)
+    # Auto is a persisted choice, not a provider model or a turn override.
+    model_ref = None if selected_model_ref == "auto" else selected_model_ref
     target_ids = [str(x) for x in turn.target_agent_ids] if turn.target_agent_ids else None
     composer_ctx = build_composer_context(
         mcp_servers=mcp_servers,

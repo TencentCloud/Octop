@@ -40,7 +40,12 @@ vi.mock("../../../api/modules/provider", () => ({
 }));
 vi.mock("../../../api/modules/preferences", () => ({
   preferencesApi: {
-    get: vi.fn().mockResolvedValue(null),
+    get: vi.fn().mockResolvedValue({
+      locale: "zh",
+      remote_browser_bookmarks: [],
+      preferred_model: "p/personal",
+      model_reasoning: {},
+    }),
     set: vi.fn().mockResolvedValue(undefined),
   },
 }));
@@ -74,6 +79,8 @@ vi.mock("../../../context/AgentContext", () => ({
 }));
 
 import { useChatComposerResources } from "./useChatComposerResources";
+import { preferencesApi } from "../../../api/modules/preferences";
+import { octopThreadsApi } from "../../../api/modules/octopThreads";
 
 beforeEach(() => {
   localStorage.clear();
@@ -171,6 +178,47 @@ describe("useChatComposerResources — per-expert KB selection", () => {
     rerender({ agentId: "expertB" });
     await waitFor(() =>
       expect(result.current.selectedConnectors).toEqual(["c2"]),
+    );
+  });
+});
+
+describe("useChatComposerResources — model priority", () => {
+  it("keeps the untouched model unset while exposing the personal fallback", async () => {
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing", null),
+    );
+
+    await waitFor(() => expect(preferencesApi.get).toHaveBeenCalled());
+    await act(async () => Promise.resolve());
+
+    expect(result.current.selectedModel).toBeNull();
+    expect(result.current.preferredModel).toBe("p/personal");
+  });
+
+  it("persists explicit Auto separately from an untouched model", async () => {
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing", null),
+    );
+    await waitFor(() =>
+      expect(result.current.preferredModel).toBe("p/personal"),
+    );
+
+    act(() => result.current.setSelectedModel("auto"));
+    expect(result.current.selectedModel).toBe("auto");
+    expect(octopThreadsApi.patch).toHaveBeenCalledWith(
+      "expertA",
+      "thread-existing",
+      expect.objectContaining({ model_ref: "auto" }),
+    );
+  });
+
+  it("restores the current conversation model above lower-level defaults", async () => {
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing", "p/conversation"),
+    );
+
+    await waitFor(() =>
+      expect(result.current.selectedModel).toBe("p/conversation"),
     );
   });
 });

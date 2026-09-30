@@ -10,6 +10,7 @@ import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import { ChatMediaPlayer } from "./ChatMediaPlayer";
 import ContextChip from "./ContextChip";
 import { modelShortLabel } from "../../../utils/modelOptions";
+import { AUTO_MODEL_REF } from "../utils/chatMessages";
 import styles from "../index.module.less";
 
 interface ChatInputPreviewBarProps {
@@ -104,7 +105,10 @@ export default function ChatInputPreviewBar({
   // connectors behave — not only when it differs from the
   // agent default (that was the old "override" behavior).
   const selectedModelValue = (selectedModel || "").trim();
-  const showModelChip = selectedModelValue.length > 0 && !!onModelChange;
+  const showModelChip =
+    selectedModelValue.length > 0 &&
+    selectedModelValue !== AUTO_MODEL_REF &&
+    !!onModelChange;
 
   const hasContent =
     attachments.length > 0 ||

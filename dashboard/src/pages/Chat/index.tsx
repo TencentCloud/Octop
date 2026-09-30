@@ -549,6 +549,7 @@ function ChatPageInner() {
 
   const {
     selectedModel,
+    preferredModel,
     setSelectedModel,
     selectedConnectors,
     selectedKnowledgeBaseIds,
@@ -581,7 +582,7 @@ function ChatPageInner() {
     selectedModel,
     availableModels,
     activeAgent?.default_model,
-    activeModelRef,
+    preferredModel || activeModelRef,
     activeAgent,
   );
 
@@ -1662,7 +1663,7 @@ function ChatPageInner() {
               availableSubagents={isTeamChat ? undefined : chatSubagents}
               agentId={resolvedAgentId}
               threadId={activeThreadId}
-              defaultModel={activeAgent?.default_model ?? null}
+              defaultModel={activeAgent?.default_model || preferredModel}
               contextUsedTokens={contextUsedTokens}
               contextMaxTokens={contextMaxTokens}
             />

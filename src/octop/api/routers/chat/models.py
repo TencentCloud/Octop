@@ -49,7 +49,7 @@ class ChatTurnBody(BaseModel):
     )
     default_model: str | None = Field(
         default=None,
-        description="Model ref override, e.g. `openai/gpt-4o`. Uses the agent default when omitted.",
+        description="Conversation model ref, e.g. `openai/gpt-4o`; `auto` clears a manual choice. Omit to use the saved choice, expert default, then personal preference.",
     )
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None

@@ -52,7 +52,10 @@ import type { SlashMenuItem } from "../hooks/useSlashMentionInput";
 import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import { SHORTCUT_ICON_TONE_CLASS } from "../utils/slashShortcutStyles";
 import { isSttAvailable } from "../../../hooks/useVoiceInput";
-import { resolveTurnModelOverride } from "../utils/chatMessages";
+import {
+  AUTO_MODEL_REF,
+  resolveTurnModelOverride,
+} from "../utils/chatMessages";
 import { parseSkillSlugsInText } from "../utils/skillSlash";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import {
@@ -231,7 +234,7 @@ export default function ChatInputActionsRow({
     null,
   );
 
-  const modelOverride = resolveTurnModelOverride(selectedModel, defaultModel);
+  const modelOverride = resolveTurnModelOverride(selectedModel);
   const useCompactControls = isMobile || isCompact;
 
   useEffect(() => {
@@ -253,7 +256,10 @@ export default function ChatInputActionsRow({
   const showModelPicker = Boolean(
     availableModels && availableModels.length > 0 && onModelChange,
   );
-  const effectiveModelRef = selectedModel || defaultModel || "";
+  const effectiveModelRef =
+    selectedModel === AUTO_MODEL_REF
+      ? defaultModel || ""
+      : selectedModel || defaultModel || "";
   const selectedModelInfo = availableModels?.find(
     (model) => modelOptionValue(model) === effectiveModelRef,
   );
@@ -356,16 +362,23 @@ export default function ChatInputActionsRow({
       ? t("chat.reasoningEnabled", "开启")
       : t("chat.reasoningDisabled", "关闭");
 
-  const selectedModelTriggerLabel = selectedModel
-    ? modelOptionLabel(
-        availableModels?.find((m) => modelOptionValue(m) === selectedModel) ?? {
-          provider_name: selectedModel.split("/")[0] || "",
-          model: selectedModel.split("/").slice(1).join("/") || selectedModel,
-        },
-      )
-    : t("chat.selectModel", "Select model");
+  const selectedModelTriggerLabel =
+    selectedModel === AUTO_MODEL_REF
+      ? t("chat.modelAuto", "Auto")
+      : effectiveModelRef
+      ? modelOptionLabel(
+          availableModels?.find(
+            (m) => modelOptionValue(m) === effectiveModelRef,
+          ) ?? {
+            provider_name: effectiveModelRef.split("/")[0] || "",
+            model:
+              effectiveModelRef.split("/").slice(1).join("/") ||
+              effectiveModelRef,
+          },
+        )
+      : t("chat.modelAuto", "Auto");
   const selectedModelReasoningHint =
-    selectedModel && reasoningCapability
+    selectedModel && selectedModel !== AUTO_MODEL_REF && reasoningCapability
       ? reasoningIsStatusOnly
         ? t("chat.reasoningAlways", "始终推理")
         : reasoningEffort || reasoningModeLabel(reasoningMode)
@@ -481,10 +494,13 @@ export default function ChatInputActionsRow({
             <button
               type="button"
               className={`${styles.modelMenuItem} ${
-                !selectedModel ? styles.modelMenuItemActive : ""
+                selectedModel === AUTO_MODEL_REF ||
+                (!selectedModel && !defaultModel)
+                  ? styles.modelMenuItemActive
+                  : ""
               }`}
               onClick={() => {
-                onModelChange?.(null);
+                onModelChange?.(AUTO_MODEL_REF);
                 closeCompactPicker();
                 setModelPickerOpen(false);
               }}
@@ -502,20 +518,21 @@ export default function ChatInputActionsRow({
             {availableModels?.map((model) => {
               const value = modelOptionValue(model);
               const active = selectedModel === value;
+              const showingDefault = !selectedModel && defaultModel === value;
               const capability = model.reasoning_config;
               const summary = reasoningSummary(model, active);
               return (
                 <div
                   key={value}
                   className={`${styles.modelMenuRow} ${
-                    active ? styles.modelMenuItemActive : ""
+                    active || showingDefault ? styles.modelMenuItemActive : ""
                   }`}
                 >
                   <button
                     type="button"
                     className={styles.modelMenuSelect}
                     onClick={() => {
-                      onModelChange?.(active ? null : value);
+                      onModelChange?.(active ? AUTO_MODEL_REF : value);
                       closeCompactPicker();
                       setModelPickerOpen(false);
                     }}
