@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 修复
+- Chat pages open on a thread now see a HITL approval/question resolved by another client (SSE resume, IM, API) in real time: the resumed turn is broadcast to the thread's WebSocket subscribers so the pending card dismisses without a reload.
+
 ## [1.0.2b5] - 2026-09-29
 
 ### 新增
