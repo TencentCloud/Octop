@@ -20,8 +20,18 @@ ENV_FILE="${TRIM_APPDEST:-/var/apps/octop/target}/docker/.env"
 mkdir -p "$(dirname "$ENV_FILE")"
 
 # 容器数据目录在宿主机侧的挂载源（与 docker-compose.yaml 的卷映射保持一致）
-DATA_DIR="/var/apps/octop/share/octop/data"
-mkdir -p "$DATA_DIR"
+# Resolve the data-share directory the same way the native package does:
+# prefer the data-share path provided by fnOS (TRIM_DATA_SHARE_PATHS).
+# The app install root varies per device/volume (TRIM_APPDEST may point to
+# e.g. /vol1/@appcenter/octop instead of /var/apps/octop), so a hardcoded
+# /var/apps/... path can fail with permission errors on those devices;
+# fall back to deriving it from TRIM_APPDEST.
+if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
+    DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+else
+    DATA_DIR="$(dirname "${TRIM_APPDEST:-/var/apps/octop/target}")/share/octop/data"
+fi
+mkdir -p "$DATA_DIR" 2>/dev/null || true
 
 CONTAINER="octop"
 LOG="${TRIM_TEMP_LOGFILE:-/dev/null}"

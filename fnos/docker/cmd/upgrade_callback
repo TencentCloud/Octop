@@ -13,8 +13,22 @@ _OCTOP_COMMON="$(dirname "$0")/common.sh"
 [ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
 
 ENV_FILE="${TRIM_APPDEST:-/var/apps/octop/target}/docker/.env"
-DATA_DIR="/var/apps/octop/share/octop/data"
-mkdir -p "$DATA_DIR"
+
+# Resolve the data-share directory the same way the native package does:
+# prefer the data-share path provided by fnOS (TRIM_DATA_SHARE_PATHS).
+# The app install root varies per device/volume (TRIM_APPDEST may point to
+# e.g. /vol1/@appcenter/octop instead of /var/apps/octop), so a hardcoded
+# /var/apps/... path can fail with permission errors on those devices;
+# fall back to deriving it from TRIM_APPDEST.
+if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
+    DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+else
+    DATA_DIR="$(dirname "${TRIM_APPDEST:-/var/apps/octop/target}")/share/octop/data"
+fi
+mkdir -p "$DATA_DIR" 2>/dev/null || true
+
+# Keep OCTOP_DATA_DIR in .env in sync (docker-compose reads it for the volume mount).
+octop_env_set "$ENV_FILE" OCTOP_DATA_DIR "$DATA_DIR"
 
 ADMIN_USER="$(octop_env_get "$ENV_FILE" OCTOP_ADMIN_USERNAME)"
 ADMIN_PASS="$(octop_env_get "$ENV_FILE" OCTOP_DEFAULT_PASSWORD)"
