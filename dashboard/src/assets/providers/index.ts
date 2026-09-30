@@ -16,6 +16,7 @@ import openrouterLogo from "./openrouter.png";
 import mimoLogo from "./mimo.svg";
 import minimaxLogo from "./minimax.png";
 import volcesLogo from "./volces.svg";
+import iflytekLogo from "./iflytek.svg";
 import customProviderLogo from "./custom-provider.svg";
 import opencodeLogo from "./opencode.svg";
 import browserLogo from "./browser.svg";
@@ -44,6 +45,7 @@ export const PROVIDER_LOGOS: Record<string, string> = {
   mimo: mimoLogo,
   minimax: minimaxLogo,
   volces: volcesLogo,
+  iflytek: iflytekLogo,
   opencode: opencodeLogo,
   browser: browserLogo,
   edge: edgeLogo,
@@ -95,6 +97,9 @@ export const PROVIDER_DOCS: Record<string, string> = {
   mimo: "https://platform.xiaomimimo.com/",
   minimax: "https://platform.minimaxi.com/",
   volces: "https://www.volcengine.com/docs/82379/1399008",
+  "iflytek-astron-token-plan": "https://www.xfyun.cn/doc/spark/TokenPlan.html",
+  "iflytek-astron-coding-plan":
+    "https://www.xfyun.cn/doc/spark/CodingPlan.html",
   opencode: "https://opencode.ai/docs/zh-cn/zen/",
   "opencode-zen-openai": "https://opencode.ai/docs/zh-cn/zen/",
   "opencode-zen-anthropic": "https://opencode.ai/docs/zh-cn/zen/",
