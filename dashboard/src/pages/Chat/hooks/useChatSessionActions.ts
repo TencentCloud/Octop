@@ -1,5 +1,7 @@
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { message as antMessage } from "@/utils/antdMessage";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
 import { EMPTY_CHAT_SESSION_KEY } from "../constants";
@@ -34,6 +36,7 @@ export function useChatSessionActions({
   resetNavForAgentSwitch,
   markInitialNavDone,
 }: UseChatSessionActionsParams) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const handleNewChat = useCallback(() => {
@@ -135,7 +138,11 @@ export function useChatSessionActions({
   const handleDeleteSession = useCallback(
     async (id: string) => {
       const deleted = await deleteSession(id);
-      if (!deleted) return;
+      if (!deleted) {
+        antMessage.error(t("chat.deleteFailed"));
+        return;
+      }
+      antMessage.success(t("chat.deleteSuccess"));
       const agent = resolvedAgentId;
       if (id === activeThreadId && agent) {
         const remaining = sessions.filter((s) => s.id !== id);
@@ -155,6 +162,7 @@ export function useChatSessionActions({
       navigate,
       clearMessages,
       resolvedAgentId,
+      t,
     ],
   );
 

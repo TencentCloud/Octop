@@ -330,6 +330,11 @@ description: General-purpose agent
         del before
         return list(self._thread_messages.get(thread_id, []))[-limit:]
 
+    async def adelete_thread(self, thread_id: str) -> bool:
+        """Mirror harness checkpoint deletion for integration tests."""
+        self._thread_messages.pop(thread_id, None)
+        return True
+
     def seed_thread_messages(self, thread_id: str, messages: list[Any]) -> None:
         self._thread_messages[thread_id] = list(messages)
 

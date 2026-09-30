@@ -12,6 +12,12 @@ import {
 import { EMPTY_CHAT_SESSION_KEY } from "../constants";
 
 const navigateMock = vi.fn();
+const messageMocks = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+}));
+
+vi.mock("@/utils/antdMessage", () => ({ message: messageMocks }));
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>(
@@ -37,7 +43,7 @@ function makeMessage(id: string): ChatMessage {
   return { id, role: "user", content: `message ${id}`, timestamp: Date.now() };
 }
 
-function renderActions() {
+function renderActions(deleteSession = vi.fn().mockResolvedValue(true)) {
   return renderHook(
     () =>
       useChatSessionActions({
@@ -49,7 +55,7 @@ function renderActions() {
         setSidebarOpen: vi.fn(),
         setSelectedModel: vi.fn(),
         setHasBrowserTool: vi.fn(),
-        deleteSession: vi.fn().mockResolvedValue(true),
+        deleteSession,
         clearMessages: vi.fn(),
         resetNavForAgentSwitch: vi.fn(),
         markInitialNavDone: vi.fn(),
@@ -76,5 +82,33 @@ describe("navigateToAgent", () => {
 
     expect(getSnapshot(THREAD).messages).toHaveLength(1);
     expect(getSnapshot(EMPTY_CHAT_SESSION_KEY).messages).toHaveLength(0);
+  });
+});
+
+describe("handleDeleteSession", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows the Octop success message after confirmed deletion", async () => {
+    const { result } = renderActions();
+
+    await act(async () => {
+      await result.current.handleDeleteSession("another-thread");
+    });
+
+    expect(messageMocks.success).toHaveBeenCalledWith("chat.deleteSuccess");
+    expect(messageMocks.error).not.toHaveBeenCalled();
+  });
+
+  it("keeps the session and reports a failed deletion", async () => {
+    const { result } = renderActions(vi.fn().mockResolvedValue(false));
+
+    await act(async () => {
+      await result.current.handleDeleteSession("another-thread");
+    });
+
+    expect(messageMocks.error).toHaveBeenCalledWith("chat.deleteFailed");
+    expect(messageMocks.success).not.toHaveBeenCalled();
   });
 });

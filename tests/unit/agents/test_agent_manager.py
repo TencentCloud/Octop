@@ -895,13 +895,22 @@ def test_is_bootstrapped_assumes_true_when_backend_check_fails(manager: AgentMan
 
 
 @pytest.mark.asyncio
-async def test_delete_thread_checkpoint_returns_false_when_agent_not_running(
+async def test_delete_thread_checkpoint_uses_storage_when_agent_not_running(
     manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Fresh fixture has no _harness_manager wired up — get_agent raises
-    # OctopError, which must be swallowed (checkpoint cleanup is best-effort).
-    result = await manager.delete_thread_checkpoint("NOPE", "thr_1")
-    assert result is False
+    from octop.infra.agents import manager as manager_mod
+
+    manager._repos.agent_repo.create(agent_id="STOPPED", user_id=None, name="stopped")
+    delete_from_storage = AsyncMock(return_value=True)
+    monkeypatch.setattr(manager_mod, "delete_thread_from_storage", delete_from_storage)
+
+    result = await manager.delete_thread_checkpoint("STOPPED", "thr_1")
+
+    assert result is True
+    delete_from_storage.assert_awaited_once()
+    assert delete_from_storage.await_args.kwargs["agent_id"] == "STOPPED"
+    assert delete_from_storage.await_args.kwargs["thread_id"] == "thr_1"
 
 
 @pytest.mark.asyncio
@@ -921,7 +930,7 @@ async def test_delete_thread_checkpoint_delegates_to_harness_adelete_thread(
 
 
 @pytest.mark.asyncio
-async def test_delete_thread_checkpoint_returns_false_when_harness_lacks_adelete_thread(
+async def test_delete_thread_checkpoint_rejects_harness_without_adelete_thread(
     manager: AgentManager,
 ) -> None:
     agent = MagicMock(spec=[])  # no adelete_thread attribute at all
@@ -929,9 +938,8 @@ async def test_delete_thread_checkpoint_returns_false_when_harness_lacks_adelete
     harness_manager.get_agent.return_value = MagicMock(agent=agent)
     manager._harness_manager = harness_manager
 
-    result = await manager.delete_thread_checkpoint("AGT1", "thr_1")
-
-    assert result is False
+    with pytest.raises(NotImplementedError, match="does not support thread deletion"):
+        await manager.delete_thread_checkpoint("AGT1", "thr_1")
 
 
 @pytest.mark.asyncio
