@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
 from octop_harness.plugins import PluginContext
@@ -59,6 +60,10 @@ async def convert_unit(value: float, from_unit: str, to_unit: str) -> str:
         v = float(value)
     except (TypeError, ValueError):
         return _payload({"error": "invalid value"}, "value 必须是数字。")
+    if not math.isfinite(v):
+        return _payload(
+            {"error": "value must be finite"}, "value 必须是有限数字，不能是 NaN 或无穷大。"
+        )
     if src in _TEMP or dst in _TEMP:
         if src not in _TEMP or dst not in _TEMP:
             return _payload(
@@ -79,6 +84,11 @@ async def convert_unit(value: float, from_unit: str, to_unit: str) -> str:
         return _payload(
             {"error": "unknown or incompatible units"},
             "不支持的单位或类别不匹配。长度: m,km,cm,mi,ft,in；质量: kg,g,lb,oz；温度: c,f,k。",
+        )
+    if not math.isfinite(result):
+        return _payload(
+            {"error": "result out of range"},
+            f"{v} {src} 换算为 {dst} 超出可表示的数值范围。",
         )
     data = {
         "value": v,
