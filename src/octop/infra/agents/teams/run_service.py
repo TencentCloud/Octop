@@ -371,6 +371,12 @@ class TeamRunService:
         self._gateway = gateway
         self._workspace_for = workspace_for
         self._team_service = team_service
+        # An **injected** ``TeamService`` belongs to the caller, and ``TeamService``
+        # captured its ``workspace_for`` when *it* was built: re-binding this service's
+        # runtime cannot improve an instance it does not own, but dropping it can take a
+        # working roster away. Remember the fact so ``bind_runtime`` invalidates only the
+        # memo **we** built (see there for both halves of SPEC A6).
+        self._team_service_injected = team_service is not None
         # (kb_id, artifact_id) -> a KnowledgeArchiver-shaped object. Injected, because
         # the archiver lives with the memory wiring and teams/ must not reach into the
         # knowledge domain (AGENTS.md section 5); T-18's ProjectKbArchiver satisfies it.
@@ -423,6 +429,17 @@ class TeamRunService:
         # provably stale with no new column and no migration (``PLAN §4.1``).
         if self._runtime_epoch is None:
             self._runtime_epoch = new_short_id()
+        # ★ The roster comes from ``TeamService``, which captured ``_workspace_for`` /
+        # ``_agent_manager`` **at construction**, so a memo **we** built must not survive a
+        # runtime rebind: the next ``_team()`` has to be rebuilt against the handles bound
+        # just above (SPEC A6, second half).
+        # An **injected** instance is a different thing, and injection wins: the caller
+        # owns it, hands it over fully wired, and may not pass ``workspace_for`` at all --
+        # so discarding it here would rebuild a resolver-less ``TeamService`` and turn a
+        # working roster into ``TEAM_RUN_ROSTER_EMPTY`` on the next ``create``. Only the
+        # self-built memo is invalidated.
+        if not self._team_service_injected:
+            self._team_service = None
 
     def _workspace_accessor(self) -> Callable[[str], Any] | None:
         """Resolve the accessor for a team agent's workspace.
@@ -450,6 +467,44 @@ class TeamRunService:
                 self._services.repos, workspace_for=self._workspace_accessor()
             )
         return self._team_service
+
+    def _empty_roster_reason(self, team_agent_id: str, manifest_roster: Mapping[str, Any]) -> str:
+        """Diagnose *why* the trimmed roster came back empty (``details.reason``).
+
+        **Diagnosis only.** The guard's criterion is ``trim.kept`` -- the very value the
+        member loop writes from -- and this second look at the workspace never decides
+        acceptance (``STANDING-RULES R11``: criterion and write face stay same-source).
+
+        * ``manifest-unavailable`` -- no accessor, or it resolves no workspace: a wiring
+          problem, not an empty team.
+        * ``manifest-empty`` -- a workspace was reached, and its manifest holds no
+          members: the team really has none.
+        * ``trimmed-to-zero`` -- members existed but the tier cap cut them all. Kept for
+          diagnosis only: ``trim_roster`` cannot do this (every member is a candidate,
+          and every ``role_cap`` is >= 1).
+
+        The workspace is resolved a **second** time here, so the string can drift from
+        the cause behind ``trim.kept``: under TOCTOU (the manifest changed between
+        ``trimmed_roster`` and this call) or a mid-flight read failure it may name a
+        different cause -- and a workspace that resolves but whose manifest cannot be read
+        is reported ``manifest-empty``, because ``TeamService._read_manifest`` returns
+        ``{}`` for that too. **The criterion never depends on it**: acceptance is decided
+        by ``trim.kept`` alone; this is a diagnostic for the caller.
+        """
+        if manifest_roster.get("members"):
+            return "trimmed-to-zero"
+        accessor = self._workspace_accessor()
+        if accessor is None:
+            return "manifest-unavailable"
+        try:
+            workspace = accessor(team_agent_id)
+        except (OSError, TypeError, ValueError):
+            # Same tolerance as ``TeamService._workspace``: a resolver that blows up has
+            # resolved nothing, so it is a wiring problem rather than an empty team.
+            return "manifest-unavailable"
+        if workspace is None:
+            return "manifest-unavailable"
+        return "manifest-empty"
 
     def _project_service(self) -> Any:
         from octop.infra.projects.service import ProjectService
@@ -673,7 +728,12 @@ class TeamRunService:
         """Create a run: project row, run row, room thread, roster, tier phases.
 
         Order is deliberate — the goal is validated first, so a refused run leaves
-        **nothing** behind (no project, no directory).
+        **nothing** behind (no project, no directory). Every refusal that can be decided
+        without a written row is decided **before** ``create_project`` (the first write):
+        the empty-roster guard, the run-id conflict, and the roster admission (missing or
+        duplicate role). A failure *after* that first write (a lost ``run_id`` race, a
+        room-thread failure, a member write) runs an explicit **compensating delete**,
+        newest side effect first — see :meth:`_compensate_create`.
 
         * **G10** — the tier is normalised by ``pipeline.normalize_tier``: an
           unrecognised value is refused, never silently defaulted.
@@ -681,6 +741,9 @@ class TeamRunService:
           ``TEAM_RUN_MEMBER_LIMIT``. The manifest roster is different: it is trimmed
           to the tier's ``roleCap`` and the cut roles are recorded in the first
           phase's ``gate_detail.skipped_roles`` (visible, never silently dropped).
+        * An **empty trimmed roster** is ``TEAM_RUN_ROSTER_EMPTY`` (422): the run would
+          otherwise be created with zero member rows and only fail later, on ``:plan``.
+          Checked after ``assert_capacity`` and before the first write.
         * The room thread's session key is **run-scoped** (``…:<runId>:team-run``),
           never a user DM key — SPEC B30 ① applies to runs as much as to dispatch.
         """
@@ -708,9 +771,35 @@ class TeamRunService:
         if roles is not None:
             assert_capacity({"tier": resolved_tier}, member_count=len(roles))
 
-        project = self._project_service().create_project(
-            owner_user=user, name=text[:80] or "team run", goal=text
-        )
+        # ── Empty-roster guard: fail fast, before the first write ───────────────
+        # ★ The criterion is literally ``len(trim.kept) == 0`` -- the same tuple the
+        # member loop below writes from, so "judged" and "written" cannot drift (R11).
+        # Not a minimum-members floor and not a role whitelist: ``lead`` alone is a legal
+        # *roster* (kept == 1, the loop writes one row), and borrowing the **team**
+        # roster's minimum (2) would refuse it. An empty roster is never legal -- either
+        # the wiring saw no workspace or the manifest really has no members -- and
+        # letting it through wrote zero member rows, which only surfaced later as a
+        # context-free ``owner-not-in-roles`` 422 on ``:plan``.
+        # Placement is load-bearing: ``create_project`` below is the first write, so a
+        # refusal here leaves no orphan project / run / thread / member row behind
+        # (``api/routers/team_runs.py``: "a refused request leaves nothing behind").
+        if len(trim.kept) == 0:
+            raise OctopError(
+                ErrorCode.TEAM_RUN_ROSTER_EMPTY,
+                "this team has no members for a run; add members to the team first",
+                details={
+                    "team_agent_id": team_agent_id,
+                    "tier": resolved_tier,
+                    "reason": self._empty_roster_reason(team_agent_id, manifest_roster),
+                },
+            )
+
+        # ── Run id + roster admission: decided **before the first write** too ────
+        # These two refusals used to run *after* ``create_project`` (and the roster
+        # admission after the run row and its room thread as well), so a refused request
+        # left an orphan project / run / thread behind -- the opposite of the promise
+        # above. ★ The decisions are **unchanged** (same codes, same ``details``, same
+        # predicates); only their **position** moved, ahead of the first write.
         run_id = run_id_for()
         if self._runs.get(run_id) is not None:
             raise OctopError(
@@ -718,32 +807,11 @@ class TeamRunService:
                 f"run {run_id!r} already exists",
                 details={"run_id": run_id},
             )
-        run = self._runs.create(
-            run_id=run_id,
-            team_agent_id=team_agent_id,
-            project_id=project.id,
-            goal=text,
-            created_by=user.id,
-            mode=mode,
-            deliverable=deliverable,
-            tier=resolved_tier,
-            run_root=run_root or RUN_ROOT_HOST_WORKSPACE,
-            max_review_rounds=max_review_rounds,
-        )
-        thread_id = self._open_room(run, user=user)
-        if thread_id is not None:
-            self._runs.set_room_thread(run_id, thread_id)
-            run = self.require_run(run_id)
 
-        lead_agent_id = _kept_lead(
-            trim.kept,
-            host_agent_id=host_agent_id,
-            lead_agent_id=manifest_roster.get("lead_agent_id"),
-        )
         # ── Roster admission (T-73, A layer) ────────────────────────────────────
-        # Decided **before** the ``or ""`` folding below, and the order matters: once
-        # folded, "no role configured" and "empty role" are indistinguishable, and that
-        # lost distinction is what let a second empty role reach the table and trip
+        # Decided **before** the ``or ""`` folding in the write loop below: once folded,
+        # "no role configured" and "empty role" are indistinguishable, and that lost
+        # distinction is what let a second empty role reach the table and trip
         # ``UNIQUE(run_id, role)`` as a raw IntegrityError.
         # ★ Refuse only "missing role" and "duplicate role". Do **not** add a "role is in
         # the fixed role table" check here: ``lead`` is a legitimate *roster* role while
@@ -768,66 +836,216 @@ class TeamRunService:
                 )
             seen_roles.add(role_text)
 
-        for member in trim.kept:
+        # ── First write. Everything below is compensated on failure ──────────────
+        # Each repo owns its own transaction, so this multi-row sequence has no single
+        # rollback: a failure halfway leaves an orphan project, a half-built run, or a
+        # room thread nobody points at. Same pattern as ``infra/projects/service.py`` --
+        # "Every failure therefore runs an explicit compensating delete".
+        # ★ Stage-aware: the variables below record what **this call** created. A failed
+        # insert can collide with a row another writer owns (the same-second ``run_id``
+        # race), and compensation must never delete a row it did not create -- that would
+        # destroy a healthy run.
+        project: Any | None = None
+        run: TeamRunRow | None = None
+        thread_id: str | None = None
+        members_added: list[str] = []
+        # Observability only: this feeds the compensation log line. Phase deletion is
+        # decided by ``run is not None`` (the rows cascade with the run), never by it.
+        phases_written = False
+        try:
+            project = self._project_service().create_project(
+                owner_user=user, name=text[:80] or "team run", goal=text
+            )
             try:
-                self._runs.add_member(
-                    run_id,
-                    role=str(member.get("role") or ""),
-                    agent_id=str(member.get("agent_id") or ""),
-                    is_lead=bool(
-                        lead_agent_id and str(member.get("agent_id") or "") == lead_agent_id
-                    ),
+                run = self._runs.create(
+                    run_id=run_id,
+                    team_agent_id=team_agent_id,
+                    project_id=project.id,
+                    goal=text,
+                    created_by=user.id,
+                    mode=mode,
+                    deliverable=deliverable,
+                    tier=resolved_tier,
+                    run_root=run_root or RUN_ROOT_HOST_WORKSPACE,
+                    max_review_rounds=max_review_rounds,
                 )
             except (SqliteIntegrityError, PsycopgIntegrityError) as err:
-                # ★ Semantic mismatch, and why this code is still right: the table is
-                # UNIQUE(run_id, role), so a duplicate cannot be described exactly by any
-                # existing code. The closest wording that stays TRUE is
-                # PROJECT_MEMBER_INVALID ("That membership change is not allowed") -- it
-                # asserts the outcome, not the cause. TEAM_RUN_CONFLICT was rejected: its
-                # wording claims a concurrent request, which would be false here.
-                # ★ Delete condition: replace it once a code with exact wording exists
-                # (or a new one is approved).
+                # The check higher up is only a **read**, so a same-second race still
+                # lands here: ``team_runs.run_id`` UNIQUE is the real arbiter. Same code
+                # and details as that check (a concurrent duplicate, not a 500) -- and
+                # ``run`` stays ``None``, so the winner's row is never touched by the
+                # compensation below.
                 raise OctopError(
-                    ErrorCode.PROJECT_MEMBER_INVALID,
-                    f"duplicate role for run {run_id}: {member.get('role')!r}",
-                    details={"run_id": run_id, "role": str(member.get("role") or "")},
+                    ErrorCode.TEAM_RUN_CONFLICT,
+                    f"run {run_id!r} already exists",
+                    details={"run_id": run_id},
                 ) from err
+            thread_id = self._open_room(run, user=user)
+            if thread_id is not None:
+                self._runs.set_room_thread(run_id, thread_id)
+                run = self.require_run(run_id)
 
-        sequence = phase_sequence(resolved_tier)
-        now = int(time.time())
-        skipped = list(trim.skipped_roles)
-        for seq, phase in enumerate(sequence):
-            self._runs.upsert_phase(
-                run_id,
-                phase,
-                seq=seq,
-                status="active" if seq == 0 else "pending",
-                gate_detail={"skipped_roles": skipped} if seq == 0 else None,
-                entered_at=now if seq == 0 else None,
+            lead_agent_id = _kept_lead(
+                trim.kept,
+                host_agent_id=host_agent_id,
+                lead_agent_id=manifest_roster.get("lead_agent_id"),
             )
-        self._record(
-            run,
-            TIMELINE_RUN_CREATED,
-            {
-                "goal": text,
-                "mode": mode,
-                "tier": resolved_tier,
-                "phases": list(sequence),
-                "room_thread_id": thread_id,
-            },
-            actor=actor_ref("user", user.id),
-        )
-        if skipped:
+            for member in trim.kept:
+                try:
+                    self._runs.add_member(
+                        run_id,
+                        role=str(member.get("role") or ""),
+                        agent_id=str(member.get("agent_id") or ""),
+                        is_lead=bool(
+                            lead_agent_id and str(member.get("agent_id") or "") == lead_agent_id
+                        ),
+                    )
+                except (SqliteIntegrityError, PsycopgIntegrityError) as err:
+                    # ★ Semantic mismatch, and why this code is still right: the table is
+                    # UNIQUE(run_id, role), so a duplicate cannot be described exactly by any
+                    # existing code. The closest wording that stays TRUE is
+                    # PROJECT_MEMBER_INVALID ("That membership change is not allowed") -- it
+                    # asserts the outcome, not the cause. TEAM_RUN_CONFLICT was rejected: its
+                    # wording claims a concurrent request, which would be false here.
+                    # ★ Delete condition: replace it once a code with exact wording exists
+                    # (or a new one is approved).
+                    raise OctopError(
+                        ErrorCode.PROJECT_MEMBER_INVALID,
+                        f"duplicate role for run {run_id}: {member.get('role')!r}",
+                        details={"run_id": run_id, "role": str(member.get("role") or "")},
+                    ) from err
+                # Recorded **after** the row is in: a partial member write is the failure
+                # mode compensation has to cover, and this is the list it deletes by.
+                members_added.append(str(member.get("role") or ""))
+
+            sequence = phase_sequence(resolved_tier)
+            now = int(time.time())
+            skipped = list(trim.skipped_roles)
+            for seq, phase in enumerate(sequence):
+                self._runs.upsert_phase(
+                    run_id,
+                    phase,
+                    seq=seq,
+                    status="active" if seq == 0 else "pending",
+                    gate_detail={"skipped_roles": skipped} if seq == 0 else None,
+                    entered_at=now if seq == 0 else None,
+                )
+            phases_written = True
+            # Timeline rows come **last**, after every other write, so no failing step
+            # above can leave one behind. The only window left is the first ``_record``
+            # succeeding and the second failing -- and ``timeline_events.project_id``
+            # cascades with the project, which the compensation deletes. So the timeline
+            # needs no delete of its own (and the repo exposes none: it is append-only).
             self._record(
                 run,
-                TIMELINE_RUN_MEMBER_SKIPPED,
+                TIMELINE_RUN_CREATED,
                 {
-                    "skipped_roles": skipped,
-                    "kept_roles": [str(m.get("role") or "") for m in trim.kept],
+                    "goal": text,
+                    "mode": mode,
+                    "tier": resolved_tier,
+                    "phases": list(sequence),
+                    "room_thread_id": thread_id,
                 },
                 actor=actor_ref("user", user.id),
             )
+            if skipped:
+                self._record(
+                    run,
+                    TIMELINE_RUN_MEMBER_SKIPPED,
+                    {
+                        "skipped_roles": skipped,
+                        "kept_roles": [str(m.get("role") or "") for m in trim.kept],
+                    },
+                    actor=actor_ref("user", user.id),
+                )
+        except Exception:
+            self._compensate_create(
+                project=project,
+                run_id=run_id,
+                run=run,
+                thread_id=thread_id,
+                members=members_added,
+                phases_written=phases_written,
+            )
+            raise
+        assert run is not None  # the block above either assigned it or raised
         return run
+
+    def _compensate_create(
+        self,
+        *,
+        project: Any | None,
+        run_id: str,
+        run: TeamRunRow | None,
+        thread_id: str | None,
+        members: Sequence[str],
+        phases_written: bool,
+    ) -> None:
+        """Undo a failed ``create``: newest side effect first, never masking the cause.
+
+        Stage-aware by construction: ``run`` is ``None`` when the ``team_runs`` insert
+        lost the ``run_id`` race, and then nothing below the project is ours -- the
+        winner owns that run, its members and its phases, so they are left untouched.
+
+        Order: members -> phases -> room thread -> run -> project.
+
+        * ``team_run_members`` is deleted explicitly, by the very role values this call
+          wrote, so compensation does not lean on the FK cascade alone.
+        * ``team_run_phases`` has no repo delete; those rows cascade from the
+          ``team_runs`` delete (``ON DELETE CASCADE``; ``SqlitePool`` runs with
+          ``PRAGMA foreign_keys = ON`` and PostgreSQL enforces it natively), so the run
+          delete **is** the phase deletion.
+        * the room thread goes through the registry that opened it.
+        * the project goes through ``ProjectService.discard_created_project`` -- the
+          symmetric undo of ``create_project`` -- which also deletes the KB that call
+          bound; membership and timeline rows cascade with the project. Unlike
+          ``delete_project``, that API **does** remove the KB, because this project was
+          never handed to a user and its KB holds no documents: leaving it would burn
+          the owner's KB quota and name.
+        * ``phases_written`` is **observability only** (it feeds the log line below);
+          phases are never deleted by a flag check -- they cascade with the run row.
+
+        Every step is logged and **swallowed**: a stale row is recoverable, an exception
+        chain that hides the real refusal is not.
+        """
+        if project is None:
+            return
+        logger.warning(
+            "team run create failed; compensating (project_id=%s run_id=%s run_created=%s "
+            "thread_id=%s members=%d phases_written=%s)",
+            project.id,
+            run_id,
+            run is not None,
+            thread_id,
+            len(members),
+            phases_written,
+        )
+        if run is not None:
+            for role in members:
+                try:
+                    self._runs.remove_member(run_id, role)
+                except Exception:  # noqa: BLE001 - compensation must not raise
+                    logger.exception("compensating member delete failed (role=%s)", role)
+        if thread_id is not None and self._gateway is not None:
+            try:
+                self._gateway.thread_registry.delete_thread(thread_id)
+            except Exception:  # noqa: BLE001 - compensation must not raise
+                logger.exception("compensating thread delete failed (thread_id=%s)", thread_id)
+        if run is not None:
+            try:
+                self._runs.delete(run_id)
+            except Exception:  # noqa: BLE001 - compensation must not raise
+                logger.exception("compensating run delete failed (run_id=%s)", run_id)
+        try:
+            # ``discard_created_project`` is the symmetric undo of ``create_project``:
+            # it also removes the KB that call bound. Going through it (rather than the
+            # project repo) keeps ``teams/`` out of the knowledge domain -- and an empty
+            # KB left behind burns the owner's quota and name, so a failed run create
+            # would later surface as ``KNOWLEDGE_BASE_LIMIT`` / ``KNOWLEDGE_NAME_TAKEN``
+            # while the four run tables stayed empty. It never raises.
+            self._project_service().discard_created_project(project.id)
+        except Exception:  # noqa: BLE001 - compensation must not raise
+            logger.exception("compensating project discard failed (project_id=%s)", project.id)
 
     def _open_room(self, run: TeamRunRow, *, user: ProjectActor) -> str | None:
         """Open the room thread for the run, or ``None`` without a booted gateway."""

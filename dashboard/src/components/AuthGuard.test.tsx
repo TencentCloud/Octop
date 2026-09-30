@@ -5,7 +5,6 @@ import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import AuthGuard from "./AuthGuard";
 
-
 // 与 HEAD 侧一致的等待预算（合并两边意图：可重试查询 + 显式超时）
 const SHELL_WAIT_MS = 5000;
 vi.mock("../api/modules/auth", () => ({

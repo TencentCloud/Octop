@@ -18,6 +18,7 @@ from octop.infra.agents.teams.pipeline import ROLES, TIER_SPEC, trim_roster
 from octop.infra.agents.teams.service import (
     MANIFEST_LEAD_KEY,
     TEAM_MANIFEST_WORKSPACE,
+    TEAM_MIN_MEMBERS,
     TEAM_ROLES,
     TeamService,
 )
@@ -273,3 +274,133 @@ def test_role_table_is_the_single_twelve_role_vocabulary() -> None:
     """角色闭集 = pipeline.ROLES 的转发（12 个），不在 service 里另抄一份。"""
     assert frozenset(ROLES) == TEAM_ROLES
     assert len(TEAM_ROLES) == 12
+
+
+# ── A4 / A5（roster-guard 批次）：档位裁剪的安全性 ─────────────────────────────
+# 判据（DECISIONS D3，逐字冻结）：守卫条件 = `len(trim.kept) == 0`；**不是**
+# `< TEAM_MIN_MEMBERS`（会误伤 lead-only），也不是角色白名单校验。
+# 下列用例把 `kept == ()` 的**唯一**成因钉死在「空入参」上。
+
+
+def _roster_of(size: int) -> list[dict[str, str]]:
+    """造 `size` 个成员的合法花名册：agent_id 唯一，角色在 12 角色闭集内轮转。"""
+    return [{"agent_id": f"m{i}", "role": ROLES[i % len(ROLES)]} for i in range(size)]
+
+
+@pytest.mark.parametrize("tier", sorted(TIER_SPEC))
+def test_trim_roster_of_empty_roster_stays_empty(tier: str) -> None:
+    """A5 负向边界：空入参 ⇒ `kept == ()`（skipped 也空，不留半截状态）。
+
+    这是 `kept == ()` 的**唯一**合法成因；紧接其后的属性用例证明非空入参永不为空。
+    """
+    trim = trim_roster((), tier)
+    assert trim.kept == ()
+    assert trim.skipped == ()
+
+
+@pytest.mark.parametrize("size", (1, 3, 6, 12, 13, 40))
+@pytest.mark.parametrize("tier", sorted(TIER_SPEC))
+def test_tier_trim_never_empties_a_non_empty_roster(tier: str, size: int) -> None:
+    """A5 属性：任意**非空**花名册 × 三档 ⇒ `kept` 必非空（裁剪不可能裁成空）。
+
+    规模覆盖三种边界：1 人（最小非空）、正好等于该档 `role_cap`（短路分支的边界）、
+    远超 cap（真走裁剪分支）。断言是负向的：任何「非空入参 ⇒ kept 为空」都变红。
+    """
+    cap = TIER_SPEC[tier].role_cap
+    roster = _roster_of(size)
+    assert roster  # 属性前提：入参非空
+    trim = trim_roster(roster, tier, lead_agent_id="m0", host_agent_id="host")
+    assert len(trim.kept) >= 1, f"{tier}: 非空花名册（size={size}）被裁成空"
+    assert len(trim.kept) == min(size, cap)  # 只减不空：至多裁到 cap，绝不为 0
+    assert len(trim.kept) + len(trim.skipped) == size  # 不丢成员、不造成员
+
+
+def test_no_tier_cap_can_exhaust_a_non_empty_roster() -> None:
+    """边界族负向断言：**任何**档位都无法把非空花名册裁空。
+
+    证明结构（SPEC §空返回条件）：`role_cap >= 1` 三档全成立，且裁剪是「保留优先」
+    而非「过滤」——`priority.extend(members)` 让每个成员都进候选。故 `kept == ()`
+    只可能来自空入参；此处穷举 `size ∈ [1, cap+2]`（无 lead / 有 lead 两种调用）逐条
+    断言，任何一条返回空都会让本用例变红。
+    """
+    for tier, spec in TIER_SPEC.items():
+        assert spec.role_cap >= 1, f"{tier} 的 role_cap 必须 >= 1，否则裁剪可裁空"
+        for size in range(1, spec.role_cap + 3):
+            roster = _roster_of(size)
+            for lead in (None, roster[0]["agent_id"]):
+                trim = trim_roster(roster, tier, lead_agent_id=lead, host_agent_id="host")
+                assert trim.kept != (), f"{tier}: size={size} lead={lead} 被裁成空"
+                assert len(trim.kept) >= 1
+
+
+#: quick / standard 两档 `default_roles` **之外**的角色（strict 的 default_roles = 全角色表）。
+_NON_DEFAULT_ROLES = ("researcher", "ui", "dba", "sec", "devops", "docs")
+
+
+def test_non_default_role_roster_is_never_trimmed_to_zero() -> None:
+    """A5 判别力加强：`default_roles` 是取舍**次序**，不是白名单。
+
+    花名册只含 quick / standard 的 `default_roles` 之外的角色。若有人把裁剪实现成
+    「过滤：只保留 defaultRoles」，quick / standard 下它会被裁成空 —— 本用例正为此
+    变红（strict 的 `default_roles` 就是全角色表，故那里只作非空断言）。规模取 1 与 5
+    （quick cap=3，5 人必走真裁剪分支）。
+    """
+    for tier, spec in TIER_SPEC.items():
+        if tier != "strict":
+            assert not (set(_NON_DEFAULT_ROLES) & set(spec.default_roles))  # 判别前提
+        for size in (1, 5):
+            roster = [
+                {"agent_id": f"n{i}", "role": _NON_DEFAULT_ROLES[i % len(_NON_DEFAULT_ROLES)]}
+                for i in range(size)
+            ]
+            trim = trim_roster(roster, tier, lead_agent_id="n0", host_agent_id="host")
+            assert len(trim.kept) >= 1, f"{tier}: 非默认角色花名册（size={size}）被裁成空"
+
+
+@pytest.mark.parametrize("tier", sorted(TIER_SPEC))
+def test_lead_only_roster_is_not_read_as_empty(tier: str) -> None:
+    """A4 负向对照：lead-only 花名册**必须放行**，不得被判成空花名册。
+
+    断言逐字 `len(trim.kept) == 1`（**禁止**写成 `>= 2`）：`lead` 是合法 roster 角色
+    （run_service.py「``lead`` is a legitimate *roster* role」，而
+    `normalize_owner_role("lead") == ""` 只管 artifact 归属）；团队清单的
+    `TEAM_MIN_MEMBERS = 2` 只作用于 `TeamService.validate_member_ids`，套到 run
+    花名册上会误伤 lead-only（DECISIONS D3/D4）。
+    """
+    lead_only = [{"agent_id": "host", "role": "lead"}]
+    trim = trim_roster(lead_only, tier, lead_agent_id="host", host_agent_id="host")
+    assert len(trim.kept) == 1  # lead 是合法 roster 角色 —— 不得写成 `>= 2`
+    assert trim.kept[0] == {"agent_id": "host", "role": "lead"}
+    assert trim.skipped == ()
+    # 负向断言：两种候选判据在 lead-only 上**必然分道扬镳** —— D3 判据（`== 0`）放行，
+    # 被否决的「团队清单最小成员数」判据会误伤；这正是禁止改写成 `< 2` 的原因。
+    assert (len(trim.kept) == 0) is False  # D3 判据：不误伤 lead-only
+    assert (len(trim.kept) < TEAM_MIN_MEMBERS) is True  # 被否决的判据：会误伤
+
+
+def test_manifest_lead_only_roster_survives_tier_trim(
+    roster_env: dict[str, object],
+) -> None:
+    """A4/A5 走**权威路径**：manifest 里的单成员花名册经 `trimmed_roster` 仍非空。
+
+    直接写 manifest 是因为 `replace_roster` 会用 `TEAM_ROLES` 拒掉 roster-only 的
+    `lead`（那是团队的 12 角色闭集）；读回必须经 `TeamService.roster` —— manifest
+    是花名册唯一权威（S1），本用例不另造第二套裁剪。
+    """
+    workspace_for = roster_env["workspace_for"]
+    teams = roster_env["teams"]
+    assert callable(workspace_for)
+    assert isinstance(teams, TeamService)
+    workspace_for("host").write_text(
+        TEAM_MANIFEST_WORKSPACE,
+        json.dumps(
+            {"kind": "team", "members": [{"agent_id": "host", "role": "lead"}]},
+            ensure_ascii=False,
+        ),
+        force=True,
+    )
+    assert _manifest(roster_env)["members"] == [{"agent_id": "host", "role": "lead"}]
+    for tier in TIER_SPEC:
+        trim = teams.trimmed_roster("host", tier, host_agent_id="host")
+        assert len(trim.kept) == 1  # lead 是合法 roster 角色 —— 不得写成 `>= 2`
+        assert len(trim.kept) != 0

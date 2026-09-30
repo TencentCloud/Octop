@@ -150,6 +150,7 @@ class ErrorCode(StrEnum):
     TEAM_ARTIFACT_OWNERSHIP_DENIED = "TEAM_ARTIFACT_OWNERSHIP_DENIED"
     TEAM_RUN_MEMBER_LIMIT = "TEAM_RUN_MEMBER_LIMIT"
     TEAM_RUN_TASK_LIMIT = "TEAM_RUN_TASK_LIMIT"
+    TEAM_RUN_ROSTER_EMPTY = "TEAM_RUN_ROSTER_EMPTY"
     # --- plan gate (T2; authority = PLAN.md §2.4 拒绝码与状态 — 本批只新增这 2 个) ---
     TEAM_PLAN_DRAFT_INVALID = "TEAM_PLAN_DRAFT_INVALID"
     TEAM_PLAN_DRAFT_MISSING = "TEAM_PLAN_DRAFT_MISSING"
@@ -329,6 +330,8 @@ _DEFAULT_STATUS: dict[ErrorCode, int] = {
     ErrorCode.TEAM_ARTIFACT_OWNERSHIP_DENIED: 409,
     ErrorCode.TEAM_RUN_MEMBER_LIMIT: 409,
     ErrorCode.TEAM_RUN_TASK_LIMIT: 409,
+    # 空花名册 = 422（请求合法但该 run 无法规划）；与 TEAM_RUN_MEMBER_LIMIT(409, 上限) 方向相反，零重叠。
+    ErrorCode.TEAM_RUN_ROSTER_EMPTY: 422,
     # Plan gate (T2): 草稿非法 = 422（不可处理实体），无草稿可批/可丢 = 409（状态冲突）。
     ErrorCode.TEAM_PLAN_DRAFT_INVALID: 422,
     ErrorCode.TEAM_PLAN_DRAFT_MISSING: 409,

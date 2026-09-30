@@ -399,6 +399,12 @@ def test_the_lazy_shared_services_entry_point_is_live(tmp_path: Path) -> None:
     The lazy import in ``db/services.py`` is the production wiring point; it is only
     "wired" if a run can actually be created through it. This goes through that
     method — never through a direct import of the class.
+
+    ★ roster-guard batch: the roster is read from the manifest, so this entry point is
+    only live when it gets the resolver boot passes in (``server.py`` hands over
+    ``AgentManager.team_workspace_for``). This case supplies one and asserts the run
+    really lands; the **unbound** call is refused by design and is pinned by
+    ``test_the_unbound_lazy_entry_point_refuses_an_unresolvable_roster``.
     """
     paths = PathLayout(tmp_path / ".octop2")
     paths.ensure_root()
@@ -407,8 +413,11 @@ def test_the_lazy_shared_services_entry_point_is_live(tmp_path: Path) -> None:
     services = build_shared_services(db=db, paths=paths, config=OctopConfig())
     user_id = services.user_repo.create(username="owner2", password_hash="h", role="user")
     services.agent_repo.create(agent_id=TEAM_ID, user_id=user_id, name="Team", kind="team")
+    workspace = FakeWorkspace({MANIFEST: manifest([(TEAM_ID, "lead")])})
 
-    service = services.team_run_service()
+    service = services.team_run_service(
+        workspace_for=lambda agent_id: workspace if agent_id == TEAM_ID else None
+    )
     assert isinstance(service, TeamRunService)
     run = service.create(team_agent_id=TEAM_ID, user=Actor(user_id), goal="惰性接线", tier="quick")
     assert services.team_run_repo.get(run.run_id) is not None
@@ -418,6 +427,8 @@ def test_the_lazy_shared_services_entry_point_is_live(tmp_path: Path) -> None:
         "test",
         "deliver",
     ]
+    # Same seam, roster side: the manifest became a member row (A1's unit-side twin).
+    assert len(services.team_run_repo.list_members(run.run_id)) == 1
 
 
 def test_advance_fails_closed_when_the_spec_is_missing_entirely(harness: Harness) -> None:
@@ -1479,3 +1490,435 @@ def test_the_production_binding_reaches_the_host_write_face_without_a_seat(
     assert calls[0]["host_workspace"] == host, "写面必须来自绑定的注册表，而非注入座"
     written = target.read_text(encoding="utf-8")
     assert "- [G-1] - 团队层写入点恰好 1 处" in written, "候选必须真的落盘"
+
+
+# ── empty-roster guard (A2 / A3 / A4): refuse before the first write ─────────
+# 判据 = ``len(trim.kept) == 0``（DECISIONS D3）；``details.reason`` 三口径见 D7。
+# 下面三条都走 ``SharedServices.team_run_service()`` —— 生产缝本身，不直接 new。
+
+#: A3 判据覆盖的四张表（SPEC A3 逐字：projects / team_runs / threads / team_run_members）。
+_GUARDED_TABLES = ("projects", "team_runs", "threads", "team_run_members")
+
+
+def _lazy_services(tmp_path: Path, *, name: str) -> tuple[Any, int]:
+    """一套真实控制面 + 一个 ``kind=team`` 的 agent 行；每个用例独占一份。"""
+    paths = PathLayout(tmp_path / name)
+    paths.ensure_root()
+    db = SqlitePool(paths.db)
+    run_migrations(db)
+    services = build_shared_services(db=db, paths=paths, config=OctopConfig())
+    user_id = services.user_repo.create(username="owner-lazy", password_hash="h", role="user")
+    services.agent_repo.create(agent_id=TEAM_ID, user_id=user_id, name="Team", kind="team")
+    return services, user_id
+
+
+def _table_counts(services: Any) -> dict[str, int]:
+    """四表行数，**直查表**（不经 service）—— 「拒绝即零写入」的判据。
+
+    经过 service 的计数会把「没查」当成「没有」；A3 要求的是表里真的没有行。
+    """
+    sql = (
+        "SELECT (SELECT COUNT(*) FROM projects), (SELECT COUNT(*) FROM team_runs),"
+        " (SELECT COUNT(*) FROM threads), (SELECT COUNT(*) FROM team_run_members)"
+    )
+    with services.repos.db.connect() as conn:
+        row = tuple(conn.execute(sql).fetchone())
+    return dict(zip(_GUARDED_TABLES, (int(value) for value in row), strict=True))
+
+
+def _workspace_accessor(workspace: FakeWorkspace) -> Any:
+    return lambda agent_id: workspace if agent_id == TEAM_ID else None
+
+
+def test_the_unbound_lazy_entry_point_refuses_an_unresolvable_roster(tmp_path: Path) -> None:
+    """A2/A3 构造 ①（``workspace_for=None``）：解析链断 ⇒ 422，四表零新增。
+
+    走的是生产缝本身（``SharedServices.team_run_service()``，不传 ``workspace_for``）
+    ⇒ 访问器为 ``None`` ⇒ ``details.reason == "manifest-unavailable"``。**拒绝也可以
+    是对的**，因为它的负向对照在 ``test_the_lazy_shared_services_entry_point_is_live``：
+    同一条缝 + 一个可解析的访问器就建得出 run，所以这里不是「这条缝坏了」。
+    """
+    services, user_id = _lazy_services(tmp_path, name=".octop-unbound")
+    service = services.team_run_service()
+    assert isinstance(service, TeamRunService)
+    before = _table_counts(services)
+    assert before == dict.fromkeys(_GUARDED_TABLES, 0)  # 空库：零是「真的零」的前提
+
+    with pytest.raises(OctopError) as err:
+        service.create(team_agent_id=TEAM_ID, user=Actor(user_id), goal="未接线", tier="quick")
+
+    assert_code(err, ErrorCode.TEAM_RUN_ROSTER_EMPTY, status=422)
+    assert err.value.details["reason"] == "manifest-unavailable"
+    assert err.value.details["team_agent_id"] == TEAM_ID
+    assert err.value.details["tier"] == "quick"
+    assert _table_counts(services) == before  # A3：拒绝即零写入
+
+
+def test_an_empty_manifest_refuses_the_run_before_any_write(tmp_path: Path) -> None:
+    """A2/A3 构造 ②（工作区可达、manifest 无成员）⇒ ``manifest-empty`` + 四表零新增。
+
+    与构造 ① 的区别正是 ``reason``：访问器把工作区交出来了（不是接线问题），清单里
+    确实一个成员都没有。守卫必须在 ``create_project``（第一个写）之前落下。
+    """
+    services, user_id = _lazy_services(tmp_path, name=".octop-empty")
+    workspace = FakeWorkspace({MANIFEST: manifest([])})
+    service = services.team_run_service(workspace_for=_workspace_accessor(workspace))
+    before = _table_counts(services)
+
+    with pytest.raises(OctopError) as err:
+        service.create(team_agent_id=TEAM_ID, user=Actor(user_id), goal="空花名册", tier="standard")
+
+    assert_code(err, ErrorCode.TEAM_RUN_ROSTER_EMPTY, status=422)
+    assert err.value.details["reason"] == "manifest-empty"
+    assert err.value.details["tier"] == "standard"
+    assert _table_counts(services) == before
+    assert before == dict.fromkeys(_GUARDED_TABLES, 0)
+
+
+def test_a_lead_only_roster_creates_the_run_and_exactly_one_member_row(tmp_path: Path) -> None:
+    """A4 反向对照：lead-only（``kept`` 长度 1）**必须放行**，且只落 1 行成员。
+
+    守卫判据是 ``len(trim.kept) == 0``，**不是** ``< TEAM_MIN_MEMBERS(2)``：``lead`` 是
+    合法 roster 角色，把团队清单的最小成员数挪到 run 花名册上会让这条用例以 422 变红
+    —— 这正是它存在的理由（DECISIONS D3/D4）。
+    """
+    services, user_id = _lazy_services(tmp_path, name=".octop-lead-only")
+    workspace = FakeWorkspace({MANIFEST: manifest([(TEAM_ID, "lead")])})
+    service = services.team_run_service(workspace_for=_workspace_accessor(workspace))
+    before = _table_counts(services)
+
+    run = service.create(team_agent_id=TEAM_ID, user=Actor(user_id), goal="只有 lead", tier="quick")
+
+    members = services.team_run_repo.list_members(run.run_id)
+    assert len(members) == 1  # lead 是合法 roster 角色 —— 不得写成 `>= 2`
+    assert members[0].role == "lead"
+    # 本用例不传 host_agent_id、manifest 也没有 lead_agent_id ⇒ 按 ``_kept_lead`` 的
+    # 既定语义「团队主持人亲自带队时不标记成员行」，这里**不该**期望 is_lead 为真。
+    after = _table_counts(services)
+    assert after["projects"] == before["projects"] + 1
+    assert after["team_runs"] == before["team_runs"] + 1
+    assert after["team_run_members"] == before["team_run_members"] + 1
+
+
+def test_bind_runtime_invalidates_the_self_built_team_memo(harness: Harness) -> None:
+    """SPEC A6 第二半：``bind_runtime`` 之后**自建**的 ``TeamService`` memo 必须失效。
+
+    顺序就是全部要点 —— 物化(A) → 重绑(B) → 再取 ⇒ 必须是新实例、且只用 B：
+
+    ① 先让 ``_team()`` 用访问器 A **自建** memo（A 的花名册 = lead + backend）；
+    ② ``bind_runtime(workspace_for=B)``，B 的角色集合明显不同（lead + docs + devops）；
+    ③ 再取 ``_team()`` ⇒ ``is not`` 旧实例，且 roster 来自 B；
+    ④ 只建**一个** run（``run_id_for()`` 是秒级精度，同秒第二次 create 会 409
+       ``TEAM_RUN_CONFLICT``）⇒ 落库成员来自 B —— 「陈旧访问器不再被读」的最终判据。
+
+    这条钉的是 FIND-2：去掉 ``bind_runtime`` 末尾的失效之后 ``tests/unit`` + E2E **全绿**，
+    说明该半条此前零判别性覆盖；本用例即那个缺失的判据。构造时**不注入** ``team_service=``
+    —— 注入实例归调用方所有、repair-1 之后刻意不失效（``_team_service_injected``），
+    本半条管的是自建 memo。
+    """
+    workspace_a = FakeWorkspace({MANIFEST: manifest([(TEAM_ID, "lead"), ("ag-a", "backend")])})
+    workspace_b = FakeWorkspace(
+        {MANIFEST: manifest([(TEAM_ID, "lead"), ("ag-b1", "docs"), ("ag-b2", "devops")])}
+    )
+    service = TeamRunService(
+        services=harness.services, workspace_for=_workspace_accessor(workspace_a)
+    )
+
+    stale = service._team()  # noqa: SLF001 —— 物化自建 memo（访问器 A）
+    assert [m["role"] for m in stale.roster(TEAM_ID)["members"]] == ["lead", "backend"]
+
+    service.bind_runtime(workspace_for=_workspace_accessor(workspace_b))
+
+    fresh = service._team()  # noqa: SLF001
+    assert fresh is not stale, "bind_runtime 必须丢掉自建 memo（SPEC A6 第二半）"
+    assert [m["role"] for m in fresh.roster(TEAM_ID)["members"]] == ["lead", "docs", "devops"]
+
+    run = service.create(
+        team_agent_id=TEAM_ID, user=harness.user, goal="失效之后建 run", tier="quick"
+    )
+    landed = {row.role for row in harness.services.team_run_repo.list_members(run.run_id)}
+    assert landed == {"lead", "docs", "devops"}, landed  # 落库成员来自 B，不是陈旧的 A
+
+
+def test_an_injected_team_service_survives_bind_runtime(harness: Harness) -> None:
+    """SPEC A6 第一半 + repair-1：**注入**的 ``TeamService`` 穿过 ``bind_runtime`` 必须活着。
+
+    与上一条是互补的两半，缺一不可：自建 memo 必须失效（否则读陈旧工作区），而注入实例归
+    调用方所有 —— 它的 ``workspace_for`` 是**它自己构造时**捕获的，丢弃它并不会得到更好的
+    roster，只会把调用方交出来的接线扔掉。这里刻意**不传**构造期 ``workspace_for``（注入方
+    可能压根不传，正是 repair-1 注释里点名的形态）：
+
+    ① 注入 ``team_service``（访问器 I：lead + backend），``bind_runtime(workspace_for=J)``
+       （J：docs + devops + qa，且不含 lead，与 I 明显不同）；
+    ② ``_team()`` 必须 ``is`` 那个注入实例（不是重建出来的等价物）；
+    ③ 只建**一个** run ⇒ 落库成员来自 **I**；若注入实例被误丢，重建的服务会读 J（落库角色
+       变成 J 的）或直接 422 ``TEAM_RUN_ROSTER_EMPTY`` —— 两种都得红。
+    """
+    workspace_i = FakeWorkspace({MANIFEST: manifest([(TEAM_ID, "lead"), ("ag-i", "backend")])})
+    workspace_j = FakeWorkspace(
+        {MANIFEST: manifest([("ag-j1", "docs"), ("ag-j2", "devops"), ("ag-j3", "qa")])}
+    )
+    injected = TeamService(harness.services.repos, workspace_for=_workspace_accessor(workspace_i))
+    service = TeamRunService(services=harness.services, team_service=injected)
+    assert [m["role"] for m in service._team().roster(TEAM_ID)["members"]] == ["lead", "backend"]
+
+    service.bind_runtime(workspace_for=_workspace_accessor(workspace_j))
+
+    assert service._team() is injected, "注入实例归调用方所有 —— bind_runtime 不得丢弃它"
+    assert [m["role"] for m in service._team().roster(TEAM_ID)["members"]] == ["lead", "backend"]
+
+    run = service.create(team_agent_id=TEAM_ID, user=harness.user, goal="注入优先", tier="quick")
+    landed = {row.role for row in harness.services.team_run_repo.list_members(run.run_id)}
+    assert landed == {"lead", "backend"}, landed  # 来自 I（注入优先），而不是 J
+
+
+# ── create() 原子性（批次⑦ C2）：三条拒绝都不得留下孤儿行 ────────────────────
+# 判据是**四表逐字不变**（projects / team_runs / threads / team_run_members）：先记 before，
+# 再断言 ``after == before``（差一个字段即红）。修复前 ``create_project`` 是第一个写，
+# 冲突与逐成员校验都在它之后 ⇒ 每条拒绝都白留一个 project（②③ 还多留 run/thread）。
+
+
+def test_a_run_id_conflict_writes_no_new_rows(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """同秒 ``run_id`` 冲突（409 ``TEAM_RUN_CONFLICT``）⇒ 四表零新增。
+
+    ★ 冲突靠**固定 run_id** 构造（``monkeypatch`` 打 ``run_service_module.run_id_for``），
+    不靠「同一秒连发两次」——后者不可靠。第一次 create 真的建出 run，第二次必须被拒且
+    一行都不留。
+    """
+    monkeypatch.setattr(run_service_module, "run_id_for", lambda *a, **k: "2026-01-02-030405")
+    first = harness.create_run(goal="第一次（占住 id）", tier="quick")
+    assert first.run_id == "2026-01-02-030405"
+    before = _table_counts(harness.services)
+
+    with pytest.raises(OctopError) as err:
+        harness.create_run(goal="第二次（撞 id）", tier="quick")
+
+    assert_code(err, ErrorCode.TEAM_RUN_CONFLICT, status=409)
+    assert _table_counts(harness.services) == before, "409 之前不得再写 project / run / thread"
+
+
+def test_a_member_without_a_role_writes_no_new_rows(harness: Harness) -> None:
+    """manifest 成员**缺** ``role`` 键（400 ``TEAM_ROLE_UNKNOWN``）⇒ 四表零新增。"""
+    harness.workspace.files[MANIFEST] = json.dumps(
+        {"members": [{"agent_id": TEAM_ID, "role": "lead"}, {"agent_id": "ag-no-role"}]}
+    )
+    before = _table_counts(harness.services)
+
+    with pytest.raises(OctopError) as err:
+        harness.create_run(goal="缺 role", tier="quick")
+
+    assert_code(err, ErrorCode.TEAM_ROLE_UNKNOWN, status=400)
+    assert _table_counts(harness.services) == before, "400 之前不得写 project / run / thread"
+
+
+def test_a_duplicate_roster_role_writes_no_new_rows(harness: Harness) -> None:
+    """manifest 角色重复（400 ``PROJECT_MEMBER_INVALID``）⇒ 四表零新增。"""
+    harness.workspace.files[MANIFEST] = manifest([(TEAM_ID, "backend"), ("ag-two", "backend")])
+    before = _table_counts(harness.services)
+
+    with pytest.raises(OctopError) as err:
+        harness.create_run(goal="重复角色", tier="quick")
+
+    assert_code(err, ErrorCode.PROJECT_MEMBER_INVALID, status=400)
+    assert _table_counts(harness.services) == before, "400 之前不得写 project / run / thread"
+
+
+# ── create() 补偿删除（批次⑧ D2）：**第一个写之后**的失败同样必须零写入 ───────
+# 三条残留实例（①②③）此前都会留下部分状态；判据仍是四表逐字不变，且必须**确定性**
+# 构造（不 sleep、不靠真并发）：monkeypatch 让某一步抛错，或让写前判定看不见赢家。
+#
+# repair-5 追加：四表之外还有第五张 —— ``knowledge_bases``。``create_project`` 在 KB
+# 可用时会顺手建一个空 KB，若补偿只删 project，失败路径就每次泄漏 1 个 KB（配额 20），
+# 四表全 0 也照样假绿。故新增**五表**判据（原四表断言原样保留，两者并存）。
+
+#: 五表判据 = 四表 + ``knowledge_bases``。
+_KB_TABLES = (*_GUARDED_TABLES, "knowledge_bases")
+
+
+def _table_counts_with_kb(services: Any) -> dict[str, int]:
+    """五表行数（四表 + ``knowledge_bases``），**直查表**，不改变四表版本的语义。"""
+    sql = (
+        "SELECT (SELECT COUNT(*) FROM projects), (SELECT COUNT(*) FROM team_runs),"
+        " (SELECT COUNT(*) FROM threads), (SELECT COUNT(*) FROM team_run_members),"
+        " (SELECT COUNT(*) FROM knowledge_bases)"
+    )
+    with services.repos.db.connect() as conn:
+        row = tuple(conn.execute(sql).fetchone())
+    return dict(zip(_KB_TABLES, (int(value) for value in row), strict=True))
+
+
+def _enable_kb(monkeypatch: pytest.MonkeyPatch) -> None:
+    """让 ``ProjectService._knowledge_usable()`` 为真、且 KB 行真的建得出来。
+
+    默认环境里 KB **不可用**（fresh install：没配 embedding 模型 ⇒
+    ``get_capability(...)["usable"]`` 为假，``create_project`` 只记一条 info 就跳过 KB
+    分支），那时「KB 计数不变」是**恒真**的假绿 —— 所以必须先把门打开。两层都打：
+
+    ① ``projects.service.get_capability`` ⇒ ``{"usable": True}``（``bind_kb`` 的唯一判据）；
+    ② ``knowledge.service.assert_knowledge_usable`` ⇒ no-op（``KnowledgeService.create_base``
+       自带的同一道门）。
+
+    门是否真的打开了，由 ``test_a_successful_create_binds_a_knowledge_base`` 正向对照：
+    成功 create 时 ``knowledge_bases`` 必须 +1。
+    """
+    monkeypatch.setattr(
+        "octop.infra.projects.service.get_capability", lambda *args, **kwargs: {"usable": True}
+    )
+    monkeypatch.setattr(
+        "octop.infra.knowledge.service.assert_knowledge_usable", lambda *args, **kwargs: None
+    )
+
+
+def test_a_failed_room_thread_writes_no_new_rows(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """① 房间线程创建失败 ⇒ project + run 必须被补偿删除（四表零新增 + KB 不泄漏）。
+
+    ``_open_room`` 在 ``_runs.create`` 之后调用，失败时 project、run（以及 KB 可用时的
+    空 KB）都已经落库 —— 本用例钉的就是这段。错误本身继续向上抛（补偿不得吞掉异常）。
+    """
+    _enable_kb(monkeypatch)
+    before = _table_counts(harness.services)
+    before_kb = _table_counts_with_kb(harness.services)
+
+    def _room_fails(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("room thread creation failed")
+
+    monkeypatch.setattr(harness.gateway.thread_registry, "create_thread", _room_fails)
+
+    with pytest.raises(RuntimeError):
+        harness.create_run(goal="房间线程失败", tier="quick")
+
+    assert _table_counts(harness.services) == before, "房间线程失败后不得留 project / run"
+    assert _table_counts_with_kb(harness.services) == before_kb, "失败 create 不得泄漏空 KB"
+
+
+def test_a_lost_run_id_race_writes_no_new_rows(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """② 竞态窗口：写前判定通过、INSERT 撞 ``team_runs.run_id`` UNIQUE ⇒ 409 且零新增。
+
+    确定性构造（无 sleep、无真并发）：赢家先占了固定 id；随后把 ``team_run_repo.get``
+    遮成 ``None``，模拟「两个请求都通过了写前判定」的窗口，输家于是在 INSERT 上撞 UNIQUE。
+    修复目标是把它映射成 **409 ``TEAM_RUN_CONFLICT``**（而不是裸 ``IntegrityError``），
+    并只补偿删除**本次**创建的 project（连它绑的空 KB 一起）—— 赢家的 run / members
+    必须原样活着。
+    """
+    monkeypatch.setattr(run_service_module, "run_id_for", lambda *a, **k: "2026-01-02-030405")
+    _enable_kb(monkeypatch)
+    winner = harness.create_run(goal="赢家", tier="quick")
+    winner_members = len(harness.services.team_run_repo.list_members(winner.run_id))
+    before = _table_counts(harness.services)
+    before_kb = _table_counts_with_kb(harness.services)
+    monkeypatch.setattr(harness.services.team_run_repo, "get", lambda run_id: None)
+
+    with pytest.raises(OctopError) as err:
+        harness.create_run(goal="输家（撞 UNIQUE）", tier="quick")
+
+    assert_code(err, ErrorCode.TEAM_RUN_CONFLICT, status=409)
+    assert _table_counts(harness.services) == before, "撞 UNIQUE 的输家不得留下任何行"
+    assert _table_counts_with_kb(harness.services) == before_kb, "输家绑的空 KB 也必须被撤销"
+    # stage-aware：补偿只删输家建的 project，赢家的 run + members 必须还在。
+    assert len(harness.services.team_run_repo.list_members(winner.run_id)) == winner_members
+
+
+def test_a_failing_member_write_cleans_up_the_partial_run(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """③ 非 UNIQUE 的成员写失败（第 2 次 ``add_member`` 抛 ``RuntimeError``）⇒ 全清。
+
+    第 1 次调用**成功**（真写了一行 member），说明半成品确实存在过；随后失败必须把
+    project / run / thread / 已写 members（以及 project 绑的空 KB）全部清掉。
+    ``calls["n"] == 2`` 是本用例的前提自证：没有它，「零新增」也可能是「压根没走到成员写」。
+    """
+    _enable_kb(monkeypatch)
+    written = harness.services.team_run_repo.add_member
+    calls = {"n": 0}
+
+    def _second_member_fails(*args: Any, **kwargs: Any) -> Any:
+        calls["n"] += 1
+        if calls["n"] >= 2:
+            raise RuntimeError("member write failed (non-UNIQUE)")
+        return written(*args, **kwargs)
+
+    before = _table_counts(harness.services)
+    before_kb = _table_counts_with_kb(harness.services)
+    monkeypatch.setattr(harness.services.team_run_repo, "add_member", _second_member_fails)
+
+    with pytest.raises(RuntimeError):
+        harness.create_run(goal="第 2 个成员写失败", tier="quick")
+
+    assert calls["n"] == 2, "必须先真的写进 1 行成员，半成品才成立"
+    assert _table_counts(harness.services) == before, (
+        "成员写失败后不得留 project / run / thread / member"
+    )
+    assert _table_counts_with_kb(harness.services) == before_kb, "失败 create 不得泄漏空 KB"
+
+
+# ── repair-5：KB 正向对照 + 补偿自身抛错的纪律 ───────────────────────────────
+
+
+def test_a_successful_create_binds_a_knowledge_base(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """正向对照：KB 门打开时，**成功**的 create 必须真的建出 1 个 KB。
+
+    没有这条，上面三条的「KB 计数不变」可能只是「KB 压根没被建过」—— 恒真假绿。
+    它也顺带证明 ``_enable_kb`` 打的两层门确实生效。
+    """
+    _enable_kb(monkeypatch)
+    before = _table_counts_with_kb(harness.services)
+
+    harness.create_run(goal="成功建 run（绑定 KB）", tier="quick")
+
+    after = _table_counts_with_kb(harness.services)
+    assert after["knowledge_bases"] == before["knowledge_bases"] + 1, (
+        "KB 门没真的打开 —— 失败用例的 KB 断言会是恒真假绿"
+    )
+    assert after["projects"] == before["projects"] + 1
+    assert after["team_runs"] == before["team_runs"] + 1
+
+
+def test_a_failing_compensation_step_never_masks_the_original_error(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """补偿自身抛错 ⇒ 向外抛的**仍是原始异常**，且能清的都清了。
+
+    写法照既有 ``tests/unit/projects/test_project_service.py:310``
+    （``test_compensation_survives_a_failing_cleanup``）：一个原始失败 + 一个抛错的清理步。
+
+    这里让**线程删除**这一步抛错（补偿链中间那步）：它只进日志，于是
+    * 抛出来的仍是**同一个**原始异常对象（不是清理的 ``RuntimeError``）；
+    * **它之后**的步骤照常执行 —— run 被删（member 随 FK 级联）、project 连同 KB 被撤销；
+    * 唯一残留是失败那一步自己的目标（thread 行），这正是「补偿只尽力、异常优先级不变」。
+    """
+    _enable_kb(monkeypatch)
+    original = RuntimeError("member write failed (non-UNIQUE)")
+    written = harness.services.team_run_repo.add_member
+    calls = {"n": 0}
+
+    def _second_member_fails(*args: Any, **kwargs: Any) -> Any:
+        calls["n"] += 1
+        if calls["n"] >= 2:
+            raise original
+        return written(*args, **kwargs)
+
+    def _cleanup_boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("cleanup exploded")
+
+    monkeypatch.setattr(harness.services.team_run_repo, "add_member", _second_member_fails)
+    monkeypatch.setattr(harness.gateway.thread_registry, "delete_thread", _cleanup_boom)
+    before = _table_counts_with_kb(harness.services)
+
+    with pytest.raises(RuntimeError) as err:
+        harness.create_run(goal="补偿自身抛错", tier="quick")
+
+    assert err.value is original, "抛出的必须是原始异常对象，不是补偿的 RuntimeError"
+    after = _table_counts_with_kb(harness.services)
+    assert after["projects"] == before["projects"], "project 连同 KB 仍要被撤销"
+    assert after["knowledge_bases"] == before["knowledge_bases"]
+    assert after["team_runs"] == before["team_runs"], "失败步之后的 run 删除照常执行"
+    assert after["team_run_members"] == before["team_run_members"]
+    assert after["threads"] == before["threads"] + 1, "唯一残留是失败那一步自己的目标"

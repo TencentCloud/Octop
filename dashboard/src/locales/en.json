@@ -235,6 +235,7 @@
     "TEAM_ARTIFACT_OWNERSHIP_DENIED": "You are not the owner of this artifact.",
     "TEAM_RUN_MEMBER_LIMIT": "The run member limit has been reached.",
     "TEAM_RUN_TASK_LIMIT": "The run task limit has been reached.",
+    "TEAM_RUN_ROSTER_EMPTY": "This run resolved no team members, so its plan cannot be staged or approved. Add members to the team (and check that the team manifest is readable), then create the run again.",
     "TEAM_TIER_INVALID": "Unknown tier; it is not guessed or silently defaulted.",
     "TEAM_ROLE_UNKNOWN": "The role is not in the fixed role table.",
     "TEAM_TIER_DOWNGRADE_FORBIDDEN": "Downgrading the tier is not allowed.",

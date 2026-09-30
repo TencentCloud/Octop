@@ -576,6 +576,49 @@ class ProjectService:
         self.assert_project_role(project_id, user=user, required=PROJECT_ARCHIVE)
         return self._projects.delete(project_id)
 
+    def discard_created_project(self, project_id: str) -> None:
+        """Undo a creation that never became a real project — including its KB.
+
+        The inverse of :meth:`create_project`, and **deliberately not**
+        :meth:`delete_project`. That one keeps the knowledge base because the KB may
+        hold documents the caller never asked to destroy. Here the project is being
+        discarded *inside the very call that created it*: nothing has been shown to a
+        user, and the KB was created moments ago by the same call with no documents in
+        it. Leaving that KB behind is not harmless — it consumes the owner's KB quota
+        (``MAX_BASES_PER_OWNER``), a retry with the same name then fails with
+        ``KNOWLEDGE_NAME_TAKEN``, and after enough leaks every later create is refused
+        with ``KNOWLEDGE_BASE_LIMIT`` even though no project survived.
+
+        The ``kb_id`` is **re-read from the row** on purpose: :meth:`create_project`
+        writes it back in step ④, after the caller already holds a row object, so a
+        caller's copy can be stale.
+
+        No permission check: this is a rollback of the caller's own write, and the
+        compensating paths run while the original error is in flight.
+
+        **Never raises.** Every step is logged and swallowed, the same discipline as
+        :meth:`_compensate_create`: a stale row is recoverable, an exception chain that
+        hides the original refusal is not.
+        """
+        try:
+            row = self._projects.get(project_id)
+        except Exception:  # noqa: BLE001 - compensation must not raise
+            logger.exception("discarding project: read failed (project_id=%s)", project_id)
+            return
+        if row is None:
+            return
+        logger.warning("discarding created project (project_id=%s kb_id=%s)", row.id, row.kb_id)
+        if row.kb_id:
+            try:
+                self._knowledge.delete_base(row.kb_id, actor_user_id=row.owner_user_id)
+            except Exception:  # noqa: BLE001 - compensation must not raise
+                logger.exception("discarding project: KB delete failed (kb_id=%s)", row.kb_id)
+        try:
+            # Membership and timeline rows cascade with the project.
+            self._projects.delete(project_id)
+        except Exception:  # noqa: BLE001 - compensation must not raise
+            logger.exception("discarding project: delete failed (project_id=%s)", project_id)
+
     def _assert_transition(self, project: ProjectRow, target: str) -> None:
         if target not in _TRANSITIONS.get(project.status, frozenset()):
             raise _project_status_invalid(

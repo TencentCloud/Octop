@@ -16,7 +16,8 @@ import sys
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "dashboard" / "scripts" / "vitest-fail-classify.py"
-SAMPLE_7FAILED = REPO_ROOT / "team" / "2026-09-29-075707" / "samples" / "vitest-run1-7failed.txt"
+#: ★ 样本**随测试入库**（同目录 `samples/`）⇒ 干净检出（CI / 新克隆）也能跑 ✓（旧 `team/…` 被 `.git/info/exclude` 忽略 ✗）
+SAMPLE_7FAILED = pathlib.Path(__file__).resolve().parent / "samples" / "vitest-run1-7failed.txt"
 
 GREEN = " Test Files  218 passed (218)\n      Tests  1347 passed (1347)\n"
 SUITE_LOAD = (
