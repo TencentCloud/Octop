@@ -98,7 +98,7 @@ def test_docker_probe_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
     docker_mod.from_env = lambda: client
     monkeypatch.setitem(__import__("sys").modules, "docker", docker_mod)
     monkeypatch.setattr(
-        "harness_agent.backends.docker_sandbox.ensure_docker_image",
+        "octop_harness.backends.docker_sandbox.ensure_docker_image",
         lambda image, client=None: False,
     )
 
@@ -114,7 +114,7 @@ def test_docker_probe_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
         captured["spec"] = spec
         return backend
 
-    monkeypatch.setattr("harness_agent.backends.resolve_backend", _resolve)
+    monkeypatch.setattr("octop_harness.backends.resolve_backend", _resolve)
 
     result = probe_storage_backend(_row(kind="docker", bucket="python:3.12-slim"))
     assert result["ok"] is True
@@ -135,7 +135,7 @@ def test_docker_probe_user_scope_uses_test_username(monkeypatch: pytest.MonkeyPa
     docker_mod.from_env = lambda: client
     monkeypatch.setitem(__import__("sys").modules, "docker", docker_mod)
     monkeypatch.setattr(
-        "harness_agent.backends.docker_sandbox.ensure_docker_image",
+        "octop_harness.backends.docker_sandbox.ensure_docker_image",
         lambda image, client=None: True,
     )
 
@@ -149,7 +149,7 @@ def test_docker_probe_user_scope_uses_test_username(monkeypatch: pytest.MonkeyPa
         captured["spec"] = spec
         return backend
 
-    monkeypatch.setattr("harness_agent.backends.resolve_backend", _resolve)
+    monkeypatch.setattr("octop_harness.backends.resolve_backend", _resolve)
 
     result = probe_storage_backend(
         _row(

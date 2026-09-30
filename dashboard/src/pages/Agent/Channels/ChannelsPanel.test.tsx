@@ -27,6 +27,7 @@ const api = vi.mocked(request, true);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sessionStorage.clear();
   // GET list -> empty; POST create -> server-echoed row with enabled=1
   api.mockImplementation(async (_url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
@@ -37,6 +38,130 @@ beforeEach(() => {
 });
 
 describe("<ChannelsPanel /> create-flow default", () => {
+  it("defaults Discord to all channels and saves without channel IDs", async () => {
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /channels\.showMoreChannels/ }),
+    );
+    await userEvent.click(
+      (await screen.findAllByText("channels.label_discord"))[0],
+    );
+    expect(
+      await screen.findByLabelText("channels.discordAllowAllChannels"),
+    ).toBeChecked();
+    expect(
+      screen.getByLabelText("channels.discordAllowedChannels"),
+    ).toBeDisabled();
+    expect(screen.getByLabelText("channels.discordAllowedUsers")).toBeEnabled();
+    await userEvent.type(
+      screen.getByLabelText(/Bot Token/i),
+      "fake-discord-token",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => {
+      const post = api.mock.calls.find(([, init]) => init?.method === "POST");
+      expect(post).toBeDefined();
+      expect(JSON.parse(String(post![1]!.body)).config).toMatchObject({
+        bot_token: "fake-discord-token",
+        allow_all_channels: true,
+      });
+    });
+  });
+
+  it.each([undefined, true, false])(
+    "loads and saves Discord all-channels setting %s without losing boolean false",
+    async (allowAll) => {
+      const row = { id: "d1", kind: "discord", name: "discord", enabled: true };
+      api.mockImplementation(async (url, init) => {
+        if (init?.method === "PATCH") return row;
+        if (url.endsWith("/d1"))
+          return {
+            ...row,
+            config: {
+              bot_token: "fake",
+              ...(allowAll === undefined
+                ? {}
+                : { allow_all_channels: allowAll }),
+              allowed_channel_ids: ["1234567890123456789"],
+            },
+          };
+        return [row];
+      });
+      render(<ChannelsPanel agentId="ag1" />);
+      await userEvent.click(
+        (await screen.findAllByText("channels.label_discord"))[0],
+      );
+      const toggle = await screen.findByLabelText(
+        "channels.discordAllowAllChannels",
+      );
+      expect(toggle.getAttribute("aria-checked")).toBe(
+        String(allowAll ?? true),
+      );
+      const ids = screen.getByLabelText("channels.discordAllowedChannels");
+      expect(ids).toHaveValue("1234567890123456789");
+      if (allowAll === false) expect(ids).toBeEnabled();
+      else expect(ids).toBeDisabled();
+      await userEvent.click(
+        screen.getByRole("button", { name: "common.save" }),
+      );
+      await waitFor(() => {
+        const patch = api.mock.calls.find(
+          ([, init]) => init?.method === "PATCH",
+        );
+        expect(patch).toBeDefined();
+        expect(JSON.parse(String(patch![1]!.body)).config).toMatchObject({
+          allow_all_channels: allowAll ?? true,
+          allowed_channel_ids: ["1234567890123456789"],
+        });
+      });
+    },
+  );
+
+  it("opens Discord and saves the token with exact channel/user IDs", async () => {
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /channels\.showMoreChannels/ }),
+    );
+    await userEvent.click(
+      (await screen.findAllByText("channels.label_discord"))[0],
+    );
+    expect(
+      await screen.findByText("channels.discordSetupHelp"),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByLabelText("channels.discordAllowAllChannels"),
+    );
+    expect(
+      screen.getByLabelText("channels.discordAllowedChannels"),
+    ).toBeEnabled();
+    await userEvent.type(
+      await screen.findByLabelText(/Bot Token/i),
+      "fake-discord-token",
+    );
+    await userEvent.type(
+      screen.getByLabelText("channels.discordAllowedChannels"),
+      "1234567890123456789,2345678901234567890",
+    );
+    await userEvent.type(
+      screen.getByLabelText("channels.discordAllowedUsers"),
+      "3456789012345678901",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => {
+      const post = api.mock.calls.find(([, init]) => init?.method === "POST");
+      expect(post).toBeDefined();
+      expect(JSON.parse(String(post![1]!.body))).toMatchObject({
+        kind: "discord",
+        config: {
+          bot_token: "fake-discord-token",
+          allow_all_channels: false,
+          allowed_channel_ids: ["1234567890123456789", "2345678901234567890"],
+          allowed_user_ids: ["3456789012345678901"],
+        },
+      });
+    });
+  });
+
   async function openTelegramCreateDrawer() {
     render(<ChannelsPanel agentId="ag1" />);
     // Telegram is collapsed behind "更多通道" until expanded.

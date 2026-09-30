@@ -11,7 +11,7 @@ import click
 from octop.cli.support.ctx import json_output_enabled, resolve_agent
 from octop.cli.support.db import resolve_cli_locale
 from octop.i18n import tr
-from octop.infra.agents.memory_slim_control import list_memory_slim_agents, request_memory_slim
+from octop.infra.agents.memory.slim_control import list_memory_slim_agents, request_memory_slim
 from octop.infra.utils.paths import PathLayout
 
 

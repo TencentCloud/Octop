@@ -6,7 +6,44 @@ import {
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeQqGroupContextConfig,
   partitionChannelKeys,
+  CHANNEL_KEYS,
+  CHANNEL_FIELDS,
+  normalizeChannelFieldValue,
 } from "./constants";
+
+describe("Discord configuration", () => {
+  it("exposes Discord in more channels and keeps configured bots visible", () => {
+    expect(CHANNEL_KEYS).toContain("discord");
+    expect(partitionChannelKeys(["discord"], new Set()).more).toEqual([
+      "discord",
+    ]);
+    expect(
+      partitionChannelKeys(["discord"], new Set(["discord"])).featured,
+    ).toEqual(["discord"]);
+    expect(
+      CHANNEL_FIELDS.discord?.find((f) => f.name === "bot_token"),
+    ).toMatchObject({ required: true, type: "password" });
+    expect(
+      CHANNEL_FIELDS.discord?.find((f) => f.name === "http_proxy_auth"),
+    ).toMatchObject({ type: "password" });
+  });
+
+  it("preserves snowflake IDs exactly and validates user input", () => {
+    expect(
+      normalizeChannelFieldValue(
+        "allowed_channel_ids",
+        "1234567890123456789, 2345678901234567890\n1234567890123456789",
+      ),
+    ).toEqual(["1234567890123456789", "2345678901234567890"]);
+    expect(normalizeChannelFieldValue("allowed_user_ids", "")).toEqual([]);
+    expect(normalizeChannelFieldValue("allowed_user_ids", ["123"])).toEqual([
+      "123",
+    ]);
+    expect(() =>
+      normalizeChannelFieldValue("allowed_channel_ids", "#general"),
+    ).toThrow();
+  });
+});
 
 describe("partitionChannelKeys", () => {
   it("hides telegram until expanded unless already configured", () => {

@@ -16,6 +16,34 @@ export function hasPendingHitl(messages: ChatMessage[]): boolean {
   return messages.some((message) => message.hitlData?.status === "pending");
 }
 
+export type PendingApproval = {
+  messageId: string;
+  actions: HitlActionRequest[];
+};
+
+/** Latest pending tool-approval card, if any (questions are excluded). */
+export function findPendingApproval(
+  messages: ChatMessage[],
+): PendingApproval | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const hitl = message.hitlData;
+    if (
+      !hitl ||
+      (hitl.status ?? "pending") !== "pending" ||
+      isAskHitl(hitl.action_requests) ||
+      !hitl.action_requests?.length
+    ) {
+      continue;
+    }
+    return {
+      messageId: message.id,
+      actions: hitl.action_requests,
+    };
+  }
+  return null;
+}
+
 /** Latest pending ``ask_user_question`` card, if any. */
 export function findPendingAsk(messages: ChatMessage[]): PendingAsk | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {

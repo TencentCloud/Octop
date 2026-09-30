@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 _LENGTH_TO_M: dict[str, float] = {
     "m": 1.0,

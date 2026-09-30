@@ -30,7 +30,10 @@ export function needsAuthBlobFetch(url: string): boolean {
     ? new URL(url).pathname
     : url.split("?")[0];
   if (path === "/api/workspace/media") return true;
+  // Bridge agent ids contain ``:`` (or ``%3A``); ``[^/]+`` still matches.
   if (/^\/api\/agents\/[^/]+\/avatar$/.test(path)) return true;
+  if (/^\/api\/users\/\d+\/avatar$/.test(path)) return true;
+  if (/^\/api\/users\/roles\/[^/]+\/avatar$/.test(path)) return true;
   if (/^\/api\/experts\/published\/[^/]+\/avatar$/.test(path)) return true;
   if (/^\/api\/agents\/[^/]+\/media\/preview$/.test(path)) return true;
   if (/^\/api\/agents\/[^/]+\/workspace\/download$/.test(path)) return true;

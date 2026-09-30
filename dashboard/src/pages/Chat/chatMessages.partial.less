@@ -119,6 +119,21 @@
   animation: scrollBtnEnter 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
+.scrollToBottomBtnHasNew {
+  color: var(--fn-color-brand);
+  border-color: color-mix(in srgb, var(--fn-color-brand) 35%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--fn-color-brand) 8%,
+    var(--fn-bg-elevated, var(--fn-bg-primary))
+  );
+
+  &:hover {
+    color: var(--fn-color-brand);
+    border-color: color-mix(in srgb, var(--fn-color-brand) 50%, transparent);
+  }
+}
+
 /* Hidden state — exits downward, pointer-events disabled to avoid ghost clicks */
 .scrollToBottomBtnHidden {
   opacity: 0;
@@ -141,7 +156,7 @@
 .messageListInner {
   overflow-anchor: none;
   --chat-column-max: 960px;
-  --chat-msg-avatar-slot: 44px;
+  --chat-msg-avatar-slot: 48px;
   /* Full list width; each row centers a 960px text track + avatar gutters
      so history and live turns share the same column as the composer. */
   box-sizing: border-box;
@@ -149,6 +164,12 @@
   min-width: 280px;
   margin: 0 auto;
   padding-inline: var(--chat-column-pad-x, 24px);
+
+  @media (max-width: 767px) {
+    --chat-column-pad-x: var(--chat-column-pad-x-narrow, 12px);
+    --chat-msg-avatar-slot: 36px;
+    --chat-msg-gutter: var(--chat-column-pad-x-narrow, 12px);
+  }
 }
 
 .messageListLoading {
@@ -164,7 +185,7 @@
   justify-content: center;
   gap: 8px;
   padding: 12px 0 16px;
-  color: var(--text-secondary, #888);
+  color: var(--fn-text-secondary);
   font-size: 12px;
 }
 
@@ -184,8 +205,9 @@
 .chatMsgColumns() {
   display: grid;
   grid-template-columns:
-    var(--chat-msg-avatar-slot, 44px) minmax(0, var(--chat-column-max, 960px))
-    var(--chat-msg-avatar-slot, 44px);
+    var(--chat-msg-avatar-slot, 48px) minmax(0, var(--chat-column-max, 960px))
+    var(--chat-msg-avatar-slot, 48px);
+  column-gap: var(--chat-msg-gutter, 0px);
   justify-content: center;
   width: 100%;
 }
@@ -366,7 +388,6 @@
 .avatarCol {
   display: flex;
   justify-content: center;
-  padding-top: 2px;
   min-width: 0;
 }
 
@@ -658,6 +679,51 @@
   }
 }
 
+.inlineToolSummaryRunning {
+  border-color: color-mix(in srgb, var(--fn-color-brand) 28%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--fn-color-brand) 5%,
+    var(--fn-bg-secondary, #f8fafc)
+  );
+  animation: inlineToolRunningPulse 1.6s ease-in-out infinite;
+
+  .inlineToolIcon {
+    color: var(--fn-color-brand);
+  }
+
+  .inlineToolStatus {
+    color: var(--fn-color-brand);
+  }
+}
+
+@keyframes inlineToolRunningPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--fn-color-brand) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px
+      color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
+  }
+}
+
+.inlineToolStatusLive {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--fn-color-brand);
+  font-size: 12px;
+
+  .thinkingDot {
+    width: 5px;
+    height: 5px;
+  }
+}
+
 .inlineToolIcon {
   display: inline-flex;
   align-items: center;
@@ -782,30 +848,45 @@
 /* ---------- Assistant turn process summary (tools + thinking) ---------- */
 .processSummaryRow {
   .chatMsgColumns();
+  /* Offset the 36px avatar so it centers on the original fold header
+     (8+8 padding + 13px/1.4 toggle). Do not stretch the bar to 36px. */
+  --chat-process-header-height: calc(16px + 13px * 1.4);
+  --chat-process-avatar-size: 36px;
   align-items: start;
   max-width: 100%;
 
   .avatarCol {
     grid-column: 1;
     justify-self: center;
+    align-items: center;
+    margin-top: calc(
+      (var(--chat-process-header-height) - var(--chat-process-avatar-size)) / 2
+    );
+
+    .msgSender,
+    .msgSenderBtn {
+      padding-top: 0;
+    }
   }
 
   .processSummary {
     grid-column: 2;
+    justify-self: center;
+    align-self: center;
   }
 }
 
 /* Mobile: drop the unused opposite avatar track so the text column gains ~44px.
    Two-column grids (not 0-width third tracks) so row `gap` does not still reserve space.
    Placed after all `.chatMsgColumns()` call sites so these overrides win the cascade.
-   Keep column-gap: 0 so thinking / tools / answer share the same content left edge
-   (themeOverrides used to set .messageBubble { gap: 10px } only on reply rows). */
+   Avatar↔bubble gutter matches the left inset (--chat-msg-gutter). Apply it on
+   every assistant row so thinking / tools / answer share the same left edge. */
 @media (max-width: 767px) {
   .assistantBubble,
   .processSummaryRow,
   .turnInset {
     grid-template-columns: var(--chat-msg-avatar-slot, 44px) minmax(0, 1fr);
-    column-gap: 0;
+    column-gap: var(--chat-msg-gutter);
 
     .avatarCol {
       grid-column: 1;
@@ -821,9 +902,10 @@
   }
 
   .assistantBubble {
-    /* Beat themeOverrides `.messageBubble { gap: 10px }` — that gap only on the
-       answer row shifted it right of the thinking box by 10px. */
-    gap: 0;
+    /* Beat themeOverrides `.messageBubble { gap }` so the answer row does not
+       pick up a different column-gap than processSummaryRow. */
+    column-gap: var(--chat-msg-gutter);
+    row-gap: 0;
   }
 
   .turnInset > * {
@@ -860,6 +942,31 @@
   border-radius: 10px;
   border: none;
   background: rgba(15, 23, 42, 0.025);
+}
+
+/* Mobile: same gutter on every row, assistant copy uses the empty right
+   avatar slot so replies are not a narrow center column. */
+@media (max-width: 767px) {
+  .messageList {
+    scrollbar-gutter: auto;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      width: 0;
+      display: none;
+    }
+  }
+
+  .assistantBubble .bubbleContent,
+  .processSummaryRow .processSummary,
+  .turnInset > * {
+    grid-column: 2 / -1;
+  }
+
+  .processSummary {
+    /* Match .assistantText inline padding so the fold lines up with the card. */
+    padding-inline: 14px;
+  }
 }
 
 .pinnedToolResults {
@@ -977,6 +1084,26 @@
 
 .assistantTurnAnswer {
   min-width: 0;
+}
+
+.teamWrapupTurn {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+}
+
+.teamWrapupBadge {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.03));
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
 }
 
 .knowledgeCitations {
@@ -1135,9 +1262,39 @@
   }
 }
 
+.processSummaryToggleLive {
+  color: var(--fn-text-secondary);
+
+  &:hover {
+    color: var(--fn-text-primary);
+  }
+}
+
 .processSummaryText {
   flex: 1;
   min-width: 0;
+}
+
+.processLiveHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--fn-color-brand);
+
+  .thinkingDot {
+    width: 5px;
+    height: 5px;
+    flex-shrink: 0;
+  }
+}
+
+.processLiveLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: thinkingFadeInOut 2s ease-in-out infinite;
 }
 
 .processSummaryChevron {

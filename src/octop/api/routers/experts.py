@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
@@ -22,13 +22,14 @@ from octop.api.common.agent import require_agent_owner_row, user_owns_agent
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.deps import current_user, get_server
-from octop.infra.agents.avatar import (
+from octop.infra.agents.experts.avatar import (
     display_published_expert_icon_url,
     public_portrait_icon_url,
     read_snapshot_avatar,
 )
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
+    apply_workspace_quick_prompts,
     build_create_spec_from_expert,
     discover_seed_paths,
     preview_file_paths,
@@ -51,7 +52,7 @@ from octop.infra.agents.experts.market_creation import (
 from octop.infra.agents.experts.published_creation import (
     PublishedExpertInstallOptions,
     require_published_expert,
-    snapshot_welcome_message,
+    snapshot_welcome_payload,
 )
 from octop.infra.agents.experts.published_creation import (
     install_published_expert as install_published_expert_agent,
@@ -143,10 +144,15 @@ class FromExpertBody(AgentRuntimeFields):
     )
     welcome_message: str | None = None
     enable_trajectory: bool = True
+    conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
+        default=None,
+        description="Default Ask/Plan/Craft mode for new conversations; craft when omitted",
+    )
     file_overrides: list[ComposerFileOverrideBody] | None = None
     omit_files: list[str] | None = None
     hub_skills: list[ComposerHubSkillBody] | None = None
     copy_skills: list[ComposerCopySkillBody] | None = None
+    quick_prompts: list[QuickPromptResponse] | None = None
 
 
 class PublishExpertBody(BaseModel):
@@ -183,10 +189,15 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     )
     welcome_message: str | None = None
     enable_trajectory: bool = True
+    conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
+        default=None,
+        description="Default Ask/Plan/Craft mode for new conversations; craft when omitted",
+    )
     file_overrides: list[ComposerFileOverrideBody] | None = None
     omit_files: list[str] | None = None
     hub_skills: list[ComposerHubSkillBody] | None = None
     copy_skills: list[ComposerCopySkillBody] | None = None
+    quick_prompts: list[QuickPromptResponse] | None = None
 
 
 def _composer_plan_from_body(
@@ -238,16 +249,28 @@ def _composer_apply(
     return patch, resolved, report
 
 
+def _quick_prompts_from_body(
+    body: FromExpertBody | InstallPublishedExpertBody,
+) -> list[dict[str, Any]] | None:
+    if body.quick_prompts is None:
+        return None
+    return [_quick_prompt_body_dict(item) for item in body.quick_prompts]
+
+
 def _composer_initializer(
     patch: ComposerWorkspacePatch,
     copies: tuple[tuple[str, Any], ...] = (),
     report: ComposerApplyReport | None = None,
+    quick_prompts: list[dict[str, Any]] | None = None,
 ) -> Any:
-    if patch.is_empty() and not copies:
+    if patch.is_empty() and not copies and quick_prompts is None:
         return None
 
     async def _apply(_row: Any, workspace: Any) -> None:
-        await apply_composer_workspace_patch(workspace, patch, copies=copies, report=report)
+        if not patch.is_empty() or copies:
+            await apply_composer_workspace_patch(workspace, patch, copies=copies, report=report)
+        if quick_prompts is not None:
+            await apply_workspace_quick_prompts(workspace, quick_prompts)
 
     return _apply
 
@@ -500,10 +523,11 @@ async def get_published_expert(
     files = await asyncio.to_thread(discover_seed_paths, snapshot_dir)
     if (snapshot_dir / MANIFEST_FILENAME).is_file():
         files.insert(0, MANIFEST_FILENAME)
-    welcome_zh, welcome_en = await asyncio.to_thread(snapshot_welcome_message, snapshot_dir)
+    welcome_payload = await asyncio.to_thread(snapshot_welcome_payload, snapshot_dir)
     return {
         **_published_summary_dict(row, server),
-        "welcome_message": {"zh": welcome_zh, "en": welcome_en},
+        "welcome_message": welcome_payload["welcome_message"],
+        "quick_prompts": welcome_payload["quick_prompts"],
         "files": files,
         "file_contents": await asyncio.to_thread(
             read_text_file_contents,
@@ -655,9 +679,11 @@ async def install_published_expert(
             welcome_message=body.welcome_message,
             runtime_config=runtime_field_updates(body, exclude_unset=True),
             enable_trajectory=body.enable_trajectory,
+            conversation_mode=body.conversation_mode,
             workspace_patch=patch,
             composer_copies=copies,
             composer_report=report,
+            quick_prompts=_quick_prompts_from_body(body),
         ),
     )
     result.update(report.as_api_fields())
@@ -764,9 +790,11 @@ async def install_expert_hub_item(
                 knowledge_base_ids=kb_ids,
                 mcp_servers=servers,
                 enable_trajectory=body.enable_trajectory,
+                conversation_mode=body.conversation_mode,
                 workspace_patch=patch,
                 composer_copies=copies,
                 composer_report=report,
+                quick_prompts=_quick_prompts_from_body(body),
                 **runtime_field_updates(body, exclude_unset=False),
             ),
         )
@@ -848,6 +876,8 @@ async def create_agent_from_expert(
     if body.backend:
         config_extra["backend"] = body.backend
     apply_enable_trajectory(config_extra, body.enable_trajectory)
+    if body.conversation_mode:
+        config_extra["conversation_mode"] = body.conversation_mode
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,
@@ -874,7 +904,12 @@ async def create_agent_from_expert(
     row = await server.app_runtime.agent_registry.create(
         spec,
         defer_bootstrap=True,
-        workspace_initializer=_composer_initializer(patch, copies, report),
+        workspace_initializer=_composer_initializer(
+            patch,
+            copies,
+            report,
+            quick_prompts=_quick_prompts_from_body(body),
+        ),
     )
     return {
         "id": row.id,

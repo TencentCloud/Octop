@@ -51,6 +51,27 @@ def _entry_name(path: str) -> str:
     return name
 
 
+def _stamp_locked_manifest(data: bytes, package_id: str) -> bytes:
+    """Add/refresh ``origin`` + ``locked`` frontmatter keys on a copied SKILL.md."""
+    text = data.decode("utf-8", errors="strict").replace("\r\n", "\n")
+    stamp = f"origin: {package_id}\nlocked: true\n"
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end != -1:
+            head = text[: end + 1]
+            body = text[end + 1 :]
+            kept = [
+                line
+                for line in head.split("\n")
+                if not line.startswith("origin:") and not line.startswith("locked:")
+            ]
+            head = "\n".join(kept)
+            if not head.endswith("\n"):
+                head += "\n"
+            return (head + stamp + body).encode("utf-8")
+    return (f"---\n{stamp}---\n\n{text}").encode()
+
+
 def _is_live_manifest(content: str | None) -> bool:
     if content is None:
         return False
@@ -129,18 +150,30 @@ async def copy_package_skills_to_workspace(
     slugs: Sequence[str],
     workspace: Any,
     overwrite: bool = False,
+    copy_policy: str = "snapshot",
 ) -> list[str]:
-    """Copy selected package skills into a workspace as independent snapshots."""
+    """Copy selected package skills into a workspace as independent snapshots.
+
+    ``copy_policy="lock"`` stamps each copied SKILL.md with an origin/locked
+    watermark so workspace writes can be rejected for non-creators (#770).
+    """
     selected = list(dict.fromkeys(validate_skill_slug(slug) for slug in slugs))
     if not selected:
         raise SkillPackageError("at least one skill is required")
 
+    stamp_locked = str(copy_policy).strip().lower() == "lock"
     sources: dict[str, list[tuple[str, bytes]]] = {}
     for slug in selected:
         skill_dir = store.package_skills_dir(package_id) / slug
         if not (skill_dir / "SKILL.md").is_file():
             raise SkillTransferNotFound(slug)
-        sources[slug] = read_skill_directory(skill_dir)
+        files = read_skill_directory(skill_dir)
+        if stamp_locked:
+            files = [
+                (name, _stamp_locked_manifest(data, package_id) if name == "SKILL.md" else data)
+                for name, data in files
+            ]
+        sources[slug] = files
 
     if not overwrite:
         for slug in selected:

@@ -21,7 +21,7 @@ export interface SetupGuideAction {
 
 interface StreamSetupGuideProps {
   icon: ReactNode;
-  title: string;
+  title?: string;
   description?: string;
   steps: SetupGuideStep[];
   primaryAction?: SetupGuideAction;
@@ -31,6 +31,11 @@ interface StreamSetupGuideProps {
   className?: string;
   /** Widen the card for longer explanatory copy. */
   wide?: boolean;
+  /**
+   * Borderless tip layout (no card chrome), closer to Tasks empty state.
+   * Prefer for page-level empty guides that sit directly in PageShell.
+   */
+  plain?: boolean;
 }
 
 function ActionButton({ action }: { action: SetupGuideAction }) {
@@ -47,7 +52,12 @@ function ActionButton({ action }: { action: SetupGuideAction }) {
     </Button>
   );
   if (!action.title) return button;
-  return <Tooltip title={action.title}>{button}</Tooltip>;
+  // Span wrapper so tooltips still work on disabled buttons.
+  return (
+    <Tooltip title={action.title}>
+      <span>{button}</span>
+    </Tooltip>
+  );
 }
 
 export default function StreamSetupGuide({
@@ -60,9 +70,15 @@ export default function StreamSetupGuide({
   extraAction,
   className,
   wide,
+  plain,
 }: StreamSetupGuideProps) {
   const hasActions = primaryAction || secondaryAction || extraAction;
-  const wrapClass = [styles.wrap, wide ? styles.wide : "", className ?? ""]
+  const wrapClass = [
+    styles.wrap,
+    wide ? styles.wide : "",
+    plain ? styles.plain : "",
+    className ?? "",
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -70,7 +86,7 @@ export default function StreamSetupGuide({
     <div className={wrapClass}>
       <div className={styles.card}>
         <div className={styles.icon}>{icon}</div>
-        <h3 className={styles.title}>{title}</h3>
+        {title ? <h3 className={styles.title}>{title}</h3> : null}
         {description ? (
           <p className={styles.description}>{description}</p>
         ) : null}

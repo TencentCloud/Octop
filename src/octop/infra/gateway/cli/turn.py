@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from harness_gateway.models import ChannelSubject, InboundMessage, TextContent
+from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
 
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.cli.cli_channel import CLI_CHANNEL_ID, CLI_CONNECTION_META

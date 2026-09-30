@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Input, Button } from "antd";
+import { Input, Button, Checkbox } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { KeyRound, Lock, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { clearAuthToken, setAuthToken } from "../../api";
+import {
+  clearAuthToken,
+  setAuthToken,
+  setRememberLoginPreference,
+} from "../../api";
 import { authApi, type OauthProviderStatus } from "../../api/modules/auth";
 import { apiErrorMessage } from "../../utils/apiError";
 import { refreshServerLabels } from "../../i18n";
@@ -22,6 +26,7 @@ import dingtalkIcon from "../../assets/channels/dingtalk.svg";
 import wecomIcon from "../../assets/channels/wecom.svg";
 import googleIcon from "../../assets/providers/google.svg";
 import CaptchaField, { type CaptchaFieldHandle } from "./CaptchaField";
+import ForgotPasswordModal from "./ForgotPasswordModal";
 import { type PublicCaptchaConfig } from "./captchaAdapters";
 
 function providerLabel(
@@ -70,6 +75,7 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [providers, setProviders] = useState<OauthProviderStatus[]>([]);
   const [ssoLoadingKind, setSsoLoadingKind] = useState<string | null>(null);
@@ -153,6 +159,9 @@ export default function LoginPage() {
         }
         return;
       }
+      if (event.data.access_token) {
+        setAuthToken(event.data.access_token, event.data.remember ?? true);
+      }
       window.location.replace(event.data.redirect || "/chat");
     };
     window.addEventListener("message", onMessage);
@@ -166,6 +175,7 @@ export default function LoginPage() {
 
   const onSso = async (kind: string) => {
     setSsoLoadingKind(kind);
+    setRememberLoginPreference(remember);
     let popup: Window | null = null;
     if (kind !== "oidc") {
       popup = openSsoPopup();
@@ -202,7 +212,7 @@ export default function LoginPage() {
     try {
       const token = await captchaRef.current?.getToken();
       const res = await authApi.login(username, password, token);
-      setAuthToken(res.access_token);
+      setAuthToken(res.access_token, remember);
       await applyUserLocale(res.user.locale);
       void refreshServerLabels(res.user.locale);
       navigate("/chat", { replace: true });
@@ -222,14 +232,14 @@ export default function LoginPage() {
     <div
       style={{
         minHeight: "100dvh",
+        boxSizing: "border-box",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "var(--fn-bg-layout)",
-        transition: "background var(--fn-transition)",
-        boxSizing: "border-box",
         padding:
           "max(24px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px))",
+        background: "var(--fn-bg-layout)",
+        transition: "background var(--fn-transition)",
       }}
     >
       <div
@@ -249,7 +259,9 @@ export default function LoginPage() {
         }}
       >
         <img
-          src={isDark ? "/logo_name_dark.png" : "/logo_name.png"}
+          src={
+            isDark ? "/logo_horizontal_white.png" : "/logo_horizontal_dark.png"
+          }
           alt="Octop"
           style={{
             height: 48,
@@ -323,68 +335,52 @@ export default function LoginPage() {
             width: "100%",
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
             gap: 8,
           }}
         >
-          <button
-            type="button"
-            data-testid="login-forgot-password-toggle"
-            onClick={() => setShowForgotHelp((open) => !open)}
+          <div
             style={{
-              margin: 0,
-              padding: 0,
-              border: "none",
-              background: "none",
-              cursor: "pointer",
-              fontSize: 13,
-              lineHeight: 1.5,
-              color: "var(--fn-text-tertiary)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              width: "100%",
             }}
           >
-            {t("login.forgotPassword", "Forgot password?")}
-          </button>
-          {showForgotHelp ? (
-            <div
-              data-testid="login-forgot-password"
+            <Checkbox
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
               style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 10,
-                background: "var(--fn-bg-secondary)",
-                border: "1px solid var(--fn-border-primary)",
-                color: "var(--fn-text-secondary)",
-                fontSize: 12,
-                lineHeight: 1.6,
-                textAlign: "left",
+                margin: 0,
+                fontSize: 13,
+                color: "var(--fn-text-tertiary)",
               }}
             >
-              <p style={{ margin: 0 }}>
-                {t(
-                  "login.forgotPasswordHelp",
-                  "Ask an administrator to reset it under Users. If you manage this Octop host, you can also run:",
-                )}
-              </p>
-              <code
-                style={{
-                  display: "block",
-                  marginTop: 8,
-                  padding: "6px 8px",
-                  borderRadius: 6,
-                  background: "var(--fn-bg-primary)",
-                  fontFamily:
-                    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                  fontSize: 12,
-                  wordBreak: "break-all",
-                }}
-              >
-                {t(
-                  "login.forgotPasswordCommand",
-                  "octop user passwd <username>",
-                )}
-              </code>
-            </div>
-          ) : null}
+              {t("login.remember")}
+            </Checkbox>
+            <button
+              type="button"
+              data-testid="login-forgot-password-toggle"
+              onClick={() => setShowForgotHelp(true)}
+              style={{
+                margin: 0,
+                padding: 0,
+                border: "none",
+                background: "none",
+                cursor: "pointer",
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: "var(--fn-text-tertiary)",
+                flexShrink: 0,
+              }}
+            >
+              {t("login.forgotPassword", "Forgot password?")}
+            </button>
+          </div>
+          <ForgotPasswordModal
+            open={showForgotHelp}
+            onClose={() => setShowForgotHelp(false)}
+          />
         </div>
 
         {providers.length > 0 && (

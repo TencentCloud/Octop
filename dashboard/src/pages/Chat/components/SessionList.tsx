@@ -30,6 +30,7 @@ import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import SessionChannelIcon from "./SessionChannelIcon";
 import SharedExpertHint from "./SharedExpertHint";
 import { recordTagClick, readTagClicks } from "../utils/tagFilterClicks";
+import RemoteExpertHint from "./RemoteExpertHint";
 import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
 
@@ -563,7 +564,7 @@ function ActiveAgentCard({
           <ExpertIcon
             iconUrl={agent.icon_url}
             iconName={agent.icon_name}
-            size={16}
+            size={agent.icon_url?.trim() ? 28 : 16}
           />
         </div>
         <div className={styles.agentCardInfo}>
@@ -572,6 +573,7 @@ function ActiveAgentCard({
               <div className={styles.agentCardName}>{agent.name}</div>
               <TeamChatBadge agent={agent} />
               <SharedExpertHint agent={agent} />
+              <RemoteExpertHint agent={agent} />
             </div>
             <AgentUnreadBadge count={agent.unread_count ?? 0} />
             <button
@@ -711,7 +713,7 @@ function InactiveAgentRow({
           <ExpertIcon
             iconUrl={agent.icon_url}
             iconName={agent.icon_name}
-            size={14}
+            size={agent.icon_url?.trim() ? 26 : 14}
           />
         </div>
         <div className={styles.agentRowInfo}>
@@ -720,6 +722,7 @@ function InactiveAgentRow({
               <div className={styles.agentRowName}>{agent.name}</div>
               <TeamChatBadge agent={agent} />
               <SharedExpertHint agent={agent} />
+              <RemoteExpertHint agent={agent} />
             </div>
             <AgentUnreadBadge count={agent.unread_count ?? 0} />
             {onNewChat ? (

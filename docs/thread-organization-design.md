@@ -47,7 +47,7 @@ Step 1 (DB迁移)
 
 ---
 
-## Step 1：数据库迁移（015）
+## Step 1：数据库迁移（021）
 
 **目标**：给 `threads` 表加上 `folder` 和 `tags` 列。完成后所有现有数据不受影响（向后兼容）。
 
@@ -55,22 +55,22 @@ Step 1 (DB迁移)
 
 | 文件 | 内容 |
 |------|------|
-| `src/octop/infra/db/migrations/018_thread_organization.sql` | SQLite 版 |
-| `src/octop/infra/db/migrations/018_thread_organization.pg.sql` | PostgreSQL 版 |
+| `src/octop/infra/db/migrations/021_thread_organization.sql` | SQLite 版 |
+| `src/octop/infra/db/migrations/021_thread_organization.pg.sql` | PostgreSQL 版 |
 
-### SQL（SQLite `018_thread_organization.sql`）
+### SQL（SQLite `021_thread_organization.sql`）
 
 ```sql
--- v18: thread organization (folder + tags)
+-- v21: thread organization (folder + tags)
 ALTER TABLE threads ADD COLUMN folder TEXT;
 ALTER TABLE threads ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
 CREATE INDEX idx_threads_folder ON threads(agent_id, user_id, folder);
 ```
 
-### SQL（PostgreSQL `018_thread_organization.pg.sql`）
+### SQL（PostgreSQL `021_thread_organization.pg.sql`）
 
 ```sql
--- v18: thread organization (folder + tags)
+-- v21: thread organization (folder + tags)
 ALTER TABLE threads ADD COLUMN folder TEXT;
 ALTER TABLE threads ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
 CREATE INDEX idx_threads_folder ON threads(agent_id, user_id, folder);
@@ -80,7 +80,7 @@ CREATE INDEX idx_threads_folder ON threads(agent_id, user_id, folder);
 
 | 文件 | 改动 |
 |------|------|
-| `tests/unit/db/test_db_pool.py` | 两处 `v == 14` → `v == 15` |
+| `tests/unit/db/test_db_pool.py` | 版本断言改为 `v == 21` |
 
 ### 验证
 
@@ -88,7 +88,7 @@ CREATE INDEX idx_threads_folder ON threads(agent_id, user_id, folder);
 uv run pytest tests/unit/db/test_db_pool.py -x -q
 ```
 
-通过即代表迁移正确执行，schema version 已更新到 15。
+通过即代表迁移正确执行，schema version 已更新到 21。
 
 ---
 

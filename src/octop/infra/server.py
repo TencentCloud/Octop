@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 import logging
 import os
@@ -216,6 +217,7 @@ class AppRuntime:
     proactive_scheduler: ProactiveCareScheduler
     trajectory_service: TrajectoryService | None = None
     history_archive: Any | None = None
+    bridge_manager: Any | None = None
 
     def replace_services(self, services: SharedServices, config: OctopConfig) -> None:
         """Retarget all runtime singletons onto a new SharedServices / config.
@@ -454,6 +456,9 @@ class OctopServer:
 
         registry.set_cron_manager(cron_mgr)
         registry.set_team_processor(gateway.processor.teams)
+        hitl_session_store = gateway.processor.hitl_coordinator.session_policies
+        hitl_session_store.replace_repo(self.services.repos.thread_repo)
+        registry.set_hitl_session_store(hitl_session_store)
 
         care_service = ProactiveCareService(
             gateway=gateway,
@@ -478,6 +483,35 @@ class OctopServer:
         await user_mgr.boot()
         await proactive_scheduler.start_all()
 
+        from octop.api.deps import sign_token
+        from octop.infra.bridge.manager import BridgeManager, public_base_url_from_config
+
+        services = self.services
+        if services is None:
+            raise RuntimeError("shared services not ready for bridge")
+
+        def _sign_user_token(user: Any) -> str:
+            secret = services.secret_repo.get("jwt")
+            if secret is None:
+                raise RuntimeError("jwt secret missing")
+            ttl = services.config.access_token_ttl_seconds
+            return sign_token(
+                secret,
+                sub=int(user.id),
+                uname=str(user.username),
+                role=str(user.role),
+                ttl_seconds=ttl,
+            )
+
+        advertise = public_base_url_from_config(config.bind_host, config.port)
+        bridge_mgr = BridgeManager(
+            bridge_repo=services.bridge_connection_repo,
+            secret_repo=services.secret_repo,
+            user_repo=services.user_repo,
+            advertise_base_url=advertise,
+            token_signer=_sign_user_token,
+        )
+
         self.app_runtime = AppRuntime(
             agent_registry=registry,
             gateway=gateway,
@@ -486,10 +520,18 @@ class OctopServer:
             proactive_scheduler=proactive_scheduler,
             trajectory_service=trajectory_service,
             history_archive=history_archive,
+            bridge_manager=bridge_mgr,
         )
         from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
 
         resume_pending_index_jobs(self.services)
+
+        # Resume Bridge links that opted into auto-reconnect (best-effort).
+        async def _resume_bridges() -> None:
+            with suppress(Exception):
+                await bridge_mgr.resume_auto_connections()
+
+        asyncio.create_task(_resume_bridges(), name="bridge-auto-resume")
 
     def _emit_wizard_password(self, *, user_count: int) -> None:
         config = self.config

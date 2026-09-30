@@ -2,7 +2,12 @@ import { useCallback, useEffect } from "react";
 import type { TFunction } from "i18next";
 import { useNavigate } from "react-router-dom";
 import type { ChatAttachment, UserComposerContext } from "./useChat";
-import { isPendingThread, type Session } from "./useSessions";
+import {
+  isPendingThread,
+  syncSessionHitlPolicy,
+  type Session,
+} from "./useSessions";
+import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import * as chatStore from "./chatStore";
 import { EMPTY_CHAT_SESSION_KEY, PENDING_THREAD_ID } from "../constants";
 import { clipThreadTitle } from "../utils/threadTitle";
@@ -27,6 +32,7 @@ interface UseChatSendParams {
   reasoningMode: "auto" | "enabled" | "disabled";
   reasoningEffort: string | null;
   conversationMode?: "ask" | "plan" | "craft";
+  hitlPolicy?: HitlSessionPolicy;
   defaultModel?: string | null;
   sendMessage: (
     text: string,
@@ -42,6 +48,7 @@ interface UseChatSendParams {
     reasoningMode?: "auto" | "enabled" | "disabled",
     reasoningEffort?: string | null,
     conversationMode?: "ask" | "plan" | "craft" | null,
+    hitlPolicy?: HitlSessionPolicy | null,
   ) => void;
   createSession: () => { session: Session; resolvedId: Promise<string> };
   renameSession: (id: string, name: string) => void;
@@ -67,6 +74,7 @@ export type ChatSendOverrides = {
   /** Send as this agent instead of the active one (queued flush). */
   agentId?: string | null;
   conversationMode?: "ask" | "plan" | "craft";
+  hitlPolicy?: HitlSessionPolicy;
 };
 
 export function useChatSend({
@@ -81,6 +89,7 @@ export function useChatSend({
   reasoningMode,
   reasoningEffort,
   conversationMode = "craft",
+  hitlPolicy,
   defaultModel,
   sendMessage,
   createSession,
@@ -114,6 +123,7 @@ export function useChatSend({
       };
 
       const mode = overrides?.conversationMode ?? conversationMode;
+      const policy = overrides?.hitlPolicy ?? hitlPolicy;
       const restricted = mode === "ask" || mode === "plan";
       const connectors = restricted
         ? []
@@ -163,6 +173,7 @@ export function useChatSend({
           composerContext?.reasoningMode ?? reasoningMode,
           composerContext?.reasoningEffort ?? reasoningEffort,
           mode,
+          policy,
         );
       };
 
@@ -208,6 +219,7 @@ export function useChatSend({
         // name lookup in maybeRenameNewThread always misses here. A freshly
         // created thread has no title yet — rename it straight away.
         if (!hadMessages) renameSession(tid, deriveThreadTitle(trimmed));
+        if (policy) syncSessionHitlPolicy(tid, policy);
         chatStore.sendTurn(
           tid,
           trimmed,
@@ -223,6 +235,7 @@ export function useChatSend({
           composerContext?.reasoningMode ?? reasoningMode,
           composerContext?.reasoningEffort ?? reasoningEffort,
           mode,
+          policy,
         );
         navigate(`/chat/${agent}/${tid}`, { replace: true });
       });
@@ -244,6 +257,7 @@ export function useChatSend({
       reasoningMode,
       reasoningEffort,
       conversationMode,
+      hitlPolicy,
       defaultModel,
       t,
     ],

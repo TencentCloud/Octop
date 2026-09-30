@@ -1,5 +1,5 @@
 /**
- * Remote Browser page — harness-browser sessions (same backend as chat).
+ * Remote Browser page — octop-browser sessions (same backend as chat).
  *
  * UI matches the original Playwright page: install flow, address bar,
  * tab bar, canvas interaction, viewport / refresh controls.
@@ -43,6 +43,7 @@ import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdg
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import PageShell from "../../../layouts/PageShell";
+import PeerOnlyRemoteAlert from "../../../components/PeerOnlyRemoteAlert";
 import BrowserAiPanel from "../../../components/BrowserAiPanel";
 import SkillRecordGuideModal from "../../../components/SkillRecordGuideModal";
 import BrowserViewer, {
@@ -1137,7 +1138,7 @@ export default function RemoteBrowserPage({
     }
 
     if (!envStatus?.playwright) {
-      // harness-browser works without Playwright, so this is informational
+      // octop-browser works without Playwright, so this is informational
       // rather than a blocking error
       if (envStatus?.harness_browser) {
         return (
@@ -1150,7 +1151,7 @@ export default function RemoteBrowserPage({
             )}
             description={t(
               "remoteBrowser.playwrightOptionalDesc",
-              "harness-browser (CDP) 已就绪，浏览器功能可用。如需 Playwright 备用模式，可安装 octop[browser] extras。",
+              "octop-browser (CDP) 已就绪，浏览器功能可用。如需 Playwright 备用模式，可安装 octop[browser] extras。",
             )}
           />
         );
@@ -1366,6 +1367,12 @@ export default function RemoteBrowserPage({
       </Drawer>
 
       <div className={styles.pageBody}>
+        {!embedded ? (
+          <PeerOnlyRemoteAlert
+            hintKey="peerOnlyBrowser"
+            style={{ marginBottom: 0 }}
+          />
+        ) : null}
         <div
           className={`${styles.mainRow} ${
             isMobile ? styles.mainRowMobile : ""
@@ -1474,12 +1481,8 @@ export default function RemoteBrowserPage({
                   renderViewportUninstallProgress()
                 ) : (
                   <StreamSetupGuide
-                    icon={
-                      <OctopEmptyMascot
-                        size={120}
-                        className={styles.setupMascot}
-                      />
-                    }
+                    plain
+                    icon={<OctopEmptyMascot />}
                     title={
                       envReady
                         ? t("remoteBrowser.startBrowserTitle", "启动远程浏览器")

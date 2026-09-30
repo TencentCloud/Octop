@@ -11,6 +11,11 @@ import { useTranslation } from "react-i18next";
 import { App } from "antd";
 
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import {
+  isPwaDisplay,
+  needsComposerVisualViewportFix,
+} from "../../../hooks/viewport";
+import { useKeepInVisualViewport } from "../../../hooks/useKeepInVisualViewport";
 import { useSlashCommands } from "../../../hooks/useSlashCommands";
 import SlashCommandMenu from "./SlashCommandMenu";
 import { agentChatApi } from "../../../api/modules/agentChat";
@@ -25,7 +30,6 @@ import ChatInputPreviewBar from "./ChatInputPreviewBar";
 import ChatInputActionsRow from "./ChatInputActionsRow";
 import ChatQueuedMessages from "./ChatQueuedMessages";
 import { useVoiceInput } from "../../../hooks/useVoiceInput";
-import { useKeyboardOffset } from "../../../hooks/useKeyboardOffset";
 import { useChatAttachments } from "../hooks/useChatAttachments";
 import { useSlashMentionInput } from "../hooks/useSlashMentionInput";
 import { stripThinkingTags } from "../utils/chatAttachments";
@@ -54,6 +58,7 @@ import type {
   EnqueueChatItemInput,
   QueuedChatItem,
 } from "../hooks/useChatMessageQueue";
+import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import styles from "../index.module.less";
 
 /** Imperative handle exposed via ref for programmatic text injection. */
@@ -98,6 +103,8 @@ interface ChatInputProps {
   ) => void;
   conversationMode?: "ask" | "plan" | "craft";
   onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
+  hitlPolicy?: HitlSessionPolicy;
+  onHitlPolicyChange?: (policy: HitlSessionPolicy) => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -155,6 +162,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onReasoningChange,
       conversationMode = "craft",
       onConversationModeChange,
+      hitlPolicy,
+      onHitlPolicyChange,
       availableConnectors,
       selectedConnectors = [],
       onConnectorsChange,
@@ -182,7 +191,12 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const { commands: slashCommands, labelFor } = useSlashCommands("ui");
     const skillDisplayName = useSkillDisplayName();
     const isMobile = useIsMobile();
-    useKeyboardOffset();
+    const shellRef = useRef<HTMLDivElement>(null);
+    const keepComposerInView =
+      typeof window !== "undefined" &&
+      !isPwaDisplay() &&
+      (isMobile || needsComposerVisualViewportFix());
+    useKeepInVisualViewport(shellRef, keepComposerInView);
     const [text, setText] = useState(
       () => initialText || readInputDraft(agentId, threadId),
     );
@@ -328,7 +342,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       userHasEditedRef.current = false;
       ignoreInitialTextRef.current = null;
       prevInitialTextRef.current = "";
-      setText(initialText || readInputDraft(agentId, threadId));
+      setText(readInputDraft(agentId, threadId));
       const pendingAttachments = consumePendingPrefillAttachments();
       if (pendingAttachments.length > 0) {
         restoreAttachments(pendingAttachments);
@@ -710,6 +724,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     return (
       <div
+        ref={shellRef}
         className={`${styles.chatInput} ${dragOver ? styles.dropActive : ""}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -837,6 +852,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <ChatInputActionsRow
             isMobile={isMobile}
             isStreaming={isStreaming}
+            isTeam={isTeam}
             disabled={disabled}
             canSend={canSend}
             text={text}
@@ -862,6 +878,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onReasoningChange={onReasoningChange}
             conversationMode={conversationMode}
             onConversationModeChange={onConversationModeChange}
+            hitlPolicy={hitlPolicy}
+            onHitlPolicyChange={onHitlPolicyChange}
             defaultModel={defaultModel}
             availableConnectors={availableConnectors}
             selectedConnectors={selectedConnectors}

@@ -7,7 +7,7 @@ import tempfile
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
-from harness_agent.backends.workspace import BackendWorkspace
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.infra.gateway.media.inbound_store import (
     build_timestamped_inbound_name,

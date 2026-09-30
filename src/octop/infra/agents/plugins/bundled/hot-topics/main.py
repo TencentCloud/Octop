@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 import httpx
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "

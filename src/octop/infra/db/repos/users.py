@@ -62,10 +62,16 @@ class UserRow:
     login_failed_count: int = 0
     login_locked_until: int = 0
     permissions: builtins.list[str] = field(default_factory=list)
+    role_name: str | None = None
+    avatar_icon: str | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> UserRow:
         keys = set(r.keys())
+        raw_name = r["role_name"] if "role_name" in keys else None
+        role_name = str(raw_name).strip() if isinstance(raw_name, str) else ""
+        raw_icon = r["avatar_icon"] if "avatar_icon" in keys else None
+        avatar_icon = str(raw_icon).strip() if isinstance(raw_icon, str) else ""
         return cls(
             id=r["id"],
             username=r["username"],
@@ -82,6 +88,8 @@ class UserRow:
             sso_provider_id=r["sso_provider_id"] if "sso_provider_id" in keys else None,
             sso_subject=r["sso_subject"] if "sso_subject" in keys else None,
             permissions=_parse_permissions(r["permissions"] if "permissions" in keys else None),
+            role_name=role_name or None,
+            avatar_icon=avatar_icon or None,
         )
 
 
@@ -101,14 +109,16 @@ class UserRepo:
         sso_provider_id: int | None = None,
         sso_subject: str | None = None,
         permissions: builtins.list[str] | None = None,
+        role_name: str | None = None,
     ) -> int:
         perms_json = json.dumps(permissions or [], ensure_ascii=False)
         with self._db.transaction() as conn:
             return insert_returning_id(
                 conn,
                 "INSERT INTO users(username, password_hash, role, display_name, locale, "
-                "email, sso_provider_id, sso_subject, disabled, created_at, permissions) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+                "email, sso_provider_id, sso_subject, disabled, created_at, permissions, "
+                "role_name) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
                 (
                     username,
                     password_hash,
@@ -120,6 +130,7 @@ class UserRepo:
                     sso_subject,
                     now_ts(),
                     perms_json,
+                    role_name,
                 ),
             )
 
@@ -301,6 +312,20 @@ class UserRepo:
                 (preferences_json, user_id),
             )
 
+    def set_role_name(self, user_id: int, role_name: str | None) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE users SET role_name = ? WHERE id = ?",
+                (role_name, user_id),
+            )
+
+    def set_avatar_icon(self, user_id: int, avatar_icon: str | None) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE users SET avatar_icon = ? WHERE id = ?",
+                (avatar_icon, user_id),
+            )
+
     def set_permissions(self, user_id: int, permissions: builtins.list[str]) -> None:
         payload = json.dumps(permissions, ensure_ascii=False)
         with self._db.transaction() as conn:
@@ -316,6 +341,12 @@ class UserRepo:
     def count(self) -> int:
         with self._db.connect() as conn:
             return int(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0])
+
+    def count_by_role(self, role: str) -> int:
+        with self._db.connect() as conn:
+            return int(
+                conn.execute("SELECT COUNT(*) FROM users WHERE role = ?", (role,)).fetchone()[0]
+            )
 
     def clear_login_lockout(self, user_id: int) -> None:
         with self._db.transaction() as conn:

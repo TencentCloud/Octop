@@ -11,6 +11,7 @@ import { getApiUrl } from "../../../api/config";
 import { getAuthToken } from "../../../api/request";
 import type { TokenUsage } from "../../../api/types";
 import { buildDashboardChatWsUrl } from "../../../api/modules/wsChat";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { generateId } from "../../../utils/messageParser";
 import type {
   ChatAttachment,
@@ -150,6 +151,7 @@ function sealInFlightAssistantMessages(state: SessionStreamState): void {
   state.messages = state.messages.map((m) =>
     m.status === "streaming" ? { ...m, status: "done" as const } : m,
   );
+  clearAllLiveSpeakers(state);
 }
 
 // ── Pending prefill text ──────────────────────────────────────────────────
@@ -253,6 +255,7 @@ const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
   historyNextOffset: 0,
   historyHydrated: false,
   pendingPlanPath: null,
+  liveSpeakers: [] as string[],
 });
 
 const sessionStates = new Map<string, SessionStreamState>();
@@ -384,7 +387,58 @@ function buildSnapshot(state: SessionStreamState): SessionSnapshot {
     historyNextCursor: state.historyNextCursor,
     historyHydrated: state.historyHydrated,
     pendingPlanPath: state.pendingPlanPath ?? null,
+    liveSpeakers: [...state.liveSpeakers].sort(),
   };
+}
+
+function speakerLiveKey(speaker?: string): string {
+  return (speaker || "").trim();
+}
+
+/** Mark a speaker as still generating (survives tool gaps until ``done``). */
+function markSpeakerLive(state: SessionStreamState, speaker?: string): void {
+  const key = speakerLiveKey(speaker);
+  state.liveSpeakers.add(key);
+  // Unlabeled host frames also light up the room id so stamped host groups match.
+  if (!key) {
+    const host = state.roomAgentId?.trim();
+    if (host) state.liveSpeakers.add(host);
+  }
+}
+
+function clearSpeakerLive(state: SessionStreamState, speaker?: string): void {
+  const key = speakerLiveKey(speaker);
+  state.liveSpeakers.delete(key);
+  const host = state.roomAgentId?.trim();
+  // Unlabeled and stamped host share one live bit — clear both together.
+  if (!key) {
+    if (host) state.liveSpeakers.delete(host);
+  } else if (host && key === host) {
+    state.liveSpeakers.delete("");
+  }
+}
+
+function clearAllLiveSpeakers(state: SessionStreamState): void {
+  state.liveSpeakers.clear();
+}
+
+/** Drop live speakers with no streaming text and no in-flight tools. */
+function pruneIdleLiveSpeakers(state: SessionStreamState): void {
+  if (state.liveSpeakers.size === 0) return;
+  const busy = new Set<string>();
+  const host = state.roomAgentId?.trim();
+  for (const message of state.messages) {
+    if (message.role !== "assistant") continue;
+    const key = speakerLiveKey(message.speakerAgentId);
+    const inFlightTool = Boolean(message.toolData && !message.toolData.output);
+    if (message.status !== "streaming" && !inFlightTool) continue;
+    busy.add(key);
+    if (!key && host) busy.add(host);
+    if (key && host && key === host) busy.add("");
+  }
+  for (const key of [...state.liveSpeakers]) {
+    if (!busy.has(key)) state.liveSpeakers.delete(key);
+  }
 }
 
 function getOrCreate(sessionId: string): SessionStreamState {
@@ -411,6 +465,7 @@ function getOrCreate(sessionId: string): SessionStreamState {
       _snapshot: EMPTY_SNAPSHOT,
       roomAgentId: undefined,
       isTeamRoom: false,
+      liveSpeakers: new Set(),
     };
     sessionStates.set(sessionId, state);
   }
@@ -430,12 +485,15 @@ function notify(state: SessionStreamState) {
 }
 
 function beginStream(state: SessionStreamState, sessionId: string): void {
+  clearAllLiveSpeakers(state);
   state.thinkingStartedAt = Date.now();
   state.isStreaming = true;
   touchStreamActivity(sessionId);
 }
 
 function clearStreamingFlags(state: SessionStreamState): void {
+  // Do not clear liveSpeakers — team members may keep generating after the
+  // host turn unlocks the composer; process panels key off liveSpeakers.
   state.isStreaming = false;
   state.thinkingStartedAt = null;
 }
@@ -744,6 +802,7 @@ export function clearMessages(sessionId: string) {
   if (alreadyEmpty) return;
   state.messages = [];
   clearStreamingFlags(state);
+  clearAllLiveSpeakers(state);
   state.runUsage = null;
   usageSamplesByState.delete(state);
   state.streamMsg = "";
@@ -1021,8 +1080,9 @@ function applyUsageChunk(state: SessionStreamState, chunk: UsageChunk): void {
 
 function chunkSpeakerId(
   chunk: { agent_id?: unknown } | object,
+  hostAgentId?: string,
 ): string | undefined {
-  return streamSpeakerId(chunk);
+  return rewritePeerSpeakerId(hostAgentId, streamSpeakerId(chunk));
 }
 
 function hasStreamingMessages(state: SessionStreamState): boolean {
@@ -1038,7 +1098,7 @@ function isHostTurnTerminal(
 ): boolean {
   if (data.type === "error" || data.type === "hitl_required") return true;
   if (data.type !== "done") return false;
-  const speaker = chunkSpeakerId(data);
+  const speaker = chunkSpeakerId(data, hostAgentId);
   if (!speaker) return true;
   const host = (hostAgentId || "").trim();
   // Room id not remembered yet — treat a stamped done as the 1:1 host.
@@ -1098,30 +1158,39 @@ function handleHarnessChunk(
   chunk: HarnessChunk,
   sessionId?: string,
 ): void {
-  const speaker = chunkSpeakerId(chunk);
+  const speaker = chunkSpeakerId(chunk, sessionHostAgentId(state, sessionId));
   if (sessionId && (state.isStreaming || speaker)) {
     touchStreamActivity(sessionId);
   }
   switch (chunk.type) {
-    case "token":
+    case "token": {
+      const snapshot = Boolean(chunk.team_snapshot);
+      // Snapshots are complete wall copies — never leave the speaker "live".
+      if (!snapshot) markSpeakerLive(state, speaker);
       appendStreamingToken(
         state,
         chunk.content,
         speaker,
-        Boolean(chunk.team_snapshot),
+        snapshot,
         Boolean(chunk.team_wrapup),
       );
+      if (snapshot) clearSpeakerLive(state, speaker);
       break;
+    }
     case "reasoning":
+      markSpeakerLive(state, speaker);
       appendStreamingReasoning(state, chunk.content, speaker);
       break;
     case "usage":
       applyUsageChunk(state, chunk);
       break;
     case "tool_call_chunk":
+      markSpeakerLive(state, speaker);
       upsertToolCall(state, chunk, sessionId, speaker);
       break;
     case "tool_result":
+      // Keep the speaker live across the tool→next-token gap.
+      markSpeakerLive(state, speaker);
       closeToolCall(state, chunk.messages, sessionId, speaker);
       break;
     case "done":
@@ -1134,6 +1203,10 @@ function handleHarnessChunk(
       }
       if (Boolean(chunk.team_wrapup)) {
         finalizeWrapupMessages(state, speaker);
+        clearSpeakerLive(state, speaker);
+        // Wrap-up means members already finished — drop stale live bits
+        // (e.g. snapshot re-marked a speaker after their done).
+        pruneIdleLiveSpeakers(state);
         break;
       }
       finalizeStreamingMessages(
@@ -1141,6 +1214,7 @@ function handleHarnessChunk(
         speaker,
         sessionHostAgentId(state, sessionId),
       );
+      clearSpeakerLive(state, speaker);
       // Host done always frees the composer. Member bubbles may still stream.
       if (!speaker || (!hasStreamingMessages(state) && state.isStreaming)) {
         clearStreamingFlags(state);
@@ -1756,6 +1830,16 @@ function extractToolResultOutput(messages: unknown[]): string {
   return "";
 }
 
+/** First non-null ToolMessage ``artifact`` in a tool_result frame, if any. */
+function extractToolResultArtifact(messages: unknown[]): unknown {
+  for (const raw of messages) {
+    if (!raw || typeof raw !== "object") continue;
+    const artifact = (raw as Record<string, unknown>).artifact;
+    if (artifact !== undefined && artifact !== null) return artifact;
+  }
+  return undefined;
+}
+
 function closeToolCall(
   state: SessionStreamState,
   messages: unknown[],
@@ -1815,6 +1899,7 @@ function closeToolCall(
   if (toolIdx < 0) return;
   const target = state.messages[toolIdx];
   const output = extractToolResultOutput(messages);
+  const artifact = extractToolResultArtifact(messages);
   const explicitToolError = messages.some(
     (raw) =>
       raw !== null &&
@@ -1841,6 +1926,7 @@ function closeToolCall(
         ...(target.toolData ?? {}),
         output,
         errorCode,
+        ...(artifact != null ? { artifact } : {}),
       },
     },
     ...state.messages.slice(toolIdx + 1),
@@ -2019,10 +2105,21 @@ function parseHitlRequest(raw: Record<string, unknown>) {
 function resolveHitlPending(
   state: SessionStreamState,
   status: "approved" | "rejected",
+  policy?: { mode: string; tools?: string[] },
 ): void {
-  state.messages = state.messages.map((m) =>
-    m.hitlData ? { ...m, hitlData: { ...m.hitlData, status } } : m,
-  );
+  const resolution =
+    status === "rejected"
+      ? undefined
+      : policy?.mode === "allow_all"
+      ? "allow_all"
+      : policy?.mode === "allow_tools"
+      ? "allow_tool"
+      : "approve";
+  state.messages = state.messages.map((m) => {
+    const hitl = m.hitlData;
+    if (!hitl || (hitl.status ?? "pending") !== "pending") return m;
+    return { ...m, hitlData: { ...hitl, status, resolution } };
+  });
 }
 
 function handleHitlRequired(
@@ -2031,6 +2128,7 @@ function handleHitlRequired(
 ): void {
   finalizeStreamingMessages(state);
   clearStreamingFlags(state);
+  clearAllLiveSpeakers(state);
   state.messages = [
     ...state.messages,
     {
@@ -2348,6 +2446,7 @@ async function sendTurnWebSocket(
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
   conversationMode?: "ask" | "plan" | "craft" | null,
+  hitlPolicy?: { mode: string; tools?: string[] } | null,
 ): Promise<boolean> {
   const state = getOrCreate(sessionId);
   const resolvedThreadId = (threadId || sessionId).trim();
@@ -2428,6 +2527,7 @@ async function sendTurnWebSocket(
       if (reasoningMode) payload.reasoning_mode = reasoningMode;
       if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
       if (conversationMode) payload.conversation_mode = conversationMode;
+      if (hitlPolicy) payload.hitl_policy = hitlPolicy;
       ws.send(JSON.stringify(payload));
     };
 
@@ -2561,6 +2661,7 @@ export async function sendTurn(
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
   conversationMode?: "ask" | "plan" | "craft" | null,
+  hitlPolicy?: { mode: string; tools?: string[] } | null,
 ): Promise<void> {
   const state = getOrCreate(sessionId);
   rememberRoomAgent(state, agentId);
@@ -2648,6 +2749,7 @@ export async function sendTurn(
     reasoningMode,
     reasoningEffort,
     conversationMode,
+    hitlPolicy,
   );
   if (!wsOk) {
     state.messages = [
@@ -2716,6 +2818,7 @@ export async function resumeHitl(
   decisions: Array<{ type: string; message?: string }>,
   onStreamEnd?: () => void,
   dismissed = false,
+  hitlPolicy?: { mode: string; tools?: string[] },
 ): Promise<void> {
   const state = getOrCreate(sessionId);
   state.abortController?.abort();
@@ -2723,7 +2826,7 @@ export async function resumeHitl(
     dismissed || decisions.some((d) => d.type === "reject")
       ? "rejected"
       : "approved";
-  resolveHitlPending(state, hitlStatus);
+  resolveHitlPending(state, hitlStatus, hitlPolicy);
   beginStream(state, sessionId);
   notify(state);
   emitStreamEvent({ kind: "streamStart", sessionId });
@@ -2761,7 +2864,11 @@ export async function resumeHitl(
     const res = await fetch(getApiUrl(`/agents/${agentId}/chat/hitl/resume`), {
       method: "POST",
       headers,
-      body: JSON.stringify({ thread_id: threadId, decisions }),
+      body: JSON.stringify({
+        thread_id: threadId,
+        decisions,
+        ...(hitlPolicy ? { hitl_policy: hitlPolicy } : {}),
+      }),
       signal: controller.signal,
     });
     if (!res.ok) {

@@ -19,6 +19,7 @@ import {
 } from "../../routes";
 import { CHAT_HISTORY_RAIL_ID, isChatPath } from "../chatHistoryRail";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useKeyboardOffset } from "../../hooks/useKeyboardOffset";
 import { useChatSidebarOpen } from "../../pages/Chat/hooks/useChatSidebarState";
 import { EXPAND_CHAT_RAIL_EVENT } from "../../pages/Chat/components/ChatSidebarPanel";
 import RequirePermission from "../../components/RequirePermission";
@@ -59,6 +60,7 @@ export default function MainLayout() {
   const isMobile = useIsMobile();
   const { layoutMode } = useLayoutMode();
   useDashboardPushToast();
+  useKeyboardOffset();
   const isMinimalLayout = layoutMode === "minimal";
   const isFullscreen =
     FULLSCREEN_PATHS.has(currentPath) ||
@@ -179,10 +181,17 @@ export default function MainLayout() {
       <BackupOperationProvider>
         <div
           style={{
-            height: "100dvh",
+            height: "100%",
+            boxSizing: "border-box",
+            /* iOS PWA landscape sides. Top is owned by Header (#664/#746),
+               bottom is handled per-surface. */
+            paddingLeft: "env(safe-area-inset-left, 0px)",
+            paddingRight: "env(safe-area-inset-right, 0px)",
             display: "flex",
             flexDirection: "row",
-            background: "var(--fn-bg-layout)",
+            background: isChatRoute
+              ? "var(--fn-bg-elevated, #fff)"
+              : "var(--fn-bg-primary)",
             transition: "background var(--fn-transition)",
             overflow: "hidden",
           }}
@@ -278,7 +287,9 @@ export default function MainLayout() {
               <Content
                 className="page-container"
                 style={{
-                  background: "var(--fn-bg-layout)",
+                  background: isChatRoute
+                    ? "var(--fn-bg-elevated, #fff)"
+                    : "var(--fn-bg-layout)",
                   transition: "background var(--fn-transition)",
                   flex: 1,
                   overflow: "hidden",

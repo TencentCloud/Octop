@@ -6,11 +6,12 @@ import json
 import urllib.error
 import urllib.request
 from unittest import mock
+from urllib.parse import urlparse
 
 import pytest
 
-from octop.infra.providers.codex_apply import CODEX_MODELS, CODEX_PROVIDER_NAME
-from octop.infra.providers.codex_oauth import (
+from octop.infra.agents.providers.codex_apply import CODEX_MODELS, CODEX_PROVIDER_NAME
+from octop.infra.agents.providers.codex_oauth import (
     CodexOAuthDeviceCodeError,
     build_codex_headers,
     exchange_device_code,
@@ -48,7 +49,7 @@ def test_request_device_code_parses_response() -> None:
     assert info["device_auth_id"] == "dev-1"
     assert info["user_code"] == "ABCD-1234"
     assert info["interval_s"] == 5
-    assert "auth.openai.com" in info["verification_url"]
+    assert urlparse(info["verification_url"]).hostname == "auth.openai.com"
 
 
 def test_request_device_code_normalizes_network_failures() -> None:

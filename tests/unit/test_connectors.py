@@ -1053,7 +1053,7 @@ def test_fliggy_exposes_only_nl_search_tools():
 
 
 def test_mcp_args_model_drops_nulls_before_validation():
-    from harness_agent.mcp import mcp_args_model
+    from octop_harness.mcp import mcp_args_model
 
     model = mcp_args_model(
         "search_place",

@@ -17,7 +17,7 @@ async def cron_run_now_async(agent_id: str, cron_id: str) -> None:
         row = mgr.get(cron_id)
         if row is None or row.agent_id != agent_id:
             raise OctopError(ErrorCode.NOT_FOUND, "cron job not found")
-        await mgr.run_now(cron_id)
+        await mgr.run_now(cron_id, wait=True)
 
 
 def cron_run_now(agent_id: str, cron_id: str) -> None:

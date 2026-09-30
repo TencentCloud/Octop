@@ -12,8 +12,8 @@ import logging
 import re
 from collections.abc import Callable, Sequence
 
-from octop.infra.agents.profile import parse_config_json
 from octop.infra.agents.providers.probe import build_probe_chat_model
+from octop.infra.agents.settings.profile import parse_config_json
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.providers import ProviderRepo, ProviderRow
 from octop.infra.db.repos.settings import SettingsRepo
