@@ -38,7 +38,7 @@ def _resolve_coords(
     lon: float | None,
 ) -> tuple[float, float, str]:
     if lat is not None and lon is not None:
-        return float(lat), float(lon), city or f"{lat},{lon}"
+        return float(lat), float(lon), (city or "").strip() or f"{lat},{lon}"
     name = (city or "Beijing").strip()
     resp = client.get(
         "https://geocoding-api.open-meteo.com/v1/search",
@@ -57,7 +57,7 @@ def _resolve_coords(
 
 
 async def get_air_quality(
-    city: str = "Beijing",
+    city: str = "",
     lat: float | None = None,
     lon: float | None = None,
 ) -> str:
