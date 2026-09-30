@@ -68,13 +68,15 @@
   border-right: none;
 
   @media (max-width: 767px) {
-    left: 16px;
-    right: 20px;
-    width: auto;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: auto;
+    width: min(88vw, 360px);
     min-width: unset;
-    border-radius: 28px;
+    border-radius: 0 20px 20px 0;
     border-right: none;
-    box-shadow: 0 8px 32px rgba(15, 23, 42, 0.1);
+    box-shadow: 10px 0 32px rgba(15, 23, 42, 0.16);
   }
 }
 
@@ -98,6 +100,10 @@
   flex: 1;
   min-height: 0;
   box-sizing: border-box;
+
+  @media (max-width: 767px) {
+    padding: 10px 10px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* Minimal layout: SessionList hosted inside the app nav records pane. */

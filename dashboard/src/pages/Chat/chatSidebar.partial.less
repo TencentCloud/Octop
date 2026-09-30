@@ -100,6 +100,50 @@
   /* overlay is now inside sidebarWrapper — pointer-events must not block sidebar */
 }
 
+.mobileSidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  min-height: 56px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px 16px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-elevated, #fff);
+}
+
+.mobileSidebarTitle {
+  color: var(--fn-text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.mobileSidebarClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  touch-action: manipulation;
+
+  &:active {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+}
+
 /* -- Session list -- */
 .sessionList {
   display: flex;
