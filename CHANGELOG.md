@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 内置插件「空气质量」按 lat/lon 查询时，卡片与文案仍显示默认城市名 `Beijing`（`city` 参数默认值非空使坐标回退分支失效）；现在省略 `city` 的坐标查询按坐标本身标注，显式传入的城市名与「不传参数默认 Beijing」的行为保持不变。
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
