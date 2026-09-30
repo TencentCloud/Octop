@@ -7,6 +7,8 @@ from typing import Any
 import httpx as httpx_module
 import jwt
 
+from octop.infra.utils.ssrf_guard import validate_https_url
+
 # Only asymmetric algorithms used by mainstream OIDC IdPs.
 _ALLOWED_ALGORITHMS = ("RS256", "ES256")
 
@@ -20,6 +22,9 @@ def _signing_key(id_token: str, *, jwks_uri: str, httpx: httpx_module.Client) ->
     if not isinstance(key_id, str):
         raise jwt.InvalidTokenError("ID token is missing a key ID")
 
+    # ``jwks_uri`` comes out of the issuer's discovery document, so it is not
+    # trusted input; block it before it reaches the network.
+    validate_https_url(jwks_uri, field="jwks_uri")
     response = httpx.get(jwks_uri)
     response.raise_for_status()
     jwks = response.json()

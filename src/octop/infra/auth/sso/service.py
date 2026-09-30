@@ -29,6 +29,7 @@ from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.users.manager import UserManager
+from octop.infra.utils.ssrf_guard import validate_https_url
 
 _LOGIN_STATE_TTL_SECONDS = 600
 _LOGIN_CODE_TTL_SECONDS = 60
@@ -399,6 +400,10 @@ class SsoService:
         endpoint = discovery.get(name)
         if not isinstance(endpoint, str) or not endpoint:
             raise ValueError(f"OIDC discovery has no {name}")
+        # These URLs are echoed back by the issuer, so a compromised or
+        # malicious discovery document must not be able to point the server
+        # (or the browser redirect) at an internal address.
+        validate_https_url(endpoint, field=name)
         return endpoint
 
     def _token_request_data(

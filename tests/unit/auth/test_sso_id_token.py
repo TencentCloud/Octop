@@ -11,6 +11,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from octop.infra.auth.sso.id_token import verify_id_token
+from octop.infra.utils.ssrf_guard import UnsafeOutboundUrl
 
 
 @pytest.fixture
@@ -90,6 +91,48 @@ def test_verify_id_token_rejects_wrong_issuer(
             nonce="nonce",
             httpx=jwks_client,
         )
+
+
+@pytest.mark.parametrize(
+    "jwks_uri",
+    [
+        "http://issuer.example/jwks",
+        "https://localhost/jwks",
+        "https://127.0.0.1/jwks",
+        "https://10.0.0.5/jwks",
+        "https://169.254.169.254/jwks",
+    ],
+)
+def test_verify_id_token_rejects_unsafe_jwks_uri(
+    signing_key: rsa.RSAPrivateKey, jwks_uri: str
+) -> None:
+    requested: list[str] = []
+    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(signing_key.public_key()))
+    jwk.update({"kid": "test-key", "use": "sig", "alg": "RS256"})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        # A usable key, so the only thing that can reject the call is the
+        # URL guard under test.
+        return httpx.Response(200, json={"keys": [jwk]})
+
+    with (
+        httpx.Client(transport=httpx.MockTransport(handler)) as client,
+        pytest.raises(UnsafeOutboundUrl),
+    ):
+        verify_id_token(
+            _token(signing_key),
+            jwks_uri=jwks_uri,
+            issuer="https://issuer.example",
+            client_id="octop-client",
+            nonce="nonce",
+            httpx=client,
+        )
+
+    # ``jwks_uri`` is read out of the issuer's discovery document, so a
+    # malicious or compromised issuer must not be able to point the server at
+    # an internal address.
+    assert requested == []
 
 
 def test_verify_id_token_rejects_wrong_nonce(

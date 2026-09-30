@@ -10,6 +10,7 @@ import jwt
 
 from octop.infra.auth.sso.public_base import oidc_callback_path
 from octop.infra.db.repos.sso import SsoLoginStateRow, SsoProviderRow
+from octop.infra.utils.ssrf_guard import validate_https_url
 
 if TYPE_CHECKING:
     from octop.infra.auth.sso.service import SsoService
@@ -78,6 +79,7 @@ class OidcAdapter:
             with self._service._http_client() as client:
                 discovery = self._service._discovery.get(row.issuer, httpx_client=client)
                 jwks_uri = self._service._endpoint(discovery, "jwks_uri")
+                validate_https_url(jwks_uri, field="jwks_uri")
                 response = client.get(jwks_uri)
                 response.raise_for_status()
                 jwks = response.json()
