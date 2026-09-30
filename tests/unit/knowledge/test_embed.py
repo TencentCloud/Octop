@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from octop.infra.knowledge import embed
 
 
@@ -143,3 +145,97 @@ def test_remote_embedding_batches_large_input(monkeypatch) -> None:
     # Merged vectors stay aligned with input order.
     assert len(result) == 45
     assert result == [[float(i)] for i in range(45)]
+
+
+def test_remote_embedding_aligns_out_of_order_response_by_index(monkeypatch) -> None:
+    provider = SimpleNamespace(base_url="https://example.test/v1/", api_key="secret")
+    services = SimpleNamespace(
+        settings_repo=SimpleNamespace(
+            get=lambda key: {
+                "knowledge_embedding_backend": "remote",
+                "knowledge_embedding_model": "embed-1",
+                "knowledge_embedding_provider_id": "7",
+            }.get(key)
+        ),
+        provider_repo=SimpleNamespace(
+            get=lambda provider_id: provider if provider_id == 7 else None
+        ),
+    )
+
+    class Response:
+        def __init__(self, batch: list[str]) -> None:
+            # OpenAI-compatible APIs return ``index`` per item and do not have
+            # to preserve request order; this one answers back-to-front.
+            self._data = [
+                {"index": i, "embedding": [float(batch[i].split("-")[1])]}
+                for i in reversed(range(len(batch)))
+            ]
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"data": self._data}
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, url, *, headers, json):
+            return Response(json["input"])
+
+    monkeypatch.setattr(embed.httpx, "Client", lambda **_kwargs: Client())
+
+    texts = [f"chunk-{i}" for i in range(25)]
+    result = embed.embed_knowledge_texts(services, texts)
+
+    # Vectors must follow the input order, not the order the API replied in.
+    assert result == [[float(i)] for i in range(25)]
+
+
+def test_remote_embedding_rejects_duplicated_response_index(monkeypatch) -> None:
+    provider = SimpleNamespace(base_url="https://example.test/v1/", api_key="secret")
+    services = SimpleNamespace(
+        settings_repo=SimpleNamespace(
+            get=lambda key: {
+                "knowledge_embedding_backend": "remote",
+                "knowledge_embedding_model": "embed-1",
+                "knowledge_embedding_provider_id": "7",
+            }.get(key)
+        ),
+        provider_repo=SimpleNamespace(
+            get=lambda provider_id: provider if provider_id == 7 else None
+        ),
+    )
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            # Two inputs were sent, but both items claim to be number 0, so
+            # one input would silently end up without a vector.
+            return {
+                "data": [
+                    {"index": 0, "embedding": [1.0]},
+                    {"index": 0, "embedding": [2.0]},
+                ]
+            }
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, url, *, headers, json):
+            return Response()
+
+    monkeypatch.setattr(embed.httpx, "Client", lambda **_kwargs: Client())
+
+    with pytest.raises(RuntimeError):
+        embed.embed_knowledge_texts(services, ["hello", "world"])
