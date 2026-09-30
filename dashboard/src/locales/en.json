@@ -6290,7 +6290,7 @@
     "step3Title": "Describe the steps",
     "step3Desc": "Then describe what the assistant should do in the browser; it will perform and record the actions.",
     "step4Title": "Stop and confirm",
-    "step4Desc": "When finished, type \"结束\" to stop; after confirmation the skill is saved under the task goal. Type the goal keyword later to replay it.",
+    "step4Desc": "When finished, type \"结束\" (or \"end\") to stop; after confirmation the skill is saved under the task goal. Type the goal keyword later to replay it.",
     "envNotReady": "Browser environment required first",
     "title": "Skill recording guide"
   }
