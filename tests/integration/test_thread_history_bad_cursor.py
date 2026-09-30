@@ -1,4 +1,7 @@
-"""Bad ``cursor`` values on the thread-history endpoint must be a 400, not a 500."""
+"""Bad ``cursor`` values on the thread-history endpoint must be a 400, not a 500.
+
+Only cursor problems: a ``ValueError`` from the archive itself stays a server error.
+"""
 
 from __future__ import annotations
 
@@ -62,3 +65,43 @@ async def test_rejected_cursor_is_400(env: Any, cursor: str, reason: str) -> Non
     )
     assert r.status_code == 400, f"{reason}: {r.status_code} {r.text}"
     assert r.json()["error"]["code"] == "SLASH_BAD_ARGS"
+
+
+@pytest.fixture
+def one_segment(env: Any, monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Archive that reports one stored segment, so pages go through ``HistoryArchive.page``."""
+    c, srv, admin, aid, tid = env
+    archive = srv.app_runtime.history_archive
+    monkeypatch.setattr(archive.store, "segments", lambda _thread_id: [{"id": 7}])
+    return c, archive, admin, aid, tid
+
+
+async def test_archive_cursor_check_is_400(one_segment: Any) -> None:
+    """``HistoryArchive.page`` rejects a foreign cursor the same way the reader does."""
+    c, _archive, admin, aid, tid = one_segment
+    r = await c.get(
+        f"/api/agents/{aid}/threads/{tid}/history",
+        headers=admin,
+        params={"cursor": "garbage"},
+    )
+    assert r.status_code == 400, f"{r.status_code} {r.text}"
+    assert r.json()["error"]["code"] == "SLASH_BAD_ARGS"
+
+
+async def test_archive_internal_failure_is_not_masked_as_bad_request(
+    one_segment: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An archive's own ``ValueError`` is not the caller's fault.
+
+    It must reach the framework handler (HTTP 500) instead of being rewritten into a
+    400; the ASGI test transport re-raises whatever the app logged, so that raise is
+    the observable half of the contract.
+    """
+    c, archive, admin, aid, tid = one_segment
+
+    async def wedged(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise ValueError("archive storage is wedged")
+
+    monkeypatch.setattr(archive, "page", wedged)
+    with pytest.raises(ValueError, match="archive storage is wedged"):
+        await c.get(f"/api/agents/{aid}/threads/{tid}/history", headers=admin)

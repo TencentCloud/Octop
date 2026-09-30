@@ -13,6 +13,7 @@ from typing import Any
 
 from octop.infra.db.repos.thread_messages import ThreadMessageRepo
 from octop.infra.db.repos.trajectory_events import TrajectoryEventRepo
+from octop.infra.history.errors import InvalidHistoryCursorError
 from octop.infra.history.store import HistoryStore, dumps
 
 LegacyReader = Callable[[dict[str, Any]], Awaitable[list[Any]]]
@@ -223,7 +224,7 @@ class HistoryArchive:
                 if not any(segment["id"] == boundary["segment"] for segment in segments):
                     raise ValueError("Unknown history segment")
             except (ValueError, KeyError, TypeError) as exc:
-                raise ValueError("Invalid history cursor") from exc
+                raise InvalidHistoryCursorError("Invalid history cursor") from exc
         selected: list[tuple[int, int, Any]] = []
         skip = max(0, offset) if not cursor else 0
         for segment in reversed(segments):
