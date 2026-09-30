@@ -29,6 +29,7 @@ from octop.infra.gateway.media.inbound_store import (
     inbound_rel_path,
     resolve_inbound_attachment_path,
 )
+from octop.infra.skills.skillhub_common import HTTP_READ_CHUNK, MAX_HTTP_BYTES
 from octop.infra.utils.locale import Locale
 
 if TYPE_CHECKING:
@@ -597,7 +598,31 @@ async def _download_image_url(url: str) -> tuple[bytes, str] | None:
             if resp.status != 200:
                 return None
             content_type = resp.content_type or "image/png"
-            data = await resp.read()
+            # Bound the download like skillhub_market._read_response_limited:
+            # a hostile Content-Length or an oversized stream must not be able
+            # to pull unbounded bytes into gateway memory.
+            declared = resp.headers.get("Content-Length")
+            if declared and declared.isdigit() and int(declared) > MAX_HTTP_BYTES:
+                logger.info(
+                    "attachment download %s: Content-Length %s exceeds cap %d",
+                    url,
+                    declared,
+                    MAX_HTTP_BYTES,
+                )
+                return None
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in resp.content.iter_chunked(HTTP_READ_CHUNK):
+                total += len(chunk)
+                if total > MAX_HTTP_BYTES:
+                    logger.info(
+                        "attachment download %s: body exceeds cap %d",
+                        url,
+                        MAX_HTTP_BYTES,
+                    )
+                    return None
+                chunks.append(chunk)
+            data = b"".join(chunks)
             if not data:
                 return None
             return data, content_type
