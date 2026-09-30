@@ -31,6 +31,7 @@ SIDEBAR_NAV_KEYS = frozenset(
         "connectors",
         "skill-packages",
         "knowledge-bases",
+        "bridge",
         "workbench",
         "remote-desktop",
         "acp",

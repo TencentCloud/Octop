@@ -11,9 +11,10 @@ export function useHistoryMigration(
   const [status, setStatus] = useState<HistoryMigrationStatus | null>(null);
   const [starting, setStarting] = useState(false);
   const [startFailed, setStartFailed] = useState(false);
+  const bridgeAgent = Boolean(agentId?.startsWith("bridge:"));
 
   useEffect(() => {
-    if (!agentId || !enabled) {
+    if (!agentId || !enabled || bridgeAgent) {
       setStatus(null);
       setStartFailed(false);
       return;
@@ -39,7 +40,7 @@ export function useHistoryMigration(
       stopped = true;
       if (timer != null) window.clearTimeout(timer);
     };
-  }, [agentId, enabled]);
+  }, [agentId, enabled, bridgeAgent]);
 
   const start = useCallback(async () => {
     if (!agentId || starting) return;

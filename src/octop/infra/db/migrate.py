@@ -1574,6 +1574,54 @@ def _ensure_session_last_read_at_schema(db: DatabasePool) -> None:
         )
 
 
+def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
+    """Fold notes + unique display_name + auto_reconnect into unreleased v19."""
+    if not _table_exists(db, "bridge_connections"):
+        return
+    _ensure_column(db, "bridge_connections", "notes", "TEXT")
+    _ensure_column(db, "bridge_connections", "icon_name", "TEXT")
+    _ensure_column(db, "bridge_connections", "auto_reconnect", "INTEGER NOT NULL DEFAULT 1")
+    # Make every (owner, display_name) unique before creating the index.
+    # Empty names are filled from peer username / URL; colliding names get a suffix.
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT id, owner_user_id, peer_base_url, peer_username, display_name "
+            "FROM bridge_connections ORDER BY id ASC"
+        ).fetchall()
+    used: dict[int, set[str]] = {}
+    updates: list[tuple[str, int]] = []
+    for row in rows:
+        owner = int(row["owner_user_id"])
+        used.setdefault(owner, set())
+        current = str(row["display_name"] or "").strip()
+        base = (
+            current
+            or str(row["peer_username"] or "").strip()
+            or str(row["peer_base_url"] or "").strip()
+            or f"bridge-{row['id']}"
+        )
+        candidate = base
+        n = 2
+        while candidate in used[owner]:
+            candidate = f"{base} ({n})"
+            n += 1
+        used[owner].add(candidate)
+        if candidate != str(row["display_name"] or ""):
+            updates.append((candidate, int(row["id"])))
+    if updates:
+        with db.transaction() as conn:
+            for name, row_id in updates:
+                conn.execute(
+                    "UPDATE bridge_connections SET display_name = ? WHERE id = ?",
+                    (name, row_id),
+                )
+    with db.connect() as conn:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_bridge_connections_owner_display "
+            "ON bridge_connections(owner_user_id, display_name)"
+        )
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -1749,7 +1797,8 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     Version 16 adds ``agents.kind`` so team hosts can be listed.
     Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
     Version 18 adds ``user_role`` templates and non-FK role id/name snapshots.
-    Version 19 adds ``sessions.last_read_at`` so kanban Done returns to Idle after view.
+    Version 19 adds ``bridge_connections`` (Octop↔Octop remote expert links).
+    Version 20 adds ``sessions.last_read_at`` so kanban Done returns to Idle after view.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1865,7 +1914,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
-    if version == 19:
+    if version == 20:
         _ensure_session_last_read_at_schema(db)
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
@@ -1891,7 +1940,7 @@ def run_migrations(db: DatabasePool) -> None:
                 else:
                     conn.execute("UPDATE _schema_version SET version = ?", (version,))
             continue
-        if version == 19:
+        if version == 20:
             _ensure_session_last_read_at_schema(db)
             with db.connect() as conn:
                 if db.dialect == "postgresql":
@@ -1935,3 +1984,4 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_sso_provider_kind_schema(db)
     _ensure_user_role_schema(db)
     _ensure_session_last_read_at_schema(db)
+    _ensure_bridge_connections_schema(db)

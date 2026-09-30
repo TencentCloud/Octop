@@ -79,6 +79,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "description": "Third-party integrations (Notion, Figma, …) exposed as MCP servers.",
     },
     {
+        "name": "bridge",
+        "description": "Link this Octop to remote Octop instances (HTTP tunnel + remote chat).",
+    },
+    {
         "name": "knowledge",
         "description": "Private, shareable document knowledge bases and their indexing capability.",
     },
