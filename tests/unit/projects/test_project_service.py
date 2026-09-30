@@ -765,6 +765,104 @@ def test_delete_project_keeps_the_knowledge_base(
     assert [b.id for b in services.knowledge_repo.list_visible(owner.id)] == [kb_id]
 
 
+# ── discard_created_project: the symmetric undo of create_project ────────────
+# 与上面 ``test_delete_project_keeps_the_knowledge_base`` 并列看最直观：同一个 project
+# 行、同一个 KB —— ``delete_project`` **留** KB（里面可能有用户文档），
+# ``discard_created_project`` **删** KB（这次创建从没被用户看见、KB 里不可能有文档；
+# 留下它就白烧配额 20 / 占住名字，攒够 20 次失败之后连合法 goal 都建不出 project）。
+
+
+def test_discard_created_project_removes_the_project_and_its_kb(
+    service: ProjectService, services: SimpleNamespace, owner: Actor
+) -> None:
+    """KB 可用：撤销 ⇒ project 行没了**且** KB 没了（``delete_project`` 的对照面）。"""
+    project = make_project(service, owner)
+    # 正向对照（门真的开着）：create 确实绑了 KB —— 否则「KB 没了」是 0==0 假绿。
+    assert project.kb_id is not None
+    assert services.knowledge_repo.count_bases_for_owner(owner.id) == 1
+
+    service.discard_created_project(project.id)
+
+    assert services.project_repo.get(project.id) is None
+    assert services.knowledge_repo.get_base(project.kb_id) is None
+    assert services.knowledge_repo.count_bases_for_owner(owner.id) == 0
+
+
+def test_discard_created_project_without_a_kb_only_removes_the_project(
+    service: ProjectService,
+    services: SimpleNamespace,
+    owner: Actor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``kb_id`` 为 NULL（fresh install / 未绑定）⇒ 只删 project，**不抛**。
+
+    门关掉的构造与 ``test_create_project_without_a_usable_knowledge_feature`` 同源
+    （``get_capability`` ⇒ ``{"usable": False}``），所以真的走 NULL 分支；随后再把门打开
+    建一个带 KB 的同类 project，证明本用例不是「空库 0==0」。
+    """
+    monkeypatch.setattr(
+        project_service_module, "get_capability", lambda *_a, **_k: {"usable": False}
+    )
+    project = make_project(service, owner, name="无知识库项目")
+    assert project.kb_id is None, "本用例必须真的落在 NULL 分支"
+
+    service.discard_created_project(project.id)
+
+    assert services.project_repo.get(project.id) is None
+    assert services.knowledge_repo.count_bases_for_owner(owner.id) == 0
+
+    # 同函数在门打开时**必须**真的删掉 KB —— 否则上面那两行随时可能变成恒真。
+    monkeypatch.setattr(
+        project_service_module, "get_capability", lambda *_a, **_k: {"usable": True}
+    )
+    bound = make_project(service, owner, name="带知识库项目")
+    assert bound.kb_id is not None
+    service.discard_created_project(bound.id)
+    assert services.knowledge_repo.get_base(bound.kb_id) is None
+
+
+def test_discard_created_project_never_raises_when_the_kb_delete_fails(
+    service: ProjectService,
+    services: SimpleNamespace,
+    owner: Actor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """KB 删除抛错 ⇒ **绝不向外抛**，project 仍被删；KB 残留是这条纪律的既定代价。
+
+    与 ``test_compensation_survives_a_failing_cleanup`` 同一纪律（补偿不得掩盖原始异常）：
+    调用方（team-run 的补偿路径）要拿到「已尽力」，而不是一个新异常。残留一个 KB 是可恢复
+    的脏行，异常链藏掉原始拒绝则不是。
+    """
+    project = make_project(service, owner)
+    assert project.kb_id is not None  # 正向对照：这一步真的会被走到（不是空跑）
+
+    def boom(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("kb delete exploded")
+
+    monkeypatch.setattr(service._knowledge, "delete_base", boom)
+
+    service.discard_created_project(project.id)  # 不抛
+
+    assert services.project_repo.get(project.id) is None, "project 仍必须被删掉"
+    assert services.knowledge_repo.get_base(project.kb_id) is not None, (
+        "KB 残留 = 「绝不抛」的既定代价（可恢复的脏行 < 掩盖原始异常的异常链）"
+    )
+
+
+def test_discard_created_project_is_silent_for_an_unknown_id(
+    service: ProjectService, services: SimpleNamespace, owner: Actor
+) -> None:
+    """未知 ``project_id`` ⇒ 静默返回、不抛（补偿路径的幂等语义：删过了不算错）。"""
+    project = make_project(service, owner)
+    assert project.kb_id is not None  # 正向对照：库里确实有东西，不是空库
+    before = services.knowledge_repo.count_bases_for_owner(owner.id)
+
+    service.discard_created_project("proj-does-not-exist")  # 不抛
+
+    assert services.project_repo.get(project.id) is not None, "邻居必须原样活着"
+    assert services.knowledge_repo.count_bases_for_owner(owner.id) == before
+
+
 # ── F3: knowledge-base rebind (PLAN.md §4) ───────────────────────────────────
 
 

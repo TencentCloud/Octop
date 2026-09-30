@@ -1723,3 +1723,202 @@ def test_a_duplicate_roster_role_writes_no_new_rows(harness: Harness) -> None:
 
     assert_code(err, ErrorCode.PROJECT_MEMBER_INVALID, status=400)
     assert _table_counts(harness.services) == before, "400 之前不得写 project / run / thread"
+
+
+# ── create() 补偿删除（批次⑧ D2）：**第一个写之后**的失败同样必须零写入 ───────
+# 三条残留实例（①②③）此前都会留下部分状态；判据仍是四表逐字不变，且必须**确定性**
+# 构造（不 sleep、不靠真并发）：monkeypatch 让某一步抛错，或让写前判定看不见赢家。
+#
+# repair-5 追加：四表之外还有第五张 —— ``knowledge_bases``。``create_project`` 在 KB
+# 可用时会顺手建一个空 KB，若补偿只删 project，失败路径就每次泄漏 1 个 KB（配额 20），
+# 四表全 0 也照样假绿。故新增**五表**判据（原四表断言原样保留，两者并存）。
+
+#: 五表判据 = 四表 + ``knowledge_bases``。
+_KB_TABLES = (*_GUARDED_TABLES, "knowledge_bases")
+
+
+def _table_counts_with_kb(services: Any) -> dict[str, int]:
+    """五表行数（四表 + ``knowledge_bases``），**直查表**，不改变四表版本的语义。"""
+    sql = (
+        "SELECT (SELECT COUNT(*) FROM projects), (SELECT COUNT(*) FROM team_runs),"
+        " (SELECT COUNT(*) FROM threads), (SELECT COUNT(*) FROM team_run_members),"
+        " (SELECT COUNT(*) FROM knowledge_bases)"
+    )
+    with services.repos.db.connect() as conn:
+        row = tuple(conn.execute(sql).fetchone())
+    return dict(zip(_KB_TABLES, (int(value) for value in row), strict=True))
+
+
+def _enable_kb(monkeypatch: pytest.MonkeyPatch) -> None:
+    """让 ``ProjectService._knowledge_usable()`` 为真、且 KB 行真的建得出来。
+
+    默认环境里 KB **不可用**（fresh install：没配 embedding 模型 ⇒
+    ``get_capability(...)["usable"]`` 为假，``create_project`` 只记一条 info 就跳过 KB
+    分支），那时「KB 计数不变」是**恒真**的假绿 —— 所以必须先把门打开。两层都打：
+
+    ① ``projects.service.get_capability`` ⇒ ``{"usable": True}``（``bind_kb`` 的唯一判据）；
+    ② ``knowledge.service.assert_knowledge_usable`` ⇒ no-op（``KnowledgeService.create_base``
+       自带的同一道门）。
+
+    门是否真的打开了，由 ``test_a_successful_create_binds_a_knowledge_base`` 正向对照：
+    成功 create 时 ``knowledge_bases`` 必须 +1。
+    """
+    monkeypatch.setattr(
+        "octop.infra.projects.service.get_capability", lambda *args, **kwargs: {"usable": True}
+    )
+    monkeypatch.setattr(
+        "octop.infra.knowledge.service.assert_knowledge_usable", lambda *args, **kwargs: None
+    )
+
+
+def test_a_failed_room_thread_writes_no_new_rows(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """① 房间线程创建失败 ⇒ project + run 必须被补偿删除（四表零新增 + KB 不泄漏）。
+
+    ``_open_room`` 在 ``_runs.create`` 之后调用，失败时 project、run（以及 KB 可用时的
+    空 KB）都已经落库 —— 本用例钉的就是这段。错误本身继续向上抛（补偿不得吞掉异常）。
+    """
+    _enable_kb(monkeypatch)
+    before = _table_counts(harness.services)
+    before_kb = _table_counts_with_kb(harness.services)
+
+    def _room_fails(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("room thread creation failed")
+
+    monkeypatch.setattr(harness.gateway.thread_registry, "create_thread", _room_fails)
+
+    with pytest.raises(RuntimeError):
+        harness.create_run(goal="房间线程失败", tier="quick")
+
+    assert _table_counts(harness.services) == before, "房间线程失败后不得留 project / run"
+    assert _table_counts_with_kb(harness.services) == before_kb, "失败 create 不得泄漏空 KB"
+
+
+def test_a_lost_run_id_race_writes_no_new_rows(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """② 竞态窗口：写前判定通过、INSERT 撞 ``team_runs.run_id`` UNIQUE ⇒ 409 且零新增。
+
+    确定性构造（无 sleep、无真并发）：赢家先占了固定 id；随后把 ``team_run_repo.get``
+    遮成 ``None``，模拟「两个请求都通过了写前判定」的窗口，输家于是在 INSERT 上撞 UNIQUE。
+    修复目标是把它映射成 **409 ``TEAM_RUN_CONFLICT``**（而不是裸 ``IntegrityError``），
+    并只补偿删除**本次**创建的 project（连它绑的空 KB 一起）—— 赢家的 run / members
+    必须原样活着。
+    """
+    monkeypatch.setattr(run_service_module, "run_id_for", lambda *a, **k: "2026-01-02-030405")
+    _enable_kb(monkeypatch)
+    winner = harness.create_run(goal="赢家", tier="quick")
+    winner_members = len(harness.services.team_run_repo.list_members(winner.run_id))
+    before = _table_counts(harness.services)
+    before_kb = _table_counts_with_kb(harness.services)
+    monkeypatch.setattr(harness.services.team_run_repo, "get", lambda run_id: None)
+
+    with pytest.raises(OctopError) as err:
+        harness.create_run(goal="输家（撞 UNIQUE）", tier="quick")
+
+    assert_code(err, ErrorCode.TEAM_RUN_CONFLICT, status=409)
+    assert _table_counts(harness.services) == before, "撞 UNIQUE 的输家不得留下任何行"
+    assert _table_counts_with_kb(harness.services) == before_kb, "输家绑的空 KB 也必须被撤销"
+    # stage-aware：补偿只删输家建的 project，赢家的 run + members 必须还在。
+    assert len(harness.services.team_run_repo.list_members(winner.run_id)) == winner_members
+
+
+def test_a_failing_member_write_cleans_up_the_partial_run(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """③ 非 UNIQUE 的成员写失败（第 2 次 ``add_member`` 抛 ``RuntimeError``）⇒ 全清。
+
+    第 1 次调用**成功**（真写了一行 member），说明半成品确实存在过；随后失败必须把
+    project / run / thread / 已写 members（以及 project 绑的空 KB）全部清掉。
+    ``calls["n"] == 2`` 是本用例的前提自证：没有它，「零新增」也可能是「压根没走到成员写」。
+    """
+    _enable_kb(monkeypatch)
+    written = harness.services.team_run_repo.add_member
+    calls = {"n": 0}
+
+    def _second_member_fails(*args: Any, **kwargs: Any) -> Any:
+        calls["n"] += 1
+        if calls["n"] >= 2:
+            raise RuntimeError("member write failed (non-UNIQUE)")
+        return written(*args, **kwargs)
+
+    before = _table_counts(harness.services)
+    before_kb = _table_counts_with_kb(harness.services)
+    monkeypatch.setattr(harness.services.team_run_repo, "add_member", _second_member_fails)
+
+    with pytest.raises(RuntimeError):
+        harness.create_run(goal="第 2 个成员写失败", tier="quick")
+
+    assert calls["n"] == 2, "必须先真的写进 1 行成员，半成品才成立"
+    assert _table_counts(harness.services) == before, (
+        "成员写失败后不得留 project / run / thread / member"
+    )
+    assert _table_counts_with_kb(harness.services) == before_kb, "失败 create 不得泄漏空 KB"
+
+
+# ── repair-5：KB 正向对照 + 补偿自身抛错的纪律 ───────────────────────────────
+
+
+def test_a_successful_create_binds_a_knowledge_base(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """正向对照：KB 门打开时，**成功**的 create 必须真的建出 1 个 KB。
+
+    没有这条，上面三条的「KB 计数不变」可能只是「KB 压根没被建过」—— 恒真假绿。
+    它也顺带证明 ``_enable_kb`` 打的两层门确实生效。
+    """
+    _enable_kb(monkeypatch)
+    before = _table_counts_with_kb(harness.services)
+
+    harness.create_run(goal="成功建 run（绑定 KB）", tier="quick")
+
+    after = _table_counts_with_kb(harness.services)
+    assert after["knowledge_bases"] == before["knowledge_bases"] + 1, (
+        "KB 门没真的打开 —— 失败用例的 KB 断言会是恒真假绿"
+    )
+    assert after["projects"] == before["projects"] + 1
+    assert after["team_runs"] == before["team_runs"] + 1
+
+
+def test_a_failing_compensation_step_never_masks_the_original_error(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """补偿自身抛错 ⇒ 向外抛的**仍是原始异常**，且能清的都清了。
+
+    写法照既有 ``tests/unit/projects/test_project_service.py:310``
+    （``test_compensation_survives_a_failing_cleanup``）：一个原始失败 + 一个抛错的清理步。
+
+    这里让**线程删除**这一步抛错（补偿链中间那步）：它只进日志，于是
+    * 抛出来的仍是**同一个**原始异常对象（不是清理的 ``RuntimeError``）；
+    * **它之后**的步骤照常执行 —— run 被删（member 随 FK 级联）、project 连同 KB 被撤销；
+    * 唯一残留是失败那一步自己的目标（thread 行），这正是「补偿只尽力、异常优先级不变」。
+    """
+    _enable_kb(monkeypatch)
+    original = RuntimeError("member write failed (non-UNIQUE)")
+    written = harness.services.team_run_repo.add_member
+    calls = {"n": 0}
+
+    def _second_member_fails(*args: Any, **kwargs: Any) -> Any:
+        calls["n"] += 1
+        if calls["n"] >= 2:
+            raise original
+        return written(*args, **kwargs)
+
+    def _cleanup_boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("cleanup exploded")
+
+    monkeypatch.setattr(harness.services.team_run_repo, "add_member", _second_member_fails)
+    monkeypatch.setattr(harness.gateway.thread_registry, "delete_thread", _cleanup_boom)
+    before = _table_counts_with_kb(harness.services)
+
+    with pytest.raises(RuntimeError) as err:
+        harness.create_run(goal="补偿自身抛错", tier="quick")
+
+    assert err.value is original, "抛出的必须是原始异常对象，不是补偿的 RuntimeError"
+    after = _table_counts_with_kb(harness.services)
+    assert after["projects"] == before["projects"], "project 连同 KB 仍要被撤销"
+    assert after["knowledge_bases"] == before["knowledge_bases"]
+    assert after["team_runs"] == before["team_runs"], "失败步之后的 run 删除照常执行"
+    assert after["team_run_members"] == before["team_run_members"]
+    assert after["threads"] == before["threads"] + 1, "唯一残留是失败那一步自己的目标"

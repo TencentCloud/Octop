@@ -731,7 +731,9 @@ class TeamRunService:
         **nothing** behind (no project, no directory). Every refusal that can be decided
         without a written row is decided **before** ``create_project`` (the first write):
         the empty-roster guard, the run-id conflict, and the roster admission (missing or
-        duplicate role).
+        duplicate role). A failure *after* that first write (a lost ``run_id`` race, a
+        room-thread failure, a member write) runs an explicit **compensating delete**,
+        newest side effect first — see :meth:`_compensate_create`.
 
         * **G10** — the tier is normalised by ``pipeline.normalize_tier``: an
           unrecognised value is refused, never silently defaulted.
@@ -834,91 +836,216 @@ class TeamRunService:
                 )
             seen_roles.add(role_text)
 
-        project = self._project_service().create_project(
-            owner_user=user, name=text[:80] or "team run", goal=text
-        )
-        run = self._runs.create(
-            run_id=run_id,
-            team_agent_id=team_agent_id,
-            project_id=project.id,
-            goal=text,
-            created_by=user.id,
-            mode=mode,
-            deliverable=deliverable,
-            tier=resolved_tier,
-            run_root=run_root or RUN_ROOT_HOST_WORKSPACE,
-            max_review_rounds=max_review_rounds,
-        )
-        thread_id = self._open_room(run, user=user)
-        if thread_id is not None:
-            self._runs.set_room_thread(run_id, thread_id)
-            run = self.require_run(run_id)
-
-        lead_agent_id = _kept_lead(
-            trim.kept,
-            host_agent_id=host_agent_id,
-            lead_agent_id=manifest_roster.get("lead_agent_id"),
-        )
-        for member in trim.kept:
+        # ── First write. Everything below is compensated on failure ──────────────
+        # Each repo owns its own transaction, so this multi-row sequence has no single
+        # rollback: a failure halfway leaves an orphan project, a half-built run, or a
+        # room thread nobody points at. Same pattern as ``infra/projects/service.py`` --
+        # "Every failure therefore runs an explicit compensating delete".
+        # ★ Stage-aware: the variables below record what **this call** created. A failed
+        # insert can collide with a row another writer owns (the same-second ``run_id``
+        # race), and compensation must never delete a row it did not create -- that would
+        # destroy a healthy run.
+        project: Any | None = None
+        run: TeamRunRow | None = None
+        thread_id: str | None = None
+        members_added: list[str] = []
+        # Observability only: this feeds the compensation log line. Phase deletion is
+        # decided by ``run is not None`` (the rows cascade with the run), never by it.
+        phases_written = False
+        try:
+            project = self._project_service().create_project(
+                owner_user=user, name=text[:80] or "team run", goal=text
+            )
             try:
-                self._runs.add_member(
-                    run_id,
-                    role=str(member.get("role") or ""),
-                    agent_id=str(member.get("agent_id") or ""),
-                    is_lead=bool(
-                        lead_agent_id and str(member.get("agent_id") or "") == lead_agent_id
-                    ),
+                run = self._runs.create(
+                    run_id=run_id,
+                    team_agent_id=team_agent_id,
+                    project_id=project.id,
+                    goal=text,
+                    created_by=user.id,
+                    mode=mode,
+                    deliverable=deliverable,
+                    tier=resolved_tier,
+                    run_root=run_root or RUN_ROOT_HOST_WORKSPACE,
+                    max_review_rounds=max_review_rounds,
                 )
             except (SqliteIntegrityError, PsycopgIntegrityError) as err:
-                # ★ Semantic mismatch, and why this code is still right: the table is
-                # UNIQUE(run_id, role), so a duplicate cannot be described exactly by any
-                # existing code. The closest wording that stays TRUE is
-                # PROJECT_MEMBER_INVALID ("That membership change is not allowed") -- it
-                # asserts the outcome, not the cause. TEAM_RUN_CONFLICT was rejected: its
-                # wording claims a concurrent request, which would be false here.
-                # ★ Delete condition: replace it once a code with exact wording exists
-                # (or a new one is approved).
+                # The check higher up is only a **read**, so a same-second race still
+                # lands here: ``team_runs.run_id`` UNIQUE is the real arbiter. Same code
+                # and details as that check (a concurrent duplicate, not a 500) -- and
+                # ``run`` stays ``None``, so the winner's row is never touched by the
+                # compensation below.
                 raise OctopError(
-                    ErrorCode.PROJECT_MEMBER_INVALID,
-                    f"duplicate role for run {run_id}: {member.get('role')!r}",
-                    details={"run_id": run_id, "role": str(member.get("role") or "")},
+                    ErrorCode.TEAM_RUN_CONFLICT,
+                    f"run {run_id!r} already exists",
+                    details={"run_id": run_id},
                 ) from err
+            thread_id = self._open_room(run, user=user)
+            if thread_id is not None:
+                self._runs.set_room_thread(run_id, thread_id)
+                run = self.require_run(run_id)
 
-        sequence = phase_sequence(resolved_tier)
-        now = int(time.time())
-        skipped = list(trim.skipped_roles)
-        for seq, phase in enumerate(sequence):
-            self._runs.upsert_phase(
-                run_id,
-                phase,
-                seq=seq,
-                status="active" if seq == 0 else "pending",
-                gate_detail={"skipped_roles": skipped} if seq == 0 else None,
-                entered_at=now if seq == 0 else None,
+            lead_agent_id = _kept_lead(
+                trim.kept,
+                host_agent_id=host_agent_id,
+                lead_agent_id=manifest_roster.get("lead_agent_id"),
             )
-        self._record(
-            run,
-            TIMELINE_RUN_CREATED,
-            {
-                "goal": text,
-                "mode": mode,
-                "tier": resolved_tier,
-                "phases": list(sequence),
-                "room_thread_id": thread_id,
-            },
-            actor=actor_ref("user", user.id),
-        )
-        if skipped:
+            for member in trim.kept:
+                try:
+                    self._runs.add_member(
+                        run_id,
+                        role=str(member.get("role") or ""),
+                        agent_id=str(member.get("agent_id") or ""),
+                        is_lead=bool(
+                            lead_agent_id and str(member.get("agent_id") or "") == lead_agent_id
+                        ),
+                    )
+                except (SqliteIntegrityError, PsycopgIntegrityError) as err:
+                    # ★ Semantic mismatch, and why this code is still right: the table is
+                    # UNIQUE(run_id, role), so a duplicate cannot be described exactly by any
+                    # existing code. The closest wording that stays TRUE is
+                    # PROJECT_MEMBER_INVALID ("That membership change is not allowed") -- it
+                    # asserts the outcome, not the cause. TEAM_RUN_CONFLICT was rejected: its
+                    # wording claims a concurrent request, which would be false here.
+                    # ★ Delete condition: replace it once a code with exact wording exists
+                    # (or a new one is approved).
+                    raise OctopError(
+                        ErrorCode.PROJECT_MEMBER_INVALID,
+                        f"duplicate role for run {run_id}: {member.get('role')!r}",
+                        details={"run_id": run_id, "role": str(member.get("role") or "")},
+                    ) from err
+                # Recorded **after** the row is in: a partial member write is the failure
+                # mode compensation has to cover, and this is the list it deletes by.
+                members_added.append(str(member.get("role") or ""))
+
+            sequence = phase_sequence(resolved_tier)
+            now = int(time.time())
+            skipped = list(trim.skipped_roles)
+            for seq, phase in enumerate(sequence):
+                self._runs.upsert_phase(
+                    run_id,
+                    phase,
+                    seq=seq,
+                    status="active" if seq == 0 else "pending",
+                    gate_detail={"skipped_roles": skipped} if seq == 0 else None,
+                    entered_at=now if seq == 0 else None,
+                )
+            phases_written = True
+            # Timeline rows come **last**, after every other write, so no failing step
+            # above can leave one behind. The only window left is the first ``_record``
+            # succeeding and the second failing -- and ``timeline_events.project_id``
+            # cascades with the project, which the compensation deletes. So the timeline
+            # needs no delete of its own (and the repo exposes none: it is append-only).
             self._record(
                 run,
-                TIMELINE_RUN_MEMBER_SKIPPED,
+                TIMELINE_RUN_CREATED,
                 {
-                    "skipped_roles": skipped,
-                    "kept_roles": [str(m.get("role") or "") for m in trim.kept],
+                    "goal": text,
+                    "mode": mode,
+                    "tier": resolved_tier,
+                    "phases": list(sequence),
+                    "room_thread_id": thread_id,
                 },
                 actor=actor_ref("user", user.id),
             )
+            if skipped:
+                self._record(
+                    run,
+                    TIMELINE_RUN_MEMBER_SKIPPED,
+                    {
+                        "skipped_roles": skipped,
+                        "kept_roles": [str(m.get("role") or "") for m in trim.kept],
+                    },
+                    actor=actor_ref("user", user.id),
+                )
+        except Exception:
+            self._compensate_create(
+                project=project,
+                run_id=run_id,
+                run=run,
+                thread_id=thread_id,
+                members=members_added,
+                phases_written=phases_written,
+            )
+            raise
+        assert run is not None  # the block above either assigned it or raised
         return run
+
+    def _compensate_create(
+        self,
+        *,
+        project: Any | None,
+        run_id: str,
+        run: TeamRunRow | None,
+        thread_id: str | None,
+        members: Sequence[str],
+        phases_written: bool,
+    ) -> None:
+        """Undo a failed ``create``: newest side effect first, never masking the cause.
+
+        Stage-aware by construction: ``run`` is ``None`` when the ``team_runs`` insert
+        lost the ``run_id`` race, and then nothing below the project is ours -- the
+        winner owns that run, its members and its phases, so they are left untouched.
+
+        Order: members -> phases -> room thread -> run -> project.
+
+        * ``team_run_members`` is deleted explicitly, by the very role values this call
+          wrote, so compensation does not lean on the FK cascade alone.
+        * ``team_run_phases`` has no repo delete; those rows cascade from the
+          ``team_runs`` delete (``ON DELETE CASCADE``; ``SqlitePool`` runs with
+          ``PRAGMA foreign_keys = ON`` and PostgreSQL enforces it natively), so the run
+          delete **is** the phase deletion.
+        * the room thread goes through the registry that opened it.
+        * the project goes through ``ProjectService.discard_created_project`` -- the
+          symmetric undo of ``create_project`` -- which also deletes the KB that call
+          bound; membership and timeline rows cascade with the project. Unlike
+          ``delete_project``, that API **does** remove the KB, because this project was
+          never handed to a user and its KB holds no documents: leaving it would burn
+          the owner's KB quota and name.
+        * ``phases_written`` is **observability only** (it feeds the log line below);
+          phases are never deleted by a flag check -- they cascade with the run row.
+
+        Every step is logged and **swallowed**: a stale row is recoverable, an exception
+        chain that hides the real refusal is not.
+        """
+        if project is None:
+            return
+        logger.warning(
+            "team run create failed; compensating (project_id=%s run_id=%s run_created=%s "
+            "thread_id=%s members=%d phases_written=%s)",
+            project.id,
+            run_id,
+            run is not None,
+            thread_id,
+            len(members),
+            phases_written,
+        )
+        if run is not None:
+            for role in members:
+                try:
+                    self._runs.remove_member(run_id, role)
+                except Exception:  # noqa: BLE001 - compensation must not raise
+                    logger.exception("compensating member delete failed (role=%s)", role)
+        if thread_id is not None and self._gateway is not None:
+            try:
+                self._gateway.thread_registry.delete_thread(thread_id)
+            except Exception:  # noqa: BLE001 - compensation must not raise
+                logger.exception("compensating thread delete failed (thread_id=%s)", thread_id)
+        if run is not None:
+            try:
+                self._runs.delete(run_id)
+            except Exception:  # noqa: BLE001 - compensation must not raise
+                logger.exception("compensating run delete failed (run_id=%s)", run_id)
+        try:
+            # ``discard_created_project`` is the symmetric undo of ``create_project``:
+            # it also removes the KB that call bound. Going through it (rather than the
+            # project repo) keeps ``teams/`` out of the knowledge domain -- and an empty
+            # KB left behind burns the owner's quota and name, so a failed run create
+            # would later surface as ``KNOWLEDGE_BASE_LIMIT`` / ``KNOWLEDGE_NAME_TAKEN``
+            # while the four run tables stayed empty. It never raises.
+            self._project_service().discard_created_project(project.id)
+        except Exception:  # noqa: BLE001 - compensation must not raise
+            logger.exception("compensating project discard failed (project_id=%s)", project.id)
 
     def _open_room(self, run: TeamRunRow, *, user: ProjectActor) -> str | None:
         """Open the room thread for the run, or ``None`` without a booted gateway."""
