@@ -17,6 +17,7 @@
 ### 修复
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
+- 内置插件「单位换算」在 `value` 为 `inf`/`nan` 或换算结果溢出时返回含 `Infinity`/`NaN` 的信封，该串不是合法 JSON，仪表盘 `JSON.parse` 失败后卡片退化为原始文本；现改为返回 `value must be finite` / `result out of range` 错误卡片。
 
 ## [1.0.2b6] - 2026-10-04
 
