@@ -28,6 +28,11 @@ import { isAgentChatReady } from "../../../utils/agentError";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
 import { octopAgentsApi } from "../../../api/modules/octopAgents";
 import { useAgent, type OctopAgent } from "../../../context/AgentContext";
+import {
+  CONVERSATION_MODES,
+  parseConversationMode,
+  type ConversationMode,
+} from "../../Chat/utils/conversationMode";
 import ExpertAvatarPicker from "./ExpertAvatarPicker";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import {
@@ -132,6 +137,7 @@ interface EditFormValues {
   welcome_message?: string;
   is_shared?: boolean;
   default_model: string;
+  conversation_mode: ConversationMode;
   backend_choice: string;
   composite_default: string;
   root_dir?: string;
@@ -307,6 +313,7 @@ function EditAgentDrawerBody({
             typeof ag.welcome_message === "string" ? ag.welcome_message : "",
           is_shared: agent.is_shared ?? false,
           default_model: defaultModelToForm(ag.default_model),
+          conversation_mode: parseConversationMode(cfg.conversation_mode),
           backend_choice: parsedBackend.backendChoice,
           composite_default: parsedBackend.compositeDefault,
           root_dir: parsedBackend.rootDir,
@@ -426,6 +433,7 @@ function EditAgentDrawerBody({
         ...agentConfig,
         backend: backendSpec,
         enable_trajectory: values.enable_trajectory === true,
+        conversation_mode: values.conversation_mode,
       });
       delete nextConfig.color;
       delete nextConfig.icon_name;
@@ -797,6 +805,18 @@ function EditAgentDrawerBody({
                 valuePropName="checked"
               >
                 <Switch />
+              </Form.Item>
+              <Form.Item
+                name="conversation_mode"
+                label={t("experts.defaultModeLabel")}
+                tooltip={t("experts.defaultModeHint")}
+              >
+                <Select
+                  options={CONVERSATION_MODES.map((mode) => ({
+                    value: mode,
+                    label: t(`chat.conversationMode.${mode}`),
+                  }))}
+                />
               </Form.Item>
               <Form.Item
                 name="default_model"
