@@ -193,6 +193,69 @@ def test_delete_package_removes_database_row_and_directory(
     assert not (store.root / row.id).exists()
 
 
+def test_write_skill_keeps_previous_copy_when_a_file_write_fails(
+    store: SkillPackageStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = store.create(name="P", description="", created_by="42")
+    store.write_skill(
+        row.id,
+        "pdf",
+        [("SKILL.md", b"# old"), ("references/guide.md", b"old guide")],
+    )
+
+    real_write_bytes = Path.write_bytes
+
+    def failing_write_bytes(self: Path, data: bytes) -> int:
+        if self.name == "guide.md":
+            raise OSError("no space left on device")
+        return real_write_bytes(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", failing_write_bytes)
+
+    with pytest.raises(OSError):
+        store.write_skill(
+            row.id,
+            "pdf",
+            [("SKILL.md", b"# new"), ("references/guide.md", b"new guide")],
+        )
+
+    # A failed rewrite must leave the previously published copy untouched.
+    skill_dir = store.package_skills_dir(row.id) / "pdf"
+    assert (skill_dir / "SKILL.md").read_bytes() == b"# old"
+    assert (skill_dir / "references" / "guide.md").read_bytes() == b"old guide"
+
+
+def test_write_skill_does_not_list_half_written_skill(
+    store: SkillPackageStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = store.create(name="P", description="", created_by="42")
+    store.write_skill(row.id, "pdf", [("SKILL.md", b"# pdf")])
+
+    real_write_bytes = Path.write_bytes
+
+    def failing_write_bytes(self: Path, data: bytes) -> int:
+        if self.name == "guide.md":
+            raise OSError("no space left on device")
+        return real_write_bytes(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", failing_write_bytes)
+
+    with pytest.raises(OSError):
+        store.write_skill(
+            row.id,
+            "docx",
+            [("SKILL.md", b"# docx"), ("references/guide.md", b"new guide")],
+        )
+
+    # The half-written skill must not show up next to the intact one, and the
+    # stored count must keep matching what is actually on disk.
+    assert [summary["slug"] for summary in store.list_skill_summaries(row.id)] == ["pdf"]
+    assert store.repo.get(row.id).skill_count == 1
+    assert not (store.package_skills_dir(row.id) / "docx").exists()
+
+
 def test_assert_can_mutate_allows_creator_and_admin_only(
     store: SkillPackageStore,
 ) -> None:
