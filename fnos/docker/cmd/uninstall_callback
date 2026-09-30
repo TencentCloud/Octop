@@ -4,7 +4,12 @@
 set -euo pipefail
 
 if [ "${wizard_delete_data:-no}" = "yes" ]; then
-    DATA_DIR="/vol1/@appshare/octop/data"
+    # Resolve the data directory dynamically (same logic as install/upgrade).
+    if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
+        DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+    else
+        DATA_DIR="$(dirname "${TRIM_APPDEST:-/var/apps/octop/target}")/share/octop/data"
+    fi
     if [ -d "$DATA_DIR" ]; then
         rm -rf "$DATA_DIR" 2>/dev/null || true
         echo "[octop] 已删除用户数据: $DATA_DIR" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
