@@ -5,6 +5,7 @@
  *   - ``window.matchMedia`` (used by Grid responsive breakpoints)
  *   - ``ResizeObserver`` (used by Card/Drawer/Modal portals)
  *   - ``IntersectionObserver`` (used by virtual lists)
+ *   - ``DOMMatrix`` (instantiated at import time by ``pdfjs-dist``)
  *
  * Recharts also wants ``ResizeObserver`` for the ``ResponsiveContainer``;
  * it'll log a console error otherwise even though our snapshot tests
@@ -86,6 +87,66 @@ if (typeof window !== "undefined") {
     (
       window as unknown as { ResizeObserver: typeof _ResizeObserver }
     ).ResizeObserver = _ResizeObserver;
+  }
+
+  // DOMMatrix: ``pdfjs-dist`` runs ``new DOMMatrix()`` at module scope
+  // (``SCALE_MATRIX``), so merely importing ``react-pdf`` throws in jsdom.
+  // None of the tests that pull it in render a PDF, but keep the mutating
+  // API identity-correct rather than throwing if one ever does.
+  class _DOMMatrix {
+    a = 1;
+    b = 0;
+    c = 0;
+    d = 1;
+    e = 0;
+    f = 0;
+    is2D = true;
+    m11 = 1;
+    m12 = 0;
+    m21 = 0;
+    m22 = 1;
+    m41 = 0;
+    m42 = 0;
+    constructor(
+      init?:
+        | number[]
+        | {
+            a?: number;
+            b?: number;
+            c?: number;
+            d?: number;
+            e?: number;
+            f?: number;
+          },
+    ) {
+      if (Array.isArray(init)) {
+        [this.a, this.b, this.c, this.d, this.e, this.f] = init;
+      } else if (init) {
+        Object.assign(this, init);
+      }
+    }
+    translate() {
+      return this;
+    }
+    scale() {
+      return this;
+    }
+    multiply() {
+      return this;
+    }
+    multiplySelf() {
+      return this;
+    }
+    preMultiplySelf() {
+      return this;
+    }
+    invertSelf() {
+      return this;
+    }
+  }
+  if (!window.DOMMatrix) {
+    (window as unknown as { DOMMatrix: typeof _DOMMatrix }).DOMMatrix =
+      _DOMMatrix;
   }
 
   // IntersectionObserver

@@ -206,7 +206,13 @@ def resolve_run_as_user() -> str:
         value = os.environ.get(key, "").strip()
         if value:
             return value
-    return "root"
+    # Stripped environment (containers, some service managers): fall back to
+    # the passwd entry for the effective uid. Never "root" here — a non-root
+    # installer must not have its unit installed for root.
+    try:
+        return str(pwd.getpwuid(os.geteuid()).pw_name)
+    except KeyError:
+        return "root"
 
 
 def _account_home(user: str) -> Path:

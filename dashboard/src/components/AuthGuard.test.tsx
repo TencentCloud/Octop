@@ -88,7 +88,11 @@ describe("AuthGuard offline boot", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("protected-shell")).toBeInTheDocument();
+    // Re-query inside waitFor: the /a route navigates to /b immediately, so a
+    // node captured by findByText can be unmounted before we assert on it.
+    await waitFor(() =>
+      expect(screen.getByText("protected-shell")).toBeInTheDocument(),
+    );
     await waitFor(() => {
       expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
     });
