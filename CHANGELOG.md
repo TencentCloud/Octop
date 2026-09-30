@@ -7,8 +7,36 @@
 ## [Unreleased]
 
 ### 修复
-- 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 - Chat pages open on a thread now see a HITL approval/question resolved by another client (SSE resume, IM, API) in real time: the resumed turn is broadcast to the thread's WebSocket subscribers so the pending card dismisses without a reload.
+
+## [1.0.2b5] - 2026-09-29
+
+### 新增
+- Octop↔Octop 云端桥接，经隧道使用远程专家
+- 内置助手可回答产品与使用问题
+- 可配置 Ollama 本地模型下载目录
+- 账号可自定义侧边栏；角色字段改为存储模板 id
+
+### 修复
+- 媒体预览 CSP、Langfuse 环境变量、IM 附件元数据
+- CLI 状态文件原子读写；移动端采集失败后停止 JPEG 流
+- 服务关闭时仍可识别本机 Ollama 模型
+- Dashboard 设计 token、知识库暗色预览、备份导入内置技能过滤
+- 旧插件 `harness_agent` 导入；移动端输入框避让视口
+
+### 变更
+- 更新 README 路线图、锚点与产品名链接
+
+## [1.0.2b4] - 2026-09-27
+
+### 新增
+- 侧栏可按账号自定义；角色模板 id 持久化
+
+### 修复
+- 暗色主题下知识库 Markdown 预览不可见
+
+### 变更
+- README 路线图与产品链接更新
 
 ## [1.0.2b3] - 2026-09-26
 
