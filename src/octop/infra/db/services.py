@@ -292,7 +292,7 @@ class SharedServices:
     def task_finding_repo(self) -> ProjectTaskFindingRepo:
         return self.repos.task_finding_repo
 
-    def team_run_service(self) -> Any:
+    def team_run_service(self, *, workspace_for: Any | None = None) -> Any:
         """Construct the expert-team run service.
 
         Imported lazily on purpose: ``TeamRunService`` lives in
@@ -300,20 +300,39 @@ class SharedServices:
         -- a module-level import would point ``infra/db`` at ``infra/agents`` and
         break the inward-only dependency rule (AGENTS.md section 5). The service is
         also built after this bundle, so a circular import would be the alternative.
+        For the same reason ``workspace_for`` is typed ``Any``: it is the bound method
+        ``AgentManager.workspace_for_agent``, whose class lives in
+        ``infra/agents/manager.py``, so naming its type here would need that import.
+
+        **One roster resolver.** Without ``workspace_for`` the run service lazily built
+        a ``TeamService`` wired to ``harness_workspace_for_agent``, which resolves an
+        agent's workspace **only through a live handle**: with the agent stopped it
+        returned nothing, ``_read_manifest`` swallowed the failure, the roster came
+        back empty, and ``create`` wrote zero ``team_run_members`` rows -- surfacing
+        much later as a context-free ``422 owner-not-in-roles`` on ``:plan``.
+        ``AgentManager.workspace_for_agent`` is the stronger resolver (live handle
+        first, then a backend workspace rebuilt from the agent row, which keeps
+        working while the agent is stopped), so boot passes it in rather than letting
+        the service invent a second, weaker one. An explicit
+        ``bind_runtime(workspace_for=…)`` still wins -- see
+        ``TeamRunService._workspace_accessor`` -- which is what keeps the inert
+        fake-workspace test seams working.
 
         **Memoised on purpose.** ``bind_runtime`` mutates the service *in place*, and the
         server's boot does ``build once -> inject the gateway -> bind_runtime on that
         object``. Returning a fresh instance per call therefore handed the HTTP routers
         an unbound service: the gateway's copy had the runtime, the routes did not, and
         rooms / dispatch / artifact I/O were dead on the HTTP face -- silently, because
-        nothing errors when the wiring is merely dangling.
+        nothing errors when the wiring is merely dangling. That memo is also why
+        ``workspace_for`` is only honoured on the **first** call: a later call cannot
+        swap the roster resolver out from under an already-bound service.
         """
         memo = self._team_run_service_memo
         service = memo.get("service")
         if service is None:
             from octop.infra.agents.teams.run_service import TeamRunService
 
-            service = TeamRunService(services=self)
+            service = TeamRunService(services=self, workspace_for=workspace_for)
             memo["service"] = service
         return service
 

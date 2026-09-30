@@ -368,7 +368,7 @@ class AgentManager:
         self._teams = TeamService(
             repos,
             self._team_jobs,
-            workspace_for=self.workspace_for_agent,
+            workspace_for=self.team_workspace_for,
         )
         self._harness_manager: HarnessAgentManager | None = None
         self.memory_slim = MemorySlimCoordinator(self)
@@ -464,7 +464,22 @@ class AgentManager:
 
     @property
     def teams(self) -> Any:
+        """The registry's one :class:`TeamService` -- the roster's only source."""
         return self._teams
+
+    def team_workspace_for(self, agent_id: str) -> Any | None:
+        """The **one** roster resolver shared by the registry's ``TeamService`` and the
+        team **run** service.
+
+        Named seam over ``workspace_for_agent``: the run service used to wire its own
+        ``TeamService`` to the harness accessor, which resolves **only a live handle**
+        (``aget``/``get_agent``), so a stopped agent yielded no workspace, the roster
+        read came back empty, and ``create`` silently wrote zero members. Routing both
+        call sites through this name is what makes "same resolver" checkable; this one
+        keeps the row-driven fallback (:meth:`_backend_workspace_for_row`), so the roster
+        resolves while the agent is stopped.
+        """
+        return self.workspace_for_agent(agent_id)
 
     async def boot(self) -> None:
         self._tool_guard_rules.ensure_seeded()

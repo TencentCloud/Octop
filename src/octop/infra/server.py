@@ -461,10 +461,18 @@ class OctopServer:
             TrajectoryLiveBus(),
         )
 
-        # T-49: the two ``/team`` runtime handles. Built **once** and handed to the
-        # gateway, because ``SharedServices.team_run_service()`` constructs a fresh
-        # instance per call — a second instance would not be the one bound below.
-        team_run_service = self.services.team_run_service()
+        # T-49: the two ``/team`` runtime handles. ``SharedServices.team_run_service()``
+        # is **memoised** (and honours ``workspace_for`` only on the **first** call), so
+        # the roster resolver has to go in here, on that first call: every later caller --
+        # the gateway below, the HTTP routers, the slash handlers -- gets this same
+        # object, which is also the one ``bind_runtime`` mutates in place just after.
+        # ``workspace_for=registry.team_workspace_for`` gives the roster the **same**
+        # resolver the registry's own ``TeamService`` uses — one named seam, not two
+        # lookalikes: live handle first, backend workspace rebuilt from the agent row as
+        # fallback. So a **stopped** agent still resolves a non-empty roster; the old
+        # harness-only accessor resolved nothing without a live handle and silently
+        # produced zero-member runs.
+        team_run_service = self.services.team_run_service(workspace_for=registry.team_workspace_for)
         gateway = Gateway(
             agent_manager=registry,
             repos=self.services.repos,

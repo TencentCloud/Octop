@@ -525,6 +525,7 @@
     "TEAM_ARTIFACT_OWNERSHIP_DENIED": "你不是该工件的归属写者。",
     "TEAM_RUN_MEMBER_LIMIT": "本次运行的成员数已达上限。",
     "TEAM_RUN_TASK_LIMIT": "本次运行的任务数已达上限。",
+    "TEAM_RUN_ROSTER_EMPTY": "本次运行未解析出任何团队成员，计划无法暂存或批准。请先为团队添加成员（并确认团队清单可正常读取），然后重新创建该 run。",
     "TEAM_PLAN_DRAFT_INVALID": "计划草稿非法：任务负责人不在角色清单内",
     "TEAM_PLAN_DRAFT_MISSING": "没有待批准的计划草稿",
     "TEAM_TIER_INVALID": "档位无法识别，不做猜测也不静默回退默认值。",

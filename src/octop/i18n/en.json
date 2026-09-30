@@ -525,6 +525,7 @@
     "TEAM_ARTIFACT_OWNERSHIP_DENIED": "You are not the owner of this artifact.",
     "TEAM_RUN_MEMBER_LIMIT": "The run member limit has been reached.",
     "TEAM_RUN_TASK_LIMIT": "The run task limit has been reached.",
+    "TEAM_RUN_ROSTER_EMPTY": "This run resolved no team members, so its plan cannot be staged or approved. Add members to the team (and check that the team manifest is readable), then create the run again.",
     "TEAM_PLAN_DRAFT_INVALID": "plan draft invalid: task owner is not in the role list",
     "TEAM_PLAN_DRAFT_MISSING": "no plan draft awaiting approval",
     "TEAM_TIER_INVALID": "Unknown tier; it is not guessed or silently defaulted.",

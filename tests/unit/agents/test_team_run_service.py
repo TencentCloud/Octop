@@ -399,6 +399,12 @@ def test_the_lazy_shared_services_entry_point_is_live(tmp_path: Path) -> None:
     The lazy import in ``db/services.py`` is the production wiring point; it is only
     "wired" if a run can actually be created through it. This goes through that
     method — never through a direct import of the class.
+
+    ★ roster-guard batch: the roster is read from the manifest, so this entry point is
+    only live when it gets the resolver boot passes in (``server.py`` hands over
+    ``AgentManager.team_workspace_for``). This case supplies one and asserts the run
+    really lands; the **unbound** call is refused by design and is pinned by
+    ``test_the_unbound_lazy_entry_point_refuses_an_unresolvable_roster``.
     """
     paths = PathLayout(tmp_path / ".octop2")
     paths.ensure_root()
@@ -407,8 +413,11 @@ def test_the_lazy_shared_services_entry_point_is_live(tmp_path: Path) -> None:
     services = build_shared_services(db=db, paths=paths, config=OctopConfig())
     user_id = services.user_repo.create(username="owner2", password_hash="h", role="user")
     services.agent_repo.create(agent_id=TEAM_ID, user_id=user_id, name="Team", kind="team")
+    workspace = FakeWorkspace({MANIFEST: manifest([(TEAM_ID, "lead")])})
 
-    service = services.team_run_service()
+    service = services.team_run_service(
+        workspace_for=lambda agent_id: workspace if agent_id == TEAM_ID else None
+    )
     assert isinstance(service, TeamRunService)
     run = service.create(team_agent_id=TEAM_ID, user=Actor(user_id), goal="惰性接线", tier="quick")
     assert services.team_run_repo.get(run.run_id) is not None
@@ -418,6 +427,8 @@ def test_the_lazy_shared_services_entry_point_is_live(tmp_path: Path) -> None:
         "test",
         "deliver",
     ]
+    # Same seam, roster side: the manifest became a member row (A1's unit-side twin).
+    assert len(services.team_run_repo.list_members(run.run_id)) == 1
 
 
 def test_advance_fails_closed_when_the_spec_is_missing_entirely(harness: Harness) -> None:
@@ -1479,3 +1490,183 @@ def test_the_production_binding_reaches_the_host_write_face_without_a_seat(
     assert calls[0]["host_workspace"] == host, "写面必须来自绑定的注册表，而非注入座"
     written = target.read_text(encoding="utf-8")
     assert "- [G-1] - 团队层写入点恰好 1 处" in written, "候选必须真的落盘"
+
+
+# ── empty-roster guard (A2 / A3 / A4): refuse before the first write ─────────
+# 判据 = ``len(trim.kept) == 0``（DECISIONS D3）；``details.reason`` 三口径见 D7。
+# 下面三条都走 ``SharedServices.team_run_service()`` —— 生产缝本身，不直接 new。
+
+#: A3 判据覆盖的四张表（SPEC A3 逐字：projects / team_runs / threads / team_run_members）。
+_GUARDED_TABLES = ("projects", "team_runs", "threads", "team_run_members")
+
+
+def _lazy_services(tmp_path: Path, *, name: str) -> tuple[Any, int]:
+    """一套真实控制面 + 一个 ``kind=team`` 的 agent 行；每个用例独占一份。"""
+    paths = PathLayout(tmp_path / name)
+    paths.ensure_root()
+    db = SqlitePool(paths.db)
+    run_migrations(db)
+    services = build_shared_services(db=db, paths=paths, config=OctopConfig())
+    user_id = services.user_repo.create(username="owner-lazy", password_hash="h", role="user")
+    services.agent_repo.create(agent_id=TEAM_ID, user_id=user_id, name="Team", kind="team")
+    return services, user_id
+
+
+def _table_counts(services: Any) -> dict[str, int]:
+    """四表行数，**直查表**（不经 service）—— 「拒绝即零写入」的判据。
+
+    经过 service 的计数会把「没查」当成「没有」；A3 要求的是表里真的没有行。
+    """
+    sql = (
+        "SELECT (SELECT COUNT(*) FROM projects), (SELECT COUNT(*) FROM team_runs),"
+        " (SELECT COUNT(*) FROM threads), (SELECT COUNT(*) FROM team_run_members)"
+    )
+    with services.repos.db.connect() as conn:
+        row = tuple(conn.execute(sql).fetchone())
+    return dict(zip(_GUARDED_TABLES, (int(value) for value in row), strict=True))
+
+
+def _workspace_accessor(workspace: FakeWorkspace) -> Any:
+    return lambda agent_id: workspace if agent_id == TEAM_ID else None
+
+
+def test_the_unbound_lazy_entry_point_refuses_an_unresolvable_roster(tmp_path: Path) -> None:
+    """A2/A3 构造 ①（``workspace_for=None``）：解析链断 ⇒ 422，四表零新增。
+
+    走的是生产缝本身（``SharedServices.team_run_service()``，不传 ``workspace_for``）
+    ⇒ 访问器为 ``None`` ⇒ ``details.reason == "manifest-unavailable"``。**拒绝也可以
+    是对的**，因为它的负向对照在 ``test_the_lazy_shared_services_entry_point_is_live``：
+    同一条缝 + 一个可解析的访问器就建得出 run，所以这里不是「这条缝坏了」。
+    """
+    services, user_id = _lazy_services(tmp_path, name=".octop-unbound")
+    service = services.team_run_service()
+    assert isinstance(service, TeamRunService)
+    before = _table_counts(services)
+    assert before == dict.fromkeys(_GUARDED_TABLES, 0)  # 空库：零是「真的零」的前提
+
+    with pytest.raises(OctopError) as err:
+        service.create(team_agent_id=TEAM_ID, user=Actor(user_id), goal="未接线", tier="quick")
+
+    assert_code(err, ErrorCode.TEAM_RUN_ROSTER_EMPTY, status=422)
+    assert err.value.details["reason"] == "manifest-unavailable"
+    assert err.value.details["team_agent_id"] == TEAM_ID
+    assert err.value.details["tier"] == "quick"
+    assert _table_counts(services) == before  # A3：拒绝即零写入
+
+
+def test_an_empty_manifest_refuses_the_run_before_any_write(tmp_path: Path) -> None:
+    """A2/A3 构造 ②（工作区可达、manifest 无成员）⇒ ``manifest-empty`` + 四表零新增。
+
+    与构造 ① 的区别正是 ``reason``：访问器把工作区交出来了（不是接线问题），清单里
+    确实一个成员都没有。守卫必须在 ``create_project``（第一个写）之前落下。
+    """
+    services, user_id = _lazy_services(tmp_path, name=".octop-empty")
+    workspace = FakeWorkspace({MANIFEST: manifest([])})
+    service = services.team_run_service(workspace_for=_workspace_accessor(workspace))
+    before = _table_counts(services)
+
+    with pytest.raises(OctopError) as err:
+        service.create(team_agent_id=TEAM_ID, user=Actor(user_id), goal="空花名册", tier="standard")
+
+    assert_code(err, ErrorCode.TEAM_RUN_ROSTER_EMPTY, status=422)
+    assert err.value.details["reason"] == "manifest-empty"
+    assert err.value.details["tier"] == "standard"
+    assert _table_counts(services) == before
+    assert before == dict.fromkeys(_GUARDED_TABLES, 0)
+
+
+def test_a_lead_only_roster_creates_the_run_and_exactly_one_member_row(tmp_path: Path) -> None:
+    """A4 反向对照：lead-only（``kept`` 长度 1）**必须放行**，且只落 1 行成员。
+
+    守卫判据是 ``len(trim.kept) == 0``，**不是** ``< TEAM_MIN_MEMBERS(2)``：``lead`` 是
+    合法 roster 角色，把团队清单的最小成员数挪到 run 花名册上会让这条用例以 422 变红
+    —— 这正是它存在的理由（DECISIONS D3/D4）。
+    """
+    services, user_id = _lazy_services(tmp_path, name=".octop-lead-only")
+    workspace = FakeWorkspace({MANIFEST: manifest([(TEAM_ID, "lead")])})
+    service = services.team_run_service(workspace_for=_workspace_accessor(workspace))
+    before = _table_counts(services)
+
+    run = service.create(team_agent_id=TEAM_ID, user=Actor(user_id), goal="只有 lead", tier="quick")
+
+    members = services.team_run_repo.list_members(run.run_id)
+    assert len(members) == 1  # lead 是合法 roster 角色 —— 不得写成 `>= 2`
+    assert members[0].role == "lead"
+    # 本用例不传 host_agent_id、manifest 也没有 lead_agent_id ⇒ 按 ``_kept_lead`` 的
+    # 既定语义「团队主持人亲自带队时不标记成员行」，这里**不该**期望 is_lead 为真。
+    after = _table_counts(services)
+    assert after["projects"] == before["projects"] + 1
+    assert after["team_runs"] == before["team_runs"] + 1
+    assert after["team_run_members"] == before["team_run_members"] + 1
+
+
+def test_bind_runtime_invalidates_the_self_built_team_memo(harness: Harness) -> None:
+    """SPEC A6 第二半：``bind_runtime`` 之后**自建**的 ``TeamService`` memo 必须失效。
+
+    顺序就是全部要点 —— 物化(A) → 重绑(B) → 再取 ⇒ 必须是新实例、且只用 B：
+
+    ① 先让 ``_team()`` 用访问器 A **自建** memo（A 的花名册 = lead + backend）；
+    ② ``bind_runtime(workspace_for=B)``，B 的角色集合明显不同（lead + docs + devops）；
+    ③ 再取 ``_team()`` ⇒ ``is not`` 旧实例，且 roster 来自 B；
+    ④ 只建**一个** run（``run_id_for()`` 是秒级精度，同秒第二次 create 会 409
+       ``TEAM_RUN_CONFLICT``）⇒ 落库成员来自 B —— 「陈旧访问器不再被读」的最终判据。
+
+    这条钉的是 FIND-2：去掉 ``bind_runtime`` 末尾的失效之后 ``tests/unit`` + E2E **全绿**，
+    说明该半条此前零判别性覆盖；本用例即那个缺失的判据。构造时**不注入** ``team_service=``
+    —— 注入实例归调用方所有、repair-1 之后刻意不失效（``_team_service_injected``），
+    本半条管的是自建 memo。
+    """
+    workspace_a = FakeWorkspace({MANIFEST: manifest([(TEAM_ID, "lead"), ("ag-a", "backend")])})
+    workspace_b = FakeWorkspace(
+        {MANIFEST: manifest([(TEAM_ID, "lead"), ("ag-b1", "docs"), ("ag-b2", "devops")])}
+    )
+    service = TeamRunService(
+        services=harness.services, workspace_for=_workspace_accessor(workspace_a)
+    )
+
+    stale = service._team()  # noqa: SLF001 —— 物化自建 memo（访问器 A）
+    assert [m["role"] for m in stale.roster(TEAM_ID)["members"]] == ["lead", "backend"]
+
+    service.bind_runtime(workspace_for=_workspace_accessor(workspace_b))
+
+    fresh = service._team()  # noqa: SLF001
+    assert fresh is not stale, "bind_runtime 必须丢掉自建 memo（SPEC A6 第二半）"
+    assert [m["role"] for m in fresh.roster(TEAM_ID)["members"]] == ["lead", "docs", "devops"]
+
+    run = service.create(
+        team_agent_id=TEAM_ID, user=harness.user, goal="失效之后建 run", tier="quick"
+    )
+    landed = {row.role for row in harness.services.team_run_repo.list_members(run.run_id)}
+    assert landed == {"lead", "docs", "devops"}, landed  # 落库成员来自 B，不是陈旧的 A
+
+
+def test_an_injected_team_service_survives_bind_runtime(harness: Harness) -> None:
+    """SPEC A6 第一半 + repair-1：**注入**的 ``TeamService`` 穿过 ``bind_runtime`` 必须活着。
+
+    与上一条是互补的两半，缺一不可：自建 memo 必须失效（否则读陈旧工作区），而注入实例归
+    调用方所有 —— 它的 ``workspace_for`` 是**它自己构造时**捕获的，丢弃它并不会得到更好的
+    roster，只会把调用方交出来的接线扔掉。这里刻意**不传**构造期 ``workspace_for``（注入方
+    可能压根不传，正是 repair-1 注释里点名的形态）：
+
+    ① 注入 ``team_service``（访问器 I：lead + backend），``bind_runtime(workspace_for=J)``
+       （J：docs + devops + qa，且不含 lead，与 I 明显不同）；
+    ② ``_team()`` 必须 ``is`` 那个注入实例（不是重建出来的等价物）；
+    ③ 只建**一个** run ⇒ 落库成员来自 **I**；若注入实例被误丢，重建的服务会读 J（落库角色
+       变成 J 的）或直接 422 ``TEAM_RUN_ROSTER_EMPTY`` —— 两种都得红。
+    """
+    workspace_i = FakeWorkspace({MANIFEST: manifest([(TEAM_ID, "lead"), ("ag-i", "backend")])})
+    workspace_j = FakeWorkspace(
+        {MANIFEST: manifest([("ag-j1", "docs"), ("ag-j2", "devops"), ("ag-j3", "qa")])}
+    )
+    injected = TeamService(harness.services.repos, workspace_for=_workspace_accessor(workspace_i))
+    service = TeamRunService(services=harness.services, team_service=injected)
+    assert [m["role"] for m in service._team().roster(TEAM_ID)["members"]] == ["lead", "backend"]
+
+    service.bind_runtime(workspace_for=_workspace_accessor(workspace_j))
+
+    assert service._team() is injected, "注入实例归调用方所有 —— bind_runtime 不得丢弃它"
+    assert [m["role"] for m in service._team().roster(TEAM_ID)["members"]] == ["lead", "backend"]
+
+    run = service.create(team_agent_id=TEAM_ID, user=harness.user, goal="注入优先", tier="quick")
+    landed = {row.role for row in harness.services.team_run_repo.list_members(run.run_id)}
+    assert landed == {"lead", "backend"}, landed  # 来自 I（注入优先），而不是 J

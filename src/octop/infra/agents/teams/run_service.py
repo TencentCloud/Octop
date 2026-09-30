@@ -371,6 +371,12 @@ class TeamRunService:
         self._gateway = gateway
         self._workspace_for = workspace_for
         self._team_service = team_service
+        # An **injected** ``TeamService`` belongs to the caller, and ``TeamService``
+        # captured its ``workspace_for`` when *it* was built: re-binding this service's
+        # runtime cannot improve an instance it does not own, but dropping it can take a
+        # working roster away. Remember the fact so ``bind_runtime`` invalidates only the
+        # memo **we** built (see there for both halves of SPEC A6).
+        self._team_service_injected = team_service is not None
         # (kb_id, artifact_id) -> a KnowledgeArchiver-shaped object. Injected, because
         # the archiver lives with the memory wiring and teams/ must not reach into the
         # knowledge domain (AGENTS.md section 5); T-18's ProjectKbArchiver satisfies it.
@@ -423,6 +429,17 @@ class TeamRunService:
         # provably stale with no new column and no migration (``PLAN §4.1``).
         if self._runtime_epoch is None:
             self._runtime_epoch = new_short_id()
+        # ★ The roster comes from ``TeamService``, which captured ``_workspace_for`` /
+        # ``_agent_manager`` **at construction**, so a memo **we** built must not survive a
+        # runtime rebind: the next ``_team()`` has to be rebuilt against the handles bound
+        # just above (SPEC A6, second half).
+        # An **injected** instance is a different thing, and injection wins: the caller
+        # owns it, hands it over fully wired, and may not pass ``workspace_for`` at all --
+        # so discarding it here would rebuild a resolver-less ``TeamService`` and turn a
+        # working roster into ``TEAM_RUN_ROSTER_EMPTY`` on the next ``create``. Only the
+        # self-built memo is invalidated.
+        if not self._team_service_injected:
+            self._team_service = None
 
     def _workspace_accessor(self) -> Callable[[str], Any] | None:
         """Resolve the accessor for a team agent's workspace.
@@ -450,6 +467,36 @@ class TeamRunService:
                 self._services.repos, workspace_for=self._workspace_accessor()
             )
         return self._team_service
+
+    def _empty_roster_reason(self, team_agent_id: str, manifest_roster: Mapping[str, Any]) -> str:
+        """Diagnose *why* the trimmed roster came back empty (``details.reason``).
+
+        **Diagnosis only.** The guard's criterion is ``trim.kept`` -- the very value the
+        member loop writes from -- and this second look at the workspace never decides
+        acceptance (``STANDING-RULES R11``: criterion and write face stay same-source).
+
+        * ``manifest-unavailable`` -- no accessor, or it resolves no workspace: a wiring
+          problem, not an empty team.
+        * ``manifest-empty`` -- a workspace was reached, and its manifest holds no
+          members: the team really has none.
+        * ``trimmed-to-zero`` -- members existed but the tier cap cut them all. Kept for
+          diagnosis only: ``trim_roster`` cannot do this (every member is a candidate,
+          and every ``role_cap`` is >= 1).
+        """
+        if manifest_roster.get("members"):
+            return "trimmed-to-zero"
+        accessor = self._workspace_accessor()
+        if accessor is None:
+            return "manifest-unavailable"
+        try:
+            workspace = accessor(team_agent_id)
+        except (OSError, TypeError, ValueError):
+            # Same tolerance as ``TeamService._workspace``: a resolver that blows up has
+            # resolved nothing, so it is a wiring problem rather than an empty team.
+            return "manifest-unavailable"
+        if workspace is None:
+            return "manifest-unavailable"
+        return "manifest-empty"
 
     def _project_service(self) -> Any:
         from octop.infra.projects.service import ProjectService
@@ -681,6 +728,9 @@ class TeamRunService:
           ``TEAM_RUN_MEMBER_LIMIT``. The manifest roster is different: it is trimmed
           to the tier's ``roleCap`` and the cut roles are recorded in the first
           phase's ``gate_detail.skipped_roles`` (visible, never silently dropped).
+        * An **empty trimmed roster** is ``TEAM_RUN_ROSTER_EMPTY`` (422): the run would
+          otherwise be created with zero member rows and only fail later, on ``:plan``.
+          Checked after ``assert_capacity`` and before the first write.
         * The room thread's session key is **run-scoped** (``…:<runId>:team-run``),
           never a user DM key — SPEC B30 ① applies to runs as much as to dispatch.
         """
@@ -707,6 +757,29 @@ class TeamRunService:
         trim = team.trimmed_roster(team_agent_id, resolved_tier, host_agent_id=host_agent_id)
         if roles is not None:
             assert_capacity({"tier": resolved_tier}, member_count=len(roles))
+
+        # ── Empty-roster guard: fail fast, before the first write ───────────────
+        # ★ The criterion is literally ``len(trim.kept) == 0`` -- the same tuple the
+        # member loop below writes from, so "judged" and "written" cannot drift (R11).
+        # Not a minimum-members floor and not a role whitelist: ``lead`` alone is a legal
+        # *roster* (kept == 1, the loop writes one row), and borrowing the **team**
+        # roster's minimum (2) would refuse it. An empty roster is never legal -- either
+        # the wiring saw no workspace or the manifest really has no members -- and
+        # letting it through wrote zero member rows, which only surfaced later as a
+        # context-free ``owner-not-in-roles`` 422 on ``:plan``.
+        # Placement is load-bearing: ``create_project`` below is the first write, so a
+        # refusal here leaves no orphan project / run / thread / member row behind
+        # (``api/routers/team_runs.py``: "a refused request leaves nothing behind").
+        if len(trim.kept) == 0:
+            raise OctopError(
+                ErrorCode.TEAM_RUN_ROSTER_EMPTY,
+                "this team has no members for a run; add members to the team first",
+                details={
+                    "team_agent_id": team_agent_id,
+                    "tier": resolved_tier,
+                    "reason": self._empty_roster_reason(team_agent_id, manifest_roster),
+                },
+            )
 
         project = self._project_service().create_project(
             owner_user=user, name=text[:80] or "team run", goal=text
