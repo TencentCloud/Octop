@@ -263,6 +263,15 @@ def parse_geometry(value: str) -> tuple[int, int]:
     return width, height
 
 
+def _geometry_or_none(value: str) -> str | None:
+    """Return ``value`` when :func:`parse_geometry` accepts it, else ``None``."""
+    try:
+        parse_geometry(value)
+    except ValueError:
+        return None
+    return value
+
+
 def read_geometry() -> str:
     path = desktop_env_file()
     if path.is_file():
@@ -270,13 +279,16 @@ def read_geometry() -> str:
             line = line.strip()
             if line.startswith("export OCTOP_DESKTOP_GEOMETRY="):
                 value = line.split("=", 1)[1].strip().strip('"').strip("'")
-                if _GEOMETRY_RE.match(value):
-                    return value
+                geometry = _geometry_or_none(value)
+                if geometry is not None:
+                    return geometry
             if line.startswith("OCTOP_DESKTOP_GEOMETRY="):
                 value = line.split("=", 1)[1].strip().strip('"').strip("'")
-                if _GEOMETRY_RE.match(value):
-                    return value
-    return os.environ.get("OCTOP_DESKTOP_GEOMETRY", _DEFAULT_GEOMETRY)
+                geometry = _geometry_or_none(value)
+                if geometry is not None:
+                    return geometry
+    env_geometry = _geometry_or_none(os.environ.get("OCTOP_DESKTOP_GEOMETRY", ""))
+    return env_geometry if env_geometry is not None else _DEFAULT_GEOMETRY
 
 
 def _write_geometry_env(geometry: str) -> None:
