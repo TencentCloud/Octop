@@ -123,14 +123,12 @@ async def test_a_stopped_host_creates_a_plannable_run(env: _Env) -> None:
         [{"agent_id": team_id, "role": "lead"}, {"agent_id": members[0], "role": "backend"}],
         lead=team_id,
     )
-    # R12 自证：boot 已经接好访问器，本用例一次也没注入过 —— 摘掉 `workspace_for=` 接线
-    # 这里立刻变成 None，下面的队伍就永远建不出 run。
-    service = srv.services.team_run_service()
-    accessor = service._workspace_for  # noqa: SLF001
-    assert accessor is not None, "boot 必须绑定 workspace_for（本用例绝不注入）"
-    assert json.loads(accessor(team_id).read_text(MANIFEST))["members"], (
-        "生产访问器必须看得到花名册"
-    )
+    # R12 自证（FIND-4 改法）：本用例**一次也没注入过**访问器 —— 「boot 是否真的把
+    # `workspace_for` 接给了 run service」不再靠私有属性（`service._workspace_for`）断言，
+    # 而由下面的**行为**判据证明：create **201** + `team_run_members` ≥1 行 + `:plan` 非 422。
+    # 它仍有判别性（实测）：摘掉 boot 接线后宿主已停止，活句柄-only 的解析器取不到工作区 ⇒
+    # 守卫以 422 `TEAM_RUN_ROSTER_EMPTY`（`reason=manifest-unavailable`）拒绝，201 与
+    # `:plan` 一步都到不了 ⇒ 本用例必红（判别性证据见本文件模块 docstring 与 TEST.md 附录 E）。
 
     created = await client.post(
         "/api/team/runs",

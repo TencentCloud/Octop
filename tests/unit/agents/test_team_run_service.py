@@ -1670,3 +1670,56 @@ def test_an_injected_team_service_survives_bind_runtime(harness: Harness) -> Non
     run = service.create(team_agent_id=TEAM_ID, user=harness.user, goal="注入优先", tier="quick")
     landed = {row.role for row in harness.services.team_run_repo.list_members(run.run_id)}
     assert landed == {"lead", "backend"}, landed  # 来自 I（注入优先），而不是 J
+
+
+# ── create() 原子性（批次⑦ C2）：三条拒绝都不得留下孤儿行 ────────────────────
+# 判据是**四表逐字不变**（projects / team_runs / threads / team_run_members）：先记 before，
+# 再断言 ``after == before``（差一个字段即红）。修复前 ``create_project`` 是第一个写，
+# 冲突与逐成员校验都在它之后 ⇒ 每条拒绝都白留一个 project（②③ 还多留 run/thread）。
+
+
+def test_a_run_id_conflict_writes_no_new_rows(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """同秒 ``run_id`` 冲突（409 ``TEAM_RUN_CONFLICT``）⇒ 四表零新增。
+
+    ★ 冲突靠**固定 run_id** 构造（``monkeypatch`` 打 ``run_service_module.run_id_for``），
+    不靠「同一秒连发两次」——后者不可靠。第一次 create 真的建出 run，第二次必须被拒且
+    一行都不留。
+    """
+    monkeypatch.setattr(run_service_module, "run_id_for", lambda *a, **k: "2026-01-02-030405")
+    first = harness.create_run(goal="第一次（占住 id）", tier="quick")
+    assert first.run_id == "2026-01-02-030405"
+    before = _table_counts(harness.services)
+
+    with pytest.raises(OctopError) as err:
+        harness.create_run(goal="第二次（撞 id）", tier="quick")
+
+    assert_code(err, ErrorCode.TEAM_RUN_CONFLICT, status=409)
+    assert _table_counts(harness.services) == before, "409 之前不得再写 project / run / thread"
+
+
+def test_a_member_without_a_role_writes_no_new_rows(harness: Harness) -> None:
+    """manifest 成员**缺** ``role`` 键（400 ``TEAM_ROLE_UNKNOWN``）⇒ 四表零新增。"""
+    harness.workspace.files[MANIFEST] = json.dumps(
+        {"members": [{"agent_id": TEAM_ID, "role": "lead"}, {"agent_id": "ag-no-role"}]}
+    )
+    before = _table_counts(harness.services)
+
+    with pytest.raises(OctopError) as err:
+        harness.create_run(goal="缺 role", tier="quick")
+
+    assert_code(err, ErrorCode.TEAM_ROLE_UNKNOWN, status=400)
+    assert _table_counts(harness.services) == before, "400 之前不得写 project / run / thread"
+
+
+def test_a_duplicate_roster_role_writes_no_new_rows(harness: Harness) -> None:
+    """manifest 角色重复（400 ``PROJECT_MEMBER_INVALID``）⇒ 四表零新增。"""
+    harness.workspace.files[MANIFEST] = manifest([(TEAM_ID, "backend"), ("ag-two", "backend")])
+    before = _table_counts(harness.services)
+
+    with pytest.raises(OctopError) as err:
+        harness.create_run(goal="重复角色", tier="quick")
+
+    assert_code(err, ErrorCode.PROJECT_MEMBER_INVALID, status=400)
+    assert _table_counts(harness.services) == before, "400 之前不得写 project / run / thread"

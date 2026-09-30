@@ -482,6 +482,14 @@ class TeamRunService:
         * ``trimmed-to-zero`` -- members existed but the tier cap cut them all. Kept for
           diagnosis only: ``trim_roster`` cannot do this (every member is a candidate,
           and every ``role_cap`` is >= 1).
+
+        The workspace is resolved a **second** time here, so the string can drift from
+        the cause behind ``trim.kept``: under TOCTOU (the manifest changed between
+        ``trimmed_roster`` and this call) or a mid-flight read failure it may name a
+        different cause -- and a workspace that resolves but whose manifest cannot be read
+        is reported ``manifest-empty``, because ``TeamService._read_manifest`` returns
+        ``{}`` for that too. **The criterion never depends on it**: acceptance is decided
+        by ``trim.kept`` alone; this is a diagnostic for the caller.
         """
         if manifest_roster.get("members"):
             return "trimmed-to-zero"
@@ -720,7 +728,10 @@ class TeamRunService:
         """Create a run: project row, run row, room thread, roster, tier phases.
 
         Order is deliberate — the goal is validated first, so a refused run leaves
-        **nothing** behind (no project, no directory).
+        **nothing** behind (no project, no directory). Every refusal that can be decided
+        without a written row is decided **before** ``create_project`` (the first write):
+        the empty-roster guard, the run-id conflict, and the roster admission (missing or
+        duplicate role).
 
         * **G10** — the tier is normalised by ``pipeline.normalize_tier``: an
           unrecognised value is refused, never silently defaulted.
@@ -781,9 +792,12 @@ class TeamRunService:
                 },
             )
 
-        project = self._project_service().create_project(
-            owner_user=user, name=text[:80] or "team run", goal=text
-        )
+        # ── Run id + roster admission: decided **before the first write** too ────
+        # These two refusals used to run *after* ``create_project`` (and the roster
+        # admission after the run row and its room thread as well), so a refused request
+        # left an orphan project / run / thread behind -- the opposite of the promise
+        # above. ★ The decisions are **unchanged** (same codes, same ``details``, same
+        # predicates); only their **position** moved, ahead of the first write.
         run_id = run_id_for()
         if self._runs.get(run_id) is not None:
             raise OctopError(
@@ -791,32 +805,11 @@ class TeamRunService:
                 f"run {run_id!r} already exists",
                 details={"run_id": run_id},
             )
-        run = self._runs.create(
-            run_id=run_id,
-            team_agent_id=team_agent_id,
-            project_id=project.id,
-            goal=text,
-            created_by=user.id,
-            mode=mode,
-            deliverable=deliverable,
-            tier=resolved_tier,
-            run_root=run_root or RUN_ROOT_HOST_WORKSPACE,
-            max_review_rounds=max_review_rounds,
-        )
-        thread_id = self._open_room(run, user=user)
-        if thread_id is not None:
-            self._runs.set_room_thread(run_id, thread_id)
-            run = self.require_run(run_id)
 
-        lead_agent_id = _kept_lead(
-            trim.kept,
-            host_agent_id=host_agent_id,
-            lead_agent_id=manifest_roster.get("lead_agent_id"),
-        )
         # ── Roster admission (T-73, A layer) ────────────────────────────────────
-        # Decided **before** the ``or ""`` folding below, and the order matters: once
-        # folded, "no role configured" and "empty role" are indistinguishable, and that
-        # lost distinction is what let a second empty role reach the table and trip
+        # Decided **before** the ``or ""`` folding in the write loop below: once folded,
+        # "no role configured" and "empty role" are indistinguishable, and that lost
+        # distinction is what let a second empty role reach the table and trip
         # ``UNIQUE(run_id, role)`` as a raw IntegrityError.
         # ★ Refuse only "missing role" and "duplicate role". Do **not** add a "role is in
         # the fixed role table" check here: ``lead`` is a legitimate *roster* role while
@@ -841,6 +834,31 @@ class TeamRunService:
                 )
             seen_roles.add(role_text)
 
+        project = self._project_service().create_project(
+            owner_user=user, name=text[:80] or "team run", goal=text
+        )
+        run = self._runs.create(
+            run_id=run_id,
+            team_agent_id=team_agent_id,
+            project_id=project.id,
+            goal=text,
+            created_by=user.id,
+            mode=mode,
+            deliverable=deliverable,
+            tier=resolved_tier,
+            run_root=run_root or RUN_ROOT_HOST_WORKSPACE,
+            max_review_rounds=max_review_rounds,
+        )
+        thread_id = self._open_room(run, user=user)
+        if thread_id is not None:
+            self._runs.set_room_thread(run_id, thread_id)
+            run = self.require_run(run_id)
+
+        lead_agent_id = _kept_lead(
+            trim.kept,
+            host_agent_id=host_agent_id,
+            lead_agent_id=manifest_roster.get("lead_agent_id"),
+        )
         for member in trim.kept:
             try:
                 self._runs.add_member(

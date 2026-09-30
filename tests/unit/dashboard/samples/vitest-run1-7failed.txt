@@ -1,0 +1,18 @@
+# ★ 样本（research 跑 1 · `7 failed` · 于 `9b287890`）
+# ★★ 说明：★ 这份样本是【回放用】—— 它保留了【真实的 counts 行】（`RESEARCH.md` §16 ✓）
+#    + 【已知的 6 条 FAIL 行】（本轮 architect 基线跑实测 ✓），★★ 而【第 7 个文件的 FAIL 行【未被识别】】✗
+#    ⇒ ★★ 这正是 `L-1` 要防的形态：★【「我读不懂 ≠ 全绿」】✓
+# ★★ 样本不完整：★ **缺 1 条 FAIL 行**（★ `Test Files 7 failed` 而本样本只有 **6** 条 ✓）
+#    ★★ 原因（★ 已定位 · 属【证据缺失】不属【工具覆盖缺陷】✓）：
+#      · ★ `RESEARCH` 跑 1 的【标准 FAIL 行未被捕获】（★ 只留下 counts · §F 行 3 诚实标注「未查到」✓）
+#      · ★★ 该条即 `L-5` 所说的 **singleton**（★ 只在部分跑次出现 ⇒ 逐条定性 ✓）
+#    ⇒ ★★ 故本样本的用途 = **回放守卫**（★ 验证「counts 有失败而分类不全 ⇒ exit 1」✓），
+#      ★ **不是**完整清单 ✓ —— ★ 完整清单由 `T-B-INT` 的【连跑 ≥3 次】产出 ✓
+ FAIL  src/components/DocumentPreviewCore.docxSanitize.test.ts [ src/components/DocumentPreviewCore.docxSanitize.test.ts ]
+ FAIL  src/pages/Agent/Skills/skillMarkdown.test.ts [ src/pages/Agent/Skills/skillMarkdown.test.ts ]
+ FAIL  src/pages/Agent/Skills/components/SkillDrawer.test.ts [ src/pages/Agent/Skills/components/SkillDrawer.test.ts ]
+ FAIL  src/api/modules/publishedExperts.test.ts > publishedExpertsApi > uses publish lifecycle endpoints for an agent-owned template
+ FAIL  src/pages/Chat/hooks/useSessions.test.ts > useSessions agent switch > clears previous-agent threads on the first render of a new agent
+ FAIL  src/pages/Chat/components/ChatInputActionsRow.test.tsx > ChatInputActionsRow compact pickers > uses a popover instead of a full-width drawer on narrow desktop
+ Test Files  7 failed | 211 passed (218)
+      Tests  7 failed | 1328 passed (1335)
