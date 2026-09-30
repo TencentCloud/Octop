@@ -10,6 +10,7 @@ import MinimalAgentSessionNav from "../pages/Chat/components/MinimalAgentSession
 import ShareConversationDialog from "../pages/Chat/components/ShareConversationDialog";
 import { publicShareAvailable } from "../pages/Chat/utils/publicShareHost";
 import { emitSessionEvent } from "../pages/Chat/hooks/chatStore";
+import { deleteSessions } from "../pages/Chat/hooks/useSessions";
 import { formatThreadTitle } from "../pages/Chat/utils/threadTitle";
 
 function parseChatPath(pathname: string): {
@@ -145,6 +146,7 @@ export default function MinimalRecordsHost() {
         onAgentSelect={handleAgentSelect}
         onNewChat={handleNewChat}
         onDeleteActive={handleDeleteActive}
+        onBatchDelete={deleteSessions}
         onRenameActive={handleRenameActive}
         onPinActive={handlePinActive}
         onFork={(id, agentId) => void handleFork(id, agentId)}
