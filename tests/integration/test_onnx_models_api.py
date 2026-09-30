@@ -107,7 +107,7 @@ async def test_knowledge_onnx_test_uses_knowledge_settings_permission(
 
     monkeypatch.setattr(onnx_service, "ensure_local_embedding_deps_async", _ready)
     monkeypatch.setattr(onnx_service, "local_embedding_deps_available", lambda: True)
-    monkeypatch.setattr(onnx_service, "embed_texts", lambda _m, _t: [[0.0] * 512])
+    monkeypatch.setattr(onnx_service, "embed_texts", lambda _m, _t, **_kwargs: [[0.0] * 512])
     _seed_cache(tmp_octop_home, MODEL)
 
     kb_admin = await create_user(

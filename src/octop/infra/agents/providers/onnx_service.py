@@ -21,6 +21,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from octop.infra.agents.providers.onnx_catalog import (
     ONNX_PRESET_MODEL_IDS,
     get_onnx_model_meta,
@@ -386,22 +388,60 @@ def require_embedding_prerequisites(settings_get: Any) -> OnnxServiceConfig:
     return cfg
 
 
-def _build_text_embedding(model: str) -> Any:
+def _build_text_embedding(model: str, *, local_files_only: bool = False) -> Any:
     from fastembed import TextEmbedding
 
-    return TextEmbedding(model_name=model, cache_dir=str(embedding_models_dir()))
+    return TextEmbedding(
+        model_name=model,
+        cache_dir=str(embedding_models_dir()),
+        local_files_only=local_files_only,
+    )
 
 
-def embed_texts(model: str, texts: Sequence[str]) -> list[list[float]]:
+def embed_texts(
+    model: str,
+    texts: Sequence[str],
+    *,
+    local_files_only: bool = False,
+) -> list[list[float]]:
     if not texts:
         return []
     require_local_embedding_deps()
     model = assert_catalog_model(model)
-    emb = _build_text_embedding(model)
+    emb = _build_text_embedding(model, local_files_only=local_files_only)
     out = [[float(x) for x in vec] for vec in emb.embed(list(texts))]
     if len(out) != len(texts):
         raise RuntimeError("embedding count mismatch")
     return out
+
+
+def _probe_error_message(exc: Exception) -> str:
+    """Turn a failed offline probe into an actionable message, not a bare errno."""
+    text = str(exc)
+    lowered = text.lower()
+    if isinstance(exc, httpx.HTTPError) or any(
+        marker in lowered
+        for marker in (
+            "network",
+            "connection",
+            "timed out",
+            "getaddrinfo",
+            "name resolution",
+            "errno",
+        )
+    ):
+        return (
+            f"network error while loading the cached model ({text}); the probe must "
+            "run fully offline, so re-download the model and test the connection again"
+        )
+    if isinstance(exc, ValueError):
+        # fastembed raises ValueError("Could not load model ... from any source.")
+        # when local_files_only resolution fails against a broken cache.
+        return (
+            f"{text}; the model cache is incomplete for offline use, "
+            "re-download the model and test the connection again"
+        )
+    return text
 
 
 async def probe_local_model(model: str) -> dict[str, Any]:
@@ -409,20 +449,26 @@ async def probe_local_model(model: str) -> dict[str, Any]:
 
     Shared by the ONNX admin test endpoint and the generic provider probe so
     the local service is never mistaken for a remote OpenAI-compatible API.
-    Runs entirely on-device: it must not issue any network request.
+    Runs entirely on-device: it must not issue any network request. The model
+    is loaded with ``local_files_only=True`` and dependencies are never
+    installed here, so an incomplete cache surfaces as an actionable error
+    instead of a bare ``[Errno 101]`` from a hidden HuggingFace/GCS fallback.
     """
     if not model:
         return {"ok": False, "error": "no ONNX model selected"}
     try:
         model = assert_catalog_model(model)
-        await ensure_local_embedding_deps_async(allow_install=True)
+        await ensure_local_embedding_deps_async(allow_install=False)
     except (ValueError, RuntimeError) as exc:
         return {"ok": False, "error": str(exc)}
     if not is_model_downloaded(model):
         return {"ok": False, "error": "model is not downloaded yet; download it before testing"}
 
     def _run() -> int:
-        vectors = embed_texts(model, [_LOCAL_PROBE_TEXT])
+        # local_files_only=True: fastembed falls back to HuggingFace/GCS
+        # downloads when local resolution fails, which would break the
+        # offline promise and surface a bare errno on offline hosts.
+        vectors = embed_texts(model, [_LOCAL_PROBE_TEXT], local_files_only=True)
         if not vectors:
             raise RuntimeError("embedding returned no vectors")
         return len(vectors[0])
@@ -432,7 +478,7 @@ async def probe_local_model(model: str) -> dict[str, Any]:
         loop = asyncio.get_running_loop()
         dim = await loop.run_in_executor(None, _run)
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": _probe_error_message(exc)}
     return {"ok": True, "latency_ms": (time.perf_counter() - started) * 1000.0, "dim": dim}
 
 
