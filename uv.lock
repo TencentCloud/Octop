@@ -2454,7 +2454,7 @@ wheels = [
 
 [[package]]
 name = "octop"
-version = "1.0.2b3"
+version = "1.0.2b5"
 source = { editable = "." }
 dependencies = [
     { name = "acme" },

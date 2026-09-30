@@ -196,7 +196,7 @@ function ChatPageInner() {
     () => agents.find((a) => a.agent_id === resolvedAgentId) ?? null,
     [agents, resolvedAgentId],
   );
-  const agentChatReady = isAgentChatReady(activeAgent?.state);
+  const agentChatReady = isAgentChatReady(activeAgent?.state, activeAgent);
   const trajectoryEnabled =
     activeAgent !== null && activeAgent.config?.enable_trajectory !== false;
   const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {});
@@ -377,7 +377,11 @@ function ChatPageInner() {
     controlOwner: browserControlOwner,
     environment: browserEnvironment,
     refresh: refreshBrowserSession,
-  } = useBrowserSessionState(threadId, hasBrowserTool);
+  } = useBrowserSessionState(
+    threadId,
+    hasBrowserTool,
+    activeAgent?.bridge ? activeAgent.bridge_connection_id : null,
+  );
 
   refreshBrowserRef.current = refreshBrowserSession;
 
@@ -407,6 +411,10 @@ function ChatPageInner() {
   } = useChatDockPanel(isMobile, resolvedAgentId);
 
   const chromeCheckInFlightRef = useRef(false);
+  const bridgeConnectionId =
+    activeAgent?.bridge && activeAgent.bridge_connection_id
+      ? activeAgent.bridge_connection_id
+      : null;
   const ensureChromeThen = useCallback(
     async (then: () => void) => {
       // A live session means Chrome is already running — skip the probe.
@@ -414,8 +422,21 @@ function ChatPageInner() {
         if (chromeCheckInFlightRef.current) return;
         chromeCheckInFlightRef.current = true;
         try {
-          const env = await browserApi.checkEnvStatus();
+          const env = await browserApi.checkEnvStatus(resolvedAgentId);
           if (shouldJumpToChromeInstall(env)) {
+            // Peer Chromium install is not tunneled — only nudge local install UX.
+            if (bridgeConnectionId) {
+              showConfirmModal(
+                {
+                  title: t("browserWorkspace.chromeMissingTitle"),
+                  content: t("chat.remoteExpert.manageToast"),
+                  okText: t("common.confirm"),
+                  cancelText: t("common.cancel"),
+                },
+                { isMobile },
+              );
+              return;
+            }
             showConfirmModal(
               {
                 title: t("browserWorkspace.chromeMissingTitle"),
@@ -438,7 +459,14 @@ function ChatPageInner() {
       }
       then();
     },
-    [browserSessionId, isMobile, navigate, t],
+    [
+      browserSessionId,
+      bridgeConnectionId,
+      isMobile,
+      navigate,
+      resolvedAgentId,
+      t,
+    ],
   );
 
   const handleToggleBrowserPanel = useCallback(() => {
@@ -614,13 +642,22 @@ function ChatPageInner() {
   // Subset for the chat-side *pickers* (`@` button popover, `@` mention menu).
   // Only running experts — picking a stopped one would dispatch into an
   // unloaded harness and silently fail.
-  const chatAgentOptionsPickable = useMemo(
-    () =>
-      selectEnabledExperts(agents, null, { pinActive: false })
-        .filter((item) => !isTeamAgent(item))
-        .map(projectChatAgentOption),
-    [agents],
-  );
+  // Bridge sessions: only peers on the same connection (local ask_agent
+  // cannot reach them; peer ask_agent cannot reach local experts).
+  const chatAgentOptionsPickable = useMemo(() => {
+    let list = selectEnabledExperts(agents, null, { pinActive: false }).filter(
+      (item) => !isTeamAgent(item),
+    );
+    if (activeAgent?.bridge && activeAgent.bridge_connection_id) {
+      const cid = activeAgent.bridge_connection_id;
+      list = list.filter(
+        (item) => item.bridge && item.bridge_connection_id === cid,
+      );
+    } else {
+      list = list.filter((item) => !item.bridge);
+    }
+    return list.map(projectChatAgentOption);
+  }, [agents, activeAgent?.bridge, activeAgent?.bridge_connection_id]);
   const teamExpertOptions = useMemo(() => {
     if (!isTeamChat) return chatAgentOptionsPickable;
     const ids = new Set(activeAgent?.member_ids ?? []);
@@ -1646,6 +1683,7 @@ function ChatPageInner() {
             onCloseTab={closeDockTab}
             onOpenFile={openFileAt}
             browserEnvironment={browserEnvironment}
+            bridgeConnectionId={bridgeConnectionId}
             threadId={activeThreadId}
             isStreamingTurn={isStreaming}
             onModeChange={handleDockModeChange}
