@@ -7,8 +7,43 @@
 ## [Unreleased]
 
 ### 修复
-- 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
+
+- 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
 - 记忆迁移的 pack/adopt 接口把调用方能自行修正的输入错误标成 `INTERNAL_ERROR`（HTTP 400 却是服务端错误码，且 4xx 不落日志），改用既有的 `SLASH_BAD_ARGS`并把调用方给出的标识放进 `details`（Fixes #1289）。
+### 新增
+- 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
+
+### 修复
+- httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
+
+## [1.0.2b5] - 2026-09-29
+
+### 新增
+- Octop↔Octop 云端桥接，经隧道使用远程专家
+- 内置助手可回答产品与使用问题
+- 可配置 Ollama 本地模型下载目录
+- 账号可自定义侧边栏；角色字段改为存储模板 id
+
+### 修复
+- 媒体预览 CSP、Langfuse 环境变量、IM 附件元数据
+- CLI 状态文件原子读写；移动端采集失败后停止 JPEG 流
+- 服务关闭时仍可识别本机 Ollama 模型
+- Dashboard 设计 token、知识库暗色预览、备份导入内置技能过滤
+- 旧插件 `harness_agent` 导入；移动端输入框避让视口
+
+### 变更
+- 更新 README 路线图、锚点与产品名链接
+
+## [1.0.2b4] - 2026-09-27
+
+### 新增
+- 侧栏可按账号自定义；角色模板 id 持久化
+
+### 修复
+- 暗色主题下知识库 Markdown 预览不可见
+
+### 变更
+- README 路线图与产品链接更新
 
 ## [1.0.2b3] - 2026-09-26
 
@@ -41,6 +76,7 @@
 
 ### 新增
 
+- 技能包新增「复制策略」（`copy_policy`，默认 `snapshot` 行为不变）：创建者/管理员可按包设为 `lock`（复制出的工作区副本带 origin/locked 水印，非创建者在工作区写接口被拒）或 `deny`（复制端点 403、前端按钮禁用）；复制成功与拒绝均落 audit。锁定副本在 Agent 工具层的写保护依赖 harness 侧配合，已在 issue 中单列（#770）
 - 登录验证码新增极验行为验 v4（#870）：设置页配置 captcha_id / captcha_key，登录弹窗完成验证，服务端按官方协议 HMAC-SHA256 签名后到 gcaptcha4 二次校验（form-urlencoded，仅 result=success 放行）
 - 对话支持默认折叠思考与工具过程（浏览器本地偏好）(#718)
 - 对话中可隐藏不常用的共享专家（浏览器本地偏好）(#589)
