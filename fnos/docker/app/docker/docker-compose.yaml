@@ -7,7 +7,7 @@ services:
     ports:
       - "8088:8088"
     volumes:
-      - "/var/apps/octop/share/octop/data:/data/.octop"
+      - "${OCTOP_DATA_DIR:-/var/apps/octop/share/octop/data}:/data/.octop"
     environment:
       - HOME=/data
       - OCTOP_BIND_HOST=0.0.0.0
