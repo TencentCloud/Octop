@@ -94,7 +94,7 @@ export function ProviderConfigModal({
   const [form] = Form.useForm<ProviderConfigForm>();
   const [draftModels, setDraftModels] = useState<ProviderModel[]>([]);
 
-  const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
+  const hasApiKey = provider.api_key_set;
   const isOllama = isOllamaProviderRow(provider);
   const isOnnx = isOnnxProviderRow(provider);
   const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
@@ -773,7 +773,10 @@ export function ProviderConfigModal({
         !!draftApiKey ||
         (!!draftBaseUrl && draftBaseUrl !== (provider.base_url ?? ""));
 
-      if (useDraft && !draftApiKey && !hasApiKey) {
+      // Draft test needs the plaintext key in the request body. The stored key
+      // is no longer sent to the browser, so a draft (new key OR changed
+      // base_url) can only be probed when the key is re-entered here.
+      if (useDraft && !draftApiKey) {
         message.warning(t("models.pleaseEnterApiKey"));
         return;
       }
@@ -786,7 +789,7 @@ export function ProviderConfigModal({
           ? await testProviderDraft({
               name: provider.name,
               kind: provider.kind,
-              api_key: draftApiKey || provider.api_key || undefined,
+              api_key: draftApiKey || undefined,
               base_url: draftBaseUrl || provider.base_url,
               model_id: modelId,
               embedding,
@@ -868,7 +871,7 @@ export function ProviderConfigModal({
       }
       const draftApiKey = (values.api_key as string | undefined)?.trim();
       const draftBaseUrl = (values.base_url as string | undefined)?.trim();
-      const apiKey = draftApiKey || provider.api_key || "";
+      const apiKey = draftApiKey || "";
       if (!apiKey) {
         message.warning(t("models.pleaseEnterApiKey"));
         return;

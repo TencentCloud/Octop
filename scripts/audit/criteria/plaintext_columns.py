@@ -1,5 +1,14 @@
 """★ `AUD-S6` 结构化凭据列：明文落库（列面 · `K` 批 `PLAN §2` 八条硬要求 · 逐条落实）。
 
+★★ **运行口径（必须 · `N` 批 `repair-2` 立）**：本判据**必须**用【仓库解释器 `.venv/bin/python`】（3.12 · `AGENTS.md`）
+  跑 —— ★ 裸 `python3`（3.9.6）**解析不了** PEP 695 语法的文件（如
+  `src/octop/infra/db/repos/_base.py:30 def map_rows[R_co](…)`）⇒ ★ 会少计站点（实测 72 → 71 ⇒ 与基线
+  相等 ⇒ **假绿** ✗）· ★ 已 **fail-closed**：解析失败的文件**必须**记 `UNKNOWN` + 打印文件名与原因
+  （★ 不得静默 `return []` / `continue`）· ★ `BOUNDARY_BASELINE` 的口径 = **仓库解释器**。
+★★ **上述口径已落成【可执行断言】**（`N` 批 `repair-3` · `REPO_PYTHON_MIN = (3, 12)`）：★ 解释器不符 ⇒
+  ★ 该判据**永不返回绿**（降级 `UNKNOWN` + 行内显式警告「本读数来自非仓库解释器 · 不可作为通过依据」）
+  ⇒ ★★ 「换回裸 `python3` 仍报绿」在机械上**不可能**发生（★ 不依赖读者是否注意到文字声明）。
+
 ★ 谓词（逐字）：扫 `migrations/*.sql` 取 `(table, col) ∈ CRED_PAT × {TEXT, VARCHAR, BLOB}` 且排除
   `*_hash` ⇒ 在全仓（`src/octop/**` + `scripts/**`）定位该表的 `INSERT`/`UPDATE` 参数表达式 ⇒
   `ast` 判该值是否经【已验证导入源】的 `encrypt_credentials`/`encrypt_secret` ⇒
@@ -80,7 +89,7 @@ ENCRYPT_SOURCES = {
 # ★★ F-L1(a)：验证源【源码 `sha256[:12]` 冻结】—— 源一变 ⇒ 红/未知（破「改验证源本体」）
 #   ★ 值由 L 批 I1 落盘时实测回填（★ 任一不等 ⇒ 判据【未知】· 不得记绿）
 FROZEN_SOURCE_SHA = {
-    "src/octop/infra/db/secret_codec.py": "87fb41ed9812",
+    "src/octop/infra/db/secret_codec.py": "e948b1fab51c",
     "src/octop/infra/connectors/crypto.py": "c79abd7686aa",
     "src/octop/infra/auth/sso/crypto.py": "47d71b3116aa",
 }
@@ -88,7 +97,12 @@ FROZEN_SOURCE_SHA = {
 # ★★ 边界桶基线（`SL-5`）：桶③ = 【其它表】的本质动态 SQL 站点数
 #   ★ 逐次比对：实测 > 基线 ⇒ ★ 至少 `UNKNOWN`（或红）+ 打印差分（★ 防边界桶变垃圾桶）
 #   ★ 锚 = `HEAD = 1808f918` · L 批判据（`Name → 常量` 转为静态可判 ⇒ 19 处从「不透明」转入判定面）
-#   ★★ 重锚记录：契约初值 91（判据 sha `0a7ee69e19f0`）⇒ 本批判据变更后【重测 = 72】⇒ 冻结 72
+#   ★★ 重锚记录：契约初值 91（判据 sha `0a7ee69e19f0`）⇒ L 批判据变更后【重测 = 72】⇒ 冻结 72
+#   ★★ 再重锚（N 批 repair-1）：`secret_codec._scan_table` 的形参 SQL 已【静态化】⇒ 该站点离开边界桶
+#   ★★★ **口径修正 + 重冻（N 批 repair-2 · V1b finding）**：★★ 基线口径 = 【**仓库解释器 `.venv/bin/python`**】
+#      （3.12）—— ★ 之前用裸 `python3`（3.9.6）测得的 71 是【**少计**】：3.9 解析不了 PEP 695 的
+#      `repos/_base.py` ⇒ 该校验站点被静默丢弃（72 − 1 = 71）⇒ ★ 与基线相等 ⇒ **假绿** ✗。
+#      ★ 现已 fail-closed（解析失败 ⇒ `UNKNOWN` + 打印）∧ 3.12 口径实测 = **72** ⇒ 冻结 **72**。
 #   ★ 为什么必须重锚：基线是「已声明边界」的**上界** ⇒ 判据变强后若沿用旧上界 ⇒ 新增 19 处不透明
 #     站点将被旧上界吞掉（★ 与「增长即 UNKNOWN」的防线冲突）✗
 BOUNDARY_BASELINE = 72
@@ -608,6 +622,35 @@ def _sql_argument(node):
     return None, None, False
 
 
+# ★★ 解析失败收集器（★ `fail-closed` 的落地）：★ **单次判据运行内**累积，入口 `check_plaintext_columns` 清空。
+#   ★ 为什么必须 fail-closed：`ast.parse` 失败时若静默 `return []` / `continue` ⇒ ★ 该文件的站点**凭空消失**
+#   ⇒ 计数偏小 ⇒ ★★ **假绿**（★ 实测 V1b：裸 `python3` = 3.9.6 解析不了 PEP 695 的
+#   `infra/db/repos/_base.py:30 def map_rows[R_co](…)` ⇒ 72 → 71 ⇒ 与基线相等 ⇒ 报绿 ✗）。
+# ★★ 解释器口径（**可执行断言** · `N` 批 `repair-3` · `V2` 的 `SL-3`）：
+#   ★ 本判据依赖 `ast` 解析 **PEP 695** 等新语法（如 `repos/_base.py:30 def map_rows[R_co](…)`）⇒
+#   ★★ 解释器过旧 ⇒ **静默少计站点** ⇒（实测）裸 `python3` = 3.9.6 ⇒ 72 → 71 = 基线 ⇒ **假绿** ✗。
+#   ★ 故口径不止写在 docstring —— ★★ 落成【可执行断言】：★ 不符 ⇒ 该判据**永不返回绿**
+#     （降级 `UNKNOWN` + 行内显式警告「本读数来自非仓库解释器 ⇒ 不可作为通过依据」）。
+REPO_PYTHON_MIN = (3, 12)
+
+
+def _interpreter_caliber():
+    """⇒ `(是否合规, 说明)`：★ **机械判定**（★ 版本低于仓库口径 ⇒ 不合规 · ★ 只严不松）。"""
+    info = sys.version_info
+    ok = (info.major, info.minor) >= REPO_PYTHON_MIN
+    return ok, "Python %d.%d.%d" % (info.major, info.minor, info.micro)
+
+
+_PARSE_FAILURES = []
+
+
+def _record_parse_failure(rel, exc):
+    """★ 源码【读取/解析】失败 ⇒ ★★ 登记（去重）⇒ 判据必须记 `UNKNOWN` + 打印文件名与原因。"""
+    item = "%s（%s: %s）" % (rel, type(exc).__name__, exc)
+    if item not in _PARSE_FAILURES:
+        _PARSE_FAILURES.append(item)
+
+
 def _write_tables(text):
     """★ 一段 SQL 文本里的写目标表（`INSERT INTO` / `UPDATE … SET`）。"""
     found = [match.group("t").lower() for match in INSERT_RE.finditer(text)]
@@ -620,7 +663,9 @@ def _sites_in_file(path, rel, target_tables):
     try:
         source = reg.read_source(path)
         tree = ast.parse(source)
-    except (OSError, UnicodeDecodeError, SyntaxError):
+    except (OSError, UnicodeDecodeError, SyntaxError) as exc:
+        # ★★ fail-closed：★ 绝不静默跳过（★ 否则是「计数失真 ⇒ 假绿」的通用漏洞）
+        _record_parse_failure(rel, exc)
         return []
     imports = _imports(tree)
     module_assigns = _module_assignments(tree)
@@ -726,7 +771,8 @@ def _caller_args(root, py_files, method_name, param_name, param_index):
     for path in py_files:
         try:
             tree = ast.parse(reg.read_source(path))
-        except (OSError, UnicodeDecodeError, SyntaxError):
+        except (OSError, UnicodeDecodeError, SyntaxError) as exc:
+            _record_parse_failure(reg.rel(root, path), exc)
             continue
         imports = _imports(tree)
         rel = reg.rel(root, path)
@@ -804,6 +850,8 @@ def _run_python(root, code, timeout=120):
 @reg.criterion("AUD-S6", reg.HARD)
 def check_plaintext_columns(ctx):
     """★ `AUD-S6` 主判据（三态 + 计数 + 逐条 `表.列@path:line`）。"""
+    _PARSE_FAILURES.clear()  # ★ 单次运行口径：解析失败收集器（★ fail-closed）
+    caliber_ok, caliber_detail = _interpreter_caliber()  # ★★ 可执行口径断言（repair-3）
     root = pathlib.Path(ctx.repo)
     candidates, ddl_files, skipped_cols = _ddl_candidates(root)
     files = list(ddl_files)
@@ -990,14 +1038,41 @@ def check_plaintext_columns(ctx):
         % (data_face_note, df_code, df_out.strip().replace("\n", " ")[:120])
     )
 
+    # ★★ 可执行口径断言（`repair-3`）：★ 非仓库解释器 ⇒ ★ **本读数不可作为通过依据** ⇒ 永不返回绿
+    if not caliber_ok:
+        hints.append(
+            "★★ 解释器口径不符（★ **可执行断言** · 非文字声明）：当前 = %s · 仓库口径 = "
+            "`.venv/bin/python`（≥ %d.%d · `AGENTS.md`）⇒ ★★ **本读数来自非仓库解释器 · 不可作为通过依据**"
+            "（★ 旧解释器解析不了 PEP 695 ⇒ 站点被**少计** ⇒ 曾出【假绿】✗）⇒ ★ 请重跑："
+            "`.venv/bin/python scripts/audit/current_tree.py`"
+            % (caliber_detail, REPO_PYTHON_MIN[0], REPO_PYTHON_MIN[1])
+        )
+    # ★★ fail-closed（`repair-2`）：解析失败的文件 ⇒ ★【完全失明】⇒ 不得记绿 · 必须打印文件名与原因
+    if _PARSE_FAILURES:
+        hints.append(
+            "★★ 源码【读取/解析失败】%d 个文件（★ `fail-closed` · 硬要求「不可见即未知」）：%s ⇒ "
+            "★ 本判据对这些文件**完全失明**（★ 站点计数会因此【偏小】）⇒ ★ **不得记绿**；"
+            "★ 常见根因 = 解释器过旧（★ 裸 `python3` = 3.9.6 解析不了 PEP 695 语法）⇒ "
+            "★ 请用【仓库解释器 `.venv/bin/python`】重跑"
+            % (len(_PARSE_FAILURES), " · ".join(_PARSE_FAILURES[:6]))
+        )
     counts = ("候选列 %d（判定面 %d · 已加密正例 %d）· 已判 %d · UNKNOWN %d（已声明边界）· "
-              "桶②不可判 %d · FAIL %d · 边界基线 %d · 数据面抽检=%s（★ base64 文本形态）%s"
+              "桶②不可判 %d · FAIL %d · 解析失败 %d · 解释器=%s%s · 边界基线 %d（★ 口径 = 仓库解释器）"
+              " · 数据面抽检=%s（★ base64 文本形态）%s"
               % (len(candidates), len(judged), len(verified), len(judged_sites), len(boundary),
-                 unknown_sites, len(fails), BOUNDARY_BASELINE, data_face_note, boundary_note))
+                 unknown_sites, len(fails), len(_PARSE_FAILURES), caliber_detail,
+                 "" if caliber_ok else "（★ 非仓库口径 ⇒ 不可作为通过依据）", BOUNDARY_BASELINE,
+                 data_face_note, boundary_note))
     detail = " · ".join(fails + unknown_entries) if (fails or unknown_entries) else "写入值均经已验证的加密调用"
     if fails:
         state = reg.FAIL
-    elif unknown_sites or hardened or len(boundary) > BOUNDARY_BASELINE:
+    elif (
+        unknown_sites
+        or hardened
+        or _PARSE_FAILURES
+        or not caliber_ok  # ★★ 可执行口径断言：非仓库解释器 ⇒ 永不返回绿（只严不松）
+        or len(boundary) > BOUNDARY_BASELINE
+    ):
         state = reg.UNKNOWN
     else:
         state = reg.OK

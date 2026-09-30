@@ -187,16 +187,13 @@ export function isLocalNoKeyPresetId(presetId: string): boolean {
   return presetId === "ollama" || presetId === "onnx";
 }
 
-/** Stable placeholder api_key written when creating a local preset row. */
-function localPresetApiKey(provider: { api_key?: string | null }): string {
-  return (provider.api_key ?? "").trim().toLowerCase();
-}
-
-export function isOnnxProviderRow(provider: {
-  name: string;
-  api_key?: string | null;
-}): boolean {
-  if (localPresetApiKey(provider) === "onnx") return true;
+/**
+ * Local preset rows are identified by their **name** (and base URL for
+ * Ollama) only. The row's `api_key` used to carry the placeholder
+ * `"onnx"` / `"ollama"` written at creation time, but the API no longer
+ * echoes the stored key — so the key value must never be used as identity.
+ */
+export function isOnnxProviderRow(provider: { name: string }): boolean {
   const n = provider.name.toLowerCase();
   return n === "onnx" || n === "onnx (local)";
 }
@@ -204,10 +201,8 @@ export function isOnnxProviderRow(provider: {
 export function isOllamaProviderRow(provider: {
   name: string;
   base_url?: string | null;
-  api_key?: string | null;
 }): boolean {
   if (isOnnxProviderRow(provider)) return false;
-  if (localPresetApiKey(provider) === "ollama") return true;
   const n = provider.name.toLowerCase();
   return (
     n === "ollama" ||
@@ -220,7 +215,6 @@ export function isOllamaProviderRow(provider: {
 export function isLocalProviderRow(provider: {
   name: string;
   base_url?: string | null;
-  api_key?: string | null;
 }): boolean {
   return isOnnxProviderRow(provider) || isOllamaProviderRow(provider);
 }

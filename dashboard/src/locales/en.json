@@ -2761,7 +2761,13 @@
     "readAloud": "Read aloud",
     "micNotAvailable": "Audio recording unavailable — please use HTTPS",
     "sttNotAvailable": "Voice input not available on this device (HTTPS required)",
-    "ttsAutoplayBlocked": "Autoplay blocked by browser — tap read-aloud again"
+    "ttsAutoplayBlocked": "Autoplay blocked by browser — tap read-aloud again",
+    "apiKeySet": "A key is stored. Leave blank to keep it unchanged.",
+    "apiKeyKeepPlaceholder": "Leave blank to keep the stored key",
+    "clearApiKey": "Clear key",
+    "clearApiKeyConfirm": "This removes the stored key for {{name}} (cannot be undone). Continue?",
+    "clearApiKeyDone": "Stored key cleared",
+    "clearApiKeyFailed": "Failed to clear the stored key"
   },
   "security": {
     "intro": "Configure runtime security policies for agents. Running agents reload automatically after save.",

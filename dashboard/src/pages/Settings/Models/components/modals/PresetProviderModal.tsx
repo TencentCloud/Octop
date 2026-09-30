@@ -59,7 +59,10 @@ export function PresetProviderModal({
       base_url:
         (form.getFieldValue("base_url") as string | undefined) ||
         preset.base_url,
-      api_key: (form.getFieldValue("api_key") as string | undefined) || null,
+      // ★ 草稿行只暴露「是否已填 key」布尔 —— 明文不进行状态（响应面已不回显）。
+      api_key_set: Boolean(
+        (form.getFieldValue("api_key") as string | undefined)?.trim(),
+      ),
       models: draftModels,
       note: null,
       enabled: true,

@@ -58,7 +58,8 @@ export function CustomProviderModal({
       name: name || "draft",
       kind: kind || "openai",
       base_url: baseUrl || null,
-      api_key: apiKey || null,
+      // ★ 草稿行只暴露「是否已填 key」布尔 —— 明文不进行状态（响应面已不回显）。
+      api_key_set: Boolean(apiKey?.trim()),
       models,
       note: null,
       enabled: true,

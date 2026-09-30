@@ -8,7 +8,9 @@
 ★ 副本树配方：`git clone -q --no-hardlinks <repo> <dest>`（★ 必须带 `.git`：无 `.git` ⇒ 判据取不到
   git 元数据 ⇒「未知格式守卫」⇒ `exit 2` · `PLAN:107` 实测）★ 并覆盖【工作树现行 `scripts/audit`】
   （★ 因本批改动尚未提交 ⇒ 只 clone 会拿到旧判据 —— 如实登记该配方偏差）。
-★ 信号口径：★ **全量** `python3 scripts/audit/current_tree.py` 的 `[AUD-S6]` 行（★ `--only` 不可用 · `PLAN §6`）。
+★ 信号口径：★ **全量** `.venv/bin/python scripts/audit/current_tree.py` 的 `[AUD-S6]` 行（★ `--only` 不可用 · `PLAN §6`）
+★★ 运行口径（`repair-4`）：★ **必须**用【仓库解释器 `./.venv/bin/python`】跑本套件（★ 非仓库口径 ⇒ 本套件
+   直接【拒绝出汇总】· exit 3 —— ★ 因为判据在旧解释器下【永不返绿】⇒ 印「17/18」是误导 ✗）。
 ★ 不打印任何真实凭据值（★ 注入样本一律 `sk-DUMMY-*` 自造串）。
 
 逐条期望（`PLAN §3` · `Lead` 裁定）
@@ -19,24 +21,58 @@
   `ATK5`   新列**只加在 pg 侧** ⇒ 必须非绿（`sqlite ∪ pg` 并集）
   `ATK6`   列名**去关键词**（结构性盲区）⇒ ★ 显式盲区登记 ∧ 不得绿（★ 不得用绿冒充覆盖）
 """
+
 import argparse
 import ast
+import contextlib
 import os
 import pathlib
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import reference_fix  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-WORK = pathlib.Path("/tmp/k_ac3")
+# ★★ 唯一工作目录（`repair-4`）：★ 旧实现用【固定路径 `/tmp/k_ac3`】⇒ 会被**早前批次遗留**的
+#   陈旧目录 / 条目消失竞态污染（实测：`rmtree` 抛 `FileNotFoundError` ⇒ 套件崩 ✗）⇒ 每跑一次取唯一目录 ✓。
+WORK = pathlib.Path(tempfile.mkdtemp(prefix="atk_run_"))
+
+# ★★ 可执行口径断言（与判据 `AUD-S6` **同一条纪律** · `repair-4`）：★ 探针的期望状态（红/绿）依赖判据
+#   能解析全部源码 —— ★ 非仓库解释器下判据【永不返绿】⇒ ★ 印「17/18」这类汇总是【**误导**】（★ 读者会
+#   以为 `H4` 坏了，★ 实际是口径不符）⇒ ★ 此处【拒绝出汇总】。
+REPO_PYTHON_MIN = (3, 12)
+CALIBER_HINT = "★★ 请用仓库解释器重跑：./.venv/bin/python scripts/audit/selftest/run_atk.py"
+
+
+def _cleanup(path):
+    """★ 清理**不容错**：`rmtree(ignore_errors=True)` 在「条目消失竞态」下仍会抛 `FileNotFoundError`
+    （`shutil._rmtree_safe_fd` 的已知行为 ✗）⇒ 这里再兜一层 `except OSError` ✓。"""
+    with contextlib.suppress(OSError):
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def _caliber_violation():
+    """⇒ `None`（合规）或【口径不符说明】：★ 机械判定（★ 只严不松）。"""
+    info = sys.version_info
+    if (info.major, info.minor) >= REPO_PYTHON_MIN:
+        return None
+    return "Python %d.%d.%d（仓库口径 = `.venv/bin/python` ≥ %d.%d · `AGENTS.md`）" % (
+        info.major,
+        info.minor,
+        info.micro,
+        REPO_PYTHON_MIN[0],
+        REPO_PYTHON_MIN[1],
+    )
+
+
 STATE_RE = re.compile(r"^\[AUD-S6\] (绿|红|未知)")
 COUNT_RE = re.compile(r"已判 (\d+) ·")
-BASELINE_COUNTED = None   # ★ 前置自检实测（`主树 已判 N`）· ★ 3.9 兼容：不写注解
+BASELINE_COUNTED = None  # ★ 前置自检实测（`主树 已判 N`）· ★ 3.9 兼容：不写注解
 DUMMY = "sk-DUMMY-ATK-000000000000"  # ★ 自造样本（非真实凭据）
 
 
@@ -44,7 +80,7 @@ def make_tree(name, *, reference=False):
     """★ 带 `.git` 的副本树（+ 工作树现行 `scripts/audit`；`reference=True` ⇒ 打参照修复）。"""
     dest = WORK / name
     if dest.exists():
-        shutil.rmtree(dest)
+        _cleanup(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(dest)], check=True)
     # ★★ 覆盖【工作树】的 `scripts/**` + `src/octop/**`：本批改动未提交 ⇒ 只 clone 会拿到旧代码
@@ -66,12 +102,20 @@ def audit(tree, env=None):
 
     ★ `env` 用于**运行期绑定替换**类探针（`PYTHONPATH` 带 `sitecustomize`）。
     """
-    proc = subprocess.run(["python3", "scripts/audit/current_tree.py"], cwd=str(tree),
-                          capture_output=True, text=True, check=False,
-                          env={**os.environ, **(env or {})})
+    # ★★ 入口统一（`repair-4`）：★ 用【当前解释器】跑判据 —— ★ 上方口径断言已保证它是仓库口径 ≥3.12 ✓
+    #   （旧实现硬编码 `python3` ⇒ 3.9 下判据永不返绿 ⇒ 探针期望不成立 ✗）
+    proc = subprocess.run(
+        [sys.executable, "scripts/audit/current_tree.py"],
+        cwd=str(tree),
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, **(env or {})},
+    )
     line = next((ln for ln in proc.stdout.splitlines() if ln.startswith("[AUD-S6]")), "")
-    hints = [ln.strip() for ln in proc.stdout.splitlines()
-             if ln.strip().startswith("· 提示 [AUD-S6]")]
+    hints = [
+        ln.strip() for ln in proc.stdout.splitlines() if ln.strip().startswith("· 提示 [AUD-S6]")
+    ]
     match = STATE_RE.match(line)
     return (match.group(1) if match else "<无>"), line, hints, proc.stdout
 
@@ -92,8 +136,11 @@ def inject(tree, rel, text, *, anchor=None):
 def inject_top_level(path, block, *, expect_name=None):
     """★ 在【模块顶层第一个 def/class/@ 之前】插入；`expect_name` ⇒ 断言该 def 在顶层。"""
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-    index = next(i for i, line in enumerate(lines)
-                 if line.startswith(("def ", "class ", "@")) and not line.startswith((" ", "\t")))
+    index = next(
+        i
+        for i, line in enumerate(lines)
+        if line.startswith(("def ", "class ", "@")) and not line.startswith((" ", "\t"))
+    )
     lines.insert(index, block)
     path.write_text("".join(lines), encoding="utf-8")
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -127,28 +174,39 @@ def atk1pp():
     一个真实的【明文】写入点 ⇒ 判据必须仍然【红】（★ `L` 批后本仓已自带加密 ⇒ 探针自带被掩盖的明文站点）。"""
     tree = make_tree("atk1pp")
     rel = "src/octop/infra/agents/atk1pp_decoy.py"
-    inject(tree, rel, (
-        'def encrypt_secret(repo, plain):   # 诱饵：顶层、永不被调用\n'
-        '    return plain.encode("utf-8")\n\n\n'
-        'api_key = b"gAAAAA-decoy-never-called"   # 诱饵：模块级同名绑定\n\n\n'
-        "from octop.infra.db.pool import DatabasePool\n\n\n"
-        "def atk1pp_write(db: DatabasePool, name: str) -> None:\n"
-        '    key = "%s"\n' % DUMMY
-        + "    with db.transaction() as conn:\n"
-        '        conn.execute("%s", (name, "openai", key))\n'
-        % ("INSERT" + " INTO " + "providers" + "(name, kind, api_key) VALUES (?, ?, ?)")
-    ))
+    inject(
+        tree,
+        rel,
+        (
+            "def encrypt_secret(repo, plain):   # 诱饵：顶层、永不被调用\n"
+            '    return plain.encode("utf-8")\n\n\n'
+            'api_key = b"gAAAAA-decoy-never-called"   # 诱饵：模块级同名绑定\n\n\n'
+            "from octop.infra.db.pool import DatabasePool\n\n\n"
+            "def atk1pp_write(db: DatabasePool, name: str) -> None:\n"
+            '    key = "%s"\n' % DUMMY + "    with db.transaction() as conn:\n"
+            '        conn.execute("%s", (name, "openai", key))\n'
+            % ("INSERT" + " INTO " + "providers" + "(name, kind, api_key) VALUES (?, ?, ?)")
+        ),
+    )
     state, line, _, _ = audit(tree)
     ok = state == "红" and rel in line
-    return ok, state, line, "顶层诱饵 + 一个真实明文写入点 ⇒ 期望【红】且红点含该路径（★ 诱饵不得掩盖明文）"
+    return (
+        ok,
+        state,
+        line,
+        "顶层诱饵 + 一个真实明文写入点 ⇒ 期望【红】且红点含该路径（★ 诱饵不得掩盖明文）",
+    )
 
 
 def atk2():
     """★ `db/repos/` 之外的明文写入 ⇒ 必须非绿（输入面 = 全仓）。"""
     tree = make_tree("atk2", reference=True)
     rel = "src/octop/infra/agents/atk2_outside_repos.py"
-    inject(tree, rel, plaintext_writer("atk2_write", "providers",
-                                       ["name", "kind", "base_url", "api_key"]))
+    inject(
+        tree,
+        rel,
+        plaintext_writer("atk2_write", "providers", ["name", "kind", "base_url", "api_key"]),
+    )
     state, line, _, _ = audit(tree)
     ok = state == "红" and rel in line
     return ok, state, line, "repos 外明文写入点已注入 ⇒ 期望【红】且红点含该路径"
@@ -173,10 +231,16 @@ def atk3():
 def atk4():
     """★ 新增明文列但命名 `*_enc` ⇒ 必须非绿（★ 命名型排除已禁 · 只认值形态）。"""
     tree = make_tree("atk4", reference=True)
-    inject(tree, "src/octop/infra/db/migrations/001_initial.sql", "  sso_token_enc TEXT,\n",
-           anchor="  api_key     TEXT,\n")
+    inject(
+        tree,
+        "src/octop/infra/db/migrations/001_initial.sql",
+        "  sso_token_enc TEXT,\n",
+        anchor="  api_key     TEXT,\n",
+    )
     rel = "src/octop/infra/agents/atk4_enc_named.py"
-    inject(tree, rel, plaintext_writer("atk4_write", "providers", ["name", "kind", "sso_token_enc"]))
+    inject(
+        tree, rel, plaintext_writer("atk4_write", "providers", ["name", "kind", "sso_token_enc"])
+    )
     state, line, _, _ = audit(tree)
     ok = state == "红" and "sso_token_enc" in line
     return ok, state, line, "`sso_token_enc TEXT` + 明文写入 ⇒ 期望【红】（命名不得豁免）"
@@ -185,11 +249,20 @@ def atk4():
 def atk5():
     """★ 新列只加在 pg 侧 ⇒ 必须非绿（`sqlite ∪ pg` 并集）。"""
     tree = make_tree("atk5", reference=True)
-    inject(tree, "src/octop/infra/db/migrations/001_initial.pg.sql", "  edge_secret_key TEXT,\n",
-           anchor="  secret_key  TEXT,\n")
+    inject(
+        tree,
+        "src/octop/infra/db/migrations/001_initial.pg.sql",
+        "  edge_secret_key TEXT,\n",
+        anchor="  secret_key  TEXT,\n",
+    )
     rel = "src/octop/infra/agents/atk5_pg_only.py"
-    inject(tree, rel, plaintext_writer("atk5_write", "storage_backends",
-                                       ["name", "kind", "endpoint", "edge_secret_key"]))
+    inject(
+        tree,
+        rel,
+        plaintext_writer(
+            "atk5_write", "storage_backends", ["name", "kind", "endpoint", "edge_secret_key"]
+        ),
+    )
     state, line, _, _ = audit(tree)
     ok = state == "红" and "edge_secret_key" in line
     return ok, state, line, "仅 pg 侧新列 + 明文写入 ⇒ 期望【红】（并集）"
@@ -203,8 +276,12 @@ def atk6():
       （★ 即：不得用「绿」冒充「已覆盖」）。
     """
     tree = make_tree("atk6")
-    inject(tree, "src/octop/infra/db/migrations/001_initial.sql", "  auth TEXT,\n",
-           anchor="  api_key     TEXT,\n")
+    inject(
+        tree,
+        "src/octop/infra/db/migrations/001_initial.sql",
+        "  auth TEXT,\n",
+        anchor="  api_key     TEXT,\n",
+    )
     rel = "src/octop/infra/agents/atk6_keywordless.py"
     inject(tree, rel, plaintext_writer("atk6_write", "providers", ["name", "kind", "auth"]))
     state, line, hints, _ = audit(tree)
@@ -214,8 +291,15 @@ def atk6():
     #   ∧ ③ **绿行必须逐字带覆盖计数护栏**（`已判 N · UNKNOWN M（已声明边界）`）
     guarded = ("已判 " in line) and ("（已声明边界）" in line)
     ok = registered and not claimed and guarded
-    return ok, state, line, ("盲区显式登记 = %s · 是否被声称覆盖 = %s ⇒ ★ 该类列名**不在判据面内**"
-                             "（结构性盲区 · 不构成覆盖证据）" % (registered, claimed))
+    return (
+        ok,
+        state,
+        line,
+        (
+            "盲区显式登记 = %s · 是否被声称覆盖 = %s ⇒ ★ 该类列名**不在判据面内**"
+            "（结构性盲区 · 不构成覆盖证据）" % (registered, claimed)
+        ),
+    )
 
 
 def atk_name():
@@ -243,8 +327,11 @@ def guard_empty():
     tree = make_tree("guard_empty")
     for path in (tree / "src/octop/infra/db/migrations").glob("*.sql"):
         text = path.read_text(encoding="utf-8")
-        renamed = re.sub(r"\b(api_key|secret_key|access_key|client_secret_enc|credential_blob)\b",
-                         "col_neutral", text)
+        renamed = re.sub(
+            r"\b(api_key|secret_key|access_key|client_secret_enc|credential_blob)\b",
+            "col_neutral",
+            text,
+        )
         if renamed != text:
             path.write_text(renamed, encoding="utf-8")
     state, line, _, _ = audit(tree)
@@ -280,8 +367,8 @@ def h2_writer(func_name, table, column, form):
     sql = "UPDATE " + table + " SET " + column + " = ? WHERE id = ?"
     named = "UPDATE " + table + " SET " + column + " = :k WHERE id = :i"
     calls = {
-        "dict": "        conn.execute(%r, {\"k\": key, \"i\": 1})\n" % sql,
-        "named": "        conn.execute(%r, {\"k\": key, \"i\": 1})\n" % named,
+        "dict": '        conn.execute(%r, {"k": key, "i": 1})\n' % sql,
+        "named": '        conn.execute(%r, {"k": key, "i": 1})\n' % named,
         "executemany": "        conn.executemany(%r, [(key, 1), (key, 2)])\n" % sql,
         "tuple": "        conn.execute(%r, tuple([key, 1]))\n" % sql,
     }
@@ -305,46 +392,61 @@ def _h_probe(name, source, *, expect, forbid_growth=True):
     state, line, _, _ = audit(tree)
     counted = (BASELINE_COUNTED is None) or ("已判 %s" % BASELINE_COUNTED) in line
     ok = state in expect and rel in line and (counted or not forbid_growth)
-    why = ("修复后：站点可见 ∧ 状态 = %s ∧ ★ 覆盖率计数【未增加】（`已判写入点 6` = %s）"
-           % ("/".join(sorted(expect)), counted))
+    why = "修复后：站点可见 ∧ 状态 = %s ∧ ★ 覆盖率计数【未增加】（`已判写入点 6` = %s）" % (
+        "/".join(sorted(expect)),
+        counted,
+    )
     return ok, state, line, why
 
 
 def h1_module():
     """★ `H1` 形态一：**模块级**变量持 SQL ⇒ 必须【未知或红】（★ 不得静默不可见）。"""
-    return _h_probe("H1-MODULE", h1_writer("h1_module", "providers", "api_key", module_level=True),
-                    expect={"未知", "红"}, forbid_growth=False)
+    return _h_probe(
+        "H1-MODULE",
+        h1_writer("h1_module", "providers", "api_key", module_level=True),
+        expect={"未知", "红"},
+        forbid_growth=False,
+    )
 
 
 def h1_local():
     """★ `H1` 形态二：**局部**变量持 SQL ⇒ 必须【未知或红】。"""
-    return _h_probe("H1-LOCAL", h1_writer("h1_local", "providers", "api_key", module_level=False),
-                    expect={"未知", "红"}, forbid_growth=False)
+    return _h_probe(
+        "H1-LOCAL",
+        h1_writer("h1_local", "providers", "api_key", module_level=False),
+        expect={"未知", "红"},
+        forbid_growth=False,
+    )
 
 
 def h2_dict():
     """★ `H2` 变体一：静态 SQL + `dict` 参数 ⇒ 必须【未知】且**不计入**覆盖率。"""
-    return _h_probe("H2-DICT", h2_writer("h2_dict", "providers", "api_key", "dict"),
-                    expect={"未知"})
+    return _h_probe(
+        "H2-DICT", h2_writer("h2_dict", "providers", "api_key", "dict"), expect={"未知"}
+    )
 
 
 def h2_named():
     """★ `H2` 变体二：静态 SQL + 具名 `:name` + `dict` ⇒ 必须【未知】且**不计入**覆盖率。"""
-    return _h_probe("H2-NAMED", h2_writer("h2_named", "providers", "api_key", "named"),
-                    expect={"未知"})
+    return _h_probe(
+        "H2-NAMED", h2_writer("h2_named", "providers", "api_key", "named"), expect={"未知"}
+    )
 
 
 def h2_executemany():
     """★ `H2` 变体三：静态 SQL + `executemany` + 行列表 ⇒ 必须【未知】且**不计入**覆盖率。"""
-    return _h_probe("H2-EXECUTEMANY",
-                    h2_writer("h2_executemany", "providers", "api_key", "executemany"),
-                    expect={"未知"})
+    return _h_probe(
+        "H2-EXECUTEMANY",
+        h2_writer("h2_executemany", "providers", "api_key", "executemany"),
+        expect={"未知"},
+    )
 
 
 def h2_tuple():
     """★ `H2` 变体四：静态 SQL + `tuple([...])` ⇒ 必须【未知】且**不计入**覆盖率。"""
-    return _h_probe("H2-TUPLE", h2_writer("h2_tuple", "providers", "api_key", "tuple"),
-                    expect={"未知"})
+    return _h_probe(
+        "H2-TUPLE", h2_writer("h2_tuple", "providers", "api_key", "tuple"), expect={"未知"}
+    )
 
 
 def h3_writer(func_name, form):
@@ -379,8 +481,15 @@ def _h3_probe(name, source):
     counted = (BASELINE_COUNTED is None) or ("已判 %s" % BASELINE_COUNTED) in line
     visible = ("差分" in stdout) or (rel in stdout)
     ok = state == "未知" and counted and visible
-    return ok, state, line, ("站点可见（边界差分/坐标） ∧ 状态 = 未知 ∧ ★ 覆盖率计数未增加"
-                             "（`已判 %s` = %s）" % (BASELINE_COUNTED, counted))
+    return (
+        ok,
+        state,
+        line,
+        (
+            "站点可见（边界差分/坐标） ∧ 状态 = 未知 ∧ ★ 覆盖率计数未增加"
+            "（`已判 %s` = %s）" % (BASELINE_COUNTED, counted)
+        ),
+    )
 
 
 def h3_cross_fn():
@@ -429,8 +538,15 @@ def h4_runtime_patch():
     data_face = next((h for h in hints if "数据面抽检" in h), "")
     blocked = "拦下" in data_face
     ok = state == "绿" and blocked
-    return ok, state, line, ("运行期替换绑定已生效 ⇒ 判据行 = %s（静态判据被绕过）· 数据面抽检 = %s"
-                             "（★ 唯一防线）" % (state, "拦下" if blocked else "未拦下"))
+    return (
+        ok,
+        state,
+        line,
+        (
+            "运行期替换绑定已生效 ⇒ 判据行 = %s（静态判据被绕过）· 数据面抽检 = %s"
+            "（★ 唯一防线）" % (state, "拦下" if blocked else "未拦下")
+        ),
+    )
 
 
 PROBES = [
@@ -458,13 +574,36 @@ PROBES = [
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="AUD-S6 反攻击探针族（可复跑 · 逐个 ATK 报 PASS/FAIL）")
+    parser = argparse.ArgumentParser(
+        description="AUD-S6 反攻击探针族（可复跑 · 逐个 ATK 报 PASS/FAIL）"
+    )
     parser.add_argument("--only", default=None, help="只跑指定 ATK（逗号分隔，如 ATK1pp,ATK3）")
-    parser.add_argument("--keep", action="store_true", help="保留 /tmp/k_ac3/** 便于人工复核")
+    parser.add_argument(
+        "--keep", action="store_true", help="保留工作目录（路径见启动行）便于人工复核"
+    )
     args = parser.parse_args(argv)
+    violation = _caliber_violation()
+    if violation is not None:
+        # ★★ 明确的口径拒绝（★ 不出 PASS/FAIL 汇总 ⇒ 不给误导性 17/18 ✗）
+        print("★ AUD-S6 反攻击探针族 · 仓库 = %s" % ROOT)
+        print("★★ 解释器口径不符（★ 可执行断言 · 非文字声明）：当前 = %s" % violation)
+        print("★★ 本结果【不可作为通过依据】⇒ ★ 已拒绝出汇总：" + CALIBER_HINT)
+        print(
+            "★ 为什么：`AUD-S6` 在非仓库解释器下【永不返绿】（解析不了 PEP 695 ⇒ 站点少计）⇒ "
+            "★ 探针期望的红/绿根本不成立 ⇒ ★ 印「17/18」会让读者误以为 `H4` 坏了 ✗"
+        )
+        _cleanup(WORK)  # ★ 拒绝路径也要清工作目录（★ 不留垃圾）
+        return 3
+    print(
+        "★ 运行口径 = 仓库解释器 Python %d.%d.%d ✓"
+        % (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)
+    )
     wanted = {item.strip() for item in args.only.split(",")} if args.only else None
     print("★ AUD-S6 反攻击探针族 · 仓库 = %s · 工作目录 = %s" % (ROOT, WORK))
-    print("★ 信号 = 全量 `python3 scripts/audit/current_tree.py` 的 [AUD-S6] 行（★ --only 不可用）")
+    print(
+        "★ 信号 = 全量 `%s scripts/audit/current_tree.py` 的 [AUD-S6] 行（★ --only 不可用）"
+        % sys.executable
+    )
     results = []
     # ★ 前置自检：探针族自身也在 `scripts/**`（判据输入面内）⇒ 其载荷**不得**被判据当成写入点，
     #   否则探针会污染判据输出（`AC-1` 的 `3 FAIL + 3 UNKNOWN` 会被算歪）。
@@ -473,8 +612,10 @@ def main(argv=None):
     match = COUNT_RE.search(main_line)
     BASELINE_COUNTED = match.group(1) if match else None
     polluted = "scripts/audit/selftest" in main_line
-    print("\n[前置自检] %s · 探针族自身是否污染判据输出 = %s"
-          % ("PASS" if not polluted else "FAIL", polluted))
+    print(
+        "\n[前置自检] %s · 探针族自身是否污染判据输出 = %s"
+        % ("PASS" if not polluted else "FAIL", polluted)
+    )
     results.append(("前置自检", not polluted))
     for name, fn in PROBES:
         if wanted is not None and name not in wanted:
@@ -485,11 +626,18 @@ def main(argv=None):
         print("   · %s" % why)
         print("   · %s" % line)
     failed = [name for name, ok in results if not ok]
-    print("\n★ 汇总：%d/%d PASS%s" % (len(results) - len(failed), len(results),
-                                    "" if not failed else " · 被放行 = " + ", ".join(failed)))
+    print(
+        "\n★ 汇总：%d/%d PASS%s"
+        % (
+            len(results) - len(failed),
+            len(results),
+            "" if not failed else " · 被放行 = " + ", ".join(failed),
+        )
+    )
     if not args.keep:
         for name, _ in PROBES:
-            shutil.rmtree(WORK / name, ignore_errors=True)
+            _cleanup(WORK / name)
+        _cleanup(WORK)
     return 1 if failed else 0
 
 

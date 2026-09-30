@@ -141,36 +141,42 @@ def resolve_key(db: DatabasePool, key_name: str) -> bytes:
     return bytes(row)
 
 
-def _scan_table(conn: Any, ref: ColumnRef, sql: str) -> bool:
-    """★ 单列快筛（★ SQL 必须是**字面量**：本判据面不引入不透明 SQL 站点）。"""
-    try:
-        rows = conn.execute(sql).fetchall()
-    except Exception:  # noqa: BLE001 - 表/列可能尚未建出（全新库）
-        return False
-    for row in rows:
-        if row[0] is None:
-            continue
-        if looks_encrypted(row[0]):
-            return True
-    return False
+def _has_ciphertext_row(rows: Any) -> bool:
+    """★ 纯判定（★★ **不含 SQL**）：该列是否已有 Fernet 形态的落库值。"""
+    return any(row[0] is not None and looks_encrypted(row[0]) for row in rows)
 
 
 def _domain_has_ciphertext(db: DatabasePool, key_name: str) -> list[ColumnRef]:
-    """★ 该域内是否存在【Fernet 形态】的落库值（★ 无键可 `try-decrypt` ⇒ 快筛 + 保守拒绝）。"""
+    """★ 该域内是否存在【Fernet 形态】的落库值（★ 无键可 `try-decrypt` ⇒ 快筛 + 保守拒绝）。
+
+    ★★ 每条查询都写成【**字面量 SQL**】（表名来自本模块常量 ⇒ 无需拼接）：★ 这样判据能**静态解析**
+    该站点 ⇒ 它落在【判定面】而**不是**【已声明边界】桶（★ 形参 SQL 会被判成「结构性不透明」✗）。
+    """
     hits: list[ColumnRef] = []
     with db.connect() as conn:
         for ref in managed_columns():
             if ref.key_name != key_name:
                 continue
-            if ref.table == "providers" and ref.column == "api_key":
-                found = _scan_table(conn, ref, "SELECT api_key FROM providers")
-            elif ref.table == "voice_providers" and ref.column == "api_key":
-                found = _scan_table(conn, ref, "SELECT api_key FROM voice_providers")
-            elif ref.table == "storage_backends" and ref.column == "access_key":
-                found = _scan_table(conn, ref, "SELECT access_key FROM storage_backends")
-            elif ref.table == "storage_backends" and ref.column == "secret_key":
-                found = _scan_table(conn, ref, "SELECT secret_key FROM storage_backends")
-            else:
+            try:
+                if ref.table == "providers" and ref.column == "api_key":
+                    found = _has_ciphertext_row(
+                        conn.execute("SELECT api_key FROM providers").fetchall()
+                    )
+                elif ref.table == "voice_providers" and ref.column == "api_key":
+                    found = _has_ciphertext_row(
+                        conn.execute("SELECT api_key FROM voice_providers").fetchall()
+                    )
+                elif ref.table == "storage_backends" and ref.column == "access_key":
+                    found = _has_ciphertext_row(
+                        conn.execute("SELECT access_key FROM storage_backends").fetchall()
+                    )
+                elif ref.table == "storage_backends" and ref.column == "secret_key":
+                    found = _has_ciphertext_row(
+                        conn.execute("SELECT secret_key FROM storage_backends").fetchall()
+                    )
+                else:
+                    found = False
+            except Exception:  # noqa: BLE001 - 表/列可能尚未建出（全新库）
                 found = False
             if found:
                 hits.append(ref)

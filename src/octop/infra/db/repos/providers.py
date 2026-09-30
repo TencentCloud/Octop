@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import octop.infra.db.secret_codec as secret_codec
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import (
+    UNSET,
     DbRow,
     bool_int,
     insert_returning_id,
@@ -45,8 +46,16 @@ _UPDATE_SQL = (
 
 
 def _flag(value: object | None) -> int:
-    """★ 逐列「是否跳过」标志：`None` ⇒ `1`（`CASE` 保留旧值）；非空 ⇒ `0`（覆盖）。"""
-    return 1 if value is None else 0
+    """★ 逐列「是否跳过」标志（N 批三态）：`UNSET`（未提供）⇒ `1`（`CASE` 保留旧值）；
+
+    ★ 显式 `None`（清空）与任何非空值 ⇒ `0`（覆盖 · `None` ⇒ 写 NULL）。
+    """
+    return 1 if value is UNSET else 0
+
+
+def _bindable(value: object | None) -> object | None:
+    """★ `UNSET` ⇒ `None`：该列 `flag = 1` ⇒ 值被 `CASE` 忽略（★ `UNSET` 不可作 SQL 参数绑定）。"""
+    return None if value is UNSET else value
 
 
 @dataclass(frozen=True)
@@ -168,45 +177,51 @@ class ProviderRepo:
         self,
         provider_id: int,
         *,
-        kind: str | None = None,
-        base_url: str | None = None,
-        api_key: str | None = None,
-        extra_json: str | None = None,
-        models_json: str | None = None,
-        note: str | None = None,
-        enabled: bool | None = None,
+        kind: str | None | object = UNSET,
+        base_url: str | None | object = UNSET,
+        api_key: str | None | object = UNSET,
+        extra_json: str | None | object = UNSET,
+        models_json: str | None | object = UNSET,
+        note: str | None | object = UNSET,
+        enabled: bool | None | object = UNSET,
     ) -> None:
+        """★ **三态**（N 批 · 与 `repos/_base.py:optional_updates` 同族）：
+
+        ★ 未提供（默认 `UNSET`）= **保留** · ★ 显式 `None` = **清空**（写 NULL）· ★ 非空 = **覆盖**。
+        """
         if (
-            kind is None
-            and base_url is None
-            and api_key is None
-            and extra_json is None
-            and models_json is None
-            and note is None
-            and enabled is None
+            kind is UNSET
+            and base_url is UNSET
+            and api_key is UNSET
+            and extra_json is UNSET
+            and models_json is UNSET
+            and note is UNSET
+            and enabled is UNSET
         ):
-            # ★ 旧语义（`partial_updates`：全列未提供 ⇒ `fields` 为空 ⇒ 直接 return）：
-            #   ★ 整条语句都不执行 ⇒ **`updated_at` 也不变** ⇒ 不得顺手改成 no-op 之外的语义
+            # ★ 全列【未提供】⇒ 整条语句都不执行（含 `updated_at` 不变）·
+            #   ★ 但显式 `None`（清空）**会**执行 ⇒ 三态与旧 `partial_updates` 的差别正在此处
             return
         token = (
-            secret_codec.encrypt_value(self._write_key(), api_key) if api_key is not None else None
+            secret_codec.encrypt_value(self._write_key(), api_key)
+            if isinstance(api_key, str)
+            else None
         )
         # ★ 参数用【元组字面量】（★ 判据可逐位绑定值 ⇒ 桶② = 0）：每列 = (是否跳过, 值)
         params = (
             _flag(kind),
-            kind,
+            _bindable(kind),
             _flag(base_url),
-            base_url,
+            _bindable(base_url),
             _flag(api_key),
             token,
             _flag(extra_json),
-            extra_json,
+            _bindable(extra_json),
             _flag(models_json),
-            models_json,
+            _bindable(models_json),
             _flag(note),
-            note,
+            _bindable(note),
             _flag(enabled),
-            bool_int(enabled) if enabled is not None else None,
+            bool_int(enabled) if isinstance(enabled, bool) else None,
             now_ts(),
             provider_id,
         )

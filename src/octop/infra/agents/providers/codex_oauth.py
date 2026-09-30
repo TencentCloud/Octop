@@ -19,6 +19,7 @@ import contextlib
 import json
 import logging
 import os
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -26,9 +27,14 @@ import urllib.request
 from pathlib import Path
 from typing import TypedDict
 
+from octop.infra.utils.json_file import write_json_atomic
 from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
+
+# ★★ N 批（`PLAN §4` · `N-3`）刷新单飞：**进程内锁** —— 并发调用者不再各刷一次
+#   （★ `get_valid_access_token` 由 `asyncio.to_thread` 调用 ⇒ 用 `threading.Lock` ✓）
+_REFRESH_LOCK = threading.Lock()
 
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 TOKEN_URL = "https://auth.openai.com/oauth/token"
@@ -107,12 +113,43 @@ def extract_token_expiry_ms(access_token: str, fallback_expires_in_s: int = 3600
     return int(time.time() * 1000) + fallback_expires_in_s * 1000
 
 
+def cleanup_stale_tmp(path: Path) -> None:
+    """★ `N-2` 启动/写入前清理：删除 `.{name}.*.tmp`（上次中断留下的临时文件）。
+
+    ★ 只删本文件的临时前缀 ⇒ 不碰他人文件 · ★ 幂等 ✓。
+    """
+    for stale in path.parent.glob(f".{path.name}.*.tmp"):
+        with contextlib.suppress(OSError):
+            stale.unlink()
+
+
+def _ensure_private_target(path: Path) -> None:
+    """★ `N-1`：目标文件先以 **`0600`** 就位。
+
+    ★ 关键：`write_json_atomic` 沿用【被替换文件的权限】（新文件则随 umask ⇒ 可能 0644 ✗）⇒
+    ★ 先把目标建/修成 `0600` ⇒ **tmp 与目标**都落在 `0600` ✓（★ 文件含 refresh token ⇒ 必须私有）。
+    """
+    if not path.exists():
+        handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        os.close(handle)
+    if os.name == "posix":
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)
+
+
 def save_codex_token(paths: PathLayout, cred: CodexOAuthCredentials) -> None:
+    """★ `N-1`：**原子写**（tmp + `os.replace`）⇒ 中断不会留下被截断的 JSON。
+
+    ★ 目标与 tmp 均 `0600`（★ 该文件含 `access` + **`refresh`** 明文）· ★ 写前清理陈旧 tmp ✓。
+    """
     path = oauth_token_file(paths)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(cred, indent=2), encoding="utf-8")
-    with contextlib.suppress(OSError):
-        os.chmod(path, 0o600)
+    cleanup_stale_tmp(path)
+    _ensure_private_target(path)
+    write_json_atomic(path, dict(cred))
+    if os.name == "posix":
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)
 
 
 def load_codex_token(paths: PathLayout) -> CodexOAuthCredentials | None:
@@ -176,10 +213,21 @@ def refresh_codex_token(paths: PathLayout, cred: CodexOAuthCredentials) -> Codex
 
 
 def get_valid_access_token(paths: PathLayout) -> str | None:
+    """★ `N-3` **刷新单飞**：刷新在进程内锁内进行，锁内**二次读盘**（别人可能已刷好）。
+
+    ★ 否则并发首调会各自 `refresh` 一次 ⇒ 后到者的 `refresh_token` 可能已被轮换而失效 ✗。
+    """
     cred = load_codex_token(paths)
     if cred is None:
         return None
-    if not is_token_valid(cred):
+    if is_token_valid(cred):
+        return cred["access"]
+    with _REFRESH_LOCK:
+        # ★ 二次检查：拿锁后重新读盘 —— 若已由别的线程刷新成功 ⇒ 直接用（不再发第二次请求）
+        current = load_codex_token(paths)
+        if current is not None and is_token_valid(current):
+            return current["access"]
+        cred = current if current is not None else cred
         try:
             cred = refresh_codex_token(paths, cred)
         except CodexOAuthRefreshError as exc:

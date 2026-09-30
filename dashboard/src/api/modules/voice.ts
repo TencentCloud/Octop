@@ -17,7 +17,8 @@ export interface VoiceProviderRow {
   kind: string;
   capability: "stt" | "tts" | "both";
   base_url: string | null;
-  api_key: string | null;
+  /** ★ 后端不再回显 `api_key` 明文 —— 只给「是否已配置」布尔（`_row_to_dict`）。 */
+  api_key_set: boolean;
   extra: Record<string, unknown>;
   note: string | null;
   enabled: boolean;
@@ -104,7 +105,11 @@ export const voiceApi = {
       kind: string;
       capability: string;
       base_url: string | null;
-      api_key: string | null;
+      /**
+       * ★ 三态（与后端 `optional_updates` 对齐）：
+       *   省略 ⇒ 保留原值 · `null` ⇒ 清空 · 非空 ⇒ 覆盖。
+       */
+      api_key?: string | null;
       extra_json: string | null;
       note: string | null;
       enabled: boolean;

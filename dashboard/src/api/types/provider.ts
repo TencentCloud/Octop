@@ -45,7 +45,8 @@ export interface ProviderInfo {
   /** User-added models (deletable). Only populated for built-in providers. */
   extra_models: ModelInfo[];
   is_custom: boolean;
-  has_api_key: boolean;
+  /** ★ 响应面统一用 `api_key_set`（与后端 `_row_to_dict` 及 `mediaGeneration.ts:23` 同名）。 */
+  api_key_set: boolean;
   current_api_key: string;
   current_base_url: string;
   current_headers: Record<string, string>;

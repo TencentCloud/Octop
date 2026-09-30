@@ -57,7 +57,7 @@ export function ActiveModelPool({
   const providerHasKey = useMemo(() => {
     const map = new Map<number, boolean>();
     for (const p of providers) {
-      map.set(p.id, !!p.api_key);
+      map.set(p.id, p.api_key_set);
     }
     return map;
   }, [providers]);

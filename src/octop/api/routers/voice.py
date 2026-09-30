@@ -33,7 +33,9 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "kind": r.kind,
         "capability": r.capability,
         "base_url": r.base_url,
-        "api_key": r.api_key,
+        # ★★ N 批响应契约：★ 不回吐明文/密文 ⇒ 只回布尔（★ 在解密后的值上判「非空」·
+        #   ★★ 不得取库值前缀：三类列现为 Fernet base64 文本 ✗）
+        "api_key_set": bool(r.api_key),
         "extra": r.get_extra(),
         "note": r.note,
         "enabled": bool(r.enabled),
@@ -87,9 +89,12 @@ async def list_voice_presets(_: Any = Depends(current_user)) -> list[dict[str, A
 
 @router.get("/providers")
 async def list_voice_providers(
-    _: Any = Depends(current_user),
+    # ★★ N 批授权（PLAN §1）：★ 与同文件 `set_active_voice` 及 `storage_backends` 同构 ⇒
+    #   ★ 模块权限 `voice`（权限键 `permissions.py:166`）· ★ 无权限 ⇒ `403`（非 404 · 不隐藏存在性）
+    _: Any = Depends(require_permission("voice")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
+    """Return all voice providers. Requires the ``voice`` module permission."""
     return [_row_to_dict(r) for r in server.services.voice_provider_repo.list_all()]
 
 

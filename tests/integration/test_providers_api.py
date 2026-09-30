@@ -4,7 +4,8 @@ from __future__ import annotations
 
 
 async def test_list_providers(env):
-    """GET /providers returns all providers (read-only endpoint for any user)."""
+    """GET /providers returns all providers (★ N 批起需 `providers` 模块权限 · 见
+    `test_credential_masking.py::test_read_endpoints_require_module_permission`)。"""
     c, _, auth = env
     r = await c.post(
         "/api/admin/providers",

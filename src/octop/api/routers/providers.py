@@ -131,7 +131,10 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "name": r.name,
         "kind": r.kind,
         "base_url": r.base_url,
-        "api_key": r.api_key,
+        # ★★ N 批响应契约（PLAN §2）：★ **不回吐明文/密文** —— 只回布尔。
+        #   ★ `api_key_set` 在 **`from_row` 解密后**的值上判「是否非空」✓
+        #   ★★ **不得**对库值取前缀（三类列现为 Fernet base64 文本 ⇒ 会得 `gAAAAA…` 伪掩码 ✗）
+        "api_key_set": bool(r.api_key),
         "models": models,
         "note": r.note,
         "enabled": bool(r.enabled),
@@ -188,10 +191,13 @@ async def set_active_model(
 
 @router.get("")
 async def list_providers(
-    _: Any = Depends(current_user),
+    # ★★ N 批授权（PLAN §1）：provider 列表含配置（含「是否已配密钥」）⇒ 与同构 admin 路由一致，
+    #   ★ 用**模块权限** `providers`（★ 非 admin · 权限键 `permissions.py:84`）·
+    #   ★ 无权限 ⇒ `403 FORBIDDEN`（★ 非 404 · **不隐藏存在性**）✓
+    _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """Return all providers. Read-only for regular users."""
+    """Return all providers. Requires the ``providers`` module permission."""
     return [_row_to_dict(r) for r in server.services.provider_repo.list_all()]
 
 
@@ -243,17 +249,25 @@ async def admin_patch_provider(
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
     import json as _json
 
-    models_json = _json.dumps(body.models) if body.models is not None else None
-    server.services.provider_repo.update(
-        provider_id,
-        kind=body.kind,
-        base_url=body.base_url,
-        api_key=body.api_key,
-        extra_json=body.extra_json,
-        models_json=models_json,
-        note=body.note,
-        enabled=body.enabled,
-    )
+    # ★★ N 批三态（PLAN §3）：★ 只把【显式出现】的字段传给 repo ⇒
+    #   ★ 字段缺失 = 保留（不传 ⇒ repo 侧默认 `UNSET`）· ★ 显式 `null`（`model_fields_set` 命中）= 清空 ·
+    #   ★ 非空 = 覆盖 ✓（★ 修掉「显式 null 被当成保留」的旧缺陷 ⇒ 前端「清除密钥」才真生效）
+    patch: dict[str, object] = {}
+    if "kind" in body.model_fields_set:
+        patch["kind"] = body.kind
+    if "base_url" in body.model_fields_set:
+        patch["base_url"] = body.base_url
+    if "api_key" in body.model_fields_set:
+        patch["api_key"] = body.api_key
+    if "extra_json" in body.model_fields_set:
+        patch["extra_json"] = body.extra_json
+    if "models" in body.model_fields_set:
+        patch["models_json"] = _json.dumps(body.models) if body.models is not None else None
+    if "note" in body.model_fields_set:
+        patch["note"] = body.note
+    if "enabled" in body.model_fields_set:
+        patch["enabled"] = body.enabled
+    server.services.provider_repo.update(provider_id, **patch)
     if body.models is not None:
         clear_stale_pins_for_provider(
             agent_repo=server.services.agent_repo,
@@ -264,6 +278,28 @@ async def admin_patch_provider(
     if server.app_runtime and _patch_requires_provider_rehydrate(body):
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=row.name)
     return _row_to_dict(server.services.provider_repo.get(provider_id))
+
+
+# ★★ N 批修复：★ 本路由【必须在】`DELETE /{provider_id}` **之前**声明 ——
+#   否则 FastAPI 按声明序匹配 ⇒ `codex-oauth` 被当成 int 路径参数 ⇒ **422** ⇒ 登出接口不可达 ✗
+#   （★ 这正是「登出 no-op」长期未被发现的原因：请求根本进不来）
+@admin_router.delete("/codex-oauth", status_code=204, summary="Clear ChatGPT OAuth login")
+async def codex_oauth_logout(
+    _: Any = Depends(require_permission("providers")),
+    server: Any = Depends(get_server),
+) -> None:
+    from octop.infra.agents.providers.codex_oauth import delete_codex_token
+
+    delete_codex_token(server.services.paths)
+    row = server.services.provider_repo.get_by_name(CODEX_PROVIDER_NAME)
+    if row is not None:
+        # ★★ N 批：三态下显式 `None` = **真清空**（写 NULL）✓ —— ★ 修掉此前「登出 no-op」缺陷
+        #   （旧语义 `None = skip` ⇒ 登出后 provider 行仍留着 OAuth access token ✗）
+        server.services.provider_repo.update(row.id, api_key=None)
+        if server.app_runtime is not None:
+            await server.app_runtime.agent_registry.on_provider_changed(
+                provider_name=CODEX_PROVIDER_NAME,
+            )
 
 
 @admin_router.delete("/{provider_id}", status_code=204)
@@ -458,23 +494,6 @@ async def codex_oauth_pending(
     if flow_user is not None and flow_user != user.id:
         raise OctopError(ErrorCode.FORBIDDEN, "not your oauth session")
     return cast(dict[str, Any], payload)
-
-
-@admin_router.delete("/codex-oauth", status_code=204, summary="Clear ChatGPT OAuth login")
-async def codex_oauth_logout(
-    _: Any = Depends(require_permission("providers")),
-    server: Any = Depends(get_server),
-) -> None:
-    from octop.infra.agents.providers.codex_oauth import delete_codex_token
-
-    delete_codex_token(server.services.paths)
-    row = server.services.provider_repo.get_by_name(CODEX_PROVIDER_NAME)
-    if row is not None:
-        server.services.provider_repo.update(row.id, api_key=None)
-        if server.app_runtime is not None:
-            await server.app_runtime.agent_registry.on_provider_changed(
-                provider_name=CODEX_PROVIDER_NAME,
-            )
 
 
 @admin_router.post("/{provider_id}/test")

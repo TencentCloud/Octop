@@ -67,7 +67,8 @@ export interface ProviderRow {
   name: string;
   kind: string;
   base_url: string | null;
-  api_key: string | null;
+  /** ★ 后端不再回显 `api_key` 明文 —— 只给「是否已配置」布尔（`_row_to_dict`）。 */
+  api_key_set: boolean;
   models: ProviderModel[];
   note: string | null;
   enabled: boolean;

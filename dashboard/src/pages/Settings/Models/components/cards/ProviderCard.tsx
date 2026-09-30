@@ -51,7 +51,7 @@ export function ProviderCard({
   const isOnnx = isOnnxProviderRow(provider);
   const isLocalRuntime = isOllama || isOnnx;
 
-  const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
+  const hasApiKey = provider.api_key_set;
   const statusReady = hasApiKey;
   const statusLabel = hasApiKey
     ? t("models.authorized")
@@ -137,13 +137,11 @@ export function ProviderCard({
     }
   };
 
-  // Mask api_key for display: show first 4 + last 4, mask middle.
-  const maskedKey = (() => {
-    if (!provider.api_key) return null;
-    const k = provider.api_key;
-    if (k.length <= 10) return "•".repeat(k.length);
-    return `${k.slice(0, 4)}${"•".repeat(6)}${k.slice(-4)}`;
-  })();
+  // The stored key is no longer echoed by the API, so the card shows a
+  // boolean badge instead of masking a value it never receives.
+  const apiKeyLabel = provider.api_key_set
+    ? t("models.configured")
+    : t("models.presetNotConfigured");
 
   // Try lookup by name, lowercase name, then fall back to custom logo.
   // Provider names like "DeepSeek" → "deepseek", "Tencent Cloud Coding Plan" → try both.
@@ -269,11 +267,10 @@ export function ProviderCard({
             </div>
             <div className={styles.infoRow}>
               <span className={styles.infoLabel}>API Key:</span>
-              {maskedKey ? (
-                <span className={styles.infoValue}>{maskedKey}</span>
-              ) : (
-                <span className={styles.infoEmpty}>{t("models.notSet")}</span>
-              )}
+              <span className={styles.infoValue}>
+                {provider.api_key_set ? "✓ " : ""}
+                {apiKeyLabel}
+              </span>
             </div>
             <div className={styles.infoRowModels}>
               <span className={styles.infoLabel}>{t("models.model")}:</span>

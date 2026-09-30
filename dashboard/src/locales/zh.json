@@ -2760,7 +2760,13 @@
     "readAloud": "朗读",
     "micNotAvailable": "此设备不支持录音，请通过 HTTPS 访问",
     "sttNotAvailable": "此设备不支持语音输入（需要 HTTPS）",
-    "ttsAutoplayBlocked": "浏览器阻止了自动播放，请再次点击朗读按钮"
+    "ttsAutoplayBlocked": "浏览器阻止了自动播放，请再次点击朗读按钮",
+    "apiKeySet": "已保存密钥；留空则保留原值，不会覆盖。",
+    "apiKeyKeepPlaceholder": "留空以保留已保存的密钥",
+    "clearApiKey": "清除密钥",
+    "clearApiKeyConfirm": "将移除 {{name}} 已保存的密钥（不可恢复）。确定继续？",
+    "clearApiKeyDone": "已清除保存的密钥",
+    "clearApiKeyFailed": "清除密钥失败"
   },
   "security": {
     "intro": "配置专家运行时的安全防护策略。保存后已运行的专家会自动重新加载配置。",

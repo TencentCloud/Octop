@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Divider, Drawer, Form, Input, Select, Typography } from "antd";
+import {
+  App,
+  Button,
+  Divider,
+  Drawer,
+  Form,
+  Input,
+  Select,
+  Typography,
+} from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Activity, Mic2, Check, Settings2 } from "lucide-react";
@@ -29,6 +38,7 @@ interface ConfigureState {
 /** Voice provider settings panel — embeddable in the Models page tab. */
 export function VoiceSettingsPanel() {
   const { t } = useTranslation();
+  const { modal } = App.useApp();
   const [presets, setPresets] = useState<VoicePreset[]>([]);
   const [providers, setProviders] = useState<VoiceProviderRow[]>([]);
   const [active, setActive] = useState({ stt: "browser", tts: "browser" });
@@ -97,23 +107,46 @@ export function VoiceSettingsPanel() {
   const openConfigure = (preset: VoicePreset) => {
     const existing = findConfigured(preset);
     setConfigure({ preset, existing });
-    setApiKey(existing?.api_key ?? "");
+    // ★ 不回填密钥：API 不再回显 `api_key`，且回填会把「已掩码/占位」的值写回库。
+    //   表单固定为空 ⇒ 留空 = 保留库中原值（见 buildProviderPayload）。
+    setApiKey("");
     const extra = existing?.extra ?? {};
+    // ★ Tencent 的 secret_id/secret_key 副本仍在 `extra` 中（本批未掩码的已登记面），
+    //   故保留回填 —— 否则保存会把 extra_json 里的副本清掉。
     setSecretId(String(extra.secret_id ?? ""));
     setSecretKey(String(extra.secret_key ?? ""));
     setMimoEndpoint(extra.endpoint_type === "tokenplan" ? "tokenplan" : "payg");
     setMimoVoiceId(String(extra.voice_id ?? "冰糖"));
   };
 
-  const buildProviderPayload = (): VoiceProviderInput | null => {
+  /** 表单里当前的凭证输入（Tencent 拼成 `secretId:secretKey`）；空串 = 用户留空。 */
+  const credentialInput = (): string => {
+    if (!configure) return "";
+    return configure.preset.kind === "tencent"
+      ? secretId.trim() && secretKey.trim()
+        ? `${secretId}:${secretKey}`
+        : ""
+      : apiKey.trim();
+  };
+
+  /** 已配置（`api_key_set`）⇒ 允许留空保存 —— 留空 = 保留原值。 */
+  const canKeepExistingKey = (): boolean =>
+    Boolean(configure?.existing?.api_key_set) && !credentialInput();
+
+  const buildProviderPayload = (
+    opts: { clearApiKey?: boolean } = {},
+  ): VoiceProviderInput | null => {
     if (!configure) return null;
     const { preset } = configure;
+    const clearing = opts.clearApiKey === true;
     let extra: Record<string, unknown>;
     let baseUrl: string | null = null;
     if (preset.kind === "tencent") {
       extra = {
-        secret_id: secretId,
-        secret_key: secretKey,
+        // ★ 显式「清除密钥」时，连同 `extra` 里的凭证副本一并清掉
+        //   （`api_key` 与 `extra.secret_*` 是同一份凭证的两个落点）。
+        secret_id: clearing ? "" : secretId,
+        secret_key: clearing ? "" : secretKey,
         region: "ap-guangzhou",
       };
     } else if (preset.kind === "edge") {
@@ -130,34 +163,35 @@ export function VoiceSettingsPanel() {
     } else {
       extra = { model: preset.kind === "openai" ? "whisper-1" : undefined };
     }
-    return {
+    const payload: VoiceProviderInput = {
       name: preset.id,
       kind: preset.kind,
       capability: preset.capability,
       base_url: baseUrl,
-      api_key:
-        preset.kind === "tencent"
-          ? secretId && secretKey
-            ? `${secretId}:${secretKey}`
-            : null
-          : apiKey || null,
       extra_json: JSON.stringify(extra),
     };
+    // ★ 三态：显式 `null` ⇒ 清空 · 非空 ⇒ 覆盖 · **省略** ⇒ 保留。
+    if (clearing) payload.api_key = null;
+    else if (credentialInput()) payload.api_key = credentialInput();
+    return payload;
   };
 
-  const validateCredentials = () => {
+  const validateCredentials = (allowKeepExisting = false) => {
     if (!configure?.preset.requires_key) return true;
-    const complete =
-      configure.preset.kind === "tencent"
-        ? Boolean(secretId.trim() && secretKey.trim())
-        : Boolean(apiKey.trim());
-    if (!complete) message.warning(t("voice.credentialsRequired"));
-    return complete;
+    const complete = Boolean(credentialInput());
+    if (complete) return true;
+    if (allowKeepExisting && canKeepExistingKey()) return true;
+    message.warning(t("voice.credentialsRequired"));
+    return false;
   };
 
   const handleProbe = async () => {
     const payload = buildProviderPayload();
-    if (!payload || !validateCredentials() || !configure) return;
+    if (!payload || !configure) return;
+    // ★ 已配置 + 表单留空 ⇒ 用【已存密钥】探测（不再要求重填；明文已不回显）。
+    const probeStored =
+      canKeepExistingKey() && Boolean(configure.existing) && !credentialInput();
+    if (!probeStored && !validateCredentials()) return;
     const modes: ("stt" | "tts")[] =
       configure.preset.capability === "both"
         ? ["stt", "tts"]
@@ -165,7 +199,9 @@ export function VoiceSettingsPanel() {
     setProbing(true);
     try {
       for (const mode of modes) {
-        const result = await voiceApi.testConfiguration({ ...payload, mode });
+        const result = probeStored
+          ? await voiceApi.testProvider(configure.existing!.id, mode)
+          : await voiceApi.testConfiguration({ ...payload, mode });
         if (!result.ok) {
           message.error(result.error || t("voice.probeFailed"));
           return;
@@ -183,7 +219,8 @@ export function VoiceSettingsPanel() {
 
   const handleSaveProvider = async () => {
     const payload = buildProviderPayload();
-    if (!configure || !payload || !validateCredentials()) return;
+    // ★ 硬阻塞解除：已配置（`api_key_set`）⇒ 允许留空保存（留空 = 保留原值）。
+    if (!configure || !payload || !validateCredentials(true)) return;
     setSaving(true);
     try {
       const { preset, existing } = configure;
@@ -218,6 +255,34 @@ export function VoiceSettingsPanel() {
     } finally {
       setSaving(false);
     }
+  };
+
+  /** ★ 显式「清除密钥」：既存密钥无法移除 ⇒ 安全动作缺失（本批补齐）。 */
+  const handleClearApiKey = () => {
+    const existing = configure?.existing;
+    if (!existing) return;
+    const payload = buildProviderPayload({ clearApiKey: true });
+    modal.confirm({
+      title: t("voice.clearApiKey"),
+      content: t("voice.clearApiKeyConfirm", { name: existing.name }),
+      okText: t("voice.clearApiKey"),
+      okButtonProps: { danger: true },
+      cancelText: t("common.cancel"),
+      onOk: async () => {
+        try {
+          await voiceApi.patchProvider(existing.id, {
+            api_key: null,
+            ...(payload?.extra_json ? { extra_json: payload.extra_json } : {}),
+          });
+          invalidateVoiceConfigCache();
+          message.success(t("voice.clearApiKeyDone"));
+          setConfigure(null);
+          await fetchAll();
+        } catch {
+          message.error(t("voice.clearApiKeyFailed"));
+        }
+      },
+    });
   };
 
   const renderPresetCard = (preset: VoicePreset, kind: "stt" | "tts") => {
@@ -340,6 +405,11 @@ export function VoiceSettingsPanel() {
     );
   };
 
+  /** ★ 已配置 ⇒ 留空 = 保留原值（占位文案明示，避免用户以为必须重填）。 */
+  const keepKeyPlaceholder = configure?.existing?.api_key_set
+    ? t("voice.apiKeyKeepPlaceholder")
+    : undefined;
+
   return (
     <>
       <TabPanelHeader
@@ -384,6 +454,11 @@ export function VoiceSettingsPanel() {
             <Button onClick={() => setConfigure(null)}>
               {t("common.cancel")}
             </Button>
+            {configure?.existing?.api_key_set && (
+              <Button danger onClick={handleClearApiKey}>
+                {t("voice.clearApiKey")}
+              </Button>
+            )}
             <Button
               icon={<Activity size={14} />}
               loading={probing}
@@ -402,19 +477,27 @@ export function VoiceSettingsPanel() {
         }
       >
         <Form layout="vertical">
+          {configure?.existing?.api_key_set && (
+            <div className={styles.drawerHint}>
+              <Text type="secondary">
+                <Check size={12} style={{ marginRight: 4 }} />
+                {t("voice.apiKeySet")}
+              </Text>
+            </div>
+          )}
           {configure?.preset.kind === "tencent" && (
             <>
               <div className={styles.drawerHint}>{t("voice.tencentHint")}</div>
               <Form.Item label="SecretId" required>
                 <Input
-                  placeholder="SecretId"
+                  placeholder={keepKeyPlaceholder ?? "SecretId"}
                   value={secretId}
                   onChange={(e) => setSecretId(e.target.value)}
                 />
               </Form.Item>
               <Form.Item label="SecretKey" required>
                 <Input.Password
-                  placeholder="SecretKey"
+                  placeholder={keepKeyPlaceholder ?? "SecretKey"}
                   value={secretKey}
                   onChange={(e) => setSecretKey(e.target.value)}
                 />
@@ -426,7 +509,7 @@ export function VoiceSettingsPanel() {
               <div className={styles.drawerHint}>{t("voice.openaiHint")}</div>
               <Form.Item label="API Key" required>
                 <Input.Password
-                  placeholder="API Key"
+                  placeholder={keepKeyPlaceholder ?? "API Key"}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                 />
@@ -466,7 +549,9 @@ export function VoiceSettingsPanel() {
               </Form.Item>
               <Form.Item label="API Key" required>
                 <Input.Password
-                  placeholder="API Key (sk-... / tp-...)"
+                  placeholder={
+                    keepKeyPlaceholder ?? "API Key (sk-... / tp-...)"
+                  }
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                 />
