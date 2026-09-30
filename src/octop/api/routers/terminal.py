@@ -80,6 +80,11 @@ router = APIRouter()
 # Re-attaching to an existing persistent session does not count against this.
 _MAX_SESSIONS = 10
 
+_MIN_COLS = 20
+_MAX_COLS = 500
+_MIN_ROWS = 5
+_MAX_ROWS = 200
+
 # Per-session scrollback replay buffer (raw bytes). Replayed to the client on
 # re-attach so terminal history survives a refresh / reconnect.
 _MAX_SCROLLBACK_BYTES = 512 * 1024
@@ -503,8 +508,8 @@ async def terminal_ws(
     agent_id: str,
     token: str | None = Query(default=None),
     session_id: str | None = Query(default=None),
-    cols: int = Query(default=80),
-    rows: int = Query(default=24),
+    cols: int = Query(default=80, ge=_MIN_COLS, le=_MAX_COLS),
+    rows: int = Query(default=24, ge=_MIN_ROWS, le=_MAX_ROWS),
 ) -> None:
     """PTY-backed WebSocket terminal scoped to an agent's workspace.
 
@@ -721,6 +726,11 @@ async def terminal_ws(
                             new_cols = int(msg.get("cols") or 80)
                             new_rows = int(msg.get("rows") or 24)
                         except (TypeError, ValueError):
+                            continue
+                        if not (
+                            _MIN_COLS <= new_cols <= _MAX_COLS
+                            and _MIN_ROWS <= new_rows <= _MAX_ROWS
+                        ):
                             continue
                         session.cols, session.rows = new_cols, new_rows
                         _set_winsize(session.master_fd, new_cols, new_rows)
