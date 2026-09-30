@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 内置插件「空气质量」按 lat/lon 查询时，卡片与文案仍显示默认城市名 `Beijing`（`city` 参数默认值非空使坐标回退分支失效）；现在省略 `city` 的坐标查询按坐标本身标注，显式传入的城市名与「不传参数默认 Beijing」的行为保持不变。
 
 ### 修复
 - 云端协同对端专家的模型、连接器、知识库和对话模式会显示在本端输入框上方
