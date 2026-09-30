@@ -47,15 +47,16 @@ def resolve_conversation_mode(
     *,
     explicit: object | None = None,
     thread_mode: object | None = None,
+    default_mode: object | None = None,
 ) -> ConversationMode:
-    """explicit (if a valid mode string) → thread sticky → craft."""
+    """explicit (if a valid mode string) → thread sticky → expert default → craft."""
     if isinstance(explicit, str) and explicit in {"ask", "plan", "craft"}:
         return explicit  # type: ignore[return-value]
     if explicit is not None:
         return DEFAULT_CONVERSATION_MODE
     if thread_mode is not None:
         return parse_conversation_mode(thread_mode)
-    return DEFAULT_CONVERSATION_MODE
+    return parse_conversation_mode(default_mode)
 
 
 def plan_relpath_from_artifact(path: str) -> str:

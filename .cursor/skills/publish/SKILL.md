@@ -23,7 +23,7 @@ disable-model-invocation: true
 | `CHANGELOG_FILE` | `CHANGELOG.md` | 相对于仓库根目录的路径，文件不存在则跳过 |
 | `VERSION_FILE` | `pyproject.toml` | 包含版本号的文件 |
 | `VERSION_PATTERN` | `^\s*version\s*=\s*"[^"]+"` | 匹配版本行的正则表达式 |
-| `README_FILE` | `README.md` | 含 shields.io 版本徽标的文件（badge 版本号同步升级） |
+| `README_GLOB` | `README*.md` | 含 shields.io 版本徽标的 README（含多语言变体，如 `README.md`、`README_CN.md`）；全部同步升级 |
 | `INIT_VERSION_FILE` | `src/octop/__init__.py` | 含运行时常量 `__version__` 的文件（缺失则跳过并提示） |
 | `TAG_PREFIX` | `v` | Git tag 前缀；工作流监听 `v*`，生成 `v0.1.14` 风格标签 |
 | `REMOTE` | `origin` | Git 远程仓库名 |
@@ -184,12 +184,16 @@ git checkout -B {RELEASE_BRANCH_PREFIX}{version} {REMOTE}/{INTEGRATION_BRANCH}
    grep -n '^\s*version\s*=\s*"[^"]+"' pyproject.toml
    # 用 Edit 工具将该行的 "X.Y.Z" 替换为 "A.B.C"
    ```
-2. `README_FILE`（`README.md`）— shields.io 版本徽标：
+2. 所有匹配 `README_GLOB` 且含 shields.io 版本徽标的 README（含多语言）：
    ```bash
-   grep -n 'shields.io/badge/version-' README.md
+   # 发现需升级的文件（勿只改英文 README.md）
+   grep -l 'shields.io/badge/version-' README.md README_*.md 2>/dev/null
+   # 对每一个命中文件：
+   grep -n 'shields.io/badge/version-' {file}
    # 用 Edit 工具将 `version-X.Y.Z-orange` 替换为 `version-A.B.C-orange`
    ```
-   文件不存在则跳过并提示（不中止）。
+   当前仓库至少包括 `README.md` 与 `README_CN.md`；若某语言文件无徽标则跳过该文件。
+   全部未命中则提示并继续（不中止）。
 3. `INIT_VERSION_FILE`（`src/octop/__init__.py`）— 运行时常量 `__version__`：
    ```bash
    grep -n '__version__' src/octop/__init__.py
@@ -317,4 +321,5 @@ git checkout {original_branch}
 - 发版后删除 `release/*`；`main → develop` 由 `sync-main-to-develop.yml` 自动同步（失败时再手动补）
 - 中止前展示完整错误输出
 - 插入新版本条目后保持 `[Unreleased]` 为空
+- 同步升级所有含 shields.io 版本徽标的多语言 README（`README.md`、`README_CN.md` 等），勿只改英文
 - 推送 tag 后提示用户关注 GitHub Actions 的发布结果

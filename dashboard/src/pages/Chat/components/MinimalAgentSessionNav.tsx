@@ -24,6 +24,7 @@ import { sortSessions, toSession, type Session } from "../hooks/useSessions";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent, onStreamEvent } from "../hooks/chatStore";
 import SharedExpertHint from "./SharedExpertHint";
+import RemoteExpertHint from "./RemoteExpertHint";
 import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
 
@@ -578,7 +579,7 @@ export default function MinimalAgentSessionNav({
                   <ExpertIcon
                     iconUrl={agent.icon_url}
                     iconName={agent.icon_name}
-                    size={14}
+                    size={agent.icon_url?.trim() ? 22 : 14}
                   />
                 </span>
                 <button
@@ -609,6 +610,7 @@ export default function MinimalAgentSessionNav({
                   <span className={styles.minimalAgentName}>{agent.name}</span>
                   <TeamChatBadge agent={agent} />
                   <SharedExpertHint agent={agent} />
+                  <RemoteExpertHint agent={agent} />
                 </span>
                 <AgentUnreadBadge count={agent.unread_count ?? 0} />
               </button>
