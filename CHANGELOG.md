@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 新增
+- Agent API 响应新增 `reload_pending` 字段：`PATCH /api/agents/{id}` 落库后、后台 harness 重建完成前为 `true`，调用方可据此等待或展示「重载中」状态（Fixes octop-harness#19）。
+
 ### 修复
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 
