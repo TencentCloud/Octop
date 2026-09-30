@@ -16,6 +16,7 @@ from octop.config import OctopConfig
 from octop.i18n import tr
 from octop.infra.mobile.adb import adb_connect, find_adb, list_devices
 from octop.infra.mobile.docker_install import (
+    _SCRIPT_READLINE_TIMEOUT,
     auto_install_docker_stream,
     can_install_without_password,
     docker_daemon_ready,
@@ -243,7 +244,13 @@ async def install_mobile_stream(*, locale: str = "en") -> AsyncIterator[str]:
     )
     assert proc.stdout is not None
     while True:
-        line = await proc.stdout.readline()
+        try:
+            line = await asyncio.wait_for(proc.stdout.readline(), timeout=_SCRIPT_READLINE_TIMEOUT)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            yield _sse({"done": False, "error": "install_stalled"})
+            return
         if not line:
             break
         text = line.decode("utf-8", errors="replace").strip()
