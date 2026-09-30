@@ -528,3 +528,36 @@ async def test_doc_write_invalid_content_400(env: Any) -> None:
         headers=auth,
     )
     assert r.status_code == 400
+
+
+# --- media preview ----------------------------------------------------------
+
+
+async def test_media_preview_inline_upload_is_sandboxed(env: Any) -> None:
+    """An uploaded SVG streamed inline must not run as an active document on the app origin."""
+    c, srv, auth, aid = env
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    await agent.workspace.aupload_bytes("outbound/evil.svg", svg)
+
+    r = await c.get(
+        f"/api/agents/{aid}/media/preview",
+        params={"source": "/outbound/evil.svg"},
+        headers=auth,
+    )
+    assert r.status_code == 200, r.text
+    assert r.content == svg
+    assert r.headers["content-disposition"] == "inline"
+    assert r.headers["content-security-policy"] == "sandbox"
+    assert r.headers["x-content-type-options"] == "nosniff"
+
+    # ``?mime_type=`` is caller-controlled, so the guard cannot depend on the guessed type.
+    hinted = await c.get(
+        f"/api/agents/{aid}/media/preview",
+        params={"source": "/outbound/evil.svg", "mime_type": "image/png"},
+        headers=auth,
+    )
+    assert hinted.status_code == 200, hinted.text
+    assert hinted.headers["content-type"].startswith("image/png")
+    assert hinted.headers["content-security-policy"] == "sandbox"
+    assert hinted.headers["x-content-type-options"] == "nosniff"
