@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 from pathlib import Path
 
 import pytest
 
 from octop.infra.setup.self_update import (
+    _PYPI_JSON_BASES,
     UpgradeResult,
     _all_mirrors_failed,
     build_upgrade_command,
@@ -155,6 +157,82 @@ def test_fetch_pypi_info_skips_versioned_fetch_when_stable_is_latest(
     assert info.description is not None
     assert "stable" in info.description
     assert urls == ["https://pypi.org/pypi/octop/json"]
+
+
+def test_fetch_pypi_info_falls_back_to_mirror_when_pypi_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = {
+        "info": {"version": "1.0.2b5", "description": "## [1.0.2b5]\n- via mirror\n"},
+        "releases": {"1.0.1": [{}], "1.0.2b5": [{}]},
+    }
+    urls: list[str] = []
+
+    def fake_urlopen(req: object, timeout: int = 10) -> _JsonResp:
+        url = getattr(req, "full_url", "")
+        urls.append(url)
+        if url.startswith("https://pypi.org/"):
+            raise urllib.error.URLError("Network is unreachable")
+        if url == "https://mirrors.cloud.tencent.com/pypi/pypi/octop/json":
+            return _JsonResp(catalog)
+        raise AssertionError(url)
+
+    monkeypatch.setattr("octop.infra.setup.self_update.urllib.request.urlopen", fake_urlopen)
+    info = fetch_pypi_info()
+    assert info is not None
+    assert info.version == "1.0.2b5"
+    assert info.latest_stable == "1.0.1"
+    assert info.source == "mirrors.cloud.tencent.com"
+    assert urls[0] == "https://pypi.org/pypi/octop/json"
+
+
+def test_fetch_pypi_info_keeps_catalog_description_when_mirror_lacks_versioned_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mirror without ``/pypi/octop/<version>/json`` degrades to the catalog description."""
+    catalog = {
+        "info": {"version": "1.0.1", "description": "## [1.0.1]\n- stable only\n"},
+        "releases": {"1.0.1": [{}], "1.0.2b5": [{}]},
+    }
+    base = "https://mirrors.cloud.tencent.com/pypi/pypi"
+    urls: list[str] = []
+
+    def fake_urlopen(req: object, timeout: int = 10) -> _JsonResp:
+        url = getattr(req, "full_url", "")
+        urls.append(url)
+        if url.startswith("https://pypi.org/"):
+            raise urllib.error.URLError("Network is unreachable")
+        if url == f"{base}/octop/json":
+            return _JsonResp(catalog)
+        if url == f"{base}/octop/1.0.2b5/json":
+            raise urllib.error.HTTPError(url, 404, "Not Found", None, None)  # type: ignore[arg-type]
+        raise AssertionError(url)
+
+    monkeypatch.setattr("octop.infra.setup.self_update.urllib.request.urlopen", fake_urlopen)
+    info = fetch_pypi_info()
+    assert info is not None
+    assert info.version == "1.0.2b5"
+    assert info.latest_stable == "1.0.1"
+    assert info.source == "mirrors.cloud.tencent.com"
+    # Degraded to the catalog description rather than raising.
+    assert info.description is not None
+    assert "stable only" in info.description
+    assert f"{base}/octop/1.0.2b5/json" in urls
+
+
+def test_fetch_pypi_info_returns_none_when_every_base_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempted: list[str] = []
+
+    def fake_urlopen(req: object, timeout: int = 10) -> _JsonResp:
+        attempted.append(getattr(req, "full_url", ""))
+        raise urllib.error.URLError("Network is unreachable")
+
+    monkeypatch.setattr("octop.infra.setup.self_update.urllib.request.urlopen", fake_urlopen)
+    assert fetch_pypi_info() is None
+    # Both bases were tried before giving up.
+    assert len(attempted) == len(_PYPI_JSON_BASES)
 
 
 def test_build_upgrade_command_prerelease_flags(
