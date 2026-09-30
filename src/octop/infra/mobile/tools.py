@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import re
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -28,6 +29,11 @@ MOBILE_HANDOFF = "mobile_handoff_to_user"
 
 _UI_DUMP_PATH = "/sdcard/octop_ui_dump.xml"
 _MAX_UI_DUMP_CHARS = 48_000
+
+# Package names are spliced into "adb shell monkey -p <pkg> ...", so they must
+# be matched against what Android allows rather than blacklisting characters
+# (see ``adb.input_text`` for why adb payloads need to be shell-safe).
+_PACKAGE_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+")
 
 
 def _tool_ctx() -> dict[str, Any]:
@@ -163,7 +169,7 @@ def build_mobile_tools(
             _require_ready(config, locale=locale)
             serial = await _resolve_device(device)
             pkg = package.strip()
-            if not pkg or "/" in pkg or " " in pkg:
+            if not _PACKAGE_NAME_RE.fullmatch(pkg):
                 raise ValueError("invalid package name")
             code, out = await asyncio.to_thread(
                 shell,
