@@ -146,34 +146,155 @@ def test_row_to_backend_spec_docker() -> None:
     }
 
 
-def test_row_to_backend_spec_postgres_encodes_credentials() -> None:
-    from urllib.parse import unquote, urlsplit
+def _pg_row(**overrides: object) -> BackendRow:
+    base: dict[str, object] = {
+        "id": 1,
+        "name": "pg",
+        "kind": "postgres",
+        "endpoint": "db.internal",
+        "access_key": "octop_app",
+        "secret_key": "p@ss/w#rd",
+        "bucket": "mydb",
+        "region": None,
+        "config_json": "{}",
+        "note": None,
+        "enabled": 1,
+        "created_at": 0,
+        "updated_at": 0,
+    }
+    base.update(overrides)
+    return BackendRow(**base)  # type: ignore[arg-type]
 
-    row = BackendRow(
-        id=1,
+
+def test_row_to_backend_spec_postgres_uses_discrete_fields() -> None:
+    """Credentials reach psycopg as values, so no URL encoding step can corrupt them."""
+    assert row_to_backend_spec(_pg_row()) == {
+        "type": "postgres",
+        "host": "db.internal",
+        "user": "octop_app",
+        "password": "p@ss/w#rd",
+        "database": "mydb",
+    }
+
+
+def test_row_to_backend_spec_postgres_region_names_the_schema() -> None:
+    assert row_to_backend_spec(_pg_row(region="ops"))["schema"] == "ops"
+
+
+def test_row_to_backend_spec_postgres_splits_a_saved_uri() -> None:
+    """A pasted URI is decoded once; libpq spellings with no slot are not guessed at."""
+    spec = row_to_backend_spec(
+        _pg_row(
+            endpoint=None,
+            access_key=None,
+            secret_key=None,
+            bucket=None,
+            config_json=(
+                '{"connection_string": '
+                '"postgresql://octop_app:p%40ss%2Fw%23rd@db.internal:6432/mydb'
+                '?sslmode=require&connect_timeout=5"}'
+            ),
+        )
+    )
+    assert spec == {
+        "type": "postgres",
+        "host": "db.internal",
+        "port": 6432,
+        "user": "octop_app",
+        "password": "p@ss/w#rd",
+        "database": "mydb",
+        "sslmode": "require",
+    }
+
+
+def test_row_to_backend_spec_postgres_drops_keys_without_a_dataclass_slot() -> None:
+    """``resolve_backend`` forwards every key, so anything extra must not be in the spec."""
+    spec = row_to_backend_spec(
+        _pg_row(config_json='{"table": "octop_files", "previewable": false, "prefix": "x"}'),
+    )
+    assert spec is not None
+    assert spec["table"] == "octop_files"
+    assert not {"previewable", "prefix", "connection_string"} & set(spec)
+
+
+def test_row_to_backend_spec_postgres_needs_a_complete_row() -> None:
+    assert row_to_backend_spec(_pg_row(endpoint=None)) is None
+    assert row_to_backend_spec(_pg_row(secret_key=None)) is None
+    assert row_to_backend_spec(_pg_row(endpoint="   ")) is None
+
+
+def test_resolve_named_postgres_backend(repo: BackendRepo) -> None:
+    """The dashboard path from the issue: saved storage backend → agent workspace."""
+    repo.create(
         name="pg",
         kind="postgres",
-        endpoint="db.internal",
         access_key="octop_app",
         secret_key="p@ss/w#rd",
         bucket="mydb",
-        region=None,
-        config_json="{}",
-        note=None,
-        enabled=1,
-        created_at=0,
-        updated_at=0,
+        endpoint="db.internal",
     )
-    spec = row_to_backend_spec(row)
-    assert spec == {
+    assert resolve_agent_backend_spec({"type": "named", "name": "pg"}, repo=repo) == {
         "type": "postgres",
-        "connection_string": "postgresql://octop_app:p%40ss%2Fw%23rd@db.internal/mydb",
+        "host": "db.internal",
+        "user": "octop_app",
+        "password": "p@ss/w#rd",
+        "database": "mydb",
     }
-    # The credentials must not move the authority/path boundary of the libpq URL.
-    parsed = urlsplit(spec["connection_string"])
-    assert parsed.hostname == "db.internal"
-    assert parsed.path == "/mydb"
-    assert unquote(parsed.password or "") == "p@ss/w#rd"
+
+
+def test_resolve_agent_backend_spec_splits_inline_postgres_uri() -> None:
+    """``BackendBuilder`` offers a ``connection_string`` box for inline postgres specs."""
+    assert resolve_agent_backend_spec(
+        {
+            "type": "postgres",
+            "connection_string": "postgresql://octop_app:Audit%40123@db.internal/mydb",
+        },
+        repo=None,
+    ) == {
+        "type": "postgres",
+        "host": "db.internal",
+        "user": "octop_app",
+        "password": "Audit@123",
+        "database": "mydb",
+    }
+
+
+def test_postgres_spec_fits_the_harness_config_dataclass() -> None:
+    """Harness runs ``PostgresConfig(**{k: v for spec if k != "type"})`` — the real gate.
+
+    On develop the spec carries ``connection_string``, which this dataclass has no slot
+    for, so every case below raises ``TypeError`` there and the agent never starts.
+    """
+    import dataclasses
+
+    PostgresConfig = pytest.importorskip(
+        "deepagents_backends", reason="postgres backend needs octop-harness[remote-backends]"
+    ).PostgresConfig
+    field_names = {f.name for f in dataclasses.fields(PostgresConfig)}
+
+    specs = [
+        row_to_backend_spec(_pg_row()),
+        row_to_backend_spec(_pg_row(region="ops", config_json='{"max_pool_size": "8"}')),
+        row_to_backend_spec(
+            _pg_row(
+                endpoint=None,
+                access_key=None,
+                secret_key=None,
+                bucket=None,
+                config_json='{"dsn": "postgresql://app:p%40ss%2Fw%23rd@db.internal:6432/mydb"}',
+            )
+        ),
+    ]
+    configs = []
+    for spec in specs:
+        assert spec is not None
+        assert set(spec) - {"type"} <= field_names
+        configs.append(PostgresConfig(**{k: v for k, v in spec.items() if k != "type"}))
+
+    assert configs[0].password == "p@ss/w#rd"
+    assert configs[1].schema == "ops"
+    assert configs[1].max_pool_size == 8
+    assert configs[2].port == 6432
 
 
 def test_enrich_docker_backend_spec_defaults() -> None:

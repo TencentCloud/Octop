@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from octop.infra.backend.adapter import row_to_backend_spec
+from octop.infra.backend.adapter import normalize_postgres_spec, row_to_backend_spec
 
 
 def default_agent_backend_spec(workspace_dir: Path) -> dict[str, Any]:
@@ -115,6 +115,12 @@ def resolve_agent_backend_spec(
                 for prefix, sub in routes.items()
             },
         }
+
+    if kind == "postgres":
+        # The dashboard's inline postgres box collects a full ``connection_string``, and
+        # harness builds ``PostgresConfig(**kwargs)`` from whatever this returns, so the
+        # URI has to be split here too — not only on the ``named`` row path.
+        return normalize_postgres_spec(spec)
 
     cleaned = dict(spec)
     if kind not in ("named", "composite") and "name" in cleaned:

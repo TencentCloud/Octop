@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from octop.infra.db.repos.backends import BackendRow
 
@@ -26,6 +26,30 @@ _AGENT_RESOLVABLE_KINDS = frozenset(
 _OPENSANDBOX_PROTOCOLS = frozenset({"http", "https"})
 _DEFAULT_OPENSANDBOX_IMAGE = "python:3.12"
 
+# ``octop_harness.backends.resolve_backend`` forwards every non-``type`` spec key to
+# ``deepagents_backends.PostgresConfig(**kwargs)``, and that dataclass has no
+# ``connection_string`` slot: a spec carrying a libpq URI raises ``TypeError`` and the
+# agent never starts. Keep the field names in sync with the dataclass.
+_POSTGRES_CONFIG_FIELDS = frozenset(
+    {
+        "host",
+        "port",
+        "database",
+        "user",
+        "password",
+        "table",
+        "schema",
+        "min_pool_size",
+        "max_pool_size",
+        "max_idle_seconds",
+        "connection_timeout",
+        "sslmode",
+    }
+)
+_POSTGRES_NUMBER_FIELDS = frozenset(
+    {"port", "min_pool_size", "max_pool_size", "max_idle_seconds", "connection_timeout"}
+)
+
 
 def storage_backend_kind_agent_resolvable(kind: str) -> bool:
     """True when ``row_to_backend_spec`` may produce a harness spec for this kind."""
@@ -40,6 +64,80 @@ def _parse_config_json(row: BackendRow) -> dict[str, Any]:
         return parsed if isinstance(parsed, dict) else {}
     except Exception:
         return {}
+
+
+def _postgres_value(name: str, value: Any) -> Any | None:
+    """Coerce *value* for ``PostgresConfig`` field *name*; ``None`` means "drop it".
+
+    Dropping is the only safe answer for a key the dataclass has no slot for: passing it
+    through would raise ``TypeError`` inside ``resolve_backend``. Empty values are dropped
+    too so the dataclass default applies, rather than an empty string overriding one.
+    """
+    if name not in _POSTGRES_CONFIG_FIELDS or value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if name in _POSTGRES_NUMBER_FIELDS:
+        try:
+            return float(text) if "." in text else int(text)
+        except ValueError:
+            return None
+    return text
+
+
+def _postgres_uri_fields(conn: str) -> dict[str, Any]:
+    """Split a libpq URI into ``PostgresConfig`` fields, decoding userinfo once.
+
+    Percent-encoded credentials are read back as their literal characters (``%40`` →
+    ``@``); re-encoding them would be a second layer, which is what makes a saved
+    credential unusable. Query parameters are kept only when their key already names a
+    ``PostgresConfig`` field — libpq spellings without a slot (``connect_timeout``,
+    ``options``) are dropped instead of guessed at.
+    """
+    parsed = urlsplit(conn)
+    try:
+        port = parsed.port
+    except ValueError:
+        # A malformed URI says nothing usable about this backend; let the row's discrete
+        # fields stand instead of failing agent start.
+        return {}
+    out: dict[str, Any] = {}
+    for name, raw in (
+        ("host", parsed.hostname),
+        ("user", parsed.username),
+        ("password", parsed.password),
+        ("database", parsed.path.lstrip("/") or None),
+    ):
+        if raw:
+            decoded = unquote(raw)
+            coerced = _postgres_value(name, decoded)
+            if coerced is not None:
+                out[name] = coerced
+    if port:
+        out["port"] = port
+    for name, value in parse_qsl(parsed.query, keep_blank_values=False):
+        coerced = _postgres_value(name.lower(), value)
+        if coerced is not None:
+            out[name] = coerced
+    return out
+
+
+def normalize_postgres_spec(values: dict[str, Any]) -> dict[str, Any]:
+    """Return a postgres harness spec built from ``PostgresConfig``'s discrete fields.
+
+    Accepts a full URI (``connection_string`` / ``dsn``), discrete fields, or both; a
+    discrete field wins over the URI it came from, matching the storage-form precedence.
+    """
+    out: dict[str, Any] = {}
+    uri = values.get("connection_string") or values.get("dsn")
+    if isinstance(uri, str) and uri.strip():
+        out.update(_postgres_uri_fields(uri.strip()))
+    for name, value in values.items():
+        coerced = _postgres_value(name, value)
+        if coerced is not None:
+            out[name] = coerced
+    return {"type": "postgres", **out}
 
 
 def row_to_backend_spec(row: BackendRow) -> dict[str, Any] | None:
@@ -123,28 +221,26 @@ def row_to_backend_spec(row: BackendRow) -> dict[str, Any] | None:
         return {"type": "local_shell", "root_dir": str(root), "virtual_mode": True}
 
     if kind == "postgres":
-        if not row.endpoint:
+        uri = cfg.get("connection_string") or cfg.get("dsn")
+        has_uri = isinstance(uri, str) and bool(uri.strip())
+        values: dict[str, Any] = dict(cfg)
+        for name, raw in (
+            ("host", row.endpoint),
+            ("user", row.access_key),
+            ("password", row.secret_key),
+            ("database", row.bucket),
+            ("schema", row.region),
+        ):
+            if raw:
+                values[name] = raw
+        spec = normalize_postgres_spec(values)
+        if "host" not in spec:
             return None
-        conn = cfg.get("connection_string")
-        if not conn:
-            user = row.access_key or cfg.get("user")
-            password = row.secret_key or cfg.get("password")
-            dbname = row.bucket or cfg.get("database")
-            if user and password and dbname:
-                host = row.endpoint
-                schema = row.region or cfg.get("schema") or "public"
-                # Percent-encode the credentials as OctopConfig.postgresql_conninfo()
-                # does: libpq decodes userinfo, so an unquoted "@", "/" or "%" in a
-                # password shifts the host/database out of the URL.
-                conn = (
-                    f"postgresql://{quote_plus(str(user))}"
-                    f":{quote_plus(str(password))}@{host}/{dbname}"
-                )
-                if schema != "public":
-                    cfg = {**cfg, "schema": schema}
-        if not conn:
-            return None
-        return {"type": "postgres", "connection_string": conn, **cfg}
+        if has_uri:
+            return spec
+        # Same completeness rule the form has always had: without a saved URI, the
+        # discrete credentials must all be filled or the backend is "incomplete".
+        return spec if all(name in spec for name in ("user", "password", "database")) else None
 
     if kind == "docker":
         image = cfg.get("image") or row.bucket
