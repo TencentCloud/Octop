@@ -273,6 +273,10 @@ function ChatPageInner() {
     loadMoreSessions,
     fetchAllSessions,
     ensureThreadInList,
+    folders,
+    tags,
+    setSessionFolder,
+    setSessionTags,
   } = useSessions(resolvedAgentId ?? null);
 
   const handleLoadMoreSessions = useCallback(() => {
@@ -1169,6 +1173,10 @@ function ChatPageInner() {
       onForkSession={handleForkSession}
       forkDisabled={sessionForkDisabled}
       forkDisabledHint={sessionForkDisabledHint}
+      sessionFolders={folders}
+      sessionTags={tags}
+      onSetSessionFolder={setSessionFolder}
+      onSetSessionTags={setSessionTags}
       onSidebarOpenChange={setSidebarOpen}
       onSidebarResizeStart={handleSidebarResizeStart}
       layoutRail={!isMinimalLayout}
