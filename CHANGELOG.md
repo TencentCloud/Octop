@@ -23,6 +23,7 @@
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
+- `octop update` 在无法访问 pypi.org 的环境（如国内直连被拒）下直接失败：版本目录查询改为按 `pypi.org` → `mirrors.cloud.tencent.com` 顺序回退，镜像提供与官方一致的版本目录 JSON，全部源失败才返回 None（Fixes #1315）。
 
 ## [1.0.2b5] - 2026-09-29
 
