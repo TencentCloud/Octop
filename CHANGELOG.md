@@ -14,6 +14,7 @@
 
 ### 修复
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
+- ONNX 本地 embedding 的"测试连接"在断网环境（如 docker）报裸 ``[Errno 101] Network is unreachable``：探测路径强制以 ``local_files_only=True`` 加载已缓存模型（fastembed 在本地缓存解析失败时会静默回退 HuggingFace/GCS 下载，裸连接错误直接穿透），且探测不再静默 pip 联网安装依赖；缓存不完整或网络异常时返回"重新下载模型"的可操作提示而非裸错误（Fixes #1165）。
 
 ## [1.0.2b5] - 2026-09-29
 
