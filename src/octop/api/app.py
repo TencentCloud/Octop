@@ -13,6 +13,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from scalar_fastapi import get_scalar_api_reference
 
+from octop.api.common.proxy_trust import (
+    TRUSTED_PROXIES_ENV,
+    trusted_proxy_hosts,
+)
 from octop.api.middleware.jwt_auth import install as install_jwt_auth
 from octop.api.middleware.setup_lockdown import install as install_setup_lockdown
 from octop.api.openapi_meta import API_DESCRIPTION, OPENAPI_TAGS, configure_openapi
@@ -139,6 +143,26 @@ def build_app(server: OctopServer) -> FastAPI:
 
     if server.app_runtime is not None and server.app_runtime.bridge_manager is not None:
         server.app_runtime.bridge_manager.bind_asgi_app(app)
+
+    # Reverse-proxy trust is applied by the ASGI server (uvicorn's
+    # ProxyHeadersMiddleware, wired from ``trusted_proxies`` in launch.py), not
+    # here: it has to rewrite the scope before any app code reads it. Log the
+    # decision once at boot so an operator can see which way it went.
+    trusted_hosts = trusted_proxy_hosts(cfg)
+    if trusted_hosts:
+        logger.info(
+            "trusting X-Forwarded-* from %s (configure %s to change)",
+            ", ".join(trusted_hosts),
+            TRUSTED_PROXIES_ENV,
+        )
+    else:
+        logger.info(
+            "ignoring X-Forwarded-* from every peer: bound to %s with no trusted proxy "
+            "configured. If Octop sits behind a reverse proxy, set %s to the proxy "
+            "address or OIDC redirects and public URLs will be wrong.",
+            getattr(cfg, "bind_host", "0.0.0.0") if cfg else "0.0.0.0",
+            TRUSTED_PROXIES_ENV,
+        )
 
     from octop.infra.setup.tls.challenge import challenge_store
 

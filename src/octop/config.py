@@ -130,6 +130,10 @@ class OctopConfig:
     login_max_attempts: int = 5
     login_lockout_seconds: int = 900
     cors_origins: list[str] = field(default_factory=list)
+    # Reverse proxies whose X-Forwarded-* headers we honour. Empty means
+    # "trust nothing" — the safe default for a wildcard bind. See
+    # ``api/common/proxy_trust.py`` for the loopback heuristic.
+    trusted_proxies: list[str] = field(default_factory=list)
     default_timezone: str = "Asia/Shanghai"
     enable_dashboard: bool = True
     enable_api_docs: bool = False
@@ -483,6 +487,8 @@ def load_config(path: Path) -> OctopConfig:
         merged["default_timezone"] = v
     if v := os.environ.get("OCTOP_CORS_ORIGINS"):
         merged["cors_origins"] = [s.strip() for s in v.split(",") if s.strip()]
+    if v := os.environ.get("OCTOP_TRUSTED_PROXIES"):
+        merged["trusted_proxies"] = [s.strip() for s in v.split(",") if s.strip()]
     if v := os.environ.get("OCTOP_ENABLE_DASHBOARD"):
         merged["enable_dashboard"] = _coerce_bool(
             "OCTOP_ENABLE_DASHBOARD", v, bool(merged["enable_dashboard"])
@@ -604,6 +610,7 @@ def load_config(path: Path) -> OctopConfig:
         login_max_attempts=int(merged.get("login_max_attempts", 5)),
         login_lockout_seconds=int(merged.get("login_lockout_seconds", 900)),
         cors_origins=list(merged.get("cors_origins") or []),
+        trusted_proxies=list(merged.get("trusted_proxies") or []),
         default_timezone=str(merged.get("default_timezone") or "Asia/Shanghai"),
         enable_dashboard=bool(merged["enable_dashboard"]),
         enable_api_docs=bool(merged["enable_api_docs"]),

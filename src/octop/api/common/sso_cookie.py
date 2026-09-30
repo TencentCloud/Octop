@@ -11,9 +11,13 @@ SSO_STATE_TTL_SECONDS = 600
 
 
 def request_is_https(request: Request) -> bool:
-    forwarded_proto = request.headers.get("x-forwarded-proto")
-    if forwarded_proto:
-        return forwarded_proto.split(",", 1)[0].strip().lower() == "https"
+    """Whether the client-visible scheme is HTTPS, for the cookie ``Secure`` flag.
+
+    ``request.url.scheme`` is already corrected by ``ProxyHeadersMiddleware``
+    when — and only when — a trusted proxy is configured. Reading
+    ``X-Forwarded-Proto`` directly would let any client claim TLS, which
+    silently downgrades the cookie's ``Secure`` attribute.
+    """
     return request.url.scheme == "https"
 
 

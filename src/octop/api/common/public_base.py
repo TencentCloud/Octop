@@ -5,25 +5,20 @@ from __future__ import annotations
 from starlette.requests import Request
 
 
-def _first_header_value(value: str | None) -> str | None:
-    if value is None:
-        return None
-    first = value.split(",", 1)[0].strip()
-    return first or None
-
-
 def resolve_public_base(request: Request) -> str:
     """Resolve the externally visible origin for an incoming request.
 
-    Trusts ``X-Forwarded-Proto`` / ``X-Forwarded-Host`` when present (typical
-    behind a reverse proxy). Prefer deploying Octop behind a trusted proxy and
-    keeping the dashboard same-origin with the API for OIDC cookies.
-    """
-    forwarded_proto = _first_header_value(request.headers.get("x-forwarded-proto"))
-    forwarded_host = _first_header_value(request.headers.get("x-forwarded-host"))
-    if forwarded_proto:
-        host = forwarded_host or request.headers.get("host")
-        if host:
-            return f"{forwarded_proto}://{host}".rstrip("/")
+    The scheme comes from ``request.url``, which ``ProxyHeadersMiddleware``
+    has already rewritten from ``X-Forwarded-Proto`` when — and only when —
+    a trusted reverse proxy is configured (``trusted_proxies``). An
+    untrusted ``X-Forwarded-Proto`` is therefore ignored, which is what
+    stops a client claiming a scheme it does not speak.
 
-    return str(request.url.replace(path="", query="", fragment="")).rstrip("/")
+    The host is the ``Host`` header, so a reverse proxy in front of Octop
+    must pass it through unchanged — the same requirement the built-in
+    ACME HTTP-01 challenge already imposes.
+    """
+    host = request.headers.get("host") or request.url.netloc
+    if not host:
+        return ""
+    return f"{request.url.scheme}://{host}".rstrip("/")

@@ -67,6 +67,7 @@ async def run_foreground(
     import uvicorn
 
     from octop.api.app import build_app
+    from octop.api.common.proxy_trust import trusted_proxy_hosts
     from octop.infra.setup.tls.http_companion import build_http_companion_app
     from octop.infra.setup.tls.listeners import build_listen_plan
     from octop.infra.setup.tls.store import resolve_tls_paths
@@ -98,6 +99,10 @@ async def run_foreground(
         reload = False
 
     app = build_app(srv)
+    # uvicorn installs its ProxyHeadersMiddleware only when this is set, and
+    # its default is None -- i.e. today nothing honours X-Forwarded-*, which
+    # is exactly why the API layer must never read those headers itself.
+    forwarded_allow_ips = trusted_proxy_hosts(cfg) or None
     servers: list[uvicorn.Server] = []
 
     if plan.dual_listeners:
@@ -108,6 +113,7 @@ async def run_foreground(
             host=plan.bind_host,
             port=plan.https_port,
             log_level=level,
+            forwarded_allow_ips=forwarded_allow_ips,
             workers=worker_count,
             reload=False,
             ssl_certfile=plan.ssl_certfile,
@@ -119,6 +125,7 @@ async def run_foreground(
             host=plan.bind_host,
             port=plan.http_port,
             log_level=level,
+            forwarded_allow_ips=forwarded_allow_ips,
             workers=1,
             reload=False,
         )
@@ -137,6 +144,7 @@ async def run_foreground(
             host=plan.bind_host,
             port=plan.http_port or bind_port,
             log_level=level,
+            forwarded_allow_ips=forwarded_allow_ips,
             workers=worker_count,
             reload=reload,
             ssl_certfile=plan.ssl_certfile,
