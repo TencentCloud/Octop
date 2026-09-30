@@ -4015,7 +4015,16 @@
       "reloadHint": "Saving reloads the agent automatically. Current conversations are retained.",
       "loadFailed": "Failed to load memory settings",
       "saved": "Saved — the agent will reload automatically",
-      "saveFailed": "Save failed"
+      "saveFailed": "Save failed",
+      "advancedTitle": "Distillation call limits",
+      "advancedDescription": "Cap how much a single distillation run may generate and how long it may wait; 0 means automatic. Independent of the trigger timing above.",
+      "maxTokensLabel": "Max tokens per distillation",
+      "maxTokensSuffix": "tokens (0 = automatic)",
+      "lightTimeoutLabel": "Distillation wait limit",
+      "lightTimeoutSuffix": "seconds (0 = automatic, default 120s; min 30s)",
+      "heavyTimeoutLabel": "Batch consolidation wait limit",
+      "heavyTimeoutSuffix": "seconds (0 = automatic, default 300s)",
+      "timeoutVsIdleNote": "“Idle for X minutes” only decides when distillation starts; this wait limit decides how long a single run may take. For local reasoning-heavy models, set both the token budget and the wait limit so distillation stops timing out."
     },
     "overview": {
       "dashboardTitle": "Memory overview",

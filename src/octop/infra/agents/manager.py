@@ -200,6 +200,33 @@ def _memory_extract_settings(
         ):
             out[dst] = float(val)
 
+    # Aux-call options (#1360): read timeouts per tier, a default completion
+    # budget, and vendor request extras for the aux LLM. Forward-compat: only
+    # forwarded when the installed octop-harness knows the field.
+    for src, dst in (
+        ("extract_light_timeout_s", "memory_aux_light_timeout_s"),
+        ("extract_heavy_timeout_s", "memory_aux_heavy_timeout_s"),
+    ):
+        val = mem.get(src)
+        if (
+            dst in supported_fields
+            and isinstance(val, int | float)
+            and not isinstance(val, bool)
+            and val > 0
+        ):
+            out[dst] = float(val)
+    max_tokens = mem.get("extract_max_tokens")
+    if (
+        "memory_aux_max_tokens" in supported_fields
+        and isinstance(max_tokens, int)
+        and not isinstance(max_tokens, bool)
+        and max_tokens > 0
+    ):
+        out["memory_aux_max_tokens"] = max_tokens
+    extra_body = mem.get("extract_extra_body")
+    if "memory_aux_extra_body" in supported_fields and isinstance(extra_body, dict) and extra_body:
+        out["memory_aux_extra_body"] = dict(extra_body)
+
     # octop-harness 0.9.5 predates the interval trigger fields. Keep
     # hot reload working against that release and approximate interval mode
     # with its per-session idle watchdog until a newer harness is installed.

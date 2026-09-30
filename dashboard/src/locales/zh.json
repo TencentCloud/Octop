@@ -3947,7 +3947,16 @@
       "reloadHint": "保存后专家会自动重载，当前对话不会被删除。",
       "loadFailed": "记忆设置加载失败",
       "saved": "已保存，专家将自动重载",
-      "saveFailed": "保存失败"
+      "saveFailed": "保存失败",
+      "advancedTitle": "提炼调用参数",
+      "advancedDescription": "限制单次记忆提炼的生成量和等待时间，0 表示自动。与上方的提炼时机相互独立。",
+      "maxTokensLabel": "单次提炼最多生成",
+      "maxTokensSuffix": "token（0 为自动）",
+      "lightTimeoutLabel": "单次提炼等待上限",
+      "lightTimeoutSuffix": "秒（0 为自动，默认 120 秒；最小 30 秒）",
+      "heavyTimeoutLabel": "批量整理等待上限",
+      "heavyTimeoutSuffix": "秒（0 为自动，默认 300 秒）",
+      "timeoutVsIdleNote": "“对话空闲 X 分钟后提炼”只决定何时开始提炼；这里的等待上限决定单次提炼最多等多久。使用深度思考的本地模型时，建议同时设置输出预算和等待上限，避免提炼一直超时。"
     },
     "overview": {
       "dashboardTitle": "记忆概览",

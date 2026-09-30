@@ -605,6 +605,72 @@ def test_memory_extract_settings_skips_aux_model_on_legacy_harness() -> None:
     assert settings == {}
 
 
+def test_memory_extract_settings_forwards_aux_call_options() -> None:
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "extract_light_timeout_s": 42,
+                "extract_heavy_timeout_s": 90,
+                "extract_max_tokens": 1024,
+                "extract_extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+            }
+        },
+        supported_fields=frozenset(
+            {
+                "memory_aux_light_timeout_s",
+                "memory_aux_heavy_timeout_s",
+                "memory_aux_max_tokens",
+                "memory_aux_extra_body",
+            }
+        ),
+    )
+    assert settings == {
+        "memory_aux_light_timeout_s": 42.0,
+        "memory_aux_heavy_timeout_s": 90.0,
+        "memory_aux_max_tokens": 1024,
+        "memory_aux_extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+    }
+
+
+def test_memory_extract_settings_skips_aux_call_options_on_legacy_harness() -> None:
+    # Older octop-harness releases predate the aux call options; the stored
+    # values must be ignored (not rejected) so hot reload keeps working.
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "extract_light_timeout_s": 42,
+                "extract_max_tokens": 1024,
+                "extract_extra_body": {"enable_thinking": False},
+            }
+        },
+        supported_fields=frozenset({"memory_enabled"}),
+    )
+    assert settings == {}
+
+
+def test_memory_extract_settings_ignores_unset_aux_call_options() -> None:
+    # None / zero / empty values fall through to the harness defaults.
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "extract_light_timeout_s": None,
+                "extract_heavy_timeout_s": 0,
+                "extract_max_tokens": 0,
+                "extract_extra_body": {},
+            }
+        },
+        supported_fields=frozenset(
+            {
+                "memory_aux_light_timeout_s",
+                "memory_aux_heavy_timeout_s",
+                "memory_aux_max_tokens",
+                "memory_aux_extra_body",
+            }
+        ),
+    )
+    assert settings == {}
+
+
 def test_build_harness_config_accepts_memory_extract_settings(manager: AgentManager) -> None:
     row = _row(
         config_json=json.dumps(

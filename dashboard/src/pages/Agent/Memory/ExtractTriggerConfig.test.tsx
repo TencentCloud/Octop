@@ -43,7 +43,7 @@ describe("<MemorySettings />", () => {
     await screen.findByText("存储记忆");
     expect(screen.getByText("已开启")).toBeInTheDocument();
     expect(screen.getByText("对话空闲后提炼")).toBeInTheDocument();
-    expect(screen.getByRole("spinbutton")).toHaveValue("5");
+    expect(screen.getAllByRole("spinbutton")[0]).toHaveValue("5");
   });
 
   it("explains exactly what happens when memory is disabled", async () => {
@@ -75,6 +75,9 @@ describe("<MemorySettings />", () => {
         extract_idle_seconds: 300,
         extract_interval_seconds: 21600,
         aux_model: "",
+        extract_max_tokens: 0,
+        extract_light_timeout_s: 0,
+        extract_heavy_timeout_s: 0,
       });
     });
   });
@@ -116,12 +119,45 @@ describe("<MemorySettings />", () => {
     render(<MemorySettings agentId="ZYWZTD" />);
 
     await screen.findByText("存储记忆");
-    expect(screen.getByRole("spinbutton")).toHaveValue("1");
+    expect(screen.getAllByRole("spinbutton")[0]).toHaveValue("1");
     await user.click(screen.getByRole("button", { name: "保存设置" }));
     await waitFor(() =>
       expect(api.putExtractConfig).toHaveBeenCalledWith(
         "ZYWZTD",
         expect.objectContaining({ extract_idle_seconds: 60 }),
+      ),
+    );
+  });
+
+  it("loads and saves the advanced distillation call limits", async () => {
+    api.getExtractConfig.mockResolvedValue({
+      ...idleConfig,
+      extract_max_tokens: 1024,
+      extract_light_timeout_s: 45,
+      extract_heavy_timeout_s: null,
+    });
+    api.putExtractConfig.mockResolvedValue(idleConfig);
+    const user = userEvent.setup();
+    render(<MemorySettings agentId="ZYWZTD" />);
+
+    await screen.findByText("提炼调用参数");
+    const spinbuttons = screen.getAllByRole("spinbutton");
+    expect(spinbuttons).toHaveLength(4);
+    // Stored values render as-is; null renders as the automatic sentinel.
+    expect(spinbuttons[1]).toHaveValue("1024");
+    expect(spinbuttons[2]).toHaveValue("45");
+    expect(spinbuttons[3]).toHaveValue("0");
+    expect(screen.getByText(/最多等多久/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+    await waitFor(() =>
+      expect(api.putExtractConfig).toHaveBeenCalledWith(
+        "ZYWZTD",
+        expect.objectContaining({
+          extract_max_tokens: 1024,
+          extract_light_timeout_s: 45,
+          extract_heavy_timeout_s: 0,
+        }),
       ),
     );
   });
