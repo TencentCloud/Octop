@@ -224,7 +224,7 @@ async def probe_provider_row(
     locale: str = "en",
 ) -> dict[str, Any]:
     """Probe a provider: chat models get a one-token ping; embedding models POST /embeddings."""
-    from octop.infra.agents.providers.model_flags import is_onnx_local_provider
+    from octop.infra.agents.providers.model_flags import is_onnx_local_provider, is_vision_model
 
     if is_onnx_local_provider(
         getattr(row, "name", None), provider_api_key=getattr(row, "api_key", None)
@@ -246,7 +246,12 @@ async def probe_provider_row(
     started = time.perf_counter()
     try:
         chat = build_probe_chat_model(row, model_id=mid)
-        result = await asyncio.wait_for(chat.ainvoke("ping"), timeout=30.0)
+        probe_input: str | list[Any] = "ping"
+        if is_vision_model(_probe_model_entry(row, mid)):
+            from langchain_core.messages import HumanMessage
+
+            probe_input = [HumanMessage(content=[{"type": "text", "text": "ping"}])]
+        result = await asyncio.wait_for(chat.ainvoke(probe_input), timeout=30.0)
     except Exception as exc:
         logger.info(
             "provider probe failed for %s: %r (%s)",
