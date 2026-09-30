@@ -196,7 +196,9 @@
     "TEAM_MEMBERS_TOO_FEW": "团队至少需要两名成员。",
     "TEAM_MEMBER_INVALID": "所选专家无法加入本机团队。对端专家、其他团队或已删除的专家不能作为成员。",
     "TEAM_MEMBER_BUSY": "该专家有进行中的团队任务，请等结束后再调整成员或删除。",
-    "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。"
+    "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。",
+    "SKILL_PACKAGE_COPY_DENIED": "该技能包的创建者已禁止复制其中的技能。",
+    "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。"
   },
   "nav": {
     "chat": "对话",
@@ -333,7 +335,12 @@
     "packageId": "技能包 ID",
     "copyPackageId": "点击复制技能包 ID",
     "collapseListPanel": "收起列表",
-    "expandListPanel": "展开列表"
+    "expandListPanel": "展开列表",
+    "copyPolicy": "复制策略",
+    "copyPolicyHint": "控制创建者以外的用户能否把包内技能复制到自己 Agent 的工作区。",
+    "copyPolicySnapshot": "可复制",
+    "copyPolicyLock": "可复制但只读",
+    "copyPolicyDeny": "禁止复制"
   },
   "knowledgeBases": {
     "title": "知识库",
@@ -926,6 +933,8 @@
     "agentDisable": "停用",
     "defaultModelLabel": "默认模型",
     "defaultModelPlaceholder": "选择一个模型",
+    "defaultModeLabel": "默认对话模式",
+    "defaultModeHint": "新建对话时使用的 Ask / Plan / Craft 模式；Craft 为完整执行模式。已有对话不受影响。",
     "skillPackagesLabel": "可选技能包",
     "skillPackagesHint": "创建时挂载选中的技能包（需本地存储，且根目录为 /）。",
     "skillPackagesUnsupportedHint": "当前沙箱无法直接挂载技能包目录，但仍可使用“复制技能”在工作区创建独立副本。",
@@ -2101,7 +2110,8 @@
     "cvm-ai-doctor": "CVM AI 诊断",
     "tencentcloud-infra": "腾讯云基础设施",
     "publisher-multi-platform": "多平台发布",
-    "docker-management": "Docker 管理"
+    "docker-management": "Docker 管理",
+    "copyDenied": "技能包创建者已禁止复制"
   },
   "cronJobs": {
     "title": "定时任务",

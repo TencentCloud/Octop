@@ -196,7 +196,9 @@
     "TEAM_MEMBERS_TOO_FEW": "A team needs at least two members.",
     "TEAM_MEMBER_INVALID": "Those experts cannot join a team on this instance. Peer experts, other teams, and deleted experts are not allowed.",
     "TEAM_MEMBER_BUSY": "This expert has an in-flight team job. Wait until it finishes.",
-    "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version."
+    "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version.",
+    "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
+    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace."
   },
   "nav": {
     "chat": "Conversation",
@@ -333,7 +335,12 @@
     "packageId": "Package ID",
     "copyPackageId": "Click to copy package ID",
     "collapseListPanel": "Collapse list",
-    "expandListPanel": "Expand list"
+    "expandListPanel": "Expand list",
+    "copyPolicy": "Copy policy",
+    "copyPolicyHint": "Controls whether users other than the creator can copy this package's skills into their agents.",
+    "copyPolicySnapshot": "Copy freely",
+    "copyPolicyLock": "Copy read-only",
+    "copyPolicyDeny": "No copying"
   },
   "knowledgeBases": {
     "title": "Knowledge Bases",
@@ -926,6 +933,8 @@
     "patchFailed": "Failed to save changes",
     "defaultModelLabel": "Default Model",
     "defaultModelPlaceholder": "Select a model",
+    "defaultModeLabel": "Default Conversation Mode",
+    "defaultModeHint": "Ask / Plan / Craft mode for new conversations; Craft is the full-execution mode. Existing conversations are unaffected.",
     "skillPackagesLabel": "Optional Skill Packages",
     "skillPackagesHint": "Mount packages at create time (local storage with root /).",
     "skillPackagesUnsupportedHint": "This sandbox cannot mount skill-package directories directly. You can still use Copy skills to create independent workspace copies.",
@@ -2102,7 +2111,8 @@
     "cvm-ai-doctor": "CVM AI Doctor",
     "tencentcloud-infra": "Tencent Cloud Infra",
     "publisher-multi-platform": "Multi-platform Publisher",
-    "docker-management": "Docker Management"
+    "docker-management": "Docker Management",
+    "copyDenied": "The package creator has disabled copying"
   },
   "cronJobs": {
     "title": "Cron Jobs",

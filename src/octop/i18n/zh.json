@@ -455,7 +455,9 @@
     "TEAM_MEMBERS_TOO_FEW": "团队至少需要两名成员。",
     "TEAM_MEMBER_INVALID": "所选专家无法加入本机团队。对端专家、其他团队或已删除的专家不能作为成员。",
     "TEAM_MEMBER_BUSY": "该专家有进行中的团队任务，请等结束后再调整成员或删除。",
-    "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。"
+    "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。",
+    "SKILL_PACKAGE_COPY_DENIED": "该技能包的创建者已禁止复制其中的技能。",
+    "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",

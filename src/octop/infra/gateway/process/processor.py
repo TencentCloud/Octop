@@ -811,6 +811,7 @@ class GlobalProcessor:
         )
         request = self._stamp_turn_conversation_mode(
             request,
+            agent_id=agent_id,
             thread_id=thread_id,
             meta=None,
             user_text=msg.text,
@@ -1294,6 +1295,7 @@ class GlobalProcessor:
         self._apply_turn_hitl_policy(thread_id, meta)
         return self._stamp_turn_conversation_mode(
             request,
+            agent_id=agent_id,
             thread_id=thread_id,
             meta=meta,
             user_text=msg.text,
@@ -1309,6 +1311,7 @@ class GlobalProcessor:
 
     def _sync_and_resolve_conversation_mode(
         self,
+        agent_id: str,
         thread_id: str,
         *,
         meta: dict[str, Any] | None,
@@ -1332,7 +1335,11 @@ class GlobalProcessor:
                 pending_plan_path=None,
             )
             return "craft", pending
-        mode = resolve_conversation_mode(explicit=explicit, thread_mode=thread_mode)
+        mode = resolve_conversation_mode(
+            explicit=explicit,
+            thread_mode=thread_mode,
+            default_mode=self._agent_manager.get_config(agent_id).get("conversation_mode"),
+        )
         if isinstance(explicit, str) and explicit in ("ask", "plan", "craft"):
             self._thread_registry.update_composer(
                 thread_id,
@@ -1344,6 +1351,7 @@ class GlobalProcessor:
         self,
         request: dict[str, Any],
         *,
+        agent_id: str,
         thread_id: str,
         meta: dict[str, Any] | None,
         user_text: str,
@@ -1353,7 +1361,7 @@ class GlobalProcessor:
         from octop.infra.agents.conversation_mode import execute_user_message
 
         mode, execute_path = self._sync_and_resolve_conversation_mode(
-            thread_id, meta=meta, user_text=user_text
+            agent_id, thread_id, meta=meta, user_text=user_text
         )
         if execute_path:
             _overwrite_last_user_text(request, execute_user_message(execute_path, locale))

@@ -455,7 +455,9 @@
     "TEAM_MEMBERS_TOO_FEW": "A team needs at least two members.",
     "TEAM_MEMBER_INVALID": "Those experts cannot join a team on this instance. Peer experts, other teams, and deleted experts are not allowed.",
     "TEAM_MEMBER_BUSY": "This expert has an in-flight team job. Wait until it finishes.",
-    "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version."
+    "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version.",
+    "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
+    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
