@@ -133,6 +133,30 @@ def test_search_notes_keeps_a_valid_window(monkeypatch: pytest.MonkeyPatch) -> N
     }
 
 
+def test_search_notes_allows_paging_past_first_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+    _install_httpx_mock(monkeypatch, captured)
+    _call("search_notes", {"query": "排期", "start": 20, "end": 40})
+    assert captured["json"] == {
+        "search_type": 0,
+        "query_info": {"title": "排期"},
+        "start": 20,
+        "end": 40,
+    }
+
+
+def test_search_notes_caps_window_length_not_absolute_end(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+    _install_httpx_mock(monkeypatch, captured)
+    _call("search_notes", {"query": "排期", "start": 20, "end": 100})
+    assert captured["json"] == {
+        "search_type": 0,
+        "query_info": {"title": "排期"},
+        "start": 20,
+        "end": 40,
+    }
+
+
 def test_search_notes_rejects_an_inverted_window() -> None:
     with pytest.raises(ValueError, match="non-empty window"):
         _call("search_notes", {"query": "排期", "start": 10, "end": 5})

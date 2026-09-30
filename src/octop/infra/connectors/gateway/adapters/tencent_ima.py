@@ -9,7 +9,9 @@ import httpx
 
 # ``search_notes`` pages with a start/end offset pair instead of a ``limit``.
 # Every other list tool here documents "1-20 rows per page", so the search
-# window gets the same ceiling rather than being forwarded to IMA unchecked.
+# window gets the same per-page ceiling — but enforced as the *window length*
+# (``end - start``), not by clamping the absolute offsets, so paging past the
+# first page (e.g. ``start=20, end=40``) is preserved rather than rejected.
 SEARCH_WINDOW_MAX = 20
 
 TOOLS: list[dict[str, Any]] = [
@@ -76,7 +78,11 @@ TOOLS: list[dict[str, Any]] = [
                 "start": {"type": "integer", "description": "Start offset, default 0"},
                 "end": {
                     "type": "integer",
-                    "description": "End offset (window max 20 notes), default 20",
+                    "description": (
+                        "End offset (exclusive). The window length (end-start) "
+                        "is capped at 20 notes; when omitted, defaults to "
+                        "start+20 for one full page."
+                    ),
                 },
             },
             "required": ["query"],
@@ -469,19 +475,26 @@ def _int_arg(name: str, value: object, *, default: int) -> int:
 def _search_window(args: dict[str, Any]) -> tuple[int, int]:
     """Return the validated ``(start, end)`` window for ``search_notes``.
 
-    The pair is this adapter's page knob, so it gets the same 1-20 row ceiling
-    that every other list tool clamps its ``limit`` to, and an inverted window
-    is rejected instead of being sent to IMA.
+    ``start``/``end`` are an offset *pair* (not a single ``limit``), so the
+    boundary we enforce is the **window length** ``end - start`` — capped at
+    ``SEARCH_WINDOW_MAX`` rows, matching the 1-20 per-page ceiling the other
+    list tools clamp their ``limit`` to. We must not clamp the absolute
+    offsets (unlike those tools): paging past the first page uses
+    ``start=20, end=40``, and capping the literals would reject it. A negative
+    ``start`` is meaningless, so it is floored to 0; an empty or inverted
+    window (``end <= start``) is rejected instead of being sent to IMA.
     """
     start = _int_arg("start", args.get("start"), default=0)
-    end = _int_arg("end", args.get("end"), default=SEARCH_WINDOW_MAX)
-    start = max(0, min(start, SEARCH_WINDOW_MAX))
-    end = max(1, min(end, SEARCH_WINDOW_MAX))
+    start = max(0, start)
+    # end is optional; when omitted the window spans one full page from start.
+    end = _int_arg("end", args.get("end"), default=start + SEARCH_WINDOW_MAX)
     if end <= start:
         raise ValueError(
             "start/end must describe a non-empty window of at most "
             f"{SEARCH_WINDOW_MAX} notes, got start={start} end={end}"
         )
+    if end - start > SEARCH_WINDOW_MAX:
+        end = start + SEARCH_WINDOW_MAX
     return start, end
 
 
