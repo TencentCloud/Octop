@@ -51,7 +51,7 @@ def ensure_feishu_cli_config(
     env: dict[str, str],
     default_as: str = "bot",
 ) -> None:
-    """Write/refresh lark-cli config, reusing an Agent binding when present.
+    """Write/refresh lark-cli config for this connector's supplied app.
 
     Do **not** set ``LARKSUITE_CLI_APP_ID`` / ``LARKSUITE_CLI_APP_SECRET`` in the
     process environment: those put lark-cli into "external credentials" mode where
@@ -73,44 +73,22 @@ def ensure_feishu_cli_config(
         _ensure_default_as(binary, env, identity)
         return
 
-    if source is not None:
-        # lark-cli deliberately rejects config init inside Agent workspaces.
-        # Bind to the host Agent's existing app instead of creating a shadow app.
-        run_cli(
-            [
-                binary,
-                "config",
-                "bind",
-                "--source",
-                source,
-                "--app-id",
-                app_id,
-                "--identity",
-                _bind_identity(identity),
-            ],
-            env=env,
-            timeout_s=60.0,
-        )
-        marker.write_text(fingerprint + "\n", encoding="utf-8")
-        marker.chmod(0o600)
-        return
-
     # config init reads App Secret from stdin (--app-secret-stdin).
-    run_cli(
-        [
-            binary,
-            "config",
-            "init",
-            "--app-id",
-            app_id,
-            "--app-secret-stdin",
-            "--brand",
-            _BRAND,
-        ],
-        env=env,
-        timeout_s=60.0,
-        stdin_text=app_secret,
-    )
+    init_args = [
+        binary,
+        "config",
+        "init",
+        "--app-id",
+        app_id,
+        "--app-secret-stdin",
+        "--brand",
+        _BRAND,
+    ]
+    if source is not None:
+        # The connector owns the supplied app credentials; do not bind Hermes'
+        # host app. Official lark-cli requires this flag for a separate app.
+        init_args.append("--force-init")
+    run_cli(init_args, env=env, timeout_s=60.0, stdin_text=app_secret)
     _ensure_default_as(binary, env, identity)
     marker.write_text(fingerprint + "\n", encoding="utf-8")
     marker.chmod(0o600)
@@ -152,10 +130,6 @@ def _agent_source(env: dict[str, str]) -> str | None:
 
 def _workspace_config_path(config_dir: Path, source: str | None) -> Path:
     return config_dir / source / "config.json" if source else config_dir / "config.json"
-
-
-def _bind_identity(identity: str) -> str:
-    return "user-default" if identity == "user" else "bot-only"
 
 
 def _ensure_default_as(binary: str, env: dict[str, str], identity: str) -> None:

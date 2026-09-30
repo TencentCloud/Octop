@@ -157,14 +157,13 @@ def test_ensure_feishu_respects_default_as_user(
 
 
 @pytest.mark.parametrize(
-    ("default_as", "expected_identity"),
-    [("bot", "bot-only"), ("user", "user-default")],
+    "default_as",
+    ["bot", "user"],
 )
-def test_ensure_feishu_binds_existing_agent_workspace(
+def test_ensure_feishu_initializes_separate_agent_workspace_app(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     default_as: str,
-    expected_identity: str,
 ) -> None:
     calls: list[list[str]] = []
 
@@ -191,19 +190,18 @@ def test_ensure_feishu_binds_existing_agent_workspace(
         default_as=default_as,
     )
 
-    assert calls == [
-        [
-            fake_bin_path("lark-cli"),
-            "config",
-            "bind",
-            "--source",
-            "hermes",
-            "--app-id",
-            "cli_x",
-            "--identity",
-            expected_identity,
-        ]
+    assert calls[0] == [
+        fake_bin_path("lark-cli"),
+        "config",
+        "init",
+        "--app-id",
+        "cli_x",
+        "--app-secret-stdin",
+        "--brand",
+        "feishu",
+        "--force-init",
     ]
+    assert calls[1][1:4] == ["config", "default-as", default_as]
     assert not (tmp_path / "config.json").exists()
     assert (tmp_path / ".octop_feishu_fingerprint").is_file()
 

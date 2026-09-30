@@ -8,7 +8,7 @@
 
 ### 修复
 
-- Feishu CLI 连接器运行在 Hermes/OpenClaw 等 Agent 工作区时改用官方 `config bind` 复用宿主应用，避免 `config init` 被拒绝并创建平行应用。
+- Feishu CLI 连接器运行在 Hermes/OpenClaw 等 Agent 工作区时，对连接器自己提供的 App ID/Secret 使用官方 `config init --force-init`，避免误绑定宿主应用并读取错误的 Hermes `.env`。
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
 ### 新增
