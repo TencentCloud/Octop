@@ -52,7 +52,7 @@ export default function ToolsTabs({ agentId }: ToolsTabsProps) {
         ) : resolvedTab === "plugin" ? (
           <ToolsPanel agentId={agentId} source="plugin" />
         ) : (
-          <ACPPanel />
+          <ACPPanel agentId={agentId} />
         )}
       </div>
     </div>
