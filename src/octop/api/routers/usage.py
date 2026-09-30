@@ -84,7 +84,12 @@ def _summary_or_raise(
             ),
         )
     except ValueError as exc:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc), status=400) from exc
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            str(exc),
+            status=400,
+            details={"window": window},
+        ) from exc
 
 
 def _assert_agent_exists(server: Any, agent_id: str | None) -> None:
@@ -149,7 +154,12 @@ def _export_response(
             timezone=timezone,
         )
     except ValueError as exc:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc), status=400) from exc
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            str(exc),
+            status=400,
+            details={"window": window},
+        ) from exc
 
     by_day = _summary_or_raise(
         server=server,
