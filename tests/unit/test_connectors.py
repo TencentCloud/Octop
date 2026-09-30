@@ -53,6 +53,8 @@ def test_build_tencent_remote_spec():
     assert spec["transport"] == "http"
     assert spec["headers"]["Authorization"] == "tok"
     assert spec["tool_arg_aliases"]["manage.search_file"]["query"] == "search_key"
+    assert "manage.recent_online_file" in spec["allowed_tools"]
+    assert "get_content" in spec["allowed_tools"]
 
 
 def test_build_weiyun_remote_spec():
