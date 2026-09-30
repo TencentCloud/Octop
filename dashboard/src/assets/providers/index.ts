@@ -98,8 +98,6 @@ export const PROVIDER_DOCS: Record<string, string> = {
   minimax: "https://platform.minimaxi.com/",
   volces: "https://www.volcengine.com/docs/82379/1399008",
   "iflytek-astron-token-plan": "https://www.xfyun.cn/doc/spark/TokenPlan.html",
-  "iflytek-astron-coding-plan":
-    "https://www.xfyun.cn/doc/spark/CodingPlan.html",
   opencode: "https://opencode.ai/docs/zh-cn/zen/",
   "opencode-zen-openai": "https://opencode.ai/docs/zh-cn/zen/",
   "opencode-zen-anthropic": "https://opencode.ai/docs/zh-cn/zen/",

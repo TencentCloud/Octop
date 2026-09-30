@@ -8,7 +8,7 @@
 
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
-- 模型设置页支持讯飞星辰 MaaS（Astron Token Plan / Coding Plan）的图标、中英文名称与文档链接
+- 模型设置页支持讯飞星辰 MaaS Astron Token Plan 的图标、中英文名称与文档链接；Spark-X2.5 / Spark-X2-Flash 可开关思考
 
 ## [1.0.2b5] - 2026-09-29
 
