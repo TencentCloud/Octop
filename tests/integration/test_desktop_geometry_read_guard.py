@@ -20,10 +20,12 @@ from octop.infra.desktop.setup import _DEFAULT_GEOMETRY, desktop_env_file, parse
 
 
 @pytest.fixture
-def geometry_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def geometry_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Path]:
+    """Pin ``OCTOP_HOME`` to this test's ``tmp_path`` and clear any inherited geometry."""
+    octop_home = tmp_path / "octop-home"
+    monkeypatch.setenv("OCTOP_HOME", str(octop_home))
     monkeypatch.delenv("OCTOP_DESKTOP_GEOMETRY", raising=False)
-    monkeypatch.delenv("OCTOP_HOME", raising=False)
-    yield
+    yield octop_home
 
 
 def _write_env_file(line: str) -> Path:
@@ -33,10 +35,11 @@ def _write_env_file(line: str) -> Path:
     return path
 
 
-async def test_out_of_range_env_file_falls_back_to_default(env: Any, geometry_env: None) -> None:
+async def test_out_of_range_env_file_falls_back_to_default(env: Any, geometry_env: Path) -> None:
     client, _srv, auth = env
-    _write_env_file("export OCTOP_DESKTOP_GEOMETRY=800x400")
+    path = _write_env_file("export OCTOP_DESKTOP_GEOMETRY=800x400")
 
+    assert path == geometry_env / "desktop" / "desktop.env"
     r = await client.get("/api/desktop/geometry", headers=auth)
 
     assert r.status_code == 200, r.text
@@ -45,7 +48,7 @@ async def test_out_of_range_env_file_falls_back_to_default(env: Any, geometry_en
     parse_geometry(body["geometry"])
 
 
-async def test_usable_env_file_is_reported_verbatim(env: Any, geometry_env: None) -> None:
+async def test_usable_env_file_is_reported_verbatim(env: Any, geometry_env: Path) -> None:
     client, _srv, auth = env
     _write_env_file("export OCTOP_DESKTOP_GEOMETRY=1024x768")
 

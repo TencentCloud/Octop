@@ -35,9 +35,10 @@ ENV_PREFIXES = ("export OCTOP_DESKTOP_GEOMETRY=", "OCTOP_DESKTOP_GEOMETRY=")
 
 
 @pytest.fixture(autouse=True)
-def _geometry_isolated(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _geometry_isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
+    """Pin ``OCTOP_HOME`` so ``desktop.env`` writes cannot reach a real ``~/.octop``."""
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "octop-home"))
     monkeypatch.delenv("OCTOP_DESKTOP_GEOMETRY", raising=False)
-    monkeypatch.delenv("OCTOP_HOME", raising=False)
     yield
 
 
@@ -90,3 +91,10 @@ def test_default_geometry_is_returned_when_nothing_is_configured() -> None:
 def test_returned_geometry_always_parses(value: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OCTOP_DESKTOP_GEOMETRY", value)
     parse_geometry(read_geometry())
+
+
+def test_env_file_writes_stay_under_the_pinned_octop_home(tmp_path: Path) -> None:
+    """Contract for the fixture above: ``desktop.env`` must never land in ``~/.octop``."""
+    path = _write_env_file(ENV_PREFIXES[0] + "1920x1080", "export DISPLAY=:99")
+    assert path == tmp_path / "octop-home" / "desktop" / "desktop.env"
+    assert read_geometry() == "1920x1080"
