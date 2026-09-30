@@ -54,6 +54,22 @@ router = APIRouter()
 
 _FRAME_INTERVAL_S = 0.25  # ~4 fps
 
+_BROWSER_KEY_CODES = {
+    "Backspace": 8,
+    "Tab": 9,
+    "Escape": 27,
+    "PageUp": 33,
+    "PageDown": 34,
+    "End": 35,
+    "Home": 36,
+    "ArrowLeft": 37,
+    "ArrowUp": 38,
+    "ArrowRight": 39,
+    "ArrowDown": 40,
+    "Insert": 45,
+    "Delete": 46,
+}
+
 
 def _normalize_nav_url(raw: str) -> str:
     """Prefix a host with ``https://`` unless it already has an http(s) scheme.
@@ -306,6 +322,18 @@ async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
         key = str(msg.get("key") or "")
         if key in ("Enter",):
             await sess.type("\n")
+        elif key in _BROWSER_KEY_CODES:
+            params = {
+                "key": key,
+                "code": key,
+                "windowsVirtualKeyCode": _BROWSER_KEY_CODES[key],
+            }
+            await sess._internal.client.send(  # noqa: SLF001
+                "Input.dispatchKeyEvent", {"type": "rawKeyDown", **params}
+            )
+            await sess._internal.client.send(  # noqa: SLF001
+                "Input.dispatchKeyEvent", {"type": "keyUp", **params}
+            )
     elif t == "tab_switch":
         tab_id = msg.get("tab_id")
         if tab_id is not None:
