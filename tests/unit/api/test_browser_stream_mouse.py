@@ -137,3 +137,33 @@ async def test_right_mousedown_uses_right_button_mask() -> None:
     assert params["type"] == "mousePressed"
     assert params["button"] == "right"
     assert params["buttons"] == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "key, virtual_key",
+    [("Backspace", 8), ("Delete", 46), ("ArrowLeft", 37), ("Tab", 9)],
+)
+async def test_browser_editing_keys_reach_chrome(key: str, virtual_key: int) -> None:
+    sess = _fake_sess()
+
+    await stream_mod._handle_client_event(sess, {"type": "keydown", "key": key})
+
+    sess.type.assert_not_awaited()
+    assert [call.args[0] for call in sess._internal.client.send.await_args_list] == [
+        "Input.dispatchKeyEvent",
+        "Input.dispatchKeyEvent",
+    ]
+    pressed, released = [call.args[1] for call in sess._internal.client.send.await_args_list]
+    assert pressed == {
+        "type": "rawKeyDown",
+        "key": key,
+        "code": key,
+        "windowsVirtualKeyCode": virtual_key,
+    }
+    assert released == {
+        "type": "keyUp",
+        "key": key,
+        "code": key,
+        "windowsVirtualKeyCode": virtual_key,
+    }
