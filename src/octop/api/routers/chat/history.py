@@ -27,6 +27,7 @@ from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_con
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages
+from octop.infra.history.errors import InvalidHistoryCursorError
 from octop.infra.history.service import HistoryArchive
 from octop.infra.history.trajectory.service import TrajectoryService
 from octop.infra.utils.locale import resolve_request_locale
@@ -309,15 +310,18 @@ async def get_thread_history(
     archive = getattr(server.app_runtime, "history_archive", None)
     next_cursor = None
     if isinstance(archive, HistoryArchive):
-        page = await read_page(
-            archive,
-            server.app_runtime.agent_registry,
-            agent_id,
-            thread_id,
-            limit=page_limit,
-            offset=page_offset,
-            cursor=cursor,
-        )
+        try:
+            page = await read_page(
+                archive,
+                server.app_runtime.agent_registry,
+                agent_id,
+                thread_id,
+                limit=page_limit,
+                offset=page_offset,
+                cursor=cursor,
+            )
+        except InvalidHistoryCursorError as exc:
+            raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
         has_more, next_cursor = page["has_more"], page["next_cursor"]
         messages = []
         for message in messages_from_dict(page["messages"]):

@@ -7,6 +7,7 @@ import base64
 import json
 from typing import Any
 
+from octop.infra.history.errors import InvalidHistoryCursorError
 from octop.infra.history.legacy import checkpoint_snapshot, checkpoint_wires
 from octop.infra.history.service import HistoryArchive
 
@@ -33,14 +34,14 @@ async def read_page(
             if boundary["source"] not in ("projection", "checkpoint"):
                 raise ValueError("Invalid legacy source")
         except (ValueError, TypeError, KeyError) as exc:
-            raise ValueError("Invalid legacy cursor") from exc
+            raise InvalidHistoryCursorError("Invalid legacy cursor") from exc
     segments = await asyncio.to_thread(archive.store.segments, thread_id)
     if boundary is None and segments:
         return await archive.page(
             thread_id, limit=limit, cursor=cursor, offset=offset, legacy_reader=legacy
         )
     if cursor and boundary is None:
-        raise ValueError("History cursor has no corresponding segment")
+        raise InvalidHistoryCursorError("History cursor has no corresponding segment")
     source = (
         boundary["source"]
         if boundary
@@ -68,7 +69,7 @@ async def read_page(
             # Never trust a cursor to select a different thread's checkpoint.
             checkpoint_id = boundary.get("checkpoint_id")
             if not isinstance(checkpoint_id, str) or not checkpoint_id:
-                raise ValueError("Invalid pinned checkpoint")
+                raise InvalidHistoryCursorError("Invalid pinned checkpoint")
             anchor = {
                 "checkpoint_config": {
                     "configurable": {
