@@ -41,7 +41,9 @@ async def get_mobile_status(
     _user: User = Depends(require_permission("mobile")),
 ) -> dict[str, object]:
     locale = resolve_request_locale(request)
-    status = mobile_status(server.services.config, locale=locale)
+    # ``mobile_status()`` shells out to ``adb devices`` and ``docker inspect``,
+    # each with a 5 s timeout, so it cannot run on the event loop.
+    status = await asyncio.to_thread(mobile_status, server.services.config, locale=locale)
     devices = list(status.devices)
     control = get_mobile_agent_control()
     # Drop a stale binding if the phone was unplugged.
@@ -81,7 +83,7 @@ async def get_mobile_device_info(
     # Probe even if briefly missing from ``adb devices`` (USB races while streaming).
     info = await asyncio.to_thread(device_info, serial)
     if info.get("model") is None and info.get("width") is None and info.get("mem_total_mb") is None:
-        connected = list_devices()
+        connected = await asyncio.to_thread(list_devices)
         if serial not in connected:
             raise HTTPException(status_code=404, detail=f"adb device not connected: {serial}")
     return info
@@ -100,7 +102,7 @@ async def put_agent_control(
     _user: User = Depends(require_permission("mobile")),
 ) -> dict[str, object]:
     if body.enabled:
-        devices = list_devices()
+        devices = await asyncio.to_thread(list_devices)
         serial = (body.device or "").strip()
         if not serial:
             raise HTTPException(status_code=400, detail="device is required when enabling")

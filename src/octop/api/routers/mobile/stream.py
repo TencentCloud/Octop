@@ -505,7 +505,7 @@ async def mobile_stream_ws(
 ) -> None:
     server = websocket.app.state.octop_server
     locale = resolve_request_locale(websocket)
-    status = mobile_status(server.services.config, locale=locale)
+    status = await asyncio.to_thread(mobile_status, server.services.config, locale=locale)
     if status.setup_state != "ready" or not status.ok:
         await websocket.close(code=4003, reason=status.reason or status.setup_state)
         return
@@ -543,7 +543,7 @@ async def mobile_stream_ws(
 
         device = str(start_msg.get("device") or status.selected_device or "")
         if not device:
-            devices = list_devices()
+            devices = await asyncio.to_thread(list_devices)
             device = devices[0] if devices else ""
         if not device:
             await _send_json(websocket, {"type": "error", "message": "no adb device"})
