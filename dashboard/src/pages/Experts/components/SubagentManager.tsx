@@ -188,8 +188,8 @@ export default function SubagentManager({
     setLoading(true);
     try {
       const [divs, rows] = await Promise.all([
-        listSubagentDivisions(),
-        listSubagentCatalog(),
+        listSubagentDivisions(agentId),
+        listSubagentCatalog(undefined, agentId),
       ]);
       setDivisions(divs);
       setAllItems(rows);
@@ -198,7 +198,7 @@ export default function SubagentManager({
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [agentId, t]);
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -664,6 +664,7 @@ export default function SubagentManager({
         open={previewItem !== null}
         slug={previewItem?.slug ?? null}
         title={previewItem ? itemName(previewItem) : ""}
+        agentId={agentId}
         onClose={() => setPreviewItem(null)}
       />
     </>

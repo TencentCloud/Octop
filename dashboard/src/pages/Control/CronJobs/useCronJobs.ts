@@ -226,13 +226,19 @@ export function useCronJobs() {
   );
 
   useEffect(() => {
+    let cancelled = false;
     void octopCronApi
       .settings()
-      .then((s) => setCronTimezone(s.timezone || "UTC"))
+      .then((s) => {
+        if (!cancelled) setCronTimezone(s.timezone || "UTC");
+      })
       .catch((error) => {
         console.error("Failed to load cron settings", error);
       });
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAgentId]);
 
   // Timezone is display-only — remap without APIs or loading toggles.
   useEffect(() => {
