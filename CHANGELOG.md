@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- Token 统计的按天明细不再按 UTC 切日：`by_day` 分桶此前始终用数据库默认日界（UTC），而统计窗口用的是配置的 `default_timezone`，两者最多差一天——上海时间凌晨 2 点的用量会被算到前一天，按天明细与总量对不上。现在分桶与窗口共用同一时区（PostgreSQL 逐行转换，SQLite 取窗口起点处的 UTC 偏移）(#974)
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
