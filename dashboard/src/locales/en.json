@@ -134,6 +134,7 @@
     "BRIDGE_DISPLAY_NAME_TAKEN": "Display name \"{{name}}\" is already in use. Choose another.",
     "BRIDGE_INBOUND_PASSIVE": "This link was opened by the peer. This side cannot change the address or dial out. After disconnect, the peer must reopen it.",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
+    "CRON_PROMPT_INVALID": "Invalid cron prompt or name.",
     "SLASH_UNKNOWN": "Unknown slash command.",
     "SLASH_BAD_ARGS": "Invalid arguments.",
     "ATTACHMENT_UNSUPPORTED_TYPE": "This file type is not supported.",

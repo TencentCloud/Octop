@@ -393,6 +393,7 @@
     "BRIDGE_DISPLAY_NAME_TAKEN": "显示名「{{name}}」已被使用，请换一个。",
     "BRIDGE_INBOUND_PASSIVE": "这是对端主动接入的连接，本侧无法改地址或主动拨号。断开后需对端重新打开。",
     "CRON_TRIGGER_INVALID": "无效的定时触发器。",
+    "CRON_PROMPT_INVALID": "无效的定时任务指令或名称。",
     "SLASH_UNKNOWN": "未知的斜杠指令。",
     "SLASH_BAD_ARGS": "参数无效。",
     "ATTACHMENT_UNSUPPORTED_TYPE": "不支持此文件类型。",
