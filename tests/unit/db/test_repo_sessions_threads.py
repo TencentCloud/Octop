@@ -156,6 +156,30 @@ def test_threads_list_by_agent(repos):
     assert len(rows) == 3
 
 
+def test_threads_list_nonpositive_limit_returns_empty(repos):
+    sessions, threads = repos
+    sk = ThreadRegistry.make_key(agent_id="a1", channel_type="dashboard", channel_subject_id="1")
+    for i in range(3):
+        threads.insert(
+            thread_id=f"thr_{i}",
+            agent_id="a1",
+            user_id=1,
+            channel_type="dashboard",
+            session_key=sk,
+            title=f"t{i}",
+        )
+    # SQLite reads a negative LIMIT as "unbounded", so without the sibling-repo
+    # guard (`if limit <= 0: return []`) a negative limit silently returns the
+    # whole table. Reachable via `octop chats list --limit -1` (Click coerces the
+    # default int) and via `GET /api/agents/{id}/threads?limit=-1` (raw `int=50`).
+    assert threads.list_by_agent(agent_id="a1", limit=-1) == []
+    assert threads.list_by_agent_user(agent_id="a1", user_id=1, limit=-1) == []
+    assert threads.list_by_session(session_key=sk, limit=-1) == []
+    assert threads.list_by_agent(agent_id="a1", limit=0) == []
+    # A positive limit still returns rows, so the guard is not "always empty".
+    assert len(threads.list_by_agent(agent_id="a1", limit=10)) == 3
+
+
 def test_session_unread_count(repos):
     sessions, threads = repos
     sk = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
