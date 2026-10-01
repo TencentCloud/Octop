@@ -220,8 +220,9 @@ There is no `chat` alias — the command is `octop chats`.
 ## `octop channel`
 
 Local DB channel CRUD plus platform-specific bot creators. The
-`wecom` / `weixin` / `feishu-setup` subcommands drive the QR-code
-bot-creator flows; `config` is the offline config editor.
+`bind qq` / `bind wecom` / `bind weixin` / `feishu-setup` subcommands
+drive the QR-code bot-creator flows; `config` is the offline config
+editor.
 
 ```
 Usage: octop channel [OPTIONS] COMMAND [ARGS]...
