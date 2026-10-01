@@ -124,6 +124,26 @@ def test_download_skillhub_package_follows_endpoint_and_strips_wrapper(
     }
 
 
+def test_parse_skillhub_package_repairs_invalid_utf8_in_skill_md() -> None:
+    corrupted = "---\nname: humanizer\n---\n每句 ".encode() + b"\xe2j$" + "15 字\n".encode()
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("SKILL.md", corrupted)
+
+    files = dict(skillhub_market.parse_skillhub_package(buffer.getvalue()))
+
+    assert files["SKILL.md"].decode("utf-8") == "---\nname: humanizer\n---\n每句 ≤15 字\n"
+
+
+def test_parse_skillhub_package_rejects_unrepairable_skill_md() -> None:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("SKILL.md", b"---\nname: bad\n---\n\xff\xfe broken")
+
+    with pytest.raises(skillhub_market.SkillHubPackageError, match="not valid UTF-8"):
+        skillhub_market.parse_skillhub_package(buffer.getvalue())
+
+
 @pytest.mark.parametrize(
     "filename",
     [

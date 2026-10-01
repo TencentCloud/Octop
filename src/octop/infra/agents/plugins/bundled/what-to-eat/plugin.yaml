@@ -1,0 +1,11 @@
+id: what-to-eat
+version: 0.1.0
+name: 今天吃什么
+description: 按餐次与口味随机推荐菜品
+icon: icon.svg
+group: lifestyle
+kind: tool
+entry: main.py
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

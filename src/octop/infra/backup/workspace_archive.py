@@ -4,19 +4,29 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 import shutil
 import zipfile
-from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING, Any, Literal
 
-from harness_agent.backends.utils import materialize_storage_path
+from octop_harness.backends.utils import materialize_storage_path
+
+from octop.infra.agents.builtin_skills import (
+    OCTOP_BUILTIN_SKILLS_ROOT,
+    is_octop_builtin_skills_path,
+)
 
 if TYPE_CHECKING:
-    from harness_agent.backends.workspace import BackendWorkspace
+    from octop_harness.backends.workspace import BackendWorkspace
 
 WorkspaceImportMode = Literal["merge", "replace"]
 
 _SKIP_DIR_NAMES = frozenset({".git", "__pycache__", ".venv", "node_modules"})
+
+# ``aglob("**/*")`` skips dotfiles/dirs; these patterns recover hidden entries on
+# backends that only expose glob (no ``als``).
+_HIDDEN_GLOB_PATTERNS = (".**/**", "**/.*")
 
 
 def _safe_zip_name(name: str) -> str | None:
@@ -29,39 +39,116 @@ def _safe_zip_name(name: str) -> str | None:
     return "/".join(parts)
 
 
-async def _list_file_paths(workspace: BackendWorkspace) -> list[str]:
-    result = await workspace.aglob("**/*", ".")
-    if result is None:
+def _entry_rel_path(item: Any) -> tuple[str | None, bool]:
+    if isinstance(item, dict):
+        path = item.get("path")
+        is_dir = bool(item.get("is_dir"))
+    else:
+        path = getattr(item, "path", None)
+        is_dir = bool(getattr(item, "is_dir", False))
+    if not path:
+        return None, False
+    storage = str(path).replace("\\", "/")
+    return storage.lstrip("/") or None, is_dir
+
+
+def _normalize_listed_path(storage: str, workspace_dir: Path) -> str | None:
+    """Map a backend/listing path to a workspace-relative zip member name."""
+    raw = storage.replace("\\", "/")
+    ws_root = str(workspace_dir).replace("\\", "/").rstrip("/")
+    if raw == ws_root or raw.startswith(ws_root + "/"):
+        rel = raw[len(ws_root) :].lstrip("/")
+        return rel or None
+    return raw.lstrip("/") or None
+
+
+def _list_local_file_paths(workspace_dir: Path) -> list[str]:
+    """Walk the host workspace tree, including hidden dirs like ``.octop``."""
+    root = workspace_dir.resolve()
+    if not root.is_dir():
         return []
-    matches = getattr(result, "matches", None) or []
     paths: list[str] = []
-    for item in matches:
-        if isinstance(item, dict):
-            path = item.get("path")
-            is_dir = item.get("is_dir")
-        else:
-            path = getattr(item, "path", None)
-            is_dir = getattr(item, "is_dir", False)
-        if not path or is_dir:
-            continue
-        storage = str(path)
-        ws_root = str(workspace.workspace_dir)
-        if storage.startswith(ws_root):
-            rel = storage[len(ws_root) :].lstrip("/\\")
-            if rel:
-                paths.append(rel)
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = [name for name in dirnames if name not in _SKIP_DIR_NAMES]
+        for name in filenames:
+            full = Path(dirpath) / name
+            if not full.is_file():
                 continue
-        paths.append(storage.lstrip("/"))
+            paths.append(full.relative_to(root).as_posix())
     return sorted(set(paths))
 
 
-def _clear_local_workspace(workspace_dir: Path) -> None:
-    """Clear local workspace content, keeping entries an archive cannot restore.
+async def _list_via_als(workspace: BackendWorkspace) -> list[str] | None:
+    """Recursively list files via ``als`` (includes hidden entries)."""
+    if getattr(workspace.backend, "als", None) is None:
+        return None
+    paths: list[str] = []
+    queue: list[str] = ["."]
+    seen_dirs: set[str] = set()
+    while queue:
+        current = queue.pop()
+        if current in seen_dirs:
+            continue
+        seen_dirs.add(current)
+        result = await workspace.als(current)
+        if result is None:
+            if current == ".":
+                return None
+            continue
+        for item in getattr(result, "entries", None) or []:
+            rel, is_dir = _entry_rel_path(item)
+            if rel is None:
+                continue
+            rel = _normalize_listed_path(rel, Path(workspace.workspace_dir))
+            if rel is None:
+                continue
+            name = PurePosixPath(rel).name
+            if name in _SKIP_DIR_NAMES:
+                continue
+            if is_dir:
+                queue.append(rel)
+            else:
+                paths.append(rel)
+    return sorted(set(paths))
 
-    The export glob never matches hidden paths, so harness system state (``.octop``
-    sessions / skills / auth, legacy ``.octop-auth``, ``.env``) is absent from every
-    archive. Deleting it here would destroy data the import can never put back, so
-    hidden entries are left untouched.
+
+async def _list_via_aglob(workspace: BackendWorkspace) -> list[str]:
+    """Fallback listing when there is no local mount and no ``als``."""
+    paths: set[str] = set()
+    for pattern in ("**/*", *_HIDDEN_GLOB_PATTERNS):
+        result = await workspace.aglob(pattern, ".")
+        if result is None:
+            continue
+        for item in getattr(result, "matches", None) or []:
+            rel, is_dir = _entry_rel_path(item)
+            if not rel or is_dir:
+                continue
+            normalized = _normalize_listed_path(rel, Path(workspace.workspace_dir))
+            if not normalized:
+                continue
+            if any(part in _SKIP_DIR_NAMES for part in PurePosixPath(normalized).parts):
+                continue
+            paths.add(normalized)
+    return sorted(paths)
+
+
+async def _list_file_paths(workspace: BackendWorkspace) -> list[str]:
+    """List every packable workspace file, including ``.octop`` / ``outbound`` / ``.env``."""
+    if _local_mount(workspace) is not None:
+        return await asyncio.to_thread(_list_local_file_paths, Path(workspace.workspace_dir))
+    via_als = await _list_via_als(workspace)
+    if via_als is not None:
+        return via_als
+    return await _list_via_aglob(workspace)
+
+
+def _clear_local_workspace(workspace_dir: Path) -> None:
+    """Clear visible local workspace content before a replace import.
+
+    Hidden entries (``.octop``, ``.env``, …) stay on disk: older archives may omit
+    them, and wiping system state that the zip never restores would destroy
+    sessions/auth. Files present in the archive under those paths are still
+    overwritten by the subsequent upload.
     """
     if not workspace_dir.is_dir():
         return
@@ -163,7 +250,15 @@ async def import_workspace_zip(
             "replace mode cleared only the local harness workspace; remote-only files may remain"
         )
 
-    pairs = [(rel_path, blob) for rel_path, blob in entries]
+    # ``DELETE`` / ``move`` refuse this prefix, so writing it from an archive would
+    # leave entries the user cannot remove; the files Octop owns are re-seeded on
+    # every agent start anyway.
+    pairs = [(rel, blob) for rel, blob in entries if not is_octop_builtin_skills_path(rel)]
+    skipped = len(entries) - len(pairs)
+    if skipped:
+        warnings.append(
+            f"skipped {skipped} {OCTOP_BUILTIN_SKILLS_ROOT!r} entry/entries (owned by Octop)"
+        )
     if pairs:
         await workspace.aupload_many(pairs)
 

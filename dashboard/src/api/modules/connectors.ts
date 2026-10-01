@@ -18,7 +18,7 @@ export interface ConnectorCatalogEntry {
   icon: string;
   color: string;
   phase: "available" | "coming_soon";
-  mcp_mode: "remote" | "gateway";
+  mcp_mode: "remote" | "gateway" | "internal";
   category: ConnectorCategory;
   quick_auth_url?: string | null;
   login_url?: string | null;
@@ -196,7 +196,12 @@ export const connectorsApi = {
   detectLocalWeKnora: () =>
     request<WeKnoraLocalDetection>("/connectors/weknora/detect-local"),
 
-  listInstances: () => request<ConnectorInstance[]>("/connector-instances"),
+  listInstances: (agentId?: string | null) =>
+    request<ConnectorInstance[]>("/connector-instances", {
+      headers: agentId?.trim()
+        ? { "X-Octop-Agent-Id": agentId.trim() }
+        : undefined,
+    }),
 
   getInstance: (instanceId: string) =>
     request<ConnectorInstanceDetail>(

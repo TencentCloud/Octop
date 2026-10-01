@@ -32,6 +32,11 @@ export interface SkillSpec {
   emoji?: string;
   /** Persisted SkillHub marketplace icon. */
   iconUrl?: string;
+  /** ``metadata.octop.label`` when the API keeps the localized map. */
+  label?:
+    | string
+    | { zh?: string; en?: string; [key: string]: string | undefined };
+  displayName?: string;
 }
 
 export interface SkillDetail extends SkillSpec {
@@ -53,6 +58,14 @@ interface ServerSummary {
   kind?: "workspace" | "builtin" | "package";
   emoji?: string;
   icon_url?: string;
+  /** ``metadata.octop.label`` map (zh/en) when not yet folded into ``name``. */
+  label?:
+    | string
+    | { zh?: string; en?: string; [key: string]: string | undefined };
+  display_name?: string;
+  /** Present when the skill manifest exists but cannot be decoded. */
+  corrupt?: boolean;
+  error?: string;
 }
 
 interface ServerDetail extends ServerSummary {
@@ -76,6 +89,8 @@ const toSpec = (row: ServerSummary): SkillSpec => ({
       : "workspace",
   emoji: row.emoji,
   iconUrl: row.icon_url,
+  label: row.label,
+  displayName: row.display_name,
 });
 
 const toDetail = (row: ServerDetail): SkillDetail => ({
@@ -104,12 +119,24 @@ export function useSkills(
   } = useAsyncResource<SkillSpec[]>(
     [],
     async () => {
-      const rows = await request<ServerSummary[]>(`/agents/${agentId}/skills`, {
-        cache: "no-store",
-      });
-      return (rows || []).map(toSpec);
+      const rows = await request<ServerSummary[]>(
+        `/agents/${encodeURIComponent(agentId!)}/skills`,
+        {
+          cache: "no-store",
+        },
+      );
+      const list = rows || [];
+      const corrupt = list.filter((row) => row.corrupt);
+      if (corrupt.length > 0) {
+        message.warning(
+          t("skills.corruptSkipped", {
+            slugs: corrupt.map((row) => row.slug ?? row.name).join(", "),
+          }),
+        );
+      }
+      return list.filter((row) => !row.corrupt).map(toSpec);
     },
-    [agentId],
+    [agentId, message, t],
     {
       enabled,
       errorFallback: t("skills.loadFailed"),
@@ -123,7 +150,9 @@ export function useSkills(
       if (!agentId) return null;
       try {
         const row = await request<ServerDetail>(
-          `/agents/${agentId}/skills/${slug}`,
+          `/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(
+            slug,
+          )}`,
           { cache: "no-store" },
         );
         return toDetail(row);

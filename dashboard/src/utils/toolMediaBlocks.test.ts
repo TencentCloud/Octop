@@ -100,6 +100,13 @@ describe("needsAuthBlobFetch", () => {
       true,
     );
     expect(needsAuthBlobFetch("https://cdn.example.com/icon.png")).toBe(false);
+    expect(needsAuthBlobFetch("/api/plugins/weather/ui/icon.svg")).toBe(true);
+    expect(needsAuthBlobFetch("/api/plugins/market/weather/ui/icon.svg")).toBe(
+      true,
+    );
+    expect(needsAuthBlobFetch("/api/plugins/weather/ui/dist/index.js")).toBe(
+      false,
+    );
   });
 });
 

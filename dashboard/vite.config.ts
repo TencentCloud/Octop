@@ -183,9 +183,10 @@ export default defineConfig(({ mode }) => {
         // Include the offline fallback in the SW precache.
         includeAssets: [
           "offline.html",
-          "logo.svg",
-          "logo_name.png",
-          "logo_name_dark.png",
+          "logo_vertical_dark.svg",
+          "logo_vertical_white.svg",
+          "logo_horizontal_dark.png",
+          "logo_horizontal_white.png",
           "pwa-192.png",
           "pwa-512.png",
           "apple-touch-icon.png",

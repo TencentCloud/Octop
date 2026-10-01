@@ -1,0 +1,3 @@
+{
+  "renderers": [{ "id": "unit_convert_card", "tools": ["convert_unit"] }]
+}

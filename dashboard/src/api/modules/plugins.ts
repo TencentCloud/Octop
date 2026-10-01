@@ -15,8 +15,10 @@ export interface InstalledPlugin {
   name?: string;
   kind?: string;
   description?: string;
-  /** Emoji text or absolute image URL from plugin.yaml. */
+  /** Emoji, absolute image URL, or plugin-relative path resolved to ``/api/plugins/.../ui/...``. */
   icon?: string | null;
+  /** Catalog group slug from plugin.yaml (e.g. lifestyle, games). */
+  group?: string | null;
   requires?: string[];
   path?: string;
   loaded?: boolean;
@@ -61,6 +63,7 @@ export interface AgentPlugin {
   kind?: string | null;
   description?: string | null;
   icon?: string | null;
+  group?: string | null;
   loaded: boolean;
   global_enabled: boolean;
   agent_enabled: boolean;
@@ -69,9 +72,41 @@ export interface AgentPlugin {
   tools: InstalledPlugin["tools"];
 }
 
+export interface MarketPlugin {
+  id: string;
+  version?: string;
+  name?: string;
+  kind?: string;
+  description?: string;
+  icon?: string | null;
+  group?: string | null;
+  requires?: string[];
+  installed?: boolean;
+  installed_version?: string | null;
+  update_available?: boolean;
+  error?: string;
+}
+
 export const pluginsApi = {
   list(): Promise<InstalledPlugin[]> {
     return request<InstalledPlugin[]>("/plugins");
+  },
+
+  listMarket(): Promise<MarketPlugin[]> {
+    return request<MarketPlugin[]>("/plugins/market");
+  },
+
+  installFromMarket(
+    pluginId: string,
+    force = false,
+  ): Promise<{ id: string; version: string; name: string; kind: string }> {
+    const qs = force ? "?force=true" : "";
+    return request(
+      `/plugins/market/${encodeURIComponent(pluginId)}/install${qs}`,
+      {
+        method: "POST",
+      },
+    );
   },
 
   install(

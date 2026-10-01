@@ -1,8 +1,8 @@
 /**
- * CustomProviderModal — create a new custom provider.
+ * CustomProviderModal — create a new custom provider (right-side drawer).
  */
 import { useEffect, useMemo, useState } from "react";
-import { Button, Divider, Form, Input, Modal, Select } from "antd";
+import { Button, Divider, Drawer, Form, Input, Select } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Download, Zap } from "lucide-react";
@@ -204,16 +204,13 @@ export function CustomProviderModal({
   };
 
   return (
-    <Modal
+    <Drawer
       title={t("models.addCustomProvider")}
       open={open}
-      onCancel={onClose}
-      onOk={handleSubmit}
-      confirmLoading={saving}
-      okText={t("common.create")}
-      cancelText={t("common.cancel")}
+      onClose={onClose}
       destroyOnHidden
       width={560}
+      placement="right"
       footer={
         <div className={styles.modalFooter}>
           <div className={styles.modalFooterLeft} />
@@ -354,6 +351,6 @@ export function CustomProviderModal({
         canTest={canTest}
         onTestModel={(modelId) => testDraftModel(modelId)}
       />
-    </Modal>
+    </Drawer>
   );
 }

@@ -1,0 +1,11 @@
+id: fun-facts
+version: 0.1.0
+name: 趣味百科
+description: 随机冷知识与轻松笑话
+icon: icon.svg
+group: fun
+kind: tool
+entry: main.py
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

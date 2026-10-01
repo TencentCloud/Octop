@@ -1,3 +1,17 @@
+export type HitlSessionMode = "ask" | "allow_all" | "allow_tools";
+
+export interface HitlSessionPolicy {
+  mode: HitlSessionMode;
+  tools?: string[];
+}
+
+export type HitlDecision = { type: string; message?: string };
+
+export type HitlDecisionHandler = (
+  decisions: HitlDecision[],
+  policy?: HitlSessionPolicy,
+) => void;
+
 export interface HitlActionRequest {
   name: string;
   args?: Record<string, unknown>;

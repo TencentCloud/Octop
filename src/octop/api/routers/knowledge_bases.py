@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import suppress
 from dataclasses import asdict
 from typing import Any
@@ -59,6 +60,7 @@ from octop.infra.users.identity import User
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter(prefix="/knowledge-bases")
+logger = logging.getLogger(__name__)
 
 _TEXT_DOC_MAX_LENGTH = upload_mb_to_bytes(MAX_MAX_UPLOAD_MB)
 
@@ -207,12 +209,20 @@ def _map_knowledge_error(
         return OctopError.localized(ErrorCode.KNOWLEDGE_FORBIDDEN, locale)
     text = str(exc).lower()
     if isinstance(exc, RuntimeError):
-        code = (
-            ErrorCode.KNOWLEDGE_FEATURE_DISABLED
-            if "disabled" in text
-            else ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED
-        )
-        return OctopError.localized(code, locale)
+        if "disabled" in text:
+            return OctopError.localized(ErrorCode.KNOWLEDGE_FEATURE_DISABLED, locale)
+        if any(
+            kw in text
+            for kw in (
+                "prerequisite",
+                "embedding",
+                "ocr",
+                "install",
+                "component",
+                "provider",
+            )
+        ):
+            return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED, locale)
     if "at most 100" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_DOC_LIMIT, locale)
     if "document size exceeds" in text:
@@ -233,7 +243,14 @@ def _map_knowledge_error(
         return OctopError.localized(ErrorCode.KNOWLEDGE_NAME_TAKEN, locale)
     if "invalid knowledge document name" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_NAME_INVALID, locale)
-    return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED, locale)
+    if "prerequisite" in text or "embedding model" in text or "embedding_model" in text:
+        return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED, locale)
+    logger.exception("unhandled error in knowledge base router: %s", exc)
+    return OctopError.localized(
+        ErrorCode.INTERNAL_ERROR,
+        locale,
+        details={"cause": str(exc)},
+    )
 
 
 def _onnx_options_for_knowledge(*, include_all: bool = False) -> list[dict[str, Any]]:

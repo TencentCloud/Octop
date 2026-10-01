@@ -1,4 +1,4 @@
-"""WebSocket browser screencast — attaches to harness-browser sessions.
+"""WebSocket browser screencast — attaches to octop-browser sessions.
 
 Wire protocol matches the dashboard ``useBrowserStream`` hook (screencast)
 and ``useBrowserSessionState`` (listen-only status):
@@ -56,10 +56,16 @@ _FRAME_INTERVAL_S = 0.25  # ~4 fps
 
 
 def _normalize_nav_url(raw: str) -> str:
+    """Prefix a host with ``https://`` unless it already has an http(s) scheme.
+
+    Matches :func:`octop.infra.utils.url.normalize_nav_url`, including the
+    case-insensitive scheme check: ``HTTPS://host`` must not become
+    ``https://HTTPS://host``.
+    """
     t = raw.strip()
     if not t:
         return ""
-    if t.startswith(("http://", "https://")):
+    if t.lower().startswith(("http://", "https://")):
         return t
     return f"https://{t}"
 
@@ -91,15 +97,14 @@ async def _send_json(ws: WebSocket, payload: dict[str, Any]) -> None:
 
 
 async def _send_session_snapshot(
-    ws: WebSocket,
+    send_json: Any,
     profile: str,
     *,
     sess: Any | None,
 ) -> None:
     """Push one session_update (+ tabs) frame for *profile*."""
     if sess is None:
-        await _send_json(
-            ws,
+        await send_json(
             {
                 "type": "session_update",
                 "session_id": profile,
@@ -110,12 +115,11 @@ async def _send_session_snapshot(
                 "current_url": "",
             },
         )
-        await _send_json(ws, {"type": "tabs", "tabs": []})
+        await send_json({"type": "tabs", "tabs": []})
         return
 
     url = await harness_page_url(sess)
-    await _send_json(
-        ws,
+    await send_json(
         {
             "type": "session_update",
             "session_id": profile,
@@ -127,42 +131,47 @@ async def _send_session_snapshot(
         },
     )
     tabs = await harness_list_tabs(sess)
-    await _send_json(ws, {"type": "tabs", "tabs": tabs})
+    await send_json({"type": "tabs", "tabs": tabs})
 
 
 async def _stream_loop(
-    ws: WebSocket,
+    send_json: Any,
+    is_connected: Any,
     sess: Any,
     profile: str,
     *,
     listen_only: bool,
 ) -> None:
-    await _send_json(ws, {"type": "status", "status": "browser_started"})
-    await _send_json(ws, {"type": "status", "status": "streaming"})
+    await send_json({"type": "status", "status": "browser_started"})
+    await send_json({"type": "status", "status": "streaming"})
 
-    while ws.application_state == WebSocketState.CONNECTED:
-        await _send_session_snapshot(ws, profile, sess=sess)
+    while is_connected():
+        await _send_session_snapshot(send_json, profile, sess=sess)
 
         if not listen_only:
             frame = await _capture_jpeg(sess)
             if frame:
-                await _send_json(ws, {"type": "frame", "data": frame})
+                await send_json({"type": "frame", "data": frame})
 
         await asyncio.sleep(_FRAME_INTERVAL_S)
 
 
-async def _listen_state_loop(ws: WebSocket, profile: str) -> None:
+async def _listen_state_loop(
+    send_json: Any,
+    is_connected: Any,
+    profile: str,
+) -> None:
     """Push session_update events without launching Chrome or capturing frames.
 
     Re-resolves the harness registry each tick so a browser started later by
     the agent becomes visible without reconnecting. Idle (no session) ticks
     use a longer interval to avoid a request/render storm on the dashboard.
     """
-    await _send_json(ws, {"type": "status", "status": "streaming"})
+    await send_json({"type": "status", "status": "streaming"})
 
-    while ws.application_state == WebSocketState.CONNECTED:
+    while is_connected():
         sess = await resolve_harness_session(profile, create=False)
-        await _send_session_snapshot(ws, profile, sess=sess)
+        await _send_session_snapshot(send_json, profile, sess=sess)
         await asyncio.sleep(_FRAME_INTERVAL_S if sess is not None else 2.0)
 
 
@@ -342,22 +351,64 @@ async def browser_stream_ws(
         return
 
     await websocket.accept()
-    sess: Any | None = None
-    profile = user_browser_profile(user.id)
-    stream_task: asyncio.Task[None] | None = None
-    listen = bool(listen_only)
+
+    async def send_json(payload: dict[str, Any]) -> None:
+        await _send_json(websocket, payload)
+
+    def is_connected() -> bool:
+        return websocket.application_state == WebSocketState.CONNECTED
+
+    async def receive_text() -> str:
+        return await websocket.receive_text()
 
     try:
-        # Wait for the client's ``start`` message (sent on ws.onopen).
-        raw = await asyncio.wait_for(websocket.receive_text(), timeout=15.0)
-        start_msg = json.loads(raw)
-        if start_msg.get("type") != "start":
-            await _send_json(websocket, {"type": "error", "message": "expected start message"})
+        await run_browser_stream_session(
+            send_json=send_json,
+            is_connected=is_connected,
+            receive_text=receive_text,
+            user_id=int(user.id),
+            listen_only=bool(listen_only),
+            default_width=width,
+            default_height=height,
+        )
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if websocket.application_state == WebSocketState.CONNECTED:
+            with contextlib.suppress(Exception):
+                await websocket.close()
+
+
+async def run_browser_stream_session(
+    *,
+    send_json: Any,
+    is_connected: Any,
+    receive_text: Any,
+    user_id: int,
+    listen_only: bool = False,
+    default_width: int = 1280,
+    default_height: int = 800,
+    start_msg: dict[str, Any] | None = None,
+) -> None:
+    """Run one screencast / listen-only session over arbitrary send/receive hooks.
+
+    Used by the local dashboard WebSocket and by Bridge peer relay so both share
+    the same Chrome / harness lifecycle.
+    """
+    sess: Any | None = None
+    profile = user_browser_profile(user_id)
+    stream_task: asyncio.Task[None] | None = None
+
+    try:
+        if start_msg is None:
+            raw = await asyncio.wait_for(receive_text(), timeout=15.0)
+            start_msg = json.loads(raw)
+        if not isinstance(start_msg, dict) or start_msg.get("type") != "start":
+            await send_json({"type": "error", "message": "expected start message"})
             return
 
-        if listen:
-            # Status-only clients (chat browser badge) must not spawn Chrome.
-            stream_task = asyncio.create_task(_listen_state_loop(websocket, profile))
+        if listen_only:
+            stream_task = asyncio.create_task(_listen_state_loop(send_json, is_connected, profile))
         else:
             sess = await resolve_harness_session(profile)
             assert sess is not None  # create=True always returns or raises
@@ -367,20 +418,16 @@ async def browser_stream_ws(
                 try:
                     await sess.navigate(start_url)
                 except Exception as exc:
-                    # Don't let a bad/unreachable initial URL kill the whole
-                    # session — surface a warning and keep streaming so the
-                    # user can navigate manually.
                     logger.warning("initial navigate to %s failed: %s", start_url, exc)
-                    await _send_json(
-                        websocket,
+                    await send_json(
                         {
                             "type": "error",
                             "message": f"导航到 {start_url} 失败：{exc}",
                         },
                     )
 
-            vw = int(start_msg.get("width") or width)
-            vh = int(start_msg.get("height") or height)
+            vw = int(start_msg.get("width") or default_width)
+            vh = int(start_msg.get("height") or default_height)
             if vw > 0 and vh > 0:
                 with contextlib.suppress(Exception):
                     await sess._internal.client.send(  # noqa: SLF001
@@ -394,17 +441,25 @@ async def browser_stream_ws(
                     )
 
             stream_task = asyncio.create_task(
-                _stream_loop(websocket, sess, profile, listen_only=False)
+                _stream_loop(
+                    send_json,
+                    is_connected,
+                    sess,
+                    profile,
+                    listen_only=False,
+                )
             )
 
-        while websocket.application_state == WebSocketState.CONNECTED:
+        while is_connected():
             try:
-                raw = await websocket.receive_text()
+                raw = await receive_text()
             except WebSocketDisconnect:
                 break
             try:
-                msg = json.loads(raw)
+                msg = json.loads(raw) if isinstance(raw, str) else raw
             except json.JSONDecodeError:
+                continue
+            if not isinstance(msg, dict):
                 continue
             if msg.get("type") == "stop":
                 break
@@ -412,19 +467,16 @@ async def browser_stream_ws(
                 with contextlib.suppress(Exception):
                     await _handle_client_event(sess, msg)
     except TimeoutError:
-        await _send_json(websocket, {"type": "error", "message": "timed out waiting for start"})
+        await send_json({"type": "error", "message": "timed out waiting for start"})
     except WebSocketDisconnect:
         pass
     except Exception as exc:
         logger.exception("browser stream failed")
-        if websocket.application_state == WebSocketState.CONNECTED:
-            await _send_json(websocket, {"type": "error", "message": str(exc)})
-            await _send_json(websocket, {"type": "status", "status": "error"})
+        if is_connected():
+            await send_json({"type": "error", "message": str(exc)})
+            await send_json({"type": "status", "status": "error"})
     finally:
         if stream_task is not None:
             stream_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await stream_task
-        if websocket.application_state == WebSocketState.CONNECTED:
-            with contextlib.suppress(Exception):
-                await websocket.close()

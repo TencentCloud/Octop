@@ -7,12 +7,27 @@ import {
   replaceMentionQuery,
   textHasExpertMention,
   toggleExpertMention,
+  withExpertMention,
 } from "./expertMention";
 
 describe("expertMentionToken", () => {
   it("prefixes the name and collapses whitespace", () => {
     expect(expertMentionToken("数据分析师")).toBe("@数据分析师");
     expect(expertMentionToken(" data analyst ")).toBe("@data-analyst");
+  });
+});
+
+describe("withExpertMention", () => {
+  it("puts @Name in front of the prompt", () => {
+    expect(withExpertMention("请鉴别诊断", "临床辅助专家")).toBe(
+      "@临床辅助专家 请鉴别诊断",
+    );
+  });
+
+  it("does not duplicate an existing mention", () => {
+    expect(withExpertMention("@临床辅助专家 请鉴别诊断", "临床辅助专家")).toBe(
+      "@临床辅助专家 请鉴别诊断",
+    );
   });
 });
 

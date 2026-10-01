@@ -11,6 +11,7 @@ import { getApiUrl } from "../../../api/config";
 import { getAuthToken } from "../../../api/request";
 import type { TokenUsage } from "../../../api/types";
 import { buildDashboardChatWsUrl } from "../../../api/modules/wsChat";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { generateId } from "../../../utils/messageParser";
 import type {
   ChatAttachment,
@@ -20,6 +21,7 @@ import type {
 } from "./sseHelpers";
 import {
   parseHarnessChunk,
+  streamSpeakerId,
   type HarnessChunk,
   type ToolCallChunk,
   type UsageChunk,
@@ -28,6 +30,12 @@ import { isChatStreamError } from "../../../utils/chatStreamError";
 import { parseToolExecutionFeedback } from "../../../utils/toolMediaBlocks";
 import { buildUserMessageContent } from "../utils/chatAttachments";
 import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
+import {
+  findSpeakerTextToContinue,
+  isRoomHostSpeaker,
+  sameStreamingSpeaker,
+  speakerTurnWasInterrupted,
+} from "../utils/messageGrouping";
 import { turnStatusAction } from "./turnStatusGate";
 import { mergePatchedToolOutput } from "../../../plugins/toolRenderers/parseToolOutput";
 import { frameBelongsToThread } from "./frameThread";
@@ -39,6 +47,33 @@ import {
   shouldResumeStreamAfterClose,
 } from "./wsResumeGate";
 
+function speakerMatchesFinalize(
+  messageSpeaker: string | undefined,
+  incomingSpeaker: string | undefined,
+  hostId?: string,
+  teamRoom = false,
+): boolean {
+  if (!(incomingSpeaker || "").trim()) {
+    return isRoomHostSpeaker(messageSpeaker, hostId);
+  }
+  return sameStreamingSpeaker(
+    messageSpeaker,
+    incomingSpeaker,
+    hostId,
+    teamRoom,
+  );
+}
+
+function continueTokenOpts(state: SessionStreamState): {
+  continueThroughTools?: string[];
+  teamRoom: boolean;
+} {
+  const teamRoom = Boolean(state.isTeamRoom);
+  return teamRoom
+    ? { continueThroughTools: ["ask_agent"], teamRoom }
+    : { teamRoom };
+}
+
 // ── Focused chat session (reconnect thrash only for the visible tab) ──────
 
 let focusedChatSessionId: string | null = null;
@@ -48,6 +83,14 @@ export function setFocusedChatSession(sessionId: string | null): void {
   const next = sessionId && sessionId !== "__empty__" ? sessionId : null;
   const prev = focusedChatSessionId;
   focusedChatSessionId = next;
+  if (prev && prev !== next) {
+    const prevState = sessionStates.get(prev);
+    // Listen sockets stay open after a turn so late team replies can land.
+    // Leaving the room drops that idle bind; an in-flight turn keeps resume.
+    if (!prevState?.isStreaming) {
+      closeLiveSocket(prev, { intentional: true });
+    }
+  }
   if (next && next !== prev) {
     void rebindFocusedSessionIfNeeded(next);
   }
@@ -108,6 +151,7 @@ function sealInFlightAssistantMessages(state: SessionStreamState): void {
   state.messages = state.messages.map((m) =>
     m.status === "streaming" ? { ...m, status: "done" as const } : m,
   );
+  clearAllLiveSpeakers(state);
 }
 
 // ── Pending prefill text ──────────────────────────────────────────────────
@@ -210,6 +254,8 @@ const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
   historyLoadingMore: false,
   historyNextOffset: 0,
   historyHydrated: false,
+  pendingPlanPath: null,
+  liveSpeakers: [] as string[],
 });
 
 const sessionStates = new Map<string, SessionStreamState>();
@@ -236,6 +282,7 @@ export type SlashActionEvent = {
   action: string;
   agent_id?: string;
   sessionId?: string;
+  mode?: string;
 };
 type ToolEventListener = (event: ToolEvent) => void;
 type StreamEventListener = (event: StreamEvent) => void;
@@ -339,7 +386,59 @@ function buildSnapshot(state: SessionStreamState): SessionSnapshot {
     historyNextOffset: state.historyNextOffset,
     historyNextCursor: state.historyNextCursor,
     historyHydrated: state.historyHydrated,
+    pendingPlanPath: state.pendingPlanPath ?? null,
+    liveSpeakers: [...state.liveSpeakers].sort(),
   };
+}
+
+function speakerLiveKey(speaker?: string): string {
+  return (speaker || "").trim();
+}
+
+/** Mark a speaker as still generating (survives tool gaps until ``done``). */
+function markSpeakerLive(state: SessionStreamState, speaker?: string): void {
+  const key = speakerLiveKey(speaker);
+  state.liveSpeakers.add(key);
+  // Unlabeled host frames also light up the room id so stamped host groups match.
+  if (!key) {
+    const host = state.roomAgentId?.trim();
+    if (host) state.liveSpeakers.add(host);
+  }
+}
+
+function clearSpeakerLive(state: SessionStreamState, speaker?: string): void {
+  const key = speakerLiveKey(speaker);
+  state.liveSpeakers.delete(key);
+  const host = state.roomAgentId?.trim();
+  // Unlabeled and stamped host share one live bit — clear both together.
+  if (!key) {
+    if (host) state.liveSpeakers.delete(host);
+  } else if (host && key === host) {
+    state.liveSpeakers.delete("");
+  }
+}
+
+function clearAllLiveSpeakers(state: SessionStreamState): void {
+  state.liveSpeakers.clear();
+}
+
+/** Drop live speakers with no streaming text and no in-flight tools. */
+function pruneIdleLiveSpeakers(state: SessionStreamState): void {
+  if (state.liveSpeakers.size === 0) return;
+  const busy = new Set<string>();
+  const host = state.roomAgentId?.trim();
+  for (const message of state.messages) {
+    if (message.role !== "assistant") continue;
+    const key = speakerLiveKey(message.speakerAgentId);
+    const inFlightTool = Boolean(message.toolData && !message.toolData.output);
+    if (message.status !== "streaming" && !inFlightTool) continue;
+    busy.add(key);
+    if (!key && host) busy.add(host);
+    if (key && host && key === host) busy.add("");
+  }
+  for (const key of [...state.liveSpeakers]) {
+    if (!busy.has(key)) state.liveSpeakers.delete(key);
+  }
 }
 
 function getOrCreate(sessionId: string): SessionStreamState {
@@ -361,8 +460,12 @@ function getOrCreate(sessionId: string): SessionStreamState {
       historyLoadingMore: false,
       historyHydrated: false,
       historyStale: false,
+      pendingPlanPath: null,
       listeners: new Set(),
       _snapshot: EMPTY_SNAPSHOT,
+      roomAgentId: undefined,
+      isTeamRoom: false,
+      liveSpeakers: new Set(),
     };
     sessionStates.set(sessionId, state);
   }
@@ -382,17 +485,22 @@ function notify(state: SessionStreamState) {
 }
 
 function beginStream(state: SessionStreamState, sessionId: string): void {
+  clearAllLiveSpeakers(state);
   state.thinkingStartedAt = Date.now();
   state.isStreaming = true;
   touchStreamActivity(sessionId);
 }
 
 function clearStreamingFlags(state: SessionStreamState): void {
+  // Do not clear liveSpeakers — team members may keep generating after the
+  // host turn unlocks the composer; process panels key off liveSpeakers.
   state.isStreaming = false;
   state.thinkingStartedAt = null;
 }
 
 // ── Live WebSocket bookkeeping (used by cancel / attach / send) ────────────
+
+const CHAT_WS_PING_MS = 25_000;
 
 type LiveSocket = {
   ws: WebSocket;
@@ -408,7 +516,28 @@ type LiveSocket = {
    * while the server turn should keep running.
    */
   userCancelled: boolean;
+  /** Subscribe-only socket — replacing it must not send `cancel` to the host. */
+  listenOnly?: boolean;
+  pingTimer?: ReturnType<typeof setInterval>;
 };
+
+function startSocketPing(live: LiveSocket): void {
+  if (live.pingTimer != null) return;
+  live.pingTimer = setInterval(() => {
+    if (live.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      live.ws.send(JSON.stringify({ type: "ping" }));
+    } catch {
+      // ignore
+    }
+  }, CHAT_WS_PING_MS);
+}
+
+function stopSocketPing(live: LiveSocket): void {
+  if (live.pingTimer == null) return;
+  clearInterval(live.pingTimer);
+  live.pingTimer = undefined;
+}
 
 const liveSockets = new Map<string, LiveSocket>();
 
@@ -507,6 +636,18 @@ export function getSnapshot(sessionId: string): SessionSnapshot {
   return state._snapshot;
 }
 
+/** Remember or clear the pending plan file for the PlanReady card. */
+export function setPendingPlanPath(
+  sessionId: string,
+  path: string | null | undefined,
+): void {
+  const state = getOrCreate(sessionId);
+  const next = (path || "").trim() || null;
+  if ((state.pendingPlanPath ?? null) === next) return;
+  state.pendingPlanPath = next;
+  notify(state);
+}
+
 /** Directly set messages for a session (e.g. from loadHistory). */
 export function setMessages(sessionId: string, messages: ChatMessage[]) {
   const state = getOrCreate(sessionId);
@@ -538,13 +679,14 @@ export function setHistoryPage(
 /**
  * Mark history as stale so the next `loadHistory` refetches from the server.
  * A live turn owns the message list, so leave a streaming session untouched.
+ * An idle listen socket (team follow-ups) must not block a stale refetch.
  * Messages and the hydration flag stay put: the reload replaces them once it
  * lands, which keeps the view from flashing an empty loading state.
  */
 export function invalidateHistory(sessionId: string) {
   const state = sessionStates.get(sessionId);
   if (!state || !state.historyHydrated) return;
-  if (state.isStreaming || isLiveSocketOpen(sessionId)) return;
+  if (state.isStreaming) return;
   state.historyStale = true;
 }
 
@@ -649,7 +791,8 @@ export function clearMessages(sessionId: string) {
   const state = getOrCreate(sessionId);
   // Leaving a thread (agent switch, page change) must not seal a live turn:
   // the socket keeps streaming into this state and the UI needs it on return.
-  if (state.isStreaming || isLiveSocketOpen(sessionId)) return;
+  // An idle listen socket (team follow-ups) must not block a clear.
+  if (state.isStreaming) return;
   const alreadyEmpty =
     state.messages.length === 0 &&
     !state.isStreaming &&
@@ -659,6 +802,7 @@ export function clearMessages(sessionId: string) {
   if (alreadyEmpty) return;
   state.messages = [];
   clearStreamingFlags(state);
+  clearAllLiveSpeakers(state);
   state.runUsage = null;
   usageSamplesByState.delete(state);
   state.streamMsg = "";
@@ -678,6 +822,7 @@ function clearLiveSocket(sessionId: string, ws?: WebSocket): void {
   const live = liveSockets.get(sessionId);
   if (!live) return;
   if (ws && live.ws !== ws) return;
+  stopSocketPing(live);
   liveSockets.delete(sessionId);
 }
 
@@ -933,10 +1078,77 @@ function applyUsageChunk(state: SessionStreamState, chunk: UsageChunk): void {
   state.contextUsage = { input_tokens: input };
 }
 
-function findLastToolMessageIndex(state: SessionStreamState): number {
+function chunkSpeakerId(
+  chunk: { agent_id?: unknown } | object,
+  hostAgentId?: string,
+): string | undefined {
+  return rewritePeerSpeakerId(hostAgentId, streamSpeakerId(chunk));
+}
+
+function hasStreamingMessages(state: SessionStreamState): boolean {
+  return state.messages.some((m) => m.status === "streaming");
+}
+
+function isHostTurnTerminal(
+  data: {
+    type?: unknown;
+    agent_id?: unknown;
+  },
+  hostAgentId?: string,
+): boolean {
+  if (data.type === "error" || data.type === "hitl_required") return true;
+  if (data.type !== "done") return false;
+  const speaker = chunkSpeakerId(data, hostAgentId);
+  if (!speaker) return true;
+  const host = (hostAgentId || "").trim();
+  // Room id not remembered yet — treat a stamped done as the 1:1 host.
+  if (!host) return true;
+  return speaker === host;
+}
+
+/** Persist whether this session is a team host room (listen-only / ask_agent). */
+export function setSessionTeamRoom(sessionId: string, isTeam: boolean): void {
+  getOrCreate(sessionId).isTeamRoom = isTeam;
+}
+
+function sessionHostAgentId(
+  state: SessionStreamState,
+  sessionId?: string,
+): string | undefined {
+  const fromState = state.roomAgentId?.trim();
+  if (fromState) return fromState;
+  if (!sessionId) return undefined;
+  const fromSocket = liveSockets.get(sessionId)?.agentId?.trim();
+  return fromSocket || undefined;
+}
+
+function rememberRoomAgent(
+  state: SessionStreamState,
+  agentId?: string | null,
+): void {
+  const id = agentId?.trim();
+  if (id) state.roomAgentId = id;
+}
+
+function findLastToolMessageIndex(
+  state: SessionStreamState,
+  speaker?: string,
+): number {
+  const hostId = sessionHostAgentId(state);
   for (let i = state.messages.length - 1; i >= 0; i--) {
     const m = state.messages[i];
-    if (m.role === "assistant" && m.toolData) return i;
+    if (
+      m.role === "assistant" &&
+      m.toolData &&
+      sameStreamingSpeaker(
+        m.speakerAgentId,
+        speaker,
+        hostId,
+        Boolean(state.isTeamRoom),
+      )
+    ) {
+      return i;
+    }
   }
   return -1;
 }
@@ -946,27 +1158,68 @@ function handleHarnessChunk(
   chunk: HarnessChunk,
   sessionId?: string,
 ): void {
-  if (sessionId && state.isStreaming) {
+  const speaker = chunkSpeakerId(chunk, sessionHostAgentId(state, sessionId));
+  if (sessionId && (state.isStreaming || speaker)) {
     touchStreamActivity(sessionId);
   }
   switch (chunk.type) {
-    case "token":
-      appendStreamingToken(state, chunk.content);
+    case "token": {
+      const snapshot = Boolean(chunk.team_snapshot);
+      // Snapshots are complete wall copies — never leave the speaker "live".
+      if (!snapshot) markSpeakerLive(state, speaker);
+      appendStreamingToken(
+        state,
+        chunk.content,
+        speaker,
+        snapshot,
+        Boolean(chunk.team_wrapup),
+      );
+      if (snapshot) clearSpeakerLive(state, speaker);
       break;
+    }
     case "reasoning":
-      appendStreamingReasoning(state, chunk.content);
+      markSpeakerLive(state, speaker);
+      appendStreamingReasoning(state, chunk.content, speaker);
       break;
     case "usage":
       applyUsageChunk(state, chunk);
       break;
     case "tool_call_chunk":
-      upsertToolCall(state, chunk, sessionId);
+      markSpeakerLive(state, speaker);
+      upsertToolCall(state, chunk, sessionId, speaker);
       break;
     case "tool_result":
-      closeToolCall(state, chunk.messages, sessionId);
+      // Keep the speaker live across the tool→next-token gap.
+      markSpeakerLive(state, speaker);
+      closeToolCall(state, chunk.messages, sessionId, speaker);
       break;
     case "done":
-      finalizeStreamingMessages(state);
+      if (!chunk.team_wrapup) {
+        const pending =
+          typeof chunk.pending_plan_path === "string"
+            ? chunk.pending_plan_path.trim()
+            : "";
+        state.pendingPlanPath = pending || null;
+      }
+      if (Boolean(chunk.team_wrapup)) {
+        finalizeWrapupMessages(state, speaker);
+        clearSpeakerLive(state, speaker);
+        // Wrap-up means members already finished — drop stale live bits
+        // (e.g. snapshot re-marked a speaker after their done).
+        pruneIdleLiveSpeakers(state);
+        break;
+      }
+      finalizeStreamingMessages(
+        state,
+        speaker,
+        sessionHostAgentId(state, sessionId),
+      );
+      clearSpeakerLive(state, speaker);
+      // Host done always frees the composer. Member bubbles may still stream.
+      if (!speaker || (!hasStreamingMessages(state) && state.isStreaming)) {
+        clearStreamingFlags(state);
+        clearStreamActivity(sessionId ?? "");
+      }
       break;
     case "error":
       appendErrorBubble(state, chunk.message, chunk.error_code);
@@ -979,6 +1232,7 @@ function handleHarnessChunk(
         action: chunk.action,
         agent_id: chunk.agent_id,
         sessionId,
+        mode: chunk.mode,
       });
       break;
     case "attachment": {
@@ -994,15 +1248,13 @@ function handleHarnessChunk(
         previewUrl || (b64 ? `data:${mime};base64,${b64}` : "");
       if (!displayUrl) break;
       const kindRaw = typeof chunk.kind === "string" ? chunk.kind : "file";
-      const toolIdx = findLastToolMessageIndex(state);
-      const lastIdx = state.messages.length - 1;
-      const last = lastIdx >= 0 ? state.messages[lastIdx] : null;
-      const targetIdx =
-        toolIdx >= 0
-          ? toolIdx
-          : last && last.role === "assistant"
-          ? lastIdx
-          : -1;
+      const toolIdx = findLastToolMessageIndex(state, speaker);
+      const textIdx = findSpeakerTextToContinue(
+        state.messages,
+        speaker,
+        sessionHostAgentId(state, sessionId),
+      );
+      const targetIdx = toolIdx >= 0 ? toolIdx : textIdx;
       const attachment = {
         url: displayUrl,
         kind: (kindRaw === "image" ? "image" : "file") as "image" | "file",
@@ -1028,6 +1280,7 @@ function handleHarnessChunk(
             attachments: [attachment],
             status: "streaming",
             timestamp: Date.now(),
+            speakerAgentId: speaker,
           },
         ];
       }
@@ -1044,10 +1297,101 @@ function handleHarnessChunk(
   notify(state);
 }
 
-/** Seal all streaming assistants before opening a new bubble (avoids multi-caret). */
-function sealPriorStreamingAssistants(state: SessionStreamState): void {
-  const next = sealPriorStreamingAssistantsMessages(state.messages);
+/** Apply one live harness frame (used by WS and unit tests). */
+export function ingestHarnessChunk(
+  sessionId: string,
+  chunk: HarnessChunk,
+  roomAgentId?: string,
+): void {
+  const state = getOrCreate(sessionId);
+  rememberRoomAgent(state, roomAgentId);
+  handleHarnessChunk(state, chunk, sessionId);
+}
+
+/** Seal same-speaker streaming text/thinking before opening a new bubble. */
+function sealPriorStreamingAssistants(
+  state: SessionStreamState,
+  speaker?: string,
+): void {
+  const next = sealPriorStreamingAssistantsMessages(
+    state.messages,
+    speaker,
+    sessionHostAgentId(state),
+    Boolean(state.isTeamRoom),
+  );
   if (next !== state.messages) state.messages = next;
+}
+
+function findWrapupTextToContinue(
+  messages: ChatMessage[],
+  speaker?: string,
+  hostId?: string,
+): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message.role === "user") break;
+    if (message.role !== "assistant" || message.toolData) continue;
+    if (!message.teamWrapup) continue;
+    if (!sameStreamingSpeaker(message.speakerAgentId, speaker, hostId, true))
+      continue;
+    return i;
+  }
+  return -1;
+}
+
+function appendToTextBubble(
+  state: SessionStreamState,
+  idx: number,
+  content: string,
+  forceStatus?: "done" | "streaming",
+): void {
+  const target = state.messages[idx];
+  if (!target) return;
+  const prev = target.content || "";
+  if (prev && (content === prev || content.startsWith(prev))) {
+    if (content === prev && !forceStatus) return;
+    state.messages = [
+      ...state.messages.slice(0, idx),
+      {
+        ...target,
+        content,
+        status: forceStatus ?? target.status,
+      },
+      ...state.messages.slice(idx + 1),
+    ];
+    return;
+  }
+  const nextContent = prev + content;
+  const nextStatus =
+    forceStatus ?? (target.status === "done" ? "streaming" : target.status);
+  if (target.contentBlocks && target.contentBlocks.length > 0) {
+    const blocks = [...target.contentBlocks];
+    const lastBlock = blocks[blocks.length - 1];
+    if (lastBlock.type === "text") {
+      blocks[blocks.length - 1] = {
+        ...lastBlock,
+        content: lastBlock.content + content,
+      };
+    } else {
+      blocks.push({ type: "text", content });
+    }
+    state.messages = [
+      ...state.messages.slice(0, idx),
+      {
+        ...target,
+        content: nextContent,
+        contentBlocks: blocks,
+        status: nextStatus,
+      },
+      ...state.messages.slice(idx + 1),
+    ];
+    return;
+  }
+  state.messages = [
+    ...state.messages.slice(0, idx),
+    { ...target, content: nextContent, status: nextStatus },
+    ...state.messages.slice(idx + 1),
+  ];
 }
 
 /** Append a token fragment to the last streaming assistant text bubble,
@@ -1055,19 +1399,146 @@ function sealPriorStreamingAssistants(state: SessionStreamState): void {
 function appendStreamingToken(
   state: SessionStreamState,
   content: string,
+  speakerAgentId?: string,
+  snapshot = false,
+  wrapup = false,
 ): void {
   if (!content) return;
-  const lastIdx = state.messages.length - 1;
-  const last = lastIdx >= 0 ? state.messages[lastIdx] : null;
-  if (
-    last &&
-    last.role === "assistant" &&
-    last.status === "streaming" &&
-    !last.toolData
-  ) {
-    const nextContent = (last.content || "") + content;
-    if (last.contentBlocks && last.contentBlocks.length > 0) {
-      const blocks = [...last.contentBlocks];
+  const speaker = speakerAgentId?.trim() || undefined;
+  const hostId = sessionHostAgentId(state);
+  if (wrapup) {
+    const wrapIdx = findWrapupTextToContinue(state.messages, speaker, hostId);
+    if (wrapIdx >= 0) {
+      appendToTextBubble(
+        state,
+        wrapIdx,
+        content,
+        snapshot ? "done" : undefined,
+      );
+      return;
+    }
+    sealPriorStreamingAssistants(state, speaker);
+    state.streamId = generateId();
+    state.messages = [
+      ...state.messages,
+      {
+        id: state.streamId,
+        role: "assistant",
+        content,
+        status: snapshot ? "done" : "streaming",
+        timestamp: Date.now(),
+        speakerAgentId: speaker,
+        teamWrapup: true,
+      },
+    ];
+    return;
+  }
+  const idx = findSpeakerTextToContinue(
+    state.messages,
+    speaker,
+    hostId,
+    snapshot
+      ? { teamRoom: Boolean(state.isTeamRoom) }
+      : continueTokenOpts(state),
+  );
+  const target = idx >= 0 ? state.messages[idx] : null;
+  if (snapshot && target) {
+    const prev = target.content || "";
+    const sameTurn =
+      content === prev || content.startsWith(prev) || prev.startsWith(content);
+    if (!sameTurn && target.status === "done") {
+      sealPriorStreamingAssistants(state, speaker);
+      state.messages = [
+        ...state.messages,
+        {
+          id: generateId(),
+          role: "assistant",
+          content,
+          status: "done",
+          timestamp: Date.now(),
+          speakerAgentId: speaker,
+        },
+      ];
+      return;
+    }
+    const next = sameTurn
+      ? content.startsWith(prev) || content === prev
+        ? content
+        : prev
+      : content;
+    if (next !== prev || target.status !== "done") {
+      state.messages = [
+        ...state.messages.slice(0, idx),
+        { ...target, content: next, status: "done" },
+        ...state.messages.slice(idx + 1),
+      ];
+    }
+    return;
+  }
+  if (snapshot) {
+    sealPriorStreamingAssistants(state, speaker);
+    state.messages = [
+      ...state.messages,
+      {
+        id: generateId(),
+        role: "assistant",
+        content,
+        status: "done",
+        timestamp: Date.now(),
+        speakerAgentId: speaker,
+      },
+    ];
+    return;
+  }
+  const isHost = isRoomHostSpeaker(speaker, hostId);
+  const interrupted =
+    isHost &&
+    target != null &&
+    idx >= 0 &&
+    speakerTurnWasInterrupted(
+      state.messages,
+      idx,
+      speaker,
+      hostId,
+      Boolean(state.isTeamRoom),
+    );
+  // Members already on the wall — later host text is a new turn (wrap-up).
+  if (target && interrupted) {
+    sealPriorStreamingAssistants(state, speaker);
+    state.streamId = generateId();
+    state.messages = [
+      ...state.messages,
+      {
+        id: state.streamId,
+        role: "assistant",
+        content,
+        status: "streaming",
+        timestamp: Date.now(),
+        speakerAgentId: speaker,
+      },
+    ];
+    return;
+  }
+  if (target) {
+    const prev = target.content || "";
+    // LangGraph may re-emit the completed AIMessage after incremental tokens.
+    if (prev && (content === prev || content.startsWith(prev))) {
+      if (content === prev && target.status === "streaming") return;
+      state.messages = [
+        ...state.messages.slice(0, idx),
+        {
+          ...target,
+          content,
+          status: target.status === "done" ? "streaming" : target.status,
+        },
+        ...state.messages.slice(idx + 1),
+      ];
+      return;
+    }
+    const nextContent = prev + content;
+    const nextStatus = target.status === "done" ? "streaming" : target.status;
+    if (target.contentBlocks && target.contentBlocks.length > 0) {
+      const blocks = [...target.contentBlocks];
       const lastBlock = blocks[blocks.length - 1];
       if (lastBlock.type === "text") {
         blocks[blocks.length - 1] = {
@@ -1078,18 +1549,25 @@ function appendStreamingToken(
         blocks.push({ type: "text", content });
       }
       state.messages = [
-        ...state.messages.slice(0, lastIdx),
-        { ...last, content: nextContent, contentBlocks: blocks },
+        ...state.messages.slice(0, idx),
+        {
+          ...target,
+          content: nextContent,
+          contentBlocks: blocks,
+          status: nextStatus,
+        },
+        ...state.messages.slice(idx + 1),
       ];
       return;
     }
     state.messages = [
-      ...state.messages.slice(0, lastIdx),
-      { ...last, content: nextContent },
+      ...state.messages.slice(0, idx),
+      { ...target, content: nextContent, status: nextStatus },
+      ...state.messages.slice(idx + 1),
     ];
     return;
   }
-  sealPriorStreamingAssistants(state);
+  sealPriorStreamingAssistants(state, speaker);
   state.streamId = generateId();
   state.messages = [
     ...state.messages,
@@ -1099,6 +1577,7 @@ function appendStreamingToken(
       content,
       status: "streaming",
       timestamp: Date.now(),
+      speakerAgentId: speaker,
     },
   ];
 }
@@ -1109,16 +1588,17 @@ function appendStreamingToken(
 function appendStreamingReasoning(
   state: SessionStreamState,
   content: string,
+  speakerAgentId?: string,
 ): void {
   if (!content) return;
-  const lastIdx = state.messages.length - 1;
+  const speaker = speakerAgentId?.trim() || undefined;
+  const lastIdx = findSpeakerTextToContinue(
+    state.messages,
+    speaker,
+    sessionHostAgentId(state),
+  );
   const last = lastIdx >= 0 ? state.messages[lastIdx] : null;
-  if (
-    last &&
-    last.role === "assistant" &&
-    last.status === "streaming" &&
-    !last.toolData
-  ) {
+  if (last && last.role === "assistant" && !last.toolData) {
     const blocks = last.contentBlocks ? [...last.contentBlocks] : [];
     if (blocks.length > 0 && blocks[blocks.length - 1].type === "thinking") {
       const tail = blocks[blocks.length - 1];
@@ -1126,13 +1606,20 @@ function appendStreamingReasoning(
     } else {
       blocks.push({ type: "thinking", content });
     }
+    const nextStatus = last.status === "done" ? "streaming" : last.status;
     state.messages = [
       ...state.messages.slice(0, lastIdx),
-      { ...last, contentBlocks: blocks },
+      {
+        ...last,
+        contentBlocks: blocks,
+        status: nextStatus,
+        speakerAgentId: speaker ?? last.speakerAgentId,
+      },
+      ...state.messages.slice(lastIdx + 1),
     ];
     return;
   }
-  sealPriorStreamingAssistants(state);
+  sealPriorStreamingAssistants(state, speaker);
   const id = generateId();
   state.streamId = id;
   state.messages = [
@@ -1144,6 +1631,7 @@ function appendStreamingReasoning(
       contentBlocks: [{ type: "thinking", content }],
       status: "streaming",
       timestamp: Date.now(),
+      speakerAgentId: speaker,
     },
   ];
 }
@@ -1154,17 +1642,23 @@ function toolIndexKey(index: number | undefined): string {
   return `idx-${index ?? 0}`;
 }
 
+function speakerToolKey(speaker: string | undefined, key: string): string {
+  const prefix = (speaker || "").trim();
+  return prefix ? `${prefix}::${key}` : key;
+}
+
 function resolveToolMessageId(
   state: SessionStreamState,
   chunk: ToolCallChunk,
+  speaker?: string,
 ): string | undefined {
   const id = chunk.id?.trim() || undefined;
   if (id) {
-    const byId = state.toolCallIdIndex[id];
+    const byId = state.toolCallIdIndex[speakerToolKey(speaker, id)];
     if (byId) return byId;
   }
 
-  const indexKey = toolIndexKey(chunk.index);
+  const indexKey = speakerToolKey(speaker, toolIndexKey(chunk.index));
   const byIndex = state.toolCallIdIndex[indexKey];
   if (!byIndex) return undefined;
 
@@ -1182,11 +1676,12 @@ function registerToolCallKeys(
   state: SessionStreamState,
   msgId: string,
   chunk: ToolCallChunk,
+  speaker?: string,
 ): void {
   const id = chunk.id?.trim() || undefined;
-  const indexKey = toolIndexKey(chunk.index);
+  const indexKey = speakerToolKey(speaker, toolIndexKey(chunk.index));
   state.toolCallIdIndex[indexKey] = msgId;
-  if (id) state.toolCallIdIndex[id] = msgId;
+  if (id) state.toolCallIdIndex[speakerToolKey(speaker, id)] = msgId;
 }
 
 function unregisterToolCallKeys(
@@ -1212,11 +1707,12 @@ function upsertToolCall(
   state: SessionStreamState,
   chunk: ToolCallChunk,
   sessionId?: string,
+  speaker?: string,
 ): void {
   const id = chunk.id?.trim() || undefined;
   const indexKey = toolIndexKey(chunk.index);
   const callId = id ?? indexKey;
-  const existingMsgId = resolveToolMessageId(state, chunk);
+  const existingMsgId = resolveToolMessageId(state, chunk, speaker);
   if (existingMsgId) {
     const idx = state.messages.findIndex((m) => m.id === existingMsgId);
     if (idx >= 0) {
@@ -1233,6 +1729,7 @@ function upsertToolCall(
         ...state.messages.slice(0, idx),
         {
           ...m,
+          speakerAgentId: speaker ?? m.speakerAgentId,
           toolData: {
             ...(m.toolData ?? {}),
             name: nextName,
@@ -1243,13 +1740,13 @@ function upsertToolCall(
         },
         ...state.messages.slice(idx + 1),
       ];
-      registerToolCallKeys(state, existingMsgId, chunk);
+      registerToolCallKeys(state, existingMsgId, chunk, speaker);
     }
     return;
   }
-  sealPriorStreamingAssistants(state);
+  sealPriorStreamingAssistants(state, speaker);
   const msgId = generateId();
-  registerToolCallKeys(state, msgId, chunk);
+  registerToolCallKeys(state, msgId, chunk, speaker);
   state.messages = [
     ...state.messages,
     {
@@ -1264,6 +1761,7 @@ function upsertToolCall(
       },
       status: "streaming",
       timestamp: Date.now(),
+      speakerAgentId: speaker,
     },
   ];
   emitToolEvent({
@@ -1332,16 +1830,29 @@ function extractToolResultOutput(messages: unknown[]): string {
   return "";
 }
 
+/** First non-null ToolMessage ``artifact`` in a tool_result frame, if any. */
+function extractToolResultArtifact(messages: unknown[]): unknown {
+  for (const raw of messages) {
+    if (!raw || typeof raw !== "object") continue;
+    const artifact = (raw as Record<string, unknown>).artifact;
+    if (artifact !== undefined && artifact !== null) return artifact;
+  }
+  return undefined;
+}
+
 function closeToolCall(
   state: SessionStreamState,
   messages: unknown[],
   sessionId?: string,
+  speaker?: string,
 ): void {
   const toolCallId = extractToolCallIdFromResult(messages);
   let toolIdx = -1;
 
   if (toolCallId) {
-    const mapped = state.toolCallIdIndex[toolCallId];
+    const mapped =
+      state.toolCallIdIndex[speakerToolKey(speaker, toolCallId)] ??
+      state.toolCallIdIndex[toolCallId];
     if (mapped) {
       toolIdx = state.messages.findIndex((m) => m.id === mapped);
     }
@@ -1351,7 +1862,13 @@ function closeToolCall(
         if (
           m.role === "assistant" &&
           m.toolData?.callId === toolCallId &&
-          m.status === "streaming"
+          m.status === "streaming" &&
+          sameStreamingSpeaker(
+            m.speakerAgentId,
+            speaker,
+            sessionHostAgentId(state, sessionId),
+            Boolean(state.isTeamRoom),
+          )
         ) {
           toolIdx = i;
           break;
@@ -1363,7 +1880,17 @@ function closeToolCall(
   if (toolIdx < 0) {
     for (let i = state.messages.length - 1; i >= 0; i--) {
       const m = state.messages[i];
-      if (m.role === "assistant" && m.toolData && m.status === "streaming") {
+      if (
+        m.role === "assistant" &&
+        m.toolData &&
+        m.status === "streaming" &&
+        sameStreamingSpeaker(
+          m.speakerAgentId,
+          speaker,
+          sessionHostAgentId(state, sessionId),
+          Boolean(state.isTeamRoom),
+        )
+      ) {
         toolIdx = i;
         break;
       }
@@ -1372,6 +1899,7 @@ function closeToolCall(
   if (toolIdx < 0) return;
   const target = state.messages[toolIdx];
   const output = extractToolResultOutput(messages);
+  const artifact = extractToolResultArtifact(messages);
   const explicitToolError = messages.some(
     (raw) =>
       raw !== null &&
@@ -1398,11 +1926,15 @@ function closeToolCall(
         ...(target.toolData ?? {}),
         output,
         errorCode,
+        ...(artifact != null ? { artifact } : {}),
       },
     },
     ...state.messages.slice(toolIdx + 1),
   ];
   unregisterToolCallKeys(state, target.id);
+  if ((target.toolData?.name || "") === "ask_agent") {
+    sealPriorStreamingAssistants(state, speaker);
+  }
   emitToolEvent({
     kind: "toolDone",
     sessionId: sessionId ?? "",
@@ -1454,10 +1986,52 @@ export function patchToolResultData(callId: string, nextData: unknown): void {
   }
 }
 
-/** Mark every still-streaming assistant bubble as done. */
-function finalizeStreamingMessages(state: SessionStreamState): void {
+/** Seal only the host wrap-up bubble so dispatch can keep streaming. */
+function finalizeWrapupMessages(
+  state: SessionStreamState,
+  speaker?: string,
+): void {
+  const hostId = sessionHostAgentId(state);
+  state.messages = state.messages.map((m) => {
+    if (m.status !== "streaming" || !m.teamWrapup) return m;
+    if (
+      !sameStreamingSpeaker(
+        m.speakerAgentId,
+        speaker,
+        hostId,
+        Boolean(state.isTeamRoom),
+      )
+    )
+      return m;
+    return { ...m, status: "done" as const };
+  });
+}
+
+/** Seal the room host (stamped id, then unlabeled leftovers). Members stay live. */
+function finalizeHostTurn(state: SessionStreamState, sessionId?: string): void {
+  const hostId = sessionHostAgentId(state, sessionId);
+  finalizeStreamingMessages(state, hostId, hostId);
+  if (hostId) finalizeStreamingMessages(state, undefined, hostId);
+}
+
+/** Mark still-streaming assistant bubbles as done for one speaker (or host). */
+function finalizeStreamingMessages(
+  state: SessionStreamState,
+  speaker?: string,
+  hostAgentId?: string,
+): void {
+  const hostId = hostAgentId ?? sessionHostAgentId(state);
   state.messages = state.messages.map((m) => {
     if (m.status !== "streaming") return m;
+    if (
+      !speakerMatchesFinalize(
+        m.speakerAgentId,
+        speaker,
+        hostId,
+        Boolean(state.isTeamRoom),
+      )
+    )
+      return m;
     // ModelRetryMiddleware may surface failures as assistant text instead of
     // type=error — promote those to an error bubble so users get guidance + retry.
     if (
@@ -1474,10 +2048,19 @@ function finalizeStreamingMessages(state: SessionStreamState): void {
     }
     return { ...m, status: "done" as const };
   });
-  if (state.runUsage) {
+  if (state.runUsage && isRoomHostSpeaker(speaker, hostId)) {
     for (let index = state.messages.length - 1; index >= 0; index -= 1) {
       const message = state.messages[index];
       if (message.role !== "assistant" || message.toolData) continue;
+      if (
+        !speakerMatchesFinalize(
+          message.speakerAgentId,
+          speaker,
+          hostId,
+          Boolean(state.isTeamRoom),
+        )
+      )
+        continue;
       state.messages[index] = { ...message, usage: { ...state.runUsage } };
       break;
     }
@@ -1522,10 +2105,21 @@ function parseHitlRequest(raw: Record<string, unknown>) {
 function resolveHitlPending(
   state: SessionStreamState,
   status: "approved" | "rejected",
+  policy?: { mode: string; tools?: string[] },
 ): void {
-  state.messages = state.messages.map((m) =>
-    m.hitlData ? { ...m, hitlData: { ...m.hitlData, status } } : m,
-  );
+  const resolution =
+    status === "rejected"
+      ? undefined
+      : policy?.mode === "allow_all"
+      ? "allow_all"
+      : policy?.mode === "allow_tools"
+      ? "allow_tool"
+      : "approve";
+  state.messages = state.messages.map((m) => {
+    const hitl = m.hitlData;
+    if (!hitl || (hitl.status ?? "pending") !== "pending") return m;
+    return { ...m, hitlData: { ...hitl, status, resolution } };
+  });
 }
 
 function handleHitlRequired(
@@ -1534,6 +2128,7 @@ function handleHitlRequired(
 ): void {
   finalizeStreamingMessages(state);
   clearStreamingFlags(state);
+  clearAllLiveSpeakers(state);
   state.messages = [
     ...state.messages,
     {
@@ -1590,11 +2185,15 @@ export async function attachThread(
   if (!agentId || !threadId || threadId === "__empty__") return;
 
   const existing = liveSockets.get(sessionId);
+  if (existing && !existing.listenOnly && isLiveSocketOpen(sessionId)) {
+    // An in-flight user_turn owns this session — do not steal its socket.
+    return;
+  }
   if (
     existing &&
     existing.agentId === agentId &&
     existing.threadId === threadId &&
-    existing.ws.readyState === WebSocket.OPEN
+    isLiveSocketOpen(sessionId)
   ) {
     // Already bound — do not re-send subscribe (avoids turn_status churn).
     return;
@@ -1606,6 +2205,7 @@ export async function attachThread(
   }
 
   const state = getOrCreate(sessionId);
+  rememberRoomAgent(state, agentId);
   const ws = tryOpenDashboardWs(agentId);
   if (!ws) {
     if (state.isStreaming) {
@@ -1622,6 +2222,7 @@ export async function attachThread(
     threadId,
     intentionalClose: false,
     userCancelled: false,
+    listenOnly: true,
   };
   liveSockets.set(sessionId, live);
 
@@ -1632,7 +2233,7 @@ export async function attachThread(
   state.abortController = controller;
 
   let finished = false;
-  const finish = () => {
+  const finish = (mode: "all" | "host" = "all") => {
     if (finished) return;
     finished = true;
     clearStreamingFlags(state);
@@ -1644,7 +2245,11 @@ export async function attachThread(
     state.streamMsg = "";
     state.streamId = "";
     state.streamBlockType = "";
-    sealInFlightAssistantMessages(state);
+    if (mode === "host") {
+      finalizeHostTurn(state, sessionId);
+    } else {
+      sealInFlightAssistantMessages(state);
+    }
     notify(state);
     emitStreamEvent({ kind: "streamEnd", sessionId });
     onStreamEnd?.();
@@ -1673,6 +2278,7 @@ export async function attachThread(
 
     ws.onopen = () => {
       touchStreamActivity(sessionId);
+      startSocketPing(live);
       try {
         ws.send(JSON.stringify({ type: "subscribe", thread_id: threadId }));
       } catch {
@@ -1709,22 +2315,16 @@ export async function attachThread(
             ) {
               emitStreamEvent({ kind: "streamResume", sessionId });
             }
-          } else {
-            // Idle on server — clear any sticky local streaming from a race,
-            // then drop the probe socket so scroll/history UX is unaffected.
-            live.intentionalClose = true;
-            controller.signal.removeEventListener("abort", onAbort);
-            try {
-              ws.close();
-            } catch {
-              // ignore
-            }
-            clearLiveSocket(sessionId, ws);
-            if (state.isStreaming) {
+          } else if (state.isStreaming) {
+            // Host thread went idle — seal the host turn, but keep this
+            // socket so late team / inbox replies still land in the room.
+            finalizeHostTurn(state, sessionId);
+            notify(state);
+            if (!hasStreamingMessages(state)) {
               finish();
-            } else if (state.abortController === controller) {
-              state.abortController = previousController;
             }
+          } else if (state.abortController === controller) {
+            state.abortController = previousController;
           }
           return;
         }
@@ -1732,20 +2332,14 @@ export async function attachThread(
         if (data.type === "pong") return;
 
         handleHarnessChunk(state, data as unknown as HarnessChunk, sessionId);
-        if (
-          data.type === "done" ||
-          data.type === "error" ||
-          data.type === "hitl_required"
-        ) {
-          live.intentionalClose = true;
-          controller.signal.removeEventListener("abort", onAbort);
-          try {
-            ws.close();
-          } catch {
-            // ignore
+        if (isHostTurnTerminal(data, sessionHostAgentId(state, sessionId))) {
+          if (state.isTeamRoom) {
+            live.listenOnly = true;
+            finish("host");
+          } else {
+            finish("all");
+            closeLiveSocket(sessionId, { intentional: true });
           }
-          clearLiveSocket(sessionId, ws);
-          finish();
         }
       } catch {
         // ignore malformed frames
@@ -1842,7 +2436,7 @@ async function sendTurnWebSocket(
   text: string,
   messageContent: string | Array<Record<string, unknown>>,
   controller: AbortController,
-  finish: () => void,
+  finish: (mode?: "all" | "host") => void,
   modelRef?: string | null,
   threadId?: string | null,
   mcpServers?: string[] | null,
@@ -1851,6 +2445,8 @@ async function sendTurnWebSocket(
   onStreamEnd?: () => void,
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
+  conversationMode?: "ask" | "plan" | "craft" | null,
+  hitlPolicy?: { mode: string; tools?: string[] } | null,
 ): Promise<boolean> {
   const state = getOrCreate(sessionId);
   const resolvedThreadId = (threadId || sessionId).trim();
@@ -1873,6 +2469,7 @@ async function sendTurnWebSocket(
       threadId: resolvedThreadId,
       intentionalClose: false,
       userCancelled: false,
+      listenOnly: false,
     };
     liveSockets.set(sessionId, live);
 
@@ -1900,6 +2497,7 @@ async function sendTurnWebSocket(
 
     ws.onopen = () => {
       openedForTurn = true;
+      startSocketPing(live);
       const payload: Record<string, unknown> = {
         type: "user_turn",
         text: typeof messageContent === "string" ? messageContent : text,
@@ -1928,6 +2526,8 @@ async function sendTurnWebSocket(
       }
       if (reasoningMode) payload.reasoning_mode = reasoningMode;
       if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
+      if (conversationMode) payload.conversation_mode = conversationMode;
+      if (hitlPolicy) payload.hitl_policy = hitlPolicy;
       ws.send(JSON.stringify(payload));
     };
 
@@ -1938,20 +2538,15 @@ async function sendTurnWebSocket(
         if (!frameBelongsToThread(data, live.threadId)) return;
         if ((data as { type?: string }).type === "turn_status") return;
         handleHarnessChunk(state, data, sessionId);
-        if (
-          data.type === "done" ||
-          data.type === "error" ||
-          data.type === "hitl_required"
-        ) {
-          live.intentionalClose = true;
+        if (isHostTurnTerminal(data, sessionHostAgentId(state, sessionId))) {
           controller.signal.removeEventListener("abort", onAbort);
-          try {
-            ws.close();
-          } catch {
-            // ignore
+          if (state.isTeamRoom) {
+            live.listenOnly = true;
+            finish("host");
+          } else {
+            finish("all");
+            closeLiveSocket(sessionId, { intentional: true });
           }
-          clearLiveSocket(sessionId, ws);
-          finish();
           settle(true);
         }
       } catch {
@@ -2034,6 +2629,19 @@ async function sendTurnWebSocket(
         finish();
         settle(true);
       }
+
+      // Host turn socket dropped after settle — re-subscribe so team members
+      // can still stream into this room. 1:1 chats close after the host done.
+      if (
+        settled &&
+        !userCancelled &&
+        state.isTeamRoom &&
+        resolvedThreadId &&
+        resolvedThreadId !== "__empty__" &&
+        !isLiveSocketOpen(sessionId)
+      ) {
+        void attachThread(sessionId, agentId, resolvedThreadId, onStreamEnd);
+      }
     };
   });
 }
@@ -2052,8 +2660,11 @@ export async function sendTurn(
   targetAgentIds?: string[] | null,
   reasoningMode?: "auto" | "enabled" | "disabled",
   reasoningEffort?: string | null,
+  conversationMode?: "ask" | "plan" | "craft" | null,
+  hitlPolicy?: { mode: string; tools?: string[] } | null,
 ): Promise<void> {
   const state = getOrCreate(sessionId);
+  rememberRoomAgent(state, agentId);
 
   if (sessionId === "__pending__" || threadId === "__pending__") {
     appendErrorBubble(
@@ -2075,8 +2686,15 @@ export async function sendTurn(
     return;
   }
 
-  // Abort any prior stream for this session.
-  state.abortController?.abort();
+  // Replacing a listen-only (or already-finished) socket must not cancel
+  // the host thread — a new user message should start a turn, not kill it.
+  const priorLive = liveSockets.get(sessionId);
+  if (priorLive?.listenOnly || !state.isStreaming) {
+    closeLiveSocket(sessionId, { intentional: true });
+    state.abortController = null;
+  } else {
+    state.abortController?.abort();
+  }
   state.toolCallIdIndex = {};
   state.streamMsg = "";
   state.streamId = "";
@@ -2093,7 +2711,10 @@ export async function sendTurn(
 
   const messageContent = buildUserMessageContent(text, attachments);
 
-  const finish = () => {
+  let finished = false;
+  const finish = (mode: "all" | "host" = "all") => {
+    if (finished) return;
+    finished = true;
     clearStreamingFlags(state);
     clearStreamActivity(sessionId);
     pendingResumeBySession.delete(sessionId);
@@ -2101,7 +2722,11 @@ export async function sendTurn(
     state.streamMsg = "";
     state.streamId = "";
     state.streamBlockType = "";
-    sealInFlightAssistantMessages(state);
+    if (mode === "host") {
+      finalizeHostTurn(state, sessionId);
+    } else {
+      sealInFlightAssistantMessages(state);
+    }
     notify(state);
     emitStreamEvent({ kind: "streamEnd", sessionId });
     onStreamEnd?.();
@@ -2123,6 +2748,8 @@ export async function sendTurn(
     onStreamEnd,
     reasoningMode,
     reasoningEffort,
+    conversationMode,
+    hitlPolicy,
   );
   if (!wsOk) {
     state.messages = [
@@ -2191,6 +2818,7 @@ export async function resumeHitl(
   decisions: Array<{ type: string; message?: string }>,
   onStreamEnd?: () => void,
   dismissed = false,
+  hitlPolicy?: { mode: string; tools?: string[] },
 ): Promise<void> {
   const state = getOrCreate(sessionId);
   state.abortController?.abort();
@@ -2198,7 +2826,7 @@ export async function resumeHitl(
     dismissed || decisions.some((d) => d.type === "reject")
       ? "rejected"
       : "approved";
-  resolveHitlPending(state, hitlStatus);
+  resolveHitlPending(state, hitlStatus, hitlPolicy);
   beginStream(state, sessionId);
   notify(state);
   emitStreamEvent({ kind: "streamStart", sessionId });
@@ -2236,7 +2864,11 @@ export async function resumeHitl(
     const res = await fetch(getApiUrl(`/agents/${agentId}/chat/hitl/resume`), {
       method: "POST",
       headers,
-      body: JSON.stringify({ thread_id: threadId, decisions }),
+      body: JSON.stringify({
+        thread_id: threadId,
+        decisions,
+        ...(hitlPolicy ? { hitl_policy: hitlPolicy } : {}),
+      }),
       signal: controller.signal,
     });
     if (!res.ok) {

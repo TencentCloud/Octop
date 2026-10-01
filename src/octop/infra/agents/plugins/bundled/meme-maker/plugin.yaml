@@ -1,0 +1,13 @@
+id: meme-maker
+version: 0.1.0
+name: 表情包
+description: 用 memegen.link 生成梗图
+icon: icon.svg
+group: fun
+kind: tool
+entry: main.py
+requires:
+  - httpx>=0.27
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

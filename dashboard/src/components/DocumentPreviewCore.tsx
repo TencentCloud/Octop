@@ -510,6 +510,13 @@ export default function DocumentPreviewCore({
         if (!cancelled) setLoading(false);
       } catch (err) {
         if (cancelled || isAbortError(err)) return;
+        // Surface the real cause (chunk load / ZIP parse / library error) —
+        // the UI only shows a generic "无法加载预览".
+        console.error(
+          "[DocumentPreviewCore] preview failed",
+          { kind, filename },
+          err,
+        );
         setError(isNotFoundApiError(err) ? "missing" : "error");
         setLoading(false);
       }

@@ -1,12 +1,11 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Empty } from "antd";
+import { Alert, Empty } from "antd";
 import {
   Bot,
   Brain,
   Notebook,
   Puzzle,
-  Share2,
   Sparkles,
   Waypoints,
   Wrench,
@@ -16,10 +15,9 @@ import { useAgent } from "../../../context/AgentContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { usePathTabs } from "../../../hooks/usePathTabs";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
-import { canAccessKeys, userCan } from "../../../utils/permissions";
+import { userCan } from "../../../utils/permissions";
 import SkillsTabs from "../Skills/components/SkillsTabs";
-import ToolsPanel from "../Tools/ToolsPanel";
-import ACPPanel from "../ACP";
+import ToolsTabs from "../Tools/ToolsTabs";
 import SubagentManager from "../../Experts/components/SubagentManager";
 import MBTISelector from "./components/MBTISelector";
 import AgentPluginsPanel from "./components/AgentPluginsPanel";
@@ -31,7 +29,6 @@ export type PersonalizationTab =
   | "skills"
   | "subagents"
   | "tools"
-  | "acp"
   | "plugins"
   | "mbti"
   | "memory"
@@ -41,7 +38,6 @@ const PERSONALIZATION_TABS = [
   "skills",
   "subagents",
   "tools",
-  "acp",
   "plugins",
   "mbti",
   "memory",
@@ -52,7 +48,6 @@ const TAB_ICONS = {
   skills: Sparkles,
   subagents: Bot,
   tools: Wrench,
-  acp: Share2,
   plugins: Puzzle,
   mbti: Brain,
   memory: Notebook,
@@ -68,7 +63,6 @@ export default function PersonalizationPage() {
   const isAllowed = useCallback(
     (tab: PersonalizationTab) => {
       if (tab === "channels") return userCan(user, "channels");
-      if (tab === "acp") return canAccessKeys(user, "admin");
       return true;
     },
     [user],
@@ -112,6 +106,25 @@ export default function PersonalizationPage() {
       fill={!isMobile}
       pathTabs={pathTabs}
     >
+      {activeAgent?.bridge ? (
+        <Alert
+          type="info"
+          showIcon
+          message={t("chat.remoteExpert.editBanner")}
+          description={
+            activeTab === "skills"
+              ? t("chat.remoteExpert.editSkillPackages")
+              : activeTab === "tools"
+              ? t("chat.remoteExpert.editTools")
+              : activeTab === "plugins"
+              ? t("chat.remoteExpert.editPlugins")
+              : activeTab === "channels"
+              ? t("chat.remoteExpert.editChannels")
+              : undefined
+          }
+          style={{ marginBottom: 12 }}
+        />
+      ) : null}
       <div className={styles.panels}>
         {isMounted("skills") && (
           <div
@@ -132,18 +145,8 @@ export default function PersonalizationPage() {
             aria-hidden={activeTab !== "tools"}
           >
             <div className={pageShellStyles.fillChild}>
-              <ToolsPanel agentId={activeAgentId} />
+              <ToolsTabs agentId={activeAgentId} />
             </div>
-          </div>
-        )}
-
-        {isMounted("acp") && (
-          <div
-            className={styles.panel}
-            style={{ display: activeTab === "acp" ? "flex" : "none" }}
-            aria-hidden={activeTab !== "acp"}
-          >
-            <ACPPanel />
           </div>
         )}
 

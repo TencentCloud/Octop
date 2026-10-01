@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
-from octop.infra.agents.workspace_dir import (
+from octop.infra.agents.workspace.dir import (
     agent_facing_workspace_root,
     join_agent_facing,
 )
@@ -18,7 +18,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.constants import INBOUND_DIR
 
 if TYPE_CHECKING:
-    from harness_agent.backends.workspace import BackendWorkspace
+    from octop_harness.backends.workspace import BackendWorkspace
 
 MAX_INBOUND_BYTES = upload_mb_to_bytes(DEFAULT_MAX_UPLOAD_MB)
 

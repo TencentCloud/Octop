@@ -16,18 +16,21 @@ RECURSION_LIMIT = f"{_PREFIX}stream_errors.recursion_limit"
 TIMEOUT_NETWORK = f"{_PREFIX}stream_errors.timeout_network"
 PROVIDER_UNAVAILABLE = f"{_PREFIX}stream_errors.provider_unavailable"
 MODEL_CALL_FAILED = f"{_PREFIX}stream_errors.model_call_failed"
+PATH_OUTSIDE_ROOT = f"{_PREFIX}stream_errors.path_outside_root"
 
 __all__ = [
     "AUTH",
     "CONTEXT_LENGTH",
     "INSUFFICIENT_BALANCE",
     "MODEL_CALL_FAILED",
+    "PATH_OUTSIDE_ROOT",
     "PROVIDER_UNAVAILABLE",
     "RATE_LIMIT",
     "RECURSION_LIMIT",
     "STREAM_STALL",
     "TIMEOUT_NETWORK",
     "classify_stream_error_message",
+    "exception_display_message",
     "format_stream_error",
     "stream_error_message",
 ]
@@ -49,6 +52,11 @@ def _normalize_message(message: str) -> str:
     return msg
 
 
+def _looks_like_send_file_tool_error(message: str) -> bool:
+    """True for ``send_file_to_user`` path failures that should not look like a model outage."""
+    return "send_file_to_user:" in _normalize_message(message).lower()
+
+
 def classify_stream_error_message(message: str) -> str | None:
     """Return a stable ``octop:stream_errors.*`` key for known model failures."""
     msg = _normalize_message(message)
@@ -56,6 +64,10 @@ def classify_stream_error_message(message: str) -> str | None:
         return None
     lower = msg.lower()
     compact = lower.replace("_", "").replace(" ", "")
+
+    # Tool / backend path jail — must not look like a model-provider outage.
+    if "outside root directory" in lower or "path traversal not allowed" in lower:
+        return PATH_OUTSIDE_ROOT
 
     if (
         "streamchunktimeouterror" in compact
@@ -146,6 +158,27 @@ def classify_stream_error_message(message: str) -> str | None:
     return None
 
 
+def exception_display_message(exc: BaseException | str) -> str:
+    """Return ``str(exc)``, or the exception type name when the message is empty.
+
+    Bare constructors like ``TimeoutError()`` / ``ConnectionError()`` yield
+    ``str(exc) == ""``, which previously made probe logs and UI show nothing.
+    Walk ``__cause__`` so wrapped empty wrappers still surface a root type.
+    """
+    if not isinstance(exc, BaseException):
+        raw = str(exc).strip()
+        return raw or "unknown error"
+    raw = str(exc).strip()
+    if raw:
+        return raw
+    cause: BaseException = exc
+    while cause.__cause__ is not None:
+        cause = cause.__cause__
+    if cause is exc:
+        return type(exc).__name__
+    return f"{type(exc).__name__} <- {type(cause).__name__}"
+
+
 def stream_error_message(error: str | None, locale: str | Locale = "en") -> str:
     """Localized stream / model error for user-facing chat and IM output."""
     if not error:
@@ -161,9 +194,15 @@ def stream_error_message(error: str | None, locale: str | Locale = "en") -> str:
 
 
 def format_stream_error(exc: BaseException | str, locale: str | Locale = "en") -> str:
-    """Classify an exception or raw message; fall back to a generic localized message."""
-    message = str(exc) if isinstance(exc, BaseException) else exc
+    """Classify an exception or raw message; fall back to a generic localized message.
+
+    Tool / path failures (e.g. ``send_file_to_user`` missing file) pass through so
+    the UI does not mislabel them as a model-call outage.
+    """
+    message = exception_display_message(exc)
     classified = classify_stream_error_message(message)
     if classified is not None:
         return tr(classified.removeprefix(_PREFIX), locale)
+    if _looks_like_send_file_tool_error(message):
+        return message
     return tr(MODEL_CALL_FAILED.removeprefix(_PREFIX), locale)

@@ -1,0 +1,11 @@
+id: slack-calendar
+version: 0.1.0
+name: 摸鱼日历
+description: 距周末与节假日倒计时，附今日摸鱼宜忌卡片
+icon: icon.svg
+group: fun
+kind: tool
+entry: main.py
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

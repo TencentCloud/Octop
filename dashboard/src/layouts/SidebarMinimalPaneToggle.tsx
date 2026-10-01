@@ -5,10 +5,13 @@ import type { MinimalNavPane } from "./layoutModeStorage";
 import styles from "./Sidebar.module.less";
 
 export default function SidebarMinimalPaneToggle({
+  settingsLabel,
   minimalPane,
   collapsed,
   onSelect,
 }: {
+  /** Name of the first navigation group. */
+  settingsLabel: string;
   minimalPane: MinimalNavPane;
   /** Icon-only control when the rail is collapsed (desktop). */
   collapsed: boolean;
@@ -18,7 +21,7 @@ export default function SidebarMinimalPaneToggle({
   const nextPane: MinimalNavPane =
     minimalPane === "records" ? "settings" : "records";
   const nextLabel =
-    nextPane === "settings" ? t("nav.paneSettings") : t("nav.paneRecords");
+    nextPane === "settings" ? settingsLabel : t("nav.paneRecords");
 
   if (collapsed) {
     return (
@@ -40,9 +43,7 @@ export default function SidebarMinimalPaneToggle({
   return (
     <div className={styles.minimalPaneHeader}>
       <span className={styles.navGroupLabel}>
-        {minimalPane === "records"
-          ? t("nav.paneRecords")
-          : t("nav.paneSettings")}
+        {minimalPane === "records" ? t("nav.paneRecords") : settingsLabel}
       </span>
       <Tooltip title={nextLabel} placement="top">
         <button

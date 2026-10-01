@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import pytest
-from harness_agent.backends.utils import BackendOperationNotSupportedError
+from octop_harness.backends.utils import BackendOperationNotSupportedError
 
-from octop.infra.agents.avatar import (
+from octop.infra.agents.experts.avatar import (
     MAX_AVATAR_BYTES,
     agent_avatar_api_path,
     delete_workspace_avatar,
     display_agent_icon_url,
     display_published_expert_icon_url,
+    materialize_remote_icon_url,
     read_snapshot_avatar,
     read_workspace_avatar,
     sniff_avatar_media_type,
@@ -105,6 +106,22 @@ def test_read_snapshot_avatar_and_display_url(tmp_path) -> None:
         )
         is None
     )
+    assert (
+        display_published_expert_icon_url(
+            expert_id="pexp1",
+            snapshot_dir=tmp_path,
+            fallback_icon_url="/experts/avatars/scene-healthcare.svg",
+        )
+        == "/experts/avatars/scene-healthcare.svg"
+    )
+    assert (
+        display_published_expert_icon_url(
+            expert_id="pexp1",
+            snapshot_dir=tmp_path,
+            fallback_icon_url="/api/agents/agt1/avatar?v=1",
+        )
+        is None
+    )
 
     avatar = tmp_path / ".octop" / "avatar.png"
     avatar.parent.mkdir(parents=True)
@@ -118,6 +135,56 @@ def test_read_snapshot_avatar_and_display_url(tmp_path) -> None:
             expert_id="pexp1",
             snapshot_dir=tmp_path,
             updated_at="2026-01-01T00:00:00Z",
+            fallback_icon_url="/experts/avatars/scene-healthcare.svg",
         )
         == "/api/experts/published/pexp1/avatar?v=2026-01-01T00:00:00Z"
+    )
+
+
+@pytest.mark.asyncio
+async def test_materialize_remote_icon_url_writes_workspace_avatar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, _n: int) -> bytes:
+            return PNG
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *args, **kwargs: _Resp(),
+    )
+
+    class _Registry:
+        def __init__(self) -> None:
+            self.icon_url: str | None = None
+
+        def set_icon_url(self, agent_id: str, icon_url: str | None) -> None:
+            self.icon_url = icon_url
+
+    workspace = _MemoryWorkspace()
+    registry = _Registry()
+    ok = await materialize_remote_icon_url(
+        registry,
+        "agt1",
+        workspace,
+        "https://cdn.example.com/a.png",
+    )
+    assert ok is True
+    assert workspace.files[".octop/avatar.png"] == PNG
+    assert registry.icon_url == "/api/agents/agt1/avatar"
+
+    assert (
+        await materialize_remote_icon_url(
+            registry,
+            "agt1",
+            workspace,
+            "/experts/avatars/scene-healthcare.svg",
+        )
+        is False
     )

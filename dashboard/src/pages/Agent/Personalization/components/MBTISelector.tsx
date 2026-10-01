@@ -379,7 +379,8 @@ export default function MBTISelector({
     ? `${currentType.code} ${
         lang === "zh" ? currentType.name_zh : currentType.name_en
       }`
-    : "";
+    : // Fall back to the bare code so a selection never renders as empty quotes (#973).
+      currentCode;
 
   return (
     <div className={styles.mbtiSelector}>
@@ -405,11 +406,17 @@ export default function MBTISelector({
 
       <div className={styles.listToolbar}>
         <span className={styles.listToolbarMeta}>
-          {t("personalization.mbti.listSummary", {
-            total: types.length,
-            selected: currentLabel,
-            defaultValue: "当前有（{{total}}）个人格，已选中「{{selected}}」",
-          })}
+          {currentCode
+            ? t("personalization.mbti.listSummary", {
+                total: types.length,
+                selected: currentLabel,
+                defaultValue:
+                  "当前有（{{total}}）个人格，已选中「{{selected}}」",
+              })
+            : t("personalization.mbti.listSummaryUnset", {
+                total: types.length,
+                defaultValue: "当前有（{{total}}）个人格，尚未选择人格",
+              })}
         </span>
         {!showHeader && showTestAction && (
           <button

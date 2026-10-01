@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="scene-mysticism">
+  <defs>
+    <linearGradient id="bg-scene-mysticism" x1="20" y1="8" x2="110" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EDE9FE"/>
+      <stop offset="1" stop-color="#DDD6FE"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="url(#bg-scene-mysticism)"/>
+  <path d="M26 118 Q28 94 48 88 Q64 84 80 88 Q100 94 102 118 Z" fill="#7C3AED"/>
+  <path d="M48 88 Q64 96 80 88 L78 118 H50 Z" fill="#6D28D9" opacity="0.28"/>
+  <ellipse cx="64" cy="42" rx="36" ry="28" fill="#5B21B6"/><path d="M28 48 Q22 112 38 120 L42 70 Q64 80 86 70 L90 120 Q106 112 100 48 Z" fill="#5B21B6"/>
+  <rect x="56" y="86" width="16" height="14" rx="6" fill="#E8C4A0"/>
+  <ellipse cx="64" cy="64" rx="28" ry="30" fill="#E8C4A0"/>
+  <ellipse cx="36" cy="66" rx="5" ry="7" fill="#E8C4A0"/>
+  <ellipse cx="92" cy="66" rx="5" ry="7" fill="#E8C4A0"/>
+  <path d="M38 50 Q64 60 90 50 Q84 44 64 42 Q44 44 38 50Z" fill="#5B21B6"/>
+  <ellipse cx="52" cy="62" rx="3.2" ry="3.8" fill="#4C1D95"/>
+  <ellipse cx="76" cy="62" rx="3.2" ry="3.8" fill="#4C1D95"/>
+  <circle cx="53.2" cy="60.8" r="1.1" fill="#fff" opacity="0.95"/>
+  <circle cx="77.2" cy="60.8" r="1.1" fill="#fff" opacity="0.95"/>
+  <path d="M46 54 Q52 51 58 54" fill="none" stroke="#4C1D95" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M70 54 Q76 51 82 54" fill="none" stroke="#4C1D95" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M64 64 Q66 70 62 72" fill="none" stroke="#C08457" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M52 74 Q64 82 76 74" fill="none" stroke="#B45309" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="44" cy="72" r="4" fill="#F9A8D4" opacity="0.32"/>
+  <circle cx="84" cy="72" r="4" fill="#F9A8D4" opacity="0.32"/>
+  <g transform="translate(94,88)" fill="#F59E0B"><path d="M8 0 L10 6 L16 8 L10 10 L8 16 L6 10 L0 8 L6 6 Z"/></g>
+</svg>

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Image, Button } from "antd";
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { builtinToolIcon } from "../../../utils/builtinToolIcons";
 import {
   collectToolMediaFromToolData,
   parseStructuredToolOutput,
@@ -48,6 +49,7 @@ export function DefaultToolRenderer({
   displayName: displayNameProp,
   args,
   output,
+  status,
   isStreaming,
   hideMediaPreview = false,
   onAcpPermissionSelect,
@@ -110,7 +112,12 @@ export function DefaultToolRenderer({
   const hasMediaPreview =
     structuredOutput.images.length > 0 || structuredOutput.videos.length > 0;
   const hasResult = toolData.output !== undefined;
-  const completed = hasResult || (!isStreaming && hasMediaPreview);
+  const completed =
+    status === "done" ||
+    status === "error" ||
+    hasResult ||
+    (!isStreaming && hasMediaPreview);
+  const running = !completed && (status === "running" || isStreaming);
   const mediaOnly =
     completed &&
     hasMediaPreview &&
@@ -125,25 +132,41 @@ export function DefaultToolRenderer({
   );
   const statusLabel = completed
     ? t("common.done", "Done")
-    : isStreaming
+    : running
     ? t("common.running", "Running")
     : t("common.pending", "Pending");
+  const ToolIcon = builtinToolIcon(toolName);
 
   return (
     <div className={styles.inlineToolBlock}>
       <button
         type="button"
-        className={styles.inlineToolSummary}
+        className={`${styles.inlineToolSummary}${
+          running ? ` ${styles.inlineToolSummaryRunning}` : ""
+        }`}
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
+        aria-busy={running || undefined}
       >
-        <span className={styles.inlineToolLabel}>
-          {t("chatUsage.tool", "Tool")}
+        <span
+          className={styles.inlineToolIcon}
+          aria-label={t("chatUsage.tool", "Tool")}
+        >
+          <ToolIcon size={14} strokeWidth={2.2} aria-hidden />
         </span>
         <code className={styles.inlineToolName}>
           {resolveToolLabel(toolName, displayNameProp, displayName)}
         </code>
-        <span className={styles.inlineToolStatus}>{statusLabel}</span>
+        {running ? (
+          <span className={styles.inlineToolStatusLive} aria-live="polite">
+            <span className={styles.thinkingDot} />
+            <span className={styles.thinkingDot} />
+            <span className={styles.thinkingDot} />
+            <span>{statusLabel}</span>
+          </span>
+        ) : (
+          <span className={styles.inlineToolStatus}>{statusLabel}</span>
+        )}
         <ChevronRight
           size={14}
           className={`${styles.inlineToolChevron} ${

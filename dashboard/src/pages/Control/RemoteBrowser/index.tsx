@@ -1,5 +1,5 @@
 /**
- * Remote Browser page — harness-browser sessions (same backend as chat).
+ * Remote Browser page — octop-browser sessions (same backend as chat).
  *
  * UI matches the original Playwright page: install flow, address bar,
  * tab bar, canvas interaction, viewport / refresh controls.
@@ -43,6 +43,7 @@ import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdg
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import PageShell from "../../../layouts/PageShell";
+import PeerOnlyRemoteAlert from "../../../components/PeerOnlyRemoteAlert";
 import BrowserAiPanel from "../../../components/BrowserAiPanel";
 import SkillRecordGuideModal from "../../../components/SkillRecordGuideModal";
 import BrowserViewer, {
@@ -586,8 +587,14 @@ export default function RemoteBrowserPage({
   }, [t]);
 
   const handleCopyInstallLog = useCallback(async () => {
-    if (installLogs.length === 0) return;
-    const ok = await copyText(installLogs.join("\n"));
+    const title = t("remoteBrowser.installFailed", "安装失败");
+    const hint = t("remoteBrowser.installFailedHint", "自动安装失败，请重试。");
+    const logBody =
+      installLogs.length > 0
+        ? installLogs.join("\n")
+        : t("common.installLogEmpty");
+    const payload = `${title}\n${hint}\n\n${logBody}`;
+    const ok = await copyText(payload);
     if (ok) {
       antMessage.success(t("common.copied", "Copied to clipboard"));
     } else {
@@ -974,14 +981,20 @@ export default function RemoteBrowserPage({
   const envReady = Boolean(envStatus?.browsers_ok);
   const showEdgeControls = Boolean(session) && isStreaming && frameReady;
 
-  const renderInstallLog = (maxHeight?: number, extraClass?: string) => (
+  const renderInstallLog = (
+    maxHeight?: number,
+    extraClass?: string,
+    emptyLabel?: string,
+  ) => (
     <div
       ref={installLogRef}
       className={`${styles.installLog} ${extraClass ?? ""}`}
       style={maxHeight !== undefined ? { maxHeight } : undefined}
     >
       {installLogs.length === 0 ? (
-        <div>{t("remoteBrowser.installing", "正在启动安装...")}</div>
+        <div>
+          {emptyLabel ?? t("remoteBrowser.installing", "正在启动安装...")}
+        </div>
       ) : (
         installLogs.map((line, i) => <div key={i}>{line}</div>)
       )}
@@ -1069,45 +1082,41 @@ export default function RemoteBrowserPage({
             )}
             style={{ padding: "8px 0" }}
           />
-          {installLogs.length > 0 && (
-            <div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 6,
-                }}
+          <div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 6,
+              }}
+            >
+              <span style={{ fontSize: 12, color: "var(--fn-text-tertiary)" }}>
+                {t("remoteBrowser.installLog", "安装日志")}
+              </span>
+              <Button
+                size="small"
+                icon={<Copy size={14} />}
+                onClick={() => void handleCopyInstallLog()}
               >
-                <span
-                  style={{ fontSize: 12, color: "var(--fn-text-tertiary)" }}
-                >
-                  {t("remoteBrowser.installLog", "安装日志")}
-                </span>
-                <Button
-                  size="small"
-                  icon={<Copy size={14} />}
-                  onClick={() => void handleCopyInstallLog()}
-                >
-                  {t("common.copy", "Copy")}
-                </Button>
-              </div>
-              {renderInstallLog(180)}
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 12,
-                  lineHeight: 1.6,
-                  color: "var(--fn-text-secondary)",
-                }}
-              >
-                {t(
-                  "common.askOctopHint",
-                  "If the install keeps failing, copy the log and ask Octop to help you troubleshoot.",
-                )}
-              </div>
+                {t("common.copyErrorForOctop", "复制错误信息")}
+              </Button>
             </div>
-          )}
+            {renderInstallLog(180, undefined, t("common.installLogEmpty"))}
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 12,
+                lineHeight: 1.6,
+                color: "var(--fn-text-secondary)",
+              }}
+            >
+              {t(
+                "common.askOctopHint",
+                "若安装失败，可复制下方错误信息发给 Octop 排查。",
+              )}
+            </div>
+          </div>
         </div>
       );
     }
@@ -1129,7 +1138,7 @@ export default function RemoteBrowserPage({
     }
 
     if (!envStatus?.playwright) {
-      // harness-browser works without Playwright, so this is informational
+      // octop-browser works without Playwright, so this is informational
       // rather than a blocking error
       if (envStatus?.harness_browser) {
         return (
@@ -1142,7 +1151,7 @@ export default function RemoteBrowserPage({
             )}
             description={t(
               "remoteBrowser.playwrightOptionalDesc",
-              "harness-browser (CDP) 已就绪，浏览器功能可用。如需 Playwright 备用模式，可安装 octop[browser] extras。",
+              "octop-browser (CDP) 已就绪，浏览器功能可用。如需 Playwright 备用模式，可安装 octop[browser] extras。",
             )}
           />
         );
@@ -1358,6 +1367,12 @@ export default function RemoteBrowserPage({
       </Drawer>
 
       <div className={styles.pageBody}>
+        {!embedded ? (
+          <PeerOnlyRemoteAlert
+            hintKey="peerOnlyBrowser"
+            style={{ marginBottom: 0 }}
+          />
+        ) : null}
         <div
           className={`${styles.mainRow} ${
             isMobile ? styles.mainRowMobile : ""
@@ -1466,12 +1481,8 @@ export default function RemoteBrowserPage({
                   renderViewportUninstallProgress()
                 ) : (
                   <StreamSetupGuide
-                    icon={
-                      <OctopEmptyMascot
-                        size={120}
-                        className={styles.setupMascot}
-                      />
-                    }
+                    plain
+                    icon={<OctopEmptyMascot />}
                     title={
                       envReady
                         ? t("remoteBrowser.startBrowserTitle", "启动远程浏览器")

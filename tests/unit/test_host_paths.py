@@ -17,6 +17,7 @@ from octop.infra.gateway.media.backend_files import (
     ("path", "blocked"),
     [
         ("/Users/me/.harness-browser/screenshots/x.png", True),
+        ("/Users/me/.octop-browser/screenshots/x.png", True),
         ("/tmp/secret.png", True),
         ("/home/user/x.png", True),
         (r"C:\Users\me\screenshot.png", True),

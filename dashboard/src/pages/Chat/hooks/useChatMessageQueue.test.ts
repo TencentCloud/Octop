@@ -323,4 +323,41 @@ describe("useChatMessageQueue", () => {
     expect(result.current.items).toHaveLength(1);
     expect(result.current.items[0]?.text).toBe("keep");
   });
+
+  it("defers flush while shouldDeferFlush is true, then flushes later", () => {
+    const onFlush = vi.fn();
+    let defer = true;
+    const { result, rerender } = renderHook(
+      ({ isStreaming }: { isStreaming: boolean }) =>
+        useChatMessageQueue({
+          agentId: "agent-1",
+          threadId: "thread-1",
+          isStreaming,
+          onFlush,
+          shouldDeferFlush: () => defer,
+          subscribeStreamEnd: () => () => undefined,
+          isThreadStreaming: idleStreaming,
+        }),
+      { initialProps: { isStreaming: true } },
+    );
+
+    act(() => {
+      result.current.enqueue({ text: "after-ask" });
+    });
+    rerender({ isStreaming: false });
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(onFlush).not.toHaveBeenCalled();
+    expect(result.current.items).toHaveLength(1);
+
+    defer = false;
+    rerender({ isStreaming: true });
+    rerender({ isStreaming: false });
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(onFlush).toHaveBeenCalledTimes(1);
+    expect(onFlush.mock.calls[0]?.[0]?.text).toBe("after-ask");
+  });
 });

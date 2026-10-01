@@ -21,9 +21,10 @@ const LEGACY_BROWSER_SIZE_KEY = "octop:browser-panel:size";
 
 export type DockTab =
   | { id: "files"; kind: "files" }
+  | { id: "workspace"; kind: "workspace" }
   | { id: "browser"; kind: "browser" }
   | { id: "terminal"; kind: "terminal" }
-  | { id: string; kind: "file"; path: string }
+  | { id: string; kind: "file"; path: string; agentId?: string }
   | {
       id: string;
       kind: "knowledge";
@@ -161,32 +162,50 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
   }, [openDock]);
 
   const openFileAt = useCallback(
-    (path?: string | null) => {
+    (path?: string | null, fileAgentId?: string | null) => {
       if (!path?.trim()) {
         openFileList();
         return;
       }
+      const ownerId = (fileAgentId || agentId || "").trim() || null;
       const hostAbs = normalizeDockFilePath(path);
       // Keep host-absolute tool paths. Collapsing ``~/.octop/agents/<id>/…`` to a
       // relative key breaks virtual ``root_dir`` nests (bytes live under
       // ``{root}/Users/…/.octop/agents/<id>/…``, not the real agent home).
       const tabPath = isHostAbsolutePath(hostAbs)
         ? hostAbs
-        : canonicalizeDockFilePath(path, agentId);
+        : canonicalizeDockFilePath(path, ownerId);
       if (!tabPath) {
         openFileList();
         return;
       }
-      const id = dockFileTabId(tabPath, agentId);
+      const id = dockFileTabId(tabPath, ownerId);
       setOpenTabs((prev) => {
         if (prev.some((t) => t.id === id)) return prev;
-        return [...prev, { id, kind: "file", path: tabPath }];
+        return [
+          ...prev,
+          {
+            id,
+            kind: "file" as const,
+            path: tabPath,
+            ...(ownerId ? { agentId: ownerId } : {}),
+          },
+        ];
       });
       setActiveTabId(id);
       openDock();
     },
     [agentId, openDock, openFileList],
   );
+
+  const openWorkspaceTab = useCallback(() => {
+    setOpenTabs((prev) => {
+      if (prev.some((t) => t.id === "workspace")) return prev;
+      return [...prev, { id: "workspace", kind: "workspace" }];
+    });
+    setActiveTabId("workspace");
+    openDock();
+  }, [openDock]);
 
   const openBrowserTab = useCallback(() => {
     setOpenTabs((prev) => {
@@ -259,9 +278,9 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     [openDock],
   );
 
-  /** Toggle dock open/closed around a dedicated tab (browser / terminal). */
+  /** Toggle dock open/closed around a dedicated tab. */
   const toggleDockTab = useCallback(
-    (tab: Extract<DockTab, { kind: "browser" | "terminal" }>) => {
+    (tab: Extract<DockTab, { kind: "browser" | "terminal" | "workspace" }>) => {
       setDockOpen((prevOpen) => {
         if (prevOpen && activeTabId === tab.id) {
           return false;
@@ -279,6 +298,10 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     },
     [activeTabId, isMobile],
   );
+
+  const toggleWorkspacePanel = useCallback(() => {
+    toggleDockTab({ id: "workspace", kind: "workspace" });
+  }, [toggleDockTab]);
 
   const toggleBrowserPanel = useCallback(() => {
     toggleDockTab({ id: "browser", kind: "browser" });
@@ -345,6 +368,8 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     openFileAt,
     openFileList,
     openKnowledgeCitation,
+    openWorkspaceTab,
+    toggleWorkspacePanel,
     openBrowserTab,
     toggleBrowserPanel,
     openTerminalTab,

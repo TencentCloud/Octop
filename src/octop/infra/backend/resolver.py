@@ -20,7 +20,7 @@ def default_agent_backend_spec(workspace_dir: Path) -> dict[str, Any]:
     the process current-drive root, which often differs from the drive hosting
     ``workspace_dir`` — scope the default to the agent workspace instead.
     """
-    from harness_agent.backends import DEFAULT_BACKEND_SPEC  # noqa: PLC0415
+    from octop_harness.backends import DEFAULT_BACKEND_SPEC  # noqa: PLC0415
 
     if os.name == "nt":
         return {
@@ -145,6 +145,41 @@ def collect_named_storage_backend_refs(spec: Any) -> set[str]:
                 out |= collect_named_storage_backend_refs(sub)
         return out
     return set()
+
+
+def rewrite_named_storage_backend_refs(spec: Any, *, old: str, new: str) -> Any:
+    """Return a copy of *spec* with named storage refs rewritten from *old* → *new*."""
+    if old == new:
+        return spec
+    if spec is None:
+        return spec
+    if isinstance(spec, str):
+        if spec == f"named:{old}":
+            return f"named:{new}"
+        return spec
+    if not isinstance(spec, dict):
+        return spec
+    kind = spec.get("type")
+    if kind == "named":
+        if spec.get("name") == old:
+            return {**spec, "name": new}
+        return spec
+    if kind == "composite":
+        out = dict(spec)
+        if "default" in out:
+            out["default"] = rewrite_named_storage_backend_refs(
+                out.get("default"),
+                old=old,
+                new=new,
+            )
+        routes = out.get("routes")
+        if isinstance(routes, dict):
+            out["routes"] = {
+                key: rewrite_named_storage_backend_refs(value, old=old, new=new)
+                for key, value in routes.items()
+            }
+        return out
+    return spec
 
 
 def find_agents_using_storage_backend(

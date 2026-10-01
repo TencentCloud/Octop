@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 import zipfile
 from pathlib import Path
 from typing import Any
 
 import pytest
-from harness_agent.plugins import PluginRegistry
+from octop_harness.plugins import PluginRegistry
 
 from octop.infra.agents.plugins.manager import (
     PluginManager,
     normalize_plugin_download_url,
+    parse_plugin_group,
     parse_plugin_icon,
     parse_plugin_ui_meta,
 )
@@ -290,6 +292,47 @@ def test_parse_plugin_icon(tmp_path: Path) -> None:
     assert parse_plugin_icon(plugin_dir) == "🧩"
     assert parse_plugin_icon(tmp_path / "missing") is None
 
+    file_icon_dir = tmp_path / "file-icon"
+    file_icon_dir.mkdir()
+    (file_icon_dir / "icon.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"/>',
+        encoding="utf-8",
+    )
+    (file_icon_dir / "plugin.yaml").write_text(
+        "\n".join(
+            [
+                "id: file-icon",
+                "version: 0.1.0",
+                "name: File Icon",
+                "kind: tool",
+                "entry: main.py",
+                "icon: icon.svg",
+            ],
+        ),
+        encoding="utf-8",
+    )
+    assert parse_plugin_icon(file_icon_dir) == "/api/plugins/file-icon/ui/icon.svg"
+
+
+def test_parse_plugin_group(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "grouped"
+    plugin_dir.mkdir()
+    (plugin_dir / "plugin.yaml").write_text(
+        "\n".join(
+            [
+                "id: grouped",
+                "version: 0.1.0",
+                "name: Grouped",
+                "kind: tool",
+                "entry: main.py",
+                "group: games",
+            ],
+        ),
+        encoding="utf-8",
+    )
+    assert parse_plugin_group(plugin_dir) == "games"
+    assert parse_plugin_group(tmp_path / "missing") is None
+
 
 def test_set_enabled_refuses_corrupt_config_and_preserves_bytes(tmp_path: Path) -> None:
     """issue #730: the dashboard toggle must not wipe an unparseable config.json."""
@@ -304,6 +347,43 @@ def test_set_enabled_refuses_corrupt_config_and_preserves_bytes(tmp_path: Path) 
         mgr.set_enabled("echo-tool", False)
     assert excinfo.value.code is ErrorCode.CONFIG_FILE_CORRUPT
     assert config_path.read_text(encoding="utf-8") == corrupt
+
+
+def test_install_plugin_importing_legacy_harness_agent(tmp_path: Path) -> None:
+    """Plugins published before the octop_harness rename still import harness_agent."""
+    src = tmp_path / "legacy-plugin"
+    src.mkdir()
+    (src / "plugin.yaml").write_text(
+        "id: legacy-plugin\nversion: 0.1.0\nname: Legacy\nkind: tool\nentry: main.py\n",
+        encoding="utf-8",
+    )
+    (src / "main.py").write_text(
+        "from harness_agent.plugins import PluginContext\n"
+        "from harness_agent.plugins.context import PluginContext as Ctx\n"
+        "\n"
+        "def ping() -> str:\n"
+        "    return 'pong'\n"
+        "\n"
+        "def setup(ctx: PluginContext) -> None:\n"
+        "    if Ctx is not PluginContext:\n"
+        "        raise RuntimeError('legacy PluginContext is not the installed class')\n"
+        "    ctx.tool('ping', ping, description='ping')\n",
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+    loaded = mgr.install_path(src, force=True)
+    assert loaded.manifest.id == "legacy-plugin"
+    assert [tool.name for tool in loaded.tools] == ["ping"]
+
+    import octop_harness
+    from harness_agent.plugins import PluginContext
+    from octop_harness.plugins import PluginContext as RealContext
+
+    assert PluginContext is RealContext
+    assert octop_harness.__name__ == "octop_harness"
+    assert sys.modules["harness_agent"] is octop_harness
 
 
 def test_set_enabled_preserves_unrelated_keys(tmp_path: Path) -> None:

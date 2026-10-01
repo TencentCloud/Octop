@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from octop.infra.utils.env_file import (
     apply_env_file,
     apply_env_file_replace,
@@ -82,3 +84,47 @@ def test_overlay_stdio_mcp_configs_applies_to_stdio_only() -> None:
 def test_search_env_changed_detects_tavily() -> None:
     assert search_env_changed({}, {"TAVILY_API_KEY": "x"}) is True
     assert search_env_changed({"FOO": "1"}, {"FOO": "2"}) is False
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        r"C:\\Users\\me\\AppData",
+        'say "hi"',
+        r"a\\b\\\"c",
+        "ends\\\\",
+    ],
+)
+def test_backslash_and_quote_values_roundtrip(value: str) -> None:
+    """The escaping format_env_file writes is undone by parsing, so values with
+    backslashes (e.g. Windows paths) or embedded quotes survive a save/load."""
+    text = format_env_file({"KEY": value})
+    assert parse_env_text(text)["KEY"] == value
+
+
+def test_escape_roundtrip_is_stable_across_cycles() -> None:
+    """Previously every save/load cycle doubled the backslashes in a value."""
+    value = r"C:\\Users\\me\\AppData"
+    loaded = parse_env_text(format_env_file({"KEY": value}))
+    assert loaded["KEY"] == value
+    assert parse_env_text(format_env_file(loaded))["KEY"] == value
+
+
+def test_multiline_value_survives_roundtrip() -> None:
+    """format_env_file quotes values containing whitespace but leaves line breaks raw."""
+    values = {
+        "PEM_KEY": "-----BEGIN KEY-----\nMIIB\n-----END KEY-----",
+        "CRLF": "line1\r\nline2",
+    }
+
+    assert parse_env_text(format_env_file(values)) == {
+        "PEM_KEY": "-----BEGIN KEY-----\nMIIB\n-----END KEY-----",
+        "CRLF": "line1\nline2",
+    }
+
+
+def test_quoted_value_with_inner_quote_does_not_swallow_following_lines() -> None:
+    """Only an unterminated quote continues onto the next line."""
+    text = 'MALFORMED="abc"def\nNEXT=1\n'
+
+    assert parse_env_text(text) == {"MALFORMED": '"abc"def', "NEXT": "1"}

@@ -7,6 +7,7 @@ import json
 import re
 import urllib.error
 import zipfile
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -48,6 +49,40 @@ def test_skillhub_manifest_welcome_summarizes_capability() -> None:
     assert "…" not in manifest["welcome_message"]["zh"]
     assert manifest["welcome_message"]["en"] == ("Expand ideas into serialization-ready outlines")
     assert "Pick a card" not in manifest["welcome_message"]["en"]
+    assert manifest["icon_url"] == "/experts/avatars/scene-media.svg"
+
+
+def test_skillhub_portrait_prefers_upstream_icon_url() -> None:
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubSkillset,
+        _expert_manifest,
+        skillhub_portrait_url,
+    )
+
+    item = SkillHubSkillset(
+        slug="healthcare-nursing-plan",
+        display_name="护理计划",
+        display_name_en="Nursing Plan",
+        summary="制定护理计划",
+        summary_en="Draft nursing plans",
+        scene="healthcare",
+        icon_url="https://cdn.skillhub.cn/icons/nursing.png",
+    )
+    assert skillhub_portrait_url(item) == "https://cdn.skillhub.cn/icons/nursing.png"
+    assert _expert_manifest(item, ["nursing"])["icon_url"] == (
+        "https://cdn.skillhub.cn/icons/nursing.png"
+    )
+    assert item.api_dict()["icon_url"] == "https://cdn.skillhub.cn/icons/nursing.png"
+
+    no_icon = SkillHubSkillset(
+        slug="healthcare-nursing-plan",
+        display_name="护理计划",
+        display_name_en="Nursing Plan",
+        summary="制定护理计划",
+        summary_en="Draft nursing plans",
+        scene="healthcare",
+    )
+    assert skillhub_portrait_url(no_icon) == "/experts/avatars/scene-healthcare.svg"
 
 
 def test_skillhub_manifest_welcome_keeps_chinese_when_summary_is_english() -> None:
@@ -410,6 +445,37 @@ def test_parse_skillset_package_prefers_matching_skillsets_prompt() -> None:
 
     assert parsed_manifest == manifest
     assert prompt == "# Target workflow\n"
+
+
+def test_extract_zip_repairs_invalid_utf8_skill_md(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.skillhub_market import _extract_zip
+
+    corrupted = "---\nname: humanizer\n---\n每句 ".encode() + b"\xe2j$" + "15 字\n".encode()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("SKILL.md", corrupted)
+
+    target = tmp_path / "skill"
+    _extract_zip(buf.getvalue(), target)
+
+    text = (target / "SKILL.md").read_text(encoding="utf-8")
+    assert text == "---\nname: humanizer\n---\n每句 ≤15 字\n"
+
+
+def test_extract_zip_rejects_unrepairable_skill_md(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubMarketError,
+        SkillHubMarketErrorKind,
+        _extract_zip,
+    )
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("SKILL.md", b"---\nname: bad\n---\n\xff\xfe")
+
+    with pytest.raises(SkillHubMarketError) as exc_info:
+        _extract_zip(buf.getvalue(), tmp_path / "skill")
+    assert exc_info.value.kind == SkillHubMarketErrorKind.PACKAGE_INVALID
 
 
 def test_parse_skillset_package_uses_identify_for_single_skillset() -> None:

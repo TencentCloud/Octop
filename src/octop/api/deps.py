@@ -78,6 +78,10 @@ _JWT_EXEMPT_EXACT = (
     "/api/auth/oidc/start",
     "/api/auth/oidc/callback",
     "/api/auth/oidc/exchange",
+    "/api/auth/oauth/status",
+    "/api/auth/oauth/start",
+    "/api/auth/oauth/callback",
+    "/api/auth/oauth/exchange",
     "/api/auth/invite/validate",
     "/api/auth/invite/redeem",
     "/api/docs",
@@ -164,7 +168,7 @@ def maybe_sliding_renew_token(server: OctopServer, token: str, user: User) -> st
         secret,
         sub=user.id,
         uname=user.username,
-        role=user.role.value,
+        role=user.role,
         ttl_seconds=ttl,
     )
 

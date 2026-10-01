@@ -1,3 +1,5 @@
+import { isTeamAgent } from "./teamAgent";
+
 export interface SharedExpertAccess {
   is_shared?: boolean;
   is_owner?: boolean;
@@ -31,4 +33,11 @@ export function chatSkillCatalogAgentId(
 /** Experts the user owns — for Experts / Personalization / agent bars. */
 export function ownedExperts<T extends SharedExpertAccess>(agents: T[]): T[] {
   return agents.filter(isOwnedExpert);
+}
+
+/** Owned solo experts — host pickers must not list team hosts. */
+export function ownedSoloExperts<
+  T extends SharedExpertAccess & { kind?: string },
+>(agents: T[]): T[] {
+  return ownedExperts(agents).filter((item) => !isTeamAgent(item));
 }

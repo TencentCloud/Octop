@@ -827,6 +827,35 @@ async def test_reinstall_overwrite_clears_skills_disabled(env: Any) -> None:
     assert row["enabled"] is True
 
 
+async def test_copy_workspace_skill_between_agents(env: Any) -> None:
+    c, srv, auth, dest_id = env
+    source = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "copy-api-src"},
+    )
+    assert source.status_code == 201, source.text
+    src_id = source.json()["agent_id"]
+    src_ws = srv.app_runtime.agent_registry.workspace_for_agent(src_id)
+    if src_ws is None:
+        pytest.skip("workspace not available before bootstrap")
+    await src_ws.aupload_many(
+        [
+            ("skills/pack-demo/SKILL.md", b"---\nname: pack-demo\n---\n# Pack\n"),
+            ("skills/pack-demo/refs/note.md", b"keep me"),
+        ]
+    )
+
+    copied = await c.post(
+        f"/api/agents/{dest_id}/skills/copy",
+        headers=auth,
+        json={"source_agent_id": src_id, "slug": "pack-demo", "overwrite": True},
+    )
+    assert copied.status_code == 201, copied.text
+    dest = srv.app_runtime.agent_registry.get_agent(dest_id)
+    assert await dest.workspace.aread_text("skills/pack-demo/refs/note.md") == "keep me"
+
+
 async def test_copy_package_skills_to_workspace_is_an_independent_snapshot(env: Any) -> None:
     c, srv, auth, aid = env
     package_id = (

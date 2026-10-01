@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Spin } from "antd";
 import { clearAuthToken, getAuthToken } from "../api/request";
 import { authApi, type OctopUser } from "../api/modules/auth";
 import { applyUserLocale } from "../utils/locale";
+import { isNetworkFetchError } from "../utils/networkError";
 import { CurrentUserProvider } from "../hooks/useCurrentUser";
+import BootOfflinePanel from "./BootOfflinePanel";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -23,17 +25,31 @@ interface AuthGuardProps {
  * When unauthenticated we must NOT render children: MainLayout / AgentProvider
  * would fire authenticated APIs, trip the 401 interceptor, and race the
  * navigate back to ``/login``.
+ *
+ * When the backend is unreachable (offline / Failed to fetch), show an
+ * explicit offline panel with Retry instead of mounting a blank shell.
+ *
+ * Auth is checked on mount and on explicit offline retry only. Do not put
+ * ``navigate`` in the effect deps: under ``BrowserRouter``, React Router's
+ * navigate identity changes with the location, which would re-run the gate
+ * on every sidebar click and flash a full-page spinner.
  */
 export default function AuthGuard({ children }: AuthGuardProps) {
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+
   const [checking, setChecking] = useState(true);
   const [authed, setAuthed] = useState(false);
   const [user, setUser] = useState<OctopUser | null>(null);
+  const [offline, setOffline] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
     const check = async () => {
+      setOffline(false);
       try {
         const status = await authApi.getAuthStatus();
 
@@ -41,7 +57,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         // previous install so background prefetch cannot stampede lockdown.
         if (status.setup_required) {
           clearAuthToken();
-          if (!cancelled) navigate("/setup", { replace: true });
+          if (!cancelled) navigateRef.current("/setup", { replace: true });
           return;
         }
 
@@ -52,7 +68,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
             setAuthed(false);
             // Stay on the spinner until navigation away completes — do not
             // flip ``checking`` off or children would mount and 401→/login.
-            navigate("/login", { replace: true });
+            navigateRef.current("/login", { replace: true });
           }
           return;
         }
@@ -68,19 +84,26 @@ export default function AuthGuard({ children }: AuthGuardProps) {
             setAuthed(true);
             setChecking(false);
           }
-        } catch {
-          if (!cancelled) {
+        } catch (err) {
+          if (cancelled) return;
+          if (isNetworkFetchError(err)) {
+            setOffline(true);
+            setChecking(false);
             setAuthed(false);
-            navigate("/login", { replace: true });
+            return;
           }
+          setAuthed(false);
+          navigateRef.current("/login", { replace: true });
         }
-      } catch {
-        // Backend unreachable — let the user through. The next API call
-        // will surface the real error if the network is broken.
-        if (!cancelled) {
-          setAuthed(true);
-          setChecking(false);
-        }
+      } catch (err) {
+        if (cancelled) return;
+        // Backend unreachable (or setup/status otherwise failed) — do not
+        // mount MainLayout with a null user (that produced a blank white
+        // shell with no recovery action).
+        void err;
+        setOffline(true);
+        setChecking(false);
+        setAuthed(false);
       }
     };
 
@@ -88,7 +111,20 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [retryKey]);
+
+  if (offline) {
+    return (
+      <BootOfflinePanel
+        onRetry={() => {
+          setChecking(true);
+          setAuthed(false);
+          setOffline(false);
+          setRetryKey((k) => k + 1);
+        }}
+      />
+    );
+  }
 
   if (checking || !authed) {
     return (

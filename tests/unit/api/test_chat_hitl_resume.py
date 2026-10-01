@@ -158,3 +158,46 @@ async def test_dashboard_hitl_resume_finishes_after_client_disconnect() -> None:
 
     assert completed is True
     assert frames == []
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hitl_resume_marks_pending_resolved_when_stream_errors() -> None:
+    async def _resume(*_args: object, **_kwargs: object):
+        raise RuntimeError("stream died")
+        yield {}  # pragma: no cover
+
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = _resume
+    hitl = HitlChannelCoordinator()
+    first = hitl.store.register(
+        thread_id="thr-err",
+        agent_id="agent-1",
+        user_id=1,
+        session_key="sk-err",
+        channel_type="dashboard",
+        action_requests=[{"name": "ask_user_question", "args": {"questions": []}}],
+        review_configs=None,
+    )
+
+    frames: list[str] = []
+    async for frame in iter_dashboard_hitl_resume_sse(
+        processor=processor,
+        hitl_coordinator=hitl,
+        agent_id="agent-1",
+        thread_id="thr-err",
+        user_id=1,
+        decisions=[{"type": "respond", "message": "ok"}],
+        pending=first,
+        session_key="sk-err",
+        channel_type="dashboard",
+        locale="zh",
+        is_disconnected=AsyncMock(return_value=False),
+    ):
+        frames.append(frame)
+
+    chunks = _parse_sse_chunks("".join(frames))
+    assert any(c.get("type") == "error" for c in chunks)
+    resolved = hitl.store.get(first.pending_id)
+    assert resolved is not None
+    assert resolved.status == "expired"
+    assert hitl.store.resolve_pending_for_thread("thr-err", agent_id="agent-1", user_id=1) is None

@@ -40,10 +40,11 @@ def test_init_non_interactive_creates_admin(fake_home: Path) -> None:
     assert result.exit_code == 0, result.output
     assert (fake_home / ".octop").is_dir()
     assert (fake_home / ".octop" / "octop.db").is_file()
+    # New catalog plugins are installed via the marketplace, not auto-seeded.
     weather = fake_home / ".octop" / "plugins" / "weather" / "plugin.yaml"
-    assert weather.is_file()
+    assert not weather.is_file()
     cfg = json.loads((fake_home / ".octop" / "config.json").read_text(encoding="utf-8"))
-    assert cfg["plugins"]["weather"]["enabled"] is False
+    assert "weather" not in (cfg.get("plugins") or {})
 
     from octop.infra.db.pool import SqlitePool
     from octop.infra.db.repos.users import UserRepo

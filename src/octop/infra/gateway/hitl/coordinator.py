@@ -6,10 +6,11 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
-from harness_agent.slash import SlashCommand
-from harness_gateway.models import MessageEvent
+from octop_gateway.models import MessageEvent
+from octop_harness.slash import SlashCommand
 
 from octop.i18n.domains.slash import tr
+from octop.infra.agents.security.hitl_session import HitlSessionPolicyStore
 from octop.infra.gateway.hitl.format import (
     extract_questions,
     format_ask_card,
@@ -110,8 +111,13 @@ def decision_rejection_reason(
 
 
 class HitlChannelCoordinator:
-    def __init__(self, store: HitlPendingStore | None = None) -> None:
+    def __init__(
+        self,
+        store: HitlPendingStore | None = None,
+        session_policies: HitlSessionPolicyStore | None = None,
+    ) -> None:
         self._store = store or HitlPendingStore()
+        self.session_policies = session_policies or HitlSessionPolicyStore()
 
     @property
     def store(self) -> HitlPendingStore:
@@ -145,6 +151,20 @@ class HitlChannelCoordinator:
             return [{"type": "approve"} for _ in range(count)]
         reject_message = message or "Rejected by user"
         return [{"type": "reject", "message": reject_message} for _ in range(count)]
+
+    def expire_pending_for_thread(
+        self,
+        thread_id: str,
+        *,
+        agent_id: str,
+        user_id: int | None = None,
+    ) -> None:
+        """Expire in-memory pauses for a dashboard thread (new turn / interrupt)."""
+        self._store.expire_pending_for_thread(
+            thread_id,
+            agent_id=agent_id,
+            user_id=user_id,
+        )
 
     def resolve_ask_pending(
         self,

@@ -14,8 +14,10 @@ from octop.infra.db.repos.user_policies import UserPolicyRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.resource_policy import (
+    POLICY_MAX_AGENTS,
     POLICY_TOKEN_QUOTA,
     POLICY_WORKSPACE_ROOT_DIR,
+    assert_agent_quota_available,
     assert_backend_within_user_root,
     assert_token_quota_available,
     normalize_workspace_root_dir,
@@ -30,12 +32,16 @@ def db(tmp_path: Path) -> SqlitePool:
     return pool
 
 
-def test_normalize_workspace_root_dir_unlimited() -> None:
+def test_normalize_workspace_root_dir_unlimited(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
     assert normalize_workspace_root_dir(None) is None
     assert normalize_workspace_root_dir("  ") is None
 
 
-def test_normalize_workspace_root_dir_must_be_directory(tmp_path: Path) -> None:
+def test_normalize_workspace_root_dir_must_be_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
     root = tmp_path / "jail"
     root.mkdir()
     assert normalize_workspace_root_dir(str(root)) == root.resolve().as_posix()
@@ -44,6 +50,21 @@ def test_normalize_workspace_root_dir_must_be_directory(tmp_path: Path) -> None:
     with pytest.raises(OctopError) as exc:
         normalize_workspace_root_dir(str(file_path))
     assert exc.value.code is ErrorCode.WORKSPACE_ROOT_RESTRICTED
+
+
+def test_normalize_workspace_root_dir_rejected_in_container(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.users.resource_policy import effective_workspace_root_dir
+
+    root = tmp_path / "jail"
+    root.mkdir()
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
+    assert normalize_workspace_root_dir(None) is None
+    with pytest.raises(OctopError) as exc:
+        normalize_workspace_root_dir(str(root))
+    assert exc.value.code is ErrorCode.WORKSPACE_ROOT_CONTAINER_UNSUPPORTED
+    assert effective_workspace_root_dir(str(root)) is None
 
 
 def test_assert_backend_within_user_root(tmp_path: Path) -> None:
@@ -94,6 +115,30 @@ def test_assert_token_quota_available(db: SqlitePool) -> None:
     assert_token_quota_available(policies, usage, uid)
 
 
+def test_assert_agent_quota_available(db: SqlitePool) -> None:
+    users = UserRepo(db)
+    policies = UserPolicyRepo(db)
+    agents = AgentRepo(db)
+    uid = users.create(username="alice", password_hash="h", role="user")
+    assert_agent_quota_available(policies, agents, uid)
+
+    policies.set(uid, POLICY_MAX_AGENTS, "1")
+    agents.create(agent_id="a1", user_id=uid, name="a", kind="expert")
+    with pytest.raises(OctopError) as exc:
+        assert_agent_quota_available(policies, agents, uid)
+    assert exc.value.code is ErrorCode.AGENT_QUOTA_EXCEEDED
+    assert exc.value.details == {"used": 1, "quota": 1}
+
+    # Teams do not count toward the expert quota.
+    agents.create(agent_id="t1", user_id=uid, name="team", kind="team")
+    with pytest.raises(OctopError) as exc2:
+        assert_agent_quota_available(policies, agents, uid)
+    assert exc2.value.details["used"] == 1
+
+    policies.set(uid, POLICY_MAX_AGENTS, "2")
+    assert_agent_quota_available(policies, agents, uid)
+
+
 def test_user_policy_repo_named_rows(db: SqlitePool, tmp_path: Path) -> None:
     users = UserRepo(db)
     policies = UserPolicyRepo(db)
@@ -112,6 +157,7 @@ def test_user_policy_repo_named_rows(db: SqlitePool, tmp_path: Path) -> None:
     assert public_policy_fields(policies.list_for_user(uid)) == {
         "workspace_root_dir": str(jail),
         "token_quota": 42,
+        "max_agents": None,
     }
     root = policies.get(uid, POLICY_WORKSPACE_ROOT_DIR)
     assert root is not None

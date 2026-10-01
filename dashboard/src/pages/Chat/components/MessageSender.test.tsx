@@ -31,5 +31,24 @@ describe("MessageSender", () => {
     const btn = screen.getByRole("button", { name: "数据分析师" });
     fireEvent.click(btn);
     expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith(undefined);
+  });
+
+  it("opens the member profile id and shows a host tooltip", () => {
+    const onOpen = vi.fn();
+    render(
+      <ChatAgentProfileProvider canOpen onOpen={onOpen} isTeam>
+        <ExpertMessageAvatar
+          name="临床助手"
+          tooltip="[心脏团队] 主持人"
+          profileAgentId="doctor"
+          iconName="sparkles"
+        />
+      </ChatAgentProfileProvider>,
+    );
+
+    const btn = screen.getByRole("button", { name: "[心脏团队] 主持人" });
+    fireEvent.click(btn);
+    expect(onOpen).toHaveBeenCalledWith("doctor");
   });
 });

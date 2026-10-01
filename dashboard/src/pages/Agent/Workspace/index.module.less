@@ -33,12 +33,37 @@
   }
 }
 
+.embeddedRoot {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  padding-right: 12px;
+  box-sizing: border-box;
+}
+
+.embeddedHeader {
+  flex-shrink: 0;
+  padding: 8px 20px 8px 12px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+}
+
+.embeddedBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .drawerTitleRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding-right: 8px;
+  padding-right: 20px;
   min-width: 0;
   width: 100%;
 }

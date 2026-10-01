@@ -153,6 +153,24 @@ async def copy_package_skills_to_workspace(
     return selected
 
 
+async def copy_workspace_skill_to_workspace(
+    *,
+    source: Any,
+    destination: Any,
+    slug: str,
+    overwrite: bool = True,
+) -> str:
+    """Copy one workspace skill directory (SKILL.md plus siblings) to another."""
+    safe_slug = validate_skill_slug(slug)
+    files = await read_workspace_skill_files(source, safe_slug)
+    if not overwrite:
+        existing = await destination.aread_text(f"skills/{safe_slug}/SKILL.md")
+        if _is_live_manifest(existing):
+            raise SkillTransferConflict(safe_slug)
+    await _write_workspace_skill(destination, safe_slug, files)
+    return safe_slug
+
+
 async def copy_workspace_skill_to_package(
     *,
     workspace: Any,

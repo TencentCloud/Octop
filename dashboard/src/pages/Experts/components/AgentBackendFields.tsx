@@ -22,7 +22,7 @@ interface AgentBackendFieldsProps {
   backendsLoading: boolean;
   backendChoice: string;
   pathMappings: PathMapping[];
-  /** ``create`` fills empty root_dir with home; ``edit`` leaves existing values. */
+  /** ``create`` fills empty root_dir with the filesystem default; ``edit`` leaves existing values. */
   rootDirMode?: "create" | "edit";
   disabled?: boolean;
   onAddPathMapping: () => void;
@@ -195,9 +195,9 @@ export default function AgentBackendFields({
                     margin: 0,
                   }}
                 >
-                  {t("experts.backendRootDirDesc", {
-                    home: fsDefaults?.home ?? "~",
-                  })}
+                  {fsDefaults?.in_container
+                    ? t("experts.backendRootDirDescContainer")
+                    : t("experts.backendRootDirDesc")}
                 </p>
                 <p
                   style={{

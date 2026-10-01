@@ -18,6 +18,12 @@ export interface ToolCallData {
   callId?: string;
   arguments?: string;
   output?: string;
+  /**
+   * Offloaded ``octop_ui`` payload. When the backend strips a large ``data``
+   * field from the tool output (envelope carries ``data_ref: "artifact"``),
+   * the full payload lands here — never in the model's context.
+   */
+  artifact?: unknown;
   errorCode?: string;
   returnCode?: number;
   /** Owning plugin id when known (from tool index / SSE). */
@@ -30,10 +36,14 @@ export interface HitlActionRequest {
   description?: string;
 }
 
+export type HitlRequestResolution = "approve" | "allow_tool" | "allow_all";
+
 export interface HitlRequestData {
   action_requests: HitlActionRequest[];
   review_configs?: Array<{ action_name: string; allowed_decisions: string[] }>;
   status?: "pending" | "approved" | "rejected";
+  resolution?: HitlRequestResolution;
+  pending_id?: string;
 }
 
 export interface ChatAttachment {
@@ -71,6 +81,20 @@ export interface ChatMessage {
   errorInfo?: ProcessErrorInfo;
   status?: "streaming" | "done" | "error";
   timestamp: number;
+  /**
+   * Team room speaker. When a member is fanned into the host thread, this is
+   * that member's agent id so the bubble can render as a separate person.
+   */
+  speakerAgentId?: string;
+  /** Host wrap-up after members — never continue the dispatch bubble. */
+  teamWrapup?: boolean;
+  /**
+   * Workspace paths written/edited in this turn. Stamped on the final
+   * (or last file-tool) assistant bubble so the edit-file card still
+   * shows when process tools are collapsed; full tool trail is also
+   * persisted for the process panel.
+   */
+  editedFiles?: string[];
 }
 
 /** Per-session state held in the chat store's module-scoped Map. */
@@ -105,6 +129,17 @@ export interface SessionStreamState {
   listeners: Set<() => void>;
   /** Cached snapshot reference (updated on every notify). */
   _snapshot: SessionSnapshot;
+  /** Room / chat agent id — team host tokens are stamped with this. */
+  roomAgentId?: string;
+  /** Team host room — listen-only sockets and ask_agent continue stay on. */
+  isTeamRoom?: boolean;
+  pendingPlanPath?: string | null;
+  /**
+   * Speakers that still own an open generation (token / tool / reasoning)
+   * until their ``done`` frame. Empty string = unlabeled host. Keeps process
+   * panels open across tool gaps after the composer has unlocked.
+   */
+  liveSpeakers: Set<string>;
 }
 
 /** Read-only snapshot shape exposed via ``chatStore.getSnapshot``. */
@@ -119,4 +154,7 @@ export interface SessionSnapshot {
   historyNextOffset: number;
   historyNextCursor?: string | null;
   historyHydrated: boolean;
+  pendingPlanPath?: string | null;
+  /** Sorted speaker keys still generating (see SessionStreamState.liveSpeakers). */
+  liveSpeakers: string[];
 }

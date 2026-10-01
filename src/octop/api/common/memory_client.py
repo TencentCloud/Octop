@@ -1,6 +1,6 @@
 """Per-agent ``Memory`` instance management for the dashboard router.
 
-Owns a tiny LRU cache of ``harness_memory.core.Memory`` instances
+Owns a tiny LRU cache of ``octop_memory.core.Memory`` instances
 keyed by ``agent_id``. Backend may be sqlite (default workspace file) or
 postgres when ``config_json.memory.backend`` says so.
 """
@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from octop.api.common.agent import require_agent_owner_row
-from octop.infra.agents.memory_backend import open_memory_kwargs
-from octop.infra.agents.workspace_dir import host_system_dir
+from octop.infra.agents.memory.backend import open_memory_kwargs
+from octop.infra.agents.workspace.dir import host_system_dir
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ _MEMORY_NS_PREFIX = "agent_"
 
 
 def memory_namespace(agent_id: str) -> str:
-    """Return the memory namespace harness-memory uses for ``agent_id``."""
+    """Return the memory namespace octop-memory uses for ``agent_id``."""
     return f"{_MEMORY_NS_PREFIX}{agent_id}"
 
 
@@ -70,8 +70,8 @@ class _MemoryCache:
         backend_config: dict[str, Any] | None,
         fingerprint: str,
     ) -> tuple[Any, Any]:
-        from harness_memory.adapters.bridge.handlers import Bridge  # noqa: PLC0415
-        from harness_memory.core import Memory  # noqa: PLC0415
+        from octop_memory.adapters.bridge.handlers import Bridge  # noqa: PLC0415
+        from octop_memory.core import Memory  # noqa: PLC0415
 
         with self._lock:
             cached = self._entries.get(agent_id)
@@ -153,6 +153,18 @@ def call_memory_rpc(
     server: Any,
 ) -> Any:
     require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    runtime = server.app_runtime
+    coordinator = runtime.agent_registry.memory_slim if runtime is not None else None
+    if coordinator is not None:
+        status = coordinator.status(agent_id)
+        if isinstance(status, dict) and status.get("phase") in {
+            "backing_up",
+            "deduplicating",
+            "compacting",
+        }:
+            # Avoid synchronous dashboard writes holding the event loop in a
+            # SQLite busy wait while maintenance status needs to remain visible.
+            raise OctopError.localized(ErrorCode.AGENT_BUSY)
     _memory, bridge = _open_memory_for_agent(server, agent_id)
     payload = {
         "jsonrpc": "2.0",

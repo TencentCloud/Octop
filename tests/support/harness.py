@@ -1,4 +1,4 @@
-"""Patch harness-agent so tests run without a real LLM."""
+"""Patch octop-harness so tests run without a real LLM."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def build_harness_manager_mock(
     providers: list[Any] | None = None,
 ) -> MagicMock:
     """Return a MagicMock that quacks like HarnessAgentManager."""
-    from harness_agent.manager import AgentEntry  # type: ignore[import]
+    from octop_harness.manager import AgentEntry  # type: ignore[import]
 
     agent = fake_agent if fake_agent is not None else FakeHarnessAgent()
     entries: dict[str, AgentEntry] = {}
@@ -139,6 +139,7 @@ def build_harness_manager_mock(
         _remove(agent_id)
 
     mock_manager = MagicMock()
+    mock_manager.aclose = AsyncMock()
     mock_manager.create_agent.side_effect = _create
     mock_manager.acreate_agent = AsyncMock(side_effect=_acreate)
     mock_manager.arebuild_agent = AsyncMock(side_effect=_arebuild)

@@ -7,8 +7,10 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from octop.infra.agents.experts.avatar import materialize_remote_icon_url
 from octop.infra.agents.experts.catalog import (
     WORKSPACE_MANIFEST_PATH,
+    apply_workspace_quick_prompts,
     build_create_spec_from_expert,
 )
 from octop.infra.agents.experts.manifest_generator import (
@@ -18,9 +20,10 @@ from octop.infra.agents.experts.skillhub_market import (
     SkillHubMarketError,
     SkillHubMarketErrorKind,
     install_skillset_template,
+    skillhub_portrait_url,
 )
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.trajectory.settings import apply_enable_trajectory
+from octop.infra.history.trajectory.settings import apply_enable_trajectory
 from octop.infra.utils.locale import resolve_user_locale
 
 logger = logging.getLogger(__name__)
@@ -58,6 +61,10 @@ class SkillHubMarketAgentCreateOptions:
     top_p: float | None = None
     max_tokens: int | None = None
     enable_trajectory: bool = True
+    workspace_patch: Any = None
+    composer_copies: tuple[tuple[str, Any], ...] = ()
+    composer_report: Any = None
+    quick_prompts: list[dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True)
@@ -264,8 +271,10 @@ async def create_agent_from_skillhub_skillset(
             kind=SkillHubMarketErrorKind.PACKAGE_INVALID,
         )
 
+    customized_prompts = options.quick_prompts is not None
     can_enrich = (
-        _resolve_generator_llm(
+        not customized_prompts
+        and _resolve_generator_llm(
             server=server,
             requested_model=options.default_model,
             slug=item.slug,
@@ -293,6 +302,7 @@ async def create_agent_from_skillhub_skillset(
         user_id=user.id,
     )
     customized_welcome = options.welcome_message is not None
+    portrait_url = skillhub_portrait_url(item) or expert.summary.icon_url
     spec = build_create_spec_from_expert(
         expert_id=item.expert_id,
         expert=expert,
@@ -314,14 +324,63 @@ async def create_agent_from_skillhub_skillset(
             }.items()
             if value is not None
         },
-        icon_url=item.icon_url or None,
+        icon_url=portrait_url,
         color=options.color,
         welcome_message=(options.welcome_message if customized_welcome else None),
         skill_package_ids=options.skill_package_ids,
         knowledge_base_ids=options.knowledge_base_ids,
         mcp_servers=options.mcp_servers,
     )
-    row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
+    registry = server.app_runtime.agent_registry
+
+    async def apply_patch(_row: Any, workspace: Any) -> None:
+        from octop.infra.agents.experts.composer_files import (
+            ComposerWorkspacePatch,
+            apply_composer_workspace_patch,
+        )
+
+        patch = options.workspace_patch
+        need_composer = (
+            patch is not None and not getattr(patch, "is_empty", lambda: True)()
+        ) or bool(options.composer_copies)
+        if need_composer:
+            await apply_composer_workspace_patch(
+                workspace,
+                patch if patch is not None else ComposerWorkspacePatch(),
+                copies=options.composer_copies,
+                report=options.composer_report,
+            )
+        if options.quick_prompts is not None:
+            await apply_workspace_quick_prompts(workspace, options.quick_prompts)
+
+    patch = options.workspace_patch
+    need_apply = (
+        (patch is not None and not getattr(patch, "is_empty", lambda: True)())
+        or bool(options.composer_copies)
+        or options.quick_prompts is not None
+    )
+    row = await registry.create(
+        spec,
+        defer_bootstrap=True,
+        workspace_initializer=apply_patch if need_apply else None,
+    )
+
+    workspace = registry.workspace_for_agent(row.agent_id)
+    if workspace is not None and portrait_url:
+        try:
+            await materialize_remote_icon_url(
+                registry,
+                row.agent_id,
+                workspace,
+                portrait_url,
+            )
+        except Exception:
+            logger.warning(
+                "SkillHub avatar materialize failed agent=%s slug=%s",
+                row.agent_id,
+                item.slug,
+                exc_info=True,
+            )
 
     if can_enrich:
         asyncio.create_task(

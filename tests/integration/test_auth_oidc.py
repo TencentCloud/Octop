@@ -55,11 +55,12 @@ async def test_oidc_public_routes_and_exchange_return_login_shape(
     start = await c.post("/api/auth/oidc/start", json={"redirect_after": "/chat"})
     assert start.status_code == 200
     assert "redirect=/chat" in start.json()["authorization_url"]
-    assert start.cookies["octop_oidc_state"] == "browser-state"
+    assert start.cookies["octop_sso_state"] == "browser-state"
     set_cookie = start.headers["set-cookie"]
     assert "HttpOnly" in set_cookie
     assert "Max-Age=600" in set_cookie
-    assert "Path=/api/auth/oidc" in set_cookie
+    assert "Path=/api/auth" in set_cookie
+    assert "Path=/api/auth/oidc" not in set_cookie
     assert "SameSite=lax" in set_cookie
 
     callback_response = await c.get(
@@ -68,7 +69,7 @@ async def test_oidc_public_routes_and_exchange_return_login_shape(
     assert callback_response.status_code == 302
     assert callback_response.headers["location"] == "http://testserver/login?oidc_error=state"
     assert callback_states == []
-    assert "octop_oidc_state=" in callback_response.headers["set-cookie"]
+    assert "octop_sso_state=" in callback_response.headers["set-cookie"]
     assert "Max-Age=0" in callback_response.headers["set-cookie"]
 
     start = await c.post("/api/auth/oidc/start", json={"redirect_after": "/chat"})

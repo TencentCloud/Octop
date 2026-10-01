@@ -21,7 +21,7 @@ describe("readOidcCompleteParams", () => {
         "#code=from-hash&redirect=%2Fsettings",
         "?code=from-query",
       ),
-    ).toEqual({ code: "from-hash", redirect: "/settings" });
+    ).toEqual({ code: "from-hash", redirect: "/settings", bind: false });
   });
 
   it("falls back to query for legacy links", () => {
@@ -29,6 +29,7 @@ describe("readOidcCompleteParams", () => {
       {
         code: "legacy",
         redirect: "/chat",
+        bind: false,
       },
     );
   });

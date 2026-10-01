@@ -30,6 +30,10 @@ interface ExpertMessageAvatarProps {
   color?: string | null;
   iconName?: string | null;
   iconUrl?: string | null;
+  /** Hover label; defaults to ``name``. */
+  tooltip?: string | null;
+  /** Open this agent in the profile drawer (member vs team host). */
+  profileAgentId?: string | null;
 }
 
 export function ExpertMessageAvatar({
@@ -37,10 +41,12 @@ export function ExpertMessageAvatar({
   color,
   iconName,
   iconUrl,
+  tooltip,
+  profileAgentId,
 }: ExpertMessageAvatarProps) {
   const { t } = useTranslation();
   const profile = useChatAgentProfile();
-  const label = name?.trim() || "";
+  const label = (tooltip ?? name)?.trim() || "";
   const canOpen = Boolean(profile?.canOpen);
   const avatar = (
     <ExpertAgentAvatar
@@ -55,8 +61,15 @@ export function ExpertMessageAvatar({
     <button
       type="button"
       className={styles.msgSenderBtn}
-      onClick={() => profile?.openAgentProfile()}
-      aria-label={label || t("chat.agentProfile.open")}
+      onClick={() => profile?.openAgentProfile(profileAgentId ?? undefined)}
+      aria-label={
+        label ||
+        t(
+          profile?.isTeam
+            ? "chat.agentProfile.openTeam"
+            : "chat.agentProfile.open",
+        )
+      }
     >
       {avatar}
     </button>

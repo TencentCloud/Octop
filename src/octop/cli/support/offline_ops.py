@@ -99,13 +99,26 @@ def create_user_offline(
             and svc.user_repo.get_by_email(normalized_email) is not None
         ):
             raise OctopError(ErrorCode.EMAIL_TAKEN, f"email {normalized_email!r} already exists")
+        permissions = None
+        role_name = None
+        policies: list[tuple[str, str]] = []
+        if role == "user":
+            from octop.infra.db.repos.user_roles import seeded_user_role_assignment
+
+            assignment = seeded_user_role_assignment(svc.db)
+            if assignment is not None:
+                role, role_name, permissions, policies = assignment
         uid = svc.user_repo.create(
             username=username,
             password_hash=hash_password(password),
             role=role,
             display_name=display_name,
             email=normalized_email,
+            permissions=permissions,
+            role_name=role_name,
         )
+        if policies:
+            svc.user_policy_repo.merge(uid, dict(policies))
         row = svc.user_repo.get(uid)
         assert row is not None
         return _user_row_to_dict(row)
@@ -247,7 +260,7 @@ resolve_acting_user_id_offline = resolve_cron_user_id
 
 
 def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
-    from octop.infra.agents.workspace_dir import workspace_dir_from_config_json
+    from octop.infra.agents.workspace.dir import workspace_dir_from_config_json
 
     with open_cli_services(home) as svc:
         row = svc.agent_repo.get(agent_id)
@@ -552,4 +565,8 @@ def delete_thread_offline(agent_id: str, thread_id: str, *, home: Path | None = 
             svc.trajectory_event_repo.delete_for_thread(thread_id)
         except Exception:
             logger.exception("trajectory cascade delete failed thread=%s", thread_id)
-        svc.thread_repo.delete(thread_id)
+        registry = ThreadRegistry(
+            session_repo=svc.session_repo,
+            thread_repo=svc.thread_repo,
+        )
+        registry.delete_thread(thread_id)

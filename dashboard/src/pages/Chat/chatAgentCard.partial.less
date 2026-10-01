@@ -24,6 +24,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .agentCardInfo {
@@ -39,13 +40,56 @@
   margin-bottom: 1px;
 }
 
-/* Name + shared flag stay packed left; unread can sit at the row end. */
+/* Name + shared flag stay packed left; unread / new-chat sit at the row end. */
 .agentNameCluster {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: 1;
   min-width: 0;
+}
+
+.agentNewChatBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s,
+    color 0.15s,
+    background 0.15s;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
+  }
+}
+
+.agentCardProfile:hover .agentNewChatBtn,
+.agentCardProfile:focus-within .agentNewChatBtn,
+.agentRow:hover .agentNewChatBtn,
+.agentRow:focus-within .agentNewChatBtn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Touch devices never hover — keep the control reachable. */
+@media (hover: none) {
+  .agentNewChatBtn {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .agentCardName {
@@ -65,6 +109,64 @@
   flex-shrink: 0;
   max-width: 100%;
   padding: 0 5px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--fn-color-brand);
+  background: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
+  white-space: nowrap;
+}
+
+.remoteExpertFlag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  max-width: 12em;
+  padding: 0 5px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--fn-color-brand);
+  background: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.remoteExpertFlagCompact {
+  max-width: none;
+  padding: 0 4px;
+  gap: 0;
+}
+
+.remoteExpertIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  opacity: 0.9;
+}
+
+.remoteExpertName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.teamChatBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  max-width: 100%;
+  padding: 0 6px;
   height: 16px;
   border-radius: 4px;
   font-size: 10px;
@@ -279,11 +381,24 @@
   padding: 0;
 }
 
+.agentRowWrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+
+  &:hover .agentHideBtn,
+  &:focus-within .agentHideBtn {
+    opacity: 1;
+  }
+}
+
 .agentRow {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 7px 8px;
   border: 1px solid transparent;
   border-radius: 10px;
@@ -300,6 +415,37 @@
   }
 }
 
+.agentHideBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-top: 6px;
+  margin-right: 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+
+  &:hover {
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
+    color: var(--fn-text-primary);
+  }
+}
+
+.agentCardActive:hover .agentHideBtn,
+.agentCardActive:focus-within .agentHideBtn {
+  opacity: 1;
+}
+
 .agentRowAvatar {
   width: 26px;
   height: 26px;
@@ -308,6 +454,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .agentRowInfo {

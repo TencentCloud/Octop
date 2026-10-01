@@ -259,8 +259,35 @@ def test_host_fs_tree_root_admin_posix(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
     from octop.infra.utils.host_dirs import host_fs_tree_root
 
-    assert host_fs_tree_root(allow_outside_home=True) == "/"
-    assert host_fs_tree_root(allow_outside_home=False) == home.resolve().as_posix()
+    assert host_fs_tree_root() == "/"
+
+
+def test_running_in_container_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.utils.host_dirs import running_in_container
+
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
+    assert running_in_container() is True
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    assert running_in_container() is False
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "false")
+    assert running_in_container() is False
+
+
+@posix_only
+def test_running_in_container_detects_dockerenv(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.utils.host_dirs import running_in_container
+
+    monkeypatch.delenv("OCTOP_IN_CONTAINER", raising=False)
+
+    class _FakePath:
+        def __init__(self, path: object) -> None:
+            self._path = str(path)
+
+        def is_file(self) -> bool:
+            return self._path == "/.dockerenv"
+
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path", _FakePath)
+    assert running_in_container() is True
 
 
 def test_list_and_probe_return_posix_paths(tmp_path: Path) -> None:

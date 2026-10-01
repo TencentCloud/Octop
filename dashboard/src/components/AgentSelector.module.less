@@ -19,8 +19,30 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  gap: 6px 14px;
+  min-width: 0;
+}
+
+.group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+.groupLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fn-text-tertiary);
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+  line-height: 1;
+  margin-right: 2px;
+}
+
+.chipDisconnected {
+  opacity: 0.65;
 }
 
 .chip {
@@ -39,7 +61,7 @@
     border-color 0.15s,
     background 0.15s,
     box-shadow 0.15s;
-  max-width: 200px;
+  max-width: 228px;
   height: 26px;
 
   &:hover {
@@ -73,8 +95,11 @@
   flex-shrink: 0;
   color: var(--chip-accent, #2563eb);
   line-height: 0;
+  border-radius: 50%;
+  overflow: hidden;
 
-  svg {
+  svg,
+  img {
     display: block;
   }
 }
@@ -132,8 +157,11 @@
   height: 14px;
   flex-shrink: 0;
   line-height: 0;
+  border-radius: 50%;
+  overflow: hidden;
 
-  svg {
+  svg,
+  img {
     display: block;
   }
 }

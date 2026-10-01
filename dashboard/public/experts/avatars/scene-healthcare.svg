@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="scene-healthcare">
+  <defs>
+    <linearGradient id="bg-scene-healthcare" x1="20" y1="8" x2="110" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FEE2E2"/>
+      <stop offset="1" stop-color="#FECACA"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="url(#bg-scene-healthcare)"/>
+  <path d="M26 118 Q28 94 48 88 Q64 84 80 88 Q100 94 102 118 Z" fill="#DC2626"/>
+  <path d="M48 88 Q64 96 80 88 L78 118 H50 Z" fill="#B91C1C" opacity="0.28"/>
+  <ellipse cx="64" cy="44" rx="34" ry="26" fill="#7F1D1D"/><path d="M30 50 Q26 96 38 104 L42 70 Q64 78 86 70 L90 104 Q102 96 98 50 Z" fill="#7F1D1D"/>
+  <rect x="56" y="86" width="16" height="14" rx="6" fill="#F2C7A0"/>
+  <ellipse cx="64" cy="64" rx="28" ry="30" fill="#F2C7A0"/>
+  <ellipse cx="36" cy="66" rx="5" ry="7" fill="#F2C7A0"/>
+  <ellipse cx="92" cy="66" rx="5" ry="7" fill="#F2C7A0"/>
+  <path d="M38 50 Q64 60 90 50 Q84 44 64 42 Q44 44 38 50Z" fill="#7F1D1D"/>
+  <ellipse cx="52" cy="62" rx="3.2" ry="3.8" fill="#7F1D1D"/>
+  <ellipse cx="76" cy="62" rx="3.2" ry="3.8" fill="#7F1D1D"/>
+  <circle cx="53.2" cy="60.8" r="1.1" fill="#fff" opacity="0.95"/>
+  <circle cx="77.2" cy="60.8" r="1.1" fill="#fff" opacity="0.95"/>
+  <path d="M46 54 Q52 51 58 54" fill="none" stroke="#7F1D1D" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M70 54 Q76 51 82 54" fill="none" stroke="#7F1D1D" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M64 64 Q66 70 62 72" fill="none" stroke="#C08457" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M52 74 Q64 82 76 74" fill="none" stroke="#B45309" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="44" cy="72" r="4" fill="#F9A8D4" opacity="0.32"/>
+  <circle cx="84" cy="72" r="4" fill="#F9A8D4" opacity="0.32"/>
+  <path d="M44 102 Q44 88 56 88 Q64 88 64 96" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/><circle cx="64" cy="100" r="5" fill="#fff"/>
+</svg>

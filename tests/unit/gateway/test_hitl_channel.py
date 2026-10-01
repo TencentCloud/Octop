@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from harness_gateway.models import MessageEvent, MessageEventType, TextContent
+from octop_gateway.models import MessageEvent, MessageEventType, TextContent
 
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
@@ -131,7 +131,7 @@ async def test_coordinator_slash_approve_resumes() -> None:
     ctx.channel_type = "feishu"
     ctx.thread_registry = MagicMock()
 
-    from harness_agent.slash import SlashCommand
+    from octop_harness.slash import SlashCommand
 
     cmd = SlashCommand(name="approve", args="")
     events: list[MessageEvent] = []
@@ -166,7 +166,7 @@ async def test_coordinator_slash_approve_invalid_pending_id() -> None:
         review_configs=None,
     )
 
-    from harness_agent.slash import SlashCommand
+    from octop_harness.slash import SlashCommand
 
     ctx = MagicMock()
     ctx.session_key = "sk1"
@@ -219,7 +219,7 @@ async def test_coordinator_resume_failure_keeps_pending() -> None:
     ctx.channel_type = "feishu"
     ctx.thread_registry = MagicMock()
 
-    from harness_agent.slash import SlashCommand
+    from octop_harness.slash import SlashCommand
 
     cmd = SlashCommand(name="approve", args="")
     async for _ in coordinator.iter_slash_resolution(
@@ -356,6 +356,24 @@ def test_hitl_store_get_pending_agent_mismatch() -> None:
     assert store.get_pending(record.pending_id, session_key="sk1", agent_id="other") is None
 
 
+def test_expire_pending_for_thread_drops_history_reinject() -> None:
+    store = HitlPendingStore()
+    record = store.register(
+        thread_id="thr-ask",
+        agent_id="agent1",
+        user_id=7,
+        session_key="sk-ask",
+        channel_type="dashboard",
+        action_requests=[{"name": "ask_user_question", "args": {"questions": []}}],
+        review_configs=None,
+    )
+    store.expire_pending_for_thread("thr-ask", agent_id="agent1", user_id=7)
+    assert store.resolve_pending_for_thread("thr-ask", agent_id="agent1", user_id=7) is None
+    expired = store.get(record.pending_id)
+    assert expired is not None
+    assert expired.status == "expired"
+
+
 @pytest.mark.asyncio
 async def test_slash_outcome_completed_turn() -> None:
     store = HitlPendingStore()
@@ -383,7 +401,7 @@ async def test_slash_outcome_completed_turn() -> None:
     ctx.channel_type = "feishu"
     ctx.thread_registry = MagicMock()
 
-    from harness_agent.slash import SlashCommand
+    from octop_harness.slash import SlashCommand
 
     outcome = HitlSlashOutcome()
     cmd = SlashCommand(name="approve", args="")

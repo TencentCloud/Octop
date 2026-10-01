@@ -19,6 +19,7 @@ def _run_turn(
     session_key: str,
     thread_id: str | None,
     model: str | None = None,
+    conversation_mode: str | None = None,
     plain: bool = False,
     as_user: str | None = None,
 ) -> Any:
@@ -45,6 +46,7 @@ def _run_turn(
             session_key=session_key,
             thread_id=thread_id,
             model=model,
+            conversation_mode=conversation_mode,
             on_chunk=on_chunk,
         )
     )
@@ -80,6 +82,11 @@ def _apply_slash_actions(
             repl_state.on_new_chat(act.get("thread_id"))
         elif name == "rebind_thread" and repl_state is not None:
             repl_state.on_rebind_thread(act.get("thread_id"))
+        elif name == "set_conversation_mode" and repl_state is not None:
+            mode = str(act.get("mode") or "").strip()
+            if mode in ("ask", "plan", "craft"):
+                repl_state.conversation_mode = mode
+                click.echo(click.style(f"mode → {mode}", fg="cyan"))
     return agent_id
 
 
@@ -212,6 +219,13 @@ def delete_chat(thread_id: str, agent_id: str | None, as_user: str | None, yes: 
 @click.option("--session-key", default="default")
 @click.option("--thread-id", default=None, help="Pin this thread for every turn.")
 @click.option("--model", default=None)
+@click.option(
+    "--mode",
+    "conversation_mode",
+    type=click.Choice(["ask", "plan", "craft"], case_sensitive=False),
+    default=None,
+    help="Ask (read-only), Plan (write plans/*.md), or Default (craft).",
+)
 @click.option("--plain", is_flag=True, help="Raw token stream (no Markdown finish).")
 def send_chat(
     prompt: str,
@@ -219,6 +233,7 @@ def send_chat(
     session_key: str,
     thread_id: str | None,
     model: str | None,
+    conversation_mode: str | None,
     plain: bool,
 ) -> None:
     """Send one message and stream the response (CLI channel)."""
@@ -229,6 +244,7 @@ def send_chat(
         session_key=session_key,
         thread_id=thread_id,
         model=model,
+        conversation_mode=conversation_mode,
         plain=plain,
     )
 
@@ -241,6 +257,13 @@ def send_chat(
 @click.option("--session-key", default="cli")
 @click.option("--thread-id", default=None, help="Pin this thread for every turn.")
 @click.option("--model", default=None)
+@click.option(
+    "--mode",
+    "conversation_mode",
+    type=click.Choice(["ask", "plan", "craft"], case_sensitive=False),
+    default=None,
+    help="Ask (read-only), Plan (write plans/*.md), or Default (craft).",
+)
 @click.option("--plain", is_flag=True, help="Raw token stream (no Markdown finish).")
 def repl(
     agent_id: str | None,
@@ -248,6 +271,7 @@ def repl(
     session_key: str,
     thread_id: str | None,
     model: str | None,
+    conversation_mode: str | None,
     plain: bool,
 ) -> None:
     """Interactive chat REPL (embedded server + CLI gateway channel)."""
@@ -267,7 +291,11 @@ def repl(
 
     aid = require_agent(agent_id)
     repl_state = ReplSession(
-        agent_id=aid, session_key=session_key, model=model, thread_id=thread_id
+        agent_id=aid,
+        session_key=session_key,
+        model=model,
+        thread_id=thread_id,
+        conversation_mode=conversation_mode,
     )
     print_welcome(
         agent_id=aid,
@@ -302,6 +330,7 @@ def repl(
             session_key=session_key,
             thread_id=repl_state.thread_id_for_send(),
             model=repl_state.model,
+            conversation_mode=repl_state.conversation_mode,
             on_chunk=on_chunk,
         )
         renderer.finish_turn()

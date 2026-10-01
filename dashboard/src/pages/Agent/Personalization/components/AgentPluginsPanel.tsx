@@ -7,6 +7,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Segmented,
   Spin,
   Switch,
   Tag,
@@ -21,10 +22,17 @@ import {
   type PluginConfigField,
 } from "../../../../api/modules/plugins";
 import { PluginIconView } from "../../../Admin/Plugins/PluginIconView";
+import { PluginGroupTag } from "../../../Admin/Plugins/PluginGroupTag";
+import {
+  PLUGIN_GROUP_ORDER,
+  isKnownPluginGroup,
+} from "../../../Admin/Plugins/pluginGroups";
 import { message } from "../../../../utils/antdMessage";
 import { apiErrorMessage } from "../../../../utils/apiError";
 import pluginStyles from "../../../Admin/Plugins/index.module.less";
 import styles from "./AgentPluginsPanel.module.less";
+
+const GROUP_ALL = "all";
 
 interface AgentPluginsPanelProps {
   agentId: string | null;
@@ -83,6 +91,7 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
   const [saving, setSaving] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [configTool, setConfigTool] = useState<AgentPluginTool | null>(null);
+  const [activeGroup, setActiveGroup] = useState<string>(GROUP_ALL);
   const [form] = Form.useForm();
 
   const load = useCallback(async () => {
@@ -207,63 +216,110 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
     return <Empty description={t("plugins.noPlugins")} />;
   }
 
+  const groupOptions = (() => {
+    const present = new Set<string>();
+    for (const row of plugins) {
+      const g = (row.group || "").trim().toLowerCase();
+      if (g) present.add(g);
+    }
+    const ordered = PLUGIN_GROUP_ORDER.filter((g) => present.has(g));
+    const extras = [...present]
+      .filter((g) => !isKnownPluginGroup(g))
+      .sort((a, b) => a.localeCompare(b));
+    return [
+      { value: GROUP_ALL, label: t("plugins.groupAll") },
+      ...ordered.map((g) => ({
+        value: g,
+        label: t(`plugins.groups.${g}`),
+      })),
+      ...extras.map((g) => ({
+        value: g,
+        label: t("plugins.groupUnknown"),
+      })),
+    ];
+  })();
+
+  const filteredPlugins =
+    activeGroup === GROUP_ALL
+      ? plugins
+      : plugins.filter(
+          (row) => (row.group || "").trim().toLowerCase() === activeGroup,
+        );
+
   return (
     <div className={styles.panel}>
       <div className={styles.hint}>
         <Info size={15} className={styles.hintIcon} />
         <span>{t("plugins.agentPluginHint")}</span>
       </div>
-      <div className={pluginStyles.cardGrid}>
-        {plugins.map((plugin) => (
-          <article
-            key={plugin.id}
-            className={`${pluginStyles.card} ${
-              plugin.enabled ? "" : pluginStyles.cardDisabled
-            }`}
-          >
-            <div className={pluginStyles.cardBody}>
-              <div className={pluginStyles.cardTop}>
-                <PluginIconView
-                  icon={plugin.icon}
-                  size={48}
-                  className={pluginStyles.cardIcon}
-                />
-                <div className={pluginStyles.cardTitleCol}>
-                  <h3 className={pluginStyles.cardName}>
-                    {plugin.name || plugin.id}
-                  </h3>
-                  <div className={pluginStyles.cardChips}>
-                    {plugin.kind ? <Tag>{plugin.kind}</Tag> : null}
-                    {!plugin.global_enabled ? (
-                      <Tag>{t("plugins.globallyDisabled")}</Tag>
-                    ) : null}
+      {groupOptions.length > 1 ? (
+        <div className={pluginStyles.groupTabsWrap}>
+          <Segmented
+            block
+            size="large"
+            value={activeGroup}
+            onChange={(v) => setActiveGroup(String(v))}
+            options={groupOptions}
+            className={pluginStyles.groupTabs}
+          />
+        </div>
+      ) : null}
+      {filteredPlugins.length === 0 ? (
+        <Empty description={t("plugins.emptyGroup")} />
+      ) : (
+        <div className={pluginStyles.cardGrid}>
+          {filteredPlugins.map((plugin) => (
+            <article
+              key={plugin.id}
+              className={`${pluginStyles.card} ${
+                plugin.enabled ? "" : pluginStyles.cardDisabled
+              }`}
+            >
+              <div className={pluginStyles.cardBody}>
+                <div className={pluginStyles.cardTop}>
+                  <PluginIconView
+                    icon={plugin.icon}
+                    size={32}
+                    className={pluginStyles.cardIcon}
+                  />
+                  <div className={pluginStyles.cardTitleCol}>
+                    <h3 className={pluginStyles.cardName}>
+                      {plugin.name || plugin.id}
+                    </h3>
+                    <div className={pluginStyles.cardChips}>
+                      <PluginGroupTag group={plugin.group} />
+                      {plugin.kind ? <Tag>{plugin.kind}</Tag> : null}
+                      {!plugin.global_enabled ? (
+                        <Tag>{t("plugins.globallyDisabled")}</Tag>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
+                <p className={pluginStyles.cardDesc}>
+                  {plugin.description || t("plugins.noDescription")}
+                </p>
               </div>
-              <p className={pluginStyles.cardDesc}>
-                {plugin.description || t("plugins.noDescription")}
-              </p>
-            </div>
-            <div className={pluginStyles.cardFooter}>
-              <button
-                type="button"
-                className={pluginStyles.detailLink}
-                onClick={() => setDetailId(plugin.id)}
-              >
-                {t("plugins.viewDetails")}
-              </button>
-              <span className={pluginStyles.cardFooterSpacer} />
-              <Switch
-                size="small"
-                checked={plugin.enabled}
-                disabled={!plugin.global_enabled}
-                loading={saving === `plugin:${plugin.id}`}
-                onChange={(checked) => void togglePlugin(plugin, checked)}
-              />
-            </div>
-          </article>
-        ))}
-      </div>
+              <div className={pluginStyles.cardFooter}>
+                <button
+                  type="button"
+                  className={pluginStyles.detailLink}
+                  onClick={() => setDetailId(plugin.id)}
+                >
+                  {t("plugins.viewDetails")}
+                </button>
+                <span className={pluginStyles.cardFooterSpacer} />
+                <Switch
+                  size="small"
+                  checked={plugin.enabled}
+                  disabled={!plugin.global_enabled}
+                  loading={saving === `plugin:${plugin.id}`}
+                  onChange={(checked) => void togglePlugin(plugin, checked)}
+                />
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
 
       <Drawer
         title={detail?.name || detail?.id}

@@ -8,7 +8,8 @@ Security notes:
   ``/etc``, ``/root`` on POSIX). The process home is never denied (so uid 0
   with home ``/root`` can use the default picker path).
 - All authenticated users may browse from host root ``/`` (denylist still applies).
-  The UI default ``root_dir`` remains the process home directory.
+  The UI default ``root_dir`` is host filesystem root (POSIX ``/``), unless the
+  user has a ``workspace_root_dir`` policy jail.
 - Directory listing is capped and skips unreadable entries.
 - Write probe creates a short-lived dotfile only for non-``/`` selections.
 - mkdir / rename only allow basename-safe names under already-browsable parents.
@@ -25,25 +26,28 @@ from pydantic import BaseModel, Field
 from octop.api.deps import current_user, get_server
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
-from octop.infra.users.resource_policy import POLICY_WORKSPACE_ROOT_DIR, workspace_root_dir_of
+from octop.infra.users.resource_policy import (
+    POLICY_WORKSPACE_ROOT_DIR,
+    effective_workspace_root_dir,
+)
 from octop.infra.utils.bwrap import ensure_bubblewrap
 from octop.infra.utils.docker_env import docker_status, ensure_docker
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
     host_fs_tree_root,
-    host_home_dir,
     host_path_text,
     list_host_subdirs,
     mkdir_host_subdir,
     probe_host_root_dir,
     rename_host_dir,
+    running_in_container,
 )
 
 router = APIRouter()
 
 
 def _user_workspace_root(server: Any, user: User) -> str | None:
-    return workspace_root_dir_of(
+    return effective_workspace_root_dir(
         server.services.user_policy_repo.get(user.id, POLICY_WORKSPACE_ROOT_DIR)
     )
 
@@ -73,21 +77,24 @@ async def filesystem_defaults(
     user: User = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Return the process home path and browse-tree root (host ``/`` on POSIX)."""
-    home = host_path_text(host_home_dir())
+    """Return browse-tree / default root_dir for the current user.
+
+    Unrestricted users get filesystem root; a workspace-root policy jail sets
+    both ``default_root_dir`` and ``tree_root`` to that path.
+    """
+    in_container = running_in_container()
     allowed = _user_workspace_root(server, user)
     if allowed:
         return {
-            "home": home,
             "default_root_dir": allowed,
-            "allow_outside_home": False,
             "tree_root": allowed,
+            "in_container": in_container,
         }
+    root = host_fs_tree_root()
     return {
-        "home": home,
-        "default_root_dir": home,
-        "allow_outside_home": True,
-        "tree_root": host_fs_tree_root(allow_outside_home=True),
+        "default_root_dir": root,
+        "tree_root": root,
+        "in_container": in_container,
     }
 
 

@@ -24,10 +24,10 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
 from octop.api.common.content_disposition import content_disposition
+from octop.api.common.usage_xlsx import build_usage_xlsx
 from octop.api.deps import current_user, get_server
 from octop.i18n import tr
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.usage.xlsx_export import build_usage_xlsx
 from octop.infra.utils.locale import normalize_locale, resolve_request_locale
 
 router = APIRouter()

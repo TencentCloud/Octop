@@ -53,6 +53,16 @@
   }
 }
 
+.modelMenuFooterMuted {
+  color: var(--fn-text-tertiary);
+  cursor: default;
+
+  &:hover {
+    background: transparent;
+    color: var(--fn-text-tertiary);
+  }
+}
+
 .modelPickerPanel {
   display: flex;
   align-items: stretch;
@@ -101,11 +111,26 @@
   flex: 1;
   min-width: 0;
   align-items: center;
+  gap: 8px;
   padding: 8px 6px 8px 10px;
   border: none;
   background: transparent;
   cursor: pointer;
   text-align: left;
+}
+
+.modelMenuTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modelMenuIcon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  object-fit: contain;
 }
 
 .modelMenuReasoning {
@@ -157,8 +182,111 @@
 }
 
 .modelMenuHint {
+  padding-left: 24px;
   font-size: 11px;
   color: var(--fn-text-tertiary);
+}
+
+.modeMenu {
+  min-width: 260px;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.modeMenuItem {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+
+  &:hover {
+    background: var(--fn-sidebar-item-hover, rgba(0, 0, 0, 0.04));
+  }
+}
+
+.modeMenuItemActive {
+  background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
+}
+
+.modeMenuTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fn-text-primary);
+  line-height: 1.3;
+}
+
+.modeMenuItemActive .modeMenuTitle {
+  color: var(--fn-color-brand);
+}
+
+.modeMenuHint {
+  padding-left: 24px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fn-text-tertiary);
+}
+
+.modeMenuTools {
+  margin-top: 4px;
+  padding: 8px 4px 0;
+  border-top: 1px solid var(--fn-border);
+}
+
+.modeMenuToolsLabel {
+  padding: 0 8px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fn-text-tertiary);
+}
+
+.modeMenuToolRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 8px;
+}
+
+.modeMenuToolName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+}
+
+.modeMenuToolRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+}
+
+.modeMenuToolRemove:hover {
+  background: var(--fn-fill-hover);
+  color: var(--fn-text-primary);
 }
 
 .reasoningMenuPanel {
@@ -398,7 +526,25 @@
 }
 
 .skillPickerItemActive {
-  background: var(--fn-bg-hover, rgba(0, 0, 0, 0.04));
+  background: rgba(37, 99, 235, 0.08);
+
+  &:hover {
+    background: rgba(37, 99, 235, 0.12);
+  }
+}
+
+.skillPickerCheck {
+  flex-shrink: 0;
+  color: var(--fn-color-brand, #2563eb);
+  margin-left: auto;
+}
+
+.expertPickerGroup {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fn-text-tertiary);
+  letter-spacing: 0.02em;
 }
 
 .expertPickerItemActive {
@@ -416,6 +562,78 @@
   flex-direction: row;
   align-items: center;
   gap: 6px;
+}
+
+.expertPickerRow {
+  padding: 0;
+  gap: 0;
+
+  &:hover .expertHideBtn,
+  &:focus-within .expertHideBtn {
+    opacity: 1;
+  }
+}
+
+.expertPickerSelect {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 4px 8px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.expertHideBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+
+  &:hover {
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
+    color: var(--fn-text-primary);
+  }
+}
+
+.expertHiddenToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-top: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.04));
+    color: var(--fn-text-primary);
+  }
 }
 
 .subagentPickerItemActive {
@@ -439,6 +657,21 @@
     transparent
   );
   white-space: nowrap;
+}
+
+.expertRemoteBadge {
+  flex-shrink: 0;
+  max-width: 10em;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: #0f766e;
+  background: color-mix(in srgb, #0f766e 16%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .expertAgentAvatar {
@@ -616,24 +849,6 @@
     background: var(--fn-bg-hover, rgba(0, 0, 0, 0.03));
     color: var(--fn-text-primary);
   }
-}
-
-.modelPickerBtn {
-  max-width: 220px;
-}
-
-.modelPickerLabel {
-  font-size: 11px;
-  margin-left: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 170px;
-}
-
-.modelPickerReasoningLabel {
-  color: currentColor;
-  opacity: 0.78;
 }
 
 .mobilePickerDrawer {

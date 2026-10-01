@@ -87,6 +87,11 @@ interface UseChatMessageQueueParams {
   threadId: string | null | undefined;
   isStreaming: boolean;
   onFlush: ChatQueueFlushHandler;
+  /**
+   * When true, keep the queue intact (e.g. open HITL pause). Retries on the
+   * next stream-end / idle edge after the blocker clears.
+   */
+  shouldDeferFlush?: (threadId: string) => boolean;
   /** Test seam — defaults to chatStore streamEnd events. */
   subscribeStreamEnd?: (listener: (sessionId: string) => void) => () => void;
   /** Test seam — defaults to chatStore session snapshot. */
@@ -104,6 +109,7 @@ export function useChatMessageQueue({
   threadId,
   isStreaming,
   onFlush,
+  shouldDeferFlush,
   subscribeStreamEnd = defaultSubscribeStreamEnd,
   isThreadStreaming = defaultIsThreadStreaming,
 }: UseChatMessageQueueParams) {
@@ -115,6 +121,8 @@ export function useChatMessageQueue({
   queuesRef.current = queues;
   const onFlushRef = useRef(onFlush);
   onFlushRef.current = onFlush;
+  const shouldDeferFlushRef = useRef(shouldDeferFlush);
+  shouldDeferFlushRef.current = shouldDeferFlush;
   const isThreadStreamingRef = useRef(isThreadStreaming);
   isThreadStreamingRef.current = isThreadStreaming;
   const flushTimerRef = useRef<number | null>(null);
@@ -239,6 +247,14 @@ export function useChatMessageQueue({
           parseThreadQueueKey(queueKey);
         // Another turn may have started between schedule and fire.
         if (flushThreadId && isThreadStreamingRef.current(flushThreadId)) {
+          return;
+        }
+        // Open HITL (ask / approval) must not start a new turn — that cancels
+        // the interrupt via PatchToolCallsMiddleware.
+        if (
+          flushThreadId &&
+          shouldDeferFlushRef.current?.(flushThreadId) === true
+        ) {
           return;
         }
         const head = dequeueHead(queueKey);

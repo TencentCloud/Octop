@@ -31,7 +31,8 @@ admin can clear the lockout with `POST /api/users/{id}/unlock-login`.
 
 `/api/docs`, `/api/openapi.json`, `/api/health`, `/api/setup/*`,
 `/api/auth/login`, `/api/auth/captcha`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
-`/api/auth/oidc/callback`, `/api/auth/oidc/exchange`,
+`/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/auth/oauth/status`,
+`/api/auth/oauth/start`, `/api/auth/oauth/callback`, `/api/auth/oauth/exchange`,
 `/api/connectors/oauth/callback`, and `/api/internal/mcp/*`. All other routes are JWT-gated by
 `api/middleware/jwt_auth.py`; the setup lockdown middleware
 (`api/middleware/setup_lockdown.py`) additionally blocks non-setup
@@ -85,6 +86,15 @@ does not set these headers itself.
 | `GET`    | `/auth/oidc/config` | admin | OIDC provider configuration and callback URL; client secret is omitted |
 | `PUT`    | `/auth/oidc/config` | admin | Write OIDC provider configuration; `client_secret` is write-only |
 | `POST`   | `/auth/oidc/config/test` | admin | Verify configured discovery metadata and JWKS endpoint |
+| `GET`    | `/auth/oauth/status` | public | `{providers:[{kind, display_name, enabled}]}` |
+| `POST`   | `/auth/oauth/start` | public | body `{kind, redirect_after?}` → authorization URL |
+| `GET`    | `/auth/oauth/callback` | public | App OAuth callback (`code` or DingTalk `authCode`); same completion page as OIDC |
+| `POST`   | `/auth/oauth/exchange` | public | Same one-time code exchange as `/auth/oidc/exchange` |
+| `POST`   | `/auth/oauth/bind/start` | user | body `{kind, redirect_after?}` → bind the identity to the current user |
+| `POST`   | `/auth/oauth/unbind` | user | Unlink one SSO identity by `kind` (requires a local password when it is the last login method) |
+| `GET`    | `/auth/oauth/providers/{kind}` | admin | Provider config; `kind` is `oidc`, `feishu`, `dingtalk`, or `wecom` |
+| `PUT`    | `/auth/oauth/providers/{kind}` | admin | Upsert provider config; `client_secret` is write-only; WeCom uses `extra.agent_id` |
+| `POST`   | `/auth/oauth/providers/{kind}/test` | admin | Test provider credentials |
 | `POST`   | `/auth/logout` | user | `204` |
 | `GET`    | `/auth/me` | user | `{id, username, role, display_name, locale, ...}` |
 | `PATCH`  | `/auth/me` | user | body `{display_name?, locale?, ...}` |
@@ -116,7 +126,7 @@ does not set these headers itself.
 | `POST`   | `/agents/{id}/stop` | owner | `204` |
 | `POST`   | `/agents/{id}/reload` | owner | `204` (rebuild harness runtime) |
 | `POST`   | `/agents/{id}/read` | owner | `204` (mark unread badge cleared) |
-| `GET`    | `/agents/{id}/status` | owner | `{state, last_error?, ...}` |
+| `GET`    | `/agents/{id}/status` | owner | `{state, last_error?, memory_maintenance?, ...}` |
 | `POST`   | `/agents/from-expert/{expert_id}` | user | body `{name, ...}` → `201` (creates from bundled expert template) |
 | `GET`    | `/agents/{id}/tool-settings` | owner | built-in + installed plugin tools with enable / disableable / available flags |
 | `PUT`    | `/agents/{id}/tool-settings` | owner | body `{disabled_builtin: string[], plugins?}` — persists denylist + plugin flags (hot-sync, no reload) |
@@ -137,10 +147,10 @@ destination synchronized after the request completes.
 
 | Path | Auth | Notes |
 |------|------|-------|
-| `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", ...}` frames; server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn (explicit stop; disconnect alone does **not** cancel). |
+| `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", ...}` frames (optional `hitl_policy` is a thread-scoped tool-approval bypass); server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn (explicit stop; disconnect alone does **not** cancel). |
 | `GET /agents/{id}/chat/welcome` | agent access | `{welcome_message, quick_prompts, task_examples}`; `task_examples` is `null` when the workspace field is absent |
 | `POST /agents/{id}/chat/polish` | owner | body `{text, default_model?}` → `{text}` (one-shot prompt refinement) |
-| `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...]}` → SSE chunk stream; finishes with `{"type":"done"}` |
+| `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...], hitl_policy?}` → SSE chunk stream; finishes with `{"type":"done"}`. Optional `hitl_policy` (`ask` / `allow_all` / `allow_tools`) is a thread-scoped bypass and does not change global tool-approval settings. |
 
 ### Legacy SSE
 
@@ -157,6 +167,15 @@ because each request is a one-shot continuation.
 | `PATCH`  | `/agents/{id}/chat/sessions/{thread_id}` | owner | body `{title?, pinned?}` → updated row |
 | `DELETE` | `/agents/{id}/chat/sessions/{thread_id}` | owner | `204` (archives the active row) |
 | `GET`    | `/agents/{id}/chat/sessions/{thread_id}/history` | owner | paginated message history; `turn_active` tells a reconnecting client whether to re-`subscribe` over the chat WebSocket |
+
+**Tool result blocks.** `tool_result` blocks in history (and `tool_result`
+frames on the chat WebSocket) carry the tool's return value in `output`. When a
+plugin returns a large `octop_ui` payload, the backend offloads the envelope's
+`data` field: `output` then contains the slim envelope with
+`data_ref: "artifact"`, and the full payload is on the block's `artifact` key
+(absent otherwise). An explicit `data` key always takes precedence over
+`data_ref` when both appear. Clients that render plugin UIs must resolve
+`data_ref` from `artifact`; clients that only read `output` keep working.
 
 ### Trajectory ledger
 
@@ -227,7 +246,7 @@ the server derives one from `prompt`.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET` | `/models/presets` | user | provider templates from `harness-agent` |
+| `GET` | `/models/presets` | user | provider templates from `octop-harness` |
 | `GET` | `/models` | user | resolved models across enabled providers |
 | `GET` | `/models/active` | user | `{provider_name, model}` |
 | `PUT` | `/models/active` | admin | body `{provider_name, model}` |
@@ -267,7 +286,7 @@ reloads running agents so the image and video tools receive the new configuratio
 | `GET`    | `/personas` | user | `[{code}, ...]` (compat shim) |
 | `GET`    | `/personas/{code}` | user | rendered template (compat shim) |
 
-Persona content lives in `src/octop/infra/agents/mbti_profiles.py` —
+Persona content lives in `src/octop/infra/agents/persona/mbti_profiles.py` —
 see [Personas](./personas.md).
 
 ## Experts
@@ -276,7 +295,7 @@ see [Personas](./personas.md).
 |--------|------|------|-------|
 | `GET`    | `/experts` | user | bundled expert catalog (includes `task_examples` `{zh,en}` when present) |
 | `GET`    | `/experts/{expert_id}` | user | full expert template (SOUL.md, skills, files, `task_examples`) |
-| `POST`   | `/agents/from-expert/{expert_id}` | user | body `{name, locale?, ...}` → `201` |
+| `POST`   | `/agents/from-expert/{expert_id}` | user | body `{name, locale?, quick_prompts?, ...}` → `201`; optional `quick_prompts` overwrites workspace cards after seed |
 
 Bundled experts live in `src/octop/infra/agents/experts/library/`
 (en/zh divisions); the catalog is locale-aware via
@@ -378,13 +397,14 @@ for non-`/` paths.
 Custom MCP OAuth (streamable HTTP, public HTTPS URL only): Octop discovers the authorization
 server from the MCP URL (401 / RFC 9728 protected-resource metadata), requires dynamic client
 registration (DCR), stores encrypted tokens in the custom MCP spec, and injects `Authorization:
-Bearer` when loading tools. Loopback MCP URLs do not use remote OAuth discovery.
+Bearer` when loading tools. Loopback and LAN MCP URLs may use HTTP and do not use remote OAuth
+discovery.
 
-## Internal MCP (harness agents)
+## Internal MCP (octop-harness agents)
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `POST`/`GET`/… | `/internal/mcp/*` | public (mTLS / network-isolated) | MCP gateway used by harness agents (not the dashboard) |
+| `POST`/`GET`/… | `/internal/mcp/*` | public (mTLS / network-isolated) | MCP gateway used by octop-harness agents (not the dashboard) |
 
 ## Observability & security
 
@@ -416,7 +436,7 @@ endpoint (public, mounted directly in `api/app.py`).
 |--------|------|------|-------|
 | `WS`/`POST`/`GET`/… | `/agents/{aid}/terminal` | owner | AI-assisted remote PTY |
 | `GET` | `/agents/{aid}/terminal/context` | owner | recent terminal context for the AI helper |
-| `WS`/`POST`/`GET`/… | `/browser/...` | user | harness-browser sessions, live stream, record/replay |
+| `WS`/`POST`/`GET`/… | `/browser/...` | user | octop-browser sessions, live stream, record/replay |
 | `POST` | `/browser/shutdown` | user | stop the current user's Octop-managed Chrome |
 | `POST` | `/agents/{aid}/upload` | user | multipart upload → `{workspace}/inbound/` |
 | `POST` | `/agents/{aid}/files/access-urls` | user | refresh inbound media URLs (signed) |
@@ -427,7 +447,8 @@ endpoint (public, mounted directly in `api/app.py`).
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`/`POST` | `/update/status`, `/check`, `/upgrade`, `/progress`, `/restart` | admin | in-place server update flow |
-| `GET`/`POST`/`DELETE` | `/ollama/...` | user | Ollama model discovery + downloads |
+| `GET`/`POST`/`DELETE` | `/ollama-models/...` | `ollama_models` | Ollama model discovery + downloads |
+| `GET`/`PUT` | `/ollama-models/service` | `ollama_models` | Local daemon toggle; omit `enabled` to set `models_dir` only |
 | `GET` | `/i18n/tools` | user | server-owned tool display names (locale-aware) |
 | `GET` | `/i18n/locales` | public | available locales + fallback chain |
 | `GET` | `/i18n/locales/{locale}/{namespace}` | public | one namespace bundle (errors, tools, channel, slash) |

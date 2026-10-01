@@ -6,19 +6,29 @@ export function injectPendingHitlMessage(
   pending: HitlPendingPayload | null | undefined,
 ): ChatMessage[] {
   if (!pending?.action_requests?.length) return messages;
-  if (messages.some((m) => m.hitlData?.status === "pending")) return messages;
+  const pendingId = pending.pending_id?.trim() || "";
+  const injectedId = pendingId ? `hitl-${pendingId}` : "";
+  if (
+    messages.some(
+      (m) =>
+        m.hitlData?.status === "pending" ||
+        (pendingId &&
+          (m.id === injectedId || m.hitlData?.pending_id === pendingId)),
+    )
+  ) {
+    return messages;
+  }
   return [
     ...messages,
     {
-      id: pending.pending_id
-        ? `hitl-${pending.pending_id}`
-        : `hitl-${Date.now()}`,
+      id: injectedId || `hitl-${Date.now()}`,
       role: "assistant",
       content: "",
       hitlData: {
         action_requests: pending.action_requests,
         review_configs: pending.review_configs,
         status: "pending",
+        ...(pendingId ? { pending_id: pendingId } : {}),
       },
       status: "done",
       timestamp: Date.now(),

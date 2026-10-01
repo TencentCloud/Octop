@@ -122,6 +122,96 @@ describe("CaptchaField", () => {
       delete (window as unknown as Record<string, unknown>).TencentCaptcha;
     }
   });
+
+  it("resolves the geetest-v4 popup validate payload as JSON token", async () => {
+    const ref = createRef<CaptchaFieldHandle>();
+    const init = vi.fn(
+      (
+        options: Record<string, unknown>,
+        cb: (captcha: Record<string, unknown>) => void,
+      ) => {
+        expect(options).toMatchObject({ captchaId: "gt4-id", product: "bind" });
+        const captcha = {
+          onReady: (fn: () => void) => {
+            fn();
+          },
+          onSuccess: (fn: () => void) => {
+            captcha.onSuccessCb = fn;
+          },
+          onError: vi.fn(),
+          onClose: vi.fn(),
+          showCaptcha: () => {
+            captcha.onSuccessCb();
+          },
+          getValidate: () => ({
+            lot_number: "lot-1",
+            captcha_output: "out-1",
+            pass_token: "pt-1",
+            gen_time: "2026-09-20T12:00:00",
+          }),
+          onSuccessCb: () => undefined,
+        };
+        cb(captcha);
+      },
+    );
+    (window as unknown as Record<string, unknown>).initGeetest4 = init;
+    try {
+      render(
+        <CaptchaField
+          ref={ref}
+          config={{ provider: "geetest-v4", site_key: "gt4-id" }}
+          {...labels}
+          onReadyChange={vi.fn()}
+        />,
+      );
+      expect(screen.getByTestId("captcha-popup")).toBeInTheDocument();
+      await expect(ref.current?.getToken()).resolves.toBe(
+        JSON.stringify({
+          lot_number: "lot-1",
+          captcha_output: "out-1",
+          pass_token: "pt-1",
+          gen_time: "2026-09-20T12:00:00",
+        }),
+      );
+      expect(init).toHaveBeenCalled();
+    } finally {
+      delete (window as unknown as Record<string, unknown>).initGeetest4;
+    }
+  });
+
+  it("resolves undefined when the geetest-v4 popup errors", async () => {
+    const ref = createRef<CaptchaFieldHandle>();
+    const init = vi.fn(
+      (
+        _options: Record<string, unknown>,
+        cb: (captcha: Record<string, unknown>) => void,
+      ) => {
+        const captcha = {
+          onReady: (fn: () => void) => fn(),
+          onSuccess: vi.fn(),
+          onError: (fn: () => void) => fn(),
+          onClose: vi.fn(),
+          showCaptcha: () => undefined,
+          getValidate: () => false,
+        };
+        cb(captcha);
+      },
+    );
+    (window as unknown as Record<string, unknown>).initGeetest4 = init;
+    try {
+      render(
+        <CaptchaField
+          ref={ref}
+          config={{ provider: "geetest-v4", site_key: "gt4-id" }}
+          {...labels}
+          onReadyChange={vi.fn()}
+        />,
+      );
+      await expect(ref.current?.getToken()).resolves.toBeUndefined();
+    } finally {
+      delete (window as unknown as Record<string, unknown>).initGeetest4;
+    }
+  });
 });
 
 describe("loginCaptchaBody", () => {

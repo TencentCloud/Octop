@@ -4,17 +4,8 @@
  * Mutations stay local until the parent modal saves (PATCH full models array).
  * Connectivity tests still hit the live provider endpoint.
  */
-import { useState } from "react";
-import {
-  App,
-  Button,
-  Form,
-  Input,
-  InputNumber,
-  Select,
-  Switch,
-  Tooltip,
-} from "antd";
+import { useMemo, useState } from "react";
+import { App, Button, Form, Input, Select, Switch, Tooltip } from "antd";
 
 import {
   Check,
@@ -23,6 +14,7 @@ import {
   Download,
   Pencil,
   Plus,
+  Search,
   Trash2,
   X,
   Zap,
@@ -33,7 +25,18 @@ import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { isOnnxProviderRow } from "../../presetUtils";
 import { ModelMetaTags } from "../../modelMeta";
+import { TokenCountInput } from "@/components/TokenCountInput";
 import styles from "../../index.module.less";
+
+/** Common context-window sizes (absolute tokens). */
+const CONTEXT_WINDOW_PRESETS = [
+  8_000, 32_000, 64_000, 128_000, 200_000, 1_000_000,
+] as const;
+
+/** Common max-output sizes (absolute tokens). */
+const MAX_TOKENS_PRESETS = [
+  4_000, 8_000, 16_000, 32_000, 64_000, 128_000,
+] as const;
 
 export interface LocalModelDownloadControl {
   /** Model ids already present on disk / in the local runtime. */
@@ -88,6 +91,7 @@ export function ModelListEditor({
   })();
   const requireDownload = !!localDownload?.requireDownloadToEnable;
   const [adding, setAdding] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
@@ -364,13 +368,37 @@ export function ModelListEditor({
   const isFormVisible = adding || isEditing;
   const hasApiKey = canTest ?? !!provider.api_key;
 
+  const filteredModels = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return models;
+    return models.filter(
+      (m) =>
+        m.id.toLowerCase().includes(query) ||
+        m.name.toLowerCase().includes(query),
+    );
+  }, [models, searchQuery]);
+
   return (
     <div>
+      {models.length > 0 && (
+        <Input
+          allowClear
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          prefix={<Search size={14} />}
+          placeholder={t("models.searchModelsPlaceholder")}
+          style={{ marginTop: 12 }}
+        />
+      )}
       <div className={styles.modelList}>
         {models.length === 0 ? (
           <div className={styles.modelListEmpty}>{t("models.noModels")}</div>
+        ) : filteredModels.length === 0 ? (
+          <div className={styles.modelListEmpty}>
+            {t("models.noMatchingModels")}
+          </div>
         ) : (
-          models.map((m) => {
+          filteredModels.map((m) => {
             const isCurrentEditing = editingModelId === m.id;
             const isEnabled = m.enabled !== false;
             const isTesting = testingIds.has(m.id);
@@ -592,9 +620,8 @@ export function ModelListEditor({
                         label={t("models.contextWindow")}
                         style={{ flex: 1, marginBottom: 10 }}
                       >
-                        <InputNumber
-                          min={0}
-                          style={{ width: "100%" }}
+                        <TokenCountInput
+                          presets={CONTEXT_WINDOW_PRESETS}
                           placeholder={t("models.contextWindowPlaceholder")}
                         />
                       </Form.Item>
@@ -603,9 +630,8 @@ export function ModelListEditor({
                         label={t("models.maxTokens")}
                         style={{ flex: 1, marginBottom: 10 }}
                       >
-                        <InputNumber
-                          min={0}
-                          style={{ width: "100%" }}
+                        <TokenCountInput
+                          presets={MAX_TOKENS_PRESETS}
                           placeholder={t("models.maxTokensPlaceholder")}
                         />
                       </Form.Item>

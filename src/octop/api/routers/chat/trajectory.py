@@ -21,10 +21,10 @@ from octop.api.deps import current_user, get_server
 from octop.api.routers.chat.history import _require_thread
 from octop.api.routers.chat.sse import format_sse
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.trajectory.live import TrajectoryLiveBus
-from octop.infra.trajectory.service import TrajectoryService
-from octop.infra.trajectory.settings import TRAJECTORY_SSE_REPLAY_MAX
-from octop.infra.trajectory.types import TrajectoryEvent
+from octop.infra.history.trajectory.live import TrajectoryLiveBus
+from octop.infra.history.trajectory.service import TrajectoryService
+from octop.infra.history.trajectory.settings import TRAJECTORY_SSE_REPLAY_MAX
+from octop.infra.history.trajectory.types import TrajectoryEvent
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

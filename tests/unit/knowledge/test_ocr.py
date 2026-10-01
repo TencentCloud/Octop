@@ -154,3 +154,70 @@ def test_remote_ocr_sends_image_block(tmp_path: Path, monkeypatch: pytest.Monkey
     content = messages[0].content
     assert content[1]["type"] == "image_url"
     assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def _remote_extractor(monkeypatch: pytest.MonkeyPatch, reply: object) -> ocr._RemoteOcr:
+    """Build a ``_RemoteOcr`` whose model returns *reply* (str or a per-call sequence)."""
+
+    class Model:
+        @staticmethod
+        def invoke(_value: list[object]) -> SimpleNamespace:
+            if isinstance(reply, list):
+                return SimpleNamespace(content=reply.pop(0))
+            return SimpleNamespace(content=reply)
+
+    monkeypatch.setattr(ocr, "build_probe_chat_model", lambda *_a, **_k: Model())
+    return ocr._RemoteOcr(SimpleNamespace(), "vision")
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        "No image was attached. Please upload an image.",
+        "I don't see an image attached to your message. Please upload the image you'd "
+        "like me to transcribe, and I'll provide the exact transcription.",
+        "未收到图片，请上传图片后重试。",
+    ],
+)
+def test_remote_ocr_ignores_no_image_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, refusal: str
+) -> None:
+    """A refusal is not source text: indexing it would mark the document ready with junk."""
+    image = tmp_path / "scan.png"
+    image.write_bytes(b"image")
+
+    assert _remote_extractor(monkeypatch, refusal)(image) == ""
+
+
+def test_remote_ocr_keeps_long_page_that_mentions_uploading_an_image(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The refusal filter must not drop real transcriptions that happen to mention an image."""
+    image = tmp_path / "scan.png"
+    image.write_bytes(b"image")
+    page = (
+        "No image was attached. Please upload an image. "
+        + "发票明细：办公用品 128.00 元，差旅费 340.00 元。" * 12
+    )
+
+    assert _remote_extractor(monkeypatch, page)(image) == page
+
+
+def test_remote_ocr_skips_refusal_page_but_keeps_transcribed_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Refusals are dropped per page, so a partly readable document keeps its good pages."""
+    pdf = tmp_path / "scan.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+    monkeypatch.setattr(
+        ocr,
+        "_image_inputs",
+        lambda _path: iter([(b"page-1", "image/png"), (b"page-2", "image/png")]),
+    )
+
+    extractor = _remote_extractor(
+        monkeypatch,
+        ["No image was attached. Please upload an image.", "第二页正文"],
+    )
+
+    assert extractor(pdf) == "第二页正文"

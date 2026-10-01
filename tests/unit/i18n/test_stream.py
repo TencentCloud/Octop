@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from octop.i18n.domains.stream import (
     MODEL_CALL_FAILED,
+    PATH_OUTSIDE_ROOT,
     RECURSION_LIMIT,
     STREAM_STALL,
     classify_stream_error_message,
+    exception_display_message,
     format_stream_error,
     stream_error_message,
 )
@@ -97,6 +99,27 @@ def test_classify_model_call_failed_fallback() -> None:
     )
 
 
+def test_classify_path_outside_root() -> None:
+    msg = (
+        r"Path:D:\octop-data\data\文章存稿\x.md outside root directory: "
+        r"C:\Users\Administrator"
+    )
+    assert classify_stream_error_message(msg) == PATH_OUTSIDE_ROOT
+    assert classify_stream_error_message("Path traversal not allowed") == PATH_OUTSIDE_ROOT
+
+
+def test_format_path_outside_root_zh_guides_to_storage_root() -> None:
+    msg = (
+        r"ValueError: Path:D:\octop-data\data\文章存稿\_核验与备选标题.md "
+        r"outside root directory: C:\Users\Administrator"
+    )
+    text = format_stream_error(msg, "zh")
+    assert "存储根目录" in text
+    assert "模型调用" not in text
+    assert "ValueError" not in text
+    assert "outside root" not in text
+
+
 def test_classify_unknown_passthrough() -> None:
     assert classify_stream_error_message("disk full") is None
 
@@ -140,3 +163,34 @@ def test_format_stream_error_unknown_falls_back_to_localized() -> None:
     text = format_stream_error("disk full", "en")
     assert "disk full" not in text
     assert "model call failed" in text
+
+
+def test_format_stream_error_passes_through_send_file_failures() -> None:
+    msg = (
+        "send_file_to_user: no such file: "
+        "/home/octop/.octop/agents/CS6ZRF/.octop/generated/expense_stats/x.xlsx"
+    )
+    assert format_stream_error(msg, "zh") == msg
+    assert format_stream_error(FileNotFoundError(msg), "en") == msg
+    assert "模型调用" not in format_stream_error(msg, "zh")
+    # Generic missing-file noise must still fall back to the model-failure copy.
+    assert "model call failed" in format_stream_error("FileNotFoundError: config.json", "en")
+
+
+def test_exception_display_message_empty_falls_back_to_type() -> None:
+    assert exception_display_message(TimeoutError()) == "TimeoutError"
+    assert exception_display_message(RuntimeError()) == "RuntimeError"
+    assert exception_display_message(ConnectionError()) == "ConnectionError"
+    assert exception_display_message(OSError()) == "OSError"
+    assert exception_display_message(TimeoutError("timed out")) == "timed out"
+    assert exception_display_message("") == "unknown error"
+
+    wrapped = RuntimeError()
+    wrapped.__cause__ = ConnectionError()
+    assert exception_display_message(wrapped) == "RuntimeError <- ConnectionError"
+
+
+def test_format_stream_error_empty_exception_still_localized() -> None:
+    text = format_stream_error(TimeoutError(), "zh")
+    assert text
+    assert "模型调用" in text

@@ -25,10 +25,14 @@ class _Siteverify(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(raw)
 
     def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length") or 0)
+        if length:
+            self.rfile.read(length)
         self._reply()
 
     def do_GET(self) -> None:
@@ -267,6 +271,7 @@ async def test_admin_captcha_get_put_and_null_delete(env: Any) -> None:
         "turnstile",
         "hcaptcha",
         "recaptcha-v3",
+        "geetest-v4",
     ]
     assert body["source"] in {"settings", "env"}
     assert body["v3_min_score"] == 0.5

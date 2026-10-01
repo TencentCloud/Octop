@@ -1,0 +1,11 @@
+id: color-convert
+version: 0.1.0
+name: 颜色转换
+description: 在 HEX、RGB 与 HSL 之间转换颜色
+icon: icon.svg
+group: tools
+kind: tool
+entry: main.py
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

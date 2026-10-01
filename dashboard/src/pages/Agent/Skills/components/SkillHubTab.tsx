@@ -24,6 +24,9 @@ interface SkillHubTabProps {
   target: SkillInstallTarget | null;
   /** Called after a successful install (e.g. refresh package detail). */
   onInstalled?: () => void;
+  /** When set, cards pick a skill instead of installing it. */
+  onPick?: (skill: SkillHubSkill) => void;
+  pickedSlugs?: ReadonlySet<string>;
 }
 
 type RankingType = "recommended" | "trending" | "hot" | "newest";
@@ -67,7 +70,7 @@ function localizedPair(
   return Object.keys(pair).length > 0 ? pair : undefined;
 }
 
-function hubInstallPresentation(skill: SkillHubSkill): {
+export function hubInstallPresentation(skill: SkillHubSkill): {
   label?: { zh?: string; en?: string };
   summary?: { zh?: string; en?: string };
 } {
@@ -97,7 +100,12 @@ function normalizeHubSkill(raw: Record<string, unknown>): SkillHubSkill {
   };
 }
 
-export default function SkillHubTab({ target, onInstalled }: SkillHubTabProps) {
+export default function SkillHubTab({
+  target,
+  onInstalled,
+  onPick,
+  pickedSlugs,
+}: SkillHubTabProps) {
   const { t } = useTranslation();
   const [hubSkills, setHubSkills] = useState<SkillHubSkill[]>([]);
   const [rankings, setRankings] = useState<Record<string, SkillHubSkill[]>>(
@@ -124,6 +132,9 @@ export default function SkillHubTab({ target, onInstalled }: SkillHubTabProps) {
   const packageId = target?.type === "package" ? target.packageId : undefined;
 
   const browseTarget = useMemo<SkillInstallTarget>(() => {
+    if (target?.type === "browse") {
+      return { type: "browse" };
+    }
     if (target?.type === "package" && packageId) {
       return { type: "package", packageId };
     }
@@ -247,12 +258,17 @@ export default function SkillHubTab({ target, onInstalled }: SkillHubTabProps) {
   }, [installTarget]);
 
   const isInstalled = useCallback(
-    (slug: string) => installedSlugs.has(slug),
-    [installedSlugs],
+    (slug: string) => pickedSlugs?.has(slug) || installedSlugs.has(slug),
+    [installedSlugs, pickedSlugs],
   );
 
   const handleInstall = useCallback(
     async (skill: SkillHubSkill) => {
+      if (onPick) {
+        onPick(skill);
+        setDrawerOpen(false);
+        return;
+      }
       if (installingSlug) return;
       if (!installTarget) {
         message.warning(t("skills.noAgentSelected"));
@@ -292,7 +308,7 @@ export default function SkillHubTab({ target, onInstalled }: SkillHubTabProps) {
         setInstallingSlug(null);
       }
     },
-    [installTarget, installingSlug, onInstalled, t],
+    [installTarget, installingSlug, onInstalled, onPick, t],
   );
 
   const displaySkills = useMemo(() => {
@@ -472,7 +488,11 @@ export default function SkillHubTab({ target, onInstalled }: SkillHubTabProps) {
                     void handleInstall(skill);
                   }}
                 >
-                  {isInstalled(skill.slug)
+                  {onPick
+                    ? isInstalled(skill.slug)
+                      ? t("experts.skillAlreadySelected")
+                      : t("experts.pickSkill")
+                    : isInstalled(skill.slug)
                     ? t("skills.reinstall")
                     : t("skills.install")}
                 </Button>

@@ -9,6 +9,10 @@ import {
 import type { ReactNode } from "react";
 import { setActiveAgentId } from "../api/request";
 import { agentApi as legacyAgentApi } from "../api/modules/agent";
+import {
+  retainDisconnectedBridgeAgents,
+  toBridgeShadowAgentId,
+} from "../utils/remoteExpert";
 
 /**
  * Multi-Agent navigation state.
@@ -59,6 +63,22 @@ export interface OctopAgent {
   unread_count?: number;
   /** True while BOOTSTRAP.md onboarding has not written ``.bootstrapped`` yet. */
   bootstrap_pending?: boolean;
+  /** ``expert`` (default) or ``team`` host. */
+  kind?: "expert" | "team" | string;
+  /** Member agent ids when ``kind === "team"``. */
+  member_ids?: string[];
+  welcome_message?: string | null;
+  /** True when this row is a remote shadow expert via cloud collab. */
+  bridge?: boolean;
+  bridge_connection_id?: string | null;
+  /** Display name of the cloud-collab link (chat group label). */
+  bridge_connection_name?: string | null;
+  /** Icon selected for the cloud-collab link (shown on remote expert badges). */
+  bridge_connection_icon?: string | null;
+  /** True while the cloud-collab link dropped but this shadow is still pinned. */
+  bridge_disconnected?: boolean;
+  /** True when this shadow arrived via a peer-initiated (inbound) link. */
+  bridge_inbound?: boolean;
 }
 
 interface AgentContextValue {
@@ -110,12 +130,20 @@ export function selectEnabledExperts(
   options: EnabledExpertsOptions = {},
 ): OctopAgent[] {
   const { pinActive = false } = options;
-  const enabled = agents.filter((a) => a.state === "running");
+  const enabled = agents.filter(
+    (a) => a.state === "running" || Boolean(a.bridge_disconnected),
+  );
   if (!pinActive || !resolvedAgentId) return enabled;
   if (enabled.some((a) => a.agent_id === resolvedAgentId)) return enabled;
   const pinnedActive = agents.find((a) => a.agent_id === resolvedAgentId);
   if (!pinnedActive) return enabled;
   return [pinnedActive, ...enabled];
+}
+
+function sameMemberIds(left?: string[], right?: string[]): boolean {
+  const a = left ?? [];
+  const b = right ?? [];
+  return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
 /**
@@ -133,6 +161,12 @@ export function projectChatAgentOption(agent: OctopAgent): {
   is_shared: boolean;
   is_owner: boolean;
   owner_username: string | null;
+  bridge: boolean;
+  bridge_connection_id: string | null;
+  bridge_connection_name: string | null;
+  bridge_connection_icon: string | null;
+  bridge_disconnected: boolean;
+  bridge_inbound: boolean;
 } {
   return {
     agent_id: agent.agent_id,
@@ -143,6 +177,12 @@ export function projectChatAgentOption(agent: OctopAgent): {
     is_shared: Boolean(agent.is_shared),
     is_owner: Boolean(agent.is_owner),
     owner_username: agent.owner_username ?? null,
+    bridge: Boolean(agent.bridge),
+    bridge_connection_id: agent.bridge_connection_id ?? null,
+    bridge_connection_name: agent.bridge_connection_name ?? null,
+    bridge_connection_icon: agent.bridge_connection_icon ?? null,
+    bridge_disconnected: Boolean(agent.bridge_disconnected),
+    bridge_inbound: Boolean(agent.bridge_inbound),
   };
 }
 
@@ -165,20 +205,133 @@ interface ListAgentsResponse {
   list: () => Promise<OctopAgent[]>;
 }
 
+interface FetchAgentsResult {
+  agents: OctopAgent[];
+  liveConnectionIds: Set<string>;
+}
+
 /**
  * Fetch ``/api/agents``. Tries the orca-flavored ``listAll`` method first,
  * falls back to a direct request if the legacy module hasn't been
  * regenerated yet.
  */
-async function fetchAgents(): Promise<OctopAgent[]> {
+async function fetchAgents(): Promise<FetchAgentsResult> {
   const candidate = legacyAgentApi as Partial<ListAgentsResponse> &
     Record<string, unknown>;
+  let local: OctopAgent[] = [];
   if (typeof candidate.list === "function") {
-    return candidate.list();
+    local = await candidate.list();
+  } else {
+    // Direct fallback so 14.3 doesn't depend on 14.6's API module rewrite.
+    const { request } = await import("../api/request");
+    local = await request<OctopAgent[]>("/agents");
   }
-  // Direct fallback so 14.3 doesn't depend on 14.6's API module rewrite.
-  const { request } = await import("../api/request");
-  return request<OctopAgent[]>("/agents");
+  const { remote, liveConnectionIds } = await fetchBridgeShadowAgents();
+  if (remote.length === 0) {
+    return { agents: local, liveConnectionIds };
+  }
+  const localIds = new Set(local.map((a) => a.agent_id));
+  return {
+    agents: [...local, ...remote.filter((a) => !localIds.has(a.agent_id))],
+    liveConnectionIds,
+  };
+}
+
+async function fetchBridgeShadowAgents(): Promise<{
+  remote: OctopAgent[];
+  liveConnectionIds: Set<string>;
+}> {
+  const empty = {
+    remote: [] as OctopAgent[],
+    liveConnectionIds: new Set<string>(),
+  };
+  try {
+    const { bridgeApi } = await import("../api/modules/bridge");
+    const connections = await bridgeApi.list();
+    const liveConnectionIds = new Set(
+      connections.map((c) => c.connection_id).filter(Boolean),
+    );
+    const connected = connections.filter((c) => c.status === "connected");
+    if (connected.length === 0) {
+      return { remote: [], liveConnectionIds };
+    }
+    const batches = await Promise.all(
+      connected.map(async (conn) => {
+        try {
+          const agents = await bridgeApi.listAgents(conn.connection_id);
+          return agents.map((agent) => mapBridgeAgent(agent, conn));
+        } catch {
+          return [] as OctopAgent[];
+        }
+      }),
+    );
+    return { remote: batches.flat(), liveConnectionIds };
+  } catch {
+    // Non-admin users or cloud-collab-unavailable installs — ignore.
+    return empty;
+  }
+}
+
+function mapBridgeAgent(
+  agent: {
+    id?: string;
+    agent_id?: string;
+    name?: string;
+    description?: string | null;
+    icon_url?: string | null;
+    icon_name?: string | null;
+    color?: string | null;
+    kind?: string | null;
+    state?: string | null;
+    member_ids?: unknown;
+  },
+  conn: {
+    connection_id: string;
+    display_name: string;
+    icon_name?: string | null;
+    inbound?: boolean;
+    has_password?: boolean;
+  },
+): OctopAgent {
+  const agentId = String(agent.agent_id || agent.id || "");
+  const memberIds = Array.isArray(agent.member_ids)
+    ? agent.member_ids
+        .map((id) =>
+          toBridgeShadowAgentId(conn.connection_id, String(id ?? "")),
+        )
+        .filter((id): id is string => Boolean(id))
+    : undefined;
+  return {
+    id: 0,
+    agent_id: agentId,
+    name: String(agent.name || agentId),
+    description:
+      typeof agent.description === "string" ? agent.description : null,
+    persona_mbti: null,
+    default_model: null,
+    system_prompt: null,
+    template_name: null,
+    state: "running",
+    last_error: null,
+    icon: null,
+    icon_name: typeof agent.icon_name === "string" ? agent.icon_name : null,
+    icon_url: typeof agent.icon_url === "string" ? agent.icon_url : null,
+    color: typeof agent.color === "string" ? agent.color : null,
+    config: {},
+    kind: agent.kind === "team" ? "team" : "expert",
+    member_ids: memberIds,
+    bridge: true,
+    is_owner: true,
+    is_shared: false,
+    bridge_disconnected: false,
+    bridge_inbound: Boolean(conn.inbound) || conn.has_password === false,
+    bridge_connection_id: conn.connection_id,
+    bridge_connection_name: conn.display_name,
+    bridge_connection_icon:
+      typeof conn.icon_name === "string" && conn.icon_name.trim()
+        ? conn.icon_name.trim()
+        : null,
+  };
 }
 
 export function AgentProvider({ children }: { children: ReactNode }) {
@@ -208,16 +361,22 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       }
       setError(null);
       try {
-        const list = await fetchAgents();
+        const { agents: list, liveConnectionIds } = await fetchAgents();
         // Only update state when content actually changed, to prevent
         // unnecessary re-renders of every component subscribed to this context
         // (the chat page polls every 10 s to refresh unread badges).
+        let merged: OctopAgent[] = list;
         setAgents((prev) => {
+          merged = retainDisconnectedBridgeAgents(
+            prev,
+            list,
+            liveConnectionIds,
+          );
           if (
             !options?.force &&
-            prev.length === list.length &&
+            prev.length === merged.length &&
             prev.every((a, i) => {
-              const b = list[i];
+              const b = merged[i];
               return (
                 a.agent_id === b.agent_id &&
                 a.state === b.state &&
@@ -226,22 +385,33 @@ export function AgentProvider({ children }: { children: ReactNode }) {
                 a.name === b.name &&
                 a.icon === b.icon &&
                 a.icon_name === b.icon_name &&
-                a.color === b.color
+                a.icon_url === b.icon_url &&
+                a.color === b.color &&
+                a.kind === b.kind &&
+                a.bridge === b.bridge &&
+                a.is_owner === b.is_owner &&
+                a.bridge_connection_id === b.bridge_connection_id &&
+                a.bridge_connection_name === b.bridge_connection_name &&
+                a.bridge_disconnected === b.bridge_disconnected &&
+                a.bridge_inbound === b.bridge_inbound &&
+                sameMemberIds(a.member_ids, b.member_ids)
               );
             })
           ) {
+            merged = prev;
             return prev; // nothing changed — keep the same reference
           }
-          return list;
+          return merged;
         });
 
-        // Reconcile selection with what the server reports.
+        // Reconcile selection with what the server reports. Keep a
+        // disconnected remote pin instead of jumping to the first local expert.
         const stored = localStorage.getItem(STORAGE_KEY);
-        const haveStored = stored && list.some((a) => a.agent_id === stored);
+        const haveStored = stored && merged.some((a) => a.agent_id === stored);
         if (haveStored) {
           persistAndApply(stored);
-        } else if (list.length > 0) {
-          persistAndApply(list[0].agent_id);
+        } else if (merged.length > 0) {
+          persistAndApply(merged[0].agent_id);
         } else {
           persistAndApply(null);
         }

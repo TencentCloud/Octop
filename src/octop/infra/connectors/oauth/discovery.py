@@ -8,7 +8,12 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from octop.infra.connectors.oauth.mcp import fetch_authorization_metadata
-from octop.infra.utils.ssrf_guard import UnsafeOutboundUrl, safe_request, validate_https_url
+from octop.infra.utils.ssrf_guard import (
+    UnsafeOutboundUrl,
+    is_private_or_local_host,
+    safe_request,
+    validate_https_url,
+)
 
 _RESOURCE_METADATA_PARAM = re.compile(
     r'resource_metadata\s*=\s*"([^"]+)"',
@@ -28,9 +33,9 @@ def _mcp_url_host(url: str) -> str:
     return (urlparse(url).hostname or "").lower().rstrip(".")
 
 
-def _is_loopback_mcp_url(url: str) -> bool:
-    host = _mcp_url_host(url)
-    return host in {"localhost", "127.0.0.1", "::1"}
+def _is_local_or_lan_mcp_url(url: str) -> bool:
+    """Loopback / LAN MCP URLs skip remote OAuth discovery (and SSRF-gated fetches)."""
+    return is_private_or_local_host(_mcp_url_host(url))
 
 
 def build_protected_resource_metadata_urls(
@@ -95,7 +100,7 @@ async def _probe_401_resource_metadata(mcp_url: str) -> str | None:
     parsed = urlparse(mcp_url)
     if parsed.scheme not in ("http", "https"):
         return None
-    if _is_loopback_mcp_url(mcp_url):
+    if _is_local_or_lan_mcp_url(mcp_url):
         return None
     if parsed.scheme != "https":
         return None
@@ -167,8 +172,8 @@ async def discover_oauth_from_mcp_url(
 async def _discover_oauth_from_mcp_url_uncached(url: str) -> dict[str, Any]:
     if not url:
         return {"available": False, "error": "empty mcp url"}
-    if _is_loopback_mcp_url(url):
-        return {"available": False, "error": "loopback MCP does not use remote OAuth"}
+    if _is_local_or_lan_mcp_url(url):
+        return {"available": False, "error": "local/LAN MCP does not use remote OAuth"}
 
     www_auth_prm = await _probe_401_resource_metadata(url)
     prm_doc: dict[str, Any] | None = None

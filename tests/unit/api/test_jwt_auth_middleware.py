@@ -30,11 +30,17 @@ def test_exempt_paths() -> None:
     assert is_jwt_exempt_path("/api/auth/oidc/start")
     assert is_jwt_exempt_path("/api/auth/oidc/callback")
     assert is_jwt_exempt_path("/api/auth/oidc/exchange")
+    assert is_jwt_exempt_path("/api/auth/oauth/status")
+    assert is_jwt_exempt_path("/api/auth/oauth/start")
+    assert is_jwt_exempt_path("/api/auth/oauth/callback")
+    assert is_jwt_exempt_path("/api/auth/oauth/exchange")
     assert is_jwt_exempt_path("/api/auth/invite/validate")
     assert is_jwt_exempt_path("/api/auth/invite/redeem")
     assert is_jwt_exempt_path("/api/docs")
     assert is_jwt_exempt_path("/api/openapi.json")
     assert not is_jwt_exempt_path("/api/auth/oidc/config")
+    assert not is_jwt_exempt_path("/api/auth/oauth/providers/feishu")
+    assert not is_jwt_exempt_path("/api/auth/oauth/bind/start")
     assert not is_jwt_exempt_path("/api/users/invites")
     assert not is_jwt_exempt_path("/api/auth/oidc/config/test")
     assert not is_jwt_exempt_path("/api/auth/me")
@@ -111,7 +117,7 @@ async def test_near_expiry_token_gets_sliding_renew(client) -> None:
         secret,
         sub=user.id,
         uname=user.username,
-        role=user.role.value,
+        role=user.role,
         ttl_seconds=60,
     )
     r = await c.get("/api/auth/me", headers=bearer(short))
@@ -133,13 +139,9 @@ async def test_maybe_sliding_renew_helper_threshold(client) -> None:
     secret = srv.services.secret_repo.get("jwt")
     assert secret is not None
     ttl = srv.services.config.access_token_ttl_seconds
-    fresh = sign_token(
-        secret, sub=user.id, uname=user.username, role=user.role.value, ttl_seconds=ttl
-    )
+    fresh = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl)
     assert maybe_sliding_renew_token(srv, fresh, user) is None
-    short = sign_token(
-        secret, sub=user.id, uname=user.username, role=user.role.value, ttl_seconds=60
-    )
+    short = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=60)
     renewed = maybe_sliding_renew_token(srv, short, user)
     assert renewed is not None
     assert renewed != short

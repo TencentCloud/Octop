@@ -25,7 +25,12 @@ import PageShell from "../../../layouts/PageShell";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { userCan } from "../../../utils/permissions";
 import { useProviders, type ProviderRow } from "./useProviders";
-import { groupPresets, isLocalPreset, isPresetProvider } from "./presetUtils";
+import {
+  groupPresets,
+  isLocalPreset,
+  isPresetProvider,
+  partitionCloudPresets,
+} from "./presetUtils";
 import type { PresetGroup } from "./presetUtils";
 import type { ProviderPreset } from "./useProviders";
 import {
@@ -86,6 +91,7 @@ export default function ModelsPage() {
   } = useProviders();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [showMoreProviders, setShowMoreProviders] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const modelCategory = resolveModelCategory(
     searchParams.get("tab"),
@@ -102,9 +108,17 @@ export default function ModelsPage() {
     setSearchParams(updated, { replace: true });
   };
 
-  const cloudPresets = useMemo(
-    () => groupPresets(presets.filter((p) => !isLocalPreset(p))),
-    [presets],
+  const {
+    featured: cloudFeatured,
+    more: cloudMore,
+    moreCount: moreProvidersCount,
+  } = useMemo(
+    () =>
+      partitionCloudPresets(
+        presets.filter((p) => !isLocalPreset(p)),
+        providers,
+      ),
+    [presets, providers],
   );
   const localPresets = useMemo(
     () =>
@@ -124,6 +138,36 @@ export default function ModelsPage() {
     (localPresets.grouped.length > 0 || localPresets.ungrouped.length > 0);
   const showPresetSection = showCloudTab || showLocalTab;
 
+  const renderPresetCards = (
+    grouped: PresetGroup[],
+    singles: ProviderPreset[],
+  ) => (
+    <>
+      {grouped.map((group) => (
+        <PresetGroupCard
+          key={group.groupKey}
+          group={group}
+          providers={providers}
+          onSaved={fetchAll}
+          isHover={hoveredCard === `group-${group.groupKey}`}
+          onMouseEnter={() => setHoveredCard(`group-${group.groupKey}`)}
+          onMouseLeave={() => setHoveredCard(null)}
+        />
+      ))}
+      {singles.map((preset) => (
+        <PresetProviderCard
+          key={preset.id}
+          preset={preset}
+          providers={providers}
+          onSaved={fetchAll}
+          isHover={hoveredCard === `preset-${preset.id}`}
+          onMouseEnter={() => setHoveredCard(`preset-${preset.id}`)}
+          onMouseLeave={() => setHoveredCard(null)}
+        />
+      ))}
+    </>
+  );
+
   const renderPresetGrid = (
     grouped: PresetGroup[],
     singles: ProviderPreset[],
@@ -138,29 +182,45 @@ export default function ModelsPage() {
     }
     return (
       <div className={styles.providerCards}>
-        {grouped.map((group) => (
-          <PresetGroupCard
-            key={group.groupKey}
-            group={group}
-            providers={providers}
-            onSaved={fetchAll}
-            isHover={hoveredCard === `group-${group.groupKey}`}
-            onMouseEnter={() => setHoveredCard(`group-${group.groupKey}`)}
-            onMouseLeave={() => setHoveredCard(null)}
-          />
-        ))}
-        {singles.map((preset) => (
-          <PresetProviderCard
-            key={preset.id}
-            preset={preset}
-            providers={providers}
-            onSaved={fetchAll}
-            isHover={hoveredCard === `preset-${preset.id}`}
-            onMouseEnter={() => setHoveredCard(`preset-${preset.id}`)}
-            onMouseLeave={() => setHoveredCard(null)}
-          />
-        ))}
+        {renderPresetCards(grouped, singles)}
       </div>
+    );
+  };
+
+  const renderCloudPresetGrid = () => {
+    const hasFeatured =
+      cloudFeatured.grouped.length > 0 || cloudFeatured.ungrouped.length > 0;
+    const hasMore = moreProvidersCount > 0;
+    if (!hasFeatured && !hasMore) {
+      return (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={t("models.noPresetProvidersInTab")}
+        />
+      );
+    }
+    return (
+      <>
+        {(hasFeatured || showMoreProviders) && (
+          <div className={styles.providerCards}>
+            {renderPresetCards(cloudFeatured.grouped, cloudFeatured.ungrouped)}
+            {showMoreProviders &&
+              renderPresetCards(cloudMore.grouped, cloudMore.ungrouped)}
+          </div>
+        )}
+        {hasMore && (
+          <Button
+            type="link"
+            size="small"
+            className={styles.showMoreProvidersBtn}
+            onClick={() => setShowMoreProviders((v) => !v)}
+          >
+            {showMoreProviders
+              ? t("models.hideMoreProviders")
+              : t("models.showMoreProviders", { count: moreProvidersCount })}
+          </Button>
+        )}
+      </>
     );
   };
 
@@ -286,10 +346,7 @@ export default function ModelsPage() {
                     ? {
                         key: "cloud",
                         label: t("models.presetCloud"),
-                        children: renderPresetGrid(
-                          cloudPresets.grouped,
-                          cloudPresets.ungrouped,
-                        ),
+                        children: renderCloudPresetGrid(),
                       }
                     : null,
                   showLocalTab

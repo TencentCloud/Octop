@@ -11,7 +11,7 @@ import {
   PinOff,
   GitFork,
   ChevronRight,
-  Plus,
+  MessageSquarePlus,
 } from "lucide-react";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { ExpertIcon } from "../../Experts/components/iconForName";
@@ -22,6 +22,8 @@ import { sortSessions, toSession, type Session } from "../hooks/useSessions";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent, onStreamEvent } from "../hooks/chatStore";
 import SharedExpertHint from "./SharedExpertHint";
+import RemoteExpertHint from "./RemoteExpertHint";
+import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
 
 /** Default preview size per expert in minimal nav (matches session page size). */
@@ -533,7 +535,7 @@ export default function MinimalAgentSessionNav({
                   <ExpertIcon
                     iconUrl={agent.icon_url}
                     iconName={agent.icon_name}
-                    size={14}
+                    size={agent.icon_url?.trim() ? 22 : 14}
                   />
                 </span>
                 <button
@@ -562,7 +564,9 @@ export default function MinimalAgentSessionNav({
               >
                 <span className={styles.agentNameCluster}>
                   <span className={styles.minimalAgentName}>{agent.name}</span>
+                  <TeamChatBadge agent={agent} />
                   <SharedExpertHint agent={agent} />
+                  <RemoteExpertHint agent={agent} />
                 </span>
                 <AgentUnreadBadge count={agent.unread_count ?? 0} />
               </button>
@@ -573,7 +577,7 @@ export default function MinimalAgentSessionNav({
                 title={t("chatWelcome.newChat")}
                 onClick={() => onNewChat(agent.agent_id)}
               >
-                <Plus size={14} strokeWidth={2} aria-hidden />
+                <MessageSquarePlus size={14} strokeWidth={1.75} aria-hidden />
               </button>
             </div>
 

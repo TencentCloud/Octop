@@ -197,12 +197,7 @@ export function StorageBackendCard({
       >
         {/* Header */}
         <div className={styles.backendCardHeader}>
-          <div
-            className={styles.backendCardIcon}
-            style={{ color: accent, background: `${accent}18` }}
-          >
-            {icon}
-          </div>
+          <div className={styles.backendCardIcon}>{icon}</div>
           <div className={styles.backendCardTitle}>
             <div className={styles.backendCardName}>{backend.name}</div>
             <div className={styles.backendCardKind}>

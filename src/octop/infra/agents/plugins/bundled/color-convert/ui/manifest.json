@@ -1,0 +1,3 @@
+{
+  "renderers": [{ "id": "color_convert_card", "tools": ["convert_color"] }]
+}

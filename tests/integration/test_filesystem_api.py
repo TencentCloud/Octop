@@ -106,14 +106,40 @@ async def test_filesystem_defaults_for_admin(
     home = tmp_path / "os_home"
     home.mkdir()
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
 
     r = await client.get("/api/filesystem/defaults", headers=auth)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["home"] == home.resolve().as_posix()
-    assert body["default_root_dir"] == home.resolve().as_posix()
-    assert body["allow_outside_home"] is True
-    assert body["tree_root"] == host_fs_tree_root(allow_outside_home=True)
+    assert body["default_root_dir"] == host_fs_tree_root()
+    assert body["tree_root"] == host_fs_tree_root()
+    assert body["in_container"] is False
+    assert "home" not in body
+    assert "allow_outside_home" not in body
+
+
+@pytest.mark.asyncio
+async def test_filesystem_defaults_in_container(
+    env_admin_client: tuple[httpx.AsyncClient, dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from octop.infra.utils.host_dirs import host_fs_tree_root
+
+    client, auth = env_admin_client
+    home = tmp_path / "os_home"
+    home.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
+
+    r = await client.get("/api/filesystem/defaults", headers=auth)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["default_root_dir"] == host_fs_tree_root()
+    assert body["tree_root"] == host_fs_tree_root()
+    assert body["in_container"] is True
+    assert "home" not in body
+    assert "allow_outside_home" not in body
 
 
 @pytest.mark.asyncio
@@ -131,15 +157,18 @@ async def test_non_admin_can_list_outside_home(
     outside = tmp_path / "outside"
     outside.mkdir()
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
 
     user_auth = await create_user(client, admin_auth, username="alice", password="TestPass12")
 
     defaults = await client.get("/api/filesystem/defaults", headers=user_auth)
     assert defaults.status_code == 200, defaults.text
     body = defaults.json()
-    assert body["allow_outside_home"] is True
-    assert body["default_root_dir"] == home.resolve().as_posix()
-    assert body["tree_root"] == host_fs_tree_root(allow_outside_home=True)
+    assert body["default_root_dir"] == host_fs_tree_root()
+    assert body["tree_root"] == host_fs_tree_root()
+    assert body["in_container"] is False
+    assert "home" not in body
+    assert "allow_outside_home" not in body
 
     listed = await client.get(
         f"/api/filesystem/dirs?path={outside.as_posix()}",
@@ -282,7 +311,9 @@ async def test_rename_host_dir_renames_child(
 async def test_filesystem_respects_user_workspace_root(
     env: tuple[httpx.AsyncClient, Any, dict[str, str]],
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
     from tests.support.auth import TEST_PASSWORD, create_user
 
     client, _srv, admin_auth = env
@@ -308,7 +339,8 @@ async def test_filesystem_respects_user_workspace_root(
     body = defaults.json()
     assert body["tree_root"] == jail.resolve().as_posix()
     assert body["default_root_dir"] == jail.resolve().as_posix()
-    assert body["allow_outside_home"] is False
+    assert "home" not in body
+    assert "allow_outside_home" not in body
 
     inside = await client.get(
         f"/api/filesystem/dirs?path={nested.as_posix()}",

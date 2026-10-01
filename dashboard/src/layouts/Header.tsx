@@ -21,21 +21,30 @@ interface HeaderProps {
  */
 export default function Header({ onToggle, isMobile }: HeaderProps) {
   const { isDark } = useTheme();
-  const mobileLogoSrc = isDark ? "/logo_name_dark.png" : "/logo_name.png";
+  const mobileLogoSrc = isDark
+    ? "/logo_horizontal_white.png"
+    : "/logo_horizontal_dark.png";
 
   if (!isMobile) return null;
+
+  // iOS PWA (`apple-mobile-web-app-status-bar-style: black-translucent`) draws
+  // under the status bar; pad the chrome so controls stay tappable (#664).
+  const safeTop = "env(safe-area-inset-top, 0px)";
 
   return (
     <AntHeader
       style={{
-        height: "var(--fn-header-height)",
-        padding: "0 calc(12px + var(--window-controls-inset-end, 0px)) 0 12px",
+        height: `calc(var(--fn-header-height) + ${safeTop})`,
+        padding: `${safeTop} calc(12px + var(--window-controls-inset-end, 0px)) 0 12px`,
+        boxSizing: "border-box",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         background: "var(--fn-header-bg)",
-        backdropFilter: "blur(var(--fn-header-blur))",
-        WebkitBackdropFilter: "blur(var(--fn-header-blur))",
+        // Opaque inset: translucent blur under `black-translucent` frosts
+        // page content through the iOS status bar (#874).
+        backdropFilter: "none",
+        WebkitBackdropFilter: "none",
         borderBottom: "1px solid var(--fn-border-primary)",
         transition: "background var(--fn-transition)",
         flexShrink: 0,

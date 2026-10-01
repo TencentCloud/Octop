@@ -3,11 +3,16 @@ import { Button, Result, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { setAuthToken } from "../../api";
+import {
+  getRememberLoginPreference,
+  isSessionOnlyAuth,
+  setAuthToken,
+} from "../../api";
 import { authApi } from "../../api/modules/auth";
 import { refreshServerLabels } from "../../i18n";
 import { apiErrorMessage } from "../../utils/apiError";
 import { applyUserLocale } from "../../utils/locale";
+import { notifySsoOpener } from "../../utils/ssoPopup";
 
 const DEFAULT_REDIRECT = "/chat";
 
@@ -30,16 +35,18 @@ export function safeRedirect(path: string | null): string {
 export function readOidcCompleteParams(
   hash: string,
   search: string,
-): { code: string | null; redirect: string | null } {
+): { code: string | null; redirect: string | null; bind: boolean } {
   const fromHash = new URLSearchParams(
     hash.startsWith("#") ? hash.slice(1) : hash,
   );
   const fromQuery = new URLSearchParams(
     search.startsWith("?") ? search.slice(1) : search,
   );
+  const bind = (fromHash.get("bind") || fromQuery.get("bind") || "") === "1";
   return {
     code: fromHash.get("code") || fromQuery.get("code"),
     redirect: fromHash.get("redirect") || fromQuery.get("redirect"),
+    bind,
   };
 }
 
@@ -53,12 +60,13 @@ export default function OidcComplete() {
     if (did.current) return;
     did.current = true;
 
-    const { code, redirect } = readOidcCompleteParams(
+    const { code, redirect, bind } = readOidcCompleteParams(
       window.location.hash,
       window.location.search,
     );
     if (!code) {
       const text = t("login.oidcComplete.missingCode");
+      if (notifySsoOpener({ ok: false, error: "generic", bind })) return;
       setError(text);
       message.error(text);
       return;
@@ -72,13 +80,39 @@ export default function OidcComplete() {
     void authApi
       .exchangeOidcCode(code)
       .then(async (res) => {
-        setAuthToken(res.access_token);
+        const dest = safeRedirect(redirect);
+        if (bind) {
+          // Account-link popups: opener already holds the session — do not
+          // overwrite its storage from the popup's empty sessionStorage.
+          if (notifySsoOpener({ ok: true, redirect: dest, bind: true })) {
+            return;
+          }
+          setAuthToken(res.access_token, !isSessionOnlyAuth());
+          await applyUserLocale(res.user.locale);
+          void refreshServerLabels(res.user.locale);
+          navigate(dest, { replace: true });
+          return;
+        }
+
+        const remember = getRememberLoginPreference();
+        if (
+          notifySsoOpener({
+            ok: true,
+            redirect: dest,
+            access_token: res.access_token,
+            remember,
+          })
+        ) {
+          return;
+        }
+        setAuthToken(res.access_token, remember);
         await applyUserLocale(res.user.locale);
         void refreshServerLabels(res.user.locale);
-        navigate(safeRedirect(redirect), { replace: true });
+        navigate(dest, { replace: true });
       })
       .catch((err) => {
         const text = apiErrorMessage(err, t("login.oidcComplete.failed"), t);
+        if (notifySsoOpener({ ok: false, error: "exchange", bind })) return;
         setError(text);
         message.error(text);
       });
@@ -106,9 +140,12 @@ export default function OidcComplete() {
     <div
       style={{
         minHeight: "100dvh",
+        boxSizing: "border-box",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        padding:
+          "env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px)",
       }}
     >
       <Spin size="large" tip={t("login.oidcComplete.loading")} />

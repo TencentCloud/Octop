@@ -62,6 +62,20 @@ describe("resolveInitialConnectors", () => {
     ).toEqual(["b"]);
   });
 
+  it("does not keep prev or saved when team hosts force empty defaults", () => {
+    expect(
+      resolveInitialConnectors({
+        prev: ["a"],
+        saved: ["b"],
+        hasSaved: true,
+        defaults: [],
+        allowed,
+        ignorePrev: true,
+        ignoreSaved: true,
+      }),
+    ).toEqual([]);
+  });
+
   it("re-applies defaults for a new chat even when prev/saved exist", () => {
     expect(
       resolveInitialConnectors({

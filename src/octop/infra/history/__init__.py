@@ -1,1 +1,1 @@
-"""Versioned conversation history; legacy data is never migrated on read."""
+"""Versioned conversation history and trajectory events; legacy data is never migrated on read."""

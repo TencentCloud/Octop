@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 
 def _write_manifest(expert_dir: Path, *, extra: dict | None = None) -> None:
     payload: dict = {
@@ -41,6 +43,76 @@ def test_expert_discovers_seed_paths(tmp_path: Path) -> None:
     assert expert.prompt_files == []
 
 
+def test_resolve_expert_icon_url_uses_scene_for_skillhub() -> None:
+    from octop.infra.agents.experts.catalog import resolve_expert_icon_url
+
+    assert (
+        resolve_expert_icon_url(
+            "skillhub-skillset-healthcare-nursing-plan",
+            None,
+            scene="healthcare",
+        )
+        == "/experts/avatars/scene-healthcare.svg"
+    )
+    # Do not invent missing per-skillset SVG paths.
+    assert (
+        resolve_expert_icon_url(
+            "skillhub-skillset-healthcare-nursing-plan",
+            "/experts/avatars/skillhub-skillset-healthcare-nursing-plan.svg",
+            scene="healthcare",
+        )
+        == "/experts/avatars/scene-healthcare.svg"
+    )
+    assert resolve_expert_icon_url("stock-assistant", None) == (
+        "/experts/avatars/stock-assistant.svg"
+    )
+    assert resolve_expert_icon_url(
+        "external",
+        "https://cdn.example.com/a.png",
+    ) == ("https://cdn.example.com/a.png")
+
+
+def test_bundled_avatar_ids_discovered_from_public_dir() -> None:
+    from octop.infra.agents.experts.catalog import (
+        _BUNDLED_AVATAR_IDS,
+        bundled_avatars_dir,
+        discover_bundled_avatar_ids,
+    )
+
+    avatars = bundled_avatars_dir()
+    assert avatars is not None
+    discovered = discover_bundled_avatar_ids(avatars)
+    assert "stock-assistant" in discovered
+    assert "scene-healthcare" in discovered
+    assert discovered == _BUNDLED_AVATAR_IDS
+    # Empty / missing dir falls back without crashing.
+    assert "scene-default" in discover_bundled_avatar_ids(avatars / "missing")
+
+
+def test_skillhub_market_manifest_gets_scene_icon_url(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.catalog import ExpertCatalog
+
+    market_root = tmp_path / "market"
+    expert_dir = market_root / "skillhub-skillset-healthcare-nursing-plan"
+    expert_dir.mkdir(parents=True)
+    _write_manifest(
+        expert_dir,
+        extra={
+            "id": "skillhub-skillset-healthcare-nursing-plan",
+            "icon_name": "heart",
+            "source": {"type": "skillhub", "scene": "healthcare"},
+        },
+    )
+
+    catalog = ExpertCatalog(tmp_path / "bundled", extra_roots=[market_root])
+    (tmp_path / "bundled").mkdir()
+    catalog.refresh()
+
+    expert = catalog.get("skillhub-skillset-healthcare-nursing-plan")
+    assert expert is not None
+    assert expert.summary.icon_url == "/experts/avatars/scene-healthcare.svg"
+
+
 def test_expert_catalog_reads_extra_roots(tmp_path: Path) -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog
 
@@ -58,6 +130,13 @@ def test_expert_catalog_reads_extra_roots(tmp_path: Path) -> None:
     catalog.refresh()
 
     assert catalog.get("bundled-expert") is not None
+    assert catalog.get("market-expert") is not None
+    # Library UI lists only bundled templates; market cache stays resolvable via get().
+    assert [s.id for s in catalog.list_summaries()] == ["bundled-expert"]
+    assert [s.id for s in catalog.list_summaries(include_market_cache=True)] == [
+        "bundled-expert",
+        "market-expert",
+    ]
     market = catalog.get("market-expert")
     assert market is not None
     assert catalog.expert_dir("market-expert") == market_dir
@@ -155,6 +234,19 @@ def test_expert_prompt_files_metadata_only(tmp_path: Path) -> None:
     assert skill_body.startswith("# Skill")
 
 
+def test_bundled_default_expert_only_has_agents_md() -> None:
+    from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
+
+    catalog = ExpertCatalog(default_library_root())
+    catalog.refresh()
+    expert = catalog.get("default")
+    assert expert is not None
+    assert expert.prompt_files == ["AGENTS.md"]
+    assert expert.files == ["AGENTS.md"]
+    names = {item["name"] for item in catalog.read_file_contents("default")}
+    assert names == {"AGENTS.md"}
+
+
 def test_bundled_office_automation_discovers_skills() -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 
@@ -229,3 +321,58 @@ def test_expert_task_examples_from_manifest(tmp_path: Path) -> None:
         "zh": ["一", "二", "三"],
         "en": ["a", "b", "c"],
     }
+
+
+class _MemWorkspace:
+    def __init__(self, files: dict[str, str] | None = None) -> None:
+        self.files = dict(files or {})
+
+    async def aread_text(self, rel: str) -> str | None:
+        return self.files.get(rel)
+
+    async def aupload_many(self, pairs: list[tuple[str, bytes]]) -> None:
+        for rel, data in pairs:
+            self.files[rel] = data.decode("utf-8")
+
+
+@pytest.mark.asyncio
+async def test_apply_workspace_quick_prompts_merges_and_filters() -> None:
+    from octop.infra.agents.experts.catalog import (
+        WORKSPACE_MANIFEST_PATH,
+        apply_workspace_quick_prompts,
+    )
+
+    workspace = _MemWorkspace(
+        {WORKSPACE_MANIFEST_PATH: json.dumps({"id": "demo", "quick_prompts": []})}
+    )
+    await apply_workspace_quick_prompts(
+        workspace,
+        [
+            {
+                "title": {"zh": "卡", "en": ""},
+                "description": {"zh": "", "en": ""},
+                "prompt": {"zh": "做这件事", "en": ""},
+                "color": "#fff7ed",
+                "icon_name": "zap",
+            },
+            {"title": {"zh": "", "en": ""}, "prompt": {"zh": "", "en": ""}},
+        ],
+    )
+    data = json.loads(workspace.files[WORKSPACE_MANIFEST_PATH])
+    assert data["id"] == "demo"
+    assert len(data["quick_prompts"]) == 1
+    assert data["quick_prompts"][0]["title"]["zh"] == "卡"
+
+
+@pytest.mark.asyncio
+async def test_apply_workspace_quick_prompts_refuses_invalid_json() -> None:
+    from octop.infra.agents.experts.catalog import (
+        WORKSPACE_MANIFEST_PATH,
+        apply_workspace_quick_prompts,
+    )
+    from octop.infra.errors import ErrorCode, OctopError
+
+    workspace = _MemWorkspace({WORKSPACE_MANIFEST_PATH: "{not-json"})
+    with pytest.raises(OctopError) as exc:
+        await apply_workspace_quick_prompts(workspace, [])
+    assert exc.value.code is ErrorCode.SLASH_BAD_ARGS

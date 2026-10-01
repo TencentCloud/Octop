@@ -217,13 +217,17 @@ class CronManager:
             self._repos.audit_repo.write(actor=ACTOR_SYSTEM, action="cron.delete", target=cron_id)
             logger.info("CronJob %s deleted", cron_id)
 
-    async def run_now(self, cron_id: str) -> None:
+    async def run_now(self, cron_id: str, *, wait: bool = False) -> None:
+        """Trigger a run; embedded callers wait for bookkeeping and receive failures."""
         row = self._repos.cron_repo.get(cron_id)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
         job = self._make_job(row)
-        asyncio.ensure_future(job.run())
         logger.info("CronJob %s triggered manually", cron_id)
+        if wait:
+            await job.run(raise_on_error=True)
+        else:
+            asyncio.ensure_future(job.run())
 
     def _make_job(self, row: Any) -> CronJob:
         return CronJob.from_row(
@@ -237,7 +241,7 @@ class CronManager:
         if not row.enabled:
             return
         try:
-            trigger = build_trigger(row.trigger)
+            trigger = build_trigger(row.trigger, timezone=self._timezone)
         except OctopError:
             logger.warning(
                 "CronJob %s has invalid trigger %r; skipping schedule",
@@ -289,7 +293,7 @@ class CronManager:
 
     def schedule_system_job(self, job_id: str, *, trigger: str, func: Any) -> None:
         """Register a process-level job that is not stored in the cron DB."""
-        built = build_trigger(trigger)
+        built = build_trigger(trigger, timezone=self._timezone)
         self._system_job_ids.add(job_id)
         self._scheduler.add_job(
             func,

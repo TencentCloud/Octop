@@ -89,6 +89,35 @@ def test_provider_state_lookup_and_expiry_cleanup(db: SqlitePool) -> None:
     )
 
     assert repo.get_provider() == updated
+    assert updated.kind == "oidc"
+    first_id = updated.id
+    feishu = repo.upsert_by_kind(
+        "feishu",
+        enabled=True,
+        display_name="Feishu",
+        issuer="",
+        client_id="cli_xxx",
+        client_secret_enc=b"secret",
+        scopes="",
+        dashboard_origin=None,
+        extra={"region": "feishu"},
+    )
+    again = repo.upsert_by_kind(
+        "feishu",
+        enabled=False,
+        display_name="Feishu 2",
+        issuer="",
+        client_id="cli_yyy",
+        client_secret_enc=None,
+        scopes="",
+        dashboard_origin=None,
+        extra={"region": "lark"},
+    )
+    assert repo.get_provider() == updated
+    assert again.id == feishu.id
+    assert again.enabled == 0
+    assert again.extra["region"] == "lark"
+    assert repo.get_by_kind("oidc").id == first_id
     assert updated.client_secret_enc == b"encrypted-secret"
     claimed = repo.take_login_state("active-state")
     assert claimed is not None

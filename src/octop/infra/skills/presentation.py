@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from octop.infra.utils.locale import Locale
 
-# Keep in sync with harness_agent.skills.catalog._summary_dict.
+# Keep in sync with octop_harness.skills.catalog._summary_dict.
 _EXTENSION_NAMESPACES = ("octop", "harness", "lightclaw", "orca", "openclaw")
 
 
@@ -47,6 +47,10 @@ def apply_skill_presentation(
     out = dict(summary)
     metadata = (frontmatter or {}).get("metadata")
     extensions = metadata if isinstance(metadata, Mapping) else {}
+
+    top_display = _text((frontmatter or {}).get("display_name"))
+    if top_display and not _text(out.get("display_name")):
+        out["display_name"] = top_display
 
     display_name = ""
     for namespace in _EXTENSION_NAMESPACES:

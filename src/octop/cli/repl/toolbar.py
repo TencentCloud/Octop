@@ -10,6 +10,7 @@ def format_repl_toolbar(state: ReplSession) -> str:
     parts = [
         state.agent_id[:12],
         f"model: {state.model_label}",
+        f"mode: {state.conversation_mode or 'craft'}",
         f"session: {state.session_key[:10]}",
     ]
     if state.last_elapsed > 0:

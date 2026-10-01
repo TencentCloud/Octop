@@ -12,9 +12,16 @@ interface SearchablePickerPanelProps<T> {
   emptyMessage: string;
   width?: PickerPanelWidth;
   renderItem: (item: T) => ReactNode;
+  /** Optional grouping: consecutive items with the same key get a header. */
+  getGroupKey?: (item: T) => string;
+  renderGroupHeader?: (key: string, firstItem: T) => ReactNode;
   footerIcon: ReactNode;
   footerLabel: string;
   onFooterClick: () => void;
+  /** Soften the footer (e.g. remote-bridge “edit on peer” hint). */
+  footerMuted?: boolean;
+  /** Optional row(s) rendered between the list and the primary footer. */
+  beforeFooter?: ReactNode;
 }
 
 export default function SearchablePickerPanel<T>({
@@ -24,9 +31,13 @@ export default function SearchablePickerPanel<T>({
   emptyMessage,
   width = "wide",
   renderItem,
+  getGroupKey,
+  renderGroupHeader,
   footerIcon,
   footerLabel,
   onFooterClick,
+  footerMuted = false,
+  beforeFooter,
 }: SearchablePickerPanelProps<T>) {
   const { query, setQuery, filtered } = useFilteredList(items, filterFn);
   const panelClass =
@@ -53,11 +64,29 @@ export default function SearchablePickerPanel<T>({
         {filtered.length === 0 ? (
           <div className={styles.empty}>{emptyMessage}</div>
         ) : (
-          filtered.map((item) => renderItem(item))
+          filtered.map((item, index) => {
+            const groupKey = getGroupKey?.(item) ?? "";
+            const prevKey =
+              index > 0 ? getGroupKey?.(filtered[index - 1]) ?? "" : null;
+            const showHeader =
+              Boolean(getGroupKey && renderGroupHeader) && groupKey !== prevKey;
+            return (
+              <div key={index}>
+                {showHeader ? renderGroupHeader?.(groupKey, item) : null}
+                {renderItem(item)}
+              </div>
+            );
+          })
         )}
       </div>
 
-      <button type="button" className={styles.footer} onClick={onFooterClick}>
+      {beforeFooter}
+
+      <button
+        type="button"
+        className={`${styles.footer} ${footerMuted ? styles.footerMuted : ""}`}
+        onClick={onFooterClick}
+      >
         {footerIcon}
         <span>{footerLabel}</span>
       </button>

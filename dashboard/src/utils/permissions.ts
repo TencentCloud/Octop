@@ -37,6 +37,7 @@ export const NAV_PERMISSIONS = {
   workbench: PERM.workbench,
   "remote-desktop": ["desktop", "mobile"],
   "remote-phone": PERM.mobile,
+  acp: "admin",
   "admin-users": PERM.usersPage,
   models: PERM.modelsPage,
   "admin-storage": PERM.storage,
@@ -49,7 +50,11 @@ export type NavPermissionKey = keyof typeof NAV_PERMISSIONS;
 
 export const USERS_TAB_PERMISSIONS = {
   local: "users",
-  sso: "sso",
+  roles: "users",
+  feishu: "sso",
+  wecom: "sso",
+  dingtalk: "sso",
+  oidc: "sso",
 } as const;
 
 export const ADVANCED_TAB_PERMISSIONS = {
@@ -176,6 +181,9 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   ) {
     return PERM.knowledgeBasesPage;
   }
+  if (pathname === "/bridge" || pathname.startsWith("/bridge/")) {
+    return null;
+  }
   if (pathname === "/remote-desktop/desktop") {
     return PERM.desktop;
   }
@@ -203,13 +211,8 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   if (pathname === "/workbench" || pathname.startsWith("/workbench/")) {
     return PERM.workbench;
   }
-  // ACP: no module key this round — admin role only. `/acp` is a legacy redirect.
-  if (
-    pathname === "/personalization/acp" ||
-    pathname.startsWith("/personalization/acp/") ||
-    pathname === "/acp" ||
-    pathname.startsWith("/acp/")
-  ) {
+  // ACP: no module key this round — admin role only.
+  if (pathname === "/acp" || pathname.startsWith("/acp/")) {
     return "admin";
   }
   return null;

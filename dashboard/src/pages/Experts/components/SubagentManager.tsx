@@ -110,6 +110,8 @@ export interface SubagentManagerProps {
   onInstalled?: () => void;
   /** Fill parent height with internal scroll (mobile subagents page). */
   fillHeight?: boolean;
+  /** Opening tab: installed list or the full catalog. */
+  initialTab?: string;
 }
 
 export default function SubagentManager({
@@ -118,6 +120,7 @@ export default function SubagentManager({
   installedSlugs: initialInstalled,
   onInstalled,
   fillHeight = false,
+  initialTab = INSTALLED_TAB,
 }: SubagentManagerProps) {
   const { t, i18n } = useTranslation();
   const { modal, message } = App.useApp();
@@ -129,7 +132,7 @@ export default function SubagentManager({
   >([]);
   const [loading, setLoading] = useState(false);
   const [loadingInstalled, setLoadingInstalled] = useState(false);
-  const [activeTab, setActiveTab] = useState(INSTALLED_TAB);
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [installingSlug, setInstallingSlug] = useState<string | null>(null);
@@ -185,8 +188,8 @@ export default function SubagentManager({
     setLoading(true);
     try {
       const [divs, rows] = await Promise.all([
-        listSubagentDivisions(),
-        listSubagentCatalog(),
+        listSubagentDivisions(agentId),
+        listSubagentCatalog(undefined, agentId),
       ]);
       setDivisions(divs);
       setAllItems(rows);
@@ -195,15 +198,15 @@ export default function SubagentManager({
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [agentId, t]);
 
   useEffect(() => {
-    setActiveTab(INSTALLED_TAB);
+    setActiveTab(initialTab);
     setSearch("");
     setDebouncedSearch("");
     void loadCatalog();
     void loadInstalled();
-  }, [agentId, loadCatalog, loadInstalled]);
+  }, [agentId, initialTab, loadCatalog, loadInstalled]);
 
   const itemName = useCallback(
     (item: SubagentCatalogItem) => pickLocale(item.name, lang),
@@ -661,6 +664,7 @@ export default function SubagentManager({
         open={previewItem !== null}
         slug={previewItem?.slug ?? null}
         title={previewItem ? itemName(previewItem) : ""}
+        agentId={agentId}
         onClose={() => setPreviewItem(null)}
       />
     </>

@@ -11,6 +11,8 @@ export interface CatalogTypeCardProps {
   tag?: ReactNode;
   configuredBadge?: ReactNode;
   disabled?: boolean;
+  /** When true, skip the tinted icon chip (for full-bleed brand logos). */
+  plainIcon?: boolean;
   onClick: () => void;
 }
 
@@ -23,6 +25,7 @@ export const CatalogTypeCard = memo(function CatalogTypeCard({
   tag,
   configuredBadge,
   disabled = false,
+  plainIcon = false,
   onClick,
 }: CatalogTypeCardProps) {
   const cardClass = disabled ? styles.cardDisabled : styles.card;
@@ -40,8 +43,10 @@ export const CatalogTypeCard = memo(function CatalogTypeCard({
 
       <div className={styles.header}>
         <div
-          className={styles.icon}
-          style={{ color: accent, background: `${accent}18` }}
+          className={plainIcon ? styles.iconPlain : styles.icon}
+          style={
+            plainIcon ? undefined : { color: accent, background: `${accent}18` }
+          }
         >
           {icon}
         </div>

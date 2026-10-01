@@ -9,6 +9,8 @@ export interface ChatWelcomeResponse {
     prompt: LocalizedText;
     color?: string;
     icon_name?: string | null;
+    expert?: string;
+    agent_id?: string;
   }>;
   task_examples?: { zh?: string[]; en?: string[] } | null;
 }

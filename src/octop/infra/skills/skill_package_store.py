@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 import sqlite3
 from pathlib import Path
@@ -24,6 +25,8 @@ from octop.infra.users.identity import User
 from octop.infra.utils.frontmatter import parse_frontmatter
 from octop.infra.utils.locale import Locale
 from octop.infra.utils.ulid import new_short_id
+
+logger = logging.getLogger(__name__)
 
 
 def is_skill_package_name_conflict(exc: BaseException) -> bool:
@@ -100,7 +103,32 @@ class SkillPackageStore:
             manifest = skill_dir / "SKILL.md"
             try:
                 text = manifest.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
+            except UnicodeDecodeError:
+                from octop.infra.utils.utf8_text import repair_skill_manifest_file
+
+                repaired = repair_skill_manifest_file(manifest)
+                if repaired is None:
+                    logger.warning(
+                        "skipping package skill %s/%s: SKILL.md is not valid UTF-8",
+                        pack_id,
+                        skill_dir.name,
+                    )
+                    summaries.append(
+                        {
+                            "slug": skill_dir.name,
+                            "name": skill_dir.name,
+                            "description": "",
+                            "path": f"skills/{skill_dir.name}/SKILL.md",
+                            "kind": "package",
+                            "package_id": pack_id,
+                            "enabled": False,
+                            "corrupt": True,
+                            "error": "invalid_utf8",
+                        }
+                    )
+                    continue
+                text = repaired
+            except OSError:
                 continue
             metadata, _ = parse_frontmatter(text)
             if metadata.get("removed"):

@@ -12,6 +12,7 @@ from octop.infra.backend.resolver import (
     collect_named_storage_backend_refs,
     find_agents_using_storage_backend,
     resolve_agent_backend_spec,
+    rewrite_named_storage_backend_refs,
 )
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -233,3 +234,30 @@ def test_find_agents_using_storage_backend() -> None:
         backend_name="my-cos",
     )
     assert refs == [{"agent_id": "A1", "name": "Alice Bot"}]
+
+
+def test_rewrite_named_storage_backend_refs() -> None:
+    assert rewrite_named_storage_backend_refs(
+        {"type": "named", "name": "old"},
+        old="old",
+        new="new",
+    ) == {"type": "named", "name": "new"}
+    assert rewrite_named_storage_backend_refs("named:old", old="old", new="new") == "named:new"
+    assert rewrite_named_storage_backend_refs(
+        {
+            "type": "composite",
+            "default": {"type": "named", "name": "old"},
+            "routes": {"/data": {"type": "named", "name": "old"}},
+        },
+        old="old",
+        new="new",
+    ) == {
+        "type": "composite",
+        "default": {"type": "named", "name": "new"},
+        "routes": {"/data": {"type": "named", "name": "new"}},
+    }
+    assert rewrite_named_storage_backend_refs(
+        {"type": "named", "name": "keep"},
+        old="old",
+        new="new",
+    ) == {"type": "named", "name": "keep"}

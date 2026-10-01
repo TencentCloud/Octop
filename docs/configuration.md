@@ -78,7 +78,9 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
     "host": "127.0.0.1",
     "port": 5432,
     "database": "octop",
-    "user": "octop"
+    "user": "octop",
+    "password": null,
+    "url": null
   },
   "tls": {
     "enabled": false,
@@ -100,10 +102,12 @@ Notes:
   scheduling, and harness. Legacy `cron_timezone` in `config.json` and
   `OCTOP_CRON_TIMEZONE` are still accepted; the new key/env wins when both
   are set.
-- `database.password`：向导用离散字段配置 PostgreSQL 时**可能**写入
-  `config.json`（便于本机首次启动）。生产环境更推荐只用
-  `OCTOP_DATABASE_PASSWORD` 或带密码的 `OCTOP_DATABASE_URL`，并限制
-  `config.json` 文件权限。环境变量始终覆盖文件中的同名配置。
+- `database.password`: when the wizard configures PostgreSQL via discrete
+  fields, this **may** be written into `config.json` (convenient for local
+  first-run). In production, prefer using only `OCTOP_DATABASE_PASSWORD` or
+  a `OCTOP_DATABASE_URL` that includes the password, and restrict
+  `config.json` file permissions. Environment variables always override the
+  same-named setting in the file.
 - `enable_api_docs=false` keeps `/api/docs` (Scalar) off in production
   while still serving `/api/openapi.json` to the dashboard.
 - `require_setup_password=true` adds the wizard password gate to the
@@ -130,7 +134,7 @@ Each variable, when set, takes precedence over the matching key in
 |----------|------|---------|--------|
 | `OCTOP_HOME` | path | `~/.octop` | Install root (DB, secrets, workspaces, plugins) |
 | `OCTOP_BIND_HOST` | string | `127.0.0.1` | Listen address (use `0.0.0.0` for LAN access) |
-| `OCTOP_PORT` | int | `8088` | Listen port |
+| `OCTOP_PORT` | int | `8088` | Listen port (`0`–`65535`; `0` asks the OS for a free port) |
 | `OCTOP_LOG_LEVEL` | string | `info` | One of `debug` `info` `warning` `error` |
 | `OCTOP_LOG_RETENTION_DAYS` | int | `14` | Keep rotated `octop.log.YYYY-MM-DD` files for this many days |
 | `OCTOP_LOG_MAX_BYTES` | int | `104857600` (100 MiB) | Roll the active log when it exceeds this size (in addition to daily rotation) |
@@ -138,7 +142,7 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_ACCESS_TOKEN_TTL` | int (seconds) | `86400` | JWT access-token lifetime |
 | `OCTOP_LOGIN_MAX_ATTEMPTS` | int | `5` | Failed-login attempts before lockout |
 | `OCTOP_LOGIN_LOCKOUT_SECONDS` | int | `900` | Lockout duration after `OCTOP_LOGIN_MAX_ATTEMPTS` failures |
-| `OCTOP_CAPTCHA_PROVIDER` | slug | `slider` | Login captcha (`slider`, `turnstile`, `hcaptcha`, `recaptcha-v3`, `tencent`; `recaptcha` v2 stays resolvable for existing configs but is unlisted). Boot snapshot; restart after change |
+| `OCTOP_CAPTCHA_PROVIDER` | slug | `slider` | Login captcha (`slider`, `turnstile`, `hcaptcha`, `recaptcha-v3`, `tencent`, `geetest-v4`; `recaptcha` v2 stays resolvable for existing configs but is unlisted). Boot snapshot; restart after change |
 | `OCTOP_CAPTCHA_SITE_KEY` | string | empty | Public site key (Tencent: CaptchaAppId; required when the env snapshot is a strong provider) |
 | `OCTOP_CAPTCHA_SECRET` | string | empty | Siteverify secret (Tencent: AppSecretKey; never logged; `GET /api/envs` redacts it) |
 | `OCTOP_CAPTCHA_CAM_SECRET_ID` | string | empty | Tencent only: CAM API SecretId signing `DescribeCaptchaResult`; required when the env snapshot is `tencent` |
@@ -183,9 +187,9 @@ Control-plane `database` and agent memory are separate layers. Defaults:
 - Control plane SQLite → agent memory stays `{workspace}/memory.sqlite`
   (or `{workspace}/.octop/memory.sqlite` for new agents).
 - Control plane PostgreSQL → agent memory **defaults to the same DSN**
-  (harness-memory per-agent PG schema `agent_<id>`). Runtime also needs
+  (octop-memory per-agent PG schema `agent_<id>`). Runtime also needs
   ``langgraph-checkpoint-postgres`` (pulled in via
-  ``harness-memory[langgraph-postgres]``) so LangGraph checkpoints work.
+  ``octop-memory[langgraph-postgres]``) so LangGraph checkpoints work.
   To keep file memory while the control plane is PG, set on the agent:
 
 ```json
@@ -241,8 +245,13 @@ Per-agent provider credentials (e.g. API keys) live in the SQLite
 `providers` table and are surfaced through
 `infra/connectors/credential_crypto.py` for connector OAuth flows.
 
-## 可选分段历史归档
+## Optional segmented history archive
 
-`history_v2_enabled` 默认 `false`，可用 `OCTOP_HISTORY_V2_ENABLED=true` 开启。
-该开关只决定下一完整回合的写入格式，关闭后仍读取已经保存的新格式。
-启用前请阅读 [分段历史归档与回退](versioned-history.md)，尤其是配套版本与备份恢复边界。
+`history_v2_enabled` defaults to `false`; enable it with
+`OCTOP_HISTORY_V2_ENABLED=true`.
+This switch only affects the write format of the next complete turn —
+once disabled, turns already saved in the new format are still read
+correctly.
+Before enabling, read
+[Segmented history archive & rollback](versioned-history.md), especially
+the version compatibility and backup/restore boundaries it covers.

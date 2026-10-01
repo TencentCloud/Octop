@@ -154,10 +154,9 @@ async def test_boot_skips_disabled_agents(tmp_path: Path, monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_shutdown_clears_harness_manager(tmp_path: Path) -> None:
-    """shutdown() calls harness_manager.close() and drops the manager reference."""
+    """shutdown() awaits harness_manager.aclose() and drops the manager reference."""
     services = _make_services(tmp_path)
     fake_hm = _make_fake_hm()
-    fake_hm.close = MagicMock()
     registry = _make_registry(services, fake_hm=fake_hm)
 
     await registry.create(AgentCreateSpec(name="a"))
@@ -165,7 +164,8 @@ async def test_shutdown_clears_harness_manager(tmp_path: Path) -> None:
 
     await registry.shutdown()
 
-    fake_hm.close.assert_called_once()
+    fake_hm.aclose.assert_awaited_once()
+    fake_hm.close.assert_not_called()
     assert registry._harness_manager is None
 
 
@@ -180,16 +180,30 @@ async def test_shutdown_idempotent(tmp_path: Path, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_shutdown_calls_close_when_available(tmp_path: Path) -> None:
-    """shutdown() calls harness_manager.close() if the method exists."""
+async def test_shutdown_waits_for_async_close(tmp_path: Path) -> None:
+    """The manager stays attached until its async cleanup completes."""
     services = _make_services(tmp_path)
     fake_hm = _make_fake_hm()
-    fake_hm.close = MagicMock()
     registry = _make_registry(services, fake_hm=fake_hm)
 
-    await registry.shutdown()
+    entered, release = asyncio.Event(), asyncio.Event()
 
-    fake_hm.close.assert_called_once()
+    async def close_agents() -> None:
+        entered.set()
+        await release.wait()
+
+    fake_hm.aclose.side_effect = close_agents
+    closing = asyncio.create_task(registry.shutdown())
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        assert not closing.done()
+        assert registry._harness_manager is fake_hm
+    finally:
+        release.set()
+        await closing
+
+    fake_hm.aclose.assert_awaited_once()
+    assert registry._harness_manager is None
 
 
 # ---------------------------------------------------------------------------
@@ -1009,6 +1023,23 @@ async def test_deferred_create_initializes_workspace_before_bootstrap(
 
 
 @pytest.mark.asyncio
+async def test_create_rolls_back_when_initializer_fails(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    registry = _make_registry(services)
+
+    async def initialize(_row: Any, _workspace: Any) -> None:
+        raise RuntimeError("patch failed")
+
+    with pytest.raises(RuntimeError, match="patch failed"):
+        await registry.create(
+            AgentCreateSpec(name="rollback-me"),
+            workspace_initializer=initialize,
+        )
+
+    assert [row.name for row in registry.list_rows()] == []
+
+
+@pytest.mark.asyncio
 async def test_create_with_template_writes_files(tmp_path: Path) -> None:
     """create() with template_name uploads expert files to the agent backend."""
     from octop.infra.agents.experts.catalog import (  # noqa: PLC0415
@@ -1148,7 +1179,7 @@ async def test_create_with_unknown_template_does_not_crash(tmp_path: Path) -> No
 
 def _spy_resolve_backend(monkeypatch) -> list[Any]:
     """Record every ``resolve_backend`` call made while resolving a workspace."""
-    import harness_agent.backends as harness_backends  # noqa: PLC0415
+    import octop_harness.backends as harness_backends  # noqa: PLC0415
 
     calls: list[Any] = []
     original = harness_backends.resolve_backend

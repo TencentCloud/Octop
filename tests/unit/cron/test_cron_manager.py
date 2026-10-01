@@ -75,7 +75,9 @@ async def _aiter(items):
         yield item
 
 
-def _make_manager(services, *, gateway: MagicMock | None = None) -> CronManager:
+def _make_manager(
+    services, *, gateway: MagicMock | None = None, timezone: str = "UTC"
+) -> CronManager:
     gw = gateway or _make_gateway()
     mgr = CronManager(
         gateway=gw,
@@ -85,7 +87,7 @@ def _make_manager(services, *, gateway: MagicMock | None = None) -> CronManager:
             repos=services.repos,
         ),
         repos=services.repos,
-        timezone="UTC",
+        timezone=timezone,
     )
     # Replace real APScheduler with a mock to avoid background threads
     fake_scheduler = MagicMock()
@@ -159,6 +161,45 @@ async def test_boot_skips_disabled_jobs(tmp_path: Path) -> None:
     await mgr.boot()
 
     mgr._scheduler.add_job.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_boot_schedules_cron_trigger_in_server_timezone(tmp_path: Path) -> None:
+    """A scheduled cron job must run on the configured server timezone.
+
+    The manager hands APScheduler a pre-built trigger, so the scheduler timezone is never
+    injected (APScheduler only does that for string trigger specs). Without forwarding it,
+    ``cron:`` jobs follow the host OS zone: on a UTC container with the default
+    ``Asia/Shanghai`` config, ``0 9 * * *`` fired at 17:00 Beijing time.
+    """
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    cid = _cron_id()
+    services.repos.cron_repo.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger="cron:0 9 * * *",
+        prompt="hello",
+        session_key=_cron_session_key(aid, cid),
+    )
+    mgr = _make_manager(services, timezone="America/New_York")
+
+    await mgr.boot()
+
+    trigger = mgr._scheduler.add_job.call_args.kwargs["trigger"]
+    assert str(trigger.timezone) == "America/New_York"
+
+
+def test_schedule_system_job_uses_server_timezone(tmp_path: Path) -> None:
+    """Process-level jobs (TLS renew, auto backup) use the same server timezone."""
+    services = _make_services(tmp_path)
+    mgr = _make_manager(services, timezone="America/New_York")
+
+    mgr.schedule_system_job("sys-job", trigger="cron:0 3 * * *", func=lambda: None)
+
+    trigger = mgr._scheduler.add_job.call_args.kwargs["trigger"]
+    assert str(trigger.timezone) == "America/New_York"
 
 
 @pytest.mark.asyncio

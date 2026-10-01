@@ -1,8 +1,9 @@
 id: weather
-version: 0.2.0
+version: 0.2.2
 name: 天气
 description: 查询全球城市天气与未来预报，在聊天中展示天气卡片
-icon: "🌤️"
+icon: icon.svg
+group: lifestyle
 kind: tool
 entry: main.py
 requires:

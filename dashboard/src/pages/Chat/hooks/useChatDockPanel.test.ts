@@ -62,6 +62,20 @@ describe("useChatDockPanel tabs", () => {
     });
   });
 
+  it("toggleWorkspacePanel opens workspace tab then closes dock when active", () => {
+    const { result } = renderHook(() => useChatDockPanel(false));
+    act(() => {
+      result.current.toggleWorkspacePanel();
+    });
+    expect(result.current.dockOpen).toBe(true);
+    expect(result.current.activeTabId).toBe("workspace");
+    expect(result.current.openTabs.map((t) => t.id)).toEqual(["workspace"]);
+    act(() => {
+      result.current.toggleWorkspacePanel();
+    });
+    expect(result.current.dockOpen).toBe(false);
+  });
+
   it("toggleBrowserPanel opens browser tab then closes dock when active", () => {
     const { result } = renderHook(() => useChatDockPanel(false));
     act(() => {

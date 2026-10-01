@@ -12,6 +12,19 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from octop.api.deps import current_user, get_server, require_permission
+from octop.infra.agents.providers.codex_apply import (
+    CODEX_PROVIDER_NAME,
+    apply_codex_credentials,
+    sync_refreshed_codex_api_key,
+)
+from octop.infra.agents.providers.codex_oauth import (
+    DEVICE_POLL_TIMEOUT_S,
+    CodexOAuthDeviceCodeError,
+    exchange_device_code,
+    get_valid_access_token,
+    poll_device_token,
+    request_device_code,
+)
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import (
@@ -24,18 +37,6 @@ from octop.infra.agents.providers.reasoning import reasoning_capability
 from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
 from octop.infra.agents.providers.store import clear_stale_pins_for_provider
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.providers.codex_apply import (
-    CODEX_PROVIDER_NAME,
-    apply_codex_credentials,
-    sync_refreshed_codex_api_key,
-)
-from octop.infra.providers.codex_oauth import (
-    DEVICE_POLL_TIMEOUT_S,
-    exchange_device_code,
-    get_valid_access_token,
-    poll_device_token,
-    request_device_code,
-)
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
@@ -95,6 +96,7 @@ class ProviderFetchModelsBody(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     extra_json: str | None = None
+    name: str | None = None
 
 
 def _is_codex_base_url(base_url: str | None) -> bool:
@@ -140,7 +142,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
 async def list_provider_presets(
     _: Any = Depends(current_user),
 ) -> list[dict[str, Any]]:
-    """Return built-in provider presets from harness-agent."""
+    """Return built-in provider presets from octop-harness."""
     return load_provider_presets()
 
 
@@ -346,6 +348,7 @@ async def admin_fetch_provider_models(
         api_key=api_key,
         extra_headers=provider_headers(draft) or None,
         locale=resolve_request_locale(request),
+        provider_name=(body.name or "").strip() or None,
     )
 
 
@@ -403,7 +406,18 @@ async def codex_oauth_start(
     user: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    info = await asyncio.to_thread(request_device_code)
+    try:
+        info = await asyncio.to_thread(request_device_code)
+    except CodexOAuthDeviceCodeError as exc:
+        logger.warning("Codex device OAuth start failed: %s", exc.reason)
+        details: dict[str, Any] = {"reason": exc.reason}
+        if exc.upstream_status is not None:
+            details["upstream_status"] = exc.upstream_status
+        raise OctopError(
+            ErrorCode.CODEX_OAUTH_START_FAILED,
+            "codex device OAuth start failed",
+            details=details,
+        ) from exc
     state_id = new_ulid()
     server.services.settings_repo.set(
         f"codex_oauth.pending.{state_id}",
@@ -450,7 +464,7 @@ async def codex_oauth_logout(
     _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> None:
-    from octop.infra.providers.codex_oauth import delete_codex_token
+    from octop.infra.agents.providers.codex_oauth import delete_codex_token
 
     delete_codex_token(server.services.paths)
     row = server.services.provider_repo.get_by_name(CODEX_PROVIDER_NAME)

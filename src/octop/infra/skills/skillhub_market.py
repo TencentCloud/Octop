@@ -17,9 +17,21 @@ from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlparse
 
+from octop.infra.skills.skillhub_common import (
+    DEFAULT_SKILLHUB_HOST,
+    HTTP_READ_CHUNK,
+    MAX_HTTP_BYTES,
+    MAX_ZIP_COMPRESSION_RATIO,
+    MAX_ZIP_ENTRIES,
+    MAX_ZIP_UNCOMPRESSED_BYTES,
+)
+from octop.infra.utils.utf8_text import (
+    InvalidSkillManifestEncodingError,
+    coerce_utf8_text_bytes,
+)
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_SKILLHUB_HOST = "https://api.skillhub.cn"
 SEARCH_ENDPOINT = "/api/v1/search"
 DOWNLOAD_ENDPOINT = "/api/v1/download"
 RANKING_ENDPOINTS = {
@@ -30,11 +42,11 @@ RANKING_ENDPOINTS = {
     "trending": "/api/v1/showcase/trending",
     "paid": "/api/v1/showcase/paid",
 }
-_MAX_HTTP_BYTES = 32 * 1024 * 1024
-_MAX_ZIP_ENTRIES = 2_000
-_MAX_ZIP_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
-_MAX_ZIP_COMPRESSION_RATIO = 100
-_HTTP_READ_CHUNK = 64 * 1024
+_MAX_HTTP_BYTES = MAX_HTTP_BYTES
+_MAX_ZIP_ENTRIES = MAX_ZIP_ENTRIES
+_MAX_ZIP_UNCOMPRESSED_BYTES = MAX_ZIP_UNCOMPRESSED_BYTES
+_MAX_ZIP_COMPRESSION_RATIO = MAX_ZIP_COMPRESSION_RATIO
+_HTTP_READ_CHUNK = HTTP_READ_CHUNK
 
 
 class SkillHubMarketError(RuntimeError):
@@ -229,11 +241,15 @@ def parse_skillhub_package(payload: bytes) -> list[tuple[str, bytes]]:
     """Validate a SkillHub ZIP and return workspace-relative file payloads."""
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as zf:
-            files = [
-                (clean, _read_zip_member(zf, member))
-                for member, clean in _validate_zip(zf)
-                if not member.is_dir()
-            ]
+            files: list[tuple[str, bytes]] = []
+            for member, clean in _validate_zip(zf):
+                if member.is_dir():
+                    continue
+                raw = _read_zip_member(zf, member)
+                try:
+                    files.append((clean, coerce_utf8_text_bytes(raw, path=clean)))
+                except InvalidSkillManifestEncodingError as exc:
+                    raise SkillHubPackageError(str(exc)) from exc
     except SkillHubPackageError:
         raise
     except (OSError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:

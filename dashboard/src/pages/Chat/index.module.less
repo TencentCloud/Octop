@@ -17,10 +17,12 @@
 .chatPage {
   /* Shared column metrics: title bar + composer alignment. */
   --chat-column-max: 960px;
-  --chat-column-pad-x: 24px;
+  --chat-column-pad-x: 32px;
   --chat-column-pad-x-narrow: 12px;
   /* Avatar hangs outside the message column and must not shrink bubbles. */
-  --chat-msg-avatar-slot: 44px;
+  --chat-msg-avatar-slot: 48px;
+  /* Space between avatar slot and bubble. */
+  --chat-msg-gutter: 8px;
   /* Chat title, leading icon, and right-dock selected chrome share this ink. */
   --chat-title-color: var(--fn-text-primary);
 
@@ -29,6 +31,13 @@
   width: 100%;
   overflow: hidden;
   background: var(--fn-bg-elevated, #fff);
+
+  @media (max-width: 767px) {
+    /* Edge inset equals avatar↔bubble gutter so the row is not over-padded. */
+    --chat-column-pad-x: var(--chat-column-pad-x-narrow);
+    --chat-msg-avatar-slot: 36px;
+    --chat-msg-gutter: var(--chat-column-pad-x-narrow);
+  }
 }
 
 /* ---------- Main chat area ---------- */
@@ -65,6 +74,11 @@
 
   .chatInput {
     padding-inline-start: var(--chat-turn-rail-gutter);
+  }
+
+  .askQuestionDock {
+    padding-inline-start: var(--chat-turn-rail-gutter);
+    padding-inline-end: var(--chat-column-pad-x, 24px);
   }
 
   .runUsageBar {
@@ -258,15 +272,24 @@
 }
 
 .mobileTitle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   font-size: 15px;
   font-weight: 600;
   color: var(--fn-text-primary);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   flex: 1;
   text-align: center;
   padding: 0 8px;
+}
+
+.mobileTitleText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .mobileHeaderRight {

@@ -1,12 +1,11 @@
-import type { LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import TabLabel from "./index";
+import TabLabel, { type TabIcon } from "./index";
 import styles from "./index.module.less";
 
 export interface TabBarItem<T extends string = string> {
   key: T;
   labelKey: string;
-  icon: LucideIcon;
+  icon: TabIcon;
 }
 
 interface TabBarProps<T extends string> {

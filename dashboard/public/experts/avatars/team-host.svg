@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="team-host">
+  <defs>
+    <linearGradient id="bg-team-host" x1="20" y1="8" x2="110" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#CCFBF1"/>
+      <stop offset="1" stop-color="#99F6E4"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="url(#bg-team-host)"/>
+
+  <!-- left teammate -->
+  <path d="M8 118 Q10 98 26 94 Q40 92 48 98 L46 118 Z" fill="#0D9488"/>
+  <path d="M18 62 Q16 42 34 38 Q52 42 50 62 Q46 48 34 46 Q22 48 18 62Z" fill="#1F2937"/>
+  <rect x="28" y="78" width="10" height="10" rx="4" fill="#E8C4A0"/>
+  <ellipse cx="34" cy="66" rx="16" ry="17" fill="#E8C4A0"/>
+  <ellipse cx="20" cy="68" rx="3" ry="4" fill="#E8C4A0"/>
+  <ellipse cx="27" cy="64" rx="2.1" ry="2.5" fill="#1F2937"/>
+  <ellipse cx="39" cy="64" rx="2.1" ry="2.5" fill="#1F2937"/>
+  <circle cx="27.8" cy="63.2" r="0.7" fill="#fff"/>
+  <circle cx="39.8" cy="63.2" r="0.7" fill="#fff"/>
+  <path d="M28 72 Q34 77 40 72" fill="none" stroke="#B45309" stroke-width="1.6" stroke-linecap="round"/>
+
+  <!-- right teammate -->
+  <path d="M80 98 Q88 92 102 94 Q118 98 120 118 H82 Z" fill="#F59E0B"/>
+  <path d="M78 62 Q76 40 94 36 Q112 40 110 62 Q106 46 94 44 Q82 46 78 62Z" fill="#7C2D12"/>
+  <rect x="90" y="78" width="10" height="10" rx="4" fill="#F5D0B0"/>
+  <ellipse cx="94" cy="66" rx="16" ry="17" fill="#F5D0B0"/>
+  <ellipse cx="108" cy="68" rx="3" ry="4" fill="#F5D0B0"/>
+  <ellipse cx="87" cy="64" rx="2.1" ry="2.5" fill="#7C2D12"/>
+  <ellipse cx="99" cy="64" rx="2.1" ry="2.5" fill="#7C2D12"/>
+  <circle cx="87.8" cy="63.2" r="0.7" fill="#fff"/>
+  <circle cx="99.8" cy="63.2" r="0.7" fill="#fff"/>
+  <path d="M88 72 Q94 77 100 72" fill="none" stroke="#B45309" stroke-width="1.6" stroke-linecap="round"/>
+
+  <!-- front teammate -->
+  <path d="M30 118 Q34 96 50 90 Q64 86 78 90 Q94 96 98 118 Z" fill="#0F766E"/>
+  <path d="M50 90 Q64 98 78 90 L76 118 H52 Z" fill="#115E59" opacity="0.28"/>
+  <path d="M38 58 Q36 34 64 28 Q92 34 90 58 Q84 40 64 38 Q44 40 38 58Z" fill="#3F2A1D"/>
+  <rect x="56" y="84" width="16" height="12" rx="6" fill="#F2C7A0"/>
+  <ellipse cx="64" cy="62" rx="22" ry="24" fill="#F2C7A0"/>
+  <ellipse cx="43" cy="64" rx="3.6" ry="5" fill="#F2C7A0"/>
+  <ellipse cx="85" cy="64" rx="3.6" ry="5" fill="#F2C7A0"/>
+  <path d="M44 50 Q64 58 84 50 Q80 44 64 42 Q48 44 44 50Z" fill="#3F2A1D"/>
+  <ellipse cx="55" cy="60" rx="2.6" ry="3.1" fill="#1F2937"/>
+  <ellipse cx="73" cy="60" rx="2.6" ry="3.1" fill="#1F2937"/>
+  <circle cx="56" cy="59" r="0.9" fill="#fff"/>
+  <circle cx="74" cy="59" r="0.9" fill="#fff"/>
+  <path d="M50 53 Q55 50 60 53" fill="none" stroke="#1F2937" stroke-width="1.6" stroke-linecap="round" opacity="0.5"/>
+  <path d="M68 53 Q73 50 78 53" fill="none" stroke="#1F2937" stroke-width="1.6" stroke-linecap="round" opacity="0.5"/>
+  <path d="M64 62 Q66 67 62 69" fill="none" stroke="#C08457" stroke-width="1.6" stroke-linecap="round" opacity="0.5"/>
+  <path d="M54 71 Q64 78 74 71" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="48" cy="70" r="3.2" fill="#F9A8D4" opacity="0.32"/>
+  <circle cx="80" cy="70" r="3.2" fill="#F9A8D4" opacity="0.32"/>
+</svg>

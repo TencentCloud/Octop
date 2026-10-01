@@ -1,7 +1,7 @@
 /**
  * Composer helpers for expert / subagent @mentions.
  *
- * harness-agent no longer intercepts ``target_agent_ids``; the host must put
+ * octop-harness no longer intercepts ``target_agent_ids``; the host must put
  * ``@Name`` in the user message so the model can call ``ask_agent`` (teammate)
  * or ``task`` (workspace subagent).
  */
@@ -9,6 +9,21 @@
 export function expertMentionToken(name: string): string {
   const token = name.trim().replace(/\s+/g, "-");
   return token ? `@${token}` : "";
+}
+
+/** Put ``@Name`` in front of a welcome-card prompt for the composer. */
+export function withExpertMention(prompt: string, name: string): string {
+  const token = expertMentionToken(name);
+  const body = prompt.trim();
+  if (!token) return body;
+  if (
+    textHasExpertMention(body, name) ||
+    body.startsWith(`${token} `) ||
+    body === token
+  ) {
+    return body;
+  }
+  return body ? `${token} ${body}` : `${token} `;
 }
 
 function escapeRegExp(value: string): string {

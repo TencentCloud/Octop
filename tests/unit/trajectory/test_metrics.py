@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from octop.infra.trajectory.metrics import TrajectoryMetrics, aggregate_metrics
-from octop.infra.trajectory.types import TrajectoryEvent
+from octop.infra.history.trajectory.metrics import TrajectoryMetrics, aggregate_metrics
+from octop.infra.history.trajectory.types import TrajectoryEvent
 
 
 def _event(

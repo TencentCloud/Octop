@@ -61,6 +61,12 @@ export const CAPTCHA_WIDGETS: Record<string, CaptchaWidgetAdapter> = {
     globalName: "TencentCaptcha",
     mode: "popup",
   },
+  "geetest-v4": {
+    slug: "geetest-v4",
+    scriptSrc: "https://static.geetest.com/v4/gt4.js",
+    globalName: "initGeetest4",
+    mode: "popup",
+  },
 };
 
 export function loginCaptchaBody(

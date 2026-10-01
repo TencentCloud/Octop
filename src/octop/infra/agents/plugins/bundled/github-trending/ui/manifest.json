@@ -1,0 +1,3 @@
+{
+  "renderers": [{ "id": "github_trending_list", "tools": ["github_trending"] }]
+}
