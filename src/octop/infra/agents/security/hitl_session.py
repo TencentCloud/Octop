@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar, Token
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -135,13 +135,19 @@ def thread_id_from_request(request: dict[str, Any]) -> str | None:
 
 @contextmanager
 def hitl_thread_scope(thread_id: str | None) -> Iterator[None]:
-    """Bind *thread_id* for interrupt ``when`` predicates."""
+    """Bind *thread_id* for interrupt ``when`` predicates.
+
+    Restores by value, not by ``Token.reset()``: a streamed reply opens this scope
+    inside an async generator, so an abandoned stream runs teardown in a different
+    task's context, where the originating token raises ``ValueError``.
+    """
     incoming = (thread_id or "").strip() or None
-    token: Token[str | None] = _CURRENT_HITL_THREAD.set(incoming)
+    previous = _CURRENT_HITL_THREAD.get()
+    _CURRENT_HITL_THREAD.set(incoming)
     try:
         yield
     finally:
-        _CURRENT_HITL_THREAD.reset(token)
+        _CURRENT_HITL_THREAD.set(previous)
 
 
 def current_hitl_thread_id() -> str | None:
