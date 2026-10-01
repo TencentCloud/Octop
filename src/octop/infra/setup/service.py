@@ -24,6 +24,7 @@ from octop.infra.utils.json_file import (
 )
 from octop.infra.utils.paths import PathLayout
 from octop.infra.utils.posix_compat import chown, geteuid, getuid, is_root
+from octop.infra.utils.url import format_host_for_url
 
 logger = logging.getLogger(__name__)
 
@@ -842,7 +843,7 @@ def _launchd_status(scope: ServiceScope) -> tuple[bool, bool | None, str]:
 def probe_health(host: str, port: int) -> tuple[bool, str]:
     import httpx
 
-    url = f"http://{host}:{port}/api/health"
+    url = f"http://{format_host_for_url(host)}:{port}/api/health"
     try:
         response = httpx.get(url, timeout=3)
         response.raise_for_status()

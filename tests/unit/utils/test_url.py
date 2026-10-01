@@ -2,7 +2,38 @@
 
 from __future__ import annotations
 
-from octop.infra.utils.url import normalize_nav_url
+import httpx
+import pytest
+
+from octop.infra.utils.url import format_host_for_url, normalize_nav_url
+
+
+@pytest.mark.parametrize(
+    ("host", "expected"),
+    [
+        ("127.0.0.1", "127.0.0.1"),
+        ("0.0.0.0", "0.0.0.0"),
+        ("localhost", "localhost"),
+        ("example.com", "example.com"),
+        ("::1", "[::1]"),
+        ("2001:db8::5", "[2001:db8::5]"),
+        ("fe80::1%eth0", "[fe80::1%eth0]"),
+        # Already bracketed (e.g. pasted from a printed URL) — do not double-wrap.
+        ("[::1]", "[::1]"),
+    ],
+)
+def test_format_host_for_url(host: str, expected: str) -> None:
+    assert format_host_for_url(host) == expected
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "::1", "2001:db8::5", "localhost"])
+def test_format_host_for_url_keeps_the_port_split_correct(host: str) -> None:
+    """``bind_host`` reaches uvicorn verbatim and uvicorn binds any address
+    containing ``:`` as ``AF_INET6``, so an IPv6 literal must keep working when it
+    is put back into a URL — otherwise every client rejects it (``InvalidURL``)."""
+    url = httpx.URL(f"http://{format_host_for_url(host)}:8088/api/health")
+    assert url.host == host
+    assert url.port == 8088
 
 
 def test_empty_and_blank() -> None:
