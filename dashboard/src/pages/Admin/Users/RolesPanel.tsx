@@ -65,6 +65,7 @@ export default function RolesPanel() {
   const [loading, setLoading] = useState(false);
   const [permCatalog, setPermCatalog] = useState<PermissionCatalogItem[]>([]);
   const [fsTreeRoot, setFsTreeRoot] = useState(HOST_FS_ROOT);
+  const [fsTreeRoots, setFsTreeRoots] = useState<string[] | undefined>();
   const [workspaceRootAllowed, setWorkspaceRootAllowed] = useState(true);
   const [editor, setEditor] = useState<UserRole | "new" | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -100,6 +101,7 @@ export default function RolesPanel() {
     fetchFilesystemDefaults()
       .then((defaults) => {
         setFsTreeRoot(defaults.tree_root);
+        setFsTreeRoots(defaults.tree_roots);
         setWorkspaceRootAllowed(!defaults.in_container);
       })
       .catch(() => {
@@ -654,6 +656,7 @@ export default function RolesPanel() {
               </Form.Item>
               <ResourcePolicyFields
                 fsTreeRoot={fsTreeRoot}
+                fsTreeRoots={fsTreeRoots}
                 workspaceRootAllowed={workspaceRootAllowed}
               />
             </>

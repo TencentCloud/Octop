@@ -15,6 +15,7 @@ from octop.infra.agents.workspace.dir import (
     resolve_workspace_host_path,
     scoped_workspace_dir_str,
     seed_workspace_dir_on_create,
+    uses_scoped_workspace_default,
     workspace_dir_from_config,
 )
 from octop.infra.utils.paths import PathLayout
@@ -142,3 +143,70 @@ def test_default_workspace_ensure_false_does_not_mkdir(tmp_path: Path) -> None:
     out = default_agent_workspace_dir(paths, "A1", ensure=False)
     assert out == paths.agent_workspace("A1")
     assert not out.exists()
+
+
+def test_subtree_drive_root_stays_scoped() -> None:
+    cfg = {
+        "root_semantics": "subtree",
+        "backend": {"type": "local_shell", "root_dir": "D:/", "virtual_mode": True},
+    }
+    assert uses_scoped_workspace_default(cfg) is True
+
+
+def test_subtree_workspace_lands_under_root(tmp_path: Path) -> None:
+    root = tmp_path / "work"
+    root.mkdir()
+    paths = PathLayout(tmp_path / "octop-home")
+    cfg = _scoped_cfg(
+        root,
+        root_semantics="subtree",
+        workspace_dir=str(tmp_path / "elsewhere"),
+    )
+    host = seed_workspace_dir_on_create(cfg, paths=paths, agent_id="SUB1")
+    assert host == (root / ".octop" / "workspaces" / "SUB1").resolve()
+    assert cfg["workspace_dir"] == "/.octop/workspaces/SUB1"
+    assert host.is_dir()
+    assert not (paths.agents_dir / "SUB1").exists()
+    assert not (host / ".octop-write-probe").exists()
+
+
+def test_subtree_symlink_escape_fails_before_any_write(tmp_path: Path) -> None:
+    """A root `.octop` symlink must not receive `workspaces/<id>` before the error."""
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    (root / ".octop").symlink_to(outside, target_is_directory=True)
+    kept = root / ".octop-write-probe"
+    kept.write_text("keep", encoding="utf-8")
+    paths = PathLayout(tmp_path / "octop-home")
+    cfg = _scoped_cfg(root, root_semantics="subtree")
+    with pytest.raises(ValueError, match="outside the selected root"):
+        seed_workspace_dir_on_create(cfg, paths=paths, agent_id="SUBLINK")
+    assert not (outside / "workspaces").exists()
+    assert kept.read_text(encoding="utf-8") == "keep"
+    assert not paths.agents_dir.exists()
+
+
+def test_subtree_probe_does_not_clobber_an_existing_file(tmp_path: Path) -> None:
+    root = tmp_path / "work"
+    root.mkdir()
+    paths = PathLayout(tmp_path / "octop-home")
+    cfg = _scoped_cfg(root, root_semantics="subtree")
+    host = seed_workspace_dir_on_create(cfg, paths=paths, agent_id="SUBPROBE")
+    kept = host / ".octop-write-probe"
+    kept.write_text("keep", encoding="utf-8")
+    again = _scoped_cfg(root, root_semantics="subtree")
+    seed_workspace_dir_on_create(again, paths=paths, agent_id="SUBPROBE")
+    assert kept.read_text(encoding="utf-8") == "keep"
+    assert not any(path.name.startswith(".octop-write-probe-") for path in host.iterdir())
+
+
+def test_subtree_create_does_not_fall_back_to_octop_home(tmp_path: Path) -> None:
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("x", encoding="utf-8")
+    paths = PathLayout(tmp_path / "octop-home")
+    cfg = _scoped_cfg(blocked, root_semantics="subtree")
+    with pytest.raises(ValueError, match="workspace create failed"):
+        seed_workspace_dir_on_create(cfg, paths=paths, agent_id="SUB2")
+    assert not paths.agents_dir.exists()

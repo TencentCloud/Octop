@@ -14,8 +14,13 @@ Create-time defaults when unset:
 * Scoped ``root_dir`` → on-disk ``{root_dir}/.octop/workspaces/<id>/`` (so files
   land inside the jail), but persist ``/.octop/workspaces/<id>`` — the
   agent-facing workspace path. Harness gets that persisted string as-is.
+* ``root_semantics=subtree`` (new Windows experts) uses that same landing
+  path, including when the root is a drive root. Creation fails if the
+  workspace directory cannot be created. It does not fall back to
+  ``OCTOP_HOME``.
 
-User-assigned ``workspace_dir`` always wins (strip only).
+User-assigned ``workspace_dir`` wins except for a subtree create, which always
+lands under the selected root.
 
 :func:`resolve_workspace_host_path` is only for Octop host FS ops (delete,
 memory sqlite path, etc.) when the persisted value is the agent-facing
@@ -27,6 +32,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +48,17 @@ _WINDOWS_DRIVE_ROOT_RE = re.compile(r"^[A-Za-z]:[/\\]?$")
 
 def _running_on_windows() -> bool:
     return os.name == "nt"
+
+
+def uses_subtree_root(cfg: dict[str, Any] | None) -> bool:
+    """True when this agent stores a real directory root, including a drive root."""
+    return str((cfg or {}).get("root_semantics") or "") == "subtree"
+
+
+def _treat_as_host_root(root: str | Path | None, cfg: dict[str, Any] | None) -> bool:
+    if uses_subtree_root(cfg):
+        return False
+    return _is_host_root_sentinel(root)
 
 
 def _is_host_root_sentinel(root: str | Path | None) -> bool:
@@ -85,6 +102,8 @@ def local_backend_root_dir(cfg: dict[str, Any] | None) -> str | None:
 
 def uses_scoped_workspace_default(cfg: dict[str, Any] | None) -> bool:
     root_raw = local_backend_root_dir(cfg)
+    if uses_subtree_root(cfg):
+        return root_raw is not None
     return root_raw is not None and not _is_host_root_sentinel(root_raw)
 
 
@@ -104,6 +123,8 @@ def default_agent_workspace_dir(
 
     Not what harness receives.
     """
+    if uses_subtree_root(cfg):
+        return _subtree_workspace_dir(agent_id, cfg=cfg, ensure=ensure)
     root_raw = local_backend_root_dir(cfg)
     if root_raw is not None and not _is_host_root_sentinel(root_raw):
         try:
@@ -121,6 +142,51 @@ def default_agent_workspace_dir(
     return paths.agent_workspace(agent_id)
 
 
+def _subtree_workspace_dir(
+    agent_id: str,
+    *,
+    cfg: dict[str, Any] | None,
+    ensure: bool,
+) -> Path:
+    """Place a subtree workspace under the selected root. Fail closed."""
+    root_raw = local_backend_root_dir(cfg)
+    if not root_raw:
+        raise ValueError("subtree root_dir is required")
+    try:
+        root = Path(root_raw).expanduser().resolve()
+        planned = (
+            root / DEFAULT_SYSTEM_FILES_PATH / SCOPED_WORKSPACE_DIRNAME / agent_id
+        ).resolve()
+    except OSError as exc:
+        raise ValueError(f"workspace root is not usable: {exc}") from exc
+    if not _path_under(planned, root):
+        raise ValueError("workspace is outside the selected root")
+    if not ensure:
+        return planned
+    try:
+        planned.mkdir(parents=True, exist_ok=True)
+        created = planned.resolve()
+        if not _path_under(created, root):
+            raise ValueError("workspace is outside the selected root")
+        _probe_new_workspace(created)
+    except OSError as exc:
+        raise ValueError(f"workspace create failed: {exc}") from exc
+    return created
+
+
+def _probe_new_workspace(workspace: Path) -> None:
+    """Create one exclusive probe file and delete only that file."""
+    probe = workspace / f".octop-write-probe-{uuid.uuid4().hex}"
+    fd = os.open(os.fspath(probe), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        try:
+            os.write(fd, b"")
+        finally:
+            os.close(fd)
+    finally:
+        os.unlink(os.fspath(probe))
+
+
 def seed_workspace_dir_on_create(
     config: dict[str, Any],
     *,
@@ -128,6 +194,11 @@ def seed_workspace_dir_on_create(
     agent_id: str,
 ) -> Path:
     """Ensure ``config["workspace_dir"]`` at create; return on-disk Path for seeding."""
+    if uses_subtree_root(config):
+        host = _subtree_workspace_dir(agent_id, cfg=config, ensure=True)
+        config["workspace_dir"] = scoped_workspace_dir_str(agent_id)
+        return host
+
     raw = config.get("workspace_dir")
     if isinstance(raw, str) and raw.strip():
         text = raw.strip()
@@ -179,7 +250,7 @@ def resolve_workspace_host_path(raw: str, cfg: dict[str, Any] | None = None) -> 
         return Path(text).expanduser().resolve()
 
     root_raw = local_backend_root_dir(cfg)
-    if root_raw is None or _is_host_root_sentinel(root_raw):
+    if root_raw is None or _treat_as_host_root(root_raw, cfg):
         return Path(text).expanduser().resolve()
 
     root = Path(root_raw).expanduser().resolve()
@@ -245,6 +316,7 @@ def agent_facing_workspace_root(
     *,
     root_dir: Path | str | None = None,
     virtual_mode: bool = False,
+    subtree: bool = False,
 ) -> str:
     """Agent-visible workspace directory (never ``root_dir``-joined).
 
@@ -257,7 +329,7 @@ def agent_facing_workspace_root(
         return ""
     if text == "/" or text.startswith("/.octop/"):
         return text if text != "/" else "/"
-    if not virtual_mode or root_dir is None or _is_host_root_sentinel(root_dir):
+    if not virtual_mode or root_dir is None or (not subtree and _is_host_root_sentinel(root_dir)):
         return text
     try:
         ws = Path(text).expanduser().resolve()
@@ -282,6 +354,7 @@ def agent_facing_workspace_dir_from_config(cfg: dict[str, Any] | None) -> str:
         text,
         root_dir=local_backend_root_dir(cfg),
         virtual_mode=_backend_virtual_mode(cfg),
+        subtree=uses_subtree_root(cfg),
     )
 
 

@@ -7,6 +7,7 @@ Used by the setup wizard (pinned ``agent_id=main``) and by invite redeem
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from octop.infra.agents.experts.catalog import ExpertCatalog, build_create_spec_from_expert
@@ -15,7 +16,7 @@ from octop.infra.users.resource_policy import (
     POLICY_WORKSPACE_ROOT_DIR,
     effective_workspace_root_dir,
 )
-from octop.infra.utils.host_dirs import host_fs_tree_root
+from octop.infra.utils.host_dirs import host_fs_tree_root, host_home_dir, host_path_text
 from octop.infra.utils.locale import normalize_locale
 
 logger = logging.getLogger(__name__)
@@ -27,10 +28,17 @@ SETUP_DEFAULT_AGENT_ID = "main"
 def default_home_local_backend(*, root_dir: str | None = None) -> dict[str, Any]:
     """Same local backend as the dashboard create-from-expert default.
 
-    Defaults to host filesystem root; pass *root_dir* when a user
-    ``workspace_root_dir`` policy applies.
+    POSIX defaults to ``/``. Windows preselects the process account home.
+    Pass *root_dir* when a user ``workspace_root_dir`` policy applies.
+    Home is only a preselect; create still has to make the workspace directory.
     """
-    resolved = (root_dir or "").strip() or host_fs_tree_root()
+    explicit = (root_dir or "").strip()
+    if explicit:
+        resolved = explicit
+    elif os.name == "nt":
+        resolved = host_path_text(host_home_dir())
+    else:
+        resolved = host_fs_tree_root()
     return {
         "type": "local_shell",
         "root_dir": resolved,

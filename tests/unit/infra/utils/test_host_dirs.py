@@ -9,7 +9,9 @@ import pytest
 
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
+    host_browse_roots,
     host_home_dir,
+    host_jail_enforced,
     is_within_host_home,
     list_host_subdirs,
     mkdir_host_subdir,
@@ -288,6 +290,20 @@ def test_running_in_container_detects_dockerenv(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path", _FakePath)
     assert running_in_container() is True
+
+
+def test_browse_roots_use_the_ready_drive_seam(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("octop.infra.utils.host_dirs.os.name", "nt")
+    monkeypatch.setattr(
+        "octop.infra.utils.host_dirs._ready_drive_roots",
+        lambda: ["C:/", "G:/"],
+    )
+    assert host_browse_roots() == ["C:/", "G:/"]
+
+
+def test_jail_is_not_enforced_off_posix(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("octop.infra.utils.host_dirs.os.name", "nt")
+    assert host_jail_enforced() is False
 
 
 def test_list_and_probe_return_posix_paths(tmp_path: Path) -> None:

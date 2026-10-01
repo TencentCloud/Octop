@@ -21,8 +21,12 @@ export interface BackendOption {
 export interface FilesystemDefaults {
   default_root_dir: string;
   tree_root: string;
+  /** Volume roots on Windows. Absent on POSIX, where ``tree_root`` is ``/``. */
+  tree_roots?: string[];
   /** True when the Octop server process runs inside a container. */
   in_container?: boolean;
+  /** True only when a non-root directory gets a real OS sandbox. */
+  jail_enforced?: boolean;
 }
 
 export async function fetchFilesystemDefaults(): Promise<FilesystemDefaults> {

@@ -615,9 +615,11 @@ function MaxAgentsInput({ value, onChange }: MaxAgentsInputProps) {
 
 export function ResourcePolicyFields({
   fsTreeRoot,
+  fsTreeRoots,
   workspaceRootAllowed,
 }: {
   fsTreeRoot: string;
+  fsTreeRoots?: string[];
   workspaceRootAllowed: boolean;
 }) {
   const { t } = useTranslation();
@@ -659,7 +661,7 @@ export function ResourcePolicyFields({
                   },
                 ]}
               >
-                <RootDirSelect treeRoot={fsTreeRoot} />
+                <RootDirSelect treeRoot={fsTreeRoot} treeRoots={fsTreeRoots} />
               </Form.Item>
             ) : null
           }
@@ -1258,6 +1260,7 @@ export default function UsersListPanel() {
   const [permCatalog, setPermCatalog] = useState<PermissionCatalogItem[]>([]);
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
   const [fsTreeRoot, setFsTreeRoot] = useState(HOST_FS_ROOT);
+  const [fsTreeRoots, setFsTreeRoots] = useState<string[] | undefined>();
   const [workspaceRootAllowed, setWorkspaceRootAllowed] = useState(true);
 
   const permLabelByKey = useMemo(() => {
@@ -1612,6 +1615,7 @@ export default function UsersListPanel() {
     fetchFilesystemDefaults()
       .then((defaults) => {
         setFsTreeRoot(defaults.tree_root);
+        setFsTreeRoots(defaults.tree_roots);
         setWorkspaceRootAllowed(!defaults.in_container);
       })
       .catch(() => {
@@ -2433,6 +2437,7 @@ export default function UsersListPanel() {
 
           <ResourcePolicyFields
             fsTreeRoot={fsTreeRoot}
+            fsTreeRoots={fsTreeRoots}
             workspaceRootAllowed={workspaceRootAllowed}
           />
         </Form>
@@ -2641,6 +2646,7 @@ export default function UsersListPanel() {
 
           <ResourcePolicyFields
             fsTreeRoot={fsTreeRoot}
+            fsTreeRoots={fsTreeRoots}
             workspaceRootAllowed={workspaceRootAllowed}
           />
         </Form>

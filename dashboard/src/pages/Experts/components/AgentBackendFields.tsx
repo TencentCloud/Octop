@@ -172,6 +172,7 @@ export default function AgentBackendFields({
           >
             <RootDirSelect
               treeRoot={treeRoot}
+              treeRoots={fsDefaults?.tree_roots}
               disabled={disabled || rootDirMode === "edit"}
             />
           </Form.Item>
@@ -206,7 +207,9 @@ export default function AgentBackendFields({
                     margin: "4px 0 0",
                   }}
                 >
-                  {t("experts.backendRootDirJailHint")}
+                  {fsDefaults?.jail_enforced
+                    ? t("experts.backendRootDirJailHint")
+                    : t("experts.backendRootDirPathLimitHint")}
                 </p>
               </>
             )}
