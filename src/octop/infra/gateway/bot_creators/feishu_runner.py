@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
+from octop.infra.utils.subprocess_env import python_subprocess_env
 from octop.infra.utils.subprocess_io import parse_subprocess_json_lines
 
 ALLOWED_PLATFORMS = frozenset({"feishu", "lark"})
@@ -43,7 +43,7 @@ def start_feishu_creator(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        env=python_subprocess_env(),
         shell=False,
     )
 
