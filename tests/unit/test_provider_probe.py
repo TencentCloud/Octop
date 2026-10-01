@@ -13,6 +13,16 @@ from octop.infra.agents.providers.probe import build_probe_chat_model as _build_
 from octop.infra.agents.providers.probe import probe_provider_row
 
 
+@pytest.fixture(autouse=True)
+def _skip_dns_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SEC-8 added DNS resolution to the probe guard; unit tests stub HTTP."""
+
+    async def _fake_resolve(url: str, *, field: str = "url") -> str:
+        return url
+
+    monkeypatch.setattr("octop.infra.utils.ssrf_guard._resolve_validated_ip", _fake_resolve)
+
+
 def test_build_chat_model_includes_provider_id_and_model_name() -> None:
     row = SimpleNamespace(
         name="HAI",
@@ -271,3 +281,62 @@ def test_friendly_probe_error_empty_string_passthrough() -> None:
 
     assert _friendly_probe_error("", locale="en") == "unknown error"
     assert _friendly_probe_error(TimeoutError(), locale="zh") == "TimeoutError"
+
+
+@pytest.mark.asyncio
+async def test_chat_probe_rejects_private_base_url_without_connecting() -> None:
+    """SEC-8: the probe must refuse a private base_url before any outbound call.
+
+    The probe sends ``Authorization: Bearer <api key>`` and echoes the response
+    body, so a base_url aimed at an internal service leaks the credential.
+    Asserting on the error string alone would not be enough — the stubbed
+    client would happily "succeed" — so the client must never be constructed.
+    """
+    row = SimpleNamespace(
+        name="internal",
+        kind="openai",
+        base_url="http://169.254.169.254/latest/meta-data/",
+        api_key="sk-secret",
+        extra_json=None,
+        get_models=lambda: [{"id": "gpt-4o-mini", "name": "gpt-4o-mini"}],
+    )
+    fake = AsyncMock()
+    fake.ainvoke = AsyncMock(return_value=SimpleNamespace(content="pong"))
+    with (
+        patch("octop.infra.agents.providers.probe.build_probe_chat_model", return_value=fake),
+        patch("octop.infra.agents.providers.probe.httpx.AsyncClient") as client,
+    ):
+        result = await probe_provider_row(row, model_id="gpt-4o-mini")
+
+    assert result["ok"] is False
+    assert "not allowed" in result["error"]
+    client.assert_not_called()
+    fake.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_probe_allows_loopback_base_url_for_local_runtimes() -> None:
+    """Local runtimes legitimately talk to loopback, so the guard must exempt them.
+
+    Without the exemption this breaks every Ollama-on-localhost install, which
+    is the documented default for that preset.
+    """
+    row = SimpleNamespace(
+        name="ollama",
+        kind="ollama",
+        base_url="http://127.0.0.1:11434",
+        api_key="",
+        extra_json=None,
+        get_models=lambda: [{"id": "llama3", "name": "llama3"}],
+    )
+    fake = AsyncMock()
+    fake.ainvoke = AsyncMock(return_value=SimpleNamespace(content="pong"))
+    with (
+        patch("octop.infra.agents.providers.probe.build_probe_chat_model", return_value=fake),
+        patch("octop.infra.agents.providers.probe.httpx.AsyncClient") as client,
+    ):
+        result = await probe_provider_row(row, model_id="llama3")
+
+    assert result["ok"] is True
+    client.assert_not_called()
+    fake.ainvoke.assert_awaited_once()
