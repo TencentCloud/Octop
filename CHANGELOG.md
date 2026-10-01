@@ -8,6 +8,7 @@
 
 ### 修复
 
+- 记忆迁移源清单越权枚举（ACL/V3）：`GET /api/memory/portable/sources` 只要求登录，返回 `list_sources()` 在宿主机上扫描到的全部记忆库绝对路径（`~/.octop/agents/*/memory.sqlite`、`~/.openclaw/octopmemory/*/…`、`~/.hermes/…`），任何登录用户都能据此看到他人的 agent 目录布局。该扫描不接受身份参数，四类宿主目录里有三类（OpenClaw / hermes / octopmemory）根本不存在按用户划分，无法按 agent 归属收敛；同路由的 pack / adopt / doctor 均以 `require_agent_owner_row` 限定属主。现改用 `Depends(require_admin())`，本接口属运维级操作台（Dashboard 未调用 `listSources`，前端只用 pack / adopt / doctor），且不新增权限位。
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。

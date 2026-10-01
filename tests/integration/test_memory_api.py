@@ -14,6 +14,7 @@ test fast and deterministic without an LLM.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -31,6 +32,8 @@ from octop.api.common.memory_client import (
     memory_db_path_for_cfg,
     memory_namespace,
 )
+from octop.infra.users.permissions import ALL_PERMISSION_KEYS
+from tests.support.auth import create_agent, create_user
 
 
 def _now() -> datetime:
@@ -468,3 +471,113 @@ async def test_unauthenticated(env_with_main_agent) -> None:
     # No auth headers → must be rejected by the auth middleware.
     r = await client.get(f"/api/agents/{aid}/memory/stats/counts")
     assert r.status_code in (401, 403)
+
+
+def _seed_portable_store(db_path: Path) -> None:
+    """Create a memory store at ``db_path`` that ``list_sources()`` discovers.
+
+    ``list_sources`` walks ``HOST_SCAN_PATTERNS`` — one of which is
+    ``~/.octop/agents/*/memory.sqlite`` — with no identity argument, so any
+    store landing on those paths is host-global regardless of which octop user
+    owns the agent directory it sits in.
+    """
+    from octop_memory.core import Memory  # noqa: PLC0415
+    from octop_memory.types import Entity  # noqa: PLC0415
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    memory = Memory(
+        namespace="agentstore",
+        backend="sqlite",
+        backend_config={"db_path": str(db_path)},
+    )
+    memory.add_entity(
+        Entity(
+            id="ent-host",
+            entity_type="User",
+            canonical_name="Host store",
+            aliases=[],
+            atom_count=0,
+            created_at=_now(),
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_portable_sources_admin_sees_the_store_it_owns(
+    env_with_main_agent,
+    tmp_octop_home: Path,
+) -> None:
+    """The gate must not over-correct: the operator still gets the listing."""
+    client, _srv, auth, _aid = env_with_main_agent
+    store = tmp_octop_home / "agents" / "agent-admin-owned" / "memory.sqlite"
+    _seed_portable_store(store)
+
+    r = await client.get("/api/memory/portable/sources", headers=auth)
+
+    assert r.status_code == 200, r.text
+    sources = r.json()["sources"]
+    assert [s["db_path"] for s in sources] == [str(store)]
+    assert sources[0]["host_kind"] == "agent"
+    assert sources[0]["namespace"] == "agentstore"
+    assert sources[0]["agent_name"] == "agent-admin-owned"
+
+
+@pytest.mark.asyncio
+async def test_portable_sources_omits_another_users_store(
+    env_with_provider,
+    tmp_octop_home: Path,
+) -> None:
+    """A caller who does not own the memory store must not learn its path."""
+    client, _srv, admin_auth = env_with_provider
+    alice_auth = await create_user(client, admin_auth, username="store-alice")
+    alice_agent = await create_agent(client, alice_auth, name="alice-store")
+    store = tmp_octop_home / "agents" / alice_agent / "memory.sqlite"
+    _seed_portable_store(store)
+    bob_auth = await create_user(client, admin_auth, username="store-bob")
+
+    r = await client.get("/api/memory/portable/sources", headers=bob_auth)
+
+    assert r.status_code == 403, r.text
+    assert r.json()["error"]["code"] == "FORBIDDEN"
+    assert str(store) not in r.text
+    assert alice_agent not in r.text
+
+
+@pytest.mark.asyncio
+async def test_portable_sources_refuses_fully_permitted_non_admin(
+    env_with_main_agent,
+    tmp_octop_home: Path,
+) -> None:
+    """Holding every permission key is still not enough for a host-wide listing."""
+    client, _srv, admin_auth, _aid = env_with_main_agent
+    store = tmp_octop_home / "agents" / "agent-fully-permitted" / "memory.sqlite"
+    _seed_portable_store(store)
+    super_auth = await create_user(
+        client,
+        admin_auth,
+        username="store-super",
+        permissions=sorted(ALL_PERMISSION_KEYS),
+    )
+
+    r = await client.get("/api/memory/portable/sources", headers=super_auth)
+
+    assert r.status_code == 403, r.text
+    assert r.json()["error"]["code"] == "FORBIDDEN"
+    assert str(store) not in r.text
+
+
+@pytest.mark.asyncio
+async def test_portable_sources_refuses_non_admin_without_permissions(
+    env_with_main_agent,
+    tmp_octop_home: Path,
+) -> None:
+    client, _srv, admin_auth, _aid = env_with_main_agent
+    store = tmp_octop_home / "agents" / "agent-no-permissions" / "memory.sqlite"
+    _seed_portable_store(store)
+    none_auth = await create_user(client, admin_auth, username="store-none", permissions=[])
+
+    r = await client.get("/api/memory/portable/sources", headers=none_auth)
+
+    assert r.status_code == 403, r.text
+    assert r.json()["error"]["code"] == "FORBIDDEN"
+    assert str(store) not in r.text

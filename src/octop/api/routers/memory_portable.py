@@ -22,7 +22,7 @@ from octop.api.common.agent import require_agent_owner_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.content_disposition import content_disposition
 from octop.api.common.memory_client import memory_db_path_for_cfg, memory_namespace
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_admin
 from octop.infra.agents.memory.backend import open_memory_kwargs
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -97,10 +97,18 @@ class _AdoptRequest(BaseModel):
 
 @router.get("/memory/portable/sources")
 async def list_portable_sources(
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_admin()),
     server: Any = Depends(get_server),
 ) -> JSONResponse:
-    """List all migratable memory stores on this host."""
+    """List all migratable memory stores on this host.
+
+    Admin-only: ``list_sources()`` globs ``HOST_SCAN_PATTERNS``
+    (``~/.octop/agents/*/memory.sqlite``, ``~/.openclaw/octopmemory/*/…``,
+    ``~/.hermes/…``) with no identity argument, so the listing is host-global —
+    it names stores for every octop user and for third-party hosts that have
+    no user partition at all. Unlike pack/adopt/doctor it cannot be scoped per
+    agent, so it is operator-level.
+    """
     try:
         from octop_memory.operations.migration.portable import list_sources
 
