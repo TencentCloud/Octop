@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import csv
 import io
 import zipfile
 from pathlib import Path
 
 import pytest
 
-from octop.infra.knowledge.parse import parse_document
+from octop.config import DEFAULT_MAX_CSV_FIELD_CHARS
+from octop.infra.knowledge.parse import _raise_csv_field_limit, parse_document
 
 _DOCX_NAMESPACES = (
     'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
@@ -199,6 +201,57 @@ def test_parse_csv_xlsx_and_xls(tmp_path: Path) -> None:
     assert parse_document(xlsx) == expected_xlsx
     assert parse_document(xlsm) == expected_xlsx
     assert parse_document(xls) == "# Q1\nitem\tqty\napple\t2"
+
+
+def test_parse_delimited_keeps_newlines_inside_quoted_fields(tmp_path: Path) -> None:
+    """A quoted field may contain the delimiter's line break."""
+    csv_path = tmp_path / "report.csv"
+    csv_path.write_text('name,note\nAlice,"line one\nline two"\nBob,ok\n', encoding="utf-8")
+    tsv_path = tmp_path / "report.tsv"
+    tsv_path.write_text('name\tnote\nAlice\t"line one\nline two"\nBob\tok\n', encoding="utf-8")
+
+    expected = "# report\nname\tnote\nAlice\tline one line two\nBob\tok"
+    assert parse_document(csv_path) == expected
+    assert parse_document(tsv_path) == expected
+
+
+@pytest.mark.parametrize(
+    "separator", ["\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"]
+)
+def test_parse_delimited_keeps_the_line_breaks_csv_does_not_recognise(
+    tmp_path: Path, separator: str
+) -> None:
+    """``splitlines()`` broke rows on these; ``csv.reader`` on a stream does not."""
+    path = tmp_path / "export.csv"
+    path.write_text(f"a,b{separator}c,d", encoding="utf-8")
+
+    assert parse_document(path) == "# export\na\tb\nc\td"
+
+
+def test_parse_delimited_allows_a_quoted_field_past_the_csv_size_limit(tmp_path: Path) -> None:
+    """One ``csv`` field is capped at 128 KiB; a quoted multi-line cell may exceed it."""
+    path = tmp_path / "long.csv"
+    line = "x" * 100
+    rows = csv.field_size_limit() // len(line) + 1
+    path.write_text(f'a,b\n1,"{chr(10).join([line] * rows)}"\n', encoding="utf-8")
+
+    assert parse_document(path).splitlines()[2] == "1\t" + " ".join([line] * rows)
+
+
+def test_csv_field_limit_stops_at_the_upload_limit() -> None:
+    """The cap is process-global and never restored, so a hostile CSV must not push it
+    past what a document is allowed to weigh."""
+    previous = csv.field_size_limit()
+    try:
+        csv.field_size_limit(131072)
+        _raise_csv_field_limit(DEFAULT_MAX_CSV_FIELD_CHARS * 4)
+        assert csv.field_size_limit() == DEFAULT_MAX_CSV_FIELD_CHARS
+
+        # A smaller later parse must not shrink it back under a running reader.
+        _raise_csv_field_limit(10)
+        assert csv.field_size_limit() == DEFAULT_MAX_CSV_FIELD_CHARS
+    finally:
+        csv.field_size_limit(previous)
 
 
 def test_parse_html_json_and_plain_variants(tmp_path: Path) -> None:
