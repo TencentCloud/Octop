@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 手机（Remote Android）相关接口在事件循环里直接跑 adb / docker 探针：`GET /mobile/status`、`GET /mobile/devices/{device}/info`、`PUT /mobile/agent-control` 以及 `/mobile-stream/ws` 握手会同步调用 `mobile_status()`（内部 `adb devices` 与 `docker inspect` 各 5 s 超时）和 `list_devices()`，adb server 冷启动或设备中途掉线时整个服务被冻住——聊天流式输出、IM 渠道、cron 与其它 HTTP 请求同时停摆。现按 `shell_ws.py:84`、`tools.py:66` 已有写法改用 `await asyncio.to_thread(...)`，探针只影响发起请求的那个页面（Fixes #1471）。
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
