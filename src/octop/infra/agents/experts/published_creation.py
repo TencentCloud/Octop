@@ -55,6 +55,7 @@ class PublishedExpertInstallOptions:
     welcome_message: str | None = None
     runtime_config: dict[str, Any] | None = None
     enable_trajectory: bool = True
+    conversation_mode: str | None = None
     workspace_patch: Any = None
     composer_copies: tuple[tuple[str, Any], ...] = ()
     composer_report: Any = None
@@ -362,6 +363,8 @@ async def install_published_expert(
     if options.backend:
         config_extra["backend"] = options.backend
     apply_enable_trajectory(config_extra, options.enable_trajectory)
+    if options.conversation_mode:
+        config_extra["conversation_mode"] = options.conversation_mode
 
     async def seed_snapshot(created_row: Any, workspace: Any) -> None:
         await seed_expert_directory(expert_dir=snapshot_dir, workspace=workspace)

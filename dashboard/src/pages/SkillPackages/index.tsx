@@ -6,6 +6,7 @@ import {
   type CSSProperties,
 } from "react";
 import {
+  Radio,
   Button,
   Drawer,
   Dropdown,
@@ -87,6 +88,7 @@ type PackageFormValues = {
   description?: string;
   icon_name?: string;
   icon_url?: string;
+  copy_policy?: "snapshot" | "lock" | "deny";
 };
 
 const EMPTY_SKILL = "---\nname: \ndescription: \n---\n\n";
@@ -312,6 +314,7 @@ export default function SkillPackagesPage() {
       description: "",
       icon_name: undefined,
       icon_url: "",
+      copy_policy: "snapshot",
     });
     setPackageDrawerOpen(true);
   };
@@ -323,6 +326,7 @@ export default function SkillPackagesPage() {
       description: item.description,
       icon_name: item.icon_name,
       icon_url: item.icon_url,
+      copy_policy: item.copy_policy ?? "snapshot",
     });
     setPackageDrawerOpen(true);
   };
@@ -963,6 +967,24 @@ export default function SkillPackagesPage() {
           className={styles.packageForm}
           requiredMark={false}
         >
+          {editingPackageId ? (
+            <Form.Item
+              name="copy_policy"
+              label={t("skillPackages.copyPolicy")}
+              tooltip={t("skillPackages.copyPolicyHint")}
+            >
+              <Radio.Group
+                options={[
+                  {
+                    value: "snapshot",
+                    label: t("skillPackages.copyPolicySnapshot"),
+                  },
+                  { value: "lock", label: t("skillPackages.copyPolicyLock") },
+                  { value: "deny", label: t("skillPackages.copyPolicyDeny") },
+                ]}
+              />
+            </Form.Item>
+          ) : null}
           <Form.Item
             name="name"
             label={t("skillPackages.packageName")}
