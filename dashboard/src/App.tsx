@@ -10,7 +10,7 @@ import {
   DesktopChromeProvider,
   useDesktopChrome,
 } from "./hooks/useDesktopChrome";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import MainLayout from "./layouts/MainLayout";
 import LoginPage from "./pages/Login";
@@ -28,6 +28,7 @@ import { VoiceOutputProvider } from "./context/VoiceOutputContext";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { useUnauthorizedRedirect } from "./hooks/useUnauthorizedRedirect";
 import { installDesktopExternalLinks } from "./utils/desktopExternalLinks";
+import { resolveSelectedKey } from "./routes";
 import { brandTokensFor } from "./styles/themePalettes";
 import "./styles/theme-vars.css";
 import "./styles/layout.css";
@@ -46,6 +47,7 @@ function ThemedApp() {
   const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const desktopChrome = useDesktopChrome();
+  const location = useLocation();
   const brandTokens = brandTokensFor(palette, isDark, customColor);
   // Make antd built-ins (Popconfirm OK/Cancel, Modal default footer, Empty,
   // Pagination, DatePicker, Table… ) follow the current UI language.
@@ -62,6 +64,17 @@ function ThemedApp() {
   useEffect(() => {
     document.title = t("app.pageTitle");
   }, [t]);
+
+  // A11Y-10: reflect the current section in the tab title on route change.
+  // Section names come from the existing nav.* keys; unknown sections keep
+  // the marketing title.
+  useEffect(() => {
+    const section = resolveSelectedKey(location.pathname);
+    const label = t(`nav.${section}`, "");
+    document.title = label
+      ? `${label} · ${t("app.appName", "Octop")}`
+      : t("app.pageTitle");
+  }, [location.pathname, t]);
 
   const themeConfig = {
     algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
@@ -89,7 +102,7 @@ function ThemedApp() {
             colorBorderSecondary: "rgba(255,255,255,0.05)",
             colorText: "rgba(255, 255, 255, 0.92)",
             colorTextSecondary: "rgba(255, 255, 255, 0.64)",
-            colorTextTertiary: "rgba(255, 255, 255, 0.38)",
+            colorTextTertiary: "rgba(255, 255, 255, 0.55)",
             colorTextQuaternary: "rgba(255, 255, 255, 0.22)",
             colorFill: "rgba(255, 255, 255, 0.06)",
             colorFillSecondary: "rgba(255, 255, 255, 0.04)",
