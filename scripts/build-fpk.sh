@@ -17,7 +17,9 @@
 #                    例如 FPK_ITER=01 会生成 ...-<ver>-01.fpk（通常不需要，按版本号发布）
 #
 # 说明：
-#   - Linux CI 下会自动下载 fnpack-1.2.3-linux-amd64；
+#   - Linux CI 下会自动下载 fnpack（版本见 FNPACK_VERSION，默认 1.2.3）；
+#     curl 对 RST / 超时等瞬时错误重试。成功后落到 .verify/fnpack 供本机与
+#     Actions cache 复用。
 #   - 本地若已存在 .verify/fnpack(.exe) 则直接复用，不再联网下载。
 #   - 版本号同时来自仓库根 pyproject.toml，并注入到 manifest 的 version 字段
 #     （manifest 采用 key=value 无空格格式，故用 `^version=` 匹配）。
@@ -52,22 +54,43 @@ fi
 echo "[build-fpk] 包名前缀: $PREFIX, 迭代后缀: ${ITER_SUFFIX:-<none>}"
 
 # --- 获取 fnpack CLI ---
+# Keep FNPACK_VERSION in sync with .github/workflows/fnos-build-fpk.yml cache key.
+FNPACK_VER="${FNPACK_VERSION:-1.2.3}"
+VERIFY_DIR="$ROOT/.verify"
+mkdir -p "$VERIFY_DIR"
+if [ -f "$VERIFY_DIR/fnpack.exe" ]; then
+  chmod +x "$VERIFY_DIR/fnpack.exe" 2>/dev/null || true
+fi
+if [ -f "$VERIFY_DIR/fnpack" ]; then
+  chmod +x "$VERIFY_DIR/fnpack" 2>/dev/null || true
+fi
 FNPACK=""
-if [ -x "$ROOT/.verify/fnpack.exe" ]; then
-  FNPACK="$ROOT/.verify/fnpack.exe"
-elif [ -x "$ROOT/.verify/fnpack" ]; then
-  FNPACK="$ROOT/.verify/fnpack"
+if [ -x "$VERIFY_DIR/fnpack.exe" ]; then
+  FNPACK="$VERIFY_DIR/fnpack.exe"
+elif [ -x "$VERIFY_DIR/fnpack" ]; then
+  FNPACK="$VERIFY_DIR/fnpack"
 else
   OS="$(uname -s)"
   case "$OS" in
-    Linux)  FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64" ;;
-    Darwin) FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.3-darwin-amd64" ;;
-    *)      FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.3-windows-amd64" ;;
+    Linux)  FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VER}-linux-amd64" ;;
+    Darwin) FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VER}-darwin-amd64" ;;
+    *)      FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VER}-windows-amd64" ;;
   esac
-  FNPACK="$TMP/fnpack"
+  case "$OS" in
+    Linux|Darwin) FNPACK="$VERIFY_DIR/fnpack" ;;
+    *)            FNPACK="$VERIFY_DIR/fnpack.exe" ;;
+  esac
   echo "[build-fpk] 下载 fnpack: $FNPACK_URL"
-  curl -fsSL -o "$FNPACK" "$FNPACK_URL"
+  curl -fsSL --connect-timeout 20 --max-time 120 \
+    --retry 5 --retry-delay 2 --retry-all-errors \
+    -o "${FNPACK}.partial" "$FNPACK_URL"
+  mv "${FNPACK}.partial" "$FNPACK"
   chmod +x "$FNPACK"
+  if [ ! -s "$FNPACK" ]; then
+    echo "[build-fpk] 下载的 fnpack 为空: $FNPACK_URL"
+    rm -f "$FNPACK"
+    exit 1
+  fi
 fi
 echo "[build-fpk] 使用 fnpack: $FNPACK"
 
