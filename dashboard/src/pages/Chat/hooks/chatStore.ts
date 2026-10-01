@@ -472,9 +472,18 @@ function getOrCreate(sessionId: string): SessionStreamState {
   return state;
 }
 
-function notify(state: SessionStreamState) {
-  // Rebuild the snapshot reference so useSyncExternalStore sees the change.
-  state._snapshot = buildSnapshot(state);
+/** Tokens can arrive faster than a long message list can re-render: notifying
+ *  on every chunk keeps the main thread busy until it stops draining the
+ *  socket, which closes the TCP receive window and drops the WS heartbeat
+ *  (#1445). Live chunks therefore share one re-render per window. */
+const STREAM_NOTIFY_COALESCE_MS = 45;
+
+const pendingNotifyTimers = new WeakMap<
+  SessionStreamState,
+  ReturnType<typeof setTimeout>
+>();
+
+function emitToListeners(state: SessionStreamState): void {
   for (const fn of state.listeners) {
     try {
       fn();
@@ -482,6 +491,40 @@ function notify(state: SessionStreamState) {
       /* ignore */
     }
   }
+}
+
+function cancelPendingNotify(state: SessionStreamState): void {
+  const pending = pendingNotifyTimers.get(state);
+  if (pending === undefined) return;
+  clearTimeout(pending);
+  pendingNotifyTimers.delete(state);
+}
+
+function notify(state: SessionStreamState) {
+  // Rebuild the snapshot reference so useSyncExternalStore sees the change.
+  state._snapshot = buildSnapshot(state);
+  // A synchronous notify also carries any coalesced chunk before it.
+  cancelPendingNotify(state);
+  emitToListeners(state);
+}
+
+/** Chunk-path notify. The snapshot is still rebuilt eagerly, so `getSnapshot()`
+ *  never lags; only the re-render is deferred, and any synchronous `notify()`
+ *  or the end of the turn flushes it. */
+function notifyStreaming(state: SessionStreamState) {
+  state._snapshot = buildSnapshot(state);
+  if (!state.isStreaming) {
+    notify(state);
+    return;
+  }
+  if (pendingNotifyTimers.has(state)) return;
+  pendingNotifyTimers.set(
+    state,
+    setTimeout(() => {
+      pendingNotifyTimers.delete(state);
+      emitToListeners(state);
+    }, STREAM_NOTIFY_COALESCE_MS),
+  );
 }
 
 function beginStream(state: SessionStreamState, sessionId: string): void {
@@ -888,6 +931,7 @@ export function removeSession(sessionId: string) {
   const state = sessionStates.get(sessionId);
   if (state) {
     state.abortController?.abort();
+    cancelPendingNotify(state);
     sessionStates.delete(sessionId);
   }
   pendingResumeBySession.delete(sessionId);
@@ -1294,7 +1338,7 @@ function handleHarnessChunk(
       // Debug-only — phase 15 will add a debug toggle that surfaces these.
       break;
   }
-  notify(state);
+  notifyStreaming(state);
 }
 
 /** Apply one live harness frame (used by WS and unit tests). */
