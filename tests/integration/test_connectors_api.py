@@ -13,6 +13,8 @@ import pytest
 
 from octop.infra.connectors.custom_mcp import CUSTOM_MCP_KIND
 from octop.infra.connectors.oauth.registry import save_oauth_ctx
+from octop.infra.users.permissions import ALL_PERMISSION_KEYS
+from octop.infra.utils.paths import PathLayout
 from octop.infra.utils.ulid import new_ulid
 from tests.support.app import octop_client, write_octop_config
 from tests.support.auth import auth_header, bootstrap_admin, create_user, resolve_user_id
@@ -839,3 +841,235 @@ async def test_oauth_callback_escapes_error_html(env, exchange_error):
     assert response.status_code == 400
     assert payload not in response.text
     assert escape(payload) in response.text
+
+
+def _snapshot_cli_config_root(root: Path) -> dict[str, bytes]:
+    """Byte snapshot of every host connector-CLI config file (``{}`` when absent)."""
+    if not root.exists():
+        return {}
+    return {
+        p.relative_to(root).as_posix(): p.read_bytes()
+        for p in sorted(root.rglob("*"))
+        if p.is_file()
+    }
+
+
+def _fake_start_device_login(
+    *,
+    config_dir: Path,
+    app_id: str,
+    app_secret: str,
+    domains: list[str] | None = None,
+    scopes: list[str] | None = None,
+    recommend: bool = False,
+) -> dict[str, object]:
+    del app_secret, domains, scopes, recommend
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "device_login.json").write_bytes(
+        json.dumps({"device_code": f"device-{app_id}"}).encode()
+    )
+    return {
+        "device_code": f"device-{app_id}",
+        "verification_url": "https://example.invalid/verify",
+        "expires_in": 600,
+        "user_code": "ABCD-EFGH",
+        "hint": None,
+    }
+
+
+def _fake_complete_device_login(
+    *,
+    config_dir: Path,
+    app_id: str,
+    app_secret: str,
+    device_code: str,
+) -> dict[str, object]:
+    del app_id, app_secret
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "config.json").write_bytes(
+        json.dumps({"default_as": "user", "device_code": device_code}).encode()
+    )
+    return {
+        "ok": True,
+        "identity": "user",
+        "default_as": "user",
+        "user_available": True,
+        "bot_available": True,
+        "search_docs_scope": True,
+        "auth_status": {},
+        "warning": None,
+    }
+
+
+@pytest.fixture
+def fake_feishu_cli(monkeypatch: pytest.MonkeyPatch, tmp_octop_home: Path) -> Path:
+    """Stub the host Feishu CLI; yield the host-global CLI config root it would write."""
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_octop_home))
+    monkeypatch.setattr(
+        "octop.infra.connectors.service.start_user_device_login",
+        _fake_start_device_login,
+    )
+    monkeypatch.setattr(
+        "octop.infra.connectors.service.complete_user_device_login",
+        _fake_complete_device_login,
+    )
+    return PathLayout.from_env().connector_cli_dir / "feishu-cli"
+
+
+async def test_feishu_cli_user_auth_start_forbidden_for_non_admin(env, fake_feishu_cli: Path):
+    c, _, admin_auth, _ = env
+    user_auth = await create_user(c, admin_auth, username="feishu_cli_user", permissions=[])
+    before = _snapshot_cli_config_root(fake_feishu_cli)
+    r = await c.post(
+        "/api/connectors/feishu-cli/user-auth/start",
+        headers=user_auth,
+        json={"app_id": "cli_intruder", "app_secret": "secret"},
+    )
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "FORBIDDEN"
+    assert not fake_feishu_cli.exists()
+    assert _snapshot_cli_config_root(fake_feishu_cli) == before
+
+
+async def test_feishu_cli_user_auth_complete_forbidden_for_non_admin(env, fake_feishu_cli: Path):
+    c, _, admin_auth, _ = env
+    user_auth = await create_user(c, admin_auth, username="feishu_cli_user2", permissions=[])
+    before = _snapshot_cli_config_root(fake_feishu_cli)
+    r = await c.post(
+        "/api/connectors/feishu-cli/user-auth/complete",
+        headers=user_auth,
+        json={
+            "app_id": "cli_intruder",
+            "app_secret": "secret",
+            "device_code": "device-unknown",
+            "cli_config_key": "no-such-session",
+        },
+    )
+    # The admin guard runs before the session lookup (a missing flow alone is 404).
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "FORBIDDEN"
+    assert _snapshot_cli_config_root(fake_feishu_cli) == before
+
+
+async def test_feishu_cli_user_auth_start_forbidden_for_default_non_admin(
+    env, fake_feishu_cli: Path
+):
+    """The seeded ``user`` role template already holds ``connectors``; that must not pass."""
+    c, _, admin_auth, _ = env
+    user_auth = await create_user(c, admin_auth, username="feishu_cli_default")
+    before = _snapshot_cli_config_root(fake_feishu_cli)
+    r = await c.post(
+        "/api/connectors/feishu-cli/user-auth/start",
+        headers=user_auth,
+        json={"app_id": "cli_default", "app_secret": "secret"},
+    )
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "FORBIDDEN"
+    assert not fake_feishu_cli.exists()
+    assert _snapshot_cli_config_root(fake_feishu_cli) == before
+
+
+async def test_feishu_cli_user_auth_complete_forbidden_for_default_non_admin(
+    env, fake_feishu_cli: Path
+):
+    c, _, admin_auth, _ = env
+    user_auth = await create_user(c, admin_auth, username="feishu_cli_default2")
+    before = _snapshot_cli_config_root(fake_feishu_cli)
+    r = await c.post(
+        "/api/connectors/feishu-cli/user-auth/complete",
+        headers=user_auth,
+        json={
+            "app_id": "cli_default",
+            "app_secret": "secret",
+            "device_code": "device-unknown",
+            "cli_config_key": "no-such-session",
+        },
+    )
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "FORBIDDEN"
+    assert _snapshot_cli_config_root(fake_feishu_cli) == before
+
+
+async def test_feishu_cli_user_auth_forbidden_for_fully_permitted_non_admin(
+    env, fake_feishu_cli: Path
+):
+    """Holding every permission key is still not enough — the host identity switch is admin-only."""
+    c, _, admin_auth, _ = env
+    user_auth = await create_user(
+        c, admin_auth, username="feishu_cli_super", permissions=sorted(ALL_PERMISSION_KEYS)
+    )
+    before = _snapshot_cli_config_root(fake_feishu_cli)
+    for path, payload in (
+        ("/api/connectors/feishu-cli/user-auth/start", {"app_id": "cli_s", "app_secret": "secret"}),
+        (
+            "/api/connectors/feishu-cli/user-auth/complete",
+            {
+                "app_id": "cli_s",
+                "app_secret": "secret",
+                "device_code": "device-unknown",
+                "cli_config_key": "no-such-session",
+            },
+        ),
+    ):
+        r = await c.post(path, headers=user_auth, json=payload)
+        assert r.status_code == 403, path
+        assert r.json()["error"]["code"] == "FORBIDDEN", path
+    assert not fake_feishu_cli.exists()
+    assert _snapshot_cli_config_root(fake_feishu_cli) == before
+
+
+async def test_feishu_cli_user_auth_start_and_complete_admin_ok(env, fake_feishu_cli: Path):
+    c, _, auth, _ = env
+    started = await c.post(
+        "/api/connectors/feishu-cli/user-auth/start",
+        headers=auth,
+        json={"app_id": "cli_admin", "app_secret": "secret"},
+    )
+    assert started.status_code == 200
+    flow = started.json()
+    assert flow["device_code"] == "device-cli_admin"
+    cli_config_key = flow["cli_config_key"]
+    assert cli_config_key
+    done = await c.post(
+        "/api/connectors/feishu-cli/user-auth/complete",
+        headers=auth,
+        json={
+            "app_id": "cli_admin",
+            "app_secret": "secret",
+            "device_code": flow["device_code"],
+            "cli_config_key": cli_config_key,
+        },
+    )
+    assert done.status_code == 200
+    assert done.json()["default_as"] == "user"
+    files = _snapshot_cli_config_root(fake_feishu_cli)
+    assert json.loads(files[f"{cli_config_key}/config.json"])["default_as"] == "user"
+
+
+async def test_feishu_cli_user_auth_complete_rejects_other_admin_s_flow(env, fake_feishu_cli: Path):
+    """A second admin may use the route, but not a flow another admin started."""
+    c, _, admin_auth, _ = env
+    started = await c.post(
+        "/api/connectors/feishu-cli/user-auth/start",
+        headers=admin_auth,
+        json={"app_id": "cli_owner", "app_secret": "secret"},
+    )
+    assert started.status_code == 200
+    flow = started.json()
+    after_start = _snapshot_cli_config_root(fake_feishu_cli)
+    peer_auth = await create_user(c, admin_auth, username="feishu_cli_peer", role="admin")
+    r = await c.post(
+        "/api/connectors/feishu-cli/user-auth/complete",
+        headers=peer_auth,
+        json={
+            "app_id": "cli_owner",
+            "app_secret": "secret",
+            "device_code": flow["device_code"],
+            "cli_config_key": flow["cli_config_key"],
+        },
+    )
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "FORBIDDEN"
+    after = _snapshot_cli_config_root(fake_feishu_cli)
+    assert after == after_start
+    assert f"{flow['cli_config_key']}/config.json" not in after

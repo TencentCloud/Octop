@@ -8,6 +8,7 @@
 
 ### 修复
 
+- 飞书 CLI 用户授权越权（ACL/V2）：`POST /api/connectors/feishu-cli/user-auth/start` 与 `.../complete` 只由 `current_user` 把关，却在宿主机共享的 `~/.octop/connector-cli/feishu-cli/<cli_config_key>/` 上改全局状态——`complete` 会执行 `config default-as user`，任何登录用户都能把宿主机默认身份切到自己控制的账号；两次请求之间的设备码流程也没有绑定发起人，`cli_config_key` 完全由调用方指定。两条路由现改用 `Depends(require_admin())`（`connectors` 权限属于 settings 基线、默认就授予普通用户，无法承担此职责）；`start` 会先把设备码流程按 `cli_config_key` 写入 `connector_oauth_states` 并绑定发起管理员，`complete` 先消费并校验归属（他人发起返回 403，未知会话返回 404），校验通过后才切换宿主机身份。
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
