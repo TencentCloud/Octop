@@ -4,7 +4,7 @@
 It is registered in `src/octop/cli/main.py`; commands are loaded
 lazily from `src/octop/cli/registry.py`.
 
-```
+```bash
 $ octop --help
 Usage: octop [OPTIONS] COMMAND [ARGS]...
 
@@ -72,7 +72,7 @@ share `~/.octop/cli_state.json`.
 Bootstrap a fresh install (DB migrations, JWT secret, first admin).
 Idempotent on the DB; pass `--force` to wipe `~/.octop` first.
 
-```
+```text
 Usage: octop init [OPTIONS]
 
   Bootstrap an Octop server (~/.octop dir, DB migrations, JWT secret, first admin).
@@ -91,7 +91,7 @@ Options:
 Start the FastAPI app in the foreground (delegates to
 `octop.launch.run_foreground_blocking`).
 
-```
+```text
 Usage: octop run [OPTIONS]
 
   Start the Octop server (foreground; uvicorn).
@@ -114,7 +114,7 @@ automatically (systemd on Linux, launchd on macOS); the scope
 (`user` vs `system`) can be forced via `--scope` or
 `OCTOP_SERVICE_SCOPE`.
 
-```
+```text
 Usage: octop service [OPTIONS] COMMAND [ARGS]...
 
   Manage the Octop system service (systemd on Linux, launchd on macOS).
@@ -143,7 +143,7 @@ still comes back. To undo: delete the drop-in, then
 Local-DB user management. `login` requires a running server; the
 rest are offline.
 
-```
+```text
 Usage: octop user [OPTIONS] COMMAND [ARGS]...
 
   User management commands (local DB; no server login required).
@@ -163,7 +163,7 @@ Commands:
 Lifecycle and templates. Most commands boot an embedded
 `OctopServer` to operate on the local DB without a remote round-trip.
 
-```
+```text
 Usage: octop agent [OPTIONS] COMMAND [ARGS]...
 
   Agent lifecycle commands.
@@ -190,7 +190,7 @@ Thread CRUD + interactive REPL. The REPL and `send` use an embedded
 server (no separate `octop run` needed); `list` / `get` / `create` /
 `update` / `delete` work fully offline against `~/.octop/octop.db`.
 
-```
+```text
 Usage: octop chats [OPTIONS] COMMAND [ARGS]...
 
   Thread list/history and interactive chat (CLI channel / local DB).
@@ -214,7 +214,7 @@ Local DB channel CRUD plus platform-specific bot creators. The
 `wecom` / `weixin` / `feishu-setup` subcommands drive the QR-code
 bot-creator flows; `config` is the offline config editor.
 
-```
+```text
 Usage: octop channel [OPTIONS] COMMAND [ARGS]...
 
   Channel management commands.
@@ -237,7 +237,7 @@ Local DB cron management. `run-now` requires a running `octop run`
 because the actual fire is dispatched through the live
 `CronManager`.
 
-```
+```text
 Usage: octop cron [OPTIONS] COMMAND [ARGS]...
 
   Cron job management commands.
@@ -259,7 +259,7 @@ pushes the reply. `--prompt` is required, must be non-empty and ≤
 
 Local DB provider CRUD. `test` requires a running server.
 
-```
+```text
 Usage: octop provider [OPTIONS] COMMAND [ARGS]...
 
   Provider management commands (local DB).
@@ -275,7 +275,7 @@ Commands:
 
 Provider presets and active model management.
 
-```
+```text
 Usage: octop models [OPTIONS] COMMAND [ARGS]...
 
   Model catalog and active-model settings.
@@ -296,7 +296,7 @@ Per-agent skill enable / disable. All subcommands need a running
 server (the dashboard's Skill Hub and bundled `~/.octop/skills/`
 library are queried at boot).
 
-```
+```text
 Usage: octop skills [OPTIONS] COMMAND [ARGS]...
 
   Manage agent skills (enable / disable / list).
@@ -313,7 +313,7 @@ Commands:
 Local DB admin operations. `rotate-jwt-secret` works without a
 running server (it edits the SQLite secret row directly).
 
-```
+```text
 Usage: octop admin [OPTIONS] COMMAND [ARGS]...
 
   Admin commands (local DB).
@@ -333,7 +333,7 @@ misconfigured captcha provider (wrong keys, unreachable vendor, hostname
 not allowlisted) locks everyone out of the dashboard, since the settings
 UI itself requires login to reach.
 
-```
+```text
 Usage: octop captcha [OPTIONS] COMMAND [ARGS]...
 
   Login captcha maintenance against the local database.
@@ -350,7 +350,7 @@ Restart `octop run` (if already running) for the change to apply.
 
 Export and restore Octop backups. Works fully offline.
 
-```
+```text
 Usage: octop backup [OPTIONS] COMMAND [ARGS]...
 
   Backup and restore database + local agent workspaces.
@@ -369,7 +369,7 @@ Automatic backups are scheduled **inside** a running `octop run` process
 `OCTOP_BACKUP_AUTO_ENABLED`, `OCTOP_BACKUP_SCHEDULE`,
 `OCTOP_BACKUP_RETENTION_COUNT`, or via the dashboard Backup settings.
 
-```
+```text
 Usage: octop backup auto [OPTIONS] COMMAND [ARGS]...
 
 Commands:
@@ -387,7 +387,7 @@ retention only deletes those files and never touches manual
 Check for and install a newer Octop release from the configured
 channel (PyPI by default).
 
-```
+```text
 Usage: octop update [OPTIONS]
 
   Check for and install a newer Octop release.
@@ -409,7 +409,7 @@ Plugins but stay **globally disabled** until you turn them on. An id
 already recorded in `config.json` → `bundled_plugins_seeded` is not
 copied again after uninstall.
 
-```
+```text
 Usage: octop plugin [OPTIONS] COMMAND [ARGS]...
 
   Install and manage plugins.
@@ -427,7 +427,7 @@ Expose an Octop agent as a stdio JSON-RPC ACP server. Boots a
 standalone `OctopServer` (reads `~/.octop`); does **not** require
 `octop run` to be running.
 
-```
+```text
 Usage: octop acp [OPTIONS]
 
   Run Octop agent as ACP server (stdio).
@@ -446,7 +446,7 @@ runner object schema.
 Reset CLI state or wipe the whole `~/.octop` tree. Destructive — read
 the help carefully.
 
-```
+```text
 Usage: octop clean [OPTIONS]
 
   Remove CLI state or wipe all of ~/.octop.
@@ -462,7 +462,7 @@ Options:
 Inspect / edit `~/.octop/cli_state.json` (default base URL, user,
 agent).
 
-```
+```text
 Usage: octop config [OPTIONS] COMMAND [ARGS]...
 
   CLI state (base URL, defaults).
