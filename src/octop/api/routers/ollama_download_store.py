@@ -23,6 +23,15 @@ class DownloadTaskStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+_TERMINAL_STATUSES = frozenset(
+    {
+        DownloadTaskStatus.COMPLETED,
+        DownloadTaskStatus.FAILED,
+        DownloadTaskStatus.CANCELLED,
+    }
+)
+
+
 class DownloadTask(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     repo_id: str
@@ -80,10 +89,17 @@ async def update_status(
     error: str | None = None,
     result: dict[str, Any] | None = None,
 ) -> None:
-    """Update the status of a task. No-op if task_id doesn't exist."""
+    """Update the status of a task.
+
+    No-op if task_id doesn't exist or the task already reached a terminal
+    state (completed/failed/cancelled): late results from a background
+    download must not resurrect or rewrite a finished task.
+    """
     async with _lock:
         task = _tasks.get(task_id)
         if task is None:
+            return
+        if task.status in _TERMINAL_STATUSES:
             return
         task.status = status
         task.updated_at = time.time()
