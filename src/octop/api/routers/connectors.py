@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, model_validator
 
 from octop.api.common.public_base import resolve_public_base
-from octop.api.deps import current_user, get_server, require_permission
+from octop.api.deps import current_user, get_server, require_admin, require_permission
 from octop.i18n import tr
 from octop.infra.auth.sso.redirect_after import sanitize_redirect_after
 from octop.infra.connectors.builder import (
@@ -1067,23 +1067,64 @@ async def connector_install_cli(
     return await asyncio.to_thread(install_connector_cli, kind)
 
 
+_FEISHU_CLI_USER_AUTH_STATE_KIND = "feishu-cli-user-auth"
+_FEISHU_CLI_USER_AUTH_STATE_PREFIX = f"{_FEISHU_CLI_USER_AUTH_STATE_KIND}:"
+
+
+def _bind_feishu_cli_user_auth(server: Any, user: Any, cli_config_key: str) -> None:
+    """Bind a device-code flow to the user who started it."""
+    repo = server.services.repos.connector_repo
+    state = f"{_FEISHU_CLI_USER_AUTH_STATE_PREFIX}{cli_config_key}"
+    repo.consume_oauth_state(state)
+    repo.create_oauth_state(
+        state_id=new_ulid(),
+        state=state,
+        user_id=user.id,
+        kind=_FEISHU_CLI_USER_AUTH_STATE_KIND,
+        code_verifier="",
+        redirect_after=None,
+    )
+
+
+def _assert_feishu_cli_user_auth_owner(server: Any, user: Any, cli_config_key: str) -> None:
+    """Consume the flow binding; only the starter may complete it."""
+    repo = server.services.repos.connector_repo
+    state = f"{_FEISHU_CLI_USER_AUTH_STATE_PREFIX}{cli_config_key}"
+    row = repo.consume_oauth_state(state)
+    if row is None:
+        raise OctopError(
+            ErrorCode.NOT_FOUND,
+            "feishu cli user auth session not found; restart the login flow",
+        )
+    if row.user_id != user.id:
+        raise OctopError(ErrorCode.FORBIDDEN, "not your feishu cli user auth session")
+
+
 @router.post(
     "/connectors/feishu-cli/user-auth/start",
-    summary="Start Feishu CLI user device-code login",
+    summary="Start Feishu CLI user device-code login (admin)",
 )
 async def feishu_cli_user_auth_start(
     body: FeishuUserAuthStartBody,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_admin()),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Begin OAuth device-code login (no local HTTPS callback required)."""
-    del user
+    """Begin OAuth device-code login (no local HTTPS callback required).
+
+    Admin only: the CLI config dir under ``~/.octop/connector-cli/`` is
+    host-global and ``complete`` switches the host's default identity there, so
+    any logged-in account able to reach this route could otherwise repoint the
+    host at an identity it controls. The flow is bound to ``user.id`` before it
+    touches the host.
+    """
+    cli_config_key = str(body.cli_config_key or "").strip() or new_ulid()
+    _bind_feishu_cli_user_auth(server, user, cli_config_key)
     svc = _connector_service(server)
     try:
         return await svc.start_feishu_user_auth(
             app_id=body.app_id,
             app_secret=body.app_secret,
-            cli_config_key=body.cli_config_key,
+            cli_config_key=cli_config_key,
             domains=body.domains,
         )
     except ValueError as exc:
@@ -1096,22 +1137,23 @@ async def feishu_cli_user_auth_start(
 
 @router.post(
     "/connectors/feishu-cli/user-auth/complete",
-    summary="Complete Feishu CLI user device-code login",
+    summary="Complete Feishu CLI user device-code login (admin)",
 )
 async def feishu_cli_user_auth_complete(
     body: FeishuUserAuthCompleteBody,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_admin()),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Finish device-code login and switch default identity to user."""
-    del user
+    """Finish device-code login and switch default identity to user (admin only)."""
+    cli_config_key = str(body.cli_config_key or "").strip()
+    _assert_feishu_cli_user_auth_owner(server, user, cli_config_key)
     svc = _connector_service(server)
     try:
         return await svc.complete_feishu_user_auth(
             app_id=body.app_id,
             app_secret=body.app_secret,
             device_code=body.device_code,
-            cli_config_key=body.cli_config_key or "",
+            cli_config_key=cli_config_key,
         )
     except ValueError as exc:
         raise OctopError(
