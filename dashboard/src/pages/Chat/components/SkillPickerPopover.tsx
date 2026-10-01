@@ -1,10 +1,11 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Check, Import } from "lucide-react";
+import { Check, Import, Info } from "lucide-react";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
+import { message } from "@/utils/antdMessage";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import {
   resolveSkillDisplayName,
@@ -18,6 +19,8 @@ interface SkillPickerPopoverProps {
   activeSlugs?: readonly string[] | null;
   onSelectSkill: (slug: string) => void;
   onNavigateAway?: () => void;
+  /** Bridge shadow session — manage actions live on the peer. */
+  remoteManaged?: boolean;
 }
 
 function SkillAvatar({ skill }: { skill: SkillSpec }) {
@@ -44,6 +47,7 @@ export default function SkillPickerPopover({
   activeSlugs = null,
   onSelectSkill,
   onNavigateAway,
+  remoteManaged = false,
 }: SkillPickerPopoverProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -83,9 +87,24 @@ export default function SkillPickerPopover({
       searchPlaceholder={t("chat.skillPickerSearch")}
       emptyMessage={t("chat.skillPickerEmpty")}
       width="wide"
-      footerIcon={<Import size={15} aria-hidden />}
-      footerLabel={t("skills.importSkills")}
+      footerIcon={
+        remoteManaged ? (
+          <Info size={15} aria-hidden />
+        ) : (
+          <Import size={15} aria-hidden />
+        )
+      }
+      footerLabel={
+        remoteManaged
+          ? t("chat.remoteExpert.manageOnPeer")
+          : t("skills.importSkills")
+      }
+      footerMuted={remoteManaged}
       onFooterClick={() => {
+        if (remoteManaged) {
+          message.info(t("chat.remoteExpert.manageToast"));
+          return;
+        }
         onNavigateAway?.();
         navigate("/personalization/skills");
       }}

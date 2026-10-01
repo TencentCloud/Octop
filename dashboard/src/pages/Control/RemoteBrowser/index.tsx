@@ -43,6 +43,7 @@ import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdg
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import PageShell from "../../../layouts/PageShell";
+import PeerOnlyRemoteAlert from "../../../components/PeerOnlyRemoteAlert";
 import BrowserAiPanel from "../../../components/BrowserAiPanel";
 import SkillRecordGuideModal from "../../../components/SkillRecordGuideModal";
 import BrowserViewer, {
@@ -1366,6 +1367,12 @@ export default function RemoteBrowserPage({
       </Drawer>
 
       <div className={styles.pageBody}>
+        {!embedded ? (
+          <PeerOnlyRemoteAlert
+            hintKey="peerOnlyBrowser"
+            style={{ marginBottom: 0 }}
+          />
+        ) : null}
         <div
           className={`${styles.mainRow} ${
             isMobile ? styles.mainRowMobile : ""
