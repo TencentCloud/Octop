@@ -18,6 +18,8 @@ from octop.infra.connectors.mail_servers import (
     correct_netease_smtp_host,
 )
 
+_MAX_SEARCH_LIMIT = 50
+
 TOOLS: list[dict[str, Any]] = [
     {
         "name": "search_emails",
@@ -29,7 +31,12 @@ TOOLS: list[dict[str, Any]] = [
                     "type": "string",
                     "description": "IMAP search criteria, default ALL",
                 },
-                "limit": {"type": "integer", "description": "Max messages, default 10"},
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": _MAX_SEARCH_LIMIT,
+                    "description": f"Max messages (1-{_MAX_SEARCH_LIMIT}), default 10",
+                },
             },
         },
     },
@@ -103,6 +110,7 @@ def _safe_header(msg: email.message.Message, field: str) -> str:
 def _email_search(creds: dict[str, Any], args: dict[str, Any]) -> str:
     query = str(args.get("query") or "ALL")
     limit = int(args.get("limit") or 10)
+    limit = max(1, min(limit, _MAX_SEARCH_LIMIT))
     imap = _imap_login(creds)
     try:
         imap.select("INBOX")
