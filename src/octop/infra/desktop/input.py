@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import platform
 import shutil
@@ -116,6 +117,27 @@ def _xdotool_key_name(key: str) -> str:
     return key
 
 
+_SCROLL_NOTCH_PX = 40.0
+# A notch is ~40 px of wheel delta, so 50 of them is ~2000 px — past what a trackpad fling
+# puts in a single event, and low enough to keep one gesture a human-scale jump. The bound
+# matters because every notch on the xdotool branch is its own ``xdotool`` process and the
+# delta arrives straight from remote WebSocket input, where the dashboard forwards the
+# browser's raw ``deltaY`` without normalizing or capping it.
+_MAX_SCROLL_NOTCHES = 50
+
+
+def _scroll_notches(delta: float) -> int:
+    """Wheel notches for one remote scroll delta: at least one when engaged, never unbounded.
+
+    ``json.loads`` accepts the non-standard ``Infinity``, and ``int(abs(inf) / 40)`` raises
+    ``OverflowError``, so a non-finite delta is dropped rather than turning into a traceback
+    and no scroll.
+    """
+    if not math.isfinite(delta) or abs(delta) < 0.5:
+        return 0
+    return max(1, min(_MAX_SCROLL_NOTCHES, int(abs(delta) / _SCROLL_NOTCH_PX)))
+
+
 class InputInjector:
     def __init__(self, *, display: str | None = None) -> None:
         self._display = display
@@ -208,27 +230,28 @@ class InputInjector:
         self._with_display(_do)
 
     def scroll(self, x: int, y: int, *, delta_x: float, delta_y: float) -> None:
+        notches_y = _scroll_notches(delta_y)
+        notches_x = _scroll_notches(delta_x)
+
         if self._use_xdotool():
             _run_xdotool(self._display, ["mousemove", str(x), str(y)])
-            if abs(delta_y) >= 0.5:
+            if notches_y:
                 btn = "5" if delta_y > 0 else "4"
-                steps = max(1, int(abs(delta_y) / 40))
-                for _ in range(steps):
+                for _ in range(notches_y):
                     _run_xdotool(self._display, ["click", btn])
-            if abs(delta_x) >= 0.5:
+            if notches_x:
                 btn = "6" if delta_x > 0 else "7"
-                steps = max(1, int(abs(delta_x) / 40))
-                for _ in range(steps):
+                for _ in range(notches_x):
                     _run_xdotool(self._display, ["click", btn])
             return
 
         def _do() -> None:
             mouse, _ = self._controllers()
             mouse.position = (x, y)
-            if abs(delta_y) >= 0.5:
-                mouse.scroll(0, int(-delta_y / 40) or (-1 if delta_y > 0 else 1))
-            if abs(delta_x) >= 0.5:
-                mouse.scroll(int(-delta_x / 40) or (-1 if delta_x > 0 else 1), 0)
+            if notches_y:
+                mouse.scroll(0, -notches_y if delta_y > 0 else notches_y)
+            if notches_x:
+                mouse.scroll(-notches_x if delta_x > 0 else notches_x, 0)
 
         self._with_display(_do)
 
