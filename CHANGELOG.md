@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 长会话（300+ 条消息）流式回合把浏览器「卡死」并拖垮 WebSocket 心跳（Fixes #1445）：`chatStore` 原先每个 harness chunk（含每个 token）都重建快照并同步通知全部订阅者，重渲染成本随消息数线性增长，主线程读不动 socket 后 TCP 接收窗口关闭、服务端 Send-Q 积压、25s ping 错过而断连重连。现仅对 chunk 热路径合并到 45ms 一次（快照仍同步重建，`getSnapshot()` 不滞后；回合结束、历史载入与会话销毁同步 flush 末帧），其余 `notify()` 调用点保持原有同步语义。
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
