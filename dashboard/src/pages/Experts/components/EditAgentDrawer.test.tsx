@@ -7,9 +7,10 @@ import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import EditAgentDrawer from "./EditAgentDrawer";
 
-vi.mock("../../../api/request", () => ({
-  request: vi.fn(),
-}));
+vi.mock("../../../api/request", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../api/request")>();
+  return { ...actual, request: vi.fn() };
+});
 
 vi.mock("../../../context/AgentContext", () => ({
   useAgent: vi.fn(),
