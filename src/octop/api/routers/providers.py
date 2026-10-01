@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.providers.codex_apply import (
@@ -32,6 +32,8 @@ from octop.infra.agents.providers.probe import (
     make_probe_provider_row,
     probe_provider_row,
     provider_headers,
+    provider_probe_model,
+    with_provider_probe_model,
 )
 from octop.infra.agents.providers.reasoning import reasoning_capability
 from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
@@ -53,6 +55,9 @@ class ProviderCreateBody(BaseModel):
     extra_json: str | None = None
     models: list[dict[str, Any]] | None = None
     note: str | None = None
+    model: str | None = Field(
+        default=None, description="Default model for provider connectivity tests."
+    )
 
 
 class ProviderPatchBody(BaseModel):
@@ -63,6 +68,9 @@ class ProviderPatchBody(BaseModel):
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
+    model: str | None = Field(
+        default=None, description="Default probe model; null resets to the first enabled model."
+    )
 
 
 # Fields that affect harness factory / agent runtime when patched.
@@ -133,6 +141,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "base_url": r.base_url,
         "api_key": r.api_key,
         "models": models,
+        "model": provider_probe_model(r),
         "note": r.note,
         "enabled": bool(r.enabled),
     }
@@ -222,7 +231,11 @@ async def admin_create_provider(
         kind=body.kind,
         base_url=body.base_url,
         api_key=body.api_key,
-        extra_json=body.extra_json,
+        extra_json=(
+            with_provider_probe_model(body.extra_json, body.model)
+            if "model" in body.model_fields_set
+            else body.extra_json
+        ),
         models_json=models_json,
         note=body.note,
     )
@@ -244,12 +257,18 @@ async def admin_patch_provider(
     import json as _json
 
     models_json = _json.dumps(body.models) if body.models is not None else None
+    extra_json = body.extra_json
+    if "model" in body.model_fields_set:
+        extra_json = with_provider_probe_model(
+            body.extra_json if "extra_json" in body.model_fields_set else row.extra_json,
+            body.model,
+        )
     server.services.provider_repo.update(
         provider_id,
         kind=body.kind,
         base_url=body.base_url,
         api_key=body.api_key,
-        extra_json=body.extra_json,
+        extra_json=extra_json,
         models_json=models_json,
         note=body.note,
         enabled=body.enabled,

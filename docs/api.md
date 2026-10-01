@@ -231,6 +231,11 @@ the server derives one from `prompt`.
 
 ## Providers
 
+Provider rows expose `model`, the saved default for connectivity tests. POST/PATCH
+accept `model`; omitting it preserves the preference, while `null` or an empty
+string resets probes to the first enabled model. This preference is stored with
+provider options and does not change the model list's order.
+
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`    | `/providers` | user | providers visible to the user (own + shared) |

@@ -69,6 +69,7 @@ export interface ProviderRow {
   base_url: string | null;
   api_key: string | null;
   models: ProviderModel[];
+  model?: string | null;
   note: string | null;
   enabled: boolean;
 }

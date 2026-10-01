@@ -21,6 +21,30 @@ _FETCH_MODELS_TIMEOUT_S = 30.0
 _EMBEDDING_PROBE_TEXT = "ping"
 
 
+def _provider_extra(raw: str | None) -> dict[str, Any]:
+    try:
+        extra = json.loads(raw) if raw else {}
+    except json.JSONDecodeError:
+        return {}
+    return extra if isinstance(extra, dict) else {}
+
+
+def provider_probe_model(row: Any) -> str | None:
+    """Saved model for provider connectivity tests; None uses enabled models."""
+    value = _provider_extra(getattr(row, "extra_json", None)).get("probe_model")
+    return value.strip() or None if isinstance(value, str) else None
+
+
+def with_provider_probe_model(extra_json: str | None, model: str | None) -> str:
+    """Update the probe preference while preserving headers and other options."""
+    extra = _provider_extra(extra_json)
+    if model and model.strip():
+        extra["probe_model"] = model.strip()
+    else:
+        extra.pop("probe_model", None)
+    return json.dumps(extra)
+
+
 def provider_headers(row: Any) -> dict[str, str]:
     raw = getattr(row, "extra_json", None)
     if not raw:
@@ -48,7 +72,7 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
     base_url = row.base_url or "https://api.openai.com/v1"
     headers = ensure_opencode_session_header(row.name, provider_headers(row), base_url=base_url)
     models = row.get_models() if hasattr(row, "get_models") else []
-    mid = model_id or (models[0]["id"] if models else "gpt-4o-mini")
+    mid = _probe_model_id(row, model_id)
     entry = next((m for m in models if m.get("id") == mid), None)
     display_name = (entry or {}).get("name") or mid
     model = ModelConfig(id=mid, name=display_name)
@@ -106,8 +130,11 @@ def _probe_model_id(row: Any, model_id: str | None) -> str:
     models = row.get_models() if hasattr(row, "get_models") else []
     if model_id:
         return model_id
+    if saved := provider_probe_model(row):
+        return saved
     if models:
-        return str(models[0].get("id") or "gpt-4o-mini")
+        chosen = next((m for m in models if m.get("enabled", True)), models[0])
+        return str(chosen.get("id") or "gpt-4o-mini")
     return "gpt-4o-mini"
 
 
@@ -119,6 +146,8 @@ def _onnx_probe_model_id(row: Any, model_id: str | None) -> str:
     """
     if model_id:
         return model_id
+    if saved := provider_probe_model(row):
+        return saved
     models = row.get_models() if hasattr(row, "get_models") else []
     entries = [m for m in models if isinstance(m, dict) and str(m.get("id") or "").strip()]
     chosen = next((m for m in entries if m.get("enabled")), None) or (
