@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 刷新或重开会话后，`write_file` / `read_file` / `browser_use` 等「非投递」工具那条 `saved to outbound/…` 的纯文本结果不再凭空多出一张图片卡片：流式输出时这类文本被 `MEDIA_PUSH_TOOL_BASES` 刻意排除、不会自动推送媒体，但历史投影走的同步富集路径没有沿用同一白名单，于是重载后才出现实时流里从未见过的 `image` 块；现让历史投影与流式路径共用同一按工具名的判定
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
