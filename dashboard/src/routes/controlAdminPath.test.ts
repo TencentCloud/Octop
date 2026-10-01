@@ -44,6 +44,8 @@ describe("pathPermissionKeys", () => {
     expect(NAV_PERMISSIONS["admin-users"]).toEqual(PERM.usersPage);
     expect(NAV_PERMISSIONS["admin-advanced"]).toEqual(PERM.advancedPage);
     expect(ADVANCED_TAB_PERMISSIONS.captcha).toBe("captcha");
+    expect("bridge" in ADVANCED_TAB_PERMISSIONS).toBe(false);
+    expect(pathPermissionKeys("/bridge")).toBeNull();
     expect([...PERM.advancedPage]).toContain("captcha");
   });
 
@@ -63,6 +65,7 @@ describe("pathPermissionKeys", () => {
     expect(pathPermissionKeys("/tasks")).toBeNull();
     expect(pathPermissionKeys("/token-usage")).toBeNull();
     expect(pathPermissionKeys("/personalization/skills")).toBeNull();
+    expect(pathPermissionKeys("/bridge")).toBeNull();
   });
 
   it("gates settings modules", () => {

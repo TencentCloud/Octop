@@ -11,6 +11,7 @@ import { getApiUrl } from "../../../api/config";
 import { getAuthToken } from "../../../api/request";
 import type { TokenUsage } from "../../../api/types";
 import { buildDashboardChatWsUrl } from "../../../api/modules/wsChat";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { generateId } from "../../../utils/messageParser";
 import type {
   ChatAttachment,
@@ -1079,8 +1080,9 @@ function applyUsageChunk(state: SessionStreamState, chunk: UsageChunk): void {
 
 function chunkSpeakerId(
   chunk: { agent_id?: unknown } | object,
+  hostAgentId?: string,
 ): string | undefined {
-  return streamSpeakerId(chunk);
+  return rewritePeerSpeakerId(hostAgentId, streamSpeakerId(chunk));
 }
 
 function hasStreamingMessages(state: SessionStreamState): boolean {
@@ -1096,7 +1098,7 @@ function isHostTurnTerminal(
 ): boolean {
   if (data.type === "error" || data.type === "hitl_required") return true;
   if (data.type !== "done") return false;
-  const speaker = chunkSpeakerId(data);
+  const speaker = chunkSpeakerId(data, hostAgentId);
   if (!speaker) return true;
   const host = (hostAgentId || "").trim();
   // Room id not remembered yet — treat a stamped done as the 1:1 host.
@@ -1156,7 +1158,7 @@ function handleHarnessChunk(
   chunk: HarnessChunk,
   sessionId?: string,
 ): void {
-  const speaker = chunkSpeakerId(chunk);
+  const speaker = chunkSpeakerId(chunk, sessionHostAgentId(state, sessionId));
   if (sessionId && (state.isStreaming || speaker)) {
     touchStreamActivity(sessionId);
   }
