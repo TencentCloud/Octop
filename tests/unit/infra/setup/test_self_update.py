@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -10,10 +11,12 @@ from octop.infra.setup.self_update import (
     UpgradeResult,
     _all_mirrors_failed,
     build_upgrade_command,
+    fetch_pypi_info,
     index_label,
     is_newer,
     is_prerelease,
     page_has_package_version,
+    parse_changelog_for_version,
     parse_version,
     pick_latest_versions,
     probe_index,
@@ -61,6 +64,93 @@ def test_pick_latest_versions_all_prerelease() -> None:
     latest_any, latest_stable = pick_latest_versions(["0.9.34b1", "0.9.34a1"])
     assert latest_any == "0.9.34b1"
     assert latest_stable is None
+
+
+def test_parse_changelog_for_beta_version() -> None:
+    description = (
+        "## [Unreleased]\n\n"
+        "## [1.0.2b5] - 2026-09-29\n\n"
+        "### 新增\n- remote bridge\n\n"
+        "## [1.0.1] - 2026-09-21\n\n"
+        "- stable only\n"
+    )
+    notes = parse_changelog_for_version(description, "1.0.2b5")
+    assert notes is not None
+    assert "remote bridge" in notes
+    assert "stable only" not in notes
+
+
+class _JsonResp:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self._raw = json.dumps(payload).encode()
+
+    def read(self) -> bytes:
+        return self._raw
+
+    def __enter__(self) -> _JsonResp:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+
+def test_fetch_pypi_info_loads_prerelease_description(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = {
+        "info": {"version": "1.0.1", "description": "## [1.0.1]\n- stable only\n"},
+        "releases": {"1.0.1": [{}], "1.0.2b5": [{}]},
+    }
+    beta = {
+        "info": {
+            "version": "1.0.2b5",
+            "description": "## [1.0.2b5]\n- remote bridge\n\n## [1.0.1]\n- stable\n",
+        }
+    }
+    urls: list[str] = []
+
+    def fake_urlopen(req: object, timeout: int = 10) -> _JsonResp:
+        url = getattr(req, "full_url", "")
+        urls.append(url)
+        if url.endswith("/octop/json"):
+            return _JsonResp(catalog)
+        if url.endswith("/octop/1.0.2b5/json"):
+            return _JsonResp(beta)
+        raise AssertionError(url)
+
+    monkeypatch.setattr("octop.infra.setup.self_update.urllib.request.urlopen", fake_urlopen)
+    info = fetch_pypi_info()
+    assert info is not None
+    assert info.version == "1.0.2b5"
+    assert info.latest_stable == "1.0.1"
+    assert info.description is not None
+    assert "remote bridge" in info.description
+    assert any(url.endswith("/octop/1.0.2b5/json") for url in urls)
+
+
+def test_fetch_pypi_info_skips_versioned_fetch_when_stable_is_latest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = {
+        "info": {"version": "1.0.1", "description": "## [1.0.1]\n- stable\n"},
+        "releases": {"1.0.1": [{}], "1.0.0": [{}]},
+    }
+    urls: list[str] = []
+
+    def fake_urlopen(req: object, timeout: int = 10) -> _JsonResp:
+        url = getattr(req, "full_url", "")
+        urls.append(url)
+        if url.endswith("/octop/json"):
+            return _JsonResp(catalog)
+        raise AssertionError(url)
+
+    monkeypatch.setattr("octop.infra.setup.self_update.urllib.request.urlopen", fake_urlopen)
+    info = fetch_pypi_info()
+    assert info is not None
+    assert info.version == "1.0.1"
+    assert info.description is not None
+    assert "stable" in info.description
+    assert urls == ["https://pypi.org/pypi/octop/json"]
 
 
 def test_build_upgrade_command_prerelease_flags(
