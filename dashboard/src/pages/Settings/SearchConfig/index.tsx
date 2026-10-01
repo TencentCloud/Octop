@@ -256,7 +256,7 @@ function ConfigureDrawer({
           >
             <Input.Password
               placeholder={t("setupWizard.search.required", { key })}
-              autoComplete="off"
+              autoComplete="new-password"
             />
           </Form.Item>
         ))}
