@@ -57,7 +57,7 @@ export function buildDefaultFormValues(timezone: string) {
     _scheduleMode: "preset" as const,
     _preset: "daily_9am" as const,
     prompt: "",
-    task_type: "text" as const,
+    task_type: DEFAULT_FORM_VALUES.task_type,
     model: undefined,
     fresh_thread: false,
     session_key: undefined,
