@@ -17,6 +17,10 @@ from octop.infra.db.repos.proactive_care_config import ProactiveCareConfig
 
 router = APIRouter()
 
+# Guard rails so a bad UI value can't schedule a never-firing timer. Same ceiling
+# as the memory extraction interval (`_MAX_SECONDS` in `api/routers/memory.py`).
+_MAX_INTERVAL_HOURS = 7 * 24  # 7 days
+
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -63,9 +67,14 @@ class ProactiveCareConfigBody(BaseModel):
 
     @model_validator(mode="after")
     def validate_interval(self) -> ProactiveCareConfigBody:
-        """Validate the push interval: min <= max and min >= 1."""
+        """Validate the push interval: 1 <= min <= max <= one week."""
         if self.min_interval_hours < 1:
             raise ValueError("min_interval_hours 不能小于 1 小时（防止频繁打扰）")
+        if self.max_interval_hours > _MAX_INTERVAL_HOURS:
+            raise ValueError(
+                f"max_interval_hours 不能大于 {_MAX_INTERVAL_HOURS} 小时（7 天）——"
+                "再大的值会让主动推送永远不再触发"
+            )
         if self.min_interval_hours > self.max_interval_hours:
             raise ValueError(
                 f"min_interval_hours ({self.min_interval_hours}) 不能大于 "
@@ -125,6 +134,7 @@ async def put_proactive_care_config(
     - active_hours_start < active_hours_end
     - min_interval_hours <= max_interval_hours
     - min_interval_hours >= 1
+    - max_interval_hours <= 7 days
     """
     require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
 
