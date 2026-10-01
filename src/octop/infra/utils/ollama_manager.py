@@ -1,18 +1,30 @@
 from __future__ import annotations
 
 import logging
+import os
 import platform
 import shutil
 import subprocess
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from octop.infra.utils.host_dirs import assert_safe_host_path
+
 logger = logging.getLogger(__name__)
 
 _OLLAMA_SERVER_STARTED = False
+SETTINGS_KEY_MODELS_DIR = "ollama_models_dir"
+
+_UNSET = object()
+_original_ollama_models: object = _UNSET
+_applied_models_dir: str | None = None
+
+_DEFAULT_REGISTRY = "registry.ollama.ai"
+_DEFAULT_NAMESPACE = "library"
 
 
 class OllamaModelInfo(BaseModel):
@@ -64,12 +76,190 @@ def is_ollama_sdk_available() -> bool:
         return False
 
 
+# ── Models directory ────────────────────────────────────────────
+
+
+def normalize_models_dir(raw: str) -> str:
+    """Return an absolute models-dir path, or ``""`` to use Ollama's default.
+
+    Raises ``ValueError`` when a non-empty value is not an absolute path
+    (after ``~`` expansion) or points at a disallowed host location.
+    """
+    text = raw.strip()
+    if not text:
+        return ""
+    expanded = os.path.expanduser(text)
+    if not os.path.isabs(expanded):
+        raise ValueError("Ollama models directory must be an absolute path")
+    # ``assert_safe_host_path`` realpath + denylist is the CodeQL-recognized
+    # barrier for ``py/path-injection`` (unlike ``Path.expanduser`` alone).
+    return os.fspath(assert_safe_host_path(text))
+
+
+def apply_models_dir(path: str | None) -> str | None:
+    """Set ``OLLAMA_MODELS`` for this process (and children such as ``ollama serve``).
+
+    An empty/None *path* restores the environment value that was present when
+    this helper first ran, so a cleared Octop setting does not drop a
+    user-level ``OLLAMA_MODELS`` export.
+    """
+    global _original_ollama_models, _applied_models_dir
+    if _original_ollama_models is _UNSET:
+        _original_ollama_models = os.environ.get("OLLAMA_MODELS")
+    cleaned = (path or "").strip()
+    _applied_models_dir = cleaned or None
+    if _applied_models_dir:
+        os.environ["OLLAMA_MODELS"] = _applied_models_dir
+    elif isinstance(_original_ollama_models, str) and _original_ollama_models:
+        os.environ["OLLAMA_MODELS"] = _original_ollama_models
+    else:
+        os.environ.pop("OLLAMA_MODELS", None)
+    return _applied_models_dir
+
+
+def resolve_ollama_models_root(path: str) -> Path:
+    """Return the directory that contains ``manifests/`` / ``blobs/``.
+
+    Users sometimes pick the Ollama home (parent of ``models/``) rather than
+    ``OLLAMA_MODELS`` itself.
+    """
+    root = assert_safe_host_path(path)
+    if (root / "manifests").is_dir():
+        return root
+    nested = root / "models"
+    if (nested / "manifests").is_dir():
+        return nested
+    return root
+
+
+def _ollama_name_keys(name: str) -> set[str]:
+    n = name.strip()
+    if not n:
+        return set()
+    keys = {n}
+    if n.endswith(":latest"):
+        bare = n[: -len(":latest")]
+        if bare:
+            keys.add(bare)
+    elif ":" not in n:
+        keys.add(f"{n}:latest")
+    return keys
+
+
+def names_match(left: str, right: str) -> bool:
+    """True when two Ollama names refer to the same model (``:latest`` aliases)."""
+    a = _ollama_name_keys(left)
+    b = _ollama_name_keys(right)
+    return bool(a and b and a & b)
+
+
+def _name_from_manifest_rel(rel: Path) -> str | None:
+    parts = rel.parts
+    if len(parts) < 2:
+        return None
+    tag = parts[-1]
+    if not tag or tag.startswith("."):
+        return None
+    rest = list(parts[:-1])
+    if rest and rest[0] == _DEFAULT_REGISTRY:
+        rest = rest[1:]
+        if rest and rest[0] == _DEFAULT_NAMESPACE:
+            rest = rest[1:]
+    if not rest:
+        return None
+    return f"{'/'.join(rest)}:{tag}"
+
+
+def list_models_from_dir(path: str | None) -> list[OllamaModelInfo]:
+    """Discover models from an Ollama models directory (manifest layout)."""
+    text = (path or "").strip()
+    if not text:
+        return []
+    try:
+        root = resolve_ollama_models_root(text)
+    except ValueError:
+        return []
+    manifests = root / "manifests"
+    if not manifests.is_dir():
+        return []
+    found: dict[str, OllamaModelInfo] = {}
+    for manifest in manifests.rglob("*"):
+        if not manifest.is_file():
+            continue
+        try:
+            rel = manifest.relative_to(manifests)
+        except ValueError:
+            continue
+        name = _name_from_manifest_rel(rel)
+        if not name or name in found:
+            continue
+        # Manifest files are tiny JSON; do not report their size as the model size.
+        found[name] = OllamaModelInfo(name=name, size=0)
+    return list(found.values())
+
+
+def merge_model_lists(
+    primary: list[OllamaModelInfo], extra: list[OllamaModelInfo]
+) -> list[OllamaModelInfo]:
+    """Union two lists; *primary* wins when names are aliases (``:latest``)."""
+    seen: set[str] = set()
+    out: list[OllamaModelInfo] = []
+    for src in (primary, extra):
+        for model in src:
+            keys = _ollama_name_keys(model.name)
+            if not keys or seen.intersection(keys):
+                continue
+            seen.update(keys)
+            out.append(model)
+    return out
+
+
+def _sdk_attr(item: Any, *keys: str) -> Any:
+    for key in keys:
+        if isinstance(item, dict) and key in item:
+            value = item.get(key)
+            if value is not None:
+                return value
+        value = getattr(item, key, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _iter_sdk_models(raw: Any) -> list[Any]:
+    if raw is None:
+        return []
+    models = getattr(raw, "models", None)
+    if models is None and isinstance(raw, dict):
+        models = raw.get("models")
+    if not models:
+        return []
+    return list(models)
+
+
+def _model_info_from_sdk(item: Any) -> OllamaModelInfo | None:
+    name = str(_sdk_attr(item, "model", "name") or "").strip()
+    if not name:
+        return None
+    size_raw = _sdk_attr(item, "size") or 0
+    try:
+        size = int(size_raw)
+    except (TypeError, ValueError):
+        size = 0
+    digest = _sdk_attr(item, "digest")
+    return OllamaModelInfo(
+        name=name,
+        size=size,
+        digest=str(digest) if digest is not None else None,
+        modified_at=_sdk_attr(item, "modified_at"),
+    )
+
+
 # ── Server bootstrap ────────────────────────────────────────────
 
 
 def _is_ollama_reachable() -> bool:
     """Quick connectivity check to the Ollama HTTP endpoint."""
-    import urllib.error
     import urllib.request
 
     try:
@@ -109,6 +299,7 @@ def _start_ollama_server() -> None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
+            env=os.environ.copy(),
         )
     except Exception as exc:
         raise OSError(f"Failed to start ollama serve: {exc}") from exc
@@ -151,7 +342,6 @@ def stop_ollama_service() -> bool:
     global _OLLAMA_SERVER_STARTED
     if not _OLLAMA_SERVER_STARTED and not _is_ollama_reachable():
         return True
-    import os
 
     stopped = False
     try:
@@ -183,20 +373,19 @@ class OllamaModelManager:
     """High-level wrapper around the Ollama SDK for model lifecycle."""
 
     @staticmethod
-    def list_models() -> list[OllamaModelInfo]:
-        """Return the current model list from ``ollama.list()``."""
-        ollama = _ensure_ollama()
+    def list_models(*, start_if_needed: bool = True) -> list[OllamaModelInfo]:
+        """Return the current model list from ``ollama.list()``.
+
+        When *start_if_needed* is false, only talk to an already-running daemon
+        (do not spawn ``ollama serve``).
+        """
+        ollama = _ensure_ollama() if start_if_needed else _ensure_ollama_sdk()
         raw = ollama.list()
         models: list[OllamaModelInfo] = []
-        for m in raw.get("models", []):
-            models.append(
-                OllamaModelInfo(
-                    name=m.get("model", ""),
-                    size=m.get("size", 0) or 0,
-                    digest=m.get("digest"),
-                    modified_at=m.get("modified_at"),
-                ),
-            )
+        for item in _iter_sdk_models(raw):
+            info = _model_info_from_sdk(item)
+            if info is not None:
+                models.append(info)
         return models
 
     @staticmethod
@@ -208,7 +397,7 @@ class OllamaModelManager:
         logger.info("Pull completed: %s", name)
 
         for model in OllamaModelManager.list_models():
-            if model.name == name:
+            if names_match(model.name, name):
                 return model
 
         raise ValueError(f"Ollama model '{name}' not found after pull.")

@@ -53,6 +53,16 @@
   }
 }
 
+.modelMenuFooterMuted {
+  color: var(--fn-text-tertiary);
+  cursor: default;
+
+  &:hover {
+    background: transparent;
+    color: var(--fn-text-tertiary);
+  }
+}
+
 .modelPickerPanel {
   display: flex;
   align-items: stretch;
@@ -529,6 +539,14 @@
   margin-left: auto;
 }
 
+.expertPickerGroup {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fn-text-tertiary);
+  letter-spacing: 0.02em;
+}
+
 .expertPickerItemActive {
   background: rgba(245, 158, 11, 0.1);
 
@@ -639,6 +657,21 @@
     transparent
   );
   white-space: nowrap;
+}
+
+.expertRemoteBadge {
+  flex-shrink: 0;
+  max-width: 10em;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: #0f766e;
+  background: color-mix(in srgb, #0f766e 16%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .expertAgentAvatar {

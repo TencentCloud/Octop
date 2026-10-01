@@ -13,11 +13,11 @@ def test_skill_display_name_known_zh():
 
 
 def test_skill_display_name_octop_assistant_slug_zh():
-    assert skill_display_name("octop-assistant", "zh") == "Octop 配置助手"
+    assert skill_display_name("octop-assistant", "zh") == "Octop 助手"
 
 
 def test_skill_display_name_octop_assistant_name_zh():
-    assert skill_display_name("octop_assistant", "zh") == "Octop 配置助手"
+    assert skill_display_name("octop_assistant", "zh") == "Octop 助手"
 
 
 def test_skill_display_name_unknown_passthrough():
