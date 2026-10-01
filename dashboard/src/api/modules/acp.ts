@@ -5,15 +5,29 @@ function agentPath(agentId: string, suffix = ""): string {
   return `/agents/${encodeURIComponent(agentId)}/acp${suffix}`;
 }
 
+function optionalAgentHeaders(
+  agentId?: string | null,
+): HeadersInit | undefined {
+  const id = (agentId ?? "").trim();
+  if (!id) return undefined;
+  return { "X-Octop-Agent-Id": id };
+}
+
 export const acpApi = {
   /** Global runner definitions (shared by all agents for the current user). */
-  getGlobalRunners: () =>
-    request<{ runners: Record<string, ACPRunnerConfig> }>("/acp"),
+  getGlobalRunners: (agentId?: string | null) =>
+    request<{ runners: Record<string, ACPRunnerConfig> }>("/acp", {
+      headers: optionalAgentHeaders(agentId),
+    }),
 
-  updateGlobalRunners: (runners: Record<string, ACPRunnerConfig>) =>
+  updateGlobalRunners: (
+    runners: Record<string, ACPRunnerConfig>,
+    agentId?: string | null,
+  ) =>
     request<{ runners: Record<string, ACPRunnerConfig> }>("/acp", {
       method: "PUT",
       body: JSON.stringify({ runners }),
+      headers: optionalAgentHeaders(agentId),
     }),
 
   getRunner: (runnerName: string) =>
