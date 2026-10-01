@@ -74,6 +74,13 @@ describe("classifyChatStreamError", () => {
     expect(formatChatStreamError("hello world", t)).toBe("hello world");
   });
 
+  it("does not misclassify send_file_to_user errors as model outage", () => {
+    const msg =
+      "FileNotFoundError: send_file_to_user: no such file: report.xlsx";
+    expect(classifyChatStreamError(msg)).toBeNull();
+    expect(formatChatStreamError(msg, t)).toBe(msg);
+  });
+
   it("formats known failures through i18n", () => {
     const msg =
       "No streaming chunk received for 30.0s (model=x, chunks_received=1)";

@@ -55,8 +55,10 @@ export function classifyChatStreamError(
 ): StreamErrorKey | null {
   if (!message) return null;
   const msg = normalizeMessage(message);
-  if (!msg) return null;
   const lower = msg.toLowerCase();
+  if (lower.includes("send_file_to_user:")) {
+    return null;
+  }
   const compact = lower.replace(/[_\s]/g, "");
 
   if (
