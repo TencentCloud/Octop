@@ -78,8 +78,10 @@ def aggregate_metrics(events: Sequence[TrajectoryEvent]) -> TrajectoryMetrics:
     ``turns`` counts events with ``kind == "user"`` (not distinct ``turn_id``).
     ``steps`` is ``len(events)``. Duration and token fields sum across events
     that carry them; ``ttft_avg_ms`` and ``tok_per_s`` average assistant payloads.
-    ``cache_hit_ratio`` is ``cache_read / (input + cache_read)`` when both sums
-    exist. Missing numeric inputs stay ``None``.
+    ``cache_hit_ratio`` is ``cache_read / input`` when both sums exist: the
+    payload's ``input_tokens`` is already the inclusive prompt total, so adding
+    ``cache_read`` back to the denominator would count the cached part twice.
+    Missing numeric inputs stay ``None``.
     """
     assistant_events = [event for event in events if event.kind == "assistant"]
     tool_events = [event for event in events if event.kind == "tool"]
@@ -89,10 +91,8 @@ def aggregate_metrics(events: Sequence[TrajectoryEvent]) -> TrajectoryMetrics:
     cache_read_tokens = _sum_payload_int(events, "cache_read_tokens")
 
     cache_hit_ratio: float | None = None
-    if input_tokens is not None and cache_read_tokens is not None:
-        denom = input_tokens + cache_read_tokens
-        if denom > 0:
-            cache_hit_ratio = cache_read_tokens / denom
+    if input_tokens is not None and cache_read_tokens is not None and input_tokens > 0:
+        cache_hit_ratio = cache_read_tokens / input_tokens
 
     return TrajectoryMetrics(
         turns=sum(1 for event in events if event.kind == "user"),

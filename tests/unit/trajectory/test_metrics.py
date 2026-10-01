@@ -66,7 +66,7 @@ def test_aggregate_metrics_sums_durations_and_tokens() -> None:
         tool_duration_ms=1000.0,
         ttft_avg_ms=200.0,
         tok_per_s=62.5,
-        cache_hit_ratio=0.2,
+        cache_hit_ratio=0.25,
         input_tokens=400,
         output_tokens=200,
         cache_read_tokens=100,
@@ -92,3 +92,29 @@ def test_aggregate_metrics_counts_user_turns() -> None:
     assert metrics.input_tokens is None
     assert metrics.output_tokens is None
     assert metrics.cache_read_tokens is None
+
+
+def test_cache_hit_ratio_matches_the_token_usage_page() -> None:
+    """``normalize_usage`` reports ``input_tokens`` as the *inclusive* prompt total.
+
+    Its own buckets prove it (``uncached = input - cache_read - cache_write``), and
+    ``UsageRepo`` / the dashboard compute the cache-hit percentage as
+    ``cache_read / input`` from those same values. Adding ``cache_read`` back to the
+    denominator here under-reports the ratio for the very same turn.
+    """
+    from octop.infra.gateway.process.usage_record import normalize_usage  # noqa: PLC0415
+
+    usage = normalize_usage(
+        {
+            "input_tokens": 1000,
+            "input_token_details": {"cache_read": 700},
+            "output_tokens": 40,
+        }
+    )
+    assert usage["uncached_input_tokens"] == 300
+
+    metrics = aggregate_metrics([_event(seq=1, kind="assistant", payload=usage)])
+
+    assert metrics.input_tokens == 1000
+    assert metrics.cache_read_tokens == 700
+    assert metrics.cache_hit_ratio == 700 / 1000
