@@ -8,6 +8,7 @@
 
 ### 修复
 
+- PostgreSQL 备份 / 恢复失败时不再把 `pg_dump` / `pg_restore` 的报错丢掉：两处 `subprocess.run(..., text=True)` 显式按 UTF-8 解码并用 `errors="replace"` 容错。此前按平台默认代码页解码，遇到集群以 UTF-8 打印的非 ASCII 标识符会让 Python 的读取线程抛异常、`stderr` 变成 `None`，`proc.stderr.strip()` 随即 `AttributeError: 'NoneType' object has no attribute 'strip'`，接口只剩一个没有原因的 500（中文 Windows / cp936 最易触发，任何平台遇到无法解码的字节都会）
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
