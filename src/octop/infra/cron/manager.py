@@ -217,6 +217,21 @@ class CronManager:
             self._repos.audit_repo.write(actor=ACTOR_SYSTEM, action="cron.delete", target=cron_id)
             logger.info("CronJob %s deleted", cron_id)
 
+    async def cancel_agent(self, agent_id: str) -> None:
+        """Unschedule every job owned by ``agent_id``, before its row goes away.
+
+        ``cron_jobs.agent_id`` is ``ON DELETE CASCADE``, so deleting the agent erases
+        the rows that both the API and this manager use to address a schedule
+        (``GET``/``DELETE /agents/{aid}/cron/{cid}`` 404 afterwards). A job left
+        registered therefore keeps firing against a deleted agent until restart.
+        """
+        async with self._lock:
+            rows = self._repos.cron_repo.list_by_agent(agent_id, include_disabled=True)
+            for row in rows:
+                self._unschedule(row.cron_id)
+            if rows:
+                logger.info("Unscheduled %d cron job(s) for deleted agent %s", len(rows), agent_id)
+
     async def run_now(self, cron_id: str, *, wait: bool = False) -> None:
         """Trigger a run; embedded callers wait for bookkeeping and receive failures."""
         row = self._repos.cron_repo.get(cron_id)

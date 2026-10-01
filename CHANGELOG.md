@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 删除专家不再留下停不掉的定时任务：调度项注册在进程内的 APScheduler 里，而 `cron_jobs` 行随专家行一起被 `ON DELETE CASCADE` 删除，此后任务仍按间隔触发，每次都以「会话不存在」失败并写一条 `cron.run_failed` 审计；因为专家与任务行都已不存在，`GET`/`PATCH`/`DELETE /api/agents/{id}/cron/{cid}` 全部 404，唯一停掉它的办法是重启进程。删除时本来就会取消该专家的主动关怀循环，现补上对称的定时任务清理 (#1200)
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
