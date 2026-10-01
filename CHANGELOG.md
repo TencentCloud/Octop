@@ -14,6 +14,7 @@
 
 ### 修复
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
+- 远程 Android Shell 的 WebSocket（`/api/mobile/adb/shell/ws`）遇到越界或类型非法的运行时 `resize` 帧会拆掉整个会话：`cols`/`rows` 未经校验就进入 `struct.pack("HHHH", …)`（超出 `unsigned short` 抛 `struct.error`）和 `int()`（字符串 / 数组 / `NaN` 抛 `ValueError` / `TypeError`，`Infinity` 抛 `OverflowError`），异常穿过只捕获 `WebSocketDisconnect` 的接收循环后触发 `finally` 关闭 PTY 并 SIGTERM `adb shell`，用户直接丢失终端。现按握手本来就在执行的同一组边界（20–500 列、5–200 行）校验运行时帧，非法帧忽略并保留上一次有效尺寸（Fixes #1475）。
 
 ## [1.0.2b5] - 2026-09-29
 

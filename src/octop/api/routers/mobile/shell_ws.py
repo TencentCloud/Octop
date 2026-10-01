@@ -26,6 +26,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Hoisted from the handshake's own ``ge``/``le`` literals so the runtime ``resize`` branch can
+# validate a frame against the same bounds it already applies to the query string.
+_MIN_COLS = 20
+_MAX_COLS = 500
+_MIN_ROWS = 5
+_MAX_ROWS = 200
+
 
 def _set_winsize(fd: int, cols: int, rows: int) -> None:
     posix_compat.set_winsize(fd, cols, rows)
@@ -54,8 +61,8 @@ async def adb_shell_ws(
     websocket: WebSocket,
     token: str | None = Query(default=None),
     serial: str | None = Query(default=None),
-    cols: int = Query(default=120, ge=20, le=500),
-    rows: int = Query(default=32, ge=5, le=200),
+    cols: int = Query(default=120, ge=_MIN_COLS, le=_MAX_COLS),
+    rows: int = Query(default=32, ge=_MIN_ROWS, le=_MAX_ROWS),
 ) -> None:
     server = websocket.app.state.octop_server
     adb = find_adb()
@@ -149,8 +156,15 @@ async def adb_shell_ws(
                         data.encode("utf-8", errors="replace"),
                     )
             elif t == "resize":
-                c = int(msg.get("cols") or cols)
-                r = int(msg.get("rows") or rows)
+                # Ignore a bad frame, keeping the previous size: an exception here would reach the
+                # ``finally`` below, whose teardown kills the ``adb shell`` process group.
+                try:
+                    c = int(msg.get("cols") or cols)
+                    r = int(msg.get("rows") or rows)
+                except (TypeError, ValueError, OverflowError):
+                    continue
+                if not (_MIN_COLS <= c <= _MAX_COLS and _MIN_ROWS <= r <= _MAX_ROWS):
+                    continue
                 await loop.run_in_executor(None, _set_winsize, master_fd, c, r)
     except WebSocketDisconnect:
         pass
