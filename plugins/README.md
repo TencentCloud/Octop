@@ -20,6 +20,12 @@ in `config.json`. Uninstalled ids are not re-copied.
 | [`demo-turn-logger`](./demo-turn-logger/) | `hook` | Register `AgentMiddleware` that logs before/after model calls |
 | [`demo-ui-card`](./demo-ui-card/) | `tool` + `ui/` | Backend returns `octop_ui` JSON; frontend renders an interactive card |
 
+## Community plugins
+
+| Directory | `kind` | What it does |
+|-----------|--------|--------------|
+| [`nong-gateway`](./nong-gateway/) | `hook` | Yuanbao / Kimi group-chat bridge: one bot per expert, mention gating with deny-by-default, anti-loop protection (bot-message filtering + group policy), local searchable ledger. Runtime hijack — zero changes to Octop source. Full docs and development history in [angri450/nong-gateway-plugin](https://github.com/angri450/nong-gateway-plugin). |
+
 ## Plugin layout
 
 ```text
