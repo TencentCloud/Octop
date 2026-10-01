@@ -213,6 +213,25 @@ def _assert_can_assign(actor: User, permissions: list[str]) -> None:
         )
 
 
+def _blocks_admin_target(actor: User, row: Any) -> bool:
+    """Whether ``actor`` may not act on ``row`` because ``row`` is an administrator.
+
+    ``admin`` bypasses every permission check (``user_has_permission``), so the
+    delegatable ``users`` permission must not reach administrator accounts.
+    """
+    return not actor.is_admin and str(getattr(row, "role", "")) == Role.ADMIN.value
+
+
+def _assert_can_manage(actor: User, row: Any) -> None:
+    """A delegated user manager may not act on administrator accounts.
+
+    Without this, ``users`` would mean "reset the owner's password and log in as
+    them", or "demote/disable/delete the only administrator".
+    """
+    if _blocks_admin_target(actor, row):
+        raise OctopError(ErrorCode.FORBIDDEN, "cannot manage an administrator account")
+
+
 def _can_manage_users(row: Any) -> bool:
     if str(getattr(row, "role", "")) == "admin":
         return True
@@ -346,6 +365,12 @@ async def _batch_apply_one(
             code=ErrorCode.NOT_FOUND.value,
             error="user not found",
         )
+    if _blocks_admin_target(actor, row):
+        return _batch_fail(
+            user_id,
+            code=ErrorCode.FORBIDDEN.value,
+            error="cannot manage an administrator account",
+        )
     try:
         if action == "enable":
             await server.user_manager.enable(row.username)
@@ -450,6 +475,7 @@ async def patch_user(
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    _assert_can_manage(actor, row)
     if body.permissions is not None:
         _assert_can_assign(actor, body.permissions)
         # An administrator account keeps full access. The form stores that as
@@ -529,12 +555,13 @@ async def unlock_user_login(
 async def reset_password(
     user_id: int,
     body: ResetPasswordBody,
-    _: Any = Depends(require_permission("users")),
+    actor: Any = Depends(require_permission("users")),
     server: Any = Depends(get_server),
 ) -> None:
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    _assert_can_manage(actor, row)
     await server.user_manager.reset_password(row.username, body.new_password)
 
 
@@ -549,6 +576,7 @@ async def delete_user(
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    _assert_can_manage(actor, row)
     await server.user_manager.remove(row.username)
     from octop.infra.users.profile_avatar import delete_profile_avatar
 

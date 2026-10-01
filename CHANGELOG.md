@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 只持有内置 `users` 权限的代理管理员不再能操作管理员账号：`PATCH /api/users/{id}`、`POST /api/users/{id}/reset-password`、`DELETE /api/users/{id}` 与 `/api/users/batch` 此前只按 id 取目标，可用来改掉拥有者密码再登录、或删除唯一管理员；现按 `_blocks_admin_target` 统一拒绝非管理员对 `admin` 行的写入（授予 `admin` 角色的那半边已由 `_require_admin_to_grant_admin` 在上游落地），`users` 权限管理普通用户（改名、停用、重置密码、分配自己已有的权限）不受影响
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
