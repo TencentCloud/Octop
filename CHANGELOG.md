@@ -13,6 +13,7 @@
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
 ### 修复
+- `octop plugin install ./my-plugin.zip` 报 `not a directory or URL`：CLI 现在接受本地 ZIP 文件（与 `plugins/README.md` 的安装说明一致），沿用 Dashboard 上传同一套校验（ZIP 魔数、单插件根目录、路径穿越检查）。
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
 
 ## [1.0.2b5] - 2026-09-29
