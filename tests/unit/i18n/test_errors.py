@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from octop.i18n import error_message
-from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.errors import _DEFAULT_STATUS, ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_request_locale
 
 
@@ -56,6 +56,42 @@ def test_dashboard_api_errors_match_backend():
     dash_codes = set(dash_en["apiErrors"].keys())
     backend_codes = set(backend_en["errors"].keys())
     assert dash_codes == backend_codes == {c.value for c in ErrorCode}
+
+
+# ``docs/api.md`` "## Error envelope" is the human-facing list of codes a client can be
+# served. ``OctopError`` resolves its status from ``_DEFAULT_STATUS`` unless a raise site
+# overrides it, so the table's HTTP column is the code's default status.
+_API_DOC_ROW = re.compile(r"^\|\s*`([A-Z][A-Z0-9_]*)`\s*\|\s*(\d{3})\s*\|", re.M)
+
+# Codes the table documents ahead of the enum because an open issue asks for them.
+# Empty by default: a new row must name a code ``ErrorCode`` already has.
+_API_DOC_PENDING_CODES = frozenset({"CRON_PROMPT_INVALID"})
+
+
+def test_api_doc_error_table_lists_real_codes_with_real_statuses():
+    repo = Path(__file__).resolve().parents[3]
+    doc = (repo / "docs/api.md").read_text(encoding="utf-8")
+    section = doc[doc.index("## Error envelope") :]
+    rows = [(m.group(1), int(m.group(2))) for m in _API_DOC_ROW.finditer(section)]
+    assert rows, "no table rows parsed — the '## Error envelope' table moved or changed shape"
+
+    known = {c.value for c in ErrorCode}
+    phantom = [
+        code for code, _status in rows if code not in known and code not in _API_DOC_PENDING_CODES
+    ]
+    assert not phantom, (
+        f"docs/api.md lists codes that octop.infra.errors.ErrorCode has not: {phantom}"
+    )
+
+    stale = [
+        (code, status, _DEFAULT_STATUS[ErrorCode(code)])
+        for code, status in rows
+        if code in known and _DEFAULT_STATUS[ErrorCode(code)] != status
+    ]
+    assert not stale, (
+        "docs/api.md HTTP column disagrees with _DEFAULT_STATUS "
+        f"(code, documented, default): {stale}"
+    )
 
 
 # i18next uses ``{{name}}``; a lone ``{name}`` is left uninterpolated in the UI.
