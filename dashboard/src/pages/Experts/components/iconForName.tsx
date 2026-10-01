@@ -9,6 +9,7 @@
  */
 
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import {
   Sparkles,
   Globe,
@@ -46,6 +47,15 @@ import {
   Coffee,
   ShoppingBag,
   Users,
+  Cloudy,
+  Cloud,
+  CloudCog,
+  Laptop,
+  Monitor,
+  Wifi,
+  RadioTower,
+  Satellite,
+  MapPin,
 } from "lucide-react";
 import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import { needsAuthBlobFetch } from "../../../utils/toolMediaBlocks";
@@ -86,6 +96,15 @@ const iconMap: Record<string, (size: number) => ReactNode> = {
   bell: (size) => <Bell size={size} />,
   coffee: (size) => <Coffee size={size} />,
   "shopping-bag": (size) => <ShoppingBag size={size} />,
+  cloudy: (size) => <Cloudy size={size} strokeWidth={1.75} />,
+  cloud: (size) => <Cloud size={size} strokeWidth={1.75} />,
+  "cloud-cog": (size) => <CloudCog size={size} strokeWidth={1.75} />,
+  laptop: (size) => <Laptop size={size} strokeWidth={1.75} />,
+  monitor: (size) => <Monitor size={size} strokeWidth={1.75} />,
+  wifi: (size) => <Wifi size={size} strokeWidth={1.75} />,
+  "radio-tower": (size) => <RadioTower size={size} strokeWidth={1.75} />,
+  satellite: (size) => <Satellite size={size} strokeWidth={1.75} />,
+  "map-pin": (size) => <MapPin size={size} strokeWidth={1.75} />,
 };
 
 export const EXPERT_ICON_NAMES = Object.keys(iconMap);
@@ -125,10 +144,44 @@ export function ExpertIcon({
   return iconForName(iconName, size);
 }
 
+/**
+ * Encode the agent-id segment in ``/api/agents/{id}/…`` URLs.
+ * Bridge shadow ids contain ``:`` and must match chat WS / threads encoding.
+ */
+export function normalizeAgentScopedApiUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return trimmed;
+  try {
+    const abs = trimmed.startsWith("http")
+      ? new URL(trimmed)
+      : new URL(trimmed, "http://octop.local");
+    const match = abs.pathname.match(/^(\/api\/agents\/)([^/]+)(\/.*)?$/);
+    if (!match) return trimmed;
+    let agentId = match[2];
+    try {
+      agentId = decodeURIComponent(agentId);
+    } catch {
+      /* keep raw */
+    }
+    const path = `${match[1]}${encodeURIComponent(agentId)}${match[3] || ""}`;
+    if (trimmed.startsWith("http")) {
+      abs.pathname = path;
+      return abs.toString();
+    }
+    return `${path}${abs.search}${abs.hash}`;
+  } catch {
+    return trimmed;
+  }
+}
+
 /** Trust the API ``icon_url``; do not invent scene portraits on the client. */
 export function resolveExpertAvatarUrl(iconUrl?: string | null): string | null {
   const url = iconUrl?.trim() || "";
-  return url || null;
+  if (!url) return null;
+  if (url.startsWith("/api/agents/")) {
+    return normalizeAgentScopedApiUrl(url);
+  }
+  return url;
 }
 
 function ExpertIconImage({
@@ -143,7 +196,11 @@ function ExpertIconImage({
   className?: string;
 }) {
   const { src, loadState } = useAuthImageSrc(url);
-  if (!src || loadState !== "ready") {
+  const [imgFailed, setImgFailed] = useState(false);
+  useEffect(() => {
+    setImgFailed(false);
+  }, [url]);
+  if (!src || loadState !== "ready" || imgFailed) {
     return iconForName(iconName, size);
   }
   const cover =
@@ -155,6 +212,7 @@ function ExpertIconImage({
       src={src}
       alt=""
       className={className}
+      onError={() => setImgFailed(true)}
       style={{
         width: size,
         height: size,
