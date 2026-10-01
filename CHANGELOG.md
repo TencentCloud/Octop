@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- Dashboard 新建定时任务默认落在「文本」模式：`buildDefaultFormValues()` 里写死的 `task_type: "text"` 与同文件 `DEFAULT_FORM_VALUES.task_type = "agent"` 互相矛盾，而抽屉只使用前者，`toOctopCreateBody()` 又把表单值原样提交，因此即便接口默认值已是 `agent`，从界面创建的定时任务仍只投递一条固定文本、不跑智能体回合——该字段自己的提示文案写的是「智能体：让 AI 智能体处理请求（推荐）」。现改为复用 `DEFAULT_FORM_VALUES.task_type`，两处默认从此同源，不再各存一份字面量；显式选择「文本」的行为不变（Refs #1443）。
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
