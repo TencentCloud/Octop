@@ -62,9 +62,13 @@ def list_models() -> None:
 def active_model(provider_name: str | None, model_id: str | None) -> None:
     """Show or set the global default model (admin)."""
     from octop.cli.support.offline_ops import get_active_model_offline, set_active_model_offline
+    from octop.infra.errors import OctopError
 
     if provider_name and model_id:
-        body = set_active_model_offline(provider_name, model_id)
+        try:
+            body = set_active_model_offline(provider_name, model_id)
+        except OctopError as exc:
+            raise click.ClickException(exc.message) from exc
         click.echo(_json.dumps(body, indent=2))
         return
     body = get_active_model_offline()
@@ -176,10 +180,10 @@ def config_models() -> None:
     model_id = model_ids[model_labels.index(pick)]
     provider_name = str(created.get("name", ""))
     try:
-        set_active_model_offline(provider_name, model_id)
+        body = set_active_model_offline(provider_name, model_id)
     except OctopError as exc:
         raise click.ClickException(exc.message) from exc
-    click.echo(f"✓ Active model: {provider_name} / {model_id}")
+    click.echo(f"✓ Active model: {body['provider_name']} / {body['model']}")
 
 
 @models.command("ollama-list")
