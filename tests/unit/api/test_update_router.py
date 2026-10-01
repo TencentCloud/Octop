@@ -461,7 +461,12 @@ async def test_status_stable_only_ignores_prerelease(
 async def test_status_includes_prerelease_when_stable_only_off(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    info = self_update.PyPIInfo(version="0.9.34b1", latest_stable="0.9.33", source="pypi.org")
+    info = self_update.PyPIInfo(
+        version="0.9.34b1",
+        latest_stable="0.9.33",
+        source="pypi.org",
+        description="## [0.9.34b1] - 2026-09-01\n\n- beta notes\n\n## [0.9.33]\n- old\n",
+    )
     monkeypatch.setattr(update_router, "fetch_pypi_info", lambda: info)
     monkeypatch.setattr(update_router, "get_local_version", lambda: "0.9.33")
 
@@ -469,6 +474,8 @@ async def test_status_includes_prerelease_when_stable_only_off(
     assert auto["latest_version"] == "0.9.34b1"
     assert auto["has_update"] is True
     assert auto["latest_is_prerelease"] is True
+    assert auto["release_notes"] is not None
+    assert "beta notes" in auto["release_notes"]
 
 
 @pytest.mark.asyncio
