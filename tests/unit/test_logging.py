@@ -17,6 +17,7 @@ import pytest
 
 from octop.infra.server import (
     DEFAULT_LOG_MAX_BYTES,
+    QUIET_LOGGERS,
     OctopServer,
     SizeTimedRotatingFileHandler,
     _attach_log_handler,
@@ -39,11 +40,16 @@ def _isolate_root_logger() -> None:
         name: list(logging.getLogger(name).handlers)
         for name in ("uvicorn", "uvicorn.access", "uvicorn.error")
     }
+    # _setup_logging also raises the level of noisy third-party loggers; restore
+    # those too so one test's quieting never bleeds into the next.
+    saved_quiet_levels = {name: logging.getLogger(name).level for name in QUIET_LOGGERS}
     yield
     root.handlers = saved_root_handlers
     root.setLevel(saved_root_level)
     for name, handlers in saved_child.items():
         logging.getLogger(name).handlers = handlers
+    for name, level in saved_quiet_levels.items():
+        logging.getLogger(name).setLevel(level)
 
 
 def _stale_path(log_dir: Path, name: str, age_days: int) -> Path:
@@ -174,6 +180,33 @@ def test_setup_logging_falls_back_on_invalid_level_env(tmp_path: Path, monkeypat
     server._setup_logging()
 
     assert logging.getLogger().level == logging.INFO
+
+
+def test_setup_logging_quiets_mcp_streamable_http(tmp_path: Path, monkeypatch):
+    """MCP servers that reject GET SSE (405) make the SDK log reconnect chatter at
+    INFO every ~10s; nothing actionable in that module is below WARNING."""
+    monkeypatch.delenv("OCTOP_LOG_LEVEL", raising=False)
+    logging.getLogger("mcp.client.streamable_http").setLevel(logging.NOTSET)
+    server = OctopServer(home=tmp_path / ".octop")
+
+    server._setup_logging()
+
+    mcp_logger = logging.getLogger("mcp.client.streamable_http")
+    assert mcp_logger.level == logging.WARNING
+    # The failure modes the SDK reports above WARNING must still surface.
+    assert mcp_logger.isEnabledFor(logging.WARNING)
+    assert not mcp_logger.isEnabledFor(logging.INFO)
+
+
+def test_setup_logging_keeps_mcp_streamable_http_verbose_in_debug(tmp_path: Path, monkeypatch):
+    """Debug runs must keep the SDK's session/reconnect trail for diagnosis."""
+    monkeypatch.setenv("OCTOP_LOG_LEVEL", "debug")
+    logging.getLogger("mcp.client.streamable_http").setLevel(logging.NOTSET)
+    server = OctopServer(home=tmp_path / ".octop")
+
+    server._setup_logging()
+
+    assert logging.getLogger("mcp.client.streamable_http").level == logging.NOTSET
 
 
 def test_setup_logging_falls_back_on_invalid_retention_env(tmp_path: Path, monkeypatch):
