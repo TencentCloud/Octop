@@ -765,5 +765,8 @@ class UserManager:
                 shutil.rmtree(user_dir)
         except OSError:
             logger.exception("rmtree failed for %s; user removed from DB anyway", user_dir)
+        from octop.infra.users.profile_avatar import delete_profile_avatar
+
+        delete_profile_avatar(self._services.paths.user_avatars_dir, str(row.id))
         self._services.user_repo.delete(row.id)
         self._services.audit_repo.write(actor=ACTOR_ADMIN, action="user.delete", target=username)
