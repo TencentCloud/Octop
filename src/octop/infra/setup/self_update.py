@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 _PACKAGE_NAME = "octop"
 _PYPI_URL = f"https://pypi.org/pypi/{_PACKAGE_NAME}/json"
 _PYPI_SIMPLE = "https://pypi.org/simple"
+_PYPI_UA = {"User-Agent": f"{_PACKAGE_NAME}-updater/1.0"}
 _GREEN_PACKAGES_ENV = "OCTOP_GREEN_PACKAGES"
 _STASH_SUFFIX = ".octop-old"
 _PROBE_TIMEOUT_S = 8
@@ -185,6 +186,41 @@ def pick_latest_versions(versions: list[str]) -> tuple[str | None, str | None]:
     return latest_any, latest_stable
 
 
+def _pypi_json_url(version: str | None = None) -> str:
+    if not version:
+        return _PYPI_URL
+    encoded = urllib.parse.quote(version, safe="")
+    return f"https://pypi.org/pypi/{_PACKAGE_NAME}/{encoded}/json"
+
+
+def _load_pypi_json(url: str, timeout: int) -> dict[str, Any]:
+    req = urllib.request.Request(url, headers=_PYPI_UA)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        payload: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+    return payload
+
+
+def _description_for_version(
+    version: str,
+    fallback: str | None,
+    timeout: int,
+) -> str | None:
+    """Return the long description uploaded with *version*.
+
+    Warehouse's unversioned ``/pypi/<name>/json`` ``info`` object is the latest
+    *stable* release. Pre-release changelogs only appear on
+    ``/pypi/<name>/<version>/json``.
+    """
+    try:
+        data = _load_pypi_json(_pypi_json_url(version), timeout)
+        description = data["info"].get("description")
+        if isinstance(description, str) and description.strip():
+            return description
+    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
+        logger.warning("failed to fetch PyPI description for %s: %s", version, exc)
+    return fallback
+
+
 def fetch_pypi_info(timeout: int = 10) -> PyPIInfo | None:
     """Fetch version and long description from the PyPI JSON API.
 
@@ -193,12 +229,7 @@ def fetch_pypi_info(timeout: int = 10) -> PyPIInfo | None:
     Returns None on any network or parse failure.
     """
     try:
-        req = urllib.request.Request(
-            _PYPI_URL,
-            headers={"User-Agent": f"{_PACKAGE_NAME}-updater/1.0"},
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        data = _load_pypi_json(_PYPI_URL, timeout)
         info = data["info"]
         versions = _usable_release_versions(data)
         info_version = str(info["version"])
@@ -208,10 +239,14 @@ def fetch_pypi_info(timeout: int = 10) -> PyPIInfo | None:
         if latest_any is None:
             latest_any = info_version
             latest_stable = info_version if not is_prerelease(info_version) else None
+        raw_description = info.get("description")
+        description = raw_description if isinstance(raw_description, str) else None
+        if latest_any and latest_any != info_version:
+            description = _description_for_version(latest_any, description, timeout)
         return PyPIInfo(
             version=latest_any,
             latest_stable=latest_stable,
-            description=info.get("description"),
+            description=description,
             source="pypi.org",
         )
     except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
