@@ -63,10 +63,12 @@ def _run_vendor(plat: str, tmp_path: Path) -> tuple[subprocess.CompletedProcess[
     env["GREEN_ROOT"] = str(tmp_path / "green")
     env["VW_STUB_LOG"] = str(log)
 
+    # the script echoes UTF-8 literals; cp936 machines cannot decode them by default
     result = subprocess.run(
         [str(BASH), str(SCRIPT), plat],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=env,
         timeout=120,
         check=False,
