@@ -40,6 +40,52 @@ async def test_resolve_thread_id_rejects_another_users_thread() -> None:
     assert registry.rebound is False
 
 
+class _SessionKeyThreadRegistry(_ThreadRegistry):
+    """Registry fake that also answers session-key binding lookups."""
+
+    def __init__(self, row: object, bound: str | None) -> None:
+        super().__init__(row)
+        self.bound = bound
+
+    def get_bound_thread_id(self, session_key: str) -> str | None:
+        return self.bound
+
+
+async def test_resolve_thread_id_rejects_another_users_session_key() -> None:
+    registry = _SessionKeyThreadRegistry(
+        SimpleNamespace(agent_id="shared-agent", user_id=1),
+        "owner-thread",
+    )
+
+    with pytest.raises(OctopError) as exc_info:
+        await resolve_thread_id(
+            agent_id="shared-agent",
+            user_id=2,
+            thread_registry=registry,
+            thread_id=None,
+            session_key="shared-agent:dashboard:1:dm",
+        )
+
+    assert exc_info.value.code == ErrorCode.FORBIDDEN
+
+
+async def test_resolve_thread_id_reuses_the_callers_own_session_key_thread() -> None:
+    registry = _SessionKeyThreadRegistry(
+        SimpleNamespace(agent_id="shared-agent", user_id=1),
+        "owner-thread",
+    )
+
+    resolved = await resolve_thread_id(
+        agent_id="shared-agent",
+        user_id=1,
+        thread_registry=registry,
+        thread_id=None,
+        session_key="shared-agent:dashboard:1:dm",
+    )
+
+    assert resolved == ("owner-thread", "shared-agent:dashboard:1:dm")
+
+
 def test_build_composer_context_omits_default_model() -> None:
     ctx = build_composer_context(
         mcp_servers=["github"],

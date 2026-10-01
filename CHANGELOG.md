@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 仪表盘对话不再能把这一轮写进别人的会话：`user_turn` 只带 `session_key`（不带 `thread_id`）时，`resolve_thread_id` 按原样返回该键绑定的会话、不校验归属，而 dashboard 键 `{agent_id}:dashboard:{user_id}:dm` 里的 `user_id` 是可枚举的整数；在共享 agent（`is_shared`，所有登录用户都能开 WS）上，任何人带上别人的键即可把自己这一轮写进并订阅对方的会话。现与同函数的 `thread_id` 分支及 `subscribe` / `cancel` 帧一致，先读该会话行并要求 `row.user_id` 等于调用者，否则按 `FORBIDDEN` 拒绝（WS 侧回 `error` 帧）(#1206)
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
