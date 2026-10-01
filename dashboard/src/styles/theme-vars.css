@@ -28,6 +28,16 @@ html[data-theme="light"] {
   --fn-bg-info-light: #eff6ff;
   --fn-bg-glass: rgba(255, 255, 255, 0.8);
   --fn-bg-sidebar: #ffffff;
+  --fn-bg-base: #ffffff;
+  --fn-bg-page: #f5f6f8;
+  --fn-bg-quaternary: rgba(0, 0, 0, 0.03);
+  --fn-bg-subtle: #f3f4f6;
+  --fn-bg-secondary-hover: #f0f1f3;
+  --fn-bg-secondary-active: #e8eaed;
+  --fn-surface: #ffffff;
+  --fn-surface-sunken: #f7f8fa;
+  --fn-fill-hover: rgba(0, 0, 0, 0.04);
+  --fn-fill-tertiary: #f2f3f5;
 
   /* ---- Text ---- */
   --fn-text-primary: #111827;
@@ -38,8 +48,11 @@ html[data-theme="light"] {
   --fn-text-disabled: #d1d5db;
   --fn-text-inverse: #ffffff;
   --fn-text-brand: #e85d75;
+  --fn-text-danger: #ef4444;
+  --fn-text-link: var(--fn-text-brand);
   --fn-logo-color: #e05040;
   --fn-logo-filter: none;
+  --fn-font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
 
   /* ---- Borders ---- */
   --fn-border-primary: #e5e7eb;
@@ -48,11 +61,20 @@ html[data-theme="light"] {
   --fn-border-input: #d1d5db;
   --fn-border-input-alt: #e5e7eb;
   --fn-border-focus: #e85d75;
+  --fn-border: #e5e7eb;
+  --fn-border-color: #e5e7eb;
+  --fn-border-strong: #d1d5db;
+  --fn-border-subtle: rgba(0, 0, 0, 0.06);
+  --fn-border-success: #6ee7b7;
 
   /* ---- Brand (rose) ---- */
   --fn-color-brand: #e85d75;
   --fn-color-brand-hover: #d14a62;
   --fn-color-brand-soft: #d14a62;
+  --fn-accent: var(--fn-color-brand);
+  --fn-primary: var(--fn-color-brand);
+  --fn-primary-bg: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
+  --fn-color-primary: var(--fn-color-brand);
   --fn-color-brand-border: color-mix(
     in srgb,
     var(--fn-color-brand) 28%,
@@ -86,6 +108,14 @@ html[data-theme="light"] {
   --fn-color-warning-text: #d97706;
   --fn-color-info: #3b82f6;
   --fn-color-info-border: #93c5fd;
+  --fn-color-error: #ef4444;
+  --fn-color-error-bg: #fef2f2;
+  --fn-color-error-border: #fca5a5;
+  --fn-success: #10b981;
+  --fn-success-bg: #ecfdf5;
+  --fn-success-border: #6ee7b7;
+  --fn-danger: #ef4444;
+  --fn-warning-color: #d97706;
   --fn-color-file-zip: #f59e0b;
   --fn-color-file-word: #3b82f6;
   --fn-color-file-ppt: #ef4444;
@@ -182,6 +212,16 @@ html[data-theme="dark"] {
   --fn-bg-info-light: rgba(59, 130, 246, 0.08);
   --fn-bg-glass: rgba(14, 14, 14, 0.8);
   --fn-bg-sidebar: #141414;
+  --fn-bg-base: #141414;
+  --fn-bg-page: #0e0e0e;
+  --fn-bg-quaternary: rgba(255, 255, 255, 0.04);
+  --fn-bg-subtle: #1e1e1e;
+  --fn-bg-secondary-hover: #222222;
+  --fn-bg-secondary-active: #2a2a2a;
+  --fn-surface: #1e1e1e;
+  --fn-surface-sunken: #1a1a1a;
+  --fn-fill-hover: rgba(255, 255, 255, 0.08);
+  --fn-fill-tertiary: rgba(255, 255, 255, 0.06);
 
   /* ---- Text ---- */
   --fn-text-primary: rgba(255, 255, 255, 0.9);
@@ -192,8 +232,11 @@ html[data-theme="dark"] {
   --fn-text-disabled: rgba(255, 255, 255, 0.16);
   --fn-text-inverse: #0e0e0e;
   --fn-text-brand: #f08b9a;
+  --fn-text-danger: #f87171;
+  --fn-text-link: var(--fn-text-brand);
   --fn-logo-color: #f08b9a;
   --fn-logo-filter: brightness(1.15) saturate(0.9);
+  --fn-font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
 
   /* ---- Borders ---- */
   --fn-border-primary: rgba(255, 255, 255, 0.08);
@@ -202,11 +245,20 @@ html[data-theme="dark"] {
   --fn-border-input: rgba(255, 255, 255, 0.12);
   --fn-border-input-alt: rgba(255, 255, 255, 0.09);
   --fn-border-focus: #f08b9a;
+  --fn-border: rgba(255, 255, 255, 0.08);
+  --fn-border-color: rgba(255, 255, 255, 0.08);
+  --fn-border-strong: rgba(255, 255, 255, 0.16);
+  --fn-border-subtle: rgba(255, 255, 255, 0.05);
+  --fn-border-success: rgba(52, 211, 153, 0.25);
 
   /* ---- Brand (rose, lightened for dark bg) ---- */
   --fn-color-brand: #f08b9a;
   --fn-color-brand-hover: #e85d75;
   --fn-color-brand-soft: #e85d75;
+  --fn-accent: var(--fn-color-brand);
+  --fn-primary: var(--fn-color-brand);
+  --fn-primary-bg: color-mix(in srgb, var(--fn-color-brand) 16%, transparent);
+  --fn-color-primary: var(--fn-color-brand);
   --fn-color-brand-border: color-mix(
     in srgb,
     var(--fn-color-brand) 35%,
@@ -240,6 +292,14 @@ html[data-theme="dark"] {
   --fn-color-warning-text: #fbbf24;
   --fn-color-info: #60a5fa;
   --fn-color-info-border: rgba(96, 165, 250, 0.25);
+  --fn-color-error: #f87171;
+  --fn-color-error-bg: rgba(239, 68, 68, 0.08);
+  --fn-color-error-border: rgba(248, 113, 113, 0.25);
+  --fn-success: #34d399;
+  --fn-success-bg: rgba(16, 185, 129, 0.08);
+  --fn-success-border: rgba(52, 211, 153, 0.25);
+  --fn-danger: #f87171;
+  --fn-warning-color: #fbbf24;
   --fn-color-file-zip: #fbbf24;
   --fn-color-file-word: #60a5fa;
   --fn-color-file-ppt: #f87171;
