@@ -101,14 +101,13 @@ def create_user_offline(
             raise OctopError(ErrorCode.EMAIL_TAKEN, f"email {normalized_email!r} already exists")
         permissions = None
         role_name = None
-        user_role_id = None
         policies: list[tuple[str, str]] = []
         if role == "user":
             from octop.infra.db.repos.user_roles import seeded_user_role_assignment
 
             assignment = seeded_user_role_assignment(svc.db)
             if assignment is not None:
-                user_role_id, role_name, permissions, policies = assignment
+                role, role_name, permissions, policies = assignment
         uid = svc.user_repo.create(
             username=username,
             password_hash=hash_password(password),
@@ -117,7 +116,6 @@ def create_user_offline(
             email=normalized_email,
             permissions=permissions,
             role_name=role_name,
-            user_role_id=user_role_id,
         )
         if policies:
             svc.user_policy_repo.merge(uid, dict(policies))
