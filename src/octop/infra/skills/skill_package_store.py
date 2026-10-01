@@ -29,6 +29,15 @@ from octop.infra.utils.ulid import new_short_id
 logger = logging.getLogger(__name__)
 
 
+COPY_POLICIES = ("snapshot", "lock", "deny")
+
+
+def normalize_copy_policy(value: object) -> str:
+    """Clamp a stored/configured copy policy to the supported set (#770)."""
+    text = str(value or "").strip().lower()
+    return text if text in COPY_POLICIES else "snapshot"
+
+
 def is_skill_package_name_conflict(exc: BaseException) -> bool:
     """Return whether a database integrity error violates the package name key."""
     if isinstance(exc, sqlite3.IntegrityError):
@@ -186,6 +195,18 @@ class SkillPackageStore:
         if self.can_mutate(row, user):
             return
         raise OctopError(ErrorCode.FORBIDDEN, "skill package can only be modified by its creator")
+
+    def can_copy(self, row: SkillPackageRow, user: User) -> bool:
+        """Whether *user* may copy this package's skills into a workspace (#770)."""
+        return self.can_mutate(row, user) or normalize_copy_policy(row.copy_policy) != "deny"
+
+    def assert_can_copy(self, row: SkillPackageRow, user: User) -> None:
+        if self.can_copy(row, user):
+            return
+        raise OctopError(
+            ErrorCode.SKILL_PACKAGE_COPY_DENIED,
+            f"skill package {row.id!r} does not allow copying",
+        )
 
     def can_mutate(self, row: SkillPackageRow, user: User) -> bool:
         return user.is_admin or str(user.id) == row.created_by

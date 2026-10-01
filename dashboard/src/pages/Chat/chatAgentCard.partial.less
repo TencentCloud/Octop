@@ -24,6 +24,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .agentCardInfo {
@@ -117,6 +118,46 @@
   color: var(--fn-color-brand);
   background: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
   white-space: nowrap;
+}
+
+.remoteExpertFlag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  max-width: 12em;
+  padding: 0 5px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--fn-color-brand);
+  background: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.remoteExpertFlagCompact {
+  max-width: none;
+  padding: 0 4px;
+  gap: 0;
+}
+
+.remoteExpertIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  opacity: 0.9;
+}
+
+.remoteExpertName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .teamChatBadge {
@@ -413,6 +454,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .agentRowInfo {
