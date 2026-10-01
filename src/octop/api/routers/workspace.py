@@ -37,18 +37,21 @@ logger = logging.getLogger(__name__)
 _PROTECTED_PREFIX = "_builtin_skills"
 
 
-def _assert_workspace_mutable(path: str) -> str:
-    """Mutating ops always treat paths as workspace-relative (``from_workspace=true``)."""
-    rel = _workspace_io_path(path, from_workspace=True)
+def _assert_workspace_mutable(path: str, *, from_workspace: bool = True) -> str:
+    """Reject a mutation aimed at the Octop-owned built-in Skills root.
+
+    Returns the resolved path the caller must write to, so the check and the
+    write can never disagree. ``from_workspace`` is threaded through from the
+    endpoint: a resolver that hardcoded one interpretation would vet a different
+    string than the one that reaches the backend.
+    """
+    rel = _workspace_io_path(path, from_workspace=from_workspace)
     if rel == ".":
         raise OctopError(ErrorCode.FORBIDDEN, "cannot modify workspace root")
-    posix = rel.replace("\\", "/").strip("/")
-    if (
-        posix == _PROTECTED_PREFIX
-        or posix.startswith(f"{_PROTECTED_PREFIX}/")
-        or posix == f".octop/{_PROTECTED_PREFIX}"
-        or posix.startswith(f".octop/{_PROTECTED_PREFIX}/")
-    ):
+    # Match the segment anywhere, not just at the front: a ``file://`` URL or a
+    # host-absolute path resolves to ``…/agents/<id>/_builtin_skills/…``, which a
+    # leading-prefix test lets through untouched.
+    if _PROTECTED_PREFIX in rel.replace("\\", "/").split("/"):
         raise OctopError(ErrorCode.FORBIDDEN, f"cannot modify {_PROTECTED_PREFIX!r} paths")
     return rel
 
@@ -180,6 +183,7 @@ async def write_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Overwrite ``path`` with ``body.content`` (text)."""
+    rel = _assert_workspace_mutable(path, from_workspace=from_workspace)
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
@@ -199,7 +203,7 @@ async def write_file(
     else:
         data = body.content.encode("utf-8")
     try:
-        await ws.aupload_bytes(_workspace_io_path(path, from_workspace=from_workspace), data)
+        await ws.aupload_bytes(rel, data)
     except Exception as exc:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot write {path!r}: {exc}") from exc
     return {"path": path, "size": len(data)}
@@ -311,16 +315,17 @@ async def upload_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Upload a binary file via multipart ``file=@...``."""
+    # Guard the path actually used (``path`` may be omitted, in which case the
+    # upload's own filename decides it), and do it before ``file.read()`` so a
+    # rejected request never buffers its body.
+    target = path or f"/{file.filename or 'upload.bin'}"
+    rel = _assert_workspace_mutable(target, from_workspace=from_workspace)
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
-    target = path or f"/{file.filename or 'upload.bin'}"
     data = await file.read()
     try:
-        await ws.aupload_bytes(
-            _workspace_io_path(target, from_workspace=from_workspace),
-            data,
-        )
+        await ws.aupload_bytes(rel, data)
     except Exception as exc:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot upload to {target!r}: {exc}") from exc
     return {"path": target, "size": len(data)}
