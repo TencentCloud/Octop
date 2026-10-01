@@ -282,6 +282,18 @@ _RESERVED_AGENT_IDS = frozenset({"api", "admin", "agents", "experts"})
 
 
 @dataclass
+class _ThreadExecution:
+    """One thread's execution lock and how many turns are attached to it.
+
+    ``users`` counts turns that have taken the entry, including those still
+    queued on ``lock``; the entry is only droppable at zero.
+    """
+
+    lock: asyncio.Lock
+    users: int = 0
+
+
+@dataclass
 class AgentCreateSpec:
     """Input for :meth:`AgentManager.create`."""
 
@@ -375,7 +387,7 @@ class AgentManager:
         # the channel debounce lock, but POST /chat/hitl/resume (and cron)
         # drive the same checkpoint without it — two concurrent executions on
         # one thread interleave LangGraph checkpoint writes.
-        self._thread_execution_locks: dict[tuple[str, str], asyncio.Lock] = {}
+        self._thread_execution_locks: dict[tuple[str, str], _ThreadExecution] = {}
         self._active_invocations: dict[str, int] = {}
         self._invocation_waiters: dict[str, int] = {}
         self._history_backfills: dict[str, asyncio.Event] = {}
@@ -899,13 +911,24 @@ class AgentManager:
             self._agent_lifecycle_locks[agent_id] = lock
         return lock
 
-    def _thread_execution_lock(self, agent_id: str, thread_id: str) -> asyncio.Lock:
+    @asynccontextmanager
+    async def _thread_execution_lock(self, agent_id: str, thread_id: str) -> AsyncIterator[None]:
         key = (agent_id, thread_id)
-        lock = self._thread_execution_locks.get(key)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._thread_execution_locks[key] = lock
-        return lock
+        entry = self._thread_execution_locks.get(key)
+        if entry is None:
+            entry = _ThreadExecution(asyncio.Lock())
+            self._thread_execution_locks[key] = entry
+        entry.users += 1
+        try:
+            async with entry.lock:
+                yield
+        finally:
+            # Evicting on the holder's exit alone would leave a queued waiter on a
+            # lock the map no longer returns, so a later arrival could run alongside
+            # it; ``users`` is what says the entry is still shared.
+            entry.users -= 1
+            if entry.users == 0:
+                self._thread_execution_locks.pop(key, None)
 
     @staticmethod
     def _is_already_registered_error(exc: BaseException) -> bool:
