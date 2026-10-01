@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Empty } from "antd";
+import { Alert, Empty } from "antd";
 import {
   Bot,
   Brain,
@@ -106,6 +106,25 @@ export default function PersonalizationPage() {
       fill={!isMobile}
       pathTabs={pathTabs}
     >
+      {activeAgent?.bridge ? (
+        <Alert
+          type="info"
+          showIcon
+          message={t("chat.remoteExpert.editBanner")}
+          description={
+            activeTab === "skills"
+              ? t("chat.remoteExpert.editSkillPackages")
+              : activeTab === "tools"
+              ? t("chat.remoteExpert.editTools")
+              : activeTab === "plugins"
+              ? t("chat.remoteExpert.editPlugins")
+              : activeTab === "channels"
+              ? t("chat.remoteExpert.editChannels")
+              : undefined
+          }
+          style={{ marginBottom: 12 }}
+        />
+      ) : null}
       <div className={styles.panels}>
         {isMounted("skills") && (
           <div

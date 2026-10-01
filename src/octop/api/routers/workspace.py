@@ -449,10 +449,18 @@ async def preview_media(
         raise OctopError(ErrorCode.NOT_FOUND, "preview not available for this source")
     data, mime = payload
 
+    # The source bytes are user-controlled (uploads, tool outputs). Serving them
+    # inline without a sandbox CSP would let a navigated SVG (any image/* type)
+    # run scripts on this origin; "sandbox" keeps image/video previews working
+    # while disabling script execution in the document itself.
     return StreamingResponse(
         iter([data]),
         media_type=mime,
-        headers={"Content-Disposition": "inline"},
+        headers={
+            "Content-Disposition": "inline",
+            "Content-Security-Policy": "sandbox",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

@@ -37,7 +37,10 @@ from octop.infra.gateway.hitl.coordinator import (
     HitlSlashOutcome,
     HitlStreamContext,
 )
-from octop.infra.gateway.media.attachment_hints import content_blocks_need_vision
+from octop.infra.gateway.media.attachment_hints import (
+    content_blocks_need_vision,
+    inbound_attachments_from_parts,
+)
 from octop.infra.gateway.media.tool_media import (
     enrich_tool_result_for_dashboard,
     enrich_tool_result_with_backend,
@@ -52,6 +55,7 @@ from octop.infra.gateway.process.harness_request import (
     build_harness_request,
 )
 from octop.infra.gateway.process.message_keys import (
+    INBOUND_ATTACHMENTS_KEY,
     resolve_user_id_for_message,
     sanitize_im_metadata,
     session_key_from_message,
@@ -765,7 +769,10 @@ class GlobalProcessor:
             apply_defaults=True,
             raise_on_failure=False,
         )
-        message_kwargs: dict[str, Any] | None = None
+        message_kwargs: dict[str, Any] = {}
+        attachments = inbound_attachments_from_parts(msg.content)
+        if attachments:
+            message_kwargs[INBOUND_ATTACHMENTS_KEY] = attachments
         if mcp_servers:
             from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
                 COMPOSER_CTX_KEY,
@@ -782,7 +789,7 @@ class GlobalProcessor:
                 default_model=default_model,
             )
             if composer:
-                message_kwargs = {COMPOSER_CTX_KEY: composer}
+                message_kwargs[COMPOSER_CTX_KEY] = composer
         request = build_harness_request(
             thread_id=thread_id,
             user_id=user_id,
@@ -791,7 +798,7 @@ class GlobalProcessor:
             source=f"{msg.channel_type}/{msg.channel_id}",
             content=content,
             model=model_ref,
-            message_kwargs=message_kwargs,
+            message_kwargs=message_kwargs or None,
         )
         self.teams.stamp_host_runtime(request, agent_id)
         self._attach_turn_knowledge_config(
@@ -804,6 +811,7 @@ class GlobalProcessor:
         )
         request = self._stamp_turn_conversation_mode(
             request,
+            agent_id=agent_id,
             thread_id=thread_id,
             meta=None,
             user_text=msg.text,
@@ -1181,10 +1189,7 @@ class GlobalProcessor:
         thread_id: str,
         meta: dict[str, Any],
     ) -> dict[str, Any]:
-        from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
-            COMPOSER_CTX_KEY,
-            INBOUND_ATTACHMENTS_KEY,
-        )
+        from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY  # noqa: PLC0415
 
         media_backend = media_backend_for_agent(self._agent_manager, agent_id)
         source = f"{msg.channel_type}/{msg.channel_id}"
@@ -1218,7 +1223,9 @@ class GlobalProcessor:
         if isinstance(composer, dict) and composer:
             message_kwargs[COMPOSER_CTX_KEY] = composer
         attachments = meta.get(INBOUND_ATTACHMENTS_KEY)
-        if isinstance(attachments, list) and attachments:
+        if not isinstance(attachments, list) or not attachments:
+            attachments = inbound_attachments_from_parts(msg.content)
+        if attachments:
             message_kwargs[INBOUND_ATTACHMENTS_KEY] = attachments
 
         explicit_mcp = meta.get("mcp_servers")
@@ -1288,6 +1295,7 @@ class GlobalProcessor:
         self._apply_turn_hitl_policy(thread_id, meta)
         return self._stamp_turn_conversation_mode(
             request,
+            agent_id=agent_id,
             thread_id=thread_id,
             meta=meta,
             user_text=msg.text,
@@ -1303,6 +1311,7 @@ class GlobalProcessor:
 
     def _sync_and_resolve_conversation_mode(
         self,
+        agent_id: str,
         thread_id: str,
         *,
         meta: dict[str, Any] | None,
@@ -1326,7 +1335,11 @@ class GlobalProcessor:
                 pending_plan_path=None,
             )
             return "craft", pending
-        mode = resolve_conversation_mode(explicit=explicit, thread_mode=thread_mode)
+        mode = resolve_conversation_mode(
+            explicit=explicit,
+            thread_mode=thread_mode,
+            default_mode=self._agent_manager.get_config(agent_id).get("conversation_mode"),
+        )
         if isinstance(explicit, str) and explicit in ("ask", "plan", "craft"):
             self._thread_registry.update_composer(
                 thread_id,
@@ -1338,6 +1351,7 @@ class GlobalProcessor:
         self,
         request: dict[str, Any],
         *,
+        agent_id: str,
         thread_id: str,
         meta: dict[str, Any] | None,
         user_text: str,
@@ -1347,7 +1361,7 @@ class GlobalProcessor:
         from octop.infra.agents.conversation_mode import execute_user_message
 
         mode, execute_path = self._sync_and_resolve_conversation_mode(
-            thread_id, meta=meta, user_text=user_text
+            agent_id, thread_id, meta=meta, user_text=user_text
         )
         if execute_path:
             _overwrite_last_user_text(request, execute_user_message(execute_path, locale))

@@ -237,3 +237,32 @@ async def test_export_mountless_includes_hidden_via_aglob(tmp_path: Path) -> Non
         assert names == {"SOUL.md", ".octop/sessions/x.db", "outbound/a.txt"}
         assert zf.read(".octop/sessions/x.db") == b"db"
         assert zf.read("outbound/a.txt") == b"out"
+
+
+@pytest.mark.asyncio
+async def test_import_skips_octop_builtin_skills(tmp_path: Path) -> None:
+    """An archive must not plant entries under the Octop-owned ``_builtin_skills`` root.
+
+    ``DELETE`` / ``move`` refuse that prefix, so a planted skill directory would be
+    something the user cannot remove through the API, while ``sync_octop_builtin_skills``
+    only prunes the names it retired itself.
+    """
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    backend = LocalShellBackend(root_dir=str(ws), virtual_mode=False)
+    workspace = BackendWorkspace(backend, ws)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("notes.md", "keep me")
+        zf.writestr("_builtin_skills/evil/SKILL.md", "plant")
+        zf.writestr(".octop/_builtin_skills/evil/SKILL.md", "plant")
+    data = buf.getvalue()
+
+    result = await import_workspace_zip(workspace, data, mode="merge", local_workspace_dir=None)
+
+    assert (ws / "notes.md").read_bytes() == b"keep me"
+    assert not (ws / "_builtin_skills").exists()
+    assert not (ws / ".octop" / "_builtin_skills").exists()
+    assert result["imported"] == 1
+    assert any("_builtin_skills" in warning for warning in result["warnings"])
