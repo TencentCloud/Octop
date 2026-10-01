@@ -67,7 +67,11 @@ def _npm_prefix_info(npm: str) -> tuple[str, str]:
         completed = subprocess.run(
             [npm, "config", "get", "prefix"],
             capture_output=True,
+            # npm writes UTF-8 and a prefix may sit under a CJK user directory; decoding
+            # it with the ANSI code page yields an unusable path.
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15.0,
             check=False,
         )
@@ -175,6 +179,8 @@ def install_connector_cli(kind: str) -> dict[str, Any]:
             install_args + [status["npm_package"]],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=_INSTALL_TIMEOUT_S,
             check=False,
         )
@@ -245,6 +251,8 @@ def _read_version(binary_path: str) -> str | None:
                 args,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=15.0,
                 check=False,
             )
