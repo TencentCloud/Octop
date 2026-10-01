@@ -14,6 +14,7 @@
 
 ### 修复
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
+- 团队房间流式 `tool_result` 把整段工具输出原样推给浏览器（issue 实测单条可达 70 KB+），而刷新后同一条卡片按 history 口径只剩 4000 字符：同一回合两次渲染不一致，长会话下还加重浏览器读不过来、WS 接收窗口关闭。`TeamManager._relay_chunk` 推送前复用投影侧的 `_history_projection_messages` 截断器（新增 `_cap_relayed_tool_result`），房间页与成员页共用一处口径；非 `tool_result` 帧与未超限的短输出原样透传，且不改写 harness 传下来的消息对象。完整输出按需拉取属于 #1445 的另一半，本条只统一截断口径（Refs #1445）。
 
 ## [1.0.2b5] - 2026-09-29
 
