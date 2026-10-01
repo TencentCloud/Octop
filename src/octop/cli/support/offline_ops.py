@@ -15,6 +15,7 @@ from octop.cli.support.db import (
 )
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
+from octop.infra.agents.providers.names import validate_provider_name
 from octop.infra.cron.task_type import normalize_cron_task_type, require_cron_prompt
 from octop.infra.cron.trigger import build_trigger
 from octop.infra.errors import ErrorCode, OctopError
@@ -358,6 +359,7 @@ def create_provider_offline(
 ) -> dict[str, Any]:
     models_json = json.dumps(models) if models is not None else None
     with open_cli_services(home) as svc:
+        name = validate_provider_name(name)
         if svc.provider_repo.get_by_name(name) is not None:
             raise OctopError(ErrorCode.PROVIDER_NAME_TAKEN, f"provider {name!r} already exists")
         pid = svc.provider_repo.create(
