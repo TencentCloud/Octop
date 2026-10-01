@@ -11,6 +11,7 @@ name: Build Octop FPK
 #     ghcr.io/tencentcloud/octop:{version|latest}
 #   - Native wheel：优先从同版本 GitHub Release（v*）下载；
 #     缺失时再回退到本仓源码构建
+#   - fnpack：fpk / native 用 Actions cache 复用 .verify/fnpack（key 含 FNPACK_VERSION）
 #   - 产物挂到同一个 v* GitHub Release（与 wheel / 桌面包并列），不再单独打 fnos-* tag
 #
 # Jobs：
@@ -23,6 +24,10 @@ on:
 permissions:
   contents: write
   packages: read
+
+# Keep in sync with scripts/build-fpk.sh default FNPACK_VERSION.
+env:
+  FNPACK_VERSION: "1.2.3"
 
 concurrency:
   group: build-octop-fnos
@@ -108,6 +113,12 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Cache fnpack CLI
+        uses: actions/cache@v4
+        with:
+          path: .verify/fnpack
+          key: fnpack-${{ env.FNPACK_VERSION }}-linux-amd64
+
       - name: Build Docker FPK
         env:
           FPK_NAME_PREFIX: Octop-fnos
@@ -132,6 +143,12 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Cache fnpack CLI
+        uses: actions/cache@v4
+        with:
+          path: .verify/fnpack
+          key: fnpack-${{ env.FNPACK_VERSION }}-linux-amd64
 
       - name: Try download wheel from GitHub Release
         id: wheel
