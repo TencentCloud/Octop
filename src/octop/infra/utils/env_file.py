@@ -90,7 +90,11 @@ def parse_env_text(text: str) -> dict[str, str]:
 def load_env_file(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
-    return parse_env_text(path.read_text(encoding="utf-8"))
+    # ``utf-8-sig`` because Windows editors (PowerShell ``Set-Content -Encoding UTF8``,
+    # Notepad) prepend a BOM, and ``utf-8`` keeps it attached to the first key —
+    # ``str.strip()`` does not remove U+FEFF — so that entry silently fails ``_KEY_RE``
+    # and disappears from every read.
+    return parse_env_text(path.read_text(encoding="utf-8-sig"))
 
 
 def format_env_file(values: dict[str, str]) -> str:
