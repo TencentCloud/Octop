@@ -151,3 +151,18 @@ def test_interval_one_second_is_accepted() -> None:
     trig = build_trigger("interval:1")
     assert isinstance(trig, IntervalTrigger)
     assert trig.interval == dt.timedelta(seconds=1)
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        "interval:99999999999999",
+        "interval:1000000000000",
+        "interval:99999999999999999999999999",
+    ],
+)
+def test_interval_rejects_unrepresentable_seconds(spec: str) -> None:
+    """An interval ``datetime.timedelta`` cannot hold is an invalid trigger, not a crash."""
+    with pytest.raises(OctopError) as ei:
+        build_trigger(spec)
+    assert ei.value.code is ErrorCode.CRON_TRIGGER_INVALID

@@ -89,7 +89,9 @@ def build_trigger(spec: str, *, timezone: str | None = None) -> BaseTrigger:
         if kind == "date":
             # Naive ISO times are wall-clock in *timezone* (same host-zone trap as cron:).
             return DateTrigger(run_date=dt.datetime.fromisoformat(value), timezone=timezone)
-    except (ValueError, TypeError) as exc:
+    except (ValueError, TypeError, OverflowError) as exc:
+        # ``OverflowError`` comes from ``IntervalTrigger``: ``int()`` accepts arbitrarily large
+        # seconds, but the ``datetime.timedelta`` it builds cannot hold them.
         raise OctopError(
             ErrorCode.CRON_TRIGGER_INVALID,
             f"trigger spec {spec!r} could not be parsed: {exc}",
