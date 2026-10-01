@@ -971,6 +971,75 @@ async def test_stream_team_peer_relays_tokens_to_member_and_room(
 
 
 @pytest.mark.asyncio
+async def test_stream_team_peer_caps_live_tool_result_like_history(
+    processor_env: dict,
+) -> None:
+    from langchain_core.messages import AIMessage, ToolMessage
+    from octop_harness.request import ChatRequest
+
+    from octop.infra.agents.teams.team_manager import (
+        _HISTORY_TOOL_RESULT_MAX_CHARS,
+        _history_projection_messages,
+    )
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    room_frames: list[dict[str, object]] = []
+    member_frames: list[dict[str, object]] = []
+
+    async def capture_room(frame: dict[str, object]) -> None:
+        room_frames.append(frame)
+
+    async def capture_member(frame: dict[str, object]) -> None:
+        member_frames.append(frame)
+
+    gateway.ws_hub.register("conn-room", capture_room)
+    gateway.ws_hub.subscribe("thr_parent", "conn-room")
+    gateway.ws_hub.register("conn-member", capture_member)
+    gateway.ws_hub.subscribe("thr_parent~child", "conn-member")
+
+    huge = "x" * (_HISTORY_TOOL_RESULT_MAX_CHARS + 500)
+    bulky = ToolMessage(content=huge, tool_call_id="c1", name="read_file")
+    short = ToolMessage(content="ok", tool_call_id="c2", name="stat_file")
+    dict_frame = {"type": "tool_result", "messages": [{"role": "tool", "content": huge}]}
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {"type": "tool_result", "messages": [bulky, short]}
+        yield dict_frame
+        yield {"type": "token", "content": "read it"}
+
+    processor._agent_manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[AIMessage(content="read it")])
+    processor._agent_manager.get_agent.return_value = harness
+
+    await processor.teams.stream_peer_to_room(
+        ChatRequest(messages="task", thread_id="thr_parent~child", agent_id="child"),
+        room_thread_id="thr_parent",
+        speaker_id="child",
+    )
+
+    capped = _history_projection_messages([bulky])[0]
+    for frames in (room_frames, member_frames):
+        relayed = [frame for frame in frames if frame.get("type") == "tool_result"]
+        assert len(relayed) == 2
+        messages = relayed[0].get("messages")
+        assert isinstance(messages, list)
+        body = str(messages[0].content)
+        assert body == capped.content
+        assert len(body) <= _HISTORY_TOOL_RESULT_MAX_CHARS
+        assert body.endswith("…")
+        assert huge not in body
+        # short bodies and the harness' own message objects stay untouched
+        assert messages[1] is short
+        rows = relayed[1].get("messages")
+        assert isinstance(rows, list)
+        assert len(str(rows[0]["content"])) <= _HISTORY_TOOL_RESULT_MAX_CHARS
+    assert bulky.content == huge
+    assert dict_frame["messages"][0]["content"] == huge
+
+
+@pytest.mark.asyncio
 async def test_stream_team_peer_unwatched_is_not_live_streamed(
     processor_env: dict,
 ) -> None:

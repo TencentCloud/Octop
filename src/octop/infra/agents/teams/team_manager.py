@@ -831,12 +831,13 @@ class TeamManager:
         hub = getattr(self._gateway, "ws_hub", None) if self._gateway is not None else None
         if hub is None:
             return
-        stamped = stamp_stream_speaker(chunk, speaker_id, include_done=True)
+        relay = _cap_relayed_tool_result(chunk)
+        stamped = stamp_stream_speaker(relay, speaker_id, include_done=True)
         try:
             if room_thread_id:
                 await hub.push_to_thread(room_thread_id, stamped)
             if member_thread_id and member_thread_id != room_thread_id:
-                await hub.push_to_thread(member_thread_id, chunk)
+                await hub.push_to_thread(member_thread_id, relay)
         except Exception:
             logger.warning(
                 "failed to relay team peer chunk speaker=%s room=%s",
@@ -1339,7 +1340,7 @@ def _replace_message_content(msg: Any, content: Any) -> Any:
 
 
 def _history_projection_messages(messages: list[Any]) -> list[Any]:
-    """Truncate bulky ToolMessage bodies before writing team projections."""
+    """Truncate bulky ToolMessage bodies for team history and live relay."""
     out: list[Any] = []
     for msg in messages:
         if _message_role(msg) != "tool":
@@ -1352,6 +1353,21 @@ def _history_projection_messages(messages: list[Any]) -> list[Any]:
             continue
         out.append(_replace_message_content(msg, truncated))
     return out
+
+
+def _cap_relayed_tool_result(chunk: dict[str, Any]) -> dict[str, Any]:
+    """Cut live ``tool_result`` bodies to the projection caliber.
+
+    Refreshing a team page already re-renders the same card at
+    ``_HISTORY_TOOL_RESULT_MAX_CHARS``; without this the first stream pushes the
+    whole body while the history row stays short (TencentCloud/Octop#1445).
+    """
+    if str(chunk.get("type") or "") != "tool_result":
+        return chunk
+    messages = chunk.get("messages")
+    if not isinstance(messages, list):
+        return chunk
+    return {**chunk, "messages": _history_projection_messages(messages)}
 
 
 def _edited_files_from_messages(messages: list[Any]) -> list[str]:
