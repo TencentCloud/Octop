@@ -42,8 +42,13 @@ Octop-<plat>/
 
 6. Spawn:
 
-   - macOS / Linux: `<extract>/runtime/bin/python3 <extract>/launch.py run --host 127.0.0.1 --port <port>`
-   - Windows: `<extract>/runtime/python.exe <extract>/launch.py run --host 127.0.0.1 --port <port>`
+   - macOS / Linux: `<extract>/runtime/bin/python3 <extract>/launch.py run --port <port>`
+   - Windows: `<extract>/runtime/python.exe <extract>/launch.py run --port <port>`
+
+   Do not pass `--host`: `octop run` resolves the bind address from
+   `config.json` (default `127.0.0.1`). Passing `--host` would override a user's
+   `bind_host` and persist that override back to `config.json`. Loopback clients
+   still reach the server at `127.0.0.1:<port>` whatever `bind_host` is.
 
 7. Poll `http://127.0.0.1:<port>/api/health` until ready, then load the
    Dashboard (`http://127.0.0.1:<port>/`).

@@ -13,6 +13,9 @@ Defaults: http://127.0.0.1:8088   data dir = ./data (OCTOP_HOME)
 
   ./start.sh --home /path/to/data --host 127.0.0.1 --port 8088
 
+If --host / --port are omitted, octop binds according to config.json (default
+127.0.0.1:8088), so a hand-edited "bind_host" in config.json is preserved.
+
 First launch follows the normal Octop setup wizard (create admin password).
 
 Layout
