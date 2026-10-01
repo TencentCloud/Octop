@@ -24,8 +24,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Route,
+  Info,
 } from "lucide-react";
 import { Tooltip, Popover, Drawer } from "antd";
+import { message } from "@/utils/antdMessage";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
@@ -206,6 +208,7 @@ export default function ChatInputActionsRow({
 }: ChatInputActionsRowProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const remoteManaged = Boolean(agentId?.startsWith("bridge:"));
   const skillDisplayName = useSkillDisplayName();
   const actionsRowRef = useRef<HTMLDivElement | null>(null);
   const [isCompact, setIsCompact] = useState(false);
@@ -550,15 +553,29 @@ export default function ChatInputActionsRow({
           <div className={styles.modelMenuDivider} />
           <button
             type="button"
-            className={styles.modelMenuFooter}
+            className={`${styles.modelMenuFooter} ${
+              remoteManaged ? styles.modelMenuFooterMuted : ""
+            }`}
             onClick={() => {
+              if (remoteManaged) {
+                message.info(t("chat.remoteExpert.manageToast"));
+                return;
+              }
               closeCompactPicker();
               setModelPickerOpen(false);
               navigate("/admin/models");
             }}
           >
-            <Cpu size={15} aria-hidden />
-            <span>{t("chat.modelPickerManage")}</span>
+            {remoteManaged ? (
+              <Info size={15} aria-hidden />
+            ) : (
+              <Cpu size={15} aria-hidden />
+            )}
+            <span>
+              {remoteManaged
+                ? t("chat.remoteExpert.manageOnPeer")
+                : t("chat.modelPickerManage")}
+            </span>
           </button>
         </div>
       )}
@@ -742,6 +759,7 @@ export default function ChatInputActionsRow({
             selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
             onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange!}
             onNavigateAway={closeCompactPicker}
+            remoteManaged={remoteManaged}
           />
         );
       case "skill":
@@ -754,6 +772,7 @@ export default function ChatInputActionsRow({
               closeCompactPicker();
             }}
             onNavigateAway={closeCompactPicker}
+            remoteManaged={remoteManaged}
           />
         );
       case "expert":
@@ -763,6 +782,7 @@ export default function ChatInputActionsRow({
             selectedAgentIds={mentionedExperts}
             onSelect={handleExpertSelect}
             onNavigateAway={closeCompactPicker}
+            remoteManaged={remoteManaged}
           />
         );
       case "subagent":
@@ -772,6 +792,7 @@ export default function ChatInputActionsRow({
             selectedSlugs={mentionedSubagents}
             onSelect={handleSubagentSelect}
             onNavigateAway={closeCompactPicker}
+            remoteManaged={remoteManaged}
           />
         );
       case "shortcut":
@@ -1012,6 +1033,7 @@ export default function ChatInputActionsRow({
                 selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
                 onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange!}
                 onNavigateAway={() => setKnowledgePickerOpen(false)}
+                remoteManaged={remoteManaged}
               />
             }
           >
@@ -1050,6 +1072,7 @@ export default function ChatInputActionsRow({
                   setSkillPickerOpen(false);
                 }}
                 onNavigateAway={() => setSkillPickerOpen(false)}
+                remoteManaged={remoteManaged}
               />
             }
           >
@@ -1083,6 +1106,7 @@ export default function ChatInputActionsRow({
                 selectedAgentIds={mentionedExperts}
                 onSelect={handleExpertSelect}
                 onNavigateAway={() => setExpertPickerOpen(false)}
+                remoteManaged={remoteManaged}
               />
             }
           >
@@ -1120,6 +1144,7 @@ export default function ChatInputActionsRow({
                 selectedSlugs={mentionedSubagents}
                 onSelect={handleSubagentSelect}
                 onNavigateAway={() => setSubagentPickerOpen(false)}
+                remoteManaged={remoteManaged}
               />
             }
           >
