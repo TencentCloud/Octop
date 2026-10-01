@@ -86,6 +86,8 @@ class AuditRepo:
         action: str | None = None,
         limit: int = 100,
     ) -> list[AuditRow]:
+        if limit <= 0:
+            return []
         conditions: list[str] = []
         params: list[object] = []
         if since is not None:
