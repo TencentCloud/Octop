@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 import type { CSSProperties } from "react";
-import { createPortal } from "react-dom";
 import { CheckCircle, AlertTriangle, Power } from "lucide-react";
 import { Button, Spin } from "antd";
 import { useTranslation } from "react-i18next";
 import type { RestartPhase } from "../hooks/useServiceRestart";
+import { AppDialog } from "./AppDialog";
 import styles from "./ServiceRestartOverlay.module.less";
 
 const OVERLAY_Z_INDEX = 2_147_483_000;
@@ -82,18 +82,23 @@ export default function ServiceRestartOverlay({
 
   if (phase === "idle") return null;
 
-  return createPortal(
-    <div
-      style={OVERLAY_BLOCK_STYLE}
+  return (
+    <AppDialog
+      open
       role="alertdialog"
-      aria-modal="true"
-      aria-busy={phase === "restarting"}
-      aria-label={t("advancedSettings.update.restarting")}
+      dismissable={false}
+      onClose={onDismiss ?? (() => {})}
+      ariaLabel={t("advancedSettings.update.restarting")}
+      style={OVERLAY_BLOCK_STYLE}
     >
-      <div className={styles.panel} style={PANEL_STYLE}>
+      <div
+        className={styles.panel}
+        style={PANEL_STYLE}
+        aria-busy={phase === "restarting"}
+      >
         {phase === "confirm" && (
           <>
-            <Power size={28} className={styles.confirmIcon} />
+            <Power size={28} className={styles.confirmIcon} aria-hidden />
             <p style={TITLE_STYLE}>
               {t("advancedSettings.update.restartConfirmTitle")}
             </p>
@@ -125,7 +130,7 @@ export default function ServiceRestartOverlay({
         )}
         {phase === "success" && (
           <>
-            <CheckCircle size={28} className={styles.successIcon} />
+            <CheckCircle size={28} className={styles.successIcon} aria-hidden />
             <p style={TITLE_STYLE}>
               {t("advancedSettings.update.restartSuccess")}
             </p>
@@ -136,7 +141,7 @@ export default function ServiceRestartOverlay({
         )}
         {phase === "timeout" && (
           <>
-            <AlertTriangle size={28} className={styles.warnIcon} />
+            <AlertTriangle size={28} className={styles.warnIcon} aria-hidden />
             <p style={TITLE_STYLE}>
               {t("advancedSettings.update.restartTimeout")}
             </p>
@@ -153,7 +158,6 @@ export default function ServiceRestartOverlay({
           </>
         )}
       </div>
-    </div>,
-    document.body,
+    </AppDialog>
   );
 }

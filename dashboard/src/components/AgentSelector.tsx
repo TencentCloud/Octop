@@ -2,6 +2,7 @@ import { Dropdown, Select, Spin } from "antd";
 import type { DefaultOptionType } from "antd/es/select";
 import type { MenuProps } from "antd";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
 import { useAgent, type OctopAgent } from "../context/AgentContext";
@@ -91,12 +92,14 @@ function AgentChip({
   onSelect,
   measure,
   groupKey,
+  tabRef,
 }: {
   agent: OctopAgent;
   active: boolean;
   onSelect: (id: string) => void;
   measure?: boolean;
   groupKey?: string;
+  tabRef?: Map<string, HTMLButtonElement>;
 }) {
   const { t } = useTranslation();
   const accent = agentAccent(agent);
@@ -107,9 +110,18 @@ function AgentChip({
   return (
     <button
       type="button"
-      tabIndex={measure ? -1 : undefined}
+      role="tab"
+      aria-selected={active}
+      // Measurement chips are hidden clones: never tabbable, and they
+      // must not enter the roving-tabindex map.
+      tabIndex={measure ? -1 : active ? 0 : -1}
       data-chip-id={measure ? agent.agent_id : undefined}
       data-group-key={measure ? groupKey : undefined}
+      ref={(el) => {
+        if (measure || !tabRef) return;
+        if (el) tabRef.set(agent.agent_id, el);
+        else tabRef.delete(agent.agent_id);
+      }}
       className={`${active ? styles.chipActive : styles.chip}${
         disconnected ? ` ${styles.chipDisconnected}` : ""
       }`}
@@ -122,6 +134,7 @@ function AgentChip({
       <span
         className={styles.stateDot}
         data-state={disconnected ? "failed" : agent.state}
+        aria-hidden
       />
     </button>
   );
@@ -249,6 +262,8 @@ export default function AgentSelector({
     return () => observer.disconnect();
   }, [currentId, showGroupLabels, selectable, useBar]);
 
+  const barTabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+
   if (loading) {
     return (
       <div className={`${styles.wrap} ${className ?? ""}`} style={style}>
@@ -366,7 +381,36 @@ export default function AgentSelector({
                   <ChevronDown size={12} aria-hidden />
                 </button>
               </div>
-              <div data-testid="agent-selector-chips" className={styles.track}>
+              <div
+                data-testid="agent-selector-chips"
+                className={styles.track}
+                role="tablist"
+                aria-label={t("agentSelector.label")}
+                onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+                  // Roving focus (A11Y-9): Arrow/Home/End move selection
+                  // without leaving the list. Scoped to the real chips — the
+                  // measure clone is aria-hidden and never focusable.
+                  const keys = ["ArrowRight", "ArrowLeft", "Home", "End"];
+                  if (!keys.includes(event.key) || selectable.length === 0)
+                    return;
+                  event.preventDefault();
+                  const idx = selectable.findIndex(
+                    (a) => a.agent_id === currentId,
+                  );
+                  const next =
+                    event.key === "ArrowRight"
+                      ? (idx + 1) % selectable.length
+                      : event.key === "ArrowLeft"
+                      ? (idx - 1 + selectable.length) % selectable.length
+                      : event.key === "Home"
+                      ? 0
+                      : selectable.length - 1;
+                  const target = selectable[next];
+                  if (!target) return;
+                  setActiveAgent(target.agent_id);
+                  barTabRefs.current.get(target.agent_id)?.focus();
+                }}
+              >
                 {visibleGroups.map((group) => renderGroup(group, false))}
               </div>
               {showMore ? (
@@ -430,6 +474,7 @@ export default function AgentSelector({
                   <span
                     className={styles.stateDot}
                     data-state={disconnected ? "failed" : agent.state}
+                    aria-hidden
                   />
                 </div>
               );

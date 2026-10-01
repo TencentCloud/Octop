@@ -32,7 +32,12 @@ export function PackageSkillCard({
       onClick={onClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === "Enter" && onClick()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
     >
       <div className={skillStyles.cardBody}>
         <div className={skillStyles.cardHeader}>

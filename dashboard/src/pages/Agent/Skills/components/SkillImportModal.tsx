@@ -268,6 +268,15 @@ export function SkillImportModal({
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={() => !busy && fileInputRef.current?.click()}
+            role="button"
+            tabIndex={busy ? -1 : 0}
+            aria-label={t("skills.zipDropZoneLabel")}
+            onKeyDown={(e) => {
+              if ((e.key === "Enter" || e.key === " ") && !busy) {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
           >
             <div className={styles.zipDragDropIcon}>
               <svg viewBox="0 0 24 24" width="48" height="48" fill="none">
