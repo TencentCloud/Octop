@@ -363,8 +363,12 @@ def sanitize_inbound_filename(filename: str) -> str:
     base = _UNSAFE_FILENAME_CHARS.sub("_", base).strip(" .") or "upload.bin"
     if len(base) > 180:
         suffix = Path(base).suffix
-        stem = base[: 180 - len(suffix)] if suffix else base[:180]
-        base = f"{stem}{suffix}" if suffix else stem
+        # A suffix that fills the budget is no usable extension: subtracting its
+        # length makes the slice negative and returns a name *longer* than the
+        # input, which the local backend then rejects with OSError EINVAL.
+        if len(suffix) >= 180:
+            suffix = ""
+        base = base[: 180 - len(suffix)] + suffix
     return base or "upload.bin"
 
 

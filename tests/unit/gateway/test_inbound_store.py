@@ -35,6 +35,13 @@ def test_sanitize_inbound_filename_keeps_cjk() -> None:
     assert sanitize_inbound_filename("../evil.pdf") == "evil.pdf"
 
 
+def test_sanitize_inbound_filename_caps_oversized_suffix() -> None:
+    """A suffix filling the 180 budget is dropped, not sliced negatively."""
+    assert sanitize_inbound_filename("report." + "x" * 300) == "report." + "x" * 173
+    # A real extension still lands exactly on the cap.
+    assert len(sanitize_inbound_filename("a" * 200 + ".pdf")) == 180
+
+
 def test_timestamped_name_and_display_roundtrip() -> None:
     stored = build_timestamped_inbound_name("地球介绍.pptx", now=1783510288)
     assert stored == "1783510288_地球介绍.pptx"
