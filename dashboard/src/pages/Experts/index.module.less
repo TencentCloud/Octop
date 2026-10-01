@@ -1324,6 +1324,24 @@
   flex-wrap: wrap;
 }
 
+.toolbarSearch {
+  width: 220px;
+  min-width: 140px;
+  max-width: 100%;
+
+  @media (max-width: 640px) {
+    width: auto;
+    flex: 1 1 160px;
+  }
+}
+
+.searchEmpty {
+  padding: 28px 12px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fn-text-tertiary);
+}
+
 .viewModeLabel {
   display: inline-flex;
   align-items: center;

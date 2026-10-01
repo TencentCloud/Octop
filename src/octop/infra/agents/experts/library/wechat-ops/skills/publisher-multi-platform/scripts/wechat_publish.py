@@ -107,20 +107,35 @@ def get_env(name: str, required: bool = False) -> str | None:
     return val
 
 
+def load_token_cache() -> dict:
+    """Read the token cache file; raise when it is unreadable or malformed."""
+    with open(TOKEN_CACHE_FILE) as f:
+        cache = json.load(f)
+    if not isinstance(cache, dict):
+        raise ValueError("token cache is not a JSON object")
+    return cache
+
+
 def get_wechat_access_token() -> str:
     """Get WeChat API access token (with caching)."""
     app_id = get_env("WECHAT_APP_ID", required=True)
     app_secret = get_env("WECHAT_APP_SECRET", required=True)
 
-    # Check cache
+    # Check cache. An access token is scoped to one official account, so a
+    # record written for a different WECHAT_APP_ID must never be reused: the
+    # next publish would land in the previous account and still report success.
     if os.path.exists(TOKEN_CACHE_FILE):
         try:
-            with open(TOKEN_CACHE_FILE) as f:
-                cache = json.load(f)
-            if cache.get("expires_at", 0) > time.time() + 300:  # 5min buffer
-                return cache["access_token"]
-        except (json.JSONDecodeError, KeyError):
-            pass
+            cache = load_token_cache()
+        except (OSError, ValueError):
+            cache = {}
+        # 5min buffer; records without an app_id predate this check, so refetch.
+        if (
+            cache.get("app_id") == app_id
+            and cache.get("access_token")
+            and cache.get("expires_at", 0) > time.time() + 300
+        ):
+            return cache["access_token"]
 
     # Fetch new token
     resp = httpx.get(
@@ -146,8 +161,9 @@ def get_wechat_access_token() -> str:
             print("   Get your IP with: curl ifconfig.me", file=sys.stderr)
         sys.exit(1)
 
-    # Cache token
+    # Cache token, tagged with the account it was issued for.
     token_data = {
+        "app_id": app_id,
         "access_token": data["access_token"],
         "expires_at": time.time() + data.get("expires_in", 7200),
     }
@@ -826,15 +842,16 @@ def cmd_check(args):
     # 6. Token cache
     if os.path.exists(TOKEN_CACHE_FILE):
         try:
-            with open(TOKEN_CACHE_FILE) as f:
-                cache = json.load(f)
+            cache = load_token_cache()
             expires = cache.get("expires_at", 0)
-            if expires > time.time():
+            if cache.get("app_id") != app_id:
+                print("  ⚠️  Token cache: not valid for this WECHAT_APP_ID (will be re-fetched)")
+            elif expires > time.time():
                 remaining = int((expires - time.time()) / 60)
                 print(f"  ✅ Token cache: valid ({remaining} min remaining)")
             else:
                 print("  ⚠️  Token cache: expired")
-        except Exception:
+        except (OSError, ValueError):
             print("  ⚠️  Token cache: corrupted")
     else:
         print("  ℹ️  Token cache: not found (will fetch on first use)")
