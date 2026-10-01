@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- `octop completion install` 不再用平台编码读取 rc 文件：中文 Windows（GBK/cp936）上带中文注释的 `~/.bashrc` 之前会直接抛 `UnicodeDecodeError` 并退出 1，补全一行都写不进去；现在按字节查找 `_OCTOP_COMPLETE` 标记，UTF-8 与 ANSI/GBK 保存的 rc 都能正确识别「已安装」，不会重复追加
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
