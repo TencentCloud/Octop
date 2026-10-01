@@ -408,7 +408,11 @@ def _map_skillhub_install_error(err_msg: str, skill_name: str) -> Any | None:
     from octop.infra.utils.ssl_errors import looks_like_ssl_error  # noqa: PLC0415
 
     lower = err_msg.lower()
-    if looks_like_ssl_error(err_msg):
+    # The CLI echoes back the skill name we handed it, and looks_like_ssl_error()
+    # matches "ssl" as a bare substring, so a slug such as "openssl-audit" would
+    # classify an ordinary registry 404 as a broken TLS stack.
+    tls_text = lower.replace(skill_name.lower(), " ") if skill_name else lower
+    if looks_like_ssl_error(tls_text):
         return HTTPException(
             status_code=502,
             detail=error_message("SKILLHUB_SSL_FAILED", "en"),
