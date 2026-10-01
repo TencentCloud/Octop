@@ -9,6 +9,7 @@ import { ToolDetailsInline } from "./MessageBubble";
 import { ExpertMessageAvatar } from "./MessageSender";
 import { useAgent } from "../../../context/AgentContext";
 import { isTeamAgent, isTeamHostSpeaker } from "../../../utils/teamAgent";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { useTranslation } from "react-i18next";
 import styles from "../index.module.less";
 
@@ -39,20 +40,22 @@ export function TurnProcessBlocks({
   const { t } = useTranslation();
   const { agents, activeAgent } = useAgent();
   const isTeamRoom = isTeamAgent(activeAgent);
+  const speakerId =
+    rewritePeerSpeakerId(activeAgent?.agent_id, agentId) || agentId;
   const hostSpeaker = isTeamHostSpeaker(
     isTeamRoom,
-    agentId,
+    speakerId,
     activeAgent?.agent_id,
   );
   const expert =
-    (agentId && agents.find((item) => item.agent_id === agentId)) ||
+    (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
     (!isTeamRoom || hostSpeaker ? activeAgent : undefined);
   const avatarTooltip = hostSpeaker
     ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
     : expert?.name || undefined;
   const avatarProfileId = hostSpeaker
     ? activeAgent?.agent_id
-    : agentId || undefined;
+    : speakerId || undefined;
   const rendererVersion = useToolRendererVersion();
   const { pinned, folded } = useMemo(
     () => partitionPinnedTools(split),

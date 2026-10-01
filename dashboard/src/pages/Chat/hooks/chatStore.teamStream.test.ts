@@ -814,4 +814,21 @@ describe("team member live stream", () => {
     ingestHarnessChunk(SESSION, { type: "done", agent_id: "doctor" });
     expect(getSnapshot(SESSION).liveSpeakers).not.toContain("doctor");
   });
+
+  it("rewrites peer-local member speakers onto Bridge shadow ids", () => {
+    ingestHarnessChunk(
+      SESSION,
+      {
+        type: "token",
+        content: "please rest",
+        agent_id: "doctor",
+      },
+      "bridge:cid:host",
+    );
+    const { messages } = getSnapshot(SESSION);
+    expect(
+      messages.find((item) => item.content.includes("please rest"))
+        ?.speakerAgentId,
+    ).toBe("bridge:cid:doctor");
+  });
 });

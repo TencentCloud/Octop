@@ -8,12 +8,14 @@ import {
   Button,
   Divider,
   Typography,
+  Alert,
 } from "antd";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import { providerApi } from "../../../../api/modules/provider";
 import { connectorsApi } from "../../../../api/modules/connectors";
 import { octopThreadsApi } from "../../../../api/modules/octopThreads";
+import { isBridgeAgentId } from "../../../../utils/remoteExpert";
 import {
   buildDefaultFormValues,
   SCHEDULE_PRESETS,
@@ -85,6 +87,7 @@ export function JobDrawer({
   onSubmit,
 }: JobDrawerProps) {
   const { t } = useTranslation();
+  const remote = isBridgeAgentId(activeAgentId);
   const scheduleMode = Form.useWatch("_scheduleMode", form);
   const freshThread = Form.useWatch("fresh_thread", form);
 
@@ -128,11 +131,11 @@ export function JobDrawer({
     if (!open) return;
     setModelsLoading(true);
     void providerApi
-      .listResolvedModels()
+      .listResolvedModels(activeAgentId)
       .then((data) => setModels((data || []) as ModelPickerOption[]))
       .catch(() => setModels([]))
       .finally(() => setModelsLoading(false));
-  }, [open]);
+  }, [open, activeAgentId]);
 
   useEffect(() => {
     if (!open || !activeAgentId) {
@@ -170,7 +173,7 @@ export function JobDrawer({
     }
     setConnectorsLoading(true);
     void connectorsApi
-      .listInstances()
+      .listInstances(remote ? activeAgentId : undefined)
       .then((instances) => {
         setConnectorOptions(
           (instances || [])
@@ -189,7 +192,7 @@ export function JobDrawer({
       })
       .catch(() => setConnectorOptions([]))
       .finally(() => setConnectorsLoading(false));
-  }, [open]);
+  }, [open, activeAgentId, remote]);
 
   const modelOptions = buildModelSelectOptions(
     models,
@@ -205,6 +208,15 @@ export function JobDrawer({
       onClose={onClose}
       destroyOnHidden
     >
+      {remote ? (
+        <Alert
+          type="info"
+          showIcon
+          message={t("chat.remoteExpert.editBanner")}
+          description={t("chat.remoteExpert.editTasks")}
+          style={{ marginBottom: 16 }}
+        />
+      ) : null}
       <Form
         form={form}
         layout="vertical"
