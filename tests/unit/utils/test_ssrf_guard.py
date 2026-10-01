@@ -27,6 +27,8 @@ def test_issuer_base_domain() -> None:
         ("192.168.1.1", True),
         ("host.docker.internal", True),
         ("nas.local", True),
+        ("router.lan", True),
+        ("home-assistant.home", True),
         ("mcp.example.com", False),
         ("8.8.8.8", False),
     ],

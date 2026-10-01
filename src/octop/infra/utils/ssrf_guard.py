@@ -25,7 +25,7 @@ _LOCAL_HOSTNAMES = frozenset(
         "gateway.docker.internal",
     }
 )
-_LOCAL_HOST_SUFFIXES = (".local", ".localhost", ".internal")
+_LOCAL_HOST_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home")
 
 
 def is_private_or_local_host(host: str) -> bool:

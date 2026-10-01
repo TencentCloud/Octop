@@ -139,6 +139,8 @@ def test_rejects_public_http_and_allows_lan():
         "https://192.168.1.10:8443/mcp",
         "http://host.docker.internal:3000/mcp",
         "http://nas.local/mcp",
+        "http://router.lan/mcp",
+        "http://server.home/mcp",
     ):
         spec = normalize_server_spec(
             "lan",
