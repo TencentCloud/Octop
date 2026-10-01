@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
+import time
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +104,25 @@ def _setup_password_required(server: Any) -> bool:
     return bool(cfg and cfg.require_setup_password)
 
 
+def _setup_completed(server: Any) -> bool:
+    """True once ``/setup/finish`` has run (persisted flag, not a row count).
+
+    ``user_manager.count()`` was the previous signal, but it changes for reasons
+    unrelated to setup: inviting a second user, restoring a backup, or an
+    operational script creating an account all reopen the wizard window.
+    """
+    services = getattr(server, "services", None)
+    if services is not None and services.settings_repo is not None:
+        return services.settings_repo.get("setup_completed_at") is not None
+    return False
+
+
+def _mark_setup_completed(server: Any) -> None:
+    services = getattr(server, "services", None)
+    if services is not None and services.settings_repo is not None:
+        services.settings_repo.set("setup_completed_at", str(int(time.time())))
+
+
 def _enforce_wizard_open(server: Any) -> None:
     um = server.user_manager
     if um is not None and um.count() != 0:
@@ -110,8 +131,7 @@ def _enforce_wizard_open(server: Any) -> None:
 
 def _enforce_wizard_token_phase(server: Any) -> None:
     """Allow wizard token operations while initial setup is still in progress."""
-    um = server.user_manager
-    if um is not None and um.count() > 1:
+    if _setup_completed(server):
         raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
 
 
@@ -122,6 +142,37 @@ def _extract_bearer(authorization: str | None) -> str:
     if not token:
         raise OctopError(ErrorCode.SETUP_TOKEN_INVALID, "wizard token required")
     return token
+
+
+def _resume_authorized(authorization: str | None, server: Any) -> bool:
+    """True when the caller holds a credential that authorises a resume.
+
+    Accepts a still-valid wizard token, the mid-wizard admin JWT, or the wizard
+    password. Note that ``_authorize_setup_mid_wizard`` returns ``None`` to mean
+    "authorized via admin JWT" and the token string for the token path, so its
+    result must not be tested for truthiness.
+    """
+    try:
+        _authorize_setup_mid_wizard(authorization, server)
+        return True
+    except OctopError:
+        pass
+    return _wizard_password_matches(authorization, server)
+
+
+def _wizard_password_matches(authorization: str | None, server: Any) -> bool:
+    """True when the Bearer carries the CLI-generated wizard password.
+
+    Lets an operator who lost the in-memory token (e.g. after a restart) resume
+    the wizard without deleting the password file.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return False
+    presented = authorization.removeprefix("Bearer ").strip()
+    if not presented:
+        return False
+    expected = _wizard.read_password(Path.home())
+    return expected is not None and secrets.compare_digest(presented, expected)
 
 
 def _require_wizard_token(authorization: str | None, server: Any) -> str:
@@ -234,7 +285,6 @@ async def validate_wizard_token(
 @router.get("/setup/status", summary="Setup wizard status")
 async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
     """Whether initial admin creation is still required and wizard password file state."""
-    wizard_path = str(Path.home() / _wizard.WIZARD_FILE_NAME)
     password_required = _setup_password_required(server)
     um = server.user_manager
     setup_required = um is None or um.count() == 0
@@ -247,7 +297,6 @@ async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
         "wizard_password_exists": (
             password_required and _wizard.read_password(Path.home()) is not None
         ),
-        "wizard_password_path": wizard_path if password_required else None,
         "database_driver": database_driver,
         "database_bound": server.database_bound,
     }
@@ -382,13 +431,29 @@ async def initial_admin(
 
 
 @router.post("/setup/resume-wizard", summary="Issue a fresh wizard token mid-setup")
-async def resume_wizard(server: Any = Depends(get_server)) -> dict[str, Any]:
-    """Issue a new wizard token after the admin exists but before finish."""
+async def resume_wizard(
+    request: Request,
+    server: Any = Depends(get_server),
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """Issue a new wizard token after the admin exists but before finish.
+
+    Requires a credential: the wizard password, a still-valid wizard token, or
+    the mid-wizard admin JWT. This endpoint used to mint a token for an
+    anonymous caller, and that token authorises the token-gated ``finish``.
+    """
     _enforce_wizard_token_phase(server)
     require_database(server)
     assert server.user_manager is not None
     if server.user_manager.count() == 0:
         raise OctopError(ErrorCode.SETUP_TOKEN_INVALID, "admin not created yet", status=400)
+    client_ip = request.client.host if request.client else "unknown"
+    try:
+        server.wizard_tokens.record_attempt(client_ip)
+    except RateLimited:
+        raise OctopError(ErrorCode.SETUP_RATE_LIMITED, "too many attempts") from None
+    if not _resume_authorized(authorization, server):
+        raise OctopError(ErrorCode.SETUP_TOKEN_INVALID, "wizard password or token required")
     token, ttl = server.wizard_tokens.issue()
     return {"wizard_token": token, "expires_in": ttl}
 
@@ -426,6 +491,7 @@ async def finish(
     require_database(server)
     assert server.user_manager is not None
     wizard_token = _authorize_setup_mid_wizard(authorization, server)
+    _mark_setup_completed(server)
     if body.provider_draft is not None:
         try:
             await _apply_provider_draft(server, body.provider_draft)
