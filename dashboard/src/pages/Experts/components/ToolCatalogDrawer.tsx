@@ -22,6 +22,8 @@ export default function ToolCatalogDrawer({
       title={t("pageShell.tools.title")}
       open={open}
       onClose={onClose}
+      agentId={agentId}
+      remoteHintKey="editTools"
     >
       <ToolsTabs agentId={agentId || null} />
     </CatalogDrawer>

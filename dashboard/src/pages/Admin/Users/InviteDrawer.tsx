@@ -78,7 +78,7 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
   const [form] = Form.useForm<{
     note?: string;
     expires_in_days: number;
-    user_role_id?: string;
+    role?: string;
   }>();
 
   const refresh = useCallback(async () => {
@@ -103,7 +103,7 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
         form.setFieldsValue({
           expires_in_days: 7,
           note: undefined,
-          user_role_id: presetInviteRoleId(loaded, actorIsAdmin),
+          role: presetInviteRoleId(loaded, actorIsAdmin),
         });
       })
       .catch((err) => {
@@ -127,20 +127,20 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
   const onCreate = async (values: {
     note?: string;
     expires_in_days: number;
-    user_role_id?: string;
+    role?: string;
   }) => {
     setCreating(true);
     try {
       const row = await invitesApi.create({
         note: values.note?.trim() || null,
         expires_in_days: values.expires_in_days,
-        user_role_id: values.user_role_id,
+        role: values.role,
       });
       message.success(t("adminUsers.inviteCreateSuccess"));
       form.setFieldsValue({
         note: undefined,
         expires_in_days: 7,
-        user_role_id: presetInviteRoleId(roles, actorIsAdmin),
+        role: presetInviteRoleId(roles, actorIsAdmin),
       });
       setRows((prev) => [row, ...prev.filter((r) => r.id !== row.id)]);
       setPage(1);
@@ -200,7 +200,7 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
         className={styles.inviteCreateForm}
       >
         <Form.Item
-          name="user_role_id"
+          name="role"
           label={t("adminUsers.inviteRole")}
           extra={t("adminUsers.inviteRoleHint")}
           rules={[
@@ -297,8 +297,8 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
             {pagedRows.map((row) => {
               const matchedRole = roles.find(
                 (role) =>
-                  role.user_role_id === row.user_role_id ||
-                  (!row.user_role_id && role.user_role_name === row.role_name),
+                  role.user_role_id === row.role ||
+                  (!row.role && role.user_role_name === row.role_name),
               );
               return (
                 <div key={row.id} className={styles.inviteCard}>
@@ -352,7 +352,7 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
                           row.role_name,
                           roles,
                           t,
-                          row.user_role_id,
+                          row.role,
                         )}
                       />
                     ) : (

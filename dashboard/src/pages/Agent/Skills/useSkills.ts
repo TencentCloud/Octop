@@ -119,9 +119,12 @@ export function useSkills(
   } = useAsyncResource<SkillSpec[]>(
     [],
     async () => {
-      const rows = await request<ServerSummary[]>(`/agents/${agentId}/skills`, {
-        cache: "no-store",
-      });
+      const rows = await request<ServerSummary[]>(
+        `/agents/${encodeURIComponent(agentId!)}/skills`,
+        {
+          cache: "no-store",
+        },
+      );
       const list = rows || [];
       const corrupt = list.filter((row) => row.corrupt);
       if (corrupt.length > 0) {
@@ -147,7 +150,9 @@ export function useSkills(
       if (!agentId) return null;
       try {
         const row = await request<ServerDetail>(
-          `/agents/${agentId}/skills/${slug}`,
+          `/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(
+            slug,
+          )}`,
           { cache: "no-store" },
         );
         return toDetail(row);

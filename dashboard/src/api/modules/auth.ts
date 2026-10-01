@@ -50,7 +50,8 @@ export interface SsoIdentity {
 export interface OctopUser {
   id: number;
   username: string;
-  role: "admin" | "user";
+  /** Role-template public id: admin | user | custom ULID. */
+  role: string;
   display_name: string | null;
   locale: string;
   /** Module permission keys; admin responses include the full catalog. */
