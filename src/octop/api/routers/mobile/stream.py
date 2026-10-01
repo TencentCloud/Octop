@@ -62,6 +62,11 @@ _MAX_QUALITY = 95
 _MIN_FPS = 1.0
 _MAX_FPS = 20.0
 _CAPTURE_TIMEOUT_S = 8.0
+# Consecutive frames that may fail before the stream gives up, matching the
+# desktop loop (``api/routers/desktop/stream.py``). At 10 fps that is ~3 s of
+# retries — long enough to ride out a hiccup, short enough that an unplugged
+# phone nets an error frame instead of a silent freeze.
+_CAPTURE_MISS_LIMIT = 30
 _INPUT_TIMEOUT_S = 25.0
 _START_TIMEOUT_S = 15.0
 _H264_PROBE_S = 2.0
@@ -157,9 +162,10 @@ async def _stream_frames(
 ) -> None:
     interval = 1.0 / max_fps
     adb = find_adb()
+    miss_streak = 0
     while ws.application_state == WebSocketState.CONNECTED:
         loop = asyncio.get_running_loop()
-        t0 = asyncio.get_running_loop().time()
+        t0 = loop.time()
         try:
             captured = await asyncio.wait_for(
                 loop.run_in_executor(
@@ -175,12 +181,26 @@ async def _stream_frames(
                 timeout=_CAPTURE_TIMEOUT_S,
             )
         except TimeoutError:
-            logger.warning("mobile capture timed out (device=%s)", device)
-            await asyncio.sleep(interval)
-            continue
+            captured = None
         if captured is None:
+            miss_streak += 1
+            if miss_streak == 1:
+                logger.warning("mobile capture returned no frame (device=%s)", device)
+            if miss_streak >= _CAPTURE_MISS_LIMIT:
+                await _send_json(
+                    ws,
+                    {
+                        "type": "error",
+                        "message": (
+                            "screen capture failed repeatedly; "
+                            "the device may have been disconnected"
+                        ),
+                    },
+                )
+                return
             await asyncio.sleep(interval)
             continue
+        miss_streak = 0
         jpeg, _stream_w, _stream_h, device_w, device_h = captured
         # Tap/swipe mapping must use the real device resolution, not the
         # downscaled JPEG bitmap the canvas displays.
@@ -195,7 +215,7 @@ async def _stream_frames(
                 "height": _stream_h,
             },
         )
-        elapsed = asyncio.get_running_loop().time() - t0
+        elapsed = loop.time() - t0
         await asyncio.sleep(max(0.0, interval - elapsed))
 
 
