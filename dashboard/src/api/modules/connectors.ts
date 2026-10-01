@@ -196,7 +196,12 @@ export const connectorsApi = {
   detectLocalWeKnora: () =>
     request<WeKnoraLocalDetection>("/connectors/weknora/detect-local"),
 
-  listInstances: () => request<ConnectorInstance[]>("/connector-instances"),
+  listInstances: (agentId?: string | null) =>
+    request<ConnectorInstance[]>("/connector-instances", {
+      headers: agentId?.trim()
+        ? { "X-Octop-Agent-Id": agentId.trim() }
+        : undefined,
+    }),
 
   getInstance: (instanceId: string) =>
     request<ConnectorInstanceDetail>(

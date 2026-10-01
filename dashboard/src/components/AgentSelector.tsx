@@ -1,9 +1,12 @@
 import { Select, Spin } from "antd";
+import type { DefaultOptionType } from "antd/es/select";
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAgent, type OctopAgent } from "../context/AgentContext";
 import { ownedSoloExperts } from "../utils/sharedExpert";
+import { groupExpertsByConnection } from "../utils/remoteExpert";
 import { ExpertIcon } from "../pages/Experts/components/iconForName";
+import RemoteExpertHint from "../pages/Chat/components/RemoteExpertHint";
 import styles from "./AgentSelector.module.less";
 
 interface AgentSelectorProps {
@@ -52,18 +55,29 @@ function AgentChip({
   active: boolean;
   onSelect: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const accent = agentAccent(agent);
+  const disconnected = Boolean(agent.bridge_disconnected);
+  const title = disconnected
+    ? `${agent.name} · ${t("agentSelector.disconnected")}`
+    : agent.description ?? agent.name;
   return (
     <button
       type="button"
-      className={active ? styles.chipActive : styles.chip}
+      className={`${active ? styles.chipActive : styles.chip}${
+        disconnected ? ` ${styles.chipDisconnected}` : ""
+      }`}
       style={{ "--chip-accent": accent } as React.CSSProperties}
       onClick={() => onSelect(agent.agent_id)}
-      title={agent.description ?? agent.name}
+      title={title}
     >
       <AgentIcon agent={agent} size={16} className={styles.chipIcon} />
       <span className={styles.chipName}>{agent.name}</span>
-      <span className={styles.stateDot} data-state={agent.state} />
+      <RemoteExpertHint agent={agent} compact />
+      <span
+        className={styles.stateDot}
+        data-state={disconnected ? "failed" : agent.state}
+      />
     </button>
   );
 }
@@ -80,6 +94,11 @@ export default function AgentSelector({
   const { t } = useTranslation();
   const { agents, activeAgentId, setActiveAgent, loading } = useAgent();
   const selectable = useMemo(() => ownedSoloExperts(agents), [agents]);
+  const groups = useMemo(
+    () => groupExpertsByConnection(selectable, t("agentSelector.localGroup")),
+    [selectable, t],
+  );
+  const showGroups = groups.length > 1;
 
   useEffect(() => {
     if (loading || selectable.length === 0) return;
@@ -106,6 +125,19 @@ export default function AgentSelector({
   const useBar =
     variant === "bar" || (variant === "auto" && selectable.length <= 6);
 
+  const selectOptions: DefaultOptionType[] = showGroups
+    ? groups.map((group) => ({
+        label: group.disconnected
+          ? `${group.label} · ${t("agentSelector.disconnected")}`
+          : group.label,
+        options: group.agents.map((agent) =>
+          selectOption(agent, t("agentSelector.disconnected")),
+        ),
+      }))
+    : selectable.map((agent) =>
+        selectOption(agent, t("agentSelector.disconnected")),
+      );
+
   return (
     <div className={`${styles.wrap} ${className ?? ""}`} style={style}>
       {showLabel && (
@@ -118,13 +150,25 @@ export default function AgentSelector({
           role="tablist"
           aria-label={t("agentSelector.label")}
         >
-          {selectable.map((agent) => (
-            <AgentChip
-              key={agent.agent_id}
-              agent={agent}
-              active={agent.agent_id === currentId}
-              onSelect={setActiveAgent}
-            />
+          {groups.map((group) => (
+            <div key={group.key} className={styles.group}>
+              {showGroups ? (
+                <span className={styles.groupLabel}>
+                  {group.label}
+                  {group.disconnected
+                    ? ` · ${t("agentSelector.disconnected")}`
+                    : ""}
+                </span>
+              ) : null}
+              {group.agents.map((agent) => (
+                <AgentChip
+                  key={agent.agent_id}
+                  agent={agent}
+                  active={agent.agent_id === currentId}
+                  onSelect={setActiveAgent}
+                />
+              ))}
+            </div>
           ))}
         </div>
       ) : (
@@ -135,28 +179,12 @@ export default function AgentSelector({
           listHeight={360}
           popupMatchSelectWidth={320}
           optionLabelProp="label"
-          options={selectable.map((agent) => {
-            const accent = agentAccent(agent);
-            return {
-              value: agent.agent_id,
-              label: (
-                <span className={styles.optionRow}>
-                  <AgentIcon
-                    agent={agent}
-                    size={14}
-                    className={styles.optionIcon}
-                    style={{ color: accent }}
-                  />
-                  <span className={styles.chipName}>{agent.name}</span>
-                </span>
-              ),
-              title: agent.name,
-            };
-          })}
+          options={selectOptions}
           optionRender={(opt) => {
             const agent = selectable.find((a) => a.agent_id === opt.value);
             if (!agent) return opt.label;
             const accent = agentAccent(agent);
+            const disconnected = Boolean(agent.bridge_disconnected);
             return (
               <div className={styles.optionRowMulti}>
                 <AgentIcon
@@ -167,11 +195,19 @@ export default function AgentSelector({
                 />
                 <div className={styles.optionMeta}>
                   <div className={styles.optionName}>{agent.name}</div>
-                  {agent.description ? (
+                  {disconnected ? (
+                    <div className={styles.optionDesc}>
+                      {t("agentSelector.disconnected")}
+                    </div>
+                  ) : agent.description ? (
                     <div className={styles.optionDesc}>{agent.description}</div>
                   ) : null}
                 </div>
-                <span className={styles.stateDot} data-state={agent.state} />
+                <RemoteExpertHint agent={agent} compact />
+                <span
+                  className={styles.stateDot}
+                  data-state={disconnected ? "failed" : agent.state}
+                />
               </div>
             );
           }}
@@ -179,4 +215,25 @@ export default function AgentSelector({
       )}
     </div>
   );
+}
+
+function selectOption(agent: OctopAgent, disconnectedLabel: string) {
+  const accent = agentAccent(agent);
+  const disconnected = Boolean(agent.bridge_disconnected);
+  return {
+    value: agent.agent_id,
+    label: (
+      <span className={styles.optionRow}>
+        <AgentIcon
+          agent={agent}
+          size={14}
+          className={styles.optionIcon}
+          style={{ color: accent }}
+        />
+        <span className={styles.chipName}>{agent.name}</span>
+        <RemoteExpertHint agent={agent} compact />
+      </span>
+    ),
+    title: disconnected ? `${agent.name} · ${disconnectedLabel}` : agent.name,
+  };
 }

@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.2b3-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.2b5-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -53,7 +53,7 @@
 | 🔒 | **更安全** | JWT 多用户隔离、工具审批、Shell 命令防护与敏感信息脱敏，数据留在本地 |
 | 🔌 | **Connector 拓展体系** | 一键接入腾讯全家桶（文档 / 会议 / 新闻等），OAuth 与 MCP 网关轻松扩展 |
 | 💾 | **可插拔工作区后端** | 本地目录、Docker 沙箱、PostgreSQL 或 COS/S3 存放 Agent 文件 — 与控制面数据库分离 |
-| 🧠 | **可迁移记忆系统** | 基于 [octop-memory](https://github.com/TencentCloud/octop-memory)，记忆随工作区迁移 |
+| 🧠 | **可迁移记忆系统** | 基于 [Octop Memory](https://github.com/TencentCloud/octop-memory)，记忆随工作区迁移 |
 | 📚 | **知识库** | 基于文档的 RAG 检索；支持同实例共享语料，让回答锚定私有知识 |
 | 🧩 | **插件** | 支持第三方插件扩展；内置插件随安装注入，按需一键启用 |
 | ↔️ | **ACP 双向集成** | `octop acp` 增强 IDE 与终端 AI；对话中委派 OpenCode / Claude Code 等 |
@@ -89,8 +89,8 @@ Octop 是面向家庭与小团队的自托管 AI 助手平台。单进程同时�
 |------|------|
 | **语言** | Python 3.12+ |
 | **Web 框架** | FastAPI + uvicorn |
-| **Agent 运行时** | [octop-harness](https://github.com/TencentCloud/octop-harness) |
-| **IM 桥接** | [octop-gateway](https://github.com/TencentCloud/octop-gateway) |
+| **Agent 运行时** | [Octop Harness](https://github.com/TencentCloud/octop-harness) |
+| **IM 桥接** | [Octop Gateway](https://github.com/TencentCloud/octop-gateway) |
 | **控制平面数据库** | SQLite (WAL，默认) 或 PostgreSQL（可选） |
 | **前端** | React 18 + TypeScript + Vite + Ant Design |
 | **调度** | APScheduler |
@@ -99,10 +99,10 @@ Octop 是面向家庭与小团队的自托管 AI 助手平台。单进程同时�
 
 Octop 基于一系列 Octop Harness 工程实践构建——它将这些专注的运行时组合进同一个进程：
 
-- **[octop-harness](https://github.com/TencentCloud/octop-harness)** — Agent 运行时：模型路由、工具、技能与对话检查点。
-- **[octop-gateway](https://github.com/TencentCloud/octop-gateway)** — 多平台 IM 通道桥接，将各类入站消息归一为统一的处理管线。
-- **[octop-memory](https://github.com/TencentCloud/octop-memory)** — 分层记忆与全文检索，让 Agent 的记忆随工作区一同迁移。
-- **[octop-browser](https://github.com/TencentCloud/octop-browser)** — 基于 CDP 的浏览器自动化，支持持久化配置，用于网页类任务。
+- **[Octop Harness](https://github.com/TencentCloud/octop-harness)** — Agent 运行时：模型路由、工具、技能与对话检查点。
+- **[Octop Gateway](https://github.com/TencentCloud/octop-gateway)** — 多平台 IM 通道桥接，将各类入站消息归一为统一的处理管线。
+- **[Octop Memory](https://github.com/TencentCloud/octop-memory)** — 分层记忆与全文检索，让 Agent 的记忆随工作区一同迁移。
+- **[Octop Browser](https://github.com/TencentCloud/octop-browser)** — 基于 CDP 的浏览器自动化，支持持久化配置，用于网页类任务。
 
 Octop 不依赖外部消息队列或中间件，而是通过进程内的 `HarnessProcessor` 统一路由所有入口——Web UI、IM 与定时任务。最终呈现为一个可重启恢复的单进程：启动时整个状态都从控制面数据库重建（默认 `~/.octop/octop.db`，亦可配置 PostgreSQL）。
 
@@ -548,10 +548,10 @@ cd dashboard && npx tsc -b
 
 | 项目 | 描述 |
 |------|------|
-| [octop-harness](https://github.com/TencentCloud/octop-harness) | Agent 运行时 — 模型路由、工具、Skill、检查点 |
-| [octop-gateway](https://github.com/TencentCloud/octop-gateway) | 多平台 IM 通道桥接 |
-| [octop-memory](https://github.com/TencentCloud/octop-memory) | 层级召回与全文搜索 |
-| [octop-browser](https://github.com/TencentCloud/octop-browser) | CDP 浏览器自动化，支持 profile 持久登录 |
+| [Octop Harness](https://github.com/TencentCloud/octop-harness) | Agent 运行时 — 模型路由、工具、Skill、检查点 |
+| [Octop Gateway](https://github.com/TencentCloud/octop-gateway) | 多平台 IM 通道桥接 |
+| [Octop Memory](https://github.com/TencentCloud/octop-memory) | 层级召回与全文搜索 |
+| [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP 浏览器自动化，支持 profile 持久登录 |
 
 ## 💬 客户企业微信群
 
