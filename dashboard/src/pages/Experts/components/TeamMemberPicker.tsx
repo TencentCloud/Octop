@@ -2,7 +2,10 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Input } from "antd";
 import { Check } from "lucide-react";
-import { isOwnedExpert } from "../../../utils/sharedExpert";
+import {
+  isOwnedExpert,
+  isSharedExpertViewer,
+} from "../../../utils/sharedExpert";
 import { isBridgeAgentId } from "../../../utils/remoteExpert";
 import { ExpertIcon } from "./iconForName";
 import styles from "../index.module.less";
@@ -17,6 +20,7 @@ export interface TeamMemberOption {
   kind?: string;
   is_shared?: boolean;
   is_owner?: boolean;
+  owner_username?: string | null;
   bridge?: boolean | null;
 }
 
@@ -82,7 +86,12 @@ export default function TeamMemberPicker({
       ? candidates.filter((item) => {
           const name = item.name.toLowerCase();
           const desc = (item.description ?? "").toLowerCase();
-          return name.includes(needle) || desc.includes(needle);
+          const owner = (item.owner_username ?? "").toLowerCase();
+          return (
+            name.includes(needle) ||
+            desc.includes(needle) ||
+            owner.includes(needle)
+          );
         })
       : candidates;
     return [...rows].sort((left, right) => {
@@ -124,6 +133,14 @@ export default function TeamMemberPicker({
           {filtered.map((expert) => {
             const active = selectedSet.has(expert.agent_id);
             const accent = expert.color || "#0d9488";
+            const description = [
+              isSharedExpertViewer(expert) && expert.owner_username
+                ? t("experts.share.fromOwner", { name: expert.owner_username })
+                : null,
+              expert.description?.trim(),
+            ]
+              .filter(Boolean)
+              .join(" · ");
             return (
               <button
                 key={expert.agent_id}
@@ -151,8 +168,11 @@ export default function TeamMemberPicker({
                 </div>
                 <div className={styles.memberPickBody}>
                   <div className={styles.memberPickName}>{expert.name}</div>
-                  <div className={styles.memberPickDesc}>
-                    {expert.description?.trim() || "\u00a0"}
+                  <div
+                    className={styles.memberPickDesc}
+                    title={description || undefined}
+                  >
+                    {description || "\u00a0"}
                   </div>
                 </div>
               </button>

@@ -59,8 +59,14 @@ export default function TeamDrawer({
   const [templateLoading, setTemplateLoading] = useState(false);
   const [rosterExtras, setRosterExtras] = useState<TeamMemberOption[]>([]);
   const pickerExperts = useMemo(
-    () => mergeTeamPickerExperts(experts, rosterExtras),
-    [experts, rosterExtras],
+    () =>
+      mergeTeamPickerExperts(
+        mode === "create"
+          ? experts.filter((expert) => expert.state === "running")
+          : experts,
+        rosterExtras,
+      ),
+    [experts, rosterExtras, mode],
   );
 
   useEffect(() => {
