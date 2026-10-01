@@ -177,6 +177,7 @@ def _remote_extractor(monkeypatch: pytest.MonkeyPatch, reply: object) -> ocr._Re
         "I don't see an image attached to your message. Please upload the image you'd "
         "like me to transcribe, and I'll provide the exact transcription.",
         "未收到图片，请上传图片后重试。",
+        "抱歉，没有提供图片，请上传图片后再试。",
     ],
 )
 def test_remote_ocr_ignores_no_image_refusal(
