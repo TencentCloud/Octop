@@ -14,6 +14,7 @@
 
 ### 修复
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
+- 工作区文件、知识库文档、轨迹导出等下载/预览接口遇到名字里含 CR、LF、DEL 的文件名时整条请求失败：``content_disposition()`` 的 ASCII 分支此前只去掉目录分隔与首尾空白，控制字符原样写进响应头，而 uvicorn 两条 HTTP 协议栈都在发送响应头时拒绝它（h11 ``Illegal header value``、httptools ``Invalid HTTP header value.``），客户端拿到的是零字节而非文件。现在按 ``sanitize_inbound_filename`` 已有的同一字符集把 ``\x00-\x1f``/``\x7f`` 替换为 ``_``，非 ASCII 名的 RFC 5987 分支保持逐字节不变（Fixes #1456）。
 
 ## [1.0.2b5] - 2026-09-29
 

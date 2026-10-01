@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import PurePosixPath
 from urllib.parse import quote
+
+# ASGI transports reject control characters in a header value outright, not silently.
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def _basename(filename: str) -> str:
@@ -25,11 +29,13 @@ def content_disposition(filename: str, *, disposition: str = "attachment") -> st
 
     HTTP header values must encode as latin-1. Non-ASCII names use RFC 5987
     ``filename*`` plus an ASCII ``filename`` fallback (``download`` + extension).
+    Control characters never reach the quoted ASCII form — they are not legal in
+    a header value.
     """
     base = _basename(filename)
     starred = quote(base, safe="")
     if base.isascii():
-        escaped = base.replace("\\", "\\\\").replace('"', '\\"')
+        escaped = _CONTROL_CHARS.sub("_", base).replace("\\", "\\\\").replace('"', '\\"')
         return f'{disposition}; filename="{escaped}"'
     fallback = _ascii_fallback(base)
     return f"{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{starred}"
