@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Input } from "antd";
 import { Check } from "lucide-react";
 import { isOwnedExpert } from "../../../utils/sharedExpert";
+import { isBridgeAgentId } from "../../../utils/remoteExpert";
 import { ExpertIcon } from "./iconForName";
 import styles from "../index.module.less";
 
@@ -16,6 +17,7 @@ export interface TeamMemberOption {
   kind?: string;
   is_shared?: boolean;
   is_owner?: boolean;
+  bridge?: boolean | null;
 }
 
 interface TeamMemberPickerProps {
@@ -26,6 +28,7 @@ interface TeamMemberPickerProps {
 
 export function isPickableExpert(item: TeamMemberOption): boolean {
   if (item.kind === "team") return false;
+  if (item.bridge || isBridgeAgentId(item.agent_id)) return false;
   return isOwnedExpert(item) || Boolean(item.is_shared);
 }
 
@@ -59,6 +62,10 @@ export default function TeamMemberPicker({
     [value, experts],
   );
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const [frozenFrontIds, setFrozenFrontIds] = useState<Set<string> | null>(
+    null,
+  );
+  const frontIds = frozenFrontIds ?? selectedSet;
 
   const candidates = useMemo(() => {
     const byId = new Map<string, TeamMemberOption>();
@@ -79,14 +86,17 @@ export default function TeamMemberPicker({
         })
       : candidates;
     return [...rows].sort((left, right) => {
-      const leftOn = selectedSet.has(left.agent_id) ? 0 : 1;
-      const rightOn = selectedSet.has(right.agent_id) ? 0 : 1;
+      const leftOn = frontIds.has(left.agent_id) ? 0 : 1;
+      const rightOn = frontIds.has(right.agent_id) ? 0 : 1;
       if (leftOn !== rightOn) return leftOn - rightOn;
       return left.name.localeCompare(right.name);
     });
-  }, [candidates, query, selectedSet]);
+  }, [candidates, frontIds, query]);
 
   const toggle = (id: string) => {
+    if (frozenFrontIds == null) {
+      setFrozenFrontIds(new Set(selected));
+    }
     onChange?.(
       selectedSet.has(id)
         ? selected.filter((item) => item !== id)

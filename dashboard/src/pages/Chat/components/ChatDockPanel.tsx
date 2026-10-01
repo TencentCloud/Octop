@@ -68,6 +68,8 @@ interface ChatDockPanelProps {
   onCloseTab: (id: DockTabId) => void;
   onOpenFile: (path: string, agentId?: string | null) => void;
   browserEnvironment?: DisplayEnvironment;
+  /** When set, Chat dock browser talks to the peer harness via Bridge. */
+  bridgeConnectionId?: string | null;
   threadId?: string | null;
   isStreamingTurn?: boolean;
   /**
@@ -200,6 +202,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   onCloseTab,
   onOpenFile,
   browserEnvironment = "desktop",
+  bridgeConnectionId = null,
   threadId = null,
   isStreamingTurn = false,
   surfaceVisible = true,
@@ -376,7 +379,9 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
     return handler;
   }, []);
 
-  const sessionId = resolveBrowserProfile(currentUser?.id);
+  const sessionId = bridgeConnectionId
+    ? null
+    : resolveBrowserProfile(currentUser?.id);
   const activeTab =
     openTabs.find((tab) => tab.id === activeTabId) ?? openTabs[0] ?? null;
   const terminalVisible = surfaceVisible && activeTab?.kind === "terminal";
@@ -605,6 +610,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             <BrowserWorkspace
               sessionId={sessionId}
               environment={browserEnvironment}
+              bridgeConnectionId={bridgeConnectionId}
               hideHeaderRefresh
               style={{ flex: 1, minHeight: 0 }}
               onRefreshReady={handleBrowserRefreshReady}

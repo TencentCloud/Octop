@@ -107,12 +107,12 @@ export function snapshotRoleLabel(
   name: string | null | undefined,
   roles: UserRole[],
   t: TFunction,
-  userRoleId?: string | null,
+  roleId?: string | null,
 ): string {
   const trimmed = name?.trim();
   if (!trimmed) return "";
-  const match = userRoleId
-    ? roles.find((role) => role.user_role_id === userRoleId)
+  const match = roleId
+    ? roles.find((role) => role.user_role_id === roleId)
     : roles.find((role) => role.user_role_name === trimmed);
   return match ? userRoleLabel(match, t) : trimmed;
 }
@@ -121,8 +121,8 @@ export type UserRoleDrift = "missing" | "changed";
 
 export function userRoleDrift(
   row: {
+    role?: string | null;
     role_name?: string | null;
-    user_role_id?: string | null;
     permissions?: string[];
     workspace_root_dir?: string | null;
     token_quota?: number | null;
@@ -130,10 +130,19 @@ export function userRoleDrift(
   },
   roles: UserRole[],
 ): UserRoleDrift | null {
+  const roleId = row.role?.trim() || null;
+  if (
+    roleId &&
+    roleId !== SEEDED_ADMIN_ROLE_ID &&
+    roleId !== SEEDED_USER_ROLE_ID &&
+    !roles.some((item) => item.user_role_id === roleId)
+  ) {
+    return "missing";
+  }
   const name = row.role_name?.trim();
   if (!name) return null;
-  const role = row.user_role_id
-    ? roles.find((item) => item.user_role_id === row.user_role_id)
+  const role = roleId
+    ? roles.find((item) => item.user_role_id === roleId)
     : roles.find((item) => item.user_role_name === name);
   if (!role) return "missing";
   if (role.system_role === "admin") return null;
