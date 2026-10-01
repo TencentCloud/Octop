@@ -11,6 +11,7 @@ from octop.api.common.agent import assert_agent_access, require_agent_row, user_
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.experts.catalog import resolve_agent_display_task_examples
 from octop.infra.cron.task_type import (
+    DEFAULT_CRON_TASK_TYPE,
     normalize_cron_task_type,
     require_cron_name,
     require_cron_prompt,
@@ -30,7 +31,7 @@ class CronCreateBody(BaseModel):
     fresh_thread: bool = False
     enabled: bool = True
     model: str | None = None
-    task_type: str = "text"
+    task_type: str = DEFAULT_CRON_TASK_TYPE
     mcp_servers: list[str] = Field(default_factory=list)
 
 

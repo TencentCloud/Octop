@@ -139,6 +139,48 @@ async def test_create_with_valid_cron_expr(env: Any) -> None:
     assert r.status_code == 201, r.text
 
 
+# --- task_type default --------------------------------------------------------
+
+
+async def test_create_without_task_type_defaults_to_agent(env: Any) -> None:
+    """``docs/api.md`` documents the default as ``"agent"``; the HTTP create body
+    must not pick ``"text"``, which echoes the prompt into the thread without
+    ever running the model."""
+    c, _srv, alice_auth, _bob_auth, aid = env
+    r = await c.post(
+        f"/api/agents/{aid}/cron",
+        headers=alice_auth,
+        json={
+            "trigger": "interval:3600",
+            "prompt": "check disk usage",
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["task_type"] == "agent"
+
+    # the row is persisted that way, not just echoed in the response
+    r = await c.get(f"/api/agents/{aid}/cron/{body['id']}", headers=alice_auth)
+    assert r.status_code == 200
+    assert r.json()["task_type"] == "agent"
+
+
+async def test_create_with_explicit_task_type_text_is_kept(env: Any) -> None:
+    """The default is the only thing under test — an explicit ``"text"`` still wins."""
+    c, _srv, alice_auth, _bob_auth, aid = env
+    r = await c.post(
+        f"/api/agents/{aid}/cron",
+        headers=alice_auth,
+        json={
+            "trigger": "interval:3600",
+            "prompt": "reminder",
+            "task_type": "text",
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["task_type"] == "text"
+
+
 # --- Run-now ------------------------------------------------------------------
 
 
