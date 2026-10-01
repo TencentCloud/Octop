@@ -61,6 +61,18 @@ class ProviderCreateBody(BaseModel):
     note: str | None = None
 
 
+def _with_default_model_first(models: list[dict[str, Any]], model: str) -> list[dict[str, Any]]:
+    """Return *models* with *model* moved to the front, which is how the UI reads the default.
+
+    Leaves the list untouched when the id is not part of it.
+    """
+    ids = [m.get("id") for m in models]
+    if model not in ids:
+        return models
+    idx = ids.index(model)
+    return [models[idx], *models[:idx], *models[idx + 1 :]]
+
+
 class ProviderPatchBody(BaseModel):
     kind: str | None = None
     base_url: str | None = None
@@ -70,6 +82,10 @@ class ProviderPatchBody(BaseModel):
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
+    model: str | None = None
+    # The dashboard's "default model" dropdown sends this. Without the field
+    # pydantic ignored it, so the save reported success while the default model
+    # never changed - the UI reads the default from the first entry of the list.
 
 
 # Fields that affect harness factory / agent runtime when patched.
@@ -94,6 +110,7 @@ def _provider_patch_updates(
     body: ProviderPatchBody,
     *,
     current_extra_json: str | None,
+    current_models: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Map an explicit JSON patch onto repo kwargs.
 
@@ -104,6 +121,10 @@ def _provider_patch_updates(
 
     ``stream_usage`` is stored inside ``extra_json``. A patch that only sets
     that flag rewrites the current blob and must not clear the API key.
+
+    ``model`` is the dashboard's default-model choice. A non-empty id is moved
+    to the front of the catalog (that is the slot the UI reads back). An
+    omitted ``model`` leaves the catalog order alone.
     """
     fields = body.model_fields_set
     updates: dict[str, Any] = {}
@@ -119,8 +140,23 @@ def _provider_patch_updates(
             updates["extra_json"] = merge_stream_usage_extra(base, body.stream_usage)
         else:
             updates["extra_json"] = body.extra_json
+    models_to_store: list[dict[str, Any]] | None = None
+    write_models = False
     if "models" in fields:
-        updates["models_json"] = json.dumps(body.models) if body.models is not None else None
+        write_models = True
+        models_to_store = list(body.models) if body.models is not None else None
+    chosen = body.model.strip() if isinstance(body.model, str) else ""
+    if "model" in fields and chosen:
+        base = models_to_store if write_models else list(current_models or [])
+        if base is not None:
+            reordered = _with_default_model_first(base, chosen)
+            if write_models or reordered != base:
+                models_to_store = reordered
+                write_models = True
+    if write_models:
+        updates["models_json"] = (
+            json.dumps(models_to_store) if models_to_store is not None else None
+        )
     if "note" in fields:
         updates["note"] = _blank_to_none(body.note)
     if "enabled" in fields:
@@ -297,7 +333,11 @@ async def admin_patch_provider(
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
     server.services.provider_repo.update(
         provider_id,
-        **_provider_patch_updates(body, current_extra_json=row.extra_json),
+        **_provider_patch_updates(
+            body,
+            current_extra_json=row.extra_json,
+            current_models=cast("list[dict[str, Any]]", row.get_models()),
+        ),
     )
     if body.models is not None:
         clear_stale_pins_for_provider(
