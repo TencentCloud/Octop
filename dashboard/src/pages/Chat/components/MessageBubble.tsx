@@ -49,6 +49,7 @@ import {
   isTeamAgent,
   isTeamHostSpeaker as isTeamHostSpeakerId,
 } from "../../../utils/teamAgent";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import {
   accountDisplayName,
   accountInitials,
@@ -552,18 +553,24 @@ function MessageBubble({
   const serverTimezone = useServerTimezone();
   const user = useCurrentUser();
   const { agents, activeAgent } = useAgent();
-  const speakerId = message.speakerAgentId || agentId;
+  const isTeamRoom = isTeamAgent(activeAgent);
+  const speakerId =
+    rewritePeerSpeakerId(
+      activeAgent?.agent_id,
+      message.speakerAgentId || agentId,
+    ) ||
+    message.speakerAgentId ||
+    agentId;
+  const isTeamHostSpeaker = isTeamHostSpeakerId(
+    isTeamRoom,
+    speakerId,
+    activeAgent?.agent_id,
+  );
   const expert = useMemo(
     () =>
       (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
-      activeAgent,
-    [speakerId, agents, activeAgent],
-  );
-  const isTeamRoom = isTeamAgent(activeAgent);
-  const isTeamHostSpeaker = isTeamHostSpeakerId(
-    isTeamRoom,
-    message.speakerAgentId,
-    activeAgent?.agent_id,
+      (isTeamHostSpeaker || !isTeamRoom ? activeAgent : undefined),
+    [speakerId, agents, activeAgent, isTeamHostSpeaker, isTeamRoom],
   );
   const avatarTooltip = isTeamHostSpeaker
     ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
@@ -756,12 +763,12 @@ function MessageBubble({
         </span>
       }
     />
-  ) : expert ? (
+  ) : expert || avatarProfileId ? (
     <ExpertMessageAvatar
-      name={expert.name}
-      color={expert.color}
-      iconName={expert.icon_name}
-      iconUrl={expert.icon_url}
+      name={expert?.name || avatarProfileId}
+      color={expert?.color}
+      iconName={expert?.icon_name}
+      iconUrl={expert?.icon_url}
       tooltip={avatarTooltip}
       profileAgentId={avatarProfileId}
     />

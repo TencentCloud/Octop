@@ -60,7 +60,6 @@ import {
   ShieldCheck,
   Trash2,
   User,
-  UserRound,
   Mail,
   X,
 } from "lucide-react";
@@ -102,7 +101,8 @@ const { Text } = Typography;
 interface UserRow {
   id: number;
   username: string;
-  role: "admin" | "user";
+  /** Role-template public id: admin | user | custom ULID. */
+  role: string;
   display_name: string | null;
   email?: string | null;
   has_password?: boolean;
@@ -115,7 +115,6 @@ interface UserRow {
   created_at?: number;
   permissions?: string[];
   role_name?: string | null;
-  user_role_id?: string | null;
   avatar_url?: string | null;
   avatar_icon?: string | null;
   workspace_root_dir?: string | null;
@@ -151,18 +150,16 @@ interface CreateValues extends PolicyFormValues {
   email?: string;
   password: string;
   confirm: string;
-  role: "admin" | "user";
+  role: string;
   permissions?: string[];
-  user_role_id?: string | null;
   role_name?: string | null;
 }
 
 interface EditValues extends PolicyFormValues {
   display_name?: string;
   email?: string;
-  role: "admin" | "user";
+  role: string;
   permissions?: string[];
-  user_role_id?: string | null;
   role_name?: string | null;
 }
 
@@ -194,6 +191,7 @@ function UserRoleField({
   actorIsAdmin,
   diverged,
   snapshotName,
+  disabled,
 }: {
   roles: UserRole[];
   workspaceRootAllowed: boolean;
@@ -202,11 +200,12 @@ function UserRoleField({
   actorIsAdmin?: boolean;
   diverged?: boolean;
   snapshotName?: string | null;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
   const form = Form.useFormInstance();
-  const selectedId = Form.useWatch("user_role_id", form);
-  const showStale = Boolean(staleName) && selectedId == null;
+  const selectedId = Form.useWatch("role", form) as string | undefined;
+  const showStale = Boolean(staleName) && !selectedId;
   const selectedRole = roles.find((role) => role.user_role_id === selectedId);
   const showDiverged =
     Boolean(diverged) &&
@@ -217,7 +216,7 @@ function UserRoleField({
       ? roles.filter((role) => role.system_role !== "admin")
       : roles;
   const committedId = useRef<string | null>(
-    (form.getFieldValue("user_role_id") as string | null | undefined) ?? null,
+    (form.getFieldValue("role") as string | null | undefined) ?? null,
   );
   const committedName = useRef<string | null>(
     (form.getFieldValue("role_name") as string | null | undefined) ?? null,
@@ -225,12 +224,14 @@ function UserRoleField({
 
   const applyRole = (role: UserRole) => {
     const next: Record<string, unknown> = {
-      user_role_id: role.user_role_id,
+      role: role.user_role_id,
       role_name: role.user_role_name,
     };
     if (role.system_role !== "admin") {
       next.permissions = [...role.permissions];
       Object.assign(next, policyFieldsFromRole(role, workspaceRootAllowed));
+    } else {
+      next.permissions = [];
     }
     form.setFieldsValue(next);
     committedId.current = role.user_role_id;
@@ -244,7 +245,10 @@ function UserRoleField({
       </Form.Item>
       <Form.Item
         label={t("adminUsers.formUserRole")}
-        name="user_role_id"
+        name="role"
+        rules={[
+          { required: true, message: t("adminUsers.formUserRolePlaceholder") },
+        ]}
         extra={
           showStale
             ? t("adminUsers.formUserRoleStale", { name: staleName })
@@ -254,7 +258,7 @@ function UserRoleField({
         }
       >
         <Select
-          allowClear
+          disabled={disabled}
           placeholder={t("adminUsers.formUserRolePlaceholder")}
           options={visibleRoles.map((role) => ({
             value: role.user_role_id,
@@ -289,7 +293,7 @@ function UserRoleField({
           onChange={(id) => {
             const next = (id as string | null | undefined) ?? null;
             if (next == null) {
-              form.setFieldsValue({ user_role_id: null, role_name: null });
+              form.setFieldsValue({ role: null, role_name: null });
               committedId.current = null;
               committedName.current = null;
               return;
@@ -310,7 +314,7 @@ function UserRoleField({
               onOk: () => applyRole(role),
               onCancel: () => {
                 form.setFieldsValue({
-                  user_role_id: committedId.current,
+                  role: committedId.current,
                   role_name: committedName.current,
                 });
               },
@@ -333,11 +337,18 @@ function RoleNameMark({
 }) {
   const { t } = useTranslation();
   const name = row.role_name?.trim();
-  if (!name) return <span className={className}>—</span>;
   const drift = userRoleDrift(row, roles);
-  const matched = row.user_role_id
-    ? roles.find((role) => role.user_role_id === row.user_role_id)
-    : roles.find((role) => role.user_role_name === name);
+  const matched = row.role
+    ? roles.find((role) => role.user_role_id === row.role)
+    : name
+    ? roles.find((role) => role.user_role_name === name)
+    : undefined;
+  const label =
+    snapshotRoleLabel(name, roles, t, row.role) ||
+    (matched ? userRoleLabel(matched, t) : "");
+  if (!label && drift !== "missing") {
+    return <span className={className}>—</span>;
+  }
   return (
     <span className={`${styles.roleNameMark} ${className ?? ""}`}>
       {matched ? (
@@ -349,21 +360,16 @@ function RoleNameMark({
         />
       ) : null}
       <span className={styles.roleNameText}>
-        {snapshotRoleLabel(name, roles, t, row.user_role_id)}
+        {label || t("adminUsers.roleNameMissing")}
       </span>
-      {drift ? (
-        <Tag>
-          {drift === "missing"
-            ? t("adminUsers.roleNameMissing")
-            : t("adminUsers.roleNameChanged")}
-        </Tag>
+      {drift === "changed" ? (
+        <Tag>{t("adminUsers.roleNameChanged")}</Tag>
+      ) : null}
+      {drift === "missing" && label ? (
+        <Tag>{t("adminUsers.roleNameMissing")}</Tag>
       ) : null}
     </span>
   );
-}
-
-function roleToneClass(role: "admin" | "user"): string {
-  return role === "admin" ? styles.roleToneAdmin : styles.roleToneUser;
 }
 
 function useNowSeconds(active: boolean): number {
@@ -723,51 +729,6 @@ export function ResourcePolicyFields({
   );
 }
 
-interface RolePickerProps {
-  value?: "admin" | "user";
-  onChange?: (value: "admin" | "user") => void;
-  disabled?: boolean;
-  options: {
-    value: "admin" | "user";
-    label: string;
-    hint: string;
-  }[];
-}
-
-function RolePicker({ value, onChange, options, disabled }: RolePickerProps) {
-  return (
-    <div className={styles.rolePicker} role="radiogroup">
-      {options.map((opt) => {
-        const selected = value === opt.value;
-        const Icon = opt.value === "admin" ? ShieldCheck : UserRound;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            disabled={disabled}
-            className={`${styles.roleOption} ${
-              selected ? styles.roleOptionSelected : ""
-            }`}
-            onClick={() => {
-              if (!disabled) onChange?.(opt.value);
-            }}
-          >
-            <span className={styles.roleOptionIcon} aria-hidden>
-              <Icon size={15} strokeWidth={2} />
-            </span>
-            <span className={styles.roleOptionBody}>
-              <span className={styles.roleOptionLabel}>{opt.label}</span>
-              <span className={styles.roleOptionHint}>{opt.hint}</span>
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 interface PermissionCheckboxPickerProps {
   value?: string[];
   onChange?: (value: string[]) => void;
@@ -1085,17 +1046,7 @@ function UserCardGrid({
                   <p className={styles.userCardSub}>
                     <span>@{row.username}</span>
                     <span className={styles.userCardMetaSep}>·</span>
-                    <span>
-                      {row.role === "admin"
-                        ? t("adminUsers.roleAdmin")
-                        : t("adminUsers.roleUser")}
-                    </span>
-                    {row.role_name ? (
-                      <>
-                        <span className={styles.userCardMetaSep}>·</span>
-                        <RoleNameMark row={row} roles={userRoles} />
-                      </>
-                    ) : null}
+                    <RoleNameMark row={row} roles={userRoles} />
                   </p>
                 </div>
               </div>
@@ -1321,23 +1272,6 @@ export default function UsersListPanel() {
     () =>
       permCatalog.filter((p) => p.category === "settings").map((p) => p.key),
     [permCatalog],
-  );
-
-  const createRoleOptions = useMemo(
-    () =>
-      [
-        {
-          value: "user" as const,
-          label: t("adminUsers.roleUser"),
-          hint: t("adminUsers.roleUserHint"),
-        },
-        {
-          value: "admin" as const,
-          label: t("adminUsers.roleAdmin"),
-          hint: t("adminUsers.roleAdminHint"),
-        },
-      ].filter((option) => actorIsAdmin || option.value !== "admin"),
-    [actorIsAdmin, t],
   );
 
   const syncSelfAvatar = useCallback(
@@ -1699,7 +1633,6 @@ export default function UsersListPanel() {
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
           role_name: values.role_name?.trim() || null,
-          user_role_id: values.user_role_id ?? null,
           ...policyPayload(values, { workspaceRootAllowed }),
         }),
       });
@@ -1743,11 +1676,10 @@ export default function UsersListPanel() {
   const openCreate = () => {
     const userRole = userRoles.find((role) => role.user_role_id === "user");
     form.setFieldsValue({
-      role: "user",
+      role: userRole?.user_role_id ?? "user",
       permissions: userRole
         ? [...userRole.permissions]
         : [...baselinePermissions],
-      user_role_id: userRole?.user_role_id,
       role_name: userRole?.user_role_name,
       username: undefined,
       display_name: undefined,
@@ -1769,18 +1701,17 @@ export default function UsersListPanel() {
 
   const openEdit = (row: UserRow) => {
     setEditTarget(row);
-    const matched = row.role_name
-      ? row.user_role_id
-        ? userRoles.find((role) => role.user_role_id === row.user_role_id)
-        : userRoles.find((role) => role.user_role_name === row.role_name)
-      : undefined;
+    const matched =
+      userRoles.find((role) => role.user_role_id === row.role) ??
+      (row.role_name
+        ? userRoles.find((role) => role.user_role_name === row.role_name)
+        : undefined);
     editForm.setFieldsValue({
       display_name: row.display_name ?? "",
       email: row.email ?? "",
-      role: row.role,
+      role: matched?.user_role_id ?? row.role,
       permissions: [...(row.permissions ?? [])],
-      user_role_id: matched?.user_role_id,
-      role_name: row.role_name ?? undefined,
+      role_name: row.role_name ?? matched?.user_role_name ?? undefined,
       limit_workspace_root: workspaceRootAllowed
         ? Boolean(row.workspace_root_dir)
         : false,
@@ -1833,7 +1764,6 @@ export default function UsersListPanel() {
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
           role_name: values.role_name?.trim() || null,
-          user_role_id: values.user_role_id ?? null,
           ...policyPayload(values, { workspaceRootAllowed }),
         }),
       });
@@ -2064,7 +1994,7 @@ export default function UsersListPanel() {
           loading={loading}
           dataSource={filteredRows}
           pagination={false}
-          scroll={{ x: 1500 }}
+          scroll={{ x: 1360 }}
           rowSelection={{
             selectedRowKeys: selectedIds,
             onChange: (keys) => setSelectedIds(keys.map((key) => Number(key))),
@@ -2151,21 +2081,6 @@ export default function UsersListPanel() {
                   </button>
                 );
               },
-            },
-            {
-              title: t("adminUsers.colRole"),
-              width: 110,
-              render: (_, row) => (
-                <span
-                  className={`${styles.userCardPill} ${roleToneClass(
-                    row.role,
-                  )}`}
-                >
-                  {row.role === "admin"
-                    ? t("adminUsers.roleAdmin")
-                    : t("adminUsers.roleUser")}
-                </span>
-              ),
             },
             {
               title: t("adminUsers.colRoleName"),
@@ -2490,14 +2405,6 @@ export default function UsersListPanel() {
               actorIsAdmin={actorIsAdmin}
             />
             <Form.Item
-              label={t("adminUsers.formRole")}
-              name="role"
-              rules={[{ required: true }]}
-              className={styles.createUserRoleItem}
-            >
-              <RolePicker options={createRoleOptions} />
-            </Form.Item>
-            <Form.Item
               noStyle
               shouldUpdate={(prev, cur) => prev.role !== cur.role}
             >
@@ -2683,6 +2590,7 @@ export default function UsersListPanel() {
               workspaceRootAllowed={workspaceRootAllowed}
               confirmOverwrite
               actorIsAdmin={actorIsAdmin}
+              disabled={Boolean(editTarget && isSelfAdmin(editTarget))}
               diverged={
                 Boolean(editTarget) &&
                 userRoleDrift(editTarget as UserRow, userRoles) === "changed"
@@ -2692,30 +2600,18 @@ export default function UsersListPanel() {
                 editTarget?.role_name &&
                 !userRoles.some(
                   (role) =>
-                    role.user_role_id === editTarget.user_role_id ||
-                    (!editTarget.user_role_id &&
-                      role.user_role_name === editTarget.role_name),
+                    role.user_role_id === editTarget.role ||
+                    role.user_role_name === editTarget.role_name,
                 )
                   ? editTarget.role_name
                   : null
               }
             />
-            <Form.Item
-              label={t("adminUsers.formRole")}
-              name="role"
-              rules={[{ required: true }]}
-              className={styles.createUserRoleItem}
-              extra={
-                editTarget && isSelfAdmin(editTarget)
-                  ? t("adminUsers.demoteSelf")
-                  : undefined
-              }
-            >
-              <RolePicker
-                options={createRoleOptions}
-                disabled={Boolean(editTarget && isSelfAdmin(editTarget))}
-              />
-            </Form.Item>
+            {editTarget && isSelfAdmin(editTarget) ? (
+              <div className={styles.permAdminHint}>
+                <span>{t("adminUsers.demoteSelf")}</span>
+              </div>
+            ) : null}
             <Form.Item
               noStyle
               shouldUpdate={(prev, cur) => prev.role !== cur.role}

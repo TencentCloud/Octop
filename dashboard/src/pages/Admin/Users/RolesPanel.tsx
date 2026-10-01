@@ -18,6 +18,7 @@ import {
   Spin,
   Tag,
   Tooltip,
+  Typography,
 } from "antd";
 import {
   IdCard,
@@ -316,17 +317,18 @@ export default function RolesPanel() {
                       <div className={styles.roleCardTitle}>
                         <h3>
                           {userRoleLabel(row, t)}
-                          {row.user_role_id === "admin" ? (
+                          {!row.deletable ? (
                             <span className={styles.roleCardBuiltin}>
-                              {t("adminUsers.roleBuiltinAdmin")}
-                            </span>
-                          ) : null}
-                          {row.user_role_id === "user" ? (
-                            <span className={styles.roleCardBuiltin}>
-                              {t("adminUsers.roleBuiltinUser")}
+                              {t("adminUsers.roleBuiltin")}
                             </span>
                           ) : null}
                         </h3>
+                        <span
+                          className={styles.roleIdMeta}
+                          title={row.user_role_id}
+                        >
+                          {row.user_role_id}
+                        </span>
                       </div>
                     </div>
                     <p className={styles.roleCardDescription}>
@@ -390,22 +392,30 @@ export default function RolesPanel() {
             {
               title: t("adminUsers.roleColName"),
               dataIndex: "user_role_name",
+              width: 260,
               render: (_name: string, row) => (
-                <Space size={8}>
+                <div className={styles.userCell}>
                   <ProfileAvatar
                     url={row.avatar_url}
                     icon={row.avatar_icon}
                     kind="role"
                     className={styles.userCellAvatar}
                   />
-                  <span>{userRoleLabel(row, t)}</span>
-                  {row.user_role_id === "admin" ? (
-                    <Tag>{t("adminUsers.roleBuiltinAdmin")}</Tag>
-                  ) : null}
-                  {row.user_role_id === "user" ? (
-                    <Tag>{t("adminUsers.roleBuiltinUser")}</Tag>
-                  ) : null}
-                </Space>
+                  <span className={styles.userCellText}>
+                    <span className={styles.userCellName}>
+                      {userRoleLabel(row, t)}
+                      {!row.deletable ? (
+                        <Tag>{t("adminUsers.roleBuiltin")}</Tag>
+                      ) : null}
+                    </span>
+                    <span
+                      className={styles.roleIdMeta}
+                      title={row.user_role_id}
+                    >
+                      {row.user_role_id}
+                    </span>
+                  </span>
+                </div>
               ),
             },
             {
@@ -605,6 +615,17 @@ export default function RolesPanel() {
           >
             <Input maxLength={64} autoFocus prefix={<IdCard size={16} />} />
           </Form.Item>
+          {editing ? (
+            <Form.Item label={t("adminUsers.roleColId")}>
+              <Typography.Text
+                code
+                copyable={{ text: editing.user_role_id }}
+                className={styles.roleIdField}
+              >
+                {editing.user_role_id}
+              </Typography.Text>
+            </Form.Item>
+          ) : null}
           <Form.Item label={t("adminUsers.roleDescription")} name="description">
             <Input.TextArea
               maxLength={500}

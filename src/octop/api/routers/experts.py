@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
@@ -144,6 +144,10 @@ class FromExpertBody(AgentRuntimeFields):
     )
     welcome_message: str | None = None
     enable_trajectory: bool = True
+    conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
+        default=None,
+        description="Default Ask/Plan/Craft mode for new conversations; craft when omitted",
+    )
     file_overrides: list[ComposerFileOverrideBody] | None = None
     omit_files: list[str] | None = None
     hub_skills: list[ComposerHubSkillBody] | None = None
@@ -185,6 +189,10 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     )
     welcome_message: str | None = None
     enable_trajectory: bool = True
+    conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
+        default=None,
+        description="Default Ask/Plan/Craft mode for new conversations; craft when omitted",
+    )
     file_overrides: list[ComposerFileOverrideBody] | None = None
     omit_files: list[str] | None = None
     hub_skills: list[ComposerHubSkillBody] | None = None
@@ -671,6 +679,7 @@ async def install_published_expert(
             welcome_message=body.welcome_message,
             runtime_config=runtime_field_updates(body, exclude_unset=True),
             enable_trajectory=body.enable_trajectory,
+            conversation_mode=body.conversation_mode,
             workspace_patch=patch,
             composer_copies=copies,
             composer_report=report,
@@ -781,6 +790,7 @@ async def install_expert_hub_item(
                 knowledge_base_ids=kb_ids,
                 mcp_servers=servers,
                 enable_trajectory=body.enable_trajectory,
+                conversation_mode=body.conversation_mode,
                 workspace_patch=patch,
                 composer_copies=copies,
                 composer_report=report,
@@ -866,6 +876,8 @@ async def create_agent_from_expert(
     if body.backend:
         config_extra["backend"] = body.backend
     apply_enable_trajectory(config_extra, body.enable_trajectory)
+    if body.conversation_mode:
+        config_extra["conversation_mode"] = body.conversation_mode
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,
