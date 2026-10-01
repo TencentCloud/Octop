@@ -178,6 +178,20 @@ def _policy_kwargs_replace_from_pairs(pairs: list[tuple[str, str]]) -> dict[str,
     }
 
 
+def _assert_policy_values(policy_kwargs: dict[str, Any]) -> None:
+    """Reject invalid resource-policy values without writing anything.
+
+    ``set_resource_policy`` normalizes as it stores, so relying on that call
+    alone lets a rejected value land after earlier writes already happened.
+    """
+    if "workspace_root_dir" in policy_kwargs:
+        normalize_workspace_root_dir(policy_kwargs["workspace_root_dir"])
+    if "token_quota" in policy_kwargs:
+        normalize_token_quota(policy_kwargs["token_quota"])
+    if "max_agents" in policy_kwargs:
+        normalize_max_agents(policy_kwargs["max_agents"])
+
+
 def _clean_role_name(raw: str | None) -> str | None:
     if raw is None:
         return None
@@ -464,6 +478,9 @@ async def patch_user(
                 target_user_id=user_id,
                 new_permissions=body.permissions,
             )
+    if body.role is None:
+        # No template involved, so the body's own policies are the effective ones.
+        _assert_policy_values(_policy_kwargs_from_body(body))
     if body.role is not None:
         role_id, template_name, template_perms, template_policies = _resolve_role_template(
             server, body.role
@@ -471,6 +488,14 @@ async def patch_user(
         if user_id == actor.id and role_id != Role.ADMIN:
             raise OctopError(ErrorCode.FORBIDDEN, "cannot demote yourself")
         _require_admin_to_grant_admin(actor, role_id)
+        # A role change replaces the template's policies and the body's overlay on
+        # top, so validate the merged values before the first write below.
+        _assert_policy_values(
+            {
+                **_policy_kwargs_replace_from_pairs(template_policies),
+                **_policy_kwargs_from_body(body),
+            }
+        )
         await server.user_manager.set_role(row.username, role_id)
         if "role_name" not in body.model_fields_set:
             server.services.user_repo.set_role_name(user_id, template_name)
