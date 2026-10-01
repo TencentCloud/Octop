@@ -46,16 +46,18 @@ def list_plugins(ctx: click.Context) -> None:
 @click.argument("source")
 @click.option("--force", is_flag=True, help="Reinstall if the plugin id already exists.")
 def install_plugin(source: str, force: bool) -> None:
-    """Install from a local directory or ZIP URL."""
+    """Install from a local directory, local ZIP file, or ZIP URL."""
     mgr = _manager()
     path = Path(source).expanduser()
     try:
         if path.is_dir():
             loaded = mgr.install_path(path, force=force)
+        elif path.is_file():
+            loaded = mgr.install_archive(path, force=force)
         elif source.startswith("http://") or source.startswith("https://"):
             loaded = mgr.install_url(source, force=force)
         else:
-            raise click.ClickException(f"not a directory or URL: {source}")
+            raise click.ClickException(f"not a directory, ZIP file, or URL: {source}")
     except OctopError as exc:
         raise click.ClickException(exc.message) from exc
     click.echo(f"Installed plugin {loaded.manifest.id} v{loaded.manifest.version}")
