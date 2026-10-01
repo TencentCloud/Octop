@@ -84,15 +84,34 @@ def windows_picker_defaults(
     drives: list[str],
     legacy_tree_root: str,
 ) -> dict[str, Any]:
-    """Unrestricted Windows picker: home is the preselect, volumes are the forest."""
+    """Unrestricted Windows picker: one collapsed row per ready drive.
+
+    The preselect is the home drive (``C:/``), not the profile directory.
+    Opening the list then shows every volume, with that drive highlighted,
+    instead of expanding ``C:/Users/...`` and pushing the other drives away.
+    """
     roots = normalize_volume_roots(drives)
     if not roots and legacy_tree_root:
         roots = [normalize_volume_root(legacy_tree_root)]
     return {
-        "default_root_dir": home,
+        "default_root_dir": _preselect_volume(home, legacy_tree_root, roots),
         "tree_root": legacy_tree_root,
         "tree_roots": roots,
     }
+
+
+def _preselect_volume(home: str, legacy_tree_root: str, roots: list[str]) -> str:
+    """Prefer the volume that contains *home* when that volume is in the forest."""
+    candidate = ""
+    if len(home) >= 2 and home[1] == ":":
+        candidate = normalize_volume_root(home)
+    elif legacy_tree_root:
+        candidate = normalize_volume_root(legacy_tree_root)
+    if candidate and (not roots or candidate in roots):
+        return candidate
+    if roots:
+        return roots[0]
+    return candidate or home
 
 
 def normalize_volume_roots(drives: list[str]) -> list[str]:

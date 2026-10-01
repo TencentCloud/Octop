@@ -161,6 +161,16 @@ def test_stamp_rejects_uninterpretable_backend(backend: object) -> None:
     assert "root_semantics" not in cfg
 
 
+def test_picker_defaults_skip_a_home_volume_that_is_not_ready() -> None:
+    payload = windows_picker_defaults(
+        home="E:/Users/bob",
+        drives=["C:\\", "D:\\"],
+        legacy_tree_root="C:/",
+    )
+    assert payload["default_root_dir"] == "C:/"
+    assert payload["tree_roots"] == ["C:/", "D:/"]
+
+
 def test_picker_defaults_keep_legacy_tree_root() -> None:
     payload = windows_picker_defaults(
         home="C:/Users/bob",
@@ -168,7 +178,7 @@ def test_picker_defaults_keep_legacy_tree_root() -> None:
         legacy_tree_root="C:/",
     )
     assert payload == {
-        "default_root_dir": "C:/Users/bob",
+        "default_root_dir": "C:/",
         "tree_root": "C:/",
         "tree_roots": ["C:/", "D:/"],
     }

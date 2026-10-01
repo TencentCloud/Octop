@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -46,6 +47,47 @@ def host_fs_tree_root() -> str:
     if os.name == "posix":
         return "/"
     return host_path_text(Path(host_home_dir().anchor))
+
+
+def _ready_drive_roots() -> list[str]:
+    """Every ready Windows drive root, POSIX-serialized (``C:/``).
+
+    Probing ``os.path.isdir`` covers mapped network drives and does not need
+    ``GetLogicalDrives``. Tests patch this function instead of ``os.path.isdir``,
+    which pytest itself uses while collecting paths.
+    """
+    return [
+        f"{chr(ord('A') + index)}:/"
+        for index in range(26)
+        if os.path.isdir(f"{chr(ord('A') + index)}:\\")
+    ]
+
+
+def host_browse_roots() -> list[str]:
+    """Browse-tree roots for unrestricted users.
+
+    Host ``/`` on POSIX; every ready drive on Windows. A profile on ``C:`` can
+    still open ``D:``. When no drive answers, fall back to the home anchor so
+    the picker is never empty.
+    """
+    if os.name == "posix":
+        return ["/"]
+    return _ready_drive_roots() or [host_path_text(Path(host_home_dir().anchor))]
+
+
+def _bwrap_on_path() -> bool:
+    return shutil.which("bwrap") is not None
+
+
+def host_jail_enforced() -> bool:
+    """True only when a non-root ``root_dir`` gets a real OS jail.
+
+    That is Linux with bubblewrap. Elsewhere ``root_dir`` limits tool paths,
+    while the agent process keeps the service account's own filesystem access.
+    """
+    if os.name != "posix":
+        return False
+    return _bwrap_on_path()
 
 
 def running_in_container() -> bool:

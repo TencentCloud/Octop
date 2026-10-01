@@ -35,8 +35,10 @@ from octop.infra.utils.bwrap import ensure_bubblewrap
 from octop.infra.utils.docker_env import docker_status, ensure_docker
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
+    host_browse_roots,
     host_fs_tree_root,
     host_home_dir,
+    host_jail_enforced,
     host_path_text,
     list_host_subdirs,
     mkdir_host_subdir,
@@ -81,8 +83,11 @@ async def filesystem_defaults(
 ) -> dict[str, Any]:
     """Return browse-tree / default root_dir for the current user.
 
-    Unrestricted users get filesystem root; a workspace-root policy jail sets
-    both ``default_root_dir`` and ``tree_root`` to that path.
+    Unrestricted users get the filesystem root (POSIX ``/``, or the home drive
+    on Windows) plus every ready Windows volume in ``tree_roots``. A
+    workspace-root policy jail collapses both to that one path.
+    ``jail_enforced`` is true only when a non-root directory really gets an
+    OS sandbox.
     """
     in_container = running_in_container()
     allowed = _user_workspace_root(server, user)
@@ -91,6 +96,7 @@ async def filesystem_defaults(
             "default_root_dir": allowed,
             "tree_root": allowed,
             "in_container": in_container,
+            "jail_enforced": host_jail_enforced(),
         }
         if os.name == "nt":
             payload["tree_roots"] = [allowed]
@@ -100,19 +106,20 @@ async def filesystem_defaults(
             windows_picker_defaults,
         )
 
-        drives = list(os.listdrives()) if hasattr(os, "listdrives") else []
         payload = windows_picker_defaults(
             home=host_path_text(host_home_dir()),
-            drives=drives,
+            drives=host_browse_roots(),
             legacy_tree_root=host_fs_tree_root(),
         )
         payload["in_container"] = in_container
+        payload["jail_enforced"] = host_jail_enforced()
         return payload
     root = host_fs_tree_root()
     return {
         "default_root_dir": root,
         "tree_root": root,
         "in_container": in_container,
+        "jail_enforced": host_jail_enforced(),
     }
 
 
