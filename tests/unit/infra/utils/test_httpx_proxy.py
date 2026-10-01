@@ -94,6 +94,30 @@ def test_exact_ip_and_domain_no_proxy_still_work(proxy_env: dict[str, str]) -> N
         assert not _is_direct(client, "http://192.168.1.1/")
 
 
+def test_wildcard_no_proxy_tokens_are_not_dead_mounts(
+    proxy_env: dict[str, str],
+) -> None:
+    """``*.example.com`` is the Windows ProxyOverride / container NO_PROXY form.
+
+    Prefixing an already-wildcarded token with httpx's ``*`` yields
+    ``all://**.example.com``, whose host regex demands a literal ``*`` in the
+    hostname, so the entry never matches and LAN hosts keep using the proxy.
+    """
+    assert no_proxy_mount_key("*.example.com") == "all://*.example.com"
+    assert no_proxy_mount_key("*example.com") == "all://*example.com"
+
+    proxy_env["no"] = "*.example.com,*internal.test"
+    with httpx.Client() as client:
+        assert _is_direct(client, "http://www.example.com/")
+        assert _is_direct(client, "http://a.b.example.com/")
+        # ``*.foo`` keeps httpx's documented subdomain-only reading; listing
+        # ``foo`` (the ``*internal.test`` token below) also covers the bare host.
+        assert not _is_direct(client, "http://example.com/")
+        assert not _is_direct(client, "http://notexample.com/")
+        assert _is_direct(client, "http://svc.internal.test/")
+        assert _is_direct(client, "http://internal.test/")
+
+
 def test_windows_semicolon_no_proxy(proxy_env: dict[str, str]) -> None:
     proxy_env["no"] = "192.168.0.0/16;10.0.0.0/8,localhost"
     mounts = get_environment_proxies()
