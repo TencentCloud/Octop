@@ -139,19 +139,43 @@ def normalize_workspace_root_dir(raw: str | None) -> str | None:
     )
 
 
-def normalize_token_quota(raw: int | None) -> int | None:
-    if raw is None:
+def _written_int(raw: int | str | None) -> int | None:
+    """Read an integer the caller asked us to store (empty text means unset)."""
+    if raw is None or isinstance(raw, int):
+        return raw
+    text = raw.strip()
+    if not text:
         return None
-    quota = int(raw)
+    return int(text)
+
+
+def normalize_token_quota(raw: int | str | None) -> int | None:
+    try:
+        quota = _written_int(raw)
+    except ValueError:
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "token quota must be a whole number",
+            status=400,
+        ) from None
+    if quota is None:
+        return None
     if quota < 0:
         raise OctopError(ErrorCode.FORBIDDEN, "token quota must be >= 0", status=400)
     return quota
 
 
-def normalize_max_agents(raw: int | None) -> int | None:
-    if raw is None:
+def normalize_max_agents(raw: int | str | None) -> int | None:
+    try:
+        limit = _written_int(raw)
+    except ValueError:
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "max agents must be a whole number",
+            status=400,
+        ) from None
+    if limit is None:
         return None
-    limit = int(raw)
     if limit < 0:
         raise OctopError(ErrorCode.FORBIDDEN, "max agents must be >= 0", status=400)
     return limit

@@ -134,6 +134,47 @@ async def test_builtin_roles_invite_reads_role_at_redeem(env):
     assert admin_row["role_name"] == "管理员"
 
 
+async def test_role_policy_rejects_non_numeric_limit(env):
+    """A limit that cannot be read back must be refused, not dropped."""
+    c, _srv, auth = env
+    for name in ("token_quota", "max_agents"):
+        created = await c.post(
+            "/api/users/roles",
+            headers=auth,
+            json={
+                "user_role_name": f"quota-{name}",
+                "permissions": ["browser"],
+                "policies": [{"name": name, "value": "unlimited"}],
+            },
+        )
+        assert created.status_code == 400, (name, created.status_code, created.text)
+        assert created.json()["error"]["code"] == "FORBIDDEN", created.text
+
+    listed = await c.get("/api/users/roles", headers=auth)
+    assert all(not row["user_role_name"].startswith("quota-") for row in listed.json())
+
+    patched = await c.post(
+        "/api/users/roles",
+        headers=auth,
+        json={
+            "user_role_name": "quota-ok",
+            "permissions": ["browser"],
+            "policies": [{"name": "token_quota", "value": "1000"}],
+        },
+    )
+    assert patched.status_code == 201, patched.text
+    role_id = patched.json()["user_role_id"]
+    bad = await c.patch(
+        f"/api/users/roles/{role_id}",
+        headers=auth,
+        json={"policies": [{"name": "max_agents", "value": "many"}]},
+    )
+    assert bad.status_code == 400, bad.text
+    kept = await c.get("/api/users/roles", headers=auth)
+    row = next(item for item in kept.json() if item["user_role_id"] == role_id)
+    assert row["policies"] == [{"name": "token_quota", "value": "1000"}]
+
+
 async def test_role_patch_without_policies_keeps_existing_policies(env):
     c, _srv, auth = env
     created = await c.post(

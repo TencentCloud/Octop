@@ -96,8 +96,8 @@ def _clean_description(raw: str | None) -> str | None:
 def _policies_from_fields(
     *,
     workspace_root_dir: str | None,
-    token_quota: int | None,
-    max_agents: int | None,
+    token_quota: int | str | None,
+    max_agents: int | str | None,
 ) -> list[tuple[str, str]]:
     items: list[tuple[str, str]] = []
     root = normalize_workspace_root_dir(workspace_root_dir)
@@ -121,10 +121,11 @@ def _policies_from_items(items: list[PolicyItem]) -> list[tuple[str, str]]:
             status=400,
         )
     by_name = {item.name: item.value for item in items}
+    # The *_of readers map unparseable stored values to None, which drops a typo'd limit.
     return _policies_from_fields(
         workspace_root_dir=by_name.get(POLICY_WORKSPACE_ROOT_DIR),
-        token_quota=token_quota_of(by_name.get(POLICY_TOKEN_QUOTA)),
-        max_agents=max_agents_of(by_name.get(POLICY_MAX_AGENTS)),
+        token_quota=by_name.get(POLICY_TOKEN_QUOTA),
+        max_agents=by_name.get(POLICY_MAX_AGENTS),
     )
 
 

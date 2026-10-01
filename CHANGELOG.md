@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 角色模板的资源策略在写入时就校验数值：`POST/PATCH /api/users/roles` 的 `policies` 数组里 `token_quota`、`max_agents` 的 `value` 是字符串，此前先过一遍读库用的宽松解析器，`"unlimited"` 这类读不回整数的值被当成「未设置」静默丢弃，接口仍返回 201 并把空策略落盘——管理员以为给这批账号封了额度，实际一个上限都没生效；同一数组里 `workspace_root_dir` 传非法路径会报错、`token_quota` 传负数也会报错，只有「读不回数字」这一条会悄悄放行。现改由写入侧校验器解析这些字符串，读不回整数的值统一返回 400，宽松解析器只继续用于读已入库的策略值（历史脏数据仍按「未设置」处理）
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
