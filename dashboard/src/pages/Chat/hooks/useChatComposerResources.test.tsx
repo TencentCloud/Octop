@@ -33,7 +33,10 @@ vi.mock("../../../api/modules/connectors", () => ({
   },
 }));
 vi.mock("../../../api/modules/provider", () => ({
-  providerApi: { listResolvedModels: vi.fn().mockResolvedValue([]) },
+  providerApi: {
+    listResolvedModels: vi.fn().mockResolvedValue([]),
+    getActiveModel: vi.fn().mockResolvedValue(null),
+  },
 }));
 vi.mock("../../../api/modules/preferences", () => ({
   preferencesApi: {

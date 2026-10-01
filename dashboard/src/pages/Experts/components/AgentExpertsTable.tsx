@@ -45,6 +45,7 @@ import {
   isAgentModelConfigError,
 } from "../../../utils/agentError";
 import styles from "../index.module.less";
+import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
@@ -169,6 +170,7 @@ export default function AgentExpertsTable({
 
   useEffect(() => {
     const transientIds = agents
+      .filter((a) => !a.bridge)
       .map((a) => a.agent_id)
       .filter((id) => TRANSIENT.has(localStates[id] ?? ""));
     if (transientIds.length === 0) {
@@ -317,6 +319,7 @@ export default function AgentExpertsTable({
                 : t("experts.share.badge")}
             </Tag>
           )}
+          <RemoteExpertHint agent={row} />
         </div>
       ),
     },

@@ -24,6 +24,7 @@ from octop_harness.plugins import (
     unload_plugin,
 )
 
+from octop.infra.agents.plugins.legacy_imports import ensure_legacy_harness_agent_alias
 from octop.infra.errors import ErrorCode, OctopError, corrupt_config_error
 from octop.infra.utils.json_file import (
     JsonFileCorruptError,
@@ -56,6 +57,12 @@ def normalize_plugin_download_url(url: str) -> str:
     ref = match.group("ref")
     path = match.group("path").lstrip("/")
     return f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}"
+
+
+def _load_plugin_dir(plugin_dir: Path, *, install_deps: bool) -> LoadedPlugin:
+    """Load one plugin, accepting the pre-rename ``harness_agent`` import."""
+    ensure_legacy_harness_agent_alias()
+    return load_plugin_dir(plugin_dir, install_deps=install_deps)
 
 
 def _read_global_plugins(config_path: Path) -> dict[str, bool]:
@@ -398,7 +405,7 @@ class PluginManager:
             if enabled.get(manifest.id, True) is False:
                 continue
             try:
-                loaded.append(load_plugin_dir(plugin_dir, install_deps=install_deps))
+                loaded.append(_load_plugin_dir(plugin_dir, install_deps=install_deps))
             except Exception as exc:
                 logger.error(
                     "failed to load plugin from %s: %s",
@@ -431,7 +438,7 @@ class PluginManager:
             if PluginRegistry().get(manifest.id) is not None:
                 continue
             try:
-                newly.append(load_plugin_dir(plugin_dir, install_deps=install_deps))
+                newly.append(_load_plugin_dir(plugin_dir, install_deps=install_deps))
                 logger.info(
                     "loaded missing plugin %s v%s",
                     manifest.id,
@@ -518,7 +525,7 @@ class PluginManager:
         if enabled:
             if PluginRegistry().get(plugin_id) is None:
                 try:
-                    load_plugin_dir(plugin_dir, install_deps=False)
+                    _load_plugin_dir(plugin_dir, install_deps=False)
                 except Exception as exc:
                     raise OctopError(
                         ErrorCode.PLUGIN_INSTALL_FAILED,
@@ -621,7 +628,7 @@ class PluginManager:
         shutil.copytree(source, dest)
         unload_plugin(manifest.id)
         try:
-            return load_plugin_dir(dest, install_deps=True)
+            return _load_plugin_dir(dest, install_deps=True)
         except Exception as exc:
             raise OctopError(
                 ErrorCode.PLUGIN_INSTALL_FAILED,
