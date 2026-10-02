@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 from octop_harness import HarnessAgent, HarnessAgentConfig, HarnessAgentManager
 from octop_harness.registry import AgentEntry
@@ -91,6 +91,13 @@ if TYPE_CHECKING:
     from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
+
+
+def _raise_model_retry_error(exc: Exception) -> NoReturn:
+    # The inbox catches RuntimeError, but not every provider's exception type.
+    # Preserve the cause and never turn an exhausted model call into AIMessage.
+    raise RuntimeError(f"{type(exc).__name__}: {exc}") from exc
+
 
 # Bounded parallelism for awaited provider/active-model reload batches.
 _PROVIDER_RELOAD_CONCURRENCY = 6
@@ -3284,6 +3291,22 @@ class AgentManager:
         interrupt_on = apply_session_bypass(applied.interrupt_on, self._hitl_session_store)
         if interrupt_on is not applied.interrupt_on:
             applied = replace(applied, interrupt_on=interrupt_on)
+        if applied.model_retry_enabled:
+            from langchain.agents.middleware import ModelRetryMiddleware
+
+            applied = replace(
+                applied,
+                model_retry_enabled=False,
+                middleware=[
+                    ModelRetryMiddleware(
+                        max_retries=applied.model_retry_max_retries,
+                        initial_delay=applied.model_retry_initial_delay,
+                        max_delay=applied.model_retry_max_delay,
+                        on_failure=_raise_model_retry_error,
+                    ),
+                    *(applied.middleware or []),
+                ],
+            )
         return replace(
             applied,
             tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),
