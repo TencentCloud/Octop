@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from octop.api.common.content_disposition import content_disposition
+from octop.api.common.upload_limit import read_upload_capped
 from octop.api.deps import get_server, require_permission
 from octop.config import DatabaseConfig, load_config
 from octop.infra.backup.auto import (
@@ -420,9 +421,11 @@ async def import_backup(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Save an uploaded ``.tar.gz`` into ``backups_dir`` (does not restore)."""
-    raw = await file.read()
-    if len(raw) > _MAX_IMPORT_BYTES:
-        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "backup archive too large (max 512MB)")
+    raw = await read_upload_capped(
+        file,
+        max_bytes=_MAX_IMPORT_BYTES,
+        code=ErrorCode.SLASH_BAD_ARGS,
+    )
     if not raw:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "empty backup archive")
 
