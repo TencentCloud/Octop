@@ -5,7 +5,6 @@
 #   docker compose -f docker/docker-compose.yml up -d
 #   OCTOP_PORT=9090 docker compose -f docker/docker-compose.yml up -d
 #   OCTOP_DEFAULT_PASSWORD=<your-strong-password> docker compose -f docker/docker-compose.yml up -d
-#   APT_MIRROR=mirrors.cloud.tencent.com docker compose -f docker/docker-compose.yml up -d --build
 #
 # 可在 docker/ 目录放置 .env 文件，例如:
 #   OCTOP_PORT=9090
@@ -13,7 +12,6 @@
 #   OCTOP_ADMIN_USERNAME=admin
 #   OCTOP_DATABASE_DRIVER=postgresql
 #   OCTOP_DATABASE_URL=postgresql://octop:octop@host.docker.internal:5432/octop
-#   APT_MIRROR=mirrors.cloud.tencent.com
 #
 # 注意: docker/.env 仅用于 Compose 插值；变量必须列在下方 environment
 # 才会进入容器。也可写入数据卷内的 ~/.octop/env（宿主机挂载目录下的 env）。
@@ -26,11 +24,6 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-      args:
-        - APT_MIRROR=${APT_MIRROR:-}
-        - PIP_INDEX_URL=${PIP_INDEX_URL:-}
-        - PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-}
-        - NPM_REGISTRY=${NPM_REGISTRY:-}
     image: octop:latest
     container_name: octop
     restart: unless-stopped
