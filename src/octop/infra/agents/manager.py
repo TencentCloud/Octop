@@ -20,6 +20,7 @@ from octop_harness.registry import AgentEntry
 from octop_harness.security.models import SecurityPolicy
 
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
+from octop.infra.agents.harness_compat import install_stream_content_compat
 from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
 from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
@@ -91,6 +92,8 @@ if TYPE_CHECKING:
     from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
+
+install_stream_content_compat()
 
 # Bounded parallelism for awaited provider/active-model reload batches.
 _PROVIDER_RELOAD_CONCURRENCY = 6
