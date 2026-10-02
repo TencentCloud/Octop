@@ -701,6 +701,8 @@ async def terminal_ws(
                     msg = json.loads(raw)
                 except json.JSONDecodeError:
                     continue
+                if not isinstance(msg, dict):
+                    continue
                 kind = msg.get("type")
                 if kind == "input":
                     data = msg.get("data", "")

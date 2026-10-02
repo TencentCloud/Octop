@@ -13,6 +13,7 @@ import asyncio
 import contextlib
 import json
 import os
+import select
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -467,3 +468,42 @@ async def test_ws_close_message_destroys_session(monkeypatch) -> None:
     # The close frame reaps the shell immediately (no detach grace).
     assert spawned[0].closed is True
     assert ("a1", "c1") not in terminal._sessions
+
+
+@pytest.mark.parametrize("malformed", ["null", "123", "[1,2]"])
+@posix_only
+async def test_ws_ignores_a_non_object_frame_and_keeps_reading(monkeypatch, malformed: str) -> None:
+    """A frame that parses to a non-object must not kill the reader task.
+
+    ``json.loads`` was guarded but the following ``msg.get`` was not, so ``null`` /
+    ``123`` / ``[1,2]`` raised ``AttributeError`` out of ``reader()``. Because
+    ``reader()`` runs as a task, the exception never reached the handler's
+    ``except Exception`` — ``t.result()`` suppressed it instead — so there was no log
+    line and no error frame, and the shell's fan-out simply stopped. A following
+    input frame proves the reader survived.
+    """
+    server, _ = _make_server()
+    _patch_user(monkeypatch)
+    r, w = os.pipe()  # master_fd = write end; read the input back from r.
+    spawned: list[terminal._PtySession] = []
+
+    def fake_spawn(sid, agent_id, user_id, workspace_dir, cols, rows, persistent):
+        s = _make_session(sid, agent_id, user_id, persistent, master_fd=w)
+        s.proc.poll.return_value = None
+        spawned.append(s)
+        return s
+
+    monkeypatch.setattr(terminal, "_spawn_pty_session", fake_spawn)
+    monkeypatch.setattr(terminal, "_start_session_pump", lambda _s: None)
+
+    input_frame = json.dumps({"type": "input", "data": "echo hi\n"})
+    ws = _FakeWS(server, received=(malformed, input_frame))
+    await terminal.terminal_ws(ws, agent_id="a1", token="ok", session_id="m1", cols=80, rows=24)
+
+    # The input frame after the bad one still reached the PTY: reader() survived.
+    # ``select`` rather than a bare ``os.read`` — a dead reader would block forever here
+    # instead of failing, which is the defect itself.
+    ready, _, _ = select.select([r], [], [], 1.0)
+    assert ready, "the reader stopped before the frame after the malformed one"
+    assert os.read(r, 1024) == b"echo hi\n"
+    os.close(r)
