@@ -8,7 +8,10 @@ import httpx
 
 from octop.infra.agents.providers.onnx_service import embed_texts
 from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
-from octop.infra.agents.providers.probe import provider_headers
+from octop.infra.agents.providers.probe import (
+    provider_headers,
+    volcengine_multimodal_embeddings_url,
+)
 
 # Remote OpenAI-compatible embedding APIs cap the number of inputs per request.
 _KNOWLEDGE_EMBEDDING_BATCH_LIMIT = 20
@@ -53,6 +56,22 @@ def _embed_remote_batched(
     if not texts:
         return []
     out: list[list[float]] = []
+    multimodal_url = volcengine_multimodal_embeddings_url(base, model)
+    if multimodal_url:
+        # Multimodal input items form one combined embedding, not a batch of vectors.
+        for text in texts:
+            response = client.post(
+                multimodal_url,
+                headers=headers,
+                json={
+                    "model": model,
+                    "input": [{"type": "text", "text": text}],
+                    "encoding_format": "float",
+                },
+            )
+            response.raise_for_status()
+            out.append(list(response.json()["data"]["embedding"]))
+        return out
     for start in range(0, len(texts), _KNOWLEDGE_EMBEDDING_BATCH_LIMIT):
         batch = texts[start : start + _KNOWLEDGE_EMBEDDING_BATCH_LIMIT]
         response = client.post(
