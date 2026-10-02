@@ -306,6 +306,120 @@ async def test_on_reply_skips_snapshot_after_live_host_wrapup(
     assert "thr_parent" not in processor.teams._live_host_replies
 
 
+def _moved_session(processor_env: dict) -> str:
+    """Point the parent session at a second thread, as switching chats does."""
+    registry = processor_env["gateway"].thread_registry  # type: ignore[attr-defined]
+    parent_sk = processor_env["parent_sk"]
+    registry._threads.insert(
+        thread_id="thr_other",
+        agent_id="parent",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=parent_sk,
+    )
+    registry._sessions.set_thread(parent_sk, "thr_other")
+    return parent_sk
+
+
+def _wrapup_event(inbox_id: str, session_key: str, text: str) -> ReplyEvent:
+    return ReplyEvent(
+        inbox_id=inbox_id,
+        status="done",
+        source_agent_id="parent",
+        source_thread_id="thr_parent",
+        target_agent_id="child",
+        user_id=1,
+        reply_text=text,
+        metadata={"session_key": session_key},
+    )
+
+
+def _mock_message_repo(processor: object) -> MagicMock:
+    repo = MagicMock()
+    repo.append_if_ready = MagicMock(return_value=1)
+    repo.projection_status = MagicMock(return_value="ready")
+    repo.mark_projection = MagicMock()
+    processor.replace_thread_message_repo(repo)  # type: ignore[attr-defined]
+    return repo
+
+
+def _appended_threads(repo: MagicMock) -> list[str]:
+    return [call.args[0] for call in repo.append_if_ready.call_args_list]
+
+
+@pytest.mark.asyncio
+async def test_on_reply_delivers_to_room_after_session_moves_thread(
+    processor_env: dict,
+) -> None:
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    parent_sk = _moved_session(processor_env)
+    repo = _mock_message_repo(processor)
+
+    await processor.on_reply(_wrapup_event("job-moved", parent_sk, "后台结论"))
+
+    assert "thr_parent" in _appended_threads(repo)
+    assert "thr_other" not in _appended_threads(repo)
+    # Unread lives on the session's current thread, so a reply that lands
+    # elsewhere must not raise a badge the user can never clear.
+    session = gateway.thread_registry.get_session(parent_sk)  # type: ignore[attr-defined]
+    assert session is not None
+    assert session.unread_count == 0
+
+
+@pytest.mark.asyncio
+async def test_on_reply_pushes_room_snapshot_after_session_moves_thread(
+    processor_env: dict,
+) -> None:
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    parent_sk = _moved_session(processor_env)
+    room_frames: list[dict[str, object]] = []
+    moved_frames: list[dict[str, object]] = []
+
+    async def capture_room(frame: dict[str, object]) -> None:
+        room_frames.append(frame)
+
+    async def capture_moved(frame: dict[str, object]) -> None:
+        moved_frames.append(frame)
+
+    gateway.ws_hub.register("conn-room", capture_room)
+    gateway.ws_hub.subscribe("thr_parent", "conn-room")
+    gateway.ws_hub.register("conn-moved", capture_moved)
+    gateway.ws_hub.subscribe("thr_other", "conn-moved")
+
+    await processor.on_reply(_wrapup_event("job-moved-push", parent_sk, "群里可见"))
+
+    assert [f for f in room_frames if f.get("content") == "群里可见"]
+    assert moved_frames == []
+
+
+@pytest.mark.asyncio
+async def test_on_reply_falls_back_when_room_thread_is_gone(processor_env: dict) -> None:
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    parent_sk = processor_env["parent_sk"]
+    repo = _mock_message_repo(processor)
+    event = ReplyEvent(
+        inbox_id="job-gone",
+        status="done",
+        source_agent_id="parent",
+        source_thread_id="thr_deleted",
+        target_agent_id="child",
+        user_id=1,
+        reply_text="回退到当前会话",
+        metadata={"session_key": parent_sk},
+    )
+
+    await processor.on_reply(event)
+
+    assert "thr_deleted" not in _appended_threads(repo)
+    assert "thr_parent" in _appended_threads(repo)
+    session = gateway.thread_registry.get_session(parent_sk)  # type: ignore[attr-defined]
+    assert session is not None
+    assert session.unread_count == 1
+
+
 @pytest.mark.asyncio
 async def test_stream_host_followup_marks_live_and_persists(
     processor_env: dict,

@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 后台协同（`ask_agent(mode="background")`）的结论不再投递到「会话当前线程」：用户在任务运行期间切换会话时，回复会被写进切到的那个会话，而提问所在房间毫无动静；现按事件自带的来源房间投影与推送，仅在该房间已删除时回退 (#958)
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
