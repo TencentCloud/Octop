@@ -345,3 +345,93 @@ def test_run_reads_legacy_host_key_for_compatibility(
     assert captured["host"] == "legacy.example.com"
     assert captured["port"] == 7000
     assert "Saved config to" not in r.output
+
+
+def _self_signed_pair(tmp_path: Path) -> tuple[Path, Path]:
+    """The cert/key paths ``_maybe_generate_self_signed`` derives from the layout."""
+    from octop.infra.utils.paths import PathLayout
+
+    ssl_dir = PathLayout(tmp_path / ".octop").ensure_ssl_dir()
+    return ssl_dir / "self_signed.crt", ssl_dir / "self_signed.key"
+
+
+def _use_layout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from octop.infra.utils.paths import PathLayout
+
+    layout = PathLayout(tmp_path / ".octop")
+    import octop.cli.commands.run as run_cmd
+
+    monkeypatch.setattr(run_cmd.PathLayout, "from_env", classmethod(lambda cls: layout))
+
+
+def test_self_signed_cert_is_not_left_half_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An interrupted cert write must not destroy a working key/cert pair.
+
+    uvicorn is handed these two paths directly, so a truncated certificate
+    stops the server from starting with ``--ssl``; a key that was replaced
+    while the certificate write failed leaves the two mismatched, and the
+    "regenerate when either is missing" guard accepts that as usable.
+    """
+    import octop.cli.commands.run as run_cmd
+
+    _use_layout(monkeypatch, tmp_path)
+    cert, key = _self_signed_pair(tmp_path)
+
+    certfile, keyfile = run_cmd._maybe_generate_self_signed(True, None, None)
+    assert Path(certfile) == cert and Path(keyfile) == key
+    good_key = key.read_bytes()
+    assert cert.read_bytes() and good_key
+
+    real_write_bytes = Path.write_bytes
+
+    def _failing(self: Path, data: bytes) -> int:
+        # Covers both layouts: writing the certificate in place, and writing it
+        # via a sibling temp file before the swap.
+        if self in (cert, cert.with_name(f"{cert.name}.tmp")):
+            real_write_bytes(self, data[:20])
+            raise OSError(28, "No space left on device")
+        return real_write_bytes(self, data)
+
+    # Force a regeneration, then let the certificate write die partway.
+    cert.unlink()
+    monkeypatch.setattr(Path, "write_bytes", _failing)
+    with pytest.raises(OSError):
+        run_cmd._maybe_generate_self_signed(True, None, None)
+    monkeypatch.undo()
+
+    # The failed regeneration must not leave a truncated certificate behind...
+    assert not cert.exists(), "a partial certificate was left in place"
+    # ...nor a key that no longer matches the certificate it was written for.
+    assert key.read_bytes() == good_key, "key was replaced by a mismatched one"
+    # No temp debris next to the pair.
+    assert [p.name for p in cert.parent.iterdir()] == ["self_signed.key"]
+
+
+def test_self_signed_pair_is_written_atomically_and_kept_together(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pair is written to temp files and swapped in, leaving no debris."""
+    import octop.cli.commands.run as run_cmd
+
+    _use_layout(monkeypatch, tmp_path)
+    cert, key = _self_signed_pair(tmp_path)
+
+    real_write_bytes = Path.write_bytes
+    temps: list[Path] = []
+
+    def _record(self: Path, data: bytes) -> int:
+        if self.parent == cert.parent and self not in (cert, key):
+            temps.append(self)
+        return real_write_bytes(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", _record)
+    certfile, keyfile = run_cmd._maybe_generate_self_signed(True, None, None)
+    monkeypatch.undo()
+
+    assert Path(certfile).is_file() and Path(keyfile).is_file()
+    # Both files went through a temp file first.
+    assert len(temps) == 2, f"expected 2 temp writes, saw {temps}"
+    # No leftovers next to the final pair.
+    assert sorted(p.name for p in cert.parent.iterdir()) == ["self_signed.crt", "self_signed.key"]
