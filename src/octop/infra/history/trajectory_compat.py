@@ -79,9 +79,7 @@ class ArchiveTrajectoryStore(TrajectoryStore):
             boundary = batch[-1]["seq"]
         return sorted([*rows, *new[:limit]], key=lambda event: event.seq)[-limit:]
 
-    def list_from_seq(
-        self, thread_id: str, *, from_seq: int, limit: int
-    ) -> list[TrajectoryEvent]:
+    def list_from_seq(self, thread_id: str, *, from_seq: int, limit: int) -> list[TrajectoryEvent]:
         """Events at or after ``from_seq``, from both stores.
 
         This is the SSE resume path: the browser reconnects with ``Last-Event-ID``
