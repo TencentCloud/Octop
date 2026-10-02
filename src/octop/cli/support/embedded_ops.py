@@ -59,6 +59,11 @@ async def fetch_thread_history_async(agent_id: str, thread_id: str, *, limit: in
             return await harness.aget_history(thread_id, limit=limit)
         state = await harness.graph.aget_state({"configurable": {"thread_id": thread_id}})
         messages = (state.values or {}).get("messages") or []
+        # ``messages[-0:]`` is ``messages[0:]`` -- the whole history -- so a
+        # non-positive limit has to short-circuit. Matches
+        # ``_slice_message_page`` in api/routers/chat/serialize.py.
+        if limit <= 0:
+            return []
         return messages[-limit:]
 
 
