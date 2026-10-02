@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import posixpath
 import re
 from typing import Any, Literal
 
@@ -46,12 +47,19 @@ def _assert_workspace_mutable(path: str, *, from_workspace: bool = True) -> str:
     string than the one that reaches the backend.
     """
     rel = _workspace_io_path(path, from_workspace=from_workspace)
-    if rel == ".":
+    # Judge both rules on the folded path. The backend resolves ``..`` before it
+    # touches disk, so ``/sub/..`` addresses the workspace root and
+    # ``/sub/../_builtin_skills/x`` addresses a protected file; comparing the raw
+    # string would vet a different path than the one actually written (#1126).
+    # Folding first also keeps the segment test honest — ``a/_builtin_skills/../../b.md``
+    # is an ordinary ``b.md`` and must not be refused for how it was spelled.
+    posix = posixpath.normpath(rel.replace("\\", "/"))
+    if posix == ".":
         raise OctopError(ErrorCode.FORBIDDEN, "cannot modify workspace root")
     # Match the segment anywhere, not just at the front: a ``file://`` URL or a
     # host-absolute path resolves to ``…/agents/<id>/_builtin_skills/…``, which a
     # leading-prefix test lets through untouched.
-    if _PROTECTED_PREFIX in rel.replace("\\", "/").split("/"):
+    if _PROTECTED_PREFIX in posix.split("/"):
         raise OctopError(ErrorCode.FORBIDDEN, f"cannot modify {_PROTECTED_PREFIX!r} paths")
     return rel
 

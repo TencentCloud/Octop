@@ -515,6 +515,65 @@ async def test_write_builtin_skills_lookalike_allowed(env: Any) -> None:
     assert r.status_code == 200, r.text
 
 
+async def test_write_builtin_skills_segment_folding_away_allowed(env: Any) -> None:
+    """A ``..``-spelled path that lands outside the root is an ordinary write.
+
+    ``a/_builtin_skills/../../b.md`` folds to ``b.md`` at the workspace root, so
+    the guard must judge where it lands, not which words it contains.
+    """
+    c, srv, auth, aid = env
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/a/_builtin_skills/../../b.md"},
+        headers=auth,
+        json={"content": "ok\n"},
+    )
+    assert r.status_code == 200, r.text
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aexists("b.md") is True
+    assert await agent.workspace.aexists("_builtin_skills/b.md") is False
+
+
+@pytest.mark.parametrize(
+    ("path", "planted"),
+    [
+        ("/sub/../_builtin_skills/evil/SKILL.md", "_builtin_skills/evil/SKILL.md"),
+        ("/.octop/sub/../_builtin_skills/evil/SKILL.md", ".octop/_builtin_skills/evil/SKILL.md"),
+    ],
+)
+async def test_write_builtin_skills_via_dotdot_forbidden(env: Any, path: str, planted: str) -> None:
+    """``..`` must not fold a write back into the root the guard protects (#1126)."""
+    c, srv, auth, aid = env
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": path},
+        headers=auth,
+        json={"content": "# injected\n"},
+    )
+    assert r.status_code == 403, r.text
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aexists(planted) is False
+
+
+async def test_delete_workspace_root_via_dotdot_forbidden(env: Any) -> None:
+    """A ``..`` spelling that resolves to the workspace root is not an ordinary dir (#1126).
+
+    ``/keep/..`` folds to ``.``, so a delete spelling it that way addresses the
+    whole workspace rather than the ``keep`` directory the caller appears to name.
+    """
+    c, srv, auth, aid = env
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    await agent.workspace.aupload_bytes("keep/a.txt", b"survive\n")
+
+    r = await c.delete(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/keep/.."},
+        headers=auth,
+    )
+    assert r.status_code == 403, r.text
+    assert await agent.workspace.aexists("keep/a.txt") is True
+
+
 @pytest.mark.parametrize(
     "path",
     ["/_builtin_skills/foo/SKILL.md", "/.octop/_builtin_skills/foo/SKILL.md"],
