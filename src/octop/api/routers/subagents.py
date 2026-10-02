@@ -82,6 +82,24 @@ def _require_catalog(server: Any) -> Any:
     return catalog
 
 
+def _install_locale_choice(requested: Locale, available: tuple[Locale, ...]) -> Locale:
+    """Pick which locale of *requested* to install, given what the library has.
+
+    ``SubagentDefinition.content_for`` returns ``""`` for a locale with no file,
+    so the choice has to land on one that exists — otherwise the route uploads an
+    empty definition. A slug that ships only one language (54 of the 271 bundled
+    zh slugs have no en counterpart) must therefore fall back to that language
+    rather than to the requested one.
+    """
+    if requested in available:
+        return requested
+    if "en" in available:
+        return "en"
+    if available:
+        return available[0]
+    return requested
+
+
 def _resolve_install_locale(
     *,
     user: Any,
@@ -203,15 +221,7 @@ async def install_subagent(
         override=body.locale,
     )
     available = item.summary.available_locales
-    if requested not in available and "en" not in available:
-        # No English fallback available — honor the requested locale
-        # even if the slug has no translation yet, matching the catalog
-        # behavior of returning whatever file is on disk.
-        installed_locale = requested
-    elif requested in available:
-        installed_locale = requested
-    else:
-        installed_locale = "en"
+    installed_locale = _install_locale_choice(requested, available)
     content = item.content_for(installed_locale)
     if installed_locale != requested:
         logger.info(

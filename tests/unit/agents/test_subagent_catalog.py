@@ -216,3 +216,69 @@ def test_bundled_library_zh_path_exists() -> None:
             continue
         md_files = list(div_dir.glob("*.md"))
         assert md_files, f"zh/{div_dir.name}/ has no markdown files"
+
+
+def _make_zh_only_library(tmp_path: Path) -> Path:
+    """A library that ships only zh, mirroring the bundled ``hr/legal/...`` slugs.
+
+    In the real library 54 of the 271 zh slugs have no en counterpart (and no en
+    slug lacks zh), so this shape is the common case, not an edge case.
+    """
+    root = tmp_path / "subagents-zh-only"
+    root.mkdir()
+    divisions = {"engineering": {"label": "Engineering", "icon": "Code", "color": "#3B82F6"}}
+    _make_locale(
+        root,
+        "zh",
+        divisions,
+        {
+            "zh-only": {
+                "division": "engineering",
+                "name": "仅中文助手",
+                "description": "只有中文版本",
+                "body": "只有中文版本的具体内容。",
+            }
+        },
+    )
+    return root
+
+
+_ZH_ONLY_SLUG = "engineering-zh-only"
+
+
+def test_zh_only_subagent_keeps_its_body_for_an_english_caller(tmp_path: Path) -> None:
+    """Installing a zh-only subagent must not yield an empty definition.
+
+    ``SubagentDefinition.content_for`` returns ``""`` for a locale that has no
+    file, so choosing ``en`` for a zh-only slug makes the install route upload a
+    0-byte ``agents/<slug>.md`` and still answer ``installed: true``.
+    """
+    from octop.api.routers.subagents import _install_locale_choice
+
+    catalog = SubagentCatalog(_make_zh_only_library(tmp_path))
+    catalog.refresh()
+    item = catalog.get(_ZH_ONLY_SLUG)
+    assert item is not None
+    assert item.summary.available_locales == ("zh",)
+    assert item.content_for("en") == ""  # nothing to install for English
+
+    chosen = _install_locale_choice("en", item.summary.available_locales)
+    assert chosen in item.summary.available_locales, (
+        f"chose locale {chosen!r} but the library only has {item.summary.available_locales}"
+    )
+    assert item.content_for(chosen) != "", "the chosen locale has no body to install"
+
+
+def test_bilingual_subagent_still_installs_the_requested_locale(tmp_path: Path) -> None:
+    """The normal bilingual case is unchanged: en stays en, zh stays zh."""
+    from octop.api.routers.subagents import _install_locale_choice
+
+    catalog = SubagentCatalog(_make_library(tmp_path))
+    catalog.refresh()
+    item = catalog.get(_SA_SLUG)
+    assert item is not None
+    available = item.summary.available_locales
+    assert set(available) == {"en", "zh"}
+
+    assert _install_locale_choice("en", available) == "en"
+    assert _install_locale_choice("zh", available) == "zh"
