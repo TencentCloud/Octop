@@ -58,8 +58,10 @@ def test_repair_legacy_schema_ensures_name_unique_index(tmp_path: Path) -> None:
     db_path = tmp_path / "octop.db"
     pool = SqlitePool(db_path)
     with pool.connect() as conn:
-        conn.executescript((_MIGRATIONS / "001_initial.sql").read_text())
-        conn.executescript((_MIGRATIONS / "002_cron_mcp_and_skill_packages.sql").read_text())
+        conn.executescript((_MIGRATIONS / "001_initial.sql").read_text(encoding="utf-8"))
+        conn.executescript(
+            (_MIGRATIONS / "002_cron_mcp_and_skill_packages.sql").read_text(encoding="utf-8")
+        )
         conn.execute("DROP INDEX IF EXISTS idx_skill_packages_name")
     run_migrations(pool)
     with pool.connect() as conn:
@@ -77,7 +79,7 @@ def test_migration_002_idempotent_when_icon_columns_already_present(tmp_path: Pa
     db_path = tmp_path / "octop.db"
     pool = SqlitePool(db_path)
     with pool.connect() as conn:
-        conn.executescript((_MIGRATIONS / "001_initial.sql").read_text())
+        conn.executescript((_MIGRATIONS / "001_initial.sql").read_text(encoding="utf-8"))
         conn.executescript(_LEGACY_SKILL_PACKAGES_WITHOUT_ICONS)
         conn.execute("ALTER TABLE skill_packages ADD COLUMN icon_name TEXT NOT NULL DEFAULT ''")
         conn.execute("ALTER TABLE skill_packages ADD COLUMN icon_url TEXT NOT NULL DEFAULT ''")
@@ -103,7 +105,7 @@ def test_repair_legacy_schema_adds_icon_columns_at_version_2(tmp_path: Path) -> 
     db_path = tmp_path / "octop.db"
     pool = SqlitePool(db_path)
     with pool.connect() as conn:
-        conn.executescript((_MIGRATIONS / "001_initial.sql").read_text())
+        conn.executescript((_MIGRATIONS / "001_initial.sql").read_text(encoding="utf-8"))
         conn.executescript(_LEGACY_SKILL_PACKAGES_WITHOUT_ICONS)
         conn.execute("UPDATE _schema_version SET version = 2")
     run_migrations(pool)

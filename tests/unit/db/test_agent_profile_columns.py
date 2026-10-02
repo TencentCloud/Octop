@@ -90,7 +90,7 @@ def test_migration_007_backfills_profile_columns(tmp_path: Path) -> None:
             (
                 Path(__file__).resolve().parents[3]
                 / "src/octop/infra/db/migrations/001_initial.sql"
-            ).read_text()
+            ).read_text(encoding="utf-8")
         )
         conn.execute("UPDATE _schema_version SET version = 6")
         conn.execute(
@@ -141,7 +141,7 @@ def test_legacy_zh_en_welcome_collapses_to_single_column(tmp_path: Path) -> None
             (
                 Path(__file__).resolve().parents[3]
                 / "src/octop/infra/db/migrations/001_initial.sql"
-            ).read_text()
+            ).read_text(encoding="utf-8")
         )
         conn.execute("ALTER TABLE agents ADD COLUMN welcome_message_zh TEXT")
         conn.execute("ALTER TABLE agents ADD COLUMN welcome_message_en TEXT")
