@@ -343,6 +343,8 @@ async def desktop_stream_ws(
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(msg, dict):
+                continue
             if msg.get("type") == "stop":
                 break
             if session is not None:
