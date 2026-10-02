@@ -211,6 +211,12 @@ def _map_knowledge_error(
     if isinstance(exc, RuntimeError):
         if "disabled" in text:
             return OctopError.localized(ErrorCode.KNOWLEDGE_FEATURE_DISABLED, locale)
+        # Packages installed into a directory the running interpreter did not have on
+        # sys.path at startup (pip's user site) are importable only after a restart.
+        # Report that instead of the generic prerequisite error, which told the user
+        # nothing they could act on and sent them into a retry loop.
+        if "restart the server" in text:
+            return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_RESTART_REQUIRED, locale)
         if any(
             kw in text
             for kw in (
