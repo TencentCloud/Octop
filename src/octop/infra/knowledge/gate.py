@@ -39,7 +39,13 @@ def _as_bool(value: str | None) -> bool:
 def _provider_for_settings(provider_repo: Any, provider_id: str) -> Any | None:
     if provider_repo is None or not provider_id.isdigit():
         return None
-    return provider_repo.get(int(provider_id))
+    try:
+        numeric_id = int(provider_id)
+    except ValueError:
+        # ``isdigit`` also accepts non-decimal code points (superscripts, circled
+        # digits) that ``int()`` rejects. An unusable id is simply "no provider".
+        return None
+    return provider_repo.get(numeric_id)
 
 
 def _remote_ready(provider: Any | None, model: str) -> bool:

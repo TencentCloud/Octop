@@ -38,8 +38,16 @@ def _positive_int(value: Any) -> int | None:
     if isinstance(value, float) and value.is_integer():
         iv = int(value)
         return iv if iv > 0 else None
-    if isinstance(value, str) and value.strip().isdigit():
-        iv = int(value.strip())
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped.isdigit():
+            return None
+        # ``isdigit`` also accepts non-decimal code points (superscripts, circled
+        # digits) that ``int()`` rejects with ValueError, so it cannot gate the parse.
+        try:
+            iv = int(stripped)
+        except ValueError:
+            return None
         return iv if iv > 0 else None
     return None
 
