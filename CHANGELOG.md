@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 移动端投屏 WebSocket 收到无法解析的客户端帧（截断的 JSON，或解析成 `null`/数字/数组的合法 JSON）时会拆掉整个会话：`json.loads` 与随后的 `msg.get` 落在守卫之外，异常逃出接收循环后由外层 `except Exception` 吞掉，`finally` 随即取消帧流、清除设备绑定并关闭连接，客户端只看到连接断开而无错误帧。现在这类帧按既有范式（同 `desktop/stream.py`、`browser/stream.py`）跳过并继续读下一帧。
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 

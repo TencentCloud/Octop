@@ -620,7 +620,12 @@ async def mobile_stream_ws(
         press: dict[str, int | None] = {"x": None, "y": None}
         while True:
             msg_raw = await websocket.receive_text()
-            msg = json.loads(msg_raw)
+            try:
+                msg = json.loads(msg_raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(msg, dict):
+                continue
             if msg.get("type") == "stop":
                 break
             try:
