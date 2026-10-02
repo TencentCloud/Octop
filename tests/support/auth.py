@@ -180,6 +180,31 @@ async def resolve_user_id(
     return next(u["id"] for u in users if u["username"] == username)
 
 
+async def set_workspace_root_policy(
+    client: httpx.AsyncClient,
+    admin_auth: dict[str, str],
+    username: str,
+    root_dir: str,
+) -> int:
+    """Point a user's ``workspace_root_dir`` policy at *root_dir*.
+
+    Every user is jailed to ``<OCTOP_HOME>/workspaces/<user-id>`` unless an admin
+    configures a policy (see ``infra/users/resource_policy.py``). Tests that need
+    an agent rooted somewhere else must therefore configure the override rather
+    than assume the host root is reachable.
+    """
+    root = Path(root_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    user_id = await resolve_user_id(client, admin_auth, username)
+    r = await client.patch(
+        f"/api/users/{user_id}",
+        headers=admin_auth,
+        json={"workspace_root_dir": root.as_posix()},
+    )
+    r.raise_for_status()
+    return user_id
+
+
 async def create_provider(
     client: httpx.AsyncClient,
     auth: dict[str, str],

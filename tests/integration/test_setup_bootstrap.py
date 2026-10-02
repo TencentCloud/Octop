@@ -100,30 +100,40 @@ async def test_start_skips_wizard_password_when_disabled(tmp_octop_home: Path) -
 
 async def test_main_agent_seeds_general_assistant_workspace(patched_app_client: Any) -> None:
     """Finish creates main with expert files even when no provider is configured yet."""
-    c, _srv, home = patched_app_client
+    c, srv, home = patched_app_client
     await bootstrap_admin(c, home)
-    ws = home / "agents" / "main"
+    # A scoped root_dir puts the agent tree inside the user's jail, not under
+    # the app's agents/ dir.
+    ws = srv.paths.root / "workspaces" / "1" / ".octop" / "workspaces" / "main"
     assert (ws / "SOUL.md").is_file()
     # New agents use system_files_path=.octop — BackendWorkspace remaps skills/.
     assert (ws / ".octop" / "skills" / "octop-assistant" / "SKILL.md").is_file()
 
 
 async def test_main_agent_uses_fs_root_backend(patched_app_client: Any) -> None:
-    """Default main uses the same FS-root local backend as dashboard-created agents."""
-    from octop.infra.utils.host_dirs import host_fs_tree_root
+    """Default main is rooted at the admin's app-owned workspace jail.
 
+    This used to assert the host filesystem root, which is the default this
+    change removes: the bootstrap path resolves the owning user's jail root the
+    same way every other agent-creation path does.
+    """
     c, srv, home = patched_app_client
     await bootstrap_admin(c, home)
     assert srv.app_runtime is not None
     row = srv.app_runtime.agent_registry.get_row("main")
     assert row is not None
     cfg = json.loads(row.config_json or "{}")
+    admin_jail = srv.paths.root / "workspaces" / "1"
     assert cfg["backend"] == {
         "type": "local_shell",
-        "root_dir": host_fs_tree_root(),
+        "root_dir": admin_jail.as_posix(),
         "virtual_mode": True,
     }
-    assert cfg["workspace_dir"] == str((home / "agents" / "main").resolve())
+    # A scoped root persists the agent-facing form, resolving inside the jail.
+    from octop.infra.agents.workspace.dir import resolve_workspace_host_path
+
+    on_disk = resolve_workspace_host_path(cfg["workspace_dir"], {"backend": cfg["backend"]})
+    assert Path(on_disk).is_relative_to(admin_jail)
 
 
 async def test_main_agent_uses_general_assistant_template(patched_app_client: Any) -> None:

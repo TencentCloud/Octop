@@ -20,8 +20,12 @@ from octop.infra.users.resource_policy import (
     assert_agent_quota_available,
     assert_backend_within_user_root,
     assert_token_quota_available,
+    default_workspace_root_dir,
+    effective_workspace_root_dir,
+    ensure_user_workspace_root,
     normalize_workspace_root_dir,
     public_policy_fields,
+    resolve_workspace_root_dir,
 )
 
 
@@ -52,19 +56,65 @@ def test_normalize_workspace_root_dir_must_be_directory(
     assert exc.value.code is ErrorCode.WORKSPACE_ROOT_RESTRICTED
 
 
-def test_normalize_workspace_root_dir_rejected_in_container(
+def test_normalize_workspace_root_dir_accepted_in_container(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from octop.infra.users.resource_policy import effective_workspace_root_dir
+    """A container admin can still point the jail at a mounted volume.
 
+    This replaced ``test_normalize_workspace_root_dir_rejected_in_container``,
+    which refused any policy in a container. That refusal was justified by "the
+    container filesystem is already the isolation boundary" — true only while the
+    fallback was the host root ``/``. Now the fallback is an app-owned per-user
+    jail, so refusing the override would make that default inescapable in
+    containers and would break the Docker backend for mounted volumes.
+    """
     root = tmp_path / "jail"
     root.mkdir()
     monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
     assert normalize_workspace_root_dir(None) is None
-    with pytest.raises(OctopError) as exc:
-        normalize_workspace_root_dir(str(root))
-    assert exc.value.code is ErrorCode.WORKSPACE_ROOT_CONTAINER_UNSUPPORTED
-    assert effective_workspace_root_dir(str(root)) is None
+    assert normalize_workspace_root_dir(str(root)) == str(root)
+    assert effective_workspace_root_dir(str(root)) == str(root)
+
+
+def test_default_workspace_root_dir_is_app_owned_and_per_user(tmp_path: Path) -> None:
+    app_root = tmp_path / ".octop"
+    first = default_workspace_root_dir(app_root, 1)
+    second = default_workspace_root_dir(app_root, 2)
+
+    assert first != second
+    for value in (first, second):
+        # Pure path arithmetic: nothing is created by this call.
+        assert not Path(value).exists()
+        assert Path(value).parent == app_root / "workspaces"
+        # Never the three forbidden fallbacks.
+        assert value not in {"/", str(tmp_path), str(Path.cwd().resolve())}
+
+
+def test_resolve_workspace_root_dir_prefers_policy_then_default(tmp_path: Path) -> None:
+    app_root = tmp_path / ".octop"
+    policy = tmp_path / "jail"
+    policy.mkdir()
+
+    assert resolve_workspace_root_dir(str(policy), user_id=7, app_root=app_root) == str(policy), (
+        "an explicit admin policy overrides the default"
+    )
+    assert resolve_workspace_root_dir(
+        None, user_id=7, app_root=app_root
+    ) == default_workspace_root_dir(app_root, 7), "no policy falls back to the app-owned default"
+    # A blank policy is treated as "not configured", not as a root named "".
+    assert resolve_workspace_root_dir(
+        "", user_id=7, app_root=app_root
+    ) == default_workspace_root_dir(app_root, 7)
+
+
+def test_ensure_user_workspace_root_creates_and_canonicalizes(tmp_path: Path) -> None:
+    app_root = tmp_path / ".octop"
+    created = ensure_user_workspace_root(app_root, 3)
+
+    assert Path(created).is_dir()
+    assert Path(created) == (app_root / "workspaces" / "3").resolve()
+    # Idempotent.
+    assert ensure_user_workspace_root(app_root, 3) == created
 
 
 def test_assert_backend_within_user_root(tmp_path: Path) -> None:

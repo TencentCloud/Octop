@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from octop.infra.errors import ErrorCode, OctopError
@@ -12,7 +13,6 @@ from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
     host_path_text,
     iter_local_backend_root_dirs,
-    running_in_container,
 )
 
 POLICY_WORKSPACE_ROOT_DIR = "workspace_root_dir"
@@ -55,10 +55,60 @@ def workspace_root_dir_of(raw: Any) -> str | None:
 
 
 def effective_workspace_root_dir(raw: Any) -> str | None:
-    """Stored workspace-root policy, ignored when Octop runs in a container."""
-    if running_in_container():
-        return None
+    """Stored workspace-root policy, or ``None`` when none is configured.
+
+    Previously this returned ``None`` in container deployments, on the reasoning
+    that the container filesystem is already the isolation boundary. That
+    reasoning only held while the ``None`` fallback was the host root ``/``.
+    Now the fallback is an app-owned per-user jail
+    (:func:`default_workspace_root_dir`), and an admin who wants agents to reach
+    a mounted volume must still be able to say so.
+    """
     return workspace_root_dir_of(raw)
+
+
+def default_workspace_root_dir(app_root: str | os.PathLike[str], user_id: int) -> str:
+    """App-owned default jail for *user_id*: ``<app_root>/workspaces/<user_id>``.
+
+    Pure path arithmetic — it performs no I/O, so it is safe to call from async
+    code. Use :func:`ensure_user_workspace_root` when the directory must exist.
+
+    The previous fallback for a user with no admin policy was the host browse
+    root (``/``), which meant any authenticated user could point an agent at any
+    directory the server uid could read. The default is now app-owned and
+    per-user, so it is never ``/``, the process working directory, or the service
+    account's home directory. An explicit admin policy still wins.
+    """
+    base = Path(app_root).expanduser() / "workspaces" / str(int(user_id))
+    return host_path_text(Path(os.path.realpath(base)))
+
+
+def ensure_user_workspace_root(app_root: str | os.PathLike[str], user_id: int) -> str:
+    """Create the per-user default jail if needed and return its canonical path.
+
+    Blocking — call from a worker thread in async request handlers.
+    """
+    base = Path(app_root).expanduser() / "workspaces" / str(int(user_id))
+    base.mkdir(parents=True, exist_ok=True)
+    return host_path_text(Path(os.path.realpath(base)))
+
+
+def resolve_workspace_root_dir(
+    raw: Any,
+    *,
+    user_id: int,
+    app_root: str | os.PathLike[str],
+) -> str:
+    """The user's effective jail root: admin policy if set, else the app default.
+
+    Unlike :func:`effective_workspace_root_dir` this never returns ``None``. The
+    previous ``None`` meant "unrestricted, use the host root", which is exactly
+    the default the per-user jail replaces.
+    """
+    configured = effective_workspace_root_dir(raw)
+    if configured:
+        return configured
+    return default_workspace_root_dir(app_root, user_id)
 
 
 def token_quota_of(raw: Any) -> int | None:
@@ -110,16 +160,12 @@ def public_policy_fields(rows: Sequence[Any] | Mapping[str, str] | None) -> dict
 def normalize_workspace_root_dir(raw: str | None) -> str | None:
     """Return a canonical host path, or ``None`` when unrestricted.
 
-    Setting a non-empty root is refused in container deployments — the
-    container filesystem is already the isolation boundary.
+    Container deployments are accepted: the container filesystem is the
+    isolation boundary, but that no longer means a policy is meaningless,
+    because pointing a jail at a mounted volume is still an explicit choice.
     """
     if raw is None or not str(raw).strip():
         return None
-    if running_in_container():
-        raise OctopError(
-            ErrorCode.WORKSPACE_ROOT_CONTAINER_UNSUPPORTED,
-            "workspace root policy is unavailable in container deployments",
-        )
     path = assert_safe_host_path(str(raw).strip(), restrict_to_home=False)
     resolved = os.path.realpath(os.fspath(path))
     drive, _tail = os.path.splitdrive(resolved)
@@ -168,8 +214,18 @@ def assert_backend_within_user_root(backend: Any, allowed_root: str | None) -> N
         assert_safe_host_path(root_dir, restrict_to_root=allowed_root)
 
 
-def raise_if_backend_outside_user_root(policy_repo: Any, user_id: int, backend: Any) -> None:
-    allowed = effective_workspace_root_dir(policy_repo.get(user_id, POLICY_WORKSPACE_ROOT_DIR))
+def raise_if_backend_outside_user_root(
+    policy_repo: Any,
+    user_id: int,
+    backend: Any,
+    *,
+    app_root: str | os.PathLike[str],
+) -> None:
+    allowed = resolve_workspace_root_dir(
+        policy_repo.get(user_id, POLICY_WORKSPACE_ROOT_DIR),
+        user_id=user_id,
+        app_root=app_root,
+    )
     try:
         assert_backend_within_user_root(backend, allowed)
     except ValueError as exc:

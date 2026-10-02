@@ -151,7 +151,16 @@ async def test_admin_can_create_user_with_resource_policy(env, tmp_path, monkeyp
     assert row["token_quota"] == 2000
 
 
-async def test_create_user_rejects_workspace_root_in_container(env, tmp_path, monkeypatch):
+async def test_create_user_accepts_workspace_root_in_container(env, tmp_path, monkeypatch):
+    """A container admin can still point a user's jail at a mounted volume.
+
+    This replaced ``test_create_user_rejects_workspace_root_in_container``. The
+    refusal was justified by "the container filesystem is already the isolation
+    boundary", which only held while the fallback was the host root ``/``. Now
+    that every user defaults to an app-owned per-user jail, refusing the
+    override would make that default inescapable in containers and would break
+    the Docker backend for mounted volumes.
+    """
     monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
     c, _srv, auth = env
     jail = tmp_path / "jail"
@@ -167,10 +176,8 @@ async def test_create_user_rejects_workspace_root_in_container(env, tmp_path, mo
             "workspace_root_dir": jail.as_posix(),
         },
     )
-    assert r.status_code == 400, r.text
-    assert r.json()["error"]["code"] == "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED"
-    listed = (await c.get("/api/users", headers=auth)).json()
-    assert "policy_container" not in [u["username"] for u in listed]
+    assert r.status_code == 201, r.text
+    assert r.json()["workspace_root_dir"] == jail.as_posix()
 
 
 async def test_create_user_rejects_invalid_workspace_root(env, tmp_path, monkeypatch):

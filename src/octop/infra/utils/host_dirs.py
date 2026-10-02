@@ -352,6 +352,42 @@ def iter_local_backend_root_dirs(spec: Any) -> list[str]:
     return found
 
 
+def apply_jail_to_local_roots(spec: Any, jail_root: str) -> Any:
+    """Fill in an omitted local-backend ``root_dir`` with *jail_root*.
+
+    A ``local_shell`` / ``filesystem`` spec with no ``root_dir`` historically
+    meant the host filesystem root (see :func:`iter_local_backend_root_dirs`).
+    Once every user is jailed, that implicit host root is outside the jail, so
+    omitting ``root_dir`` would be a way to opt out of it.
+
+    Resolving the omission to the user's own jail keeps the default consistent
+    with what the root_dir picker offers, and keeps ``root_dir`` explicit in
+    stored config. Returns a new spec; *spec* is not mutated. A non-local or
+    already-rooted spec is returned unchanged.
+    """
+    if not isinstance(spec, dict):
+        return spec
+    jail = jail_root.strip()
+    if not jail:
+        return spec
+    out = dict(spec)
+    kind = str(out.get("type") or "").strip()
+    if kind in {"local_shell", "filesystem"}:
+        root = out.get("root_dir")
+        if root is None or (isinstance(root, str) and not root.strip()):
+            out["root_dir"] = jail
+    elif kind == "composite":
+        default = out.get("default")
+        if isinstance(default, dict):
+            out["default"] = apply_jail_to_local_roots(default, jail)
+        routes = out.get("routes")
+        if isinstance(routes, dict):
+            out["routes"] = {
+                name: apply_jail_to_local_roots(route, jail) for name, route in routes.items()
+            }
+    return out
+
+
 def assert_backend_root_dirs_allowed(spec: Any, *, restrict_to_home: bool) -> None:
     """Raise ``ValueError`` when a local backend ``root_dir`` is not browsable."""
     for root_dir in iter_local_backend_root_dirs(spec):
