@@ -15,7 +15,6 @@ from octop.infra.agents.experts.default_agent import (
     default_home_local_backend,
 )
 from octop.infra.errors import OctopError
-from octop.infra.utils.host_dirs import host_fs_tree_root
 
 
 @pytest.fixture(scope="module")
@@ -23,6 +22,9 @@ def catalog() -> ExpertCatalog:
     cat = ExpertCatalog(default_library_root())
     cat.refresh()
     return cat
+
+
+JAIL = "/tmp/octop-jail-tests/workspaces/3"
 
 
 async def test_bootstrap_skips_when_user_has_agents(catalog: ExpertCatalog) -> None:
@@ -46,6 +48,7 @@ async def test_bootstrap_skips_when_main_exists(catalog: ExpertCatalog) -> None:
         user_id=1,
         locale="zh",
         agent_id=SETUP_DEFAULT_AGENT_ID,
+        root_dir=JAIL,
     )
     assert result is None
     registry.create.assert_not_called()
@@ -57,19 +60,22 @@ async def test_bootstrap_creates_general_assistant(catalog: ExpertCatalog) -> No
     registry.list_agents.return_value = []
     created = object()
     registry.create = AsyncMock(return_value=created)
-    result = await bootstrap_default_agent(registry, catalog, user_id=3, locale="en", agent_id=None)
+    result = await bootstrap_default_agent(
+        registry, catalog, user_id=3, locale="en", agent_id=None, root_dir=JAIL
+    )
     assert result is created
     registry.create.assert_awaited_once()
     spec = registry.create.await_args.args[0]
     assert spec.user_id == 3
     assert spec.agent_id is None
     assert spec.template_name == DEFAULT_EXPERT_ID
-    assert spec.config["backend"] == default_home_local_backend()
-    assert spec.config["backend"]["root_dir"] == host_fs_tree_root()
+    assert spec.config["backend"] == default_home_local_backend(root_dir=JAIL)
+    assert spec.config["backend"]["root_dir"] == JAIL
     assert registry.create.await_args.kwargs["defer_bootstrap"] is True
 
 
-async def test_bootstrap_main_uses_fs_root_backend(catalog: ExpertCatalog) -> None:
+async def test_bootstrap_main_uses_the_users_jail_root(catalog: ExpertCatalog) -> None:
+    """The default agent is rooted at the user's jail, not the host filesystem root."""
     registry = MagicMock()
     registry.get_row.return_value = None
     registry.list_agents.return_value = []
@@ -80,11 +86,30 @@ async def test_bootstrap_main_uses_fs_root_backend(catalog: ExpertCatalog) -> No
         catalog,
         user_id=1,
         agent_id=SETUP_DEFAULT_AGENT_ID,
+        root_dir=JAIL,
     )
 
     spec = registry.create.await_args.args[0]
-    assert spec.config["backend"] == default_home_local_backend()
-    assert spec.config["backend"]["root_dir"] == host_fs_tree_root()
+    assert spec.config["backend"] == default_home_local_backend(root_dir=JAIL)
+    assert spec.config["backend"]["root_dir"] == JAIL
+
+
+async def test_bootstrap_requires_a_resolved_jail_root(catalog: ExpertCatalog) -> None:
+    """No root_dir means no safe default: the host root is no longer acceptable."""
+    registry = MagicMock()
+    registry.get_row.return_value = None
+    registry.list_agents.return_value = []
+    registry.create = AsyncMock(return_value=object())
+
+    with pytest.raises(OctopError):
+        await bootstrap_default_agent(
+            registry,
+            catalog,
+            user_id=1,
+            agent_id=SETUP_DEFAULT_AGENT_ID,
+        )
+
+    registry.create.assert_not_awaited()
 
 
 async def test_bootstrap_respects_policy_root_dir(catalog: ExpertCatalog, tmp_path: Path) -> None:

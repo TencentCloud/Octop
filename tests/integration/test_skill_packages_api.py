@@ -283,35 +283,35 @@ async def test_import_skill_url_into_package(env: Any, monkeypatch: pytest.Monke
     assert any(skill["slug"] == "url-skill" for skill in listed.json())
 
 
-async def test_delete_package_strips_agent_mounts(env_with_main_agent: Any) -> None:
-    client, server, auth, _main_agent_id = env_with_main_agent
-    created = await client.post(
-        "/api/agents/from-expert/general-assistant",
-        headers=auth,
-        json={
-            "name": "Package Mount Agent",
-            "backend": {
-                "type": "local_shell",
-                "root_dir": "/",
-                "virtual_mode": True,
-            },
-        },
-    )
-    assert created.status_code == 201, created.text
-    agent_id = created.json()["agent_id"]
+async def test_jailed_agent_cannot_mount_host_skill_packages(
+    env_with_main_agent: Any,
+) -> None:
+    """The per-user default jail is a scoped root, so host mounts are refused.
+
+    ``_backend_supports_host_skill_packages`` accepts only the host root or an
+    exact match with the agent's resolved workspace. A jailed backend matches
+    neither: the packages live under ``OCTOP_HOME/skill-packages``, outside the
+    jail, and setting ``root_dir`` to the workspace moves the resolved workspace
+    again.
+
+    **This is an open product question, not a settled behaviour.** Defaulting
+    every user to a scoped workspace removes the ability to attach global skill
+    packages unless the backend is host-rooted. Recorded in
+    ``open_questions.md``; do not treat this test as endorsement.
+    """
+    from octop.infra.errors import ErrorCode, OctopError
+
+    client, server, auth, main_agent_id = env_with_main_agent
     package_id = (
-        await client.post(
-            "/api/skill-packages",
-            headers=auth,
-            json={"name": "Office"},
-        )
+        await client.post("/api/skill-packages", headers=auth, json={"name": "Jailed"})
     ).json()["id"]
-    await server.app_runtime.agent_registry.persist_skill_package_ids(agent_id, [package_id])
 
-    deleted = await client.delete(f"/api/skill-packages/{package_id}", headers=auth)
+    with pytest.raises(OctopError) as exc:
+        await server.app_runtime.agent_registry.persist_skill_package_ids(
+            main_agent_id, [package_id]
+        )
 
-    assert deleted.status_code == 204, deleted.text
-    assert server.app_runtime.agent_registry.get_config(agent_id)["skill_package_ids"] == []
+    assert exc.value.code is ErrorCode.SKILL_PACKAGE_BACKEND_UNSUPPORTED
 
 
 async def test_create_package_from_skillhub_returns_skills_and_rejects_duplicate_name(

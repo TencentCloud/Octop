@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 
@@ -72,11 +74,18 @@ async def test_acp_builtin_runner_cannot_delete(env) -> None:
     assert r.status_code == 403
 
 
-async def test_acp_tool_allowed_for_scoped_root_dir(env) -> None:
+async def test_acp_tool_allowed_for_scoped_root_dir(env, tmp_path) -> None:
     """Directory sandbox does not block enabling outbound acp_runner."""
     c, _srv, auth, _agent_id = env
-    from tests.support.auth import create_agent
+    from tests.support.auth import create_agent, set_workspace_root_policy
 
+    # Every user is jailed to their own workspace by default; opt this one into a
+    # policy directory so the agent's root_dir is reachable.
+    username = (await c.get("/api/auth/me", headers=auth)).json()["username"]
+    await set_workspace_root_policy(c, auth, username, str(tmp_path))
+
+    scoped = Path(tmp_path) / "acp-scoped"
+    scoped.mkdir()
     agent_id = await create_agent(
         c,
         auth,
@@ -84,7 +93,7 @@ async def test_acp_tool_allowed_for_scoped_root_dir(env) -> None:
         config={
             "backend": {
                 "type": "local_shell",
-                "root_dir": "/tmp/octop-acp-scoped",
+                "root_dir": scoped.as_posix(),
                 "virtual_mode": True,
             }
         },

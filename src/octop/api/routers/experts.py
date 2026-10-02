@@ -652,6 +652,7 @@ async def install_published_expert(
         user,
         body.backend,
         policy_repo=server.services.user_policy_repo,
+        app_root=server.paths.root,
     )
     kb_ids, servers = _validated_session_defaults(
         server.app_runtime.agent_registry,
@@ -757,6 +758,7 @@ async def install_expert_hub_item(
         user,
         body.backend,
         policy_repo=server.services.user_policy_repo,
+        app_root=server.paths.root,
     )
     package_ids = (
         server.app_runtime.agent_registry.validate_skill_package_ids(body.skill_package_ids)
@@ -855,6 +857,7 @@ async def create_agent_from_expert(
         user,
         body.backend,
         policy_repo=server.services.user_policy_repo,
+        app_root=server.paths.root,
     )
     package_ids = (
         server.app_runtime.agent_registry.validate_skill_package_ids(body.skill_package_ids)

@@ -55,6 +55,21 @@ class PathLayout:
         return self.users_dir / username
 
     @property
+    def user_workspaces_dir(self) -> Path:
+        """Per-user default workspace jails: ``~/.octop/workspaces/``."""
+        return self.root / "workspaces"
+
+    def user_workspace_dir(self, user_id: int) -> Path:
+        """Default jail root for one user: ``~/.octop/workspaces/<user-id>``.
+
+        This is the fallback when an admin has configured no
+        ``workspace_root_dir`` policy. It is app-owned rather than host-owned so
+        the default never has to be ``/``, the process working directory, or the
+        service account's home directory.
+        """
+        return self.user_workspaces_dir / str(int(user_id))
+
+    @property
     def agents_dir(self) -> Path:
         """Global agents directory: ~/.octop/agents/"""
         return self.root / "agents"

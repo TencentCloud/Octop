@@ -7,9 +7,10 @@ Security notes:
   A denylist further blocks sensitive mounts (``/proc``, ``/sys``, ``/dev``,
   ``/etc``, ``/root`` on POSIX). The process home is never denied (so uid 0
   with home ``/root`` can use the default picker path).
-- All authenticated users may browse from host root ``/`` (denylist still applies).
-  The UI default ``root_dir`` is host filesystem root (POSIX ``/``), unless the
-  user has a ``workspace_root_dir`` policy jail.
+- Every user is jailed. With no admin policy the jail is the app-owned
+  ``<OCTOP_HOME>/workspaces/<user-id>``, created on first use; an explicit
+  ``workspace_root_dir`` policy overrides it. The default is deliberately not
+  ``/``, the process working directory, or the service account's home.
 - Directory listing is capped and skips unreadable entries.
 - Write probe creates a short-lived dotfile only for non-``/`` selections.
 - mkdir / rename only allow basename-safe names under already-browsable parents.
@@ -28,13 +29,12 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.users.resource_policy import (
     POLICY_WORKSPACE_ROOT_DIR,
-    effective_workspace_root_dir,
+    ensure_user_workspace_root,
 )
 from octop.infra.utils.bwrap import ensure_bubblewrap
 from octop.infra.utils.docker_env import docker_status, ensure_docker
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
-    host_fs_tree_root,
     host_path_text,
     list_host_subdirs,
     mkdir_host_subdir,
@@ -46,10 +46,21 @@ from octop.infra.utils.host_dirs import (
 router = APIRouter()
 
 
-def _user_workspace_root(server: Any, user: User) -> str | None:
-    return effective_workspace_root_dir(
-        server.services.user_policy_repo.get(user.id, POLICY_WORKSPACE_ROOT_DIR)
-    )
+async def _user_workspace_root(server: Any, user: User) -> str:
+    """The user's jail root: admin policy if set, else the app-owned default.
+
+    The default is created on first use so the picker has something to open.
+    Returns a canonical path; never ``/``, the process cwd, or the service
+    account's home.
+    """
+    configured = server.services.user_policy_repo.get(user.id, POLICY_WORKSPACE_ROOT_DIR)
+    if configured:
+        from octop.infra.users.resource_policy import effective_workspace_root_dir  # noqa: PLC0415
+
+        allowed = effective_workspace_root_dir(configured)
+        if allowed:
+            return allowed
+    return await asyncio.to_thread(ensure_user_workspace_root, server.paths.root, user.id)
 
 
 class ProbeBody(BaseModel):
@@ -83,17 +94,10 @@ async def filesystem_defaults(
     both ``default_root_dir`` and ``tree_root`` to that path.
     """
     in_container = running_in_container()
-    allowed = _user_workspace_root(server, user)
-    if allowed:
-        return {
-            "default_root_dir": allowed,
-            "tree_root": allowed,
-            "in_container": in_container,
-        }
-    root = host_fs_tree_root()
+    allowed = await _user_workspace_root(server, user)
     return {
-        "default_root_dir": root,
-        "tree_root": root,
+        "default_root_dir": allowed,
+        "tree_root": allowed,
         "in_container": in_container,
     }
 
@@ -105,7 +109,7 @@ async def list_host_dirs(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Single-level directory listing for lazy folder pickers."""
-    allowed = _user_workspace_root(server, user)
+    allowed = await _user_workspace_root(server, user)
     try:
         entries = await asyncio.to_thread(
             list_host_subdirs,
@@ -126,7 +130,7 @@ async def probe_host_dir(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Check whether Octop can use *path* as a local backend root_dir."""
-    allowed = _user_workspace_root(server, user)
+    allowed = await _user_workspace_root(server, user)
     return await asyncio.to_thread(
         probe_host_root_dir,
         body.path,
@@ -187,7 +191,7 @@ async def mkdir_host_dir(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Create a child directory under *path* for root_dir pickers."""
-    allowed = _user_workspace_root(server, user)
+    allowed = await _user_workspace_root(server, user)
     try:
         return await asyncio.to_thread(
             mkdir_host_subdir,
@@ -207,7 +211,7 @@ async def rename_host_directory(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Rename a host directory (basename only) for root_dir pickers."""
-    allowed = _user_workspace_root(server, user)
+    allowed = await _user_workspace_root(server, user)
     try:
         return await asyncio.to_thread(
             rename_host_dir,

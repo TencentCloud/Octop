@@ -7,10 +7,13 @@ shape matches production exactly.
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+
+from tests.support.auth import set_workspace_root_policy
 
 
 async def test_list_experts_returns_bundled_library(env: Any) -> None:
@@ -418,9 +421,15 @@ async def test_create_from_expert_default_name_uses_expert_label(env: Any) -> No
     assert r.json()["name"] == "运维工程师 Ops"
 
 
-async def test_create_from_expert_stores_backend(env: Any) -> None:
+async def test_create_from_expert_stores_backend(env: Any, tmp_path: Path) -> None:
     c, _srv, auth = env
-    backend_spec = {"type": "local_shell", "virtual_mode": True, "root_dir": "/"}
+    # Users are jailed to their own workspace unless an admin sets a policy.
+    root = tmp_path / "expert-root"
+    root.mkdir()
+    await set_workspace_root_policy(
+        c, auth, (await c.get("/api/auth/me", headers=auth)).json()["username"], str(root)
+    )
+    backend_spec = {"type": "local_shell", "virtual_mode": True, "root_dir": str(root)}
     r = await c.post(
         "/api/agents/from-expert/default",
         headers=auth,

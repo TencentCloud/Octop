@@ -13,9 +13,8 @@ from octop.infra.agents.experts.catalog import ExpertCatalog, build_create_spec_
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.resource_policy import (
     POLICY_WORKSPACE_ROOT_DIR,
-    effective_workspace_root_dir,
+    resolve_workspace_root_dir,
 )
-from octop.infra.utils.host_dirs import host_fs_tree_root
 from octop.infra.utils.locale import normalize_locale
 
 logger = logging.getLogger(__name__)
@@ -25,12 +24,21 @@ SETUP_DEFAULT_AGENT_ID = "main"
 
 
 def default_home_local_backend(*, root_dir: str | None = None) -> dict[str, Any]:
-    """Same local backend as the dashboard create-from-expert default.
+    """The local backend for a freshly bootstrapped default agent.
 
-    Defaults to host filesystem root; pass *root_dir* when a user
-    ``workspace_root_dir`` policy applies.
+    *root_dir* must be the owning user's resolved jail root
+    (:func:`user_policy_workspace_root`). This used to fall back to the host
+    filesystem root, which is the default this change removes.
     """
-    resolved = (root_dir or "").strip() or host_fs_tree_root()
+    resolved = (root_dir or "").strip()
+    if not resolved:
+        # Callers must pass a resolved jail. Falling back to the host root here
+        # would silently undo the per-user default; there is no safe shared
+        # directory to fall back to either, because every user needs its own.
+        raise OctopError(
+            ErrorCode.WORKSPACE_ROOT_RESTRICTED,
+            "a workspace root is required to build the default agent backend",
+        )
     return {
         "type": "local_shell",
         "root_dir": resolved,
@@ -38,10 +46,16 @@ def default_home_local_backend(*, root_dir: str | None = None) -> dict[str, Any]
     }
 
 
-def user_policy_workspace_root(server: Any, user_id: int) -> str | None:
-    """Effective ``workspace_root_dir`` policy for *user_id*, or ``None``."""
-    return effective_workspace_root_dir(
-        server.services.user_policy_repo.get(user_id, POLICY_WORKSPACE_ROOT_DIR)
+def user_policy_workspace_root(server: Any, user_id: int) -> str:
+    """The user's jail root: admin policy if set, else the app-owned default.
+
+    Never ``None``. The previous fallback for a user with no policy was the host
+    root ``/``, which is what the default agent was being pointed at.
+    """
+    return resolve_workspace_root_dir(
+        server.services.user_policy_repo.get(user_id, POLICY_WORKSPACE_ROOT_DIR),
+        user_id=user_id,
+        app_root=server.paths.root,
     )
 
 

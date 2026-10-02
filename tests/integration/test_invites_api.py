@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from octop.infra.agents.experts.default_agent import default_home_local_backend
-from octop.infra.utils.host_dirs import host_fs_tree_root
 
 
 async def test_invite_create_list_redeem_and_one_time(env) -> None:
@@ -71,11 +71,26 @@ async def test_invite_create_list_redeem_and_one_time(env) -> None:
     bob_row = srv.app_runtime.agent_registry.get_row(bob_agents[0]["agent_id"])
     assert bob_row is not None
     bob_cfg = json.loads(bob_row.config_json or "{}")
-    assert bob_cfg["backend"] == default_home_local_backend()
-    assert bob_cfg["backend"]["root_dir"] == host_fs_tree_root()
-    assert bob_cfg["workspace_dir"] == str(
-        srv.paths.agent_workspace(bob_agents[0]["agent_id"]).resolve()
-    )
+    # The default agent is rooted at bob's own app-owned workspace jail.
+    bob_jail = (
+        await c.get(
+            "/api/filesystem/defaults", headers={"Authorization": f"Bearer {body['access_token']}"}
+        )
+    ).json()["default_root_dir"]
+    assert bob_cfg["backend"] == default_home_local_backend(root_dir=bob_jail)
+    assert bob_cfg["backend"]["root_dir"] == bob_jail
+    # It is bob's own directory, not the admin's.
+    admin_jail = (await c.get("/api/filesystem/defaults", headers=auth)).json()["default_root_dir"]
+    assert bob_jail != admin_jail
+    assert Path(bob_jail).parent == Path(srv.paths.root) / "workspaces"
+    # A scoped root_dir persists the agent-facing ``/.octop/workspaces/<id>``
+    # form (see infra/agents/workspace/dir.py); what matters is that it resolves
+    # inside bob's jail rather than the host tree.
+    from octop.infra.agents.workspace.dir import resolve_workspace_host_path
+
+    on_disk = resolve_workspace_host_path(bob_cfg["workspace_dir"], {"backend": bob_cfg["backend"]})
+    assert Path(on_disk).is_relative_to(Path(bob_jail))
+    assert Path(on_disk).name == bob_agents[0]["agent_id"]
 
     again = await c.post(
         "/api/auth/invite/redeem",

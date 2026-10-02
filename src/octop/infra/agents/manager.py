@@ -530,6 +530,17 @@ class AgentManager:
     def paths(self) -> PathLayout:
         return self._paths
 
+    def _app_root(self) -> str:
+        """The application data root, for the per-user default workspace jail."""
+        root = getattr(self._paths, "root", None)
+        if root is None:
+            # Test doubles may omit ``root``; fall back to the env layout rather
+            # than guessing a host path.
+            from octop.infra.utils.paths import PathLayout  # noqa: PLC0415
+
+            root = PathLayout.from_env().root
+        return str(root)
+
     @property
     def harness_manager(self) -> HarnessAgentManager | None:
         return self._harness_manager
@@ -578,11 +589,25 @@ class AgentManager:
                 seed_workspace_dir_on_create,
             )
             from octop.infra.users.resource_policy import (
+                POLICY_WORKSPACE_ROOT_DIR,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
+                resolve_workspace_root_dir,
             )
+            from octop.infra.utils.host_dirs import apply_jail_to_local_roots
 
             if spec.user_id is not None:
+                # An omitted local-backend root_dir used to mean the host root,
+                # which is now outside the user's jail. Resolve it here so every
+                # creation path is covered by one choke point.
+                backend = config.get("backend")
+                if isinstance(backend, dict):
+                    jail = resolve_workspace_root_dir(
+                        self._repos.user_policy_repo.get(spec.user_id, POLICY_WORKSPACE_ROOT_DIR),
+                        user_id=spec.user_id,
+                        app_root=self._app_root(),
+                    )
+                    config["backend"] = apply_jail_to_local_roots(backend, jail)
                 kind = spec.kind if spec.kind in {"expert", "team"} else "expert"
                 if kind == "expert":
                     assert_agent_quota_available(
@@ -594,6 +619,7 @@ class AgentManager:
                     self._repos.user_policy_repo,
                     spec.user_id,
                     config.get("backend"),
+                    app_root=self._app_root(),
                 )
 
             # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
@@ -801,6 +827,7 @@ class AgentManager:
                     self._repos.user_policy_repo,
                     owner_row.user_id,
                     parsed_profile_cfg.get("backend"),
+                    app_root=self._app_root(),
                 )
             lifted = extract_profile_from_config(parsed_profile_cfg)
             kwargs["config_json"] = dumps_config(parsed_profile_cfg)
