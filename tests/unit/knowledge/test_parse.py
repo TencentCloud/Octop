@@ -228,14 +228,27 @@ def test_parse_delimited_keeps_the_line_breaks_csv_does_not_recognise(
     assert parse_document(path) == "# export\na\tb\nc\td"
 
 
+# ``csv``'s stock per-field cap. Any parse of a bigger CSV raises the process-global
+# and never lowers it, so a test that needs the cap to bite must set it, not read it.
+_CSV_DEFAULT_FIELD_LIMIT = 131072
+
+
 def test_parse_delimited_allows_a_quoted_field_past_the_csv_size_limit(tmp_path: Path) -> None:
     """One ``csv`` field is capped at 128 KiB; a quoted multi-line cell may exceed it."""
     path = tmp_path / "long.csv"
     line = "x" * 100
-    rows = csv.field_size_limit() // len(line) + 1
+    rows = _CSV_DEFAULT_FIELD_LIMIT // len(line) + 1
     path.write_text(f'a,b\n1,"{chr(10).join([line] * rows)}"\n', encoding="utf-8")
 
-    assert parse_document(path).splitlines()[2] == "1\t" + " ".join([line] * rows)
+    # Reset the global first: an earlier parse in the same process may have left it above
+    # this input, which would put the field back inside the cap and let the assertion hold
+    # even if the parser never raised the limit at all.
+    previous = csv.field_size_limit()
+    try:
+        csv.field_size_limit(_CSV_DEFAULT_FIELD_LIMIT)
+        assert parse_document(path).splitlines()[2] == "1\t" + " ".join([line] * rows)
+    finally:
+        csv.field_size_limit(previous)
 
 
 def test_csv_field_limit_stops_at_the_upload_limit() -> None:
