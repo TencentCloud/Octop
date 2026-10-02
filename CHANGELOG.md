@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- `github-trending` 插件的时间窗改为按 UTC 取日：GitHub 的 `created:` 限定词按 UTC 比较，而原实现用宿主历法日 `date.today()`，在默认时区 Asia/Shanghai（UTC+8）下 `daily` 的窗口起点会晚于当前时刻，每天 00:00–08:00（本地）返回空列表，且同一调用在不同宿主时区下给出不同查询
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
