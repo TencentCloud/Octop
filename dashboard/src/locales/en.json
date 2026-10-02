@@ -5769,6 +5769,7 @@
     "noDescription": "No description",
     "noToolsListed": "No tools loaded",
     "hasUi": "Chat UI",
+    "needsConfig": "Needs configuration",
     "hasConfig": "Configurable"
   },
   "slash": {

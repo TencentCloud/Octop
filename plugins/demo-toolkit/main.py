@@ -6,7 +6,7 @@ How to write an Octop plugin (copy this file as a template):
   3. Register callable tools with ctx.tool(...) inside setup.
   4. Tool functions may be async; parameters become the agent call schema.
   5. Read per-agent tool settings with get_tool_config("tool_name").
-     Fields come from config_fields and are edited in Dashboard → Tool management.
+     Fields come from config_fields and are edited in Dashboard → Personalization → Tools → Plugin tools → Configure.
 """
 
 from __future__ import annotations

@@ -11,4 +11,4 @@
 octop plugin install ./plugins/demo-ui-card --force
 ```
 
-然后在 Dashboard「工具管理」为 Agent 启用 `demo_ui_card`，在聊天中调用该工具即可看到卡片。
+然后在 Dashboard「个性化 → 工具 → 插件工具」为 Agent 启用 `demo_ui_card`，在聊天中调用该工具即可看到卡片。
