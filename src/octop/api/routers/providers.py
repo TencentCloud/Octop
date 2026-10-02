@@ -26,6 +26,7 @@ from octop.infra.agents.providers.codex_oauth import (
     request_device_code,
 )
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
+from octop.infra.agents.providers.names import validate_provider_name
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import (
     fetch_openai_compatible_models,
@@ -216,9 +217,10 @@ async def admin_create_provider(
 ) -> dict[str, Any]:
     import json as _json
 
+    name = validate_provider_name(body.name)
     models_json = _json.dumps(body.models) if body.models is not None else None
     pid = server.services.provider_repo.create(
-        name=body.name,
+        name=name,
         kind=body.kind,
         base_url=body.base_url,
         api_key=body.api_key,
@@ -227,7 +229,7 @@ async def admin_create_provider(
         note=body.note,
     )
     if server.app_runtime:
-        await server.app_runtime.agent_registry.on_provider_changed(provider_name=body.name)
+        await server.app_runtime.agent_registry.on_provider_changed(provider_name=name)
     return _row_to_dict(server.services.provider_repo.get(pid))
 
 

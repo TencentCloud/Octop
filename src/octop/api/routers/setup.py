@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_database, resolve_user_from_token, sign_token
+from octop.infra.agents.providers.names import validate_provider_name
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import make_probe_provider_row, probe_provider_row
 from octop.infra.errors import ErrorCode, OctopError
@@ -176,6 +177,7 @@ async def _apply_provider_draft(server: Any, draft: ProviderDraftBody) -> None:
     """Persist provider config from the wizard and reload harness providers."""
     api_key = (draft.api_key or "").strip()
     base_url = (draft.base_url or "").strip()
+    name = validate_provider_name(draft.name)
     if not api_key:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "api_key is required", status=400)
     if not base_url:
@@ -200,14 +202,14 @@ async def _apply_provider_draft(server: Any, draft: ProviderDraftBody) -> None:
     if not models:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "at least one model is required", status=400)
     server.services.provider_repo.create(
-        name=draft.name,
+        name=name,
         kind=draft.type,
         base_url=base_url,
         api_key=api_key,
         models_json=json.dumps(models),
         extra_json=json.dumps(draft.extras) if draft.extras else None,
     )
-    server.services.settings_repo.set_active_model(draft.name, models[0]["id"])
+    server.services.settings_repo.set_active_model(name, models[0]["id"])
     if server.app_runtime is not None:
         await server.app_runtime.agent_registry.on_provider_changed()
 

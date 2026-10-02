@@ -364,6 +364,7 @@
     "AGENT_ID_INVALID": "Invalid custom id: use 3-64 letters/digits/underscores/hyphens, starting and ending with a letter or digit.",
     "AGENT_ID_TAKEN": "This id is already in use. Please choose another.",
     "PROVIDER_NAME_TAKEN": "Provider name is already in use.",
+    "PROVIDER_NAME_INVALID": "Invalid provider name: must be non-empty and cannot contain '/'.",
     "PROVIDER_NOT_VISIBLE": "Provider is not visible.",
     "PROVIDER_REFERENCED": "Provider is in use and cannot be removed.",
     "PROVIDER_LOCAL_PROTECTED": "Local runtime providers cannot be deleted.",

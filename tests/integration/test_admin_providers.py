@@ -58,3 +58,31 @@ async def test_admin_delete(env):
     assert r.status_code == 200
     ids = [p["id"] for p in r.json()]
     assert pid not in ids
+
+
+async def test_admin_create_rejects_slash_in_name(env):
+    """A name with '/' would break '<provider>/<model>' ref parsing."""
+    c, _, auth = env
+    r = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={"name": "https://api.openai.com/", "kind": "openai", "api_key": "sk-test"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "PROVIDER_NAME_INVALID"
+
+    r = await c.get("/api/admin/providers", headers=auth)
+    assert r.status_code == 200
+    names = [p["name"] for p in r.json()]
+    assert "https://api.openai.com/" not in names
+
+
+async def test_admin_create_rejects_empty_name(env):
+    c, _, auth = env
+    r = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={"name": "   ", "kind": "openai", "api_key": "sk-test"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "PROVIDER_NAME_INVALID"
