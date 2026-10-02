@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
 import shutil
 import tarfile
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -177,10 +180,27 @@ def peek_backup_contents(path: Path) -> BackupContentFlags:
 
 
 def write_backup_file(paths: PathLayout, filename: str, data: bytes) -> BackupFileInfo:
+    """Write *data* as ``filename`` in ``backups_dir`` (atomic replace).
+
+    The bytes land in a sibling temp file that is then ``os.replace``d onto the
+    destination, matching ``place_backup_file``. Writing in place would let an
+    interrupted write (full disk, killed process) leave a truncated archive
+    under a name that still lists as a usable backup.
+    """
     paths.ensure_backups_dir()
     safe = normalize_backup_filename(filename)
     dest = paths.backup_file(safe)
-    dest.write_bytes(data)
+    fd, tmp_name = tempfile.mkstemp(dir=dest.parent, prefix=f".{dest.name}.", suffix=".tmp")
+    try:
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
+        os.replace(tmp_name, dest)
+    except BaseException:  # also covers KeyboardInterrupt / SystemExit
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
     return backup_file_info(dest)
 
 
