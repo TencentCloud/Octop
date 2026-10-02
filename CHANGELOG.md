@@ -9,6 +9,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 专家编辑抽屉不再抹掉运行上限配置（#810）：`max_iters` / `max_input_length` / `temperature` / `top_p` / `max_tokens` 在折叠的「高级选项」面板里，未展开面板直接保存名称/描述时这些字段没有注册表单控件，取值按空处理并显式提交 `null`，服务端据此删除已存储的限值；现改为从表单存储读取（与 `welcome_message` 等字段一致），清空输入框仍是明确的重置信号
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 
