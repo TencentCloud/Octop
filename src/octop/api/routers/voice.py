@@ -26,6 +26,19 @@ def _voice_manager(server: Any) -> VoiceManager:
     )
 
 
+def _mask_api_key(api_key: str | None) -> str | None:
+    """Mask a stored credential for API responses.
+
+    Every authenticated user can read these listings, so returning the stored
+    key verbatim handed out every LLM and voice credential. The first four
+    characters are kept so the UI can tell which key is loaded; the rest is not
+    recoverable, and clients must not send the mask back on save.
+    """
+    if not api_key:
+        return None
+    return f"{api_key[:4]}{'*' * 8}" if len(api_key) > 4 else "*" * len(api_key)
+
+
 def _row_to_dict(r: Any) -> dict[str, Any]:
     return {
         "id": r.id,
@@ -33,7 +46,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "kind": r.kind,
         "capability": r.capability,
         "base_url": r.base_url,
-        "api_key": r.api_key,
+        "api_key": _mask_api_key(r.api_key),
         "extra": r.get_extra(),
         "note": r.note,
         "enabled": bool(r.enabled),
