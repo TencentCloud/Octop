@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 修复
+
+- 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 飞牛（fnOS）本地版启动器 `bin/octop`、`bin/octop-cli` 用 `.` 加载向导写入的 `PKGVAR/.env`，把用户数据当 shell 代码解释：管理员密码含 `$` 时服务每次启动即中止（`set -u` 下未定义变量直接退出），引用在用变量会静默改写密码，`$( )`/反引号更会以服务身份执行。现改为按字面量逐行 `export`，与实际写入的值、设置窗口和 `octop_env_get` 读到的内容保持一致。
 ### 新增
 - GitHub 发版产出飞牛 ARM 安装包：官方镜像改为 `linux/amd64` + `linux/arm64` 多架构（同一份 Docker FPK 在 ARM 飞牛上拉对应镜像层）；本地版另挂 `Octop-fnos-native-arm64-<ver>.fpk`。ARM 飞牛优先用 Docker 版；本地版装错架构会在安装或启动时报错。
 - 支持 LDAP 目录登录（Active Directory、OpenLDAP）：在现有登录表单直接输入域账号与密码；按目录组映射角色（仅首次开通账号时写入，之后目录组变更不会回写本地角色）、首次登录可自动开通账号、可选登录组白名单；管理端「用户 → LDAP」页可配置并测试连通性。目录账号无本地密码，修改密码会返回 `PASSWORD_NOT_SET`。
