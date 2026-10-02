@@ -123,18 +123,20 @@ def test_unknown_variable_reference_does_not_abort(name: str, staged: Path, tmp_
 def test_reference_to_a_live_variable_stays_literal(
     name: str, staged: Path, tmp_path: Path
 ) -> None:
-    result = run_launcher(staged, name, "a$HOME-b", tmp_path)
+    result = run_launcher(staged, name, "a$HOME-2b", tmp_path)
     assert result.returncode == 0, result.stderr
-    assert "ENV_VALUE=a$HOME-b" in result.stdout, result.stdout
+    assert "ENV_VALUE=a$HOME-2b" in result.stdout, result.stdout
 
 
 @pytest.mark.parametrize("name", sorted(LAUNCHERS))
 def test_command_substitution_is_not_executed(name: str, staged: Path, tmp_path: Path) -> None:
     marker = tmp_path / "pwned"
-    result = run_launcher(staged, name, f"p$(touch {marker})w", tmp_path)
+    # A value the wizard would accept: letters, digits, 8+ characters, not common.
+    payload = f"Sun$(touch {marker})1x"
+    result = run_launcher(staged, name, payload, tmp_path)
     assert result.returncode == 0, result.stderr
     assert not marker.exists(), f".env loading executed {marker} via command substitution"
-    assert f"ENV_VALUE=p$(touch {marker})w" in result.stdout, result.stdout
+    assert f"ENV_VALUE={payload}" in result.stdout, result.stdout
 
 
 def test_ordinary_values_still_load(staged: Path, tmp_path: Path) -> None:
