@@ -2,25 +2,34 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   resetSessionStoreForTests,
+  SESSION_PAGE_SIZE,
   sortSessions,
   toSession,
   useSessions,
   type Session,
 } from "./useSessions";
+import { THREAD_LIST_MAX_LIMIT } from "../../../api/modules/octopThreads";
 
 const listMock = vi.fn();
 
-vi.mock("../../../api/modules/octopThreads", () => ({
-  octopThreadsApi: {
-    list: (...args: unknown[]) => listMock(...args),
-    create: vi.fn(),
-    delete: vi.fn(),
-    patch: vi.fn(),
-    rename: vi.fn(),
-    rebind: vi.fn(),
-  },
-  normalizeThreadArtifacts: () => [],
-}));
+// Keep the real module's constants (notably THREAD_LIST_MAX_LIMIT) so the test
+// asserts against the same ceiling the hook reads, not a copy that can drift.
+vi.mock("../../../api/modules/octopThreads", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("../../../api/modules/octopThreads")
+  >();
+  return {
+    ...actual,
+    octopThreadsApi: {
+      list: (...args: unknown[]) => listMock(...args),
+      create: vi.fn(),
+      delete: vi.fn(),
+      patch: vi.fn(),
+      rename: vi.fn(),
+      rebind: vi.fn(),
+    },
+  };
+});
 
 function threadRow(threadId: string, agentExtra?: Partial<{ title: string }>) {
   return {
@@ -178,5 +187,56 @@ describe("useSessions agent switch", () => {
     });
     expect(probe).toBe("found");
     expect(listMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("thread list page bounds", () => {
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    listMock.mockReset();
+  });
+
+  afterEach(() => {
+    resetSessionStoreForTests();
+  });
+
+  /** Paging past the ceiling is what used to make the endpoint answer 422. */
+  async function pageToTheCeiling() {
+    // Every request is answered with exactly as many rows as it asked for, so the
+    // hook keeps believing there is more until it is stopped by the ceiling itself.
+    listMock.mockImplementation(async (_agentId: string, limit: number) =>
+      Array.from({ length: limit }, (_, i) => threadRow(`thr_${i}`)),
+    );
+
+    const { result } = renderHook(() => useSessions("agent-big"));
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    for (let i = 0; i < THREAD_LIST_MAX_LIMIT / SESSION_PAGE_SIZE + 5; i += 1) {
+      await act(async () => {
+        await result.current.loadMoreSessions();
+      });
+    }
+    return result;
+  }
+
+  it("never asks the endpoint for more than its ceiling", async () => {
+    await pageToTheCeiling();
+
+    const requested = listMock.mock.calls.map((call) => call[1] as number);
+    // The clamp is actually reached, so the assertion is not vacuously true.
+    expect(requested).toContain(THREAD_LIST_MAX_LIMIT);
+    expect(Math.max(...requested)).toBeLessThanOrEqual(THREAD_LIST_MAX_LIMIT);
+  });
+
+  it("stops offering more once the ceiling is reached", async () => {
+    const result = await pageToTheCeiling();
+
+    expect(result.current.hasMore).toBe(false);
+    // Requests stop at the ceiling: one initial fetch, then one per page step.
+    expect(listMock).toHaveBeenCalledTimes(
+      THREAD_LIST_MAX_LIMIT / SESSION_PAGE_SIZE,
+    );
   });
 });
