@@ -28,6 +28,7 @@
 - Plan 模式把 `plans/*.md` 写回专家工作区，避免 POSIX 默认后端落到容器根目录 `/plans`
 - 对话失败与工具错误写入可检索的服务端日志；聊天里可一键关闭实时 Token 后重试
 - 英文界面残留中文文案：浏览器 AI 助手对话消息、技能录制与回放提示、PWA 安装引导、MBTI 人格标签、侧边栏更新徽标
+- `docker/Dockerfile` 的 OCI `org.opencontainers.image.source` 标签指向已不存在的 `TencentCloud/orca`（现 301 跳转到他人仓库），改为 `TencentCloud/Octop`；本地 `docker/docker_build.sh` 与 `docker/docker-compose.yml` 构建出的镜像 `docker inspect` 不再写入失效的源码地址。
 
 ## [1.0.2b6] - 2026-10-04
 
