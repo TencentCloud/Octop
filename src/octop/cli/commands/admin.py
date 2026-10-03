@@ -72,7 +72,10 @@ def list_admin_providers() -> None:
 @click.option("--kind", required=True)
 @click.option("--config", "config_json", default="{}")
 def create_admin_provider(name: str, kind: str, config_json: str) -> None:
-    cfg = _json.loads(config_json)
+    try:
+        cfg = _json.loads(config_json)
+    except _json.JSONDecodeError as exc:
+        raise click.BadParameter(f"Invalid JSON: {exc.msg}", param_hint="--config") from exc
     if not isinstance(cfg, dict):
         raise click.ClickException("config must be a JSON object")
     from octop.cli.support.offline_ops import create_provider_offline

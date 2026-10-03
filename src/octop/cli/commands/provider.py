@@ -63,7 +63,10 @@ def create(
     models_json: str | None,
 ) -> None:
     """Create a provider."""
-    models = _json.loads(models_json) if models_json else None
+    try:
+        models = _json.loads(models_json) if models_json else None
+    except _json.JSONDecodeError as exc:
+        raise click.BadParameter(f"Invalid JSON: {exc.msg}", param_hint="--models") from exc
     from octop.cli.support.offline_ops import create_provider_offline
 
     try:
