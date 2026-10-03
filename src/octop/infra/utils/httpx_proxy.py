@@ -78,6 +78,14 @@ def no_proxy_mount_key(hostname: str) -> str:
     """Mount key for one ``NO_PROXY`` token, CIDR-safe for IPv4 and IPv6."""
     if "://" in hostname:
         return hostname
+    # ``*.example.com`` (Windows ProxyOverride, container NO_PROXY) must not
+    # become ``all://**.example.com``: httpx escapes the second ``*`` into the
+    # host regex, so the mount would demand a literal ``*`` in the hostname and
+    # never match.  One leading ``*`` is the caller's wildcard marker, so drop
+    # it and let the token through the normal branches.
+    stripped = hostname.lstrip("*")
+    if stripped:
+        hostname = stripped
     network = cidr_network_from_host(hostname)
     if network is not None:
         if isinstance(network, IPv6Network):
