@@ -21,6 +21,7 @@
 
 ### 修复
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
+- `docker/Dockerfile` 的 OCI `org.opencontainers.image.source` 标签指向已不存在的 `TencentCloud/orca`（现 301 跳转到他人仓库），改为 `TencentCloud/Octop`；本地 `docker/docker_build.sh` 与 `docker/docker-compose.yml` 构建出的镜像 `docker inspect` 不再写入失效的源码地址。
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 
