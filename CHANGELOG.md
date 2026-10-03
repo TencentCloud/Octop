@@ -5,6 +5,18 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+
+### 新增
+- GitHub 发版产出飞牛 ARM 安装包：官方镜像改为 `linux/amd64` + `linux/arm64` 多架构（同一份 Docker FPK 在 ARM 飞牛上拉对应镜像层）；本地版另挂 `Octop-fnos-native-arm64-<ver>.fpk`。ARM 飞牛优先用 Docker 版；本地版装错架构会在安装或启动时报错。
+
+### 变更
+- FnOS 安装向导改为建账号 +「接下来怎么用」：必填用户名、密码与确认密码，可选显示名称和邮箱。设置窗口只留改密。Docker 版增加健康检查，镜像钉本包版本且重启不重拉；容器启动不再每次用安装密码覆盖网页改密。
+- FnOS 确认密码增加 `sameAs`/`equal` 规则，安装回调仍校验两次密码必须一致。
+- FnOS `maintainer` 统一为 `TencentCloud`，并加 `tags=AI,Practical Efficiency`。手动安装通常不会写入应用中心分类（分类来自商店目录）。
+- FnOS 本地版安装时预初始化账号；启动必须等 8089 就绪，失败写 `octop-start-error.txt`。
+- FnOS 本地版打包去掉 Playwright driver 与 Google API discovery 缓存；启动时复用飞牛已装 Node.js。
+- FnOS 本地版 CI 写入 vendored `octop_harness.backends.storage_errors`，避免当前 Octop 启动因 PyPI harness 1.0.0 缺模块而失败。
+
 - 模型调用重试耗尽后保留异常及失败状态，不再把错误转换成正常回答；后台委派正确标记为 failed 并携带错误原因，避免源专家把失败当作已完成任务（#839）
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
 

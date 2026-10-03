@@ -106,6 +106,7 @@ scripts/dev-local-link.sh
 .verify/fnpack.partial
 .verify/fnpack.exe.partial
 .buildtmp.*/
+fnos/native/app/site-packages/
 
 # Local agent planning docs (not for upstream)
 docs/superpowers/
