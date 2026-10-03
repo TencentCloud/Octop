@@ -1,6 +1,7 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { UNAUTHORIZED_EVENT } from "../api/request";
+import { chatLoginPath } from "../utils/chatRoute";
 
 /**
  * Route an expired session to /login through the router.
@@ -11,13 +12,15 @@ import { UNAUTHORIZED_EVENT } from "../api/request";
  */
 export function useUnauthorizedRedirect(): void {
   const navigate = useNavigate();
+  const location = useLocation();
+  const loginPath = chatLoginPath(location);
 
   useEffect(() => {
     const handler = (event: Event) => {
       event.preventDefault();
-      navigate("/login", { replace: true });
+      navigate(loginPath, { replace: true });
     };
     window.addEventListener(UNAUTHORIZED_EVENT, handler);
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, handler);
-  }, [navigate]);
+  }, [navigate, loginPath]);
 }

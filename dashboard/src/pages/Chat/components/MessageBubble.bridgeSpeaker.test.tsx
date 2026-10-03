@@ -13,6 +13,7 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("react-router-dom", () => ({
   useNavigate: () => vi.fn(),
+  useLocation: () => ({ pathname: "/chat/host" }),
 }));
 
 vi.mock("../../../hooks/useServerTimezone", () => ({

@@ -21,6 +21,7 @@
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
 
 ### 新增
+- 支持通过 `/embed/chat/{agentId}` 在 iframe 中嵌入无控制台外壳的单 Agent 聊天页面，沿用现有登录和访问权限，保留消息、附件、审批与问题回答，并适配窄容器（#1498）。
 - 支持 LDAP 目录登录（Active Directory、OpenLDAP）：在现有登录表单直接输入域账号与密码；按目录组映射角色、首次登录可自动开通账号、可选登录组白名单；管理端「用户 → LDAP」页可配置并测试连通性。目录账号无本地密码，修改密码会返回 `PASSWORD_NOT_SET`。
 - 有本地密码的账号只在本地校验，口令不会转发到目录；启用 LDAP 时要求加密传输（`ldaps://` 或 StartTLS）。
 

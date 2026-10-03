@@ -1,7 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 import { useEffect } from "react";
 import AuthGuard from "./AuthGuard";
 
@@ -74,7 +80,7 @@ describe("AuthGuard offline boot", () => {
       useEffect(() => {
         navigate("/b");
       }, [navigate]);
-      return <div>protected-shell</div>;
+      return <div>navigating-shell</div>;
     }
 
     render(
@@ -129,5 +135,34 @@ describe("AuthGuard offline boot", () => {
     });
     await user.click(retry);
     expect(await screen.findByText("protected-shell")).toBeInTheDocument();
+  });
+
+  it("preserves the embedded thread when login is required", async () => {
+    vi.mocked(authApi.getAuthStatus).mockResolvedValue({
+      setup_required: false,
+    } as never);
+    function LoginLocation() {
+      return <div data-testid="login-query">{useLocation().search}</div>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/embed/chat/agent-a/thr_1"]}>
+        <Routes>
+          <Route
+            path="/embed/chat/:agentId/:threadId"
+            element={
+              <AuthGuard>
+                <div>protected-shell</div>
+              </AuthGuard>
+            }
+          />
+          <Route path="/login" element={<LoginLocation />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const query = await screen.findByTestId("login-query");
+    expect(new URLSearchParams(query.textContent!).get("redirect")).toBe(
+      "/embed/chat/agent-a/thr_1",
+    );
+    expect(screen.queryByText("protected-shell")).not.toBeInTheDocument();
   });
 });

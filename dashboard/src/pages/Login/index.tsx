@@ -32,6 +32,7 @@ import googleIcon from "../../assets/providers/google.svg";
 import CaptchaField, { type CaptchaFieldHandle } from "./CaptchaField";
 import ForgotPasswordModal from "./ForgotPasswordModal";
 import { type PublicCaptchaConfig } from "./captchaAdapters";
+import { safeRedirect } from "../../utils/loginRedirect";
 
 function providerLabel(
   provider: OauthProviderStatus,
@@ -77,6 +78,7 @@ export default function LoginPage() {
   const { isDark } = useTheme();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const redirect = safeRedirect(searchParams.get("redirect"));
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
@@ -173,11 +175,11 @@ export default function LoginPage() {
       if (event.data.access_token) {
         setAuthToken(event.data.access_token, event.data.remember ?? true);
       }
-      window.location.replace(event.data.redirect || "/chat");
+      window.location.replace(safeRedirect(event.data.redirect || redirect));
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [t]);
+  }, [t, redirect]);
 
   const resetCaptcha = () => {
     setCaptchaReady(false);
@@ -192,7 +194,7 @@ export default function LoginPage() {
       popup = openSsoPopup();
     }
     try {
-      const { authorization_url } = await authApi.startOauth(kind, "/chat");
+      const { authorization_url } = await authApi.startOauth(kind, redirect);
       if (kind === "oidc") {
         window.location.href = authorization_url;
         return;
@@ -226,7 +228,7 @@ export default function LoginPage() {
       setAuthToken(res.access_token, remember);
       await applyUserLocale(res.user.locale);
       void refreshServerLabels(res.user.locale);
-      navigate("/chat", { replace: true });
+      navigate(redirect, { replace: true });
     } catch (err) {
       message.error(apiErrorMessage(err, t("login.failed"), t));
       resetCaptcha();

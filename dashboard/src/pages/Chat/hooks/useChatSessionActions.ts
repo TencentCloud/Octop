@@ -1,3 +1,4 @@
+import { useChatRoute } from "../../../hooks/useChatRoute";
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
@@ -35,14 +36,21 @@ export function useChatSessionActions({
   markInitialNavDone,
 }: UseChatSessionActionsParams) {
   const navigate = useNavigate();
+  const { chatPath } = useChatRoute();
 
   const handleNewChat = useCallback(() => {
     setSelectedModel(null);
     setHasBrowserTool(false);
     const agent = resolvedAgentId;
     if (!agent) return;
-    navigate(`/chat/${agent}`);
-  }, [navigate, resolvedAgentId, setSelectedModel, setHasBrowserTool]);
+    navigate(chatPath(agent));
+  }, [
+    navigate,
+    chatPath,
+    resolvedAgentId,
+    setSelectedModel,
+    setHasBrowserTool,
+  ]);
 
   /**
    * New chat with an arbitrary expert. Unlike {@link navigateToAgent} this stays
@@ -58,12 +66,13 @@ export function useChatSessionActions({
         setActiveAgent(agentId);
       }
       markInitialNavDone(agentId);
-      navigate(`/chat/${agentId}`);
+      navigate(chatPath(agentId));
       chatStore.clearMessages(EMPTY_CHAT_SESSION_KEY);
       if (isMobile) setSidebarOpen(false);
     },
     [
       navigate,
+      chatPath,
       resolvedAgentId,
       isMobile,
       setActiveAgent,
@@ -82,12 +91,13 @@ export function useChatSessionActions({
       if (id === activeThreadId) return;
       setSelectedModel(null);
       void octopThreadsApi.rebind(agent, id).catch(() => {});
-      navigate(`/chat/${agent}/${id}`);
+      navigate(chatPath(agent, id));
       if (isMobile) setSidebarOpen(false);
     },
     [
       activeThreadId,
       navigate,
+      chatPath,
       isMobile,
       resolvedAgentId,
       setSidebarOpen,
@@ -99,7 +109,7 @@ export function useChatSessionActions({
     (agentId: string) => {
       if (!agentId) return;
       resetNavForAgentSwitch();
-      navigate(`/chat/${agentId}`, { replace: true });
+      navigate(chatPath(agentId), { replace: true });
       setActiveAgent(agentId);
       // We land on the new-chat view, so only that session is stale here.
       // Clearing the thread we are leaving would drop an in-flight turn.
@@ -113,7 +123,7 @@ export function useChatSessionActions({
           if (preferred) {
             markInitialNavDone(agentId);
             void octopThreadsApi.rebind(agentId, preferred.id).catch(() => {});
-            navigate(`/chat/${agentId}/${preferred.id}`, { replace: true });
+            navigate(chatPath(agentId, preferred.id), { replace: true });
           } else {
             markInitialNavDone(agentId);
           }
@@ -125,6 +135,7 @@ export function useChatSessionActions({
     [
       setActiveAgent,
       navigate,
+      chatPath,
       isMobile,
       setSidebarOpen,
       resetNavForAgentSwitch,
@@ -141,9 +152,9 @@ export function useChatSessionActions({
         const remaining = sessions.filter((s) => s.id !== id);
         const preferred = pickPreferredSession(remaining);
         if (preferred) {
-          navigate(`/chat/${agent}/${preferred.id}`, { replace: true });
+          navigate(chatPath(agent, preferred.id), { replace: true });
         } else {
-          navigate(`/chat/${agent}`, { replace: true });
+          navigate(chatPath(agent), { replace: true });
           clearMessages();
         }
       }
@@ -153,6 +164,7 @@ export function useChatSessionActions({
       sessions,
       deleteSession,
       navigate,
+      chatPath,
       clearMessages,
       resolvedAgentId,
     ],
