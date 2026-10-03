@@ -117,6 +117,10 @@ async def delete_workspace_avatar(workspace: WorkspaceAvatarIO) -> None:
     for relpath in _ALL_AVATAR_RELPATHS:
         try:
             await workspace.adelete(relpath)
+        except BackendOperationNotSupportedError as exc:
+            # This loop enforces "one avatar file"; suppressing it would let an upload
+            # succeed next to a stale file that still reads back, so report instead.
+            raise OctopError(ErrorCode.WORKSPACE_OP_UNSUPPORTED, str(exc)) from exc
         except (OSError, FileNotFoundError):
             continue
 
