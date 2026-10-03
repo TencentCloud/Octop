@@ -52,6 +52,29 @@ def test_filesystem_missing_root(tmp_path: Path) -> None:
     assert result.get("message_key") == "probe_roundtrip_ok"
 
 
+def test_postgres_probe_does_not_ask_the_harness_to_short_circuit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Harness reports a field-shaped postgres spec as "not configured", so stay local."""
+    from octop.infra.backend import probe as probe_mod
+
+    def _never(spec: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover - must not run
+        raise AssertionError("postgres must not reach the harness probe")
+
+    monkeypatch.setattr(probe_mod, "probe_backend", _never)
+    result = probe_storage_backend(
+        _row(
+            kind="postgres",
+            endpoint="db.internal",
+            access_key="app",
+            secret_key="p@ss/w#rd",
+            bucket="mydb",
+        )
+    )
+    assert result["ok"] is True
+    assert "no file round-trip" in result["message"]
+
+
 def test_docker_probe_spec_injects_test_ids() -> None:
     agent = _docker_probe_spec(_row(kind="docker", bucket="python:3.12-slim"))
     assert agent is not None

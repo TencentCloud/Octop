@@ -84,9 +84,10 @@ def probe_storage_backend(row: BackendRow) -> dict[str, Any]:
     if spec is None:
         return {"ok": False, "message": "configuration incomplete"}
 
-    if kind == "postgres" and not spec.get("connection_string"):
-        if not row.endpoint:
-            return {"ok": False, "message": "host/endpoint not configured"}
+    if kind == "postgres":
+        # Octop answers postgres itself rather than delegating to ``probe_backend``, which
+        # short-circuits postgres off ``connection_string`` / ``dsn`` — keys a
+        # ``PostgresConfig``-shaped spec deliberately does not carry.
         return {"ok": True, "message": "postgres configuration present (no file round-trip)"}
 
     return probe_backend(spec)
