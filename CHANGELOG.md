@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- Dashboard 兼容 Chromium 91 及更旧的内核：mermaid 渲染图表时会调用 `structuredClone`（Chrome 98+）与 `Array.prototype.at`（Chrome 92+），入口脚本此前只补了 `Object.hasOwn`，饼图/雷达图在模块求值阶段就抛 `TypeError`；现按同一位置一并补齐（#768）
 
 ## [1.0.2b5] - 2026-09-29
 

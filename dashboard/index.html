@@ -207,6 +207,36 @@
           });
         }
 
+        // structuredClone (Chrome 98) and Array.prototype.at (Chrome 92) are
+        // newer than the Chromium 90 baseline some enterprise browsers still
+        // ship, and mermaid calls both while rendering diagrams: the pie and
+        // radar chunks clone their default config at module scope, and
+        // resolveQualifiedId reads the top of an id stack with .at(-1). Run
+        // before any ESM chunks evaluate.
+        if (typeof structuredClone !== "function") {
+          // mermaid clones plain node/edge/config data, for which a JSON
+          // round-trip is equivalent; undefined is the one top-level value
+          // JSON.stringify cannot represent.
+          self.structuredClone = function structuredClone(value) {
+            return value === undefined
+              ? undefined
+              : JSON.parse(JSON.stringify(value));
+          };
+        }
+
+        if (typeof Array.prototype.at !== "function") {
+          Object.defineProperty(Array.prototype, "at", {
+            value: function at(index) {
+              var i = Math.trunc(index) || 0;
+              if (i < 0) i += this.length;
+              if (i < 0 || i >= this.length) return undefined;
+              return this[i];
+            },
+            configurable: true,
+            writable: true,
+          });
+        }
+
         var KEY = "octop:chunk-reload";
         // Firefox fires error on <link rel="modulepreload"> for /assets/*.js
         // even when the file is fine; treating those as stale chunks caused
