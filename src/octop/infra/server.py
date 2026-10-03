@@ -480,6 +480,7 @@ class OctopServer:
             gateway=gateway,
             agent_manager=registry,
             repos=self.services.repos,
+            history_archive=history_archive,
         )
         cron_mgr = CronManager(
             gateway=gateway,

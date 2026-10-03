@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -14,7 +15,8 @@ from octop.infra.gateway.process import build_harness_request
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.threads import ThreadRegistry
-from octop.infra.history.projection import TurnHistoryTracker, message_inputs
+from octop.infra.history.projection import TurnHistoryTracker
+from octop.infra.history.recorder import RecordingTracker, flush_tracker
 from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.utils.llm_text import strip_thinking
 from octop.infra.utils.locale import resolve_user_locale
@@ -26,6 +28,7 @@ if TYPE_CHECKING:
     from octop.infra.db.repos.thread_messages import ThreadMessageInput
     from octop.infra.db.services import RepoBundle
     from octop.infra.gateway.gateway import Gateway
+    from octop.infra.history.service import HistoryArchive
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +58,12 @@ class CronDeliveryService:
         gateway: Gateway,
         agent_manager: AgentManager,
         repos: RepoBundle,
+        history_archive: HistoryArchive | None = None,
     ) -> None:
         self._gateway = gateway
         self._agent_manager = agent_manager
         self._repos = repos
+        self._history_archive = history_archive
 
     def replace_repos(self, repos: RepoBundle) -> None:
         """Retarget projection and locale lookups after a control-plane swap."""
@@ -91,7 +96,6 @@ class CronDeliveryService:
         command: CronDeliveryCommand,
         session: SessionRow,
     ) -> None:
-        projected: list[ThreadMessageInput] = []
         title_source = command.prompt
         if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD:
             delivery_id = new_ulid()
@@ -117,11 +121,15 @@ class CronDeliveryService:
                     id=f"cron:{delivery_id}:assistant",
                 ),
             ]
-            harness = self._agent_manager.get_agent(command.agent_id)
-            appended = await harness.aappend_messages(session.thread_id, canonical)
-            projected = message_inputs(appended, dedupe_missing_ids=True)
-
-        self._project_best_effort(session.thread_id, projected)
+            tracker = await self._begin_history(command, session, {"messages": []})
+            completed = False
+            try:
+                harness = self._agent_manager.get_agent(command.agent_id)
+                appended = await harness.aappend_messages(session.thread_id, canonical)
+                tracker.observe({"type": "state_snapshot", "data": {"messages": appended}})
+                completed = True
+            finally:
+                await self._record_history(session.thread_id, tracker, completed=completed)
         await self._gateway.push_session_text(
             session,
             command.prompt,
@@ -135,13 +143,15 @@ class CronDeliveryService:
         session: SessionRow,
     ) -> None:
         request = await self._build_agent_request(command, session)
-        tracker = TurnHistoryTracker.from_request(request)
+        tracker = await self._begin_history(command, session, request)
         usage = UsageTracker()
         parts: list[str] = []
         interaction_required = False
+        completed = False
         try:
             async for chunk in self._agent_manager.stream(command.agent_id, request):
                 tracker.observe(chunk)
+                await flush_tracker(tracker)
                 usage.observe(chunk)
                 if chunk.get("type") in ("token", "delta"):
                     parts.append(str(chunk.get("content") or chunk.get("text") or ""))
@@ -152,10 +162,11 @@ class CronDeliveryService:
             outbound = strip_thinking("".join(parts)).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")
+            completed = True
         finally:
             # ``fresh_thread`` already put an empty thread on the session, so a run
             # that raised before this left a conversation with no rows at all.
-            self._project_best_effort(session.thread_id, tracker.inputs)
+            await self._record_history(session.thread_id, tracker, completed=completed)
         if usage.usage is not None:
             record_turn_usage(
                 self._repos.usage_repo,
@@ -171,6 +182,68 @@ class CronDeliveryService:
             title_source=command.prompt,
         )
         await self._notify_best_effort(session, command.agent_id, outbound)
+
+    async def _begin_history(
+        self,
+        command: CronDeliveryCommand,
+        session: SessionRow,
+        request: dict[str, Any],
+    ) -> TurnHistoryTracker:
+        archive = self._history_archive
+        if archive is None:
+            return TurnHistoryTracker.from_request(request)
+        anchor = None
+        segments = await asyncio.to_thread(archive.store.segments, session.thread_id)
+        if archive.enabled and not segments:
+            status = await asyncio.to_thread(archive.messages.projection_status, session.thread_id)
+            if status != "ready":
+                # Pin the legacy checkpoint before cron appends to it, just as
+                # interactive turns do when entering versioned history.
+                harness = self._agent_manager.get_agent(command.agent_id)
+                state = await harness.graph.aget_state(
+                    {"configurable": {"thread_id": session.thread_id}}
+                )
+                if state is not None and getattr(state, "next", False):
+                    return TurnHistoryTracker.from_request(request)
+                config = getattr(state, "config", None)
+                if config and config.get("configurable", {}).get("checkpoint_id"):
+                    anchor = {"checkpoint_config": config}
+                elif getattr(state, "values", {}).get("messages"):
+                    raise ValueError("Cannot pin the legacy history boundary")
+        turn = await asyncio.to_thread(
+            archive.begin, command.agent_id, session.thread_id, anchor=anchor
+        )
+        if turn is None:
+            return TurnHistoryTracker.from_request(request)
+        try:
+            tracker = await asyncio.to_thread(
+                RecordingTracker, archive, turn, list(request.get("messages") or [])
+            )
+            await tracker.flush()
+            return tracker
+        except BaseException:
+            await asyncio.to_thread(
+                archive.finish, turn["id"], "failed", error="initial_capture_failed"
+            )
+            raise
+
+    async def _record_history(
+        self, thread_id: str, tracker: TurnHistoryTracker, *, completed: bool
+    ) -> None:
+        if not isinstance(tracker, RecordingTracker):
+            self._project_best_effort(thread_id, tracker.inputs)
+            return
+        try:
+            if tracker.turn["format"] == "legacy":
+                await asyncio.to_thread(
+                    tracker.archive.messages.append_legacy_interval, thread_id, tracker.inputs
+                )
+            await tracker.finish(completed=completed)
+        except BaseException:
+            # A failed final flush marks the tracker failed. Finish again to
+            # release archive ownership without retrying the failed write.
+            await tracker.finish(completed=False)
+            raise
 
     async def _build_agent_request(
         self,
