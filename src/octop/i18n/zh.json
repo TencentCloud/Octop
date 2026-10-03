@@ -830,6 +830,9 @@
     "plan_ready": "计划已写入 `{path}`。回复「按计划执行」开始执行，或继续改计划。",
     "execute": "请按 {path} 执行"
   },
+  "update": {
+    "portable_upgrade_unverified": "安装程序已结束，但无法确认 {target} 中的版本已升级（已安装版本：{version}）。"
+  },
   "ldap": {
     "test": {
       "ok": "已连接 LDAP 目录服务",
