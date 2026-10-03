@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from click.testing import CliRunner
 
 from octop.cli.main import cli
@@ -65,6 +66,28 @@ def test_provider_test_help() -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["provider", "test", "--help"])
     assert result.exit_code == 0
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["provider", "delete", "abc"],
+        ["provider", "test", "abc"],
+        ["admin", "providers", "delete", "abc"],
+    ],
+)
+def test_numeric_id_arguments_reject_non_integers(args: list[str]) -> None:
+    """A non-numeric provider id must be a usage error, not a ValueError traceback.
+
+    These arguments used to be ``str`` with a bare ``int()`` in the body, so a
+    typo surfaced as ``ValueError: invalid literal for int() with base 10`` with
+    a full Python traceback.  ``type=int`` lets click validate before the
+    callback runs, so no DB is touched here.
+    """
+    result = CliRunner().invoke(cli, args)
+    assert result.exit_code == 2
+    assert "is not a valid integer" in result.output
+    assert not isinstance(result.exception, ValueError)
 
 
 def test_root_help_lists_global_options() -> None:

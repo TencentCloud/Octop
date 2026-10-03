@@ -80,26 +80,26 @@ def create(
 
 
 @provider.command("delete")
-@click.argument("provider_id")
-def delete(provider_id: str) -> None:
+@click.argument("provider_id", type=int)
+def delete(provider_id: int) -> None:
     """Delete a provider."""
     from octop.cli.support.offline_ops import delete_provider_offline
 
     try:
-        delete_provider_offline(int(provider_id))
+        delete_provider_offline(provider_id)
     except OctopError as exc:
         fail_octop(exc)
     click.echo("deleted")
 
 
 @provider.command("test")
-@click.argument("provider_id")
+@click.argument("provider_id", type=int)
 @click.option("--model", "model_id", default=None)
-def test(provider_id: str, model_id: str | None) -> None:
+def test(provider_id: int, model_id: str | None) -> None:
     """Probe a provider with a one-token ping."""
     from octop.cli.support.embedded_ops import probe_provider
 
-    data = probe_provider(int(provider_id), model_id=model_id)
+    data = probe_provider(provider_id, model_id=model_id)
     if data.get("ok"):
         click.echo(f"ok ({data.get('latency_ms', '?')} ms)")
         return

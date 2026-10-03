@@ -91,12 +91,12 @@ def create_admin_provider(name: str, kind: str, config_json: str) -> None:
 
 
 @admin_providers.command("delete")
-@click.argument("provider_id")
-def delete_admin_provider(provider_id: str) -> None:
+@click.argument("provider_id", type=int)
+def delete_admin_provider(provider_id: int) -> None:
     from octop.cli.support.offline_ops import delete_provider_offline
 
     try:
-        delete_provider_offline(int(provider_id))
+        delete_provider_offline(provider_id)
     except OctopError as exc:
         fail_octop(exc)
     click.echo("deleted")
