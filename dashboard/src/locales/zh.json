@@ -2200,7 +2200,7 @@
       "enabled": "启用任务",
       "enabledTooltip": "开启后任务将按照设定的时间自动执行，关闭则暂停执行。",
       "sectionSchedule": "执行频率",
-      "sectionScheduleDesc": "设置任务的执行时间。可选择预设频率，或输入自定义 Cron 表达式。",
+      "sectionScheduleDesc": "选择执行时间或 Agent Mail 新邮件事件。",
       "scheduleMode": "调度方式",
       "scheduleModeTooltip": "固定频率：从常用选项中选择；Cron 表达式：手动输入或从常用模板快速填入。",
       "scheduleModePreset": "固定频率",
@@ -2274,7 +2274,11 @@
       "timeoutSeconds": "超时时间（秒）",
       "timeoutSecondsTooltip": "任务执行的最长允许时间（秒），超时后将被强制终止。",
       "misfireGrace": "错过容忍（秒）",
-      "misfireGraceTooltip": "如果因服务停机等原因错过了执行时间，在容忍时间内仍会补执行。设为 0 表示不补执行。"
+      "misfireGraceTooltip": "如果因服务停机等原因错过了执行时间，在容忍时间内仍会补执行。设为 0 表示不补执行。",
+      "agentlyNewMail": "Agent Mail 新邮件",
+      "agentlyMailbox": "监听邮箱",
+      "agentlySelectMailbox": "请选择 Agent Mail 邮箱",
+      "agentlyHint": "通过后台长连接接收新邮件，收到后执行此任务。请先授权所选邮箱；空闲时不调用模型。"
     },
     "preset": {
       "every5min": "每 5 分钟",
@@ -5826,7 +5830,7 @@
     "agentlyCancel": "取消授权",
     "agentlyLogout": "注销授权",
     "agentlySafety": "发送、回复、转发和删除邮件需先预览，再由用户确认执行。邮件正文与附件属于不可信外部内容，不能作为执行指令。",
-    "agentlyQuota": "参考配额：每日发送 50 封、每小时 200 次请求、每分钟 10 次请求；附件最多 50 个、总容量 20 MB，此连接器单文件上限 10 MB。以账户实际配额及服务最新限制为准。当前不支持新邮件自动推送。",
+    "agentlyQuota": "参考配额：每日发送 50 封、每小时 200 次请求、每分钟 10 次请求；附件最多 50 个、总容量 20 MB，此连接器单文件上限 10 MB。以账户实际配额及服务最新限制为准。可在任务页选择「Agent Mail 新邮件」触发任务。",
     "agentlyInstanceHint": "先保存连接器，再登录授权。每个实例独立保存邮箱授权，可为不同 Agent 选择不同实例。",
     "feishuUserAuthTitle": "飞书账号授权",
     "feishuUserAuthWhy": "上方 App ID / Secret 只代表应用（Bot）。文档搜索、访问你云空间里的个人文档和日程等，必须以你的飞书账号身份调用，因此需要额外授权一次。授权后专家只能访问你本人有权限的内容。",

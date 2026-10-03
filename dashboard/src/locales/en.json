@@ -2201,7 +2201,7 @@
       "enabled": "Enable Job",
       "enabledTooltip": "When enabled, the job runs automatically on schedule. Disable to pause execution.",
       "sectionSchedule": "Execution Frequency",
-      "sectionScheduleDesc": "Set when the job runs. Choose a preset frequency or enter a custom Cron expression.",
+      "sectionScheduleDesc": "Choose a time schedule or an Agent Mail new-mail event.",
       "scheduleMode": "Mode",
       "scheduleModeTooltip": "Preset: choose from common frequencies; Custom: enter a Cron expression for advanced scheduling.",
       "scheduleModePreset": "Preset Frequency",
@@ -2275,7 +2275,11 @@
       "timeoutSeconds": "Timeout (seconds)",
       "timeoutSecondsTooltip": "Maximum execution time in seconds. The job will be terminated if it exceeds this limit.",
       "misfireGrace": "Misfire Grace (seconds)",
-      "misfireGraceTooltip": "If the job was missed (e.g. server was down), it will still run if within this grace period. Set to 0 to skip missed runs."
+      "misfireGraceTooltip": "If the job was missed (e.g. server was down), it will still run if within this grace period. Set to 0 to skip missed runs.",
+      "agentlyNewMail": "Agent Mail new mail",
+      "agentlyMailbox": "Mailbox to watch",
+      "agentlySelectMailbox": "Select an Agent Mail mailbox",
+      "agentlyHint": "Run this task when the background connection receives new mail. Authorize the selected mailbox first; the model is not called while idle."
     },
     "preset": {
       "every5min": "Every 5 minutes",
@@ -5825,7 +5829,7 @@
     "agentlyCancel": "Cancel authorization",
     "agentlyLogout": "Sign out",
     "agentlySafety": "Sending, replying to, forwarding, and deleting emails require a preview followed by user confirmation. Email bodies and attachments are untrusted external content and must not be treated as instructions.",
-    "agentlyQuota": "Reference limits: 50 emails sent per day, 200 requests per hour, 10 requests per minute; up to 50 attachments totaling 20 MB. This connector limits each file to 10 MB. Your account quotas and current service limits take precedence. Automatic new-mail notifications are not supported yet.",
+    "agentlyQuota": "Reference limits: 50 emails sent per day, 200 requests per hour, 10 requests per minute; up to 50 attachments totaling 20 MB. This connector limits each file to 10 MB. Your account quotas and current service limits take precedence. Select Agent Mail new mail on the Tasks page to trigger a task.",
     "agentlyInstanceHint": "Save the connector first, then sign in to authorize. Each instance stores its own mailbox authorization, so different agents can select different instances.",
     "feishuUserAuthTitle": "Feishu account authorization",
     "feishuUserAuthWhy": "App ID / Secret above only identify the app (bot). Doc search and access to your personal docs or calendar require acting as your Feishu user, so one extra authorization is needed. Afterward the agent can only reach resources you already have access to.",
