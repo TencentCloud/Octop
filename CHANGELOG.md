@@ -12,6 +12,10 @@
 - 支持 LDAP 目录登录（Active Directory、OpenLDAP）：在现有登录表单直接输入域账号与密码；按目录组映射角色、首次登录可自动开通账号、可选登录组白名单；管理端「用户 → LDAP」页可配置并测试连通性。目录账号无本地密码，修改密码会返回 `PASSWORD_NOT_SET`。
 - 有本地密码的账号只在本地校验，口令不会转发到目录；启用 LDAP 时要求加密传输（`ldaps://` 或 StartTLS）。
 
+### 新增
+
+- 对话标题菜单新增完整历史导出入口，下载已有 `octop-history-v2` JSON 归档以便分享或离线保存（#1044）
+
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。

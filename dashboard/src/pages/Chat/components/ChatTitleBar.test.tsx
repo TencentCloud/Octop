@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import ChatTitleBar from "./ChatTitleBar";
 import type { Session } from "../hooks/useSessions";
@@ -22,6 +22,7 @@ describe("ChatTitleBar", () => {
         onRename={noop}
         onPin={noop}
         onFork={noop}
+        onExport={noop}
         onDelete={noop}
       />,
     );
@@ -42,6 +43,7 @@ describe("ChatTitleBar", () => {
         onRename={noop}
         onPin={noop}
         onFork={noop}
+        onExport={noop}
         onDelete={noop}
       />,
     );
@@ -57,11 +59,32 @@ describe("ChatTitleBar", () => {
         onRename={noop}
         onPin={noop}
         onFork={noop}
+        onExport={noop}
         onDelete={noop}
         isTeam
       />,
     );
 
     expect(screen.getByLabelText("chat.teamBadge")).toBeInTheDocument();
+  });
+
+  it("exports the current conversation from the more menu", async () => {
+    const onExport = vi.fn();
+    render(
+      <ChatTitleBar
+        session={session}
+        title="Weekly recap"
+        onRename={noop}
+        onPin={noop}
+        onFork={noop}
+        onExport={onExport}
+        onDelete={noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    fireEvent.click(await screen.findByText("chat.exportConversation"));
+
+    expect(onExport).toHaveBeenCalledWith("s1");
   });
 });
