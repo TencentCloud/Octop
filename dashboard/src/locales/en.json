@@ -1190,13 +1190,13 @@
     }
   },
   "agent_errors": {
-    "no_models_configured": "No models are configured. Go to Settings → Models to add a Provider, then enable this expert again.",
-    "model_ref_unavailable": "The default model is unavailable or disabled. Check Settings → Models or update this expert's default model, then try again."
+    "no_models_configured": "No models are configured. Go to Admin → Model Management to add a provider, then enable this expert again.",
+    "model_ref_unavailable": "The default model is unavailable or disabled. Check Admin → Model Management or update this expert's default model, then try again."
   },
   "stream_errors": {
     "stream_stall": "The model stopped sending content while the connection stayed open. Click Retry, or try again later with another model. If this happens often, check the provider status or ask an admin to review stream timeout settings.",
     "rate_limit": "The model provider rate-limited this request. Wait a moment and retry, or switch to another model.",
-    "auth": "Model authentication failed. Check that the API key under Settings → Models is correct and still valid.",
+    "auth": "Model authentication failed. Check that the API key under Admin → Model Management is correct and still valid.",
     "insufficient_balance": "The model provider rejected this request due to insufficient balance or quota. Top up or upgrade the plan for this API key, then try again.",
     "context_length": "This conversation is too long for the model's context window. Start a new chat, or shorten the history and try again.",
     "recursion_limit": "The agent hit its max iteration / recursion limit before finishing. Open Configuration and raise Max Iterations, then try again.",
@@ -3716,14 +3716,15 @@
     "filesFailed": "Could not search workspace files"
   },
   "modelConfig": {
-    "promptTitle": "LLM Model Required",
-    "promptMessage": "Chat requires an LLM model to function. Without a configured model, conversations and messages cannot be sent to the backend for processing and storage, and will be lost after a page refresh. Would you like to configure a model now?",
-    "configureButton": "Configure Model",
+    "promptTitle": "A model is required",
+    "promptMessage": "Open Admin → Model Management, add a provider, and enable at least one model before you can chat.",
+    "promptMessageNoPermission": "No models are available yet. Ask an administrator to configure one before you can chat.",
+    "configureButton": "Configure models",
     "skipButton": "Skip",
     "chatDisabledTitle": "Chat Disabled",
     "chatDisabledMessage": "Chat functionality is disabled because no model is configured. Please configure a model to enable chat.",
     "configureNow": "Configure Model",
-    "modelNotConfigured": "Please configure a model in Settings before using chat"
+    "modelNotConfigured": "Please configure a model in Admin → Model Management before using chat"
   },
   "header": {
     "healthLabel": "Health",

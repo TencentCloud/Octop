@@ -23,7 +23,7 @@ def test_agent_state_label_unknown_state_passthrough() -> None:
 
 
 def test_agent_error_message_octop_key_zh() -> None:
-    assert "设置" in agent_error_message(NO_MODELS_CONFIGURED, "zh")
+    assert "管理" in agent_error_message(NO_MODELS_CONFIGURED, "zh")
 
 
 def test_agent_error_message_model_ref_key_zh() -> None:

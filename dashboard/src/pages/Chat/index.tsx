@@ -18,7 +18,7 @@ import { showConfirmModal } from "../../utils/confirmModal";
 import PlanReadyCard from "./components/PlanReadyCard";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { userCan } from "../../utils/permissions";
+import { navAllowed, userCan } from "../../utils/permissions";
 import { useChat } from "./hooks/useChat";
 import { useSessions, fetchAndSyncSessionArtifacts } from "./hooks/useSessions";
 import * as chatStore from "./hooks/chatStore";
@@ -55,6 +55,7 @@ import MessageList from "./components/MessageList";
 import ChatInput, { type ChatInputHandle } from "./components/ChatInput";
 import WelcomeScreen from "./components/WelcomeScreen";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
+import ModelConfigEmpty from "./components/ModelConfigEmpty";
 import AgentProfileDrawer from "../../components/AgentProfileDrawer";
 import TrajectoryDrawer from "./components/TrajectoryDrawer";
 import { useExpertChatWelcome } from "./hooks/useExpertQuickCards";
@@ -128,6 +129,7 @@ function ChatPageInner() {
   const { layoutMode } = useLayoutMode();
   const isMinimalLayout = layoutMode === "minimal";
   const canTerminal = userCan(user, "terminal");
+  const canConfigureModels = navAllowed(user, "models");
   const chatHistoryRail = useChatHistoryRail();
   const [browserRecording, setBrowserRecording] = useState(false);
   const [browserRecordingId, setBrowserRecordingId] = useState<string | null>(
@@ -555,6 +557,7 @@ function ChatPageInner() {
     chatConnectors,
     chatKnowledgeBases,
     availableModels,
+    modelsReady,
     activeModelRef,
     reasoningMode,
     reasoningEffort,
@@ -1345,6 +1348,8 @@ function ChatPageInner() {
                   noAgents={noAgents}
                   loading={agentsLoading}
                 />
+              ) : showWelcome && modelsReady && availableModels.length === 0 ? (
+                <ModelConfigEmpty canConfigure={canConfigureModels} />
               ) : showWelcome ? (
                 <WelcomeScreen
                   agentName={activeAgent?.name ?? null}
@@ -1610,6 +1615,33 @@ function ChatPageInner() {
                       );
                     }}
                     onKeepEditing={() => chatInputRef.current?.focusComposer()}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {!showWelcome && modelsReady && availableModels.length === 0 ? (
+              <div className={styles.modelConfigDock}>
+                <div className={styles.modelConfigDockInner}>
+                  <Alert
+                    type="info"
+                    showIcon
+                    message={t("modelConfig.promptTitle")}
+                    description={
+                      canConfigureModels
+                        ? t("modelConfig.promptMessage")
+                        : t("modelConfig.promptMessageNoPermission")
+                    }
+                    action={
+                      canConfigureModels ? (
+                        <Button
+                          type="primary"
+                          size="small"
+                          onClick={() => navigate("/admin/models")}
+                        >
+                          {t("modelConfig.configureButton")}
+                        </Button>
+                      ) : null
+                    }
                   />
                 </div>
               </div>

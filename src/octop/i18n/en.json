@@ -652,13 +652,13 @@
     }
   },
   "agent_errors": {
-    "no_models_configured": "No models are configured. Go to Settings → Models to add a Provider, then enable this expert again.",
-    "model_ref_unavailable": "The default model is unavailable or disabled. Check Settings → Models or update this expert's default model, then try again."
+    "no_models_configured": "No models are configured. Go to Admin → Model Management to add a provider, then enable this expert again.",
+    "model_ref_unavailable": "The default model is unavailable or disabled. Check Admin → Model Management or update this expert's default model, then try again."
   },
   "stream_errors": {
     "stream_stall": "The model stopped sending content while the connection stayed open. Click Retry, or try again later with another model. If this happens often, check the provider status or ask an admin to review stream timeout settings.",
     "rate_limit": "The model provider rate-limited this request. Wait a moment and retry, or switch to another model.",
-    "auth": "Model authentication failed. Check that the API key under Settings → Models is correct and still valid.",
+    "auth": "Model authentication failed. Check that the API key under Admin → Model Management is correct and still valid.",
     "insufficient_balance": "The model provider rejected this request due to insufficient balance or quota. Top up or upgrade the plan for this API key, then try again.",
     "context_length": "This conversation is too long for the model's context window. Start a new chat, or shorten the history and try again.",
     "recursion_limit": "The agent hit its max iteration / recursion limit before finishing. Open Configuration and raise Max Iterations, then try again.",
