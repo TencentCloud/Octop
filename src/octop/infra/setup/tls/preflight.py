@@ -209,7 +209,10 @@ def run_preflight(domain: str, config: OctopConfig, *, locale: str = "en") -> Pr
 
     try:
         domain_ips = _resolve_domain_ips(domain)
-    except socket.gaierror as exc:
+    except (socket.gaierror, UnicodeError) as exc:
+        # ``socket.getaddrinfo`` raises UnicodeEncodeError (not an OSError) for
+        # labels it cannot encode as IDNA -- over-long or empty labels. Report it
+        # as a failed dns check like any other unresolvable domain.
         checks.append(
             PreflightCheck(
                 "dns",
