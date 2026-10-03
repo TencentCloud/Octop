@@ -6,7 +6,9 @@ through ``agent.workspace`` backed by ``local_shell`` on the agent dir.
 
 from __future__ import annotations
 
+import urllib.parse
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -398,6 +400,16 @@ async def test_delete_directory(env: Any) -> None:
     assert "box" not in names
 
 
+def _agent_host_path(srv: Any, aid: str, rel: str) -> str:
+    """Host-absolute path of *rel* inside the test agent's workspace."""
+    workspace_dir = Path(srv.app_runtime.agent_registry.get_agent(aid).workspace.workspace_dir)
+    return str(workspace_dir / rel)
+
+
+def _file_url(host_path: str) -> str:
+    return f"file://{urllib.parse.quote(host_path)}"
+
+
 async def test_delete_builtin_skills_forbidden(env: Any) -> None:
     c, _srv, auth, aid = env
     r = await c.delete(
@@ -406,6 +418,204 @@ async def test_delete_builtin_skills_forbidden(env: Any) -> None:
         headers=auth,
     )
     assert r.status_code == 403
+
+
+@pytest.mark.parametrize("spelling", ["host-absolute", "file-url"])
+async def test_write_builtin_skills_forbidden_via_host_path(env: Any, spelling: str) -> None:
+    """Host-absolute / ``file://`` spellings of the root must be refused too.
+
+    ``_workspace_io_path`` resolves those before it consults ``from_workspace``,
+    so a prefix test on the workspace-relative form never saw them.
+    """
+    c, srv, auth, aid = env
+    host_path = _agent_host_path(srv, aid, "_builtin_skills/evil-injected/SKILL.md")
+    target = _file_url(host_path) if spelling == "file-url" else host_path
+
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={"path": target},
+        headers=auth,
+        json={"content": "---\nname: evil\n---\n"},
+    )
+    assert r.status_code == 403, r.text
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aexists("_builtin_skills/evil-injected/SKILL.md") is False
+
+
+@pytest.mark.parametrize("spelling", ["host-absolute", "file-url"])
+async def test_upload_builtin_skills_forbidden_via_host_path(env: Any, spelling: str) -> None:
+    """``POST /workspace/upload`` must refuse the same host-absolute spellings."""
+    c, srv, auth, aid = env
+    host_path = _agent_host_path(srv, aid, "_builtin_skills/evil-injected/SKILL.md")
+    target = _file_url(host_path) if spelling == "file-url" else host_path
+
+    r = await c.post(
+        f"/api/agents/{aid}/workspace/upload",
+        params={"path": target},
+        headers=auth,
+        files={"file": ("SKILL.md", b"# injected\n", "text/markdown")},
+    )
+    assert r.status_code == 403, r.text
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aexists("_builtin_skills/evil-injected/SKILL.md") is False
+
+
+async def test_mkdir_builtin_skills_forbidden_via_file_url(env: Any) -> None:
+    """``mkdir`` shares the guard, so a ``file://`` URL cannot create dirs there."""
+    c, srv, auth, aid = env
+    target = _file_url(_agent_host_path(srv, aid, "_builtin_skills/evil-dir"))
+
+    r = await c.post(
+        f"/api/agents/{aid}/workspace/mkdir",
+        params={"path": target},
+        headers=auth,
+    )
+    assert r.status_code == 403, r.text
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aexists("_builtin_skills/evil-dir") is False
+
+
+async def test_delete_builtin_skills_forbidden_via_file_url(env: Any) -> None:
+    """An existing built-in must survive a ``file://`` delete."""
+    c, srv, auth, aid = env
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    await agent.workspace.aupload_bytes("_builtin_skills/keep-me/SKILL.md", b"real\n")
+
+    target = _file_url(_agent_host_path(srv, aid, "_builtin_skills/keep-me/SKILL.md"))
+    r = await c.delete(
+        f"/api/agents/{aid}/workspace/file",
+        params={"path": target},
+        headers=auth,
+    )
+    assert r.status_code == 403, r.text
+    assert await agent.workspace.aexists("_builtin_skills/keep-me/SKILL.md") is True
+
+
+async def test_write_builtin_skills_forbidden_mid_segment(env: Any) -> None:
+    """A nested ``_builtin_skills`` segment is still the Octop-owned root."""
+    c, _srv, auth, aid = env
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/nested/_builtin_skills/evil/SKILL.md"},
+        headers=auth,
+        json={"content": "# injected\n"},
+    )
+    assert r.status_code == 403, r.text
+
+
+async def test_write_builtin_skills_lookalike_allowed(env: Any) -> None:
+    """A name merely sharing the prefix is an ordinary user directory."""
+    c, _srv, auth, aid = env
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/_builtin_skills_extra/notes.md"},
+        headers=auth,
+        json={"content": "ok\n"},
+    )
+    assert r.status_code == 200, r.text
+
+
+async def test_write_builtin_skills_segment_folding_away_allowed(env: Any) -> None:
+    """A ``..``-spelled path that lands outside the root is an ordinary write.
+
+    ``a/_builtin_skills/../../b.md`` folds to ``b.md`` at the workspace root, so
+    the guard must judge where it lands, not which words it contains.
+    """
+    c, srv, auth, aid = env
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/a/_builtin_skills/../../b.md"},
+        headers=auth,
+        json={"content": "ok\n"},
+    )
+    assert r.status_code == 200, r.text
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aexists("b.md") is True
+    assert await agent.workspace.aexists("_builtin_skills/b.md") is False
+
+
+@pytest.mark.parametrize(
+    ("path", "planted"),
+    [
+        ("/sub/../_builtin_skills/evil/SKILL.md", "_builtin_skills/evil/SKILL.md"),
+        ("/.octop/sub/../_builtin_skills/evil/SKILL.md", ".octop/_builtin_skills/evil/SKILL.md"),
+    ],
+)
+async def test_write_builtin_skills_via_dotdot_forbidden(env: Any, path: str, planted: str) -> None:
+    """``..`` must not fold a write back into the root the guard protects (#1126)."""
+    c, srv, auth, aid = env
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": path},
+        headers=auth,
+        json={"content": "# injected\n"},
+    )
+    assert r.status_code == 403, r.text
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aexists(planted) is False
+
+
+async def test_delete_workspace_root_via_dotdot_forbidden(env: Any) -> None:
+    """A ``..`` spelling that resolves to the workspace root is not an ordinary dir (#1126).
+
+    ``/keep/..`` folds to ``.``, so a delete spelling it that way addresses the
+    whole workspace rather than the ``keep`` directory the caller appears to name.
+    """
+    c, srv, auth, aid = env
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    await agent.workspace.aupload_bytes("keep/a.txt", b"survive\n")
+
+    r = await c.delete(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/keep/.."},
+        headers=auth,
+    )
+    assert r.status_code == 403, r.text
+    assert await agent.workspace.aexists("keep/a.txt") is True
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/_builtin_skills/foo/SKILL.md", "/.octop/_builtin_skills/foo/SKILL.md"],
+)
+async def test_write_builtin_skills_forbidden(env: Any, path: str) -> None:
+    """``PUT /workspace/file`` must refuse the Octop-owned built-in Skills root."""
+    c, _srv, auth, aid = env
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": path},
+        headers=auth,
+        json={"content": "# injected\n"},
+    )
+    assert r.status_code == 403
+
+
+async def test_upload_builtin_skills_forbidden(env: Any) -> None:
+    """``POST /workspace/upload`` must refuse the Octop-owned built-in Skills root."""
+    c, srv, auth, aid = env
+    r = await c.post(
+        f"/api/agents/{aid}/workspace/upload",
+        params={**FROM_WORKSPACE, "path": "/_builtin_skills/foo/SKILL.md"},
+        headers=auth,
+        files={"file": ("SKILL.md", b"# injected\n", "text/markdown")},
+    )
+    assert r.status_code == 403
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aexists("_builtin_skills/foo/SKILL.md") is False
+
+
+async def test_upload_builtin_skills_forbidden_via_filename(env: Any) -> None:
+    """With no ``path``, the upload's own filename decides the target — guard that too."""
+    c, srv, auth, aid = env
+    r = await c.post(
+        f"/api/agents/{aid}/workspace/upload",
+        params=FROM_WORKSPACE,
+        headers=auth,
+        files={"file": ("_builtin_skills/foo/SKILL.md", b"# injected\n", "text/markdown")},
+    )
+    assert r.status_code == 403
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aexists("_builtin_skills/foo/SKILL.md") is False
 
 
 # --- editable document (Markdown round-trip) --------------------------------
