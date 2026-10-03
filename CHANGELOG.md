@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- 主动关怀配置的「最长间隔」补上上限（7 天）：此前 `max_interval_hours` 填一个过大的值也能保存成功（200），结果该专家的主动推送被排到几年之后，极端值还会让调度任务直接异常退出、只在日志里留一行错误，界面上完全看不出来；现在接口返回 422 并说明原因
 
 ## [1.0.2b5] - 2026-09-29
 
