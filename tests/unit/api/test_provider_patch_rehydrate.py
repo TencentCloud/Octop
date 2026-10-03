@@ -31,17 +31,21 @@ def test_patch_note_and_api_key_requires_rehydrate() -> None:
 
 
 @pytest.mark.asyncio
-async def test_admin_patch_note_only_skips_on_provider_changed() -> None:
+@pytest.mark.parametrize("payload", [{"note": "only note"}, {"model": "m1"}])
+async def test_admin_patch_note_or_probe_model_skips_on_provider_changed(
+    payload: dict[str, str],
+) -> None:
     on_changed = AsyncMock()
     row = MagicMock()
     row.id = 1
     row.name = "test-openai"
+    row.extra_json = None
     server = MagicMock()
     server.services.provider_repo.get.side_effect = [row, row]
     server.services.provider_repo.update = MagicMock()
     server.app_runtime.agent_registry.on_provider_changed = on_changed
 
-    body = ProviderPatchBody.model_validate({"note": "only note"})
+    body = ProviderPatchBody.model_validate(payload)
     await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
 
     server.services.provider_repo.update.assert_called_once()
@@ -54,6 +58,7 @@ async def test_admin_patch_api_key_calls_on_provider_changed() -> None:
     row = MagicMock()
     row.id = 1
     row.name = "test-openai"
+    row.extra_json = None
     server = MagicMock()
     server.services.provider_repo.get.side_effect = [row, row]
     server.services.provider_repo.update = MagicMock()
@@ -71,6 +76,7 @@ async def test_admin_patch_models_clears_stale_agent_default_and_active() -> Non
     row = MagicMock()
     row.id = 1
     row.name = "hai"
+    row.extra_json = None
     server = MagicMock()
     server.services.provider_repo.get.side_effect = [row, row]
     server.services.provider_repo.update = MagicMock()

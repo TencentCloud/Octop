@@ -654,9 +654,7 @@ export function ProviderConfigModal({
     if (!open) return;
     // Only hydrate when the modal opens (or provider id changes), so
     // background refreshes / local model toggles do not reset the form.
-    const currentDefaultModel = provider.models?.length
-      ? provider.models[0].id
-      : "";
+    const currentDefaultModel = provider.model ?? "";
     form.setFieldsValue({
       kind: provider.kind,
       base_url: provider.base_url ?? "",
@@ -692,9 +690,7 @@ export function ProviderConfigModal({
       if ((values.note ?? "") !== (provider.note ?? ""))
         payload.note = values.note?.trim() || null;
       // default model
-      const existingDefault = provider.models?.length
-        ? provider.models[0].id
-        : "";
+      const existingDefault = provider.model ?? "";
       if ((values.model ?? "") !== existingDefault)
         payload.model = values.model?.trim() || null;
 
