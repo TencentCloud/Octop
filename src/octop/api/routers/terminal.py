@@ -725,7 +725,7 @@ async def terminal_ws(
                         try:
                             new_cols = int(msg.get("cols") or 80)
                             new_rows = int(msg.get("rows") or 24)
-                        except (TypeError, ValueError):
+                        except (TypeError, ValueError, OverflowError):
                             continue
                         if not (
                             _MIN_COLS <= new_cols <= _MAX_COLS
