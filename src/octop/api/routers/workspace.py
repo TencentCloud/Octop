@@ -99,6 +99,10 @@ def _assert_inside_workspace(rel: str, *, workspace: Any, original: str) -> None
         )
     root = Path(workspace.workspace_dir).expanduser().resolve()
     try:
+        # ``resolve()`` canonicalises the candidate so a symlinked spelling
+        # cannot dodge the check; the value is never written — a path outside
+        # ``root`` raises below.
+        # codeql[py/path-injection]
         Path(raw).expanduser().resolve().relative_to(root)
     except (OSError, ValueError) as exc:
         raise OctopError(
