@@ -10,7 +10,6 @@ import { useTranslation } from "react-i18next";
 import DocumentPreviewCore from "../../../../components/DocumentPreviewCore";
 import { requestBlob } from "../../../../api/request";
 import { apiErrorMessage } from "../../../../utils/apiError";
-import { withFromWorkspace } from "../../../../utils/fromWorkspace";
 import type { DocKind } from "../utils/docKind";
 import styles from "../index.module.less";
 
@@ -18,30 +17,24 @@ interface DocumentPreviewProps {
   agentId: string;
   path: string;
   kind: DocKind;
-  /** Workspace UI paths use true; chat/tool paths use false. */
-  fromWorkspace?: boolean;
 }
 
-function documentDownloadUrl(
-  agentId: string,
-  path: string,
-  fromWorkspace: boolean,
-): string {
-  const url = `/agents/${encodeURIComponent(
+function documentDownloadUrl(agentId: string, path: string): string {
+  // SEC-2 durable fix: no from_workspace param — paths resolve
+  // workspace-relative on the API.
+  return `/agents/${encodeURIComponent(
     agentId,
   )}/workspace/download?path=${encodeURIComponent(path)}`;
-  return fromWorkspace ? withFromWorkspace(url) : `${url}&from_workspace=false`;
 }
 
 export default function DocumentPreview({
   agentId,
   path,
   kind,
-  fromWorkspace = true,
 }: DocumentPreviewProps) {
   const { t } = useTranslation();
   const { message } = App.useApp();
-  const apiPath = documentDownloadUrl(agentId, path, fromWorkspace);
+  const apiPath = documentDownloadUrl(agentId, path);
   const filename = path.split("/").filter(Boolean).pop() || path;
 
   const fetchBlob = useCallback(

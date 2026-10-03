@@ -35,7 +35,6 @@ interface FileViewerProps {
   agentId: string;
   path: string;
   /** Whether leading-slash paths come from the workspace UI. */
-  fromWorkspace?: boolean;
   /** When true, text files render with the Monaco editor. */
   editMode: boolean;
   /** Current text content (for text/preview modes). */
@@ -52,7 +51,6 @@ interface FileViewerProps {
 export default function FileViewer({
   agentId,
   path,
-  fromWorkspace = true,
   editMode,
   value,
   onChange,
@@ -76,7 +74,6 @@ export default function FileViewer({
         path={path}
         kind={mediaKind}
         refreshToken={refreshToken}
-        fromWorkspace={fromWorkspace}
       />
     );
   }
@@ -88,7 +85,6 @@ export default function FileViewer({
         agentId={agentId}
         path={path}
         kind={docKind}
-        fromWorkspace={fromWorkspace}
       />
     );
   }
