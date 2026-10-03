@@ -14,6 +14,7 @@
 
 ### 修复
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
+- 技能包详情接口 ``GET /api/skill-packages/{id}/skills/{slug}`` 打开 ``SKILL.md`` 编码已损坏的技能时返回 500 并写 traceback：路由裸 ``read_text(encoding="utf-8")``，而同一次请求里列表路径已把同一文件判为 ``corrupt: true`` / ``invalid_utf8``。现改为沿用该判定返回 200（``frontmatter``/``body``/``raw`` 给空值），管理页点击损坏行不再只弹「加载失败」，后端也不再每次记一条未捕获异常（Fixes #1577）。
 
 ## [1.0.2b5] - 2026-09-29
 

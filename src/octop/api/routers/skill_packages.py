@@ -472,7 +472,13 @@ async def get_package_skill(
         slug,
         locale=resolve_request_locale(request),
     )
-    raw = (store.package_skills_dir(package_id) / slug / "SKILL.md").read_text(encoding="utf-8")
+    manifest = store.package_skills_dir(package_id) / slug / "SKILL.md"
+    try:
+        raw = manifest.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        # ``_package_skill_or_404`` read the same file through the tolerant listing path and
+        # already flagged it, so echo that verdict instead of answering with a 500.
+        return {**skill, "frontmatter": {}, "body": "", "raw": ""}
     frontmatter, body = parse_frontmatter(raw)
     return {**skill, "frontmatter": frontmatter, "body": body, "raw": raw}
 

@@ -528,3 +528,49 @@ async def test_create_package_skill_rejects_invalid_base64_files(env: Any) -> No
         },
     )
     assert response.status_code == 400, response.text
+
+
+async def test_package_skill_detail_reports_corrupt_manifest(env: Any) -> None:
+    from octop.infra.skills.skill_package_store import SkillPackageStore
+
+    client, server, auth = env
+    package_id = (
+        await client.post(
+            "/api/skill-packages",
+            headers=auth,
+            json={"name": "Office"},
+        )
+    ).json()["id"]
+    created = await client.post(
+        f"/api/skill-packages/{package_id}/skills",
+        headers=auth,
+        json={"name": "pdf-reader", "content": SAMPLE_SKILL},
+    )
+    assert created.status_code == 200, created.text
+
+    store = SkillPackageStore(
+        repo=server.services.skill_package_repo,
+        root=server.paths.skill_packages_dir,
+    )
+    manifest = store.package_skills_dir(package_id) / "pdf-reader" / "SKILL.md"
+    # A package directory can hold a manifest the write endpoint would reject: the
+    # on-disk tree is restored from backups and edited outside the API, which is why
+    # the listing reader repairs or flags such files instead of raising.
+    manifest.write_bytes(b"\x80\x81\x82")
+
+    listed = await client.get(f"/api/skill-packages/{package_id}/skills", headers=auth)
+    assert listed.status_code == 200, listed.text
+    assert [(row["slug"], row["corrupt"], row["error"]) for row in listed.json()] == [
+        ("pdf-reader", True, "invalid_utf8")
+    ]
+
+    detail = await client.get(
+        f"/api/skill-packages/{package_id}/skills/pdf-reader",
+        headers=auth,
+    )
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["corrupt"] is True
+    assert detail.json()["error"] == "invalid_utf8"
+    assert detail.json()["raw"] == ""
+    assert detail.json()["frontmatter"] == {}
+    assert detail.json()["body"] == ""
