@@ -15,6 +15,7 @@
 ### 修复
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 聊天产物的预览不再要求产出它的专家还在运行：`GET /api/agents/{id}/media/preview` 是唯一一个仍要求「运行中」的工作区读取接口，团队成员结束一轮后被停止（`last_state=stopped`），历史消息里的图片/视频预览一律 409 `AGENT_NOT_RUNNING`，而同一个文件的 `GET /workspace/download` 一直返回 200；现与读取/下载一致改用 `require_agent_workspace`，可见性校验不变，无权用户仍是 403 (#1161)
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 - 聊天输入栏将对话模式、模型、连接器、知识库、技能、专家、子智能体收进「+」菜单，从菜单右侧弹出选择面板；聊天页用户头像与侧栏账号头像一致。

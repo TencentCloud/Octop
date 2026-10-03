@@ -439,7 +439,7 @@ async def preview_media(
     """Stream an image or video inline for dashboard tool-result previews."""
     path_agent = _agent_id_from_media_source(source)
     effective_agent = path_agent or agent_id
-    ws = await require_running_workspace(effective_agent, user=user, as_user=as_user, server=server)
+    ws = await require_agent_workspace(effective_agent, user=user, as_user=as_user, server=server)
     payload = await resolve_preview_payload(
         source=source,
         workspace=ws,
