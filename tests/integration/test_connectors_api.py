@@ -9,10 +9,12 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import pytest
 
 from octop.infra.connectors.custom_mcp import CUSTOM_MCP_KIND
 from octop.infra.connectors.oauth.registry import save_oauth_ctx
+from octop.infra.errors import OctopError
 from octop.infra.utils.ulid import new_ulid
 from tests.support.app import octop_client, write_octop_config
 from tests.support.auth import auth_header, bootstrap_admin, create_user, resolve_user_id
@@ -580,6 +582,62 @@ async def test_shared_custom_mcp_is_visible_with_collision_safe_name(env):
     assert shared["can_manage"] is False
     assert shared["mcp_server_name"].startswith("custom__")
     assert shared["mcp_server_name"].endswith("__linear")
+
+
+async def test_custom_mcp_runtime_failure_exposes_reauthorization_and_recovers(env, monkeypatch):
+    c, srv, auth, _ = env
+    uid = await resolve_user_id(c, auth, "admin")
+    svc = srv.app_runtime.agent_registry._connector_svc
+    url = "https://oa.example.com/mcp"
+    svc.put_custom_servers(uid, {"oa": {"transport": "streamable_http", "url": url}})
+    svc.apply_custom_server_oauth(
+        uid,
+        "oa",
+        {
+            "access_token": "expired-access",
+            "refresh_token": "expired-refresh",
+            "oauth_client_id": "client",
+            "expires_at": 1,
+        },
+        issuer="https://oa.example.com",
+        resource=url,
+    )
+    connection = svc.custom_harness_configs(uid)["oa"]
+    monkeypatch.setattr(
+        "octop.infra.connectors.service.refresh_custom_mcp_oauth",
+        AsyncMock(side_effect=ValueError("refresh failed")),
+    )
+    seen = []
+
+    def handle(request):
+        seen.append(request.headers["Authorization"])
+        return httpx.Response(200)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handle), auth=connection["auth"]
+    ) as mcp_client:
+        with pytest.raises(OctopError):
+            await mcp_client.post(url)
+        assert not seen
+        preview = await c.get("/api/connectors/custom-mcp", headers=auth)
+        assert preview.status_code == 200
+        assert preview.json()["servers"]["oa"]["oauth"] == {
+            "configured": False,
+            "required": True,
+        }
+        assert "expired-access" not in preview.text
+        assert "expired-refresh" not in preview.text
+        svc.apply_custom_server_oauth(
+            uid,
+            "oa",
+            {"access_token": "reauthorized", "expires_at": 9_999_999_999},
+            issuer="https://oa.example.com",
+            resource=url,
+        )
+        assert (await mcp_client.post(url)).status_code == 200
+    preview = await c.get("/api/connectors/custom-mcp", headers=auth)
+    assert preview.json()["servers"]["oa"]["oauth"]["configured"] is True
+    assert seen == ["Bearer reauthorized"]
 
 
 async def test_custom_mcp_oauth_callback_applies_tokens(env):

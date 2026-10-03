@@ -18,11 +18,10 @@ from octop.infra.connectors.custom_mcp import (
     CUSTOM_MCP_DISPLAY_NAME,
     CUSTOM_MCP_KIND,
     build_oauth_storage,
-    enabled_harness_configs,
     expand_custom_instances,
     extract_servers,
+    harness_spec_for_server,
     is_custom_mcp_kind,
-    mark_oauth_reauth_required,
     merge_preserved_oauth,
     oauth_configured,
     oauth_tokens_from_spec,
@@ -40,6 +39,7 @@ from octop.infra.connectors.gateway.feishu_user_auth import (
     start_user_device_login,
 )
 from octop.infra.connectors.oauth import refresh_oauth_credentials
+from octop.infra.connectors.oauth.mcp import OAuthRefreshRejected
 from octop.infra.connectors.oauth.registry import refresh_custom_mcp_oauth
 from octop.infra.db.repos.connectors import ConnectorRepo, ConnectorRow
 from octop.infra.db.repos.secrets import SecretRepo
@@ -53,6 +53,9 @@ _OAUTH_REFRESH_SKEW_SEC = 120
 
 # Shared only within one process and application repository.
 _QCC_LOCKS: WeakKeyDictionary[ConnectorRepo, dict[str, asyncio.Lock]] = WeakKeyDictionary()
+_CUSTOM_MCP_LOCKS: WeakKeyDictionary[ConnectorRepo, dict[tuple[int, str], asyncio.Lock]] = (
+    WeakKeyDictionary()
+)
 
 
 class ConnectorNameTakenError(ValueError):
@@ -354,46 +357,79 @@ class ConnectorService:
         return self._save_custom_servers(user_id, servers)
 
     async def ensure_fresh_custom_servers(self, user_id: int) -> dict[str, Any]:
-        servers = dict(self.get_custom_servers(user_id))
-        changed = False
-        now = int(time.time())
-        for name, raw in list(servers.items()):
-            if not isinstance(raw, dict):
-                continue
+        for name in self.get_custom_servers(user_id):
+            await self.ensure_fresh_custom_server(user_id, name)
+        return self.get_custom_servers(user_id)
+
+    def _store_custom_server_oauth(
+        self,
+        user_id: int,
+        server_name: str,
+        previous: dict[str, Any],
+        oauth: dict[str, Any],
+    ) -> dict[str, Any]:
+        # Re-read after network I/O: preserve other servers, edits and newer grants.
+        servers = self.get_custom_servers(user_id)
+        current: dict[str, Any] = servers.get(server_name, {})
+        if (
+            not current
+            or current.get("url") != previous.get("url")
+            or current.get("oauth") != previous.get("oauth")
+        ):
+            return current
+        servers[server_name] = {**current, "oauth": oauth}
+        return dict(self._save_custom_servers(user_id, servers)[server_name])
+
+    def reject_custom_server_token(self, user_id: int, server_name: str, token: str) -> None:
+        spec = self.get_custom_servers(user_id).get(server_name, {})
+        if oauth_tokens_from_spec(spec).get("access_token") == token:
+            self._store_custom_server_oauth(user_id, server_name, spec, {"required": True})
+
+    async def ensure_fresh_custom_server(
+        self, user_id: int, server_name: str, *, rejected_token: str | None = None
+    ) -> dict[str, Any]:
+        locks = _CUSTOM_MCP_LOCKS.setdefault(self._repo, {})
+        lock = locks.setdefault((user_id, server_name), asyncio.Lock())
+        async with lock:
+            raw: dict[str, Any] = self.get_custom_servers(user_id).get(server_name, {})
             oauth = oauth_tokens_from_spec(raw)
             if not oauth_configured(raw):
-                continue
+                return raw
+            # Concurrent 401 responses can reuse the token another request refreshed.
+            if rejected_token is not None and rejected_token != oauth.get("access_token"):
+                return raw
+            now = int(time.time())
             expires_at_raw = oauth.get("expires_at")
             expires_at = int(expires_at_raw) if expires_at_raw is not None else None
+            expired = expires_at is not None and expires_at <= now
+            force = rejected_token is not None
+            if not force and (expires_at is None or expires_at > now + _OAUTH_REFRESH_SKEW_SEC):
+                return raw
             refresh = str(oauth.get("refresh_token") or "").strip()
-            if expires_at is not None and expires_at <= now and not refresh:
-                servers[name] = mark_oauth_reauth_required(dict(raw))
-                changed = True
-                continue
-            if not refresh:
-                continue
-            if expires_at is not None and expires_at > now + _OAUTH_REFRESH_SKEW_SEC:
-                continue
+            if not refresh or not oauth.get("oauth_client_id") or not oauth.get("oauth_issuer"):
+                if expired or force:
+                    return self._store_custom_server_oauth(
+                        user_id, server_name, raw, {"required": True}
+                    )
+                return raw
             try:
                 refreshed = await refresh_custom_mcp_oauth(oauth)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     "custom MCP oauth refresh failed for %r (user_id=%s)",
-                    name,
+                    server_name,
                     user_id,
-                    exc_info=True,
                 )
-                if expires_at is not None and expires_at <= now:
-                    servers[name] = mark_oauth_reauth_required(dict(raw))
-                    changed = True
-                continue
-            spec = dict(raw)
-            spec["oauth"] = refreshed
-            servers[name] = spec
-            changed = True
-        if not changed:
-            return servers
-        return self._save_custom_servers(user_id, servers)
+                if (
+                    (expires_at is not None and expires_at <= int(time.time()))
+                    or force
+                    or isinstance(exc, OAuthRefreshRejected)
+                ):
+                    return self._store_custom_server_oauth(
+                        user_id, server_name, raw, {"required": True}
+                    )
+                return dict(self.get_custom_servers(user_id).get(server_name, {}))
+            return self._store_custom_server_oauth(user_id, server_name, raw, refreshed)
 
     def patch_custom_server_enabled(
         self,
@@ -576,7 +612,11 @@ class ConnectorService:
         return list(names)
 
     def custom_harness_configs(self, user_id: int) -> dict[str, Any]:
-        configs = enabled_harness_configs(self.get_custom_servers(user_id))
+        configs = {
+            name: self._custom_harness_spec(user_id, user_id, name, spec)
+            for name, spec in self.get_custom_servers(user_id).items()
+            if isinstance(spec, dict) and server_enabled(spec)
+        }
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
                 continue
@@ -588,10 +628,33 @@ class ConnectorService:
                     or not server_enabled(spec)
                 ):
                     continue
-                built = enabled_harness_configs({name: spec}).get(name)
-                if built is not None:
-                    configs[shared_mcp_server_name(parent.instance_id, name)] = built
+                configs[shared_mcp_server_name(parent.instance_id, name)] = (
+                    self._custom_harness_spec(parent.user_id, user_id, name, spec)
+                )
         return configs
+
+    def _custom_harness_spec(
+        self, owner_user_id: int, user_id: int, name: str, spec: dict[str, Any]
+    ) -> dict[str, Any]:
+        from octop.infra.connectors.oauth.runtime import CustomMcpOAuthAuth
+
+        built = harness_spec_for_server(spec)
+        # A discovery hint alone must not replace a user's fixed authentication headers.
+        if spec.get("transport") == "streamable_http" and oauth_configured(spec):
+            # Cached tools retain this auth provider, never a snapshot of the token.
+            built["headers"] = {
+                key: value
+                for key, value in built["headers"].items()
+                if key.lower() != "authorization"
+            }
+            built["auth"] = CustomMcpOAuthAuth(
+                self,
+                owner_user_id=owner_user_id,
+                user_id=user_id,
+                server_name=name,
+                url=str(spec["url"]),
+            )
+        return built
 
     async def mcp_configs_for_user(self, user_id: int) -> dict[str, Any]:
         configs: dict[str, Any] = {}
