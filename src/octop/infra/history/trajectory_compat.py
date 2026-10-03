@@ -79,6 +79,23 @@ class ArchiveTrajectoryStore(TrajectoryStore):
             boundary = batch[-1]["seq"]
         return sorted([*rows, *new[:limit]], key=lambda event: event.seq)[-limit:]
 
+    def list_from_seq(self, thread_id: str, *, from_seq: int, limit: int) -> list[TrajectoryEvent]:
+        """Events at or after ``from_seq``, from both stores.
+
+        This is the SSE resume path: the browser reconnects with ``Last-Event-ID``
+        and replays everything it missed. V2 events never reach the legacy repo,
+        so the inherited query alone replays an empty stream.
+        """
+        if limit <= 0:
+            return []
+        rows = super().list_from_seq(thread_id, from_seq=from_seq, limit=limit)
+        new = [
+            event_from_dict(d["value"])
+            for d in self.archive.store.documents(thread_id, "event")
+            if int(d.get("seq") or -1) >= from_seq
+        ]
+        return sorted([*rows, *new], key=lambda event: event.seq)[:limit]
+
     def get(self, event_id: str) -> TrajectoryEvent | None:
         value = self.archive.store.get_event(event_id)
         return event_from_dict(value) if value is not None else super().get(event_id)
