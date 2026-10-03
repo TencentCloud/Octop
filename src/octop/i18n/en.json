@@ -830,6 +830,9 @@
     "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",
     "execute": "Execute {path}"
   },
+  "update": {
+    "portable_upgrade_unverified": "The installer finished, but an upgrade could not be verified in {target} (installed version: {version})."
+  },
   "ldap": {
     "test": {
       "ok": "Connected to the LDAP directory",

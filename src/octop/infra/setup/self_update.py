@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from octop.i18n import tr
 from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ _GREEN_PACKAGES_ENV = "OCTOP_GREEN_PACKAGES"
 _STASH_SUFFIX = ".octop-old"
 _PROBE_TIMEOUT_S = 8
 _INSTALL_TIMEOUT_S = 90
-_FPK_INSTALL_TIMEOUT_S = 900
+_TARGET_INSTALL_TIMEOUT_S = 900
 
 _MIRRORS = [
     "https://mirrors.cloud.tencent.com/pypi/simple",
@@ -119,6 +120,11 @@ def find_uv_executable() -> str:
 
 
 def get_local_version() -> str:
+    if green_packages_dir() is not None:
+        # pip --target leaves old dist-info; report the package actually running.
+        from octop import __version__
+
+        return __version__
     try:
         from importlib.metadata import version
 
@@ -563,11 +569,13 @@ def get_installed_version(python_exe: str) -> str | None:
 
 
 def get_version_in_dir(python_exe: str, target: str) -> str | None:
-    """Return the octop version installed in *target* (a ``pip --target`` dir)."""
+    """Return the loadable octop version in *target* (a ``pip --target`` dir)."""
     try:
         code = (
-            "import sys; sys.path.insert(0, sys.argv[1]); "
-            "from importlib.metadata import version; print(version('octop'))"
+            "import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); "
+            "import octop; "
+            "print(octop.__version__ if "
+            "Path(octop.__file__).resolve().is_relative_to(Path(sys.argv[1]).resolve()) else '')"
         )
         result = subprocess.run(
             [python_exe, "-c", code, target],
@@ -829,7 +837,7 @@ def _run_fpk_upgrade(
             _build_cmd(index_url),
             label,
             verbose=verbose,
-            timeout=_FPK_INSTALL_TIMEOUT_S,
+            timeout=_TARGET_INSTALL_TIMEOUT_S,
         )
         if rc != 0:
             mirror_errors.append(f"{label}: {err_snippet or 'unknown error'}")
@@ -892,6 +900,7 @@ def _run_managed_upgrade(
     venv_python = resolve_venv_python()
     local_ver = get_local_version()
     ordered, mirror_errors = rank_install_indexes(version)
+    target = green_packages_dir()
 
     for index_url, label in ordered:
         cmd = build_upgrade_command(
@@ -911,9 +920,12 @@ def _run_managed_upgrade(
             cmd,
             label,
             verbose=verbose,
-            timeout=_INSTALL_TIMEOUT_S,
+            # Like FPK installs, --target resolves and downloads the dependency tree.
+            timeout=_TARGET_INSTALL_TIMEOUT_S if target is not None else _INSTALL_TIMEOUT_S,
         )
         if rc == 0:
+            if target is not None:
+                return _verify_upgrade(local_ver, venv_python, mirror_errors, target=target)
             return _verify_upgrade(local_ver, venv_python, mirror_errors)
         mirror_errors.append(f"{label}: {err_snippet or 'unknown error'}")
 
@@ -924,10 +936,16 @@ def _verify_upgrade(
     local_ver: str,
     venv_python: str,
     mirror_errors: list[str],
+    *,
+    target: Path | None = None,
 ) -> UpgradeResult:
     actual_ver: str | None = None
     for attempt in range(3):
-        actual_ver = get_installed_version(venv_python)
+        actual_ver = (
+            get_version_in_dir(venv_python, str(target))
+            if target is not None
+            else get_installed_version(venv_python)
+        )
         if actual_ver and actual_ver != local_ver:
             break
         if attempt < 2:
@@ -937,6 +955,17 @@ def _verify_upgrade(
         return UpgradeResult(
             success=True,
             message=f"upgraded to {actual_ver}",
+            installed_version=actual_ver,
+            mirror_errors=mirror_errors,
+        )
+    if target is not None:
+        return UpgradeResult(
+            success=False,
+            error=tr(
+                "update.portable_upgrade_unverified",
+                target=target,
+                version=actual_ver or "?",
+            ),
             installed_version=actual_ver,
             mirror_errors=mirror_errors,
         )

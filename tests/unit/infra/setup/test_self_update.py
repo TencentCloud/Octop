@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -420,3 +421,79 @@ def test_run_managed_upgrade_uses_ranked_indexes(
     assert calls == ["fast.example", "pypi.org"]
     assert "slow.example: missing_version 1.0.1" in (result.mirror_errors or [])
     assert any("fast.example" in err for err in (result.mirror_errors or []))
+
+
+@pytest.mark.parametrize("actual_version", ["1.0.2b5", "1.0.2b4", "1.0.1", None])
+def test_portable_upgrade_verifies_target_after_cold_install(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    actual_version: str | None,
+) -> None:
+    from octop.infra.setup import self_update
+
+    target = tmp_path / "packages"
+    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(target))
+    monkeypatch.setattr(self_update, "detect_installer", lambda: "pip")
+    monkeypatch.setattr(self_update, "has_pip", lambda _python: True)
+    monkeypatch.setattr(self_update, "resolve_venv_python", lambda: sys.executable)
+    monkeypatch.setattr(self_update, "get_local_version", lambda: "1.0.2b4")
+    monkeypatch.setattr(
+        self_update,
+        "rank_install_indexes",
+        lambda _version: ([("https://pypi.org/simple", "pypi.org")], []),
+    )
+    monkeypatch.setattr(self_update.time, "sleep", lambda _seconds: None)
+
+    def install(
+        cmd: list[str], label: str, *, verbose: bool, timeout: float
+    ) -> tuple[int | None, str]:
+        assert cmd[cmd.index("--target") + 1] == str(target)
+        # A cold --target dependency install can exceed the normal 90-second limit.
+        return (0, "") if timeout >= 900 else (None, "timed out")
+
+    def read_target(python: str, path: str) -> str | None:
+        assert python == sys.executable
+        assert path == str(target)
+        return actual_version
+
+    monkeypatch.setattr(self_update, "_run_install_cmd", install)
+    monkeypatch.setattr(self_update, "get_version_in_dir", read_target)
+    # An ambient installation must not supply the portable target's version.
+    monkeypatch.setattr(self_update, "get_installed_version", lambda _python: "9.0.0")
+
+    result = self_update._run_managed_upgrade(version="1.0.2b5", allow_prerelease=True)
+
+    assert result.success is (actual_version == "1.0.2b5")
+    assert result.installed_version == actual_version
+    if not result.success:
+        assert result.error
+
+
+def test_target_version_does_not_fall_back_to_ambient_install(tmp_path: Path) -> None:
+    from octop.infra.setup.self_update import get_version_in_dir
+
+    assert get_version_in_dir(sys.executable, str(tmp_path)) is None
+    package = tmp_path / "octop"
+    package.mkdir()
+    (package / "__init__.py").write_text('__version__ = "1.0.2b5"\n', encoding="utf-8")
+    # pip --target can leave old dist-info alongside the replaced package.
+    metadata = tmp_path / "octop-1.0.2b4.dist-info"
+    metadata.mkdir()
+    (metadata / "METADATA").write_text("Name: octop\nVersion: 1.0.2b4\n", encoding="utf-8")
+    assert get_version_in_dir(sys.executable, str(tmp_path)) == "1.0.2b5"
+
+
+@pytest.mark.parametrize("portable", [True, False])
+def test_local_version_uses_running_package_for_portable_install(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, portable: bool
+) -> None:
+    from octop import __version__
+    from octop.infra.setup.self_update import get_local_version
+
+    if portable:
+        monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    else:
+        monkeypatch.delenv("OCTOP_GREEN_PACKAGES", raising=False)
+    monkeypatch.setattr("importlib.metadata.version", lambda _name: "0.0.1")
+
+    assert get_local_version() == (__version__ if portable else "0.0.1")
