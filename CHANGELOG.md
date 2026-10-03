@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- 飞牛（fnOS）本地版启动器 `bin/octop`、`bin/octop-cli` 用 `.` 加载向导写入的 `PKGVAR/.env`，把用户数据当 shell 代码解释：管理员密码含 `$` 时服务每次启动即中止（`set -u` 下未定义变量直接退出），引用在用变量会静默改写密码，`$( )`/反引号更会以服务身份执行。现改为按字面量逐行 `export`，与实际写入的值、设置窗口和 `octop_env_get` 读到的内容保持一致。
 
 ## [1.0.2b5] - 2026-09-29
 
