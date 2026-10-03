@@ -267,3 +267,26 @@ def seeded_user_role_assignment(
     preset was deleted, and new SSO or CLI users keep an empty permission set.
     """
     return role_assignment_for(db, SEEDED_USER_ROLE_ID)
+
+
+def role_template_assignment(
+    db: DatabasePool,
+    role_ref: str,
+) -> tuple[str, str | None, builtins.list[str], builtins.list[tuple[str, str]]] | None:
+    """Defaults from one role template, addressed by its public id.
+
+    Returns ``(user_role_id, user_role_name, permissions, policies)``, or ``None``
+    when no such template exists. Applying a role means copying these onto the user,
+    so callers that only write ``users.role`` leave the previous template's access
+    behind. The admin template yields neither permissions nor limits because it
+    bypasses both checks, which is what ``PATCH /api/users/{id}`` stores as well.
+    """
+    cleaned = (role_ref or "").strip()
+    if not cleaned:
+        return None
+    role = UserRoleRepo(db).get(cleaned)
+    if role is None:
+        return None
+    if role.is_admin:
+        return role.user_role_id, role.user_role_name, [], []
+    return role_assignment_for(db, cleaned)
