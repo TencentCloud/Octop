@@ -115,7 +115,11 @@ async def reload_plugins(
     disk install does not update the running server until reload or restart.
     """
     mgr = _plugin_manager(server)
-    loaded = mgr.load_installed(install_deps=True)
+    loop = asyncio.get_running_loop()
+    loaded = await loop.run_in_executor(
+        None,
+        lambda: mgr.load_installed(install_deps=True),
+    )
     if server.app_runtime is not None:
         await server.app_runtime.agent_registry.reload_all()
     return {
@@ -138,8 +142,12 @@ async def install_plugin(
     _user: Any = Depends(require_permission("plugins")),
 ) -> dict[str, Any]:
     mgr = _plugin_manager(server)
+    loop = asyncio.get_running_loop()
     try:
-        loaded = mgr.install_url(body.url)
+        loaded = await loop.run_in_executor(
+            None,
+            lambda: mgr.install_url(body.url),
+        )
     except OctopError:
         raise
     except Exception as exc:
@@ -171,6 +179,7 @@ async def upload_plugin(
     ``force=True`` overwrites an already-installed plugin with the same id.
     """
     mgr = _plugin_manager(server)
+    loop = asyncio.get_running_loop()
     raw = await file.read()
     if not raw:
         raise OctopError(ErrorCode.PLUGIN_INVALID_ARCHIVE, "empty plugin archive")
@@ -179,7 +188,10 @@ async def upload_plugin(
             tmp.write(raw)
             tmp_path = Path(tmp.name)
         try:
-            loaded = mgr.install_archive(tmp_path, force=force)
+            loaded = await loop.run_in_executor(
+                None,
+                lambda: mgr.install_archive(tmp_path, force=force),
+            )
         finally:
             tmp_path.unlink(missing_ok=True)
     except OctopError:
