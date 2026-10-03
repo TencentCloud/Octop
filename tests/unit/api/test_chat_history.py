@@ -226,6 +226,50 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_threads_reports_turn_active_per_thread() -> None:
+    rows = [
+        ThreadRow(
+            id=1,
+            thread_id="thr_idle",
+            agent_id="agt_1",
+            user_id=1,
+            channel_type="dashboard",
+            session_key="sk",
+            title="idle",
+            last_active=5,
+            created_at=1,
+        ),
+        ThreadRow(
+            id=2,
+            thread_id="thr_busy",
+            agent_id="agt_1",
+            user_id=1,
+            channel_type="dashboard",
+            session_key="sk2",
+            title="busy",
+            last_active=5,
+            created_at=1,
+        ),
+    ]
+    thread_registry = MagicMock()
+    thread_registry.list_threads.return_value = rows
+    thread_registry.get_bound_thread_id.return_value = None
+
+    server = MagicMock()
+    server.app_runtime.agent_registry.get_row.return_value = MagicMock(user_id=1)
+    server.app_runtime.gateway.thread_registry = thread_registry
+    server.app_runtime.gateway.ws_hub.is_turn_active.side_effect = lambda thread_id: (
+        thread_id == "thr_busy"
+    )
+
+    user = MagicMock(id=1, is_admin=False)
+
+    out = await history_mod.list_threads("agt_1", limit=10, user=user, server=server)
+
+    assert [row["turn_active"] for row in out] == [False, True]
+
+
+@pytest.mark.asyncio
 async def test_get_thread_history_returns_has_more(monkeypatch: pytest.MonkeyPatch) -> None:
     server = MagicMock()
     row = MagicMock(agent_id="agt_1", user_id=1, artifacts=())

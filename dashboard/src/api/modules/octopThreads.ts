@@ -50,6 +50,7 @@ export interface OctopThread {
   last_active: number;
   created_at: number;
   is_active?: boolean;
+  turn_active?: boolean;
   has_messages?: boolean;
   pinned?: boolean;
   unread_count?: number;
