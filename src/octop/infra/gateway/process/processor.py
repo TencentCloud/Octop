@@ -20,6 +20,7 @@ from octop_harness.teams.inbox import InboxMessage
 from octop_harness.teams.processor import ReplyEvent
 from octop_harness.teams.util import PeerCall, PeerSession
 
+from octop.i18n import tr
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.agents.settings.profile import parse_config_json
@@ -50,6 +51,7 @@ from octop.infra.gateway.process.agent_resolve import (
     harness_workspace_for_agent,
     media_backend_for_agent,
 )
+from octop.infra.gateway.process.file_delivery import FileDeliveryTracker
 from octop.infra.gateway.process.harness_request import (
     build_content_from_message,
     build_harness_request,
@@ -847,6 +849,12 @@ class GlobalProcessor:
                 yield ev
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
+            if projection_state.file_delivery_incomplete and not hitl_paused:
+                message = tr("stream_errors.incomplete_file_delivery", locale)
+                persist_failed_turn = True
+                stream_ok = False
+                history_tracker.observe({"type": "error", "message": message})
+                yield MessageEvent.error_event(message)
         except Exception as exc:
             await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
             message, error_code = _stream_error(exc, locale)
@@ -1025,9 +1033,11 @@ class GlobalProcessor:
         saw_tool_call = False
         emitted_media_ids: set[str] = set()
         emitted_attachment_keys: set[str] = set()
+        file_delivery = FileDeliveryTracker()
 
         try:
             async for chunk in self._agent_manager.stream(agent_id, request):
+                file_delivery.observe(chunk)
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
                 from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
@@ -1086,6 +1096,12 @@ class GlobalProcessor:
                 )
                 yield _maybe_stamp_team_host(chunk, agent_id, team_host)
             stream_ok = True
+            if file_delivery.incomplete:
+                message = tr("stream_errors.incomplete_file_delivery", locale)
+                persist_failed_turn = True
+                stream_ok = False
+                history_tracker.observe({"type": "error", "message": message})
+                yield {"type": "error", "message": message}
         except Exception as exc:
             await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
             message, error_code = _stream_error(exc, locale)

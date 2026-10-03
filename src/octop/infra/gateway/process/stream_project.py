@@ -16,6 +16,7 @@ from octop.infra.gateway.media.tool_media import (
     media_events_from_tool_result,
 )
 from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agent
+from octop.infra.gateway.process.file_delivery import FileDeliveryTracker
 from octop.infra.gateway.process.usage_record import UsageTracker
 from octop.infra.history.projection import TurnHistoryTracker
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, normalize_locale
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 class StreamProjectionState:
     hitl_paused: bool = False
     hitl_pending_id: str | None = None
+    file_delivery_incomplete: bool = False
 
 
 @dataclass
@@ -88,6 +90,7 @@ async def _project_chunks(
 ) -> AsyncIterator[MessageEvent]:
     loc = normalize_locale(str(locale))
     tool_state = _ToolProjectionState()
+    file_delivery = FileDeliveryTracker()
     harness_workspace = harness_workspace_for_agent(agent_manager, agent_id)
 
     def _tool_label(raw: str) -> str:
@@ -110,6 +113,7 @@ async def _project_chunks(
         )
 
     async for chunk in chunks:
+        file_delivery.observe(chunk)
         if usage_tracker is not None:
             usage_tracker.observe(chunk)
         if history_tracker is not None:
@@ -198,6 +202,9 @@ async def _project_chunks(
             if tool_state.current_node is not None and node != tool_state.current_node:
                 yield MessageEvent.flush()
             tool_state.current_node = node
+
+    if projection_state is not None:
+        projection_state.file_delivery_incomplete = file_delivery.incomplete
 
 
 async def project_stream(
