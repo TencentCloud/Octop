@@ -86,7 +86,7 @@ goto :install_verify
 where git >nul 2>&1
 if errorlevel 1 (echo [octop] ERROR: git required & exit /b 1)
 set "CLONE_DIR=%TEMP%\octop-install-%RANDOM%"
-git clone --depth 1 %OCTOP_REPO% "%CLONE_DIR%"
+git clone --depth 1 "%OCTOP_REPO%" "%CLONE_DIR%"
 if errorlevel 1 exit /b 1
 call :prepare_console "%CLONE_DIR%"
 uv pip install "%CLONE_DIR%%EXTRAS_SUFFIX%" --python "%VENV_PYTHON%"
