@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- 远程浏览器接口不再在事件循环里做同步探针：`GET /api/browser/env-status` 之前在协程中直接跑 `_probe_env()`（遍历 Playwright 缓存目录 glob + `find_chrome()` 逐个 stat 候选路径），`POST /api/browser/install` 的 SSE 生成器同样在循环内调 `find_chrome()` 与 `_verify_browser_binary()`（`subprocess` 跑 `<chrome> --version`，代码自带 `timeout=10`）；这期间同一进程的其它 HTTP 请求、聊天 SSE 与 WebSocket 帧全部排队，一次页面加载或一次「安装 Chromium」点击就能冻住整个服务。现按 `infra/browser/setup.py` 已有的 13 处 `asyncio.to_thread` 写法把三处调用挪到工作线程（AGENTS.md §8「Do not add blocking I/O in async functions」），响应字段与 SSE 事件顺序不变（Fixes #1579）。
 
 ## [1.0.2b5] - 2026-09-29
 

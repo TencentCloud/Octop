@@ -9,6 +9,7 @@ in-process Playwright.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -90,7 +91,7 @@ def _probe_env() -> dict[str, Any]:
 
 @router.get("/browser/env-status")
 async def env_status(_: Any = Depends(current_user)) -> dict[str, Any]:
-    return _probe_env()
+    return await asyncio.to_thread(_probe_env)
 
 
 def _verify_browser_binary(exe: str) -> tuple[bool, str]:
@@ -138,11 +139,11 @@ async def install(_: Any = Depends(require_permission("browser"))) -> StreamingR
         try:
             from octop_browser.cdp.launcher import find_chrome  # noqa: PLC0415
 
-            chrome = find_chrome()
+            chrome = await asyncio.to_thread(find_chrome)
             if chrome:
                 yield ("data: " + json.dumps({"log": f"Found browser: {chrome}"}) + "\n\n")
                 yield ("data: " + json.dumps({"log": "Verifying installation ..."}) + "\n\n")
-                ok, msg = _verify_browser_binary(chrome)
+                ok, msg = await asyncio.to_thread(_verify_browser_binary, chrome)
                 if ok:
                     yield "data: " + json.dumps({"log": msg}) + "\n\n"
                     yield ("data: " + json.dumps({"done": True, "success": True}) + "\n\n")
