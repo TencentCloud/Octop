@@ -180,7 +180,9 @@ def _http_get(
     url: str,
     params: dict[str, Any] | None = None,
     accept: str = "application/json",
+    max_bytes: int | None = None,
 ) -> str:
+    limit = MAX_SKILL_BYTES * 4 if max_bytes is None else max_bytes
     full_url = url
     if params:
         full_url = f"{url}?{urlencode(params)}"
@@ -203,7 +205,17 @@ def _http_get(
     for attempt in range(1, attempts + 1):
         try:
             with urlopen(req, timeout=timeout) as resp:
-                return str(resp.read().decode("utf-8"))
+                chunks: list[bytes] = []
+                total = 0
+                while True:
+                    chunk = resp.read(64 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > limit:
+                        raise ValueError(f"Remote response exceeds size limit ({limit} bytes)")
+                    chunks.append(chunk)
+                return b"".join(chunks).decode("utf-8")
         except HTTPError as e:
             last_error = e
             status = getattr(e, "code", 0) or 0
