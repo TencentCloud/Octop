@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -459,3 +461,105 @@ def test_channel_endpoints_reject_shell_metacharacters(mock_server_and_user, end
     client = TestClient(app)
     resp = client.post(endpoint, json=payload)
     assert resp.status_code == 400
+
+
+# ── YuanBao bot creator pipes ────────────────────────────────────────────────
+# The creator endpoints stream newline-delimited JSON from the child's stdout
+# through `parse_subprocess_json_lines`, which is bytes-only (it decodes what it
+# reads) on both platforms. These tests spawn a real stub child: mocking Popen
+# would hide the pipe configuration, which is exactly what breaks.
+
+
+def _yuanbao_stub(tmp_path, source: str):
+    script = tmp_path / "yuanbao_bot_creator.py"
+    script.write_text(source, encoding="utf-8")
+    return script
+
+
+def _yuanbao_start(client, agent_id: str, script):
+    with patch("octop.api.routers.channels._bot_creator_script", return_value=script):
+        resp = client.post(f"/agents/{agent_id}/channels/yuanbao/bot-creator/start", json={})
+    assert resp.status_code == 200
+    return resp
+
+
+def _yuanbao_run_to_end(client, agent_id: str) -> list[dict]:
+    """Poll until the creator exits, returning every event the caller was told."""
+    events: list[dict] = []
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        resp = client.post(f"/agents/{agent_id}/channels/yuanbao/bot-creator/poll")
+        assert resp.status_code == 200
+        payload = resp.json()
+        events.extend(payload.get("events", []))
+        if payload.get("status") in ("finished", "failed"):
+            return events
+        time.sleep(0.05)
+    raise AssertionError("creator subprocess did not finish")
+
+
+def test_yuanbao_creator_start_keeps_the_reader_contract(tmp_path, mock_server_and_user):
+    """stdout must stay binary and stderr merged: the shared reader decodes bytes."""
+    from octop.api.routers import channels as ch_module
+
+    server, user = mock_server_and_user
+    agent_id = "yuanbao-pipes"
+    script = _yuanbao_stub(tmp_path, "import time\n\ntime.sleep(30)\n")
+    app = _make_app(server, user)
+    client = TestClient(app)
+    _yuanbao_start(client, agent_id, script)
+    try:
+        proc = ch_module._get_yuanbao_state(agent_id)["proc"]
+        assert proc.stdout is not None
+        assert not isinstance(proc.stdout, io.TextIOBase), (
+            "parse_subprocess_json_lines decodes what it reads, so a text-mode stdout pipe "
+            "raises AttributeError on the first poll that has output"
+        )
+        assert proc.stderr is None, (
+            "a stderr pipe nobody drains swallows the child's traceback and blocks it "
+            "once the OS pipe buffer is full"
+        )
+    finally:
+        client.post(f"/agents/{agent_id}/channels/yuanbao/bot-creator/stop")
+
+
+def test_yuanbao_creator_poll_reports_events(tmp_path, mock_server_and_user):
+    """The scan code the creator prints on stdout reaches the dashboard."""
+    server, user = mock_server_and_user
+    agent_id = "yuanbao-events"
+    script = _yuanbao_stub(
+        tmp_path,
+        "import json\n\n"
+        'print(json.dumps({"action": "scan_code", "scan_code": "SCAN-1", '
+        '"scan_url": "https://qr.example/1"}), flush=True)\n',
+    )
+    app = _make_app(server, user)
+    client = TestClient(app)
+    _yuanbao_start(client, agent_id, script)
+    try:
+        events = _yuanbao_run_to_end(client, agent_id)
+    finally:
+        client.post(f"/agents/{agent_id}/channels/yuanbao/bot-creator/stop")
+    assert [ev for ev in events if ev.get("action") == "scan_code"]
+
+
+def test_yuanbao_creator_poll_surfaces_stderr(tmp_path, mock_server_and_user):
+    """A creator that only logs to stderr must not fail silently."""
+    server, user = mock_server_and_user
+    agent_id = "yuanbao-stderr"
+    script = _yuanbao_stub(
+        tmp_path,
+        "import sys\n\n"
+        'sys.stderr.write("Traceback: yuanbao token exchange rejected\\n")\n'
+        "sys.stderr.flush()\n"
+        "sys.exit(1)\n",
+    )
+    app = _make_app(server, user)
+    client = TestClient(app)
+    _yuanbao_start(client, agent_id, script)
+    try:
+        events = _yuanbao_run_to_end(client, agent_id)
+    finally:
+        client.post(f"/agents/{agent_id}/channels/yuanbao/bot-creator/stop")
+    messages = [str(ev.get("message", "")) for ev in events]
+    assert any("token exchange rejected" in message for message in messages), messages
