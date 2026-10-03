@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+
+import pytest
 from starlette.responses import Response
 
 from octop.api.common.content_disposition import content_disposition
@@ -43,3 +46,28 @@ def test_non_ascii_without_extension() -> None:
 def test_strips_directory_components() -> None:
     assert content_disposition("/outbound/report.pdf") == 'attachment; filename="report.pdf"'
     assert content_disposition(r"C:\Users\me\report.pdf") == 'attachment; filename="report.pdf"'
+
+
+class TestContentDispositionControlCharacters:
+    """A control character in the name made the response unemittable (zero bytes)."""
+
+    @pytest.mark.parametrize(
+        "filename",
+        [
+            "evil\nname.txt",
+            "evil\rname.txt",
+            "evil\r\nname.txt",
+            "evil\x1fname.txt",
+            "evil\x7fname.txt",
+            "\x01leading.txt",
+            "trailing.txt\x01",
+        ],
+    )
+    def test_no_control_characters_reach_the_header(self, filename: str) -> None:
+        value = content_disposition(filename)
+
+        assert not re.search(r"[\x00-\x1f\x7f]", value), value
+
+    def test_ordinary_names_are_unchanged(self) -> None:
+        assert content_disposition("plain.txt") == 'attachment; filename="plain.txt"'
+        assert content_disposition("   spaced.txt   ") == 'attachment; filename="spaced.txt"'

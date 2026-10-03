@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import PurePosixPath
 from urllib.parse import quote
 
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
 
 def _basename(filename: str) -> str:
-    """Strip directory components from POSIX or Windows-style paths."""
-    name = filename.replace("\\", "/").rsplit("/", 1)[-1].strip()
+    """Strip directory components and control characters from POSIX or Windows-style paths."""
+    name = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    name = _CONTROL_CHARS.sub("_", name).strip()
     return name or "download"
 
 
