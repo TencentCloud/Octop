@@ -6,6 +6,7 @@ import datetime as dt
 import re
 
 from apscheduler.triggers.base import BaseTrigger
+from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -50,13 +51,36 @@ def _unix_day_of_week(expression: str) -> str:
     return ",".join(translated)
 
 
-def _cron_trigger_from_unix_crontab(expression: str, *, timezone: str | None = None) -> CronTrigger:
-    """Build a trigger whose weekday field follows Unix crontab semantics."""
+def _unrestricted_cron_field(expression: str) -> bool:
+    """True for a crontab day field that pins nothing, i.e. ``*`` or ``*/step``.
+
+    Checked on the raw field, before weekday translation rewrites ``*/2`` into a day list.
+    """
+    return expression.startswith("*")
+
+
+def _cron_trigger_from_unix_crontab(expression: str, *, timezone: str | None = None) -> BaseTrigger:
+    """Build a trigger whose day fields follow Unix crontab semantics."""
     fields = expression.split()
     if len(fields) != 5:
         raise ValueError(f"Wrong number of fields; got {len(fields)}, expected 5")
+    # Unix crontab fires when *either* day-of-month or day-of-week matches as long as both are
+    # restricted; ``from_crontab`` intersects them, so ``0 9 13 * fri`` would only run on a
+    # Friday the 13th. Split the two fields and union the results instead.
+    both_days_restricted = not _unrestricted_cron_field(fields[2]) and not _unrestricted_cron_field(
+        fields[4]
+    )
     fields[4] = _unix_day_of_week(fields[4])
-    return CronTrigger.from_crontab(" ".join(fields), timezone=timezone)
+    if not both_days_restricted:
+        return CronTrigger.from_crontab(" ".join(fields), timezone=timezone)
+    by_day_of_month = [fields[0], fields[1], fields[2], fields[3], "*"]
+    by_day_of_week = [fields[0], fields[1], "*", fields[3], fields[4]]
+    return OrTrigger(
+        [
+            CronTrigger.from_crontab(" ".join(by_day_of_month), timezone=timezone),
+            CronTrigger.from_crontab(" ".join(by_day_of_week), timezone=timezone),
+        ]
+    )
 
 
 def build_trigger(spec: str, *, timezone: str | None = None) -> BaseTrigger:
