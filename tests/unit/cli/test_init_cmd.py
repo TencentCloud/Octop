@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -76,8 +78,6 @@ def test_init_refuses_to_overwrite_without_force(fake_home: Path) -> None:
 
 
 def test_init_force_resets(fake_home: Path) -> None:
-    if os.name == "nt":
-        pytest.skip("Windows may lock SQLite during init force reset")
     runner = CliRunner()
     args_a = [
         "init",
@@ -134,3 +134,82 @@ def test_init_env_vars_supply_credentials(fake_home: Path, monkeypatch: pytest.M
     paths = PathLayout(fake_home / ".octop")
     repo = UserRepo(SqlitePool(paths.db))
     assert repo.get_by_username("fromenv") is not None
+
+
+def test_init_force_moves_running_executable_aside(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--force wipes the root even though this process runs from inside it.
+
+    The in-place install keeps its venv under the root, so on Windows the old
+    bare ``rmtree`` died on the running ``octop.exe`` (WinError 32).
+    """
+    octop_home = fake_home / ".octop"
+    runner = CliRunner()
+    r1 = runner.invoke(
+        cli,
+        ["init", "--admin-username", "alice", "--admin-password", "TestPass12", "--yes"],
+    )
+    assert r1.exit_code == 0, r1.output or str(r1.exception)
+
+    fake_exe = octop_home / "venv" / "Scripts" / "octop.exe"
+    fake_exe.parent.mkdir(parents=True, exist_ok=True)
+    fake_exe.write_bytes(b"MZ-fake")
+    monkeypatch.setattr(sys, "executable", str(fake_exe))
+
+    r2 = runner.invoke(
+        cli,
+        [
+            "init",
+            "--force",
+            "--admin-username",
+            "bob",
+            "--admin-password",
+            "TestPass34",
+            "--yes",
+        ],
+    )
+    assert r2.exit_code == 0, r2.output or str(r2.exception)
+    assert not octop_home.exists() or not (octop_home / "venv").exists()
+    # The moved-aside copy is not a real running image in the test, so it is cleaned up.
+    leftovers = list(Path(tempfile.gettempdir()).glob(f"octop-init-{os.getpid()}-*"))
+    assert leftovers == [], leftovers
+
+
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason="simulates the Windows running-image lock with an open handle",
+)
+def test_init_force_reports_clear_error_when_files_stay_locked(fake_home: Path) -> None:
+    """A file still held by another process turns the traceback into an actionable hint."""
+    octop_home = fake_home / ".octop"
+    runner = CliRunner()
+    r1 = runner.invoke(
+        cli,
+        ["init", "--admin-username", "alice", "--admin-password", "TestPass12", "--yes"],
+    )
+    assert r1.exit_code == 0, r1.output or str(r1.exception)
+
+    locked = octop_home / "held-by-service.tmp"
+    handle = locked.open("wb")  # no FILE_SHARE_DELETE: rmtree's unlink fails like a running service
+    try:
+        handle.write(b"x")
+        handle.flush()
+        r2 = runner.invoke(
+            cli,
+            [
+                "init",
+                "--force",
+                "--admin-username",
+                "bob",
+                "--admin-password",
+                "TestPass34",
+                "--yes",
+            ],
+        )
+        assert r2.exit_code == 1, r2.output or str(r2.exception)
+        out = (r2.output + (r2.stderr if hasattr(r2, "stderr") else "")).lower()
+        assert "could not wipe" in out
+        assert "another octop process" in out
+    finally:
+        handle.close()

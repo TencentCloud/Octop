@@ -2,9 +2,71 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import sys
+import tempfile
+from pathlib import Path
 
 import click
+
+
+def _running_images_under(root: Path) -> list[Path]:
+    """Executable images of this process that live inside *root*."""
+    candidates = [Path(sys.executable)]
+    base = getattr(sys, "_base_executable", None)
+    if base:
+        candidates.append(Path(base))
+    images: list[Path] = []
+    for exe in candidates:
+        try:
+            resolved = exe.resolve()
+            if not resolved.is_relative_to(root.resolve()) or not resolved.is_file():
+                continue
+        except OSError:
+            continue
+        if resolved not in images:
+            images.append(resolved)
+    return images
+
+
+def _wipe_install_root(home: Path) -> None:
+    """Delete the install root, surviving the running octop executable on Windows.
+
+    The in-place install keeps its venv inside the root (``~/.octop/venv``), so
+    wiping the root deletes the very ``octop.exe`` this process runs from, and
+    Windows refuses to unlink a running image (WinError 32). Renaming it is
+    allowed, so move the images to a temp path first and delete the tree after
+    them.
+    """
+    moved_aside: list[Path] = []
+    if os.name == "nt":
+        for image in _running_images_under(home):
+            aside = Path(tempfile.gettempdir()) / f"octop-init-{os.getpid()}-{image.name}"
+            try:
+                os.replace(image, aside)
+            except OSError:
+                continue
+            moved_aside.append(aside)
+    try:
+        shutil.rmtree(home)
+    except PermissionError as exc:
+        click.echo(
+            f"error: could not wipe {home}: {exc}\n"
+            "Another Octop process may still be using files in it "
+            "(stop `octop service`/`octop run`, or restart, then run `octop init --force` again).",
+            err=True,
+        )
+        raise SystemExit(1) from None
+    for aside in moved_aside:
+        try:
+            aside.unlink()
+        except OSError:
+            click.echo(
+                f"note: {aside} is the executable this command ran from and can only be "
+                "deleted after octop exits.",
+                err=True,
+            )
 
 
 @click.command("init")
@@ -73,7 +135,7 @@ def init(
             if not _prompts.confirm(f"Wipe {home}? This deletes ALL Octop state.", default=False):
                 click.echo("aborted", err=True)
                 raise SystemExit(1)
-        shutil.rmtree(home)
+        _wipe_install_root(home)
 
     paths.ensure_root()
     PluginManager(plugins_dir=paths.plugins_dir, config_path=paths.config).seed_bundled()

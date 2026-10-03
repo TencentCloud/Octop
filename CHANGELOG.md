@@ -36,6 +36,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 
+- Windows 上 `octop init --force` 删除运行中的安装目录必崩（WinError 32）：先把本进程可执行镜像改名挪到临时目录再 wipe，残留占用改为可操作的错误提示（Fixes #1275）。
 ## [1.0.2b5] - 2026-09-29
 
 ### 新增
