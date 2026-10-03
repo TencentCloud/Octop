@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from octop.infra.agents.experts.avatar import MAX_AVATAR_BYTES
 from tests.support.auth import TEST_PASSWORD, bearer, login
 
 
@@ -302,3 +303,33 @@ async def test_user_and_role_avatars_roundtrip(env):
     assert removed.status_code == 204
     gone = await c.get(f"/api/users/roles/{role_id}/avatar", headers=auth)
     assert gone.status_code == 404
+
+
+async def test_user_and_role_avatar_uploads_reject_oversized_body(env):
+    c, _srv, auth = env
+    me = await c.get("/api/auth/me", headers=auth)
+    user_id = me.json()["id"]
+    oversized = b"x" * (MAX_AVATAR_BYTES + 1)
+
+    user_upload = await c.post(
+        f"/api/users/{user_id}/avatar",
+        headers=auth,
+        files={"file": ("oversized.bin", oversized, "application/octet-stream")},
+    )
+    assert user_upload.status_code == 413
+    assert user_upload.json()["error"]["code"] == "AVATAR_TOO_LARGE"
+
+    role = await c.post(
+        "/api/users/roles",
+        headers=auth,
+        json={"user_role_name": "超大头像测试", "permissions": ["browser"]},
+    )
+    assert role.status_code == 201, role.text
+    role_id = role.json()["user_role_id"]
+    role_upload = await c.post(
+        f"/api/users/roles/{role_id}/avatar",
+        headers=auth,
+        files={"file": ("oversized.bin", oversized, "application/octet-stream")},
+    )
+    assert role_upload.status_code == 413
+    assert role_upload.json()["error"]["code"] == "AVATAR_TOO_LARGE"
