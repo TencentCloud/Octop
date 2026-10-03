@@ -20,6 +20,7 @@
 - 聊天输入栏将对话模式、模型、连接器、知识库、技能、专家、子智能体收进「+」菜单，从菜单右侧弹出选择面板；聊天页用户头像与侧栏账号头像一致。
 
 ### 修复
+- 修复远程 Embedding 服务返回乱序结果时向量与文本错位的问题
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
