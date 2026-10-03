@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 番茄钟倒数卡片的目标时间下发前按 ECMA-262 日期时间格式归一化：`20261231`、`2026-12-31T18:00:00+08:00:00` 这类 `datetime.fromisoformat` 接受、浏览器 `Date.parse` 返回 NaN 的写法不再把卡片渲染成「已完成 00:00」。
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
