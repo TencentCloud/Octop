@@ -54,6 +54,33 @@ router = APIRouter()
 
 _FRAME_INTERVAL_S = 0.25  # ~4 fps
 
+# Keep browser viewport allocations bounded. Chromium allocates screenshot and
+# rendering buffers from these dimensions, so untrusted WebSocket payloads
+# must never be passed through unchecked.
+MIN_VIEWPORT_DIMENSION = 32
+MAX_VIEWPORT_DIMENSION = 4096
+DEFAULT_VIEWPORT = (1280, 800)
+
+
+def normalize_viewport(
+    width: object,
+    height: object,
+    *,
+    default: tuple[int, int] | None = None,
+) -> tuple[int, int] | None:
+    """Return a safe viewport size, or *default* for unusable values."""
+    try:
+        w = int(width)
+        h = int(height)
+    except (TypeError, ValueError):
+        return default
+    if w <= 0 or h <= 0:
+        return default
+    return (
+        max(MIN_VIEWPORT_DIMENSION, min(MAX_VIEWPORT_DIMENSION, w)),
+        max(MIN_VIEWPORT_DIMENSION, min(MAX_VIEWPORT_DIMENSION, h)),
+    )
+
 
 def _normalize_nav_url(raw: str) -> str:
     """Prefix a host with ``https://`` unless it already has an http(s) scheme.
@@ -317,9 +344,9 @@ async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
     elif t == "tab_new":
         await sess.new_tab()
     elif t == "resize":
-        w = int(msg.get("width") or 0)
-        h = int(msg.get("height") or 0)
-        if w > 0 and h > 0:
+        viewport = normalize_viewport(msg.get("width"), msg.get("height"))
+        if viewport is not None:
+            w, h = viewport
             with contextlib.suppress(Exception):
                 await sess._internal.client.send(  # noqa: SLF001
                     "Emulation.setDeviceMetricsOverride",
@@ -386,8 +413,8 @@ async def run_browser_stream_session(
     receive_text: Any,
     user_id: int,
     listen_only: bool = False,
-    default_width: int = 1280,
-    default_height: int = 800,
+    default_width: int = DEFAULT_VIEWPORT[0],
+    default_height: int = DEFAULT_VIEWPORT[1],
     start_msg: dict[str, Any] | None = None,
 ) -> None:
     """Run one screencast / listen-only session over arbitrary send/receive hooks.
@@ -426,9 +453,18 @@ async def run_browser_stream_session(
                         },
                     )
 
-            vw = int(start_msg.get("width") or default_width)
-            vh = int(start_msg.get("height") or default_height)
-            if vw > 0 and vh > 0:
+            default_viewport = normalize_viewport(
+                default_width,
+                default_height,
+                default=DEFAULT_VIEWPORT,
+            )
+            viewport = normalize_viewport(
+                start_msg.get("width") or default_width,
+                start_msg.get("height") or default_height,
+                default=default_viewport,
+            )
+            if viewport is not None:
+                vw, vh = viewport
                 with contextlib.suppress(Exception):
                     await sess._internal.client.send(  # noqa: SLF001
                         "Emulation.setDeviceMetricsOverride",

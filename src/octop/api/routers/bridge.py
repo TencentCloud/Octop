@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from starlette.websockets import WebSocketState
 
 from octop.api.deps import current_user, get_server, resolve_user_from_token
+from octop.api.routers.browser.stream import DEFAULT_VIEWPORT, normalize_viewport
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
@@ -443,11 +444,11 @@ async def bridge_browser_stream_ws(
         return
 
     listen_only = websocket.query_params.get("listen_only", "0") in {"1", "true", "True"}
-    try:
-        width = int(websocket.query_params.get("width") or 1280)
-        height = int(websocket.query_params.get("height") or 800)
-    except ValueError:
-        width, height = 1280, 800
+    width, height = normalize_viewport(
+        websocket.query_params.get("width"),
+        websocket.query_params.get("height"),
+        default=DEFAULT_VIEWPORT,
+    ) or DEFAULT_VIEWPORT
 
     await websocket.accept()
     client_messages: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
