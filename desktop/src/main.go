@@ -31,6 +31,8 @@ type App struct {
 	cmd            *exec.Cmd
 	mu             sync.Mutex
 	quitting       bool
+	webviewReady   chan struct{}
+	webviewOnce    sync.Once
 
 	trayClickMu    sync.Mutex
 	lastTrayClick  time.Time
@@ -199,6 +201,7 @@ func (a *App) showDashboard(base string) {
 	if a.window == nil {
 		return
 	}
+	a.waitWebviewReady()
 	a.window.SetURL(base)
 	a.scheduleDragOverlay()
 	s := a.store.get()
@@ -207,6 +210,17 @@ func (a *App) showDashboard(base string) {
 		a.applyDashboardPrefs(s)
 	}()
 	a.setStatus(desktopText(s.Locale, copyStatusReady))
+}
+
+func (a *App) waitWebviewReady() {
+	if runtime.GOOS == "windows" {
+		// SetURL needs the WebView2 controller, not just a Wails window object.
+		<-a.webviewReady
+	}
+}
+
+func (a *App) markWebviewReady() {
+	a.webviewOnce.Do(func() { close(a.webviewReady) })
 }
 
 func (a *App) hideToTray() {
@@ -289,8 +303,9 @@ func (a *App) requestQuit() {
 func main() {
 	store := &settingsStore{cur: loadSettings()}
 	api := &App{
-		store: store,
-		sleep: &sleepGuard{},
+		store:        store,
+		sleep:        &sleepGuard{},
+		webviewReady: make(chan struct{}),
 	}
 
 	app := application.New(application.Options{
@@ -339,7 +354,10 @@ func main() {
 	})
 	installDragOverlay := func(_ *application.WindowEvent) { api.scheduleDragOverlay() }
 	win.OnWindowEvent(events.Mac.WebViewDidFinishNavigation, installDragOverlay)
-	win.OnWindowEvent(events.Windows.WebViewNavigationCompleted, installDragOverlay)
+	win.OnWindowEvent(events.Windows.WebViewNavigationCompleted, func(e *application.WindowEvent) {
+		installDragOverlay(e)
+		api.markWebviewReady()
+	})
 	win.OnWindowEvent(events.Linux.WindowLoadFinished, installDragOverlay)
 	settingsWin := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Octop 设置",
