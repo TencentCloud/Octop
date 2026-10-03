@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 
+from octop.api.common.upload_limit import read_upload_capped
 from octop.api.deps import get_server, require_permission
 from octop.api.routers.users import _assert_can_assign
 from octop.infra.db.repos.user_roles import (
@@ -325,12 +326,17 @@ async def upload_role_avatar(
     row = _repo(server).get(user_role_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "role not found")
+    from octop.infra.agents.experts.avatar import MAX_AVATAR_BYTES
     from octop.infra.users.profile_avatar import write_profile_avatar
 
     write_profile_avatar(
         server.services.paths.role_avatars_dir,
         user_role_id,
-        await file.read(),
+        await read_upload_capped(
+            file,
+            max_bytes=MAX_AVATAR_BYTES,
+            code=ErrorCode.AVATAR_TOO_LARGE,
+        ),
     )
     return {"avatar_url": _public(server, row)["avatar_url"]}
 
