@@ -42,9 +42,6 @@ Commands:
   version    Show the installed octop version.
 ```
 
-> **Tip.** Regenerate the per-subcommand listings below with
-> `make docs-cli` (each `octop <cmd> --help` is captured to stdout).
-
 ## Global options
 
 | Option | Env | Effect |
