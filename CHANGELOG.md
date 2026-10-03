@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- 上传附件的文件名清洗不再被超长扩展名绕过：`report.` 后接数百个字符时，180 字符上限的切片长度会变成负数，清洗后的文件名反而比原名更长，写入工作区时直接 `OSError (EINVAL)`（上传报 500）；现按上限丢弃这段不可用的扩展名
 
 ## [1.0.2b5] - 2026-09-29
 
