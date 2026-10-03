@@ -67,10 +67,14 @@ def internal_mcp_url(
     internal_token: str,
 ) -> str:
     host = config.bind_host if config.bind_host not in ("0.0.0.0", "::") else "127.0.0.1"
+    # The main port serves HTTPS when TLS is active (the port-80 companion
+    # only answers ACME challenges and redirects), so the loopback URL must
+    # match the serving scheme or the harness/probe dial fails.
+    from octop.infra.setup.tls.store import main_service_scheme
+
+    scheme = main_service_scheme(config.tls)
     token_q = quote(internal_token, safe="")
-    return (
-        f"http://{host}:{config.port}/api/internal/mcp/{gateway_kind}/{instance_id}?token={token_q}"
-    )
+    return f"{scheme}://{host}:{config.port}/api/internal/mcp/{gateway_kind}/{instance_id}?token={token_q}"
 
 
 def new_internal_token() -> str:

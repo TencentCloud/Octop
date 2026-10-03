@@ -31,6 +31,19 @@ def resolve_tls_paths(root: Path, tls: TlsConfig) -> tuple[str | None, str | Non
     return None, None
 
 
+def main_service_scheme(tls: TlsConfig, root: Path | None = None) -> str:
+    """Return the scheme the main port actually serves: ``https`` under TLS.
+
+    Mirrors ``launch.run_foreground``: the main listener gets the SSL config
+    exactly when ``resolve_tls_paths`` resolves both files. Callers build
+    loopback URLs (internal MCP, probes) that must match that scheme.
+    """
+    if root is None:
+        root = PathLayout.from_env().root
+    cert, key = resolve_tls_paths(root, tls)
+    return "https" if cert and key else "http"
+
+
 def _atomic_write_bytes(path: Path, data: bytes, *, mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.tmp")

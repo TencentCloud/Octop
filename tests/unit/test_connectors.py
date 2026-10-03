@@ -747,6 +747,77 @@ def test_build_gateway_mcp_spec():
     assert "token=" in spec["url"]
 
 
+def _tls_config(tmp_path: Path, *, enabled: bool, write_files: bool) -> OctopConfig:
+    from octop.config import TlsConfig
+
+    cert = tmp_path / "fullchain.pem"
+    key = tmp_path / "privkey.pem"
+    if write_files:
+        cert.write_text("CERT")
+        key.write_text("KEY")
+    return OctopConfig(
+        bind_host="0.0.0.0",
+        port=443,
+        tls=TlsConfig(
+            enabled=enabled,
+            cert_file=str(cert),
+            key_file=str(key),
+        ),
+    )
+
+
+def test_internal_mcp_url_uses_https_when_main_service_serves_tls(tmp_path: Path):
+    from octop.infra.connectors.builder import internal_mcp_url
+
+    url = internal_mcp_url(
+        config=_tls_config(tmp_path, enabled=True, write_files=True),
+        gateway_kind="qcc",
+        instance_id="inst1",
+        internal_token="tok",
+    )
+    assert url.startswith("https://127.0.0.1:443/api/internal/mcp/qcc/inst1")
+    assert "token=" in url
+
+
+def test_internal_mcp_url_stays_http_without_tls_files(tmp_path: Path):
+    from octop.infra.connectors.builder import internal_mcp_url
+
+    # TLS flagged enabled but cert/key not resolvable: the main port still
+    # serves plain HTTP (launch.run_foreground skips the SSL config).
+    url = internal_mcp_url(
+        config=_tls_config(tmp_path, enabled=True, write_files=False),
+        gateway_kind="qcc",
+        instance_id="inst1",
+        internal_token="tok",
+    )
+    assert url.startswith("http://127.0.0.1:443/api/internal/mcp/qcc/inst1")
+
+
+def test_internal_mcp_url_stays_http_when_tls_disabled(tmp_path: Path):
+    from octop.infra.connectors.builder import internal_mcp_url
+
+    url = internal_mcp_url(
+        config=_tls_config(tmp_path, enabled=False, write_files=True),
+        gateway_kind="qcc",
+        instance_id="inst1",
+        internal_token="tok",
+    )
+    assert url.startswith("http://127.0.0.1:443/api/internal/mcp/qcc/inst1")
+
+
+def test_build_gateway_mcp_spec_https_when_tls_active(tmp_path: Path):
+    entry = get_catalog_entry("tencent-ima")
+    assert entry is not None
+    spec = build_http_mcp_spec(
+        entry=entry,
+        instance_id="inst1",
+        creds={"api_key": "k", "client_id": "c", "internal_token": "tok"},
+        config=_tls_config(tmp_path, enabled=True, write_files=True),
+    )
+    assert spec["transport"] == "http"
+    assert spec["url"].startswith("https://127.0.0.1:443/api/internal/mcp/tencent-ima/inst1")
+
+
 def test_build_gateway_langchain_tools():
     from octop.infra.connectors.gateway.langchain import build_gateway_langchain_tools
 
