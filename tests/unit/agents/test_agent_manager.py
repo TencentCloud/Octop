@@ -1919,6 +1919,107 @@ async def test_unchanged_default_model_keeps_background_reload(
 
 
 @pytest.mark.asyncio
+async def test_model_updates_coalesce_in_the_reload_queue(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent_id = "AGT_MODEL_QUEUE"
+    manager._repos.agent_repo.create(agent_id=agent_id, user_id=None, name="model-queue")
+    manager._harness_manager = MagicMock()
+    started = asyncio.Event()
+    release = asyncio.Event()
+    models: list[str | None] = []
+
+    async def delayed_reload(_agent_id: str) -> None:
+        row = manager._repos.agent_repo.get(agent_id)
+        assert row is not None
+        models.append(row.default_model)
+        started.set()
+        await release.wait()
+
+    monkeypatch.setattr(manager, "_reload_agent", delayed_reload)
+    updates = [
+        asyncio.create_task(manager.update(agent_id, default_model=model))
+        for model in ("provider/first", "provider/latest")
+    ]
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        assert models == ["provider/latest"]
+        assert all(not update.done() for update in updates)
+    finally:
+        release.set()
+        await asyncio.gather(*updates)
+    assert models == ["provider/latest"]
+
+
+@pytest.mark.asyncio
+async def test_model_update_waits_for_the_dirty_reload_after_an_inflight_reload(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent_id = "AGT_MODEL_DIRTY"
+    manager._repos.agent_repo.create(agent_id=agent_id, user_id=None, name="model-dirty")
+    manager._harness_manager = MagicMock()
+    started = [asyncio.Event(), asyncio.Event()]
+    release = [asyncio.Event(), asyncio.Event()]
+    calls: list[str] = []
+
+    async def delayed_reload(_agent_id: str) -> None:
+        index = len(calls)
+        calls.append(_agent_id)
+        started[index].set()
+        await release[index].wait()
+
+    monkeypatch.setattr(manager, "_reload_agent", delayed_reload)
+    await manager.update(agent_id, description="background edit")
+    await asyncio.wait_for(started[0].wait(), timeout=5)
+    update = asyncio.create_task(manager.update(agent_id, default_model="provider/latest"))
+    try:
+        await asyncio.sleep(0)
+        assert calls == [agent_id]
+        release[0].set()
+        await asyncio.wait_for(started[1].wait(), timeout=5)
+        assert not update.done()
+    finally:
+        for event in release:
+            event.set()
+        await update
+    assert calls == [agent_id, agent_id]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_model_update_does_not_cancel_the_shared_reload(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent_id = "AGT_MODEL_CANCEL"
+    manager._repos.agent_repo.create(agent_id=agent_id, user_id=None, name="model-cancel")
+    manager._harness_manager = MagicMock()
+    started = asyncio.Event()
+    release = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def delayed_reload(_agent_id: str) -> None:
+        started.set()
+        try:
+            await release.wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    monkeypatch.setattr(manager, "_reload_agent", delayed_reload)
+    first = asyncio.create_task(manager.update(agent_id, default_model="provider/first"))
+    second = asyncio.create_task(manager.update(agent_id, default_model="provider/latest"))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        assert not cancelled.is_set()
+        assert not second.done()
+    finally:
+        release.set()
+        await asyncio.gather(first, second, return_exceptions=True)
+
+
+@pytest.mark.asyncio
 async def test_update_config_json_cannot_change_system_files_path(
     manager: AgentManager, monkeypatch: pytest.MonkeyPatch
 ) -> None:
