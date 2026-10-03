@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- `bind_host` 填 IPv6 地址（如 `::1`）时地址拼 URL 不加方括号（`http://::1:8088/…` 是非法 URL）：内部 MCP（企查查）连接器工具永远加载不出来，`octop service status` 也会把在跑的服务报成不健康；现在 IPv6 字面量统一按 `http://[::1]:8088/…` 加方括号
 
 ## [1.0.2b5] - 2026-09-29
 
