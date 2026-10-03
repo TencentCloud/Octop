@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 
@@ -62,6 +64,44 @@ async def test_agent_runtime_fields_are_first_class_api_fields(env):
     assert updated["temperature"] is None
     assert "max_iters" not in updated["config"]
     assert "temperature" not in updated["config"]
+
+
+async def test_default_model_patch_waits_for_runtime_reload(env, monkeypatch):
+    c, server, auth = env
+    created = await c.post(
+        "/api/agents",
+        headers=auth,
+        json={"name": "model-wait", "default_model": "openai/gpt-4o"},
+    )
+    assert created.status_code == 201
+    assert created.json()["default_model"] == "openai/gpt-4o"
+    agent_id = created.json()["agent_id"]
+    registry = server.app_runtime.agent_registry
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def delayed_reload(reloading_id: str) -> None:
+        assert reloading_id == agent_id
+        started.set()
+        await release.wait()
+
+    monkeypatch.setattr(registry, "_reload_agent", delayed_reload)
+    request = asyncio.create_task(
+        c.patch(
+            f"/api/agents/{agent_id}",
+            headers=auth,
+            json={"default_model": None},
+        )
+    )
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        assert not request.done(), "PATCH returned before the runtime reload finished"
+    finally:
+        release.set()
+        response = await request
+
+    assert response.status_code == 200
+    assert response.json()["default_model"] is None
 
 
 async def test_create_keeps_legacy_runtime_values_from_config(env):

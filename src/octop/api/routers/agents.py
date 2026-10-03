@@ -375,7 +375,11 @@ async def get_agent(
 _assert_agent_owner = assert_agent_owner
 
 
-@router.patch("/{agent_id}", summary="Update agent")
+@router.patch(
+    "/{agent_id}",
+    summary="Update agent",
+    description="Changing a running agent's default_model waits for its runtime reload.",
+)
 async def patch_agent(
     agent_id: str,
     body: AgentPatchBody,

@@ -388,6 +388,7 @@ class AgentManager:
         self._history_backfills: dict[str, asyncio.Event] = {}
         self._reload_dirty: set[str] = set()
         self._reload_worker_running: dict[str, bool] = {}
+        self._reload_worker_tasks: dict[str, asyncio.Task[None]] = {}
         self._bootstrap_graph_refresh_pending: set[str] = set()
         # Chat user id used to resolve connectors when agent.user_id is NULL (shared agents).
         self._connector_user_override: dict[str, int] = {}
@@ -773,7 +774,11 @@ class AgentManager:
         return out
 
     async def update(self, agent_id: str, **kwargs: Any) -> AgentRow:
-        """Update agent config in DB and reload harness agent in the background."""
+        """Update agent config and await a changed default model's runtime reload."""
+        previous = self._repos.agent_repo.get(agent_id) if "default_model" in kwargs else None
+        wait_for_model_reload = previous is not None and previous.default_model != kwargs.get(
+            "default_model"
+        )
         runtime_updates = {
             key: kwargs.pop(key) for key in AGENT_RUNTIME_CONFIG_KEYS if key in kwargs
         }
@@ -828,7 +833,11 @@ class AgentManager:
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-        self._schedule_reload(agent_id)
+        if wait_for_model_reload and self._harness_manager is not None:
+            await asyncio.shield(self._schedule_reload(agent_id))
+            row = self._repos.agent_repo.get(agent_id) or row
+        else:
+            self._schedule_reload(agent_id)
         return row
 
     async def set_shared(self, agent_id: str, shared: bool) -> AgentRow:
@@ -2832,13 +2841,15 @@ class AgentManager:
                     error=format_agent_start_error(exc),
                 )
 
-    def _schedule_reload(self, agent_id: str) -> None:
+    def _schedule_reload(self, agent_id: str) -> asyncio.Task[None]:
         """Queue a background harness reload; coalesces rapid successive updates."""
         self._reload_dirty.add(agent_id)
         if self._reload_worker_running.get(agent_id):
-            return
+            return self._reload_worker_tasks[agent_id]
         self._reload_worker_running[agent_id] = True
-        asyncio.create_task(self._reload_worker(agent_id), name=f"reload-agent-{agent_id}")
+        task = asyncio.create_task(self._reload_worker(agent_id), name=f"reload-agent-{agent_id}")
+        self._reload_worker_tasks[agent_id] = task
+        return task
 
     async def _reload_worker(self, agent_id: str) -> None:
         try:
@@ -2851,6 +2862,7 @@ class AgentManager:
                 if agent_id not in self._reload_dirty:
                     break
         finally:
+            self._reload_worker_tasks.pop(agent_id, None)
             self._reload_worker_running[agent_id] = False
             if agent_id in self._reload_dirty:
                 self._schedule_reload(agent_id)
