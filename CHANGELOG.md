@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- 桌面投屏与网页终端两个 WebSocket 在收到解析成非对象的合法 JSON 帧（`null`/数字/数组）时会拆掉会话：`json.loads` 已有守卫但紧随的 `msg.get` 没有，`AttributeError` 逃出接收循环。网页终端尤其难排查——`reader()` 是独立任务，异常被 `t.result()` 的 `suppress` 吞掉，外层 `except Exception` 永不触发，既无日志也无错误帧，shell 的 fan-out 静默停止。现两处都跳过这类帧，与其余六个 WS 路由一致。
 
 ## [1.0.2b5] - 2026-09-29
 
