@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
+from pathlib import Path
+
 import click
 
 from octop.cli.support.errors import fail_octop
@@ -20,6 +24,32 @@ def _run_uvicorn(**kwargs: object) -> None:
     from octop.launch import run_foreground_blocking
 
     run_foreground_blocking(**kwargs)
+
+
+def _write_files_atomic(*files: tuple[Path, bytes]) -> None:
+    """Write several files as a unit: stage every one, then swap them all in.
+
+    Mirrors ``infra.utils.json_file.write_json_atomic`` for the binary
+    key/certificate pair, which that helper does not cover. A certificate and
+    its key only work together, so replacing them one at a time can leave a new
+    key beside an old certificate if the process dies in between — and uvicorn
+    is handed both paths directly. Staging all of them first means a failure
+    while writing leaves the previous files untouched; only the swap itself is
+    left, which is two adjacent renames.
+    """
+    temps: list[Path] = []
+    try:
+        for path, data in files:
+            tmp = path.with_name(f"{path.name}.tmp")
+            temps.append(tmp)
+            tmp.write_bytes(data)
+        for tmp, (path, _data) in zip(temps, files, strict=True):
+            os.replace(tmp, path)
+    except BaseException:  # also covers KeyboardInterrupt / SystemExit
+        for tmp in temps:
+            with contextlib.suppress(OSError):
+                tmp.unlink()
+        raise
 
 
 def _maybe_generate_self_signed(
@@ -58,14 +88,17 @@ def _maybe_generate_self_signed(
             )
             .sign(priv, hashes.SHA256())
         )
-        key.write_bytes(
-            priv.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.TraditionalOpenSSL,
-                encryption_algorithm=serialization.NoEncryption(),
-            )
+        _write_files_atomic(
+            (
+                key,
+                priv.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.TraditionalOpenSSL,
+                    encryption_algorithm=serialization.NoEncryption(),
+                ),
+            ),
+            (cert, cert_obj.public_bytes(serialization.Encoding.PEM)),
         )
-        cert.write_bytes(cert_obj.public_bytes(serialization.Encoding.PEM))
     return str(cert), str(key)
 
 
