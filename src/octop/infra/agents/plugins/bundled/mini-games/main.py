@@ -61,8 +61,8 @@ async def guess_number(
     secret: int | None = None,
 ) -> str:
     """Compare guess against secret. Never echo secret in data or text."""
-    lo = int(low or 1)
-    hi = int(high or 100)
+    lo = int(low) if low is not None else 1
+    hi = int(high) if high is not None else 100
     if lo >= hi:
         lo, hi = 1, 100
     target = int(secret) if secret is not None else random.randint(lo, hi)
