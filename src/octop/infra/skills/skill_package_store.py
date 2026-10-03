@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import sqlite3
 from pathlib import Path
@@ -55,6 +56,26 @@ def raise_skill_package_name_taken(name: str) -> None:
         name=name,
         details={"name": name},
     )
+
+
+def _replace_skill_dir(staging_dir: Path, dest: Path) -> None:
+    """Swap a fully written staging directory into place, restoring on failure.
+
+    Matches the snapshot publish flow: readers never observe a partially
+    written skill, and a failed swap leaves the previous copy in place.
+    """
+    backup_dir = dest.with_name(f".{dest.name}.previous-{new_short_id()}")
+    moved_existing = dest.exists()
+    if moved_existing:
+        os.replace(dest, backup_dir)
+    try:
+        os.replace(staging_dir, dest)
+    except BaseException:
+        if moved_existing and not dest.exists():
+            os.replace(backup_dir, dest)
+        raise
+    if moved_existing:
+        shutil.rmtree(backup_dir, ignore_errors=True)
 
 
 def _allocate_package_id(repo: SkillPackageRepo) -> str:
@@ -164,18 +185,24 @@ class SkillPackageStore:
             normalized_files = normalize_skill_files(files)
         except SkillPackageError as exc:
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
-        skill_dir = self.package_skills_dir(pack_id) / safe_slug
-
-        shutil.rmtree(skill_dir, ignore_errors=True)
-        skill_dir.mkdir(parents=True, exist_ok=True)
-        for relative_path, content in normalized_files:
-            path = skill_dir / relative_path
-            if relative_path.endswith("/"):
-                # Empty directory marker ("ai/"): recreate the folder, write nothing.
-                path.mkdir(parents=True, exist_ok=True)
-                continue
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(content)
+        skills_dir = self.package_skills_dir(pack_id)
+        skills_dir.mkdir(parents=True, exist_ok=True)
+        skill_dir = skills_dir / safe_slug
+        staging_dir = skills_dir / f".{safe_slug}.staging-{new_short_id()}"
+        try:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            staging_dir.mkdir(parents=True)
+            for relative_path, content in normalized_files:
+                path = staging_dir / relative_path
+                if relative_path.endswith("/"):
+                    # Empty directory marker ("ai/"): recreate the folder.
+                    path.mkdir(parents=True, exist_ok=True)
+                    continue
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+            _replace_skill_dir(staging_dir, skill_dir)
+        finally:
+            shutil.rmtree(staging_dir, ignore_errors=True)
         self._update_skill_count(pack_id)
 
     def delete_skill(self, pack_id: str, slug: str) -> None:
