@@ -56,12 +56,3 @@ CLI 1.0.18 设置 `AGENTLY_CLI_CONFIG_DIR` 后会强制使用 `default` workspac
 
 官方资料：[CLI 与技能](https://github.com/Tencent/AgentlyMail)、
 [快速入门](https://help.agent.qq.com/detail/0/1092)。
-
-已安装官方 CLI 后，可在仓库根目录运行无账号契约检查：
-
-```bash
-uv run scripts/check_agently_cli.py --runs 3
-# 若不在 PATH 中，添加 --binary /path/to/agently-cli
-```
-
-脚本使用临时实例及唯一 workspace；业务命令仅运行 `--dry-run`，不登录、不发送邮件。

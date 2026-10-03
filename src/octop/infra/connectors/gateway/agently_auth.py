@@ -20,6 +20,7 @@ from octop.infra.connectors.gateway.adapters.agently_cli import prepare_env
 from octop.infra.connectors.gateway.cli_dirs import resolve_cli_config_key
 from octop.infra.connectors.gateway.cli_runner import resolve_binary
 from octop.infra.utils.paths import PathLayout
+from octop.infra.utils.posix_compat import killpg, sigkill
 
 AuthAction = Literal["start", "status", "logout", "refresh", "disconnect"]
 AuthStatus = Literal["idle", "pending", "authorized", "expired", "error"]
@@ -106,7 +107,7 @@ async def _stop_process(process: asyncio.subprocess.Process) -> None:
     # npm's launcher spawns the native CLI: terminate its entire process tree.
     if os.name == "posix":
         with suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGTERM)
+            killpg(process.pid, signal.SIGTERM)
     else:
         killer = await asyncio.create_subprocess_exec(
             "taskkill",
@@ -123,7 +124,7 @@ async def _stop_process(process: asyncio.subprocess.Process) -> None:
     except TimeoutError:
         with suppress(ProcessLookupError):
             if os.name == "posix":
-                os.killpg(process.pid, signal.SIGKILL)
+                killpg(process.pid, sigkill())
             else:
                 process.kill()
         await process.wait()

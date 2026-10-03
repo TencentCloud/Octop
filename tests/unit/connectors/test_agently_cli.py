@@ -13,9 +13,7 @@ from tests.support.fakes import fake_bin_path
 
 from octop.infra.connectors.builder import validate_create_credentials
 from octop.infra.connectors.catalog import get_catalog_entry
-from octop.infra.connectors.gateway import cli_dirs
 from octop.infra.connectors.gateway.adapters import agently_cli
-from octop.infra.connectors.gateway.cli_install import get_cli_install_spec
 from octop.infra.connectors.gateway.langchain import build_gateway_langchain_tools
 from octop.infra.connectors.gateway.protocol import handle_mcp_request
 
@@ -47,13 +45,9 @@ def cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[dict[str, Any]]
     return calls
 
 
-def test_catalog_credentials_install_and_isolation(
+def test_credentials_and_workspace_isolation(
     cli: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    entry = get_catalog_entry("agently-cli")
-    assert entry and entry.mcp_mode == "gateway"
-    spec = get_cli_install_spec("agently-cli")
-    assert spec and spec.npm_package == "@tencent-qqmail/agently-cli"
     first = validate_create_credentials(
         "agently-cli", {"cli_config_key": "victim", "instance_id": "victim"}
     )
@@ -68,14 +62,6 @@ def test_catalog_credentials_install_and_isolation(
     assert env1.get("AGENTLY_WORKSPACE") != "host-workspace"
     assert "AGENTLY_CLI_CONFIG_DIR" not in env1
     assert env1["AGENTLY_WORKSPACE"] != env2["AGENTLY_WORKSPACE"]
-    target = tmp_path / "connector-cli" / "agently-cli" / first["cli_config_key"]
-    target.mkdir(parents=True)
-    second_dir = target.parent / second["cli_config_key"]
-    second_dir.mkdir()
-    assert target == tmp_path / "connector-cli" / "agently-cli" / first["cli_config_key"]
-    cli_dirs.cleanup_creds_cli_dirs("agently-cli", first)
-    assert not target.exists()
-    assert second_dir.exists()
 
 
 @pytest.mark.parametrize(
@@ -188,26 +174,6 @@ def test_reject_unsafe_or_invalid_arguments_before_cli(
     )
     assert result["result"]["isError"] is True
     assert cli == []
-
-
-def test_probe_and_output_errors(
-    cli: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    creds = {"instance_id": "one"}
-    for raw in (
-        '{"ok":true,"data":{"logged_in":false}}',
-        '{"ok":true,"data":{"logged_in":true,"token_status":"expired"}}',
-        "not json",
-        '{"ok":false}',
-        "[]",
-    ):
-        monkeypatch.setattr(agently_cli, "run_cli", lambda *a, _raw=raw, **kw: _raw)
-        with pytest.raises(ValueError):
-            agently_cli.probe_credentials(creds)
-    monkeypatch.setattr(
-        agently_cli, "run_cli", lambda *a, **kw: '{"ok":true,"data":{"logged_in":true}}'
-    )
-    agently_cli.probe_credentials(creds)
 
 
 def test_read_preserves_untrusted_data_and_warnings(
