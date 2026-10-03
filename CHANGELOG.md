@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- 飞牛 fnOS 包安装 / 卸载不再静默杀掉占用 8088、8089 的第三方进程（例如把这两个端口映射出去的容器 `docker-proxy`）：`free_octop_ports` 现在只清理命令行指向本安装目录或 `octop.cli.main` 的本应用残留进程，端口被他人占用时只在安装日志里提示改用其它端口。本地版的 `OCTOP_PORT` 也才真正可改：`cmd/main` 的就绪探测与 `octop-login.txt` 里的访问地址改按 `.env` 的实际端口生成 —— 此前按 `.env` 改了端口，服务已经监听新端口，探测仍在等 8089，等到超时后把刚起好的进程 TERM 掉（#985）
 
 ## [1.0.2b5] - 2026-09-29
 
