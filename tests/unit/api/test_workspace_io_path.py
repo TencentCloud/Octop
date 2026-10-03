@@ -77,7 +77,9 @@ def test_mutation_inside_workspace_file_url_allowed() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         ws = _local_workspace(tmp)
         target = Path(tmp) / "a.md"
-        assert _assert_workspace_mutable(f"file://{target}", workspace=ws) == str(target)
+        # ``as_uri()`` yields the platform-correct spelling (``file:///C:/…`` on
+        # Windows); a hand-built ``file://{path}`` would parse its drive as netloc.
+        assert _assert_workspace_mutable(target.as_uri(), workspace=ws) == str(target)
 
 
 def test_sandbox_workspace_accepts_host_absolute_spelling() -> None:
