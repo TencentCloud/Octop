@@ -11,10 +11,12 @@ from fastapi.responses import Response
 
 from octop.api.common.agent import assert_agent_access_row, assert_agent_owner
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
+from octop.api.common.upload_limit import read_upload_capped
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.common.workspace import require_agent_workspace
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.experts.avatar import (
+    MAX_AVATAR_BYTES,
     agent_avatar_api_path,
     delete_workspace_avatar,
     display_agent_icon_url,
@@ -466,7 +468,11 @@ async def upload_agent_avatar(
     server: Any = Depends(get_server),
 ) -> dict[str, str]:
     """Store an uploaded image in the agent workspace and set ``icon_url``."""
-    data = await file.read()
+    data = await read_upload_capped(
+        file,
+        max_bytes=MAX_AVATAR_BYTES,
+        code=ErrorCode.AVATAR_TOO_LARGE,
+    )
     workspace = await require_agent_workspace(agent_id, user=user, server=server, owner_only=True)
     await write_workspace_avatar(workspace, data)
     icon_url = agent_avatar_api_path(agent_id)

@@ -8,6 +8,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from pydantic import BaseModel, Field
 
+from octop.api.common.upload_limit import read_upload_capped
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
@@ -564,12 +565,17 @@ async def upload_user_avatar(
 ) -> dict[str, str | None]:
     if server.user_manager.get_row(user_id) is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    from octop.infra.agents.experts.avatar import MAX_AVATAR_BYTES
     from octop.infra.users.profile_avatar import write_profile_avatar
 
     write_profile_avatar(
         server.services.paths.user_avatars_dir,
         str(user_id),
-        await file.read(),
+        await read_upload_capped(
+            file,
+            max_bytes=MAX_AVATAR_BYTES,
+            code=ErrorCode.AVATAR_TOO_LARGE,
+        ),
     )
     return {"avatar_url": _user_avatar_url(server, user_id)}
 

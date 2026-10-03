@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from octop.infra.agents.experts.avatar import MAX_AVATAR_BYTES
+
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
 
@@ -58,3 +60,20 @@ async def test_reject_non_image_avatar(env):
     )
     assert r.status_code == 400
     assert r.json()["error"]["code"] == "AVATAR_INVALID"
+
+
+async def test_reject_oversized_avatar_before_image_validation(env):
+    c, _srv, auth, agent_id = env
+    r = await c.post(
+        f"/api/agents/{agent_id}/avatar",
+        headers=auth,
+        files={
+            "file": (
+                "oversized.bin",
+                b"x" * (MAX_AVATAR_BYTES + 1),
+                "application/octet-stream",
+            )
+        },
+    )
+    assert r.status_code == 413
+    assert r.json()["error"]["code"] == "AVATAR_TOO_LARGE"
