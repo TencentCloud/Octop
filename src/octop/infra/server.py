@@ -245,8 +245,9 @@ class AppRuntime:
 
 
 class OctopServer:
-    def __init__(self, home: Path | None = None) -> None:
+    def __init__(self, home: Path | None = None, *, register_im_channels: bool = True) -> None:
         self._home = home or PathLayout.from_env().root
+        self._register_im_channels = register_im_channels
         self.paths = PathLayout(self._home)
         self.config: OctopConfig | None = None
         self.services: SharedServices | None = None
@@ -462,7 +463,7 @@ class OctopServer:
             trajectory_service=trajectory_service,
             history_archive=history_archive,
         )
-        await gateway.boot()
+        await gateway.boot(register_im_channels=self._register_im_channels)
 
         from octop import __version__  # noqa: PLC0415
 

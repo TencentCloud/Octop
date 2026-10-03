@@ -217,7 +217,7 @@ class Gateway:
             "updated_at": status.updated_at,
         }
 
-    async def boot(self) -> None:
+    async def boot(self, *, register_im_channels: bool = True) -> None:
         from octop.infra.gateway.process.channel_thinking import (
             install_channel_thinking_clean,
         )
@@ -259,9 +259,10 @@ class Gateway:
         )
         await self._channel_manager.add_channel(self._cli_channel)
 
-        rows = self._repos.channel_repo.list_all(include_disabled=False)
-        if rows:
-            await asyncio.gather(*(self._safe_register_channel(row) for row in rows))
+        if register_im_channels:
+            rows = self._repos.channel_repo.list_all(include_disabled=False)
+            if rows:
+                await asyncio.gather(*(self._safe_register_channel(row) for row in rows))
 
         logger.info("Gateway booted")
 
