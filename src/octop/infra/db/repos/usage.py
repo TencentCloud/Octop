@@ -224,7 +224,8 @@ class UsageRepo:
         """Aggregate usage rows, optionally filtered to one user/agent.
 
         ``user_id=None`` and ``agent_id=None`` returns global totals
-        (admin scope); otherwise rows are scoped accordingly.
+        (admin scope); otherwise rows are scoped accordingly. ``by_day`` buckets
+        are cut in *timezone* too, so the day rows add up to the window totals.
         """
         where_sql, params, start, end = self._scope_filter(
             user_id=user_id,
@@ -265,7 +266,12 @@ class UsageRepo:
 
             buckets: list[dict[str, Any]] = []
             if granularity == "by_day":
-                day_expr = sql_unix_day_bucket("ts", dialect=self._db.dialect)
+                day_expr = sql_unix_day_bucket(
+                    "ts",
+                    dialect=self._db.dialect,
+                    timezone=timezone,
+                    at=start,
+                )
                 bucket_rows = conn.execute(
                     f"""
                     SELECT

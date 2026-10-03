@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- Token 统计的按天明细不再按 UTC 切日：`by_day` 分桶此前始终用数据库默认日界（UTC），而统计窗口用的是配置的 `default_timezone`，两者最多差一天——上海时间凌晨 2 点的用量会被算到前一天，按天明细与总量对不上。现在分桶与窗口共用同一时区（PostgreSQL 逐行转换，SQLite 取窗口起点处的 UTC 偏移）(#974)
 
 ## [1.0.2b5] - 2026-09-29
 
