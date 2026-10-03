@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Dropdown } from "antd";
+import { Checkbox, Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
   Pencil,
@@ -15,7 +15,11 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import type { Session } from "../hooks/useSessions";
+import { isPendingThread, type Session } from "../hooks/useSessions";
+import SessionBatchSelection, {
+  type BatchDeleteSessions,
+  type SessionSelection,
+} from "./SessionBatchSelection";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { showConfirmModal } from "../../../utils/confirmModal";
@@ -50,6 +54,7 @@ interface SessionItemProps {
   onFork: (id: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
+  selection?: SessionSelection;
 }
 
 const SessionItem = memo(function SessionItem({
@@ -62,6 +67,7 @@ const SessionItem = memo(function SessionItem({
   onFork,
   forkDisabled,
   forkDisabledHint,
+  selection,
 }: SessionItemProps) {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
@@ -152,20 +158,30 @@ const SessionItem = memo(function SessionItem({
         isActive ? styles.sessionRowActive : ""
       } ${session.pinned ? styles.sessionRowPinned : ""}`}
       onClick={() => {
-        if (!isEditing) onSelect(session.id);
+        if (selection) selection.toggle(session.id);
+        else if (!isEditing) onSelect(session.id);
       }}
-      role="button"
-      tabIndex={0}
+      role={selection ? undefined : "button"}
+      tabIndex={selection ? undefined : 0}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && !isEditing) onSelect(session.id);
+        if (e.key === "Enter" && !isEditing && !selection) onSelect(session.id);
       }}
     >
+      {selection ? (
+        <Checkbox
+          aria-label={t("chat.selectSession", { name: session.name })}
+          checked={selection.selectedIds.has(session.id)}
+          disabled={selection.disabled || isPendingThread(session.id)}
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => selection.toggle(session.id)}
+        />
+      ) : null}
       <SessionChannelIcon
         channelType={session.channelType}
         size={12}
         className={styles.sessionRowIcon}
       />
-      {isEditing ? (
+      {isEditing && !selection ? (
         <input
           ref={inputRef}
           className={styles.sessionNameInput}
@@ -192,20 +208,22 @@ const SessionItem = memo(function SessionItem({
               <Pin size={12} strokeWidth={2} />
             </span>
           ) : null}
-          <Dropdown
-            menu={{ items: menuItems }}
-            trigger={["click"]}
-            placement="bottomRight"
-          >
-            <button
-              type="button"
-              className={styles.sessionRowMore}
-              aria-label={t("common.more", "More")}
-              onClick={(e) => e.stopPropagation()}
+          {!selection && (
+            <Dropdown
+              menu={{ items: menuItems }}
+              trigger={["click"]}
+              placement="bottomRight"
             >
-              <MoreHorizontal size={15} />
-            </button>
-          </Dropdown>
+              <button
+                type="button"
+                className={styles.sessionRowMore}
+                aria-label={t("common.more", "More")}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal size={15} />
+              </button>
+            </Dropdown>
+          )}
         </>
       )}
     </div>
@@ -224,6 +242,7 @@ interface AgentCardProps {
   onSelect: (sessionId: string, agentId: string) => void;
   onNewChat: (agentId: string) => void;
   onDelete: (id: string) => void;
+  onBatchDelete: BatchDeleteSessions;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
@@ -244,6 +263,7 @@ function ActiveAgentCard({
   onSelect,
   onNewChat,
   onDelete,
+  onBatchDelete,
   onRename,
   onPin,
   onFork,
@@ -350,47 +370,58 @@ function ActiveAgentCard({
             {t("chat.agentNotRunningHint")}
           </div>
         ) : sessions.length === 0 ? (
-          <div className={styles.agentCardSessionsEmpty}>
-            {t("chat.noSessionsYet", "直接发消息即可开始对话")}
-          </div>
+          !hasMore && (
+            <div className={styles.agentCardSessionsEmpty}>
+              {t("chat.noSessionsYet", "直接发消息即可开始对话")}
+            </div>
+          )
         ) : filteredSessions.length === 0 ? (
           <div className={styles.agentCardSessionsEmpty}>
             {t("chat.noSearchResults", "没有匹配的会话")}
           </div>
         ) : (
           <>
-            {filteredSessions.map((s) => (
-              <SessionItem
-                key={s.id}
-                session={s}
-                isActive={activeId === s.id}
-                onSelect={(id) => onSelect(id, agent.agent_id)}
-                onDelete={onDelete}
-                onRename={onRename}
-                onPin={onPin}
-                onFork={onFork}
-                forkDisabled={
-                  activeId === s.id ? activeForkDisabled : undefined
-                }
-                forkDisabledHint={
-                  activeId === s.id ? activeForkDisabledHint : undefined
-                }
-              />
-            ))}
-            {showExpandMore ? (
-              <button
-                type="button"
-                className={styles.sessionLoadMore}
-                onClick={onLoadMore}
-                disabled={loadingMore}
-              >
-                {loadingMore
-                  ? t("common.loading")
-                  : t("chat.expandMore", "展开更多")}
-              </button>
-            ) : null}
+            <SessionBatchSelection
+              agentId={agent.agent_id}
+              sessions={filteredSessions}
+              onDelete={onBatchDelete}
+            >
+              {(selection) =>
+                filteredSessions.map((s) => (
+                  <SessionItem
+                    key={s.id}
+                    session={s}
+                    selection={selection}
+                    isActive={activeId === s.id}
+                    onSelect={(id) => onSelect(id, agent.agent_id)}
+                    onDelete={onDelete}
+                    onRename={onRename}
+                    onPin={onPin}
+                    onFork={onFork}
+                    forkDisabled={
+                      activeId === s.id ? activeForkDisabled : undefined
+                    }
+                    forkDisabledHint={
+                      activeId === s.id ? activeForkDisabledHint : undefined
+                    }
+                  />
+                ))
+              }
+            </SessionBatchSelection>
           </>
         )}
+        {sessionsEnabled && showExpandMore ? (
+          <button
+            type="button"
+            className={styles.sessionLoadMore}
+            onClick={onLoadMore}
+            disabled={loadingMore}
+          >
+            {loadingMore
+              ? t("common.loading")
+              : t("chat.expandMore", "展开更多")}
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -504,6 +535,7 @@ interface SessionListProps {
   onAgentSelect: (agentId: string) => void;
   onNewChat: (agentId: string) => void;
   onDelete: (id: string) => void;
+  onBatchDelete: BatchDeleteSessions;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
@@ -524,6 +556,7 @@ export default function SessionList({
   onAgentSelect,
   onNewChat,
   onDelete,
+  onBatchDelete,
   onRename,
   onPin,
   onFork,
@@ -629,6 +662,7 @@ export default function SessionList({
                       onSelect={onSelect}
                       onNewChat={onNewChat}
                       onDelete={onDelete}
+                      onBatchDelete={onBatchDelete}
                       onRename={onRename}
                       onPin={onPin}
                       onFork={onFork}

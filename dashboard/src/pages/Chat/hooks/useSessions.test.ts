@@ -2,24 +2,171 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   resetSessionStoreForTests,
+  deleteSessions,
   sortSessions,
   toSession,
   useSessions,
   type Session,
 } from "./useSessions";
+import {
+  appendUserMessage,
+  getSnapshot,
+  onSessionEvent,
+  removeSession,
+} from "./chatStore";
 
 const listMock = vi.fn();
+const deleteMock = vi.fn();
 
-vi.mock("../../../api/modules/octopThreads", () => ({
+vi.mock("../../../api/modules/octopThreads", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../api/modules/octopThreads")
+  >()),
   octopThreadsApi: {
     list: (...args: unknown[]) => listMock(...args),
     create: vi.fn(),
-    delete: vi.fn(),
+    delete: (...args: unknown[]) => deleteMock(...args),
     patch: vi.fn(),
     rename: vi.fn(),
     rebind: vi.fn(),
   },
 }));
+
+describe("batch conversation deletion", () => {
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    listMock.mockReset();
+    deleteMock.mockReset();
+  });
+
+  afterEach(() => {
+    resetSessionStoreForTests();
+    for (const id of ["one", "two", "three"]) removeSession(id);
+  });
+
+  it("retains failures and only clears successful conversations and their caches", async () => {
+    listMock.mockResolvedValue([
+      threadRow("one"),
+      threadRow("two"),
+      threadRow("three"),
+    ]);
+    deleteMock.mockImplementation(async (_agent, id) => {
+      if (id === "two") throw new Error("cleanup failed");
+    });
+    for (const id of ["one", "two"]) {
+      appendUserMessage(id, {
+        id: `msg-${id}`,
+        role: "user",
+        content: id,
+        timestamp: 1,
+      });
+    }
+    const listener = vi.fn();
+    const unsubscribe = onSessionEvent(listener);
+    const { result } = renderHook(() => useSessions("agent-a"));
+    await waitFor(() => expect(result.current.sessions).toHaveLength(3));
+
+    let outcome;
+    await act(async () => {
+      outcome = await deleteSessions("agent-a", ["one", "two", "one"]);
+    });
+
+    expect(outcome).toEqual({ deletedIds: ["one"], failedIds: ["two"] });
+    expect(deleteMock.mock.calls).toEqual([
+      ["agent-a", "one"],
+      ["agent-a", "two"],
+    ]);
+    expect(result.current.sessions.map((s) => s.id).sort()).toEqual([
+      "three",
+      "two",
+    ]);
+    expect(getSnapshot("one").messages).toHaveLength(0);
+    expect(getSnapshot("two").messages).toHaveLength(1);
+    expect(listener.mock.calls).toEqual([
+      [{ kind: "sessionDeleted", agentId: "agent-a", sessionId: "one" }],
+    ]);
+    unsubscribe();
+  });
+
+  it("bounds requests and does not clear another expert's list after switching", async () => {
+    listMock.mockImplementation(async (agentId) => [
+      threadRow(agentId === "agent-a" ? "one" : "three"),
+    ]);
+    let finish!: () => void;
+    deleteMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { result, rerender } = renderHook(
+      ({ agentId }) => useSessions(agentId),
+      {
+        initialProps: { agentId: "agent-a" },
+      },
+    );
+    await waitFor(() => expect(result.current.sessions[0]?.id).toBe("one"));
+    const pending = deleteSessions("agent-a", ["one", "two"]);
+    expect(deleteMock).toHaveBeenCalledTimes(1);
+    rerender({ agentId: "agent-b" });
+    await waitFor(() => expect(result.current.sessions[0]?.id).toBe("three"));
+    await act(async () => {
+      finish();
+      await pending;
+    });
+    expect(deleteMock.mock.calls).toEqual([
+      ["agent-a", "one"],
+      ["agent-a", "two"],
+    ]);
+    expect(result.current.sessions.map((s) => s.id)).toEqual(["three"]);
+  });
+
+  it("does not request deletion for an unsaved conversation", async () => {
+    expect(await deleteSessions("agent-a", ["__pending__"])).toEqual({
+      deletedIds: [],
+      failedIds: ["__pending__"],
+    });
+    expect(deleteMock).not.toHaveBeenCalled();
+  });
+
+  it("loads the next conversations after deleting the entire loaded page", async () => {
+    listMock
+      .mockResolvedValueOnce(
+        Array.from({ length: 11 }, (_, i) => threadRow(`thread-${i}`)),
+      )
+      .mockResolvedValueOnce([threadRow("next")]);
+    const { result } = renderHook(() => useSessions("agent-a"));
+    await waitFor(() => expect(result.current.sessions).toHaveLength(10));
+    expect(result.current.hasMore).toBe(true);
+    const ids = result.current.sessions.map((s) => s.id);
+    await act(async () => {
+      await deleteSessions("agent-a", ids);
+    });
+    expect(result.current.sessions.map((s) => s.id)).toEqual(["next"]);
+    expect(result.current.hasMore).toBe(false);
+  });
+
+  it("allows retrying pagination when the post-delete refill fails", async () => {
+    listMock
+      .mockResolvedValueOnce(
+        Array.from({ length: 11 }, (_, i) => threadRow(`thread-${i}`)),
+      )
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce([threadRow("next")]);
+    const { result } = renderHook(() => useSessions("agent-a"));
+    await waitFor(() => expect(result.current.sessions).toHaveLength(10));
+    const ids = result.current.sessions.map((s) => s.id);
+    await act(async () => {
+      await deleteSessions("agent-a", ids);
+    });
+    expect(result.current.sessions).toEqual([]);
+    expect(result.current.hasMore).toBe(true);
+    await act(async () => {
+      await result.current.loadMoreSessions();
+    });
+    expect(result.current.sessions.map((s) => s.id)).toEqual(["next"]);
+  });
+});
 
 function threadRow(threadId: string, agentExtra?: Partial<{ title: string }>) {
   return {

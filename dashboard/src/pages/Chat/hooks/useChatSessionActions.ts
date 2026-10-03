@@ -1,9 +1,14 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
 import { EMPTY_CHAT_SESSION_KEY } from "../constants";
-import { pickPreferredSession, toSession, type Session } from "./useSessions";
+import {
+  deleteSessions,
+  pickPreferredSession,
+  toSession,
+  type Session,
+} from "./useSessions";
 
 interface UseChatSessionActionsParams {
   resolvedAgentId: string | null | undefined;
@@ -35,6 +40,46 @@ export function useChatSessionActions({
   markInitialNavDone,
 }: UseChatSessionActionsParams) {
   const navigate = useNavigate();
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const latest = useRef({
+    resolvedAgentId,
+    activeThreadId,
+    sessions,
+    clearMessages,
+  });
+  latest.current = { resolvedAgentId, activeThreadId, sessions, clearMessages };
+
+  const handleBatchDeleteSessions = useCallback(
+    async (agentId: string, ids: string[]) => {
+      const result = await deleteSessions(agentId, ids);
+      if (!mounted.current) return result;
+      const current = latest.current;
+      // A batch may finish after the user has switched experts or conversations.
+      if (
+        current.resolvedAgentId === agentId &&
+        current.activeThreadId &&
+        result.deletedIds.includes(current.activeThreadId)
+      ) {
+        const deleted = new Set(result.deletedIds);
+        const preferred = pickPreferredSession(
+          current.sessions.filter((s) => !deleted.has(s.id)),
+        );
+        navigate(
+          preferred ? `/chat/${agentId}/${preferred.id}` : `/chat/${agentId}`,
+          { replace: true },
+        );
+        if (!preferred) current.clearMessages();
+      }
+      return result;
+    },
+    [navigate],
+  );
 
   const handleNewChat = useCallback(() => {
     setSelectedModel(null);
@@ -164,5 +209,6 @@ export function useChatSessionActions({
     handleSelectSession,
     navigateToAgent,
     handleDeleteSession,
+    handleBatchDeleteSessions,
   };
 }

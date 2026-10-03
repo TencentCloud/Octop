@@ -343,6 +343,54 @@ function setModuleLoadingMore(value: boolean) {
   notifyListeners();
 }
 
+export interface DeleteSessionsResult {
+  deletedIds: string[];
+  failedIds: string[];
+}
+
+/** Use the existing authorized delete path, then publish one consistent list update. */
+export async function deleteSessions(
+  agentId: string,
+  ids: string[],
+): Promise<DeleteSessionsResult> {
+  const deletedIds: string[] = [];
+  const failedIds: string[] = [];
+  for (const id of new Set(ids)) {
+    if (!agentId || !id || isPendingThread(id)) {
+      failedIds.push(id);
+      continue;
+    }
+    try {
+      // Bound concurrency: a large selection must not flood the agent/checkpointer.
+      await octopThreadsApi.delete(agentId, id);
+      deletedIds.push(id);
+    } catch {
+      failedIds.push(id);
+    }
+  }
+  if (_storeAgentId === agentId && deletedIds.length > 0) {
+    const deleted = new Set(deletedIds);
+    let remaining = _sessions.filter((s) => !deleted.has(s.id));
+    if (remaining.length === 0 && _hasMore) {
+      try {
+        const page = await fetchSessionsPage(agentId, getLoadedLimit(agentId));
+        if (_storeAgentId === agentId) {
+          _hasMore = page.hasMore;
+          remaining = page.sessions.filter((s) => !deleted.has(s.id));
+        }
+      } catch {
+        // Keep "Show more" available so a failed refill can be retried.
+      }
+    }
+    if (_storeAgentId === agentId) setModuleSessions(remaining);
+  }
+  for (const sessionId of deletedIds) {
+    chatStore.removeSession(sessionId);
+    chatStore.emitSessionEvent({ kind: "sessionDeleted", sessionId, agentId });
+  }
+  return { deletedIds, failedIds };
+}
+
 /**
  * Drop previous-agent threads before the first paint of a new agent.
  * Clearing only in useEffect leaks stale sessions for one render, and

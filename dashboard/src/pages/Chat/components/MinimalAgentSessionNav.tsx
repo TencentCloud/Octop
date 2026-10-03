@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Dropdown } from "antd";
+import { Checkbox, Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
   Pencil,
@@ -18,7 +18,16 @@ import { ExpertIcon } from "../../Experts/components/iconForName";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { isAgentChatReady } from "../../../utils/agentError";
-import { sortSessions, toSession, type Session } from "../hooks/useSessions";
+import {
+  isPendingThread,
+  sortSessions,
+  toSession,
+  type Session,
+} from "../hooks/useSessions";
+import SessionBatchSelection, {
+  type BatchDeleteSessions,
+  type SessionSelection,
+} from "./SessionBatchSelection";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent, onStreamEvent } from "../hooks/chatStore";
 import SharedExpertHint from "./SharedExpertHint";
@@ -64,6 +73,7 @@ interface MinimalAgentSessionNavProps {
   /** Start a fresh (unsaved) chat with the given expert. */
   onNewChat: (agentId: string) => void;
   onDeleteActive: (id: string) => void;
+  onBatchDelete: BatchDeleteSessions;
   onRenameActive: (id: string, name: string) => void;
   onPinActive: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
@@ -95,6 +105,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   onFork,
   forkDisabled,
   forkDisabledHint,
+  selection,
 }: {
   session: Session;
   isActive: boolean;
@@ -106,6 +117,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   onFork: (id: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
+  selection?: SessionSelection;
 }) {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
@@ -196,15 +208,25 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
         isActive ? styles.sessionRowActive : ""
       } ${session.pinned ? styles.sessionRowPinned : ""}`}
       onClick={() => {
-        if (!isEditing) onSelect(session.id);
+        if (selection) selection.toggle(session.id);
+        else if (!isEditing) onSelect(session.id);
       }}
-      role="button"
-      tabIndex={0}
+      role={selection ? undefined : "button"}
+      tabIndex={selection ? undefined : 0}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && !isEditing) onSelect(session.id);
+        if (e.key === "Enter" && !isEditing && !selection) onSelect(session.id);
       }}
     >
-      {isEditing ? (
+      {selection ? (
+        <Checkbox
+          aria-label={t("chat.selectSession", { name: session.name })}
+          checked={selection.selectedIds.has(session.id)}
+          disabled={selection.disabled || isPendingThread(session.id)}
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => selection.toggle(session.id)}
+        />
+      ) : null}
+      {isEditing && !selection ? (
         <input
           ref={inputRef}
           className={styles.sessionNameInput}
@@ -238,20 +260,22 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
               <Pin size={12} strokeWidth={2} />
             </span>
           ) : null}
-          <Dropdown
-            menu={{ items: menuItems }}
-            trigger={["click"]}
-            placement="bottomRight"
-          >
-            <button
-              type="button"
-              className={styles.sessionRowMore}
-              aria-label={t("common.more", "More")}
-              onClick={(e) => e.stopPropagation()}
+          {!selection && (
+            <Dropdown
+              menu={{ items: menuItems }}
+              trigger={["click"]}
+              placement="bottomRight"
             >
-              <MoreHorizontal size={15} />
-            </button>
-          </Dropdown>
+              <button
+                type="button"
+                className={styles.sessionRowMore}
+                aria-label={t("common.more", "More")}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal size={15} />
+              </button>
+            </Dropdown>
+          )}
         </>
       )}
     </div>
@@ -267,6 +291,7 @@ export default function MinimalAgentSessionNav({
   onAgentSelect,
   onNewChat,
   onDeleteActive,
+  onBatchDelete,
   onRenameActive,
   onPinActive,
   onFork,
@@ -480,6 +505,15 @@ export default function MinimalAgentSessionNav({
     [activeAgentId, onRenameActive, patchLocal],
   );
 
+  const handleBatchDelete = useCallback(
+    async (agentId: string, ids: string[]) => {
+      const result = await onBatchDelete(agentId, ids);
+      if (result.deletedIds.length > 0) await refreshAgentPreview(agentId);
+      return result;
+    },
+    [onBatchDelete, refreshAgentPreview],
+  );
+
   const handlePin = useCallback(
     (agentId: string, sessionId: string, pinned: boolean) => {
       if (agentId === activeAgentId) {
@@ -596,31 +630,44 @@ export default function MinimalAgentSessionNav({
                     {t("chat.noSessionsYet", "直接发消息即可开始对话")}
                   </div>
                 ) : (
-                  list.map((session) => (
-                    <PreviewSessionRow
-                      key={session.id}
-                      session={session}
-                      isActive={session.id === activeId}
-                      working={workingIds.has(session.id)}
-                      onSelect={(id) => onSelect(id, agent.agent_id)}
-                      onDelete={(id) => void handleDelete(agent.agent_id, id)}
-                      onRename={(id, name) =>
-                        handleRename(agent.agent_id, id, name)
-                      }
-                      onPin={(id, pinned) =>
-                        handlePin(agent.agent_id, id, pinned)
-                      }
-                      onFork={(id) => onFork(id, agent.agent_id)}
-                      forkDisabled={
-                        session.id === activeId ? activeForkDisabled : undefined
-                      }
-                      forkDisabledHint={
-                        session.id === activeId
-                          ? activeForkDisabledHint
-                          : undefined
-                      }
-                    />
-                  ))
+                  <SessionBatchSelection
+                    agentId={agent.agent_id}
+                    sessions={list}
+                    onDelete={handleBatchDelete}
+                  >
+                    {(selection) =>
+                      list.map((session) => (
+                        <PreviewSessionRow
+                          key={session.id}
+                          session={session}
+                          selection={selection}
+                          isActive={session.id === activeId}
+                          working={workingIds.has(session.id)}
+                          onSelect={(id) => onSelect(id, agent.agent_id)}
+                          onDelete={(id) =>
+                            void handleDelete(agent.agent_id, id)
+                          }
+                          onRename={(id, name) =>
+                            handleRename(agent.agent_id, id, name)
+                          }
+                          onPin={(id, pinned) =>
+                            handlePin(agent.agent_id, id, pinned)
+                          }
+                          onFork={(id) => onFork(id, agent.agent_id)}
+                          forkDisabled={
+                            session.id === activeId
+                              ? activeForkDisabled
+                              : undefined
+                          }
+                          forkDisabledHint={
+                            session.id === activeId
+                              ? activeForkDisabledHint
+                              : undefined
+                          }
+                        />
+                      ))
+                    }
+                  </SessionBatchSelection>
                 )}
               </div>
             ) : null}
