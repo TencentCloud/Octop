@@ -113,3 +113,72 @@ async def test_mobile_handoff_admin_bypass() -> None:
     data = json.loads(out)
     assert data["handoff"] is True
     assert "login captcha" in data["message"]
+
+
+def _launch_tool(monkeypatch: pytest.MonkeyPatch, commands: list[str]) -> object:
+    """Build mobile_launch_app with adb replaced by a recorder."""
+    monkeypatch.setattr(
+        "octop.infra.mobile.tools.get_config",
+        lambda: {"configurable": {"user": "1", "user_is_admin": True, "locale": "en"}},
+    )
+    monkeypatch.setattr(
+        "octop.infra.mobile.tools.mobile_status",
+        lambda *args, **kwargs: SimpleNamespace(setup_state="ready", ok=True, reason=None),
+    )
+
+    async def fake_resolve(device: str | None) -> str:
+        return "emulator-5554"
+
+    def fake_shell(device: str, command: str, **kwargs: object) -> tuple[int, str]:
+        commands.append(command)
+        return 0, ""
+
+    monkeypatch.setattr("octop.infra.mobile.tools._resolve_device", fake_resolve)
+    monkeypatch.setattr("octop.infra.mobile.tools.shell", fake_shell)
+
+    with patch("octop.infra.mobile.tools.find_adb", return_value="/adb"):
+        tools = build_mobile_tools(_enabled_config(), user_repo=MagicMock())
+    return _tool_by_name(tools, "mobile_launch_app")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "package",
+    [
+        "com.foo;id",
+        "com.foo$(id)",
+        "com.foo|id",
+        "com.foo && id",
+        "com.foo\nid",
+        "com.foo`id`",
+        "com.foo id",
+        "com.foo/id",
+    ],
+)
+async def test_mobile_launch_app_rejects_shell_metacharacters(
+    monkeypatch: pytest.MonkeyPatch, package: str
+) -> None:
+    commands: list[str] = []
+    launch = _launch_tool(monkeypatch, commands)
+
+    out = await launch.ainvoke({"package": package})  # type: ignore[attr-defined]
+    data = json.loads(out)
+
+    # The package name is spliced into "adb shell monkey -p <pkg> ...", so any
+    # metacharacter has to be rejected before the command reaches adb.
+    assert "error" in data
+    assert commands == []
+
+
+@pytest.mark.asyncio
+async def test_mobile_launch_app_accepts_plain_package_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[str] = []
+    launch = _launch_tool(monkeypatch, commands)
+
+    out = await launch.ainvoke({"package": "com.android.settings"})  # type: ignore[attr-defined]
+    data = json.loads(out)
+
+    assert data["exit_code"] == 0
+    assert commands == ["monkey -p com.android.settings -c android.intent.category.LAUNCHER 1"]
