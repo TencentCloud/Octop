@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
+import pytest
+
 from octop.config import TlsConfig, load_config
-from octop.infra.setup.tls.store import install_letsencrypt_cert, resolve_tls_paths
+from octop.infra.setup.tls.store import (
+    _merge_config_file,
+    install_letsencrypt_cert,
+    resolve_tls_paths,
+)
 from octop.infra.utils.paths import PathLayout
 
 
@@ -43,3 +50,29 @@ def test_resolve_tls_paths_when_disabled():
     cert, key = resolve_tls_paths(Path("/tmp"), TlsConfig(enabled=False))
     assert cert is None
     assert key is None
+
+
+def test_merge_config_file_keeps_previous_config_when_write_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A failed config write must not truncate the existing ``config.json``.
+
+    ``load_config`` raises on a corrupt file and refuses to start the server, so
+    an interrupted merge (killed process, full disk) that leaves a partial write
+    behind would brick the next boot.
+    """
+    config_path = tmp_path / "config.json"
+    original = {"database": {"url": "sqlite:///keep-me.db"}, "port": 8080}
+    config_path.write_text(json.dumps(original), encoding="utf-8")
+
+    real_replace = os.replace
+
+    def boom(src, dst):
+        raise OSError("simulated crash before the rename")
+
+    monkeypatch.setattr(os, "replace", boom)
+    with pytest.raises(OSError):
+        _merge_config_file(config_path, {"port": 443})
+    monkeypatch.setattr(os, "replace", real_replace)
+
+    assert json.loads(config_path.read_text(encoding="utf-8")) == original
