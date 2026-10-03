@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from octop.infra.agents.experts.avatar import MAX_AVATAR_BYTES
 from tests.support.auth import bootstrap_admin
 
 
@@ -129,6 +130,24 @@ _PNG = (
     b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
     b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
 )
+
+
+async def test_avatar_upload_rejects_oversized_body_before_image_validation(client) -> None:
+    c, _srv, home = client
+    await bootstrap_admin(c, home)
+    tok = (
+        await c.post("/api/auth/login", json={"username": "admin", "password": "TestPass12"})
+    ).json()["access_token"]
+    auth = {"Authorization": f"Bearer {tok}"}
+
+    response = await c.post(
+        "/api/auth/me/avatar",
+        headers=auth,
+        files={"file": ("oversized.bin", b"x" * (MAX_AVATAR_BYTES + 1), "application/octet-stream")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "AVATAR_TOO_LARGE"
 
 
 async def test_me_can_choose_icon_and_upload(client) -> None:

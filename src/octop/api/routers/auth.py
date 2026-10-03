@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.common.client_ip import resolve_client_ip
+from octop.api.common.upload_limit import read_upload_capped
 from octop.api.deps import current_user, get_server, sign_token
 from octop.infra.auth.captcha import current_env, ensure_captcha, load_effective, public_config
 from octop.infra.errors import ErrorCode, OctopError
@@ -272,12 +273,17 @@ async def upload_my_avatar(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, str | None]:
+    from octop.infra.agents.experts.avatar import MAX_AVATAR_BYTES
     from octop.infra.users.profile_avatar import profile_avatar_url, write_profile_avatar
 
     write_profile_avatar(
         server.services.paths.user_avatars_dir,
         str(user.id),
-        await file.read(),
+        await read_upload_capped(
+            file,
+            max_bytes=MAX_AVATAR_BYTES,
+            code=ErrorCode.AVATAR_TOO_LARGE,
+        ),
     )
     return {
         "avatar_url": profile_avatar_url(
