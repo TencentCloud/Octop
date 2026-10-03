@@ -120,7 +120,7 @@ docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
-  -e OCTOP_DEFAULT_PASSWORD="<自定义强密码，留空则自动生成随机密码>" \
+  -e OCTOP_DEFAULT_PASSWORD="" \
   octop:latest
 ```
 
@@ -133,7 +133,7 @@ docker run -d \
 | `OCTOP_ADMIN_USERNAME` | `admin` | 首次运行管理员用户名 |
 | `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载） |
 
-> 后续计划：Docker 首次启动可改为随机生成管理员密码，并仅写入 `credential.txt`。
+> Docker 默认入口在首次启动时自动执行 `octop init --yes`，创建管理员并将凭据写入 `/data/.octop/credential.txt`（自定义 `OCTOP_HOME` 时位于该目录）。不设置 `OCTOP_DEFAULT_PASSWORD` 或留空会生成随机密码；自定义密码被应用策略拒绝时也会改用随机密码。使用文件中的账号直接登录控制台，再配置模型；已有默认 SQLite 数据卷会继续使用现有账号。
 
 ---
 
@@ -141,7 +141,7 @@ docker run -d \
 
 ### 3.1 启动服务
 
-安装完成后，直接启动服务即可。首次运行时，控制面数据库、JWT 密钥与首个管理员都会在**设置向导**中创建（绿场默认延后打开数据库，直到向导里确认 SQLite / PostgreSQL）：
+通过脚本或源码安装、且尚未执行 `octop init` 时，直接启动服务即可。首次运行时，控制面数据库、JWT 密钥与首个管理员都会在**设置向导**中创建（绿场默认延后打开数据库，直到向导里确认 SQLite / PostgreSQL）：
 
 ```bash
 octop run       # 前台启动 API + Web 控制台
