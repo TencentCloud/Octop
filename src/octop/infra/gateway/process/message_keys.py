@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from octop_gateway.models import ImageContent, InboundMessage
@@ -21,6 +22,8 @@ STREAM_ERROR_CODE_KEY = "error_code"
 def parse_checkpoint_ts_ms(raw: Any) -> int | None:
     """Normalize a checkpoint/created_at value to epoch milliseconds."""
     if isinstance(raw, bool) or not isinstance(raw, int | float) or raw <= 0:
+        return None
+    if isinstance(raw, float) and not math.isfinite(raw):
         return None
     return int(raw) if raw > 1_000_000_000_000 else int(raw * 1000)
 
