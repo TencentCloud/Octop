@@ -219,7 +219,12 @@ source ~/.bashrc  # Bash
 ```bash
 # 下载 Playwright Chromium 用于浏览器自动化（若系统已有 Chrome / Chromium 则会跳过）
 curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash -s -- --extras browser
+
+# 知识库 OCR（RapidOCR + onnxruntime）
+curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash -s -- --extras knowledge-ocr
 ```
+
+可选附加组件只有 wheel 声明的这几个：`browser`、`desktop`、`local-embedding`、`knowledge-ocr`。IM 通道无需附加组件——飞书 SDK（`lark-oapi`）已随基础安装提供。
 
 完整安装选项见 [scripts/README.md](scripts/README.md)（`--version`、`--from-source`、`--mirror` 及 Windows 参数）。
 
