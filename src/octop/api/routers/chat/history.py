@@ -12,7 +12,12 @@ from fastapi import APIRouter, Depends, Request
 from octop.api.common.agent import require_agent_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.deps import current_user, get_server
-from octop.api.routers.chat.models import ForkThreadBody, RebindSessionBody, RenameThreadBody
+from octop.api.routers.chat.models import (
+    CancelThreadResponse,
+    ForkThreadBody,
+    RebindSessionBody,
+    RenameThreadBody,
+)
 from octop.api.routers.chat.serialize import (
     HISTORY_DEFAULT_LIMIT,
     _backfill_thread_projection,
@@ -228,6 +233,28 @@ async def create_thread(
         channel_subject_id=str(effective_uid),
     )
     return {"thread_id": tid, "session_key": sk}
+
+
+@router.post(
+    "/agents/{agent_id}/threads/{thread_id}/cancel",
+    response_model=CancelThreadResponse,
+    summary="Request cancellation of an active thread turn",
+    description="Requires thread ownership. Requests cancellation of the current ordinary Dashboard turn, "
+    "not queued tasks or HITL. Acknowledges the request, not completion; observe the stream for termination.",
+)
+async def cancel_thread(
+    agent_id: str,
+    thread_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> CancelThreadResponse:
+    _require_thread(server, agent_id, thread_id, user, as_user=None)
+    registry = server.app_runtime.agent_registry
+    active = server.app_runtime.gateway.ws_hub.is_turn_active(thread_id)
+    if active:
+        registry.get_agent(agent_id)
+        registry.cancel_stream(agent_id, thread_id)
+    return CancelThreadResponse(thread_id=thread_id, requested=active)
 
 
 def _parse_csv_query(raw: str | None) -> list[str] | None:
