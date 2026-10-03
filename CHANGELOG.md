@@ -28,6 +28,7 @@
 
 - 模型调用重试耗尽后不再抛出笼统的「多次调用失败」：把具体原因写成给模型的恢复提示（上下文超限、限流、流式中断等），聊天页展示对应说明；后台委派仍标记 failed，并把该原因交给源专家。
 - Windows 残留盘符路径（如 ``D:\\octop-data\\data\\文章存稿\\…``）读写文件时不再把 jail 拒绝渲染成「多次调用模型失败」：能对上当前存储根的改写成虚拟路径继续读；对不上的把原因交给模型，页面显示存储根说明。
+- 工作区写接口未校验宿主路径边界：`PUT /file`、`POST /upload`、`mkdir`、`DELETE`、`move`、`PUT /doc` 接受 `file://`、前导 `/`、`~` 与 Windows 盘符/UNC 写法，可读写删 agent workspace 之外的任意宿主文件（`DELETE` 会真的删掉目标）。现在统一解析后要求落在该 agent 的 workspace 内，越界返回 403；workspace 相对路径与指向 workspace 内部的 `file://` 不受影响。沙箱后端（Docker / OpenSandbox）的 agent 内容在容器内，宿主边界检查对其不适用，`file:///workspace/…` 这类容器内路径照常可写。同时收紧四处细节：受保护的 `_builtin_skills` 只匹配工作区根与 `.octop/` 两种拼写（`/sub/../_builtin_skills/x` 也会被折叠后拦下，但同名子目录恢复可写）、`~name`（非 `~/`）直接拒绝而不是按 cwd 解析、写接口返回的 `path` 改为实际落点（含 `..` 时不再回显原始请求）、省略 `path` 的上传按 workspace 相对落盘。
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
