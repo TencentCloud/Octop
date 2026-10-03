@@ -38,6 +38,24 @@ def embed_knowledge_texts(services: Any, texts: list[str]) -> list[list[float]]:
         return _embed_remote_batched(client, provider.base_url.rstrip("/"), headers, model, texts)
 
 
+def _ordered_embeddings(data: list[Any], size: int) -> list[list[float]]:
+    """Place embeddings at their ``index`` when the response carries one.
+
+    OpenAI-compatible providers may answer in any order, but not every
+    provider sends ``index``; keep reply order when it is missing or unusable
+    so those providers keep working as before.
+    """
+    indexed: dict[int, list[float]] = {}
+    for item in data:
+        index = item.get("index")
+        if not isinstance(index, int) or not 0 <= index < size:
+            return [list(item["embedding"]) for item in data]
+        indexed[index] = list(item["embedding"])
+    if len(indexed) != size:
+        raise RuntimeError("knowledge embedding index duplicated")
+    return [indexed[position] for position in range(size)]
+
+
 def _embed_remote_batched(
     client: httpx.Client,
     base: str,
@@ -47,8 +65,9 @@ def _embed_remote_batched(
 ) -> list[list[float]]:
     """Request a remote embedding API in <=batch-limit slices.
 
-    Slices preserve input order so the merged vectors stay aligned with
-    ``texts`` for :meth:`KnowledgeIndex.replace_doc_chunks`.
+    Providers may answer in any order, so each vector is placed at the
+    ``index`` of the input it belongs to; the merged vectors therefore stay
+    aligned with ``texts`` for :meth:`KnowledgeIndex.replace_doc_chunks`.
     """
     if not texts:
         return []
@@ -64,7 +83,9 @@ def _embed_remote_batched(
         data = response.json().get("data")
         if not isinstance(data, list):
             raise RuntimeError("knowledge embedding response has no data")
-        out.extend(list(item["embedding"]) for item in data)
+        if len(data) != len(batch):
+            raise RuntimeError("knowledge embedding count mismatch")
+        out.extend(_ordered_embeddings(data, len(batch)))
     if len(out) != len(texts):
         raise RuntimeError("knowledge embedding count mismatch")
     return out
