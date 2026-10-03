@@ -183,6 +183,12 @@ class CronManager:
             existing = self._repos.cron_repo.get(cron_id)
             if existing is None:
                 raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
+            if session_key is not None:
+                await self._ensure_session(
+                    session_key,
+                    agent_id=existing.agent_id,
+                    user_id=existing.user_id,
+                )
             repo_kwargs: dict[str, Any] = {
                 "trigger": trigger,
                 "name": name,
@@ -273,12 +279,12 @@ class CronManager:
                     f"session {session_key!r} belongs to agent {existing.agent_id!r}, "
                     f"not {agent_id!r}"
                 )
-                raise ValueError(msg)
+                raise OctopError(ErrorCode.FORBIDDEN, msg)
             if existing.user_id != user_id:
                 msg = (
                     f"session {session_key!r} belongs to user {existing.user_id!r}, not {user_id!r}"
                 )
-                raise ValueError(msg)
+                raise OctopError(ErrorCode.FORBIDDEN, msg)
             return
         parts = session_key.split(":", 3)
         channel_type = parts[1] if len(parts) >= 2 else "cron"

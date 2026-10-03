@@ -68,13 +68,14 @@ class CronDeliveryService:
         """Run one delivery under the target channel session lock."""
 
         async def _locked() -> None:
-            if command.fresh_thread:
-                await self._gateway.thread_registry.reset_by_session_key(command.session_key)
             session = self._gateway.require_session(command.agent_id, command.session_key)
             if session.user_id != command.user_id:
                 raise ValueError(
                     f"session {command.session_key!r} does not belong to user {command.user_id!r}"
                 )
+            if command.fresh_thread:
+                await self._gateway.thread_registry.reset_by_session_key(command.session_key)
+                session = self._gateway.require_session(command.agent_id, command.session_key)
             if command.task_type == "text":
                 await self._deliver_text(command, session)
             else:

@@ -73,6 +73,56 @@ async def test_create_lists_get_patch_delete_cycle(env: Any) -> None:
     assert r.status_code == 404
 
 
+async def test_cron_cannot_rebind_or_reset_another_users_session(env: Any) -> None:
+    client, server, owner_auth, peer_auth, agent_id = env
+    base = f"/api/agents/{agent_id}"
+    response = await client.patch(base, headers=owner_auth, json={"is_shared": True})
+    assert response.status_code == 200, response.text
+
+    owner_thread = (await client.post(f"{base}/threads", headers=owner_auth)).json()
+    peer_thread = (await client.post(f"{base}/threads", headers=peer_auth)).json()
+    response = await client.post(
+        f"{base}/cron",
+        headers=owner_auth,
+        json={
+            "trigger": "interval:3600",
+            "prompt": "ping",
+            "enabled": False,
+            "session_key": peer_thread["session_key"],
+        },
+    )
+    assert response.status_code == 403, response.text
+
+    job = (
+        await client.post(
+            f"{base}/cron",
+            headers=owner_auth,
+            json={"trigger": "interval:3600", "prompt": "ping", "enabled": False},
+        )
+    ).json()
+    cron_path = f"{base}/cron/{job['id']}"
+
+    response = await client.patch(
+        cron_path,
+        headers=owner_auth,
+        json={"session_key": peer_thread["session_key"], "fresh_thread": True},
+    )
+    assert response.status_code == 403, response.text
+    assert (await client.get(cron_path, headers=owner_auth)).json()["session_key"] == owner_thread[
+        "session_key"
+    ]
+
+    # Old rows can already contain a foreign session binding, so delivery must check too.
+    server.services.repos.cron_repo.update(
+        job["id"], session_key=peer_thread["session_key"], fresh_thread=True
+    )
+    with pytest.raises(ValueError, match="does not belong to user"):
+        await server.app_runtime.cron_manager.run_now(job["id"], wait=True)
+
+    threads = (await client.get(f"{base}/threads", headers=peer_auth)).json()
+    assert next(t["thread_id"] for t in threads if t["is_active"]) == peer_thread["thread_id"]
+
+
 # --- Trigger validation -------------------------------------------------------
 
 

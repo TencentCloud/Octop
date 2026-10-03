@@ -289,8 +289,9 @@ async def test_agent_strips_orphan_thinking_prefix() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fresh_thread_resets_before_require_session() -> None:
+async def test_fresh_thread_checks_session_before_reset() -> None:
     session = _session(channel_type="feishu")
+    fresh_session = _session(channel_type="feishu", thread_id="thr_new")
     order: list[str] = []
 
     async def reset(_key: str) -> str:
@@ -299,7 +300,7 @@ async def test_fresh_thread_resets_before_require_session() -> None:
 
     def require(_agent_id: str, _key: str):
         order.append("require")
-        return session
+        return fresh_session if "reset" in order else session
 
     gateway = MagicMock()
     gateway.run_in_session = _run_locked
@@ -313,16 +314,19 @@ async def test_fresh_thread_resets_before_require_session() -> None:
         repos=MagicMock(),
     )
     await service.deliver(_command(fresh_thread=True, task_type="text"))
-    assert order == ["reset", "require"]
+    assert order == ["require", "reset", "require"]
+    assert gateway.push_session_text.await_args.args[0] is fresh_session
 
 
 @pytest.mark.asyncio
-async def test_wrong_user_rejects_session() -> None:
+@pytest.mark.parametrize("fresh_thread", [False, True])
+async def test_wrong_user_rejects_session(fresh_thread: bool) -> None:
     session = _session(channel_type="dashboard")
     session.user_id = 9
     gateway = MagicMock()
     gateway.run_in_session = _run_locked
     gateway.require_session = MagicMock(return_value=session)
+    gateway.thread_registry.reset_by_session_key = AsyncMock()
     gateway.push_session_text = AsyncMock()
 
     service = CronDeliveryService(
@@ -331,7 +335,8 @@ async def test_wrong_user_rejects_session() -> None:
         repos=MagicMock(),
     )
     with pytest.raises(ValueError, match="does not belong to user"):
-        await service.deliver(_command())
+        await service.deliver(_command(fresh_thread=fresh_thread))
+    gateway.thread_registry.reset_by_session_key.assert_not_awaited()
     gateway.push_session_text.assert_not_awaited()
 
 
