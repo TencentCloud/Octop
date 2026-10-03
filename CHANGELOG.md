@@ -5,33 +5,42 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
-- 模型调用重试耗尽后保留异常及失败状态，不再把错误转换成正常回答；后台委派正确标记为 failed 并携带错误原因，避免源专家把失败当作已完成任务（#839）
-- Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
 
 ### 新增
-- 支持 LDAP 目录登录（Active Directory、OpenLDAP）：在现有登录表单直接输入域账号与密码；按目录组映射角色、首次登录可自动开通账号、可选登录组白名单；管理端「用户 → LDAP」页可配置并测试连通性。目录账号无本地密码，修改密码会返回 `PASSWORD_NOT_SET`。
+- GitHub 发版产出飞牛 ARM 安装包：官方镜像改为 `linux/amd64` + `linux/arm64` 多架构（同一份 Docker FPK 在 ARM 飞牛上拉对应镜像层）；本地版另挂 `Octop-fnos-native-arm64-<ver>.fpk`。ARM 飞牛优先用 Docker 版；本地版装错架构会在安装或启动时报错。
+- 支持 LDAP 目录登录（Active Directory、OpenLDAP）：在现有登录表单直接输入域账号与密码；按目录组映射角色（仅首次开通账号时写入，之后目录组变更不会回写本地角色）、首次登录可自动开通账号、可选登录组白名单；管理端「用户 → LDAP」页可配置并测试连通性。目录账号无本地密码，修改密码会返回 `PASSWORD_NOT_SET`。
 - 有本地密码的账号只在本地校验，口令不会转发到目录；启用 LDAP 时要求加密传输（`ldaps://` 或 StartTLS）。
-
-### 修复
-
-- 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
-### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 - 聊天输入栏将对话模式、模型、连接器、知识库、技能、专家、子智能体收进「+」菜单，从菜单右侧弹出选择面板；聊天页用户头像与侧栏账号头像一致。
 
+### 变更
+- FnOS 安装向导改为建账号 +「接下来怎么用」：必填用户名、密码与确认密码，可选显示名称和邮箱。设置窗口只留改密。Docker 版增加健康检查，镜像钉本包版本且重启不重拉；容器启动不再每次用安装密码覆盖网页改密。
+- FnOS 确认密码增加 `sameAs`/`equal` 规则，安装回调仍校验两次密码必须一致。
+- FnOS `maintainer` 统一为 `TencentCloud`，并加 `tags=AI,Practical Efficiency`。手动安装通常不会写入应用中心分类（分类来自商店目录）。
+- FnOS 本地版安装时预初始化账号；启动必须等 8089 就绪，失败写 `octop-start-error.txt`。
+- FnOS 本地版打包去掉 Playwright driver 与 Google API discovery 缓存；启动时复用飞牛已装 Node.js。
+- FnOS 本地版 CI 写入 vendored `octop_harness.backends.storage_errors`，避免当前 Octop 启动因 PyPI harness 1.0.0 缺模块而失败。
+- 技能包 `copy_policy=lock` 的界面文案改为「可复制（控制台只读）」：只约束 Dashboard / 工作区 HTTP 写接口，Agent 工具层仍依赖 harness（#770）。
+- 登录页在用户名框下提示可用用户名或邮箱（目录账号与本地账号同一表单）。
+
 ### 修复
+- 模型调用重试耗尽后不再抛出笼统的「多次调用失败」：把具体原因写成给模型的恢复提示（上下文超限、限流、流式中断等），聊天页展示对应说明；后台委派仍标记 failed，并把该原因交给源专家（委派失败标记仍依赖 harness 正确上报）。
+- Windows 残留盘符路径（如 ``D:\\octop-data\\data\\文章存稿\\…``）读写文件时不再把 jail 拒绝渲染成「多次调用模型失败」：能对上当前存储根的改写成虚拟路径继续读；对不上的把原因交给模型，页面显示存储根说明。
+- 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
+- Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
 - `octop update` 在无法访问 pypi.org 的环境（如国内直连被拒）下直接失败：版本目录查询改为按 `pypi.org` → `mirrors.cloud.tencent.com` 顺序回退，镜像提供与官方一致的版本目录 JSON，全部源失败才返回 None（Fixes #1315）。
 
 ## [1.0.2b5] - 2026-09-29
 
 ### 新增
-- Octop↔Octop 云端桥接，经隧道使用远程专家
+- Octop↔Octop 云端桥接，经隧道使用远程专家（聊天与工作区可写；工具/插件/渠道部分可写；技能包、全局 ACP、连接器、知识库仅本机）
 - 内置助手可回答产品与使用问题
 - 可配置 Ollama 本地模型下载目录
-- 账号可自定义侧边栏；角色字段改为存储模板 id
+- 账号可自定义侧边栏；角色改为存模板 id（账号侧栏与权限快照，不是运行时角色同步）
+
 
 ### 修复
 - 媒体预览 CSP、Langfuse 环境变量、IM 附件元数据

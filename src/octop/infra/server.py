@@ -526,7 +526,7 @@ class OctopServer:
         await user_mgr.boot()
         await proactive_scheduler.start_all()
 
-        from octop.api.deps import sign_token
+        from octop.infra.auth.tokens import sign_token
         from octop.infra.bridge.manager import BridgeManager, public_base_url_from_config
 
         services = self.services

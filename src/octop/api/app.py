@@ -138,7 +138,14 @@ def build_app(server: OctopServer) -> FastAPI:
     install_setup_lockdown(app, server)
 
     if server.app_runtime is not None and server.app_runtime.bridge_manager is not None:
-        server.app_runtime.bridge_manager.bind_asgi_app(app)
+        from octop.api.bridge_peer import prepare_peer_dashboard_turn
+        from octop.api.routers.browser.stream import run_browser_stream_session
+
+        server.app_runtime.bridge_manager.bind_asgi_app(
+            app,
+            peer_turn_runner=prepare_peer_dashboard_turn,
+            peer_browser_runner=run_browser_stream_session,
+        )
 
     from octop.infra.setup.tls.challenge import challenge_store
 
