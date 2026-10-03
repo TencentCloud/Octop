@@ -23,6 +23,7 @@
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
+- 知识库向量检索每轮对话对全部 chunk 做纯 Python 余弦计算并解码所有行的 JSON 元数据，大知识库单次检索可达秒级；现在只对 top-k 命中读取文本/元数据，并在 numpy 可用时（ONNX/OCR 依赖栈自带）用分批矩阵运算加速：2k/20k chunk 实测 207ms→48ms、2866ms→472ms，排序结果与原实现一致；同时显式关闭 SQLite 连接，避免 Windows 下文件句柄滞留。
 
 ## [1.0.2b5] - 2026-09-29
 
