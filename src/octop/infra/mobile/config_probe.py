@@ -9,6 +9,7 @@ from typing import Any
 
 from octop.config import OctopConfig, load_config
 from octop.infra.mobile.probe import MobileProbeResult, probe_host_capability
+from octop.infra.utils.json_file import write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,12 @@ def mobile_capabilities_dict(result: MobileProbeResult) -> dict[str, Any]:
 def persist_mobile_probe(
     config_path: Path, result: MobileProbeResult | None = None
 ) -> MobileProbeResult:
-    """Merge probe result into ``config.json`` without overwriting unrelated keys."""
+    """Merge probe result into ``config.json`` without overwriting unrelated keys.
+
+    The merge goes through ``write_json_atomic`` so an interrupted write cannot
+    leave a truncated ``config.json`` behind: the file also holds the database
+    credentials, and ``load_config`` refuses to start on malformed JSON.
+    """
     probe = result or probe_host_capability()
     data: dict[str, Any] = {}
     if config_path.exists():
@@ -37,8 +43,7 @@ def persist_mobile_probe(
         caps = {}
         data["capabilities"] = caps
     caps["mobile"] = mobile_capabilities_dict(probe)
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(config_path, data)
     logger.info(
         "mobile probe persisted: enabled=%s backend=%s",
         probe.enabled,
