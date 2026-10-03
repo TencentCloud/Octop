@@ -257,25 +257,31 @@ class KnowledgeRepo:
         rel = normalize_kb_path(path)
         if not rel:
             raise ValueError("invalid knowledge folder path")
-        ts = now_ts()
         with self._db.transaction() as conn:
-            for folder in ancestor_dirs(rel) + [rel]:
-                existing = self._get_document_by_path(conn, kb_id, folder)
-                if existing is not None:
-                    if not existing.is_dir:
-                        raise ValueError(f"path exists and is not a folder: {folder}")
-                    continue
-                conn.execute(
-                    "INSERT INTO knowledge_documents("
-                    "document_id, kb_id, path, filename, is_dir, content_type, byte_size, "
-                    "content_hash, status, error_message, chunk_count, created_at, updated_at"
-                    ") VALUES (?, ?, ?, ?, 1, ?, 0, '', 'ready', '', 0, ?, ?)",
-                    (new_ulid(), kb_id, folder, path_basename(folder), _DIR_CONTENT_TYPE, ts, ts),
-                )
+            self._insert_folder_chain(conn, kb_id, rel)
         row = self.get_document_by_path(kb_id, rel)
         if row is None:
             raise RuntimeError(f"knowledge folder insert failed: {rel}")
         return row
+
+    def _insert_folder_chain(self, conn: object, kb_id: str, rel: str) -> None:
+        """Insert ``rel`` and its ancestors on the caller's transaction: a folder
+        committed on its own would survive a later rollback of the document row.
+        """
+        ts = now_ts()
+        for folder in ancestor_dirs(rel) + [rel]:
+            existing = self._get_document_by_path(conn, kb_id, folder)
+            if existing is not None:
+                if not existing.is_dir:
+                    raise ValueError(f"path exists and is not a folder: {folder}")
+                continue
+            conn.execute(  # type: ignore[attr-defined]
+                "INSERT INTO knowledge_documents("
+                "document_id, kb_id, path, filename, is_dir, content_type, byte_size, "
+                "content_hash, status, error_message, chunk_count, created_at, updated_at"
+                ") VALUES (?, ?, ?, ?, 1, ?, 0, '', 'ready', '', 0, ?, ?)",
+                (new_ulid(), kb_id, folder, path_basename(folder), _DIR_CONTENT_TYPE, ts, ts),
+            )
 
     def create_document(
         self,
@@ -293,8 +299,6 @@ class KnowledgeRepo:
         if not rel:
             raise ValueError("invalid knowledge document path")
         name = path_basename(rel)
-        for folder in ancestor_dirs(rel):
-            self.ensure_folder(kb_id, folder)
         doc_id = new_ulid()
         ts = now_ts()
         # Treat both None (caller did not specify) and 0 (per-base "unlimited"
@@ -302,6 +306,8 @@ class KnowledgeRepo:
         # "at most 0 documents" and reject every create.
         enforce_limit = max_documents is not None and max_documents > 0
         with self._db.transaction() as conn:
+            for folder in ancestor_dirs(rel):
+                self._insert_folder_chain(conn, kb_id, folder)
             if enforce_limit:
                 cursor = conn.execute(
                     "UPDATE knowledge_bases SET doc_count = doc_count + 1, updated_at = ? "

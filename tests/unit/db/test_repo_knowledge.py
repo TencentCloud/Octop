@@ -348,6 +348,55 @@ def test_create_document_zero_max_means_unlimited(repo: KnowledgeRepo, owner_id:
     assert repo.get_base(kb.id).doc_count == 150  # type: ignore[union-attr]
 
 
+def test_create_document_rolls_back_folders_when_cap_rejects(
+    repo: KnowledgeRepo, owner_id: int
+) -> None:
+    """A rejected upload must not leave its ancestor folders in the tree.
+
+    ``create_document`` used to create the folder chain in its own committed
+    transaction before the document-cap check, so an over-cap upload answered
+    the user with an error while still adding ``reports`` and ``reports/2026``.
+    """
+    kb = repo.create_base(owner_user_id=owner_id, name="Capped", max_documents=1)
+    repo.create_document(
+        kb_id=kb.id,
+        filename="first.md",
+        content_type="text/markdown",
+        byte_size=1,
+        max_documents=1,
+    )
+
+    with pytest.raises(ValueError, match="at most 1"):
+        repo.create_document(
+            kb_id=kb.id,
+            filename="second.md",
+            path="reports/2026/second.md",
+            content_type="text/markdown",
+            byte_size=1,
+            max_documents=1,
+        )
+
+    assert {row.path for row in repo.list_documents(kb.id)} == {"first.md"}
+    assert repo.get_base(kb.id).doc_count == 1  # type: ignore[union-attr]
+
+    # The same nested path still auto-creates its folders once there is room.
+    repo.update_base(kb.id, max_documents=2)
+    repo.create_document(
+        kb_id=kb.id,
+        filename="second.md",
+        path="reports/2026/second.md",
+        content_type="text/markdown",
+        byte_size=1,
+        max_documents=2,
+    )
+    assert {row.path for row in repo.list_documents(kb.id)} == {
+        "first.md",
+        "reports",
+        "reports/2026",
+        "reports/2026/second.md",
+    }
+
+
 def _folder_with_doc(repo: KnowledgeRepo, kb_id: str, folder: str, doc: str) -> tuple[str, str]:
     folder_id = repo.ensure_folder(kb_id, folder).id
     doc_id = repo.create_document(
