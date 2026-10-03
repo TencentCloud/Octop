@@ -9,7 +9,7 @@ import sys
 import time
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Query, Request
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
@@ -33,6 +33,7 @@ from octop.infra.setup.self_update import (
     is_prerelease,
     parse_changelog_for_version,
     run_upgrade,
+    validate_upgrade_target,
 )
 from octop.infra.setup.service import (
     ServiceRuntime,
@@ -41,6 +42,7 @@ from octop.infra.setup.service import (
     is_service_installed,
     restart_service,
 )
+from octop.infra.utils.locale import DEFAULT_LOCALE, resolve_locale, resolve_request_locale
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,8 @@ class UpdateSettingsBody(BaseModel):
 class UpgradeBody(BaseModel):
     version: str | None = Field(
         default=None,
-        description="Pin this release. Defaults to the channel latest (stable when stable_only).",
+        description="Pin a newer release. Same/older versions are rejected before installation. "
+        "Defaults to the channel latest (stable when stable_only).",
     )
 
 
@@ -255,6 +258,7 @@ async def _upgrade_worker(
     *,
     allow_prerelease: bool = False,
     version: str | None = None,
+    locale: str = DEFAULT_LOCALE,
 ) -> None:
     await update_task(task_id, stage="downloading", percent=20)
     upgrade_task = asyncio.create_task(
@@ -263,6 +267,7 @@ async def _upgrade_worker(
             verbose=False,
             allow_prerelease=allow_prerelease,
             version=version,
+            locale=locale,
         )
     )
     percent = 20
@@ -313,8 +318,9 @@ async def _upgrade_worker(
     )
 
 
-@router.post("/upgrade")
+@router.post("/upgrade", summary="Upgrade Octop")
 async def trigger_upgrade(
+    request: Request,
     body: UpgradeBody = Body(default_factory=UpgradeBody),
     server: Any = Depends(get_server),
     _: Any = Depends(require_permission("update")),
@@ -333,10 +339,19 @@ async def trigger_upgrade(
         latest_stable=info.latest_stable if info else None,
         stable_only=stable_only,
     )
+    validate_upgrade_target(target, await asyncio.to_thread(get_local_version))
     allow_prerelease = bool(target and is_prerelease(target))
     task = await create_task()
     asyncio.create_task(
-        _upgrade_worker(task.task_id, allow_prerelease=allow_prerelease, version=target)
+        _upgrade_worker(
+            task.task_id,
+            allow_prerelease=allow_prerelease,
+            version=target,
+            locale=resolve_locale(
+                user_locale=getattr(_, "locale", None),
+                explicit=resolve_request_locale(request),
+            ),
+        )
     )
     return {"task_id": task.task_id, "status": "started"}
 
