@@ -665,6 +665,8 @@
     "timeout_network": "连接模型服务超时或网络异常。请检查网络后重试；若使用代理或自建服务，请确认其可达。",
     "provider_unavailable": "模型服务暂时不可用。请稍后重试，或切换其他模型。",
     "model_call_failed": "模型调用多次重试后仍失败。请稍后重试；若持续失败，请检查模型配置或更换模型。",
+    "model_call_failed_detail": "模型调用失败：{detail}",
+    "model_retry_prompt": "模型接口调用失败，不要假装任务已经完成。\n\n原因：{guidance}\n\n请用用户的语言说明情况并给出下一步建议。不要用同样的请求再试一次。\n\n技术细节：{detail}",
     "path_outside_root": "文件路径超出当前专家的存储根目录，无法读写。请改用存储根目录内的路径，或在专家设置中扩大存储根目录（Windows 上请显式指定盘符路径，例如 D:/octop-data）。"
   },
   "attachment": {

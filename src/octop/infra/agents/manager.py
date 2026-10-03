@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NoReturn, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from octop_harness import HarnessAgent, HarnessAgentConfig, HarnessAgentManager
 from octop_harness.registry import AgentEntry
@@ -93,10 +93,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _raise_model_retry_error(exc: Exception) -> NoReturn:
-    # The inbox catches RuntimeError, but not every provider's exception type.
-    # Preserve the cause and never turn an exhausted model call into AIMessage.
-    raise RuntimeError(f"{type(exc).__name__}: {exc}") from exc
+def _model_retry_on_failure(exc: Exception) -> str:
+    # Feed a specific, model-visible prompt instead of raising. Inbox jobs still
+    # mark failed when the reply carries MODEL_RETRY_FAILURE_MARK.
+    from octop.i18n.domains.stream import model_retry_failure_prompt
+
+    return model_retry_failure_prompt(exc, "en")
 
 
 # Bounded parallelism for awaited provider/active-model reload batches.
@@ -3302,7 +3304,7 @@ class AgentManager:
                         max_retries=applied.model_retry_max_retries,
                         initial_delay=applied.model_retry_initial_delay,
                         max_delay=applied.model_retry_max_delay,
-                        on_failure=_raise_model_retry_error,
+                        on_failure=_model_retry_on_failure,
                     ),
                     *(applied.middleware or []),
                 ],
