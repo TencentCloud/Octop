@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 from pathlib import Path
 
 from octop_harness.security.tool_guard.rule_guardian import (
@@ -12,6 +14,24 @@ from octop_harness.security.tool_guard.rule_guardian import (
 from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
+
+
+def _write_text_atomic(path: Path, content: str) -> None:
+    """Write *content* to *path* via a temp file + ``os.replace``.
+
+    The rules file is user-editable security configuration, and a truncated
+    document is the dangerous failure here: it still parses as YAML, so the
+    guard would load a shorter rule list instead of reporting an error. Staging
+    the write keeps the previous rules in place until the new ones are complete.
+    """
+    tmp = path.with_name(f"{path.name}.tmp")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        os.replace(tmp, path)
+    except BaseException:  # also covers KeyboardInterrupt / SystemExit
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        raise
 
 
 class ToolGuardRulesStore:
@@ -34,7 +54,7 @@ class ToolGuardRulesStore:
     def ensure_seeded(self) -> None:
         self.rules_dir.mkdir(parents=True, exist_ok=True)
         if not self.rules_file.is_file():
-            self.rules_file.write_text(read_bundled_rules_yaml(), encoding="utf-8")
+            _write_text_atomic(self.rules_file, read_bundled_rules_yaml())
             logger.info("Seeded tool guard rules at %s", self.rules_file)
 
     def read_text(self) -> str:
@@ -46,13 +66,13 @@ class ToolGuardRulesStore:
         if errors:
             return 0, errors
         self.ensure_seeded()
-        self.rules_file.write_text(content, encoding="utf-8")
+        _write_text_atomic(self.rules_file, content)
         return len(rules), []
 
     def reset_to_bundled(self) -> str:
         text = read_bundled_rules_yaml()
         self.ensure_seeded()
-        self.rules_file.write_text(text, encoding="utf-8")
+        _write_text_atomic(self.rules_file, text)
         return text
 
     def list_catalog(self) -> list[dict[str, object]]:
