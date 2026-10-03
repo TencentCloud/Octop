@@ -455,6 +455,10 @@ async def delete_agent(
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
+    # Tear down live IM channels first: deleting the agent cascades the channel
+    # rows away, but a still-registered bot keeps routing inbound messages to
+    # the removed agent and every turn fails (issue #801).
+    await server.app_runtime.gateway.unregister_agent_channels(agent_id)
     await server.app_runtime.agent_registry.delete(agent_id)
 
 
