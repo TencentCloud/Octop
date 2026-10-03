@@ -103,6 +103,7 @@ class ScreenCapture:
         if self._mss is not None:
             return self._mss
         for backend in _MSS_BACKENDS:
+            sct: Any = None
             try:
                 from mss import MSS
 
@@ -124,11 +125,14 @@ class ScreenCapture:
                     backend,
                     self._display,
                 )
-                return sct
+                return self._mss
             except Exception:
-                with contextlib.suppress(Exception):
-                    if self._mss is not None:
-                        self._mss.close()
+                # The probe owns ``sct`` until it is handed over to
+                # ``self._mss``, so a backend that fails the probe has to be
+                # closed here or it leaks its display connection.
+                if sct is not None and self._mss is not sct:
+                    with contextlib.suppress(Exception):
+                        sct.close()
                 self._mss = None
                 continue
         return None

@@ -110,3 +110,34 @@ def test_close_releases_mss() -> None:
     cap.close()
     mock_mss.close.assert_called_once()
     assert cap._mss is None
+
+
+def test_ensure_mss_closes_backend_when_probe_fails(monkeypatch) -> None:
+    _force_linux(monkeypatch)
+    cap = ScreenCapture(display=":0", monitor=0)
+    monkeypatch.setattr(cap, "_prefer_import_capture", lambda: False)
+
+    probes: list[object] = []
+
+    class FakeMSS:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.closed = False
+            self.monitors = [{"width": 10, "height": 10}, {"width": 20, "height": 20}]
+            probes.append(self)
+
+        def grab(self, monitor: object) -> object:
+            raise RuntimeError("grab failed")
+
+        def close(self) -> None:
+            self.closed = True
+
+    mss_module = types.ModuleType("mss")
+    mss_module.MSS = FakeMSS  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "mss", mss_module)
+
+    assert cap._ensure_mss() is None
+
+    # Each backend is probed in turn, and every probe that fails must release
+    # its display connection instead of leaking it.
+    assert len(probes) == 3
+    assert all(isinstance(probe, FakeMSS) and probe.closed for probe in probes)
