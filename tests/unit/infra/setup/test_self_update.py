@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -166,6 +168,38 @@ def test_build_upgrade_command_prerelease_flags(
     assert pip_cmd is not None
     assert "--pre" in pip_cmd
     assert "octop==0.9.34b1" in pip_cmd
+
+
+def test_portable_upgrade_prefers_bundled_uv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.setup import self_update
+
+    packages = tmp_path / "packages"
+    executable = packages / "bin" / ("uv.exe" if os.name == "nt" else "uv")
+    executable.parent.mkdir(parents=True)
+    executable.write_text("bundled updater")
+    executable.chmod(0o755)
+    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(packages))
+    monkeypatch.setattr(self_update.shutil, "which", lambda _: "global-uv")
+
+    assert self_update.detect_installer() == "uv"
+    command = build_upgrade_command("uv", sys.executable, version="1.0.2b5")
+    assert command is not None
+    assert command[0] == str(executable)
+    assert command[command.index("--target") + 1] == str(packages)
+    assert "--upgrade-package" in command
+
+
+def test_portable_without_bundled_uv_keeps_pip_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.setup import self_update
+
+    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path / "packages"))
+    monkeypatch.setattr(self_update.shutil, "which", lambda _: None)
+    monkeypatch.setattr(self_update, "_COMMON_UV_PATHS", [])
+    assert self_update.detect_installer() == "pip"
 
 
 def test_build_upgrade_command_pins_stable_without_pre(
@@ -408,7 +442,7 @@ def test_run_managed_upgrade_uses_ranked_indexes(
     monkeypatch.setattr(
         self_update,
         "_verify_upgrade",
-        lambda local, python, errs: UpgradeResult(
+        lambda local, python, errs, **kwargs: UpgradeResult(
             success=True,
             installed_version="1.0.1",
             mirror_errors=errs,
@@ -420,3 +454,234 @@ def test_run_managed_upgrade_uses_ranked_indexes(
     assert calls == ["fast.example", "pypi.org"]
     assert "slow.example: missing_version 1.0.1" in (result.mirror_errors or [])
     assert any("fast.example" in err for err in (result.mirror_errors or []))
+
+
+@pytest.mark.parametrize("has_metadata", [True, False])
+def test_get_version_in_dir_does_not_use_other_installs(tmp_path: Path, has_metadata: bool) -> None:
+    from octop.infra.setup import self_update
+
+    if has_metadata:
+        metadata = tmp_path / "octop-1.0.2b4.dist-info" / "METADATA"
+        metadata.parent.mkdir()
+        metadata.write_text("Name: octop\nVersion: 1.0.2b4\n", encoding="utf-8")
+
+    assert self_update.get_version_in_dir(sys.executable, str(tmp_path)) == (
+        "1.0.2b4" if has_metadata else None
+    )
+
+
+@pytest.mark.parametrize("target_env", ["OCTOP_GREEN_PACKAGES", "OCTOP_FPK_SITE_PACKAGES"])
+@pytest.mark.parametrize(
+    "versions",
+    [
+        ["1.0.2b4", "1.0.2b5"],
+        ["0.9.33b4", "0.9.33b5", "0.9.33b6"],
+        ["1.0.2b9", "1.0.2b10"],
+        ["1.0.2b5", "1.0.2b4"],
+    ],
+)
+def test_target_versions_select_newest_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_env: str, versions: list[str]
+) -> None:
+    from octop.infra.setup import self_update
+
+    monkeypatch.delenv("OCTOP_GREEN_PACKAGES", raising=False)
+    monkeypatch.delenv("OCTOP_FPK_SITE_PACKAGES", raising=False)
+    monkeypatch.setenv(target_env, str(tmp_path))
+    for version in versions:
+        _write_octop_metadata(tmp_path, version)
+    expected = max(versions, key=parse_version)
+    assert self_update.get_version_in_dir(sys.executable, str(tmp_path)) == expected
+    assert self_update.get_local_version() == expected
+
+
+def _write_octop_metadata(target: Path, version: str) -> None:
+    metadata = target / f"octop-{version}.dist-info" / "METADATA"
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text(f"Name: octop\nVersion: {version}\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("actual", "requested", "success"),
+    [
+        ("1.0.2b5", "1.0.2b5", True),
+        ("1.0.2-beta.5", "1.0.2b5", True),
+        ("1.0.2b4", "1.0.2b5", False),
+        ("1.0.2b6", "1.0.2b5", False),
+        (None, "1.0.2b5", False),
+        ("1.0.2b4", None, False),
+        ("1.0.2b3", None, False),
+        ("1.0.2b5", None, True),
+    ],
+)
+def test_verify_upgrade_requires_newer_requested_version(
+    monkeypatch: pytest.MonkeyPatch,
+    actual: str | None,
+    requested: str | None,
+    success: bool,
+) -> None:
+    from octop.infra.setup import self_update
+
+    monkeypatch.delenv("OCTOP_GREEN_PACKAGES", raising=False)
+    monkeypatch.setattr(self_update, "get_installed_version", lambda _: actual)
+    monkeypatch.setattr(self_update.time, "sleep", lambda _: None)
+    result = self_update._verify_upgrade(
+        "1.0.2b4", sys.executable, ["mirror: timeout"], version=requested, locale="en"
+    )
+    assert result.success is success
+    assert result.installed_version == actual
+    assert result.mirror_errors == ["mirror: timeout"]
+    assert bool(result.error) is not success
+
+
+@pytest.mark.parametrize("locale", ["en", "zh"])
+def test_verify_green_upgrade_reads_only_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, locale: str
+) -> None:
+    from octop.i18n import tr
+    from octop.infra.setup import self_update
+
+    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.setattr(self_update.time, "sleep", lambda _: None)
+
+    def unexpected_global_read(_: str) -> str:
+        pytest.fail("portable verification must not read the interpreter's other installs")
+
+    monkeypatch.setattr(self_update, "get_installed_version", unexpected_global_read)
+    missing = self_update._verify_upgrade(
+        "1.0.2b4", sys.executable, [], version="1.0.2b5", locale=locale
+    )
+    assert not missing.success
+    assert missing.error == tr("update.version_unavailable", locale)
+
+    _write_octop_metadata(tmp_path, "1.0.2b4")
+    unchanged = self_update._verify_upgrade(
+        "1.0.2b4", sys.executable, [], version="1.0.2b5", locale=locale
+    )
+    assert not unchanged.success
+    assert unchanged.installed_version == "1.0.2b4"
+
+    metadata = tmp_path / "octop-1.0.2b5.dist-info" / "METADATA"
+    metadata.parent.mkdir()
+    metadata.write_text("Name: octop\nVersion: 1.0.2b5\n", encoding="utf-8")
+    installed = self_update._verify_upgrade("1.0.2b4", sys.executable, [], version="1.0.2b5")
+    assert installed.success
+    assert installed.installed_version == "1.0.2b5"
+
+
+def test_pip_target_upgrade_with_stale_metadata_succeeds_without_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.setup import self_update
+
+    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.delenv("OCTOP_FPK_SITE_PACKAGES", raising=False)
+    _write_octop_metadata(tmp_path, "1.0.2b4")
+    monkeypatch.setattr(self_update, "detect_installer", lambda: "pip")
+    monkeypatch.setattr(self_update, "has_pip", lambda _: True)
+    monkeypatch.setattr(self_update, "stash_console_scripts", lambda _: [])
+    monkeypatch.setattr(
+        self_update,
+        "rank_install_indexes",
+        lambda _: ([("https://one.example", "one"), ("https://two.example", "two")], []),
+    )
+    calls: list[str] = []
+
+    def install(cmd: list[str], label: str, **kwargs: object) -> tuple[int, str]:
+        assert cmd[:4] == [sys.executable, "-m", "pip", "install"]
+        assert cmd[cmd.index("--target") + 1] == str(tmp_path)
+        calls.append(label)
+        _write_octop_metadata(tmp_path, "1.0.2b5")
+        return 0, ""
+
+    monkeypatch.setattr(self_update, "_run_install_cmd", install)
+    result = run_upgrade(version="1.0.2b5", allow_prerelease=True)
+    assert result.success
+    assert result.installed_version == "1.0.2b5"
+    assert calls == ["one"]
+    assert self_update.get_local_version() == "1.0.2b5"
+
+
+@pytest.mark.parametrize("locale", ["en", "zh"])
+@pytest.mark.parametrize("actual", [None, "1.0.2b4", "1.0.2b3", "1.0.2b5", "1.0.2b6"])
+def test_fpk_verification_uses_target_and_rejects_missing_or_wrong_versions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, locale: str, actual: str | None
+) -> None:
+    from octop.i18n import tr
+    from octop.infra.setup import self_update
+
+    monkeypatch.setattr(self_update.time, "sleep", lambda _: None)
+    if actual:
+        _write_octop_metadata(tmp_path, actual)
+    if actual == "1.0.2b5":
+        _write_octop_metadata(tmp_path, "1.0.2b4")
+    result = self_update._verify_fpk_upgrade(
+        "1.0.2b4", str(tmp_path), sys.executable, [], version="1.0.2b5", locale=locale
+    )
+    assert result.success is (actual == "1.0.2b5")
+    assert result.installed_version == actual
+    if result.success:
+        assert result.message == tr("update.fpk_completed", locale, version=actual)
+    elif actual is None:
+        assert result.error == tr("update.version_unavailable", locale)
+    else:
+        assert result.error == tr(
+            "update.version_mismatch", locale, actual=actual, expected="1.0.2b5"
+        )
+
+
+@pytest.mark.parametrize("locale", ["en", "zh"])
+@pytest.mark.parametrize("target", ["1.0.2b4", "1.0.2b3"])
+@pytest.mark.parametrize("fpk", [True, False])
+def test_run_upgrade_rejects_non_newer_target_before_changes(
+    monkeypatch: pytest.MonkeyPatch, locale: str, target: str, fpk: bool
+) -> None:
+    from octop.i18n import tr
+    from octop.infra.setup import self_update
+
+    monkeypatch.setenv("OCTOP_FPK_SITE_PACKAGES", "fpk-target" if fpk else "")
+    monkeypatch.setattr(self_update, "get_local_version", lambda: "1.0.2b4")
+
+    def unexpected(*args: object, **kwargs: object) -> None:
+        pytest.fail("non-newer target must be rejected before probing or modifying files")
+
+    monkeypatch.setattr(self_update, "stash_console_scripts", unexpected)
+    monkeypatch.setattr(self_update, "rank_install_indexes", unexpected)
+    monkeypatch.setattr(self_update, "_run_install_cmd", unexpected)
+    result = run_upgrade(version=target, locale=locale)
+    assert not result.success
+    assert result.error == tr(
+        "errors.UPDATE_TARGET_NOT_NEWER", locale, target=target, current="1.0.2b4"
+    )
+
+
+def test_run_managed_upgrade_retries_after_failed_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.setup import self_update
+
+    monkeypatch.delenv("OCTOP_GREEN_PACKAGES", raising=False)
+    monkeypatch.setattr(self_update, "detect_installer", lambda: "uv")
+    monkeypatch.setattr(self_update, "get_local_version", lambda: "1.0.2b4")
+    monkeypatch.setattr(self_update.time, "sleep", lambda _: None)
+    monkeypatch.setattr(
+        self_update,
+        "rank_install_indexes",
+        lambda _: ([("https://one.example", "one"), ("https://two.example", "two")], []),
+    )
+    installed = "1.0.2b4"
+    calls: list[str] = []
+
+    def install(cmd: list[str], label: str, **kwargs: object) -> tuple[int, str]:
+        nonlocal installed
+        calls.append(label)
+        if label == "two":
+            installed = "1.0.2b5"
+        return 0, ""
+
+    monkeypatch.setattr(self_update, "_run_install_cmd", install)
+    monkeypatch.setattr(self_update, "get_installed_version", lambda _: installed)
+    result = self_update._run_managed_upgrade(version="1.0.2b5", locale="en")
+    assert result.success
+    assert calls == ["one", "two"]
+    assert any("one:" in error and "1.0.2b4" in error for error in result.mirror_errors)
