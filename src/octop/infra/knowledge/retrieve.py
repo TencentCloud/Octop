@@ -109,6 +109,10 @@ def _format_context(
     ranked: Sequence[tuple[Any, Hit, Any]], *, char_budget: int, locale: str
 ) -> str:
     sections: list[str] = []
+    # Cite only what actually reaches the body: the dashboard parses the marker, so listing a
+    # document whose text was cut by the budget (or skipped as empty) would point users at a
+    # source the model never saw.
+    included: list[tuple[Any, Hit, Any]] = []
     remaining = char_budget
     for base, hit, document in ranked:
         citation = tr(
@@ -125,8 +129,9 @@ def _format_context(
             continue
         section = f"{citation}{text}"
         sections.append(section)
+        included.append((base, hit, document))
         remaining -= len(section)
     if not sections:
         return ""
     body = tr("knowledge.retrieval.preamble", locale) + "\n\n" + "\n\n".join(sections)
-    return append_citations_marker(body, citations_from_ranked(ranked))
+    return append_citations_marker(body, citations_from_ranked(included))
