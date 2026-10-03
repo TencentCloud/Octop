@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- 邮箱连接器 `search_emails` 的 `limit` 现在钳制到 `1-50`：此前它直接进入 `uids[-limit:]` 切片，模型传负数时语义整个翻转——`limit=-5` 会越过「最多 5 封」返回 7 封并多发 7 次 IMAP FETCH，`limit=-100` 更是在邮箱非空时返回空列表，让助手误报「没有邮件」；工具 schema 也同步声明 `minimum`/`maximum`，与 `tencent_ima`／`tencent_news`／`yuandian`／`weknora` 既有的一致做法对齐
 
 ## [1.0.2b5] - 2026-09-29
 
