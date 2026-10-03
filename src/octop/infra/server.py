@@ -619,6 +619,9 @@ class OctopServer:
                 await rt.user_manager.shutdown_all()
                 if rt.history_archive is not None:
                     rt.history_archive.store.close()
+            from octop.infra.backend.browse import dispose_all_browse_sessions
+
+            dispose_all_browse_sessions()
         finally:
             if self.services is not None:
                 self.services.db.close()
