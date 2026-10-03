@@ -15,6 +15,7 @@ dependencies = [
     "uvicorn[standard]>=0.27",
     "pydantic>=2.6,<2.14",
     "langchain-core>=1.4.8",
+    "deepagents>=0.7.16,<0.8",
     "click>=8.1",
     "rich>=13.7",
     "questionary>=2.0",
