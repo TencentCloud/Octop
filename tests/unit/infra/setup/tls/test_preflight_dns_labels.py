@@ -38,11 +38,14 @@ def _run(domain: str):
 
 
 def test_malformed_label_does_not_escape_preflight():
-    # Sanity check on the premise: these shapes raise UnicodeEncodeError, which is
-    # neither an OSError nor a gaierror, so ``except socket.gaierror`` cannot catch it.
-    with pytest.raises(UnicodeEncodeError):
+    # Sanity check on the premise: these shapes raise a UnicodeError, which is
+    # neither an OSError nor a gaierror, so ``except socket.gaierror`` cannot
+    # catch it. The concrete subclass differs across CPython versions and
+    # platforms (``UnicodeEncodeError`` from ``ToASCII``, a bare ``UnicodeError``
+    # from ``encodings.idna``), so assert on the common base class.
+    with pytest.raises(UnicodeError):
         socket.getaddrinfo("a" * 64 + ".example.com", 80, type=socket.SOCK_STREAM)
-    assert not issubclass(UnicodeEncodeError, OSError)
+    assert not issubclass(UnicodeError, OSError)
 
     for domain in _MALFORMED_LABELS:
         result = _run(domain)  # must not raise
