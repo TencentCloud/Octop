@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- 只持有内置 `users` 权限的代理管理员不再能操作管理员账号：`PATCH /api/users/{id}`、`POST /api/users/{id}/reset-password`、`DELETE /api/users/{id}` 与 `/api/users/batch` 此前只按 id 取目标，可用来改掉拥有者密码再登录、或删除唯一管理员；现按 `_blocks_admin_target` 统一拒绝非管理员对 `admin` 行的写入（授予 `admin` 角色的那半边已由 `_require_admin_to_grant_admin` 在上游落地），`users` 权限管理普通用户（改名、停用、重置密码、分配自己已有的权限）不受影响
 
 ## [1.0.2b5] - 2026-09-29
 
