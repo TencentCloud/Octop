@@ -127,7 +127,7 @@ def _resolve_timezone(timezone_name: str) -> ZoneInfo:
     """Resolve timezone with UTC fallback."""
     try:
         return ZoneInfo(timezone_name)
-    except ZoneInfoNotFoundError:
+    except (ZoneInfoNotFoundError, ValueError):
         return ZoneInfo(_UTC_TZ_NAME)
 
 
@@ -392,5 +392,5 @@ class ProactiveCareScheduler:
         try:
             ZoneInfo(timezone_name)
             return timezone_name
-        except ZoneInfoNotFoundError:
+        except (ZoneInfoNotFoundError, ValueError):
             return self._default_timezone

@@ -29,6 +29,10 @@ def test_format_unix_datetime_uses_server_timezone() -> None:
     assert format_unix_datetime(1_700_000_000, "Asia/Shanghai") == "2023-11-15 06:13:20"
     assert format_unix_datetime(1_700_000_000, "UTC") == "2023-11-14 22:13:20"
     assert format_unix_datetime(1_700_000_000, "not-a-zone") == "2023-11-14 22:13:20"
+    # ``zoneinfo`` raises ValueError, not ZoneInfoNotFoundError, for keys it refuses
+    # to resolve at all — ``/status`` must still fall back instead of erroring out.
+    assert format_unix_datetime(1_700_000_000, "/etc/localtime") == "2023-11-14 22:13:20"
+    assert format_unix_datetime(1_700_000_000, "./Asia/Shanghai") == "2023-11-14 22:13:20"
 
 
 def _agent_manager(tmp_path: Path, db: SqlitePool) -> AgentManager:
