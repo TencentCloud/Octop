@@ -713,6 +713,9 @@ class PluginManager:
                 ) from exc
 
     def uninstall(self, plugin_id: str) -> None:
+        cleaned = plugin_id.strip()
+        if not cleaned or ".." in cleaned or "/" in cleaned or "\\" in cleaned:
+            raise OctopError(ErrorCode.NOT_FOUND, f"plugin {plugin_id!r} not found")
         unload_plugin(plugin_id)
         self._tool_catalog.pop(plugin_id, None)
         self._skill_catalog.pop(plugin_id, None)
