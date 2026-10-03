@@ -363,7 +363,7 @@ octop provider list
 
 # IM 通道
 octop channel list
-octop channel install
+octop channel config
 
 # Skill（按 Agent）
 octop skills list --agent main

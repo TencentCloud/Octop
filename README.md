@@ -361,7 +361,7 @@ octop provider list
 
 # IM channels
 octop channel list
-octop channel install
+octop channel config
 
 # Skills (per agent)
 octop skills list --agent main
