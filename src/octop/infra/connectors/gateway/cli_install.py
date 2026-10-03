@@ -32,6 +32,13 @@ class CliInstallSpec:
 
 
 _SPECS: dict[str, CliInstallSpec] = {
+    "agently-cli": CliInstallSpec(
+        kind="agently-cli",
+        binary="agently-cli",
+        npm_package="@tencent-qqmail/agently-cli",
+        doc_url="https://github.com/Tencent/AgentlyMail",
+        guide_url="https://help.agent.qq.com/detail/0/1092",
+    ),
     "feishu-cli": CliInstallSpec(
         kind="feishu-cli",
         binary="lark-cli",
