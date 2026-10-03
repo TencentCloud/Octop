@@ -70,8 +70,10 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
   "default_timezone": "Asia/Shanghai",
   "enable_dashboard": true,
   "enable_api_docs": false,
+  "history_v2_enabled": false,
   "require_setup_password": true,
   "max_upload_mb": 100,
+  "browser_idle_timeout_minutes": 30,
   "database": {
     "driver": "sqlite",
     "sqlite_path": "octop.db",
@@ -92,6 +94,25 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
     "expires_at": "",
     "acme_staging": false,
     "http_port": 80
+  },
+  "backup": {
+    "auto_enabled": false,
+    "schedule": "cron:0 4 * * *",
+    "retention_count": 7,
+    "include_config": true,
+    "include_workspaces": true,
+    "include_skill_packages": true,
+    "include_plugins": true,
+    "include_knowledge": true,
+    "include_chats": false
+  },
+  "capabilities": {
+    "mobile": {
+      "enabled": false,
+      "backend": "none",
+      "probed_at": "",
+      "reason": ""
+    }
   }
 }
 ```
@@ -154,6 +175,17 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_ENABLE_API_DOCS` | bool | `false` | Expose Scalar API docs at `/api/docs` |
 | `OCTOP_REQUIRE_SETUP_PASSWORD` | bool | `true` | Require wizard password during initial setup |
 | `OCTOP_MAX_UPLOAD_MB` | int | `100` | Max upload size in MiB for chat attachments, IM inbound, and knowledge documents (1–1024) |
+| `OCTOP_BROWSER_IDLE_TIMEOUT_MINUTES` | int | `30` | Idle timeout applied to octop-browser sessions at boot (`0` disables the idle cutoff) |
+| `OCTOP_BACKUP_AUTO_ENABLED` | bool | `false` | Enable automatic system backups |
+| `OCTOP_BACKUP_SCHEDULE` | string | `cron:0 4 * * *` | Backup schedule expression |
+| `OCTOP_BACKUP_RETENTION_COUNT` | int | `7` | Number of backup archives to keep (`< 1` falls back to the default) |
+| `OCTOP_BACKUP_INCLUDE_CONFIG` | bool | `true` | Include `config.json` and secrets layout in backup archives |
+| `OCTOP_BACKUP_INCLUDE_WORKSPACES` | bool | `true` | Include agent workspaces in backup archives |
+| `OCTOP_BACKUP_INCLUDE_SKILL_PACKAGES` | bool | `true` | Include skill packages in backup archives |
+| `OCTOP_BACKUP_INCLUDE_PLUGINS` | bool | `true` | Include installed plugins in backup archives |
+| `OCTOP_BACKUP_INCLUDE_KNOWLEDGE` | bool | `true` | Include knowledge-base documents in backup archives |
+| `OCTOP_BACKUP_INCLUDE_CHATS` | bool | `false` | Include chat history in backup archives |
+| `OCTOP_ENABLE_MOBILE` | bool | probe result | Force the Remote Android host capability on/off at boot, overriding the persisted `capabilities.mobile` snapshot |
 | `OCTOP_DATABASE_URL` | string | empty | Full DSN — overrides the `OCTOP_DATABASE_*` fields below |
 | `OCTOP_DATABASE_DRIVER` | `sqlite` \| `postgresql` | `sqlite` | Storage backend |
 | `OCTOP_DATABASE_SQLITE_PATH` | path | `octop.db` | SQLite file path (relative to `OCTOP_HOME` unless absolute) |
