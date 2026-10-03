@@ -25,6 +25,7 @@ from octop.api.routers.chat.turn import (
 )
 from octop.infra.gateway.media.attachment_hints import (
     VISION_MAX_BYTES,
+    _download_image_url,
     format_attachment_path_hint,
     hints_from_content_parts,
     inbound_attachments_from_parts,
@@ -40,6 +41,7 @@ from octop.infra.gateway.process.processor import GlobalProcessor
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.gateway.ws import WS_CHANNEL_ID
+from octop.infra.skills.skillhub_common import MAX_HTTP_BYTES
 
 
 def _workspace(root: str) -> BackendWorkspace:
@@ -427,6 +429,81 @@ async def test_weixin_pdf_history_is_downloadable_attachment() -> None:
             "workspace_path": "inbound/weixin/01M3KH/1790583376_笔试准考证.pdf",
         }
     ]
+
+
+class _FakeContent:
+    """aiohttp StreamReader double: chunked iteration + tracked reads."""
+
+    def __init__(self, payload: bytes) -> None:
+        self._payload = payload
+        self.read_calls = 0
+
+    async def iter_chunked(self, n: int):
+        for i in range(0, len(self._payload), n):
+            yield self._payload[i : i + n]
+
+    async def read(self, n: int = -1) -> bytes:
+        self.read_calls += 1
+        if n == -1:
+            data, self._payload = self._payload, b""
+            return data
+        data, self._payload = self._payload[:n], self._payload[n:]
+        return data
+
+
+def _fake_resp(payload: bytes, content_length: str | None = None) -> MagicMock:
+    resp = MagicMock()
+    resp.status = 200
+    resp.content_type = "image/png"
+    resp.headers = {
+        "Content-Length": str(len(payload)) if content_length is None else content_length
+    }
+    content = _FakeContent(payload)
+    resp.content = content
+    resp.read = content.read
+    return resp
+
+
+def _fake_aiohttp_session(resp: MagicMock) -> MagicMock:
+    body_cm = MagicMock()
+    body_cm.__aenter__ = AsyncMock(return_value=resp)
+    body_cm.__aexit__ = AsyncMock(return_value=False)
+    session = MagicMock()
+    session.get = MagicMock(return_value=body_cm)
+    session_cm = MagicMock()
+    session_cm.__aenter__ = AsyncMock(return_value=session)
+    session_cm.__aexit__ = AsyncMock(return_value=False)
+    return session_cm
+
+
+@pytest.mark.asyncio
+async def test_download_image_url_caps_response_size() -> None:
+    """A body larger than MAX_HTTP_BYTES is rejected instead of read whole."""
+    payload = b"x" * (MAX_HTTP_BYTES + 1)
+    resp = _fake_resp(payload)
+    with patch("aiohttp.ClientSession", return_value=_fake_aiohttp_session(resp)):
+        result = await _download_image_url("https://example.com/big.png")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_download_image_url_rejects_oversized_content_length_without_reading() -> None:
+    """An oversized declared Content-Length short-circuits before the body."""
+    resp = _fake_resp(b"tiny", content_length=str(MAX_HTTP_BYTES + 1))
+    with patch("aiohttp.ClientSession", return_value=_fake_aiohttp_session(resp)):
+        result = await _download_image_url("https://example.com/big.png")
+    assert result is None
+    assert resp.content.read_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_download_image_url_returns_small_image() -> None:
+    """Small images still download and keep their content type."""
+    payload = b"png-bytes"
+    resp = _fake_resp(payload)
+    with patch("aiohttp.ClientSession", return_value=_fake_aiohttp_session(resp)):
+        result = await _download_image_url("https://example.com/tiny.png")
+    assert result == (payload, "image/png")
 
 
 def test_content_blocks_need_vision_detects_image_url() -> None:
