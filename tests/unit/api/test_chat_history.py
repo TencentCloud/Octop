@@ -12,6 +12,7 @@ import pytest
 from langchain_core.messages import HumanMessage
 
 from octop.api.routers.chat import history as history_mod
+from octop.api.routers.chat.models import RenameThreadBody
 from octop.api.routers.chat.serialize import (
     HISTORY_DEFAULT_LIMIT,
     HISTORY_MAX_LIMIT,
@@ -218,11 +219,53 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
 
     user = MagicMock(id=1, is_admin=False)
 
-    out = await history_mod.list_threads("agt_1", limit=10, user=user, server=server)
+    out = await history_mod.list_threads("agt_1", limit=10, archived=True, user=user, server=server)
 
     assert len(out) == 2
     assert out[0]["has_messages"] is False
     assert out[1]["has_messages"] is True
+    thread_registry.list_threads.assert_called_once_with(
+        agent_id="agt_1", user_id=1, limit=10, archived=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_patch_thread_archives_without_deleting_history() -> None:
+    current = MagicMock(
+        agent_id="agt_1",
+        user_id=1,
+        title="keep me",
+        pinned=False,
+        archived=False,
+    )
+    updated = MagicMock(
+        title="keep me",
+        pinned=False,
+        archived=True,
+        model_ref=None,
+        reasoning_mode=None,
+        reasoning_effort=None,
+        conversation_mode="craft",
+        pending_plan_path=None,
+        hitl_policy=None,
+    )
+    registry = MagicMock()
+    registry.get_thread.side_effect = [current, updated]
+    server = MagicMock()
+    server.app_runtime.agent_registry.get_row.return_value = MagicMock(user_id=1)
+    server.app_runtime.gateway.thread_registry = registry
+
+    out = await history_mod.patch_thread(
+        "agt_1",
+        "thr_1",
+        RenameThreadBody(archived=True),
+        user=MagicMock(id=1, is_admin=False),
+        server=server,
+    )
+
+    registry.set_archived.assert_called_once_with("thr_1", True)
+    registry.delete_thread.assert_not_called()
+    assert out["archived"] is True
 
 
 @pytest.mark.asyncio

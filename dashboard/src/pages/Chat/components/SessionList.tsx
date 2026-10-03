@@ -12,6 +12,8 @@ import {
   MessageSquarePlus,
   Search,
   GitFork,
+  Archive,
+  ArchiveRestore,
   Eye,
   EyeOff,
 } from "lucide-react";
@@ -48,6 +50,7 @@ interface SessionItemProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
+  onArchive: (id: string, archived: boolean) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
 }
@@ -60,6 +63,7 @@ const SessionItem = memo(function SessionItem({
   onRename,
   onPin,
   onFork,
+  onArchive,
   forkDisabled,
   forkDisabledHint,
 }: SessionItemProps) {
@@ -124,6 +128,21 @@ const SessionItem = memo(function SessionItem({
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
         setIsEditing(true);
+      },
+    },
+    {
+      key: "archive",
+      label: session.archived
+        ? t("chat.restoreConversation")
+        : t("chat.archiveConversation"),
+      icon: session.archived ? (
+        <ArchiveRestore size={14} />
+      ) : (
+        <Archive size={14} />
+      ),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        onArchive(session.id, !session.archived);
       },
     },
     {
@@ -227,6 +246,8 @@ interface AgentCardProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
+  onArchive: (id: string, archived: boolean) => void;
+  showArchived: boolean;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
   onHide?: () => void;
@@ -247,6 +268,8 @@ function ActiveAgentCard({
   onRename,
   onPin,
   onFork,
+  onArchive,
+  showArchived,
   activeForkDisabled,
   activeForkDisabledHint,
   onHide,
@@ -351,7 +374,9 @@ function ActiveAgentCard({
           </div>
         ) : sessions.length === 0 ? (
           <div className={styles.agentCardSessionsEmpty}>
-            {t("chat.noSessionsYet", "直接发消息即可开始对话")}
+            {showArchived
+              ? t("chat.noArchivedConversations")
+              : t("chat.noSessionsYet", "直接发消息即可开始对话")}
           </div>
         ) : filteredSessions.length === 0 ? (
           <div className={styles.agentCardSessionsEmpty}>
@@ -369,6 +394,7 @@ function ActiveAgentCard({
                 onRename={onRename}
                 onPin={onPin}
                 onFork={onFork}
+                onArchive={onArchive}
                 forkDisabled={
                   activeId === s.id ? activeForkDisabled : undefined
                 }
@@ -507,6 +533,8 @@ interface SessionListProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
+  onArchive: (id: string, archived: boolean) => void;
+  showArchived: boolean;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
 }
@@ -527,6 +555,8 @@ export default function SessionList({
   onRename,
   onPin,
   onFork,
+  onArchive,
+  showArchived,
   activeForkDisabled,
   activeForkDisabledHint,
 }: SessionListProps) {
@@ -632,6 +662,8 @@ export default function SessionList({
                       onRename={onRename}
                       onPin={onPin}
                       onFork={onFork}
+                      onArchive={onArchive}
+                      showArchived={showArchived}
                       activeForkDisabled={activeForkDisabled}
                       activeForkDisabledHint={activeForkDisabledHint}
                       onHide={

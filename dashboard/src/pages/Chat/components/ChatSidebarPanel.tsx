@@ -32,7 +32,10 @@ interface ChatSidebarPanelProps {
   onDeleteSession: (id: string) => void;
   onRenameSession: (id: string, name: string) => void;
   onPinSession: (id: string, pinned: boolean) => void;
+  onArchiveSession: (id: string, archived: boolean) => void;
   onForkSession: (id: string, agentId?: string | null) => void;
+  showArchived: boolean;
+  onShowArchivedChange: (show: boolean) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   onSidebarOpenChange: (open: boolean) => void;
@@ -66,7 +69,10 @@ export default function ChatSidebarPanel({
   onDeleteSession,
   onRenameSession,
   onPinSession,
+  onArchiveSession,
   onForkSession,
+  showArchived,
+  onShowArchivedChange,
   forkDisabled,
   forkDisabledHint,
   onSidebarOpenChange,
@@ -98,7 +104,9 @@ export default function ChatSidebarPanel({
       onDeleteActive={onDeleteSession}
       onRenameActive={onRenameSession}
       onPinActive={onPinSession}
+      onArchiveActive={onArchiveSession}
       onFork={onForkSession}
+      showArchived={showArchived}
       activeForkDisabled={forkDisabled}
       activeForkDisabledHint={forkDisabledHint}
     />
@@ -118,15 +126,37 @@ export default function ChatSidebarPanel({
       onDelete={onDeleteSession}
       onRename={onRenameSession}
       onPin={onPinSession}
+      onArchive={onArchiveSession}
+      showArchived={showArchived}
       onFork={onForkSession}
       activeForkDisabled={forkDisabled}
       activeForkDisabledHint={forkDisabledHint}
     />
   );
 
+  const archiveFilter = resolvedAgentId ? (
+    <div className={styles.sessionArchiveFilter}>
+      <button
+        type="button"
+        className={!showArchived ? styles.sessionArchiveFilterActive : ""}
+        onClick={() => onShowArchivedChange(false)}
+      >
+        {t("chat.currentConversations")}
+      </button>
+      <button
+        type="button"
+        className={showArchived ? styles.sessionArchiveFilterActive : ""}
+        onClick={() => onShowArchivedChange(true)}
+      >
+        {t("chat.archivedConversations")}
+      </button>
+    </div>
+  ) : null;
+
   if (navEmbedded) {
     return (
       <div className={styles.sidebarNavEmbedded} data-testid="chat-nav-records">
+        {archiveFilter}
         {sessionList}
       </div>
     );
@@ -156,6 +186,7 @@ export default function ChatSidebarPanel({
             : undefined
         }
       >
+        {archiveFilter}
         {sessionList}
         {!isMobile && sidebarOpen && (
           <div
