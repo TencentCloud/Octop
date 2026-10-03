@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	pep440 "github.com/aquasecurity/go-pep440-version"
 )
 
 func launchReady(root string) bool {
@@ -216,6 +218,12 @@ func metadataVersion(text string) string {
 }
 
 func compareVersions(left, right string) int {
+	leftVersion, leftErr := pep440.Parse(left)
+	rightVersion, rightErr := pep440.Parse(right)
+	if leftErr == nil && rightErr == nil {
+		return leftVersion.Compare(rightVersion)
+	}
+	// Preserve the numeric fallback for legacy non-PEP 440 version strings.
 	leftParts := strings.Split(left, ".")
 	rightParts := strings.Split(right, ".")
 	count := max(len(leftParts), len(rightParts))
