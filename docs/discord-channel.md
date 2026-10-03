@@ -4,7 +4,7 @@
 
 ## 1. 安装依赖并启动
 
-Discord 适配器已随 `octop-gateway 0.9.9` 发布。Octop 要求 `octop-gateway>=0.9.9`，可直接使用发布包，无需克隆相邻网关仓库：
+Octop 的 Discord 通道使用已发布的网关依赖，当前项目要求 `octop-gateway>=1.0.0`，可直接使用发布包，无需克隆相邻网关仓库：
 
 ```sh
 cd Octop
