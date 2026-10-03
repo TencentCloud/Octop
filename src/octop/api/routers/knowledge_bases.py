@@ -370,7 +370,7 @@ async def ocr_options(
                 provider_name=provider.name,
                 provider_api_key=provider.api_key,
             )
-            and is_vision_model(model)
+            and is_vision_model(model, provider_base_url=provider.base_url)
         ]
         if models:
             remote.append(

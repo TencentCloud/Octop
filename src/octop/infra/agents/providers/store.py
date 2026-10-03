@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING, Any
 
 from octop_harness.config import ModelConfig, ProviderConfig
 
-from octop.infra.agents.providers.model_flags import is_chat_eligible_model, is_vision_model
+from octop.infra.agents.providers.model_flags import (
+    infer_model_input_modalities,
+    is_chat_eligible_model,
+    is_vision_model,
+)
 from octop.infra.agents.providers.opencode_session import session_header_for_provider
 from octop.infra.agents.providers.reasoning import reasoning_capability
 
@@ -25,31 +29,8 @@ KIND_TO_PROTOCOL: dict[str, str] = {
 }
 
 
-def _infer_model_input_modalities(
-    model_id: str,
-    explicit: list[str] | None = None,
-) -> list[str]:
-    """Merge stored ``input`` with id-based heuristics (vision/audio)."""
-    lower = model_id.lower()
-    inputs: set[str] = set(explicit or ["text"])
-    inputs.add("text")
-    if (
-        "-vl" in lower
-        or "vision" in lower
-        or "-image" in lower
-        or "gpt-4o" in lower
-        or "gpt-4.1" in lower
-        or "claude-3" in lower
-        or "gemini" in lower
-    ):
-        inputs.add("image")
-    if "audio" in lower or "whisper" in lower:
-        inputs.add("audio")
-    return sorted(inputs)
-
-
-def _model_dict_supports_image(model: dict[str, Any]) -> bool:
-    return is_vision_model(model)
+def _model_dict_supports_image(model: dict[str, Any], *, provider_base_url: str | None) -> bool:
+    return is_vision_model(model, provider_base_url=provider_base_url)
 
 
 def enabled_model_refs(
@@ -134,7 +115,7 @@ class ProviderStore:
             protocol = KIND_TO_PROTOCOL.get(row.kind, "openai")
             raw_models = json.loads(row.models_json) if getattr(row, "models_json", None) else []
             models = [
-                self._model_config_from_row(m)
+                self._model_config_from_row(m, provider_base_url=row.base_url)
                 for m in raw_models
                 if is_chat_eligible_model(m, provider_name=row.name, provider_api_key=row.api_key)
             ]
@@ -163,12 +144,14 @@ class ProviderStore:
         return out
 
     @staticmethod
-    def _model_config_from_row(raw: dict[str, object]) -> ModelConfig:
+    def _model_config_from_row(raw: dict[str, object], *, provider_base_url: str) -> ModelConfig:
         data = dict(raw)
         model_id = str(data.get("id") or "")
         explicit = data.get("input")
         inputs = list(explicit) if isinstance(explicit, list) else ["text"]
-        data["input"] = _infer_model_input_modalities(model_id, inputs)
+        data["input"] = infer_model_input_modalities(
+            model_id, inputs, provider_base_url=provider_base_url
+        )
         # ModelConfig keeps total context, prompt cap, and output cap distinct,
         # while still accepting legacy rows that only contain one context key.
         return ModelConfig.from_dict(data)
@@ -186,7 +169,7 @@ class ProviderStore:
             if model.get("id") == model_id and is_chat_eligible_model(
                 model, provider_name=provider_name, provider_api_key=row.api_key
             ):
-                return _model_dict_supports_image(model)
+                return _model_dict_supports_image(model, provider_base_url=row.base_url)
         return False
 
     def resolve_multimodal_model_ref(self) -> str | None:
@@ -197,7 +180,7 @@ class ProviderStore:
                     model, provider_name=row.name, provider_api_key=row.api_key
                 ):
                     continue
-                if _model_dict_supports_image(model):
+                if _model_dict_supports_image(model, provider_base_url=row.base_url):
                     return f"{row.name}/{model['id']}"
         return None
 

@@ -90,6 +90,39 @@ def test_build_harness_configs_skips_missing_credentials(store: ProviderStore) -
     assert store.has_usable_providers() is False
 
 
+def test_stored_deepseek_flash_accepts_images_without_preset_reinstall(
+    store: ProviderStore,
+) -> None:
+    store._provider_repo.create(
+        name="deepseek",
+        kind="openai",
+        base_url="https://api.deepseek.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {"id": "deepseek-v4-flash", "enabled": True, "input": ["text"]},
+                {"id": "deepseek-v4-pro", "enabled": True, "input": ["text"]},
+            ]
+        ),
+    )
+    store._provider_repo.create(
+        name="tencent-token-plan",
+        kind="openai",
+        base_url="https://api.lkeap.cloud.tencent.com/plan/v3",
+        api_key="sk-test",
+        models_json=json.dumps([{"id": "deepseek-v4-flash", "enabled": True, "input": ["text"]}]),
+    )
+
+    assert store.is_model_ref_multimodal("deepseek/deepseek-v4-flash")
+    assert not store.is_model_ref_multimodal("deepseek/deepseek-v4-pro")
+    assert not store.is_model_ref_multimodal("tencent-token-plan/deepseek-v4-flash")
+    configs = {provider.id: provider for provider in store.build_harness_configs()}
+    models = configs["deepseek"].models
+    assert "image" in next(m for m in models if m.id == "deepseek-v4-flash").input
+    assert next(m for m in models if m.id == "deepseek-v4-pro").input == ["text"]
+    assert configs["tencent-token-plan"].models[0].input == ["text"]
+
+
 def test_has_usable_providers_requires_enabled_model(store: ProviderStore) -> None:
     store._provider_repo.create(
         name="empty-models",
