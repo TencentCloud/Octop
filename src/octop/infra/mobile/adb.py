@@ -50,7 +50,12 @@ def list_devices(*, adb: str | None = None) -> list[str]:
         proc = subprocess.run(
             [exe, "devices"],
             capture_output=True,
+            # adb prints UTF-8. With text=True and no codec the parent decodes with
+            # the ANSI code page instead: on cp936 Windows the reader thread raises
+            # UnicodeDecodeError, stdout arrives as None and the loop below crashes.
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             check=False,
         )
@@ -59,7 +64,7 @@ def list_devices(*, adb: str | None = None) -> list[str]:
     if proc.returncode != 0:
         return []
     devices: list[str] = []
-    for line in proc.stdout.splitlines()[1:]:
+    for line in (proc.stdout or "").splitlines()[1:]:
         match = _DEVICE_LINE.match(line.strip())
         if match:
             devices.append(match.group(1))
@@ -85,6 +90,8 @@ def adb_connect(
             [exe, "connect", hostport],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
             check=False,
         )
@@ -118,6 +125,8 @@ def primary_display_id(device: str, *, adb: str | None = None) -> str | None:
             [exe, "-s", device, "shell", "dumpsys", "SurfaceFlinger", "--display-id"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             check=False,
         )
@@ -136,6 +145,8 @@ def wm_size(device: str, *, adb: str | None = None) -> tuple[int, int] | None:
             [exe, "-s", device, "shell", "wm", "size"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             check=False,
         )
@@ -454,6 +465,8 @@ def _adb_client_command(
             [exe, "-s", device, *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
             check=False,
         )
@@ -547,7 +560,12 @@ def shell(device: str, command: str, *, adb: str | None = None) -> tuple[int, st
         proc = subprocess.run(
             [exe, "-s", device, "shell", command],
             capture_output=True,
+            # Device-side text (ro.product.marketname, dumpsys labels) is UTF-8; the
+            # ANSI code page turns it into mojibake or, for bytes cp936 cannot
+            # represent, into an empty payload for the Remote Phone info panel.
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
             check=False,
         )
