@@ -238,11 +238,15 @@ def request_device_code() -> DeviceCodeInfo:
     user_code = body.get("user_code") or body.get("usercode") or ""
     if not device_auth_id or not user_code:
         raise CodexOAuthDeviceCodeError(reason="invalid_response")
+    try:
+        interval_s = float(body.get("interval") or DEVICE_POLL_DEFAULT_INTERVAL_S)
+    except (TypeError, ValueError) as exc:
+        raise CodexOAuthDeviceCodeError(reason="invalid_response") from exc
     return DeviceCodeInfo(
         device_auth_id=device_auth_id,
         user_code=user_code,
         verification_url=DEVICE_VERIFICATION_URL,
-        interval_s=float(body.get("interval") or DEVICE_POLL_DEFAULT_INTERVAL_S),
+        interval_s=interval_s,
     )
 
 
