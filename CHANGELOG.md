@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- `octop completion install` 不再用平台编码读取 rc 文件：中文 Windows（GBK/cp936）上带中文注释的 `~/.bashrc` 之前会直接抛 `UnicodeDecodeError` 并退出 1，补全一行都写不进去；现在按字节查找 `_OCTOP_COMPLETE` 标记，UTF-8 与 ANSI/GBK 保存的 rc 都能正确识别「已安装」，不会重复追加
 
 ## [1.0.2b5] - 2026-09-29
 
