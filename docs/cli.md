@@ -56,13 +56,14 @@ Commands:
 
 ## Transport layers
 
-Octop commands pick one of three transports:
+Octop commands use the following execution paths:
 
 | Layer | When | Login? | Examples |
 |-------|------|--------|----------|
-| **Offline** (local DB only) | Need to read/write `~/.octop` without a running server | No | `init`, `backup`, `plugin`, `agent list`, `chats list/get/create/update/delete`, `cron list`, `user *`, `admin overview/audit`, `models presets/list/active` |
-| **Attach** (HTTP / WS) | Need a live `octop run` process (IM, streams, model pulls) | Yes (`octop user login`) | `chats send/repl`, `channel test/probe`, `models ollama-*`, `skills enable/disable`, `provider test` |
-| **Embedded** (in-process) | CLI boots `OctopServer` for a single command | No | `octop acp`, `octop chats repl`, `octop chats send` (defaults to embedded), `octop agent create/from-expert/start/stop/reload` |
+| **Offline** (local DB only) | Need to read/write `~/.octop` without a running server | No | `init`, `backup`, `plugin`, `agent list`, `chats list/get/create/update/delete`, `cron list`, `user *`, `admin overview/audit`, `models presets/list/active`, `skills enable/disable` |
+| **Attach** (HTTP / WS) | Need a live `octop run` process (IM and streams) | Yes (`octop user login`) | `chats send/repl` (attach mode) |
+| **Embedded** (in-process) | CLI boots `OctopServer` for a single command | No | `octop acp`, `octop chats repl`, `octop chats send` (defaults to embedded), `octop agent create/from-expert/start/stop/reload`, `octop skills list/config`, `octop channel test` |
+| **Direct service** | Connect to the configured provider or local Ollama daemon | No Octop login | `provider test`, `models ollama-list/ollama-pull/ollama-rm` |
 
 The dashboards and HTTP callers manage their own JWTs and do **not**
 share `~/.octop/cli_state.json`.
@@ -273,7 +274,9 @@ Commands:
 
 ## `octop models`
 
-Provider presets and active model management.
+Provider presets and active model management. `ollama-list`, `ollama-pull`,
+and `ollama-rm` connect directly to the local Ollama daemon; they need
+Ollama running, but do not require `octop run` or an Octop login.
 
 ```
 Usage: octop models [OPTIONS] COMMAND [ARGS]...
@@ -285,16 +288,17 @@ Commands:
   list          List all resolved models across enabled providers.
   active        Show or set the global default model (admin).
   config        Interactively create a provider from presets and set the active model.
-  ollama-list   List local Ollama models (requires a running server).
-  ollama-pull   Pull a model via Ollama (requires a running server).
-  ollama-rm     Remove a local Ollama model (requires a running server).
+  ollama-list   List local Ollama models (requires the local Ollama daemon).
+  ollama-pull   Pull a model via Ollama (requires the local Ollama daemon).
+  ollama-rm     Remove a local Ollama model (requires the local Ollama daemon).
 ```
 
 ## `octop skills`
 
-Per-agent skill enable / disable. All subcommands need a running
-server (the dashboard's Skill Hub and bundled `~/.octop/skills/`
-library are queried at boot).
+Per-agent skill enable / disable. No already-running `octop run` process
+or Octop login is required. `enable` / `disable` update local agent
+configuration; `list` / `config` read the skill library through a
+short-lived embedded runtime.
 
 ```
 Usage: octop skills [OPTIONS] COMMAND [ARGS]...
