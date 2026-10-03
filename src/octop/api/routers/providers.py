@@ -278,7 +278,6 @@ async def admin_delete_provider(
     if is_local_runtime_provider(
         row.name,
         provider_api_key=row.api_key,
-        provider_base_url=row.base_url,
     ):
         raise OctopError(
             ErrorCode.PROVIDER_LOCAL_PROTECTED,

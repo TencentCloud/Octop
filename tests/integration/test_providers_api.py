@@ -90,3 +90,27 @@ async def test_admin_cannot_delete_local_runtime_provider(env):
     r = await c.get("/api/admin/providers", headers=auth)
     ids = [p["id"] for p in r.json()]
     assert pid in ids
+
+
+async def test_admin_can_delete_custom_provider_on_private_url(env):
+    """A private base URL does not make a custom provider an Octop local preset."""
+    c, _, auth = env
+    r = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={
+            "name": "local",
+            "kind": "openai",
+            "base_url": "http://192.168.1.20/v1",
+            "api_key": "sk-custom",
+        },
+    )
+    assert r.status_code == 201
+    pid = r.json()["id"]
+
+    r = await c.delete(f"/api/admin/providers/{pid}", headers=auth)
+    assert r.status_code in (200, 204)
+
+    r = await c.get("/api/admin/providers", headers=auth)
+    ids = [p["id"] for p in r.json()]
+    assert pid not in ids
