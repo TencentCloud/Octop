@@ -14,12 +14,14 @@ interface AgentNotReadyScreenProps {
   agent: OctopAgent | null;
   noAgents?: boolean;
   loading?: boolean;
+  embedded?: boolean;
 }
 
 export default function AgentNotReadyScreen({
   agent,
   noAgents = false,
   loading = false,
+  embedded = false,
 }: AgentNotReadyScreenProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -58,7 +60,10 @@ export default function AgentNotReadyScreen({
   if (!agent) {
     return (
       <div className={styles.agentNotReady}>
-        <Result status="info" title={t("chat.pickAgent")} />
+        <Result
+          status="info"
+          title={t(embedded ? "apiErrors.AGENT_NOT_FOUND" : "chat.pickAgent")}
+        />
       </div>
     );
   }
@@ -111,7 +116,7 @@ export default function AgentNotReadyScreen({
         title={title}
         subTitle={subTitle}
         extra={
-          disconnected ? (
+          embedded ? null : disconnected ? (
             <Button type="primary" onClick={() => navigate("/bridge")}>
               {t(
                 agent.bridge_inbound

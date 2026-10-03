@@ -1,3 +1,4 @@
+import { useChatRoute } from "../../../hooks/useChatRoute";
 import { useCallback, useEffect } from "react";
 import type { TFunction } from "i18next";
 import { useNavigate } from "react-router-dom";
@@ -98,6 +99,7 @@ export function useChatSend({
   t,
 }: UseChatSendParams) {
   const navigate = useNavigate();
+  const { chatPath, embedded } = useChatRoute();
 
   /** @returns false when the send was rejected before starting a turn. */
   const handleSend = useCallback(
@@ -203,12 +205,12 @@ export function useChatSend({
       chatStore.detachSessionKey(PENDING_THREAD_ID);
       chatStore.setMessages(PENDING_THREAD_ID, snap.messages);
       chatStore.clearMessages(EMPTY_CHAT_SESSION_KEY);
-      navigate(`/chat/${agent}/${PENDING_THREAD_ID}`);
+      navigate(chatPath(agent, PENDING_THREAD_ID));
 
       void resolvedId.then((tid) => {
         if (!tid) {
           chatStore.clearMessages(PENDING_THREAD_ID);
-          navigate(`/chat/${agent}`, { replace: true });
+          navigate(chatPath(agent), { replace: true });
           message.error(t("chat.createSessionFailed", "创建会话失败，请重试"));
           return;
         }
@@ -237,7 +239,7 @@ export function useChatSend({
           mode,
           policy,
         );
-        navigate(`/chat/${agent}/${tid}`, { replace: true });
+        navigate(chatPath(agent, tid), { replace: true });
       });
       return true;
     },
@@ -249,6 +251,7 @@ export function useChatSend({
       createSession,
       renameSession,
       navigate,
+      chatPath,
       resolvedAgentId,
       selectedModel,
       selectedConnectors,
@@ -265,6 +268,7 @@ export function useChatSend({
 
   useEffect(() => {
     const consumePending = () => {
+      if (embedded) return;
       const raw = localStorage.getItem("octop.pendingChatMessage");
       if (!raw) return;
       localStorage.removeItem("octop.pendingChatMessage");
@@ -328,7 +332,7 @@ export function useChatSend({
     window.addEventListener("octop:pending-chat-message", handler);
     return () =>
       window.removeEventListener("octop:pending-chat-message", handler);
-  }, [handleSend, activeThreadId, onAutoRecordingStarted]);
+  }, [handleSend, activeThreadId, onAutoRecordingStarted, embedded]);
 
   return { handleSend };
 }

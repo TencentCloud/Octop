@@ -231,8 +231,19 @@ export function canRecordAudio(): boolean {
   return !!navigator.mediaDevices?.getUserMedia && "MediaRecorder" in window;
 }
 
+export function isMicrophoneBlockedByPolicy(): boolean {
+  const policyDocument = document as Document & {
+    permissionsPolicy?: { allowsFeature: (feature: string) => boolean };
+    featurePolicy?: { allowsFeature: (feature: string) => boolean };
+  };
+  const policy =
+    policyDocument.permissionsPolicy ?? policyDocument.featurePolicy;
+  return policy?.allowsFeature("microphone") === false;
+}
+
 /** Check whether any STT method is available. */
 export function isSttAvailable(): boolean {
+  if (isMicrophoneBlockedByPolicy()) return false;
   if (canRecordAudio()) return true; // server STT via MediaRecorder
   return browserSttAvailable(); // browser STT (Chrome / Edge)
 }
@@ -295,6 +306,10 @@ export function useVoiceInput(onText: (text: string) => void) {
   }, [onText, t, language]);
 
   const startRecording = useCallback(async () => {
+    if (isMicrophoneBlockedByPolicy()) {
+      antMessage.error(t("voice.micBlockedByHost"));
+      return;
+    }
     // Read cached config synchronously to stay in the user-gesture stack.
     const active: ActiveVoice | null = cachedActiveVoice();
 

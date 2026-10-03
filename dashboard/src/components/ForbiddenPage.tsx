@@ -1,12 +1,14 @@
 import { Button, Result } from "antd";
 import { ShieldOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { chatHomePath } from "../utils/chatRoute";
 
 /** Full-area "no permission" placeholder used by route and tab guards. */
 export default function ForbiddenPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const home = chatHomePath(useLocation().pathname);
   return (
     <div
       style={{
@@ -23,9 +25,11 @@ export default function ForbiddenPage() {
         title={t("common.noPermission")}
         subTitle={t("common.noPermissionHint")}
         extra={
-          <Button type="primary" onClick={() => navigate("/chat")}>
-            {t("common.backToChat")}
-          </Button>
+          home && (
+            <Button type="primary" onClick={() => navigate(home)}>
+              {t("common.backToChat")}
+            </Button>
+          )
         }
       />
     </div>

@@ -1,3 +1,4 @@
+import { useChatRoute } from "../../../hooks/useChatRoute";
 import { memo, useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { Image, Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
@@ -548,6 +549,7 @@ function MessageBubble({
 }: MessageBubbleProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { embedded } = useChatRoute();
   const serverTimezone = useServerTimezone();
   const user = useCurrentUser();
   const { agents, activeAgent } = useAgent();
@@ -898,9 +900,9 @@ function MessageBubble({
                     ))}
                   </div>
                 )}
-                {(errorAction || onRegenerate) && (
+                {((!embedded && errorAction) || onRegenerate) && (
                   <div className={styles.errorActionRow}>
-                    {errorAction && (
+                    {!embedded && errorAction && (
                       <button
                         className={styles.errorConfigBtn}
                         onClick={() => navigate(errorAction.path)}

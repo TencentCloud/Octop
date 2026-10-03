@@ -1,6 +1,7 @@
 import { getApiUrl } from "./config";
 import i18n from "../i18n";
 import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
+import { chatLoginPath } from "../utils/chatRoute";
 
 const AUTH_TOKEN_KEY = "auth_token";
 /** sessionStorage handoff for SSO redirects / popups (default = remember). */
@@ -323,7 +324,7 @@ function handleUnauthorized(): void {
   if (takenOver) return;
 
   markNavigatingAway();
-  window.location.replace("/login");
+  window.location.replace(chatLoginPath(window.location));
 }
 
 /**

@@ -27,8 +27,10 @@ vi.mock("../../../api/modules/octopThreads", () => ({
   },
 }));
 
+let initialPath = "/";
+
 function wrapper({ children }: { children: ReactNode }) {
-  return <MemoryRouter>{children}</MemoryRouter>;
+  return <MemoryRouter initialEntries={[initialPath]}>{children}</MemoryRouter>;
 }
 
 const THREAD = "thr_leaving";
@@ -60,6 +62,7 @@ function renderActions() {
 
 describe("navigateToAgent", () => {
   afterEach(() => {
+    initialPath = "/";
     removeSession(THREAD);
     removeSession(EMPTY_CHAT_SESSION_KEY);
     vi.clearAllMocks();
@@ -76,5 +79,20 @@ describe("navigateToAgent", () => {
 
     expect(getSnapshot(THREAD).messages).toHaveLength(1);
     expect(getSnapshot(EMPTY_CHAT_SESSION_KEY).messages).toHaveLength(0);
+  });
+
+  it("keeps new-chat and session selection in the embedded route", async () => {
+    initialPath = `/embed/chat/agent-a/${THREAD}`;
+    const { result } = renderActions();
+    await act(async () => {
+      result.current.handleNewChat();
+    });
+    expect(navigateMock).toHaveBeenCalledWith("/embed/chat/agent-a");
+    await act(async () => {
+      result.current.handleSelectSession("thr_selected");
+    });
+    expect(navigateMock).toHaveBeenCalledWith(
+      "/embed/chat/agent-a/thr_selected",
+    );
   });
 });

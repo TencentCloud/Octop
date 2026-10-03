@@ -2754,6 +2754,7 @@
     "browserNoChineseVoice": "Chrome 没有中文语音，已改用 Edge TTS 朗读",
     "ttsFallback": "服务端朗读失败，已切换浏览器朗读",
     "micDenied": "无法访问麦克风，请检查浏览器权限",
+    "micBlockedByHost": "宿主页禁止了麦克风访问，请在 iframe 中允许 microphone 权限",
     "readAloud": "朗读",
     "micNotAvailable": "此设备不支持录音，请通过 HTTPS 访问",
     "sttNotAvailable": "此设备不支持语音输入（需要 HTTPS）",

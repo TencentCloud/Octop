@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from "react";
 import { Result, Button, Space } from "antd";
 import i18n from "../../i18n";
+import { chatHomePath } from "../../utils/chatRoute";
 import {
   isChunkLoadError,
   tryReloadOnStaleChunk,
@@ -56,7 +57,8 @@ export default class GlobalErrorBoundary extends Component<Props, State> {
   };
 
   handleHome = () => {
-    window.location.href = "/chat";
+    const home = chatHomePath(window.location.pathname);
+    if (home) window.location.href = home;
   };
 
   handleReload = () => {
@@ -65,6 +67,7 @@ export default class GlobalErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const home = chatHomePath(window.location.pathname);
       const isChunkError = isChunkLoadError(this.state.error);
       // Stale chunk → silent soft reload; avoid flashing the error page.
       if (isChunkError && this.state.chunkReloading !== false) {
@@ -105,9 +108,11 @@ export default class GlobalErrorBoundary extends Component<Props, State> {
                     {i18n.t("errors.retry")}
                   </Button>
                 )}
-                <Button onClick={this.handleHome}>
-                  {i18n.t("errors.backHome")}
-                </Button>
+                {home && (
+                  <Button onClick={this.handleHome}>
+                    {i18n.t("errors.backHome")}
+                  </Button>
+                )}
               </Space>
             }
           />
