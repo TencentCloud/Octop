@@ -2,8 +2,8 @@ const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/;
 
 /** Pick BCP-47 locale from message text (not browser UI language). */
 export function detectSpeechLocale(text: string): string {
-  if (CJK_RE.test(text)) return "zh-CN";
   if (/[\u3040-\u30ff]/.test(text)) return "ja-JP";
+  if (CJK_RE.test(text)) return "zh-CN";
   if (/[\uac00-\ud7af]/.test(text)) return "ko-KR";
   return navigator.language || "en-US";
 }
