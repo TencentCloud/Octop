@@ -12,7 +12,11 @@ export async function loadMermaid() {
     mermaidModule.initialize({
       startOnLoad: false,
       theme: "default",
-      securityLevel: "loose",
+      // Diagram content comes from LLM / IM users, so it is untrusted input.
+      // "loose" skips DOMPurify on the rendered SVG and permits click
+      // handlers — a stored-XSS vector (audit SEC-5). "strict" keeps HTML
+      // labels but sanitizes the SVG before it is attached to the DOM.
+      securityLevel: "strict",
       fontFamily: "inherit",
     });
   }

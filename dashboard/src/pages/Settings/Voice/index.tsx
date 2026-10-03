@@ -97,7 +97,10 @@ export function VoiceSettingsPanel() {
   const openConfigure = (preset: VoicePreset) => {
     const existing = findConfigured(preset);
     setConfigure({ preset, existing });
-    setApiKey(existing?.api_key ?? "");
+    // SEC-4 decision (a): the stored key is masked in API responses, so it
+    // must not be prefilled (the user would silently round-trip the mask).
+    // Leave the field empty; the PATCH path treats null as "keep existing".
+    setApiKey("");
     const extra = existing?.extra ?? {};
     setSecretId(String(extra.secret_id ?? ""));
     setSecretKey(String(extra.secret_key ?? ""));
@@ -130,19 +133,32 @@ export function VoiceSettingsPanel() {
     } else {
       extra = { model: preset.kind === "openai" ? "whisper-1" : undefined };
     }
-    return {
+    const payload: VoiceProviderInput = {
       name: preset.id,
       kind: preset.kind,
       capability: preset.capability,
       base_url: baseUrl,
-      api_key:
-        preset.kind === "tencent"
-          ? secretId && secretKey
-            ? `${secretId}:${secretKey}`
-            : null
-          : apiKey || null,
       extra_json: JSON.stringify(extra),
     };
+    const nextKey =
+      preset.kind === "tencent"
+        ? secretId && secretKey
+          ? `${secretId}:${secretKey}`
+          : null
+        : apiKey || null;
+    // Send api_key only when one was actually typed.
+    //
+    // On develop an omitted key and an explicit null are equivalent (the repo's
+    // partial_updates skips None), so omitting is inert here. But #1342 gives
+    // api_key a sentinel so that an explicit null means "revoke", and this
+    // payload is built on every save — so sending null would wipe the stored
+    // credential whenever a user re-saves a provider without re-typing its key.
+    // Omitting keeps the revoke button the only way to clear one, and is
+    // correct under both server contracts, in either merge order.
+    if (nextKey !== null) {
+      payload.api_key = nextKey;
+    }
+    return payload;
   };
 
   const validateCredentials = () => {

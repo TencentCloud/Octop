@@ -247,6 +247,7 @@ function EditAgentDrawerBody({
   const [loading, setLoading] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [fileModalOpen, setFileModalOpen] = useState(false);
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const [listRenameOpen, setListRenameOpen] = useState(false);
@@ -389,28 +390,34 @@ function EditAgentDrawerBody({
   }, [agent.agent_id, agent.state, form, message, t]);
 
   const handleSave = useCallback(async () => {
-    const values = await form.validateFields();
-    if (values.backend_choice === "composite") {
-      const pathError = validatePathMappings(pathMappings, t);
-      if (pathError) {
-        message.error(pathError);
-        return;
-      }
-    }
-    if (shouldProbeRootDir(values.backend_choice, values.root_dir)) {
-      const probe = await probeRootDir(values.root_dir ?? "/");
-      if (!probe.ok) {
-        message.error(
-          `${rootDirProbeMessage(probe, t)}\n${t(
-            "experts.rootDirProbe.guidance",
-          )}`,
-        );
-        return;
-      }
-    }
+    // FE-5: setSaving only applies after a re-render, so a fast double-click
+    // runs two concurrent saves. A synchronous ref guard closes the window
+    // (same pattern as Observability/index.tsx).
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
-    let bwrapToast: { kind: "success" | "warning"; text: string } | null = null;
     try {
+      const values = await form.validateFields();
+      if (values.backend_choice === "composite") {
+        const pathError = validatePathMappings(pathMappings, t);
+        if (pathError) {
+          message.error(pathError);
+          return;
+        }
+      }
+      if (shouldProbeRootDir(values.backend_choice, values.root_dir)) {
+        const probe = await probeRootDir(values.root_dir ?? "/");
+        if (!probe.ok) {
+          message.error(
+            `${rootDirProbeMessage(probe, t)}\n${t(
+              "experts.rootDirProbe.guidance",
+            )}`,
+          );
+          return;
+        }
+      }
+      let bwrapToast: { kind: "success" | "warning"; text: string } | null =
+        null;
       if (shouldProbeRootDir(values.backend_choice, values.root_dir)) {
         const bwrap = await ensureBubblewrapAfterProbe();
         const kind = ensureBwrapToastKind(bwrap.status);
@@ -418,7 +425,6 @@ function EditAgentDrawerBody({
           bwrapToast = { kind, text: ensureBwrapMessage(bwrap, t) };
         }
       }
-
       const backendSpec = buildBackendSpec(
         values.backend_choice,
         values.composite_default ?? DEFAULT_BACKEND,
@@ -517,6 +523,7 @@ function EditAgentDrawerBody({
     } catch (err) {
       message.error(apiErrorMessage(err, t("experts.patchFailed"), t));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [
@@ -1327,6 +1334,7 @@ function EditAgentDrawerBody({
           value={listRenameValue}
           onChange={(e) => setListRenameValue(e.target.value)}
           onPressEnter={() => void confirmListRename()}
+          disabled={listRenameSaving}
           autoFocus
         />
       </Modal>

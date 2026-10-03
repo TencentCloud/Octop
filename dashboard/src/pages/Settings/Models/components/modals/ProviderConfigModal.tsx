@@ -804,36 +804,38 @@ export function ProviderConfigModal({
 
       const draftApiKey = (values.api_key as string | undefined)?.trim();
       const draftBaseUrl = (values.base_url as string | undefined)?.trim();
-      const useDraft =
-        !!draftApiKey ||
-        (!!draftBaseUrl && draftBaseUrl !== (provider.base_url ?? ""));
-
-      if (useDraft && !draftApiKey && !hasApiKey) {
-        message.warning(t("models.pleaseEnterApiKey"));
-        return;
-      }
 
       const embedding = isEmbeddingModel(
         draftModels.find((m) => m.id === modelId),
       );
-      const result =
-        useDraft || !hasApiKey
-          ? await testProviderDraft({
-              name: provider.name,
-              kind: provider.kind,
-              api_key: draftApiKey || provider.api_key || undefined,
-              base_url: draftBaseUrl || provider.base_url,
-              model_id: modelId,
-              embedding,
-            })
-          : await request<{
-              ok: boolean;
-              latency_ms?: number;
-              error?: string;
-            }>(`${apiPrefix}/${provider.id}/test`, {
-              method: "POST",
-              body: JSON.stringify({ model_id: modelId, embedding }),
-            });
+      // SEC-4 decision (a): the stored key is masked in API responses, so a
+      // client-side draft fallback would send the masked value and fail auth.
+      // With no draft key: unsaved providers can't test (prompt for a key);
+      // saved providers always use the by-id test endpoint, which probes with
+      // the stored key server-side.
+      let result: { ok: boolean; latency_ms?: number; error?: string };
+      if (draftApiKey) {
+        result = await testProviderDraft({
+          name: provider.name,
+          kind: provider.kind,
+          api_key: draftApiKey,
+          base_url: draftBaseUrl || provider.base_url,
+          model_id: modelId,
+          embedding,
+        });
+      } else if (hasApiKey) {
+        result = await request<{
+          ok: boolean;
+          latency_ms?: number;
+          error?: string;
+        }>(`${apiPrefix}/${provider.id}/test`, {
+          method: "POST",
+          body: JSON.stringify({ model_id: modelId, embedding }),
+        });
+      } else {
+        message.warning(t("models.pleaseEnterApiKey"));
+        return;
+      }
 
       if (result.ok) {
         const latency =
@@ -903,7 +905,11 @@ export function ProviderConfigModal({
       }
       const draftApiKey = (values.api_key as string | undefined)?.trim();
       const draftBaseUrl = (values.base_url as string | undefined)?.trim();
-      const apiKey = draftApiKey || provider.api_key || "";
+      // SEC-4 decision (a): the stored key is masked, so it cannot be reused
+      // here. Fetch-models requires a draft key when the provider is being
+      // edited; for an unchanged saved provider the user re-enters the key
+      // once (the masked form field is the visual cue).
+      const apiKey = draftApiKey ?? "";
       if (!apiKey) {
         message.warning(t("models.pleaseEnterApiKey"));
         return;
