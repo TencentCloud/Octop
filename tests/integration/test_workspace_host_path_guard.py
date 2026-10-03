@@ -15,7 +15,6 @@ status code alone cannot pass.
 
 from __future__ import annotations
 
-import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +33,13 @@ def _agent_host_path(srv: Any, aid: str, rel: str) -> str:
 
 
 def _file_url(host_path: str) -> str:
-    return f"file://{urllib.parse.quote(host_path)}"
+    """Build the ``file://`` form of a host path the way the dashboard does.
+
+    ``as_uri()`` places the third slash and percent-escapes per platform, so a
+    Windows ``C:\\…`` becomes ``file:///C:/…`` instead of ``file://C:\\…``
+    (which ``urlparse`` would read as netloc ``C:``).
+    """
+    return Path(host_path).as_uri()
 
 
 @pytest.fixture
