@@ -8,7 +8,11 @@ to be applied before routing, not inside the legacy repo.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
+from threading import Barrier
 
 import pytest
 
@@ -106,3 +110,99 @@ def test_v2_archive_append_leaves_the_caller_event_intact(archive: HistoryArchiv
 
     assert len(event.summary) == _OVERSIZED_SUMMARY
     assert len(event.payload["content"]) == _OVERSIZED_CONTENT
+
+
+@pytest.mark.parametrize("thread_id", ["T1", "T2"])
+def test_archive_append_keeps_the_first_event_with_a_duplicate_id(
+    archive: HistoryArchive, thread_id: str
+) -> None:
+    archive.begin("A1", "T1")
+    store = ArchiveTrajectoryStore(archive)
+    original = replace(
+        _oversized_event("original", thread_id=thread_id),
+        summary="first",
+        payload={"content": "first"},
+    )
+    assert store.append(original) is True
+    duplicate = replace(original, seq=2, summary="replacement", payload={"content": "replacement"})
+    assert store.append(duplicate) is False
+    assert store.get("original") == original
+
+
+@pytest.mark.parametrize("thread_id", ["T1", "T2"])
+def test_archive_append_rejects_another_event_at_the_same_sequence(
+    archive: HistoryArchive, thread_id: str
+) -> None:
+    archive.begin("A1", "T1")
+    store = ArchiveTrajectoryStore(archive)
+    original = replace(
+        _oversized_event("original", thread_id=thread_id),
+        summary="first",
+        payload={"content": "first"},
+    )
+    assert store.append(original) is True
+    assert store.append(replace(original, event_id="collision", summary="replacement")) is False
+    assert store.get("collision") is None
+    assert store.get("original") == original
+
+
+@pytest.mark.parametrize("thread_id", ["T1", "T2"])
+def test_archive_upsert_still_updates_an_existing_event(
+    archive: HistoryArchive, thread_id: str
+) -> None:
+    archive.begin("A1", "T1")
+    store = ArchiveTrajectoryStore(archive)
+    original = replace(
+        _oversized_event("original", thread_id=thread_id),
+        summary="first",
+        payload={"content": "first"},
+    )
+    assert store.append(original) is True
+    updated = replace(original, summary="updated", payload={"content": "updated"})
+    assert store.upsert(updated) is True
+    assert store.get("original") == updated
+
+
+def test_v2_concurrent_append_has_only_one_winner(
+    archive: HistoryArchive, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive.begin("A1", "T1")
+    second = HistoryStore(archive.store.path, identity="test")
+    barrier = Barrier(2)
+    stores = [
+        ArchiveTrajectoryStore(archive),
+        ArchiveTrajectoryStore(
+            HistoryArchive(second, archive.messages, archive.events, enabled=True)
+        ),
+    ]
+    events = [
+        replace(_oversized_event("same"), summary=value, payload={"content": value})
+        for value in ("first", "second")
+    ]
+
+    def synchronize_transaction(store: HistoryStore) -> None:
+        original_transaction = store.transaction
+
+        @contextmanager
+        def transaction():
+            # Both contenders reach BEGIN together. A preflight check outside
+            # the transaction would let both observe a missing document.
+            barrier.wait(timeout=5)
+            with original_transaction() as conn:
+                yield conn
+
+        monkeypatch.setattr(store, "transaction", transaction)
+
+    synchronize_transaction(archive.store)
+    synchronize_transaction(second)
+
+    def append(index: int) -> bool:
+        return stores[index].append(events[index])
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(append, (0, 1)))
+        assert sorted(results) == [False, True]
+        assert stores[0].get("same") == events[results.index(True)]
+    finally:
+        second.close()

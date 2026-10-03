@@ -48,10 +48,20 @@ class ArchiveTrajectoryStore(TrajectoryStore):
         turn = self.archive.store.turn(bounded.thread_id)
         if turn is None or turn["format"] != "v2":
             return super().upsert(bounded) if upsert else super().append(bounded)
-        return self._put_v2_event(bounded, turn)
+        return self._put_v2_event(bounded, turn, upsert=upsert)
 
-    def _put_v2_event(self, event: TrajectoryEvent, turn: dict[str, Any]) -> bool:
+    def _put_v2_event(self, event: TrajectoryEvent, turn: dict[str, Any], *, upsert: bool) -> bool:
         with self.archive.store.transaction() as conn:
+            if (
+                not upsert
+                and conn.execute(
+                    "SELECT 1 FROM documents WHERE id=? OR "
+                    "(thread_id=? AND kind='event' AND seq=?)",
+                    ("event:" + event.event_id, event.thread_id, event.seq),
+                ).fetchone()
+                is not None
+            ):
+                return False
             self.archive.store.put_document(
                 conn,
                 doc_id="event:" + event.event_id,
