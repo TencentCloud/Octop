@@ -22,6 +22,10 @@ dependencies = [
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
     "octop-harness[all]>=1.0.0",
+    # Floor pinned to the upstream fix for lost same-file parallel edits
+    # (langchain-ai/deepagents#6446, released in 0.7.16): without it the
+    # resolver is free to pick a pre-fix 0.7.x (#1519).
+    "deepagents>=0.7.16,<0.8",
     "octop-memory>=1.0.0",
     "lark-oapi>=1.7.3",
     "octop-gateway>=1.0.0",
