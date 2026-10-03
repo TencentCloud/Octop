@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import posixpath
 import re
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
@@ -22,6 +24,7 @@ from octop.api.common.workspace import (
     workspace_api_path,
 )
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.builtin_skills import is_octop_builtin_skills_path
 from octop.infra.backend.tree_listing import dedupe_tree_rows
 from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
 from octop.infra.errors import ErrorCode, OctopError
@@ -38,19 +41,96 @@ logger = logging.getLogger(__name__)
 _PROTECTED_PREFIX = "_builtin_skills"
 
 
-def _assert_workspace_mutable(path: str) -> str:
-    """Mutating ops always treat paths as workspace-relative (``from_workspace=true``)."""
-    rel = _workspace_io_path(path, from_workspace=True)
-    if rel == ".":
+def _workspace_key(rel: str, *, workspace: Any) -> str:
+    """Fold *rel* to the workspace-relative key ``BackendWorkspace`` will resolve.
+
+    Host-absolute spellings that land inside the workspace fold to the same key a
+    relative request produces, so ``/w/sub/../_builtin_skills/x`` and
+    ``_builtin_skills/x`` are judged identically instead of by how they are spelled.
+    """
+    posix = posixpath.normpath(rel.strip().replace("\\", "/"))
+    root = str(Path(workspace.workspace_dir).expanduser().resolve()).replace("\\", "/")
+    if posix == root:
+        return "."
+    for prefix in (f"{root}/", "/"):
+        if posix.startswith(prefix):
+            return posix[len(prefix) :]
+    return posix
+
+
+def _api_workspace_path(rel: str, *, fallback: str) -> str:
+    """Echo the workspace path in the ``/…`` form the API and dashboard use.
+
+    The guard may have folded the request into a host path, so the raw request is
+    only a fallback — it can name a different file than the one written.
+    """
+    key = posixpath.normpath(rel.strip().replace("\\", "/"))
+    if key in ("", "."):
+        return fallback
+    return key if key.startswith("/") else f"/{key}"
+
+
+def _assert_inside_workspace(rel: str, *, workspace: Any, original: str) -> None:
+    """Reject a resolved mutation target that lands outside the agent workspace.
+
+    ``_workspace_io_path`` returns a host absolute path for ``file://`` URLs and
+    (with ``from_workspace=false``) for a leading ``/`` or ``~``. Those never
+    reach ``BackendWorkspace``'s own containment check, which only guards keys
+    *without* a leading slash, so the caller has to vet them here.
+
+    Sandbox backends (``sandbox_fs``) are exempt: agent content lives inside the
+    sandbox, so a host-absolute spelling resolves to a container path rather than
+    the host filesystem — while that same spelling *is* the legitimate workspace
+    key the dashboard sends (``file:///workspace/x.md``).
+    """
+    if getattr(getattr(workspace, "backend", None), "sandbox_fs", False):
+        return
+    raw = rel.strip().replace("\\", "/")
+    if not raw.startswith("~") and not is_host_absolute_path(raw):
+        # Workspace-relative keys are resolved against the workspace by the
+        # backend, which applies its own containment check.
+        return
+    if raw.startswith("~") and not raw.startswith("~/"):
+        # ``~notes.md`` names a workspace file, not a home dir. ``expanduser``
+        # leaves it alone, so the backend would resolve it against the process
+        # cwd — refuse rather than write somewhere unrelated to the request.
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            f"cannot modify {original!r}: '~' paths must be '~/…'",
+        )
+    root = Path(workspace.workspace_dir).expanduser().resolve()
+    try:
+        Path(raw).expanduser().resolve().relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            f"cannot modify {original!r}: path is outside the agent workspace",
+        ) from exc
+
+
+def _assert_workspace_mutable(
+    path: str,
+    *,
+    workspace: Any,
+    from_workspace: bool = True,
+) -> str:
+    """Vet a mutation target and return the path the caller must write to.
+
+    Mutations address the agent workspace, so the resolved target has to stay
+    inside it — a ``file://`` URL or a host-absolute ``/…`` that points anywhere
+    else is refused. The returned path is the one to hand to the backend, so the
+    check and the write can never disagree; callers reporting a path to the client
+    go through :func:`_api_workspace_path` rather than echoing the raw request.
+    """
+    rel = _workspace_io_path(path, from_workspace=from_workspace)
+    # Folded to the key the backend resolves, then matched by the same predicate
+    # archive import/export uses, so "owned by Octop" is decided in one place.
+    key = _workspace_key(rel, workspace=workspace)
+    if key == ".":
         raise OctopError(ErrorCode.FORBIDDEN, "cannot modify workspace root")
-    posix = rel.replace("\\", "/").strip("/")
-    if (
-        posix == _PROTECTED_PREFIX
-        or posix.startswith(f"{_PROTECTED_PREFIX}/")
-        or posix == f".octop/{_PROTECTED_PREFIX}"
-        or posix.startswith(f".octop/{_PROTECTED_PREFIX}/")
-    ):
+    if is_octop_builtin_skills_path(key):
         raise OctopError(ErrorCode.FORBIDDEN, f"cannot modify {_PROTECTED_PREFIX!r} paths")
+    _assert_inside_workspace(rel, workspace=workspace, original=path)
     return rel
 
 
@@ -184,7 +264,10 @@ async def write_file(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
-    converter = get_doc_converter(path)
+    rel = _assert_workspace_mutable(path, workspace=ws, from_workspace=from_workspace)
+    # Pick the converter from the path actually written, not the raw request:
+    # they diverge when ``path`` carries ``..`` or a host-absolute spelling.
+    converter = get_doc_converter(rel)
     if converter is not None:
         # Editable-document paths are always stored as the binary document
         # format. This matters for workspace "new file": an empty .docx created
@@ -200,10 +283,10 @@ async def write_file(
     else:
         data = body.content.encode("utf-8")
     try:
-        await ws.aupload_bytes(_workspace_io_path(path, from_workspace=from_workspace), data)
+        await ws.aupload_bytes(rel, data)
     except Exception as exc:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot write {path!r}: {exc}") from exc
-    return {"path": path, "size": len(data)}
+    return {"path": _api_workspace_path(rel, fallback=path), "size": len(data)}
 
 
 class MoveFileBody(BaseModel):
@@ -229,10 +312,10 @@ async def mkdir_workspace_dir(
 ) -> dict[str, Any]:
     """Create a directory (and parents) under the agent workspace."""
     _ = from_workspace  # API surface; mutations always use workspace-relative paths.
-    rel = _assert_workspace_mutable(path)
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    rel = _assert_workspace_mutable(path, workspace=ws)
     try:
         await ws.amkdir(rel)
     except Exception as exc:
@@ -259,10 +342,10 @@ async def delete_workspace_file(
 ) -> Response:
     """Remove a file or directory tree from the agent workspace."""
     _ = from_workspace
-    rel = _assert_workspace_mutable(path)
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    rel = _assert_workspace_mutable(path, workspace=ws)
     try:
         await ws.adelete(rel)
     except Exception as exc:
@@ -288,11 +371,11 @@ async def move_workspace_file(
 ) -> dict[str, Any]:
     """Move ``path`` to ``body.destination`` (rename when the parent directory is unchanged)."""
     _ = from_workspace
-    src = _assert_workspace_mutable(path)
-    dest = _assert_workspace_mutable(body.destination)
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    src = _assert_workspace_mutable(path, workspace=ws)
+    dest = _assert_workspace_mutable(body.destination, workspace=ws)
     try:
         await ws.amove(src, dest)
     except Exception as exc:
@@ -315,16 +398,20 @@ async def upload_file(
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
+    # Guard the path actually used (``path`` may be omitted, in which case the
+    # upload's own filename decides it), and do it before ``file.read()`` so a
+    # rejected request never buffers its body. A derived filename is always a
+    # workspace name — ``from_workspace`` only describes an explicit ``path``.
     target = path or f"/{file.filename or 'upload.bin'}"
+    rel = _assert_workspace_mutable(
+        target, workspace=ws, from_workspace=from_workspace if path else True
+    )
     data = await file.read()
     try:
-        await ws.aupload_bytes(
-            _workspace_io_path(target, from_workspace=from_workspace),
-            data,
-        )
+        await ws.aupload_bytes(rel, data)
     except Exception as exc:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot upload to {target!r}: {exc}") from exc
-    return {"path": target, "size": len(data)}
+    return {"path": _api_workspace_path(rel, fallback=target), "size": len(data)}
 
 
 @router.get("/agents/{agent_id}/workspace/download")
@@ -407,9 +494,9 @@ async def write_doc(
 ) -> dict[str, Any]:
     """Convert Markdown *content* back to the document format and overwrite *path*."""
     _ = from_workspace  # Mutations always use workspace-relative paths.
-    rel = _assert_workspace_mutable(path)
-    converter = _ensure_editable_doc(path)
     ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    rel = _assert_workspace_mutable(path, workspace=ws)
+    converter = _ensure_editable_doc(rel)
     try:
         data = converter.from_markdown(body.content)
     except Exception as exc:
@@ -421,7 +508,7 @@ async def write_doc(
         await ws.aupload_bytes(rel, data)
     except Exception as exc:
         raise _map_workspace_fs_error(exc, operation="write", path=path) from exc
-    return {"path": path, "size": len(data)}
+    return {"path": _api_workspace_path(rel, fallback=path), "size": len(data)}
 
 
 @router.get(
