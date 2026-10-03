@@ -29,6 +29,7 @@
 - 模型调用重试耗尽后不再抛出笼统的「多次调用失败」：把具体原因写成给模型的恢复提示（上下文超限、限流、流式中断等），聊天页展示对应说明；后台委派仍标记 failed，并把该原因交给源专家。
 - Windows 残留盘符路径（如 ``D:\\octop-data\\data\\文章存稿\\…``）读写文件时不再把 jail 拒绝渲染成「多次调用模型失败」：能对上当前存储根的改写成虚拟路径继续读；对不上的把原因交给模型，页面显示存储根说明。
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 工作区 `_builtin_skills` 保护改为先折叠 `..` 再匹配：校验读的是未折叠字符串，而后端落盘前才解析 `..`，所以 `DELETE path=/sub/../_builtin_skills/foo/SKILL.md` 删得掉内置技能文件、`move destination=/sub/../_builtin_skills/…` 写得进去，`path=/sub/..` 同样绕过「不能修改工作区根目录」；现三者均返回 403
 ### 新增
 - 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
 - 聊天输入栏将对话模式、模型、连接器、知识库、技能、专家、子智能体收进「+」菜单，从菜单右侧弹出选择面板；聊天页用户头像与侧栏账号头像一致。

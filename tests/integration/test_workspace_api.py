@@ -408,6 +408,68 @@ async def test_delete_builtin_skills_forbidden(env: Any) -> None:
     assert r.status_code == 403
 
 
+@pytest.mark.parametrize(
+    ("path", "fragment"),
+    [
+        ("/sub/../_builtin_skills/foo/SKILL.md", "_builtin_skills/foo/SKILL.md"),
+        (
+            "/.octop/sub/../_builtin_skills/foo/SKILL.md",
+            ".octop/_builtin_skills/foo/SKILL.md",
+        ),
+    ],
+)
+async def test_delete_builtin_skills_via_dotdot_forbidden(
+    env: Any, path: str, fragment: str
+) -> None:
+    """A ``..`` segment must not fold back into the protected tree."""
+    c, srv, auth, aid = env
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    await agent.workspace.aupload_bytes(fragment, b"# builtin\n")
+
+    r = await c.delete(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": path},
+        headers=auth,
+    )
+    assert r.status_code == 403, r.text
+    assert await agent.workspace.aexists(fragment) is True
+
+
+async def test_move_into_builtin_skills_via_dotdot_forbidden(env: Any) -> None:
+    """A folded ``destination`` must not write into the protected tree either."""
+    c, srv, auth, aid = env
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    await agent.workspace.aupload_bytes("payload.txt", b"a")
+
+    r = await c.post(
+        f"/api/agents/{aid}/workspace/move",
+        params={**FROM_WORKSPACE, "path": "/payload.txt"},
+        headers=auth,
+        json={"destination": "/sub/../_builtin_skills/payload.txt"},
+    )
+    assert r.status_code == 403, r.text
+    assert await agent.workspace.aexists("_builtin_skills/payload.txt") is False
+    assert await agent.workspace.aexists("payload.txt") is True
+
+
+async def test_delete_workspace_root_via_dotdot_forbidden(env: Any) -> None:
+    c, srv, auth, aid = env
+    await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/sub/a.txt"},
+        headers=auth,
+        json={"content": "a"},
+    )
+    r = await c.delete(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/sub/.."},
+        headers=auth,
+    )
+    assert r.status_code == 403, r.text
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aexists("sub/a.txt") is True
+
+
 # --- editable document (Markdown round-trip) --------------------------------
 
 
