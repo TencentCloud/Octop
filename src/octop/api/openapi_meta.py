@@ -19,7 +19,9 @@ Most endpoints require a JWT bearer token:
 1. Complete initial setup via `/api/setup/*` (first install only).
 2. `GET /api/auth/captcha` then `POST /api/auth/login` with `username` and `password`
    (and `captcha_token` when a strong provider is active), or complete SSO with
-   `/api/auth/oidc/*` or `/api/auth/oauth/*` when a provider is enabled.
+   `/api/auth/oidc/*` or `/api/auth/oauth/*` when a provider is enabled. When a
+   directory is configured (`/api/auth/ldap/config`), `POST /api/auth/login` also
+   accepts LDAP credentials and provisions the account on first login.
 3. Send `Authorization: Bearer <access_token>` on subsequent requests.
 
 Access tokens use sliding renewal: when less than one-third of
@@ -31,6 +33,7 @@ Public endpoints (no token): `/api/docs`, `/api/openapi.json`, `/api/health`,
 `/api/setup/*`, `/api/auth/login`, `/api/auth/captcha`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
 `/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/auth/oauth/status`,
 `/api/auth/oauth/start`, `/api/auth/oauth/callback`, `/api/auth/oauth/exchange`,
+`/api/auth/ldap/status`,
 `/api/auth/invite/validate`,
 `/api/auth/invite/redeem`, `/api/connectors/oauth/callback`,
 and `/api/internal/mcp/*`.

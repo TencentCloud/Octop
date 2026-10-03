@@ -69,9 +69,39 @@ describe("classifyChatStreamError", () => {
     });
   });
 
+  it("classifies leftover Windows outside-root paths", () => {
+    const msg =
+      String.raw`ValueError: Path:D:\octop-data\data\文章存稿\x.md ` +
+      String.raw`outside root directory: C:\Users\Administrator`;
+    expect(classifyChatStreamError(msg)).toBe(
+      "stream_errors.path_outside_root",
+    );
+    expect(chatStreamErrorAction(msg)).toEqual({
+      path: "/agent-config",
+      labelKey: "chat.goToAgentConfig",
+    });
+  });
+
   it("leaves unknown messages alone", () => {
     expect(classifyChatStreamError("hello world")).toBeNull();
     expect(formatChatStreamError("hello world", t)).toBe("hello world");
+  });
+
+  it("keeps the concrete cause for retry-exhausted unknown errors", () => {
+    const msg = "Model call failed after 3 attempts with RuntimeError: boom";
+    expect(classifyChatStreamError(msg)).toBe(
+      "stream_errors.model_call_failed",
+    );
+    expect(formatChatStreamError(msg, t)).toBe(
+      "translated:stream_errors.model_call_failed_detail",
+    );
+  });
+
+  it("classifies a model-retry recovery prompt by its technical detail", () => {
+    const msg =
+      "[model_call_failed]\nThe model API request failed.\n\n" +
+      "Technical detail: Error code: 400 - This model's maximum context length is 128000 tokens";
+    expect(classifyChatStreamError(msg)).toBe("stream_errors.context_length");
   });
 
   it("formats known failures through i18n", () => {

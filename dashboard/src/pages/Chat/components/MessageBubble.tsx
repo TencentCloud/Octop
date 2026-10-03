@@ -50,10 +50,8 @@ import {
   isTeamHostSpeaker as isTeamHostSpeakerId,
 } from "../../../utils/teamAgent";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
-import {
-  accountDisplayName,
-  accountInitials,
-} from "../utils/accountDisplayName";
+import { accountDisplayName } from "../utils/accountDisplayName";
+import { ProfileAvatar } from "../../Admin/Users/ProfileAvatar";
 import {
   extractAskQuestions,
   isAskHitl,
@@ -758,9 +756,12 @@ function MessageBubble({
     <MessageSender
       name={userName}
       avatar={
-        <span className={styles.msgUserAvatar}>
-          {accountInitials(userName)}
-        </span>
+        <ProfileAvatar
+          url={user?.avatar_url}
+          icon={user?.avatar_icon}
+          kind="user"
+          className={styles.msgUserAvatar}
+        />
       }
     />
   ) : expert || avatarProfileId ? (

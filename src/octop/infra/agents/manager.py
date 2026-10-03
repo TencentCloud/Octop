@@ -92,6 +92,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _model_retry_on_failure(exc: Exception) -> str:
+    # Feed a specific, model-visible prompt instead of raising. Inbox jobs still
+    # mark failed when the reply carries MODEL_RETRY_FAILURE_MARK.
+    from octop.i18n.domains.stream import model_retry_failure_prompt
+
+    return model_retry_failure_prompt(exc, "en")
+
+
 # Bounded parallelism for awaited provider/active-model reload batches.
 _PROVIDER_RELOAD_CONCURRENCY = 6
 
@@ -3284,6 +3293,22 @@ class AgentManager:
         interrupt_on = apply_session_bypass(applied.interrupt_on, self._hitl_session_store)
         if interrupt_on is not applied.interrupt_on:
             applied = replace(applied, interrupt_on=interrupt_on)
+        if applied.model_retry_enabled:
+            from langchain.agents.middleware import ModelRetryMiddleware
+
+            applied = replace(
+                applied,
+                model_retry_enabled=False,
+                middleware=[
+                    ModelRetryMiddleware(
+                        max_retries=applied.model_retry_max_retries,
+                        initial_delay=applied.model_retry_initial_delay,
+                        max_delay=applied.model_retry_max_delay,
+                        on_failure=_model_retry_on_failure,
+                    ),
+                    *(applied.middleware or []),
+                ],
+            )
         return replace(
             applied,
             tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),
