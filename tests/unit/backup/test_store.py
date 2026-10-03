@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -289,3 +290,52 @@ def test_peek_skips_scan_when_manifest_not_first(tmp_path: Path) -> None:
     )
     # Deliberately no deep scan: treat as full contents.
     assert peek_backup_contents(archive) == BackupContentFlags()
+
+
+def test_write_backup_file_keeps_previous_archive_when_write_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed write must not destroy the archive already stored under that name.
+
+    ``place_backup_file`` promises an "atomic replace when possible"; writing the
+    bytes in place instead means a disk that fills up (or a process that is
+    killed) leaves a truncated ``.tar.gz`` that ``list_backup_files`` still
+    reports as a usable backup but that no longer opens.
+    """
+    layout = PathLayout(tmp_path / ".octop")
+    name = "octop-backup-existing.tar.gz"
+    write_backup_file(layout, name, b"ORIGINAL-GOOD-BACKUP")
+    dest = layout.backup_file(name)
+
+    real_write = os.write
+    real_write_bytes = Path.write_bytes
+
+    def _fail_partway(self: Path, data: bytes) -> int:
+        # Simulate the disk filling after a few bytes have landed.
+        real_write_bytes(self, data[:8])
+        raise OSError(28, "No space left on device")
+
+    def _failing_os_write(fd: int, data: bytes) -> int:
+        real_write(fd, data[:8])
+        raise OSError(28, "No space left on device")
+
+    # Cover both write paths: the in-place ``write_bytes`` this replaces, and the
+    # ``os.write`` of the temp file that replaces it.
+    monkeypatch.setattr(Path, "write_bytes", _fail_partway)
+    monkeypatch.setattr(os, "write", _failing_os_write)
+
+    with pytest.raises(OSError):
+        write_backup_file(layout, name, b"NEW-BACKUP-CONTENT")
+
+    assert dest.read_bytes() == b"ORIGINAL-GOOD-BACKUP", "existing archive was destroyed"
+    assert [item.name for item in list_backup_files(layout)] == [name]
+
+
+def test_write_backup_file_replaces_an_existing_archive(tmp_path: Path) -> None:
+    """The happy path still overwrites the destination with the new bytes."""
+    layout = PathLayout(tmp_path / ".octop")
+    name = "octop-backup-existing.tar.gz"
+    write_backup_file(layout, name, b"first")
+    write_backup_file(layout, name, b"second-payload")
+    assert read_backup_file(layout, name) == b"second-payload"
+    assert [item.name for item in list_backup_files(layout)] == [name]
