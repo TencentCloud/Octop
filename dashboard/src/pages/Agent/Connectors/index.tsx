@@ -45,6 +45,7 @@ import {
 } from "../../../api/modules/connectors";
 import { ConnectorCard } from "./ConnectorCard";
 import { ConnectorInstanceCard } from "./ConnectorInstanceCard";
+import { useAuthorizationPage } from "./useAuthorizationPage";
 import { CustomMcpTab } from "./CustomMcpTab";
 import {
   INLINE_CREDENTIAL_GUIDE_KINDS,
@@ -303,7 +304,7 @@ function isHostCliConnector(kind: string): boolean {
   return kind === "feishu-cli" || kind === "wecom-cli";
 }
 
-function ConnectorConfigDrawer({
+export function ConnectorConfigDrawer({
   open,
   entry,
   instance,
@@ -323,6 +324,8 @@ function ConnectorConfigDrawer({
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
   const [authorizing, setAuthorizing] = useState(false);
+  const oauthPage = useAuthorizationPage(open);
+  const externalPage = useAuthorizationPage(open);
   const [openingAuthorize, setOpeningAuthorize] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [authInfo, setAuthInfo] = useState<ConnectorAuthInfo | null>(null);
@@ -446,7 +449,7 @@ function ConnectorConfigDrawer({
 
   const openUrl = (url: string | null | undefined) => {
     if (!url) return;
-    window.open(url, "octop-connector-auth", "width=720,height=800");
+    externalPage.begin().navigate(url);
   };
 
   /** Open sync under the click gesture so popup blockers don't swallow async opens. */
@@ -487,15 +490,19 @@ function ConnectorConfigDrawer({
 
   const handleOpenAuthorize = async () => {
     if (!entry) return;
+    const page = externalPage.begin();
     setOpeningAuthorize(true);
     try {
       const { authorize_url } = await connectorsApi.authorizeUrl(entry.kind);
+      if (!page.active) return;
       if (!authorize_url) {
+        page.close();
         message.error(t("connectors.authUrlMissing", "无法获取授权页地址"));
         return;
       }
-      openUrl(authorize_url);
+      page.navigate(authorize_url);
     } catch (e) {
+      page.close();
       console.error(e);
       message.error(
         apiErrorMessage(e, t("connectors.authUrlFailed", "打开授权页失败"), t),
@@ -850,22 +857,12 @@ function ConnectorConfigDrawer({
 
   const handleOAuth = async () => {
     if (!entry || authorizing) return;
-    const popup = window.open("", "octop-oauth", "width=520,height=720");
-    if (!popup) {
-      message.error(
-        t(
-          "connectors.oauthPopupBlocked",
-          "授权窗口被浏览器拦截，请允许本站弹出窗口后重试",
-        ),
-      );
-      return;
-    }
-
     setAuthorizing(true);
     let settled = false;
     let pollTimer: ReturnType<typeof setInterval> | undefined;
     let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
     let stateId = "";
+    let claiming = false;
 
     const cleanup = () => {
       if (pollTimer !== undefined) clearInterval(pollTimer);
@@ -877,11 +874,6 @@ function ConnectorConfigDrawer({
       if (settled) return;
       settled = true;
       cleanup();
-      try {
-        popup.close();
-      } catch {
-        // ignore
-      }
       try {
         const values = form.getFieldsValue();
         const credentials: Record<string, unknown> = {};
@@ -938,17 +930,21 @@ function ConnectorConfigDrawer({
           apiErrorMessage(e, t("connectors.createFailed", "创建失败"), t),
         );
       } finally {
+        page.close();
         setAuthorizing(false);
       }
     };
 
     const claimPending = async () => {
-      if (settled || !stateId) return;
+      if (settled || !stateId || claiming) return;
+      claiming = true;
       try {
         const pending = await connectorsApi.oauthPending(stateId);
         await finishWithTokens(pending.tokens ?? {});
       } catch {
         // Pending not ready yet (404) — keep polling.
+      } finally {
+        claiming = false;
       }
     };
 
@@ -959,11 +955,18 @@ function ConnectorConfigDrawer({
       void claimPending();
     };
 
+    const page = oauthPage.begin(() => {
+      settled = true;
+      cleanup();
+      setAuthorizing(false);
+    });
+
     try {
       const { authorize_url, state_id } = await connectorsApi.oauthStart(
         { type: "catalog", kind: entry.kind },
         "/connectors",
       );
+      if (!page.active) return;
       stateId = state_id;
       window.addEventListener("message", onMessage);
       // Ardot (and some IdPs) set COOP so window.opener is null after redirect;
@@ -976,11 +979,7 @@ function ConnectorConfigDrawer({
           if (settled) return;
           settled = true;
           cleanup();
-          try {
-            popup.close();
-          } catch {
-            // ignore
-          }
+          page.close();
           setAuthorizing(false);
           message.error(
             t("connectors.oauthTimedOut", "授权超时，请重试一键授权"),
@@ -988,14 +987,11 @@ function ConnectorConfigDrawer({
         },
         5 * 60 * 1000,
       );
-      popup.location.replace(authorize_url);
+      page.navigate(authorize_url);
     } catch (e) {
+      if (!page.active) return;
+      page.close();
       cleanup();
-      try {
-        popup.close();
-      } catch {
-        // ignore
-      }
       console.error(e);
       message.error(
         apiErrorMessage(e, t("connectors.oauthStartFailed", "无法启动 OAuth")),
@@ -1234,6 +1230,8 @@ function ConnectorConfigDrawer({
       }
     >
       <div className={styles.drawerBody}>
+        {oauthPage.notice}
+        {externalPage.notice}
         {loadingDetail ? (
           <div className={styles.drawerLoading}>
             <Spin size="small" />

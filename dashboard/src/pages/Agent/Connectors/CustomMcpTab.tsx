@@ -12,6 +12,7 @@ import {
   type CustomMcpTransport,
 } from "../../../api/modules/connectors";
 import { apiErrorMessage } from "../../../utils/apiError";
+import { useAuthorizationPage } from "./useAuthorizationPage";
 import { CustomMcpServerCard } from "./CustomMcpServerCard";
 import {
   EXAMPLE_JSON,
@@ -50,6 +51,7 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
   const [oauthAvailable, setOauthAvailable] = useState<Record<string, boolean>>(
     {},
   );
+  const oauthPage = useAuthorizationPage();
   const [authorizingKey, setAuthorizingKey] = useState<string | null>(null);
   const [persistedNames, setPersistedNames] = useState<Set<string>>(
     () => new Set(),
@@ -437,27 +439,18 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
   };
 
   const handleOAuth = async (card: ServerCardState) => {
+    if (authorizingKey) return;
     const serverName = card.name.trim();
     if (!serverName) {
       message.warning(t("connectors.customMcp.emptyName", "请填写服务器名称"));
       return;
     }
-    const popup = window.open("", "octop-oauth", "width=520,height=720");
-    if (!popup) {
-      message.error(
-        t(
-          "connectors.oauthPopupBlocked",
-          "授权窗口被浏览器拦截，请允许本站弹出窗口后重试",
-        ),
-      );
-      return;
-    }
-
     setAuthorizingKey(card.key);
     let settled = false;
     let pollTimer: ReturnType<typeof setInterval> | undefined;
     let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
     let stateId = "";
+    let claiming = false;
 
     const cleanup = () => {
       if (pollTimer !== undefined) clearInterval(pollTimer);
@@ -469,11 +462,7 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       if (settled) return;
       settled = true;
       cleanup();
-      try {
-        popup.close();
-      } catch {
-        // ignore
-      }
+      page.close();
       setAuthorizingKey(null);
       try {
         const { servers } = await connectorsApi.getCustomMcp();
@@ -498,7 +487,8 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
     };
 
     const claimPending = async () => {
-      if (!stateId || settled) return;
+      if (!stateId || settled || claiming) return;
+      claiming = true;
       try {
         const pending = await connectorsApi.oauthPending(stateId);
         if (pending.applied || pending.server_name) {
@@ -506,27 +496,33 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
         }
       } catch {
         // keep polling until timeout
+      } finally {
+        claiming = false;
       }
     };
 
     const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
       if (ev.data?.type !== "octop:connector-oauth") return;
       if (ev.data.state_id !== stateId) return;
       void claimPending();
     };
 
+    const page = oauthPage.begin(() => {
+      settled = true;
+      cleanup();
+      setAuthorizingKey(null);
+    });
+
     try {
       const servers = resolveServersForSave();
       if (!servers) {
-        try {
-          popup.close();
-        } catch {
-          // ignore
-        }
+        page.close();
         setAuthorizingKey(null);
         return;
       }
       const saved = await connectorsApi.putCustomMcp(servers);
+      if (!page.active) return;
       applySavedServers(saved.servers, cards);
       notifyConnectorsChanged();
 
@@ -534,6 +530,7 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
         { type: "custom_mcp", server_name: serverName },
         window.location.pathname,
       );
+      if (!page.active) return;
       stateId = state_id;
       window.addEventListener("message", onMessage);
       pollTimer = setInterval(() => {
@@ -542,21 +539,19 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       timeoutTimer = setTimeout(() => {
         if (settled) return;
         settled = true;
+        page.close();
         cleanup();
         setAuthorizingKey(null);
         message.error(
           t("connectors.oauthTimedOut", "授权超时，请重试一键授权"),
         );
       }, 120_000);
-      popup.location.replace(authorize_url);
+      page.navigate(authorize_url);
     } catch (e) {
+      if (!page.active) return;
       cleanup();
       setAuthorizingKey(null);
-      try {
-        popup.close();
-      } catch {
-        // ignore
-      }
+      page.close();
       message.error(
         apiErrorMessage(
           e,
@@ -633,6 +628,7 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
 
   return (
     <div className={styles.customMcpTab}>
+      {oauthPage.notice}
       <div className={styles.customMcpIntro}>
         <div className={styles.customMcpIntroTitle}>
           {t(
