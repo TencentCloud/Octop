@@ -130,6 +130,10 @@ class ConnectorService:
                     or stored.get("internal_token")
                     or new_internal_token()
                 )
+            if row.kind == "agently-cli" and row.credential_blob:
+                # Editing a connector must never switch to another instance's grant.
+                existing = decrypt_credentials(self._secret_repo, row.credential_blob)
+                stored["cli_config_key"] = resolve_cli_config_key(existing)
         stored["instance_id"] = instance_id
         expires_at = stored.get("expires_at")
         exp = int(expires_at) if expires_at is not None else None

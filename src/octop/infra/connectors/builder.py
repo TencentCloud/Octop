@@ -406,6 +406,9 @@ def validate_create_credentials(
         }
 
     if entry.auth_kind == "custom_fields":
+        if entry.kind == "agently-cli":
+            # A caller must never select another instance's CLI credential directory.
+            return {"internal_token": new_internal_token(), "cli_config_key": new_ulid()}
         if entry.kind == "weknora":
             base_url = normalize_weknora_base_url(str(credentials.get("base_url") or ""))
             out = {
