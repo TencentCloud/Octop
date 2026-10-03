@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- 修复上述按线程串行锁的缓存泄漏：(agent, thread) 锁此前只增不减，删除专家或删除会话也不会回收，长期运行的进程会随线程数无上限增长；现按引用计数在最后一个占用者退出时驱逐，排队中的回合仍受同一把锁保护
 
 ## [1.0.2b5] - 2026-09-29
 
