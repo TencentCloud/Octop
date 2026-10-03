@@ -6,7 +6,13 @@ import json
 from pathlib import Path
 
 from octop.infra.auth.captcha import snapshot_env
-from octop.infra.auth.captcha.store import SETTINGS_KEY, load_effective, public_config
+from octop.infra.auth.captcha.store import (
+    SETTINGS_KEY,
+    load_effective,
+    load_view,
+    public_config,
+    save_settings,
+)
 from octop.infra.auth.sso.crypto import encrypt_secret
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -129,3 +135,71 @@ def test_unreadable_blob_falls_through_to_env(tmp_path: Path) -> None:
     effective = load_effective(settings, secrets, env)
     assert public_config(effective) == {"provider": "turnstile", "site_key": "0xenv"}
     assert effective.source == "env"
+
+
+def _blob_with_one_stale_secret(settings: SettingsRepo, secrets: SecretRepo) -> str:
+    """hcaptcha is complete and active; turnstile carries an undecryptable secret."""
+    good = encrypt_secret(secrets, "hc-secret").decode("ascii")
+    settings.set(
+        SETTINGS_KEY,
+        json.dumps(
+            {
+                "active": "hcaptcha",
+                "providers": {
+                    "hcaptcha": {"site_key": "hc-site", "secret_enc": good},
+                    "turnstile": {"site_key": "ts-site", "secret_enc": "not-a-fernet-token"},
+                },
+            }
+        ),
+    )
+    return good
+
+
+def test_stale_secret_keeps_the_active_provider_in_force(tmp_path: Path) -> None:
+    """One undecryptable secret must not void the whole settings blob.
+
+    A rotated key, a partially restored database or a legacy entry can leave a single
+    ``secret_enc`` unreadable. Dropping the whole blob then silently stepped captcha
+    down to the slider even though the active provider was configured and readable.
+    """
+    settings, secrets = _repos(tmp_path)
+    _blob_with_one_stale_secret(settings, secrets)
+    env = snapshot_env({})
+
+    effective = load_effective(settings, secrets, env)
+
+    assert effective.slug == "hcaptcha"
+    assert effective.secret == "hc-secret"
+    assert effective.source == "settings"
+
+
+def test_stale_secret_only_clears_its_own_provider(tmp_path: Path) -> None:
+    """The unreadable provider stays visible so an admin can refill its secret."""
+    settings, secrets = _repos(tmp_path)
+    _blob_with_one_stale_secret(settings, secrets)
+    env = snapshot_env({})
+
+    view = load_view(settings, secrets, env)
+
+    assert view["source"] == "settings"
+    assert view["providers"]["hcaptcha"]["has_secret"] is True
+    assert view["providers"]["turnstile"] == {
+        "site_key": "ts-site",
+        "has_secret": False,
+        "cam_secret_id": "",
+        "has_cam_secret": False,
+    }
+
+
+def test_stale_secret_does_not_wipe_readable_ones_on_save(tmp_path: Path) -> None:
+    """Saving any unrelated field must keep the secrets that still decrypt."""
+    settings, secrets = _repos(tmp_path)
+    good = _blob_with_one_stale_secret(settings, secrets)
+    env = snapshot_env({})
+
+    save_settings(settings, secrets, env, {"active": "slider"})
+
+    stored = json.loads(settings.get(SETTINGS_KEY) or "{}")
+    assert stored["active"] == "slider"
+    assert stored["providers"]["hcaptcha"]["secret_enc"] == good
+    assert "secret_enc" not in stored["providers"]["turnstile"]

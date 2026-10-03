@@ -54,6 +54,46 @@ def _decode_secret(secret_repo: SecretRepo, secret_enc: str) -> str | None:
         return None
 
 
+# Secret fields that are stored encrypted inside a provider pair.
+_SECRET_FIELDS = ("secret_enc", "cam_secret_enc")
+
+
+def _drop_stale_secrets(providers: dict[str, Any], secret_repo: SecretRepo) -> dict[str, Any]:
+    """Drop only the secret fields that can no longer be decrypted.
+
+    A rotated key, a partially restored database or a legacy record can leave a single
+    ``secret_enc`` unreadable. That used to void the whole blob, which silently stepped
+    captcha down to the slider even when the active provider was configured and
+    readable - and the next save then overwrote the secrets that still decrypted.
+    Removing just the stale field keeps every other provider in force and leaves the
+    affected one visible (site key intact, secret reported missing) so an admin can
+    refill only that secret.
+    """
+    kept: dict[str, Any] = {}
+    for slug, pair in providers.items():
+        if not isinstance(pair, dict):
+            continue
+        stale = [
+            field
+            for field in _SECRET_FIELDS
+            if isinstance(pair.get(field), str)
+            and pair[field]
+            and _decode_secret(secret_repo, pair[field]) is None
+        ]
+        if not stale:
+            kept[slug] = pair
+            continue
+        logger.warning(
+            "captcha settings blob: dropping undecryptable %s for provider %s",
+            ", ".join(stale),
+            slug,
+        )
+        pair = {key: value for key, value in pair.items() if key not in stale}
+        if pair:
+            kept[slug] = pair
+    return kept
+
+
 def _read_blob(settings_repo: SettingsRepo, secret_repo: SecretRepo) -> dict[str, Any] | None:
     raw = settings_repo.get(SETTINGS_KEY)
     if raw is None:
@@ -68,21 +108,7 @@ def _read_blob(settings_repo: SettingsRepo, secret_repo: SecretRepo) -> dict[str
         return None
     providers = data.get("providers")
     if isinstance(providers, dict):
-        for pair in providers.values():
-            if not isinstance(pair, dict):
-                continue
-            enc = pair.get("secret_enc")
-            if isinstance(enc, str) and enc and _decode_secret(secret_repo, enc) is None:
-                logger.warning("captcha settings blob secret cannot be decrypted; ignoring")
-                return None
-            cam_enc = pair.get("cam_secret_enc")
-            if (
-                isinstance(cam_enc, str)
-                and cam_enc
-                and _decode_secret(secret_repo, cam_enc) is None
-            ):
-                logger.warning("captcha settings blob cam secret cannot be decrypted; ignoring")
-                return None
+        data["providers"] = _drop_stale_secrets(providers, secret_repo)
     return data
 
 
