@@ -14,6 +14,7 @@ import importlib.util
 import logging
 import os
 import shutil
+import site
 import subprocess
 import sys
 import threading
@@ -111,6 +112,15 @@ def purge_import_cache(module_names: Sequence[str]) -> None:
     for name in module_names:
         sys.modules.pop(name, None)
     importlib.invalidate_caches()
+
+
+def _load_new_user_site() -> None:
+    """Expose packages pip placed in a user site created after process startup."""
+    if not site.ENABLE_USER_SITE:
+        return
+    user_site = site.getusersitepackages()
+    if user_site not in sys.path and Path(user_site).is_dir():
+        site.addsitedir(user_site)
 
 
 def build_install_commands(packages: Sequence[str]) -> list[list[str]]:
@@ -228,6 +238,8 @@ def install_packages(
             return "ready"
 
         ok, detail = _attempt_install_commands(commands, timeout=timeout)
+        if ok:
+            _load_new_user_site()
         if import_modules:
             purge_import_cache(import_modules)
 
