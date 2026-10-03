@@ -40,6 +40,11 @@ export interface CaptchaSettingsPut {
   providers?: Record<string, CaptchaPairBody>;
 }
 
+export interface OctopExpertVisibilitySettings {
+  hide_builtin_experts: boolean;
+  hide_market: boolean;
+}
+
 export const octopSettingsApi = {
   timezone: () => request<OctopTimezoneSettings>("/settings/timezone"),
   upload: () => request<OctopUploadSettings>("/settings/upload"),
@@ -50,6 +55,15 @@ export const octopSettingsApi = {
   captcha: () => request<CaptchaSettings>("/settings/captcha"),
   putCaptcha: (body: CaptchaSettingsPut) =>
     request<CaptchaSettings>("/settings/captcha", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  expertVisibility: () =>
+    request<OctopExpertVisibilitySettings>("/settings/expert-visibility", {
+      cache: "no-store",
+    }),
+  updateExpertVisibility: (body: OctopExpertVisibilitySettings) =>
+    request<OctopExpertVisibilitySettings>("/settings/expert-visibility", {
       method: "PUT",
       body: JSON.stringify(body),
     }),

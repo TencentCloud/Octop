@@ -7,7 +7,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user, get_server, require_permission
+from octop.api.deps import current_user, get_server, require_admin, require_permission
 from octop.config import OctopConfig
 from octop.infra.auth.captcha import current_env, load_view, save_settings
 from octop.infra.users.identity import User
@@ -151,3 +151,63 @@ async def put_captcha_settings(
         payload=f"source={view['source']}",
     )
     return CaptchaSettingsResponse.model_validate(view)
+
+
+class ExpertVisibilityResponse(BaseModel):
+    hide_builtin_experts: bool = Field(
+        default=False,
+        description="When true, non-admin users do not see built-in expert templates.",
+    )
+    hide_market: bool = Field(
+        default=False,
+        description="When true, non-admin users do not see the SkillHub expert market.",
+    )
+
+
+class ExpertVisibilityUpdate(BaseModel):
+    hide_builtin_experts: bool = Field(..., description="Hide built-in experts from users.")
+    hide_market: bool = Field(..., description="Hide the expert market from users.")
+
+
+def _expert_visibility(server: Any) -> ExpertVisibilityResponse:
+    policy = server.services.settings_repo.get_expert_visibility()
+    return ExpertVisibilityResponse(
+        hide_builtin_experts=policy["hide_builtin_experts"],
+        hide_market=policy["hide_market"],
+    )
+
+
+@router.get(
+    "/settings/expert-visibility",
+    summary="Expert visibility policy",
+    response_model=ExpertVisibilityResponse,
+)
+async def get_expert_visibility(
+    _: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> ExpertVisibilityResponse:
+    """Return whether built-in experts / the expert market are hidden from users.
+
+    Readable by any authenticated user so the dashboard can hide the matching
+    tabs; the values themselves are only advisory to non-admins (the backend
+    still filters the listings).
+    """
+    return _expert_visibility(server)
+
+
+@router.put(
+    "/settings/expert-visibility",
+    summary="Update expert visibility policy (admin)",
+    response_model=ExpertVisibilityResponse,
+)
+async def update_expert_visibility(
+    body: ExpertVisibilityUpdate,
+    server: Any = Depends(get_server),
+    _: Any = Depends(require_admin()),
+) -> ExpertVisibilityResponse:
+    """Persist the expert-visibility policy. Admin only."""
+    server.services.settings_repo.set_expert_visibility(
+        hide_builtin_experts=body.hide_builtin_experts,
+        hide_market=body.hide_market,
+    )
+    return _expert_visibility(server)
