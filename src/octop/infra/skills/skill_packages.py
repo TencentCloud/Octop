@@ -89,6 +89,13 @@ def normalize_skill_files(
             raise SkillPackageTooLarge("skill package size exceeds 64 MB")
         normalized.append((path, content))
 
+    # Directory markers keep a trailing slash; bare parent paths denote files.
+    for path, _content in normalized:
+        if (path.endswith("/") and path[:-1] in seen) or any(
+            parent.as_posix() in seen for parent in PurePosixPath(path).parents
+        ):
+            raise SkillPackageError(f"file/directory conflict in skill package: {path}")
+
     if require_manifest and "SKILL.md" not in seen:
         raise SkillPackageError("skill package does not contain a root SKILL.md")
     if require_manifest:
