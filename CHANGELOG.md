@@ -17,6 +17,7 @@
 
 ### 修复
 - Ask / Plan 模式下输入栏「+」菜单的选择面板过矮（模型、知识库一次只看得见一条），改为按视口可用高度封顶（目标 400px，且不低于左侧菜单）；右侧比左侧矮时上对齐、更高时下对齐向上长；连接器/技能/专家/子智能体数量角标与知识库一样跟在文字后；模型列表现在可搜索
+- CLI 的 `octop provider delete`、`octop provider test` 与 `octop admin providers delete` 在进回调前校验供应商 ID：非整数输入由 click 报参数错误（退出码 2），不再抛出 `ValueError` 转换异常与 traceback（Fixes #1552）。
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
 
