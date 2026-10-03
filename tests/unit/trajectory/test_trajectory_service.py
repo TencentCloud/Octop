@@ -361,3 +361,33 @@ def test_list_from_seq_returns_inclusive_tail(tmp_path: Path) -> None:
     assert len(page) == 2
     replay = service.list_from_seq("T1", from_seq=page[1].seq, limit=10)
     assert [event.seq for event in replay] == [page[1].seq]
+
+
+def test_mark_turn_failed_flags_the_in_flight_assistant_event(tmp_path: Path) -> None:
+    """A turn that dies mid-flight must show up as ``is_error`` instead of looking finished."""
+    service, _bus = _service(tmp_path)
+    service.observe_chunk("A1", "T1", {"type": "user", "content": "hi"})
+    service.observe_chunk(
+        "A1", "T1", {"type": "token", "node": "agent", "content": "partial", "request_seq": 1}
+    )
+
+    service.mark_turn_failed("T1", reason="GraphRecursionError: recursion limit reached")
+
+    events = service.list_events("T1", before_seq=None, limit=10, kinds=None)
+    failed = [event for event in events if event.is_error]
+    assert len(failed) == 1
+    assert failed[0].payload["reason"] == "GraphRecursionError: recursion limit reached"
+    assert failed[0].payload["turn_status"] == "failed"
+
+
+def test_mark_turn_failed_marks_the_latest_event_without_inflight_state(tmp_path: Path) -> None:
+    """A failure reported after the turn was finalized still leaves a machine-readable mark."""
+    service, _bus = _service(tmp_path)
+    service.observe_chunk("A1", "T1", {"type": "user", "content": "hi"})
+    service.finish_turn("T1")
+
+    service.mark_turn_failed("T1", reason="stream_chunk_timeout")
+
+    events = service.list_events("T1", before_seq=None, limit=10, kinds=None)
+    assert [event.is_error for event in events] == [True]
+    assert events[0].payload["reason"] == "stream_chunk_timeout"
