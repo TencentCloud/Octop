@@ -372,6 +372,7 @@
     "STORAGE_BACKEND_NAME_TAKEN": "Storage backend name is already in use.",
     "STORAGE_BACKEND_REFERENCED": "Storage backend is in use and cannot be removed.",
     "STORAGE_BACKEND_DEPS_FAILED": "Could not install optional components for this storage backend. Check network access and retry.",
+    "STORAGE_BROWSE_FAILED": "Could not browse this storage backend.",
     "CHANNEL_KIND_UNSUPPORTED": "Unsupported channel type.",
     "CHANNEL_INVALID_CREDENTIALS": "Invalid channel credentials.",
     "CHANNEL_NAME_TAKEN": "This channel name is already in use. Please choose another.",

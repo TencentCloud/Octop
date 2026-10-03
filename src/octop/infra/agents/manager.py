@@ -2721,8 +2721,10 @@ class AgentManager:
             }
         elif self._spec_is_opensandbox(backend):
             ensure_opensandbox_deps(allow_install=True)
+        from octop.infra.backend.compat import adapt_backend_protocol  # noqa: PLC0415
+
         return BackendWorkspace(
-            resolve_backend(backend, workspace_dir=workspace_dir),
+            adapt_backend_protocol(resolve_backend(backend, workspace_dir=workspace_dir)),
             workspace_dir,
             system_files_path=system_files_path_from_config(cfg),
         )
@@ -3244,7 +3246,15 @@ class AgentManager:
         )
         # OpenSandbox.create is not idempotent — reuse the instance already
         # wrapped by ``ws`` so start does not spawn a second remote sandbox.
-        harness_backend: Any = ws.backend if self._spec_is_opensandbox(backend) else backend
+        # The same reuse applies when the workspace wrap adapted an older
+        # read/ls surface (S3 / Postgres / COS / …) to ReadResult/LsResult.
+        from octop.infra.backend.compat import is_adapted_backend  # noqa: PLC0415
+
+        harness_backend: Any = (
+            ws.backend
+            if self._spec_is_opensandbox(backend) or is_adapted_backend(ws.backend)
+            else backend
+        )
 
         harness_cfg = HarnessAgentConfig(
             name=_memory_namespace(row.agent_id),
