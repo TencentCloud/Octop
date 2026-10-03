@@ -7,6 +7,13 @@ from typing import Any
 
 import httpx
 
+# ``search_notes`` pages with a start/end offset pair instead of a ``limit``.
+# Every other list tool here documents "1-20 rows per page", so the search
+# window gets the same per-page ceiling — but enforced as the *window length*
+# (``end - start``), not by clamping the absolute offsets, so paging past the
+# first page (e.g. ``start=20, end=40``) is preserved rather than rejected.
+SEARCH_WINDOW_MAX = 20
+
 TOOLS: list[dict[str, Any]] = [
     {
         "name": "list_notebooks",
@@ -69,7 +76,14 @@ TOOLS: list[dict[str, Any]] = [
                     "description": "0=title (default), 1=content",
                 },
                 "start": {"type": "integer", "description": "Start offset, default 0"},
-                "end": {"type": "integer", "description": "End offset, default 20"},
+                "end": {
+                    "type": "integer",
+                    "description": (
+                        "End offset (exclusive). The window length (end-start) "
+                        "is capped at 20 notes; when omitted, defaults to "
+                        "start+20 for one full page."
+                    ),
+                },
             },
             "required": ["query"],
         },
@@ -292,11 +306,10 @@ def call_tool(creds: dict[str, Any], name: str, args: dict[str, Any]) -> str:
         query = str(args.get("query") or "").strip()
         if not query:
             raise ValueError("query is required")
-        search_type = int(args.get("search_type") or 0)
+        search_type = _int_arg("search_type", args.get("search_type"), default=0)
         if search_type not in (0, 1):
             raise ValueError("search_type must be 0 (title) or 1 (content)")
-        start = int(args.get("start") or 0)
-        end = int(args.get("end") or 20)
+        start, end = _search_window(args)
         query_info = {"content": query} if search_type == 1 else {"title": query}
         return _openapi(
             creds,
@@ -443,6 +456,46 @@ def call_tool(creds: dict[str, Any], name: str, args: dict[str, Any]) -> str:
 def _clamp_int(value: object, *, default: int, lo: int, hi: int) -> int:
     n = default if value is None or value == "" else int(str(value))
     return max(lo, min(n, hi))
+
+
+def _int_arg(name: str, value: object, *, default: int) -> int:
+    """Coerce a model-supplied integer, blaming ``name`` when it is not one.
+
+    ``int("twenty")`` raises a bare ValueError that says nothing about which
+    argument was wrong, so the caller's own range check never runs.
+    """
+    if value is None or value == "":
+        return default
+    try:
+        return int(str(value))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
+
+
+def _search_window(args: dict[str, Any]) -> tuple[int, int]:
+    """Return the validated ``(start, end)`` window for ``search_notes``.
+
+    ``start``/``end`` are an offset *pair* (not a single ``limit``), so the
+    boundary we enforce is the **window length** ``end - start`` — capped at
+    ``SEARCH_WINDOW_MAX`` rows, matching the 1-20 per-page ceiling the other
+    list tools clamp their ``limit`` to. We must not clamp the absolute
+    offsets (unlike those tools): paging past the first page uses
+    ``start=20, end=40``, and capping the literals would reject it. A negative
+    ``start`` is meaningless, so it is floored to 0; an empty or inverted
+    window (``end <= start``) is rejected instead of being sent to IMA.
+    """
+    start = _int_arg("start", args.get("start"), default=0)
+    start = max(0, start)
+    # end is optional; when omitted the window spans one full page from start.
+    end = _int_arg("end", args.get("end"), default=start + SEARCH_WINDOW_MAX)
+    if end <= start:
+        raise ValueError(
+            "start/end must describe a non-empty window of at most "
+            f"{SEARCH_WINDOW_MAX} notes, got start={start} end={end}"
+        )
+    if end - start > SEARCH_WINDOW_MAX:
+        end = start + SEARCH_WINDOW_MAX
+    return start, end
 
 
 def _string_list(value: object) -> list[str]:

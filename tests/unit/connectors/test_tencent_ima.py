@@ -97,6 +97,81 @@ def test_search_notes_content_type(monkeypatch: pytest.MonkeyPatch) -> None:
     }
 
 
+def test_search_notes_caps_an_oversized_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+    _install_httpx_mock(monkeypatch, captured)
+    _call("search_notes", {"query": "排期", "start": 0, "end": 9999})
+    assert captured["json"] == {
+        "search_type": 0,
+        "query_info": {"title": "排期"},
+        "start": 0,
+        "end": 20,
+    }
+
+
+def test_search_notes_clamps_a_negative_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+    _install_httpx_mock(monkeypatch, captured)
+    _call("search_notes", {"query": "排期", "start": -5, "end": 10})
+    assert captured["json"] == {
+        "search_type": 0,
+        "query_info": {"title": "排期"},
+        "start": 0,
+        "end": 10,
+    }
+
+
+def test_search_notes_keeps_a_valid_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+    _install_httpx_mock(monkeypatch, captured)
+    _call("search_notes", {"query": "排期", "start": 5, "end": 15})
+    assert captured["json"] == {
+        "search_type": 0,
+        "query_info": {"title": "排期"},
+        "start": 5,
+        "end": 15,
+    }
+
+
+def test_search_notes_allows_paging_past_first_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+    _install_httpx_mock(monkeypatch, captured)
+    _call("search_notes", {"query": "排期", "start": 20, "end": 40})
+    assert captured["json"] == {
+        "search_type": 0,
+        "query_info": {"title": "排期"},
+        "start": 20,
+        "end": 40,
+    }
+
+
+def test_search_notes_caps_window_length_not_absolute_end(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+    _install_httpx_mock(monkeypatch, captured)
+    _call("search_notes", {"query": "排期", "start": 20, "end": 100})
+    assert captured["json"] == {
+        "search_type": 0,
+        "query_info": {"title": "排期"},
+        "start": 20,
+        "end": 40,
+    }
+
+
+def test_search_notes_rejects_an_inverted_window() -> None:
+    with pytest.raises(ValueError, match="non-empty window"):
+        _call("search_notes", {"query": "排期", "start": 10, "end": 5})
+
+
+def test_search_notes_names_a_non_integer_offset() -> None:
+    with pytest.raises(ValueError, match="end must be an integer"):
+        _call("search_notes", {"query": "排期", "end": "twenty"})
+
+
+def test_search_notes_names_a_non_integer_search_type() -> None:
+    with pytest.raises(ValueError, match="search_type must be an integer"):
+        _call("search_notes", {"query": "排期", "search_type": "title"})
+
+
 def test_create_note_markdown(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
     _install_httpx_mock(monkeypatch, captured)
