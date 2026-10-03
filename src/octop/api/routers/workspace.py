@@ -98,29 +98,21 @@ def _assert_inside_workspace(rel: str, *, workspace: Any, original: str) -> None
             ErrorCode.FORBIDDEN,
             f"cannot modify {original!r}: '~' paths must be '~/…'",
         )
-    # Containment is decided lexically. ``resolve()`` on the request value is a
-    # filesystem touch of attacker-controlled data — CodeQL reads it as a
-    # path-injection sink, and no inline suppression clears it — while
-    # ``normpath`` folds ``..`` just as well for deciding whether the target is
-    # inside the workspace. Symlink escape is left to the backend, which
-    # resolves and re-checks every relative key it is handed.
-    #
-    # Both spellings of the root are compared: ``resolve()`` may add or drop a
-    # symlinked ancestor (``/tmp`` → ``/private/tmp`` on macOS) and the request
-    # may legitimately spell the path either way.
-    configured = Path(workspace.workspace_dir).expanduser()
-    roots = {
-        posixpath.normpath(str(configured.resolve())),
-        posixpath.normpath(str(configured)),
-    }
-    candidate = posixpath.normpath(raw)
-    for root in roots:
-        if candidate == root or candidate.startswith(f"{root}/"):
-            return
-    raise OctopError(
-        ErrorCode.FORBIDDEN,
-        f"cannot modify {original!r}: path is outside the agent workspace",
-    )
+    root = Path(workspace.workspace_dir).expanduser().resolve()
+    try:
+        # ``resolve()`` is what makes the comparison hold on Windows, where the
+        # request may spell a temp dir with its 8.3 short name while
+        # ``workspace_dir`` carries the long one — no lexical fold unifies those.
+        # A lexical check would satisfy CodeQL's py/path-injection sanitizer
+        # pattern but reject those legitimate writes, so resolve() stays and the
+        # alert is an accepted false positive (the containment check below is
+        # the guard; the config file notes inline suppressions are not honoured).
+        Path(raw).expanduser().resolve().relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            f"cannot modify {original!r}: path is outside the agent workspace",
+        ) from exc
 
 
 def _assert_workspace_mutable(
