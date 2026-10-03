@@ -457,6 +457,7 @@ def _schedule_connector_reload(server: Any, user_id: int, *, all_users: bool = F
 
     async def _run() -> None:
         try:
+            await server.app_runtime.cron_manager.reload_mail_watches()
             if all_users:
                 await server.app_runtime.agent_registry.reload_all()
             else:
@@ -1189,6 +1190,9 @@ async def agently_auth_status(
     result = await _connector_service(server).agently_auth_for_instance(
         instance_id, user.id, "status", locale=resolve_request_locale(request)
     )
+    if result["status"] == "authorized":
+        assert server.app_runtime is not None
+        await server.app_runtime.cron_manager.resume_mail_watch(instance_id)
     return AgentlyAuthResponse(**result)
 
 
@@ -1207,6 +1211,8 @@ async def agently_auth_logout(
     result = await _connector_service(server).agently_auth_for_instance(
         instance_id, user.id, "logout", locale=resolve_request_locale(request)
     )
+    assert server.app_runtime is not None
+    await server.app_runtime.cron_manager.stop_mail_watch(instance_id)
     return AgentlyAuthResponse(**result)
 
 

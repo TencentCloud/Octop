@@ -101,7 +101,7 @@ async def _spawn(creds: dict[str, Any], command: str) -> asyncio.subprocess.Proc
     )
 
 
-async def _stop_process(process: asyncio.subprocess.Process) -> None:
+async def stop_process(process: asyncio.subprocess.Process) -> None:
     if process.returncode is not None:
         return
     # npm's launcher spawns the native CLI: terminate its entire process tree.
@@ -146,7 +146,7 @@ async def _command(creds: dict[str, Any], command: str) -> dict[str, Any]:
             raise ValueError("invalid agently auth data")
         return data
     finally:
-        await _stop_process(process)
+        await stop_process(process)
 
 
 def _read_verification_url(line: str, session: _Login) -> None:
@@ -197,7 +197,7 @@ async def _login(creds: dict[str, Any], session: _Login) -> None:
         session.status, session.error_key = "error", "login_failed"
     finally:
         if process is not None:
-            await _stop_process(process)
+            await stop_process(process)
         session.ready.set()
 
 

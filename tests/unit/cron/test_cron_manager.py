@@ -722,3 +722,61 @@ async def test_schedule_replaces_existing_job(tmp_path: Path) -> None:
 
     mgr._scheduler.remove_job.assert_called_with(cid)
     mgr._scheduler.add_job.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_mail_trigger_validates_owner_delivers_context_and_can_be_disabled(tmp_path):
+    from octop.infra.connectors.crypto import encrypt_credentials
+    from octop.infra.cron.trigger import AgentlyMailTrigger, build_trigger
+    from octop.infra.errors import OctopError
+
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    _, stranger = _make_agent(services)
+    source_id = new_ulid()
+    services.repos.connector_repo.create(
+        instance_id=source_id,
+        user_id=uid,
+        kind="agently-cli",
+        display_name="mail",
+        mcp_server_name="mail_source",
+    )
+    services.repos.connector_repo.upsert_credentials(
+        instance_id=source_id,
+        blob=encrypt_credentials(services.secret_repo, {"cli_config_key": "mail"}),
+    )
+    mgr = _make_manager(services)
+    mgr._mail_watch = MagicMock()
+    mgr._mail_watch.unsubscribe = AsyncMock()
+    mgr._mail_watch.close = AsyncMock()
+    cid = _cron_id()
+    trigger = f"agently:{source_id}"
+    assert isinstance(build_trigger(trigger), AgentlyMailTrigger)
+    with pytest.raises(OctopError):
+        await mgr.create(
+            cron_id=cid, agent_id=aid, user_id=stranger, trigger=trigger, prompt="Read new mail"
+        )
+    assert mgr.get(cid) is None
+    await mgr.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger=trigger,
+        prompt="Read new mail",
+        task_type="agent",
+    )
+    mgr._scheduler.add_job.assert_not_called()
+    assert mgr._mail_watch.subscribe.call_args.args[:2] == (source_id, cid)
+    delivered = []
+    mgr._make_job = lambda row: delivered.append(row) or MagicMock(run=AsyncMock())
+    await mgr._run_mail_event(cid, "msg_safe")
+    assert delivered[0].mcp_servers == ["mail_source"]
+    assert "msg_safe" in delivered[0].prompt
+    assert "mail_source_agently_read" in delivered[0].prompt
+    assert mgr.get(cid).prompt == "Read new mail"
+    await mgr.update(cid, enabled=0)
+    mgr._mail_watch.unsubscribe.assert_awaited_once_with(cid)
+    await mgr._run_mail_event(cid, "msg_next")
+    assert len(delivered) == 1
+    await mgr.shutdown()
+    mgr._mail_watch.close.assert_awaited_once()
