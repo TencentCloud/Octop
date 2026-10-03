@@ -18,6 +18,11 @@ PKGVAR="${TRIM_PKGVAR:-/var/apps/octop-native/var}"
 LOG_FILE="${PKGVAR}/info.log"
 PID_FILE="${PKGVAR}/octop.pid"
 PORT="${OCTOP_PORT:-8089}"
+# .env 里的 OCTOP_PORT 才是实际监听端口（bin/octop source .env 时会覆盖继承的环境变量），
+# 就绪探测必须跟着同一个值，否则改过端口的实例会被这里判成「起不来」并 TERM 掉。
+if type octop_effective_port >/dev/null 2>&1; then
+    PORT="$(octop_effective_port "${PKGVAR}/.env" "$PORT")"
+fi
 BIN="$APPDEST/bin/octop"
 START_WAIT_SECS="${OCTOP_START_WAIT_SECS:-90}"
 
