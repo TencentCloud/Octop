@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -339,3 +340,48 @@ async def test_auto_install_script_failure_emits_friendly_hint() -> None:
 
     assert any("exit 1" in line for line in lines)
     assert any("not supported by the Docker install script" in line for line in lines)
+
+
+@pytest.mark.asyncio
+async def test_install_mobile_stream_stalls_when_script_hangs() -> None:
+    """A wedged install script must be killed and reported, not hang the SSE stream."""
+    from octop.infra.mobile import setup as mobile_setup
+
+    class StalledProc:
+        def __init__(self) -> None:
+            self.stdout = self
+            self.killed = False
+
+        async def readline(self) -> bytes:
+            await asyncio.sleep(3600)
+
+        def kill(self) -> None:
+            self.killed = True
+
+        async def wait(self) -> int:
+            return -9
+
+    proc = StalledProc()
+
+    async def fake_exec(*args: object, **kwargs: object) -> StalledProc:
+        return proc
+
+    with (
+        patch.object(mobile_setup, "_docker_available", return_value=True),
+        patch.object(mobile_setup, "_SCRIPT_READLINE_TIMEOUT", 0.05, create=True),
+        patch.object(mobile_setup.asyncio, "create_subprocess_exec", new=fake_exec),
+    ):
+        events: list[str] = []
+        gen = mobile_setup.install_mobile_stream(locale="en")
+        try:
+            while True:
+                try:
+                    events.append(await asyncio.wait_for(anext(gen), timeout=2.0))
+                except StopAsyncIteration:
+                    break
+        finally:
+            await gen.aclose()
+
+    assert proc.killed
+    last = json.loads(events[-1].removeprefix("data: ").strip())
+    assert last == {"done": False, "error": "install_stalled"}
