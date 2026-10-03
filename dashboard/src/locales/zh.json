@@ -6098,6 +6098,7 @@
     "noDescription": "暂无描述",
     "noToolsListed": "暂无已加载工具",
     "hasUi": "聊天 UI",
+    "needsConfig": "待配置",
     "hasConfig": "可配置"
   },
   "slash": {

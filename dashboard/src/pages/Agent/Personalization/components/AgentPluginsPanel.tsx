@@ -4,9 +4,6 @@ import {
   Button,
   Drawer,
   Empty,
-  Form,
-  Input,
-  InputNumber,
   Segmented,
   Spin,
   Switch,
@@ -19,7 +16,6 @@ import {
   type AgentPlugin,
   type AgentPluginTool,
   type AgentPluginsConfig,
-  type PluginConfigField,
 } from "../../../../api/modules/plugins";
 import { PluginIconView } from "../../../Admin/Plugins/PluginIconView";
 import { PluginGroupTag } from "../../../Admin/Plugins/PluginGroupTag";
@@ -31,6 +27,8 @@ import { message } from "../../../../utils/antdMessage";
 import { apiErrorMessage } from "../../../../utils/apiError";
 import pluginStyles from "../../../Admin/Plugins/index.module.less";
 import styles from "./AgentPluginsPanel.module.less";
+import PluginToolConfigDrawer from "../../../../components/plugins/PluginToolConfigDrawer";
+import { pluginToolNeedsConfig } from "../../../../utils/pluginToolConfig";
 
 const GROUP_ALL = "all";
 
@@ -50,39 +48,6 @@ function toolsConfig(tools: AgentPluginTool[]): AgentPluginsConfig {
   return plugins;
 }
 
-function configField(field: PluginConfigField) {
-  const props = {
-    label: field.label || field.name,
-    name: field.name,
-    rules: field.required
-      ? [{ required: true, message: field.label || field.name }]
-      : undefined,
-    extra: field.help,
-  };
-  if (field.type === "password") {
-    return (
-      <Form.Item key={field.name} {...props}>
-        <Input.Password placeholder={field.placeholder} autoComplete="off" />
-      </Form.Item>
-    );
-  }
-  if (field.type === "number") {
-    return (
-      <Form.Item key={field.name} {...props}>
-        <InputNumber
-          style={{ width: "100%" }}
-          placeholder={field.placeholder}
-        />
-      </Form.Item>
-    );
-  }
-  return (
-    <Form.Item key={field.name} {...props}>
-      <Input placeholder={field.placeholder} />
-    </Form.Item>
-  );
-}
-
 export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
   const { t } = useTranslation();
   const [plugins, setPlugins] = useState<AgentPlugin[]>([]);
@@ -92,9 +57,9 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [configTool, setConfigTool] = useState<AgentPluginTool | null>(null);
   const [activeGroup, setActiveGroup] = useState<string>(GROUP_ALL);
-  const [form] = Form.useForm();
 
   const load = useCallback(async () => {
+    setConfigTool(null);
     if (!agentId) {
       setPlugins([]);
       setTools([]);
@@ -161,34 +126,6 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
     );
     try {
       await persistTools(next);
-      message.success(t("plugins.saved"));
-    } catch (error) {
-      message.error(apiErrorMessage(error, t("plugins.saveFailed"), t));
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const openConfig = (tool: AgentPluginTool) => {
-    setConfigTool(tool);
-    form.setFieldsValue(tool.config);
-  };
-
-  const saveConfig = async () => {
-    if (!configTool) return;
-    const values = await form.validateFields();
-    const key = `tool:${configTool.plugin_id}:${configTool.name}`;
-    setSaving(key);
-    try {
-      await persistTools(
-        tools.map((item) =>
-          item.plugin_id === configTool.plugin_id &&
-          item.name === configTool.name
-            ? { ...item, config: values }
-            : item,
-        ),
-      );
-      setConfigTool(null);
       message.success(t("plugins.saved"));
     } catch (error) {
       message.error(apiErrorMessage(error, t("plugins.saveFailed"), t));
@@ -289,6 +226,17 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
                     <div className={pluginStyles.cardChips}>
                       <PluginGroupTag group={plugin.group} />
                       {plugin.kind ? <Tag>{plugin.kind}</Tag> : null}
+                      {tools.some(
+                        (tool) =>
+                          tool.plugin_id === plugin.id &&
+                          pluginToolNeedsConfig(tool),
+                      ) ? (
+                        <Tag color="warning">{t("plugins.needsConfig")}</Tag>
+                      ) : plugin.tools?.some(
+                          (tool) => tool.config_fields?.length,
+                        ) ? (
+                        <Tag>{t("plugins.hasConfig")}</Tag>
+                      ) : null}
                       {!plugin.global_enabled ? (
                         <Tag>{t("plugins.globallyDisabled")}</Tag>
                       ) : null}
@@ -365,6 +313,11 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
                       <div className={pluginStyles.detailToolMeta}>
                         <div className={pluginStyles.detailToolName}>
                           {tool.name}
+                          {pluginToolNeedsConfig(tool) ? (
+                            <Tag color="warning">
+                              {t("plugins.needsConfig")}
+                            </Tag>
+                          ) : null}
                         </div>
                         {tool.description ? (
                           <div className={pluginStyles.detailToolDesc}>
@@ -379,9 +332,11 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
                             size="small"
                             icon={<Settings2 size={15} />}
                             disabled={!detail.enabled}
-                            onClick={() => openConfig(tool)}
+                            onClick={() => setConfigTool(tool)}
                             aria-label={t("plugins.configure")}
-                          />
+                          >
+                            {t("plugins.configure")}
+                          </Button>
                         ) : null}
                         <Switch
                           size="small"
@@ -400,26 +355,25 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
         ) : null}
       </Drawer>
 
-      <Drawer
-        title={configTool?.name}
-        open={!!configTool}
-        onClose={() => setConfigTool(null)}
-        width={420}
-        destroyOnHidden
-        extra={
-          <Button
-            type="primary"
-            loading={saving?.startsWith("tool:")}
-            onClick={() => void saveConfig()}
-          >
-            {t("common.save")}
-          </Button>
-        }
-      >
-        <Form form={form} layout="vertical">
-          {configTool?.config_fields.map(configField)}
-        </Form>
-      </Drawer>
+      {configTool ? (
+        <PluginToolConfigDrawer
+          key={`${agentId}:${configTool.plugin_id}:${configTool.name}`}
+          agentId={agentId}
+          tool={configTool}
+          onClose={() => setConfigTool(null)}
+          onSaved={(config) => {
+            setTools((current) =>
+              current.map((tool) =>
+                tool.plugin_id === configTool.plugin_id &&
+                tool.name === configTool.name
+                  ? { ...tool, config }
+                  : tool,
+              ),
+            );
+            setConfigTool(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
