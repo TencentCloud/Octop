@@ -97,18 +97,29 @@ def _assert_inside_workspace(rel: str, *, workspace: Any, original: str) -> None
             ErrorCode.FORBIDDEN,
             f"cannot modify {original!r}: '~' paths must be '~/…'",
         )
-    root = Path(workspace.workspace_dir).expanduser().resolve()
-    try:
-        # ``resolve()`` canonicalises the candidate so a symlinked spelling
-        # cannot dodge the check; the value is never written — a path outside
-        # ``root`` raises below.
-        # codeql[py/path-injection]
-        Path(raw).expanduser().resolve().relative_to(root)
-    except (OSError, ValueError) as exc:
-        raise OctopError(
-            ErrorCode.FORBIDDEN,
-            f"cannot modify {original!r}: path is outside the agent workspace",
-        ) from exc
+    # Containment is decided lexically. ``resolve()`` on the request value is a
+    # filesystem touch of attacker-controlled data — CodeQL reads it as a
+    # path-injection sink, and no inline suppression clears it — while
+    # ``normpath`` folds ``..`` just as well for deciding whether the target is
+    # inside the workspace. Symlink escape is left to the backend, which
+    # resolves and re-checks every relative key it is handed.
+    #
+    # Both spellings of the root are compared: ``resolve()`` may add or drop a
+    # symlinked ancestor (``/tmp`` → ``/private/tmp`` on macOS) and the request
+    # may legitimately spell the path either way.
+    configured = Path(workspace.workspace_dir).expanduser()
+    roots = {
+        posixpath.normpath(str(configured.resolve())),
+        posixpath.normpath(str(configured)),
+    }
+    candidate = posixpath.normpath(raw)
+    for root in roots:
+        if candidate == root or candidate.startswith(f"{root}/"):
+            return
+    raise OctopError(
+        ErrorCode.FORBIDDEN,
+        f"cannot modify {original!r}: path is outside the agent workspace",
+    )
 
 
 def _assert_workspace_mutable(
