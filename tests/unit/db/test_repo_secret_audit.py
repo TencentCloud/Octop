@@ -50,6 +50,23 @@ def test_secret_rotate(secrets: SecretRepo):
     assert row["rotated_at"] >= before
 
 
+def test_audit_query_non_positive_limit_returns_nothing(audit: AuditRepo):
+    """``LIMIT ?`` must never be built from a non-positive ``limit``.
+
+    SQLite reads a negative LIMIT as "no limit at all" and ``LIMIT 0`` as "no
+    rows", so a paginated audit read answers with the whole table (or nothing)
+    instead of the requested page. The sibling repo reads already
+    short-circuit the same way (``ThreadMessageRepo.migration_candidates``,
+    ``TrajectoryEventRepo.list_before``).
+    """
+    for i in range(3):
+        audit.write(actor="alice", action=f"probe.{i}")
+
+    assert len(audit.query()) == 3
+    assert audit.query(limit=0) == []
+    assert audit.query(limit=-1) == []
+
+
 def test_audit_write_and_query(audit: AuditRepo):
     audit.write(actor="alice", action="login")
     audit.write(actor="bob", action="login")
