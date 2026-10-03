@@ -400,3 +400,31 @@ def test_export_model_tree_writes_manifest(monkeypatch, tmp_path: Path) -> None:
     assert manifest["model_id"] == "BAAI/bge-small-zh-v1.5"
     assert manifest["hf_repo"] == "Qdrant/bge-small-zh-v1.5"
     assert set(manifest["files"]) == {"config.json", "model.onnx"}
+
+
+def test_hf_cache_snapshot_dir_writes_bare_revision_ref(tmp_path: Path) -> None:
+    """refs/main must hold the bare revision: huggingface_hub does not strip it."""
+    from octop.infra.agents.providers.onnx_download import hf_cache_snapshot_dir
+
+    snap = hf_cache_snapshot_dir(tmp_path, "Qdrant/bge-small-zh-v1.5")
+
+    ref = tmp_path / "models--Qdrant--bge-small-zh-v1.5" / "refs" / "main"
+    assert ref.read_bytes() == b"cos-mirror"
+    assert snap == tmp_path / "models--Qdrant--bge-small-zh-v1.5" / "snapshots" / "cos-mirror"
+
+
+def test_hf_cache_snapshot_dir_is_resolvable_offline(tmp_path: Path) -> None:
+    import pytest
+
+    hub = pytest.importorskip("huggingface_hub")
+    from octop.infra.agents.providers.onnx_download import hf_cache_snapshot_dir
+
+    snap = hf_cache_snapshot_dir(tmp_path, "Qdrant/bge-small-zh-v1.5")
+    (snap / "config.json").write_text("{}", encoding="utf-8")
+
+    resolved = hub.snapshot_download(
+        repo_id="Qdrant/bge-small-zh-v1.5",
+        cache_dir=str(tmp_path),
+        local_files_only=True,
+    )
+    assert Path(resolved) == snap
