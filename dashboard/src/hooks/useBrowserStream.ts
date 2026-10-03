@@ -74,6 +74,7 @@ export interface StreamSessionInfo {
 
 export function useBrowserStream() {
   const wsRef = useRef<WebSocket | null>(null);
+  const connectionGenerationRef = useRef(0);
   const callbacksRef = useRef<BrowserStreamCallbacks | null>(null);
   const statusRef = useRef<BrowserStreamState>("idle");
   const [status, setStatus] = useState<BrowserStreamState>("idle");
@@ -98,6 +99,7 @@ export function useBrowserStream() {
       callbacks: BrowserStreamCallbacks,
       options: ConnectOptions = {},
     ) => {
+      const connectionGeneration = ++connectionGenerationRef.current;
       callbacksRef.current = callbacks;
       updateStatus("connecting");
 
@@ -112,11 +114,19 @@ export function useBrowserStream() {
         ws = new WebSocket(wsUrl);
       } catch (err) {
         console.error("[BrowserStream] Failed to create WebSocket:", err);
-        updateStatus("error");
+        if (connectionGenerationRef.current === connectionGeneration) {
+          wsRef.current = null;
+          updateStatus("error");
+        }
         return;
       }
 
+      const isCurrentConnection = () =>
+        connectionGenerationRef.current === connectionGeneration &&
+        wsRef.current === ws;
+
       ws.onopen = () => {
+        if (!isCurrentConnection()) return;
         const startMsg: Record<string, unknown> = {
           type: "start",
           url,
@@ -132,6 +142,7 @@ export function useBrowserStream() {
       };
 
       ws.onmessage = (ev) => {
+        if (!isCurrentConnection()) return;
         try {
           const msg = JSON.parse(ev.data as string) as {
             type: string;
@@ -182,10 +193,12 @@ export function useBrowserStream() {
       };
 
       ws.onerror = () => {
+        if (!isCurrentConnection()) return;
         updateStatus("error");
       };
 
       ws.onclose = () => {
+        if (!isCurrentConnection()) return;
         if (
           statusRef.current !== "stopped" &&
           statusRef.current !== "idle" &&
@@ -253,13 +266,15 @@ export function useBrowserStream() {
 
   /** Disconnect WebSocket completely. */
   const disconnect = useCallback(() => {
-    if (wsRef.current) {
+    connectionGenerationRef.current += 1;
+    const ws = wsRef.current;
+    wsRef.current = null;
+    if (ws) {
       try {
-        wsRef.current.close();
+        ws.close();
       } catch {
         // ignore
       }
-      wsRef.current = null;
     }
     updateStatus("idle");
     setTabs([]);
@@ -268,9 +283,12 @@ export function useBrowserStream() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (wsRef.current) {
+      connectionGenerationRef.current += 1;
+      const ws = wsRef.current;
+      wsRef.current = null;
+      if (ws) {
         try {
-          wsRef.current.close();
+          ws.close();
         } catch {
           // ignore
         }
