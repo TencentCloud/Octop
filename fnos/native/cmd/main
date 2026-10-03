@@ -2,12 +2,16 @@
 #
 # Octop 本地版（原生 app）— 生命周期管理
 # 直接以进程方式运行在飞牛主机上（非 Docker），监听 0.0.0.0:8089。
-# start:  启动 Octop（后台，写 PID 文件）
+# start:  启动 Octop（后台，写 PID 文件）；端口未就绪则失败并写出原因
 # stop:   发送 SIGTERM，超时 SIGKILL
 # status: 查询进程状态
 #
 
 set -uo pipefail
+
+_OCTOP_COMMON="$(dirname "$0")/common.sh"
+[ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop-native/cmd/common.sh"
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
 
 APPDEST="${TRIM_APPDEST:-/var/apps/octop-native}"
 PKGVAR="${TRIM_PKGVAR:-/var/apps/octop-native/var}"
@@ -15,47 +19,98 @@ LOG_FILE="${PKGVAR}/info.log"
 PID_FILE="${PKGVAR}/octop.pid"
 PORT="${OCTOP_PORT:-8089}"
 BIN="$APPDEST/bin/octop"
+START_WAIT_SECS="${OCTOP_START_WAIT_SECS:-90}"
+
+if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
+    DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+else
+    DATA_DIR="${APPDEST}/shares/octop-native/data"
+fi
 
 log_msg() { echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "${LOG_FILE}"; }
 
+port_ready() {
+    nc -z 127.0.0.1 "$PORT" 2>/dev/null && return 0
+    (exec 3<>/dev/tcp/127.0.0.1/"$PORT") 2>/dev/null && return 0
+    return 1
+}
+
+run_as_service() {
+    if id octop-native >/dev/null 2>&1 && command -v runuser >/dev/null 2>&1; then
+        runuser -u octop-native -- "$@"
+    else
+        "$@"
+    fi
+}
+
+fail_start() {
+    local reason="$1"
+    local detail
+    detail="$(tail -n 40 "${LOG_FILE}" 2>/dev/null || true)"
+    mkdir -p "${PKGVAR}" "${DATA_DIR}" 2>/dev/null || true
+    {
+        echo "$reason"
+        echo
+        echo "---- ${LOG_FILE} ----"
+        echo "$detail"
+    } > "${PKGVAR}/last-error.txt" 2>/dev/null || true
+    {
+        echo "$reason"
+        echo
+        echo "---- ${LOG_FILE} ----"
+        echo "$detail"
+    } > "${DATA_DIR}/octop-start-error.txt" 2>/dev/null || true
+    echo "[octop-native] $reason" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+    echo "[octop-native] $reason" >&2 || true
+    [ -n "$detail" ] && echo "$detail" >&2 || true
+    log_msg "$reason"
+    return 1
+}
+
 start_process() {
     if status; then return 0; fi
-    mkdir -p "${PKGVAR}"
-    log_msg "Starting Octop (native) on port ${PORT} ..."
-
-    # 以最低权限用户 octop-native 运行 Octop 服务（安全：web 服务与工作台终端
-    # 不以 root 身份暴露）。若该用户不存在（个别 FnOS 版本在 run-as=root 时不
-    # 创建包用户），则回退以当前身份（root）运行，保证服务一定起得来。
-    # 注意：本包 run-as=root 是为了让 install_callback 能以 root 写入
-    # /etc/sudoers.d/octop-native（授予 octop-native 免密 sudo），从而使远程桌面
-    # /浏览器安装这类需要 root 的操作可用；服务本身仍尽量降权运行。
-    local -a RUN_AS=()
-    if id octop-native >/dev/null 2>&1 && command -v runuser >/dev/null 2>&1; then
-        RUN_AS=(runuser -u octop-native --)
-        log_msg "将以 octop-native 低权限用户运行 Octop 服务"
-    else
-        log_msg "octop-native 用户不可用，回退以当前身份运行 Octop 服务"
+    mkdir -p "${PKGVAR}" "${DATA_DIR}"
+    : >> "${LOG_FILE}"
+    chmod +x "$BIN" 2>/dev/null || true
+    if [ ! -f "$BIN" ]; then
+        fail_start "找不到启动器 ${BIN}。请重新安装本地版。"
+        return 1
+    fi
+    if type fix_ownership_and_perms >/dev/null 2>&1; then
+        fix_ownership_and_perms "$PKGVAR" "${PKGVAR}/.env" >/dev/null || true
     fi
 
-    # 启动 Octop 监听所有接口（供飞牛直接通过端口访问）
-    OCTOP_PORT="$PORT" OCTOP_BIND_HOST=0.0.0.0 ${RUN_AS[@]+"${RUN_AS[@]}"} "$BIN" --host 0.0.0.0 --port "$PORT" >> "${LOG_FILE}" 2>&1 &
+    log_msg "Starting Octop (native) on port ${PORT} ..."
+
+    if [ ! -f "${DATA_DIR}/.octop/octop.db" ] && [ ! -f "${DATA_DIR}/octop.db" ]; then
+        log_msg "数据库尚未初始化，先执行 --prepare"
+        if ! OCTOP_PORT="$PORT" OCTOP_BIND_HOST=0.0.0.0 run_as_service "$BIN" --prepare >> "${LOG_FILE}" 2>&1; then
+            fail_start "首次初始化失败。请打开数据目录 octop-start-error.txt，或确认已安装「Python 3.12」。"
+            return 1
+        fi
+    fi
+
+    OCTOP_PORT="$PORT" OCTOP_BIND_HOST=0.0.0.0 run_as_service "$BIN" --host 0.0.0.0 --port "$PORT" >> "${LOG_FILE}" 2>&1 &
     octop_pid=$!
 
-    # 等待 Octop TCP 端口就绪（最多 30 秒）
-    for i in $(seq 1 30); do
-        if nc -z 127.0.0.1 "$PORT" 2>/dev/null || (exec 3<>/dev/tcp/127.0.0.1/"$PORT") 2>/dev/null; then
-            break
+    local i
+    for i in $(seq 1 "$START_WAIT_SECS"); do
+        if port_ready; then
+            printf "%s" "$octop_pid" > "${PID_FILE}"
+            rm -f "${DATA_DIR}/octop-start-error.txt" "${PKGVAR}/last-error.txt"
+            log_msg "Octop pid=$octop_pid 端口 ${PORT} 已就绪"
+            return 0
         fi
         if ! kill -0 "$octop_pid" 2>/dev/null; then
-            log_msg "Octop process exited early"
+            fail_start "进程已退出，未能监听 ${PORT}。请打开数据目录 octop-start-error.txt。"
             return 1
         fi
         sleep 1
     done
 
-    printf "%s" "$octop_pid" > "${PID_FILE}"
-    log_msg "Octop pid=$octop_pid"
-    return 0
+    kill -TERM "$octop_pid" 2>/dev/null || true
+    fail_start "在 ${START_WAIT_SECS} 秒内未能监听 ${PORT}。请打开数据目录 octop-start-error.txt。"
+    return 1
 }
 
 stop_process() {
@@ -64,7 +119,6 @@ stop_process() {
     if [ -r "${PID_FILE}" ]; then
         pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            # 杀整个进程组（包括可能的子进程）
             kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
             for i in $(seq 1 10); do
                 sleep 1

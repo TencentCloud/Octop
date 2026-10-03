@@ -34,7 +34,9 @@ from octop.infra.utils.bwrap import ensure_bubblewrap
 from octop.infra.utils.docker_env import docker_status, ensure_docker
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
+    host_browse_roots,
     host_fs_tree_root,
+    host_jail_enforced,
     host_path_text,
     list_host_subdirs,
     mkdir_host_subdir,
@@ -81,6 +83,12 @@ async def filesystem_defaults(
 
     Unrestricted users get filesystem root; a workspace-root policy jail sets
     both ``default_root_dir`` and ``tree_root`` to that path.
+
+    ``browse_roots`` is the *list* of tree roots the picker may show — every
+    ready drive on Windows, not just the one holding the server's home
+    directory. ``jail_enforced`` reports whether a non-root ``root_dir`` really
+    gets OS-level confinement (Linux + bubblewrap) or only bounds the agent's
+    tool paths, so the UI does not promise a sandbox it cannot deliver.
     """
     in_container = running_in_container()
     allowed = _user_workspace_root(server, user)
@@ -88,14 +96,36 @@ async def filesystem_defaults(
         return {
             "default_root_dir": allowed,
             "tree_root": allowed,
+            "browse_roots": [allowed],
+            "jail_enforced": host_jail_enforced(),
             "in_container": in_container,
         }
     root = host_fs_tree_root()
     return {
         "default_root_dir": root,
         "tree_root": root,
+        "browse_roots": host_browse_roots(),
+        "jail_enforced": host_jail_enforced(),
         "in_container": in_container,
     }
+
+
+@router.get(
+    "/roots",
+    summary="Browse-tree roots available to the current user",
+)
+async def filesystem_roots(
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """List the roots the root_dir picker may browse.
+
+    A workspace-root policy jail collapses this to that single path; otherwise
+    unrestricted users get host ``/`` (POSIX) or every ready Windows drive.
+    """
+    allowed = _user_workspace_root(server, user)
+    roots = [allowed] if allowed else host_browse_roots()
+    return {"roots": roots}
 
 
 @router.get("/dirs")
