@@ -25,7 +25,7 @@ export function confirmDeprecateAtom({
   onSuccess?: () => void;
 }) {
   let reason = "";
-  modal.confirm({
+  return modal.confirm({
     title: i18n.t("memory.deprecate.title"),
     content: (
       <div>

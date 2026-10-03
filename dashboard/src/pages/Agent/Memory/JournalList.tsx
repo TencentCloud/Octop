@@ -6,7 +6,13 @@
  * while key events such as promote/reject/deprecate remain standalone.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Card, Empty, Pagination, Select, Skeleton, Space, Tag } from "antd";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
@@ -17,6 +23,7 @@ import {
   type ListJournalBody,
 } from "../../../api/modules/memoryDashboard";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { useMemoryRequestGate } from "./shared/useMemoryRequestGate";
 import {
   calendarDaysAgo,
   formatServerHourMinute,
@@ -81,8 +88,21 @@ export default function JournalList({ agentId }: Props) {
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const listGate = useMemoryRequestGate(
+    JSON.stringify([agentId, page, action]),
+  );
+
+  useLayoutEffect(() => {
+    setItems([]);
+    setTotal(0);
+    setPage(1);
+    setLoading(Boolean(agentId));
+    setExpanded({});
+  }, [agentId]);
 
   const load = useCallback(async () => {
+    const isCurrent = listGate.begin();
+    if (!isCurrent) return;
     setLoading(true);
     const body: ListJournalBody = {
       offset: (page - 1) * PAGE_SIZE,
@@ -91,12 +111,15 @@ export default function JournalList({ agentId }: Props) {
     if (action) body.action = action;
     try {
       const r = await memoryDashboardApi.listJournal(agentId, body);
+      if (!isCurrent()) return;
       setItems(r.items);
       setTotal(r.total);
+    } catch (error) {
+      if (isCurrent()) throw error;
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [agentId, page, action]);
+  }, [agentId, page, action, listGate]);
 
   useEffect(() => {
     if (!agentId) return;

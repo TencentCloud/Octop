@@ -6,7 +6,13 @@
  * compact intensity bar while hiding raw IDs.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   Card,
   Drawer,
@@ -24,6 +30,7 @@ import {
   type EpisodeItem,
 } from "../../../api/modules/memoryDashboard";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { useMemoryRequestGate } from "./shared/useMemoryRequestGate";
 import {
   calendarDaysAgo,
   formatServerHourMinute,
@@ -45,20 +52,34 @@ export default function EpisodesList({ agentId }: Props) {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<EpisodeItem | null>(null);
+  const listGate = useMemoryRequestGate(JSON.stringify([agentId, page]));
+
+  useLayoutEffect(() => {
+    setItems([]);
+    setTotal(0);
+    setPage(1);
+    setLoading(Boolean(agentId));
+    setSelected(null);
+  }, [agentId]);
 
   const load = useCallback(async () => {
+    const isCurrent = listGate.begin();
+    if (!isCurrent) return;
     setLoading(true);
     try {
       const r = await memoryDashboardApi.listEpisodes(agentId, {
         offset: (page - 1) * PAGE_SIZE,
         limit: PAGE_SIZE,
       });
+      if (!isCurrent()) return;
       setItems(r.items);
       setTotal(r.total);
+    } catch (error) {
+      if (isCurrent()) throw error;
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [agentId, page]);
+  }, [agentId, page, listGate]);
 
   useEffect(() => {
     if (!agentId) return;

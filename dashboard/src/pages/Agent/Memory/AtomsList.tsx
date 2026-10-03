@@ -5,7 +5,13 @@
  * star importance, percentage confidence, relative timestamps, and no raw metadata IDs.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Button,
   Progress,
@@ -33,6 +39,7 @@ import MemoryPipelineEmpty from "./shared/MemoryPipelineEmpty";
 import { confirmDeprecateAtom } from "./shared/deprecateAtom";
 import { confirmEditAtom } from "./shared/editAtom";
 import CreateAtomModal from "./shared/createAtom";
+import { useMemoryRequestGate } from "./shared/useMemoryRequestGate";
 
 const PAGE_SIZE = 20;
 
@@ -69,8 +76,30 @@ export default function AtomsList({ agentId }: Props) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [entities, setEntities] = useState<EntityItem[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const listGate = useMemoryRequestGate(
+    JSON.stringify([agentId, page, kind, importance]),
+  );
+  const entityGate = useMemoryRequestGate(agentId);
+  const actionModal = useRef<{ destroy: () => void } | null>(null);
+
+  useLayoutEffect(() => {
+    setItems([]);
+    setTotal(0);
+    setPage(1);
+    setLoading(Boolean(agentId));
+    setSelected(null);
+    setHoveredId(null);
+    setEntities([]);
+    setCreateOpen(false);
+    return () => {
+      actionModal.current?.destroy();
+      actionModal.current = null;
+    };
+  }, [agentId]);
 
   const load = useCallback(async () => {
+    const isCurrent = listGate.begin();
+    if (!isCurrent) return;
     setLoading(true);
     const body: ListAtomsBody = {
       offset: (page - 1) * PAGE_SIZE,
@@ -80,44 +109,64 @@ export default function AtomsList({ agentId }: Props) {
     if (importance) body.importance_min = importance;
     try {
       const r = await memoryDashboardApi.listAtoms(agentId, body);
+      if (!isCurrent()) return;
       setItems(r.items);
       setTotal(r.total);
+    } catch (error) {
+      if (isCurrent()) throw error;
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [agentId, page, kind, importance]);
+  }, [agentId, page, kind, importance, listGate]);
+  const reload = useRef(load);
+  useLayoutEffect(() => {
+    reload.current = load;
+  }, [load]);
+
+  const loadEntities = useCallback(
+    async (clearOnError: boolean) => {
+      const isCurrent = entityGate.begin();
+      if (!isCurrent) return;
+      try {
+        const r = await memoryDashboardApi.listEntities(agentId, {
+          limit: 200,
+          order_by: "atom_count",
+          order: "desc",
+        });
+        if (isCurrent()) setEntities(r.items);
+      } catch {
+        if (isCurrent() && clearOnError) setEntities([]);
+      }
+    },
+    [agentId, entityGate],
+  );
 
   useEffect(() => {
     if (!agentId) return;
     void load();
-    void memoryDashboardApi
-      .listEntities(agentId, {
-        limit: 200,
-        order_by: "atom_count",
-        order: "desc",
-      })
-      .then((r) => setEntities(r.items))
-      .catch(() => setEntities([]));
-  }, [agentId, load]);
+    void loadEntities(true);
+  }, [agentId, load, loadEntities]);
 
   const handleDeprecate = (atom: AtomItem) => {
-    confirmDeprecateAtom({
+    actionModal.current = confirmDeprecateAtom({
       agentId,
       atom,
       onSuccess: () => {
+        if (!entityGate.isActive()) return;
         setSelected(null);
-        void load();
+        void reload.current();
       },
     });
   };
 
   const handleEdit = (atom: AtomItem) => {
-    confirmEditAtom({
+    actionModal.current = confirmEditAtom({
       agentId,
       atom,
       onSuccess: (next) => {
+        if (!entityGate.isActive()) return;
         setSelected(next);
-        void load();
+        void reload.current();
       },
     });
   };
@@ -316,17 +365,13 @@ export default function AtomsList({ agentId }: Props) {
         open={createOpen}
         agentId={agentId}
         entities={entities}
-        onClose={() => setCreateOpen(false)}
+        onClose={() => {
+          if (entityGate.isActive()) setCreateOpen(false);
+        }}
         onSuccess={() => {
-          void load();
-          void memoryDashboardApi
-            .listEntities(agentId, {
-              limit: 200,
-              order_by: "atom_count",
-              order: "desc",
-            })
-            .then((r) => setEntities(r.items))
-            .catch(() => undefined);
+          if (!entityGate.isActive()) return;
+          void reload.current();
+          void loadEntities(false);
         }}
       />
     </>

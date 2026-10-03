@@ -20,7 +20,7 @@ export function confirmEditAtom({
   onSuccess?: (next: AtomItem) => void;
 }) {
   let assertion = atom.assertion;
-  Modal.confirm({
+  return Modal.confirm({
     title: i18n.t("memory.edit.title"),
     width: 520,
     content: (
