@@ -13,6 +13,7 @@
 - 有本地密码的账号只在本地校验，口令不会转发到目录；启用 LDAP 时要求加密传输（`ldaps://` 或 StartTLS）。
 
 ### 修复
+- 浏览器流与 Bridge 的 viewport 尺寸统一限制在 32–4096，避免超大尺寸直接传给 Chromium。
 
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
 ### 新增
