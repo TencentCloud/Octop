@@ -4,7 +4,30 @@ import {
   resolveTurnModelRef,
   assistantTurnsFromEnd,
   userTurnsFromEnd,
+  buildComposerContext,
+  normalizeComposerContext,
 } from "./chatMessages";
+
+describe("team model composer snapshots", () => {
+  it("preserves an explicit off value in history", () => {
+    expect(normalizeComposerContext({ applyModelToTeam: false })).toEqual({
+      applyModelToTeam: false,
+    });
+  });
+  it("disables a team override without an explicit model", () => {
+    expect(
+      buildComposerContext({ selectedModel: null, applyModelToTeam: true }),
+    ).toEqual({ applyModelToTeam: false });
+  });
+  it("captures the chosen model and team override together", () => {
+    expect(
+      buildComposerContext({
+        selectedModel: "p/chosen",
+        applyModelToTeam: true,
+      }),
+    ).toEqual({ model: "p/chosen", applyModelToTeam: true });
+  });
+});
 
 describe("formatRunUsage", () => {
   it("shows cached input and the cache hit rate", () => {

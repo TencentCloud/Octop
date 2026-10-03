@@ -34,6 +34,7 @@ import {
 } from "./useSessions";
 import { isTeamAgent } from "../../../utils/teamAgent";
 import * as chatStore from "./chatStore";
+import type { ChatMessage } from "./sseHelpers";
 import {
   DEFAULT_CONVERSATION_MODE,
   parseConversationMode,
@@ -53,6 +54,7 @@ export function useChatComposerResources(
   stickyReasoningEffort?: string | null,
   stickyConversationMode?: ConversationMode | null,
   stickyHitlPolicy?: HitlSessionPolicy | null,
+  messages: ChatMessage[] = [],
 ) {
   const user = useCurrentUser();
   const currentUserId = user?.id ?? null;
@@ -92,6 +94,46 @@ export function useChatComposerResources(
   const [modelsReady, setModelsReady] = useState(false);
   const [activeModelRef, setActiveModelRef] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [applyModelToTeam, setApplyModelToTeam] = useState(false);
+  const [teamModelOverrides, setTeamModelOverrides] = useState<
+    Record<string, boolean>
+  >({});
+  const teamModelKey = `${resolvedAgentId}:${activeThreadId}`;
+  const savedTeamModelOverride =
+    [...messages].reverse().find((message) => message.role === "user")
+      ?.composerContext?.applyModelToTeam ?? false;
+
+  useEffect(() => {
+    setApplyModelToTeam(
+      teamHost &&
+        Boolean(
+          activeThreadId
+            ? teamModelOverrides[teamModelKey] ?? savedTeamModelOverride
+            : false,
+        ),
+    );
+  }, [
+    teamHost,
+    resolvedAgentId,
+    activeThreadId,
+    teamModelKey,
+    teamModelOverrides,
+    savedTeamModelOverride,
+  ]);
+
+  const handleApplyModelToTeamChange = useCallback(
+    (enabled: boolean) => {
+      const next = Boolean(teamHost && selectedModel && enabled);
+      setApplyModelToTeam(next);
+      if (activeThreadId && !isPendingThread(activeThreadId)) {
+        setTeamModelOverrides((current) => ({
+          ...current,
+          [teamModelKey]: next,
+        }));
+      }
+    },
+    [activeThreadId, teamHost, teamModelKey, selectedModel],
+  );
   const [preferredModel, setPreferredModel] = useState<string | null>(null);
   const [modelReasoning, setModelReasoning] = useState<
     Record<
@@ -451,6 +493,7 @@ export function useChatComposerResources(
   const handleModelChange = useCallback(
     (model: string | null) => {
       setSelectedModel(model);
+      if (!model) handleApplyModelToTeamChange(false);
       const defaults = model ? modelReasoning[model] : undefined;
       const capability = availableModels.find(
         (item) => `${item.provider_name}/${item.model}` === model,
@@ -481,7 +524,13 @@ export function useChatComposerResources(
         });
       }
     },
-    [activeThreadId, availableModels, modelReasoning, resolvedAgentId],
+    [
+      activeThreadId,
+      availableModels,
+      modelReasoning,
+      resolvedAgentId,
+      handleApplyModelToTeamChange,
+    ],
   );
 
   const handleReasoningChange = useCallback(
@@ -559,6 +608,9 @@ export function useChatComposerResources(
 
   return {
     selectedModel,
+    applyModelToTeam: teamHost && Boolean(selectedModel) && applyModelToTeam,
+    handleApplyModelToTeamChange,
+    resetSelectedModel: setSelectedModel,
     setSelectedModel: handleModelChange,
     reasoningMode,
     reasoningEffort,

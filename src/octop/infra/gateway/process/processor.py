@@ -1276,7 +1276,11 @@ class GlobalProcessor:
             message_kwargs=message_kwargs or None,
             reasoning_overrides=reasoning_overrides,
         )
-        self.teams.stamp_host_runtime(request, agent_id)
+        self.teams.stamp_host_runtime(
+            request,
+            agent_id,
+            apply_model_to_team=meta.get("apply_model_to_team") is True and bool(meta.get("model")),
+        )
         self._attach_turn_knowledge_config(
             request,
             user_id=user_id,

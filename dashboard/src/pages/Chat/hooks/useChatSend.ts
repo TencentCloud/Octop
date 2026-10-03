@@ -26,6 +26,7 @@ interface UseChatSendParams {
   sessions: Session[];
   messagesLength: number;
   selectedModel: string | null;
+  applyModelToTeam?: boolean;
   selectedConnectors: string[];
   selectedKnowledgeBaseIds: string[];
   selectedTargetAgents?: string[];
@@ -64,6 +65,7 @@ function deriveThreadTitle(msg: string): string {
 /** Optional composer snapshot used when flushing a queued message. */
 export type ChatSendOverrides = {
   selectedModel?: string | null;
+  applyModelToTeam?: boolean;
   selectedConnectors?: string[];
   selectedKnowledgeBaseIds?: string[];
   selectedTargetAgents?: string[];
@@ -83,6 +85,7 @@ export function useChatSend({
   sessions,
   messagesLength,
   selectedModel,
+  applyModelToTeam,
   selectedConnectors,
   selectedKnowledgeBaseIds,
   selectedTargetAgents = [],
@@ -146,6 +149,7 @@ export function useChatSend({
           knowledgeBaseIds,
           targetAgents,
           selectedModel: modelSelection,
+          applyModelToTeam: overrides?.applyModelToTeam ?? applyModelToTeam,
           reasoningMode:
             overrides?.composerContext?.reasoningMode ?? reasoningMode,
           reasoningEffort:
@@ -236,6 +240,7 @@ export function useChatSend({
           composerContext?.reasoningEffort ?? reasoningEffort,
           mode,
           policy,
+          composerContext?.applyModelToTeam,
         );
         navigate(`/chat/${agent}/${tid}`, { replace: true });
       });
@@ -251,6 +256,7 @@ export function useChatSend({
       navigate,
       resolvedAgentId,
       selectedModel,
+      applyModelToTeam,
       selectedConnectors,
       selectedKnowledgeBaseIds,
       selectedTargetAgents,

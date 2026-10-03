@@ -61,6 +61,7 @@ export interface UserComposerContext {
   knowledgeBaseIds?: string[];
   targetAgents?: string[];
   model?: string;
+  applyModelToTeam?: boolean;
   reasoningMode?: "auto" | "enabled" | "disabled";
   reasoningEffort?: string | null;
 }

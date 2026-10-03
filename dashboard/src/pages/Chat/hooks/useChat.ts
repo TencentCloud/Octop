@@ -919,6 +919,7 @@ export function useChat(
         reasoningEffort,
         conversationMode,
         hitlPolicy,
+        composerContext?.applyModelToTeam,
       );
     },
     [stableSessionId],
@@ -1133,11 +1134,13 @@ export function useChat(
       newText: string,
       _sessionKey: string,
       agentId: string,
+      composerContext?: UserComposerContext,
     ) => {
       const ok = chatStore.truncateAndReplaceUserMessage(
         stableSessionId,
         messageId,
         newText,
+        composerContext,
       );
       if (!ok) return;
 
@@ -1149,8 +1152,16 @@ export function useChat(
         "",
         undefined,
         undefined,
-        undefined,
+        composerContext?.model,
         stableSessionId !== "__empty__" ? stableSessionId : undefined,
+        composerContext?.connectors,
+        composerContext?.knowledgeBaseIds,
+        composerContext?.targetAgents,
+        composerContext?.reasoningMode,
+        composerContext?.reasoningEffort,
+        undefined,
+        undefined,
+        composerContext?.applyModelToTeam,
       );
     },
     [stableSessionId],

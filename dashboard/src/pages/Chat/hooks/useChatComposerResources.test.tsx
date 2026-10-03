@@ -69,11 +69,91 @@ vi.mock("../../../context/AgentContext", () => ({
     agents: [
       { agent_id: "expertA", knowledge_base_ids: ["k1"] },
       { agent_id: "expertB", knowledge_base_ids: ["k3"] },
+      { agent_id: "team", kind: "team", member_ids: ["expertA", "expertB"] },
     ],
   }),
 }));
 
 import { useChatComposerResources } from "./useChatComposerResources";
+import type { ChatMessage } from "./sseHelpers";
+
+describe("team conversation model selection", () => {
+  it("defaults off and isolates the choice across conversations", async () => {
+    const { result, rerender } = renderHook(
+      ({ threadId }) => useChatComposerResources("team", threadId, "p/chosen"),
+      { initialProps: { threadId: "room-a" } },
+    );
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    expect(result.current.applyModelToTeam).toBe(false);
+    act(() => result.current.handleApplyModelToTeamChange(true));
+    expect(result.current.applyModelToTeam).toBe(true);
+    // Navigation resets the visible model without changing the room being left.
+    act(() => result.current.resetSelectedModel(null));
+    rerender({ threadId: "room-b" });
+    expect(result.current.applyModelToTeam).toBe(false);
+    rerender({ threadId: "room-a" });
+    expect(result.current.applyModelToTeam).toBe(true);
+    act(() => result.current.setSelectedModel(null));
+    expect(result.current.applyModelToTeam).toBe(false);
+    act(() => result.current.setSelectedModel("p/chosen"));
+    expect(result.current.applyModelToTeam).toBe(false);
+  });
+
+  it("restores the first turn through pending and real threads without leaking to a new chat", async () => {
+    const sent: ChatMessage[] = [
+      {
+        id: "u",
+        role: "user",
+        content: "hi",
+        status: "done",
+        timestamp: 1,
+        composerContext: { model: "p/chosen", applyModelToTeam: true },
+      },
+    ];
+    const { result, rerender } = renderHook(
+      ({
+        threadId,
+        messages,
+      }: {
+        threadId: string | null;
+        messages: ChatMessage[];
+      }) =>
+        useChatComposerResources(
+          "team",
+          threadId,
+          "p/chosen",
+          null,
+          null,
+          null,
+          null,
+          messages,
+        ),
+      { initialProps: { threadId: null, messages: [] } },
+    );
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    act(() => result.current.handleApplyModelToTeamChange(true));
+    expect(result.current.applyModelToTeam).toBe(true);
+    rerender({ threadId: "__pending__", messages: sent });
+    expect(result.current.applyModelToTeam).toBe(true);
+    rerender({ threadId: "room", messages: sent });
+    expect(result.current.applyModelToTeam).toBe(true);
+    rerender({ threadId: null, messages: [] });
+    expect(result.current.applyModelToTeam).toBe(false);
+  });
+
+  it("ignores the option for individual experts", async () => {
+    const { result, rerender } = renderHook(
+      ({ agentId }) => useChatComposerResources(agentId, "room", "p/chosen"),
+      { initialProps: { agentId: "team" } },
+    );
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    act(() => result.current.handleApplyModelToTeamChange(true));
+    rerender({ agentId: "expertA" });
+    expect(result.current.applyModelToTeam).toBe(false);
+    act(() => result.current.handleApplyModelToTeamChange(true));
+    expect(result.current.applyModelToTeam).toBe(false);
+  });
+});
 
 beforeEach(() => {
   localStorage.clear();

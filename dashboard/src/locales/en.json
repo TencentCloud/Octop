@@ -1312,6 +1312,8 @@
     "selectModel": "Model",
     "modelAuto": "Auto",
     "modelAutoHint": "Use agent default model",
+    "applyModelToTeam": "Apply this model to all experts",
+    "applyModelToTeamHint": "Choose a model first. Applies only to this conversation and keeps each expert's default unchanged.",
     "reasoningMode": "Thinking mode",
     "reasoningAuto": "Auto",
     "reasoningEnabled": "On",

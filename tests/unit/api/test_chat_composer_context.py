@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from octop.api.routers.chat.turn import resolve_thread_id
+from octop.api.routers.chat import turn as turn_mod
+from octop.api.routers.chat.models import ChatTurnBody, UserTurnWsFrame
+from octop.api.routers.chat.turn import (
+    PreparedDashboardTurn,
+    build_dashboard_inbound,
+    resolve_thread_id,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.process.message_keys import build_composer_context
 
@@ -22,6 +29,54 @@ class _ThreadRegistry:
 
     async def rebind(self, **_kwargs: object) -> None:
         self.rebound = True
+
+
+@pytest.mark.parametrize(
+    "enabled,model,expected",
+    [(True, "p/default", True), (False, "p/default", False), (True, None, False)],
+)
+async def test_prepare_team_turn_persists_the_switch_in_composer_history(
+    monkeypatch: pytest.MonkeyPatch,
+    enabled: bool,
+    model: str | None,
+    expected: bool,
+) -> None:
+    row = SimpleNamespace(default_model="p/default", kind="team")
+    monkeypatch.setattr(turn_mod, "require_agent_row", lambda *_a, **_k: row)
+    monkeypatch.setattr(turn_mod, "validate_chat_mcp_servers", AsyncMock(return_value=None))
+    monkeypatch.setattr(turn_mod, "validate_chat_skills", AsyncMock(return_value=None))
+    monkeypatch.setattr(turn_mod, "resolve_thread_id", AsyncMock(return_value=("room", "sk")))
+    server = MagicMock()
+    server.app_runtime.agent_registry.providers.is_model_ref_usable.return_value = True
+    prepared = await turn_mod.prepare_dashboard_turn(
+        server,
+        agent_id="host",
+        user=SimpleNamespace(id=1),
+        turn=ChatTurnBody(text="hi", default_model=model, apply_model_to_team=enabled),
+    )
+    assert prepared.composer_context == {"applyModelToTeam": expected}
+    assert row.default_model == "p/default"
+
+
+@pytest.mark.parametrize("enabled,model", [(True, "p/chosen"), (False, "p/chosen"), (True, None)])
+def test_team_override_ws_flag_requires_an_explicit_model(enabled: bool, model: str | None) -> None:
+    turn = UserTurnWsFrame(text="hi", model=model, apply_model_to_team=enabled).to_turn_body()
+    assert ChatTurnBody().apply_model_to_team is False
+    assert turn.apply_model_to_team is enabled
+    prepared = PreparedDashboardTurn(
+        thread_id="t",
+        session_key="sk",
+        mcp_servers=None,
+        skills=None,
+        model_ref=model,
+        inbound_content=[],
+        composer_context=None,
+        inbound_attachments=[],
+    )
+    inbound = build_dashboard_inbound(
+        agent_id="host", user_id=1, prepared=prepared, turn=turn, ws_connection_id="ws"
+    )
+    assert inbound.metadata.get("apply_model_to_team", False) is bool(enabled and model)
 
 
 async def test_resolve_thread_id_rejects_another_users_thread() -> None:

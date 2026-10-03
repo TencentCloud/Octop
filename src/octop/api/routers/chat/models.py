@@ -51,6 +51,10 @@ class ChatTurnBody(BaseModel):
         default=None,
         description="Model ref override, e.g. `openai/gpt-4o`. Uses the agent default when omitted.",
     )
+    apply_model_to_team: bool = Field(
+        default=False,
+        description="Apply the explicit turn model to team experts without changing their defaults.",
+    )
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
@@ -95,6 +99,7 @@ class ChatTurnBody(BaseModel):
             default_model=str(model).strip()
             if isinstance(model, str) and str(model).strip()
             else None,
+            apply_model_to_team=payload.get("apply_model_to_team") is True,
             reasoning_mode=payload.get("reasoning_mode")
             if payload.get("reasoning_mode") in ("auto", "enabled", "disabled")
             else None,
@@ -126,6 +131,7 @@ class UserTurnWsFrame(BaseModel):
     thread_id: str | None = None
     model: str | None = None
     default_model: str | None = None
+    apply_model_to_team: bool = False
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = None

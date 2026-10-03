@@ -36,6 +36,10 @@ export function normalizeComposerContext(
     ctx.model = raw.model.trim();
     has = true;
   }
+  if (typeof raw.applyModelToTeam === "boolean") {
+    ctx.applyModelToTeam = raw.applyModelToTeam;
+    has = true;
+  }
   if (
     raw.reasoningMode === "auto" ||
     raw.reasoningMode === "enabled" ||
@@ -86,6 +90,7 @@ export function buildComposerContext(params: {
   knowledgeBaseIds?: string[];
   targetAgents?: string[];
   selectedModel?: string | null;
+  applyModelToTeam?: boolean;
   reasoningMode?: "auto" | "enabled" | "disabled";
   reasoningEffort?: string | null;
 }): UserComposerContext | undefined {
@@ -112,6 +117,10 @@ export function buildComposerContext(params: {
   const selectedModel = (params.selectedModel || "").trim();
   if (selectedModel) {
     ctx.model = selectedModel;
+    has = true;
+  }
+  if (params.applyModelToTeam !== undefined) {
+    ctx.applyModelToTeam = Boolean(params.applyModelToTeam && selectedModel);
     has = true;
   }
   if (params.reasoningMode) {

@@ -194,6 +194,7 @@ async def test_install_team_host_dispatch_uses_inbox(manager: AgentManager) -> N
     team.enabled = True
     team.call_peer = AsyncMock(return_value="sync")
     team.submit_peer = MagicMock(return_value="queued")
+    submit = team.submit_peer
     team._enrich_request = None
     manager._harness_manager = SimpleNamespace(team=team)
     manager._team_processor = SimpleNamespace(take_team_peer_prompt=MagicMock(return_value=None))
@@ -210,7 +211,7 @@ async def test_install_team_host_dispatch_uses_inbox(manager: AgentManager) -> N
         session_key="sk",
     )
     assert result == "queued"
-    team.submit_peer.assert_called_once()
+    submit.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -219,6 +220,7 @@ async def test_install_expert_dispatch_keeps_sync_call_peer(manager: AgentManage
     team.enabled = True
     team.call_peer = AsyncMock(return_value="sync")
     team.submit_peer = MagicMock(return_value="queued")
+    submit = team.submit_peer
     team._enrich_request = None
     manager._harness_manager = SimpleNamespace(team=team)
     manager._team_processor = SimpleNamespace(take_team_peer_prompt=MagicMock(return_value=None))
@@ -233,7 +235,7 @@ async def test_install_expert_dispatch_keeps_sync_call_peer(manager: AgentManage
         session_key="sk",
     )
     assert result == "sync"
-    team.submit_peer.assert_not_called()
+    submit.assert_not_called()
 
 
 @pytest.mark.asyncio

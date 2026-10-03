@@ -18,6 +18,7 @@ from octop_gateway.models import (
 from octop.api.common.agent import require_agent_row
 from octop.api.common.validators import validate_chat_mcp_servers, validate_chat_skills
 from octop.api.routers.chat.models import ChatTurnBody
+from octop.infra.agents.teams.service import is_team_agent
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.attachment_hints import (
     inbound_attachments_from_parts,
@@ -289,6 +290,9 @@ async def prepare_dashboard_turn(
         model_ref=model_ref,
         default_model=default_model,
     )
+    if is_team_agent(row):
+        composer_ctx = dict(composer_ctx or {})
+        composer_ctx["applyModelToTeam"] = bool(turn.apply_model_to_team and model_ref)
     inbound_content = content_parts_from_dashboard_turn(turn)
     inbound_attachments = inbound_attachments_from_parts(inbound_content)
     return PreparedDashboardTurn(
@@ -328,6 +332,8 @@ def build_dashboard_inbound(
         metadata["skills"] = prepared.skills
     if prepared.model_ref:
         metadata["model"] = prepared.model_ref
+        if turn.apply_model_to_team:
+            metadata["apply_model_to_team"] = True
     if turn.reasoning_mode is not None:
         metadata["reasoning_mode"] = turn.reasoning_mode
     if turn.reasoning_effort:

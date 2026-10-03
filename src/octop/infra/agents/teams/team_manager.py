@@ -19,6 +19,7 @@ from dataclasses import fields
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.config import get_config
 from octop_harness.messages import extract_call_response
 from octop_harness.teams.inbox import InboxMessage
 from octop_harness.teams.processor import ReplyEvent
@@ -67,6 +68,7 @@ logger = logging.getLogger(__name__)
 _ROOM_HISTORY_LIMIT = 40
 _HOST_IDLE_POLL_SEC = 0.05
 _HOST_IDLE_WAIT_SEC = 45.0
+_TEAM_MODEL_OVERRIDE_KEY = "octop_team_model_override"
 _RELAY_CHUNK_TYPES = frozenset(
     {"token", "reasoning", "tool_call_chunk", "tool_result", "error", "attachment"}
 )
@@ -492,12 +494,22 @@ class TeamManager:
         if not live_streamed:
             await self._push_room_snapshot(room, speaker, text)
 
-    def stamp_host_runtime(self, request: dict[str, Any], agent_id: str) -> None:
+    def stamp_host_runtime(
+        self,
+        request: dict[str, Any],
+        agent_id: str,
+        *,
+        apply_model_to_team: bool = False,
+    ) -> None:
         """Force the host turn onto async ``ask_agent`` (inbox), not sync."""
         row = self._agent_manager.get_row(agent_id)
         if not is_team_agent(row):
             return
         cfg = dict(request.get("configurable") or {})
+        cfg.pop(_TEAM_MODEL_OVERRIDE_KEY, None)
+        model = request.get("model")
+        if apply_model_to_team and isinstance(model, str) and model.strip():
+            cfg[_TEAM_MODEL_OVERRIDE_KEY] = model.strip()
         cfg["peer_invoke_mode"] = "async"
         cfg.pop("mcp_use_default", None)
         request["configurable"] = cfg
@@ -1558,6 +1570,9 @@ def _patch_inbox_wrapup(
             text=prompt,
             source="inbox",
         )
+        _apply_team_model_override(
+            req, (getattr(msg, "metadata", None) or {}).get(_TEAM_MODEL_OVERRIDE_KEY)
+        )
         try:
             reply = await stream_followup(
                 req,
@@ -1574,6 +1589,31 @@ def _patch_inbox_wrapup(
     inbox._synthesize_reply = synthesize
 
 
+def _apply_team_model_override(request: Any, model: Any) -> None:
+    if not isinstance(model, str) or not model.strip():
+        return
+    cfg = dict(getattr(request, "configurable", None) or {})
+    cfg["model"] = model.strip()
+    cfg[_TEAM_MODEL_OVERRIDE_KEY] = model.strip()
+    request.configurable = cfg
+
+
+def _request_team_model_override(kwargs: dict[str, Any]) -> str | None:
+    """Read only the caller's current graph turn, never shared agent settings."""
+    try:
+        cfg = get_config().get("configurable") or {}
+    except RuntimeError:
+        return None
+    if (
+        str(cfg.get("agent_id") or "") != str(kwargs.get("from_agent_id") or "")
+        or str(cfg.get("thread_id") or "") != str(kwargs.get("source_thread_id") or "")
+        or str(cfg.get("user") or "") != str(kwargs.get("user_id") or "")
+    ):
+        return None
+    model = cfg.get(_TEAM_MODEL_OVERRIDE_KEY)
+    return model.strip() if isinstance(model, str) and model.strip() else None
+
+
 def wire_host_dispatch(
     harness_team: Any,
     *,
@@ -1585,6 +1625,43 @@ def wire_host_dispatch(
     """Patch harness TeamManager so async ``ask_agent`` uses inbox + room stream."""
     if harness_team is None:
         return
+    original_submit = getattr(harness_team, "submit_peer", None)
+    if callable(original_submit):
+
+        def submit_peer(*, metadata: dict[str, Any] | None = None, **kwargs: Any) -> Any:
+            snapshot = dict(metadata or {})
+            snapshot.pop(_TEAM_MODEL_OVERRIDE_KEY, None)
+            model = _request_team_model_override(kwargs)
+            if model:
+                snapshot[_TEAM_MODEL_OVERRIDE_KEY] = model
+            return original_submit(metadata=snapshot or None, **kwargs)
+
+        harness_team.submit_peer = submit_peer
+
+    original_build = getattr(harness_team, "_build_peer_request", None)
+    if callable(original_build):
+
+        async def build_peer_request(**kwargs: Any) -> Any:
+            request = await original_build(**_supported_kwargs(original_build, kwargs))
+            job_id = kwargs.get("job_id")
+            model = None
+            if job_id:
+                inbox = getattr(harness_team, "inbox", None)
+                job = inbox.get(job_id) if inbox is not None else None
+                if job is not None and (
+                    job.source_agent_id == kwargs.get("from_agent_id")
+                    and job.target_agent_id == kwargs.get("to_agent_id")
+                    and job.source_thread_id == kwargs.get("source_thread_id")
+                    and str(job.user_id) == str(kwargs.get("user_id"))
+                ):
+                    model = job.metadata.get(_TEAM_MODEL_OVERRIDE_KEY)
+            else:
+                model = _request_team_model_override(kwargs)
+            _apply_team_model_override(request, model)
+            return request
+
+        harness_team._build_peer_request = build_peer_request
+
     original_call = getattr(harness_team, "call_peer", None)
 
     async def call_peer(

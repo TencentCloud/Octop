@@ -26,7 +26,7 @@ import {
   Route,
   Info,
 } from "lucide-react";
-import { Tooltip, Popover } from "antd";
+import { Tooltip, Popover, Switch } from "antd";
 import { message } from "@/utils/antdMessage";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
@@ -117,6 +117,8 @@ interface ChatInputActionsRowProps {
   selectedModel?: string | null;
   defaultModel?: string | null;
   onModelChange?: (model: string | null) => void;
+  applyModelToTeam?: boolean;
+  onApplyModelToTeamChange?: (enabled: boolean) => void;
   reasoningMode?: "auto" | "enabled" | "disabled";
   reasoningEffort?: string | null;
   onReasoningChange?: (
@@ -177,6 +179,8 @@ export default function ChatInputActionsRow({
   contextMaxTokens = 128_000,
   availableModels,
   selectedModel,
+  applyModelToTeam = false,
+  onApplyModelToTeamChange,
   onModelChange,
   reasoningMode = "auto",
   reasoningEffort = null,
@@ -470,6 +474,22 @@ export default function ChatInputActionsRow({
     <div className={styles.modelPickerPanel}>
       {!reasoningMenu && (
         <div className={styles.modelMenuColumn}>
+          {isTeam && (
+            <Tooltip title={t("chat.applyModelToTeamHint")}>
+              <label
+                className={`${styles.modelMenuFooter} ${styles.teamModelToggle}`}
+              >
+                <Switch
+                  size="small"
+                  checked={Boolean(selectedModel && applyModelToTeam)}
+                  disabled={!selectedModel || disabled}
+                  onChange={onApplyModelToTeamChange}
+                  aria-label={t("chat.applyModelToTeam")}
+                />
+                <span>{t("chat.applyModelToTeam")}</span>
+              </label>
+            </Tooltip>
+          )}
           <div className={styles.modelMenu}>
             <button
               type="button"
@@ -878,7 +898,12 @@ export default function ChatInputActionsRow({
                     }
                     style={
                       !isMobile && plusMenuHeight
-                        ? { maxHeight: plusMenuHeight }
+                        ? {
+                            maxHeight:
+                              compactPicker === "model" && isTeam
+                                ? Math.max(plusMenuHeight, 180)
+                                : plusMenuHeight,
+                          }
                         : undefined
                     }
                     data-testid="composer-plus-panel"

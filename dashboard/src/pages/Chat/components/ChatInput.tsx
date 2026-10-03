@@ -95,6 +95,8 @@ interface ChatInputProps {
   availableModels?: ResolvedModel[];
   selectedModel?: string | null;
   onModelChange?: (model: string | null) => void;
+  applyModelToTeam?: boolean;
+  onApplyModelToTeamChange?: (enabled: boolean) => void;
   reasoningMode?: "auto" | "enabled" | "disabled";
   reasoningEffort?: string | null;
   onReasoningChange?: (
@@ -157,6 +159,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       availableModels,
       selectedModel,
       onModelChange,
+      applyModelToTeam,
+      onApplyModelToTeamChange,
       reasoningMode = "auto",
       reasoningEffort = null,
       onReasoningChange,
@@ -528,6 +532,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             connectors: selectedConnectors,
             knowledgeBaseIds: selectedKnowledgeBaseIds,
             selectedModel,
+            applyModelToTeam,
             reasoningMode,
             reasoningEffort,
           }),
@@ -560,6 +565,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       selectedSkillSlugs,
       skillTokenRefs,
       selectedModel,
+      applyModelToTeam,
       reasoningMode,
       reasoningEffort,
       defaultModel,
@@ -874,6 +880,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             selectedModel={selectedModel}
             onModelChange={onModelChange}
             reasoningMode={reasoningMode}
+            applyModelToTeam={applyModelToTeam}
+            onApplyModelToTeamChange={onApplyModelToTeamChange}
             reasoningEffort={reasoningEffort}
             onReasoningChange={onReasoningChange}
             conversationMode={conversationMode}

@@ -44,6 +44,49 @@ const baseProps = {
 };
 
 describe("ChatInputActionsRow plus menu", () => {
+  it("offers the team model switch beside the model choices", async () => {
+    const onChange = vi.fn();
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow
+          {...baseProps}
+          isTeam
+          selectedModel="Provider/compact-model"
+          onApplyModelToTeamChange={onChange}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId("composer-plus"));
+    fireEvent.click(await screen.findByText("Model"));
+    const toggle = await screen.findByRole("switch");
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    expect(onChange).toHaveBeenCalledWith(true, expect.anything());
+  });
+  it("disables the switch for Auto", async () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} isTeam selectedModel={null} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId("composer-plus"));
+    fireEvent.click(await screen.findByText("Model"));
+    expect(await screen.findByRole("switch")).toBeDisabled();
+  });
+  it("does not offer the switch in an individual expert chat", async () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow
+          {...baseProps}
+          selectedModel="Provider/compact-model"
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId("composer-plus"));
+    fireEvent.click(await screen.findByText("Model"));
+    await screen.findByTestId("composer-plus-panel");
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
   it("keeps approval, shortcuts, and attachments on the toolbar", () => {
     render(
       <MemoryRouter>

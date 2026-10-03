@@ -552,6 +552,9 @@ function ChatPageInner() {
   const {
     selectedModel,
     setSelectedModel,
+    applyModelToTeam,
+    handleApplyModelToTeamChange,
+    resetSelectedModel,
     selectedConnectors,
     selectedKnowledgeBaseIds,
     chatConnectors,
@@ -576,6 +579,7 @@ function ChatPageInner() {
     composerSession?.reasoningEffort,
     composerSession?.conversationMode,
     composerSession?.hitlPolicy,
+    messages,
   );
 
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
@@ -688,6 +692,7 @@ function ChatPageInner() {
     sessions,
     messagesLength: messages.length,
     selectedModel,
+    applyModelToTeam: isTeamChat ? applyModelToTeam : undefined,
     selectedConnectors,
     selectedKnowledgeBaseIds,
     reasoningMode,
@@ -784,6 +789,7 @@ function ChatPageInner() {
       // background streamEnd flushes do not send into the active session.
       const ok = handleSend(item.text, item.attachments, {
         composerContext: item.composerContext,
+        applyModelToTeam: item.composerContext?.applyModelToTeam ?? false,
         modelRef: item.modelRef,
         selectedModel: item.composerContext?.model ?? item.modelRef ?? null,
         selectedConnectors: item.composerContext?.connectors,
@@ -831,7 +837,7 @@ function ChatPageInner() {
     isMobile,
     setActiveAgent,
     setSidebarOpen,
-    setSelectedModel,
+    setSelectedModel: resetSelectedModel,
     setHasBrowserTool,
     deleteSession,
     clearMessages,
@@ -980,9 +986,29 @@ function ChatPageInner() {
         antMessage.warning(t("chat.hitl.finishPendingFirst"));
         return;
       }
-      editAndResend(messageId, newText, "", resolvedAgentId ?? "");
+      editAndResend(
+        messageId,
+        newText,
+        "",
+        resolvedAgentId ?? "",
+        isTeamChat
+          ? {
+              model: selectedModel || undefined,
+              applyModelToTeam,
+            }
+          : undefined,
+      );
     },
-    [activeThreadId, editAndResend, resolvedAgentId, hasPendingHitlPause, t],
+    [
+      activeThreadId,
+      editAndResend,
+      resolvedAgentId,
+      hasPendingHitlPause,
+      t,
+      isTeamChat,
+      selectedModel,
+      applyModelToTeam,
+    ],
   );
 
   const [forking, setForking] = useState(false);
@@ -1664,6 +1690,8 @@ function ChatPageInner() {
               }}
               availableModels={availableModels}
               selectedModel={selectedModel}
+              applyModelToTeam={applyModelToTeam}
+              onApplyModelToTeamChange={handleApplyModelToTeamChange}
               onModelChange={setSelectedModel}
               reasoningMode={reasoningMode}
               reasoningEffort={reasoningEffort}

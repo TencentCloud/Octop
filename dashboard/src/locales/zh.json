@@ -1312,6 +1312,8 @@
     "selectModel": "模型",
     "modelAuto": "自动",
     "modelAutoHint": "使用智能体默认模型",
+    "applyModelToTeam": "将此模型应用到所有专家",
+    "applyModelToTeamHint": "请先选择模型。仅作用于当前对话，保留各专家的默认模型。",
     "reasoningMode": "思考模式",
     "reasoningAuto": "自动",
     "reasoningEnabled": "开启",

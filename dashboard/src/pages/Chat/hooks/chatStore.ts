@@ -18,6 +18,7 @@ import type {
   ChatMessage,
   SessionSnapshot,
   SessionStreamState,
+  UserComposerContext,
 } from "./sseHelpers";
 import {
   parseHarnessChunk,
@@ -743,6 +744,7 @@ export function truncateAndReplaceUserMessage(
   sessionId: string,
   messageId: string,
   newContent: string,
+  composerContext?: UserComposerContext,
 ): boolean {
   const state = getOrCreate(sessionId);
   const idx = state.messages.findIndex((m) => m.id === messageId);
@@ -755,7 +757,12 @@ export function truncateAndReplaceUserMessage(
   const original = state.messages[idx];
   state.messages = [
     ...state.messages.slice(0, idx),
-    { ...original, content: newContent, status: "done" as const },
+    {
+      ...original,
+      content: newContent,
+      status: "done" as const,
+      composerContext: composerContext ?? original.composerContext,
+    },
   ];
   clearStreamingFlags(state);
   state.runUsage = null;
@@ -2447,6 +2454,7 @@ async function sendTurnWebSocket(
   reasoningEffort?: string | null,
   conversationMode?: "ask" | "plan" | "craft" | null,
   hitlPolicy?: { mode: string; tools?: string[] } | null,
+  applyModelToTeam?: boolean,
 ): Promise<boolean> {
   const state = getOrCreate(sessionId);
   const resolvedThreadId = (threadId || sessionId).trim();
@@ -2511,6 +2519,7 @@ async function sendTurnWebSocket(
       };
       if (threadId) payload.thread_id = threadId;
       if (modelRef) payload.model = modelRef;
+      if (applyModelToTeam && modelRef) payload.apply_model_to_team = true;
       // Always send the array (including []) so the server can honor Dashboard
       // opt-out of default_open connectors for this turn.
       if (mcpServers !== undefined && mcpServers !== null) {
@@ -2662,6 +2671,7 @@ export async function sendTurn(
   reasoningEffort?: string | null,
   conversationMode?: "ask" | "plan" | "craft" | null,
   hitlPolicy?: { mode: string; tools?: string[] } | null,
+  applyModelToTeam?: boolean,
 ): Promise<void> {
   const state = getOrCreate(sessionId);
   rememberRoomAgent(state, agentId);
@@ -2750,6 +2760,7 @@ export async function sendTurn(
     reasoningEffort,
     conversationMode,
     hitlPolicy,
+    applyModelToTeam,
   );
   if (!wsOk) {
     state.messages = [

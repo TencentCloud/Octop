@@ -883,6 +883,66 @@ def test_stamp_team_host_runtime_forces_async(processor_env: dict) -> None:
     assert "configurable" not in expert_req
 
 
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_dashboard_model_selection_reaches_team_runtime(
+    processor_env: dict, enabled: bool
+) -> None:
+    from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
+
+    processor = processor_env["processor"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    providers = processor._agent_manager.providers
+    providers.is_model_ref_usable.return_value = True
+    providers.resolve_model_for_multimodal_turn.side_effect = lambda ref, **_k: ref
+    metadata = {
+        "model": "p/chosen",
+        "apply_model_to_team": enabled,
+        "mcp_servers": [],
+        "knowledge_base_ids": [],
+    }
+    message = InboundMessage(
+        channel_id="ws",
+        channel_type="dashboard",
+        tenant_id="host",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="hi")],
+        metadata=metadata,
+    )
+    request = await processor._build_dashboard_request(
+        message, agent_id="host", user_id=1, thread_id="room", session_key="sk", meta=metadata
+    )
+    assert request["model"] == "p/chosen"
+    assert request["configurable"].get("octop_team_model_override") == (
+        "p/chosen" if enabled else None
+    )
+
+
+@pytest.mark.parametrize(
+    "enabled,model,expected",
+    [
+        (True, "p/chosen", "p/chosen"),
+        (False, "p/chosen", None),
+        (True, None, None),
+    ],
+)
+def test_team_model_override_is_opt_in_and_never_updates_defaults(
+    processor_env: dict,
+    enabled: bool,
+    model: str | None,
+    expected: str | None,
+) -> None:
+    processor = processor_env["processor"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    before = processor._agent_repo.get("host")
+    request = {"model": model, "configurable": {"octop_team_model_override": "stale"}}
+    processor.teams.stamp_host_runtime(request, "host", apply_model_to_team=enabled)
+    assert request["configurable"].get("octop_team_model_override") == expected
+    assert processor._agent_repo.get("host") == before
+    expert_request = {"model": "p/chosen"}
+    processor.teams.stamp_host_runtime(expert_request, "parent", apply_model_to_team=True)
+    assert "configurable" not in expert_request
+
+
 @pytest.mark.asyncio
 async def test_stream_team_peer_relays_tokens_to_room(processor_env: dict) -> None:
     from langchain_core.messages import AIMessage
