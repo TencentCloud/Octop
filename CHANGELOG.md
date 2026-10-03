@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- 后台协同（`ask_agent(mode="background")`）的结论不再投递到「会话当前线程」：用户在任务运行期间切换会话时，回复会被写进切到的那个会话，而提问所在房间毫无动静；现按事件自带的来源房间投影与推送，仅在该房间已删除时回退 (#958)
 
 ## [1.0.2b5] - 2026-09-29
 
