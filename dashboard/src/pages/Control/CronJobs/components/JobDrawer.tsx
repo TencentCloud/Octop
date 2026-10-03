@@ -31,6 +31,7 @@ import {
   MODEL_AUTO_VALUE,
   type ModelPickerOption,
 } from "../../../../utils/modelOptions";
+import styles from "../index.module.less";
 
 const { Text } = Typography;
 
@@ -329,7 +330,11 @@ export function JobDrawer({
                 message: t("cronJobs.form.agentlySelectMailbox"),
               },
             ]}
-            extra={t("cronJobs.form.agentlyHint")}
+            extra={
+              <span className={styles.mailTriggerHint}>
+                {t("cronJobs.form.agentlyHint")}
+              </span>
+            }
           >
             <Select options={mailOptions} loading={connectorsLoading} />
           </Form.Item>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Spin } from "antd";
+import { CheckCircleOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -94,11 +95,19 @@ export function AgentlyAuth({
   };
 
   return (
-    <div className={styles.feishuUserAuthBox}>
+    <div className={`${styles.feishuUserAuthBox} ${styles.agentlyAuthBox}`}>
       <div className={styles.feishuUserAuthTitle}>
         {t("connectors.agentlyAuthTitle", "Agent Mail 邮箱授权")}
       </div>
-      <div className={styles.feishuUserAuthHint} role="status">
+      <div
+        className={
+          auth?.status === "authorized"
+            ? styles.agentlyAuthSuccess
+            : styles.feishuUserAuthHint
+        }
+        role="status"
+      >
+        {auth?.status === "authorized" && <CheckCircleOutlined />}
         {auth ? statusLabels[auth.status] : !error && <Spin size="small" />}
       </div>
       {(error || auth?.error) && (
@@ -124,7 +133,7 @@ export function AgentlyAuth({
       )}
       <div className={styles.quickAuthBar}>
         <Button
-          type="primary"
+          type={auth?.status === "authorized" ? "default" : "primary"}
           disabled={!installed || auth?.status === "pending"}
           loading={busy}
           onClick={() => void run("start")}
