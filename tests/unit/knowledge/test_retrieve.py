@@ -79,3 +79,30 @@ def test_retrieve_context_skips_empty_non_text_turn() -> None:
     )
 
     assert context == ""
+
+
+def test_format_context_cites_only_chunks_injected_within_budget(monkeypatch) -> None:
+    base = SimpleNamespace(id="kb1", name="Policies")
+    doc_a = SimpleNamespace(id="d1", filename="a.md", path="a.md")
+    doc_b = SimpleNamespace(id="d2", filename="b.md", path="b.md")
+    hit_a = SimpleNamespace(ordinal=0, text="first fact", score=2.0)
+    hit_b = SimpleNamespace(ordinal=0, text="second fact", score=1.0)
+
+    monkeypatch.setattr(
+        retrieve_module,
+        "tr",
+        lambda key, _locale, **kwargs: (
+            f"[{kwargs['filename']}] " if key.endswith("citation") else "Context"
+        ),
+    )
+
+    context = retrieve_module._format_context(
+        [(base, hit_a, doc_a), (base, hit_b, doc_b)],
+        char_budget=len("[a.md] first fact"),
+        locale="en",
+    )
+
+    assert "first fact" in context
+    assert "second fact" not in context
+    assert '"doc_id":"d1"' in context
+    assert '"doc_id":"d2"' not in context
