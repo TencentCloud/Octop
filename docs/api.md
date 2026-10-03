@@ -26,6 +26,7 @@ admin can clear the lockout with `POST /api/users/{id}/unlock-login`.
 - **user** — any logged-in account.
 - **owner** — same user that owns the resource (or admin).
 - **admin** — admin role required.
+- **permission name** (for example, **providers**) — the named management permission is required; admins have all permissions.
 
 ### Public endpoints (no token)
 
@@ -203,11 +204,11 @@ plugin returns a large `octop_ui` payload, the backend offloads the envelope's
 | `DELETE` | `/agents/{aid}/channels/{cid}` | owner | `204` |
 | `POST`   | `/agents/{aid}/channels/{cid}/test` | owner | `{ok, error?}` (instantiate → start → stop) |
 | `POST`   | `/agents/{aid}/channels/probe` | owner | `{ok, reason?, detail?}` — preflight a candidate config |
-| `POST`   | `/agents/{aid}/channels/{platform}/qrcode/generate` | owner | platform-specific bot creator (wecom, weixin, feishu, yuanbao) |
-| `POST`   | `/agents/{aid}/channels/{platform}/qrcode/poll` | owner | poll bot creator state |
-| `POST`   | `/agents/{aid}/channels/{platform}/bot-creator/start` | owner | start a bot-creator flow |
-| `POST`   | `/agents/{aid}/channels/{platform}/bot-creator/poll` | owner | poll progress |
-| `POST`   | `/agents/{aid}/channels/{platform}/bot-creator/stop` | owner | stop an in-flight bot creator |
+| `POST`   | `/agents/{aid}/channels/{platform}/qrcode/generate` | owner | QR binding; `platform` is `dingtalk`, `wecom`, `qq`, or `weixin` |
+| `POST`   | `/agents/{aid}/channels/{platform}/qrcode/poll` | owner | poll the same platform's QR binding |
+| `POST`   | `/agents/{aid}/channels/{platform}/bot-creator/start` | owner | bot creation; `platform` is `feishu` or `yuanbao` |
+| `POST`   | `/agents/{aid}/channels/{platform}/bot-creator/poll` | owner | poll the same platform's bot-creator progress |
+| `POST`   | `/agents/{aid}/channels/{platform}/bot-creator/stop` | owner | stop that bot-creator flow |
 
 ## Cron
 
@@ -238,23 +239,21 @@ the server derives one from `prompt`.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`    | `/providers` | user | providers visible to the user (own + shared) |
-| `POST`   | `/providers` | user | body `{name, kind, base_url?, api_key?, model?, ...}` → `201` |
-| `PATCH`  | `/providers/{id}` | owner | body subset → updated row |
-| `DELETE` | `/providers/{id}` | owner | `204` (refuses if any agent references it) |
-| `POST`   | `/providers/{id}/test` | user | `{ok, latency_ms?, error?}` (one-token ping with 10 s timeout) |
-| `POST`   | `/admin/providers` | admin | same body as user POST; row has `user_id = NULL` |
-| `PATCH`  | `/admin/providers/{id}` | admin | as user PATCH but works on shared rows |
-| `DELETE` | `/admin/providers/{id}` | admin | `204` |
+| `GET`    | `/providers` | user | list configured providers |
+| `GET`    | `/admin/providers` | providers | list configured providers for management |
+| `POST`   | `/admin/providers` | providers | body `{name, kind, base_url?, api_key?, extra_json?, models?, note?}` → `201` |
+| `PATCH`  | `/admin/providers/{id}` | providers | body subset, including optional `enabled` → updated row |
+| `DELETE` | `/admin/providers/{id}` | providers | `204` (refuses if any agent references it) |
+| `POST`   | `/admin/providers/{id}/test` | providers | optional body `{model_id?, embedding?}` → `{ok, latency_ms?, error?}`; chat or embedding probe |
 
 ## Models
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET` | `/models/presets` | user | provider templates from `octop-harness` |
-| `GET` | `/models` | user | resolved models across enabled providers |
-| `GET` | `/models/active` | user | `{provider_name, model}` |
-| `PUT` | `/models/active` | admin | body `{provider_name, model}` |
+| `GET` | `/providers/presets` | user | provider templates from `octop-harness` |
+| `GET` | `/providers/resolved` | user | resolved models across enabled providers |
+| `GET` | `/providers/active-model` | user | `{provider_name, model}` |
+| `PUT` | `/providers/active-model` | providers | body `{provider_name, model}` |
 
 ### Media generation models
 
@@ -273,23 +272,22 @@ reloads running agents so the image and video tools receive the new configuratio
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`  | `/voice/presets` | user | voice provider presets |
-| `GET`  | `/voice/providers` | user | user's voice providers |
+| `GET`  | `/voice/providers` | user | configured voice providers |
 | `GET`  | `/voice/active` | user | active TTS / STT configuration |
-| `PUT`  | `/voice/active` | user | update active voice configuration |
-| `POST` | `/voice/stt` | user | body `{audio, format?, language?}` → `{text, segments?}` |
-| `POST` | `/voice/tts` | user | body `{text, voice?, format?}` → audio bytes |
-| `GET`/`POST`/`PATCH`/`DELETE` | `/admin/voice/providers` | admin | admin voice provider CRUD |
+| `PUT`  | `/voice/active` | voice | body `{stt?, tts?}`; update active voice configuration |
+| `POST` | `/voice/stt` | user | multipart `audio` file with optional `language` and `provider` form fields → `{text, confidence}` |
+| `POST` | `/voice/tts` | user | JSON `{text, voice_id?, speed?, provider?}` → streamed audio bytes |
+| `GET`/`POST` | `/admin/voice/providers` | voice | list / create voice providers |
+| `PATCH`/`DELETE` | `/admin/voice/providers/{id}` | voice | update / delete one voice provider |
 
 ## MBTI & personas
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`    | `/mbti/codes` | user | `[{code: "INTJ", ...}, ...]` (16 codes + `_default`) |
-| `GET`    | `/mbti/codes/{code}` | user | full profile (dimensions, behaviour, UI metadata) |
-| `GET`    | `/mbti/preview/{code}` | user | rendered persona template (legacy `/api/personas/{code}`) |
-| `PUT`    | `/agents/{aid}/mbti` | owner | body `{code}` → apply persona and reload |
-| `GET`    | `/personas` | user | `[{code}, ...]` (compat shim) |
-| `GET`    | `/personas/{code}` | user | rendered template (compat shim) |
+| `GET`    | `/mbti/types` | user | full profiles for the 16 MBTI types |
+| `GET`    | `/mbti/types/{code}` | user | full profile (dimensions, behaviour, UI metadata) |
+| `GET`    | `/mbti/preview/{code}` | user | `{code, preview}`; `_default` renders the default persona |
+| `POST`   | `/mbti/apply` | owner | body `{code, language?}`; required `X-Octop-Agent-Id` header selects the agent; applies the persona and reloads |
 
 Persona content lives in `src/octop/infra/agents/persona/mbti_profiles.py` —
 see [Personas](./personas.md).
@@ -314,7 +312,7 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/workspace/file` | owner | read a content file |
 | `PUT`    | `/agents/{aid}/workspace/file` | owner | write a content file (via `BackendWorkspace`) |
 | `DELETE` | `/agents/{aid}/workspace/file` | owner | delete a content file |
-| `POST`   | `/agents/{aid}/workspace/rename` | owner | rename / move |
+| `POST`   | `/agents/{aid}/workspace/move?path=<source>` | owner | JSON `{destination}`; rename / move a file or directory |
 | `POST`   | `/agents/{aid}/workspace/upload` | owner | multipart upload → backend (not `max_upload_mb`) |
 | `GET`    | `/agents/{aid}/workspace/download` | owner | download a file |
 | `GET`    | `/agents/{aid}/workspace/glob` | owner | glob backend paths |
@@ -329,7 +327,7 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/subagent-catalog` | user | bundled subagent catalog |
 | `GET`    | `/subagent-catalog/{slug}` | user | full subagent definition |
 | `GET`    | `/agents/{aid}/subagents` | owner | installed subagents for an agent |
-| `POST`   | `/agents/{aid}/subagents` | owner | install a bundled subagent |
+| `POST`   | `/agents/{aid}/subagents/install` | owner | body `{slug, locale?}`; install a bundled subagent → `201` |
 | `GET`    | `/agents/{aid}/heartbeat-config` | owner | read heartbeat YAML |
 | `PUT`    | `/agents/{aid}/heartbeat-config` | owner | write heartbeat YAML |
 | `GET`    | `/agents/{aid}/memory/daily` | owner | list daily memory files |
@@ -357,8 +355,9 @@ Zed setup example.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`/`POST`/`PATCH`/`DELETE` | `/storage-backends` | user | per-user remote backend connections |
-| `GET`/`POST`/`PATCH`/`DELETE` | `/admin/storage-backends` | admin | admin-managed backends |
+| `GET` | `/storage-backends` | user | read-only list of configured backends (secrets masked) |
+| `GET`/`POST` | `/admin/storage-backends` | storage_backends | list / create backends (`POST` → `201`) |
+| `PATCH`/`DELETE` | `/admin/storage-backends/{backend_id}` | storage_backends | update / delete one backend (`DELETE` → `204`) |
 
 ## Host filesystem (dashboard)
 
@@ -382,7 +381,7 @@ for non-`/` paths.
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`    | `/connectors/catalog` | user | connector catalog (Notion, Figma, …) |
-| `GET`    | `/connectors/test-credentials` | user | preflight credentials |
+| `POST`   | `/connectors/test-credentials` | user | body `{kind, credentials}`; preflight credentials without saving an instance |
 | `GET`    | `/connector-instances` | user | list instances |
 | `POST`   | `/connector-instances` | user | create instance |
 | `GET`/`PATCH`/`DELETE` | `/connector-instances/{id}` | user | CRUD on an instance |
@@ -415,7 +414,7 @@ discovery.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`/`PUT` | `/admin/observability` | admin | Langfuse configuration (host, project, env) |
+| `GET`/`PUT` | `/admin/observability/langfuse` | observability | Langfuse configuration (`enabled`, `public_key`, `host`, optional write-only `secret_key`) |
 | `GET`    | `/admin/security` | admin | global security policy |
 | `PUT`    | `/admin/security` | admin | update global policy |
 | `GET`    | `/admin/security/tool-guard/rules` | admin | active command guard rules |
@@ -443,23 +442,31 @@ endpoint (public, mounted directly in `api/app.py`).
 | `GET` | `/agents/{aid}/terminal/context` | owner | recent terminal context for the AI helper |
 | `WS`/`POST`/`GET`/… | `/browser/...` | user | octop-browser sessions, live stream, record/replay |
 | `POST` | `/browser/shutdown` | user | stop the current user's Octop-managed Chrome |
-| `POST` | `/agents/{aid}/upload` | user | multipart upload → `{workspace}/inbound/` |
-| `POST` | `/agents/{aid}/files/access-urls` | user | refresh inbound media URLs (signed) |
-| `GET`  | `/agents/{aid}/files/{path}` | owner | read an inbound file |
+| `POST` | `/agents/{aid}/upload` | user | multipart `file` → `{path, workspace_path, url, access_url, filename, media_type}`; stored in `{workspace}/inbound/` |
+
+Use the returned `url` / `access_url` to access the attachment. Image, audio,
+and video attachments use `/agents/{aid}/media/preview?source=…`; other files
+use `/agents/{aid}/workspace/download?path=…`. Both paths are under `/api`.
 
 ## Updates, ollama, i18n, plugins, slash, preferences
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`/`POST` | `/update/status`, `/check`, `/upgrade`, `/progress`, `/restart` | admin | in-place server update flow |
+| `GET` | `/update/status` | user | latest cached update status |
+| `POST` | `/update/check` | update | check for available versions |
+| `PATCH` | `/update/settings` | update | body `{stable_only}`; configure pre-release filtering |
+| `POST` | `/update/upgrade` | update | start an in-place upgrade |
+| `GET` | `/update/progress?task_id=<id>` | update | JSON progress for the task returned by `/update/upgrade` |
+| `POST` | `/update/restart` | update | request a server restart |
 | `GET`/`POST`/`DELETE` | `/ollama-models/...` | `ollama_models` | Ollama model discovery + downloads |
 | `GET`/`PUT` | `/ollama-models/service` | `ollama_models` | Local daemon toggle; omit `enabled` to set `models_dir` only |
-| `GET` | `/i18n/tools` | user | server-owned tool display names (locale-aware) |
-| `GET` | `/i18n/locales` | public | available locales + fallback chain |
-| `GET` | `/i18n/locales/{locale}/{namespace}` | public | one namespace bundle (errors, tools, channel, slash) |
-| `GET`/`POST` | `/preferences` | user | UI preferences (per-user key/value) |
+| `GET` | `/i18n/tools` | user | `{locale, labels}`; server-owned tool display names, resolved using `Accept-Language` |
+| `GET` | `/i18n/skills` | user | `{locale, labels}`; localized built-in skill names keyed by slug |
+| `GET`/`PATCH` | `/preferences` | user | read / update the current user's UI preferences |
 | `GET` | `/slash/commands` | user | slash command catalog for the composer menu |
-| `GET`/`POST` | `/plugins` | user | installed plugin list / install flow |
+| `GET` | `/plugins` | user | installed plugin list |
+| `POST` | `/plugins/install` | plugins | JSON `{url}`; install from a plugin ZIP URL |
+| `POST` | `/plugins/upload` | plugins | multipart `file` with optional `force` form field; install an uploaded plugin ZIP |
 | `POST` | `/plugins/reload` | admin (`plugins`) | reload plugins from disk into process |
 | `PATCH` | `/plugins/{id}` | admin (`plugins`) | enable/disable plugin (`{ "enabled": bool }`) |
 | `GET` | `/plugins/{id}/ui/{path}` | user | serve prebuilt plugin UI assets (`ui/dist/…`) |
@@ -479,8 +486,9 @@ endpoint (public, mounted directly in `api/app.py`).
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`/`PUT` | `/agents/{aid}/envs` | owner | env-var preset for an agent's tool calls |
-| `GET`/`POST`/`DELETE` | `/envs/presets` | user | reusable presets |
+| `GET` | `/envs` | envs | global environment variables as `[{key, value}, ...]` |
+| `PUT` | `/envs` | envs | replace the global env file using JSON `{key: value, ...}` and synchronize the process environment |
+| `DELETE` | `/envs/{key}` | envs | remove one global environment variable |
 
 ## Error envelope
 

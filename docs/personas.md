@@ -96,17 +96,19 @@ curl -X POST http://127.0.0.1:8088/api/agents \
       }'
 
 # list available codes
-curl http://127.0.0.1:8088/api/mbti/codes -H "Authorization: Bearer $TOK"
+curl http://127.0.0.1:8088/api/mbti/types -H "Authorization: Bearer $TOK"
 
 # inspect the full profile (dimensions, behaviour, UI metadata)
-curl http://127.0.0.1:8088/api/mbti/codes/INTJ -H "Authorization: Bearer $TOK"
+curl http://127.0.0.1:8088/api/mbti/types/INTJ -H "Authorization: Bearer $TOK"
 
-# rendered template (the legacy /api/personas/{code} shim still works)
+# rendered template
 curl http://127.0.0.1:8088/api/mbti/preview/INTJ -H "Authorization: Bearer $TOK"
 
+# set AGENT_ID to the id returned when the agent was created
 # apply a persona and reload the agent runtime
-curl -X PUT http://127.0.0.1:8088/api/agents/architect/mbti \
+curl -X POST http://127.0.0.1:8088/api/mbti/apply \
   -H "Authorization: Bearer $TOK" \
+  -H "X-Octop-Agent-Id: $AGENT_ID" \
   -H "Content-Type: application/json" \
   -d '{ "code": "INTJ" }'
 ```
