@@ -27,6 +27,7 @@
 - 模型调用重试耗尽后不再抛出笼统的「多次调用失败」：把具体原因写成给模型的恢复提示（上下文超限、限流、流式中断等），聊天页展示对应说明；后台委派仍标记 failed，并把该原因交给源专家（委派失败标记仍依赖 harness 正确上报）。
 - Windows 残留盘符路径（如 ``D:\\octop-data\\data\\文章存稿\\…``）读写文件时不再把 jail 拒绝渲染成「多次调用模型失败」：能对上当前存储根的改写成虚拟路径继续读；对不上的把原因交给模型，页面显示存储根说明。
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
+- 内置插件「空气质量」按 lat/lon 查询时，卡片与文案仍显示默认城市名 `Beijing`（`city` 参数默认值非空使坐标回退分支失效）；现在省略 `city` 的坐标查询按坐标本身标注，显式传入的城市名与「不传参数默认 Beijing」的行为保持不变。
 - httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
