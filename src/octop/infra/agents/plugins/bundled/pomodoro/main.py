@@ -38,14 +38,21 @@ async def start_countdown(title: str, target_iso: str) -> str:
     if not raw:
         return _payload({"kind": "countdown", "error": "target required"}, "请提供 target_iso。")
     try:
-        datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
         return _payload(
             {"kind": "countdown", "error": "invalid datetime"},
             "target_iso 需要 ISO 时间，例如 2026-12-31T18:00:00+08:00。",
         )
-    data = {"kind": "countdown", "title": name, "target_iso": raw}
-    return _payload(data, f"倒数「{name}」目标 {raw}")
+    # ``ui/index.js`` hands this string to ``Date.parse``, which only guarantees
+    # the ECMA-262 date-time form; ``20261231`` and ``…+08:00:00`` parse here but
+    # yield NaN there, so the card counts down to year 1970.
+    millis = parsed.microsecond // 1000
+    target = parsed.replace(microsecond=millis * 1000).isoformat(
+        timespec="milliseconds" if millis else "seconds"
+    )
+    data = {"kind": "countdown", "title": name, "target_iso": target}
+    return _payload(data, f"倒数「{name}」目标 {target}")
 
 
 def setup(ctx: PluginContext) -> None:
