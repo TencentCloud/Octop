@@ -32,7 +32,16 @@ async def make_qrcode(content: str, scale: int = 8) -> str:
         )
     scale_n = max(2, min(int(scale or 8), 16))
     buf = BytesIO()
-    segno.make(text, error="m").save(buf, kind="png", scale=scale_n)
+    try:
+        qr = segno.make(text, error="m")
+    except segno.DataOverflowError:
+        # Capacity depends on the encoding mode, so the character guard above cannot catch
+        # this: 1500 CJK characters fit the limit but not an error-M symbol.
+        return _payload(
+            {"error": "too long"},
+            f"内容过长，无法编码为二维码（{len(text)} 字符）。",
+        )
+    qr.save(buf, kind="png", scale=scale_n)
     b64 = base64.b64encode(buf.getvalue()).decode("ascii")
     data_url = f"data:image/png;base64,{b64}"
     preview = text if len(text) <= 80 else text[:77] + "..."
