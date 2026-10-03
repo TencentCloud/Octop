@@ -174,3 +174,197 @@ async def test_backfill_queue_runs_one_job_at_a_time_and_dedupes() -> None:
     assert queue.available_slots == 2
     assert queue.contains("thr-1") is False
     await queue.close()
+
+
+def _tool_turn(*, identical: bool = False):
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    human = HumanMessage(content="question", id="u1")
+    first = AIMessage(
+        content="same" if identical else "before tool",
+        id="a1",
+        tool_calls=[{"id": "call1", "name": "lookup", "args": {}}],
+    )
+    result = ToolMessage(content="result", id="t1", tool_call_id="call1")
+    last = AIMessage(content="same" if identical else "after tool", id="a2")
+    return human, first, result, last
+
+
+@pytest.mark.parametrize("identified", [True, False])
+@pytest.mark.parametrize("identical", [True, False])
+def test_turn_tracker_keeps_tool_answers_without_aggregate_duplicate(identified, identical):
+    human, first, tool, last = _tool_turn(identical=identical)
+    tracker = TurnHistoryTracker(seed_messages=[human])
+    for message in (first, last):
+        chunk = {"type": "token", "content": message.content}
+        if identified:
+            chunk["message_id"] = message.id
+        tracker.observe(chunk)
+        if message is first:
+            tracker.observe({"type": "tool_result", "messages": [tool]})
+    snapshot = {"type": "state_snapshot", "data": {"messages": [human, first, tool, last]}}
+    tracker.observe(snapshot)
+    tracker.observe(snapshot)
+    assert [item.message_id for item in tracker.inputs] == ["u1", "a1", "t1", "a2"]
+
+
+@pytest.mark.parametrize("identified", [True, False])
+def test_turn_tracker_retains_only_uncovered_partial_answer(identified):
+    human, first, tool, _ = _tool_turn()
+    tracker = TurnHistoryTracker(seed_messages=[human])
+    tracker.observe(
+        {"type": "token", "content": "before tool", **({"message_id": "a1"} if identified else {})}
+    )
+    tracker.observe({"type": "tool_result", "messages": [tool]})
+    tracker.observe(
+        {
+            "type": "token",
+            "content": "partial after",
+            **({"message_id": "a2"} if identified else {}),
+        }
+    )
+    tracker.observe({"type": "state_snapshot", "data": {"messages": [human, first, tool]}})
+    assert [_wire_text(item) for item in tracker.inputs] == [
+        "question",
+        "before tool",
+        "result",
+        "partial after",
+    ]
+
+
+def test_turn_tracker_does_not_drop_same_text_from_a_different_message():
+    from langchain_core.messages import AIMessage
+
+    tracker = TurnHistoryTracker(seed_messages=[HumanMessage(content="question", id="u1")])
+    tracker.observe({"type": "token", "content": "same", "message_id": "a1"})
+    tracker.observe({"type": "tool_result"})
+    tracker.observe({"type": "token", "content": "same", "message_id": "a2"})
+    tracker.observe(
+        {"type": "state_update", "data": {"messages": [AIMessage(content="same", id="a1")]}}
+    )
+    assert [item.message_id for item in tracker.inputs] == ["u1", "a1", "a2"]
+    assert [_wire_text(item) for item in tracker.inputs] == ["question", "same", "same"]
+
+
+def test_turn_tracker_keeps_reasoning_with_its_assistant():
+    human, first, tool, last = _tool_turn()
+    tracker = TurnHistoryTracker(seed_messages=[human])
+    tracker.observe({"type": "reasoning", "content": "first thought", "message_id": "a1"})
+    tracker.observe({"type": "token", "content": "before tool", "message_id": "a1"})
+    tracker.observe({"type": "tool_result", "messages": [tool]})
+    tracker.observe({"type": "reasoning", "content": "second thought", "message_id": "a2"})
+    tracker.observe({"type": "token", "content": "after tool", "message_id": "a2"})
+    tracker.observe({"type": "state_snapshot", "data": {"messages": [human, first, tool, last]}})
+    assistants = [
+        json.loads(item.message_json)["data"] for item in tracker.inputs if item.role == "ai"
+    ]
+    assert [a["additional_kwargs"]["reasoning_content"] for a in assistants] == [
+        "first thought",
+        "second thought",
+    ]
+    assert [a["content"] for a in assistants] == ["before tool", "after tool"]
+
+
+def test_turn_tracker_extends_partial_state_without_losing_tool_calls():
+    from langchain_core.messages import AIMessage
+
+    tracker = TurnHistoryTracker()
+    tracker.observe({"type": "token", "content": "complete answer", "message_id": "a1"})
+    tracker.observe(
+        {
+            "type": "state_update",
+            "data": {
+                "messages": [
+                    AIMessage(
+                        content="complete",
+                        id="a1",
+                        tool_calls=[{"id": "call", "name": "lookup", "args": {}}],
+                    )
+                ]
+            },
+        }
+    )
+    assert len(tracker.inputs) == 1
+    data = json.loads(tracker.inputs[0].message_json)["data"]
+    assert data["content"] == "complete answer"
+    assert data["tool_calls"][0]["id"] == "call"
+
+
+def test_turn_tracker_preserves_structured_state_and_streamed_suffix():
+    from langchain_core.messages import AIMessage
+
+    tracker = TurnHistoryTracker()
+    tracker.observe({"type": "token", "message_id": "a1", "content": "hello world"})
+    tracker.observe(
+        {
+            "type": "state_update",
+            "data": {
+                "messages": [
+                    AIMessage(
+                        id="a1",
+                        content=[
+                            {"type": "text", "text": "hello"},
+                            {"type": "image_url", "image_url": {"url": "test-image"}},
+                        ],
+                    )
+                ]
+            },
+        }
+    )
+    assert len(tracker.inputs) == 1
+    data = json.loads(tracker.inputs[0].message_json)["data"]
+    assert data["content"][1] == {"type": "image_url", "image_url": {"url": "test-image"}}
+    assert _wire_text(tracker.inputs[0]) == "hello world"
+
+
+def test_turn_tracker_retains_reasoning_only_interruption():
+    tracker = TurnHistoryTracker()
+    tracker.observe({"type": "reasoning", "message_id": "a1", "content": "thinking"})
+    assert len(tracker.inputs) == 1
+    data = json.loads(tracker.inputs[0].message_json)["data"]
+    assert data["id"] == "a1"
+    assert data["content"] == ""
+    assert data["additional_kwargs"]["reasoning_content"] == "thinking"
+
+
+def test_turn_tracker_splits_unidentified_sources():
+    tracker = TurnHistoryTracker()
+    tracker.observe({"type": "token", "node": "first", "content": "first answer"})
+    tracker.observe({"type": "token", "node": "second", "content": "second answer"})
+    assert [_wire_text(item) for item in tracker.inputs] == ["first answer", "second answer"]
+
+
+@pytest.mark.parametrize(
+    ("streamed", "saved"),
+    [("answer", "other answer"), ("answer", "answer extended"), ("answer extended", "answer")],
+)
+def test_turn_tracker_does_not_match_unidentified_partial_text(streamed, saved):
+    from langchain_core.messages import AIMessage
+
+    tracker = TurnHistoryTracker()
+    tracker.observe({"type": "token", "content": streamed})
+    tracker.observe({"type": "reasoning", "content": "unidentified thought"})
+    tracker.observe(
+        {
+            "type": "state_update",
+            "data": {"messages": [AIMessage(content=saved), AIMessage(content="another reply")]},
+        }
+    )
+
+    assert [_wire_text(item) for item in tracker.inputs] == [saved, "another reply", streamed]
+    data = [json.loads(item.message_json)["data"] for item in tracker.inputs]
+    assert "reasoning_content" not in data[0]["additional_kwargs"]
+    assert "reasoning_content" not in data[1]["additional_kwargs"]
+    assert data[2]["additional_kwargs"]["reasoning_content"] == "unidentified thought"
+
+
+@pytest.mark.parametrize(
+    ("streamed", "saved"), [("answer", "other answer"), ("answer extended", "answer")]
+)
+def test_turn_tracker_does_not_rewrite_unidentified_single_answer(streamed, saved):
+    from langchain_core.messages import AIMessage
+
+    tracker = TurnHistoryTracker()
+    tracker.observe({"type": "token", "content": streamed})
+    tracker.observe({"type": "state_update", "data": {"messages": [AIMessage(content=saved)]}})
+    assert [_wire_text(item) for item in tracker.inputs] == [saved, streamed]

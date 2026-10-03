@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from langchain_core.messages import AIMessage, convert_to_messages, message_to_dict
@@ -152,13 +152,39 @@ def _wire_text(item: ThreadMessageInput) -> str:
 
 
 @dataclass
+class _StreamedAssistant:
+    message_id: str | None
+    source: str
+    text: str = ""
+    reasoning: str = ""
+
+
+def _merge_stream_content(item: ThreadMessageInput, part: _StreamedAssistant) -> ThreadMessageInput:
+    """Fill incomplete state from its stream, retaining canonical message metadata."""
+    wire = json.loads(item.message_json)
+    data = wire["data"]
+    state_text = _wire_text(item)
+    if part.text.startswith(state_text) and len(part.text) > len(state_text):
+        suffix = part.text[len(state_text) :]
+        content = data.get("content")
+        data["content"] = (
+            [*content, {"type": "text", "text": suffix}] if isinstance(content, list) else part.text
+        )
+    extra = data.setdefault("additional_kwargs", {})
+    state_reasoning = str(extra.get("reasoning_content") or "")
+    if part.reasoning and part.reasoning.startswith(state_reasoning):
+        extra["reasoning_content"] = part.reasoning
+    return replace(item, message_json=json.dumps(wire, ensure_ascii=False, default=str))
+
+
+@dataclass
 class TurnHistoryTracker:
     """Keep only the current user turn from replay-prone state chunks."""
 
     seed_messages: list[Any] = field(default_factory=list)
     _state_messages: list[Any] = field(default_factory=list, init=False)
-    _stream_text: str = field(default="", init=False)
-    _reasoning_text: str = field(default="", init=False)
+    _streamed: list[_StreamedAssistant] = field(default_factory=list, init=False)
+    _active_stream: _StreamedAssistant | None = field(default=None, init=False)
     _error_message: str = field(default="", init=False)
     _error_code: str | None = field(default=None, init=False)
 
@@ -182,11 +208,11 @@ class TurnHistoryTracker:
             else:
                 self._state_messages.extend(messages)
             return
-        if kind == "token":
-            self._stream_text += str(chunk.get("content") or "")
+        if kind in ("token", "reasoning"):
+            self._observe_stream(chunk)
             return
-        if kind == "reasoning":
-            self._reasoning_text += str(chunk.get("content") or "")
+        if kind == "tool_result":
+            self._active_stream = None
             return
         if kind == "error":
             text = str(chunk.get("message") or chunk.get("content") or "")
@@ -196,13 +222,63 @@ class TurnHistoryTracker:
             if code:
                 self._error_code = str(code)
 
-    def _stream_message(self) -> ThreadMessageInput | None:
-        if not self._stream_text and not self._reasoning_text:
-            return None
-        extra: dict[str, Any] = {}
-        if self._reasoning_text:
-            extra["reasoning_content"] = self._reasoning_text
-        return live_message_input(AIMessage(content=self._stream_text, additional_kwargs=extra))
+    def _observe_stream(self, chunk: dict[str, Any]) -> None:
+        message_id = str(chunk.get("message_id") or "") or None
+        source = str(chunk.get("checkpoint_ns") or chunk.get("node") or "")
+        part = self._active_stream
+        if message_id:
+            part = next((p for p in self._streamed if p.message_id == message_id), None)
+        elif part is not None and part.source != source:
+            part = None
+        if part is None:
+            part = _StreamedAssistant(message_id=message_id, source=source)
+            self._streamed.append(part)
+        self._active_stream = part
+        text = str(chunk.get("content") or "")
+        if chunk.get("type") == "reasoning":
+            part.reasoning += text
+        else:
+            part.text += text
+
+    def _merge_streamed(self, items: list[ThreadMessageInput]) -> None:
+        matched: set[int] = set()
+        # Preserve the legacy single-answer case when state completes a truncated
+        # stream. Across multiple answers, a prefix is not evidence of identity.
+        single_answer = (
+            len(self._streamed) == 1 and sum(item.role in _ASSISTANT_ROLES for item in items) == 1
+        )
+        for part in self._streamed:
+            if not part.text and not part.reasoning:
+                continue
+            target = next(
+                (
+                    index
+                    for index, item in enumerate(items)
+                    if index not in matched
+                    and item.role in _ASSISTANT_ROLES
+                    and (
+                        item.message_id == part.message_id
+                        if part.message_id
+                        else bool(part.text)
+                        and (
+                            part.text == _wire_text(item)
+                            or (single_answer and _wire_text(item).startswith(part.text))
+                        )
+                    )
+                ),
+                None,
+            )
+            if target is not None:
+                matched.add(target)
+                items[target] = _merge_stream_content(items[target], part)
+                continue
+            extra = {"reasoning_content": part.reasoning} if part.reasoning else {}
+            item = live_message_input(
+                AIMessage(id=part.message_id, content=part.text, additional_kwargs=extra)
+            )
+            if item is not None:
+                matched.add(len(items))
+                items.append(item)
 
     def _error_input(self) -> ThreadMessageInput | None:
         if not self._error_message:
@@ -211,14 +287,6 @@ class TurnHistoryTracker:
         if self._error_code:
             extra[STREAM_ERROR_CODE_KEY] = self._error_code
         return live_message_input(AIMessage(content=self._error_message, additional_kwargs=extra))
-
-    def _inputs_cover_stream(self, items: list[ThreadMessageInput]) -> bool:
-        if not self._stream_text:
-            return False
-        return any(
-            item.role in _ASSISTANT_ROLES and self._stream_text in _wire_text(item)
-            for item in items
-        )
 
     @property
     def inputs(self) -> list[ThreadMessageInput]:
@@ -230,10 +298,7 @@ class TurnHistoryTracker:
             source,
             dedupe_missing_ids=True,
         )
-        if not self._inputs_cover_stream(items):
-            streamed = self._stream_message()
-            if streamed is not None:
-                items.append(streamed)
+        self._merge_streamed(items)
         error = self._error_input()
         if error is not None:
             items.append(error)
