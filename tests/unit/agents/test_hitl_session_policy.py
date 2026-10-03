@@ -100,13 +100,16 @@ def test_wrap_respects_original_when() -> None:
 
 def test_store_set_persists_once() -> None:
     repo = MagicMock()
+    repo.get.return_value = SimpleNamespace(
+        hitl_policy='{"mode": "allow_tools", "tools": ["bash"]}'
+    )
     store = HitlSessionPolicyStore(repo)
     store.set("thr_1", {"mode": "allow_tools", "tools": ["bash"]})
     repo.update_composer.assert_called_once_with(
         "thr_1", hitl_policy='{"mode": "allow_tools", "tools": ["bash"]}'
     )
     assert store.get("thr_1").allows("bash")
-    repo.get.assert_not_called()
+    repo.get.assert_called_with("thr_1")
 
 
 @pytest.mark.asyncio
