@@ -31,6 +31,7 @@
 - Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- 专家编辑抽屉不再抹掉运行上限配置（#810）：`max_iters` / `max_input_length` / `temperature` / `top_p` / `max_tokens` 在折叠的「高级选项」面板里，未展开面板直接保存名称/描述时这些字段没有注册表单控件，取值按空处理并显式提交 `null`，服务端据此删除已存储的限值；现改为从表单存储读取（与 `welcome_message` 等字段一致），清空输入框仍是明确的重置信号
 
 ## [1.0.2b5] - 2026-09-29
 
