@@ -187,7 +187,47 @@ export function classifyChatStreamError(
   return null;
 }
 
+/**
+ * Hard ceiling for a bare error envelope.
+ *
+ * Real failures reach the UI either as an `error` stream frame or as the *entire*
+ * assistant message (``Model call failed after 3 attempts with
+ * StreamChunkTimeoutError: …``). Both are short. A troubleshooting writeup that
+ * merely quotes ``401 Unauthorized`` is an order of magnitude longer.
+ */
+const BARE_ERROR_ENVELOPE_MAX_CHARS = 600;
+
+/**
+ * Markdown structure that only ever appears in an authored answer: fenced code,
+ * headings, or pipe tables. A bare error string never carries these.
+ */
+const AUTHORED_ANSWER_MARKDOWN_RE = /(^|\n)\s*(?:```|#{1,6}\s|\|[^\n]*\|)/;
+
+/**
+ * True when *message* plausibly is a whole error envelope rather than a reply.
+ *
+ * Formatted answers, long prose, and empty input are not envelopes.
+ */
+export function isBareErrorEnvelope(
+  message: string | null | undefined,
+): boolean {
+  const text = (message ?? "").trim();
+  if (!text) return false;
+  if (text.length > BARE_ERROR_ENVELOPE_MAX_CHARS) return false;
+  if (AUTHORED_ANSWER_MARKDOWN_RE.test(text)) return false;
+  return true;
+}
+
+/**
+ * True when a *message body* should be treated as a stream failure.
+ *
+ * Only bare envelopes qualify: a formatted answer that happens to quote an error
+ * string must stay readable -- classifying it replaced the whole reply with an
+ * error bubble (#1074). Stream `error` frames never go through this predicate;
+ * they are known failures and are still localized by {@link formatChatStreamError}.
+ */
 export function isChatStreamError(message: string | null | undefined): boolean {
+  if (!isBareErrorEnvelope(message)) return false;
   return classifyChatStreamError(message) !== null;
 }
 

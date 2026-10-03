@@ -3,6 +3,7 @@ import {
   chatStreamErrorAction,
   classifyChatStreamError,
   formatChatStreamError,
+  isBareErrorEnvelope,
   isChatStreamError,
 } from "./chatStreamError";
 
@@ -110,5 +111,56 @@ describe("classifyChatStreamError", () => {
     expect(formatChatStreamError(msg, t)).toBe(
       "translated:stream_errors.stream_stall",
     );
+  });
+});
+
+describe("isChatStreamError only flags bare error envelopes (#1074)", () => {
+  // A real answer that quotes a provider error while explaining it. The classifier
+  // still finds the substring, but the message body must stay readable.
+  const troubleshootingAnswer = [
+    "## 结论：不是服务坏了，是健康检查探针指错了路径",
+    "",
+    "```",
+    "wget: server returned error: HTTP/1.1 401 Unauthorized",
+    "```",
+    "",
+    "| 路径 | 结果 |",
+    "| --- | --- |",
+    "| `/` | 401 ← 探针打的就是这个 |",
+    "| `/api/system/version` | 200 |",
+  ].join("\n");
+
+  it("still classifies the quoted error string itself", () => {
+    expect(classifyChatStreamError(troubleshootingAnswer)).toBe(
+      "stream_errors.auth",
+    );
+  });
+
+  it("does not treat a formatted answer as a stream failure", () => {
+    expect(isChatStreamError(troubleshootingAnswer)).toBe(false);
+  });
+
+  it("does not treat long unformatted prose as a stream failure", () => {
+    const long = `排查记录：${"服务端返回 401 Unauthorized，请检查 API key 是否过期。".repeat(40)}`;
+    expect(long.length).toBeGreaterThan(600);
+    expect(classifyChatStreamError(long)).toBe("stream_errors.auth");
+    expect(isChatStreamError(long)).toBe(false);
+  });
+
+  it("keeps flagging bare error envelopes", () => {
+    expect(
+      isChatStreamError("Error code: 401 - {'code': 'invalid_api_key'}"),
+    ).toBe(true);
+    expect(
+      isChatStreamError("HTTP 503: upstream service temporarily unavailable"),
+    ).toBe(true);
+  });
+
+  it("rejects empty input as an envelope", () => {
+    expect(isBareErrorEnvelope("")).toBe(false);
+    expect(isBareErrorEnvelope("   ")).toBe(false);
+    expect(isBareErrorEnvelope(null)).toBe(false);
+    expect(isBareErrorEnvelope(undefined)).toBe(false);
+    expect(isBareErrorEnvelope("Error code: 401 - invalid_api_key")).toBe(true);
   });
 });
