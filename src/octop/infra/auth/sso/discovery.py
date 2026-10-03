@@ -7,6 +7,8 @@ from typing import Any, cast
 
 import httpx
 
+from octop.infra.utils.ssrf_guard import validate_https_url
+
 _DISCOVERY_PATH = "/.well-known/openid-configuration"
 _CACHE_TTL_SECONDS = 3600
 
@@ -16,8 +18,15 @@ def _normalized_issuer(issuer: str) -> str:
 
 
 def fetch_discovery(issuer: str, *, httpx_client: httpx.Client) -> dict[str, Any]:
-    """Fetch an issuer's OpenID Connect discovery document."""
+    """Fetch an issuer's OpenID Connect discovery document.
+
+    The issuer is admin-configured, but pointing it at a private or local
+    address would make the login flow reach hosts that are not meant to be
+    reachable from the server, so it goes through the same outbound-URL guard
+    as the connector OAuth discovery.
+    """
     normalized = _normalized_issuer(issuer)
+    validate_https_url(normalized, field="issuer")
     response = httpx_client.get(f"{normalized}{_DISCOVERY_PATH}")
     response.raise_for_status()
     discovery = cast(dict[str, Any], response.json())
