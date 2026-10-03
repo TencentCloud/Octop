@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -778,6 +779,10 @@ def _read_extract_config(row: Any) -> dict[str, Any]:
 
 def _coerce_seconds(value: Any, *, minimum: float) -> float:
     seconds = float(value)
+    if not math.isfinite(seconds):
+        # ``NaN`` fails both comparisons below and would be stored verbatim, and
+        # JSON has no literal for it — the value would come back as ``null``.
+        raise HTTPException(status_code=400, detail="seconds must be a finite number")
     if seconds < minimum:
         return minimum
     if seconds > _MAX_SECONDS:
