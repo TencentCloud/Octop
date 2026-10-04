@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -41,6 +42,22 @@ def _row(**kwargs: object) -> BackendRow:
     }
     base.update(kwargs)
     return BackendRow(**base)  # type: ignore[arg-type]
+
+
+def _filesystem_row(root: Path) -> BackendRow:
+    """Build a filesystem row; ``json.dumps`` keeps Windows ``\\`` paths valid."""
+    return _row(kind="filesystem", config_json=json.dumps({"root_dir": str(root)}))
+
+
+def test_filesystem_row_keeps_windows_root_dir() -> None:
+    from octop.infra.backend.adapter import row_to_backend_spec
+
+    win_root = r"C:\Users\runneradmin\AppData\Local\Temp\data"
+    spec = row_to_backend_spec(
+        _row(kind="filesystem", config_json=json.dumps({"root_dir": win_root})),
+    )
+    assert spec is not None
+    assert spec["root_dir"] == win_root
 
 
 def test_row_for_probe_merges_secrets_from_base() -> None:
@@ -159,7 +176,7 @@ async def test_list_storage_backend_tree_returns_entries(
     (root / "a.txt").write_text("hi", encoding="utf-8")
     (root / "subdir").mkdir()
 
-    row = _row(kind="filesystem", config_json=f'{{"root_dir": "{root}"}}')
+    row = _filesystem_row(root)
 
     fake_backend = MagicMock()
     fake_backend.als = AsyncMock(
@@ -221,7 +238,7 @@ async def test_download_storage_backend_file_reads_bytes(tmp_path: Path) -> None
     root.mkdir()
     (root / "note.md").write_text("# hello\n", encoding="utf-8")
     (root / "blob.bin").write_bytes(b"\x00\xff\xfe")
-    row = _row(kind="filesystem", config_json=f'{{"root_dir": "{root}"}}')
+    row = _filesystem_row(root)
 
     assert await download_storage_backend_file(row, "/note.md") == b"# hello\n"
     assert await read_storage_backend_text(row, "/note.md") == "# hello\n"
@@ -235,7 +252,7 @@ async def test_read_storage_backend_text_rejects_binary(tmp_path: Path) -> None:
     root = tmp_path / "data"
     root.mkdir()
     (root / "blob.bin").write_bytes(b"\x00\xff\xfe")
-    row = _row(kind="filesystem", config_json=f'{{"root_dir": "{root}"}}')
+    row = _filesystem_row(root)
     with pytest.raises(StorageBrowseError) as excinfo:
         await read_storage_backend_text(row, "/blob.bin")
     assert excinfo.value.classified.message_key == "browse_not_text"
@@ -247,7 +264,7 @@ async def test_download_storage_backend_file_missing(tmp_path: Path) -> None:
 
     root = tmp_path / "data"
     root.mkdir()
-    row = _row(kind="filesystem", config_json=f'{{"root_dir": "{root}"}}')
+    row = _filesystem_row(root)
     with pytest.raises(FileNotFoundError):
         await download_storage_backend_file(row, "/missing.txt")
 
