@@ -26,6 +26,7 @@
 - 登录页在用户名框下提示可用用户名或邮箱（目录账号与本地账号同一表单）。
 
 ### 修复
+- 内置 Skill Manager 以 UTF-8 解码外部 CLI 输出，替换无效字节而非丢弃整个输出，避免 Windows 默认编码导致中文诊断丢失或 `NoneType.strip` 错误遮住原始失败原因。
 - 桌面覆盖安装用与服务器 `parse_version` 相同的 PEP 440 规则比较内置与持久运行时，修复同一发布号下 beta 递增（如 `1.0.2b4` → `1.0.2b5`）及预发布转正式版被当成相等、继续加载旧运行时的问题；备份、替换失败回退和不降级保护不变。
 - Postgres 存储后端改为拆字段映射，不再把 URI 当作 `connection_string` 传给 `PostgresConfig`。
 - S3 / Postgres 等旧协议 backend 适配 `ReadResult` / `LsResult`，专家启动与管理端目录树不再因 `'str'.error` 或 `als` 未实现而失败。
