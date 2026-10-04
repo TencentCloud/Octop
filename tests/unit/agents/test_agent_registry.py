@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -193,7 +194,10 @@ async def test_boot_start_timeout_keeps_registered_agent_running(
     async def hang_after_register(row: Any) -> Any:
         hm = registry._harness_manager
         assert hm is not None
-        hm.create_agent(MagicMock(), agent_id=row.agent_id)
+        hm.create_agent(
+            SimpleNamespace(workspace_dir=None, backend=None, skills_dir=None),
+            agent_id=row.agent_id,
+        )
         await asyncio.Event().wait()
 
     monkeypatch.setattr(registry, "_start_agent", hang_after_register)
