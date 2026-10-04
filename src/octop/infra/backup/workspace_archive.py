@@ -222,22 +222,18 @@ def _read_entry_bytes(workspace: BackendWorkspace, rel: str) -> bytes | None:
 async def export_workspace_zip(workspace: BackendWorkspace) -> bytes:
     """Pack workspace files into a zip archive."""
     paths = await _list_file_paths(workspace)
-    entries: list[tuple[str, bytes]] = []
-    for path in paths:
-        blob = await asyncio.to_thread(_read_entry_bytes, workspace, path)
-        if blob is None:
-            continue
-        entries.append((path.lstrip("/"), blob))
-    # DEFLATE compression on large workspaces is CPU-bound; keep it off the
-    # event loop so unrelated requests and chat streams keep making progress.
-    return await asyncio.to_thread(_pack_zip, entries)
+    return await asyncio.to_thread(_pack_zip, workspace, paths)
 
 
-def _pack_zip(entries: list[tuple[str, bytes]]) -> bytes:
+def _pack_zip(workspace: BackendWorkspace, paths: list[str]) -> bytes:
+    """Read and compress one file at a time outside the event loop."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for name, blob in entries:
-            zf.writestr(name, blob)
+        for path in paths:
+            blob = _read_entry_bytes(workspace, path)
+            if blob is None:
+                continue
+            zf.writestr(path.lstrip("/"), blob)
     return buf.getvalue()
 
 

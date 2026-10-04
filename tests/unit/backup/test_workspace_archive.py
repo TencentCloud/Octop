@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import io
-import time
+import threading
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -272,63 +271,46 @@ async def test_import_skips_octop_builtin_skills(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "helper_name", ["_pack_zip", "_iter_zip_entries", "_clear_local_workspace"]
+)
 async def test_workspace_archive_offloads_blocking_zip_work(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, helper_name: str
 ) -> None:
-    """ZIP compression and entry extraction must run off the event loop.
-
-    A ticker task counts loop scheduling slots while the blocking work runs;
-    if the work executed inline on the loop, the ticker would be starved and
-    the counts stay near zero (#1596).
-    """
-    (tmp_path / "hello.txt").write_bytes(b"hello" * 4096)
+    """Archive packing, extraction and replace cleanup execute outside the event loop."""
+    payload = b"hello" * 4096
+    (tmp_path / "hello.txt").write_bytes(payload)
     backend = LocalShellBackend(root_dir=str(tmp_path), virtual_mode=False)
     workspace = BackendWorkspace(backend, tmp_path)
+    loop_thread = threading.get_ident()
+    worker_threads: list[int] = []
+    original = getattr(workspace_archive, helper_name)
 
-    real_pack = workspace_archive._pack_zip
-    calls: list[str] = []
+    def record_thread(*args: Any) -> Any:
+        worker_threads.append(threading.get_ident())
+        return original(*args)
 
-    def slow_pack(entries: list[tuple[str, bytes]]) -> bytes:
-        time.sleep(0.25)
-        calls.append("packed")
-        return real_pack(entries)
+    monkeypatch.setattr(workspace_archive, helper_name, record_thread)
 
-    monkeypatch.setattr(workspace_archive, "_pack_zip", slow_pack)
+    if helper_name == "_pack_zip":
+        blob = await export_workspace_zip(workspace)
+        with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+            assert archive.read("hello.txt") == payload
+    else:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("hello.txt", payload)
+        (tmp_path / "hello.txt").unlink()
+        (tmp_path / "obsolete.txt").write_bytes(b"old")
+        (tmp_path / ".env").write_bytes(b"keep")
+        mode = "replace" if helper_name == "_clear_local_workspace" else "merge"
+        result = await import_workspace_zip(
+            workspace, buffer.getvalue(), mode=mode, local_workspace_dir=tmp_path
+        )
+        assert result["imported"] == 1
+        assert (tmp_path / "hello.txt").read_bytes() == payload
+        assert (tmp_path / ".env").read_bytes() == b"keep"
+        assert (tmp_path / "obsolete.txt").exists() is (mode == "merge")
 
-    stop = asyncio.Event()
-    ticks = 0
-
-    async def ticker() -> int:
-        nonlocal_ticks = 0
-        while not stop.is_set():
-            nonlocal_ticks += 1
-            await asyncio.sleep(0)
-        return nonlocal_ticks
-
-    ticker_task = asyncio.create_task(ticker())
-    blob = await export_workspace_zip(workspace)
-    stop.set()
-    export_ticks = await ticker_task
-
-    assert blob
-    assert calls == ["packed"]
-    assert export_ticks >= 10, "event loop was starved during export"
-
-    real_iter = workspace_archive._iter_zip_entries
-
-    def slow_iter(data: bytes) -> list[tuple[str, bytes]]:
-        time.sleep(0.25)
-        return real_iter(data)
-
-    monkeypatch.setattr(workspace_archive, "_iter_zip_entries", slow_iter)
-    stop = asyncio.Event()
-    ticker_task = asyncio.create_task(ticker())
-    import_task = asyncio.create_task(
-        import_workspace_zip(workspace, blob, mode="merge", local_workspace_dir=None)
-    )
-    await asyncio.sleep(0.1)
-    stop.set()
-    import_ticks = await ticker_task
-    await import_task
-
-    assert import_ticks >= 10, "event loop was starved during import"
+    assert len(worker_threads) == 1
+    assert worker_threads[0] != loop_thread, f"{helper_name} ran on the event-loop thread"
