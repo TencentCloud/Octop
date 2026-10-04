@@ -3104,6 +3104,7 @@ class AgentManager:
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
+        from octop.infra.agents.middleware.sensitive_data import SensitiveDataMaskMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
         from octop.infra.agents.middleware.token_quota import TokenQuotaMiddleware
         from octop.infra.agents.middleware.workspace_image import (
@@ -3136,6 +3137,20 @@ class AgentManager:
             ),
             OctopUiOffloadMiddleware(),
         ]
+
+        # The same ``pii`` policy section that flips harness's API-key
+        # PIIMiddleware on/off also gates the Chinese phone/ID masker, so the
+        # single "sensitive data" admin switch covers both detectors.
+        if policy.pii.enabled:
+            pii_surfaces = set(policy.pii.surfaces)
+            agent_middleware.append(
+                SensitiveDataMaskMiddleware(
+                    strategy=policy.pii.strategy,
+                    apply_to_input="input" in pii_surfaces,
+                    apply_to_output="output" in pii_surfaces,
+                    apply_to_tool_results="tool_results" in pii_surfaces,
+                )
+            )
 
         merged_tools: list[Any] = []
         if cron_tools:
