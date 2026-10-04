@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from octop_harness.backends import resolve_backend
@@ -95,3 +96,84 @@ def test_sandbox_workspace_accepts_host_absolute_spelling() -> None:
     )
     assert _assert_workspace_mutable("file:///workspace/x.md", workspace=ws) == "/workspace/x.md"
     assert _assert_workspace_mutable("/x.md", workspace=ws) == "x.md"
+
+
+def _docker_backend(workspace_path: str | None, host_ws: str) -> Any:
+    """A real ``DockerSandbox`` without a container: only path mapping is exercised."""
+    from octop_harness.backends.docker_sandbox import (
+        DockerSandbox,
+        _in_container_workspace_root,
+    )
+
+    backend = DockerSandbox.__new__(DockerSandbox)
+    backend.sandbox_fs = True
+    backend._workspace_root = _in_container_workspace_root(workspace_path, host_ws)
+    return backend
+
+
+def test_sandbox_builtin_skills_protected_under_container_root() -> None:
+    """The protected root is judged by its on-disk location, not the container prefix.
+
+    An explicit ``workspace_path`` makes the container root (``/workspace``) differ
+    from ``workspace_dir``, so ``/workspace/_builtin_skills/x`` names the *same*
+    file as ``_builtin_skills/x``. Folding must map it back before matching, or the
+    protected root is seen as an ordinary subdirectory named ``workspace``.
+    """
+    host_ws = "/host/agents/main"
+    backend = _docker_backend("/workspace", host_ws)
+    ws = SimpleNamespace(backend=backend, workspace_dir=host_ws)
+
+    for spelling in ("/_builtin_skills/x", "/workspace/_builtin_skills/x"):
+        with pytest.raises(OctopError):
+            _assert_workspace_mutable(spelling, workspace=ws, from_workspace=False)
+
+    # Non-protected in-container paths stay writable.
+    assert (
+        _assert_workspace_mutable("/workspace/x.md", workspace=ws, from_workspace=False)
+        == "/workspace/x.md"
+    )
+
+
+@pytest.mark.parametrize("workspace_path", ["/workspace", None])
+def test_sandbox_workspace_root_is_forbidden(workspace_path: str | None) -> None:
+    """The workspace root stays unwritable once the container spelling is folded.
+
+    ``_to_virtual_path`` maps the root to ``"/"``, which folds to an empty key;
+    it must come back as ``"."`` or the root guard misses it and a sandbox
+    ``DELETE``/``mkdir`` on ``/`` targets the whole container workspace.
+    """
+    host_ws = "/host/agents/main"
+    backend = _docker_backend(workspace_path, host_ws)
+    ws = SimpleNamespace(backend=backend, workspace_dir=host_ws)
+
+    # ``/`` and ``.`` are the root under either container-root layout.
+    for spelling in ("/", "."):
+        with pytest.raises(OctopError, match="workspace root"):
+            _assert_workspace_mutable(spelling, workspace=ws, from_workspace=True)
+
+    # ``file:///workspace`` is the root only when the container root is ``/workspace``;
+    # with the default root it names an ordinary subdirectory.
+    if workspace_path == "/workspace":
+        with pytest.raises(OctopError, match="workspace root"):
+            _assert_workspace_mutable("file:///workspace", workspace=ws, from_workspace=False)
+
+
+def test_sandbox_default_root_keeps_workspace_named_dir_writable() -> None:
+    """Without ``workspace_path`` the container root mirrors ``workspace_dir``.
+
+    ``/workspace/_builtin_skills/x`` is then a user directory named ``workspace``,
+    not the protected root, so it must stay writable — the fold must not turn every
+    leading ``/workspace`` segment into the built-in root.
+    """
+    host_ws = "/host/agents/main"
+    backend = _docker_backend(None, host_ws)
+    ws = SimpleNamespace(backend=backend, workspace_dir=host_ws)
+
+    with pytest.raises(OctopError):
+        _assert_workspace_mutable("/_builtin_skills/x", workspace=ws, from_workspace=False)
+    assert (
+        _assert_workspace_mutable(
+            "/workspace/_builtin_skills/x", workspace=ws, from_workspace=False
+        )
+        == "/workspace/_builtin_skills/x"
+    )

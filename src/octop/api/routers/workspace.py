@@ -47,14 +47,32 @@ def _workspace_key(rel: str, *, workspace: Any) -> str:
     Host-absolute spellings that land inside the workspace fold to the same key a
     relative request produces, so ``/w/sub/../_builtin_skills/x`` and
     ``_builtin_skills/x`` are judged identically instead of by how they are spelled.
+
+    Sandbox backends name their workspace by a container path that need not match
+    ``workspace_dir`` — with an explicit ``workspace_path`` (e.g. ``/workspace``)
+    the same file is ``/workspace/_builtin_skills/x`` on the request and
+    ``_builtin_skills/x`` on disk. ``_to_virtual_path`` maps the container
+    spelling back onto the workspace, which is what
+    :meth:`BackendWorkspace.present_path` already relies on; without it the
+    protected root would be judged by the container's leading segment and slip
+    through as an ordinary subdirectory.
     """
     posix = posixpath.normpath(rel.strip().replace("\\", "/"))
+    backend = getattr(workspace, "backend", None)
+    if getattr(backend, "sandbox_fs", False):
+        to_virtual = getattr(backend, "_to_virtual_path", None)
+        if callable(to_virtual):
+            posix = posixpath.normpath(str(to_virtual(posix)).replace("\\", "/"))
     root = str(Path(workspace.workspace_dir).expanduser().resolve()).replace("\\", "/")
     if posix == root:
         return "."
     for prefix in (f"{root}/", "/"):
         if posix.startswith(prefix):
-            return posix[len(prefix) :]
+            # Folding the container root yields an empty key. Normalize it to
+            # ``"."`` so the caller's workspace-root guard still recognizes it —
+            # otherwise a sandbox request for ``/`` reads as an ordinary relative
+            # key and ``DELETE`` reaches ``rm -rf`` on the container workspace.
+            return posix[len(prefix) :] or "."
     return posix
 
 
