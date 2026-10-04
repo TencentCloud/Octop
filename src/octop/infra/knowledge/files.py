@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import stat
+import uuid
+from contextlib import suppress
 from pathlib import Path
 
 from octop.infra.utils.paths import PathLayout
@@ -25,7 +29,23 @@ def document_path(kb_id: str, doc_id: str, filename: str) -> Path:
 
 def write_document(kb_id: str, doc_id: str, filename: str, content: bytes) -> Path:
     path = document_path(kb_id, doc_id, filename)
-    path.write_bytes(content)
+    existing_mode = None
+    if os.name == "posix" and path.exists():
+        existing_mode = stat.S_IMODE(path.stat().st_mode)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    stream = temporary.open("xb")
+    try:
+        with stream as output:
+            output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
+        if existing_mode is not None:
+            os.chmod(temporary, existing_mode)
+        # Same-directory replacement publishes complete bytes after the file is closed.
+        os.replace(temporary, path)
+    finally:
+        with suppress(OSError):
+            temporary.unlink(missing_ok=True)
     return path
 
 
