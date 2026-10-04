@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 from octop_harness.security.tool_guard.rule_guardian import (
@@ -12,6 +14,21 @@ from octop_harness.security.tool_guard.rule_guardian import (
 from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
+
+
+def _write_text_atomically(path: Path, content: str) -> None:
+    """Publish text through a temporary file so a partial write cannot survive."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 class ToolGuardRulesStore:
@@ -34,7 +51,7 @@ class ToolGuardRulesStore:
     def ensure_seeded(self) -> None:
         self.rules_dir.mkdir(parents=True, exist_ok=True)
         if not self.rules_file.is_file():
-            self.rules_file.write_text(read_bundled_rules_yaml(), encoding="utf-8")
+            _write_text_atomically(self.rules_file, read_bundled_rules_yaml())
             logger.info("Seeded tool guard rules at %s", self.rules_file)
 
     def read_text(self) -> str:
@@ -46,13 +63,13 @@ class ToolGuardRulesStore:
         if errors:
             return 0, errors
         self.ensure_seeded()
-        self.rules_file.write_text(content, encoding="utf-8")
+        _write_text_atomically(self.rules_file, content)
         return len(rules), []
 
     def reset_to_bundled(self) -> str:
         text = read_bundled_rules_yaml()
         self.ensure_seeded()
-        self.rules_file.write_text(text, encoding="utf-8")
+        _write_text_atomically(self.rules_file, text)
         return text
 
     def list_catalog(self) -> list[dict[str, object]]:
