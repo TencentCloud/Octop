@@ -46,6 +46,46 @@ def test_create_base_allows_shared_with_default_open(service: KnowledgeService) 
     assert kb.default_open is True
 
 
+@pytest.mark.parametrize("name", [".", " . "])
+def test_folder_dot_rename_cannot_collapse_into_root(service: KnowledgeService, name: str) -> None:
+    owner = service._services.user_repo.create(username="owner", password_hash="h", role="user")
+    base = service.create_base(owner_user_id=owner, name="Docs")
+    folder = service.create_folder(base.id, actor_user_id=owner, path="notes")
+    child = service.upload_document(
+        base.id,
+        actor_user_id=owner,
+        filename="leaf.md",
+        content_type="text/markdown",
+        content=b"important notes",
+        path="notes/leaf.md",
+    )
+    with pytest.raises(ValueError, match="invalid knowledge document name"):
+        service.rename_document(base.id, folder.id, new_name=name, actor_user_id=owner)
+    assert service._repo.get_document(folder.id).path == "notes"
+    assert service._repo.get_document(child.id).path == "notes/leaf.md"
+    assert (
+        service.read_text_document(base.id, child.id, actor_user_id=owner)["text"]
+        == "important notes"
+    )
+
+
+def test_folder_hidden_name_rename_preserves_children(service: KnowledgeService) -> None:
+    owner = service._services.user_repo.create(username="owner", password_hash="h", role="user")
+    base = service.create_base(owner_user_id=owner, name="Docs")
+    folder = service.create_folder(base.id, actor_user_id=owner, path="notes")
+    child = service.upload_document(
+        base.id,
+        actor_user_id=owner,
+        filename="leaf.md",
+        content_type="text/markdown",
+        content=b"notes",
+        path="notes/leaf.md",
+    )
+    renamed = service.rename_document(base.id, folder.id, new_name=".notes", actor_user_id=owner)
+    assert renamed.path == ".notes"
+    assert service._repo.get_document(child.id).path == ".notes/leaf.md"
+
+
 def test_update_base_allows_enabling_both_shared_and_default_open(
     service: KnowledgeService,
 ) -> None:
