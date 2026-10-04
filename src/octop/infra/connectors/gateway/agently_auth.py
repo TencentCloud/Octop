@@ -191,7 +191,12 @@ async def stop_process(process: asyncio.subprocess.Process) -> None:
 async def _command(spec: _Spec, creds: dict[str, Any], args: tuple[str, ...]) -> str:
     process = await _spawn(spec, creds, args)
     try:
-        output, _ = await asyncio.wait_for(process.communicate(), _COMMAND_TIMEOUT)
+        try:
+            output, _ = await asyncio.wait_for(process.communicate(), _COMMAND_TIMEOUT)
+        except TimeoutError:
+            # Keep this deadline distinct from the login deadline: _login() maps its
+            # TimeoutError to "authorization expired", which a hung command is not.
+            raise ValueError("agently auth command timed out") from None
         if process.returncode != 0:
             raise ValueError("cli auth failed")
         return output.decode("utf-8", errors="replace")

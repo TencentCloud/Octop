@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- Agent Mail 连接器授权：设备码登录期间的一次状态/刷新命令挂起（超过 30 秒命令超时）不再被当成「授权已过期」，改为「授权失败，请重新发起授权」，避免提示用户去重新扫码而实际令牌仍然有效。
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
