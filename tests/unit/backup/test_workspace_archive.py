@@ -266,3 +266,17 @@ async def test_import_skips_octop_builtin_skills(tmp_path: Path) -> None:
     assert not (ws / ".octop" / "_builtin_skills").exists()
     assert result["imported"] == 1
     assert any("_builtin_skills" in warning for warning in result["warnings"])
+
+
+@pytest.mark.asyncio
+async def test_invalid_archive_does_not_clear_workspace(tmp_path: Path) -> None:
+    (tmp_path / "notes.txt").write_bytes(b"keep these notes")
+    backend = LocalShellBackend(root_dir=str(tmp_path), virtual_mode=False)
+    workspace = BackendWorkspace(backend, tmp_path)
+
+    with pytest.raises(zipfile.BadZipFile):
+        await import_workspace_zip(
+            workspace, b"not a zip", mode="replace", local_workspace_dir=tmp_path
+        )
+
+    assert (tmp_path / "notes.txt").read_bytes() == b"keep these notes"
