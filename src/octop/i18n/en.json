@@ -687,7 +687,8 @@
   },
   "agent_errors": {
     "no_models_configured": "No models are configured. Go to Admin → Model Management to add a provider, then enable this expert again.",
-    "model_ref_unavailable": "The default model is unavailable or disabled. Check Admin → Model Management or update this expert's default model, then try again."
+    "model_ref_unavailable": "The default model is unavailable or disabled. Check Admin → Model Management or update this expert's default model, then try again.",
+    "start_timeout": "This expert took too long to start (storage backend I/O). Try again, or switch it to a local workspace backend."
   },
   "stream_errors": {
     "stream_stall": "The model stopped sending content while the connection stayed open. Click Retry, or try again later with another model. If this happens often, check the provider status or ask an admin to review stream timeout settings.",

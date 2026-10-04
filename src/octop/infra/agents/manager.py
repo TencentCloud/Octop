@@ -19,7 +19,11 @@ from octop_harness import HarnessAgent, HarnessAgentConfig, HarnessAgentManager
 from octop_harness.registry import AgentEntry
 from octop_harness.security.models import SecurityPolicy
 
-from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
+from octop.i18n.domains.agents import (
+    AGENT_START_TIMEOUT,
+    NO_MODELS_CONFIGURED,
+    format_agent_start_error,
+)
 from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
 from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
@@ -103,6 +107,8 @@ def _model_retry_on_failure(exc: Exception) -> str:
 
 # Bounded parallelism for awaited provider/active-model reload batches.
 _PROVIDER_RELOAD_CONCURRENCY = 6
+# One hung remote backend must not block ``octop run`` from serving HTTP.
+_AGENT_BOOT_START_TIMEOUT = 60.0
 
 # octop-memory builds SQLite table names as ``{namespace}_*``. The namespace
 # must be a valid bare SQL identifier: start with a letter, only [A-Za-z0-9_].
@@ -494,7 +500,30 @@ class AgentManager:
         for row in rows:
             if row.last_state == "stopped":
                 continue
-            await self._start_agent(row)
+            try:
+                await asyncio.wait_for(
+                    self._start_agent(row),
+                    timeout=_AGENT_BOOT_START_TIMEOUT,
+                )
+            except TimeoutError:
+                if self._octop_harness_or_none(row.agent_id) is not None:
+                    self._repos.agent_repo.set_state(row.agent_id, "running", error=None)
+                    logger.warning(
+                        "Agent %s start exceeded %.0fs but is already registered",
+                        row.agent_id,
+                        _AGENT_BOOT_START_TIMEOUT,
+                    )
+                    continue
+                logger.error(
+                    "Agent %s start timed out after %.0fs; continuing boot",
+                    row.agent_id,
+                    _AGENT_BOOT_START_TIMEOUT,
+                )
+                self._repos.agent_repo.set_state(
+                    row.agent_id,
+                    "failed",
+                    error=AGENT_START_TIMEOUT,
+                )
 
     async def shutdown(self) -> None:
         await self.memory_slim.close()
@@ -1064,13 +1093,31 @@ class AgentManager:
         config — do not route harness through this host join.
         """
         from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
+            neutralize_unwritable_local_root,
+            resolve_workspace_host_path,
             workspace_dir_from_config,
         )
 
         cfg = self.get_config(agent_id)
         raw = cfg.get("workspace_dir")
         if isinstance(raw, str) and raw.strip():
-            return workspace_dir_from_config(cfg, paths=self._paths, agent_id=agent_id)
+            out = workspace_dir_from_config(cfg, paths=self._paths, agent_id=agent_id)
+            try:
+                intended = resolve_workspace_host_path(raw, cfg)
+            except ValueError:
+                intended = out
+            if persist_if_missing and out.resolve() != intended.resolve():
+                logger.warning(
+                    "Agent %s: workspace %s is not writable; remapping to %s",
+                    agent_id,
+                    intended,
+                    out,
+                )
+                new_cfg = neutralize_unwritable_local_root(dict(cfg))
+                new_cfg["workspace_dir"] = str(out.resolve())
+                if self._repos.agent_repo.get(agent_id) is not None:
+                    self.persist_harness_config(agent_id, new_cfg)
+            return out
 
         # Legacy / incomplete row: classic Octop layout only (not scoped create default).
         out = self._paths.ensure_agent_workspace(agent_id)
@@ -3005,8 +3052,21 @@ class AgentManager:
 
         cfg = self._agent_config_dict(row)
         raw = cfg.get("workspace_dir")
-        if isinstance(raw, str) and raw.strip():
-            # Persisted value goes to harness as-is; host map is Octop-local only.
+        stored = self._repos.agent_repo.get(row.agent_id) is not None
+        if isinstance(raw, str) and raw.strip() and stored:
+            # Host mkdir may remap an unwritable leftover (e.g. /root/.octop/…)
+            # and persist the new path; re-read so harness gets that string.
+            workspace_dir = self.resolve_workspace_dir(row.agent_id)
+            persisted = self.get_config(row.agent_id)
+            if persisted:
+                cfg = persisted
+            raw = cfg.get("workspace_dir")
+            if isinstance(raw, str) and raw.strip():
+                harness_workspace = harness_workspace_path(raw, cfg)
+            else:
+                harness_workspace = workspace_dir
+        elif isinstance(raw, str) and raw.strip():
+            # Unit tests pass an in-memory row that is not in the repo.
             harness_workspace = harness_workspace_path(raw, cfg)
             workspace_dir = resolve_workspace_host_path(raw, cfg)
             workspace_dir.mkdir(parents=True, exist_ok=True)
@@ -3015,7 +3075,9 @@ class AgentManager:
             # lifts profile keys such as skill_package_ids into columns).
             workspace_dir = self.resolve_workspace_dir(row.agent_id)
             harness_workspace = workspace_dir
-            cfg = self._agent_config_dict(row)
+            persisted = self.get_config(row.agent_id)
+            if persisted:
+                cfg = persisted
 
         backend = self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir)
         ws = self._backend_workspace_for_row(
@@ -3255,11 +3317,18 @@ class AgentManager:
         # wrapped by ``ws`` so start does not spawn a second remote sandbox.
         # The same reuse applies when the workspace wrap adapted an older
         # read/ls surface (S3 / Postgres / COS / …) to ReadResult/LsResult.
-        from octop.infra.backend.compat import is_adapted_backend  # noqa: PLC0415
+        from octop.infra.backend.compat import (  # noqa: PLC0415
+            is_adapted_backend,
+            is_remote_backend_spec,
+        )
 
         harness_backend: Any = (
             ws.backend
-            if self._spec_is_opensandbox(backend) or is_adapted_backend(ws.backend)
+            if (
+                self._spec_is_opensandbox(backend)
+                or is_adapted_backend(ws.backend)
+                or is_remote_backend_spec(backend)
+            )
             else backend
         )
 
