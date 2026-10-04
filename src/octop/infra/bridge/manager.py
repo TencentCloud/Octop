@@ -813,7 +813,7 @@ class BridgeManager:
             logger.warning("bridge outbound closed connection=%s: %s", connection_id, exc)
             raise
         finally:
-            await self._unregister_session(connection_id)
+            await self._unregister_session(connection_id, session)
 
     # -- inbound WS (peer dials us) ------------------------------------------
 
@@ -914,13 +914,31 @@ class BridgeManager:
             await old.close()
         self._sessions[connection_id] = session
 
-    async def _unregister_session(self, connection_id: str) -> None:
+    def _owns_session(self, connection_id: str, session: BridgeSession | None) -> bool:
+        """Whether ``session`` is still the one registered for this connection.
+
+        A reconnecting peer reuses its connection id, so the previous socket can
+        run its cleanup after the replacement is already live. Such a stale
+        session must not touch the live one, nor the row that now describes it.
+        """
+        if session is None:
+            return True
+        registered = self._sessions.get(connection_id)
+        return registered is None or registered is session
+
+    async def _unregister_session(
+        self, connection_id: str, session: BridgeSession | None = None
+    ) -> None:
+        if not self._owns_session(connection_id, session):
+            return
         sess = self._sessions.pop(connection_id, None)
         if sess is not None:
             await sess.close()
 
     async def _finalize_inbound(self, connection_id: str, session: BridgeSession | None) -> None:
-        await self._unregister_session(connection_id)
+        if not self._owns_session(connection_id, session):
+            return
+        await self._unregister_session(connection_id, session)
         if session is not None and session.close_reason == "deleted":
             self._repo.delete(connection_id)
             return

@@ -224,6 +224,90 @@ async def test_finalize_inbound_deleted_drops_row() -> None:
     mgr._repo.update_status.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_stale_session_cleanup_keeps_the_live_session() -> None:
+    """A reconnect reuses the connection id; the old socket's finally must not
+    unregister the session that replaced it."""
+    from octop.infra.bridge.transport import BridgeSession
+
+    mgr = _mgr()
+    mgr._repo.get = MagicMock(return_value=_row())
+    stale = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    await mgr._register_session("cid1", stale)
+
+    # Peer reconnects under the same connection id.
+    live = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    await mgr._register_session("cid1", live)
+    assert mgr._sessions["cid1"] is live
+    assert stale.closed is True
+
+    # The stale socket now drops and runs its finally block.
+    await mgr._finalize_inbound("cid1", stale)
+
+    assert mgr._sessions.get("cid1") is live, "stale cleanup unregistered the live session"
+    assert live.closed is False, "stale cleanup closed the live session"
+    # The row now describes the live session, so the stale cleanup must not
+    # mark it disconnected either.
+    mgr._repo.update_status.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_stale_session_cleanup_does_not_drop_a_deleted_row() -> None:
+    """Only the session that owns the delete may remove the bridge row."""
+    from octop.infra.bridge.transport import BridgeSession
+
+    mgr = _mgr()
+    mgr._repo.get = MagicMock(return_value=_row())
+    live = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    await mgr._register_session("cid1", live)
+
+    stale = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    stale.close_reason = "deleted"
+    await mgr._finalize_inbound("cid1", stale)
+
+    mgr._repo.delete.assert_not_called()
+    assert mgr._sessions.get("cid1") is live
+
+
+@pytest.mark.asyncio
+async def test_live_session_cleanup_still_unregisters() -> None:
+    """The guard must not break the normal path: the owning session unregisters."""
+    from octop.infra.bridge.transport import BridgeSession
+
+    mgr = _mgr()
+    mgr._repo.get = MagicMock(return_value=_row())
+    sess = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    await mgr._register_session("cid1", sess)
+
+    await mgr._finalize_inbound("cid1", sess)
+
+    assert mgr._sessions.get("cid1") is None
+    assert sess.closed is True
+    mgr._repo.update_status.assert_called_once_with("cid1", status="disconnected")
+
+
+@pytest.mark.asyncio
+async def test_stale_outbound_cleanup_keeps_the_live_session() -> None:
+    """The outbound client registers the same way and cleans up the same way.
+
+    ``_run_outbound_client``'s ``finally`` reaches the same unregister path, so
+    it must be covered by behaviour rather than by the helper's new signature.
+    """
+    from octop.infra.bridge.transport import BridgeSession
+
+    mgr = _mgr()
+    mgr._repo.get = MagicMock(return_value=_row())
+    stale = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    await mgr._register_session("cid1", stale)
+    live = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    await mgr._register_session("cid1", live)
+
+    await mgr._finalize_inbound("cid1", stale)
+
+    assert mgr._sessions.get("cid1") is live
+    assert live.closed is False
+
+
 def test_inbound_default_display_name_skips_url_and_id() -> None:
     from octop.infra.bridge.manager import inbound_default_display_name
 
