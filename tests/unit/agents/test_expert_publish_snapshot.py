@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -462,3 +463,67 @@ async def test_export_snapshot_keeps_public_portrait_url(tmp_path: Path) -> None
 
     manifest = json.loads((destination / MANIFEST_FILENAME).read_text(encoding="utf-8"))
     assert manifest["icon_url"] == "/experts/avatars/scene-healthcare.svg"
+
+
+@pytest.mark.asyncio
+async def test_export_snapshot_writes_files_off_the_event_loop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The snapshot export copies a whole workspace; none of that may block the loop."""
+    from octop.infra.agents.experts import publish
+
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source = _workspace(source_dir)
+    await source.aupload_many(
+        [
+            ("SOUL.md", b"# Source soul"),
+            ("skills/research/SKILL.md", b"# Research"),
+        ]
+    )
+
+    loop_thread = threading.get_ident()
+    write_threads: list[int] = []
+    mkdir_threads: list[int] = []
+    real_write_bytes = Path.write_bytes
+    real_mkdir = Path.mkdir
+
+    def spy_write_bytes(self: Path, data: bytes) -> int:
+        write_threads.append(threading.get_ident())
+        return real_write_bytes(self, data)
+
+    def spy_mkdir(
+        self: Path,
+        mode: int = 0o777,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        mkdir_threads.append(threading.get_ident())
+        real_mkdir(self, mode, parents, exist_ok)
+
+    monkeypatch.setattr(Path, "write_bytes", spy_write_bytes)
+    monkeypatch.setattr(Path, "mkdir", spy_mkdir)
+
+    destination = tmp_path / "published"
+    exported = await publish.export_agent_workspace_to_dir(
+        workspace=source,
+        dest=destination,
+        metadata=PublishedExpertSnapshotMeta(
+            name="Expert",
+            description="desc",
+            icon_name=None,
+            color=None,
+            label_zh="专家",
+            label_en="Expert",
+            welcome_message_zh="",
+            welcome_message_en="",
+        ),
+        manifest_id="expert",
+    )
+
+    assert set(exported) == {MANIFEST_FILENAME, "SOUL.md", "skills/research/SKILL.md"}
+    assert write_threads, "snapshot export must write the workspace files"
+    assert mkdir_threads, "snapshot export must create the destination directories"
+    assert loop_thread not in write_threads, "snapshot writes must run off the event loop"
+    assert loop_thread not in mkdir_threads, "snapshot mkdirs must run off the event loop"

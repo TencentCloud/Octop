@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shutil
@@ -117,7 +118,7 @@ async def export_agent_workspace_to_dir(
     manifest_id: str | None = None,
 ) -> list[str]:
     """Atomically replace *dest* with exported workspace files."""
-    dest.parent.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(dest.parent.mkdir, parents=True, exist_ok=True)
     staging_dir = Path(tempfile.mkdtemp(prefix=f".{dest.name}.", dir=dest.parent))
     try:
         exported = await _write_workspace_snapshot(
@@ -126,9 +127,9 @@ async def export_agent_workspace_to_dir(
             metadata=metadata,
             manifest_id=manifest_id or dest.name,
         )
-        _replace_snapshot_dir(staging_dir, dest)
+        await _replace_snapshot_dir(staging_dir, dest)
     except BaseException:
-        shutil.rmtree(staging_dir, ignore_errors=True)
+        await asyncio.to_thread(shutil.rmtree, staging_dir, ignore_errors=True)
         raise
     return exported
 
@@ -142,7 +143,7 @@ async def _write_workspace_snapshot(
 ) -> list[str]:
     """Copy seedable workspace files into an empty staging directory."""
     paths = await _workspace_file_paths(workspace)
-    dest.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(dest.mkdir, parents=True, exist_ok=True)
 
     exported: list[str] = []
     for rel in paths:
@@ -155,8 +156,7 @@ async def _write_workspace_snapshot(
         if content is None:
             continue
         target = dest.joinpath(*PurePosixPath(logical).parts)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(content)
+        await asyncio.to_thread(_write_snapshot_file, target, content)
         exported.append(logical)
 
     avatar_rel = await copy_workspace_avatar_to_dir(workspace, dest)
@@ -178,12 +178,23 @@ async def _write_workspace_snapshot(
         manifest = raw_manifest
 
     manifest_path = dest / MANIFEST_FILENAME
-    manifest_path.write_bytes(manifest)
+    await asyncio.to_thread(manifest_path.write_bytes, manifest)
     exported.append(MANIFEST_FILENAME)
     return sorted(exported)
 
 
-def _replace_snapshot_dir(staging_dir: Path, dest: Path) -> None:
+def _write_snapshot_file(target: Path, content: bytes) -> None:
+    """Write one snapshot file, creating its parent directories.
+
+    Blocking: callers must run this off the event loop. A published-expert
+    snapshot can carry an entire workspace (megabytes of skill assets), so
+    writing it inline stalls every other task on the server.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(content)
+
+
+async def _replace_snapshot_dir(staging_dir: Path, dest: Path) -> None:
     """Swap a completed staging directory into place, restoring on failure."""
     backup_dir = dest.with_name(f".{dest.name}.previous-{uuid4().hex}")
 
@@ -197,7 +208,7 @@ def _replace_snapshot_dir(staging_dir: Path, dest: Path) -> None:
             os.replace(backup_dir, dest)
         raise
     if moved_existing:
-        shutil.rmtree(backup_dir, ignore_errors=True)
+        await asyncio.to_thread(shutil.rmtree, backup_dir, ignore_errors=True)
 
 
 def _manifest_from_metadata(
