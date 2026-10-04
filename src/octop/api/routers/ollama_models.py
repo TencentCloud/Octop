@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -211,7 +212,7 @@ async def _run_pull_in_background(
         )
 
 
-async def _offload(func, *args, **kwargs):
+async def _offload[T](func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     """Run a blocking ``ollama_manager`` call on a worker thread.
 
     Mirrors the ``run_in_executor`` offload ``_run_pull`` already uses for
