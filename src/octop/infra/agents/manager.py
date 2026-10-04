@@ -324,6 +324,19 @@ class AgentCreateSpec:
     member_ids: list[str] = field(default_factory=list)
 
 
+def _sanitize_bound_mcp_tools(agent: Any) -> None:
+    """Clamp MCP tool names already bound on *agent* to the 64-char LLM limit."""
+    from octop.infra.agents.plugins.plugin_tool_names import sanitize_plugin_tool_names
+
+    tools = list(getattr(agent, "_mcp_tools", []) or [])
+    if not tools:
+        return
+    before = [str(getattr(t, "name", "")) for t in tools]
+    sanitize_plugin_tool_names(tools)
+    if before != [str(getattr(t, "name", "")) for t in tools]:
+        agent.replace_mcp_tools(tools)
+
+
 # ---------------------------------------------------------------------------
 # AgentManager
 # ---------------------------------------------------------------------------
@@ -1597,6 +1610,11 @@ class AgentManager:
             global_env = load_env_file(env_file_path(self._paths.root))
             load_spec = overlay_stdio_spec_env(spec, global_env)
             raw = await aload_mcp_tools({server_name: load_spec})
+            from octop.infra.agents.plugins.plugin_tool_names import (  # noqa: PLC0415
+                sanitize_plugin_tool_names,
+            )
+
+            sanitize_plugin_tool_names(raw)
             server_lock = await self._server_lock(user_id, server_name)
             wrapped = wrap_tools_for_shared_use(raw, server_lock)
             self._mcp_tool_cache[cache_key] = wrapped
@@ -1786,6 +1804,11 @@ class AgentManager:
                     global_env = load_env_file(env_file_path(self._paths.root))
                     extra = await aload_mcp_tools(overlay_stdio_mcp_configs(subset, global_env))
                     if extra:
+                        from octop.infra.agents.plugins.plugin_tool_names import (  # noqa: PLC0415
+                            sanitize_plugin_tool_names,
+                        )
+
+                        sanitize_plugin_tool_names(extra)
                         agent.append_mcp_tools(extra)
 
             # Full reload drops previously appended custom tools — re-inject from cache.
@@ -2606,6 +2629,8 @@ class AgentManager:
                 agent_id=row.agent_id,
                 mcp_server_configs=cfg.mcp_server_configs,
             )
+        if not team_host:
+            _sanitize_bound_mcp_tools(agent)
         if team_host:
             self.strip_team_host_runtime_tools(row.agent_id)
         tool_set: frozenset[str] = getattr(agent, "_mcp_tool_name_set", frozenset())

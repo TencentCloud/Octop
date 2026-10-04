@@ -122,9 +122,13 @@ def writes_allowed() -> bool:
 
 
 def write_tool_names(mcp_server_name: str) -> list[str]:
-    from octop_harness.mcp import sanitize_llm_tool_name
+    from octop.infra.agents.plugins.plugin_tool_names import sanitize_plugin_tool_name
 
-    return [sanitize_llm_tool_name(f"{mcp_server_name}_{name}") for name in sorted(_WRITES)]
+    used: set[str] = set()
+    return [
+        sanitize_plugin_tool_name(f"{mcp_server_name}_{name}", used=used)
+        for name in sorted(_WRITES)
+    ]
 
 
 def _confirm_when(req: Any) -> bool:

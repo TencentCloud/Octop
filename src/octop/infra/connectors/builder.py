@@ -59,6 +59,22 @@ def mcp_server_name(kind: str, instance_id: str) -> str:
     return f"{kind}__{instance_id}"
 
 
+def _internal_mcp_uses_https(config: OctopConfig) -> bool:
+    """True when the API listener is HTTPS (not the ACME/redirect companion)."""
+    return bool(config.tls.enabled and config.tls.cert_file and config.tls.key_file)
+
+
+def _internal_mcp_https_client_factory(
+    headers: dict[str, str] | None = None,
+    timeout: Any = None,
+    auth: Any = None,
+) -> Any:
+    """Loopback HTTPS often uses a public-name cert; skip hostname verification."""
+    import httpx
+
+    return httpx.AsyncClient(headers=headers, timeout=timeout, auth=auth, verify=False)
+
+
 def internal_mcp_url(
     *,
     config: OctopConfig,
@@ -68,9 +84,8 @@ def internal_mcp_url(
 ) -> str:
     host = config.bind_host if config.bind_host not in ("0.0.0.0", "::") else "127.0.0.1"
     token_q = quote(internal_token, safe="")
-    return (
-        f"http://{host}:{config.port}/api/internal/mcp/{gateway_kind}/{instance_id}?token={token_q}"
-    )
+    scheme = "https" if _internal_mcp_uses_https(config) else "http"
+    return f"{scheme}://{host}:{config.port}/api/internal/mcp/{gateway_kind}/{instance_id}?token={token_q}"
 
 
 def new_internal_token() -> str:
@@ -208,7 +223,10 @@ def _build_gateway_spec(
         instance_id=instance_id,
         internal_token=internal_token,
     )
-    return {"transport": "http", "url": url}
+    spec: dict[str, Any] = {"transport": "http", "url": url}
+    if url.startswith("https://"):
+        spec["httpx_client_factory"] = _internal_mcp_https_client_factory
+    return spec
 
 
 def validate_create_credentials(
@@ -460,6 +478,9 @@ def _redact_mcp_configs_for_log(configs: dict[str, Any]) -> dict[str, Any]:
                 if key in redacted:
                     redacted[key] = "***"
             entry["headers"] = redacted
+        for key, value in list(entry.items()):
+            if callable(value):
+                entry[key] = f"<callable {getattr(value, '__name__', type(value).__name__)}>"
         out[name] = entry
     return out
 
