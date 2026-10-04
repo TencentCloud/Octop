@@ -5140,9 +5140,15 @@
     }
   },
   "agentSelector": {
-    "label": "当前专家",
+    "label": "专家",
     "localGroup": "本机",
-    "disconnected": "已断开"
+    "disconnected": "已断开",
+    "expertsGroup": "专家",
+    "teamsGroup": "团队",
+    "remoteKindGroup": "{{name}}·{{kind}}",
+    "more": "更多",
+    "teamNeedsExpert": "当前是团队「{{name}}」，此页请选择专家",
+    "expertsRequired": "此页需要专家"
   },
   "login": {
     "title": "登录",

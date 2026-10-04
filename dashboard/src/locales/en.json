@@ -5140,9 +5140,15 @@
     }
   },
   "agentSelector": {
-    "label": "Active Expert",
+    "label": "Expert",
     "localGroup": "This instance",
-    "disconnected": "Disconnected"
+    "disconnected": "Disconnected",
+    "expertsGroup": "Experts",
+    "teamsGroup": "Teams",
+    "remoteKindGroup": "{{name}}·{{kind}}",
+    "more": "More",
+    "teamNeedsExpert": "\"{{name}}\" is a team. Choose an expert for this page.",
+    "expertsRequired": "This page needs an expert"
   },
   "login": {
     "title": "Sign in",
