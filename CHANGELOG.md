@@ -26,6 +26,7 @@
 - 登录页在用户名框下提示可用用户名或邮箱（目录账号与本地账号同一表单）。
 
 ### 修复
+- 带图片附件的消息在媒体后端下载失败、走到本地回退时不再在事件循环上同步读盘（图片可达数 MB，读盘会卡住并发请求）；本地文件不可读时按既有约定降级为路径提示，不再把 `OSError` 抛穿整轮对话（Fixes #1628）。
 - 聊天页不再把普通回答里的「429 / rate_limit / 超时」等字样误判成流式失败：只有模型重试耗尽信封才会升成错误气泡；气泡样式跟随 `status=error`（Fixes #1074）。
 - 开启 TLS 后，内部 MCP（如企查查）改为连 `https://127.0.0.1:{port}/api/internal/mcp/...`，不再误走只做 ACME/跳转的 HTTP companion；本机自签/域名证书跳过 hostname 校验，启动日志会把 factory 写成占位符以免 `json.dumps` 崩溃（Fixes #1499）。
 - MCP / 网关工具名在交给模型前截断到 64 字符（含 `tencent-docs__{id}_create_smartcanvas_by_mdx` 这类前缀名），避免 OpenAI 风格 API 直接拒掉整轮（Fixes #1527）。

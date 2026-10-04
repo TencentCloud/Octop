@@ -396,6 +396,22 @@ def _reencode_image_to_fit(data: bytes) -> tuple[bytes, str] | None:
     return None
 
 
+def _read_local_media_file(path: Path) -> bytes | None:
+    """Read a materialized local media file, or ``None`` when it is unusable.
+
+    Called through ``asyncio.to_thread`` from :func:`materialize_image_part`:
+    an image can be several megabytes, and reading it on the event loop stalls
+    every other task. A missing or unreadable file must degrade to the caller's
+    fallbacks instead of raising ``OSError`` out of the turn.
+    """
+    try:
+        if not path.is_file():
+            return None
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
 async def materialize_image_part(
     part: ImageContent,
     *,
@@ -429,8 +445,8 @@ async def materialize_image_part(
                 data = None
             if data is None:
                 local = media_backend.get_local_path(part.local_path)
-                if local is not None and Path(local).is_file():
-                    data = Path(local).read_bytes()
+                if local is not None:
+                    data = await asyncio.to_thread(_read_local_media_file, local)
             if data is None and workspace is not None:
                 try:
                     data = await workspace.adownload_bytes(rel)

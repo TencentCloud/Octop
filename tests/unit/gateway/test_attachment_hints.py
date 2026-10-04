@@ -5,7 +5,9 @@ from __future__ import annotations
 import base64
 import io
 import tempfile
+import threading
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -438,3 +440,79 @@ def test_content_blocks_need_vision_detects_image_url() -> None:
     ]
     assert content_blocks_need_vision(content) is True
     assert content_blocks_need_vision("hello") is False
+
+
+class _FailingReadMediaBackend:
+    """``MediaBackend`` whose ``read`` fails, forcing the local-file fallback."""
+
+    def __init__(self, local: Path) -> None:
+        self._local = local
+
+    async def read(self, key: str) -> bytes:
+        raise FileNotFoundError(key)
+
+    def get_local_path(self, key: str) -> Path:
+        return self._local
+
+
+def _spy_read_bytes(monkeypatch: pytest.MonkeyPatch, threads: list[int]) -> None:
+    real_read_bytes = Path.read_bytes
+
+    def spy(self: Path, *args: Any, **kwargs: Any) -> bytes:
+        threads.append(threading.get_ident())
+        return real_read_bytes(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_bytes", spy)
+
+
+@pytest.mark.asyncio
+async def test_local_media_fallback_reads_off_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The local-file fallback must not read the image on the event-loop thread."""
+    image = tmp_path / "inbound" / "shot.png"
+    image.parent.mkdir(parents=True, exist_ok=True)
+    image.write_bytes(_tiny_png())
+
+    loop_thread = threading.get_ident()
+    threads: list[int] = []
+    _spy_read_bytes(monkeypatch, threads)
+
+    part = ImageContent(local_path="inbound/shot.png", mime_type="image/png")
+    block = await materialize_image_part(
+        part,
+        media_backend=_FailingReadMediaBackend(image),
+        workspace=None,
+    )
+
+    assert threads, "fallback did not read the local file"
+    assert all(ident != loop_thread for ident in threads)
+    assert block is not None
+    assert block["type"] == "image_url"
+    assert block["workspace_path"] == "inbound/shot.png"
+    assert block["image_url"]["url"] == "workspace://inbound/shot.png"
+
+
+@pytest.mark.asyncio
+async def test_local_media_fallback_read_error_degrades_instead_of_raising(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An unreadable local file degrades to a path hint instead of raising OSError."""
+    image = tmp_path / "inbound" / "shot.png"
+    image.parent.mkdir(parents=True, exist_ok=True)
+    image.write_bytes(_tiny_png())
+
+    def boom(self: Path, *args: Any, **kwargs: Any) -> bytes:
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "read_bytes", boom)
+
+    part = ImageContent(local_path="inbound/shot.png", mime_type="image/png")
+    block = await materialize_image_part(
+        part,
+        media_backend=_FailingReadMediaBackend(image),
+        workspace=None,
+    )
+
+    assert block is not None
+    assert block["type"] == "text"
