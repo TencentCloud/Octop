@@ -2,20 +2,41 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import subprocess
 import sys
+import threading
 import zipfile
 from importlib import resources
 from pathlib import Path
+from typing import Any
 
 import pytest
 from tests.support.fakes import FakeHarnessAgent
 
+import octop.infra.agents.builtin_skills as builtin_skills
 from octop.infra.agents.builtin_skills import sync_octop_builtin_skills
 
 _PACKAGE = "octop.infra.agents.builtin_skills"
+
+# How long a blocked walk waits for the loop to prove it is still running.
+_LOOP_CALLBACK_DEADLINE_S = 2.0
+
+
+class _ThreadRecorder:
+    """Wrap ``_collect_files`` and remember which thread walked the package tree."""
+
+    def __init__(self, delegate: Any) -> None:
+        self._delegate = delegate
+        self.ran_on_main_thread: bool | None = None
+        self.calls = 0
+
+    def __call__(self, source: Any, prefix: str, out: list[tuple[str, bytes]]) -> None:
+        self.calls += 1
+        self.ran_on_main_thread = threading.current_thread() is threading.main_thread()
+        self._delegate(source, prefix, out)
 
 
 def _manager_script() -> Path:
@@ -256,3 +277,47 @@ print(json.dumps({"installed": slug}))
     args = json.loads(log_path.read_text(encoding="utf-8"))
     assert args[args.index("install") + 1] == "dev-expert"
     assert args[args.index("--namespace") + 1] == "user_741dc82b"
+
+
+@pytest.mark.asyncio
+async def test_sync_reads_package_tree_off_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The packaged Skill tree is walked on a worker thread, not the event loop."""
+    agent = FakeHarnessAgent(workspace_dir=tmp_path, virtual_mode=False)
+    recorder = _ThreadRecorder(builtin_skills._collect_files)
+    monkeypatch.setattr(builtin_skills, "_collect_files", recorder)
+
+    synced = await sync_octop_builtin_skills(agent.workspace)
+
+    assert recorder.calls >= 1
+    assert recorder.ran_on_main_thread is False, (
+        "the built-in Skills package tree was read on the event loop"
+    )
+    # Behaviour is unchanged: the real walk still seeds skill-manager.
+    assert synced == ["skill-manager"]
+    assert await agent.workspace.aexists("_builtin_skills/skill-manager/SKILL.md")
+
+
+@pytest.mark.asyncio
+async def test_sync_keeps_the_loop_running_while_the_tree_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A slow package-tree walk must not freeze the loop the rest of the server runs on."""
+    agent = FakeHarnessAgent(workspace_dir=tmp_path, virtual_mode=False)
+    loop = asyncio.get_running_loop()
+
+    async def _tick() -> str:
+        return "ran"
+
+    def blocking_collect(source: Any, prefix: str, out: list[tuple[str, bytes]]) -> None:
+        # Round-trip through the loop while this call is in flight: it only returns if the
+        # loop is free to execute coroutines. Inline on the loop thread it can never finish.
+        future = asyncio.run_coroutine_threadsafe(_tick(), loop)
+        assert future.result(timeout=_LOOP_CALLBACK_DEADLINE_S) == "ran"
+
+    monkeypatch.setattr(builtin_skills, "_collect_files", blocking_collect)
+
+    synced = await sync_octop_builtin_skills(agent.workspace)
+
+    assert synced == ["skill-manager"]

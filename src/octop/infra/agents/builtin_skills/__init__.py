@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from importlib import resources
 from importlib.resources.abc import Traversable
 from typing import Any
@@ -38,13 +39,13 @@ def _collect_files(source: Traversable, prefix: str, out: list[tuple[str, bytes]
             out.append((path, entry.read_bytes()))
 
 
-async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
-    """Overwrite Octop-owned built-ins and remove superseded runtime copies."""
-    # DeepAgents scans both roots on the first turn. Keep the writable root
-    # present even before the user installs their first Skill so that scan is
-    # clean on fresh expert instances.
-    await workspace.amkdir("skills")
+def _collect_builtin_skill_uploads() -> tuple[list[str], list[tuple[str, bytes]]]:
+    """Walk the packaged built-in Skills tree and read every file into memory.
 
+    This is blocking filesystem work (``iterdir`` + ``read_bytes`` over the whole
+    package tree), so callers must hand it to :func:`asyncio.to_thread` — running
+    it inline would stall every other task on the event loop.
+    """
     package_root = resources.files(_PACKAGE)
     uploads: list[tuple[str, bytes]] = []
     skill_names: list[str] = []
@@ -55,6 +56,19 @@ async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
             continue
         skill_names.append(entry.name)
         _collect_files(entry, f"{OCTOP_BUILTIN_SKILLS_ROOT}/{entry.name}", uploads)
+    return skill_names, uploads
+
+
+async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
+    """Overwrite Octop-owned built-ins and remove superseded runtime copies."""
+    # DeepAgents scans both roots on the first turn. Keep the writable root
+    # present even before the user installs their first Skill so that scan is
+    # clean on fresh expert instances.
+    await workspace.amkdir("skills")
+
+    # Reading the package tree is blocking I/O; keep it off the event loop so a
+    # large built-in Skill set cannot freeze concurrent agent starts.
+    skill_names, uploads = await asyncio.to_thread(_collect_builtin_skill_uploads)
 
     # Render the agent-facing workspace path into the instructions (not the
     # host ``root_dir`` join that ``resolve_path`` returns for I/O).
