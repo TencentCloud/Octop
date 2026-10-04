@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 
+from octop.i18n import tr
 from octop.infra.agents.providers.onnx_service import embed_texts
 from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
 from octop.infra.agents.providers.probe import provider_headers
@@ -53,6 +54,7 @@ def _embed_remote_batched(
     if not texts:
         return []
     out: list[list[float]] = []
+    dimension: int | None = None
     for start in range(0, len(texts), _KNOWLEDGE_EMBEDDING_BATCH_LIMIT):
         batch = texts[start : start + _KNOWLEDGE_EMBEDDING_BATCH_LIMIT]
         response = client.post(
@@ -64,7 +66,12 @@ def _embed_remote_batched(
         data = response.json().get("data")
         if not isinstance(data, list):
             raise RuntimeError("knowledge embedding response has no data")
-        out.extend(list(item["embedding"]) for item in data)
+        vectors = [list(item["embedding"]) for item in data]
+        for vector in vectors:
+            if not vector or (dimension is not None and len(vector) != dimension):
+                raise RuntimeError(tr("knowledge_embedding.invalid_dimensions"))
+            dimension = len(vector)
+        out.extend(vectors)
     if len(out) != len(texts):
         raise RuntimeError("knowledge embedding count mismatch")
     return out

@@ -865,6 +865,9 @@
     "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",
     "execute": "Execute {path}"
   },
+  "knowledge_embedding": {
+    "invalid_dimensions": "Embedding dimensions must be nonzero and consistent across all batches."
+  },
   "ldap": {
     "test": {
       "ok": "Connected to the LDAP directory",

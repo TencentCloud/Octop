@@ -865,6 +865,9 @@
     "plan_ready": "计划已写入 `{path}`。回复「按计划执行」开始执行，或继续改计划。",
     "execute": "请按 {path} 执行"
   },
+  "knowledge_embedding": {
+    "invalid_dimensions": "向量维度必须大于零，且所有批次的维度必须一致。"
+  },
   "ldap": {
     "test": {
       "ok": "已连接 LDAP 目录服务",

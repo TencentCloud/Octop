@@ -1,8 +1,56 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
+import httpx
+import pytest
+
 from octop.infra.knowledge import embed
+
+
+@pytest.mark.parametrize("batch_limit", [1, 20])
+def test_remote_embeddings_reject_mixed_dimensions(monkeypatch, batch_limit) -> None:
+    monkeypatch.setattr(embed, "_KNOWLEDGE_EMBEDDING_BATCH_LIMIT", batch_limit)
+    vectors = iter([[1.0, 0.0], [1.0, 0.0, 0.0]])
+
+    def handle(request):
+        inputs = json.loads(request.content)["input"]
+        return httpx.Response(200, json={"data": [{"embedding": next(vectors)} for _ in inputs]})
+
+    with (
+        httpx.Client(transport=httpx.MockTransport(handle)) as client,
+        pytest.raises(RuntimeError, match="dimension"),
+    ):
+        embed._embed_remote_batched(client, "https://embedding.test", {}, "model", ["a", "b"])
+
+
+@pytest.mark.parametrize("vectors", [[[]], [[1.0, 0.0], []]])
+def test_remote_embeddings_reject_empty_vectors(vectors) -> None:
+    transport = httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={"data": [{"embedding": v} for v in vectors]})
+    )
+    with (
+        httpx.Client(transport=transport) as client,
+        pytest.raises(RuntimeError, match="dimensions"),
+    ):
+        embed._embed_remote_batched(
+            client, "https://embedding.test", {}, "model", ["text"] * len(vectors)
+        )
+
+
+def test_remote_embedding_dimensions_preserve_valid_batched_results(monkeypatch) -> None:
+    monkeypatch.setattr(embed, "_KNOWLEDGE_EMBEDDING_BATCH_LIMIT", 1)
+    expected = {"a": [1.0, 0.0], "b": [0.0, 1.0]}
+
+    def handle(request):
+        inputs = json.loads(request.content)["input"]
+        return httpx.Response(200, json={"data": [{"embedding": expected[t]} for t in inputs]})
+
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        assert embed._embed_remote_batched(
+            client, "https://embedding.test", {}, "model", ["a", "b"]
+        ) == [[1.0, 0.0], [0.0, 1.0]]
 
 
 def test_remote_embedding_routes_to_provider_embeddings_endpoint(monkeypatch) -> None:
