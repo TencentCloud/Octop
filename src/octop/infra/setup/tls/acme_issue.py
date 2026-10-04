@@ -14,6 +14,8 @@ from acme.crypto_util import make_csr
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+
+from octop.infra.setup.tls.store import _atomic_write_bytes
 from josepy import JWKRSA  # type: ignore[attr-defined]
 
 from octop.infra.setup.tls.challenge import challenge_store
@@ -40,8 +42,7 @@ def _load_or_create_account_key(path: Path) -> JWKRSA:
         format=serialization.PrivateFormat.TraditionalOpenSSL,
         encryption_algorithm=serialization.NoEncryption(),
     )
-    path.write_bytes(pem)
-    os.chmod(path, 0o600)
+    _atomic_write_bytes(path, pem, mode=0o600)
     return JWKRSA(key=key)
 
 
