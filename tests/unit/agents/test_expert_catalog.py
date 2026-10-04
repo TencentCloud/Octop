@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -333,6 +334,67 @@ class _MemWorkspace:
     async def aupload_many(self, pairs: list[tuple[str, bytes]]) -> None:
         for rel, data in pairs:
             self.files[rel] = data.decode("utf-8")
+
+
+@pytest.mark.asyncio
+async def test_seed_expert_directory_reads_off_the_event_loop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.agents.experts import catalog
+
+    expert_dir = tmp_path / "my-expert"
+    expert_dir.mkdir()
+    (expert_dir / "SOUL.md").write_text("# Soul", encoding="utf-8")
+    (expert_dir / "manifest.json").write_text("{}", encoding="utf-8")
+
+    loop_thread = threading.get_ident()
+    read_threads: list[int] = []
+    real_read_bytes = Path.read_bytes
+
+    def spy_read_bytes(self: Path) -> bytes:
+        read_threads.append(threading.get_ident())
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", spy_read_bytes)
+
+    workspace = _MemWorkspace()
+    seeded = await catalog.seed_expert_directory(
+        expert_dir=expert_dir,
+        workspace=workspace,
+        seed_paths=["SOUL.md"],
+    )
+
+    assert seeded == 2  # SOUL.md + the welcome manifest copy
+    assert read_threads, "seeding must read the template files"
+    assert loop_thread not in read_threads, "expert template reads must run off the event loop"
+
+
+@pytest.mark.asyncio
+async def test_seed_expert_directory_walks_off_the_event_loop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.agents.experts import catalog
+
+    expert_dir = tmp_path / "my-expert"
+    expert_dir.mkdir()
+    (expert_dir / "SOUL.md").write_text("# Soul", encoding="utf-8")
+
+    loop_thread = threading.get_ident()
+    walk_threads: list[int] = []
+    real_discover = catalog.discover_seed_paths
+
+    def spy_discover(root: Path) -> list[str]:
+        walk_threads.append(threading.get_ident())
+        return real_discover(root)
+
+    monkeypatch.setattr(catalog, "discover_seed_paths", spy_discover)
+
+    await catalog.seed_expert_directory(expert_dir=expert_dir, workspace=_MemWorkspace())
+
+    assert walk_threads, "seed_paths=None must discover the template tree"
+    assert loop_thread not in walk_threads, "expert template discovery must run off the event loop"
 
 
 @pytest.mark.asyncio

@@ -12,6 +12,7 @@ Templates are discovered at server start by :class:`ExpertCatalog`.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -224,6 +225,23 @@ async def seed_expert_directory(
     copies library ``manifest.json`` to :data:`WORKSPACE_MANIFEST_PATH` when
     present (chat welcome source of truth).
     """
+    pairs = await asyncio.to_thread(_read_seed_files, expert_dir, seed_paths)
+    if not pairs:
+        return 0
+    await workspace.aupload_many(pairs)
+    return len(pairs)
+
+
+def _read_seed_files(
+    expert_dir: Path,
+    seed_paths: list[str] | None,
+) -> list[tuple[str, bytes]]:
+    """Discover and read the expert template files.
+
+    Blocking: callers must run this off the event loop. ``office-automation``
+    alone ships megabytes of skill assets, so reading them inline stalls every
+    other task on the server.
+    """
     paths = seed_paths if seed_paths is not None else discover_seed_paths(expert_dir)
     pairs: list[tuple[str, bytes]] = []
     for rel in paths:
@@ -234,10 +252,7 @@ async def seed_expert_directory(
     manifest_path = expert_dir / MANIFEST_FILENAME
     if manifest_path.is_file():
         pairs.append((WORKSPACE_MANIFEST_PATH, manifest_path.read_bytes()))
-    if not pairs:
-        return 0
-    await workspace.aupload_many(pairs)
-    return len(pairs)
+    return pairs
 
 
 async def read_workspace_manifest_text(workspace: BackendWorkspace) -> str | None:
