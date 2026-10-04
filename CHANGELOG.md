@@ -6,41 +6,21 @@
 
 ## [Unreleased]
 
+## [1.0.2b6] - 2026-10-04
+
 ### 新增
-- 内置 Agent Mail CLI 连接器：实例隔离、设备码授权、邮件与附件工具；写操作需 HITL 确认，Cron / 新邮件任务禁止发信删除（#1148）。
-- GitHub 发版产出飞牛 ARM 安装包：官方镜像改为 `linux/amd64` + `linux/arm64` 多架构（同一份 Docker FPK 在 ARM 飞牛上拉对应镜像层）；本地版另挂 `Octop-fnos-native-arm64-<ver>.fpk`。ARM 飞牛优先用 Docker 版；本地版装错架构会在安装或启动时报错。
-- 支持 LDAP 目录登录（Active Directory、OpenLDAP）：在现有登录表单直接输入域账号与密码；按目录组映射角色（仅首次开通账号时写入，之后目录组变更不会回写本地角色）、首次登录可自动开通账号、可选登录组白名单；管理端「用户 → LDAP」页可配置并测试连通性。目录账号无本地密码，修改密码会返回 `PASSWORD_NOT_SET`。
-- 有本地密码的账号只在本地校验，口令不会转发到目录；启用 LDAP 时要求加密传输（`ldaps://` 或 StartTLS）。
-- 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
-- 聊天输入栏将对话模式、模型、连接器、知识库、技能、专家、子智能体收进「+」菜单，从菜单右侧弹出选择面板；聊天页用户头像与侧栏账号头像一致。
+- Agent Mail 连接器（授权、邮件工具、新邮件任务）
+- LDAP 目录登录
+- 专家默认对话模式；输入栏「+」菜单；未开审批时隐藏批准入口
+- 飞牛 ARM 安装包与多架构镜像
 
 ### 变更
-- 运行时依赖 `octop-harness` 升到 1.0.1。管理端存储浏览改为缓存会话，并支持预览与下载。
-- FnOS 安装向导改为建账号 +「接下来怎么用」：必填用户名、密码与确认密码，可选显示名称和邮箱。设置窗口只留改密。Docker 版增加健康检查，镜像钉本包版本且重启不重拉；容器启动不再每次用安装密码覆盖网页改密。
-- FnOS 确认密码增加 `sameAs`/`equal` 规则，安装回调仍校验两次密码必须一致。
-- FnOS `maintainer` 统一为 `TencentCloud`，并加 `tags=AI,Practical Efficiency`。手动安装通常不会写入应用中心分类（分类来自商店目录）。
-- FnOS 本地版安装时预初始化账号；启动必须等 8089 就绪，失败写 `octop-start-error.txt`。
-- FnOS 本地版打包去掉 Playwright driver 与 Google API discovery 缓存；启动时复用飞牛已装 Node.js。
-- FnOS 本地版 CI 写入 vendored `octop_harness.backends.storage_errors`，避免当前 Octop 启动因 PyPI harness 1.0.0 缺模块而失败。
-- 技能包 `copy_policy=lock` 的界面文案改为「可复制（控制台只读）」：只约束 Dashboard / 工作区 HTTP 写接口，Agent 工具层仍依赖 harness（#770）。
-- 登录页在用户名框下提示可用用户名或邮箱（目录账号与本地账号同一表单）。
+- octop-harness 升到 1.0.1；飞牛安装改为建账号向导
 
 ### 修复
-- 聊天页不再把普通回答里的「429 / rate_limit / 超时」等字样误判成流式失败：只有模型重试耗尽信封才会升成错误气泡；气泡样式跟随 `status=error`（Fixes #1074）。
-- 开启 TLS 后，内部 MCP（如企查查）改为连 `https://127.0.0.1:{port}/api/internal/mcp/...`，不再误走只做 ACME/跳转的 HTTP companion；本机自签/域名证书跳过 hostname 校验，启动日志会把 factory 写成占位符以免 `json.dumps` 崩溃（Fixes #1499）。
-- MCP / 网关工具名在交给模型前截断到 64 字符（含 `tencent-docs__{id}_create_smartcanvas_by_mdx` 这类前缀名），避免 OpenAI 风格 API 直接拒掉整轮（Fixes #1527）。
-- Dashboard `ask_user_question` 不再一直停在「执行中」且不弹出提问卡：兼容 LangGraph v2 把 interrupt 放到 `chunk["interrupts"]`、解开 Interrupt 信封，并在实时流与历史中还原未回答提问；服务端没有可恢复 pending 时卡片只读，不挡住新消息。
-- 桌面覆盖安装用与服务器 `parse_version` 相同的 PEP 440 规则比较内置与持久运行时，修复同一发布号下 beta 递增（如 `1.0.2b4` → `1.0.2b5`）及预发布转正式版被当成相等、继续加载旧运行时的问题；备份、替换失败回退和不降级保护不变。
-- Postgres 存储后端改为拆字段映射，不再把 URI 当作 `connection_string` 传给 `PostgresConfig`。
-- S3 / Postgres 等旧协议 backend 适配 `ReadResult` / `LsResult`，专家启动与管理端目录树不再因 `'str'.error` 或 `als` 未实现而失败。
-- FnOS 本地版关闭时会杀掉占 8089 的整棵进程树（含 `runuser` 外壳留下的 Python），启动被中途杀掉也会收尸；`checkport=false` 让再次启动能回收残留，避免应用中心报「端口被占用」但旧页面仍能打开。
-- 模型调用重试耗尽后不再抛出笼统的「多次调用失败」：把具体原因写成给模型的恢复提示（上下文超限、限流、流式中断等），聊天页展示对应说明；后台委派仍标记 failed，并把该原因交给源专家（委派失败标记仍依赖 harness 正确上报）。
-- Windows 残留盘符路径（如 ``D:\\octop-data\\data\\文章存稿\\…``）读写文件时不再把 jail 拒绝渲染成「多次调用模型失败」：能对上当前存储根的改写成虚拟路径继续读；对不上的把原因交给模型，页面显示存储根说明。
-- 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
-- httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
-- Windows 上「存储根目录」选择器不再被限制在 home 所在盘：浏览树改为枚举全部就绪盘符（新增 `GET /api/filesystem/roots`，`/api/filesystem/defaults` 下发 `browse_roots`）
-- 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
-- Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
+- 误报流式失败、提问卡不弹出、TLS 下内部 MCP、过长工具名
+- 远程存储卡住堵住启动；S3 / Postgres 浏览；桌面 beta 覆盖安装；飞牛 8089 残留
+- Windows 全盘存储根、邮箱非 ASCII 头、缺失界面文案
 
 ## [1.0.2b5] - 2026-09-29
 
