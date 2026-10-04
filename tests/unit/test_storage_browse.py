@@ -236,7 +236,8 @@ async def test_download_storage_backend_file_reads_bytes(tmp_path: Path) -> None
 
     root = tmp_path / "data"
     root.mkdir()
-    (root / "note.md").write_text("# hello\n", encoding="utf-8")
+    # Binary write: Path.write_text() turns \n into \r\n on Windows.
+    (root / "note.md").write_bytes(b"# hello\n")
     (root / "blob.bin").write_bytes(b"\x00\xff\xfe")
     row = _filesystem_row(root)
 
