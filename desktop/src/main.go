@@ -328,6 +328,11 @@ func main() {
 		BackgroundColour:     application.NewRGB(247, 248, 250),
 	})
 	api.window = win
+	// The backend may already be healthy before the main WebView is ready.
+	var bootOnce sync.Once
+	win.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
+		bootOnce.Do(func() { go api.boot() })
+	})
 	app.Event.On("desktop:toggle-maximise", func(_ *application.CustomEvent) {
 		win.ToggleMaximise()
 	})
@@ -404,7 +409,6 @@ func main() {
 	}
 
 	api.scheduleDragOverlay()
-	go api.boot()
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
