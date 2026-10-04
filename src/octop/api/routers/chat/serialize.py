@@ -698,6 +698,23 @@ def _collect_jsonl_from_workspace_backend(workspace: Any) -> list[tuple[str, str
     return sources
 
 
+def _collect_jsonl_from_local_sessions(sessions_dir: Path) -> list[tuple[str, str]]:
+    """Read ``sessions/*.jsonl`` from the on-disk fallback.
+
+    Blocking (directory scan + one read per file); callers must keep it off the
+    event loop, mirroring :func:`_collect_jsonl_from_workspace_backend`.
+    """
+    sources: list[tuple[str, str]] = []
+    if not sessions_dir.is_dir():
+        return sources
+    for path in sorted(sessions_dir.glob("*.jsonl"), reverse=True):
+        try:
+            sources.append((path.name, path.read_text(encoding="utf-8")))
+        except OSError:
+            logger.warning("failed to read session log %s", path, exc_info=True)
+    return sources
+
+
 async def _iter_session_jsonl_sources(
     server: Any,
     agent_id: str,
@@ -719,17 +736,9 @@ async def _iter_session_jsonl_sources(
                 exc_info=True,
             )
 
-    sources: list[tuple[str, str]] = []
     local_workspace = resolve_agent_workspace_dir(server, agent_id)
     sessions_dir = Path(local_workspace) / "sessions"
-    if sessions_dir.is_dir():
-        for path in sorted(sessions_dir.glob("*.jsonl"), reverse=True):
-            try:
-                sources.append((path.name, path.read_text(encoding="utf-8")))
-            except OSError:
-                logger.warning("failed to read session log %s", path, exc_info=True)
-
-    return sources
+    return await asyncio.to_thread(_collect_jsonl_from_local_sessions, sessions_dir)
 
 
 async def _load_thread_messages_from_sessions(
