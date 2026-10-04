@@ -99,12 +99,12 @@ async def list_ollama_models(
     daemon_up = False
     if not service_on:
         try:
-            daemon_up = is_ollama_reachable()
+            daemon_up = await _offload(is_ollama_reachable)
         except Exception:
             daemon_up = False
     if service_on or daemon_up:
         try:
-            api_models = OllamaModelManager.list_models(start_if_needed=service_on)
+            api_models = await _offload(OllamaModelManager.list_models, start_if_needed=service_on)
         except (OSError, ImportError) as exc:
             api_exc = exc
             logger.warning("Ollama bootstrap failed: %s", exc)
@@ -211,6 +211,18 @@ async def _run_pull_in_background(
         )
 
 
+async def _offload(func, *args, **kwargs):
+    """Run a blocking ``ollama_manager`` call on a worker thread.
+
+    Mirrors the ``run_in_executor`` offload ``_run_pull`` already uses for
+    ``pull_model``; the remaining manager entry points block the same way.
+    Keyword arguments are forwarded as-is, so callers keep the exact call shape
+    they had (e.g. ``list_models(start_if_needed=...)``).
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+
+
 @router.get(
     "/download-status",
     response_model=list[OllamaDownloadTaskResponse],
@@ -263,7 +275,7 @@ async def delete_ollama_model(
         ) from exc
 
     try:
-        OllamaModelManager.delete_model(name)
+        await _offload(OllamaModelManager.delete_model, name)
     except Exception as exc:
         logger.exception("Failed to delete Ollama model: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -330,7 +342,7 @@ async def get_ollama_service(
     enabled = _ollama_service_enabled(server)
     running = False
     try:
-        running = is_ollama_reachable()
+        running = await _offload(is_ollama_reachable)
     except Exception:
         running = False
     return _service_status(server, enabled=enabled, running=running)
@@ -382,22 +394,22 @@ async def put_ollama_service(
     if body.enabled is None:
         # Directory-only update: restart only if the daemon is already managed on.
         if models_dir_changed and enabled:
-            stop_ollama_service()
+            await _offload(stop_ollama_service)
             try:
-                start_ollama_service()
+                await _offload(start_ollama_service)
             except Exception as exc:
                 raise HTTPException(status_code=503, detail=str(exc)) from exc
     elif enabled:
         if models_dir_changed:
-            stop_ollama_service()
+            await _offload(stop_ollama_service)
         try:
-            start_ollama_service()
+            await _offload(start_ollama_service)
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
     else:
-        stop_ollama_service()
+        await _offload(stop_ollama_service)
     return _service_status(
         server,
         enabled=enabled,
-        running=is_ollama_reachable(),
+        running=await _offload(is_ollama_reachable),
     )
