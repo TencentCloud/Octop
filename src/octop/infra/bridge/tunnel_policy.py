@@ -12,6 +12,7 @@ Management / auth / bridge control planes stay local-only.
 from __future__ import annotations
 
 import re
+from urllib.parse import urlsplit
 
 # Only agent-scoped product surfaces may be executed on behalf of the connection
 # owner. Management / auth / bridge control planes stay local-only.
@@ -50,6 +51,30 @@ _CRON_SETTINGS = re.compile(r"^/api/cron/settings$")
 _CONNECTOR_INSTANCES_LIST = re.compile(r"^/api/connector-instances$")
 
 
+def _resolve(path: str) -> str | None:
+    """Return the path the local ASGI router will see, or None if it is unsafe.
+
+    ``execute_local_http`` hands the peer-supplied path to
+    ``httpx.ASGITransport``, whose ASGI scope path is ``httpx.URL.path`` — so
+    the dot segments are already resolved by the time the local FastAPI router
+    matches them. Resolve here too, and refuse anything whose resolution does
+    not land back on the request the peer wrote: that is what stops an allowed
+    prefix such as ``/api/agents/<id>/threads`` from laundering a request to a
+    local-only route such as ``/admin/audit-log``.
+    """
+    segments: list[str] = []
+    for segment in path.split("/"):
+        if segment in {"", "."}:
+            continue
+        if segment == "..":
+            if not segments:
+                return None
+            segments.pop()
+            continue
+        segments.append(segment)
+    return "/" + "/".join(segments)
+
+
 def is_tunnel_path_allowed(method: str, path: str) -> bool:
     """Return True when ``method`` + ``path`` may run via an inbound tunnel."""
     verb = (method or "GET").upper()
@@ -57,6 +82,17 @@ def is_tunnel_path_allowed(method: str, path: str) -> bool:
     if not raw.startswith("/"):
         raw = f"/{raw}"
     # Normalize trailing slash except root.
+    if len(raw) > 1:
+        raw = raw.rstrip("/")
+    # A percent-encoded separator would split a segment after the guard runs.
+    if "%2f" in raw.lower() or "%5c" in raw.lower():
+        return False
+    if urlsplit(raw).scheme or urlsplit(raw).netloc:
+        return False
+    resolved = _resolve(raw)
+    if resolved is None or ".." in resolved.split("/") or "." in resolved.split("/"):
+        return False
+    raw = resolved
     if len(raw) > 1:
         raw = raw.rstrip("/")
 
