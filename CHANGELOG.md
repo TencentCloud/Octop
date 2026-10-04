@@ -27,6 +27,7 @@
 ### 修复
 - Postgres 存储后端改为拆字段映射，不再把 URI 当作 `connection_string` 传给 `PostgresConfig`。
 - S3 / Postgres 等旧协议 backend 适配 `ReadResult` / `LsResult`，专家启动与管理端目录树不再因 `'str'.error` 或 `als` 未实现而失败。
+- FnOS 本地版关闭时会杀掉占 8089 的整棵进程树（含 `runuser` 外壳留下的 Python），启动被中途杀掉也会收尸；`checkport=false` 让再次启动能回收残留，避免应用中心报「端口被占用」但旧页面仍能打开。
 - 模型调用重试耗尽后不再抛出笼统的「多次调用失败」：把具体原因写成给模型的恢复提示（上下文超限、限流、流式中断等），聊天页展示对应说明；后台委派仍标记 failed，并把该原因交给源专家（委派失败标记仍依赖 harness 正确上报）。
 - Windows 残留盘符路径（如 ``D:\\octop-data\\data\\文章存稿\\…``）读写文件时不再把 jail 拒绝渲染成「多次调用模型失败」：能对上当前存储根的改写成虚拟路径继续读；对不上的把原因交给模型，页面显示存储根说明。
 - 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
