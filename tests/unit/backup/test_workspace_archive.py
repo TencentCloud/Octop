@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
+import time
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +15,7 @@ from deepagents.backends.local_shell import LocalShellBackend
 from octop_harness.backends import resolve_backend
 from octop_harness.backends.workspace import BackendWorkspace
 
+from octop.infra.backup import workspace_archive
 from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
 
 
@@ -266,3 +269,66 @@ async def test_import_skips_octop_builtin_skills(tmp_path: Path) -> None:
     assert not (ws / ".octop" / "_builtin_skills").exists()
     assert result["imported"] == 1
     assert any("_builtin_skills" in warning for warning in result["warnings"])
+
+
+@pytest.mark.asyncio
+async def test_workspace_archive_offloads_blocking_zip_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ZIP compression and entry extraction must run off the event loop.
+
+    A ticker task counts loop scheduling slots while the blocking work runs;
+    if the work executed inline on the loop, the ticker would be starved and
+    the counts stay near zero (#1596).
+    """
+    (tmp_path / "hello.txt").write_bytes(b"hello" * 4096)
+    backend = LocalShellBackend(root_dir=str(tmp_path), virtual_mode=False)
+    workspace = BackendWorkspace(backend, tmp_path)
+
+    real_pack = workspace_archive._pack_zip
+    calls: list[str] = []
+
+    def slow_pack(entries: list[tuple[str, bytes]]) -> bytes:
+        time.sleep(0.25)
+        calls.append("packed")
+        return real_pack(entries)
+
+    monkeypatch.setattr(workspace_archive, "_pack_zip", slow_pack)
+
+    stop = asyncio.Event()
+    ticks = 0
+
+    async def ticker() -> int:
+        nonlocal_ticks = 0
+        while not stop.is_set():
+            nonlocal_ticks += 1
+            await asyncio.sleep(0)
+        return nonlocal_ticks
+
+    ticker_task = asyncio.create_task(ticker())
+    blob = await export_workspace_zip(workspace)
+    stop.set()
+    export_ticks = await ticker_task
+
+    assert blob
+    assert calls == ["packed"]
+    assert export_ticks >= 10, "event loop was starved during export"
+
+    real_iter = workspace_archive._iter_zip_entries
+
+    def slow_iter(data: bytes) -> list[tuple[str, bytes]]:
+        time.sleep(0.25)
+        return real_iter(data)
+
+    monkeypatch.setattr(workspace_archive, "_iter_zip_entries", slow_iter)
+    stop = asyncio.Event()
+    ticker_task = asyncio.create_task(ticker())
+    import_task = asyncio.create_task(
+        import_workspace_zip(workspace, blob, mode="merge", local_workspace_dir=None)
+    )
+    await asyncio.sleep(0.1)
+    stop.set()
+    import_ticks = await ticker_task
+    await import_task
+
+    assert import_ticks >= 10, "event loop was starved during import"

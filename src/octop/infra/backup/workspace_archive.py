@@ -222,13 +222,22 @@ def _read_entry_bytes(workspace: BackendWorkspace, rel: str) -> bytes | None:
 async def export_workspace_zip(workspace: BackendWorkspace) -> bytes:
     """Pack workspace files into a zip archive."""
     paths = await _list_file_paths(workspace)
+    entries: list[tuple[str, bytes]] = []
+    for path in paths:
+        blob = await asyncio.to_thread(_read_entry_bytes, workspace, path)
+        if blob is None:
+            continue
+        entries.append((path.lstrip("/"), blob))
+    # DEFLATE compression on large workspaces is CPU-bound; keep it off the
+    # event loop so unrelated requests and chat streams keep making progress.
+    return await asyncio.to_thread(_pack_zip, entries)
+
+
+def _pack_zip(entries: list[tuple[str, bytes]]) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for path in paths:
-            blob = await asyncio.to_thread(_read_entry_bytes, workspace, path)
-            if blob is None:
-                continue
-            zf.writestr(path.lstrip("/"), blob)
+        for name, blob in entries:
+            zf.writestr(name, blob)
     return buf.getvalue()
 
 
@@ -240,11 +249,11 @@ async def import_workspace_zip(
     local_workspace_dir: Path | None = None,
 ) -> dict[str, int | str | list[str]]:
     """Import a zip archive into the workspace."""
-    entries = _iter_zip_entries(data)
+    entries = await asyncio.to_thread(_iter_zip_entries, data)
     warnings: list[str] = []
 
     if mode == "replace" and local_workspace_dir is not None:
-        _clear_local_workspace(local_workspace_dir)
+        await asyncio.to_thread(_clear_local_workspace, local_workspace_dir)
     elif mode == "replace":
         warnings.append(
             "replace mode cleared only the local harness workspace; remote-only files may remain"
