@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from octop.i18n import tr
 from octop.infra.utils.paths import PathLayout
 
 
@@ -72,6 +73,8 @@ class KnowledgeIndex:
             vector = [float(value) for value in embedding]
             if not vector:
                 raise ValueError("embedding cannot be empty")
+            if not all(math.isfinite(value) for value in vector):
+                raise ValueError(tr("knowledge_index.embedding_not_finite"))
             meta = metadata[ordinal] if metadata is not None else {}
             rows.append(
                 (
@@ -102,7 +105,11 @@ class KnowledgeIndex:
         query = [float(value) for value in query_vec]
         if not query:
             raise ValueError("query vector cannot be empty")
+        if not all(math.isfinite(value) for value in query):
+            raise ValueError(tr("knowledge_index.query_not_finite"))
         query_norm = math.sqrt(sum(value * value for value in query))
+        if not math.isfinite(query_norm):
+            raise ValueError(tr("knowledge_index.query_not_finite"))
         if query_norm == 0:
             raise ValueError("query vector cannot be zero")
         with self._connect() as conn:
@@ -112,7 +119,7 @@ class KnowledgeIndex:
         hits: list[Hit] = []
         for chunk_id, doc_id, ordinal, text, blob, meta_json in rows:
             embedding = struct.unpack(f"<{len(blob) // 4}f", blob)
-            if len(embedding) != len(query):
+            if len(embedding) != len(query) or not all(math.isfinite(value) for value in embedding):
                 continue
             norm = math.sqrt(sum(value * value for value in embedding))
             score = (

@@ -865,6 +865,10 @@
     "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",
     "execute": "Execute {path}"
   },
+  "knowledge_index": {
+    "embedding_not_finite": "Embedding values must be finite numbers.",
+    "query_not_finite": "Query vector values and norm must be finite numbers."
+  },
   "ldap": {
     "test": {
       "ok": "Connected to the LDAP directory",

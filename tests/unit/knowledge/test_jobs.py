@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,43 @@ from octop.infra.db.repos.users import UserRepo
 from octop.infra.knowledge import jobs
 from octop.infra.knowledge.files import write_document
 from octop.infra.knowledge.index import KnowledgeIndex
+
+
+def test_nonfinite_embedding_fails_indexing_without_replacing_chunks(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "home"))
+    pool = SqlitePool(tmp_path / "octop.db")
+    run_migrations(pool)
+    repo = KnowledgeRepo(pool)
+    owner = UserRepo(pool).create(username="owner", password_hash="h", role="user")
+    kb = repo.create_base(owner_user_id=owner, name="Docs", embedding_model="tiny")
+    doc = repo.create_document(
+        kb_id=kb.id, filename="notes.md", content_type="text/markdown", byte_size=3
+    )
+    services = SimpleNamespace(
+        knowledge_repo=repo, settings_repo=SettingsRepo(pool), provider_repo=None
+    )
+    index = KnowledgeIndex(kb.id)
+    index.replace_doc_chunks(doc.id, ["original"], [[1.0, 0.0]])
+    monkeypatch.setattr(jobs, "assert_knowledge_usable", lambda *_a: None)
+    monkeypatch.setattr(jobs, "optional_ocr_extractor", lambda *_a: None)
+    monkeypatch.setattr(jobs, "parse_document", lambda *_a, **_k: "updated text")
+    monkeypatch.setattr(jobs, "embed_knowledge_texts", lambda *_a: [[math.nan, 1.0]])
+    try:
+        with pytest.raises(ValueError, match="finite"):
+            jobs.process_document(services, kb.id, doc.id)
+        failed = repo.get_document(doc.id)
+        assert failed.status == "failed"
+        assert "finite" in failed.error_message
+        assert [hit.text for hit in index.search([1.0, 0.0], 10)] == ["original"]
+        monkeypatch.setattr(jobs, "embed_knowledge_texts", lambda *_a: [[1.0, 0.0]])
+        jobs.process_document(services, kb.id, doc.id)
+        retried = repo.get_document(doc.id)
+        assert retried.status == "ready"
+        assert retried.chunk_count == 1
+        assert retried.error_message == ""
+        assert [hit.text for hit in index.search([1.0, 0.0], 10)] == ["updated text"]
+    finally:
+        pool.close()
 
 
 def test_enqueue_index_document_limits_concurrency(monkeypatch: pytest.MonkeyPatch) -> None:

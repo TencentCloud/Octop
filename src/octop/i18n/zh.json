@@ -865,6 +865,10 @@
     "plan_ready": "计划已写入 `{path}`。回复「按计划执行」开始执行，或继续改计划。",
     "execute": "请按 {path} 执行"
   },
+  "knowledge_index": {
+    "embedding_not_finite": "向量中的数值必须是有限数值。",
+    "query_not_finite": "查询向量的数值及模长必须是有限数值。"
+  },
   "ldap": {
     "test": {
       "ok": "已连接 LDAP 目录服务",

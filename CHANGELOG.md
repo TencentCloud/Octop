@@ -42,6 +42,8 @@
 - 存储根目录提示按平台区分：非 Linux 无 bubblewrap 时不再宣称「沙箱」，改为说明仅限制 AI 工具的文件访问
 - Dashboard 补齐约 200 个缺失的界面文案 key（memory / connectors / skillRecordGuide / proactiveConfig 等）：此前英文界面会整片回退到源码里硬编码的中文，个别位置直接显示 key 路径（Fixes #1238）。
 
+- 知识库索引拒绝 NaN/Infinity 向量与异常查询，失败时保留原分块；检索跳过历史非有限向量，避免结果分数异常和错误标记索引就绪。
+
 ## [1.0.2b5] - 2026-09-29
 
 ### 新增
