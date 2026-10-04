@@ -26,6 +26,9 @@ async def test_watch_fanout_isolation_and_process_cleanup(tmp_path, monkeypatch)
     processes = []
 
     async def spawn(binary, *args, **kwargs):
+        # Leave cleanup commands such as Windows taskkill untouched.
+        if binary != sys.executable:
+            return await original_spawn(binary, *args, **kwargs)
         assert args == ("message", "+watch")
         process = await original_spawn(binary, str(script), *args, **kwargs)
         processes.append(process)
