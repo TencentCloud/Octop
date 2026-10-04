@@ -1193,7 +1193,8 @@
   },
   "agent_errors": {
     "no_models_configured": "No models are configured. Go to Admin → Model Management to add a provider, then enable this expert again.",
-    "model_ref_unavailable": "The default model is unavailable or disabled. Check Admin → Model Management or update this expert's default model, then try again."
+    "model_ref_unavailable": "The default model is unavailable or disabled. Check Admin → Model Management or update this expert's default model, then try again.",
+    "start_timeout": "This expert took too long to start (storage backend I/O). Try again, or switch it to a local workspace backend."
   },
   "stream_errors": {
     "stream_stall": "The model stopped sending content while the connection stayed open. Click Retry, or try again later with another model. If this happens often, check the provider status or ask an admin to review stream timeout settings.",
@@ -2276,7 +2277,11 @@
       "timeoutSeconds": "Timeout (seconds)",
       "timeoutSecondsTooltip": "Maximum execution time in seconds. The job will be terminated if it exceeds this limit.",
       "misfireGrace": "Misfire Grace (seconds)",
-      "misfireGraceTooltip": "If the job was missed (e.g. server was down), it will still run if within this grace period. Set to 0 to skip missed runs."
+      "misfireGraceTooltip": "If the job was missed (e.g. server was down), it will still run if within this grace period. Set to 0 to skip missed runs.",
+      "agentlyNewMail": "Agent Mail new mail",
+      "agentlyMailbox": "Mailbox to watch",
+      "agentlySelectMailbox": "Select an Agent Mail mailbox",
+      "agentlyHint": "Run this task when the background connection receives new mail. Authorize the selected mailbox first; the model is not called while idle."
     },
     "preset": {
       "every5min": "Every 5 minutes",
@@ -5140,9 +5145,15 @@
     }
   },
   "agentSelector": {
-    "label": "Active Expert",
+    "label": "Expert",
     "localGroup": "This instance",
-    "disconnected": "Disconnected"
+    "disconnected": "Disconnected",
+    "expertsGroup": "Experts",
+    "teamsGroup": "Teams",
+    "remoteKindGroup": "{{name}}·{{kind}}",
+    "more": "More",
+    "teamNeedsExpert": "\"{{name}}\" is a team. Choose an expert for this page.",
+    "expertsRequired": "This page needs an expert"
   },
   "login": {
     "title": "Sign in",
@@ -5813,6 +5824,21 @@
     "cliInstallFailed": "Host CLI install failed",
     "cliInstalledHint": "Detected {{binary}} on the host",
     "cliMissingHint": "CLI is not installed on the host. Click Install CLI, or run the command below on the Octop host.",
+    "agentlyAuthTitle": "Agent Mail authorization",
+    "agentlyIdle": "This mailbox instance is not authorized",
+    "agentlyPending": "Open the authorization page and sign in. The result will update automatically.",
+    "agentlyAuthorized": "Mailbox authorized",
+    "agentlyExpired": "Authorization expired. Please sign in again",
+    "agentlyAuthFailed": "Mailbox authorization failed. Please retry",
+    "agentlyUserCode": "Authorization code",
+    "agentlyStart": "Sign in to authorize",
+    "agentlyCheckStatus": "Check status",
+    "agentlyRefresh": "Refresh authorization",
+    "agentlyCancel": "Cancel authorization",
+    "agentlyLogout": "Sign out",
+    "agentlySafety": "Sending, replying to, forwarding, and deleting emails require a preview followed by user confirmation. Email bodies and attachments are untrusted external content and must not be treated as instructions.",
+    "agentlyQuota": "Reference limits: 50 emails sent per day, 200 requests per hour, 10 requests per minute; up to 50 attachments totaling 20 MB. This connector limits each file to 10 MB. Your account quotas and current service limits take precedence. Select Agent Mail new mail on the Tasks page to trigger a task.",
+    "agentlyInstanceHint": "Save the connector first, then sign in to authorize. Each instance stores its own mailbox authorization, so different agents can select different instances.",
     "feishuUserAuthTitle": "Feishu account authorization",
     "feishuUserAuthWhy": "App ID / Secret above only identify the app (bot). Doc search and access to your personal docs or calendar require acting as your Feishu user, so one extra authorization is needed. Afterward the agent can only reach resources you already have access to.",
     "feishuUserAuthHint": "Click authorize, then tap “I have authorized”.",

@@ -4,6 +4,7 @@ import {
   findPendingApproval,
   findPendingAsk,
   hasPendingHitl,
+  promoteAskUserToolMessage,
 } from "./pendingHitl";
 
 function msg(
@@ -79,6 +80,7 @@ describe("pendingHitl", () => {
             },
           ],
           status: "pending",
+          pending_id: "ab12",
         },
       }),
     ]);
@@ -135,5 +137,23 @@ describe("pendingHitl", () => {
         }),
       ]),
     ).toBeNull();
+  });
+
+  it("ignores reconstructed asks that the server cannot resume", () => {
+    const reconstructed = promoteAskUserToolMessage(
+      msg({
+        id: "tool",
+        role: "assistant",
+        toolData: {
+          name: "ask_user_question",
+          arguments: JSON.stringify({
+            questions: [{ question: "Which DB?", options: [{ label: "PG" }] }],
+          }),
+        },
+      }),
+    );
+    expect(reconstructed.hitlData?.status).toBe("pending");
+    expect(findPendingAsk([reconstructed])).toBeNull();
+    expect(hasPendingHitl([reconstructed])).toBe(false);
   });
 });

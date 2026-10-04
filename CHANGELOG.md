@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### 新增
+- 内置 Agent Mail CLI 连接器：实例隔离、设备码授权、邮件与附件工具；写操作需 HITL 确认，Cron / 新邮件任务禁止发信删除（#1148）。
 - GitHub 发版产出飞牛 ARM 安装包：官方镜像改为 `linux/amd64` + `linux/arm64` 多架构（同一份 Docker FPK 在 ARM 飞牛上拉对应镜像层）；本地版另挂 `Octop-fnos-native-arm64-<ver>.fpk`。ARM 飞牛优先用 Docker 版；本地版装错架构会在安装或启动时报错。
 - 支持 LDAP 目录登录（Active Directory、OpenLDAP）：在现有登录表单直接输入域账号与密码；按目录组映射角色（仅首次开通账号时写入，之后目录组变更不会回写本地角色）、首次登录可自动开通账号、可选登录组白名单；管理端「用户 → LDAP」页可配置并测试连通性。目录账号无本地密码，修改密码会返回 `PASSWORD_NOT_SET`。
 - 有本地密码的账号只在本地校验，口令不会转发到目录；启用 LDAP 时要求加密传输（`ldaps://` 或 StartTLS）。
@@ -26,6 +27,11 @@
 
 ### 修复
 - 工作区 ZIP 导出压缩与封包、导入解压及 replace 清理移到工作线程，避免阻塞 API、聊天流与 WebSocket 共用的事件循环；导出逐个读取并压缩文件。
+- 聊天页不再把普通回答里的「429 / rate_limit / 超时」等字样误判成流式失败：只有模型重试耗尽信封才会升成错误气泡；气泡样式跟随 `status=error`（Fixes #1074）。
+- 开启 TLS 后，内部 MCP（如企查查）改为连 `https://127.0.0.1:{port}/api/internal/mcp/...`，不再误走只做 ACME/跳转的 HTTP companion；本机自签/域名证书跳过 hostname 校验，启动日志会把 factory 写成占位符以免 `json.dumps` 崩溃（Fixes #1499）。
+- MCP / 网关工具名在交给模型前截断到 64 字符（含 `tencent-docs__{id}_create_smartcanvas_by_mdx` 这类前缀名），避免 OpenAI 风格 API 直接拒掉整轮（Fixes #1527）。
+- Dashboard `ask_user_question` 不再一直停在「执行中」且不弹出提问卡：兼容 LangGraph v2 把 interrupt 放到 `chunk["interrupts"]`、解开 Interrupt 信封，并在实时流与历史中还原未回答提问；服务端没有可恢复 pending 时卡片只读，不挡住新消息。
+- 桌面覆盖安装用与服务器 `parse_version` 相同的 PEP 440 规则比较内置与持久运行时，修复同一发布号下 beta 递增（如 `1.0.2b4` → `1.0.2b5`）及预发布转正式版被当成相等、继续加载旧运行时的问题；备份、替换失败回退和不降级保护不变。
 - Postgres 存储后端改为拆字段映射，不再把 URI 当作 `connection_string` 传给 `PostgresConfig`。
 - S3 / Postgres 等旧协议 backend 适配 `ReadResult` / `LsResult`，专家启动与管理端目录树不再因 `'str'.error` 或 `als` 未实现而失败。
 - FnOS 本地版关闭时会杀掉占 8089 的整棵进程树（含 `runuser` 外壳留下的 Python），启动被中途杀掉也会收尸；`checkport=false` 让再次启动能回收残留，避免应用中心报「端口被占用」但旧页面仍能打开。

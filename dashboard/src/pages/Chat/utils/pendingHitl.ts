@@ -1,6 +1,8 @@
 import {
+  ASK_USER_TOOL_NAME,
   extractAskQuestions,
   isAskHitl,
+  questionsFromUnknown,
   type AskQuestion,
 } from "../../../api/types/hitl";
 import type { ChatMessage, HitlActionRequest } from "../hooks/sseHelpers";
@@ -11,9 +13,29 @@ export type PendingAsk = {
   questions: AskQuestion[];
 };
 
-/** True when any message still awaits a HITL decision. */
+/** True when a pending HITL can actually be resumed on the server. */
+export function isResumableHitl(
+  hitl: ChatMessage["hitlData"] | undefined,
+): boolean {
+  return Boolean(hitl?.pending_id?.trim());
+}
+
+/** Unanswered ``ask_user_question`` is a pause, not a running tool. */
+export function isPausedAskTool(message: ChatMessage): boolean {
+  return (
+    message.toolData?.name === ASK_USER_TOOL_NAME &&
+    message.toolData.output === undefined
+  );
+}
+
+/** True when any message still awaits a recoverable HITL decision. */
 export function hasPendingHitl(messages: ChatMessage[]): boolean {
-  return messages.some((message) => message.hitlData?.status === "pending");
+  return messages.some((message) => {
+    const hitl = message.hitlData;
+    if (!hitl || (hitl.status ?? "pending") !== "pending") return false;
+    if (isAskHitl(hitl.action_requests) && !isResumableHitl(hitl)) return false;
+    return true;
+  });
 }
 
 export type PendingApproval = {
@@ -44,6 +66,29 @@ export function findPendingApproval(
   return null;
 }
 
+function askActionsFromTool(message: ChatMessage): HitlActionRequest[] | null {
+  if (message.toolData?.name !== ASK_USER_TOOL_NAME) return null;
+  if (message.toolData.output !== undefined) return null;
+  const questions = questionsFromUnknown(message.toolData.arguments);
+  if (questions.length === 0) return null;
+  return [{ name: ASK_USER_TOOL_NAME, args: { questions } }];
+}
+
+/** Turn an unanswered ``ask_user_question`` tool bubble into a pending HITL card. */
+export function promoteAskUserToolMessage(message: ChatMessage): ChatMessage {
+  if (message.hitlData) return message;
+  const actions = askActionsFromTool(message);
+  if (!actions) return message;
+  return {
+    ...message,
+    hitlData: {
+      action_requests: actions,
+      status: "pending",
+    },
+    status: "done",
+  };
+}
+
 /** Latest pending ``ask_user_question`` card, if any. */
 export function findPendingAsk(messages: ChatMessage[]): PendingAsk | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -52,7 +97,8 @@ export function findPendingAsk(messages: ChatMessage[]): PendingAsk | null {
     if (
       !hitl ||
       (hitl.status ?? "pending") !== "pending" ||
-      !isAskHitl(hitl.action_requests)
+      !isAskHitl(hitl.action_requests) ||
+      !isResumableHitl(hitl)
     ) {
       continue;
     }

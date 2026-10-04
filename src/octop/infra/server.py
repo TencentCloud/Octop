@@ -610,6 +610,9 @@ class OctopServer:
         if not self._started:
             return
         try:
+            from octop.infra.connectors.gateway import agently_auth
+
+            await agently_auth.close()
             if self.app_runtime is not None:
                 rt = self.app_runtime
                 await rt.proactive_scheduler.shutdown()
