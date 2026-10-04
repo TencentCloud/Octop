@@ -132,7 +132,13 @@ async def patch_storage_backend(
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
     next_kind = (body.kind or row.kind or "").lower()
-    if body.enabled is True:
+    # Gate on the kind that will actually be in effect, not on the flag the
+    # caller happened to send: BackendRepo.update leaves `enabled` untouched
+    # when it is None, so switching an already-enabled backend to
+    # kind="opensandbox" keeps it enabled. The dashboard edit form never
+    # sends `enabled` at all, so that was the only path to the new kind.
+    next_enabled = row.enabled if body.enabled is None else body.enabled
+    if next_enabled:
         _ensure_opensandbox_sdk(next_kind)
 
     new_name: str | None = None
