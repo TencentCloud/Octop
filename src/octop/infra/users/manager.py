@@ -770,8 +770,8 @@ class UserManager:
             self._users.pop(username, None)
         user_dir = self._services.paths.user_dir(row.username)
         try:
-            if user_dir.exists():
-                shutil.rmtree(user_dir)
+            if await asyncio.to_thread(user_dir.exists):
+                await asyncio.to_thread(shutil.rmtree, user_dir)
         except OSError:
             logger.exception("rmtree failed for %s; user removed from DB anyway", user_dir)
         self._services.user_repo.delete(row.id)

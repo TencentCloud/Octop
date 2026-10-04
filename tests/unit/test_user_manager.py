@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
+import threading
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -430,6 +433,38 @@ async def test_remove_deletes_db_and_dir(manager: UserManager, tmp_path: Path):
     await manager.remove("a")
     assert (tmp_path / ".octop" / "users" / "a").exists() is False
     assert manager.get("a") is None
+
+
+async def test_remove_unlinks_user_dir_off_the_event_loop(
+    manager: UserManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``remove()`` must not unlink the user directory on the event loop.
+
+    ``users/<name>`` holds the account's agents, sessions and uploads, so the
+    ``rmtree`` can take a while. The sibling agent-deletion path already wraps
+    the same cleanup in ``asyncio.to_thread`` (``infra/agents/manager.py``);
+    running it inline here freezes every other request on the loop.
+    """
+    user = await manager.create(username="a", password="TestPass12", role=Role.USER)
+    user_dir = manager._services.paths.user_dir(user.username)
+    (user_dir / "workspace").mkdir(parents=True, exist_ok=True)
+    (user_dir / "workspace" / "note.md").write_text("hi", encoding="utf-8")
+
+    rmtree_threads: list[str] = []
+    real_rmtree = shutil.rmtree
+
+    def _spy(path: Any, *args: Any, **kwargs: Any) -> None:
+        rmtree_threads.append(threading.current_thread().name)
+        real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "rmtree", _spy)
+
+    await manager.remove(user.username)
+
+    assert rmtree_threads, "remove() should have unlinked the user directory"
+    event_loop_thread = threading.current_thread().name
+    assert all(name != event_loop_thread for name in rmtree_threads)
+    assert user_dir.exists() is False
 
 
 async def test_count(manager: UserManager):
