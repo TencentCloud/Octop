@@ -26,6 +26,7 @@
 - 登录页在用户名框下提示可用用户名或邮箱（目录账号与本地账号同一表单）。
 
 ### 修复
+- Dashboard `ask_user_question` 不再一直停在「执行中」且不弹出提问卡：兼容 LangGraph v2 把 interrupt 放到 `chunk["interrupts"]`、解开 Interrupt 信封，并在实时流与历史中还原未回答提问；服务端没有可恢复 pending 时卡片只读，不挡住新消息。
 - 桌面覆盖安装用与服务器 `parse_version` 相同的 PEP 440 规则比较内置与持久运行时，修复同一发布号下 beta 递增（如 `1.0.2b4` → `1.0.2b5`）及预发布转正式版被当成相等、继续加载旧运行时的问题；备份、替换失败回退和不降级保护不变。
 - Postgres 存储后端改为拆字段映射，不再把 URI 当作 `connection_string` 传给 `PostgresConfig`。
 - S3 / Postgres 等旧协议 backend 适配 `ReadResult` / `LsResult`，专家启动与管理端目录树不再因 `'str'.error` 或 `als` 未实现而失败。

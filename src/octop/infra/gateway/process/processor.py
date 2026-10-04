@@ -37,6 +37,8 @@ from octop.infra.gateway.hitl.coordinator import (
     HitlSlashOutcome,
     HitlStreamContext,
 )
+from octop.infra.gateway.hitl.format import normalize_hitl_request
+from octop.infra.gateway.hitl.stream_compat import install_harness_hitl_compat
 from octop.infra.gateway.media.attachment_hints import (
     content_blocks_need_vision,
     inbound_attachments_from_parts,
@@ -93,6 +95,7 @@ if TYPE_CHECKING:
     from octop.infra.gateway.threads import ThreadRegistry
 
 logger = logging.getLogger(__name__)
+install_harness_hitl_compat()
 
 
 def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
@@ -1045,7 +1048,8 @@ class GlobalProcessor:
                     if isinstance(request_payload, dict):
                         from octop.infra.gateway.hitl.coordinator import HitlStreamContext
 
-                        self._hitl.register_from_request(
+                        request_payload = normalize_hitl_request(request_payload)
+                        record = self._hitl.register_from_request(
                             request_payload,
                             ctx=HitlStreamContext(
                                 thread_id=thread_id,
@@ -1055,6 +1059,8 @@ class GlobalProcessor:
                                 channel_type=channel_type,
                             ),
                         )
+                        request_payload["pending_id"] = record.pending_id
+                        chunk["request"] = request_payload
                 if chunk.get("type") == "tool_call_chunk":
                     saw_tool_call = True
                 if chunk.get("type") == "tool_result":
