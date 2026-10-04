@@ -1265,7 +1265,7 @@ function ConnectorConfigDrawer({
             <p className={styles.authHint}>
               {t(
                 "connectors.agentlyQuota",
-                "参考配额：每日发送 50 封、每小时 200 次请求、每分钟 10 次请求；附件最多 50 个、总容量 20 MB，此连接器单文件上限 10 MB。以账户实际配额及服务最新限制为准。当前不支持新邮件自动推送。",
+                "参考配额：每日发送 50 封、每小时 200 次请求、每分钟 10 次请求；附件最多 50 个、总容量 20 MB，此连接器单文件上限 10 MB。以账户实际配额及服务最新限制为准。可在任务页选择「Agent Mail 新邮件」触发任务。",
               )}
             </p>
             <p className={styles.authHint}>

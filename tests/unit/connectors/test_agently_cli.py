@@ -312,3 +312,41 @@ def test_cli_errors_do_not_leak_credentials_in_protocol_logs(cli, monkeypatch, c
     )
     assert result["result"]["isError"] is True
     assert "secret-canary" not in json.dumps(result) + caplog.text
+
+
+def test_unattended_scope_rejects_writes(cli: list[dict[str, Any]]) -> None:
+    args = {"to": "a@example.com", "subject": "hello", "body": "hi"}
+    with (
+        agently_cli.write_scope(allowed=False),
+        pytest.raises(ValueError, match="unattended|无人值守"),
+    ):
+        agently_cli.call_tool({"instance_id": "one"}, "agently_send", args)
+    assert cli == []
+    preview = json.loads(agently_cli.call_tool({"instance_id": "one"}, "agently_send", args))
+    assert preview["result"]["data"]["confirmation_required"] is True
+
+
+def test_expired_confirmation_files_are_purged(
+    cli: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "confirmations"
+    root.mkdir()
+    stale = root / ("a" * 48)
+    stale.write_text(
+        json.dumps({"tool": "agently_send", "args": {}, "expires": 1}), encoding="utf-8"
+    )
+    fresh = root / ("b" * 48)
+    fresh.write_text(
+        json.dumps({"tool": "agently_send", "args": {}, "expires": 10**12}), encoding="utf-8"
+    )
+    agently_cli._purge_expired_confirmations(root)
+    assert not stale.exists()
+    assert fresh.exists()
+
+
+def test_write_interrupt_on_only_confirms_token() -> None:
+    names = agently_cli.write_interrupt_on(["mail_source"])
+    send = next(name for name in names if name.endswith("agently_send"))
+    when = names[send]["when"]
+    assert when(type("R", (), {"tool_call": {"args": {}}})()) is False
+    assert when(type("R", (), {"tool_call": {"args": {"confirmation_token": "abc"}}})()) is True

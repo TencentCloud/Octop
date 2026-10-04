@@ -452,12 +452,19 @@ def _credentials_preview(kind: str, creds: dict[str, Any]) -> dict[str, Any]:
     return preview
 
 
-def _schedule_connector_reload(server: Any, user_id: int, *, all_users: bool = False) -> None:
+def _schedule_connector_reload(
+    server: Any,
+    user_id: int,
+    *,
+    all_users: bool = False,
+    mail_instance_id: str | None = None,
+) -> None:
     assert server.app_runtime is not None
 
     async def _run() -> None:
         try:
-            await server.app_runtime.cron_manager.reload_mail_watches()
+            if mail_instance_id:
+                await server.app_runtime.cron_manager.sync_mail_watch(mail_instance_id)
             if all_users:
                 await server.app_runtime.agent_registry.reload_all()
             else:
@@ -768,7 +775,12 @@ async def create_instance(
     )
     inst = repo.get(instance_id)
     assert inst is not None
-    _schedule_connector_reload(server, user.id, all_users=body.shared)
+    _schedule_connector_reload(
+        server,
+        user.id,
+        all_users=body.shared,
+        mail_instance_id=instance_id if body.kind == "agently-cli" else None,
+    )
     return _instance_to_dict(inst)
 
 
@@ -895,6 +907,7 @@ async def patch_instance(
         server,
         inst.user_id,
         all_users=inst.shared or body.shared is True or body.shared is False,
+        mail_instance_id=instance_id if inst.kind == "agently-cli" else None,
     )
     return _instance_to_dict(inst)
 
@@ -961,7 +974,12 @@ async def delete_instance(
         repo.delete(instance_id)
     if cli_creds is not None:
         cleanup_creds_cli_dirs(inst.kind, cli_creds)
-    _schedule_connector_reload(server, user_id, all_users=inst.shared)
+    _schedule_connector_reload(
+        server,
+        user_id,
+        all_users=inst.shared,
+        mail_instance_id=instance_id if inst.kind == "agently-cli" else None,
+    )
     server.services.audit_repo.write(
         actor=user.username,
         action="connector.instance.delete",

@@ -11,6 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from octop.i18n import tr
 from octop.infra.connectors.crypto import decrypt_credentials
+from octop.infra.connectors.gateway.adapters.agently_cli import read_auth_status
 from octop.infra.connectors.gateway.agently_watch import AgentlyWatchManager
 from octop.infra.cron.delivery import CronDeliveryService
 from octop.infra.cron.job import CronJob
@@ -284,6 +285,16 @@ class CronManager:
         if self._scheduler.get_job(cron_id):
             self._scheduler.remove_job(cron_id)
 
+    def _mailbox_authorized(self, source: ConnectorRow) -> bool:
+        if source.credential_blob is None:
+            return False
+        creds = decrypt_credentials(self._repos.secret_repo, source.credential_blob)
+        try:
+            data = read_auth_status({**creds, "instance_id": source.instance_id})
+        except (OSError, ValueError):
+            return False
+        return data.get("logged_in") is True and data.get("token_status") != "expired"
+
     def _mail_source(self, spec: str, user_id: int) -> ConnectorRow | None:
         trigger = build_trigger(spec)
         if not isinstance(trigger, AgentlyMailTrigger):
@@ -300,6 +311,8 @@ class CronManager:
             raise OctopError(
                 ErrorCode.FORBIDDEN, "Agent Mail source is not visible to the job owner"
             )
+        if not self._mailbox_authorized(source):
+            raise OctopError(ErrorCode.CRON_TRIGGER_INVALID, "Agent Mail mailbox is not authorized")
         return source
 
     async def _run_mail_event(self, cron_id: str, message_id: str) -> None:
@@ -329,23 +342,38 @@ class CronManager:
         await self._make_job(event_row).run()
 
     async def reload_mail_watches(self) -> None:
-        """Rebind sources after a connector is disabled, deleted, or unshared."""
+        """Rebuild every mailbox watch after a full cron reload."""
         async with self._lock:
             await self._mail_watch.close()
             for row in self._repos.cron_repo.list_all(include_disabled=False):
                 if row.trigger.startswith("agently:"):
                     self._schedule(row)
 
-    async def stop_mail_watch(self, instance_id: str) -> None:
-        await self._mail_watch.stop_instance(instance_id)
-
-    async def resume_mail_watch(self, instance_id: str) -> None:
+    async def sync_mail_watch(self, instance_id: str) -> None:
+        """Start or stop watches for one mailbox without touching others."""
         async with self._lock:
+            source = self._repos.connector_repo.get(instance_id)
+            available = (
+                source is not None
+                and source.kind == "agently-cli"
+                and source.status == "active"
+                and source.has_credentials
+                and self._mailbox_authorized(source)
+            )
+            if not available:
+                await self._mail_watch.stop_instance(instance_id)
+                return
             for row in self._repos.cron_repo.list_all(include_disabled=False):
                 if row.trigger == f"agently:{instance_id}" and not self._mail_watch.has_job(
                     row.cron_id
                 ):
                     self._schedule(row)
+
+    async def stop_mail_watch(self, instance_id: str) -> None:
+        await self._mail_watch.stop_instance(instance_id)
+
+    async def resume_mail_watch(self, instance_id: str) -> None:
+        await self.sync_mail_watch(instance_id)
 
     async def _ensure_session(self, session_key: str, *, agent_id: str, user_id: int) -> None:
         registry = self._gateway.thread_registry
@@ -377,6 +405,10 @@ class CronManager:
     def schedule_system_job(self, job_id: str, *, trigger: str, func: Any) -> None:
         """Register a process-level job that is not stored in the cron DB."""
         built = build_trigger(trigger, timezone=self._timezone)
+        if isinstance(built, AgentlyMailTrigger):
+            raise OctopError(
+                ErrorCode.CRON_TRIGGER_INVALID, "system jobs cannot use Agent Mail triggers"
+            )
         self._system_job_ids.add(job_id)
         self._scheduler.add_job(
             func,

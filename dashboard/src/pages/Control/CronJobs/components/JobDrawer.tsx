@@ -314,9 +314,11 @@ export function JobDrawer({
             <Select.Option value="custom">
               {t("cronJobs.form.scheduleModeCustom")}
             </Select.Option>
-            <Select.Option value="agently">
-              {t("cronJobs.form.agentlyNewMail")}
-            </Select.Option>
+            {(mailOptions.length > 0 || scheduleMode === "agently") && (
+              <Select.Option value="agently">
+                {t("cronJobs.form.agentlyNewMail")}
+              </Select.Option>
+            )}
           </Select>
         </Form.Item>
 

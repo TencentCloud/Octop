@@ -2201,7 +2201,7 @@
       "enabled": "Enable Job",
       "enabledTooltip": "When enabled, the job runs automatically on schedule. Disable to pause execution.",
       "sectionSchedule": "Execution Frequency",
-      "sectionScheduleDesc": "Choose a time schedule or an Agent Mail new-mail event.",
+      "sectionScheduleDesc": "Set when the job runs. Choose a preset frequency or enter a custom Cron expression.",
       "scheduleMode": "Mode",
       "scheduleModeTooltip": "Preset: choose from common frequencies; Custom: enter a Cron expression for advanced scheduling.",
       "scheduleModePreset": "Preset Frequency",

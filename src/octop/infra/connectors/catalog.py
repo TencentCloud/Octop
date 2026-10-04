@@ -518,7 +518,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
     ConnectorCatalogEntry(
         kind="agently-cli",
         name="Agent Mail",
-        description=tr("connector.agently.description"),
+        description="通过官方 Agent Mail CLI 使用独立 Agent 邮箱（需主机安装 CLI）",
         auth_kind="custom_fields",
         doc_url="https://github.com/Tencent/AgentlyMail",
         icon="agently-cli",
@@ -528,7 +528,7 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         category="office",
         guide_url="https://help.agent.qq.com/detail/0/1092",
         manual_url="https://agent.qq.com/",
-        auth_hint=tr("connector.agently.auth_hint"),
+        auth_hint="先保存连接器，再完成设备码授权；每个实例独立绑定邮箱",
     ),
     ConnectorCatalogEntry(
         kind="weknora",

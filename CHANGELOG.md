@@ -7,7 +7,7 @@
 ## [Unreleased]
 
 ### 新增
-- 内置 Agent Mail CLI 连接器：支持实例隔离、设备码授权、邮件与附件工具及两阶段写操作确认（#1148）；新邮件推送暂不接入。; new-mail task triggers use the official CLI watch connection.
+- 内置 Agent Mail CLI 连接器：实例隔离、设备码授权、邮件与附件工具；写操作需 HITL 确认，Cron / 新邮件任务禁止发信删除（#1148）。
 - GitHub 发版产出飞牛 ARM 安装包：官方镜像改为 `linux/amd64` + `linux/arm64` 多架构（同一份 Docker FPK 在 ARM 飞牛上拉对应镜像层）；本地版另挂 `Octop-fnos-native-arm64-<ver>.fpk`。ARM 飞牛优先用 Docker 版；本地版装错架构会在安装或启动时报错。
 - 支持 LDAP 目录登录（Active Directory、OpenLDAP）：在现有登录表单直接输入域账号与密码；按目录组映射角色（仅首次开通账号时写入，之后目录组变更不会回写本地角色）、首次登录可自动开通账号、可选登录组白名单；管理端「用户 → LDAP」页可配置并测试连通性。目录账号无本地密码，修改密码会返回 `PASSWORD_NOT_SET`。
 - 有本地密码的账号只在本地校验，口令不会转发到目录；启用 LDAP 时要求加密传输（`ldaps://` 或 StartTLS）。

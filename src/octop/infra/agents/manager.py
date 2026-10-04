@@ -1806,6 +1806,13 @@ class AgentManager:
                 )
         for name in server_names:
             agent.config.mcp_server_configs.setdefault(name, {})
+        extra = self._agently_write_interrupts(user_id)
+        if extra:
+            current = {**(getattr(agent.config, "interrupt_on", None) or {}), **extra}
+            store = getattr(self, "_hitl_session_store", None)
+            if store is not None:
+                current = apply_session_bypass(current, store) or current
+            agent.config.interrupt_on = current
         inject_missing_gateway_tools(
             agent,
             svc=self._connector_svc,
@@ -3290,6 +3297,9 @@ class AgentManager:
             harness_cfg.tools_disabled = frozenset(disabled)
         applied = policy.apply_to_config(harness_cfg)
         applied = self._apply_team_host_config(applied, row)
+        applied = self._merge_agently_write_interrupts(
+            applied, self._connector_uid_for(row) if not team_host else None
+        )
         interrupt_on = apply_session_bypass(applied.interrupt_on, self._hitl_session_store)
         if interrupt_on is not applied.interrupt_on:
             applied = replace(applied, interrupt_on=interrupt_on)
@@ -3337,6 +3347,27 @@ class AgentManager:
             take_prompt=getattr(room, "take_peer_prompt", None)
             or getattr(proc, "take_team_peer_prompt", None),
         )
+
+    def _agently_write_interrupts(self, user_id: int | None) -> dict[str, Any]:
+        from octop.infra.connectors.gateway.adapters.agently_cli import write_interrupt_on
+
+        if user_id is None:
+            return {}
+        return write_interrupt_on(
+            [
+                inst.mcp_server_name
+                for inst in self._repos.connector_repo.list_visible(user_id)
+                if inst.kind == "agently-cli" and inst.status == "active"
+            ]
+        )
+
+    def _merge_agently_write_interrupts(
+        self, cfg: HarnessAgentConfig, user_id: int | None
+    ) -> HarnessAgentConfig:
+        extra = self._agently_write_interrupts(user_id)
+        if not extra:
+            return cfg
+        return replace(cfg, interrupt_on={**(cfg.interrupt_on or {}), **extra})
 
     def _apply_team_host_config(self, cfg: HarnessAgentConfig, row: Any) -> HarnessAgentConfig:
         from octop.infra.agents.teams import host_system_prompt, host_tools_disabled, is_team_agent

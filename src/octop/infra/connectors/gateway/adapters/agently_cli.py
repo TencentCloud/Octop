@@ -12,6 +12,9 @@ import secrets
 import shutil
 import tempfile
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -101,6 +104,40 @@ _COMMANDS: dict[str, tuple[list[str], dict[str, Any], list[str]]] = {
     "agently_download": (["attachment", "+download"], {"msg": _TEXT, "att": _TEXT}, ["msg", "att"]),
 }
 _WRITES = {"agently_send", "agently_reply", "agently_forward", "agently_trash", "agently_delete"}
+_WRITES_ALLOWED: ContextVar[bool] = ContextVar("agently_writes_allowed", default=True)
+
+
+@contextmanager
+def write_scope(*, allowed: bool) -> Iterator[None]:
+    """Allow or reject Agent Mail write tools for the current task."""
+    token = _WRITES_ALLOWED.set(allowed)
+    try:
+        yield
+    finally:
+        _WRITES_ALLOWED.reset(token)
+
+
+def writes_allowed() -> bool:
+    return _WRITES_ALLOWED.get()
+
+
+def write_tool_names(mcp_server_name: str) -> list[str]:
+    from octop_harness.mcp import sanitize_llm_tool_name
+
+    return [sanitize_llm_tool_name(f"{mcp_server_name}_{name}") for name in sorted(_WRITES)]
+
+
+def _confirm_when(req: Any) -> bool:
+    tool_call = getattr(req, "tool_call", None) or {}
+    raw_args = tool_call.get("args") if isinstance(tool_call, dict) else {}
+    token = raw_args.get("confirmation_token") if isinstance(raw_args, dict) else None
+    return isinstance(token, str) and bool(token.strip())
+
+
+def write_interrupt_on(mcp_server_names: list[str]) -> dict[str, Any]:
+    """Always interrupt the confirm call, even when global HITL is off."""
+    entry: dict[str, Any] = {"allowed_decisions": ["approve", "reject"], "when": _confirm_when}
+    return {name: dict(entry) for server in mcp_server_names for name in write_tool_names(server)}
 
 
 def list_tools() -> list[dict[str, Any]]:
@@ -269,17 +306,36 @@ def _download(creds: dict[str, Any], args: dict[str, Any], root: Path) -> dict[s
         raise
 
 
+def _purge_expired_confirmations(folder: Path) -> None:
+    if not folder.is_dir():
+        return
+    now = time.time()
+    for path in folder.iterdir():
+        if not path.is_file() or not re.fullmatch(r"[0-9a-f]{48}", path.name):
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if float(data.get("expires") or 0) < now:
+                path.unlink()
+        except (OSError, TypeError, ValueError):
+            continue
+
+
 def _write(
     creds: dict[str, Any], name: str, args: dict[str, Any], command: list[str], root: Path
 ) -> dict[str, Any]:
     # Upstream confirmation is optional, including for permanent deletion. Always
     # preview locally; consume the instance-bound approval before any real write.
+    locale = str(creds.get("_locale") or "en")
+    if not writes_allowed():
+        raise ValueError(tr("connector.agently.write_not_allowed", locale))
     parameters = {key: value for key, value in args.items() if key != "confirmation_token"}
     folder = root.parent / "confirmations"
     token = args.get("confirmation_token")
     if token is None:
         _run(creds, [*command, "--dry-run"], cwd=root)
         folder.mkdir(mode=0o700, exist_ok=True)
+        _purge_expired_confirmations(folder)
         token = secrets.token_hex(24)
         with os.fdopen(
             os.open(folder / token, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600),

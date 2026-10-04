@@ -2200,7 +2200,7 @@
       "enabled": "启用任务",
       "enabledTooltip": "开启后任务将按照设定的时间自动执行，关闭则暂停执行。",
       "sectionSchedule": "执行频率",
-      "sectionScheduleDesc": "选择执行时间或 Agent Mail 新邮件事件。",
+      "sectionScheduleDesc": "设置任务的执行时间。可选择预设频率，或输入自定义 Cron 表达式。",
       "scheduleMode": "调度方式",
       "scheduleModeTooltip": "固定频率：从常用选项中选择；Cron 表达式：手动输入或从常用模板快速填入。",
       "scheduleModePreset": "固定频率",
