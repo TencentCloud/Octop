@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Any
 
 from langchain_core.tools import StructuredTool
@@ -73,6 +74,17 @@ async def _resolve_device(device: str | None) -> str:
     return control.device
 
 
+def _write_screenshot(out_dir: Path, path: Path, png: bytes) -> None:
+    """Persist an adb screenshot.
+
+    Kept synchronous on purpose so callers can run it via ``asyncio.to_thread``:
+    a real ``screencap -p`` payload is a multi-megabyte PNG, and writing it on
+    the event loop stalls every other request served by the same loop.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(png)
+
+
 def build_mobile_tools(
     config: OctopConfig, *, user_repo: Any, paths: PathLayout | None = None
 ) -> list[StructuredTool]:
@@ -104,11 +116,10 @@ def build_mobile_tools(
                     ensure_ascii=False,
                 )
             out_dir = layout.agent_workspace(agent_id) / "mobile-screenshots"
-            out_dir.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
             rel = f"mobile-screenshots/mobile_{stamp}.png"
             path = layout.agent_workspace(agent_id) / rel
-            path.write_bytes(png)
+            await asyncio.to_thread(_write_screenshot, out_dir, path, png)
             return json.dumps({"device": serial, "path": rel, "format": "png"}, ensure_ascii=False)
         except Exception as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
