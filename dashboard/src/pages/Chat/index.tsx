@@ -17,6 +17,7 @@ import { message as antMessage } from "@/utils/antdMessage";
 import { showConfirmModal } from "../../utils/confirmModal";
 import PlanReadyCard from "./components/PlanReadyCard";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useHitlEnabled } from "../../hooks/useHitlEnabled";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { navAllowed, userCan } from "../../utils/permissions";
 import { useChat } from "./hooks/useChat";
@@ -125,6 +126,7 @@ function ChatPageInner() {
     threadId: threadId ?? null,
   });
   const isMobile = useIsMobile();
+  const hitlEnabled = useHitlEnabled();
   const user = useCurrentUser();
   const { layoutMode } = useLayoutMode();
   const isMinimalLayout = layoutMode === "minimal";
@@ -1671,7 +1673,9 @@ function ChatPageInner() {
               conversationMode={conversationMode}
               onConversationModeChange={handleConversationModeChange}
               hitlPolicy={hitlPolicy}
-              onHitlPolicyChange={handleComposerHitlPolicyChange}
+              onHitlPolicyChange={
+                hitlEnabled ? handleComposerHitlPolicyChange : undefined
+              }
               availableConnectors={isTeamChat ? undefined : chatConnectors}
               selectedConnectors={isTeamChat ? [] : selectedConnectors}
               onConnectorsChange={

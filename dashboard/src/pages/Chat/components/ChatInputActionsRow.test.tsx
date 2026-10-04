@@ -60,6 +60,17 @@ describe("ChatInputActionsRow plus menu", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("hides the approval picker when HITL policy cannot be changed", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} onHitlPolicyChange={undefined} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByTestId("hitl-policy-picker")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("快捷指令")).toBeInTheDocument();
+  });
+
   it("opens a flyout beside the plus menu instead of a window drawer", async () => {
     render(
       <MemoryRouter>
