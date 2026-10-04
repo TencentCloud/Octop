@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import secrets
 from functools import partial
 from typing import Any, cast
 
@@ -16,6 +15,7 @@ from octop.api.common.sso_cookie import (
     cookie_state,
     delete_sso_state_cookie,
     set_sso_state_cookie,
+    state_matches,
 )
 from octop.api.deps import get_server, require_permission, sign_token
 from octop.api.routers.auth import _user_json
@@ -122,7 +122,7 @@ async def oidc_callback(
     """Complete an OIDC authorization-code callback and redirect to the dashboard."""
     public_base = _public_base(request)
     stored = cookie_state(request)
-    if not state or not stored or not secrets.compare_digest(stored, state):
+    if not state_matches(stored, state):
         frontend = _login_error_redirect(server, public_base)
         response = RedirectResponse(f"{frontend}/login?oidc_error=state", status_code=302)
     else:

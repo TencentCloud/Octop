@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import secrets
 from functools import partial
 from typing import Any, Literal, cast
 
@@ -16,6 +15,7 @@ from octop.api.common.sso_cookie import (
     cookie_state,
     delete_sso_state_cookie,
     set_sso_state_cookie,
+    state_matches,
 )
 from octop.api.deps import current_user, get_server, require_permission
 from octop.api.routers.auth_oidc import exchange_login_code_response
@@ -111,7 +111,7 @@ async def oauth_callback(
     public_base = _public_base(request)
     stored = cookie_state(request)
     auth_code = code or authCode
-    if not state or not stored or not secrets.compare_digest(stored, state):
+    if not state_matches(stored, state):
         frontend = _login_error_redirect(server, public_base)
         response = RedirectResponse(f"{frontend}/login?oidc_error=state", status_code=302)
     else:

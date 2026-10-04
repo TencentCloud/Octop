@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import secrets
+
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response
 
@@ -35,3 +37,20 @@ def delete_sso_state_cookie(response: Response, request: Request) -> None:
 
 def cookie_state(request: Request) -> str | None:
     return request.cookies.get(SSO_STATE_COOKIE)
+
+
+def state_matches(stored: str | None, received: str | None) -> bool:
+    """Constant-time SSO state comparison that tolerates any input shape.
+
+    ``secrets.compare_digest`` raises ``TypeError`` on non-ASCII ``str``
+    operands, and the value compared here is a raw query parameter. Treat
+    anything that cannot be compared as a mismatch so the caller redirects
+    instead of surfacing a 500. Comparing the UTF-8 encodings keeps the
+    comparison constant-time for the shapes that do compare.
+    """
+    if not stored or not received:
+        return False
+    try:
+        return secrets.compare_digest(stored.encode("utf-8"), received.encode("utf-8"))
+    except (AttributeError, TypeError, UnicodeError):
+        return False
