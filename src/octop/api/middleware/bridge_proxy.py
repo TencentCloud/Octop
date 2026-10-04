@@ -41,7 +41,7 @@ class TunnelTarget:
     ref: BridgeAgentRef
     agent_token: str
     remote_path: str
-    """Path suffix after the agent id for /api/agents/… shadows (local short-circuit)."""
+    """Path suffix after the agent id for /api/agents/ and /api/plugins/agents/ shadows (local short-circuit)."""
     agent_rest: str = ""
 
 
@@ -130,6 +130,7 @@ def resolve_tunnel_target(
                 ref=ref,
                 agent_token=token,
                 remote_path=f"/api/plugins/agents/{ref.remote_agent_id}{rest}",
+                agent_rest=rest,
             )
 
     header = unquote((agent_header or "").strip())
