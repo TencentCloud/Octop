@@ -42,6 +42,8 @@ interface PageShellProps {
   pathTabs?: PathTabsConfig;
   /** Render agent picker below the title row, outside the scrollable content card. */
   agentScoped?: boolean;
+  /** Include team hosts in the agent picker (memory / channels). */
+  showTeams?: boolean;
   /** When true, the content area does not scroll; children fill remaining height. */
   fill?: boolean;
   children: React.ReactNode;
@@ -98,6 +100,7 @@ function PageShell({
   actions,
   pathTabs,
   agentScoped,
+  showTeams,
   fill,
   children,
 }: PageShellProps) {
@@ -210,7 +213,7 @@ function PageShell({
 
       {agentScoped && (
         <div className={`${styles.agentBar} wb-page-agent-bar`}>
-          <AgentSelector />
+          <AgentSelector showTeams={showTeams} />
         </div>
       )}
 

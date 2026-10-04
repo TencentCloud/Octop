@@ -8,11 +8,20 @@ import MBTISelector from "../pages/Agent/Personalization/components/MBTISelector
 import AgentPluginsPanel from "../pages/Agent/Personalization/components/AgentPluginsPanel";
 import SubagentManager from "../pages/Experts/components/SubagentManager";
 import Config from "../pages/Agent/Config";
+import { isTeamAgent } from "../utils/teamAgent";
 export default function AgentSettingsPanel({ panel }: { panel: string }) {
   const { t } = useTranslation();
   const { activeAgentId, activeAgent } = useAgent();
   if (!activeAgentId)
     return <Empty description={t("skills.noAgentSelected")} />;
+  if (isTeamAgent(activeAgent) && panel !== "memory" && panel !== "channels")
+    return (
+      <Empty
+        description={t("agentSelector.teamNeedsExpert", {
+          name: activeAgent?.name ?? "",
+        })}
+      />
+    );
   switch (panel) {
     case "memory":
       return <MemoryPanel agentId={activeAgentId} />;

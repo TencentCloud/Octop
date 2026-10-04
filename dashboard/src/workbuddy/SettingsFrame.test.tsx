@@ -12,12 +12,34 @@ vi.mock("./AgentSettingsPanel", () => ({
   default: () => <input aria-label="Agent config draft" />,
 }));
 vi.mock("../components/AgentSelector", () => ({
-  default: () => <span>Agent picker</span>,
+  default: ({ showTeams }: { showTeams?: boolean }) => (
+    <span data-testid="agent-picker" data-show-teams={String(!!showTeams)}>
+      Agent picker
+    </span>
+  ),
 }));
 function Address() {
   return <output>{useLocation().pathname}</output>;
 }
 describe("WorkBuddy settings", () => {
+  it.each(["memory", "channels"])(
+    "keeps team selection available in %s settings",
+    (section) => {
+      render(
+        <MemoryRouter initialEntries={[`/settings/${section}`]}>
+          <SettingsFrame
+            user={{ role: "admin", permissions: ["*"] } as OctopUser}
+          >
+            Profile
+          </SettingsFrame>
+        </MemoryRouter>,
+      );
+      expect(screen.getByTestId("agent-picker")).toHaveAttribute(
+        "data-show-teams",
+        "true",
+      );
+    },
+  );
   it("discards obsolete Agent drafts instead of submitting them to the new Agent", async () => {
     agent.id = "agent-a";
     const panel = (

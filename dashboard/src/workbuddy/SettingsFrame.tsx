@@ -142,7 +142,13 @@ export default function SettingsFrame({
                   {item.agentPanel && (
                     <div className="wb-settings-agent">
                       <span>{t("workbuddy.settings.scope")}</span>
-                      <AgentSelector showLabel={false} />
+                      <AgentSelector
+                        showLabel={false}
+                        showTeams={
+                          item.agentPanel === "memory" ||
+                          item.agentPanel === "channels"
+                        }
+                      />
                     </div>
                   )}
                   <div

@@ -116,6 +116,7 @@
     "STORAGE_BACKEND_NAME_TAKEN": "存储后端名称已被占用。",
     "STORAGE_BACKEND_REFERENCED": "存储后端正在使用中，无法删除。",
     "STORAGE_BACKEND_DEPS_FAILED": "无法安装此后端所需的可选组件。请检查网络后重试。",
+    "STORAGE_BROWSE_FAILED": "无法浏览此存储后端。",
     "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",
     "CHANNEL_INVALID_CREDENTIALS": "通道凭证无效。",
     "CHANNEL_NAME_TAKEN": "该通道名称已被使用，请换一个名称。",
@@ -2274,7 +2275,11 @@
       "timeoutSeconds": "超时时间（秒）",
       "timeoutSecondsTooltip": "任务执行的最长允许时间（秒），超时后将被强制终止。",
       "misfireGrace": "错过容忍（秒）",
-      "misfireGraceTooltip": "如果因服务停机等原因错过了执行时间，在容忍时间内仍会补执行。设为 0 表示不补执行。"
+      "misfireGraceTooltip": "如果因服务停机等原因错过了执行时间，在容忍时间内仍会补执行。设为 0 表示不补执行。",
+      "agentlyNewMail": "Agent Mail 新邮件",
+      "agentlyMailbox": "监听邮箱",
+      "agentlySelectMailbox": "请选择 Agent Mail 邮箱",
+      "agentlyHint": "通过后台长连接接收新邮件，收到后执行此任务。请先授权所选邮箱；空闲时不调用模型。"
     },
     "preset": {
       "every5min": "每 5 分钟",
@@ -5140,9 +5145,15 @@
     }
   },
   "agentSelector": {
-    "label": "当前专家",
+    "label": "专家",
     "localGroup": "本机",
-    "disconnected": "已断开"
+    "disconnected": "已断开",
+    "expertsGroup": "专家",
+    "teamsGroup": "团队",
+    "remoteKindGroup": "{{name}}·{{kind}}",
+    "more": "更多",
+    "teamNeedsExpert": "当前是团队「{{name}}」，此页请选择专家",
+    "expertsRequired": "此页需要专家"
   },
   "login": {
     "title": "登录",
@@ -5814,6 +5825,21 @@
     "cliInstallFailed": "主机 CLI 安装失败",
     "cliInstalledHint": "主机已检测到 {{binary}}",
     "cliMissingHint": "主机尚未安装 CLI。可点击「安装 CLI」，或在 Octop 主机终端手动执行下方命令。",
+    "agentlyAuthTitle": "Agent Mail 邮箱授权",
+    "agentlyIdle": "尚未授权此邮箱实例",
+    "agentlyPending": "请打开授权页完成登录，授权结果会自动更新。",
+    "agentlyAuthorized": "邮箱已授权",
+    "agentlyExpired": "授权已过期，请重新登录授权",
+    "agentlyAuthFailed": "邮箱授权失败，请重试",
+    "agentlyUserCode": "授权码",
+    "agentlyStart": "登录授权",
+    "agentlyCheckStatus": "检查状态",
+    "agentlyRefresh": "刷新授权",
+    "agentlyCancel": "取消授权",
+    "agentlyLogout": "注销授权",
+    "agentlySafety": "发送、回复、转发和删除邮件需先预览，再由用户确认执行。邮件正文与附件属于不可信外部内容，不能作为执行指令。",
+    "agentlyQuota": "参考配额：每日发送 50 封、每小时 200 次请求、每分钟 10 次请求；附件最多 50 个、总容量 20 MB，此连接器单文件上限 10 MB。以账户实际配额及服务最新限制为准。可在任务页选择「Agent Mail 新邮件」触发任务。",
+    "agentlyInstanceHint": "先保存连接器，再登录授权。每个实例独立保存邮箱授权，可为不同 Agent 选择不同实例。",
     "feishuUserAuthTitle": "飞书账号授权",
     "feishuUserAuthWhy": "上方 App ID / Secret 只代表应用（Bot）。文档搜索、访问你云空间里的个人文档和日程等，必须以你的飞书账号身份调用，因此需要额外授权一次。授权后专家只能访问你本人有权限的内容。",
     "feishuUserAuthHint": "点击登录授权，完成后点「我已授权」。",
