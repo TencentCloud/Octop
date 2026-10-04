@@ -55,8 +55,12 @@ export default function HitlApprovalCard({
       : t("chat.hitl.approved", "Approved");
 
   return (
-    <div className={styles.card} role="status">
-      <div className={styles.titleRow}>
+    <div
+      className={`${styles.card} wb-intervention wb-approval`}
+      data-status={status}
+      role="status"
+    >
+      <div className={`${styles.titleRow} wb-intervention__title`}>
         <span className={styles.iconWrap} aria-hidden="true">
           <ShieldAlert size={18} strokeWidth={2} />
         </span>
@@ -97,7 +101,7 @@ export default function HitlApprovalCard({
         <div className={styles.actions}>
           <button
             type="button"
-            className={`${styles.actionButton} ${styles.primaryAction}`}
+            className={`${styles.actionButton} ${styles.primaryAction} wb-intervention__primary`}
             onClick={() =>
               onDecision?.(actions.map(() => ({ type: "approve" })))
             }
@@ -131,7 +135,7 @@ export default function HitlApprovalCard({
           >
             <button
               type="button"
-              className={`${styles.actionButton} ${styles.secondaryAction}`}
+              className={`${styles.actionButton} ${styles.secondaryAction} wb-intervention__secondary`}
             >
               {t("chat.hitl.allowMenu", "Allow")}
               <ChevronDown size={14} />
@@ -139,7 +143,7 @@ export default function HitlApprovalCard({
           </Dropdown>
           <button
             type="button"
-            className={`${styles.actionButton} ${styles.dangerAction}`}
+            className={`${styles.actionButton} ${styles.dangerAction} wb-intervention__reject`}
             onClick={() =>
               onDecision?.(
                 actions.map(() => ({

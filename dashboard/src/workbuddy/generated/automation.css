@@ -1,0 +1,407 @@
+/* Extracted from WorkBuddy 5.5.6; regenerate with npm run workbuddy:extract. */
+
+:where(html[data-ui="workbuddy"]) .atm-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  box-sizing: border-box;
+  padding: 0 20px;
+  gap: 12px;
+  flex-wrap: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  -webkit-app-region: drag;
+}
+:where(html[data-ui="workbuddy"]) .atm-toolbar > * {
+  -webkit-app-region: no-drag;
+}
+:where(html[data-ui="workbuddy"])
+  .workbuddy-floating-layer-open
+  .main-content--automation
+  .atm-toolbar {
+  -webkit-app-region: no-drag !important;
+}
+:where(html[data-ui="workbuddy"]) .atm-toolbar--traffic-light-offset {
+  margin-left: 67px;
+}
+:where(html[data-ui="workbuddy"]) .atm-toolbar-left,
+:where(html[data-ui="workbuddy"]) .atm-toolbar-right,
+:where(html[data-ui="workbuddy"]) .atm-batch-info {
+  display: flex;
+  align-items: center;
+}
+:where(html[data-ui="workbuddy"]) .atm-toolbar--traffic-light-offset,
+:where(html[data-ui="workbuddy"])
+  .automation-editor-form--page
+  .atm-detail-header--traffic-light-offset {
+  margin-left: 67px;
+}
+:where(html[data-ui="workbuddy"]) .atm-toolbar-left {
+  gap: 4px;
+}
+:where(html[data-ui="workbuddy"]) .atm-toolbar-tabs {
+  --wb-segmented-track-color-bg: transparent;
+  --wb-segmented-thumb-color-bg: var(--wb-bg-tertiary);
+  --wb-segmented-thumb-color-shadow: none;
+  --wb-segmented-item-icon-size: 16px;
+}
+:where(html[data-ui="workbuddy"]) .atm-toolbar-right {
+  gap: 12px;
+  flex-shrink: 1;
+  min-width: 0;
+}
+:where(html[data-ui="workbuddy"]) .atm-toolbar-right .atm-toolbar-btn {
+  padding-right: 12px;
+  color: var(--wb-color-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .atm-toolbar-right .atm-create-split {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--wb-button-border-radius-medium);
+  box-shadow: 0 6px 16px
+    color-mix(in srgb, var(--wb-color-text-primary) 10%, transparent);
+  overflow: hidden;
+}
+:where(html[data-ui="workbuddy"]) .atm-toolbar-right .atm-create-btn {
+  min-width: 0;
+  padding: 0 6px 0 12px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  box-shadow: none;
+}
+:where(html[data-ui="workbuddy"])
+  .atm-toolbar-right
+  .atm-create-menu-btn.wb-button {
+  width: 30px;
+  min-width: 30px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  box-shadow: none;
+  position: relative;
+}
+:where(html[data-ui="workbuddy"])
+  .atm-toolbar--breadcrumb
+  .atm-detail-breadcrumb-current {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+:where(html[data-ui="workbuddy"])
+  .atm-toolbar--breadcrumb
+  .atm-detail-breadcrumb-back.wb-button,
+:where(html[data-ui="workbuddy"])
+  .atm-toolbar--breadcrumb
+  .atm-detail-breadcrumb-back.wb-button:hover:not(:disabled) {
+  color: var(--wb-color-text-secondary);
+}
+:where(html[data-ui="workbuddy"]) .atm-empty-state {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0 20px 20px 14px;
+  justify-content: space-between;
+  gap: 24px;
+}
+:where(html[data-ui="workbuddy"]) .atm-empty-state-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex: 1 1 auto;
+  min-height: 200px;
+  padding: 24px 24px 0;
+}
+:where(html[data-ui="workbuddy"]) .atm-empty-state-icon {
+  color: var(--wb-color-text-tertiary);
+}
+:where(html[data-ui="workbuddy"]) .atm-empty-state-text {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--wb-color-text-secondary);
+  text-align: center;
+}
+:where(html[data-ui="workbuddy"]) .atm-empty-state-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+:where(html[data-ui="workbuddy"]) .atm-empty-action-btn.wb-button {
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+:where(html[data-ui="workbuddy"]) .atm-empty-state-templates {
+  width: 100%;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+:where(html[data-ui="workbuddy"]) .atm-empty-state-templates-title {
+  color: var(--wb-color-text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 22px;
+}
+:where(html[data-ui="workbuddy"]) .atm-task-list,
+:where(html[data-ui="workbuddy"]) .atm-records-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 20px 20px;
+  scrollbar-color: transparent transparent;
+}
+:where(html[data-ui="workbuddy"]) .atm-task-list::-webkit-scrollbar-thumb,
+:where(html[data-ui="workbuddy"]) .atm-records-list::-webkit-scrollbar-thumb {
+  background-color: transparent;
+}
+:where(html[data-ui="workbuddy"]) .atm-task-list:hover,
+:where(html[data-ui="workbuddy"]) .atm-records-list:hover {
+  scrollbar-color: var(--wb-color-text-disabled) transparent;
+}
+:where(html[data-ui="workbuddy"]) .atm-task-list:hover::-webkit-scrollbar-thumb,
+:where(html[data-ui="workbuddy"])
+  .atm-records-list:hover::-webkit-scrollbar-thumb {
+  background-color: var(--wb-color-text-disabled);
+}
+:where(html[data-ui="workbuddy"]) .atm-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 12px 20px;
+}
+:where(html[data-ui="workbuddy"]) .atm-task-group-label,
+:where(html[data-ui="workbuddy"]) .atm-records-group-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 0 6px 12px;
+  color: var(--wb-color-text-tertiary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+}
+:where(html[data-ui="workbuddy"]) .atm-task-group-label {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+:where(html[data-ui="workbuddy"]) .atm-task-group-label,
+:where(html[data-ui="workbuddy"]) .atm-records-group-label {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+:where(html[data-ui="workbuddy"]) .atm-records-group-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition:
+    transform 0.2s ease,
+    color 0.15s ease;
+  color: var(--wb-todo-menu-text-heading);
+}
+:where(html[data-ui="workbuddy"]) .atm-records-group-chevron svg {
+  width: 14px;
+  height: 14px;
+}
+:where(html[data-ui="workbuddy"]) .atm-records-group-chevron--collapsed {
+  transform: rotate(-90deg);
+}
+:where(html[data-ui="workbuddy"]) .atm-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  flex-shrink: 0;
+  min-height: 36px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  gap: 24px;
+  position: relative;
+  width: 100%;
+  text-align: left;
+}
+:where(html[data-ui="workbuddy"]) .atm-row:hover {
+  background: var(--wb-bg-hover-light);
+  border-radius: 8px;
+}
+:where(html[data-ui="workbuddy"]) .atm-row-left,
+:where(html[data-ui="workbuddy"]) .atm-row-content,
+:where(html[data-ui="workbuddy"]) .atm-row-meta,
+:where(html[data-ui="workbuddy"]) .atm-row-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+:where(html[data-ui="workbuddy"]) .atm-row-left,
+:where(html[data-ui="workbuddy"]) .atm-row-content,
+:where(html[data-ui="workbuddy"]) .atm-row-meta {
+  flex: 1;
+  overflow: hidden;
+}
+:where(html[data-ui="workbuddy"]) .atm-row-left,
+:where(html[data-ui="workbuddy"]) .atm-row-content,
+:where(html[data-ui="workbuddy"]) .atm-row-main,
+:where(html[data-ui="workbuddy"]) .atm-row-meta {
+  gap: 8px;
+}
+:where(html[data-ui="workbuddy"]) .atm-row-leading {
+  width: 16px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--wb-color-text-disabled);
+}
+:where(html[data-ui="workbuddy"]) .atm-row-main {
+  flex: 0 1 auto;
+  max-width: 28%;
+}
+:where(html[data-ui="workbuddy"]) .automation-workspace__name-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+:where(html[data-ui="workbuddy"]) .atm-row-name,
+:where(html[data-ui="workbuddy"]) .atm-row-workspace,
+:where(html[data-ui="workbuddy"]) .atm-row-schedule,
+:where(html[data-ui="workbuddy"]) .atm-row-next,
+:where(html[data-ui="workbuddy"]) .atm-row-result-label,
+:where(html[data-ui="workbuddy"]) .atm-row-summary,
+:where(html[data-ui="workbuddy"]) .atm-row-time,
+:where(html[data-ui="workbuddy"]) .atm-row-paused-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  line-height: 22px;
+}
+:where(html[data-ui="workbuddy"]) .atm-row-name {
+  font-weight: 400;
+  color: var(--wb-color-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .atm-row-workspace,
+:where(html[data-ui="workbuddy"]) .atm-row-schedule,
+:where(html[data-ui="workbuddy"]) .atm-row-result-label,
+:where(html[data-ui="workbuddy"]) .atm-row-summary,
+:where(html[data-ui="workbuddy"]) .atm-row-next,
+:where(html[data-ui="workbuddy"]) .atm-row-time,
+:where(html[data-ui="workbuddy"]) .atm-row-paused-label {
+  color: var(--wb-color-text-tertiary);
+}
+:where(html[data-ui="workbuddy"]) .atm-row-workspace {
+  max-width: 28%;
+  flex: 0 1 auto;
+}
+:where(html[data-ui="workbuddy"]) .atm-row-schedule {
+  max-width: 42%;
+  flex: 0 1 auto;
+}
+:where(html[data-ui="workbuddy"]) .atm-row-result-label {
+  max-width: 100%;
+  flex: 0 1 auto;
+}
+:where(html[data-ui="workbuddy"]) .atm-row-right {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+:where(html[data-ui="workbuddy"]) .atm-row-right-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+:where(html[data-ui="workbuddy"]) .atm-row-hover-actions {
+  display: none;
+  align-items: center;
+  gap: 12px;
+}
+:where(html[data-ui="workbuddy"]) .atm-row:hover .atm-row-hover-actions,
+:where(html[data-ui="workbuddy"]) .atm-row--menu-open .atm-row-hover-actions {
+  display: flex;
+}
+:where(html[data-ui="workbuddy"]) .atm-row:hover .atm-row-right-text,
+:where(html[data-ui="workbuddy"]) .atm-row--menu-open .atm-row-right-text {
+  display: none;
+}
+:where(html[data-ui="workbuddy"])
+  .atm-row-action-btn.wb-button.wb-button--icon-only.wb-button--ghost {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  color: var(--wb-color-text-secondary);
+}
+:where(html[data-ui="workbuddy"])
+  .atm-row-action-btn.wb-button.wb-button--icon-only.wb-button--ghost:hover:not(
+    :disabled
+  ) {
+  color: var(--wb-color-text-primary);
+}
+:where(html[data-ui="workbuddy"])
+  .automation-workspace__history-row
+  .atm-row-name {
+  max-width: 50%;
+  flex: 0 1 auto;
+}
+:where(html[data-ui="workbuddy"])
+  .automation-workspace__history-row
+  .atm-row-result-label {
+  flex: 0 1 auto;
+  color: var(--wb-color-text-tertiary);
+}
+:where(html[data-ui="workbuddy"])
+  .automation-workspace__history-row
+  .atm-row-right-text {
+  margin-left: auto;
+}
+:where(html[data-ui="workbuddy"]) .atm-row-record-actions {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+:where(html[data-ui="workbuddy"])
+  .automation-workspace__history-row:hover
+  .atm-row-record-actions {
+  display: inline-flex;
+}
+:where(html[data-ui="workbuddy"]) .atm-row--readonly,
+:where(html[data-ui="workbuddy"])
+  .atm-row--readonly
+  .automation-workspace__name-button {
+  cursor: default;
+}

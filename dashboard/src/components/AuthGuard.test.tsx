@@ -82,13 +82,17 @@ describe("AuthGuard offline boot", () => {
         <AuthGuard>
           <Routes>
             <Route path="/a" element={<NavProbe />} />
-            <Route path="/b" element={<div>protected-shell</div>} />
+            <Route
+              path="/b"
+              element={<div data-testid="arrived-shell">protected-shell</div>}
+            />
           </Routes>
         </AuthGuard>
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("protected-shell")).toBeInTheDocument();
+    // Wait for the destination, since NavProbe unmounts immediately after navigation.
+    expect(await screen.findByTestId("arrived-shell")).toBeInTheDocument();
     await waitFor(() => {
       expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
     });

@@ -901,6 +901,14 @@
   :global(.ant-segmented-item-label) {
     font-weight: 500;
   }
+
+  @media (max-width: 767px) {
+    overflow-x: auto;
+
+    :global(.octop-segmented-group) {
+      min-width: max-content;
+    }
+  }
 }
 
 .importHintBlock {

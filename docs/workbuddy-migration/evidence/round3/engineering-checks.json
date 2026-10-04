@@ -1,0 +1,76 @@
+{
+  "recordedAt": "2026-10-04T17:21:14.609395+08:00",
+  "checks": [
+    {
+      "id": "ship",
+      "command": "UV_NO_SYNC=1 make all",
+      "status": "passed",
+      "logSha256": "6bcb37b6ebdb5478ca12527a050882a7d5d20e4f108e7fa51c92cba4c78e5b45",
+      "summary": "4166 passed / 17 skipped; Ruff/mypy passed"
+    },
+    {
+      "id": "types",
+      "command": "cd dashboard && npx tsc -b",
+      "status": "passed",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "summary": "No TypeScript errors"
+    },
+    {
+      "id": "lint",
+      "command": "cd dashboard && npm run lint",
+      "status": "passed",
+      "logSha256": "374dab73683b755a4415556c4a81aab392c16f3dfface7c9e9eee0b3cf7e1edf",
+      "summary": "0 errors / 67 existing warnings"
+    },
+    {
+      "id": "workbuddy-tests",
+      "command": "VITE_UI_VARIANT=workbuddy npm run test",
+      "status": "passed",
+      "logSha256": "b4ab41edc0cf2a36d833b266cf1c31cdd9f8e28f9b866c12762169efbdf0fd94",
+      "summary": "232 files / 1200 tests"
+    },
+    {
+      "id": "legacy-tests",
+      "command": "VITE_UI_VARIANT=legacy npm run test",
+      "status": "passed",
+      "logSha256": "4fd4e61e0e0e344f918afb9aa49e864d07533d1e5fa4308e6e01953ebcb3481b",
+      "summary": "232 files / 1200 tests"
+    },
+    {
+      "id": "i18n",
+      "command": "uv run pytest tests/unit/i18n -q",
+      "status": "passed",
+      "logSha256": "1490af2a38c500498356a8bc3660dc902b16e88996489ca345b6721bab39f823",
+      "summary": "75 tests"
+    },
+    {
+      "id": "format",
+      "command": "cd dashboard && npm run format:check",
+      "status": "passed",
+      "logSha256": "5cc21821fb42eea8a5fbc69aebcb2edec2a7f3b824269bfd77e6c31b50ba80a8",
+      "summary": "Formatting passed"
+    },
+    {
+      "id": "tools",
+      "command": "node --test scripts/compare-workbuddy-screenshots.test.mjs scripts/workbuddy-inventory.test.mjs",
+      "status": "passed",
+      "logSha256": "b6bfdef3b524cb45206fe76c10d8cbd1d701812b00327af5b8dc8b1b02d215cc",
+      "summary": "6 tests"
+    },
+    {
+      "id": "workbuddy-build",
+      "command": "VITE_UI_VARIANT=workbuddy make build-frontend",
+      "status": "passed",
+      "logSha256": "1fdc75d20bf77b0a40515bc938898567871859c1d0a604c71e6da85b903a4fc2",
+      "summary": "112 precache entries / 7428.33 KiB"
+    },
+    {
+      "id": "legacy-build",
+      "command": "VITE_UI_VARIANT=legacy make build-frontend",
+      "status": "passed",
+      "logSha256": "39b4ae096e91183fccb1d79ee51b9965550625a1a719d6c5695b157fe47c2be6",
+      "summary": "110 precache entries / 6748.87 KiB"
+    }
+  ],
+  "note": "Full frontend modes ran sequentially. Final TypeScript, lint, formatting and tooling checks passed. Both official builds ran after frontend tests. Legacy remains the default; no release."
+}

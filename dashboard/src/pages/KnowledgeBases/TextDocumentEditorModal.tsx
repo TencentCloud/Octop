@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { Button, Drawer, Form, Input, Segmented, Select } from "antd";
+import { Button, Form, Input, Segmented, Select } from "antd";
 import { Eye, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import DocumentPreviewLoading from "../../components/DocumentPreviewLoading";
 import Markdown from "../../components/Markdown";
 import styles from "./index.module.less";
+import BusinessDetailDialog from "../../components/BusinessDetailDialog";
+import { WORKBUDDY_UI } from "../../workbuddy/variant";
 
 // Re-export preview helpers so existing page imports keep working.
 export {
@@ -124,7 +126,8 @@ export default function TextDocumentEditorModal({
       : t("knowledgeBases.editDocument");
 
   return (
-    <Drawer
+    <BusinessDetailDialog
+      kind="editor"
       open={open}
       placement="right"
       title={
@@ -142,7 +145,12 @@ export default function TextDocumentEditorModal({
       width={drawerWidth}
       className={styles.textEditorDrawer}
       styles={{
-        body: { padding: 0, display: "flex", overflow: "hidden" },
+        body: {
+          padding: 0,
+          display: "flex",
+          overflow: "hidden",
+          ...(WORKBUDDY_UI ? { height: "min(560px, 60dvh)" } : {}),
+        },
         footer: { padding: "12px 20px" },
       }}
       footer={
@@ -265,6 +273,6 @@ export default function TextDocumentEditorModal({
           </div>
         </Form>
       )}
-    </Drawer>
+    </BusinessDetailDialog>
   );
 }

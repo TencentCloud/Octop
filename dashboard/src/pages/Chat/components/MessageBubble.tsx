@@ -58,6 +58,8 @@ import {
   type HitlDecisionHandler,
 } from "../../../api/types/hitl";
 import styles from "../index.module.less";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
+import UserMessageSurface from "../../../workbuddy/UserMessageSurface";
 import {
   DefaultToolRenderer,
   builtinPluginHost,
@@ -529,6 +531,8 @@ export function ToolDetailsInline({
   );
 }
 
+const UserTextSurface = WORKBUDDY_UI ? UserMessageSurface : "div";
+
 function MessageBubble({
   message,
   agentId = null,
@@ -777,11 +781,13 @@ function MessageBubble({
 
   return (
     <div
-      className={`${styles.messageBubble} ${
-        isUser ? styles.userBubble : styles.assistantBubble
-      } ${showUserComposerTags ? styles.userBubbleWithTags : ""} ${
-        isError ? styles.errorBubble : ""
-      } ${compact ? styles.compactBubble : ""}`}
+      className={`${styles.messageBubble} wb-message ${
+        isUser ? "wb-message--user" : "wb-message--assistant"
+      } ${isUser ? styles.userBubble : styles.assistantBubble} ${
+        showUserComposerTags ? styles.userBubbleWithTags : ""
+      } ${isError ? styles.errorBubble : ""} ${
+        compact ? styles.compactBubble : ""
+      }`}
     >
       {!isUser && senderAvatar ? (
         <div className={styles.avatarCol}>{senderAvatar}</div>
@@ -831,7 +837,9 @@ function MessageBubble({
                   </div>
                 </div>
               ) : (
-                <div className={styles.userText}>
+                <UserTextSurface
+                  className={WORKBUDDY_UI ? undefined : styles.userText}
+                >
                   {imageAttachments.length > 0 && (
                     <ImageGallery images={imageAttachments} agentId={agentId} />
                   )}
@@ -872,7 +880,7 @@ function MessageBubble({
                     />
                   )}
                   {message.content && <div>{message.content}</div>}
-                </div>
+                </UserTextSurface>
               )}
             </div>
           </div>
@@ -924,7 +932,9 @@ function MessageBubble({
                 )}
               </div>
             ) : (
-              <div className={`${styles.assistantText} ${groupCls}`}>
+              <div
+                className={`${styles.assistantText} ${groupCls} wb-message__text`}
+              >
                 {imageAttachments.length > 0 && (
                   <ImageGallery images={imageAttachments} agentId={agentId} />
                 )}
@@ -986,7 +996,7 @@ function MessageBubble({
               !isEditing &&
               Boolean(message.content || onEditUserMessage))) && (
             <div
-              className={`${styles.msgMetaRow} ${
+              className={`${styles.msgMetaRow} wb-message__actions ${
                 isUser ? styles.msgMetaRowRight : ""
               }`}
             >

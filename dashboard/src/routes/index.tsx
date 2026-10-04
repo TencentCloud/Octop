@@ -1,4 +1,8 @@
+import { legacySettingsPath } from "../workbuddy/settingsRegistry";
 import { lazy } from "react";
+import { WORKBUDDY_UI } from "../workbuddy/variant";
+import { DEFERRED_FEATURES } from "../workbuddy/capabilities";
+const DeferredFeaturePage = lazy(() => import("../pages/DeferredFeature"));
 import { Navigate, useLocation } from "react-router-dom";
 
 // Lazy-loaded pages — Common
@@ -47,6 +51,7 @@ export interface RouteConfig {
 }
 
 export const pathToKey: Record<string, string> = {
+  "/home": "home",
   "/chat": "chat",
   // Common
   "/experts": "experts",
@@ -102,12 +107,14 @@ export const FULLSCREEN_PATHS = new Set([
   "/workbench/terminal",
   "/workbench/browser",
   "/chat",
+  "/home",
   "/remote-desktop",
   "/remote-desktop/desktop",
   "/remote-desktop/phone",
   "/remote-desktop/phone/screen",
   "/remote-desktop/phone/shell",
   "/remote-phone",
+  ...(WORKBUDDY_UI ? DEFERRED_FEATURES.map((entry) => entry.path) : []),
 ]);
 
 /**
@@ -143,7 +150,14 @@ export function resolveSelectedKey(pathname: string): string {
   return "";
 }
 
-export const routeConfigs: RouteConfig[] = [
+const baseRouteConfigs: RouteConfig[] = [
+  { path: "/home", element: null, useWrapper: true },
+  ...(WORKBUDDY_UI
+    ? DEFERRED_FEATURES.map((feature) => ({
+        path: `${feature.path}/*`,
+        element: <DeferredFeaturePage feature={feature.id} />,
+      }))
+    : []),
   // Chat (handled via ChatWithKey wrapper in MainLayout)
   { path: "/chat", element: null, useWrapper: true },
   { path: "/chat/:agentId", element: null, useWrapper: true },
@@ -285,6 +299,45 @@ export const routeConfigs: RouteConfig[] = [
 
   // Misc
   { path: "/pwa-debug", element: <PwaDebugPage /> },
-  { path: "/", element: <Navigate to="/chat" replace /> },
+  {
+    path: "/",
+    element: <Navigate to={WORKBUDDY_UI ? "/home" : "/chat"} replace />,
+  },
   { path: "*", element: <NotFoundPage /> },
 ];
+
+function SettingsCompatibilityRedirect() {
+  const location = useLocation();
+  const to = legacySettingsPath(location.pathname, location.search);
+  return to ? (
+    <Navigate to={`${to}${location.hash}`} replace state={location.state} />
+  ) : null;
+}
+const legacyWorkspacePaths: Record<string, string> = {
+  "/orca/cron": "/tasks",
+  "/octop/cron": "/tasks",
+  "/cron-jobs": "/tasks",
+  "/sessions": "/chat",
+};
+function WorkspaceCompatibilityRedirect() {
+  const location = useLocation();
+  return (
+    <Navigate
+      to={`${legacyWorkspacePaths[location.pathname]}${location.search}${
+        location.hash
+      }`}
+      replace
+      state={location.state}
+    />
+  );
+}
+export const routeConfigs: RouteConfig[] = baseRouteConfigs.map((route) => {
+  if (!WORKBUDDY_UI) return route;
+  if (["/skills", "/experts", "/connectors"].includes(route.path))
+    return { ...route, element: null };
+  if (legacySettingsPath(route.path.replace("/*", ""), ""))
+    return { ...route, element: <SettingsCompatibilityRedirect /> };
+  if (legacyWorkspacePaths[route.path])
+    return { ...route, element: <WorkspaceCompatibilityRedirect /> };
+  return route;
+});

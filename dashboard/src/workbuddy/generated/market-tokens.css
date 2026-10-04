@@ -1,0 +1,585 @@
+/* Extracted from WorkBuddy 5.5.6; regenerate with npm run workbuddy:extract. */
+
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .detail-panel,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .detail-panel,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .detail-panel,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .detail-panel {
+  --wb-file-op-pdf: #ff8a7a;
+  --wb-file-op-code: #7fa8bd;
+  --wb-file-op-word: #7faeff;
+  --wb-file-op-presentation: #f0785a;
+  --wb-file-op-spreadsheet: #74c99b;
+  --wb-border-default: rgba(255, 255, 255, 0.1);
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .cb-task-progress,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .cb-task-progress,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .cb-task-progress,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .cb-task-progress {
+  --cb-task-icon-completed: var(--wb-color-text-disabled);
+  --cb-task-icon-waiting: var(--wb-icon-secondary);
+  --cb-task-completed-text: var(
+    --wb-color-text-disabled,
+    rgba(255, 255, 255, 0.25)
+  );
+  --cb-task-strikethrough: var(
+    --wb-color-text-disabled,
+    rgba(255, 255, 255, 0.25)
+  );
+}
+:where(html[data-ui="workbuddy"]),
+:where(html[data-ui="workbuddy"]) {
+  --wb-checkin-bg: linear-gradient(180deg, #0dc7a4 0%, #4de49e 100%);
+  --wb-checkin-header-fg: #ffffff;
+  --wb-checkin-header-icon: #ffffff;
+  --wb-checkin-period-tag-bg: rgba(255, 255, 255, 0.5);
+  --wb-checkin-period-tag-fg: #008e70;
+  --wb-checkin-info-bg: #ffffff;
+  --wb-checkin-divider: #f2f2f2;
+  --wb-checkin-tomorrow-bg: #d6f0e2;
+  --wb-checkin-tomorrow-fg: #2a8a66;
+  --wb-checkin-pop-flash: #4ecba0;
+  --wb-checkin-btn-primary-bg: rgba(0, 0, 0, 0.75);
+  --wb-checkin-btn-primary-bg-hover: rgba(0, 0, 0, 0.85);
+  --wb-checkin-btn-primary-fg: #ffffff;
+  --wb-checkin-btn-primary-border: transparent;
+  --wb-checkin-btn-primary-bg-disabled: rgba(0, 0, 0, 0.05);
+  --wb-checkin-btn-primary-fg-disabled: rgba(0, 0, 0, 0.3);
+  --wb-checkin-btn-primary-border-disabled: transparent;
+  --wb-checkin-btn-success-bg: #10a37f;
+  --wb-checkin-btn-success-border: #10a37f;
+  --wb-checkin-btn-success-fg: #ffffff;
+  --wb-checkin-btn-secondary-bg: transparent;
+  --wb-checkin-btn-secondary-fg: rgba(0, 0, 0, 0.9);
+  --wb-checkin-btn-secondary-border: #e6e6e6;
+  --wb-checkin-btn-secondary-bg-hover: rgba(0, 0, 0, 0.04);
+  --wb-checkin-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.06),
+    0 3px 6px -8px rgba(0, 0, 0, 0.06);
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"]),
+:where(html[data-ui="workbuddy"][data-theme="dark"]) {
+  --wb-checkin-bg: var(--wb-color-palette-brand-10, #00614d);
+  --wb-checkin-header-fg: #ffffff;
+  --wb-checkin-header-icon: #ffffff;
+  --wb-checkin-period-tag-bg: rgba(255, 255, 255, 0.2);
+  --wb-checkin-period-tag-fg: #ffffff;
+  --wb-checkin-info-bg: #242424;
+  --wb-checkin-divider: rgba(255, 255, 255, 0.08);
+  --wb-checkin-tomorrow-bg: rgba(114, 200, 163, 0.18);
+  --wb-checkin-tomorrow-fg: #72c8a3;
+  --wb-checkin-pop-flash: #72c8a3;
+  --wb-checkin-btn-primary-bg: rgba(255, 255, 255, 0.9);
+  --wb-checkin-btn-primary-bg-hover: #ffffff;
+  --wb-checkin-btn-primary-fg: #000000;
+  --wb-checkin-btn-primary-border: transparent;
+  --wb-checkin-btn-primary-bg-disabled: rgba(255, 255, 255, 0.05);
+  --wb-checkin-btn-primary-fg-disabled: rgba(255, 255, 255, 0.3);
+  --wb-checkin-btn-primary-border-disabled: transparent;
+  --wb-checkin-btn-success-bg: #00c29a;
+  --wb-checkin-btn-success-border: #00c29a;
+  --wb-checkin-btn-success-fg: #ffffff;
+  --wb-checkin-btn-secondary-bg: transparent;
+  --wb-checkin-btn-secondary-fg: #eaeaea;
+  --wb-checkin-btn-secondary-border: rgba(255, 255, 255, 0.18);
+  --wb-checkin-btn-secondary-bg-hover: rgba(255, 255, 255, 0.06);
+  --wb-checkin-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.32),
+    0 3px 6px -8px rgba(0, 0, 0, 0.24);
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .sidebar-next,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .sidebar-next,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .sidebar-next,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .sidebar-next {
+  --cb-panel-bg-primary: var(--wb-sidebar-bg);
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .sidebar-next-main-header,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .sidebar-next-main-header,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .sidebar-next-main-header,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .sidebar-next-main-header {
+  --cb-bg-secondary: var(--wb-sidebar-bg);
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .sidebar-next-
+  > .detail-panel.detail-panel--no-header,
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .sidebar-next-
+  > .detail-panel.detail-panel--no-header,
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .sidebar-next-
+  > .detail-panel.detail-panel--no-header,
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .sidebar-next-
+  > .detail-panel.detail-panel--no-header {
+  --cb-dropdown-item-selected-bg-color: var(--wb-todo-menu-bg-active);
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .sidebar-next-
+  > .detail-panel.detail-panel--no-header
+  .detail-sidebar,
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .sidebar-next-
+  > .detail-panel.detail-panel--no-header
+  .detail-sidebar,
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .sidebar-next-
+  > .detail-panel.detail-panel--no-header
+  .detail-sidebar,
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .sidebar-next-
+  > .detail-panel.detail-panel--no-header
+  .detail-sidebar {
+  --cb-bg-primary: var(--wb-todo-menu-bg-active);
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .sidebar-next-
+  > .detail-panel.detail-panel--no-header
+  .detail-sidebar
+  .cb-sidebar-nav__item:hover,
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .sidebar-next-
+  > .detail-panel.detail-panel--no-header
+  .detail-sidebar
+  .cb-sidebar-nav__item:hover,
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .sidebar-next-
+  > .detail-panel.detail-panel--no-header
+  .detail-sidebar
+  .cb-sidebar-nav__item:hover,
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .sidebar-next-
+  > .detail-panel.detail-panel--no-header
+  .detail-sidebar
+  .cb-sidebar-nav__item:hover {
+  --cb-sidebar-item-hover-background: var(--wb-todo-menu-bg-hover);
+}
+:where(html[data-ui="workbuddy"][data-theme="light"]),
+:where(html[data-ui="workbuddy"]) {
+  --ec-bg-primary: #ffffff;
+  --ec-bg-secondary: #fafafa;
+  --ec-bg-tertiary: #f5f5f5;
+  --ec-bg-hover: #f0f0f0;
+  --ec-bg-active: #f5f5f5;
+  --ec-text-primary: #1a1a1a;
+  --ec-text-secondary: #666666;
+  --ec-text-tertiary: #999999;
+  --ec-text-placeholder: #cccccc;
+  --ec-text-desc: var(--wb-color-text-secondary);
+  --ec-text-usage: var(--wb-color-text-tertiary);
+  --ec-text-use-count: var(--wb-color-text-secondary);
+  --ec-text-category-tab: var(--wb-color-text-secondary);
+  --ec-text-contrast: var(--wb-button-primary-fg);
+  --ec-text-soft: var(--wb-color-text-secondary);
+  --ec-text-strong: var(--wb-color-text-primary);
+  --ec-text-muted: var(--wb-text-muted);
+  --ec-expert-card-bg: #ffffff;
+  --ec-expert-card-hover-bg: #f0f0f0;
+  --ec-expert-card-hover-border: rgba(0, 0, 0, 0.08);
+  --ec-expert-card-avatar-bg: #a6d5da;
+  --ec-expert-card-shadow: 0 16px 32px rgba(0, 0, 0, 0.03);
+  --ec-expert-card-desc-color: rgba(0, 0, 0, 0.7);
+  --ec-card-tag-bg: rgba(0, 0, 0, 0.04);
+  --ec-card-tag-border: transparent;
+  --ec-card-tag-color: rgba(0, 0, 0, 0.7);
+  --ec-filter-border: transparent;
+  --ec-filter-text: var(--ec-text-category-tab);
+  --ec-filter-text-hover: var(--ec-text-secondary);
+  --ec-filter-text-active: var(--ec-text-primary);
+  --ec-primary: #1f1f1f;
+  --ec-primary-light: #f5f5f5;
+  --ec-primary-hover: #000000;
+  --ec-primary-shadow: rgba(0, 0, 0, 0.12);
+  --ec-primary-bg: #f5f2ff;
+  --ec-border: #e8e8e8;
+  --ec-border-light: var(--wb-border-default);
+  --ec-border-hover: var(--wb-border-strong);
+  --ec-border-subtle: var(--wb-border-default);
+  --ec-card-bg: #ffffff;
+  --ec-modal-bg: var(--wb-bg-popover);
+  --ec-card-border-static: #f0f0f0;
+  --ec-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --ec-card-shadow-hover: 0 12px 32px rgba(0, 0, 0, 0.12);
+  --ec-card-border-hover: var(--wb-border-strong);
+  --ec-shadow-sm: var(--wb-shadow-dialog-md);
+  --ec-shadow-lg: var(--wb-shadow-dialog-md);
+  --ec-btn-gradient: linear-gradient(135deg, #2f2f2f, #111111);
+  --ec-btn-text: #ffffff;
+  --ec-btn-bg: var(--wb-button-primary-bg);
+  --ec-btn-bg-hover: var(--wb-button-primary-bg-hover);
+  --ec-surface-muted: var(--wb-bg-secondary);
+  --ec-surface-subtle: var(--wb-bg-primary);
+  --ec-surface-hover: var(--wb-bg-hover);
+  --ec-modal-tag-chip-bg: rgba(0, 0, 0, 0.02);
+  --ec-modal-tag-chip-color: rgba(0, 0, 0, 0.62);
+  --ec-modal-tag-chip-border: rgba(0, 0, 0, 0.06);
+  --ec-modal-quick-prompt-bg: rgba(0, 0, 0, 0.02);
+  --ec-modal-quick-prompt-bg-hover: rgba(0, 0, 0, 0.04);
+  --ec-modal-quick-prompt-color: rgba(0, 0, 0, 0.62);
+  --ec-modal-quick-prompt-border: rgba(0, 0, 0, 0.06);
+  --ec-success: #10b981;
+  --ec-warning: #f59e0b;
+  --ec-error: #ff4d4f;
+  --ec-avatar-fallback-bg-1: #6366f1;
+  --ec-avatar-fallback-bg-2: #8b5cf6;
+  --ec-avatar-fallback-bg-3: #ec4899;
+  --ec-avatar-fallback-bg-4: #f59e0b;
+  --ec-avatar-fallback-bg-5: #10b981;
+  --ec-avatar-fallback-bg-6: #3b82f6;
+  --ec-avatar-fallback-bg-7: #ef4444;
+  --ec-avatar-fallback-bg-8: #14b8a6;
+  --ec-operational-tag-bg: rgba(0, 0, 0, 0.05);
+  --ec-operational-tag-color: #393939;
+  --ec-operational-tag-border: transparent;
+  --ec-operational-tag-icon-color: #3d3d3d;
+  --ec-operational-tag-check-color: #f7d18f;
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"]) {
+  --ec-bg-primary: var(--content-bg, var(--wb-bg-primary));
+  --ec-bg-secondary: var(--sidebar-bg, var(--wb-bg-secondary));
+  --ec-bg-tertiary: var(--filter-bg, rgba(255, 255, 255, 0.04));
+  --ec-bg-hover: var(--sidebar-hover, rgba(255, 255, 255, 0.04));
+  --ec-bg-active: var(--sidebar-active, rgba(255, 255, 255, 0.07));
+  --ec-text-primary: var(--text-primary, var(--wb-color-text-primary));
+  --ec-text-secondary: var(--text-secondary, var(--wb-color-text-secondary));
+  --ec-text-tertiary: var(--text-muted, var(--wb-color-text-tertiary));
+  --ec-text-placeholder: var(--text-dim, rgba(255, 255, 255, 0.4));
+  --ec-text-desc: var(--text-secondary, var(--wb-color-text-secondary));
+  --ec-text-usage: var(--text-muted, var(--wb-color-text-tertiary));
+  --ec-text-use-count: var(--text-dim, rgba(255, 255, 255, 0.4));
+  --ec-text-category-tab: var(--text-muted, rgba(255, 255, 255, 0.58));
+  --ec-text-contrast: var(--wb-button-primary-fg);
+  --ec-text-soft: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  --ec-text-strong: var(--wb-color-text-primary);
+  --ec-text-muted: var(--text-muted, rgba(255, 255, 255, 0.58));
+  --ec-expert-card-bg: var(--ec-card-bg);
+  --ec-expert-card-hover-bg: var(--card-hover-bg, #2c2c2c);
+  --ec-expert-card-hover-border: transparent;
+  --ec-expert-card-avatar-bg: var(--ec-surface-muted);
+  --ec-expert-card-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.03);
+  --ec-expert-card-desc-color: var(--ec-text-desc);
+  --ec-card-tag-bg: rgba(0, 0, 0, 0.04);
+  --ec-card-tag-border: transparent;
+  --ec-card-tag-color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  --ec-filter-border: var(--filter-border, rgba(255, 255, 255, 0.1));
+  --ec-filter-text: var(--text-muted, rgba(255, 255, 255, 0.56));
+  --ec-filter-text-hover: var(--text-secondary, rgba(255, 255, 255, 0.74));
+  --ec-filter-text-active: var(--text-primary, rgba(255, 255, 255, 0.94));
+  --ec-primary: #f5f5f5;
+  --ec-primary-light: rgba(255, 255, 255, 0.12);
+  --ec-primary-hover: #ffffff;
+  --ec-primary-shadow: rgba(255, 255, 255, 0.12);
+  --ec-primary-bg: rgba(255, 255, 255, 0.08);
+  --ec-border: var(--card-border, rgba(255, 255, 255, 0.08));
+  --ec-border-light: var(--card-border, rgba(255, 255, 255, 0.08));
+  --ec-border-hover: var(--card-hover-border, rgba(255, 255, 255, 0.12));
+  --ec-border-subtle: var(--sidebar-border, rgba(255, 255, 255, 0.08));
+  --ec-card-bg: rgba(255, 255, 255, 0.05);
+  --ec-modal-bg: var(--wb-bg-popover);
+  --ec-card-border-static: var(--card-border, rgba(255, 255, 255, 0.08));
+  --ec-card-shadow: none;
+  --ec-card-shadow-hover: var(--card-hover-shadow, none);
+  --ec-card-border-hover: var(--card-hover-border, rgba(255, 255, 255, 0.14));
+  --ec-shadow-sm: none;
+  --ec-shadow-lg: none;
+  --ec-btn-gradient: linear-gradient(135deg, #3f434d, #323742);
+  --ec-btn-text: #ffffff;
+  --ec-btn-bg: var(--wb-button-primary-bg);
+  --ec-btn-bg-hover: var(--wb-button-primary-bg-hover);
+  --ec-btn-color: var(--wb-button-primary-fg);
+  --ec-surface-muted: var(--sidebar-bg, #262626);
+  --ec-surface-subtle: var(--filter-bg, #242424);
+  --ec-surface-hover: var(--sidebar-hover, #2c2c2c);
+  --ec-modal-tag-chip-bg: var(--filter-bg, rgba(255, 255, 255, 0.06));
+  --ec-modal-tag-chip-color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  --ec-modal-tag-chip-border: var(--card-border, rgba(255, 255, 255, 0.08));
+  --ec-modal-quick-prompt-bg: var(--card-bg, #1f2024);
+  --ec-modal-quick-prompt-bg-hover: var(
+    --sidebar-active,
+    rgba(255, 255, 255, 0.1)
+  );
+  --ec-modal-quick-prompt-color: var(
+    --text-secondary,
+    rgba(255, 255, 255, 0.72)
+  );
+  --ec-modal-quick-prompt-border: var(--card-border, rgba(255, 255, 255, 0.08));
+  --ec-success: #a6a6a6;
+  --ec-warning: #d0d0d0;
+  --ec-error: #ec5558;
+  --ec-avatar-fallback-bg-1: #4f5667;
+  --ec-avatar-fallback-bg-2: #5b526d;
+  --ec-avatar-fallback-bg-3: #6a4f65;
+  --ec-avatar-fallback-bg-4: #6b5b48;
+  --ec-avatar-fallback-bg-5: #4f665c;
+  --ec-avatar-fallback-bg-6: #4b5f73;
+  --ec-avatar-fallback-bg-7: #674f52;
+  --ec-avatar-fallback-bg-8: #4f6667;
+  --ec-operational-tag-bg: rgba(255, 255, 255, 0.05);
+  --ec-operational-tag-color: #e0e0e0;
+  --ec-operational-tag-border: transparent;
+  --ec-operational-tag-icon-color: #d0d0d0;
+  --ec-operational-tag-check-color: #242424;
+}
+:where(html[data-ui="workbuddy"][data-theme="light"]),
+:where(html[data-ui="workbuddy"]) {
+  --ec-featured-scene-area-bg: #fafafa;
+  --ec-featured-scene-bg: var(--wb-palette-brand-1);
+  --ec-featured-scene-overlay: linear-gradient(
+    180deg,
+    transparent 18.78%,
+    var(--wb-bg-card) 90.23%
+  );
+  --ec-featured-scene-border: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.08) 100%
+  );
+  --ec-featured-scene-shadow: none;
+  --ec-featured-scene-fade-mask: linear-gradient(
+    90deg,
+    rgba(250, 250, 250, 0),
+    rgba(250, 250, 250, 0.92)
+  );
+  --ec-featured-scene-row-hover-bg: rgba(0, 0, 0, 0.05);
+  --ec-featured-scene-tag-bg: rgba(0, 0, 0, 0.05);
+  --ec-featured-scene-tag-color: #393939;
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"]) {
+  --ec-featured-scene-area-bg: var(--ec-bg-primary);
+  --ec-featured-scene-bg: var(--wb-bg-card-strong);
+  --ec-featured-scene-overlay: linear-gradient(
+    180deg,
+    transparent 18.78%,
+    var(--wb-bg-card) 90.23%
+  );
+  --ec-featured-scene-border: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.12) 100%
+  );
+  --ec-featured-scene-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.18);
+  --ec-featured-scene-fade-mask: linear-gradient(
+    90deg,
+    rgba(17, 18, 21, 0),
+    rgba(17, 18, 21, 0.92)
+  );
+  --ec-featured-scene-row-hover-bg: var(--wb-bg-active);
+  --ec-featured-scene-tag-bg: rgba(255, 255, 255, 0.08);
+  --ec-featured-scene-tag-color: var(--ec-text-strong);
+}
+:where(html[data-ui="workbuddy"][data-theme="light"]),
+:where(html[data-ui="workbuddy"]) {
+  --ec-bg-primary: #ffffff;
+  --ec-bg-secondary: #fafafa;
+  --ec-bg-tertiary: #f5f5f5;
+  --ec-bg-hover: #f0f0f0;
+  --ec-bg-active: #f5f5f5;
+  --ec-text-primary: #1a1a1a;
+  --ec-text-secondary: #666666;
+  --ec-text-tertiary: #999999;
+  --ec-text-placeholder: #cccccc;
+  --ec-text-desc: var(--wb-color-text-secondary);
+  --ec-text-usage: var(--wb-color-text-tertiary);
+  --ec-text-use-count: var(--wb-color-text-secondary);
+  --ec-text-category-tab: var(--wb-color-text-secondary);
+  --ec-text-contrast: var(--wb-button-primary-fg);
+  --ec-text-soft: var(--wb-color-text-secondary);
+  --ec-text-strong: var(--wb-color-text-primary);
+  --ec-text-muted: var(--wb-text-muted);
+  --ec-expert-card-bg: #ffffff;
+  --ec-expert-card-hover-bg: #f0f0f0;
+  --ec-expert-card-hover-border: rgba(0, 0, 0, 0.08);
+  --ec-expert-card-avatar-bg: #a6d5da;
+  --ec-expert-card-shadow: 0 16px 32px rgba(0, 0, 0, 0.03);
+  --ec-expert-card-desc-color: rgba(0, 0, 0, 0.7);
+  --ec-card-tag-bg: rgba(0, 0, 0, 0.04);
+  --ec-card-tag-border: transparent;
+  --ec-card-tag-color: rgba(0, 0, 0, 0.7);
+  --ec-filter-border: transparent;
+  --ec-filter-text: var(--ec-text-category-tab);
+  --ec-filter-text-hover: var(--ec-text-secondary);
+  --ec-filter-text-active: var(--ec-text-primary);
+  --ec-primary: #1f1f1f;
+  --ec-primary-light: #f5f5f5;
+  --ec-primary-hover: #000000;
+  --ec-primary-shadow: rgba(0, 0, 0, 0.12);
+  --ec-primary-bg: #f5f2ff;
+  --ec-border: #e8e8e8;
+  --ec-border-light: var(--wb-border-default);
+  --ec-border-hover: var(--wb-border-strong);
+  --ec-border-subtle: var(--wb-border-default);
+  --ec-card-bg: #ffffff;
+  --ec-modal-bg: var(--wb-bg-popover);
+  --ec-card-border-static: #f0f0f0;
+  --ec-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --ec-card-shadow-hover: 0 12px 32px rgba(0, 0, 0, 0.12);
+  --ec-card-border-hover: var(--wb-border-strong);
+  --ec-shadow-sm: var(--wb-shadow-dialog-md);
+  --ec-shadow-lg: var(--wb-shadow-dialog-md);
+  --ec-btn-gradient: linear-gradient(135deg, #2f2f2f, #111111);
+  --ec-btn-text: #ffffff;
+  --ec-btn-bg: var(--wb-button-primary-bg);
+  --ec-btn-bg-hover: var(--wb-button-primary-bg-hover);
+  --ec-surface-muted: var(--wb-bg-secondary);
+  --ec-surface-subtle: var(--wb-bg-primary);
+  --ec-surface-hover: var(--wb-bg-hover);
+  --ec-modal-tag-chip-bg: rgba(0, 0, 0, 0.02);
+  --ec-modal-tag-chip-color: rgba(0, 0, 0, 0.62);
+  --ec-modal-tag-chip-border: rgba(0, 0, 0, 0.06);
+  --ec-modal-quick-prompt-bg: rgba(0, 0, 0, 0.02);
+  --ec-modal-quick-prompt-bg-hover: rgba(0, 0, 0, 0.04);
+  --ec-modal-quick-prompt-color: rgba(0, 0, 0, 0.62);
+  --ec-modal-quick-prompt-border: rgba(0, 0, 0, 0.06);
+  --ec-success: #10b981;
+  --ec-warning: #f59e0b;
+  --ec-error: #ff4d4f;
+  --ec-avatar-fallback-bg-1: #6366f1;
+  --ec-avatar-fallback-bg-2: #8b5cf6;
+  --ec-avatar-fallback-bg-3: #ec4899;
+  --ec-avatar-fallback-bg-4: #f59e0b;
+  --ec-avatar-fallback-bg-5: #10b981;
+  --ec-avatar-fallback-bg-6: #3b82f6;
+  --ec-avatar-fallback-bg-7: #ef4444;
+  --ec-avatar-fallback-bg-8: #14b8a6;
+  --ec-operational-tag-bg: rgba(0, 0, 0, 0.05);
+  --ec-operational-tag-color: #393939;
+  --ec-operational-tag-border: transparent;
+  --ec-operational-tag-icon-color: #3d3d3d;
+  --ec-operational-tag-check-color: #f7d18f;
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"]) {
+  --ec-bg-primary: var(--content-bg, var(--wb-bg-primary));
+  --ec-bg-secondary: var(--sidebar-bg, var(--wb-bg-secondary));
+  --ec-bg-tertiary: var(--filter-bg, rgba(255, 255, 255, 0.04));
+  --ec-bg-hover: var(--sidebar-hover, rgba(255, 255, 255, 0.04));
+  --ec-bg-active: var(--sidebar-active, rgba(255, 255, 255, 0.07));
+  --ec-text-primary: var(--text-primary, var(--wb-color-text-primary));
+  --ec-text-secondary: var(--text-secondary, var(--wb-color-text-secondary));
+  --ec-text-tertiary: var(--text-muted, var(--wb-color-text-tertiary));
+  --ec-text-placeholder: var(--text-dim, rgba(255, 255, 255, 0.4));
+  --ec-text-desc: var(--text-secondary, var(--wb-color-text-secondary));
+  --ec-text-usage: var(--text-muted, var(--wb-color-text-tertiary));
+  --ec-text-use-count: var(--text-dim, rgba(255, 255, 255, 0.4));
+  --ec-text-category-tab: var(--text-muted, rgba(255, 255, 255, 0.58));
+  --ec-text-contrast: var(--wb-button-primary-fg);
+  --ec-text-soft: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  --ec-text-strong: var(--wb-color-text-primary);
+  --ec-text-muted: var(--text-muted, rgba(255, 255, 255, 0.58));
+  --ec-expert-card-bg: var(--ec-card-bg);
+  --ec-expert-card-hover-bg: var(--card-hover-bg, #2c2c2c);
+  --ec-expert-card-hover-border: transparent;
+  --ec-expert-card-avatar-bg: var(--ec-surface-muted);
+  --ec-expert-card-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.03);
+  --ec-expert-card-desc-color: var(--ec-text-desc);
+  --ec-card-tag-bg: rgba(0, 0, 0, 0.04);
+  --ec-card-tag-border: transparent;
+  --ec-card-tag-color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  --ec-filter-border: var(--filter-border, rgba(255, 255, 255, 0.1));
+  --ec-filter-text: var(--text-muted, rgba(255, 255, 255, 0.56));
+  --ec-filter-text-hover: var(--text-secondary, rgba(255, 255, 255, 0.74));
+  --ec-filter-text-active: var(--text-primary, rgba(255, 255, 255, 0.94));
+  --ec-primary: #f5f5f5;
+  --ec-primary-light: rgba(255, 255, 255, 0.12);
+  --ec-primary-hover: #ffffff;
+  --ec-primary-shadow: rgba(255, 255, 255, 0.12);
+  --ec-primary-bg: rgba(255, 255, 255, 0.08);
+  --ec-border: var(--card-border, rgba(255, 255, 255, 0.08));
+  --ec-border-light: var(--card-border, rgba(255, 255, 255, 0.08));
+  --ec-border-hover: var(--card-hover-border, rgba(255, 255, 255, 0.12));
+  --ec-border-subtle: var(--sidebar-border, rgba(255, 255, 255, 0.08));
+  --ec-card-bg: rgba(255, 255, 255, 0.05);
+  --ec-modal-bg: var(--wb-bg-popover);
+  --ec-card-border-static: var(--card-border, rgba(255, 255, 255, 0.08));
+  --ec-card-shadow: none;
+  --ec-card-shadow-hover: var(--card-hover-shadow, none);
+  --ec-card-border-hover: var(--card-hover-border, rgba(255, 255, 255, 0.14));
+  --ec-shadow-sm: none;
+  --ec-shadow-lg: none;
+  --ec-btn-gradient: linear-gradient(135deg, #3f434d, #323742);
+  --ec-btn-text: #ffffff;
+  --ec-btn-bg: var(--wb-button-primary-bg);
+  --ec-btn-bg-hover: var(--wb-button-primary-bg-hover);
+  --ec-btn-color: var(--wb-button-primary-fg);
+  --ec-surface-muted: var(--sidebar-bg, #262626);
+  --ec-surface-subtle: var(--filter-bg, #242424);
+  --ec-surface-hover: var(--sidebar-hover, #2c2c2c);
+  --ec-modal-tag-chip-bg: var(--filter-bg, rgba(255, 255, 255, 0.06));
+  --ec-modal-tag-chip-color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  --ec-modal-tag-chip-border: var(--card-border, rgba(255, 255, 255, 0.08));
+  --ec-modal-quick-prompt-bg: var(--card-bg, #1f2024);
+  --ec-modal-quick-prompt-bg-hover: var(
+    --sidebar-active,
+    rgba(255, 255, 255, 0.1)
+  );
+  --ec-modal-quick-prompt-color: var(
+    --text-secondary,
+    rgba(255, 255, 255, 0.72)
+  );
+  --ec-modal-quick-prompt-border: var(--card-border, rgba(255, 255, 255, 0.08));
+  --ec-success: #a6a6a6;
+  --ec-warning: #d0d0d0;
+  --ec-error: #ec5558;
+  --ec-avatar-fallback-bg-1: #4f5667;
+  --ec-avatar-fallback-bg-2: #5b526d;
+  --ec-avatar-fallback-bg-3: #6a4f65;
+  --ec-avatar-fallback-bg-4: #6b5b48;
+  --ec-avatar-fallback-bg-5: #4f665c;
+  --ec-avatar-fallback-bg-6: #4b5f73;
+  --ec-avatar-fallback-bg-7: #674f52;
+  --ec-avatar-fallback-bg-8: #4f6667;
+  --ec-operational-tag-bg: rgba(255, 255, 255, 0.05);
+  --ec-operational-tag-color: #e0e0e0;
+  --ec-operational-tag-border: transparent;
+  --ec-operational-tag-icon-color: #d0d0d0;
+  --ec-operational-tag-check-color: #242424;
+}
+:where(html[data-ui="workbuddy"][data-theme="light"]),
+:where(html[data-ui="workbuddy"]) {
+  --ec-featured-scene-area-bg: #fafafa;
+  --ec-featured-scene-bg: var(--wb-palette-brand-1);
+  --ec-featured-scene-overlay: linear-gradient(
+    180deg,
+    transparent 18.78%,
+    var(--wb-bg-card) 90.23%
+  );
+  --ec-featured-scene-border: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.08) 100%
+  );
+  --ec-featured-scene-shadow: none;
+  --ec-featured-scene-fade-mask: linear-gradient(
+    90deg,
+    rgba(250, 250, 250, 0),
+    rgba(250, 250, 250, 0.92)
+  );
+  --ec-featured-scene-row-hover-bg: rgba(0, 0, 0, 0.05);
+  --ec-featured-scene-tag-bg: rgba(0, 0, 0, 0.05);
+  --ec-featured-scene-tag-color: #393939;
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"]) {
+  --ec-featured-scene-area-bg: var(--ec-bg-primary);
+  --ec-featured-scene-bg: var(--wb-bg-card-strong);
+  --ec-featured-scene-overlay: linear-gradient(
+    180deg,
+    transparent 18.78%,
+    var(--wb-bg-card) 90.23%
+  );
+  --ec-featured-scene-border: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.12) 100%
+  );
+  --ec-featured-scene-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.18);
+  --ec-featured-scene-fade-mask: linear-gradient(
+    90deg,
+    rgba(17, 18, 21, 0),
+    rgba(17, 18, 21, 0.92)
+  );
+  --ec-featured-scene-row-hover-bg: var(--wb-bg-active);
+  --ec-featured-scene-tag-bg: rgba(255, 255, 255, 0.08);
+  --ec-featured-scene-tag-color: var(--ec-text-strong);
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"]) ._wbMentionPanel_chj2e_40,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) ._wbMentionPanel_chj2e_40,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) ._wbMentionPanel_chj2e_40,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) ._wbMentionPanel_chj2e_40 {
+  --cb-text-primary: rgba(255, 255, 255, 0.9);
+  --cb-text-secondary: rgba(255, 255, 255, 0.6);
+}

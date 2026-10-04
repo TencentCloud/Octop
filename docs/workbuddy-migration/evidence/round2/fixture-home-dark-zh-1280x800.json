@@ -1,0 +1,44 @@
+{
+  "case": "fixture-home-dark-zh-1280x800",
+  "status": "passed",
+  "assistantPanels": 0,
+  "composer": {
+    "height": 161,
+    "width": 800,
+    "x": 360,
+    "y": 339.5
+  },
+  "draft": "Round 2 visual draft",
+  "home": {
+    "height": 716,
+    "width": 848,
+    "x": 336,
+    "y": 84
+  },
+  "overflow": 0,
+  "primaryCount": 7,
+  "primaryNavigationCount": 1,
+  "recommendations": {
+    "height": 173.125,
+    "width": 848,
+    "x": 336,
+    "y": 570.875
+  },
+  "sidebar": {
+    "height": 772,
+    "width": 240,
+    "x": 0,
+    "y": 28
+  },
+  "theme": "dark",
+  "topbar": {
+    "height": 56,
+    "width": 1040,
+    "x": 240,
+    "y": 28
+  },
+  "viewport": {
+    "height": 800,
+    "width": 1280
+  }
+}

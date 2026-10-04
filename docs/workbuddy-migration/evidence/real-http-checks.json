@@ -1,0 +1,180 @@
+{
+  "note": "Selected HTTP status evidence from the disposable acceptance instance; no request bodies, tokens or credentials recorded.",
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/setup/status",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/status",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/status",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/setup/begin",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/status",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/status",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/setup/database",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/validate-token",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/setup/initial-admin",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/presets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/validate-token",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/setup/finish",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/status",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/status",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/status",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/status",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/cron/settings",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/cron",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/cron",
+      "status": 201
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/cron/cNCA2KK",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/status",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/status",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/cron/settings",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/cron/settings",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/cron",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/cron/cNCA2KK",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/cron/cNCA2KK",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/cron/settings",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/cron",
+      "status": 200
+    }
+  ]
+}

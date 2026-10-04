@@ -1,11 +1,14 @@
 // dashboard/src/pages/Experts/components/FileEditModal.tsx
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Drawer, Spin } from "antd";
+import { Button, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { request } from "../../../api/request";
 import { withFromWorkspace } from "../../../utils/fromWorkspace";
+import BusinessDetailDialog from "../../../components/BusinessDetailDialog";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
+import { useTheme } from "../../../context/ThemeContext";
 
 const MonacoEditor = lazy(() => import("@monaco-editor/react"));
 
@@ -36,6 +39,7 @@ export default function FileEditModal({
   onLocalSave,
 }: FileEditModalProps) {
   const { t } = useTranslation();
+  const { isDark } = useTheme();
   const [value, setValue] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -111,7 +115,9 @@ export default function FileEditModal({
     : "";
 
   return (
-    <Drawer
+    <BusinessDetailDialog
+      kind="editor"
+      zIndex={WORKBUDDY_UI ? 1100 : undefined}
       open={open}
       placement="right"
       title={title}
@@ -124,6 +130,7 @@ export default function FileEditModal({
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          ...(WORKBUDDY_UI ? { height: "min(560px, 60dvh)" } : {}),
         },
         footer: { padding: "12px 20px" },
       }}
@@ -180,6 +187,7 @@ export default function FileEditModal({
             <MonacoEditor
               height="100%"
               language="markdown"
+              theme={WORKBUDDY_UI ? (isDark ? "vs-dark" : "light") : undefined}
               value={value}
               onChange={(v) => setValue(v ?? "")}
               options={{
@@ -193,6 +201,6 @@ export default function FileEditModal({
           </div>
         </Suspense>
       )}
-    </Drawer>
+    </BusinessDetailDialog>
   );
 }

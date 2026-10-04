@@ -19,6 +19,10 @@ import userEvent from "@testing-library/user-event";
 vi.mock("../../../api/request", () => ({
   request: vi.fn(),
 }));
+// This suite verifies request payloads; do not leave global toast timers alive after teardown.
+vi.mock("../../../utils/antdMessage", () => ({
+  message: { success: vi.fn(), error: vi.fn() },
+}));
 
 import { request } from "../../../api/request";
 import ChannelsPanel from "./ChannelsPanel";
@@ -38,6 +42,38 @@ beforeEach(() => {
 });
 
 describe("<ChannelsPanel /> create-flow default", () => {
+  it("sends a numeric MQTT port for probe and save", async () => {
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click(
+      (await screen.findAllByText("channels.label_mqtt"))[0],
+    );
+    await userEvent.type(screen.getByLabelText(/Broker Host/i), "127.0.0.1");
+    await userEvent.type(
+      screen.getByRole("spinbutton", { name: "Port" }),
+      "18899",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "channels.checkConnection" }),
+    );
+    await waitFor(() => {
+      const probe = api.mock.calls.find(([url]) =>
+        url.endsWith("/channels/probe"),
+      );
+      expect(probe).toBeDefined();
+      expect(JSON.parse(String(probe![1]!.body)).config).toMatchObject({
+        host: "127.0.0.1",
+        port: 18899,
+      });
+    });
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => {
+      const save = api.mock.calls.find(
+        ([url, init]) => url.endsWith("/channels") && init?.method === "POST",
+      );
+      expect(save).toBeDefined();
+      expect(JSON.parse(String(save![1]!.body)).config.port).toBe(18899);
+    });
+  });
   it("defaults Discord to all channels and saves without channel IDs", async () => {
     render(<ChannelsPanel agentId="ag1" />);
     await userEvent.click(

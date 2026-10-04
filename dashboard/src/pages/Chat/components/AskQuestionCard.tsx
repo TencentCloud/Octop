@@ -172,7 +172,9 @@ function AskQuestionCard({
 
   if (!interactive) {
     return (
-      <details className={`${styles.card} ${styles.completedCard}`}>
+      <details
+        className={`${styles.card} ${styles.completedCard} wb-intervention wb-question`}
+      >
         <summary className={styles.completedSummary}>
           <span className={styles.completedStatus}>
             {status === "approved"
@@ -234,7 +236,7 @@ function AskQuestionCard({
   };
 
   return (
-    <div className={styles.card}>
+    <div className={`${styles.card} wb-intervention wb-question`}>
       <div className={styles.titleRow}>
         <span className={styles.title}>{t("chat.ask.title")}</span>
         <span className={styles.titleActions}>

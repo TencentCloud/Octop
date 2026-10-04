@@ -398,8 +398,8 @@ html[data-theme="dark"] .octop-ant-switch-checked {
   }
 
   /* Modal responsive — max width on mobile */
-  .ant-modal,
-  [class*="-modal"] {
+  html:not([data-ui="workbuddy"]) .ant-modal,
+  html:not([data-ui="workbuddy"]) [class*="-modal"] {
     max-width: calc(100vw - 24px) !important;
     margin: max(12px, env(safe-area-inset-top, 0px)) auto
       max(12px, env(safe-area-inset-bottom, 0px)) !important;
@@ -424,8 +424,8 @@ html[data-theme="dark"] .octop-ant-switch-checked {
     padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
   }
 
-  .ant-modal-content,
-  [class*="-modal-content"] {
+  html:not([data-ui="workbuddy"]) .ant-modal-content,
+  html:not([data-ui="workbuddy"]) [class*="-modal-content"] {
     padding: 16px !important;
   }
 

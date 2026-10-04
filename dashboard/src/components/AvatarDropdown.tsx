@@ -1,4 +1,17 @@
-import { useState, useCallback, useEffect, type ReactNode } from "react";
+import {
+  useAssistantPanelPreference,
+  useWorkBuddyAppearance,
+} from "../workbuddy/preferences";
+import { SettingsBackgroundContext } from "../workbuddy/SettingsBackground";
+import { WORKBUDDY_UI } from "../workbuddy/variant";
+import SettingsFrame from "../workbuddy/SettingsFrame";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useContext,
+  type ReactNode,
+} from "react";
 import {
   Modal,
   Drawer,
@@ -27,7 +40,7 @@ import {
   LockOpen,
   SlidersHorizontal,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/modules/auth";
 import { preferencesApi } from "../api/modules/preferences";
@@ -107,8 +120,16 @@ export default function AvatarDropdown({
   const role = useUserRole();
   const isMobile = useIsMobile();
   const { layoutMode, setLayoutMode } = useLayoutMode();
+  const [customAppearance, setCustomAppearance] = useWorkBuddyAppearance();
+  const [assistantsPinned, setAssistantsPinned] = useAssistantPanelPreference();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [legacySettingsOpen, setSettingsOpen] = useState(false);
+  const location = useLocation();
+  const background = useContext(SettingsBackgroundContext);
+  const settingsOpen = WORKBUDDY_UI
+    ? location.pathname === "/settings" ||
+      location.pathname.startsWith("/settings/")
+    : legacySettingsOpen;
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ssoProviders, setSsoProviders] = useState<
@@ -275,7 +296,13 @@ export default function AvatarDropdown({
     setMenuOpen(false);
     onBeforeOpenSettings?.();
     profileForm.setFieldsValue({ display_name: user?.display_name || "" });
-    deferOpen(() => setSettingsOpen(true));
+    deferOpen(() => {
+      if (WORKBUDDY_UI)
+        navigate(isMobile ? "/settings/" : "/settings/general", {
+          state: { backgroundLocation: location },
+        });
+      else setSettingsOpen(true);
+    });
   };
 
   const openPassword = () => {
@@ -291,11 +318,16 @@ export default function AvatarDropdown({
     deferOpen(() => onCustomizeNav?.());
   };
 
-  const closeSettings = () => setSettingsOpen(false);
+  const closeSettings = () => {
+    if (WORKBUDDY_UI) navigate(background ?? "/home");
+    else setSettingsOpen(false);
+  };
   const closePassword = () => setPasswordOpen(false);
 
   useEffect(() => {
     if (!settingsOpen) return;
+    if (!profileForm.isFieldsTouched())
+      profileForm.setFieldsValue({ display_name: user?.display_name ?? "" });
     void authApi
       .me()
       .then((next) => onUserChange?.(next))
@@ -306,7 +338,7 @@ export default function AvatarDropdown({
         setSsoProviders(status.providers.filter((item) => item.enabled)),
       )
       .catch(() => undefined);
-  }, [onUserChange, settingsOpen]);
+  }, [onUserChange, settingsOpen, profileForm, user?.display_name]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -361,50 +393,55 @@ export default function AvatarDropdown({
 
       <Divider className={styles.menuDivider} />
 
-      <div className={styles.menuItemRow}>
-        <div className={styles.menuItemLabel}>
-          <Palette size={16} strokeWidth={1.8} />
-          <span>{t("account.appearance")}</span>
-        </div>
-        <ThemeSwitcher compact />
-      </div>
+      {!WORKBUDDY_UI && (
+        <>
+          <div className={styles.menuItemRow}>
+            <div className={styles.menuItemLabel}>
+              <Palette size={16} strokeWidth={1.8} />
+              <span>{t("account.appearance")}</span>
+            </div>
+            <ThemeSwitcher compact />
+          </div>
 
-      <a
-        className={styles.menuItem}
-        href={HELP_FEEDBACK_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={() => setMenuOpen(false)}
-      >
-        <CircleHelp size={16} strokeWidth={1.8} />
-        <span>{t("account.helpFeedback")}</span>
-      </a>
+          <a
+            className={styles.menuItem}
+            href={HELP_FEEDBACK_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setMenuOpen(false)}
+          >
+            <CircleHelp size={16} strokeWidth={1.8} />
+            <span>{t("account.helpFeedback")}</span>
+          </a>
 
-      <a
-        className={styles.menuItem}
-        href={GITHUB_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={() => setMenuOpen(false)}
-      >
-        <Github size={16} strokeWidth={1.8} />
-        <span>{t("account.projectUrl")}</span>
-      </a>
+          <a
+            className={styles.menuItem}
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setMenuOpen(false)}
+          >
+            <Github size={16} strokeWidth={1.8} />
+            <span>{t("account.projectUrl")}</span>
+          </a>
 
-      {onCustomizeNav ? (
-        <button
-          type="button"
-          className={styles.menuItem}
-          onClick={openCustomizeNav}
-        >
-          <SlidersHorizontal size={16} strokeWidth={1.8} />
-          <span>{t("nav.customize")}</span>
-        </button>
-      ) : null}
-
+          {onCustomizeNav ? (
+            <button
+              type="button"
+              className={styles.menuItem}
+              onClick={openCustomizeNav}
+            >
+              <SlidersHorizontal size={16} strokeWidth={1.8} />
+              <span>{t("nav.customize")}</span>
+            </button>
+          ) : null}
+        </>
+      )}
       <button type="button" className={styles.menuItem} onClick={openSettings}>
         <Settings size={16} strokeWidth={1.8} />
-        <span>{t("account.settings")}</span>
+        <span>
+          {t(WORKBUDDY_UI ? "workbuddy.settings.title" : "account.settings")}
+        </span>
       </button>
 
       <button type="button" className={styles.menuItem} onClick={openPassword}>
@@ -412,7 +449,7 @@ export default function AvatarDropdown({
         <span>{t("account.changePassword")}</span>
       </button>
 
-      {userCan(user, "update") && (
+      {!WORKBUDDY_UI && userCan(user, "update") && (
         <button
           type="button"
           className={styles.menuItem}
@@ -473,15 +510,20 @@ export default function AvatarDropdown({
         placement="right"
         mouseEnterDelay={0.3}
       >
-        <span role="button" tabIndex={0} className={styles.triggerCompact}>
+        <button
+          type="button"
+          aria-label={displayName}
+          aria-expanded={menuOpen}
+          className={styles.triggerCompact}
+        >
           {avatar}
-        </span>
+        </button>
       </Tooltip>
     );
 
   const settingsBody = (
     <div className={styles.settingsBody}>
-      <div className={styles.settingsIdentity}>
+      <div className={styles.settingsIdentity} data-settings-group="account">
         <ProfileAvatar
           url={user?.avatar_url}
           icon={user?.avatar_icon}
@@ -506,7 +548,7 @@ export default function AvatarDropdown({
         </div>
       </div>
 
-      <section className={styles.settingsSection}>
+      <section className={styles.settingsSection} data-settings-group="account">
         <div className={styles.settingsSectionHead}>
           <h3 className={styles.settingsSectionTitle}>{t("account.avatar")}</h3>
           <p className={styles.settingsSectionDesc}>
@@ -556,7 +598,7 @@ export default function AvatarDropdown({
 
       <Divider className={styles.settingsDivider} />
 
-      <section className={styles.settingsSection}>
+      <section className={styles.settingsSection} data-settings-group="account">
         <div className={styles.settingsSectionHead}>
           <h3 className={styles.settingsSectionTitle}>
             {t("account.displayName")}
@@ -596,29 +638,60 @@ export default function AvatarDropdown({
 
       <Divider className={styles.settingsDivider} />
 
-      <section className={styles.settingsSection}>
+      <section
+        className={styles.settingsSection}
+        data-settings-group="appearance"
+        data-settings-preference="general"
+      >
         <div className={styles.settingsSectionHead}>
           <h3 className={styles.settingsSectionTitle}>
-            {t("account.layoutMode")}
+            {t(
+              WORKBUDDY_UI ? "workbuddy.assistantPanel" : "account.layoutMode",
+            )}
           </h3>
           <p className={styles.settingsSectionDesc}>
-            {t("account.layoutModeHint")}
+            {t(
+              WORKBUDDY_UI
+                ? "workbuddy.assistantPanelHint"
+                : "account.layoutModeHint",
+            )}
           </p>
         </div>
         <Segmented
           block
-          value={layoutMode}
-          options={[
-            { label: t("account.layoutClassic"), value: "classic" },
-            { label: t("account.layoutMinimal"), value: "minimal" },
-          ]}
-          onChange={(val) => setLayoutMode(val as LayoutMode)}
+          value={
+            WORKBUDDY_UI
+              ? assistantsPinned
+                ? "pinned"
+                : "floating"
+              : layoutMode
+          }
+          options={
+            WORKBUDDY_UI
+              ? [
+                  { label: t("workbuddy.panelPinned"), value: "pinned" },
+                  { label: t("workbuddy.panelFloating"), value: "floating" },
+                ]
+              : [
+                  { label: t("account.layoutClassic"), value: "classic" },
+                  { label: t("account.layoutMinimal"), value: "minimal" },
+                ]
+          }
+          onChange={(val) =>
+            WORKBUDDY_UI
+              ? setAssistantsPinned(val === "pinned")
+              : setLayoutMode(val as LayoutMode)
+          }
         />
       </section>
 
       <Divider className={styles.settingsDivider} />
 
-      <section className={styles.settingsSection}>
+      <section
+        className={styles.settingsSection}
+        data-settings-group="appearance"
+        data-settings-preference="general"
+      >
         <div className={styles.settingsSectionHead}>
           <h3 className={styles.settingsSectionTitle}>
             {t("account.language")}
@@ -640,7 +713,10 @@ export default function AvatarDropdown({
 
       <Divider className={styles.settingsDivider} />
 
-      <section className={styles.settingsSection}>
+      <section
+        className={styles.settingsSection}
+        data-settings-group="appearance"
+      >
         <div className={styles.settingsSectionHead}>
           <h3 className={styles.settingsSectionTitle}>
             {t("account.palette")}
@@ -649,13 +725,33 @@ export default function AvatarDropdown({
             {t("account.paletteHint")}
           </p>
         </div>
-        <PaletteSwitcher />
+        {WORKBUDDY_UI && (
+          <Segmented
+            block
+            value={customAppearance ? "custom" : "standard"}
+            options={[
+              { label: t("workbuddy.standardAppearance"), value: "standard" },
+              { label: t("workbuddy.customAppearance"), value: "custom" },
+            ]}
+            onChange={(value) => setCustomAppearance(value === "custom")}
+          />
+        )}
+        {(!WORKBUDDY_UI || customAppearance) && <PaletteSwitcher />}
+        {WORKBUDDY_UI && (
+          <div className="wb-settings-theme">
+            <h3>{t("account.appearance")}</h3>
+            <ThemeSwitcher />
+          </div>
+        )}
       </section>
 
       {ssoRows.length > 0 && (
         <>
           <Divider className={styles.settingsDivider} />
-          <section className={styles.settingsSection}>
+          <section
+            className={styles.settingsSection}
+            data-settings-group="account"
+          >
             <div className={styles.settingsSectionHead}>
               <h3 className={styles.settingsSectionTitle}>
                 {t("account.ssoTitle")}
@@ -832,34 +928,55 @@ export default function AvatarDropdown({
 
       {isMobile ? (
         <Drawer
-          title={t("account.settings")}
+          title={
+            WORKBUDDY_UI ? t("workbuddy.settings.title") : t("account.settings")
+          }
           open={settingsOpen}
           onClose={closeSettings}
           placement="bottom"
-          height="min(92dvh, 100%)"
+          height={WORKBUDDY_UI ? "100dvh" : "min(92dvh, 100%)"}
           destroyOnHidden
-          className={styles.settingsDrawer}
+          className={`${styles.settingsDrawer} ${
+            WORKBUDDY_UI ? "wb-settings-drawer" : ""
+          }`}
           styles={{
             body: {
-              paddingTop: 8,
-              paddingBottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
+              padding: WORKBUDDY_UI ? 0 : undefined,
+              paddingTop: WORKBUDDY_UI ? 0 : 8,
+              paddingBottom: WORKBUDDY_UI
+                ? 0
+                : "calc(16px + env(safe-area-inset-bottom, 0px))",
             },
           }}
         >
-          {settingsBody}
+          {WORKBUDDY_UI ? (
+            <SettingsFrame user={user} onCustomizeNav={onCustomizeNav}>
+              {settingsBody}
+            </SettingsFrame>
+          ) : (
+            settingsBody
+          )}
         </Drawer>
       ) : (
         <Modal
-          title={t("account.settings")}
+          title={WORKBUDDY_UI ? null : t("account.settings")}
           open={settingsOpen}
           onCancel={closeSettings}
           footer={null}
           destroyOnHidden
           centered
-          width={480}
-          className={styles.settingsModal}
+          width={WORKBUDDY_UI ? 880 : 480}
+          className={`${styles.settingsModal} ${
+            WORKBUDDY_UI ? "wb-settings-modal" : ""
+          }`}
         >
-          {settingsBody}
+          {WORKBUDDY_UI ? (
+            <SettingsFrame user={user} onCustomizeNav={onCustomizeNav}>
+              {settingsBody}
+            </SettingsFrame>
+          ) : (
+            settingsBody
+          )}
         </Modal>
       )}
 

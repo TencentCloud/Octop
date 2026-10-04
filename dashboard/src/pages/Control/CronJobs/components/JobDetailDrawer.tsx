@@ -1,6 +1,6 @@
+import BusinessDetailDialog from "../../../../components/BusinessDetailDialog";
 import {
   Button,
-  Drawer,
   Descriptions,
   Badge,
   Tag,
@@ -62,7 +62,8 @@ export function JobDetailDrawer({
   };
 
   return (
-    <Drawer
+    <BusinessDetailDialog
+      rootClassName="wb-business-detail"
       title={
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Badge
@@ -244,6 +245,6 @@ export function JobDetailDrawer({
           </Descriptions.Item>
         )}
       </Descriptions>
-    </Drawer>
+    </BusinessDetailDialog>
   );
 }

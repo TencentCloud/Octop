@@ -9,7 +9,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Card,
-  Drawer,
   Empty,
   Pagination,
   Skeleton,
@@ -18,6 +17,7 @@ import {
   Typography,
 } from "antd";
 import { useTranslation } from "react-i18next";
+import BusinessDetailDialog from "../../../components/BusinessDetailDialog";
 
 import {
   memoryDashboardApi,
@@ -181,7 +181,7 @@ export default function EpisodesList({ agentId }: Props) {
         />
       </div>
 
-      <Drawer
+      <BusinessDetailDialog
         title={t("memory.episodeDetail", "情绪日记详情")}
         open={!!selected}
         onClose={() => setSelected(null)}
@@ -221,7 +221,7 @@ export default function EpisodesList({ agentId }: Props) {
             </Typography.Paragraph>
           </div>
         ) : null}
-      </Drawer>
+      </BusinessDetailDialog>
     </Card>
   );
 }

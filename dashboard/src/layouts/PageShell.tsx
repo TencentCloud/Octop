@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
+
+export const EmbeddedPageContext = createContext(false);
 import { Segmented, Typography } from "antd";
 import AgentSelector from "../components/AgentSelector";
 import RemoteDisconnectBanner from "../components/RemoteDisconnectBanner";
@@ -10,6 +12,8 @@ import {
   DESKTOP_NO_DRAG_CLASS,
 } from "../utils/desktopChrome";
 import styles from "./PageShell.module.less";
+import { WORKBUDDY_UI } from "../workbuddy/variant";
+import WorkBuddyTopbar from "../workbuddy/Topbar";
 
 const { Title, Text } = Typography;
 
@@ -98,6 +102,7 @@ function PageShell({
   children,
 }: PageShellProps) {
   const isMobile = useIsMobile();
+  const embedded = useContext(EmbeddedPageContext);
   const { activeAgent } = useAgent();
   const outerPad = isMobile ? 12 : 32;
   const outerPadTop = isMobile ? 12 : 24;
@@ -126,9 +131,30 @@ function PageShell({
       actions
     );
 
+  if (embedded)
+    return (
+      <div className="wb-embedded-page">
+        {(actions || pathTabs || agentScoped) && (
+          <div className="wb-embedded-page__controls">
+            {agentScoped && <AgentSelector />}
+            {pathTabs && (
+              <PathTabsSegmented pathTabs={pathTabs} isMobile={isMobile} />
+            )}
+            {actions}
+          </div>
+        )}
+        {agentScoped && activeAgent?.bridge_disconnected && (
+          <RemoteDisconnectBanner
+            connectionName={activeAgent.bridge_connection_name}
+            inbound={Boolean(activeAgent.bridge_inbound)}
+          />
+        )}
+        <div className="wb-embedded-page__body">{children}</div>
+      </div>
+    );
   return (
     <div
-      className={DESKTOP_DRAG_REGION_CLASS}
+      className={`${DESKTOP_DRAG_REGION_CLASS} wb-page-shell`}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -138,46 +164,52 @@ function PageShell({
         overflow: "hidden",
       }}
     >
-      {/* Title row — fixed, never scrolls */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 12,
-          flexShrink: 0,
-          marginBottom: agentScoped ? 12 : 24,
-          paddingRight: titleRowEndPadding(outerPad),
-        }}
-      >
-        <div>
-          <Title
-            level={4}
-            style={{
-              margin: 0,
-              lineHeight: "28px",
-              fontSize: 20,
-              fontWeight: 600,
-            }}
-          >
-            {title}
-          </Title>
-          {subtitle && (
-            <Text
-              type="secondary"
-              style={{ fontSize: 13, marginTop: 4, display: "block" }}
+      {WORKBUDDY_UI ? (
+        <>
+          <WorkBuddyTopbar title={title} actions={titleActions} />
+          {subtitle && <div className="wb-page-subtitle">{subtitle}</div>}
+        </>
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+            flexShrink: 0,
+            marginBottom: agentScoped ? 12 : 24,
+            paddingRight: titleRowEndPadding(outerPad),
+          }}
+        >
+          <div>
+            <Title
+              level={4}
+              style={{
+                margin: 0,
+                lineHeight: "28px",
+                fontSize: 20,
+                fontWeight: 600,
+              }}
             >
-              {subtitle}
-            </Text>
+              {title}
+            </Title>
+            {subtitle && (
+              <Text
+                type="secondary"
+                style={{ fontSize: 13, marginTop: 4, display: "block" }}
+              >
+                {subtitle}
+              </Text>
+            )}
+          </div>
+          {titleActions && (
+            <div style={{ flexShrink: 0, paddingTop: 2 }}>{titleActions}</div>
           )}
         </div>
-        {titleActions && (
-          <div style={{ flexShrink: 0, paddingTop: 2 }}>{titleActions}</div>
-        )}
-      </div>
+      )}
 
       {agentScoped && (
-        <div className={styles.agentBar}>
+        <div className={`${styles.agentBar} wb-page-agent-bar`}>
           <AgentSelector />
         </div>
       )}
@@ -186,7 +218,7 @@ function PageShell({
          tabbed pages get more usable horizontal space. Path tabs on mobile
          pin above the body (same chrome as Workbench / Personalization). */}
       <div
-        className={DESKTOP_NO_DRAG_CLASS}
+        className={`${DESKTOP_NO_DRAG_CLASS} wb-page-body`}
         style={{
           flex: 1,
           background: "var(--fn-bg-container, var(--fn-bg-elevated))",

@@ -339,6 +339,7 @@ export function ProviderCard({
                   type="text"
                   size="small"
                   loading={testing}
+                  aria-label={t("models.test")}
                   onClick={handleTestConnection}
                   className={styles.cardActionBtn}
                   icon={<Zap size={14} />}
@@ -349,6 +350,7 @@ export function ProviderCard({
               <Button
                 type="text"
                 size="small"
+                aria-label={t("models.settings")}
                 onClick={(e) => {
                   e.stopPropagation();
                   setModalOpen(true);
@@ -363,6 +365,7 @@ export function ProviderCard({
                   type="text"
                   size="small"
                   danger
+                  aria-label={t("common.delete")}
                   onClick={handleDelete}
                   className={styles.cardActionBtn}
                   icon={<Trash2 size={14} />}

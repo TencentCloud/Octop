@@ -1,0 +1,1098 @@
+{
+  "sourceVersion": "5.5.6",
+  "sourceFingerprint": "c707154037fe9b696a8d1afe5e025a2b940cc5742355538514a6fefddeff7458",
+  "round": 3,
+  "originalVisualAcceptance": false,
+  "fullFunctionalAcceptance": false,
+  "fixedFixtureCases": 80,
+  "defaultRolloutVariant": "legacy",
+  "state": "implemented with partial acceptance; no commit or release",
+  "files": [
+    {
+      "file": "build-manifest.json",
+      "bytes": 965,
+      "sha256": "c276155a48a70c39a03a6bee208db30f64e4f3c0f459a67a03487f7da7285bd6",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "chat-queue-after-refresh-1440-light-zh.jpg",
+      "bytes": 62699,
+      "sha256": "d15268a42d5bbbb817fec51ca3e2cfc5889c47f939cd96dca2551456b3e85025",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "connector-detail-1440-light-zh.jpg",
+      "bytes": 49640,
+      "sha256": "9a6f599a8a7b41b172252d2944a4a23b1f9b9983d091aded0672b9b3b521cfa2",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "connector-probe-error-1440-light-zh.jpg",
+      "bytes": 69549,
+      "sha256": "3061bff819a27b71b36633f256a48355700c08235285361d2755013ea2951a64",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "connectors-1440-light-zh.jpg",
+      "bytes": 111417,
+      "sha256": "477ed3b1678a9c5fdd5a014d5ca92b76e0031c6109c52710482ae753fbbe251a",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "connectors-390-light-zh.jpg",
+      "bytes": 32059,
+      "sha256": "d05a93267ef65e8f4bae38ae5a2f7e926906e95a1eaf8aa9c38a6aa20119704a",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "design-detector.json",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "engineering-checks.json",
+      "bytes": 2820,
+      "sha256": "98ecb1c0782f73e090f3e3708bb6b7d609f2d5adc843d8b1afc3a1b03bf93620",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "experts-1440-light-zh.jpg",
+      "bytes": 136161,
+      "sha256": "f9a104d07fb22291dccc66d877e02ed8dbf6dea00d02cea2cb089a6bc1b8fb71",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-checks.json",
+      "bytes": 43114,
+      "sha256": "dabc5b50a9129a5c80347d17ef3c04606090b3a2bf6c88be79439a8336782916",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-1280x800-dark-en.jpg",
+      "bytes": 33493,
+      "sha256": "e20a2f5a09dc1c299f6922d3a9da89319e9acc855572f5ed03a992e16589793d",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-1280x800-dark-en.json",
+      "bytes": 466,
+      "sha256": "ce529794ddda108833d8eb31c9650a50e654313df19b9cf07f0f9de044ad241b",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-1280x800-dark-zh.jpg",
+      "bytes": 30118,
+      "sha256": "08ccc61093bb424ce4d14556d71306d7932d75785107dd7ed931eab74ce371c4",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-1280x800-dark-zh.json",
+      "bytes": 466,
+      "sha256": "6ff6db8336ab990021ebd6d3f752bb51bffebb6b329522841d608c9e2e4830da",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-1280x800-light-en.jpg",
+      "bytes": 37267,
+      "sha256": "a217d9ca88601c1c56bb0278b1544040b9e0be780f5939c90b721f94c6f10dad",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-1280x800-light-en.json",
+      "bytes": 468,
+      "sha256": "1fe5d15cd560d9ff6efcd019389c20123d9f4d84c6224079ead8cdd6658ea8eb",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-1280x800-light-zh.jpg",
+      "bytes": 33692,
+      "sha256": "c7e0dc3ee86f4701915e182479f3992365f5af1e98e733cb4145df3d3c2b063c",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-1280x800-light-zh.json",
+      "bytes": 468,
+      "sha256": "549b8e0111a2dc62d0c86ce472b4fe358597e12651abf89ee9ec2c2ec4e37294",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-1440x900-dark-en.jpg",
+      "bytes": 35564,
+      "sha256": "8108cf968324a28251d21b0a61c57e83bba43ba58940c56c1ed3296d3de48cf6",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-1440x900-dark-en.json",
+      "bytes": 466,
+      "sha256": "f45b9edee992a0771d06dbc88ea85388ca9407504ef2730aeaf3a43bcc64ccf0",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-1440x900-dark-zh.jpg",
+      "bytes": 32013,
+      "sha256": "9f9a09bab4673fbb9d40626b47e29837d316f9957a4aea9c68b0c8b90f5866cd",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-1440x900-dark-zh.json",
+      "bytes": 466,
+      "sha256": "6c8cfdd9e02e777f49146ffafb611a7086a5966a3f757d031713213dae83d0fd",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-1440x900-light-en.jpg",
+      "bytes": 39853,
+      "sha256": "3f9a54325262171e174163dab3249bd718f395616e2fa812ed172790d1c29fd5",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-1440x900-light-en.json",
+      "bytes": 468,
+      "sha256": "bc533f72bc55c9ad8740cf101b6802e5ce9c3e82e69ff84306ece4ae5e8df0f8",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-1440x900-light-zh.jpg",
+      "bytes": 36094,
+      "sha256": "fabbf86bc66c7948bb7c772e284992422bcc0b6c7263a4a7ff06702862d0b72c",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-1440x900-light-zh.json",
+      "bytes": 468,
+      "sha256": "bc4284ec2d3cbb708943f2400b480085e220ee337b3946bec09a786f90be1582",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-1920x1080-dark-en.jpg",
+      "bytes": 40275,
+      "sha256": "e370b118171916575e80b806a3d3c21bf3e39dcd4b38a963ffcf510a2ef38150",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-1920x1080-dark-en.json",
+      "bytes": 468,
+      "sha256": "fbe76279b37844fbe3026ff8adc345acf8fcf0f8b21ce04bd48fd73834e26c83",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-1920x1080-dark-zh.jpg",
+      "bytes": 36634,
+      "sha256": "c656a35cd86279341c54da504191181e62d4c9057a622ca03f781e28094d244f",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-1920x1080-dark-zh.json",
+      "bytes": 468,
+      "sha256": "3c12d944e37e0c460ec57559e6973a6cf280e058ae2ecdd1f90255537d6f24dd",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-1920x1080-light-en.jpg",
+      "bytes": 44325,
+      "sha256": "32fe342f37f9f1dc3cc2811f56274767a946e68d68318513324afbe9271a1eb6",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-1920x1080-light-en.json",
+      "bytes": 470,
+      "sha256": "d4aeefdbe0277ab96463e4ba046f14044bd858a983342f282e6db5c5b0caef66",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-1920x1080-light-zh.jpg",
+      "bytes": 40397,
+      "sha256": "6796a89240a32210535d5b319c578b1c0d6a9a370f155430a6a79ec65c78126a",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-1920x1080-light-zh.json",
+      "bytes": 470,
+      "sha256": "6500f2028f3a4a330551dd6fb257e4065026423d7cdc8ac7d266a24944aa36a1",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-390x844-dark-en.jpg",
+      "bytes": 16689,
+      "sha256": "b9b93500208c7be68020d60b4d9cc972f24644550a4d8e956d68db09a316b56b",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-390x844-dark-en.json",
+      "bytes": 464,
+      "sha256": "2d1016b4e41308636753d89fca6497883f6b3d6cc679e568ced2201e782df131",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-390x844-dark-zh.jpg",
+      "bytes": 15971,
+      "sha256": "599c5a3d49cdb1d2fa30d93aff1d22750d7ec285748909a27b4ec71d1e4dc3a4",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-390x844-dark-zh.json",
+      "bytes": 464,
+      "sha256": "0654967080217898fa9ba972d2f4f8c01605437a3c1de4b1fd2d1869255d6283",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-390x844-light-en.jpg",
+      "bytes": 19116,
+      "sha256": "4f8893ff220a12770a2587bc6678f836d564a81c6330aaee3845c8c1aa58871c",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-390x844-light-en.json",
+      "bytes": 466,
+      "sha256": "55bff0197bfe2fe8396cffab5f56a28c488b6f92b0c3d4c0e88a3417e73a8ba5",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-390x844-light-zh.jpg",
+      "bytes": 18274,
+      "sha256": "bb541b60b10ff2d237dddd399fd22596210cee5030fa883d11be65e213201fda",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-390x844-light-zh.json",
+      "bytes": 466,
+      "sha256": "e81dbd3f1df11166ce253264f3a4fa1ecfa5532220a7019fcc6d19aad003d8a0",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-768x1024-dark-en.jpg",
+      "bytes": 31474,
+      "sha256": "2201c159a1b6de5659d6f08f5c478d1f0ad771b1d24a12e8768056e7fcc6e9fa",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-768x1024-dark-en.json",
+      "bytes": 466,
+      "sha256": "d6a061ab1579398414f1f76151f7231be1b7aa4e6a724db6688368efb0422c03",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-768x1024-dark-zh.jpg",
+      "bytes": 28543,
+      "sha256": "d2357621a64b64a7058c24bc09518dac827f4f0e0f42649ea87f7ddbb4173993",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-768x1024-dark-zh.json",
+      "bytes": 466,
+      "sha256": "227d9fcd2cfe43b472eaf268de982a8542aa0e6df7cdc094f0a914369d8d170a",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-768x1024-light-en.jpg",
+      "bytes": 34781,
+      "sha256": "3cb948e655cfba6e2ae8c6892d583703c649de68a523d2f005199e86dc633968",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-768x1024-light-en.json",
+      "bytes": 468,
+      "sha256": "406d0922d1daa209eb114339dff35be6a3348e487a0317f09aecc3a7de4ced72",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-connectors-768x1024-light-zh.jpg",
+      "bytes": 31652,
+      "sha256": "a803f8563405d8ea5c863dd104df2c81405388af85e958a17bb578616526cb91",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-connectors-768x1024-light-zh.json",
+      "bytes": 468,
+      "sha256": "f70b20333e9e601486fa4b264caf8e4a3ec17d122dfc83af45938082d7d99447",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-1280x800-dark-en.jpg",
+      "bytes": 38030,
+      "sha256": "13003a40f22b7b0ca8710c83aa3ad20eb1601f03a5e25385402556a80eb43f3f",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-1280x800-dark-en.json",
+      "bytes": 463,
+      "sha256": "f72ab1173fe60b1f9992942d2d3b0723a2e4712340101e80ab46c0c1f5fb5f75",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-1280x800-dark-zh.jpg",
+      "bytes": 34189,
+      "sha256": "128035738d956298667d3201a65dc2ff3ecbd1af637f9bc9c6600d29849a6c27",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-1280x800-dark-zh.json",
+      "bytes": 463,
+      "sha256": "3d6a95bbaaa687b4ff8672e6bfb27ec9e96b6e4174c8d521b42876235cf983b8",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-1280x800-light-en.jpg",
+      "bytes": 39557,
+      "sha256": "1c228bd92bb761d8c498a80c9362234edb12bce078d29a8a6a7b201d92babb02",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-1280x800-light-en.json",
+      "bytes": 465,
+      "sha256": "6ad2d5dccf1ada0aa11fbb6f980fd211c43407eb006c1057ade373ab8dcfb408",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-1280x800-light-zh.jpg",
+      "bytes": 35411,
+      "sha256": "aac035f1c0552d6bc95629ece91d85d5a89af838117cdf697e28b898c9d879d7",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-1280x800-light-zh.json",
+      "bytes": 465,
+      "sha256": "c5ded13addfc64bb02128205a28a86f6570b440f58c215cd0e0d0fe3ebfe0c44",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-1440x900-dark-en.jpg",
+      "bytes": 40049,
+      "sha256": "ec9c79f5e75ccde4d420625ec4f8b1df407297875acdf5b6d8913346f7f729fc",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-1440x900-dark-en.json",
+      "bytes": 463,
+      "sha256": "191ab4b55786a1a33eced5b1014af457b6e563d0a0764e23e0d4db6edcfe7bc4",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-1440x900-dark-zh.jpg",
+      "bytes": 35886,
+      "sha256": "8e4bd529a9e3ad89806ac8995706cd1ddb50962ba96808d00b25bdd767e507ba",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-1440x900-dark-zh.json",
+      "bytes": 463,
+      "sha256": "c87a4c5863c1bd31d8fe2fae830ba54c30468dc82f849b5d9bfa8db6607cd3e8",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-1440x900-light-en.jpg",
+      "bytes": 41833,
+      "sha256": "41862778428cc77898b8577b96b16303b31179ec65c5b4462b3b5c7f87700ffc",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-1440x900-light-en.json",
+      "bytes": 465,
+      "sha256": "c470b6ad33af0c097e7ee3b4b5df2c3674b3560fbd33efb2dcc7861df0b46e29",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-1440x900-light-zh.jpg",
+      "bytes": 37531,
+      "sha256": "467de3110cb8d331b0fe9732cb17c185be53e7f5425e2704a5f986cdca91dfd0",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-1440x900-light-zh.json",
+      "bytes": 465,
+      "sha256": "9ae7ab3e6d8328d1f408feb07467e5969d48846ee625a52490b1da838b395d82",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-1920x1080-dark-en.jpg",
+      "bytes": 45192,
+      "sha256": "8eaba622bfc5f610a3c662b532aa5ee08021d82e5c383e990ecfe86ab276a8f4",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-1920x1080-dark-en.json",
+      "bytes": 465,
+      "sha256": "de8a9af75270283562019291e6ed7a8bdeda23330f396abac7b1facf4ccc53df",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-1920x1080-dark-zh.jpg",
+      "bytes": 40914,
+      "sha256": "1282434a8ec528ca572098a49424d90f9c1079009593e413172b9386ac23307e",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-1920x1080-dark-zh.json",
+      "bytes": 465,
+      "sha256": "97b8b5748dbefd0bdd21bb7228fc0ab89b980d2cfb513aae90fe9f7a96f8813d",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-1920x1080-light-en.jpg",
+      "bytes": 47058,
+      "sha256": "9b142b99020e82e2c80db88090d73afcd66574763f0e6d9fce3042e534dd0d86",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-1920x1080-light-en.json",
+      "bytes": 467,
+      "sha256": "aa92590a156f8e2847aa428c42f2c700af904b5b06fc4bd396ec96c12ceac784",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-1920x1080-light-zh.jpg",
+      "bytes": 42447,
+      "sha256": "76ce8f63a7cf7aef4ac54c951115b1fdbf87390b0dad4e3eccef1d2963a8340c",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-1920x1080-light-zh.json",
+      "bytes": 467,
+      "sha256": "20a19761093062b19c22a3758471261b63ded2f20309bc2bb811619d43b87fae",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-390x844-dark-en.jpg",
+      "bytes": 21520,
+      "sha256": "336a18bdd644bbb4ccda29668077d445979bd771adf230e1f959c9ea1bb5e7a0",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-390x844-dark-en.json",
+      "bytes": 461,
+      "sha256": "7361812748ae2ecd47997dae3ec9d3aa6e9442d3411072d0a7d64ebd8c9daaa6",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-390x844-dark-zh.jpg",
+      "bytes": 19465,
+      "sha256": "4fcedefb1cc0db46d8869f10ff516ec21466008934bded6b22bafbbfb4e353db",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-390x844-dark-zh.json",
+      "bytes": 461,
+      "sha256": "b4162a4a203321295806a0fb5dab209388fa6dd75f11229852398c036510c795",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-390x844-light-en.jpg",
+      "bytes": 21914,
+      "sha256": "1acb12f30813bff88f6ccbb6a441bd87001fd5a31924b05a04d64df476aca8b0",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-390x844-light-en.json",
+      "bytes": 463,
+      "sha256": "142cc569b91b6d6d0da241b6efb2afc6e1d22e16bc94981b636e8c22a2a1ab42",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-390x844-light-zh.jpg",
+      "bytes": 19713,
+      "sha256": "722c7f4ee719d03d28e7a4337e2366c5d98f111645aef0c5f4faf18fd29637e2",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-390x844-light-zh.json",
+      "bytes": 463,
+      "sha256": "6dab2ebf1f95657bcc1399395e5313e96f411bcff9b538b6c3cd5f4359e39b34",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-768x1024-dark-en.jpg",
+      "bytes": 38095,
+      "sha256": "8a77955e22f50425c57cab16afb31ca9d489c715817654ee9048d773b4d3cb5e",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-768x1024-dark-en.json",
+      "bytes": 463,
+      "sha256": "2784221136f99b9eba19d0c1c19a36a0b13d2cded2b71d63dc888b954e83b2c1",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-768x1024-dark-zh.jpg",
+      "bytes": 33581,
+      "sha256": "269f75ee345f734da598874f425778b5d7eaac1de50418a4118ccdb08b9dd510",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-768x1024-dark-zh.json",
+      "bytes": 463,
+      "sha256": "0228355b369cfa277eeb6bb21125b1b0c240b195e0f85ef0f1accc73415cb245",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-768x1024-light-en.jpg",
+      "bytes": 39344,
+      "sha256": "5b100b24367bb5275bcba7a1f2886cde28ec662963617f9c2f56dc57831afd1d",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-768x1024-light-en.json",
+      "bytes": 465,
+      "sha256": "8dac7bf8658007a2b1df85372afc1394364f0a9bff4425aa2d7196913024fb01",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-experts-768x1024-light-zh.jpg",
+      "bytes": 34388,
+      "sha256": "ad60cbd5071954d4fc4debf131a5573a5d0cba5b3254e03cddc3f6d0c7bcd8db",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-experts-768x1024-light-zh.json",
+      "bytes": 465,
+      "sha256": "ce46fc643925996edb8e45e012ce3e6687f86be00cc9431ed0999db7a6f809e0",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-1280x800-dark-en.jpg",
+      "bytes": 37147,
+      "sha256": "a43740ccad80c078cba6b5d45471cb96c2818613aa9498be12b8aea780770115",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-1280x800-dark-en.json",
+      "bytes": 517,
+      "sha256": "84258e6122e8d64151fb6945cc62b9d756160aa52d6268f33dff8c01e4b95f1b",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-1280x800-dark-zh.jpg",
+      "bytes": 30192,
+      "sha256": "2fcc599bb6f9bd126270a490cc1eedcd1ff1838d62b7ef1ab266cfd90e3c315c",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-1280x800-dark-zh.json",
+      "bytes": 517,
+      "sha256": "40e085e2492f45c89e60a54bbcf0e480537fcb5db9b9cf8bfb4eeeb455f6fdaf",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-1280x800-light-en.jpg",
+      "bytes": 40565,
+      "sha256": "224ce313f133fcbb904c31d6e25f0903dafe515bcfc575631cef5a8447a932e2",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-1280x800-light-en.json",
+      "bytes": 519,
+      "sha256": "1e9328ef77e1bd5d04426944a2e66fe46245e053638551ddc950fd7110b2b936",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-1280x800-light-zh.jpg",
+      "bytes": 33260,
+      "sha256": "464e15a65d9074f6f8f03b656bac7b7f35d30eebda5c75ded564e03ff1802227",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-1280x800-light-zh.json",
+      "bytes": 519,
+      "sha256": "8849b02be9e166257889d20c904a9c45e9fb2c1dbdeb27c4b26d9d0fcacb972e",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-1440x900-dark-en.jpg",
+      "bytes": 42111,
+      "sha256": "4073de38392f58191eefe570cdaa0440a4e5cddec41397b7c9d60cb84d8ad438",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-1440x900-dark-en.json",
+      "bytes": 517,
+      "sha256": "6e9d03092e5a5fb887206ad1ccf84a9d4a917e3cde08745b82d0027553c85c29",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-1440x900-dark-zh.jpg",
+      "bytes": 35090,
+      "sha256": "ee8eca4b9cd062d8e3f68be768f9476203b523eb4126d4c3bd966e3fe6a45820",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-1440x900-dark-zh.json",
+      "bytes": 517,
+      "sha256": "872e664ca1697510dd38ff7825fb90431042b5ede1b008cdf04739827a36501a",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-1440x900-light-en.jpg",
+      "bytes": 47562,
+      "sha256": "3293447d038576a0e8778a6ad92b006ad680d51d335fd9e9e65f3bc35d672bc1",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-1440x900-light-en.json",
+      "bytes": 519,
+      "sha256": "0eb05e1161f24b4a7b113b77b623cdac85629d56d35b2c47a752a289d2511746",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-1440x900-light-zh.jpg",
+      "bytes": 40313,
+      "sha256": "a3cdd6cdb7c1e1a5a31c17534a59af9ec86612d6e2208238962ecbe99b274507",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-1440x900-light-zh.json",
+      "bytes": 519,
+      "sha256": "9cb25fab32a19dae82154aca3c3d8900f12d8455f4d7a30c825228c1cda22ddd",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-1920x1080-dark-en.jpg",
+      "bytes": 54838,
+      "sha256": "6fd438a51253a15cdf36bbf51a2fc600e794643282ce38bd460018916639663c",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-1920x1080-dark-en.json",
+      "bytes": 519,
+      "sha256": "447e544c72570f5c3f80520287712bf90bd4f5dc1fee9a20de4f9de82c491723",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-1920x1080-dark-zh.jpg",
+      "bytes": 46899,
+      "sha256": "7c99a1dd92292c42c06fdd0ac6853a9488bfecdb533c0c0448bcd7a9fee734de",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-1920x1080-dark-zh.json",
+      "bytes": 519,
+      "sha256": "ef5929814c21647b006ec5ae60cc6cec9ac22796ccc3894bae4dca33aa8355cd",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-1920x1080-light-en.jpg",
+      "bytes": 61254,
+      "sha256": "77075f486a9197aac5e239341650dcdb11f5b96eafb113d2d65a6d180b13cffd",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-1920x1080-light-en.json",
+      "bytes": 521,
+      "sha256": "14a91ebb866b67dc898a69d967d03cf9ee94c9d59704eb6739c6c967a6a97520",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-1920x1080-light-zh.jpg",
+      "bytes": 52781,
+      "sha256": "220b33669f95f51f043b2a2e57b816a238e92dae7a45b83166876696db8a85e4",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-1920x1080-light-zh.json",
+      "bytes": 521,
+      "sha256": "25db63d535bdf1c4ee79d17b20c77eeb02326f32d7d83742358de9e477e898d7",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-390x844-dark-en.jpg",
+      "bytes": 9323,
+      "sha256": "c0b2330ef97121621510d3a3646d5172fcc09e99de6be8077be2656b5b89e424",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-390x844-dark-en.json",
+      "bytes": 513,
+      "sha256": "fa3fde9f9bb1c66f5bb71123d66112893da49d7f3a8c23f28ec7b8fad1414308",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-390x844-dark-zh.jpg",
+      "bytes": 9039,
+      "sha256": "9ffa5f27485ce0444375e68d98940643e6fecef624972515885a7c965ec2b933",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-390x844-dark-zh.json",
+      "bytes": 513,
+      "sha256": "5b0b5878b18f364fbbfcebd1c955b17f6e0282c8cd6d4b7fe023605725e44968",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-390x844-light-en.jpg",
+      "bytes": 10486,
+      "sha256": "2791e422b95d906d957c6b262881350e0e459af1295722e612ad850c4bc64df6",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-390x844-light-en.json",
+      "bytes": 515,
+      "sha256": "af04ece04b6b8724da35fa649288a277dce1b8669b1294a578802c7b08e76212",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-390x844-light-zh.jpg",
+      "bytes": 9428,
+      "sha256": "4ec666f332e07050961b8e223c0644197cb08287bc00fb11b9b625176fc241a8",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-390x844-light-zh.json",
+      "bytes": 515,
+      "sha256": "da7b0e1fdf00a533a7b2036642f5b1afae074c9c2a0cff38a5ba76432e8f6be9",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-768x1024-dark-en.jpg",
+      "bytes": 33406,
+      "sha256": "98e323c57af62e6290819b71431b91640cb9d8b87b84aabfd9cb6aae85877d89",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-768x1024-dark-en.json",
+      "bytes": 517,
+      "sha256": "c9bc46baec15a65fe8c24c4526e09f1ccaac6fbd8907397fa45d36055d735767",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-768x1024-dark-zh.jpg",
+      "bytes": 27508,
+      "sha256": "1ac28b29181b1ca1f10cf74d6b231ff9737eb00d4d0cf6c79171fb871fb610bf",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-768x1024-dark-zh.json",
+      "bytes": 517,
+      "sha256": "a776b63cdee80a28dd292ea27000805fce4946494588d3005507e7ed296b2c38",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-768x1024-light-en.jpg",
+      "bytes": 36185,
+      "sha256": "77312ea648ae9295738482a01cbdab1a1b3ae01f9349fd059695c0fd8b5b64d1",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-768x1024-light-en.json",
+      "bytes": 519,
+      "sha256": "0d3fe2af08f52adb08cc6b04a1599b1effff35b8d80d43d54ba23c7c5da176f4",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-settings-768x1024-light-zh.jpg",
+      "bytes": 30112,
+      "sha256": "4eb01770d1a003240f4cf6e88a34849d72e3896e0eab72c80f1329a1cd635be8",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-settings-768x1024-light-zh.json",
+      "bytes": 519,
+      "sha256": "9773390bb68453147b915f86b4b5725a5139f98ad380820b8e64297016b8f8a3",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-1280x800-dark-en.jpg",
+      "bytes": 35774,
+      "sha256": "1b5890cc8e21a1d8fe662c3f6559d6b3b4ca15d9850c458922d77b3bc906cf9d",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-1280x800-dark-en.json",
+      "bytes": 462,
+      "sha256": "01e237cbb8bfdf160f0ebf06f68e89b8b28611c3c3127dd3f4abe91f3c887248",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-1280x800-dark-zh.jpg",
+      "bytes": 32747,
+      "sha256": "279101e3949d06e7fe1527c5c40f3cd3473efa40e6812e9bedff11df7448935d",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-1280x800-dark-zh.json",
+      "bytes": 462,
+      "sha256": "9009c685c39cd5b1599f93f047463219cad7e278b6ee8e6e443a3c7b91cb33b1",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-1280x800-light-en.jpg",
+      "bytes": 39325,
+      "sha256": "bcc46b25553115ca3d994f065e6c868524acbf71eddb39e2fbb56a6db5b366bd",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-1280x800-light-en.json",
+      "bytes": 464,
+      "sha256": "f27b0e5215c743ae3ce5e847192f4885492379bef7b50c9dc4b81bd25b02b291",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-1280x800-light-zh.jpg",
+      "bytes": 36103,
+      "sha256": "1d68e43bf74e3413246fac3e1ede9b5f149fc9f68bd4fd9e0222ab73dc17186b",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-1280x800-light-zh.json",
+      "bytes": 464,
+      "sha256": "035a10d05e72a899f13b2272daa7f2d372fa795f465414e377f1c06ab31f7699",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-1440x900-dark-en.jpg",
+      "bytes": 37885,
+      "sha256": "0f0b109f28494a38cbfc024ffcf36dc67579b6ccf2a0bb4a2c705503f0fcb972",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-1440x900-dark-en.json",
+      "bytes": 462,
+      "sha256": "5f1526c7408b12feeb805b9aeac5c4e26fae1dc1436d14c9661c287d1f56832e",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-1440x900-dark-zh.jpg",
+      "bytes": 34697,
+      "sha256": "2d0e4a73a9b2315c2d46339ba70fb4812f36d3acb6c8e2d5cff1fd0d27f8423f",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-1440x900-dark-zh.json",
+      "bytes": 462,
+      "sha256": "fea5f0f092b270cf87f012f51267b9f8f51cebbf724828aad0a9bbcae0f37304",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-1440x900-light-en.jpg",
+      "bytes": 41477,
+      "sha256": "06e5f6b75117be82599f54356076487bf3096a1d3872e81d46aba200c30c057f",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-1440x900-light-en.json",
+      "bytes": 464,
+      "sha256": "753643f011af65b8a21c6dfe5b2e7f8e04244c72884febfcb18832a98e1924be",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-1440x900-light-zh.jpg",
+      "bytes": 38203,
+      "sha256": "3005e25e4322ccd43a8f475fa116eb1315026ffaab01b80cac15d7e97e63f486",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-1440x900-light-zh.json",
+      "bytes": 464,
+      "sha256": "28090711a3269dece51bbfb13a7be3a16b34d4595158485bc7807047eaafc4af",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-1920x1080-dark-en.jpg",
+      "bytes": 43107,
+      "sha256": "b6c9633b363a7e4553bb16fdbce742e4e223e415c20532a524900a01c4dcbe5f",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-1920x1080-dark-en.json",
+      "bytes": 464,
+      "sha256": "7e92ff2c11b59f745fa16b44dced713d71bceb174592b39e8adcad34ebe7955e",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-1920x1080-dark-zh.jpg",
+      "bytes": 39791,
+      "sha256": "a332a73959fa13f9a100d0ac4e3e05fd03594e038a1366db8d7bbbeb974c5b3c",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-1920x1080-dark-zh.json",
+      "bytes": 464,
+      "sha256": "24175876824330319497524ae28363c1725d30b13d7592276d6ee2b229fc52c4",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-1920x1080-light-en.jpg",
+      "bytes": 46800,
+      "sha256": "7f4fe3fe59116143040de0daf284f4e0d92107a242a715191b76c1e9d0180cb3",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-1920x1080-light-en.json",
+      "bytes": 466,
+      "sha256": "0d6a90e883fe9301df36e43d391c81feef41aa58250e29ca58f38bb6b9be6195",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-1920x1080-light-zh.jpg",
+      "bytes": 43235,
+      "sha256": "1ee5d88354edbcec597c7998c7720f6d2b077ca4fcffcdd252e73daff51ef39f",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-1920x1080-light-zh.json",
+      "bytes": 466,
+      "sha256": "56c0728779fc73fdcd057b4f2217ad9aa9be063b3afeb61e1b93b33debabbd2c",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-390x844-dark-en.jpg",
+      "bytes": 18222,
+      "sha256": "1edfa67c55e4f6be1b4469eed957f35273c2f396e3caf02b6bfe747dac71f805",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-390x844-dark-en.json",
+      "bytes": 460,
+      "sha256": "0c00744441361621d4b85a5314e8564458510ddcb88e4689311e23737a98388a",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-390x844-dark-zh.jpg",
+      "bytes": 17847,
+      "sha256": "adfb5d969b7b104838cb4df2276a44a9d861dcd97d00e1140f2d1f68325bb807",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-390x844-dark-zh.json",
+      "bytes": 460,
+      "sha256": "100bac5ddbe2931a988f5bed5f69ffc223688084fa5b087dc184745cbfe86061",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-390x844-light-en.jpg",
+      "bytes": 20364,
+      "sha256": "9f0876729d9ebd33364dc78d23de31e6ea28ddcdcc72ff7544ea27c083803f9e",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-390x844-light-en.json",
+      "bytes": 462,
+      "sha256": "fcdda86ee3459ad49e2a7a6131aa120f75a6a2ed2d80cad2d1f2c897a7629a73",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-390x844-light-zh.jpg",
+      "bytes": 19938,
+      "sha256": "eca504c8ed3f20a729696a172f94a989aa05b9299bead13a01446b8842ed3e4d",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-390x844-light-zh.json",
+      "bytes": 462,
+      "sha256": "ad65a8cace37e79f64222b47031f4f3784004d8e18b303c66688bc5f5410d8c2",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-768x1024-dark-en.jpg",
+      "bytes": 34494,
+      "sha256": "efcabf29d0e3ed3d461a1e66ca15787c164b5a11aa0e808a09182a12f5b222da",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-768x1024-dark-en.json",
+      "bytes": 462,
+      "sha256": "e0aab41128161d3db4aace1c9bf19a12872feb853f07697530670d92744020a7",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-768x1024-dark-zh.jpg",
+      "bytes": 31493,
+      "sha256": "0c3f67d654ad4121306896527ed74b66abc68074a8c8c6529377cc292d195918",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-768x1024-dark-zh.json",
+      "bytes": 462,
+      "sha256": "41a6ace8185eb8d0e817b549ed21fa6d78f8b6520ffc05af0e2fa6b8b229d30d",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-768x1024-light-en.jpg",
+      "bytes": 37978,
+      "sha256": "5e318be8a9d8d5d10c9e7e5f59dde1ed69ced91178f71d832c3abb780abd4ad7",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-768x1024-light-en.json",
+      "bytes": 464,
+      "sha256": "eef08201bf232c2ea3b2486c8d3bd10ba84c101aa31d916f3dda89da935e6b64",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "fixture-skills-768x1024-light-zh.jpg",
+      "bytes": 34682,
+      "sha256": "345e5a0cb054bf048770f15401bbfc7ef92d0c4322b96dd7fa3b7802ec9aead4",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "fixture-skills-768x1024-light-zh.json",
+      "bytes": 464,
+      "sha256": "a1551a217ed41b4b61213c164aef79c617f4c2dccf801312fb198db1e792c8ab",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "real-chat-queue.json",
+      "bytes": 143,
+      "sha256": "863131bbc669436f40dcbe429bfca0bdd6029415389f498732746f59f43bb9f9",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "real-layout-checks.json",
+      "bytes": 7164,
+      "sha256": "e6aaa7d45d074e045c54a8caff7bba992710289ff3133ac31e9f49d0100ad46e",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "real-market.json",
+      "bytes": 468,
+      "sha256": "ef5550adc26a6462db547f741e82ab5891ab1a84295a206656414ca6bef9d188",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "real-settings-save.json",
+      "bytes": 241,
+      "sha256": "5dbb6b00611c8d891aed909dd58a0d8e15bf414b8d1b5af497e0afb902fa7505",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "resource-audit.json",
+      "bytes": 132,
+      "sha256": "41b469645042145afe7e458fdc31ab876a9862d52074e213b20b11efa3bb9895",
+      "kind": "structured-evidence"
+    },
+    {
+      "file": "settings-account-390-light-zh.jpg",
+      "bytes": 23461,
+      "sha256": "9e94d1c40732ac11980ef89e2a3a85bb613454d2e84675102f17a9da1e793f6a",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "settings-audit-deep-link-1440-light-zh.jpg",
+      "bytes": 74700,
+      "sha256": "a26c9663dec46ec5979a638938bcd90dac0601eb391a4ce119feaa850ce54627",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "settings-during-stream-1440-light-zh.jpg",
+      "bytes": 71277,
+      "sha256": "dd28e3dc37de2b73e1491e7f2044b0beada80081a0f335584dcb3a586d53bd16",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "settings-usage-390-light-zh.jpg",
+      "bytes": 28023,
+      "sha256": "8de1728b143aa6ed0475b831b06b615a6b79f6554fbcefc2c6599e895ef046ed",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "skill-detail-reread-1440-light-zh.jpg",
+      "bytes": 60207,
+      "sha256": "d4cd085565b02a7c82819ff3cde8d9594432076325e2ef289fb7c3325343e841",
+      "kind": "review-jpeg"
+    },
+    {
+      "file": "skills-1440-light-zh.jpg",
+      "bytes": 144727,
+      "sha256": "5e3f31d61713336e6d31caa0fc55de661041f8bcf17ae3b263dfcb1306bf1cbb",
+      "kind": "review-jpeg"
+    }
+  ]
+}

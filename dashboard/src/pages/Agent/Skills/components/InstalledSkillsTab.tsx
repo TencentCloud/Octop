@@ -125,7 +125,7 @@ export default function InstalledSkillsTab({
 
   const handleToggleEnabled = async (
     skill: SkillSpec,
-    e?: React.MouseEvent,
+    e?: React.SyntheticEvent,
   ) => {
     e?.stopPropagation();
     await toggleEnabled(skill);
@@ -231,6 +231,7 @@ export default function InstalledSkillsTab({
             <button
               type="button"
               className={styles.toolbarIconBtn}
+              aria-label={t("common.refresh")}
               onClick={() => void handleRefresh()}
               disabled={refreshing || loading}
             >

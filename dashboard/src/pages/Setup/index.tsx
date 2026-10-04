@@ -247,7 +247,7 @@ export default function SetupPage() {
   })();
 
   return (
-    <div className={styles.wizardShell}>
+    <div className={`${styles.wizardShell} wb-auth-surface wb-setup-surface`}>
       <div
         className={`${styles.wizardCard} ${
           isModelStep ? styles.wizardCardWide : styles.wizardCardNarrow

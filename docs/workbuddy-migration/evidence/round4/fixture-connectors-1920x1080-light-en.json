@@ -1,0 +1,29 @@
+{
+  "name": "fixture-connectors-1920x1080-light-en",
+  "status": "passed",
+  "language": "en",
+  "overflow": 0,
+  "settings": null,
+  "tabs": [
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "false"
+    },
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "false"
+    },
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "true"
+    }
+  ],
+  "theme": "light",
+  "viewport": {
+    "height": 1080,
+    "width": 1920
+  }
+}

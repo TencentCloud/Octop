@@ -1,0 +1,107 @@
+{
+  "note": "Final completed checks only; full unfiltered suites with four frontend workers. Log files remain local, hashes preserve references. Raw backend request logs are not copied. Platform and full operation acceptance are not implied.",
+  "checks": [
+    {
+      "name": "make-all",
+      "result": "passed",
+      "exitCode": 0,
+      "details": {
+        "passed": 4166,
+        "skipped": 17,
+        "warnings": 53,
+        "mypyFiles": 554
+      },
+      "localLog": "/private/tmp/octop-round2-make-all-final.log",
+      "logSha256": "1b7ffa6f2bf7bac8167251f801f7a23f568e055f2a6f8755738569991278cfea"
+    },
+    {
+      "name": "frontend-legacy",
+      "result": "passed",
+      "exitCode": 0,
+      "details": {
+        "testFiles": 229,
+        "tests": 1194,
+        "maxWorkers": 4
+      },
+      "localLog": "/private/tmp/octop-round2-tests-legacy-final.log",
+      "logSha256": "2e9f5b0b091cb6d015b85ee0eca9c1c2d7b992ad8721cf6face27c4ccd029c10"
+    },
+    {
+      "name": "frontend-workbuddy",
+      "result": "passed",
+      "exitCode": 0,
+      "details": {
+        "testFiles": 229,
+        "tests": 1194,
+        "maxWorkers": 4
+      },
+      "localLog": "/private/tmp/octop-round2-tests-workbuddy-final.log",
+      "logSha256": "2525eabd8eef26a42094c2789e11342185c24f1a7c59fed1597c395055e9d698"
+    },
+    {
+      "name": "frontend-types",
+      "result": "passed",
+      "exitCode": 0,
+      "details": {},
+      "localLog": "/private/tmp/octop-round2-types-final.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "frontend-lint",
+      "result": "passed",
+      "exitCode": 0,
+      "details": {
+        "errors": 0,
+        "existingWarnings": 67
+      },
+      "localLog": "/private/tmp/octop-round2-lint-final.log",
+      "logSha256": "374dab73683b755a4415556c4a81aab392c16f3dfface7c9e9eee0b3cf7e1edf"
+    },
+    {
+      "name": "i18n",
+      "result": "passed",
+      "exitCode": 0,
+      "details": {
+        "passed": 75,
+        "warnings": 18
+      },
+      "localLog": "/private/tmp/octop-round2-i18n-final.log",
+      "logSha256": "feab6886375ac01b3f512f58fb8307bd5b916e882f52820d26e536af855390b2"
+    },
+    {
+      "name": "formal-frontend-build",
+      "result": "passed",
+      "exitCode": 0,
+      "details": {
+        "variant": "workbuddy",
+        "precacheEntries": 103,
+        "precacheKiB": 7370.86
+      },
+      "localLog": "/private/tmp/octop-round2-build-final.log",
+      "logSha256": "660d894cef99868ec9586b8022db82e96f76817ea517218d2a249a206cb9ffc8"
+    },
+    {
+      "name": "source-audit",
+      "result": "passed",
+      "exitCode": 0,
+      "details": {
+        "generatedAssets": 9,
+        "apiModules": 51,
+        "exportedEntries": 449,
+        "entriesWithStaticConsumers": 317
+      },
+      "localLog": "/private/tmp/octop-round2-audit-final.log",
+      "logSha256": "a4a956b056200f1f8d6f4205ff7ba3249e6f10ab3ad21f587a628a3535d20664"
+    },
+    {
+      "name": "migration-tool-tests",
+      "result": "passed",
+      "exitCode": 0,
+      "details": {
+        "passed": 6
+      },
+      "localLog": "/private/tmp/octop-round2-tools-tests-final.log",
+      "logSha256": "7d5e5d01fc9fd33cc4029b58286c96313d9e71340f1e93d32aef176c3e135be2"
+    }
+  ]
+}

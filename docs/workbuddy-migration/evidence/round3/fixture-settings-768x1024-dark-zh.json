@@ -1,0 +1,33 @@
+{
+  "name": "fixture-settings-768x1024-dark-zh",
+  "status": "passed",
+  "language": "zh",
+  "overflow": 0,
+  "settings": {
+    "height": 720,
+    "nav": 200,
+    "width": 736
+  },
+  "tabs": [
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "false"
+    },
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "false"
+    },
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "true"
+    }
+  ],
+  "theme": "dark",
+  "viewport": {
+    "height": 1024,
+    "width": 768
+  }
+}

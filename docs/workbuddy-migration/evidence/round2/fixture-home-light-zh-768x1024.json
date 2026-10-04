@@ -1,0 +1,44 @@
+{
+  "case": "fixture-home-light-zh-768x1024",
+  "status": "passed",
+  "assistantPanels": 0,
+  "composer": {
+    "height": 161,
+    "width": 480,
+    "x": 264,
+    "y": 451.5
+  },
+  "draft": "Round 2 visual draft",
+  "home": {
+    "height": 940,
+    "width": 528,
+    "x": 240,
+    "y": 84
+  },
+  "overflow": 0,
+  "primaryCount": 7,
+  "primaryNavigationCount": 1,
+  "recommendations": {
+    "height": 128.125,
+    "width": 528,
+    "x": 240,
+    "y": 839.875
+  },
+  "sidebar": {
+    "height": 996,
+    "width": 240,
+    "x": 0,
+    "y": 28
+  },
+  "theme": "light",
+  "topbar": {
+    "height": 56,
+    "width": 528,
+    "x": 240,
+    "y": 28
+  },
+  "viewport": {
+    "height": 1024,
+    "width": 768
+  }
+}

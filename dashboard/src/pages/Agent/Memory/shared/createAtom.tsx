@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { Form, Input, Modal, Radio, Select } from "antd";
 import { message } from "@/utils/antdMessage";
 import { useTranslation } from "react-i18next";
+import { WORKBUDDY_UI } from "../../../../workbuddy/variant";
 
 import {
   memoryDashboardApi,
@@ -74,6 +75,8 @@ export default function CreateAtomModal({
 
   return (
     <Modal
+      centered={WORKBUDDY_UI}
+      className={WORKBUDDY_UI ? "wb-business-modal" : undefined}
       title={
         lockedToEntity
           ? t("memory.create.titleInTopic", "在此主题下添加记忆")

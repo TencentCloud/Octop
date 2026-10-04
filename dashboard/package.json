@@ -17,7 +17,11 @@
     "test:coverage": "vitest run --coverage",
     "preview": "vite preview",
     "preview:prod": "vite preview --mode production",
-    "preview:test": "vite preview --mode test"
+    "preview:test": "vite preview --mode test",
+    "workbuddy:extract": "node scripts/extract-workbuddy.mjs",
+    "workbuddy:audit": "node scripts/audit-workbuddy.mjs",
+    "dev:workbuddy": "node scripts/workbuddy.mjs dev",
+    "build:workbuddy": "node scripts/workbuddy.mjs build"
   },
   "dependencies": {
     "@aiden0z/pptx-renderer": "^1.2.4",
@@ -75,6 +79,7 @@
     "jsdom": "^25.0.1",
     "less": "^4.5.1",
     "pngjs": "^7.0.0",
+    "postcss": "^8.5.15",
     "prettier": "3.0.0",
     "rollup-plugin-visualizer": "^5.14.0",
     "typescript": "~5.8.3",

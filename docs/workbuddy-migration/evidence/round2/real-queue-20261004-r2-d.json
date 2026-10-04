@@ -1,0 +1,7 @@
+{
+  "status": "passed",
+  "scenario": "queue across route changes and refresh",
+  "runId": "20261004-r2-d",
+  "storedMessages": 2,
+  "storedReplies": 2
+}

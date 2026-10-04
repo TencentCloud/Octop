@@ -1,6 +1,8 @@
+import { WORKBUDDY_UI } from "../../../../workbuddy/variant";
+import SkillTile from "../../../../workbuddy/SkillTile";
 // dashboard/src/pages/Agent/Skills/components/SkillHubTab.tsx
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Button, Input, Spin, Tag, Segmented } from "antd";
+import { Button, Input, Spin, Tag, Segmented, Select } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { CircleCheck, Download, Link, RefreshCw, Zap } from "lucide-react";
@@ -119,6 +121,7 @@ export default function SkillHubTab({
   const [searching, setSearching] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [category, setCategory] = useState<string | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<SkillHubSkill | null>(
     null,
   );
@@ -138,7 +141,7 @@ export default function SkillHubTab({
     if (target?.type === "package" && packageId) {
       return { type: "package", packageId };
     }
-    return { type: "agent", agentId: agentId ?? "_" };
+    return agentId ? { type: "agent", agentId } : { type: "browse" };
   }, [target?.type, agentId, packageId]);
 
   const installTarget = useMemo<SkillInstallTarget | null>(() => {
@@ -311,14 +314,35 @@ export default function SkillHubTab({
     [installTarget, installingSlug, onInstalled, onPick, t],
   );
 
+  const categories = useMemo(
+    () =>
+      [
+        ...new Set(
+          (searchKeyword ? hubSkills : rankings[activeRanking] ?? []).flatMap(
+            (skill) => (skill.category ? [skill.category] : []),
+          ),
+        ),
+      ].sort(),
+    [searchKeyword, hubSkills, rankings, activeRanking],
+  );
   const displaySkills = useMemo(() => {
     const base = searchKeyword ? hubSkills : rankings[activeRanking] ?? [];
-    return base.slice().sort((a, b) => {
-      const ai = isInstalled(a.slug) ? 0 : 1;
-      const bi = isInstalled(b.slug) ? 0 : 1;
-      return ai - bi;
-    });
-  }, [searchKeyword, hubSkills, rankings, activeRanking, isInstalled]);
+    return base
+      .filter((skill) => !category || skill.category === category)
+      .slice()
+      .sort((a, b) => {
+        const ai = isInstalled(a.slug) ? 0 : 1;
+        const bi = isInstalled(b.slug) ? 0 : 1;
+        return ai - bi;
+      });
+  }, [
+    searchKeyword,
+    hubSkills,
+    rankings,
+    activeRanking,
+    isInstalled,
+    category,
+  ]);
 
   const handleCardClick = (skill: SkillHubSkill) => {
     setSelectedSkill(skill);
@@ -397,6 +421,18 @@ export default function SkillHubTab({
         </Button>
       </div>
 
+      {WORKBUDDY_UI && categories.length > 0 && (
+        <div className="wb-skill-categories">
+          <Select
+            aria-label={t("workbuddy.market.category")}
+            placeholder={t("workbuddy.market.allCategories")}
+            allowClear
+            value={category}
+            onChange={(value) => setCategory(value ?? null)}
+            options={categories.map((value) => ({ value, label: value }))}
+          />
+        </div>
+      )}
       {!searchKeyword && (
         <Segmented
           block
@@ -422,83 +458,136 @@ export default function SkillHubTab({
           {t("skills.rankingsEmpty")}
         </div>
       ) : (
-        <div className={styles.hubGrid}>
-          {displaySkills.map((skill) => (
-            <div
-              key={skill.slug}
-              className={styles.hubCard}
-              onClick={() => handleCardClick(skill)}
-            >
-              <div className={styles.hubCardHeader}>
-                {skill.iconUrl ? (
-                  <img
-                    src={skill.iconUrl}
-                    alt=""
-                    className={styles.hubCardIcon}
-                  />
-                ) : (
-                  <span className={styles.hubCardIconFallback}>
-                    <Zap size={16} fill="currentColor" />
-                  </span>
-                )}
-                <span className={styles.hubCardName}>{skill.name}</span>
-                {skill.verified && (
-                  <CircleCheck
-                    size={14}
-                    style={{ color: "var(--fn-text-brand)", flexShrink: 0 }}
-                  />
-                )}
-                {requiresApiKey(skill) && (
-                  <Tag
-                    color="orange"
-                    style={{
-                      fontSize: 11,
-                      lineHeight: "18px",
-                      padding: "0 6px",
-                      margin: 0,
-                      flexShrink: 0,
+        <div className={WORKBUDDY_UI ? "wb-skill-hub-grid" : styles.hubGrid}>
+          {displaySkills.map((skill) =>
+            WORKBUDDY_UI ? (
+              <SkillTile
+                key={skill.slug}
+                title={skill.name}
+                description={skillDesc(skill) || t("skills.noDescription")}
+                icon={
+                  skill.iconUrl ? (
+                    <img src={skill.iconUrl} alt="" width={28} height={28} />
+                  ) : (
+                    <Zap size={18} />
+                  )
+                }
+                installed={isInstalled(skill.slug)}
+                installedListMode={false}
+                sourceLabel={skill.category}
+                onOpen={() => handleCardClick(skill)}
+                badge={
+                  skill.verified ? (
+                    <CircleCheck size={14} aria-label={t("skills.verified")} />
+                  ) : undefined
+                }
+                metadata={
+                  <>
+                    {requiresApiKey(skill) && (
+                      <Tag color="orange">{t("skills.requiresApiKey")}</Tag>
+                    )}
+                    {typeof skill.downloads === "number" ? (
+                      <span>
+                        <Download size={12} />{" "}
+                        {skill.downloads.toLocaleString()}
+                      </span>
+                    ) : null}
+                  </>
+                }
+                actions={
+                  <Button
+                    size="small"
+                    loading={installingSlug === skill.slug}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleInstall(skill);
                     }}
                   >
-                    {t("skills.requiresApiKey")}
-                  </Tag>
-                )}
+                    {onPick
+                      ? t("experts.pickSkill")
+                      : isInstalled(skill.slug)
+                      ? t("skills.reinstall")
+                      : t("skills.install")}
+                  </Button>
+                }
+              />
+            ) : (
+              <div
+                key={skill.slug}
+                className={styles.hubCard}
+                onClick={() => handleCardClick(skill)}
+              >
+                <div className={styles.hubCardHeader}>
+                  {skill.iconUrl ? (
+                    <img
+                      src={skill.iconUrl}
+                      alt=""
+                      className={styles.hubCardIcon}
+                    />
+                  ) : (
+                    <span className={styles.hubCardIconFallback}>
+                      <Zap size={16} fill="currentColor" />
+                    </span>
+                  )}
+                  <span className={styles.hubCardName}>{skill.name}</span>
+                  {skill.verified && (
+                    <CircleCheck
+                      size={14}
+                      style={{ color: "var(--fn-text-brand)", flexShrink: 0 }}
+                    />
+                  )}
+                  {requiresApiKey(skill) && (
+                    <Tag
+                      color="orange"
+                      style={{
+                        fontSize: 11,
+                        lineHeight: "18px",
+                        padding: "0 6px",
+                        margin: 0,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {t("skills.requiresApiKey")}
+                    </Tag>
+                  )}
+                </div>
+                <div className={styles.hubCardDesc}>
+                  {skillDesc(skill) || t("skills.noDescription")}
+                </div>
+                <div className={styles.hubCardFooter}>
+                  {typeof skill.downloads === "number" && (
+                    <span className={styles.hubCardStat}>
+                      <Download size={14} /> {skill.downloads.toLocaleString()}
+                    </span>
+                  )}
+                  <Button
+                    size="small"
+                    type={isInstalled(skill.slug) ? "default" : "primary"}
+                    icon={
+                      isInstalled(skill.slug) ? (
+                        <RefreshCw size={14} />
+                      ) : (
+                        <Download size={14} />
+                      )
+                    }
+                    loading={installingSlug === skill.slug}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleInstall(skill);
+                    }}
+                  >
+                    {onPick
+                      ? isInstalled(skill.slug)
+                        ? t("experts.skillAlreadySelected")
+                        : t("experts.pickSkill")
+                      : isInstalled(skill.slug)
+                      ? t("skills.reinstall")
+                      : t("skills.install")}
+                  </Button>
+                </div>
               </div>
-              <div className={styles.hubCardDesc}>
-                {skillDesc(skill) || t("skills.noDescription")}
-              </div>
-              <div className={styles.hubCardFooter}>
-                {typeof skill.downloads === "number" && (
-                  <span className={styles.hubCardStat}>
-                    <Download size={14} /> {skill.downloads.toLocaleString()}
-                  </span>
-                )}
-                <Button
-                  size="small"
-                  type={isInstalled(skill.slug) ? "default" : "primary"}
-                  icon={
-                    isInstalled(skill.slug) ? (
-                      <RefreshCw size={14} />
-                    ) : (
-                      <Download size={14} />
-                    )
-                  }
-                  loading={installingSlug === skill.slug}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void handleInstall(skill);
-                  }}
-                >
-                  {onPick
-                    ? isInstalled(skill.slug)
-                      ? t("experts.skillAlreadySelected")
-                      : t("experts.pickSkill")
-                    : isInstalled(skill.slug)
-                    ? t("skills.reinstall")
-                    : t("skills.install")}
-                </Button>
-              </div>
-            </div>
-          ))}
+            ),
+          )}
         </div>
       )}
 

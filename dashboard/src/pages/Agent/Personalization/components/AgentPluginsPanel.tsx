@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Button,
-  Drawer,
   Empty,
   Form,
   Input,
@@ -31,6 +30,9 @@ import { message } from "../../../../utils/antdMessage";
 import { apiErrorMessage } from "../../../../utils/apiError";
 import pluginStyles from "../../../Admin/Plugins/index.module.less";
 import styles from "./AgentPluginsPanel.module.less";
+import { WORKBUDDY_UI } from "../../../../workbuddy/variant";
+import SkillTile from "../../../../workbuddy/SkillTile";
+import BusinessDetailDialog from "../../../../components/BusinessDetailDialog";
 
 const GROUP_ALL = "all";
 
@@ -267,61 +269,87 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
       {filteredPlugins.length === 0 ? (
         <Empty description={t("plugins.emptyGroup")} />
       ) : (
-        <div className={pluginStyles.cardGrid}>
-          {filteredPlugins.map((plugin) => (
-            <article
-              key={plugin.id}
-              className={`${pluginStyles.card} ${
-                plugin.enabled ? "" : pluginStyles.cardDisabled
-              }`}
-            >
-              <div className={pluginStyles.cardBody}>
-                <div className={pluginStyles.cardTop}>
-                  <PluginIconView
-                    icon={plugin.icon}
-                    size={32}
-                    className={pluginStyles.cardIcon}
+        <div className={WORKBUDDY_UI ? "sm-grid" : pluginStyles.cardGrid}>
+          {filteredPlugins.map((plugin) =>
+            WORKBUDDY_UI ? (
+              <SkillTile
+                key={plugin.id}
+                title={plugin.name || plugin.id}
+                description={plugin.description || t("plugins.noDescription")}
+                enabled={plugin.enabled}
+                icon={<PluginIconView icon={plugin.icon} size={28} />}
+                badge={
+                  !plugin.global_enabled ? (
+                    <Tag>{t("plugins.globallyDisabled")}</Tag>
+                  ) : null
+                }
+                onOpen={() => setDetailId(plugin.id)}
+                actions={
+                  <Switch
+                    size="small"
+                    checked={plugin.enabled}
+                    disabled={!plugin.global_enabled}
+                    loading={saving === `plugin:${plugin.id}`}
+                    aria-label={t("plugins.agentEnabled")}
+                    onChange={(checked) => void togglePlugin(plugin, checked)}
                   />
-                  <div className={pluginStyles.cardTitleCol}>
-                    <h3 className={pluginStyles.cardName}>
-                      {plugin.name || plugin.id}
-                    </h3>
-                    <div className={pluginStyles.cardChips}>
-                      <PluginGroupTag group={plugin.group} />
-                      {plugin.kind ? <Tag>{plugin.kind}</Tag> : null}
-                      {!plugin.global_enabled ? (
-                        <Tag>{t("plugins.globallyDisabled")}</Tag>
-                      ) : null}
+                }
+              />
+            ) : (
+              <article
+                key={plugin.id}
+                className={`${pluginStyles.card} ${
+                  plugin.enabled ? "" : pluginStyles.cardDisabled
+                }`}
+              >
+                <div className={pluginStyles.cardBody}>
+                  <div className={pluginStyles.cardTop}>
+                    <PluginIconView
+                      icon={plugin.icon}
+                      size={32}
+                      className={pluginStyles.cardIcon}
+                    />
+                    <div className={pluginStyles.cardTitleCol}>
+                      <h3 className={pluginStyles.cardName}>
+                        {plugin.name || plugin.id}
+                      </h3>
+                      <div className={pluginStyles.cardChips}>
+                        <PluginGroupTag group={plugin.group} />
+                        {plugin.kind ? <Tag>{plugin.kind}</Tag> : null}
+                        {!plugin.global_enabled ? (
+                          <Tag>{t("plugins.globallyDisabled")}</Tag>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
+                  <p className={pluginStyles.cardDesc}>
+                    {plugin.description || t("plugins.noDescription")}
+                  </p>
                 </div>
-                <p className={pluginStyles.cardDesc}>
-                  {plugin.description || t("plugins.noDescription")}
-                </p>
-              </div>
-              <div className={pluginStyles.cardFooter}>
-                <button
-                  type="button"
-                  className={pluginStyles.detailLink}
-                  onClick={() => setDetailId(plugin.id)}
-                >
-                  {t("plugins.viewDetails")}
-                </button>
-                <span className={pluginStyles.cardFooterSpacer} />
-                <Switch
-                  size="small"
-                  checked={plugin.enabled}
-                  disabled={!plugin.global_enabled}
-                  loading={saving === `plugin:${plugin.id}`}
-                  onChange={(checked) => void togglePlugin(plugin, checked)}
-                />
-              </div>
-            </article>
-          ))}
+                <div className={pluginStyles.cardFooter}>
+                  <button
+                    type="button"
+                    className={pluginStyles.detailLink}
+                    onClick={() => setDetailId(plugin.id)}
+                  >
+                    {t("plugins.viewDetails")}
+                  </button>
+                  <span className={pluginStyles.cardFooterSpacer} />
+                  <Switch
+                    size="small"
+                    checked={plugin.enabled}
+                    disabled={!plugin.global_enabled}
+                    loading={saving === `plugin:${plugin.id}`}
+                    onChange={(checked) => void togglePlugin(plugin, checked)}
+                  />
+                </div>
+              </article>
+            ),
+          )}
         </div>
       )}
 
-      <Drawer
+      <BusinessDetailDialog
         title={detail?.name || detail?.id}
         open={!!detail}
         onClose={() => setDetailId(null)}
@@ -398,9 +426,9 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
             )}
           </>
         ) : null}
-      </Drawer>
+      </BusinessDetailDialog>
 
-      <Drawer
+      <BusinessDetailDialog
         title={configTool?.name}
         open={!!configTool}
         onClose={() => setConfigTool(null)}
@@ -419,7 +447,7 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
         <Form form={form} layout="vertical">
           {configTool?.config_fields.map(configField)}
         </Form>
-      </Drawer>
+      </BusinessDetailDialog>
     </div>
   );
 }

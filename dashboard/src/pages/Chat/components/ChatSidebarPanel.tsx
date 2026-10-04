@@ -1,3 +1,4 @@
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { RefObject } from "react";
@@ -86,43 +87,44 @@ export default function ChatSidebarPanel({
     onSidebarOpenChange(true);
   }, [sidebarOpen, onSidebarOpenChange]);
 
-  const sessionList = navEmbedded ? (
-    <MinimalAgentSessionNav
-      agents={agents}
-      activeId={activeThreadId}
-      activeAgentId={resolvedAgentId ?? null}
-      activeSessions={sessions}
-      onSelect={onSelectSession}
-      onAgentSelect={onAgentSelect}
-      onNewChat={onNewChatWithAgent}
-      onDeleteActive={onDeleteSession}
-      onRenameActive={onRenameSession}
-      onPinActive={onPinSession}
-      onFork={onForkSession}
-      activeForkDisabled={forkDisabled}
-      activeForkDisabledHint={forkDisabledHint}
-    />
-  ) : (
-    <SessionList
-      agents={agents}
-      sessions={sessions}
-      activeId={activeThreadId}
-      activeAgentId={resolvedAgentId ?? null}
-      hasMore={sessionsHasMore}
-      loadingMore={sessionsLoadingMore}
-      onLoadMore={onLoadMoreSessions}
-      onFetchAllSessions={onFetchAllSessions}
-      onSelect={onSelectSession}
-      onAgentSelect={onAgentSelect}
-      onNewChat={onNewChatWithAgent}
-      onDelete={onDeleteSession}
-      onRename={onRenameSession}
-      onPin={onPinSession}
-      onFork={onForkSession}
-      activeForkDisabled={forkDisabled}
-      activeForkDisabledHint={forkDisabledHint}
-    />
-  );
+  const sessionList =
+    navEmbedded && !WORKBUDDY_UI ? (
+      <MinimalAgentSessionNav
+        agents={agents}
+        activeId={activeThreadId}
+        activeAgentId={resolvedAgentId ?? null}
+        activeSessions={sessions}
+        onSelect={onSelectSession}
+        onAgentSelect={onAgentSelect}
+        onNewChat={onNewChatWithAgent}
+        onDeleteActive={onDeleteSession}
+        onRenameActive={onRenameSession}
+        onPinActive={onPinSession}
+        onFork={onForkSession}
+        activeForkDisabled={forkDisabled}
+        activeForkDisabledHint={forkDisabledHint}
+      />
+    ) : (
+      <SessionList
+        agents={agents}
+        sessions={sessions}
+        activeId={activeThreadId}
+        activeAgentId={resolvedAgentId ?? null}
+        hasMore={sessionsHasMore}
+        loadingMore={sessionsLoadingMore}
+        onLoadMore={onLoadMoreSessions}
+        onFetchAllSessions={onFetchAllSessions}
+        onSelect={onSelectSession}
+        onAgentSelect={onAgentSelect}
+        onNewChat={onNewChatWithAgent}
+        onDelete={onDeleteSession}
+        onRename={onRenameSession}
+        onPin={onPinSession}
+        onFork={onForkSession}
+        activeForkDisabled={forkDisabled}
+        activeForkDisabledHint={forkDisabledHint}
+      />
+    );
 
   if (navEmbedded) {
     return (
@@ -147,7 +149,7 @@ export default function ChatSidebarPanel({
 
       <div
         ref={sidebarElRef}
-        className={`${styles.sidebar} ${
+        className={`${styles.sidebar} wb-history-sidebar ${
           sidebarOpen ? styles.sidebarOpen : ""
         } ${isSidebarResizing ? styles.sidebarResizing : ""}`}
         style={

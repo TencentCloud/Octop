@@ -1,3 +1,4 @@
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
 import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { beginPointerDragSession } from "../../../hooks/usePointerDragSession";
 
@@ -5,7 +6,7 @@ export const CHAT_SIDEBAR_KEY = "octop:chat-sidebar:open";
 export const CHAT_SIDEBAR_WIDTH_KEY = "octop:chat-sidebar:width";
 export const SIDEBAR_WIDTH_MIN = 200;
 export const SIDEBAR_WIDTH_MAX = 360;
-export const SIDEBAR_WIDTH_DEFAULT = 248;
+export const SIDEBAR_WIDTH_DEFAULT = WORKBUDDY_UI ? 264 : 248;
 /** Viewport width at/above which the chat history rail defaults open. */
 export const CHAT_SIDEBAR_WIDE_BREAKPOINT = 1200;
 

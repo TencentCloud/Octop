@@ -1,0 +1,13 @@
+{
+  "status": "partial",
+  "expertsFilterRetainedAcrossTabs": true,
+  "oldSkillsAddress": "/skills?kind=custom&tab=installed",
+  "skillSourceReadFromWorkspace": true,
+  "skillSavedEarlierAndReread": true,
+  "connectorCatalogDetail": true,
+  "connectorProbeFailure": "unhandled errors in a TaskGroup (1 sub-exception)",
+  "oauthSuccess": "not-tested",
+  "knowledgeAndConsoleReachable": true,
+  "skillDisabledAndReenabled": true,
+  "originalEnabledStateRestored": true
+}

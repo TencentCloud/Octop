@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyQqChannelSaveConfig,
-  DEFAULT_CHANNEL_DISPLAY_CONFIG,
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeQqGroupContextConfig,
   partitionChannelKeys,
@@ -10,6 +9,16 @@ import {
   CHANNEL_FIELDS,
   normalizeChannelFieldValue,
 } from "./constants";
+
+describe("network port configuration", () => {
+  it("converts existing string ports to the gateway's numeric value", () => {
+    expect(normalizeChannelFieldValue("port", "1883")).toBe(1883);
+    expect(normalizeChannelFieldValue("port", 65535)).toBe(65535);
+    for (const value of ["", "mqtt", -1, 0, 65536, 1.5, null, true]) {
+      expect(() => normalizeChannelFieldValue("port", value)).toThrow();
+    }
+  });
+});
 
 describe("Discord configuration", () => {
   it("exposes Discord in more channels and keeps configured bots visible", () => {

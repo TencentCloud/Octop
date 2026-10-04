@@ -7,8 +7,10 @@
  */
 
 import type { ReactNode } from "react";
-import { Card, Drawer, Empty, Pagination, Skeleton, Space } from "antd";
+import { Card, Empty, Pagination, Skeleton, Space } from "antd";
 import { useIsMobile } from "../../../../hooks/useIsMobile";
+import BusinessDetailDialog from "../../../../components/BusinessDetailDialog";
+import { WORKBUDDY_UI } from "../../../../workbuddy/variant";
 
 interface MemoryLayerViewProps<T> {
   /** Optional top toolbar for filters and controls. */
@@ -125,14 +127,14 @@ export default function MemoryLayerView<T>(props: MemoryLayerViewProps<T>) {
       </div>
 
       {renderDrawer ? (
-        <Drawer
+        <BusinessDetailDialog
           title={drawerTitle}
           open={!!selected}
           onClose={onCloseDrawer}
           width={resolvedDrawerWidth}
         >
           {selected ? renderDrawer(selected) : null}
-        </Drawer>
+        </BusinessDetailDialog>
       ) : null}
     </Card>
   );
@@ -146,5 +148,7 @@ const listStyle: React.CSSProperties = {
 
 const itemStyle: React.CSSProperties = {
   padding: "8px 0",
-  borderBottom: "1px dashed #f0f0f0",
+  borderBottom: WORKBUDDY_UI
+    ? "1px solid var(--wb-border-weak)"
+    : "1px dashed #f0f0f0",
 };

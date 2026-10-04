@@ -1,0 +1,8 @@
+{
+  "status": "passed",
+  "scope": "disposable-account",
+  "draftRetainedAcrossCategories": true,
+  "saveReadAfterReload": true,
+  "restoredOriginalName": true,
+  "legacyAuditDeepLink": "/settings/security?source=round3&tab=audit#retained"
+}

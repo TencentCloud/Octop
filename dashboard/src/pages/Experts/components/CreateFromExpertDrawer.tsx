@@ -1,16 +1,8 @@
+import BusinessDetailDialog from "../../../components/BusinessDetailDialog";
 // dashboard/src/pages/Experts/components/CreateFromExpertDrawer.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Alert,
-  Button,
-  Collapse,
-  Drawer,
-  Form,
-  Input,
-  Select,
-  Spin,
-} from "antd";
+import { Alert, Button, Collapse, Form, Input, Select, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { request } from "../../../api/request";
@@ -615,7 +607,8 @@ export default function CreateFromExpertDrawer({
     : "";
 
   return (
-    <Drawer
+    <BusinessDetailDialog
+      rootClassName="wb-business-detail"
       open={open}
       title={title}
       width={640}
@@ -1336,6 +1329,6 @@ export default function CreateFromExpertDrawer({
           );
         }}
       />
-    </Drawer>
+    </BusinessDetailDialog>
   );
 }

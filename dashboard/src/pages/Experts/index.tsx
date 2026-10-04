@@ -1,3 +1,5 @@
+import MarketTopbarActions from "../../workbuddy/MarketTopbarActions";
+import { useSearchParams } from "react-router-dom";
 /**
  * Experts page — redesigned as Agents Management Centre.
  *
@@ -19,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Input, Spin, Tabs, Segmented, Tooltip } from "antd";
+import { Button, Input, Spin, Tabs, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -34,6 +36,8 @@ import {
   Users,
 } from "lucide-react";
 import PageShell from "../../layouts/PageShell";
+import MarketTabs from "../../workbuddy/MarketTabs";
+import { WORKBUDDY_UI } from "../../workbuddy/variant";
 import TabLabel from "../../components/TabLabel";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -123,7 +127,27 @@ export default function ExpertsPage() {
   );
 
   // ── Tab state ──────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<TabKey>("my");
+  const [legacyTab, setLegacyTab] = useState<TabKey>("my");
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("tab");
+  const activeTab: TabKey = WORKBUDDY_UI
+    ? requested === "my" || requested === "teams" || requested === "market"
+      ? requested
+      : "library"
+    : legacyTab;
+  const setActiveTab = useCallback(
+    (tab: TabKey) => {
+      if (!WORKBUDDY_UI) {
+        setLegacyTab(tab);
+        return;
+      }
+      const next = new URLSearchParams(params);
+      if (tab === "library") next.delete("tab");
+      else next.set("tab", tab);
+      setParams(next);
+    },
+    [params, setParams],
+  );
   const { viewMode, setViewMode, showCardView } = useCardTableView(
     loadViewMode(),
   );
@@ -339,7 +363,7 @@ export default function ExpertsPage() {
       setNewAgentId(agentId);
       setTimeout(() => setNewAgentId(null), 1000);
     },
-    [refreshAgents],
+    [refreshAgents, setActiveTab],
   );
 
   const [defaultCreating, setDefaultCreating] = useState(false);
@@ -358,7 +382,7 @@ export default function ExpertsPage() {
 
   const openExpertLibrary = useCallback(() => {
     setActiveTab("library");
-  }, []);
+  }, [setActiveTab]);
 
   // ── "Installed" badge lookup (template_name column; legacy config.expert_id) ──
   const agentExpertIds = useMemo(
@@ -455,7 +479,7 @@ export default function ExpertsPage() {
             {t("experts.totalAgents", { count: visibleExpertAgents.length })}
           </span>
           <div className={styles.gridToolbarRight}>
-            {toolbarSearch}
+            {!WORKBUDDY_UI && toolbarSearch}
             <Segmented
               size="small"
               value={viewMode}
@@ -499,7 +523,7 @@ export default function ExpertsPage() {
         {visibleExpertAgents.length === 0 ? (
           <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
         ) : showCardView ? (
-          <div className={styles.cardGrid}>
+          <div className={`${styles.cardGrid} wb-expert-grid`}>
             {visibleExpertAgents.map((agent) => (
               <div
                 key={agent.agent_id}
@@ -613,7 +637,7 @@ export default function ExpertsPage() {
             {t("experts.teams.total", { count: visibleTeamAgents.length })}
           </span>
           <div className={styles.gridToolbarRight}>
-            {toolbarSearch}
+            {!WORKBUDDY_UI && toolbarSearch}
             {refreshButton}
             <button
               className={styles.toolbarBtn}
@@ -627,7 +651,7 @@ export default function ExpertsPage() {
         {visibleTeamAgents.length === 0 ? (
           <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
         ) : (
-          <div className={styles.cardGrid}>
+          <div className={`${styles.cardGrid} wb-expert-grid`}>
             {visibleTeamAgents.map((agent) => (
               <div key={agent.agent_id}>
                 <TeamCard
@@ -722,7 +746,9 @@ export default function ExpertsPage() {
                   count: visiblePublishedExperts.length,
                 })}
               </span>
-              <div className={styles.gridToolbarRight}>{toolbarSearch}</div>
+              <div className={styles.gridToolbarRight}>
+                {!WORKBUDDY_UI && toolbarSearch}
+              </div>
             </div>
             <p
               style={{
@@ -738,7 +764,7 @@ export default function ExpertsPage() {
                 {t("experts.searchEmpty")}
               </div>
             ) : (
-              <div className={styles.cardGrid}>
+              <div className={`${styles.cardGrid} wb-expert-grid`}>
                 {visiblePublishedExperts.map((expert) => (
                   <PublishedExpertCard
                     key={expert.id}
@@ -759,11 +785,13 @@ export default function ExpertsPage() {
             {t("experts.totalLibrary", { count: visibleLibraryExperts.length })}
           </span>
           <div className={styles.gridToolbarRight}>
-            {publishedExperts.length === 0 ? toolbarSearch : null}
+            {!WORKBUDDY_UI && publishedExperts.length === 0
+              ? toolbarSearch
+              : null}
             {refreshButton}
           </div>
         </div>
-        {publishedExperts.length === 0 && (
+        {!WORKBUDDY_UI && publishedExperts.length === 0 && (
           <p
             style={{
               color: "var(--fn-text-tertiary)",
@@ -777,7 +805,7 @@ export default function ExpertsPage() {
         {visibleLibraryExperts.length === 0 ? (
           <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
         ) : (
-          <div className={styles.cardGrid}>
+          <div className={`${styles.cardGrid} wb-expert-grid`}>
             {visibleLibraryExperts.map((expert) => (
               <ExpertCard
                 key={expert.id}
@@ -822,12 +850,32 @@ export default function ExpertsPage() {
     [agentExpertIds, lang],
   );
 
+  const TabView = WORKBUDDY_UI ? MarketTabs : Tabs;
   return (
     <PageShell.FillTabs
       title={t("pageShell.experts.title")}
       subtitle={t("pageShell.experts.subtitle")}
     >
-      <Tabs
+      {WORKBUDDY_UI && (
+        <MarketTopbarActions tab="experts">
+          {toolbarSearch}
+          <Button
+            onClick={() =>
+              setActiveTab(
+                activeTab === "my" || activeTab === "teams" ? "library" : "my",
+              )
+            }
+          >
+            {t(
+              activeTab === "my" || activeTab === "teams"
+                ? "workbuddy.market.directory"
+                : "experts.myExperts",
+            )}
+          </Button>
+        </MarketTopbarActions>
+      )}
+      <TabView
+        {...(WORKBUDDY_UI ? { variant: "filters" as const } : {})}
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as TabKey)}
         items={[
@@ -864,7 +912,13 @@ export default function ExpertsPage() {
             ),
             children: marketContent,
           },
-        ]}
+        ].filter(
+          (item) =>
+            !WORKBUDDY_UI ||
+            (activeTab === "my" || activeTab === "teams"
+              ? item.key === "my" || item.key === "teams"
+              : item.key === "library" || item.key === "market"),
+        )}
       />
 
       <EditAgentDrawer

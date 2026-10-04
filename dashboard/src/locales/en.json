@@ -2540,6 +2540,7 @@
     "weixinQrSuccess": "WeChat bound successfully",
     "weixinAccountId": "Account ID: {{id}}",
     "fieldRequired": "{{label}} is required",
+    "invalidPort": "Enter a whole-number port between 1 and 65535",
     "fieldMustBeJsonObject": "{{label}} must be a JSON object",
     "jsonMustBeObject": "Must be a JSON object",
     "invalidJson": "Invalid JSON",
@@ -6457,5 +6458,119 @@
     "step4Desc": "When finished, type \"结束\" (or \"end\") to stop; after confirmation the skill is saved under the task goal. Type the goal keyword later to replay it.",
     "envNotReady": "Browser environment required first",
     "title": "Skill recording guide"
+  },
+  "workbuddy": {
+    "files": "Files",
+    "controlConsole": "Control console",
+    "workspace": "Workspace",
+    "home": "Home",
+    "greeting": "Octop, here to help",
+    "sceneLabel": "Choose a task scene",
+    "scenes": {
+      "work": "Work",
+      "code": "Code",
+      "creative": "Creative"
+    },
+    "suggestionsLabel": "Task suggestions",
+    "suggestions": {
+      "work": [
+        "Organize meeting notes",
+        "Analyze this document",
+        "Create a work plan"
+      ],
+      "code": [
+        "Analyze the project structure",
+        "Help diagnose an issue",
+        "Write test cases"
+      ],
+      "creative": [
+        "Brainstorm content ideas",
+        "Polish a draft",
+        "Create a creative proposal"
+      ]
+    },
+    "projects": "Projects",
+    "projectSubtitle": "Organize work with project workspaces",
+    "newProject": "New project",
+    "projectSearch": "Search projects",
+    "projectsDescription": "Project workspaces are not connected yet. Conversations remain separate and will not be used as temporary projects.",
+    "space": "Space",
+    "spaceDescription": "Shared spaces are not connected yet.",
+    "cloud": "Cloud service",
+    "cloudDescription": "Cloud services are not connected yet. Existing models and providers are available in model settings.",
+    "apps": "Smart apps",
+    "appsDescription": "Smart apps are not connected yet. Existing assistants, experts and teams are available in the expert center.",
+    "tencentDocs": "Tencent Docs",
+    "ima": "IMA library",
+    "lexiang": "Lexiang library",
+    "libraryDescription": "This provider library is not connected yet. Octop knowledge bases remain available through their own entry.",
+    "agentMail": "Assistant mail",
+    "mailDescription": "Assistant mail is not connected yet.",
+    "discover": "Discover",
+    "discoverDescription": "Discovery services are not connected yet.",
+    "inspiration": "Inspiration",
+    "inspirationDescription": "Inspiration services are not connected yet.",
+    "notConnected": "Not connected",
+    "deferredNote": "This entry explains availability; it does not save, connect or run this capability.",
+    "backHome": "Back to home",
+    "moreCapabilities": "More capabilities",
+    "capability": {
+      "available": "Available",
+      "unconfigured": "Not configured",
+      "unsupported": "This capability is not connected yet",
+      "forbidden": "Access denied"
+    },
+    "appearance": "Appearance",
+    "assistants": "Assistants",
+    "pinAssistants": "Pin assistant panel",
+    "systemManagement": "System management",
+    "pinnedTasks": "Pinned tasks",
+    "recentTasks": "Recent tasks",
+    "searchTaskTitles": "Search current assistant’s conversation titles",
+    "assistantPanel": "Assistant panel",
+    "assistantPanelHint": "Keep the assistant list visible or open it when needed.",
+    "panelPinned": "Pinned",
+    "panelFloating": "On demand",
+    "standardAppearance": "Standard appearance",
+    "customAppearance": "Custom colors",
+    "recommendedTasks": "Suggested tasks",
+    "previousRecommendations": "Previous recommendations",
+    "nextRecommendations": "Next recommendations",
+    "newTask": "New task",
+    "market": {
+      "experts": "Experts",
+      "skills": "Skills",
+      "skillDirectory": "Skill directory",
+      "discover": "Discover skills",
+      "installed": "My installed skills",
+      "installTarget": "Install for assistant",
+      "directory": "Back to expert center",
+      "title": "Experts · Skills · Connectors",
+      "category": "Skill category",
+      "allCategories": "All categories",
+      "configureConnector": "Configure connector",
+      "documentation": "Documentation"
+    },
+    "settings": {
+      "general": "General preferences",
+      "account": "Account",
+      "agent": "Assistant configuration",
+      "about": "About and help",
+      "aboutDescription": "A self-hosted AI platform for multiple users and assistants.",
+      "extensions": "Extensions",
+      "scope": "Assistant scope",
+      "groups": {
+        "general": "General",
+        "features": "Features",
+        "security": "Data and security",
+        "management": "Administration",
+        "about": "About and extensions"
+      },
+      "title": "Settings",
+      "shortcuts": "Keyboard shortcuts",
+      "agentPlugins": "Assistant plugins",
+      "shortcutSend": "Enter sends and Shift + Enter adds a line when Enter-to-send is enabled.",
+      "shortcutSelect": "Mention and slash menus: arrows select, Tab or Enter confirms, Esc closes."
+    }
   }
 }

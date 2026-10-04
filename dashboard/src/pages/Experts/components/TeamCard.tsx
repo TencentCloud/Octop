@@ -35,6 +35,7 @@ import {
 import { TEAM_ICON_NAME, teamPortraitUrl } from "../../../utils/teamAgent";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import styles from "../index.module.less";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
 
 const STATE_META: Record<
   string,
@@ -214,9 +215,15 @@ export const TeamCard = memo(function TeamCard({
 
   return (
     <>
-      <div className={`${styles.agentCard2} ${styles.teamCard}`}>
-        <div className={styles.agentCard2Header}>
-          <div className={`${styles.agentCard2Icon} ${styles.teamCardIcon}`}>
+      <div
+        className={`${styles.agentCard2} ${styles.teamCard}${
+          WORKBUDDY_UI ? " wb-agent-card" : ""
+        }`}
+      >
+        <div className={`${styles.agentCard2Header} wb-agent-card__header`}>
+          <div
+            className={`${styles.agentCard2Icon} ${styles.teamCardIcon} wb-agent-card__avatar`}
+          >
             <ExpertIcon
               iconUrl={teamPortraitUrl(agent.icon_url)}
               iconName={TEAM_ICON_NAME}

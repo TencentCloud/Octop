@@ -19,6 +19,7 @@ import { apiErrorMessage } from "../../utils/apiError";
 import { refreshServerLabels } from "../../i18n";
 import { applyUserLocale, applyGuestLocale } from "../../utils/locale";
 import { useTheme } from "../../context/ThemeContext";
+import { WORKBUDDY_UI } from "../../workbuddy/variant";
 import {
   isSsoPopup,
   isSsoPopupMessage,
@@ -241,6 +242,7 @@ export default function LoginPage() {
 
   return (
     <div
+      className={WORKBUDDY_UI ? "login-view wb-auth-surface" : undefined}
       style={{
         minHeight: "100dvh",
         boxSizing: "border-box",
@@ -254,6 +256,7 @@ export default function LoginPage() {
       }}
     >
       <div
+        className={WORKBUDDY_UI ? "login-view__main wb-login-form" : undefined}
         style={{
           width: "100%",
           maxWidth: 360,

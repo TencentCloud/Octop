@@ -3,6 +3,8 @@ import { FileCode2, Info, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SkillPackageSkill } from "../../api/types/skillPackage";
 import skillStyles from "../Agent/Skills/index.module.less";
+import SkillTile from "../../workbuddy/SkillTile";
+import { WORKBUDDY_UI } from "../../workbuddy/variant";
 
 interface PackageSkillCardProps {
   skill: SkillPackageSkill;
@@ -25,6 +27,45 @@ export function PackageSkillCard({
   const displayName = skill.name;
   const displayDesc = skill.description || t("skills.noDescription");
   const iconBg = `${DEFAULT_COLOR}18`;
+
+  if (WORKBUDDY_UI)
+    return (
+      <SkillTile
+        title={displayName}
+        description={displayDesc}
+        sourceLabel={skill.slug}
+        icon={
+          iconUrl ? (
+            <img src={iconUrl} alt="" />
+          ) : emoji ? (
+            <span>{emoji}</span>
+          ) : (
+            <FileCode2 size={22} />
+          )
+        }
+        onOpen={onClick}
+        actions={
+          canMutate && onDelete ? (
+            <Popconfirm
+              title={t("skillPackages.deleteSkillConfirm")}
+              okText={t("common.delete")}
+              cancelText={t("common.cancel")}
+              okButtonProps={{ danger: true }}
+              onConfirm={onDelete}
+            >
+              <button
+                type="button"
+                className="sm-add-btn"
+                onClick={(event) => event.stopPropagation()}
+                aria-label={t("common.delete")}
+              >
+                <Trash2 size={14} />
+              </button>
+            </Popconfirm>
+          ) : null
+        }
+      />
+    );
 
   return (
     <div

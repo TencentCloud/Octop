@@ -1,0 +1,1992 @@
+[
+  {
+    "path": "dashboard/src/App.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/AgentAdvancedConfigFields.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/AgentProfileDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/AgentSelector.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/AntdAppProvider.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/AppVersionBadge/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/AuthFileDownloadLink.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/AuthGuard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/AuthImage.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/AvatarDropdown.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/BackendBuilder.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/BetaBadge/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/BootOfflinePanel/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/BrowserAiPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/BrowserViewer/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/BrowserWorkspace/ChatBrowserPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/BrowserWorkspace/ChatDockPanelShell.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/BrowserWorkspace/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/BusinessDetailDialog.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/CatalogTypeCard/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/ChatPicker/SearchablePickerPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/ChromeTabBar/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/CopyableResourceId.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/CurrentVersionBadge/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/DesktopWindowControls/DesktopWindowControls.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/DocumentPreviewCore.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/DocumentPreviewLoading.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/EmojiPicker.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/EmptyState/OctopEmptyMascot.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/EmptyState/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/ErrorBoundary/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/ExpertColorPicker.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/ForbiddenPage.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/LanguageSwitcher.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/Markdown/LazyMarkdown.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/Markdown/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/Markdown/syntaxHighlight.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/MarkdownCopy/MarkdownCopy.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/MbtiPersonaTag.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/MobileAiPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/NotFoundPage.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/OctopSpinner/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/PageLoading/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/PaletteSwitcher.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/PdfDocumentPreview.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/PeerOnlyRemoteAlert.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/PwaInstallPrompt/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/PwaUpdatePrompt/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/RailEdgeControl.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/RemoteDisconnectBanner.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/RequirePermission.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/ResizableTable/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/ServiceRestartOverlay.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/Skeleton/CardSkeleton.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/Skeleton/ListSkeleton.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/Skeleton/TableSkeleton.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/SkillRecordGuideModal.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/StreamConnectingIndicator/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/StreamEdgeControls/StreamEdgeControls.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/StreamSetupGuide/StreamSetupGuide.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/TabLabel/TabBar.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/TabLabel/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/ThemeSwitcher.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/TodoListInline.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/TodoProgressPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/components/TokenCountInput.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/context/AgentContext.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/context/BackupOperationContext.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/context/LayoutModeContext.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/context/ScrollContext.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/context/ServiceRestartContext.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/context/ThemeContext.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/context/VoiceOutputContext.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/hooks/useCurrentUser.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/hooks/useDashboardPushToast.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/layouts/Header.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/layouts/MainLayout/index.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/layouts/MinimalRecordsHost.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/layouts/PageShell.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/layouts/Sidebar.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/layouts/SidebarCollapsedIconNav.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/layouts/SidebarMinimalPaneToggle.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/layouts/SidebarNavCustomizer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/layouts/sidebarNav.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/main.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Placeholder.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Plugins/InstalledPluginsPanel.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Plugins/PluginCardMeta.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Plugins/PluginGroupTag.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Plugins/PluginIconView.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Plugins/PluginMarketPanel.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Plugins/WorkBuddyPluginCards.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Plugins/index.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/SharedModels/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Storage/DockerEnvFooter.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Storage/StorageBackendCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Storage/StorageBackendModal.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Storage/StorageBrowseDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Storage/StorageTypeCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Storage/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Storage/useStorageBackends.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Users/InviteDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Users/LdapPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Users/OauthProviderCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Users/ProfileAvatar.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Users/RolesPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Users/SsoAppProviderShell.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Users/SsoPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Users/SsoProviderCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Users/UsersListPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Admin/Users/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/ACP/components/ACPCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/ACP/components/ACPDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/ACP/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Channels/ChannelsPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Channels/components/ChannelCard.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Channels/components/ChannelDrawer.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Channels/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Config/index.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Connectors/ConnectorCard.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Connectors/ConnectorInstanceCard.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Connectors/CustomMcpServerCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Connectors/CustomMcpTab.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Connectors/connectorDefs.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Connectors/index.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/AtomsList.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/CandidatesReview.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/ConversationRecords.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/EpisodesList.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/ExtractTriggerConfig.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/JournalList.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/MemoryPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/MemorySettings.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/MemoryTree.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/MigrateMemory.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/Overview.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/ProactiveConfig.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/ProfileOverview.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/RawEventsList.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/VectorSearchConfig.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/shared/LineageStrip.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/shared/MemoryLayerView.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/shared/MemoryPipelineEmpty.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/shared/createAtom.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/shared/deprecateAtom.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Memory/shared/editAtom.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Personalization/components/AgentPluginsPanel.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Personalization/components/EditDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Personalization/components/MBTISelector.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Personalization/components/MBTITest.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Personalization/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/AgentPickerModal.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/InstalledSkillsTab.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/PushSkillToPackageModal.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/SectionHeader.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/SkillCard.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/SkillDrawer.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/SkillFileTree.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/SkillHubDetailDrawer.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/SkillHubTab.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/SkillImportModal.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/SkillPackagesTab.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/SkillsTable.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/components/SkillsTabs.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Skills/index.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Tools/ToolsPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Tools/ToolsTabs.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Workspace/components/CodeEditor.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Workspace/components/DocumentPreview.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Workspace/components/FilePreview.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Workspace/components/FileViewer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Workspace/components/MediaPreview.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Agent/Workspace/components/WorkspaceDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/ChatAgentProfileContext.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/ChatFilePreviewContext.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/ChatToolDockContext.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/Weather/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/AgentNotReadyScreen.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/AskQuestionCard.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/AssistantProcessSummary.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/AssistantTurnView.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ChatComposerChrome.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ChatDockFileList.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ChatDockPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ChatDockPanels.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ChatDockToolUiContent.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ChatInput.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ChatInputActionsRow.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ChatInputPreviewBar.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ChatMediaPlayer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ChatQueuedMessages.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ChatSidebarPanel.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ChatTitleBar.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ConnectorPickerPopover.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ContextChip.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ContextWindowRing.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ConversationModePicker.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ExpertAgentAvatar.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ExpertPickerPopover.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/FilePanelContent.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/GeneratingIndicator.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/HistoryMigrationBanner.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/HitlApprovalCard.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/HitlPolicyPicker.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/KnowledgeCitationPanelContent.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/KnowledgeCitationsStrip.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/KnowledgePickerPopover.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/MemoryMaintenanceBanner.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/MentionPickerMenu.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/MessageBubble.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/MessageFileCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/MessageList.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/MessageSender.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/MinimalAgentSessionNav.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ModelConfigEmpty.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/PlanReadyCard.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/RemoteExpertHint.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ScrollToBottomButton.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/SessionChannelIcon.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/SessionList.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/SharedExpertHint.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/SkillPickerPopover.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/SlashCommandMenu.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/SubagentPickerPopover.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/TeamChatBadge.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ThinkingBubble.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/ToolMediaStrip.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/TrajectoryDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/TrajectoryInspector.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/TrajectoryLedger.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/TrajectoryMetricsBar.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/TrajectoryTimeline.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/TrajectoryToolbar.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/TurnProcessBlocks.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/TurnTimelineRail.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/UserMessageComposerTags.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/WelcomeQuickCards.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/components/WelcomeScreen.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/hooks/ChatMessageQueueContext.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/index.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Chat/utils/skillChipIcon.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/CronJobs/components/CronJobCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/CronJobs/components/ExecuteNowModal.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/CronJobs/components/JobDetailDrawer.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/CronJobs/components/JobDrawer.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/CronJobs/components/columns.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/CronJobs/index.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/RemoteAndroid/AdbShellPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/RemoteAndroid/RemotePhoneIdleGuide.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/RemoteAndroid/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/RemoteBrowser/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/RemoteDesktop/DesktopPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/RemoteDesktop/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/Terminal/components/AiPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/Terminal/components/AutopilotPlan.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/Terminal/components/TerminalView.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/Terminal/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/TokenUsage/UsageStats.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/TokenUsage/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Control/Workbench/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/DeferredFeature/index.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/AgentBackendFields.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/AgentCard.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/AgentExpertsTable.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/AgentMoreActions.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/AgentTrajectoryField.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/CatalogDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/ChannelCatalogDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/CreateFromExpertDrawer.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/EditAgentDrawer.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/ExpertAvatarPicker.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/ExpertCard.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/ExpertComposerDefaultsFields.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/ExpertMarketTab.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/FileEditModal.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/MbtiCatalogDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/MemoryCatalogDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/PluginCatalogDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/PublishExpertDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/PublishTemplateButton.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/PublishedExpertCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/RootDirSelect.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/SkillCatalogDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/SkillSourcePickerModal.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/SubagentCatalogDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/SubagentDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/SubagentManager.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/SubagentPreviewDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/SubagentSourcePickerModal.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/TeamCard.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/TeamDrawer.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/TeamMemberPicker.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/ToolCatalogDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/WelcomeConfig.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/components/iconForName.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Experts/index.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Invite/index.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/KnowledgeBases/TextDocumentEditorModal.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/KnowledgeBases/index.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/KnowledgeBases/knowledgeIcons.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Login/CaptchaField.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Login/ForgotPasswordModal.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Login/OidcComplete.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Login/SlideCaptcha.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Login/index.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/PwaDebug/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/AdvancedSettings/BridgeSettings.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/AdvancedSettings/CaptchaSettings.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/AdvancedSettings/TabPanelHeader.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/AdvancedSettings/UpdateConfig.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/AdvancedSettings/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/BackupRestore/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Bridge/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Embedding/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Environments/components/AddButton.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Environments/components/EmptyState.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Environments/components/EnvRow.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Environments/components/EnvRowCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Environments/components/PageHeader.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Environments/components/Toolbar.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Environments/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/HttpsSettings/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Language/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/MediaGeneration/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/components/CodexOAuthConnect.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/components/PresetModelPicker.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/components/cards/LocalServiceCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/components/cards/PresetGroupCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/components/cards/PresetProviderCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/components/cards/ProviderCard.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/components/modals/CustomProviderModal.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/components/modals/ModelListEditor.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/components/modals/PresetProviderModal.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/components/modals/ProviderConfigModal.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/components/sections/ActiveModelPool.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/components/sections/LoadingState.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Models/modelMeta.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Observability/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/SearchConfig/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Security/AuditLogPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Security/HitlToolsPicker.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Security/ToolGuardRulesPanel.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Security/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/Voice/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/octop/AdminAgentCard.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/octop/Agents.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Settings/octop/Providers.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Setup/index.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Setup/steps/AdminStep.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Setup/steps/DatabaseStep.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Setup/steps/FinishStep.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Setup/steps/ModelStep.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/Setup/steps/PasswordStep.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/SkillPackages/PackageIcon.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/SkillPackages/PackageSkillCard.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/SkillPackages/PackageSkillsTable.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/SkillPackages/SkillsetFromHubDrawer.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/pages/SkillPackages/index.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/plugins/toolRenderers/ToolUiErrorBoundary.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/plugins/toolRenderers/builtin/BuiltinOctopUiFallback.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/plugins/toolRenderers/builtin/DefaultToolRenderer.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/routes/index.tsx",
+    "migrationChange": "modified",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/utils/fileTreeIcon.tsx",
+    "migrationChange": "unchanged",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/AgentSettingsPanel.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/Assistants.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/AutomationList.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/ConnectorTile.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/ConversationLayout.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/ExpertTemplate.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/HistoryHost.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/MarketDetailContext.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/MarketTabs.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/MarketTopbarActions.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/Navigation.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/PluginDetails.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/ProjectUnavailable.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/Recommendations.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/RetainedSurface.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/SceneTabs.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/SecondaryNavigation.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/SettingsAbout.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/SettingsBackground.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/SettingsFrame.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/SettingsShortcuts.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/ShellFrame.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/Sidebar.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/SidebarFrame.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/SkillTile.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/SourceSceneIcon.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/Topbar.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/UnifiedMarketHeader.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/UnifiedMarketPage.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/UserMessageSurface.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/Welcome.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/acceptance.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/navigationModel.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  },
+  {
+    "path": "dashboard/src/workbuddy/settingsRegistry.tsx",
+    "migrationChange": "added",
+    "verification": "inventory-only; route-level evidence does not prove all component states"
+  }
+]

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { ChatMessageQueueContext } from "./ChatMessageQueueContext";
 import { generateId } from "../../../utils/messageParser";
 import type { ChatAttachment, UserComposerContext } from "./sseHelpers";
 import * as chatStore from "./chatStore";
@@ -113,7 +114,13 @@ export function useChatMessageQueue({
   subscribeStreamEnd = defaultSubscribeStreamEnd,
   isThreadStreaming = defaultIsThreadStreaming,
 }: UseChatMessageQueueParams) {
-  const [queues, setQueues] = useState<Record<string, QueuedChatItem[]>>({});
+  const persisted = useContext(ChatMessageQueueContext);
+  const [localQueues, setLocalQueues] = useState<
+    Record<string, QueuedChatItem[]>
+  >({});
+  const queues = persisted?.queues ?? localQueues;
+  const setQueues = persisted?.setQueues ?? setLocalQueues;
+  const subscribe = persisted?.subscribeStreamEnd ?? subscribeStreamEnd;
   const key = threadQueueKey(agentId, threadId);
   const items = queues[key] ?? [];
 
@@ -128,14 +135,17 @@ export function useChatMessageQueue({
   const flushTimerRef = useRef<number | null>(null);
   /** Streaming edge is tracked per queue key so thread switches never mis-flush. */
   const streamStateRef = useRef<{ key: string; streaming: boolean }>({
-    key,
+    key: "",
     streaming: isStreaming,
   });
 
-  const writeQueues = useCallback((next: Record<string, QueuedChatItem[]>) => {
-    queuesRef.current = next;
-    setQueues(next);
-  }, []);
+  const writeQueues = useCallback(
+    (next: Record<string, QueuedChatItem[]>) => {
+      queuesRef.current = next;
+      setQueues(next);
+    },
+    [setQueues],
+  );
 
   const enqueue = useCallback(
     (input: EnqueueChatItemInput): "ok" | "empty" | "full" => {
@@ -300,12 +310,12 @@ export function useChatMessageQueue({
 
   // Background (and active) threads: flush when chatStore reports streamEnd.
   useEffect(() => {
-    return subscribeStreamEnd((sessionId) => {
+    return subscribe((sessionId) => {
       for (const queueKey of queueKeysForThread(queuesRef.current, sessionId)) {
         scheduleFlush(queueKey);
       }
-    });
-  }, [subscribeStreamEnd, scheduleFlush]);
+    }, cancelScheduledFlush);
+  }, [subscribe, scheduleFlush, cancelScheduledFlush]);
 
   return {
     items,

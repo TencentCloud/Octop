@@ -1,0 +1,44 @@
+{
+  "case": "fixture-home-light-en-1920x1080",
+  "status": "passed",
+  "assistantPanels": 0,
+  "composer": {
+    "height": 161,
+    "width": 960,
+    "x": 600,
+    "y": 479.5
+  },
+  "draft": "Round 2 visual draft",
+  "home": {
+    "height": 996,
+    "width": 1008,
+    "x": 576,
+    "y": 84
+  },
+  "overflow": 0,
+  "primaryCount": 7,
+  "primaryNavigationCount": 1,
+  "recommendations": {
+    "height": 195.625,
+    "width": 1008,
+    "x": 576,
+    "y": 828.375
+  },
+  "sidebar": {
+    "height": 1052,
+    "width": 240,
+    "x": 0,
+    "y": 28
+  },
+  "theme": "light",
+  "topbar": {
+    "height": 56,
+    "width": 1680,
+    "x": 240,
+    "y": 28
+  },
+  "viewport": {
+    "height": 1080,
+    "width": 1920
+  }
+}

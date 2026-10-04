@@ -9,7 +9,6 @@ import {
 import {
   Button,
   Card,
-  Drawer,
   Empty,
   Pagination,
   Popconfirm,
@@ -25,6 +24,7 @@ import { message } from "@/utils/antdMessage";
 import type { ColumnsType } from "antd/es/table";
 import { Eye, RefreshCw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import BusinessDetailDialog from "../../../components/BusinessDetailDialog";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import {
   CHAT_HISTORY_PAGE_SIZE,
@@ -554,7 +554,7 @@ export default function ConversationRecords({
         )}
       </div>
 
-      <Drawer
+      <BusinessDetailDialog
         open={drawerOpen}
         title={
           selectedThread
@@ -648,7 +648,7 @@ export default function ConversationRecords({
             })}
           </div>
         )}
-      </Drawer>
+      </BusinessDetailDialog>
     </>
   );
 }

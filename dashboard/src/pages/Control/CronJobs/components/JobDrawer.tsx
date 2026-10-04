@@ -1,6 +1,7 @@
+import BusinessDetailDialog from "../../../../components/BusinessDetailDialog";
+import { WORKBUDDY_UI } from "../../../../workbuddy/variant";
 import { useEffect, useMemo, useState } from "react";
 import {
-  Drawer,
   Form,
   Input,
   Select,
@@ -198,15 +199,25 @@ export function JobDrawer({
     models,
     t("experts.defaultModelAuto"),
   );
+  const actions = (
+    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+      <Button onClick={onClose}>{t("common.cancel")}</Button>
+      <Button type="primary" onClick={() => form.submit()}>
+        {t("common.save")}
+      </Button>
+    </div>
+  );
 
   return (
-    <Drawer
+    <BusinessDetailDialog
+      rootClassName="wb-business-detail"
       width={520}
       placement="right"
       title={editingJob ? t("cronJobs.editJob") : t("cronJobs.createJob")}
       open={open}
       onClose={onClose}
       destroyOnHidden
+      footer={WORKBUDDY_UI ? actions : undefined}
     >
       {remote ? (
         <Alert
@@ -483,22 +494,10 @@ export function JobDrawer({
           </>
         )}
 
-        <Form.Item>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 8,
-              marginTop: 16,
-            }}
-          >
-            <Button onClick={onClose}>{t("common.cancel")}</Button>
-            <Button type="primary" htmlType="submit">
-              {t("common.save")}
-            </Button>
-          </div>
-        </Form.Item>
+        {!WORKBUDDY_UI && (
+          <Form.Item style={{ marginTop: 16 }}>{actions}</Form.Item>
+        )}
       </Form>
-    </Drawer>
+    </BusinessDetailDialog>
   );
 }

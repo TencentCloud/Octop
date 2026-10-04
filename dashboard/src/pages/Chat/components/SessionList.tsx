@@ -1,3 +1,4 @@
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
 import { memo, useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -148,16 +149,25 @@ const SessionItem = memo(function SessionItem({
 
   return (
     <div
-      className={`${styles.sessionRow} ${
-        isActive ? styles.sessionRowActive : ""
-      } ${session.pinned ? styles.sessionRowPinned : ""}`}
+      className={`${styles.sessionRow} wb-session-row ${
+        isActive ? "wb-session-row--active" : ""
+      } ${isActive ? styles.sessionRowActive : ""} ${
+        session.pinned ? styles.sessionRowPinned : ""
+      }`}
       onClick={() => {
         if (!isEditing) onSelect(session.id);
       }}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && !isEditing) onSelect(session.id);
+        if (
+          e.target === e.currentTarget &&
+          !isEditing &&
+          (e.key === "Enter" || e.key === " ")
+        ) {
+          e.preventDefault();
+          onSelect(session.id);
+        }
       }}
     >
       <SessionChannelIcon
@@ -183,7 +193,9 @@ const SessionItem = memo(function SessionItem({
         />
       ) : (
         <>
-          <span className={styles.sessionRowTitle}>{session.name}</span>
+          <span className={`${styles.sessionRowTitle} wb-session-row__title`}>
+            {session.name}
+          </span>
           {session.pinned ? (
             <span
               className={styles.sessionRowPinIndicator}
@@ -199,7 +211,7 @@ const SessionItem = memo(function SessionItem({
           >
             <button
               type="button"
-              className={styles.sessionRowMore}
+              className={`${styles.sessionRowMore} wb-session-row__more`}
               aria-label={t("common.more", "More")}
               onClick={(e) => e.stopPropagation()}
             >
@@ -277,13 +289,13 @@ function ActiveAgentCard({
 
   return (
     <div
-      className={styles.agentCardActive}
+      className={`${styles.agentCardActive} wb-history-agent wb-history-agent--active`}
       style={{
         background: `${accent}08`,
         borderColor: `${accent}18`,
       }}
     >
-      <div className={styles.agentCardProfile}>
+      <div className={`${styles.agentCardProfile} wb-history-agent__header`}>
         <div
           className={styles.agentCardAvatar}
           style={{
@@ -344,7 +356,7 @@ function ActiveAgentCard({
         </div>
       </div>
 
-      <div className={styles.agentCardSessions}>
+      <div className={`${styles.agentCardSessions} wb-history-agent__sessions`}>
         {!sessionsEnabled ? (
           <div className={styles.agentCardSessionsEmpty}>
             {t("chat.agentNotRunningHint")}
@@ -415,9 +427,9 @@ function InactiveAgentRow({
   const accent = agent.color || "#6366f1";
 
   return (
-    <div className={styles.agentRowWrap}>
+    <div className={`${styles.agentRowWrap} wb-history-agent`}>
       <div
-        className={styles.agentRow}
+        className={`${styles.agentRow} wb-history-agent__header`}
         onClick={onSelect}
         role="button"
         tabIndex={0}
@@ -491,7 +503,7 @@ function InactiveAgentRow({
   );
 }
 
-interface SessionListProps {
+export interface SessionListProps {
   agents: OctopAgent[];
   sessions: Session[];
   activeId: string | null;
@@ -564,8 +576,28 @@ export default function SessionList({
   );
   const showSessions = isAgentChatReady(activeAgent?.state);
 
+  if (WORKBUDDY_UI)
+    return (
+      <WorkBuddyHistoryList
+        sessions={sessions}
+        activeId={activeId}
+        activeAgentId={activeAgentId}
+        hasMore={hasMore}
+        loadingMore={loadingMore}
+        onLoadMore={onLoadMore}
+        onFetchAllSessions={onFetchAllSessions}
+        onSelect={onSelect}
+        onDelete={onDelete}
+        onRename={onRename}
+        onPin={onPin}
+        onFork={onFork}
+        activeForkDisabled={activeForkDisabled}
+        activeForkDisabledHint={activeForkDisabledHint}
+      />
+    );
+
   return (
-    <div className={styles.sessionList}>
+    <div className={`${styles.sessionList} wb-history-list`}>
       {showSessions ? (
         <div className={styles.sessionSearchWrap}>
           <Search
@@ -664,6 +696,106 @@ export default function SessionList({
             </button>
           ) : null}
         </div>
+      )}
+    </div>
+  );
+}
+
+export function WorkBuddyHistoryList({
+  sessions,
+  activeId,
+  activeAgentId,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  onFetchAllSessions,
+  onSelect,
+  onDelete,
+  onRename,
+  onPin,
+  onFork,
+  activeForkDisabled,
+  activeForkDisabledHint,
+}: Omit<SessionListProps, "agents" | "onAgentSelect" | "onNewChat">) {
+  const { t } = useTranslation();
+  const [query, setQuery] = useState("");
+  const requested = useRef(false);
+  useEffect(() => {
+    if (!query.trim()) {
+      requested.current = false;
+      return;
+    }
+    if (!requested.current) {
+      requested.current = true;
+      onFetchAllSessions();
+    }
+  }, [query, onFetchAllSessions]);
+  const visible = sessions.filter((session) =>
+    session.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+  );
+  const groups = [
+    {
+      label: t("workbuddy.pinnedTasks"),
+      items: visible.filter((session) => session.pinned),
+    },
+    {
+      label: t("workbuddy.recentTasks"),
+      items: visible.filter((session) => !session.pinned),
+    },
+  ];
+  return (
+    <div className="wb-task-history">
+      <label className="wb-task-history__search">
+        <Search size={14} aria-hidden="true" />
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t("workbuddy.searchTaskTitles")}
+          aria-label={t("workbuddy.searchTaskTitles")}
+        />
+      </label>
+      {groups.map((group) =>
+        group.items.length ? (
+          <section className="conversation-section" key={group.label}>
+            <h2 className="conversation-section-label">{group.label}</h2>
+            {group.items.map((session) => (
+              <SessionItem
+                key={session.id}
+                session={session}
+                isActive={activeId === session.id}
+                onSelect={(id) => {
+                  if (activeAgentId) onSelect(id, activeAgentId);
+                }}
+                onDelete={onDelete}
+                onRename={onRename}
+                onPin={onPin}
+                onFork={onFork}
+                forkDisabled={
+                  activeId === session.id ? activeForkDisabled : undefined
+                }
+                forkDisabledHint={
+                  activeId === session.id ? activeForkDisabledHint : undefined
+                }
+              />
+            ))}
+          </section>
+        ) : null,
+      )}
+      {!visible.length && (
+        <p className="wb-task-history__empty">
+          {t(query ? "chat.noSearchResults" : "chat.noSessionsYet")}
+        </p>
+      )}
+      {hasMore && !query.trim() && (
+        <button
+          type="button"
+          className="cb-sidebar-nav__show-more-button"
+          onClick={onLoadMore}
+          disabled={loadingMore}
+        >
+          {t(loadingMore ? "common.loading" : "chat.expandMore")}
+        </button>
       )}
     </div>
   );

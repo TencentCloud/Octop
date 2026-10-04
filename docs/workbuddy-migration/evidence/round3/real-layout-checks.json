@@ -1,0 +1,378 @@
+[
+  {
+    "name": "connectors-1440-light-zh",
+    "horizontalOverflow": false,
+    "path": "/connectors",
+    "settings": null,
+    "tabs": [
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "专家"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "技能"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "true",
+        "text": "连接器"
+      }
+    ],
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "name": "connectors-390-light-zh",
+    "horizontalOverflow": false,
+    "path": "/connectors",
+    "settings": null,
+    "tabs": [
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "专家"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "技能"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "true",
+        "text": "连接器"
+      }
+    ],
+    "viewport": {
+      "height": 844,
+      "width": 390
+    }
+  },
+  {
+    "name": "settings-usage-390-light-zh",
+    "horizontalOverflow": false,
+    "path": "/settings/usage",
+    "settings": {
+      "height": 785.5,
+      "nav": 0,
+      "width": 390
+    },
+    "tabs": [
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "true",
+        "text": "专家"
+      },
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "false",
+        "text": "技能"
+      },
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "false",
+        "text": "连接器"
+      }
+    ],
+    "viewport": {
+      "height": 844,
+      "width": 390
+    }
+  },
+  {
+    "name": "settings-account-390-light-zh",
+    "horizontalOverflow": false,
+    "path": "/settings/account",
+    "settings": {
+      "height": 785.5,
+      "nav": 0,
+      "width": 390
+    },
+    "tabs": [
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "true",
+        "text": "专家"
+      },
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "false",
+        "text": "技能"
+      },
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "false",
+        "text": "连接器"
+      }
+    ],
+    "viewport": {
+      "height": 844,
+      "width": 390
+    }
+  },
+  {
+    "name": "experts-1440-light-zh",
+    "horizontalOverflow": false,
+    "path": "/experts",
+    "settings": null,
+    "tabs": [
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "true",
+        "text": "专家"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "技能"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "连接器"
+      }
+    ],
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "name": "skills-1440-light-zh",
+    "horizontalOverflow": false,
+    "path": "/skills",
+    "settings": null,
+    "tabs": [
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "专家"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "true",
+        "text": "技能"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "连接器"
+      }
+    ],
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "name": "connector-detail-1440-light-zh",
+    "horizontalOverflow": false,
+    "path": "/connectors",
+    "settings": null,
+    "tabs": [
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "专家"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "技能"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "true",
+        "text": "连接器"
+      }
+    ],
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "name": "connector-probe-error-1440-light-zh",
+    "horizontalOverflow": false,
+    "path": "/connectors",
+    "settings": null,
+    "tabs": [
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "专家"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "技能"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "true",
+        "text": "连接器"
+      }
+    ],
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "name": "settings-during-stream-1440-light-zh",
+    "horizontalOverflow": false,
+    "path": "/settings/account",
+    "settings": {
+      "height": 720,
+      "nav": 200,
+      "width": 880
+    },
+    "tabs": [
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "true",
+        "text": "专家"
+      },
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "false",
+        "text": "技能"
+      },
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "false",
+        "text": "连接器"
+      }
+    ],
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "name": "chat-queue-after-refresh-1440-light-zh",
+    "horizontalOverflow": false,
+    "path": "/chat/main/thr_01M431TYMJ2Q2875R6MRN9Y9A8",
+    "settings": null,
+    "tabs": [
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "true",
+        "text": "专家"
+      },
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "false",
+        "text": "技能"
+      },
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "false",
+        "text": "连接器"
+      }
+    ],
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "name": "settings-audit-deep-link-1440-light-zh",
+    "horizontalOverflow": false,
+    "path": "/settings/security",
+    "settings": {
+      "height": 720,
+      "nav": 200,
+      "width": 880
+    },
+    "tabs": [
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "true",
+        "text": "专家"
+      },
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "false",
+        "text": "技能"
+      },
+      {
+        "font": "14px",
+        "height": 0,
+        "selected": "false",
+        "text": "连接器"
+      }
+    ],
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "name": "skill-detail-reread-1440-light-zh",
+    "horizontalOverflow": false,
+    "path": "/skills",
+    "settings": null,
+    "tabs": [
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "专家"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "true",
+        "text": "技能"
+      },
+      {
+        "font": "14px",
+        "height": 28,
+        "selected": "false",
+        "text": "连接器"
+      }
+    ],
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  }
+]

@@ -1,0 +1,135 @@
+{
+  "sourceVersion": "5.5.6",
+  "browser": "Codex in-app browser",
+  "instance": "disposable local Octop",
+  "model": "controlled local OpenAI-compatible model; business API/auth/SQLite/harness/workspace real",
+  "fullFunctionalAcceptance": false,
+  "originalVisualAcceptance": false,
+  "cases": [
+    {
+      "id": "ordinary-login-slider-and-logout",
+      "result": "passed",
+      "detail": "Real slider drag and keyboard range operation, real auth login/logout; no token injection. History reloaded.",
+      "evidence": "real-login-dark-1440.jpg"
+    },
+    {
+      "id": "provider-save-test-reread",
+      "result": "passed-partial",
+      "detail": "Local controlled model configured and tested through actual models management; unconfigured state blocks sending.",
+      "evidence": "real-home-ready-light-1440-final.jpg"
+    },
+    {
+      "id": "stream-page-change-and-cancel",
+      "result": "passed-partial",
+      "detail": "Actual streamed reply survives leaving chat and returning; stop preserves partial text.",
+      "evidence": "real-chat-queue-restored-1440.jpg"
+    },
+    {
+      "id": "queue-route-unmount-and-refresh",
+      "result": "passed",
+      "detail": "Two queued turns complete outside chat route, then actual history reread after refresh contains two messages and two replies.",
+      "evidence": "real-queue-20261004-r2-d.json"
+    },
+    {
+      "id": "approval-allow-deny-refresh",
+      "result": "passed-partial",
+      "detail": "Actual global HITL enabled through security UI in isolated instance; pending approval survives refresh, allow/deny resume existing backend; relative-path failure not counted as file success.",
+      "evidence": "real-approval-pending-1440.jpg"
+    },
+    {
+      "id": "question-answer-refresh",
+      "result": "passed-partial",
+      "detail": "Pending question survives refresh; Continue selection submitted to actual HITL resume.",
+      "evidence": "real-question-pending-1440.jpg"
+    },
+    {
+      "id": "approval-file-write-reread-preview",
+      "result": "passed",
+      "detail": "Absolute disposable file path approved; actual workspace listing and Markdown preview read back written contents.",
+      "evidence": "real-file-preview-1440.jpg"
+    },
+    {
+      "id": "more-current-agent-files",
+      "result": "passed",
+      "detail": "More Files opens current actual agent workspace without new project or replacement data.",
+      "evidence": "real-more-files-1440.jpg"
+    },
+    {
+      "id": "expert-welcome-save-reload",
+      "result": "passed-partial",
+      "detail": "Welcome headline saved in actual 520px editor, then reloaded in editor and home.",
+      "evidence": "real-expert-edit-1440.jpg"
+    },
+    {
+      "id": "automation-create-disabled-reload-detail",
+      "result": "passed-partial",
+      "detail": "Disabled text job created in new dialog; list and details reread actual persisted name/instruction/Asia-Shanghai timezone.",
+      "evidence": "real-automation-detail-1440.jpg"
+    },
+    {
+      "id": "standard-custom-theme-opt-in",
+      "result": "passed-partial",
+      "detail": "Standard default, custom palette only after explicit selection; restore standard and toggle actual light/dark.",
+      "evidence": "real-home-dark-1440.jpg"
+    },
+    {
+      "id": "mobile-single-header-no-overflow",
+      "result": "passed-partial",
+      "detail": "390px actual home and automation no page overflow, only one 48px header and usable nav toggle.",
+      "evidence": "real-automation-light-390.jpg"
+    },
+    {
+      "id": "skill-create-edit-refresh",
+      "result": "passed-partial",
+      "detail": "Actual workspace skill created, edited and reread after refresh; 640px desktop dialog, 350px mobile dialog and usable vertical file tree. Shared, packages and marketplace acceptance pending.",
+      "evidence": "real-skill-detail-reloaded-1440.jpg"
+    },
+    {
+      "id": "connector-save-refresh-and-real-probe-failure",
+      "result": "passed-partial",
+      "detail": "Local invalid MCP configuration saved and reread. Actual probe shows Session terminated and no successful tool list. No external service connection is claimed.",
+      "evidence": "real-connector-probe-failure-1440.jpg"
+    },
+    {
+      "id": "plugin-install-enable-detail-tool-config-refresh",
+      "result": "passed-partial",
+      "detail": "Existing echo-tool fixture installed through real local URL UI; inline detail, disabled state reread after refresh, reenabled, Agent tool prefix saved and reread. External marketplace, upload and uninstall paths pending.",
+      "evidence": "real-plugin-tool-config-reloaded-1440.jpg"
+    },
+    {
+      "id": "terminal-output-survives-route-change",
+      "result": "passed-partial",
+      "detail": "Actual terminal harmless echo command; leave control page, return and select Terminal, same session and output remain. Browser, remote hardware and AI execution pending.",
+      "evidence": "real-terminal-after-page-change-1440.jpg"
+    },
+    {
+      "id": "ordinary-user-model-permission-login",
+      "result": "awaiting-explicit-approval",
+      "detail": "Automatic approval review rejected creating the named ordinary test account and granting cloud-model access. No account created or workaround used. Existing module permission unit tests pass; actual ordinary-user login remains pending."
+    },
+    {
+      "id": "knowledge-document-create-edit-index-refresh",
+      "result": "passed-partial",
+      "detail": "Real private knowledge base and Markdown document created and edited; actual index ready with one chunk, refreshed preview reads modified content. Controlled deterministic embeddings only; retrieval quality, sharing, OCR and other formats pending.",
+      "evidence": "real-knowledge-preview-reloaded-1440.jpg"
+    },
+    {
+      "id": "manual-memory-create-replace-refresh",
+      "result": "passed-partial",
+      "detail": "Manual atom created, refreshed, replaced through real memory API, refreshed detail reads edited content. Other layers, extraction and import/export pending.",
+      "evidence": "real-memory-detail-reloaded-1440.jpg"
+    },
+    {
+      "id": "persona-workspace-editor-save-refresh-restore",
+      "result": "passed-partial",
+      "detail": "Real nested SOUL.md editor saves via existing workspace API and reloads Agent; refresh rereads change. Original content restored through same editor and reread. Other persona/care operations pending.",
+      "evidence": "real-persona-file-restored-1440.jpg"
+    },
+    {
+      "id": "channel-disabled-config-refresh-real-probe-failure",
+      "result": "passed-partial",
+      "detail": "Only local disabled MQTT configuration, port 18899 and test topics saved and reread. Integer port contract fixed; actual probe reports Connection refused. 390px dialog 374px wide and 720px high, no overflow. No external channel binding or delivery claimed.",
+      "evidence": "real-channel-config-mobile-390.jpg"
+    }
+  ]
+}

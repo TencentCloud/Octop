@@ -24,7 +24,6 @@ import {
   Alert,
   Button,
   Card,
-  Drawer,
   Empty,
   Input,
   Modal,
@@ -39,6 +38,8 @@ import {
 import { message } from "@/utils/antdMessage";
 
 import { useTranslation } from "react-i18next";
+import BusinessDetailDialog from "../../../components/BusinessDetailDialog";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
 
 import {
   memoryDashboardApi,
@@ -275,7 +276,7 @@ export default function CandidatesReview({ agentId }: Props) {
         />
       </div>
 
-      <Drawer
+      <BusinessDetailDialog
         title={t("memory.candidates.detail", "记忆草稿详情")}
         open={!!selected}
         onClose={() => setSelected(null)}
@@ -309,9 +310,11 @@ export default function CandidatesReview({ agentId }: Props) {
             <Typography.Paragraph>{selected.subject_name}</Typography.Paragraph>
           </div>
         ) : null}
-      </Drawer>
+      </BusinessDetailDialog>
 
       <Modal
+        centered={WORKBUDDY_UI}
+        className={WORKBUDDY_UI ? "wb-business-modal" : undefined}
         title={t("memory.candidates.rejectTitle", "忽略这条草稿")}
         open={!!rejectTarget}
         confirmLoading={rejecting}

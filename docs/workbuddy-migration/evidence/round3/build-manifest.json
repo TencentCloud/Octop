@@ -1,0 +1,30 @@
+{
+  "artifacts": [
+    {
+      "variant": "workbuddy",
+      "path": "/private/tmp/octop-round3-workbuddy-dashboard.tar.gz",
+      "bytes": 10705020,
+      "sha256": "980253bf66a92673402dcbee4076c91b18781fd860745352e5058dec36ef6b24",
+      "fileCount": 396,
+      "developmentEntryInProduction": false,
+      "fixtureCodeInProduction": false
+    },
+    {
+      "variant": "legacy",
+      "path": "/private/tmp/octop-round3-legacy-dashboard.tar.gz",
+      "bytes": 10598894,
+      "sha256": "9ea68c4f8949f5f498c7acaf73759747e021b5353cf9f55905abd82c01a488bb",
+      "fileCount": 393,
+      "developmentEntryInProduction": false,
+      "fixtureCodeInProduction": false
+    }
+  ],
+  "defaultBuiltVariant": "legacy",
+  "deployment": "not-published",
+  "rollbackVerification": {
+    "status": "passed",
+    "scope": "all archived legacy files exactly match current formally built dashboard",
+    "checkedFiles": 393,
+    "pwaUpdateAndRollbackRuntime": "not-tested"
+  }
+}

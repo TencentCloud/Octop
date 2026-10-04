@@ -1,0 +1,761 @@
+{
+  "note": "Sanitized method/path/status counts only. Query strings, headers, bodies and credentials omitted. Request success does not prove operation acceptance.",
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/admin/providers",
+      "status": 200,
+      "count": 5
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/security",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/security/defaults",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents",
+      "status": 200,
+      "count": 576
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main",
+      "status": 200,
+      "count": 7
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/channels",
+      "status": 200,
+      "count": 9
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/channels/01M42TQP4AYZM8EWT81JTS9W70",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/chat/welcome",
+      "status": 200,
+      "count": 53
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/cron",
+      "status": 200,
+      "count": 13
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/history-migration/status",
+      "status": 200,
+      "count": 150
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/memory/candidates/ae601a95-252f-4e23-9122-fd74f105b445",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/memory/extract-config",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/memory/raw_events/c9f0e6f1-2652-4838-8a22-425ef7eb16e1",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/memory/stats/atom_kinds",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/memory/stats/counts",
+      "status": 200,
+      "count": 11
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/memory/stats/growth",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/skills",
+      "status": 200,
+      "count": 52
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/skills/round2-ui-skill",
+      "status": 200,
+      "count": 5
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/status",
+      "status": 200,
+      "count": 1939
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/subagents",
+      "status": 200,
+      "count": 43
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/threads",
+      "status": 200,
+      "count": 113
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/threads/thr_01M42K8D0BHZWAET94SCC0KSBZ/history",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/threads/thr_01M42KWPGTX7YYAXXQVW360V5G/history",
+      "status": 200,
+      "count": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/threads/thr_01M42M80N3BZ7SJQHHP071Z2G3/history",
+      "status": 200,
+      "count": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/threads/thr_01M42MFR88VCKV8GHC5WNHC13T/history",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/threads/thr_01M42MKS0CXS7MBF8CBB8CAB2P/history",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/threads/thr_01M42NEN61PZF708A9NSW975G9/history",
+      "status": 200,
+      "count": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/threads/thr_01M42P1WNFBKD2J2Q6742TM37Y/history",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/threads/thr_01M42P58CB79EGV4Z9EN5F58QP/history",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/threads/thr_01M42PANKW1FJTXAFBVBT2CWQ9/history",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/threads/thr_01M42SA55A6V93E47T1BYJX4GY/history",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/workspace/file",
+      "status": 200,
+      "count": 7
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/main/workspace/tree",
+      "status": 200,
+      "count": 13
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/captcha",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/ldap/status",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 200,
+      "count": 65
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/oauth/status",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "GET",
+      "path": "/api/bridge/connections",
+      "status": 200,
+      "count": 560
+    },
+    {
+      "method": "GET",
+      "path": "/api/browser/env-status",
+      "status": 200,
+      "count": 10
+    },
+    {
+      "method": "GET",
+      "path": "/api/browser/harness-sessions",
+      "status": 200,
+      "count": 11
+    },
+    {
+      "method": "GET",
+      "path": "/api/browser/record-replay/status",
+      "status": 200,
+      "count": 40
+    },
+    {
+      "method": "GET",
+      "path": "/api/connector-instances",
+      "status": 200,
+      "count": 65
+    },
+    {
+      "method": "GET",
+      "path": "/api/connector-instances/01M42RARN2CCKVT7CRTAV4S2WT",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "GET",
+      "path": "/api/connectors/auth/dify/info",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/connectors/catalog",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "GET",
+      "path": "/api/cron/settings",
+      "status": 200,
+      "count": 14
+    },
+    {
+      "method": "GET",
+      "path": "/api/experts",
+      "status": 200,
+      "count": 9
+    },
+    {
+      "method": "GET",
+      "path": "/api/experts/published",
+      "status": 200,
+      "count": 9
+    },
+    {
+      "method": "GET",
+      "path": "/api/filesystem/defaults",
+      "status": 200,
+      "count": 25
+    },
+    {
+      "method": "GET",
+      "path": "/api/i18n/skills",
+      "status": 200,
+      "count": 54
+    },
+    {
+      "method": "GET",
+      "path": "/api/i18n/tools",
+      "status": 200,
+      "count": 54
+    },
+    {
+      "method": "GET",
+      "path": "/api/knowledge-bases",
+      "status": 200,
+      "count": 19
+    },
+    {
+      "method": "GET",
+      "path": "/api/knowledge-bases/7Z5GWC",
+      "status": 200,
+      "count": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/knowledge-bases/7Z5GWC/documents",
+      "status": 200,
+      "count": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/knowledge-bases/7Z5GWC/documents/01M42TEWTCRBR93BRKVY25PMAE/content",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/knowledge-bases/capability",
+      "status": 200,
+      "count": 51
+    },
+    {
+      "method": "GET",
+      "path": "/api/knowledge-bases/embedding-options",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/knowledge-bases/ocr-options",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/knowledge-bases/onnx-download-status",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins",
+      "status": 200,
+      "count": 46
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins/agents/main",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins/agents/main/tools",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/preferences",
+      "status": 200,
+      "count": 117
+    },
+    {
+      "method": "GET",
+      "path": "/api/providers/active-model",
+      "status": 200,
+      "count": 46
+    },
+    {
+      "method": "GET",
+      "path": "/api/providers/presets",
+      "status": 200,
+      "count": 5
+    },
+    {
+      "method": "GET",
+      "path": "/api/providers/resolved",
+      "status": 200,
+      "count": 54
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/capabilities",
+      "status": 200,
+      "count": 62
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/timezone",
+      "status": 200,
+      "count": 34
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/upload",
+      "status": 200,
+      "count": 18
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/presets",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/status",
+      "status": 200,
+      "count": 114
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/validate-token",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/slash/commands",
+      "status": 200,
+      "count": 34
+    },
+    {
+      "method": "GET",
+      "path": "/api/storage-backends",
+      "status": 200,
+      "count": 7
+    },
+    {
+      "method": "GET",
+      "path": "/api/update/status",
+      "status": 200,
+      "count": 64
+    },
+    {
+      "method": "GET",
+      "path": "/api/users",
+      "status": 200,
+      "count": 10
+    },
+    {
+      "method": "GET",
+      "path": "/api/users/permissions",
+      "status": 200,
+      "count": 11
+    },
+    {
+      "method": "GET",
+      "path": "/api/users/roles",
+      "status": 200,
+      "count": 11
+    },
+    {
+      "method": "GET",
+      "path": "/api/voice/active",
+      "status": 200,
+      "count": 18
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/providers/1",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/channels/01M42TQP4AYZM8EWT81JTS9W70",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/session",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/threads/thr_01M42K8D0BHZWAET94SCC0KSBZ",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/threads/thr_01M42KWPGTX7YYAXXQVW360V5G",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/threads/thr_01M42M80N3BZ7SJQHHP071Z2G3",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/threads/thr_01M42MFR88VCKV8GHC5WNHC13T",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/threads/thr_01M42MKS0CXS7MBF8CBB8CAB2P",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/threads/thr_01M42NEN61PZF708A9NSW975G9",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/threads/thr_01M42P1WNFBKD2J2Q6742TM37Y",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/threads/thr_01M42P58CB79EGV4Z9EN5F58QP",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/threads/thr_01M42PANKW1FJTXAFBVBT2CWQ9",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/main/threads/thr_01M42SA55A6V93E47T1BYJX4GY",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/plugins/agents/main/tools",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/plugins/echo-tool",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/providers",
+      "status": 201,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/providers/test-draft",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/channels",
+      "status": 201,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/channels/probe",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/chat/hitl/resume",
+      "status": 200,
+      "count": 5
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/cron",
+      "status": 201,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/memory/atoms",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/memory/atoms/ac966850-9948-47a0-a05d-672447aff672%3Areplace",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/memory/atoms/list",
+      "status": 200,
+      "count": 6
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/memory/entities/list",
+      "status": 200,
+      "count": 8
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/memory/journal/list",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/read",
+      "status": 204,
+      "count": 33
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/reload",
+      "status": 204,
+      "count": 2
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/skills",
+      "status": 201,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/main/threads",
+      "status": 201,
+      "count": 10
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 200,
+      "count": 3
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "status": 204,
+      "count": 2
+    },
+    {
+      "method": "POST",
+      "path": "/api/connector-instances",
+      "status": 201,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/connector-instances/01M42RARN2CCKVT7CRTAV4S2WT/test",
+      "status": 200,
+      "count": 5
+    },
+    {
+      "method": "POST",
+      "path": "/api/knowledge-bases",
+      "status": 201,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/knowledge-bases/7Z5GWC/documents/text",
+      "status": 201,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/install",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/setup/begin",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/setup/database",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/setup/finish",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "POST",
+      "path": "/api/setup/initial-admin",
+      "status": 201,
+      "count": 1
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/security",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PUT",
+      "path": "/api/agents/main/skills/round2-ui-skill",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PUT",
+      "path": "/api/agents/main/workspace/file",
+      "status": 200,
+      "count": 2
+    },
+    {
+      "method": "PUT",
+      "path": "/api/knowledge-bases/7Z5GWC/documents/01M42TEWTCRBR93BRKVY25PMAE/content",
+      "status": 200,
+      "count": 1
+    },
+    {
+      "method": "PUT",
+      "path": "/api/knowledge-bases/feature",
+      "status": 200,
+      "count": 1
+    }
+  ]
+}

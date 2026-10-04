@@ -135,7 +135,13 @@ export function useChatNavigation({
   }, [routeAgentId, threadId, navigate, clearMessages]);
 
   useEffect(() => {
-    if (sessionsLoading || prefillInputRef.current) return;
+    // Home is an explicit blank composer, even when this agent has history.
+    if (
+      location.pathname === "/home" ||
+      sessionsLoading ||
+      prefillInputRef.current
+    )
+      return;
     const agent = resolvedAgentId;
     if (!agent) return;
     if (threadId) {
@@ -158,6 +164,7 @@ export function useChatNavigation({
       navigate(`/chat/${agent}`, { replace: true });
     }
   }, [
+    location.pathname,
     sessions,
     sessionsLoading,
     threadId,

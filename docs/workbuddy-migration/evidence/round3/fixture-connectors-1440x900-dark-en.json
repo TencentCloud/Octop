@@ -1,0 +1,29 @@
+{
+  "name": "fixture-connectors-1440x900-dark-en",
+  "status": "passed",
+  "language": "en",
+  "overflow": 0,
+  "settings": null,
+  "tabs": [
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "false"
+    },
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "false"
+    },
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "true"
+    }
+  ],
+  "theme": "dark",
+  "viewport": {
+    "height": 900,
+    "width": 1440
+  }
+}

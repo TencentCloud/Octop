@@ -36,9 +36,13 @@ const SKILL_TABS: TabBarItem<SkillsTab>[] = [
 interface SkillsTabsProps {
   /** Agent whose skills are shown. */
   agentId: string | null;
+  installedOnly?: boolean;
 }
 
-export default function SkillsTabs({ agentId }: SkillsTabsProps) {
+export default function SkillsTabs({
+  agentId,
+  installedOnly = false,
+}: SkillsTabsProps) {
   const { t } = useTranslation();
   const currentUser = useCurrentUser();
   // Hide the skill-packages tab for users without the `skill_packages` permission.
@@ -47,10 +51,12 @@ export default function SkillsTabs({ agentId }: SkillsTabsProps) {
   const [activeTab, setActiveTab] = useState<SkillsTab>("custom");
   const tabs = useMemo(
     () =>
-      SKILL_TABS.filter(
-        (tab) => tab.key !== "packages" || (canSkillPackages && !remoteAgent),
+      SKILL_TABS.filter((tab) =>
+        installedOnly
+          ? tab.key === "custom" || tab.key === "builtin"
+          : tab.key !== "packages" || (canSkillPackages && !remoteAgent),
       ),
-    [canSkillPackages, remoteAgent],
+    [canSkillPackages, remoteAgent, installedOnly],
   );
   const resolvedTab =
     activeTab === "packages" && (!canSkillPackages || remoteAgent)

@@ -1,0 +1,67 @@
+/* Only imported by dev/workbuddy.html. */
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--wb-bg-primary);
+  color: var(--wb-text-primary);
+  font-family:
+    "PingFang SC",
+    -apple-system,
+    sans-serif;
+}
+button {
+  font-family: inherit;
+}
+.wb-acceptance-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 6px 16px;
+  background: var(--wb-bg-tertiary);
+  font-size: 11px;
+  color: var(--wb-text-secondary);
+}
+.wb-acceptance-banner > span {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wb-acceptance-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.wb-acceptance-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.wb-acceptance-actions button {
+  background: transparent;
+  border: 0;
+  color: var(--wb-text-secondary);
+  cursor: pointer;
+  min-height: 24px;
+}
+.wb-acceptance-market {
+  padding: 24px 32px;
+}
+.wb-acceptance-user-message {
+  margin-left: auto;
+  max-width: 600px;
+}
+.wb-acceptance-status {
+  position: fixed;
+  bottom: 8px;
+  right: 24px;
+  font-size: 12px;
+}
+@media (max-width: 767px) {
+}

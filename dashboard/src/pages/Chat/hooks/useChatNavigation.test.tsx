@@ -302,3 +302,34 @@ describe("useChatNavigation proactive session events", () => {
     expect(loadHistory).not.toHaveBeenCalled();
   });
 });
+
+it("keeps /home on an empty composer when the agent has existing conversations", async () => {
+  navigateMock.mockReset();
+  rebindMock.mockReset().mockResolvedValue({});
+  const clearMessages = vi.fn();
+  renderHook(
+    () =>
+      useChatNavigation({
+        routeAgentId: undefined,
+        threadId: undefined,
+        resolvedAgentId: "agent-home",
+        activeThreadId: null,
+        sessions: [session("thr-existing")],
+        sessionsLoading: false,
+        prefillInputRef: { current: "" },
+        loadHistory: vi.fn().mockResolvedValue(undefined),
+        clearMessages,
+        ensureThreadInList: vi.fn().mockResolvedValue("found"),
+        fetchSessions: vi.fn().mockResolvedValue([]),
+        refreshAgents: vi.fn().mockResolvedValue(undefined),
+      }),
+    {
+      wrapper: ({ children }) => (
+        <MemoryRouter initialEntries={["/home"]}>{children}</MemoryRouter>
+      ),
+    },
+  );
+  await waitFor(() => expect(clearMessages).toHaveBeenCalled());
+  expect(navigateMock).not.toHaveBeenCalled();
+  expect(rebindMock).not.toHaveBeenCalled();
+});

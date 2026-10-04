@@ -32,6 +32,56 @@ async function dragThumb(clientFrom: number, clientTo: number) {
 }
 
 describe("SlideCaptcha", () => {
+  it("allows keyboard movement and only verifies at the same completion threshold", () => {
+    const onVerified = vi.fn();
+    render(
+      <SlideCaptcha hint="Slide" verifiedLabel="OK" onVerified={onVerified} />,
+    );
+    const slider = screen.getByRole("slider", { name: "Slide" });
+    mockTrackRect(slider);
+    slider.focus();
+    expect(slider).toHaveFocus();
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    expect(slider).toHaveAttribute("aria-valuenow", "10");
+    expect(onVerified).not.toHaveBeenCalled();
+    fireEvent.keyDown(slider, { key: "Home" });
+    expect(slider).toHaveAttribute("aria-valuenow", "0");
+    fireEvent.keyDown(slider, { key: "End" });
+    expect(slider).toHaveAttribute("aria-valuenow", "100");
+    expect(onVerified).toHaveBeenCalledOnce();
+    fireEvent.keyDown(slider, { key: "End" });
+    expect(onVerified).toHaveBeenCalledOnce();
+  });
+
+  it("requires verification again after a keyboard-completed challenge resets", () => {
+    const onVerified = vi.fn();
+    const { rerender } = render(
+      <SlideCaptcha
+        hint="Slide"
+        verifiedLabel="OK"
+        onVerified={onVerified}
+        resetKey={0}
+      />,
+    );
+    const slider = screen.getByRole("slider", { name: "Slide" });
+    mockTrackRect(slider);
+    fireEvent.keyDown(slider, { key: "End" });
+    rerender(
+      <SlideCaptcha
+        hint="Slide"
+        verifiedLabel="OK"
+        onVerified={onVerified}
+        resetKey={1}
+      />,
+    );
+    expect(slider).toHaveAttribute("aria-valuenow", "0");
+    expect(slider).toHaveAttribute("aria-disabled", "false");
+    fireEvent.keyDown(slider, { key: "ArrowLeft" });
+    expect(onVerified).toHaveBeenCalledOnce();
+    fireEvent.keyDown(slider, { key: "End" });
+    expect(onVerified).toHaveBeenCalledTimes(2);
+  });
+
   it("does not verify until the thumb reaches the end", async () => {
     const onVerified = vi.fn();
     render(

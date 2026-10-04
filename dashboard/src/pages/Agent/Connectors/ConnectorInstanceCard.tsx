@@ -11,6 +11,8 @@ import {
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { ConnectorLogo, connectorAccent } from "./connectorDefs";
 import styles from "./index.module.less";
+import ConnectorTile from "../../../workbuddy/ConnectorTile";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
 
 interface ConnectorInstanceCardProps {
   instance: ConnectorInstance;
@@ -66,6 +68,78 @@ export function ConnectorInstanceCard({
       message.error(t("connectors.toggleFailed", "更新失败"));
     }
   };
+
+  if (WORKBUDDY_UI)
+    return (
+      <ConnectorTile
+        name={instance.display_name}
+        description={
+          instance.description ||
+          catalogEntry?.description ||
+          catalogEntry?.name ||
+          instance.kind
+        }
+        icon={
+          <ConnectorLogo
+            kind={instance.kind}
+            icon={catalogEntry?.icon}
+            size={28}
+          />
+        }
+        installed
+        status={
+          <span className="connector-card-badge">
+            {instance.status === "active"
+              ? t("common.enabled")
+              : instance.status === "disabled"
+              ? t("common.disabled")
+              : instance.status}
+          </span>
+        }
+        detail={
+          <>
+            {!instance.has_credentials
+              ? t("connectors.noCredentials", "缺少凭证")
+              : editable
+              ? t("connectors.clickToManage", "点击管理连接")
+              : t("connectors.sharedReadonly", "共享连接器，仅所有者可管理")}
+            {instance.shared && (
+              <span className="connector-card-badge">
+                {isOwner || !ownerLabel
+                  ? t("connectors.sharedBadge", "共享")
+                  : t("connectors.sharedFrom", {
+                      name: ownerLabel,
+                      defaultValue: "来自 {{name}}",
+                    })}
+              </span>
+            )}
+          </>
+        }
+        onOpen={editable ? () => onEdit(instance) : undefined}
+        actions={
+          instance.can_manage ? (
+            <>
+              <Switch
+                size="small"
+                checked={instance.status === "active"}
+                onChange={(enabled) => void handleToggle(enabled)}
+                aria-label={t("connectors.clickToManage", "点击管理连接")}
+              />
+              <Tooltip title={t("common.delete")}>
+                <button
+                  type="button"
+                  className="connector-connect-btn"
+                  onClick={handleDelete}
+                  aria-label={t("common.delete")}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </Tooltip>
+            </>
+          ) : null
+        }
+      />
+    );
 
   return (
     <div

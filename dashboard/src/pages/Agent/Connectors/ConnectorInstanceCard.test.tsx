@@ -16,6 +16,7 @@ import { App } from "antd";
 
 import type { ConnectorInstance } from "../../../api/modules/connectors";
 import { ConnectorInstanceCard } from "./ConnectorInstanceCard";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
 
 const LONG_TITLE = "一个非常非常长的共享连接器名称用于验证标题截断与悬停提示";
 
@@ -59,7 +60,10 @@ describe("<ConnectorInstanceCard />", () => {
     renderCard(makeInstance());
 
     const title = screen.getByText(LONG_TITLE);
-    expect(title.className).toContain("typography-ellipsis");
+    if (WORKBUDDY_UI) {
+      expect(title).toHaveClass("connector-card-name");
+      expect(title).toHaveAttribute("title", LONG_TITLE);
+    } else expect(title.className).toContain("typography-ellipsis");
   });
 
   it("places the shared-from tag on its own line with the title, not next to the switch", () => {
@@ -71,7 +75,12 @@ describe("<ConnectorInstanceCard />", () => {
     expect(switchEl).not.toBeNull();
 
     // Tag shares the title column wrapper (its own line under the title)…
-    expect(tag.parentElement).toBe(title.parentElement);
+    if (WORKBUDDY_UI) {
+      expect(tag.closest(".connector-card-main")).toBe(
+        title.closest(".connector-card-main"),
+      );
+      expect(tag.parentElement).toHaveClass("wb-connector-detail");
+    } else expect(tag.parentElement).toBe(title.parentElement);
     // …and is no longer grouped with the header actions (switch).
     expect(switchEl!.parentElement).not.toContainElement(tag);
   });
@@ -80,8 +89,11 @@ describe("<ConnectorInstanceCard />", () => {
     renderCard(makeInstance({ shared: false }));
 
     expect(screen.queryByText("来自 Admin")).not.toBeInTheDocument();
-    expect(screen.getByText(LONG_TITLE).className).toContain(
-      "typography-ellipsis",
-    );
+    if (WORKBUDDY_UI)
+      expect(screen.getByText(LONG_TITLE)).toHaveAttribute("title", LONG_TITLE);
+    else
+      expect(screen.getByText(LONG_TITLE).className).toContain(
+        "typography-ellipsis",
+      );
   });
 });

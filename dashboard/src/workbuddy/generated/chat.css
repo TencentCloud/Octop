@@ -1,0 +1,1678 @@
+/* Extracted from WorkBuddy 5.5.6; regenerate with npm run workbuddy:extract. */
+
+:where(html[data-ui="workbuddy"]) ._chatMessageContainer_ttf8p_72 {
+  position: relative;
+  justify-content: space-between;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  color: var(--cb-text-primary, var(--cb-vscode-foreground, #cccccc));
+  --cb-separator-indent-left: 4px;
+  --cb-separator-indent-right: 24px;
+  --cb-assistant-inline-padding: 24px;
+}
+:where(html[data-ui="workbuddy"])
+  ._chatMessageContainer_ttf8p_72
+  ._avatarWrapper_ttf8p_86 {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 var(--cb-assistant-inline-padding, 24px);
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+:where(html[data-ui="workbuddy"])
+  ._chatMessageContainer_ttf8p_72
+  ._assistantCreateTime_ttf8p_94 {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--cb-text-tertiary, #999);
+  white-space: nowrap;
+  align-self: center;
+  margin-bottom: 12px;
+  margin-left: 4px;
+}
+:where(html[data-ui="workbuddy"]) ._chatMessage_ttf8p_72 {
+  flex-grow: 1;
+  height: 100%;
+  position: relative;
+  scrollbar-color: transparent transparent;
+  scrollbar-width: var(--cb-scrollbar-width, thin);
+}
+:where(html[data-ui="workbuddy"]) ._chatMessage_ttf8p_72:hover {
+  scrollbar-color: var(--cb-vscode-scrollbarSlider-background) transparent;
+}
+:where(html[data-ui="workbuddy"])
+  ._chatMessage_ttf8p_72
+  ._chatMessageBox_ttf8p_114 {
+  max-width: var(--cb-chat-max-content-width, none);
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+:where(html[data-ui="workbuddy"]) ._userMessage_ttf8p_137 {
+  padding: var(
+    --cb-user-message-padding,
+    32px var(--cb-separator-indent-right, 16px)
+  );
+  position: relative;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessage_ttf8p_137
+  ._userMessageText_ttf8p_141 {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessage_ttf8p_137
+  ._userMessageText_ttf8p_141
+  [class*="editable"] {
+  font-size: 15px;
+}
+:where(html[data-ui="workbuddy"]) ._userMessage_ttf8p_137 ._marker_ttf8p_148 {
+  background: var(--cb-marker-bg, var(--cb-vscode-chat-slashCommandBackground));
+  color: var(--cb-marker-color, var(--cb-vscode-chat-slashCommandForeground));
+  border-radius: 2px;
+  padding: 0 2px;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessage_ttf8p_137
+  ._userMessageInput_ttf8p_154 {
+  position: relative;
+  z-index: 1200;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessage_ttf8p_137._summaryUserMessage_ttf8p_158 {
+  padding: 0;
+  margin-bottom: 12px;
+}
+:where(html[data-ui="workbuddy"])
+  ._assistantRow_ttf8p_172
+  > ._assistantMessage_ttf8p_178 {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+:where(html[data-ui="workbuddy"]) ._assistantMessage_ttf8p_178 {
+  padding: 0 var(--cb-assistant-inline-padding, 24px);
+  position: relative;
+}
+:where(html[data-ui="workbuddy"])
+  ._assistantMessage_ttf8p_178:hover
+  .cb-message-time-tip {
+  opacity: 1;
+}
+:where(html[data-ui="workbuddy"])
+  ._assistantMessage_ttf8p_178
+  ._assistantMessageContent_ttf8p_190 {
+  font-size: 14px;
+  line-height: 20px;
+  overflow: hidden;
+}
+:where(html[data-ui="workbuddy"])
+  ._assistantMessage_ttf8p_178
+  ._assistantTextContent_ttf8p_195 {
+  width: var(--cb-assistant-bubble-width, auto);
+  max-width: var(--cb-assistant-bubble-max-width, none);
+  padding: var(--cb-assistant-bubble-padding, 0);
+  border-radius: var(--cb-assistant-bubble-radius, 0);
+  background: var(--cb-assistant-bubble-bg, transparent);
+  color: var(--cb-assistant-bubble-color, var(--cb-vscode-foreground, #cccccc));
+  margin: 0;
+}
+:where(html[data-ui="workbuddy"])
+  ._assistantMessage_ttf8p_178
+  ._assistantTextContent_ttf8p_195:not(:last-child) {
+  padding-bottom: 12px;
+}
+:where(html[data-ui="workbuddy"])
+  ._assistantMessage_ttf8p_178
+  ._assistantTextContent_ttf8p_195:last-child {
+  padding-bottom: var(--cb-assistant-bubble-last-padding-bottom, 0);
+}
+:where(html[data-ui="workbuddy"])
+  ._assistantMessage_ttf8p_178
+  ._assistantTextContent_ttf8p_195:empty {
+  padding-bottom: 0;
+}
+:where(html[data-ui="workbuddy"]) ._chatMessageBottomToolbarWrapper_ttf8p_284 {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 0;
+  max-width: var(--cb-chat-max-content-width, none);
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  pointer-events: none;
+}
+:where(html[data-ui="workbuddy"]) ._chatMessageBottomToolbar_ttf8p_284 {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  pointer-events: all;
+}
+:where(html[data-ui="workbuddy"])
+  ._chatMessageBottomToolbar_ttf8p_284
+  ._chatMessageBottomToolbarItem_ttf8p_306 {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  background: var(--cb-panel-bg-primary, #fff);
+  border-radius: var(--cb-border-radius-2xl, 24px);
+  box-shadow: var(--cb-shadow-message-toolbar);
+  cursor: pointer;
+  justify-content: center;
+  align-items: center;
+  transition: background-color 0.2s ease;
+}
+:where(html[data-ui="workbuddy"])
+  ._chatMessageBottomToolbar_ttf8p_284
+  ._chatMessageBottomToolbarItem_ttf8p_306:hover {
+  box-shadow:
+    0px 6px 12px -4px rgba(0, 0, 0, 0.0784313725),
+    0px 3px 6px -8px rgba(0, 0, 0, 0.0392156863);
+}
+:where(html[data-ui="workbuddy"])
+  ._chatMessageBottomToolbar_ttf8p_284
+  ._chatMessageBottomToolbarItem_ttf8p_306
+  ._chatMessageBottomToolbarIcon_ttf8p_321 {
+  width: 16px;
+  height: 16px;
+  color: var(--cb-text-primary, #333);
+}
+:where(html[data-ui="workbuddy"]) ._userMessageToolbar_n69y1_5 {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  margin: 0;
+  padding-top: 4px;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageToolbar--hasAlwaysVisible_n69y1_18 {
+  opacity: 1;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageToolbar--hasAlwaysVisible_n69y1_18
+  ._userMessageToolbar__action_n69y1_21:not(
+    ._userMessageToolbar__action--alwaysVisible_n69y1_21
+  ) {
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+:where(html[data-ui="workbuddy"]) ._userMessageToolbar__action_n69y1_21 {
+  width: 14px;
+  height: 14px;
+  color: var(--cb-text-secondary, #666);
+  cursor: pointer;
+}
+:where(html[data-ui="workbuddy"]) ._userMessageToolbar__action_n69y1_21 svg {
+  width: 14px;
+  height: 14px;
+}
+:where(html[data-ui="workbuddy"]) ._userMessageToolbar__action_n69y1_21:hover {
+  color: var(--cb-text-primary, #333);
+  background-color: var(--cb-bg-hover, rgba(0, 0, 0, 0.05));
+}
+:where(html[data-ui="workbuddy"]) ._userMessageToolbar__action_n69y1_21:active {
+  background-color: var(--cb-bg-active, rgba(0, 0, 0, 0.1));
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageToolbar__action--primary_n69y1_42 {
+  color: var(--cb-primary, #007bff);
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageToolbar__action--primary_n69y1_42:hover {
+  color: var(--cb-primary-hover, #0056b3);
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageToolbar__action--secondary_n69y1_48 {
+  color: var(--cb-text-secondary, #666) !important;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageToolbar__action--danger_n69y1_51 {
+  color: var(--cb-danger, #dc3545);
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageToolbar__action--danger_n69y1_51:hover {
+  color: var(--cb-danger-hover, #c82333);
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageToolbar__action--alwaysVisible_n69y1_21 {
+  opacity: 1 !important;
+}
+:where(html[data-ui="workbuddy"]) ._userMessageWrapper_n69y1_69 {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: fit-content;
+  max-width: calc(100% - 32px);
+  min-width: 40px;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageWrapper_n69y1_69:hover
+  ._userMessageToolbar_n69y1_5 {
+  opacity: 1;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageWrapper_n69y1_69:hover
+  ._userMessageToolbar_n69y1_5
+  ._userMessageToolbar__action_n69y1_21 {
+  opacity: 1;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageWrapper_n69y1_69:hover
+  ._userMessageToolbar_n69y1_5
+  .cb-message-time-tip {
+  opacity: 1;
+  display: inline-flex;
+}
+:where(html[data-ui="workbuddy"]) ._userMessageWrapper--editing_n69y1_87 {
+  width: 100%;
+  max-width: 100%;
+  margin-left: 0;
+}
+:where(html[data-ui="workbuddy"]) ._userMessageWrapper--summary_n69y1_92 {
+  margin-left: 0;
+  margin-right: auto;
+}
+:where(html[data-ui="workbuddy"]) .cr-input-toolbar {
+  position: relative;
+  z-index: 16;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 12px;
+  flex-shrink: 0;
+  margin-top: auto;
+}
+:where(html[data-ui="workbuddy"]) .cr-input-toolbar__left {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-input-toolbar__right {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  background: var(--cr-bg-elevated);
+}
+:where(html[data-ui="workbuddy"]) .cr-input-toolbar__surplus {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--cr-text-surplus);
+  white-space: nowrap;
+}
+@media screen and (max-width: 320px) {
+  :where(html[data-ui="workbuddy"]) .cr-input-toolbar__surplus {
+    display: none;
+  }
+}
+:where(html[data-ui="workbuddy"]) .cr-input-toolbar__send {
+  display: flex;
+  margin-left: 4px;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-input-toolbar__left
+  .cr-permission-setting.cr-input-footer-item {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    font-weight 0.15s ease;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-input-toolbar__left
+  .cr-permission-setting.cr-input-footer-item:hover:not(:disabled),
+:where(html[data-ui="workbuddy"])
+  .cr-input-toolbar__left
+  .cr-permission-setting.cr-input-footer-item.cr-input-footer-item--open {
+  background-color: var(--cr-bg-hover);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__trigger {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 8px;
+  gap: 2px;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: var(--cr-text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 13px;
+  min-width: 0;
+  outline: none;
+  transition: background-color 0.15s ease;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__trigger:hover {
+  background-color: var(--cr-bg-hover);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__trigger--open {
+  background-color: var(--cr-bg-hover);
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__trigger--open
+  .cr-model-selector__trigger-arrow {
+  transform: rotate(180deg);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__trigger--compact {
+  gap: 0;
+  border-radius: 50%;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__trigger--compact
+  .cr-model-selector__trigger-label,
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__trigger--compact
+  .cr-model-selector__trigger-arrow {
+  display: none;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__trigger--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  user-select: none;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__trigger--disabled
+  .cr-model-selector__trigger-arrow {
+  display: none;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__trigger-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__trigger-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 4px;
+  color: var(--cr-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__trigger-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__trigger-icon svg {
+  width: 100%;
+  height: 100%;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__trigger-label {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__trigger-arrow {
+  flex-shrink: 0;
+  color: var(--cr-text-tertiary);
+  transition: transform 0.42s cubic-bezier(0.25, 0.8, 0.3, 1);
+  transform-origin: center;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__popover {
+  box-sizing: border-box;
+  scrollbar-width: none;
+  animation: cr-model-pop-in 0.18s ease-out both;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__popover::-webkit-scrollbar {
+  display: none;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__popover.cr-popover {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__menu.cr-menu {
+  width: 340px;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 8px;
+  border-radius: 16px;
+  border: 0.5px solid var(--cr-popover-border);
+  box-shadow: var(--cr-shadow-popover);
+  background: var(--cr-bg-elevated);
+  gap: 0;
+  overflow: hidden;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__menu > .cr-menu-item {
+  height: 32px;
+  margin: 0;
+  border-radius: 8px;
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 22px;
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__menu .cr-menu-divider {
+  background: var(--cr-popover-divider);
+  height: 1px;
+  margin: 4px 0;
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__mode-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--cr-text-secondary);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__switch {
+  position: relative;
+  display: inline-block;
+  width: 26px;
+  height: 16px;
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__switch
+  input:checked
+  + .cr-model-selector__slider {
+  background-color: var(--cr-brand-primary);
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__switch
+  input:checked
+  + .cr-model-selector__slider::before {
+  transform: translateX(10px);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: var(--cr-toggle-off-bg);
+  border: none;
+  transition: background-color 0.3s;
+  border-radius: 12px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__slider::before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 2px;
+  top: 2px;
+  background-color: var(--cr-color-on-accent);
+  transition: transform 0.3s;
+  border-radius: 50%;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__list {
+  gap: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item {
+  height: 32px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+  margin: 0;
+  padding: 0 8px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__item:hover:not(.cr-model-selector__item--disabled) {
+  background-color: var(--cr-item-hover-bg);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item--selected {
+  background-color: var(--cr-item-selected-bg);
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__item--selected
+  .cr-model-selector__item-name {
+  font-weight: 600;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-sub-menu__trigger--open
+  > .cr-model-selector__item:not(.cr-model-selector__item--disabled) {
+  background-color: var(--cr-item-hover-bg);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item-content {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 4px;
+  color: var(--cr-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item-icon img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item-icon svg {
+  width: 16px;
+  height: 16px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item-text {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item-name {
+  font-size: 14px;
+  line-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cr-text-primary);
+  flex-shrink: 1;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 100px;
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item-lock-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item-credits {
+  flex-shrink: 0;
+  min-width: 5ch;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--cr-text-tertiary);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--cr-icon-check-selected);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__item-check svg {
+  width: 12px;
+  height: 12px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-entry-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cr-text-primary);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-entry-credits {
+  flex-shrink: 0;
+  min-width: 5ch;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-entry-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--cr-text-tertiary);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-entry-chevron svg {
+  width: 14px;
+  height: 14px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  color: #c0701f;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__tier-badge--filled {
+  background: rgba(192, 112, 31, 0.1);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__tier-badge--flagship {
+  background: transparent;
+  border: 0.5px solid rgba(201, 124, 45, 0.7);
+  color: #df8f3d;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__tier-badge-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-theme[data-cr-theme="light"]
+  .cr-model-selector__tier-badge--flagship,
+:where(html[data-ui="workbuddy"][data-theme="light"])
+  .cr-theme
+  .cr-model-selector__tier-badge--flagship {
+  background: #fff;
+  border-color: rgba(192, 112, 31, 0.7);
+  color: #b15900;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__name-popover.cr-popover {
+  max-width: 280px;
+  overflow: hidden;
+  padding: 8px 12px;
+  border: 0.5px solid var(--cr-popover-border);
+  border-radius: 8px;
+  background: var(--cr-bg-elevated);
+  color: var(--cr-text-primary);
+  font-size: 14px;
+  line-height: 22px;
+  box-shadow: var(--cr-shadow-popover);
+  pointer-events: none;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-float {
+  animation: cr-model-pop-in 0.14s ease-out both;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu {
+  width: 240px;
+  box-sizing: border-box;
+  padding: 8px;
+  border-radius: 16px;
+  border: 0.5px solid var(--cr-popover-border);
+  box-shadow: var(--cr-shadow-popover);
+  background: var(--cr-bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu {
+  width: 240px;
+  box-sizing: border-box;
+  padding: 8px;
+  border-radius: 16px;
+  border: 0.5px solid var(--cr-popover-border);
+  box-shadow: var(--cr-shadow-popover);
+  background: var(--cr-bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 100%;
+  overflow-y: auto;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--cr-text-primary);
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__group-sub-menu-header--active {
+  background: var(--cr-item-selected-bg);
+  color: var(--cr-text-link);
+  font-weight: 500;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-icon,
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-check,
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__group-sub-menu-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-icon img,
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-icon svg,
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-check img,
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-check svg,
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__group-sub-menu-action-icon
+  img,
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__group-sub-menu-action-icon
+  svg {
+  width: 16px;
+  height: 16px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-icon,
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__group-sub-menu-action-icon {
+  color: var(--cr-text-secondary);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-check {
+  color: var(--cr-icon-check-selected);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 22px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-list,
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__group-sub-menu-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--cr-text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__group-sub-menu-action:hover {
+  background: var(--cr-item-hover-bg);
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__group-sub-menu-action:focus-visible {
+  outline: 2px solid var(--cr-brand-primary);
+  outline-offset: -2px;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__group-sub-menu-action-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 22px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 22px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-name {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  color: var(--cr-text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-enterprise {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  line-height: 20px;
+  color: var(--cr-badge-enterprise-fg);
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-enterprise-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-desc {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--cr-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-external {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 3px;
+  border-radius: 6px;
+  background: var(--cr-item-hover-bg);
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--cr-text-secondary);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  margin-top: 2px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-divider {
+  display: block;
+  height: 1px;
+  min-height: 1px;
+  flex-shrink: 0;
+  background: var(--cr-popover-divider);
+  margin: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-meta,
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__sub-menu-action--clickable {
+  cursor: pointer;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__sub-menu-action--clickable:hover {
+  background: var(--cr-item-hover-bg);
+}
+:where(html[data-ui="workbuddy"])
+  [data-submenu-open="true"]
+  .cr-model-selector__sub-menu-action--clickable,
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__sub-menu-action--clickable[data-submenu-open="true"] {
+  background: var(--cr-item-hover-bg);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-meta-label,
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-action-label {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--cr-text-primary);
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-meta-value,
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-action-value {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--cr-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-meta-value svg,
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__sub-menu-action-value
+  svg {
+  color: var(--cr-text-tertiary);
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__sub-menu-credits-original {
+  margin-right: 6px;
+  color: var(--cr-text-tertiary);
+  text-decoration: line-through;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__sub-menu-credits-discounted {
+  color: var(--cr-text-link);
+  font-weight: 500;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__sub-menu-promotion-footer {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-promotion-text {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--cr-text-secondary);
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__sub-menu-promotion-action {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--cr-text-link);
+  cursor: pointer;
+  white-space: nowrap;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__sub-menu-promotion-action:hover {
+  color: var(--cr-text-link-hover, var(--cr-text-link));
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-panel {
+  width: 200px;
+  padding: 8px;
+  border-radius: 16px;
+  border: 0.5px solid var(--cr-popover-border);
+  box-shadow: var(--cr-shadow-popover);
+  background: var(--cr-bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-panel-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 8px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-panel-toggle-label {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--cr-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-panel-divider {
+  height: 1px;
+  background: var(--cr-popover-divider);
+  margin: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-panel-section-label {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--cr-text-tertiary);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-panel-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--cr-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-panel-item:hover {
+  background: var(--cr-item-hover-bg);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-panel-item--active {
+  background: var(--cr-item-selected-bg);
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__sub-panel-item--active:hover {
+  background: var(--cr-item-hover-bg);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-panel-check {
+  display: flex;
+  align-items: center;
+  color: var(--cr-icon-check-selected);
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-panel-check svg {
+  width: 14px;
+  height: 14px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-tier-footer {
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-tier-text {
+  color: #c0701f;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-tier-action {
+  margin-left: 4px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  white-space: nowrap;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-model-selector__sub-menu-tier-action:hover {
+  text-decoration: underline;
+}
+:where(html[data-ui="workbuddy"]) .cr-model-selector__sub-menu-tier-arrow {
+  margin-left: 2px;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-theme[data-cr-theme="light"]
+  .cr-model-selector__sub-menu-tier-action,
+:where(html[data-ui="workbuddy"][data-theme="light"])
+  .cr-theme
+  .cr-model-selector__sub-menu-tier-action {
+  color: rgba(0, 0, 0, 0.9);
+}
+:where(html[data-ui="workbuddy"]) ._messageActions_jnle9_1 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+:where(html[data-ui="workbuddy"]) ._actionButton_jnle9_7 {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  height: 24px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cb-text-secondary, #858699);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+:where(html[data-ui="workbuddy"]) ._actionButton_jnle9_7:hover {
+  background: var(--cb-bg-primary-hover, #ebebeb);
+}
+:where(html[data-ui="workbuddy"]) ._actionButton_jnle9_7:focus,
+:where(html[data-ui="workbuddy"]) ._actionButton_jnle9_7:focus-visible {
+  outline: none;
+}
+:where(html[data-ui="workbuddy"]) ._actionButton_jnle9_7._iconOnly_jnle9_27 {
+  width: 24px;
+  padding: 0;
+  justify-content: center;
+}
+:where(html[data-ui="workbuddy"]) ._userMessageBubble_1kyit_8 {
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border-radius: 16px 16px 0 16px;
+  background-color: var(--cb-user-bubble-bg, #f2f2f2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--cb-user-bubble-color, var(--cb-text-primary, #d2d3e0));
+  font-size: var(--cb-user-bubble-font-size, 13px);
+  line-height: var(--cb-user-bubble-line-height, 19px);
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  min-width: 0;
+  max-width: 100%;
+  max-height: 310px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--cb-scrollbar-thumb, rgba(255, 255, 255, 0.15))
+    transparent;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageBubble_1kyit_8::-webkit-scrollbar {
+  width: 4px;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageBubble_1kyit_8::-webkit-scrollbar-thumb {
+  background: var(--cb-scrollbar-thumb, rgba(255, 255, 255, 0.15));
+  border-radius: 2px;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageBubble_1kyit_8::-webkit-scrollbar-track {
+  background: transparent;
+}
+:where(html[data-ui="workbuddy"])
+  ._userMessageBubble_1kyit_8
+  .user-message-phrase {
+  display: inline-block;
+  padding: 2px 6px;
+  margin: 0 2px;
+  background: var(
+    --cb-user-bubble-phrase-bg,
+    var(--cb-bg-secondary, rgba(255, 255, 255, 0.1))
+  );
+  border-radius: var(--cb-user-bubble-phrase-radius, 4px);
+  color: var(--cb-user-bubble-phrase-color, var(--cb-text-link, #4a9eff));
+  font-weight: 500;
+  white-space: nowrap;
+}
+:where(html[data-ui="workbuddy"]) ._actionButton_1gh21_207 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--cb-input-foreground, #d2d3e0);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.2s,
+    background-color 0.2s;
+}
+:where(html[data-ui="workbuddy"]) ._actionButton_1gh21_207:hover {
+  opacity: 1;
+  background-color: var(--cb-hover-bg, rgba(255, 255, 255, 0.1));
+}
+:where(html[data-ui="workbuddy"]) ._actionButton_1gh21_207:active {
+  opacity: 0.8;
+}
+:where(html[data-ui="workbuddy"]) ._actionButton_1gh21_207:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  background-color: var(--cb-hover-bg, rgba(255, 255, 255, 0.1));
+  outline: 1px solid var(--cb-green-color, #00b96b);
+  outline-offset: 1px;
+}
+:where(html[data-ui="workbuddy"])
+  ._actionButton_1gh21_207
+  ._modelIcon_1gh21_31 {
+  width: 14px;
+  height: 14px;
+}
+:where(html[data-ui="workbuddy"])
+  ._modelItem_1gh21_1:hover
+  ._actionButton_1gh21_207,
+:where(html[data-ui="workbuddy"])
+  ._modelItem_1gh21_1:focus-within
+  ._actionButton_1gh21_207,
+:where(html[data-ui="workbuddy"])
+  ._modelItem_1gh21_1:hover
+  ._reasoningEditButton_1gh21_244,
+:where(html[data-ui="workbuddy"])
+  ._modelItem_1gh21_1:focus-within
+  ._reasoningEditButton_1gh21_244 {
+  opacity: 1;
+  pointer-events: auto;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown {
+  font-size: var(--cr-md-root);
+  line-height: var(--cr-md-line-height, 1.75);
+  color: var(--cr-md-text-color, var(--cr-text-primary));
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown h1 {
+  font-size: var(--cr-md-h1-font-size, 1.25em);
+  font-weight: var(--cr-md-heading-font-weight, 600);
+  margin: var(--cr-md-h1-margin, 20px 0 16px);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown h1:first-child {
+  margin-top: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown h1:last-child {
+  margin-bottom: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown h2 {
+  font-size: var(--cr-md-h2-font-size, 1.125em);
+  font-weight: var(--cr-md-heading-font-weight, 600);
+  margin: var(--cr-md-h2-margin, 16px 0 16px);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown h2:first-child {
+  margin-top: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown h2:last-child {
+  margin-bottom: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown h3 {
+  font-size: var(--cr-md-h3-font-size, 1em);
+  font-weight: var(--cr-md-heading-font-weight, 600);
+  margin: var(--cr-md-h3-margin, 16px 0 4px);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown h3:first-child {
+  margin-top: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown h3:last-child {
+  margin-bottom: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown h4,
+:where(html[data-ui="workbuddy"]) .cr-markdown h5,
+:where(html[data-ui="workbuddy"]) .cr-markdown h6 {
+  font-size: var(--cr-md-h4-font-size, 0.875em);
+  font-weight: var(--cr-md-heading-font-weight, 600);
+  margin: var(--cr-md-h4-margin, 8px 0 4px);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown h4:first-child,
+:where(html[data-ui="workbuddy"]) .cr-markdown h5:first-child,
+:where(html[data-ui="workbuddy"]) .cr-markdown h6:first-child {
+  margin-top: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown h4:last-child,
+:where(html[data-ui="workbuddy"]) .cr-markdown h5:last-child,
+:where(html[data-ui="workbuddy"]) .cr-markdown h6:last-child {
+  margin-bottom: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown p {
+  font-size: 0.875em;
+  margin: var(--cr-md-p-margin, 12px 0);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown p:first-child {
+  margin-top: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown p:last-child {
+  margin-bottom: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown ul,
+:where(html[data-ui="workbuddy"]) .cr-markdown ol {
+  font-size: 0.875em;
+  margin: var(--cr-md-list-margin, 12px 0);
+  padding-left: var(--cr-md-list-padding-left, 1.25em);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown ul:first-child,
+:where(html[data-ui="workbuddy"]) .cr-markdown ol:first-child {
+  margin-top: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown ul:last-child,
+:where(html[data-ui="workbuddy"]) .cr-markdown ol:last-child {
+  margin-bottom: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown ul ul,
+:where(html[data-ui="workbuddy"]) .cr-markdown ul ol,
+:where(html[data-ui="workbuddy"]) .cr-markdown ol ul,
+:where(html[data-ui="workbuddy"]) .cr-markdown ol ol {
+  font-size: 1em;
+  margin: var(--cr-md-list-nested-margin, 4px 0);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown ul li > p,
+:where(html[data-ui="workbuddy"]) .cr-markdown ol li > p {
+  font-size: 1em;
+  margin: var(--cr-md-list-nested-margin, 4px 0);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown ul {
+  list-style-type: disc;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown ol {
+  list-style-type: decimal;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown li {
+  margin: var(--cr-md-li-margin, 4px 0);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown li li {
+  font-size: 1em;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown li:empty {
+  display: none;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown li.cr-task-item {
+  list-style: none;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-task-checkbox {
+  margin: 0 0.4em 0 0;
+  vertical-align: middle;
+  cursor: default;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown p:has(+ ul),
+:where(html[data-ui="workbuddy"]) .cr-markdown p:has(+ ol) {
+  margin-bottom: 4px;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown code {
+  font-size: 1em;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  background-color: var(--cr-bg-code-inline);
+  border-radius: 3px;
+  padding-inline: 4px;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-markdown
+  code:has(> .cr-sensitive-protected-text) {
+  background-color: transparent;
+  padding-inline: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown code.cr-clickable-path {
+  color: var(--cr-symbol-color);
+  background-color: var(--cr-symbol-background);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown code.cr-clickable-path:hover {
+  background-color: var(--cr-symbol-hover-background);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown pre code {
+  font-size: inherit;
+  background-color: transparent;
+  border-radius: 0;
+  padding: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown hr {
+  border: none;
+  border-top: 1px solid var(--cr-border-default);
+  margin: var(--cr-md-hr-margin, 20px 0);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown a {
+  color: var(--cr-text-link);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown a:hover {
+  color: var(--cr-text-link-hover);
+  text-decoration: underline;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown strong {
+  font-weight: 600;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown .katex {
+  font-size: 1em;
+  color: var(--cr-md-text-color, var(--cr-text-primary));
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-math-inline .katex {
+  vertical-align: baseline;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-math-block {
+  font-size: 0.875em;
+  margin: var(--cr-md-block-margin, 12px 0);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-math-block:first-child {
+  margin-top: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-math-block:last-child {
+  margin-bottom: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-math-block .katex-display {
+  margin: 0;
+  overflow: visible;
+  text-align: left;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-markdown
+  .cr-math-block
+  .katex-display
+  > .katex {
+  display: inline-block;
+  text-align: left;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown img {
+  max-width: 100%;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-table-block,
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-table-block--exceed-width,
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-code-like-box,
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-blockquote {
+  margin: var(--cr-md-block-margin, 12px 0);
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-table-block:first-child,
+:where(html[data-ui="workbuddy"])
+  .cr-markdown
+  .cr-table-block--exceed-width:first-child,
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-code-like-box:first-child,
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-blockquote:first-child {
+  margin-top: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-table-block:last-child,
+:where(html[data-ui="workbuddy"])
+  .cr-markdown
+  .cr-table-block--exceed-width:last-child,
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-code-like-box:last-child,
+:where(html[data-ui="workbuddy"]) .cr-markdown .cr-blockquote:last-child {
+  margin-bottom: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown th,
+:where(html[data-ui="workbuddy"]) .cr-markdown td {
+  font-size: 0.875em;
+}
+:where(html[data-ui="workbuddy"]) .cr-markdown th > p,
+:where(html[data-ui="workbuddy"]) .cr-markdown td > p {
+  font-size: 1em;
+  margin: 0;
+}
+:where(html[data-ui="workbuddy"]) .cr-code-block__language {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875em;
+  line-height: 1.571;
+  font-weight: 400;
+  color: var(--cr-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .cr-code-block__file-title {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--cr-text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 0.875em;
+  line-height: 1.571;
+  font-weight: 400;
+  text-align: left;
+}
+:where(html[data-ui="workbuddy"]) .cr-code-block__file-title--clickable {
+  cursor: pointer;
+}
+:where(html[data-ui="workbuddy"]) .cr-code-block__file-title--clickable:hover {
+  color: var(--cr-text-link-hover);
+}
+:where(html[data-ui="workbuddy"]) .cr-code-block__file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:where(html[data-ui="workbuddy"]) .cr-code-block__line-range {
+  flex-shrink: 0;
+  color: var(--cr-text-tertiary);
+  font-weight: 400;
+}
+:where(html[data-ui="workbuddy"]) .cr-code-block__copy-button {
+  width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--cr-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+:where(html[data-ui="workbuddy"]) .cr-code-block__copy-button:hover {
+  color: var(--cr-text-primary);
+  background: var(--cr-bg-hover);
+}
+:where(html[data-ui="workbuddy"]) .cr-code-block__copy-button svg {
+  width: 14px;
+  height: 14px;
+}
+:where(html[data-ui="workbuddy"]) .cr-code-block__copy-icon--copied {
+  color: var(--cr-brand-primary);
+}
+:where(html[data-ui="workbuddy"]) .cr-code-block__pre {
+  font-size: 0.75em;
+  line-height: 1.75;
+  padding: 12px 16px;
+  margin: 0;
+  overflow-x: auto;
+}
+:where(html[data-ui="workbuddy"]) .cr-table-block {
+  overflow: auto;
+}
+:where(html[data-ui="workbuddy"]) .cr-table-block table {
+  border-collapse: collapse;
+  width: 100%;
+}
+:where(html[data-ui="workbuddy"]) .cr-table-block table th {
+  padding: 8px 12px;
+  background-color: var(--cr-bg-code-header);
+  border-right: 1px solid var(--cr-border-default);
+  font-weight: 600;
+  text-align: left;
+}
+:where(html[data-ui="workbuddy"]) .cr-table-block table th:last-child {
+  border-right: none;
+}
+:where(html[data-ui="workbuddy"]) .cr-table-block table td {
+  padding: 8px 12px;
+  border-top: 1px solid var(--cr-border-default);
+  border-right: 1px solid var(--cr-border-default);
+}
+:where(html[data-ui="workbuddy"]) .cr-table-block table td:last-child {
+  border-right: none;
+}
+:where(html[data-ui="workbuddy"]) .cr-table-block--exceed-width {
+  --cr-exceed-gutter: 20px;
+  width: calc(100cqi - var(--cr-exceed-gutter) * 2);
+  overflow: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+:where(html[data-ui="workbuddy"])
+  .cr-table-block--exceed-width::-webkit-scrollbar {
+  display: none;
+}
+:where(html[data-ui="workbuddy"]) .cr-table-block__inner {
+  display: block;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+  border: 1px solid var(--cr-border-default);
+  border-radius: 12px;
+  overflow: hidden;
+}
+:where(html[data-ui="workbuddy"]) .cr-tool-call__slot {
+  display: contents;
+}
+:where(html[data-ui="workbuddy"]) .cr-tool-call__error {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--cr-color-danger, #e54545);
+  background: var(--cr-color-danger-bg, rgba(229, 69, 69, 0.08));
+  border-radius: 6px;
+}
+:where(html[data-ui="workbuddy"]) .cr-tool-call__unknown {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--cr-color-text-secondary, #8a8f99);
+}
+:where(html[data-ui="workbuddy"]) .cr-tool-call__unknown-name {
+  font-family: var(--cr-font-mono, monospace);
+}
+:where(html[data-ui="workbuddy"]) ._actionButton_914ll_273 {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--cb-text-secondary, #858699);
+}
+:where(html[data-ui="workbuddy"]) ._actionButton_914ll_273 svg {
+  width: 16px;
+  height: 16px;
+}
+:where(html[data-ui="workbuddy"]) ._actionButton_914ll_273:hover {
+  color: var(--cb-text-primary, #d2d3e0);
+}
+:where(html[data-ui="workbuddy"]) ._actionButton_914ll_273:active {
+  opacity: 0.7;
+}
+:where(html[data-ui="workbuddy"])
+  ._actionButton_914ll_273._actionButtonDisabled_914ll_295 {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+:where(html[data-ui="workbuddy"])
+  ._actionButton_914ll_273._actionButtonDisabled_914ll_295:hover {
+  color: var(--cb-text-secondary, #858699);
+}
+:where(html[data-ui="workbuddy"])
+  ._actionButton_914ll_273._actionButtonDisabled_914ll_295:active {
+  opacity: 0.35;
+}
+:where(html[data-ui="workbuddy"]) ._card_914ll_1:hover ._actionButton_914ll_273,
+:where(html[data-ui="workbuddy"])
+  ._card_914ll_1._menuOpen_914ll_306
+  ._actionButton_914ll_273 {
+  display: flex;
+}
+@keyframes cr-model-pop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

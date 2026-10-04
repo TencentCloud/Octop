@@ -1,0 +1,1289 @@
+{
+  "round": 4,
+  "baseline": "709f998",
+  "visualBaseline": "WorkBuddy 5.5.6 source; original runtime screenshots unavailable",
+  "completeVisualAcceptance": false,
+  "completeFunctionalAcceptance": false,
+  "files": [
+    {
+      "path": "api-contract-audit.json",
+      "bytes": 9380,
+      "sha256": "78cff307f130b80c0a4d0631b7a5495116b34b32e8051e2e00a80a3a82963014"
+    },
+    {
+      "path": "automation-dialog-after.jpg",
+      "bytes": 25441,
+      "sha256": "3a4f60b70b7247da3c1f43a7eb2c94901ed865c33b1cdfe7a0015b41780fa548"
+    },
+    {
+      "path": "automation-dialog-after.json",
+      "bytes": 146,
+      "sha256": "871fedda4e6f0489af426211ff6286cd3f4469c3f371aeb9f4ee1fd6fca8c029"
+    },
+    {
+      "path": "automation-dialog.jpg",
+      "bytes": 47961,
+      "sha256": "44663304967d11f01d65dd6a3b9a7fce67750a4f30302e7e2c0f3b81a6a30690"
+    },
+    {
+      "path": "automation-dialog.json",
+      "bytes": 97,
+      "sha256": "a7cda4d05749507565eb09040ee4ba7fc7255c99c1359914c5b6ed432a2760d6"
+    },
+    {
+      "path": "browser-console.jpg",
+      "bytes": 37715,
+      "sha256": "536e282f44fd64d54bf1d960e41efe5952fde83cf1ce1e53587771a158e02629"
+    },
+    {
+      "path": "build-manifest.json",
+      "bytes": 722,
+      "sha256": "8f7eccf72e65f31577979a3fd80412d0fa588cebb00319434ab627b5ef53f0ec"
+    },
+    {
+      "path": "chat-mobile.json",
+      "bytes": 208,
+      "sha256": "37e9f424866dfaf32c4ca6ff9f8576c9c397c81a5b831d96c67a2326296226a3"
+    },
+    {
+      "path": "chat-workspace-mobile.jpg",
+      "bytes": 30463,
+      "sha256": "615859a18fb2fd44fd277d9839919fd2bcae33beeec7a4822e8b96ec2e3831b7"
+    },
+    {
+      "path": "component-scope.json",
+      "bytes": 82827,
+      "sha256": "72094ca50c1a5b170baaa0ee7a7ad44171301b657baa28950d561e2dd130f9a1"
+    },
+    {
+      "path": "contact-1440-0.jpg",
+      "bytes": 80579,
+      "sha256": "b4df4fe0b8dea1fe966c82dc2be198e6ed04333595acbc993e894c909a99bf08"
+    },
+    {
+      "path": "contact-1440-1.jpg",
+      "bytes": 84512,
+      "sha256": "9bf100b8a28e8dc5a079ffeae44700d6207327f0bfa3ca1520ca27b3e9b51a43"
+    },
+    {
+      "path": "contact-1440-2.jpg",
+      "bytes": 87782,
+      "sha256": "69b14bbe7be20f6bdbd91449ab30697b161508ae41ff23e81614f9aac9a951d9"
+    },
+    {
+      "path": "contact-390-0.jpg",
+      "bytes": 63766,
+      "sha256": "bcd80387bbf9c2f9781294b87268110e18f34e9f4c0f8417cf1af083a27e117a"
+    },
+    {
+      "path": "contact-390-1.jpg",
+      "bytes": 71496,
+      "sha256": "7ec28051fbf3e6ce64be878ea192ead0cffa2d72e46537e7de9e498f458622c3"
+    },
+    {
+      "path": "contact-390-2.jpg",
+      "bytes": 76636,
+      "sha256": "ee3d1955378ce733304dc175289183657bb14d4415f71fbc96213c51b3299ce1"
+    },
+    {
+      "path": "design-detector.json",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "engineering-checks.json",
+      "bytes": 934,
+      "sha256": "1540e01387a78145c9fb761a7ea528ba0c809a432f24586ea86c6ed53845260c"
+    },
+    {
+      "path": "fixture-connectors-1280x800-dark-en.jpg",
+      "bytes": 33493,
+      "sha256": "e20a2f5a09dc1c299f6922d3a9da89319e9acc855572f5ed03a992e16589793d"
+    },
+    {
+      "path": "fixture-connectors-1280x800-dark-en.json",
+      "bytes": 466,
+      "sha256": "ce529794ddda108833d8eb31c9650a50e654313df19b9cf07f0f9de044ad241b"
+    },
+    {
+      "path": "fixture-connectors-1280x800-dark-zh.jpg",
+      "bytes": 30118,
+      "sha256": "08ccc61093bb424ce4d14556d71306d7932d75785107dd7ed931eab74ce371c4"
+    },
+    {
+      "path": "fixture-connectors-1280x800-dark-zh.json",
+      "bytes": 466,
+      "sha256": "6ff6db8336ab990021ebd6d3f752bb51bffebb6b329522841d608c9e2e4830da"
+    },
+    {
+      "path": "fixture-connectors-1280x800-light-en.jpg",
+      "bytes": 37267,
+      "sha256": "a217d9ca88601c1c56bb0278b1544040b9e0be780f5939c90b721f94c6f10dad"
+    },
+    {
+      "path": "fixture-connectors-1280x800-light-en.json",
+      "bytes": 468,
+      "sha256": "1fe5d15cd560d9ff6efcd019389c20123d9f4d84c6224079ead8cdd6658ea8eb"
+    },
+    {
+      "path": "fixture-connectors-1280x800-light-zh.jpg",
+      "bytes": 33692,
+      "sha256": "c7e0dc3ee86f4701915e182479f3992365f5af1e98e733cb4145df3d3c2b063c"
+    },
+    {
+      "path": "fixture-connectors-1280x800-light-zh.json",
+      "bytes": 468,
+      "sha256": "549b8e0111a2dc62d0c86ce472b4fe358597e12651abf89ee9ec2c2ec4e37294"
+    },
+    {
+      "path": "fixture-connectors-1440x900-dark-en.jpg",
+      "bytes": 35564,
+      "sha256": "8108cf968324a28251d21b0a61c57e83bba43ba58940c56c1ed3296d3de48cf6"
+    },
+    {
+      "path": "fixture-connectors-1440x900-dark-en.json",
+      "bytes": 466,
+      "sha256": "f45b9edee992a0771d06dbc88ea85388ca9407504ef2730aeaf3a43bcc64ccf0"
+    },
+    {
+      "path": "fixture-connectors-1440x900-dark-zh.jpg",
+      "bytes": 32013,
+      "sha256": "9f9a09bab4673fbb9d40626b47e29837d316f9957a4aea9c68b0c8b90f5866cd"
+    },
+    {
+      "path": "fixture-connectors-1440x900-dark-zh.json",
+      "bytes": 466,
+      "sha256": "6c8cfdd9e02e777f49146ffafb611a7086a5966a3f757d031713213dae83d0fd"
+    },
+    {
+      "path": "fixture-connectors-1440x900-light-en.jpg",
+      "bytes": 39853,
+      "sha256": "3f9a54325262171e174163dab3249bd718f395616e2fa812ed172790d1c29fd5"
+    },
+    {
+      "path": "fixture-connectors-1440x900-light-en.json",
+      "bytes": 468,
+      "sha256": "bc533f72bc55c9ad8740cf101b6802e5ce9c3e82e69ff84306ece4ae5e8df0f8"
+    },
+    {
+      "path": "fixture-connectors-1440x900-light-zh.jpg",
+      "bytes": 36094,
+      "sha256": "fabbf86bc66c7948bb7c772e284992422bcc0b6c7263a4a7ff06702862d0b72c"
+    },
+    {
+      "path": "fixture-connectors-1440x900-light-zh.json",
+      "bytes": 468,
+      "sha256": "bc4284ec2d3cbb708943f2400b480085e220ee337b3946bec09a786f90be1582"
+    },
+    {
+      "path": "fixture-connectors-1920x1080-dark-en.jpg",
+      "bytes": 40275,
+      "sha256": "e370b118171916575e80b806a3d3c21bf3e39dcd4b38a963ffcf510a2ef38150"
+    },
+    {
+      "path": "fixture-connectors-1920x1080-dark-en.json",
+      "bytes": 468,
+      "sha256": "fbe76279b37844fbe3026ff8adc345acf8fcf0f8b21ce04bd48fd73834e26c83"
+    },
+    {
+      "path": "fixture-connectors-1920x1080-dark-zh.jpg",
+      "bytes": 36634,
+      "sha256": "c656a35cd86279341c54da504191181e62d4c9057a622ca03f781e28094d244f"
+    },
+    {
+      "path": "fixture-connectors-1920x1080-dark-zh.json",
+      "bytes": 468,
+      "sha256": "3c12d944e37e0c460ec57559e6973a6cf280e058ae2ecdd1f90255537d6f24dd"
+    },
+    {
+      "path": "fixture-connectors-1920x1080-light-en.jpg",
+      "bytes": 44325,
+      "sha256": "32fe342f37f9f1dc3cc2811f56274767a946e68d68318513324afbe9271a1eb6"
+    },
+    {
+      "path": "fixture-connectors-1920x1080-light-en.json",
+      "bytes": 470,
+      "sha256": "d4aeefdbe0277ab96463e4ba046f14044bd858a983342f282e6db5c5b0caef66"
+    },
+    {
+      "path": "fixture-connectors-1920x1080-light-zh.jpg",
+      "bytes": 40397,
+      "sha256": "6796a89240a32210535d5b319c578b1c0d6a9a370f155430a6a79ec65c78126a"
+    },
+    {
+      "path": "fixture-connectors-1920x1080-light-zh.json",
+      "bytes": 470,
+      "sha256": "6500f2028f3a4a330551dd6fb257e4065026423d7cdc8ac7d266a24944aa36a1"
+    },
+    {
+      "path": "fixture-connectors-390x844-dark-en.jpg",
+      "bytes": 16689,
+      "sha256": "b9b93500208c7be68020d60b4d9cc972f24644550a4d8e956d68db09a316b56b"
+    },
+    {
+      "path": "fixture-connectors-390x844-dark-en.json",
+      "bytes": 464,
+      "sha256": "2d1016b4e41308636753d89fca6497883f6b3d6cc679e568ced2201e782df131"
+    },
+    {
+      "path": "fixture-connectors-390x844-dark-zh.jpg",
+      "bytes": 15971,
+      "sha256": "599c5a3d49cdb1d2fa30d93aff1d22750d7ec285748909a27b4ec71d1e4dc3a4"
+    },
+    {
+      "path": "fixture-connectors-390x844-dark-zh.json",
+      "bytes": 464,
+      "sha256": "0654967080217898fa9ba972d2f4f8c01605437a3c1de4b1fd2d1869255d6283"
+    },
+    {
+      "path": "fixture-connectors-390x844-light-en.jpg",
+      "bytes": 19116,
+      "sha256": "4f8893ff220a12770a2587bc6678f836d564a81c6330aaee3845c8c1aa58871c"
+    },
+    {
+      "path": "fixture-connectors-390x844-light-en.json",
+      "bytes": 466,
+      "sha256": "55bff0197bfe2fe8396cffab5f56a28c488b6f92b0c3d4c0e88a3417e73a8ba5"
+    },
+    {
+      "path": "fixture-connectors-390x844-light-zh.jpg",
+      "bytes": 18274,
+      "sha256": "bb541b60b10ff2d237dddd399fd22596210cee5030fa883d11be65e213201fda"
+    },
+    {
+      "path": "fixture-connectors-390x844-light-zh.json",
+      "bytes": 466,
+      "sha256": "e81dbd3f1df11166ce253264f3a4fa1ecfa5532220a7019fcc6d19aad003d8a0"
+    },
+    {
+      "path": "fixture-connectors-768x1024-dark-en.jpg",
+      "bytes": 31474,
+      "sha256": "2201c159a1b6de5659d6f08f5c478d1f0ad771b1d24a12e8768056e7fcc6e9fa"
+    },
+    {
+      "path": "fixture-connectors-768x1024-dark-en.json",
+      "bytes": 466,
+      "sha256": "d6a061ab1579398414f1f76151f7231be1b7aa4e6a724db6688368efb0422c03"
+    },
+    {
+      "path": "fixture-connectors-768x1024-dark-zh.jpg",
+      "bytes": 28543,
+      "sha256": "d2357621a64b64a7058c24bc09518dac827f4f0e0f42649ea87f7ddbb4173993"
+    },
+    {
+      "path": "fixture-connectors-768x1024-dark-zh.json",
+      "bytes": 466,
+      "sha256": "227d9fcd2cfe43b472eaf268de982a8542aa0e6df7cdc094f0a914369d8d170a"
+    },
+    {
+      "path": "fixture-connectors-768x1024-light-en.jpg",
+      "bytes": 34781,
+      "sha256": "3cb948e655cfba6e2ae8c6892d583703c649de68a523d2f005199e86dc633968"
+    },
+    {
+      "path": "fixture-connectors-768x1024-light-en.json",
+      "bytes": 468,
+      "sha256": "406d0922d1daa209eb114339dff35be6a3348e487a0317f09aecc3a7de4ced72"
+    },
+    {
+      "path": "fixture-connectors-768x1024-light-zh.jpg",
+      "bytes": 31652,
+      "sha256": "a803f8563405d8ea5c863dd104df2c81405388af85e958a17bb578616526cb91"
+    },
+    {
+      "path": "fixture-connectors-768x1024-light-zh.json",
+      "bytes": 468,
+      "sha256": "f70b20333e9e601486fa4b264caf8e4a3ec17d122dfc83af45938082d7d99447"
+    },
+    {
+      "path": "fixture-experts-1280x800-dark-en.jpg",
+      "bytes": 38030,
+      "sha256": "13003a40f22b7b0ca8710c83aa3ad20eb1601f03a5e25385402556a80eb43f3f"
+    },
+    {
+      "path": "fixture-experts-1280x800-dark-en.json",
+      "bytes": 463,
+      "sha256": "f72ab1173fe60b1f9992942d2d3b0723a2e4712340101e80ab46c0c1f5fb5f75"
+    },
+    {
+      "path": "fixture-experts-1280x800-dark-zh.jpg",
+      "bytes": 34189,
+      "sha256": "128035738d956298667d3201a65dc2ff3ecbd1af637f9bc9c6600d29849a6c27"
+    },
+    {
+      "path": "fixture-experts-1280x800-dark-zh.json",
+      "bytes": 463,
+      "sha256": "3d6a95bbaaa687b4ff8672e6bfb27ec9e96b6e4174c8d521b42876235cf983b8"
+    },
+    {
+      "path": "fixture-experts-1280x800-light-en.jpg",
+      "bytes": 39557,
+      "sha256": "1c228bd92bb761d8c498a80c9362234edb12bce078d29a8a6a7b201d92babb02"
+    },
+    {
+      "path": "fixture-experts-1280x800-light-en.json",
+      "bytes": 465,
+      "sha256": "6ad2d5dccf1ada0aa11fbb6f980fd211c43407eb006c1057ade373ab8dcfb408"
+    },
+    {
+      "path": "fixture-experts-1280x800-light-zh.jpg",
+      "bytes": 35411,
+      "sha256": "aac035f1c0552d6bc95629ece91d85d5a89af838117cdf697e28b898c9d879d7"
+    },
+    {
+      "path": "fixture-experts-1280x800-light-zh.json",
+      "bytes": 465,
+      "sha256": "c5ded13addfc64bb02128205a28a86f6570b440f58c215cd0e0d0fe3ebfe0c44"
+    },
+    {
+      "path": "fixture-experts-1440x900-dark-en.jpg",
+      "bytes": 40049,
+      "sha256": "ec9c79f5e75ccde4d420625ec4f8b1df407297875acdf5b6d8913346f7f729fc"
+    },
+    {
+      "path": "fixture-experts-1440x900-dark-en.json",
+      "bytes": 463,
+      "sha256": "191ab4b55786a1a33eced5b1014af457b6e563d0a0764e23e0d4db6edcfe7bc4"
+    },
+    {
+      "path": "fixture-experts-1440x900-dark-zh.jpg",
+      "bytes": 35886,
+      "sha256": "8e4bd529a9e3ad89806ac8995706cd1ddb50962ba96808d00b25bdd767e507ba"
+    },
+    {
+      "path": "fixture-experts-1440x900-dark-zh.json",
+      "bytes": 463,
+      "sha256": "c87a4c5863c1bd31d8fe2fae830ba54c30468dc82f849b5d9bfa8db6607cd3e8"
+    },
+    {
+      "path": "fixture-experts-1440x900-light-en.jpg",
+      "bytes": 41833,
+      "sha256": "41862778428cc77898b8577b96b16303b31179ec65c5b4462b3b5c7f87700ffc"
+    },
+    {
+      "path": "fixture-experts-1440x900-light-en.json",
+      "bytes": 465,
+      "sha256": "c470b6ad33af0c097e7ee3b4b5df2c3674b3560fbd33efb2dcc7861df0b46e29"
+    },
+    {
+      "path": "fixture-experts-1440x900-light-zh.jpg",
+      "bytes": 37531,
+      "sha256": "467de3110cb8d331b0fe9732cb17c185be53e7f5425e2704a5f986cdca91dfd0"
+    },
+    {
+      "path": "fixture-experts-1440x900-light-zh.json",
+      "bytes": 465,
+      "sha256": "9ae7ab3e6d8328d1f408feb07467e5969d48846ee625a52490b1da838b395d82"
+    },
+    {
+      "path": "fixture-experts-1920x1080-dark-en.jpg",
+      "bytes": 45192,
+      "sha256": "8eaba622bfc5f610a3c662b532aa5ee08021d82e5c383e990ecfe86ab276a8f4"
+    },
+    {
+      "path": "fixture-experts-1920x1080-dark-en.json",
+      "bytes": 465,
+      "sha256": "de8a9af75270283562019291e6ed7a8bdeda23330f396abac7b1facf4ccc53df"
+    },
+    {
+      "path": "fixture-experts-1920x1080-dark-zh.jpg",
+      "bytes": 40914,
+      "sha256": "1282434a8ec528ca572098a49424d90f9c1079009593e413172b9386ac23307e"
+    },
+    {
+      "path": "fixture-experts-1920x1080-dark-zh.json",
+      "bytes": 465,
+      "sha256": "97b8b5748dbefd0bdd21bb7228fc0ab89b980d2cfb513aae90fe9f7a96f8813d"
+    },
+    {
+      "path": "fixture-experts-1920x1080-light-en.jpg",
+      "bytes": 47058,
+      "sha256": "9b142b99020e82e2c80db88090d73afcd66574763f0e6d9fce3042e534dd0d86"
+    },
+    {
+      "path": "fixture-experts-1920x1080-light-en.json",
+      "bytes": 467,
+      "sha256": "aa92590a156f8e2847aa428c42f2c700af904b5b06fc4bd396ec96c12ceac784"
+    },
+    {
+      "path": "fixture-experts-1920x1080-light-zh.jpg",
+      "bytes": 42447,
+      "sha256": "76ce8f63a7cf7aef4ac54c951115b1fdbf87390b0dad4e3eccef1d2963a8340c"
+    },
+    {
+      "path": "fixture-experts-1920x1080-light-zh.json",
+      "bytes": 467,
+      "sha256": "20a19761093062b19c22a3758471261b63ded2f20309bc2bb811619d43b87fae"
+    },
+    {
+      "path": "fixture-experts-390x844-dark-en.jpg",
+      "bytes": 21520,
+      "sha256": "336a18bdd644bbb4ccda29668077d445979bd771adf230e1f959c9ea1bb5e7a0"
+    },
+    {
+      "path": "fixture-experts-390x844-dark-en.json",
+      "bytes": 461,
+      "sha256": "7361812748ae2ecd47997dae3ec9d3aa6e9442d3411072d0a7d64ebd8c9daaa6"
+    },
+    {
+      "path": "fixture-experts-390x844-dark-zh.jpg",
+      "bytes": 19465,
+      "sha256": "4fcedefb1cc0db46d8869f10ff516ec21466008934bded6b22bafbbfb4e353db"
+    },
+    {
+      "path": "fixture-experts-390x844-dark-zh.json",
+      "bytes": 461,
+      "sha256": "b4162a4a203321295806a0fb5dab209388fa6dd75f11229852398c036510c795"
+    },
+    {
+      "path": "fixture-experts-390x844-light-en.jpg",
+      "bytes": 21914,
+      "sha256": "1acb12f30813bff88f6ccbb6a441bd87001fd5a31924b05a04d64df476aca8b0"
+    },
+    {
+      "path": "fixture-experts-390x844-light-en.json",
+      "bytes": 463,
+      "sha256": "142cc569b91b6d6d0da241b6efb2afc6e1d22e16bc94981b636e8c22a2a1ab42"
+    },
+    {
+      "path": "fixture-experts-390x844-light-zh.jpg",
+      "bytes": 19713,
+      "sha256": "722c7f4ee719d03d28e7a4337e2366c5d98f111645aef0c5f4faf18fd29637e2"
+    },
+    {
+      "path": "fixture-experts-390x844-light-zh.json",
+      "bytes": 463,
+      "sha256": "6dab2ebf1f95657bcc1399395e5313e96f411bcff9b538b6c3cd5f4359e39b34"
+    },
+    {
+      "path": "fixture-experts-768x1024-dark-en.jpg",
+      "bytes": 38095,
+      "sha256": "8a77955e22f50425c57cab16afb31ca9d489c715817654ee9048d773b4d3cb5e"
+    },
+    {
+      "path": "fixture-experts-768x1024-dark-en.json",
+      "bytes": 463,
+      "sha256": "2784221136f99b9eba19d0c1c19a36a0b13d2cded2b71d63dc888b954e83b2c1"
+    },
+    {
+      "path": "fixture-experts-768x1024-dark-zh.jpg",
+      "bytes": 33581,
+      "sha256": "269f75ee345f734da598874f425778b5d7eaac1de50418a4118ccdb08b9dd510"
+    },
+    {
+      "path": "fixture-experts-768x1024-dark-zh.json",
+      "bytes": 463,
+      "sha256": "0228355b369cfa277eeb6bb21125b1b0c240b195e0f85ef0f1accc73415cb245"
+    },
+    {
+      "path": "fixture-experts-768x1024-light-en.jpg",
+      "bytes": 39344,
+      "sha256": "5b100b24367bb5275bcba7a1f2886cde28ec662963617f9c2f56dc57831afd1d"
+    },
+    {
+      "path": "fixture-experts-768x1024-light-en.json",
+      "bytes": 465,
+      "sha256": "8dac7bf8658007a2b1df85372afc1394364f0a9bff4425aa2d7196913024fb01"
+    },
+    {
+      "path": "fixture-experts-768x1024-light-zh.jpg",
+      "bytes": 34388,
+      "sha256": "ad60cbd5071954d4fc4debf131a5573a5d0cba5b3254e03cddc3f6d0c7bcd8db"
+    },
+    {
+      "path": "fixture-experts-768x1024-light-zh.json",
+      "bytes": 465,
+      "sha256": "ce46fc643925996edb8e45e012ce3e6687f86be00cc9431ed0999db7a6f809e0"
+    },
+    {
+      "path": "fixture-settings-1280x800-dark-en.jpg",
+      "bytes": 37147,
+      "sha256": "a43740ccad80c078cba6b5d45471cb96c2818613aa9498be12b8aea780770115"
+    },
+    {
+      "path": "fixture-settings-1280x800-dark-en.json",
+      "bytes": 517,
+      "sha256": "84258e6122e8d64151fb6945cc62b9d756160aa52d6268f33dff8c01e4b95f1b"
+    },
+    {
+      "path": "fixture-settings-1280x800-dark-zh.jpg",
+      "bytes": 30192,
+      "sha256": "2fcc599bb6f9bd126270a490cc1eedcd1ff1838d62b7ef1ab266cfd90e3c315c"
+    },
+    {
+      "path": "fixture-settings-1280x800-dark-zh.json",
+      "bytes": 517,
+      "sha256": "40e085e2492f45c89e60a54bbcf0e480537fcb5db9b9cf8bfb4eeeb455f6fdaf"
+    },
+    {
+      "path": "fixture-settings-1280x800-light-en.jpg",
+      "bytes": 40565,
+      "sha256": "224ce313f133fcbb904c31d6e25f0903dafe515bcfc575631cef5a8447a932e2"
+    },
+    {
+      "path": "fixture-settings-1280x800-light-en.json",
+      "bytes": 519,
+      "sha256": "1e9328ef77e1bd5d04426944a2e66fe46245e053638551ddc950fd7110b2b936"
+    },
+    {
+      "path": "fixture-settings-1280x800-light-zh.jpg",
+      "bytes": 33260,
+      "sha256": "464e15a65d9074f6f8f03b656bac7b7f35d30eebda5c75ded564e03ff1802227"
+    },
+    {
+      "path": "fixture-settings-1280x800-light-zh.json",
+      "bytes": 519,
+      "sha256": "8849b02be9e166257889d20c904a9c45e9fb2c1dbdeb27c4b26d9d0fcacb972e"
+    },
+    {
+      "path": "fixture-settings-1440x900-dark-en.jpg",
+      "bytes": 42111,
+      "sha256": "4073de38392f58191eefe570cdaa0440a4e5cddec41397b7c9d60cb84d8ad438"
+    },
+    {
+      "path": "fixture-settings-1440x900-dark-en.json",
+      "bytes": 517,
+      "sha256": "6e9d03092e5a5fb887206ad1ccf84a9d4a917e3cde08745b82d0027553c85c29"
+    },
+    {
+      "path": "fixture-settings-1440x900-dark-zh.jpg",
+      "bytes": 35090,
+      "sha256": "ee8eca4b9cd062d8e3f68be768f9476203b523eb4126d4c3bd966e3fe6a45820"
+    },
+    {
+      "path": "fixture-settings-1440x900-dark-zh.json",
+      "bytes": 517,
+      "sha256": "872e664ca1697510dd38ff7825fb90431042b5ede1b008cdf04739827a36501a"
+    },
+    {
+      "path": "fixture-settings-1440x900-light-en.jpg",
+      "bytes": 47562,
+      "sha256": "3293447d038576a0e8778a6ad92b006ad680d51d335fd9e9e65f3bc35d672bc1"
+    },
+    {
+      "path": "fixture-settings-1440x900-light-en.json",
+      "bytes": 519,
+      "sha256": "0eb05e1161f24b4a7b113b77b623cdac85629d56d35b2c47a752a289d2511746"
+    },
+    {
+      "path": "fixture-settings-1440x900-light-zh.jpg",
+      "bytes": 40313,
+      "sha256": "a3cdd6cdb7c1e1a5a31c17534a59af9ec86612d6e2208238962ecbe99b274507"
+    },
+    {
+      "path": "fixture-settings-1440x900-light-zh.json",
+      "bytes": 519,
+      "sha256": "9cb25fab32a19dae82154aca3c3d8900f12d8455f4d7a30c825228c1cda22ddd"
+    },
+    {
+      "path": "fixture-settings-1920x1080-dark-en.jpg",
+      "bytes": 54838,
+      "sha256": "6fd438a51253a15cdf36bbf51a2fc600e794643282ce38bd460018916639663c"
+    },
+    {
+      "path": "fixture-settings-1920x1080-dark-en.json",
+      "bytes": 519,
+      "sha256": "447e544c72570f5c3f80520287712bf90bd4f5dc1fee9a20de4f9de82c491723"
+    },
+    {
+      "path": "fixture-settings-1920x1080-dark-zh.jpg",
+      "bytes": 46899,
+      "sha256": "7c99a1dd92292c42c06fdd0ac6853a9488bfecdb533c0c0448bcd7a9fee734de"
+    },
+    {
+      "path": "fixture-settings-1920x1080-dark-zh.json",
+      "bytes": 519,
+      "sha256": "ef5929814c21647b006ec5ae60cc6cec9ac22796ccc3894bae4dca33aa8355cd"
+    },
+    {
+      "path": "fixture-settings-1920x1080-light-en.jpg",
+      "bytes": 61254,
+      "sha256": "77075f486a9197aac5e239341650dcdb11f5b96eafb113d2d65a6d180b13cffd"
+    },
+    {
+      "path": "fixture-settings-1920x1080-light-en.json",
+      "bytes": 521,
+      "sha256": "14a91ebb866b67dc898a69d967d03cf9ee94c9d59704eb6739c6c967a6a97520"
+    },
+    {
+      "path": "fixture-settings-1920x1080-light-zh.jpg",
+      "bytes": 52781,
+      "sha256": "220b33669f95f51f043b2a2e57b816a238e92dae7a45b83166876696db8a85e4"
+    },
+    {
+      "path": "fixture-settings-1920x1080-light-zh.json",
+      "bytes": 521,
+      "sha256": "25db63d535bdf1c4ee79d17b20c77eeb02326f32d7d83742358de9e477e898d7"
+    },
+    {
+      "path": "fixture-settings-390x844-dark-en.jpg",
+      "bytes": 9206,
+      "sha256": "85acff514b5fd3c41dad46514fc527bef19bd05ff9d22cf5efed7632de8a5899"
+    },
+    {
+      "path": "fixture-settings-390x844-dark-en.json",
+      "bytes": 513,
+      "sha256": "fa3fde9f9bb1c66f5bb71123d66112893da49d7f3a8c23f28ec7b8fad1414308"
+    },
+    {
+      "path": "fixture-settings-390x844-dark-zh.jpg",
+      "bytes": 8992,
+      "sha256": "92b0bacaca4686a405b75b29de6427a832ef17325400b6d95c50645100e83823"
+    },
+    {
+      "path": "fixture-settings-390x844-dark-zh.json",
+      "bytes": 513,
+      "sha256": "5b0b5878b18f364fbbfcebd1c955b17f6e0282c8cd6d4b7fe023605725e44968"
+    },
+    {
+      "path": "fixture-settings-390x844-light-en.jpg",
+      "bytes": 8814,
+      "sha256": "06d4f2683679b013c1bf654ecb66217388ec097eebc58af24ba7e0782fab4ed1"
+    },
+    {
+      "path": "fixture-settings-390x844-light-en.json",
+      "bytes": 515,
+      "sha256": "af04ece04b6b8724da35fa649288a277dce1b8669b1294a578802c7b08e76212"
+    },
+    {
+      "path": "fixture-settings-390x844-light-zh.jpg",
+      "bytes": 7347,
+      "sha256": "936c42c586cf0a709c65fffae1b2a1ea8ca527621f7c2188510c14b0c93478c3"
+    },
+    {
+      "path": "fixture-settings-390x844-light-zh.json",
+      "bytes": 515,
+      "sha256": "da7b0e1fdf00a533a7b2036642f5b1afae074c9c2a0cff38a5ba76432e8f6be9"
+    },
+    {
+      "path": "fixture-settings-768x1024-dark-en.jpg",
+      "bytes": 33406,
+      "sha256": "98e323c57af62e6290819b71431b91640cb9d8b87b84aabfd9cb6aae85877d89"
+    },
+    {
+      "path": "fixture-settings-768x1024-dark-en.json",
+      "bytes": 517,
+      "sha256": "c9bc46baec15a65fe8c24c4526e09f1ccaac6fbd8907397fa45d36055d735767"
+    },
+    {
+      "path": "fixture-settings-768x1024-dark-zh.jpg",
+      "bytes": 27508,
+      "sha256": "1ac28b29181b1ca1f10cf74d6b231ff9737eb00d4d0cf6c79171fb871fb610bf"
+    },
+    {
+      "path": "fixture-settings-768x1024-dark-zh.json",
+      "bytes": 517,
+      "sha256": "a776b63cdee80a28dd292ea27000805fce4946494588d3005507e7ed296b2c38"
+    },
+    {
+      "path": "fixture-settings-768x1024-light-en.jpg",
+      "bytes": 36185,
+      "sha256": "77312ea648ae9295738482a01cbdab1a1b3ae01f9349fd059695c0fd8b5b64d1"
+    },
+    {
+      "path": "fixture-settings-768x1024-light-en.json",
+      "bytes": 519,
+      "sha256": "0d3fe2af08f52adb08cc6b04a1599b1effff35b8d80d43d54ba23c7c5da176f4"
+    },
+    {
+      "path": "fixture-settings-768x1024-light-zh.jpg",
+      "bytes": 30112,
+      "sha256": "4eb01770d1a003240f4cf6e88a34849d72e3896e0eab72c80f1329a1cd635be8"
+    },
+    {
+      "path": "fixture-settings-768x1024-light-zh.json",
+      "bytes": 519,
+      "sha256": "9773390bb68453147b915f86b4b5725a5139f98ad380820b8e64297016b8f8a3"
+    },
+    {
+      "path": "fixture-skills-1280x800-dark-en.jpg",
+      "bytes": 35774,
+      "sha256": "1b5890cc8e21a1d8fe662c3f6559d6b3b4ca15d9850c458922d77b3bc906cf9d"
+    },
+    {
+      "path": "fixture-skills-1280x800-dark-en.json",
+      "bytes": 462,
+      "sha256": "01e237cbb8bfdf160f0ebf06f68e89b8b28611c3c3127dd3f4abe91f3c887248"
+    },
+    {
+      "path": "fixture-skills-1280x800-dark-zh.jpg",
+      "bytes": 32747,
+      "sha256": "279101e3949d06e7fe1527c5c40f3cd3473efa40e6812e9bedff11df7448935d"
+    },
+    {
+      "path": "fixture-skills-1280x800-dark-zh.json",
+      "bytes": 462,
+      "sha256": "9009c685c39cd5b1599f93f047463219cad7e278b6ee8e6e443a3c7b91cb33b1"
+    },
+    {
+      "path": "fixture-skills-1280x800-light-en.jpg",
+      "bytes": 39325,
+      "sha256": "bcc46b25553115ca3d994f065e6c868524acbf71eddb39e2fbb56a6db5b366bd"
+    },
+    {
+      "path": "fixture-skills-1280x800-light-en.json",
+      "bytes": 464,
+      "sha256": "f27b0e5215c743ae3ce5e847192f4885492379bef7b50c9dc4b81bd25b02b291"
+    },
+    {
+      "path": "fixture-skills-1280x800-light-zh.jpg",
+      "bytes": 36103,
+      "sha256": "1d68e43bf74e3413246fac3e1ede9b5f149fc9f68bd4fd9e0222ab73dc17186b"
+    },
+    {
+      "path": "fixture-skills-1280x800-light-zh.json",
+      "bytes": 464,
+      "sha256": "035a10d05e72a899f13b2272daa7f2d372fa795f465414e377f1c06ab31f7699"
+    },
+    {
+      "path": "fixture-skills-1440x900-dark-en.jpg",
+      "bytes": 37885,
+      "sha256": "0f0b109f28494a38cbfc024ffcf36dc67579b6ccf2a0bb4a2c705503f0fcb972"
+    },
+    {
+      "path": "fixture-skills-1440x900-dark-en.json",
+      "bytes": 462,
+      "sha256": "5f1526c7408b12feeb805b9aeac5c4e26fae1dc1436d14c9661c287d1f56832e"
+    },
+    {
+      "path": "fixture-skills-1440x900-dark-zh.jpg",
+      "bytes": 34697,
+      "sha256": "2d0e4a73a9b2315c2d46339ba70fb4812f36d3acb6c8e2d5cff1fd0d27f8423f"
+    },
+    {
+      "path": "fixture-skills-1440x900-dark-zh.json",
+      "bytes": 462,
+      "sha256": "fea5f0f092b270cf87f012f51267b9f8f51cebbf724828aad0a9bbcae0f37304"
+    },
+    {
+      "path": "fixture-skills-1440x900-light-en.jpg",
+      "bytes": 41477,
+      "sha256": "06e5f6b75117be82599f54356076487bf3096a1d3872e81d46aba200c30c057f"
+    },
+    {
+      "path": "fixture-skills-1440x900-light-en.json",
+      "bytes": 464,
+      "sha256": "753643f011af65b8a21c6dfe5b2e7f8e04244c72884febfcb18832a98e1924be"
+    },
+    {
+      "path": "fixture-skills-1440x900-light-zh.jpg",
+      "bytes": 38203,
+      "sha256": "3005e25e4322ccd43a8f475fa116eb1315026ffaab01b80cac15d7e97e63f486"
+    },
+    {
+      "path": "fixture-skills-1440x900-light-zh.json",
+      "bytes": 464,
+      "sha256": "28090711a3269dece51bbfb13a7be3a16b34d4595158485bc7807047eaafc4af"
+    },
+    {
+      "path": "fixture-skills-1920x1080-dark-en.jpg",
+      "bytes": 43107,
+      "sha256": "b6c9633b363a7e4553bb16fdbce742e4e223e415c20532a524900a01c4dcbe5f"
+    },
+    {
+      "path": "fixture-skills-1920x1080-dark-en.json",
+      "bytes": 464,
+      "sha256": "7e92ff2c11b59f745fa16b44dced713d71bceb174592b39e8adcad34ebe7955e"
+    },
+    {
+      "path": "fixture-skills-1920x1080-dark-zh.jpg",
+      "bytes": 39791,
+      "sha256": "a332a73959fa13f9a100d0ac4e3e05fd03594e038a1366db8d7bbbeb974c5b3c"
+    },
+    {
+      "path": "fixture-skills-1920x1080-dark-zh.json",
+      "bytes": 464,
+      "sha256": "24175876824330319497524ae28363c1725d30b13d7592276d6ee2b229fc52c4"
+    },
+    {
+      "path": "fixture-skills-1920x1080-light-en.jpg",
+      "bytes": 46800,
+      "sha256": "7f4fe3fe59116143040de0daf284f4e0d92107a242a715191b76c1e9d0180cb3"
+    },
+    {
+      "path": "fixture-skills-1920x1080-light-en.json",
+      "bytes": 466,
+      "sha256": "0d6a90e883fe9301df36e43d391c81feef41aa58250e29ca58f38bb6b9be6195"
+    },
+    {
+      "path": "fixture-skills-1920x1080-light-zh.jpg",
+      "bytes": 43235,
+      "sha256": "1ee5d88354edbcec597c7998c7720f6d2b077ca4fcffcdd252e73daff51ef39f"
+    },
+    {
+      "path": "fixture-skills-1920x1080-light-zh.json",
+      "bytes": 466,
+      "sha256": "56c0728779fc73fdcd057b4f2217ad9aa9be063b3afeb61e1b93b33debabbd2c"
+    },
+    {
+      "path": "fixture-skills-390x844-dark-en.jpg",
+      "bytes": 18222,
+      "sha256": "1edfa67c55e4f6be1b4469eed957f35273c2f396e3caf02b6bfe747dac71f805"
+    },
+    {
+      "path": "fixture-skills-390x844-dark-en.json",
+      "bytes": 460,
+      "sha256": "0c00744441361621d4b85a5314e8564458510ddcb88e4689311e23737a98388a"
+    },
+    {
+      "path": "fixture-skills-390x844-dark-zh.jpg",
+      "bytes": 17847,
+      "sha256": "adfb5d969b7b104838cb4df2276a44a9d861dcd97d00e1140f2d1f68325bb807"
+    },
+    {
+      "path": "fixture-skills-390x844-dark-zh.json",
+      "bytes": 460,
+      "sha256": "100bac5ddbe2931a988f5bed5f69ffc223688084fa5b087dc184745cbfe86061"
+    },
+    {
+      "path": "fixture-skills-390x844-light-en.jpg",
+      "bytes": 20364,
+      "sha256": "9f0876729d9ebd33364dc78d23de31e6ea28ddcdcc72ff7544ea27c083803f9e"
+    },
+    {
+      "path": "fixture-skills-390x844-light-en.json",
+      "bytes": 462,
+      "sha256": "fcdda86ee3459ad49e2a7a6131aa120f75a6a2ed2d80cad2d1f2c897a7629a73"
+    },
+    {
+      "path": "fixture-skills-390x844-light-zh.jpg",
+      "bytes": 19938,
+      "sha256": "eca504c8ed3f20a729696a172f94a989aa05b9299bead13a01446b8842ed3e4d"
+    },
+    {
+      "path": "fixture-skills-390x844-light-zh.json",
+      "bytes": 462,
+      "sha256": "ad65a8cace37e79f64222b47031f4f3784004d8e18b303c66688bc5f5410d8c2"
+    },
+    {
+      "path": "fixture-skills-768x1024-dark-en.jpg",
+      "bytes": 34494,
+      "sha256": "efcabf29d0e3ed3d461a1e66ca15787c164b5a11aa0e808a09182a12f5b222da"
+    },
+    {
+      "path": "fixture-skills-768x1024-dark-en.json",
+      "bytes": 462,
+      "sha256": "e0aab41128161d3db4aace1c9bf19a12872feb853f07697530670d92744020a7"
+    },
+    {
+      "path": "fixture-skills-768x1024-dark-zh.jpg",
+      "bytes": 31493,
+      "sha256": "0c3f67d654ad4121306896527ed74b66abc68074a8c8c6529377cc292d195918"
+    },
+    {
+      "path": "fixture-skills-768x1024-dark-zh.json",
+      "bytes": 462,
+      "sha256": "41a6ace8185eb8d0e817b549ed21fa6d78f8b6520ffc05af0e2fa6b8b229d30d"
+    },
+    {
+      "path": "fixture-skills-768x1024-light-en.jpg",
+      "bytes": 37978,
+      "sha256": "5e318be8a9d8d5d10c9e7e5f59dde1ed69ced91178f71d832c3abb780abd4ad7"
+    },
+    {
+      "path": "fixture-skills-768x1024-light-en.json",
+      "bytes": 464,
+      "sha256": "eef08201bf232c2ea3b2486c8d3bd10ba84c101aa31d916f3dda89da935e6b64"
+    },
+    {
+      "path": "fixture-skills-768x1024-light-zh.jpg",
+      "bytes": 34682,
+      "sha256": "345e5a0cb054bf048770f15401bbfc7ef92d0c4322b96dd7fa3b7802ec9aead4"
+    },
+    {
+      "path": "fixture-skills-768x1024-light-zh.json",
+      "bytes": 464,
+      "sha256": "a1551a217ed41b4b61213c164aef79c617f4c2dccf801312fb198db1e792c8ab"
+    },
+    {
+      "path": "fixtures.json",
+      "bytes": 43114,
+      "sha256": "ebe4422e56af9a9de7b151e5b1968957b78ad401dd96de37528b59748037ccee"
+    },
+    {
+      "path": "mobile-market-entry.json",
+      "bytes": 107,
+      "sha256": "02f6ed0e189ff3a1c40b4b7cbf52017457a38738af9fa0eb5a5b061e683f71b0"
+    },
+    {
+      "path": "route-chat-1440.jpg",
+      "bytes": 39989,
+      "sha256": "9b84e6ba453739df3c82c4fc899e4114d9b66eb8ea7daf5dab186dfebcbc6e01"
+    },
+    {
+      "path": "route-chat-390.jpg",
+      "bytes": 29027,
+      "sha256": "26ab64b8313b41b57b6cdaa319e35dff72f016fc4b2982567897ebda2258bd4a"
+    },
+    {
+      "path": "route-connectors-1440.jpg",
+      "bytes": 107800,
+      "sha256": "8306359e0a70507453b6efa840113d966ae0a32908159ebcef04c084b2f00d2a"
+    },
+    {
+      "path": "route-connectors-390.jpg",
+      "bytes": 31925,
+      "sha256": "866749b699b942d8ac21dd801c974bc0b3bec926cf791a120f0258c85adadece"
+    },
+    {
+      "path": "route-experts-1440.jpg",
+      "bytes": 31015,
+      "sha256": "52304ddc2d28e22891988abf18024d3928a5c7de1d098f019ea26395fca54336"
+    },
+    {
+      "path": "route-experts-390.jpg",
+      "bytes": 18551,
+      "sha256": "53b46d1c59b6c4ffbd6ee7212ba0c017d76ca3b283785655977fc8c48d059608"
+    },
+    {
+      "path": "route-home-1440.jpg",
+      "bytes": 27254,
+      "sha256": "0c0503fb9f4e6dd961964c1e9090223b005b7433a5a033398fdf360d82b9d6f5"
+    },
+    {
+      "path": "route-home-390.jpg",
+      "bytes": 17335,
+      "sha256": "e6ac1b44fe75605d7a030089992bded31933c61f060143e93cd512b37b3c1f66"
+    },
+    {
+      "path": "route-knowledge-bases-1440.jpg",
+      "bytes": 47067,
+      "sha256": "354b3dacc6740dcca8ebc5248e0e787bb67ac87ed7a3b9f8a6d45219a02907ad"
+    },
+    {
+      "path": "route-knowledge-bases-390.jpg",
+      "bytes": 14791,
+      "sha256": "27564f08b5036e9641462cb2a817c6c8479f2ad84a6bc911a0f97ad818ce7db9"
+    },
+    {
+      "path": "route-skills-1440.jpg",
+      "bytes": 145787,
+      "sha256": "8470adf62c2677ace11a479a68fa9605c46978acf68dc7cc5fdc7829965c81c6"
+    },
+    {
+      "path": "route-skills-390.jpg",
+      "bytes": 46830,
+      "sha256": "f9bcc78280130413ab72b6e61c97c58f78a8a79226ea16a39335d23d1b1691cf"
+    },
+    {
+      "path": "route-tasks-1440.jpg",
+      "bytes": 22189,
+      "sha256": "22fb0812e415b9adacd5072c9bf4f54a2865a6ee8eeb0e229d4a0651bb33d475"
+    },
+    {
+      "path": "route-tasks-390.jpg",
+      "bytes": 12217,
+      "sha256": "9e84f0bca895fd6c27ef3229ad6221991162ecdeb709e698ac7df27f6ac71653"
+    },
+    {
+      "path": "route-workbench-1440.jpg",
+      "bytes": 29722,
+      "sha256": "bc7731fbbad4b3b988aa09008cba327b447352e5b35a316f4c6acee8cc97176a"
+    },
+    {
+      "path": "route-workbench-390.jpg",
+      "bytes": 17191,
+      "sha256": "ca039745d9aadd835325a28144fb9ab09ac2f50fa800a901e009841161b86929"
+    },
+    {
+      "path": "routes-final.json",
+      "bytes": 5416,
+      "sha256": "328ae6c2e5390ce6c1556948ad32a8f28c637bd24554af36d513bd74b394392c"
+    },
+    {
+      "path": "settings-about-1440.jpg",
+      "bytes": 40982,
+      "sha256": "02d0929929b7476810b46a03f575c042174b54196fbfe96fd0567c9c8b4548ca"
+    },
+    {
+      "path": "settings-about-390.jpg",
+      "bytes": 16373,
+      "sha256": "923765c9c38d8c27f255b840b2745174883de3a364ca45f44a5f928d922ad9dd"
+    },
+    {
+      "path": "settings-account-1440.jpg",
+      "bytes": 47464,
+      "sha256": "83fba9d1731a36bdab71431ec42c980c2d94f83bbf8c4349bd5b86934c85244a"
+    },
+    {
+      "path": "settings-account-390.jpg",
+      "bytes": 23461,
+      "sha256": "9e94d1c40732ac11980ef89e2a3a85bb613454d2e84675102f17a9da1e793f6a"
+    },
+    {
+      "path": "settings-acp-1440.jpg",
+      "bytes": 68267,
+      "sha256": "ab16c79984b9e33539ffb4db81e088473bc5c42d5ab57deccca559e7c6d9197b"
+    },
+    {
+      "path": "settings-acp-390.jpg",
+      "bytes": 29957,
+      "sha256": "76b8f45773d0b91841bc0eab7281593989e74e4effd9de54a67bd9cd42f13a6d"
+    },
+    {
+      "path": "settings-agent-1440.jpg",
+      "bytes": 45466,
+      "sha256": "184e3b54f03b427f8de96f54fa3dc05ab51a38114b4317229fc06076be516a1e"
+    },
+    {
+      "path": "settings-agent-390.jpg",
+      "bytes": 20635,
+      "sha256": "47b33d0be4d1552f62e35c5b9846857c14c10358497ddf81cce1ef72f8209fc9"
+    },
+    {
+      "path": "settings-agent-plugins-1440.jpg",
+      "bytes": 40695,
+      "sha256": "f2cf2d1b19eb006041e81725132c4632d8ed09d58c8a5b9054754e3c9f38d171"
+    },
+    {
+      "path": "settings-agent-plugins-390.jpg",
+      "bytes": 17006,
+      "sha256": "bbce73af028973ef6a2ca5171ea6d8b768ed1dc87af7bc31f676e29336eaf8c6"
+    },
+    {
+      "path": "settings-appearance-1440.jpg",
+      "bytes": 31179,
+      "sha256": "2d7abf1df7e2a1ed5194d926a30667c928c2e80a8e67bfcea6db0f061ab9f22a"
+    },
+    {
+      "path": "settings-appearance-390.jpg",
+      "bytes": 9395,
+      "sha256": "bcdb881604ab89fc89f0740c48546c3d92c13b5119223675e517e9181a3453c2"
+    },
+    {
+      "path": "settings-backup-1440.jpg",
+      "bytes": 67348,
+      "sha256": "928fbaf85efefc9116987705ed1386c09c4644b311fe57d3ffd927d6c179e2ce"
+    },
+    {
+      "path": "settings-backup-390.jpg",
+      "bytes": 36214,
+      "sha256": "1cb494f34ba469e2fab10d6d2e169fa960430bf69649aad8d38c539945f87b19"
+    },
+    {
+      "path": "settings-bridge-1440.jpg",
+      "bytes": 35975,
+      "sha256": "f11ff091c1ddf54d66fb45ed5478d936af598419806fe0e5930dbd529d0765fa"
+    },
+    {
+      "path": "settings-bridge-390.jpg",
+      "bytes": 12477,
+      "sha256": "a8bae8ff131c86c0aa61fb973bffb18a69c9a2d2aa333c820bf849b78565d949"
+    },
+    {
+      "path": "settings-captcha-1440.jpg",
+      "bytes": 38086,
+      "sha256": "c2d492e421bc8a0f2858f4916a5b6fb49d2c236c33f89d0a4863e62084083900"
+    },
+    {
+      "path": "settings-captcha-390.jpg",
+      "bytes": 14603,
+      "sha256": "af09096e5ebfc3a50a3636195875fab624e8b8ee14d2f11604b67c4865790b60"
+    },
+    {
+      "path": "settings-channels-1440.jpg",
+      "bytes": 66341,
+      "sha256": "49b85352838d1a021aa4b79bf602f122476e0b6c6cc7c77338d67b680590fbd0"
+    },
+    {
+      "path": "settings-channels-390.jpg",
+      "bytes": 29226,
+      "sha256": "201547a5897aff3188e5b956136ae8771d13414d8b71e3856893c1567a6d7711"
+    },
+    {
+      "path": "settings-desktop-after.json",
+      "bytes": 16179,
+      "sha256": "a2ac5c0157f3a6b39e28d2bf293aa979236be2dbc34b622f3ffe34b19144ddff"
+    },
+    {
+      "path": "settings-desktop-before.json",
+      "bytes": 26836,
+      "sha256": "de2947d14b2c2d3267eef4b47aa90875957df3aabc2a4800cfdb9e792a2e091d"
+    },
+    {
+      "path": "settings-environments-1440.jpg",
+      "bytes": 44784,
+      "sha256": "1b34d4daba5b7b159a1ce7a7bcd221796dec85ad10d63686f6fbd3f526383dae"
+    },
+    {
+      "path": "settings-environments-390.jpg",
+      "bytes": 20077,
+      "sha256": "0611a1aa84a19383c7c1bc9990c5ba081f35adcbf4f4feb847c37a2be71e9daa"
+    },
+    {
+      "path": "settings-general-1440.jpg",
+      "bytes": 33541,
+      "sha256": "20305efcba0d06edf7b168fc575c276eb158ff7e2e2b332688d1f953bbe165a0"
+    },
+    {
+      "path": "settings-general-390.jpg",
+      "bytes": 10942,
+      "sha256": "3adab55de1a9a55db1da4f332f5924d4d71e2e0e4db22afbdb663122788e0cc4"
+    },
+    {
+      "path": "settings-https-1440.jpg",
+      "bytes": 54131,
+      "sha256": "14af227c6875a60456fa4232a9f8fc7c834d2be81419a88adefca64acb4bdfa8"
+    },
+    {
+      "path": "settings-https-390.jpg",
+      "bytes": 26937,
+      "sha256": "0e8b720bf8367ce6154ca50e59a83fad81ec325b2be419163ee4ac988f55f3ee"
+    },
+    {
+      "path": "settings-memory-1440.jpg",
+      "bytes": 61782,
+      "sha256": "e11bd79c6ce0651bee25cb2737b5ad429821ed48e42e327e2efaa1ceb17c923c"
+    },
+    {
+      "path": "settings-memory-390.jpg",
+      "bytes": 30098,
+      "sha256": "4029621a0a89984b437d66934ad07e7a5cf5a65bb8be2f28a88bf9437c5b652c"
+    },
+    {
+      "path": "settings-mobile-after.json",
+      "bytes": 17112,
+      "sha256": "446f8d422c3bacd2571058938487d42e227e4b09b3272ea4311a61711dddc24f"
+    },
+    {
+      "path": "settings-mobile-before.json",
+      "bytes": 31985,
+      "sha256": "13aed2e97c808a2c41ad1ba1d1f76986ec0fa876741dd7cf9b522528cc3af047"
+    },
+    {
+      "path": "settings-models-1440.jpg",
+      "bytes": 58184,
+      "sha256": "54a50fa1814c0ca8acc8fba7a46b0f0d913594e7d2819037fac0d22961891a11"
+    },
+    {
+      "path": "settings-models-390.jpg",
+      "bytes": 29700,
+      "sha256": "10cedeafe1ba8526609e9d75a778f7a20dc7a2d3e10d48dab591b9b79d0c5be2"
+    },
+    {
+      "path": "settings-observability-1440.jpg",
+      "bytes": 35957,
+      "sha256": "7b3aac4d61771befcedb69fdd8c71619b192ee955aee80312cb7c28690208b29"
+    },
+    {
+      "path": "settings-observability-390.jpg",
+      "bytes": 12987,
+      "sha256": "a4aa48ad660a55810c730909bbdc41cd957044e6fd80234e101baa7273c9a85c"
+    },
+    {
+      "path": "settings-personalization-1440.jpg",
+      "bytes": 56765,
+      "sha256": "e5ea2915518ab6faef9cda141b59fb9be0c6dc1300504968e92df38a5e5d3a4b"
+    },
+    {
+      "path": "settings-personalization-390.jpg",
+      "bytes": 36712,
+      "sha256": "0a4ab17f96a779d84537b4f9dcbcb33d196be98cc92bc5c67d77d55ff16a9e4a"
+    },
+    {
+      "path": "settings-plugins-1440.jpg",
+      "bytes": 42012,
+      "sha256": "2e2764d159811d70e67ace02f5893803007121d628984faefd80f142bbc4d283"
+    },
+    {
+      "path": "settings-plugins-390.jpg",
+      "bytes": 18381,
+      "sha256": "32b1678a0106338c4ef566f69e5f254936a93f4e609f206b2bca37ea91c9eb88"
+    },
+    {
+      "path": "settings-security-1440.jpg",
+      "bytes": 69689,
+      "sha256": "421cbd5d0cf234de2d01490e02c3e09a5689f6041c8385b1c956d366d0bc17ee"
+    },
+    {
+      "path": "settings-security-390.jpg",
+      "bytes": 37491,
+      "sha256": "7070dd3e26c6f9627aacbd2acd024ab7a04e736c28efaf8d9d5f565327538008"
+    },
+    {
+      "path": "settings-shortcuts-1440.jpg",
+      "bytes": 33589,
+      "sha256": "c3ce49b0a9f4cc05b3c49a0f2e61a9b7035d9d7c81c6769d56fd5a85cedcbb95"
+    },
+    {
+      "path": "settings-shortcuts-390.jpg",
+      "bytes": 12610,
+      "sha256": "3aeee6cbd79dd699e4891dfff78d48e4294293eedaf00bc34ac56c1ab6f64c63"
+    },
+    {
+      "path": "settings-skill-packages-1440.jpg",
+      "bytes": 52315,
+      "sha256": "2861a79484c0e5fac1d671a583810fd93399f66ae75f04fae4d8dadfd756992a"
+    },
+    {
+      "path": "settings-skill-packages-390.jpg",
+      "bytes": 30116,
+      "sha256": "099fb3d32bff9060b4cacd7a1ff46b08902d7b0c3065bcab44218021b3a0b517"
+    },
+    {
+      "path": "settings-storage-1440.jpg",
+      "bytes": 54150,
+      "sha256": "94393e721b7e6dbea7268d07e6eaf6d820e708a6002921ce165000882fdbc8ff"
+    },
+    {
+      "path": "settings-storage-390.jpg",
+      "bytes": 30727,
+      "sha256": "afb9da3f59f3e1bc19ee1524c46b8bdd42bb9a55b29f625b86c645b1f7162664"
+    },
+    {
+      "path": "settings-subagents-1440.jpg",
+      "bytes": 48083,
+      "sha256": "cee4e086e1f9d71b110c7b4c025cda1b94ef460b6d5c182c652c3cf146aac8bc"
+    },
+    {
+      "path": "settings-subagents-390.jpg",
+      "bytes": 21977,
+      "sha256": "2951c5dd26fb0e40de07b6b07c7794b223a284c171fbcc288e60f8f0428f88ea"
+    },
+    {
+      "path": "settings-tools-1440.jpg",
+      "bytes": 58347,
+      "sha256": "2c820342a0015d43d3a93afab7ac83616cc9dbcd9fe5ed52d55efba290c6c505"
+    },
+    {
+      "path": "settings-tools-390.jpg",
+      "bytes": 28118,
+      "sha256": "c8dc3610e7ec2ab9f13574843fed50a0f4fd7aa581ccca5046e5d0c5979a10e8"
+    },
+    {
+      "path": "settings-updates-1440.jpg",
+      "bytes": 86946,
+      "sha256": "203a4971f0a9007551ed82dead21af35bcdf77a7acd2bc41f610fdd91d5d9ade"
+    },
+    {
+      "path": "settings-updates-390.jpg",
+      "bytes": 36417,
+      "sha256": "d2a128b0d37888497a789c2dc0066ccd905a881df7ce3a7a11a5dd88c195d652"
+    },
+    {
+      "path": "settings-usage-1440.jpg",
+      "bytes": 53610,
+      "sha256": "de2840106e6c8ee2b71454e5d22881dd3f31b2c90693bc4e6f77133b37ae69de"
+    },
+    {
+      "path": "settings-usage-390.jpg",
+      "bytes": 26273,
+      "sha256": "a280a56ff297a2fba9a12f599842e789ec9bfd9152c357b292ebd4c3b89d5ed9"
+    },
+    {
+      "path": "settings-users-1440.jpg",
+      "bytes": 51065,
+      "sha256": "249df9ab1952e9e311a1d2de47dc5bab1ab8262b8662e9bf4c3da97f53e956ba"
+    },
+    {
+      "path": "settings-users-390.jpg",
+      "bytes": 24754,
+      "sha256": "84a9adafde4eaf1589a1be99c9ce1eec177ba290c9b97d5b52d055618aba86f5"
+    },
+    {
+      "path": "skills-mobile.jpg",
+      "bytes": 45853,
+      "sha256": "5cd42886c6f158c864aedda08f9c40be989a7f5452befd4ee758ff77acd33723"
+    }
+  ]
+}

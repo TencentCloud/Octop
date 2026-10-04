@@ -289,16 +289,16 @@ export const AgentCard = memo(function AgentCard({
   return (
     <>
       <div
-        className={styles.agentCard2}
+        className={`${styles.agentCard2} wb-agent-card`}
         style={{ "--agent-accent": accent } as React.CSSProperties}
       >
         {/* Accent top bar */}
-        <div className={styles.agentCard2Accent} />
+        <div className={`${styles.agentCard2Accent} wb-agent-card__accent`} />
 
         {/* Header */}
-        <div className={styles.agentCard2Header}>
+        <div className={`${styles.agentCard2Header} wb-agent-card__header`}>
           <div
-            className={styles.agentCard2Icon}
+            className={`${styles.agentCard2Icon} wb-agent-card__avatar`}
             style={{ color: accent, background: `${accent}1a` }}
           >
             <ExpertIcon

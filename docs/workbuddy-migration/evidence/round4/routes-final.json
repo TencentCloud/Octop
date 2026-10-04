@@ -1,0 +1,265 @@
+[
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/home",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/chat/main/thr_01M431TYMJ2Q2875R6MRN9Y9A8",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/experts",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "index-module__toolbarIconBtn__dSeNx",
+        "role": null
+      }
+    ],
+    "viewport": [
+      1440,
+      900
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/skills",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/connectors",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/tasks",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-btn css-dev-only-do-not-override-1uifjof octop-btn-default octop-btn-color-default octop-btn-variant-outlined octop-btn-icon-only",
+        "role": null
+      }
+    ],
+    "viewport": [
+      1440,
+      900
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/knowledge-bases",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-btn css-dev-only-do-not-override-1uifjof octop-btn-default octop-btn-color-default octop-btn-variant-outlined octop-btn-icon-only",
+        "role": null
+      }
+    ],
+    "viewport": [
+      1440,
+      900
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/workbench/terminal",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-btn css-dev-only-do-not-override-1uifjof octop-btn-default octop-btn-color-default octop-btn-variant-outlined octop-btn-sm octop-btn-icon-only index-module__aiBtnIdle__eW-XC",
+        "role": null
+      },
+      {
+        "class": "octop-btn css-dev-only-do-not-override-1uifjof octop-btn-text octop-btn-color-default octop-btn-variant-text octop-btn-sm octop-btn-icon-only octop-dropdown-trigger",
+        "role": null
+      }
+    ],
+    "viewport": [
+      1440,
+      900
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/home",
+    "rootOverflow": 0,
+    "scrollable": [
+      {
+        "class": "quick-actions__item",
+        "label": "制定工作计划",
+        "tag": "BUTTON",
+        "width": 130
+      }
+    ],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/chat/main/thr_01M431TYMJ2Q2875R6MRN9Y9A8",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/experts",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "index-module__toolbarIconBtn__dSeNx",
+        "role": null
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/skills",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/connectors",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/tasks",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-btn css-dev-only-do-not-override-m9m4eg octop-btn-default octop-btn-color-default octop-btn-variant-outlined octop-btn-icon-only",
+        "role": null
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/knowledge-bases",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-btn css-dev-only-do-not-override-m9m4eg octop-btn-default octop-btn-color-default octop-btn-variant-outlined octop-btn-icon-only",
+        "role": null
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ]
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/workbench/terminal",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-btn css-dev-only-do-not-override-m9m4eg octop-btn-default octop-btn-color-default octop-btn-variant-outlined octop-btn-sm octop-btn-icon-only index-module__aiBtnIdle__eW-XC",
+        "role": null
+      },
+      {
+        "class": "octop-btn css-dev-only-do-not-override-m9m4eg octop-btn-text octop-btn-color-default octop-btn-variant-text octop-btn-sm octop-btn-icon-only octop-dropdown-trigger",
+        "role": null
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ]
+  }
+]

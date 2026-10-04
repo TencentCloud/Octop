@@ -140,6 +140,8 @@ export default function SlideCaptcha({
       ref={trackRef}
       data-testid="slide-captcha-track"
       role="slider"
+      tabIndex={0}
+      aria-disabled={verified}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={
@@ -147,6 +149,26 @@ export default function SlideCaptcha({
       }
       aria-valuetext={verified ? verifiedLabel : hint}
       aria-label={hint}
+      onKeyDown={(event) => {
+        if (verifiedRef.current) return;
+        const max = trackMaxOffset(trackRef.current);
+        if (max <= 0) return;
+        const next =
+          event.key === "End"
+            ? max
+            : event.key === "Home"
+            ? 0
+            : event.key === "ArrowRight" || event.key === "ArrowUp"
+            ? clampOffset(offset + max / 10, max)
+            : event.key === "ArrowLeft" || event.key === "ArrowDown"
+            ? clampOffset(offset - max / 10, max)
+            : null;
+        if (next === null) return;
+        event.preventDefault();
+        setMaxOffset(max);
+        if (next / max >= COMPLETE_RATIO) complete(max);
+        else setOffset(next);
+      }}
       style={{
         position: "relative",
         width: "100%",

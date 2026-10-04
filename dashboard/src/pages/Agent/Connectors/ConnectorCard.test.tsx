@@ -12,6 +12,7 @@ import { render, screen } from "@testing-library/react";
 
 import type { ConnectorCatalogEntry } from "../../../api/modules/connectors";
 import { ConnectorCard } from "./ConnectorCard";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
 
 const LONG_NAME =
   "一个名称特别长的内置连接器用于验证目录卡片标题截断与悬停提示";
@@ -39,7 +40,10 @@ describe("<ConnectorCard />", () => {
     render(<ConnectorCard entry={makeEntry()} onConfigure={() => undefined} />);
 
     const title = screen.getByText(LONG_NAME);
-    expect(title.className).toContain("typography-ellipsis");
+    if (WORKBUDDY_UI) {
+      expect(title).toHaveClass("connector-card-name");
+      expect(title).toHaveAttribute("title", LONG_NAME);
+    } else expect(title.className).toContain("typography-ellipsis");
   });
 
   it("renders the OpenAlex catalog logo instead of the generic MCP fallback", () => {

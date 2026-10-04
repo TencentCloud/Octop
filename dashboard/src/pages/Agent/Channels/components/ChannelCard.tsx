@@ -9,6 +9,8 @@ import {
 } from "./constants";
 import type { ChannelRow } from "../useChannels";
 import styles from "../index.module.less";
+import SkillTile from "../../../../workbuddy/SkillTile";
+import { WORKBUDDY_UI } from "../../../../workbuddy/variant";
 
 interface ChannelCardProps {
   channelKey: ChannelKey;
@@ -120,6 +122,36 @@ export function ChannelCard({
   ]
     .filter(Boolean)
     .join(" ");
+
+  if (WORKBUDDY_UI) {
+    return (
+      <SkillTile
+        title={label}
+        description={t(`channels.intro_${channelKey}`, label)}
+        icon={icon ? <img src={icon} alt={label} /> : <Plug size={24} />}
+        installed={hasChannel}
+        enabled={!hasChannel || enabled}
+        metadata={renderStatusBadge()}
+        actions={
+          <Tooltip
+            title={!hasChannel ? t("channels.clickCardToEdit") : undefined}
+          >
+            <Switch
+              size="small"
+              aria-label={t("channels.channelSettingsNamed", { kind: label })}
+              checked={enabled}
+              loading={enableLoading}
+              disabled={!hasChannel && !enabled}
+              onChange={(checked) => onToggleEnabled(channelKey, checked)}
+            />
+          </Tooltip>
+        }
+        onOpen={onClick}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      />
+    );
+  }
 
   return (
     <div

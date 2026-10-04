@@ -87,6 +87,7 @@ import { useIsMobile } from "../../hooks/useIsMobile";
 import { useListPanelCollapsed } from "../../hooks/useListPanelCollapsed";
 import { useServerTimezone } from "../../hooks/useServerTimezone";
 import PageShell from "../../layouts/PageShell";
+import BusinessDetailDialog from "../../components/BusinessDetailDialog";
 import { apiErrorMessage, isNotFoundApiError } from "../../utils/apiError";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { getDocKind, type DocKind } from "../../utils/docKind";
@@ -2982,7 +2983,7 @@ export default function KnowledgeBasesPage() {
         onSubmit={saveTextDocument}
       />
 
-      <Drawer
+      <BusinessDetailDialog
         title={t(
           editingBaseId ? "knowledgeBases.edit" : "knowledgeBases.create",
         )}
@@ -3078,9 +3079,9 @@ export default function KnowledgeBasesPage() {
             </div>
           </div>
         </Form>
-      </Drawer>
+      </BusinessDetailDialog>
 
-      <Drawer
+      <BusinessDetailDialog
         title={t("knowledgeBases.settingsTitle")}
         placement="right"
         width={isMobile ? "100%" : 520}
@@ -3431,7 +3432,7 @@ export default function KnowledgeBasesPage() {
             </div>
           </Spin>
         ) : null}
-      </Drawer>
+      </BusinessDetailDialog>
       <Modal
         open={downloadProgressOpen}
         title={t("models.localDownloadProgressTitle")}

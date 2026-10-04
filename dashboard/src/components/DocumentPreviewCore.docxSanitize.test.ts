@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { clampAbsurdDocxCssLengths } from "./DocumentPreviewCore";
 
 describe("clampAbsurdDocxCssLengths", () => {
@@ -20,3 +20,6 @@ describe("clampAbsurdDocxCssLengths", () => {
     expect(clampAbsurdDocxCssLengths(style)).toBe(style);
   });
 });
+
+// These tests exercise pure document/manifest helpers, not PDF rendering.
+vi.mock("./PdfDocumentPreview", () => ({ default: () => null }));

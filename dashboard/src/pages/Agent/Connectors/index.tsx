@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Drawer, Form, Input, Select, Spin, Switch, Alert } from "antd";
+import { Button, Form, Input, Select, Spin, Switch, Alert } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
   Activity,
+  ArrowLeft,
   Blocks,
   CheckCircle2,
   ClipboardPaste,
@@ -21,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import PageShell from "../../../layouts/PageShell";
+import BusinessDetailDialog from "../../../components/BusinessDetailDialog";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { OctopEmptyMascot } from "../../../components/EmptyState/OctopEmptyMascot";
@@ -47,6 +49,7 @@ import { ConnectorCard } from "./ConnectorCard";
 import { ConnectorInstanceCard } from "./ConnectorInstanceCard";
 import { CustomMcpTab } from "./CustomMcpTab";
 import {
+  ConnectorLogo,
   INLINE_CREDENTIAL_GUIDE_KINDS,
   HIDE_INLINE_FIELD_GUIDE_KINDS,
   MAIL_PROVIDERS,
@@ -61,6 +64,7 @@ import {
 import { oauthCallbackSupported } from "./oauthCallback";
 import { useConnectorInstances } from "./useConnectors";
 import styles from "./index.module.less";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
 
 function buildCredentials(
   entry: ConnectorCatalogEntry,
@@ -1197,7 +1201,8 @@ function ConnectorConfigDrawer({
     Boolean(entry?.quick_auth_url && guideUrl === entry.quick_auth_url);
 
   return (
-    <Drawer
+    <BusinessDetailDialog
+      kind="connector"
       title={
         hasStoredCredentials
           ? t("connectors.editConnection", {
@@ -2180,7 +2185,7 @@ function ConnectorConfigDrawer({
           </div>
         )}
       </div>
-    </Drawer>
+    </BusinessDetailDialog>
   );
 }
 
@@ -2195,7 +2200,9 @@ const CONNECTOR_TABS: TabBarItem<ConnectorTab>[] = [
 export default function ConnectorsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<ConnectorTab>("enabled");
+  const [activeTab, setActiveTab] = useState<ConnectorTab>(
+    WORKBUDDY_UI ? "builtin" : "enabled",
+  );
   const [drawerEntry, setDrawerEntry] = useState<ConnectorCatalogEntry | null>(
     null,
   );
@@ -2205,6 +2212,15 @@ export default function ConnectorsPage() {
     string | null
   >(null);
   const { catalog, instances, loading, refresh } = useConnectorInstances();
+  const detailEntry = WORKBUDDY_UI
+    ? catalog.find((entry) => entry.kind === searchParams.get("detail"))
+    : undefined;
+  const selectDetail = (kind?: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (kind) params.set("detail", kind);
+    else params.delete("detail");
+    setSearchParams(params);
+  };
 
   const configuredCount = useMemo(() => {
     return instances.filter((instance) => instance.has_credentials).length;
@@ -2280,13 +2296,61 @@ export default function ConnectorsPage() {
           tabs={CONNECTOR_TABS}
           activeKey={activeTab}
           onChange={(key) => {
+            if (WORKBUDDY_UI) selectDetail();
             if (key === "custom") setCustomFocusServerName(null);
             setActiveTab(key);
           }}
         />
       }
     >
-      {activeTab === "custom" ? (
+      {detailEntry ? (
+        <article className="wb-market-detail">
+          <header>
+            <button
+              type="button"
+              className="wb-detail-back"
+              onClick={() => selectDetail()}
+            >
+              <ArrowLeft size={16} />
+              {t("common.back")}
+            </button>
+            <ConnectorLogo
+              kind={detailEntry.kind}
+              icon={detailEntry.icon}
+              size={32}
+            />
+            <h2>{detailEntry.name}</h2>
+          </header>
+          <div className="wb-market-detail__body">
+            <p>{detailEntry.description}</p>
+            <p>
+              {t(
+                `connectors.category.${detailEntry.category}`,
+                detailEntry.category,
+              )}
+            </p>
+            {detailEntry.auth_hint && <p>{detailEntry.auth_hint}</p>}
+            {detailEntry.doc_url && (
+              <a
+                href={detailEntry.doc_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t("workbuddy.market.documentation")}
+              </a>
+            )}
+          </div>
+          <footer>
+            <Button
+              type="primary"
+              disabled={detailEntry.phase !== "available"}
+              onClick={() => handleConfigure(detailEntry, null)}
+            >
+              {t("workbuddy.market.configureConnector")}
+            </Button>
+          </footer>
+        </article>
+      ) : activeTab === "custom" ? (
         <CustomMcpTab focusServerName={customFocusServerName} />
       ) : activeTab === "enabled" ? (
         loading ? (
@@ -2349,7 +2413,7 @@ export default function ConnectorsPage() {
                 {t("common.refresh")}
               </Button>
             </div>
-            <div className={styles.typeGrid}>
+            <div className={WORKBUDDY_UI ? "connector-grid" : styles.typeGrid}>
               {instances.map((instance) => (
                 <ConnectorInstanceCard
                   key={instance.instance_id}
@@ -2396,12 +2460,15 @@ export default function ConnectorsPage() {
               <Spin />
             </div>
           ) : (
-            <div className={styles.typeGrid}>
+            <div className={WORKBUDDY_UI ? "connector-grid" : styles.typeGrid}>
               {catalog.map((entry) => (
                 <ConnectorCard
                   key={entry.kind}
                   entry={entry}
                   onConfigure={handleConfigure}
+                  onOpen={
+                    WORKBUDDY_UI ? (item) => selectDetail(item.kind) : undefined
+                  }
                 />
               ))}
             </div>

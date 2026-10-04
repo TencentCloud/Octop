@@ -5,6 +5,123 @@
   min-height: 0;
 }
 
+.fileTree {
+  display: flex;
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+.workBuddyShell {
+  .footer {
+    flex-wrap: wrap;
+  }
+
+  @media (max-width: 600px) {
+    .splitBody {
+      flex-direction: column;
+    }
+
+    .fileTree {
+      height: 160px;
+      width: 100%;
+
+      > * {
+        width: 100%;
+      }
+    }
+  }
+}
+
+/* 5.5.6 standalone-skill-detail-modal: 68px icon, 20px title, 16px gap. */
+.skillHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.skillIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 68px;
+  height: 68px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--wb-bg-secondary);
+  font-size: 32px;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.skillHeaderBody {
+  flex: 1;
+  min-width: 0;
+
+  h2 {
+    margin: 0 0 8px;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--wb-color-text-primary);
+    overflow-wrap: anywhere;
+  }
+
+  p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--wb-color-text-secondary);
+    overflow-wrap: anywhere;
+  }
+}
+
+.skillInfo {
+  margin: 0 0 24px;
+  font-size: 13px;
+  line-height: 1.6;
+
+  > div {
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  dt {
+    color: var(--wb-color-text-secondary);
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--wb-color-text-primary);
+  }
+}
+
+.workBuddyView {
+  .previewPane {
+    min-height: 400px;
+    padding: 16px;
+    border-radius: 16px;
+    border: 0;
+    background: var(--wb-bg-secondary);
+  }
+
+  .contentViewHeader {
+    margin-bottom: 4px;
+  }
+
+  .contentViewLabel {
+    font-weight: 600;
+  }
+}
+
 .splitBody {
   display: flex;
   min-height: 0;

@@ -1,0 +1,29 @@
+{
+  "name": "fixture-connectors-390x844-dark-zh",
+  "status": "passed",
+  "language": "zh",
+  "overflow": 0,
+  "settings": null,
+  "tabs": [
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "false"
+    },
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "false"
+    },
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "true"
+    }
+  ],
+  "theme": "dark",
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

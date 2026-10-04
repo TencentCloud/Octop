@@ -1,0 +1,513 @@
+[
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/general",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "常规偏好"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/account",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "账户"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/appearance",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "外观"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/shortcuts",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "快捷键"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/usage",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "Token 统计"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/personalization",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "个性化"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/memory",
+    "unnamed": [
+      {
+        "class": "octop-tabs-nav-more",
+        "html": "<button type=\"button\" class=\"octop-tabs-nav-more\" aria-haspopup=\"listbox\" aria-controls=\"rc-tabs-2-more-popup\" id=\"rc-tabs-2-more\" aria-expanded=\"false\" style=\"\"><span role=\"img\" aria-label=\"ellipsis\" class=\"anticon anticon-ellipsis\"><svg viewBox=\"64 64 896 896\" focusable=\"false\" data-icon=\"ellipsis"
+      }
+    ],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "记忆"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/agent",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "助理配置"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/channels",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "通道"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/models",
+    "unnamed": [
+      {
+        "class": "octop-btn css-dev-only-do-not-override-1uifjof octop-btn-text octop-btn-color-default octop-btn-variant-text octop-btn-sm octop-btn-icon-only index-module__preferredBtn__9BR7i ",
+        "html": "<button aria-describedby=\":ru:\" type=\"button\" class=\"octop-btn css-dev-only-do-not-override-1uifjof octop-btn-text octop-btn-color-default octop-btn-variant-text octop-btn-sm octop-btn-icon-only index-module__preferredBtn__9BR7i \"><span class=\"octop-btn-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" "
+      },
+      {
+        "class": "octop-btn css-dev-only-do-not-override-1uifjof octop-btn-text octop-btn-color-default octop-btn-variant-text octop-btn-sm octop-btn-icon-only",
+        "html": "<button aria-describedby=\":r10:\" type=\"button\" class=\"octop-btn css-dev-only-do-not-override-1uifjof octop-btn-text octop-btn-color-default octop-btn-variant-text octop-btn-sm octop-btn-icon-only\"><span class=\"octop-btn-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 "
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      }
+    ],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "模型"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/tools",
+    "unnamed": [
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked octop-switch-disabled",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" disabled=\"\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked octop-switch-disabled\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\""
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked octop-switch-disabled",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" disabled=\"\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked octop-switch-disabled\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\""
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked octop-switch-disabled",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" disabled=\"\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked octop-switch-disabled\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\""
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked octop-switch-disabled",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" disabled=\"\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked octop-switch-disabled\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\""
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked octop-switch-disabled",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" disabled=\"\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked octop-switch-disabled\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\""
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked octop-switch-disabled",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" disabled=\"\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked octop-switch-disabled\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\""
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"true\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-checked\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class=\"octop-switch-"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-disabled",
+        "html": "<button type=\"button\" role=\"switch\" aria-checked=\"false\" disabled=\"\" class=\"octop-switch octop-switch-small css-dev-only-do-not-override-1uifjof octop-switch-disabled\"><div class=\"octop-switch-handle\"></div><span class=\"octop-switch-inner\"><span class=\"octop-switch-inner-checked\"></span><span class="
+      }
+    ],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "工具"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/agent-plugins",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "助理插件"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/subagents",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "子智能体"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/plugins",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "插件"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/skill-packages",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "技能包"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/bridge",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "云端协同"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/acp",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "ACP"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/storage",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "存储"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/backup",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "备份与恢复"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/security",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "安全防护"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/https",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "HTTPS"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/users",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "用户"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/environments",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "环境变量"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/captcha",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "登录验证码"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/observability",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "可观测"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/updates",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "应用更新"
+  },
+  {
+    "dialogCount": 1,
+    "overflow": 0,
+    "overflowing": [],
+    "path": "/settings/about",
+    "unnamed": [],
+    "viewport": [
+      1440,
+      900
+    ],
+    "section": "关于与帮助"
+  }
+]

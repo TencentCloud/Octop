@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildSkillMarkdown } from "./components/SkillDrawer";
 import {
   isSkillManifestPath,
@@ -47,3 +47,8 @@ describe("skillDirectoryPath", () => {
     );
   });
 });
+
+// These tests exercise pure document/manifest helpers, not PDF rendering.
+vi.mock("../../../components/PdfDocumentPreview", () => ({
+  default: () => null,
+}));

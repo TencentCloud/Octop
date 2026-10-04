@@ -1,0 +1,697 @@
+[
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/general",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "常规偏好"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/account",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "账户"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/appearance",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "外观"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/shortcuts",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "快捷键"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/usage",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "Token 统计"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/personalization",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "个性化"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/memory",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "记忆"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/agent",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "助理配置"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/channels",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "通道"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/models",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "模型"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/tools",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked octop-switch-disabled",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked octop-switch-disabled",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked octop-switch-disabled",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked octop-switch-disabled",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked octop-switch-disabled",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked octop-switch-disabled",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-disabled",
+        "role": "switch"
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "工具"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/agent-plugins",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "助理插件"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/subagents",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "子智能体"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/plugins",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "插件"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/skill-packages",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "技能包"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/bridge",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "云端协同"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/acp",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg",
+        "role": "switch"
+      },
+      {
+        "class": "octop-switch css-dev-only-do-not-override-m9m4eg",
+        "role": "switch"
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "ACP"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/storage",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "存储"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/backup",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-switch index-module__autoSwitch__SDxXE css-dev-only-do-not-override-m9m4eg",
+        "role": "switch"
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "备份与恢复"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/security",
+    "rootOverflow": 0,
+    "scrollable": [
+      {
+        "class": "index-module__tab__NLkVz ",
+        "label": "命令防护",
+        "tag": "BUTTON",
+        "width": 97
+      },
+      {
+        "class": "index-module__tab__NLkVz ",
+        "label": "技能扫描",
+        "tag": "BUTTON",
+        "width": 97
+      },
+      {
+        "class": "index-module__tab__NLkVz ",
+        "label": "审计日志",
+        "tag": "BUTTON",
+        "width": 97
+      }
+    ],
+    "unnamed": [
+      {
+        "class": "octop-switch css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "安全防护"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/https",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-switch css-dev-only-do-not-override-m9m4eg",
+        "role": "switch"
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "HTTPS"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/users",
+    "rootOverflow": 0,
+    "scrollable": [
+      {
+        "class": "index-module__tab__NLkVz ",
+        "label": "企微登录",
+        "tag": "BUTTON",
+        "width": 97
+      },
+      {
+        "class": "index-module__tab__NLkVz ",
+        "label": "钉钉登录",
+        "tag": "BUTTON",
+        "width": 97
+      },
+      {
+        "class": "index-module__tab__NLkVz ",
+        "label": "通用OIDC",
+        "tag": "BUTTON",
+        "width": 104
+      },
+      {
+        "class": "index-module__tab__NLkVz ",
+        "label": "LDAP",
+        "tag": "BUTTON",
+        "width": 77.578125
+      },
+      {
+        "class": "",
+        "label": "用户名邮箱登录方式专家角色名称权限已启用创建时间登录锁定操作用户名邮箱登录方式专家角色名称权限已启用创建时间登录锁定操作界面验收管理员你@ui_round2_a",
+        "tag": "TABLE",
+        "width": 1528
+      },
+      {
+        "class": "index-module__userCellLink__v46ss",
+        "label": "1",
+        "tag": "BUTTON",
+        "width": 24.234375
+      },
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "label": "",
+        "tag": "BUTTON",
+        "width": 36
+      },
+      {
+        "class": "index-module__userCardIconBtn__hdnSl",
+        "label": "编辑",
+        "tag": "BUTTON",
+        "width": 28
+      },
+      {
+        "class": "index-module__userCardIconBtn__hdnSl",
+        "label": "重置密码",
+        "tag": "BUTTON",
+        "width": 28
+      },
+      {
+        "class": "index-module__userCardIconBtn__hdnSl index-module__userCardIconBtnDanger__r5O5E",
+        "label": "删除",
+        "tag": "BUTTON",
+        "width": 28
+      }
+    ],
+    "unnamed": [
+      {
+        "class": "octop-switch octop-switch-small css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "用户"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/environments",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "环境变量"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/captcha",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "登录验证码"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/observability",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-switch css-dev-only-do-not-override-m9m4eg",
+        "role": "switch"
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "可观测"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/updates",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [
+      {
+        "class": "octop-switch css-dev-only-do-not-override-m9m4eg octop-switch-checked",
+        "role": "switch"
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "应用更新"
+  },
+  {
+    "historyCount": 1,
+    "loading": 0,
+    "overflow": [],
+    "path": "/settings/about",
+    "rootOverflow": 0,
+    "scrollable": [],
+    "unnamed": [],
+    "viewport": [
+      390,
+      844
+    ],
+    "section": "关于与帮助"
+  }
+]

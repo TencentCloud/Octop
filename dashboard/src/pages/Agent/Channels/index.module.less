@@ -102,6 +102,15 @@
   }
 }
 
+:global(html[data-ui="workbuddy"]) .channelsGrid {
+  grid-template-columns: repeat(auto-fill, minmax(min(288px, 100%), 1fr));
+  gap: 16px;
+}
+
+:global(html[data-ui="workbuddy"]) .drawerFooter {
+  flex-wrap: wrap;
+}
+
 /* ============ Channel Card ============ */
 
 .channelCard {

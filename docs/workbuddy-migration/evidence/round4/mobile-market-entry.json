@@ -1,0 +1,4 @@
+{
+  "result": "passed",
+  "detail": "Menu stays open until selecting skills; URL and tab verified in DOM"
+}

@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  Drawer,
   Form,
   Input,
   InputNumber,
@@ -38,6 +37,7 @@ import {
 import type { ChannelRow } from "../useChannels";
 import styles from "../index.module.less";
 import { channelApi } from "../../../../api/modules/channel";
+import BusinessDetailDialog from "../../../../components/BusinessDetailDialog";
 import {
   clearFormDraft,
   loadFormDraft,
@@ -79,7 +79,7 @@ export interface ChannelFormValues {
   show_thinking?: boolean;
   show_tool_hints?: boolean;
   group_context?: QqGroupContextConfig;
-  [k: string]: string | boolean | QqGroupContextConfig | undefined;
+  [k: string]: string | number | boolean | QqGroupContextConfig | undefined;
   __raw_config?: string;
 }
 
@@ -224,6 +224,36 @@ function FormItemForField({
         }
       },
     });
+  }
+  if (field.name === "port") {
+    return (
+      <Form.Item
+        name={field.name}
+        label={label}
+        rules={[
+          ...rules,
+          {
+            validator: async (_: unknown, value: unknown) => {
+              if (value == null || value === "") return;
+              try {
+                normalizeChannelFieldValue(field.name, value);
+              } catch {
+                throw new Error(t("channels.invalidPort"));
+              }
+            },
+          },
+        ]}
+      >
+        <InputNumber
+          disabled={disabled}
+          placeholder={field.placeholder}
+          min={1}
+          max={65535}
+          precision={0}
+          style={{ width: "100%" }}
+        />
+      </Form.Item>
+    );
   }
   return (
     <Form.Item name={field.name} label={label} rules={rules}>
@@ -1723,7 +1753,8 @@ export function ChannelDrawer({
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
-    <Drawer
+    <BusinessDetailDialog
+      kind="connector"
       width={460}
       placement="right"
       title={
@@ -1941,6 +1972,6 @@ export function ChannelDrawer({
           <DisplaySettingsFields />
         </Form>
       )}
-    </Drawer>
+    </BusinessDetailDialog>
   );
 }

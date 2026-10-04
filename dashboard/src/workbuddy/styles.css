@@ -1,0 +1,1421 @@
+@import "./generated/tokens.css";
+@import "./generated/market-tokens.css";
+@import "./generated/shell.css";
+@import "./generated/market.css";
+@import "./generated/deferred.css";
+@import "./generated/chat.css";
+@import "./generated/automation.css";
+
+/* Adapter for Octop widgets. Source rules stay generated and traceable. */
+html[data-ui="workbuddy"] .wb-user-message-text {
+  white-space: pre-wrap;
+}
+html[data-ui="workbuddy"] .connector-card:focus-visible {
+  outline: 2px solid var(--fn-color-brand);
+  outline-offset: 2px;
+}
+html[data-ui="workbuddy"] .sm-card:focus-visible {
+  outline: 2px solid var(--fn-color-brand);
+  outline-offset: 2px;
+}
+html[data-ui="workbuddy"] .sm-add-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+html[data-ui="workbuddy"] .connector-card-action {
+  gap: 8px;
+}
+html[data-ui="workbuddy"] .wb-connector-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+html[data-ui="workbuddy"] .connector-card--installed .connector-card-desc {
+  display: block;
+  -webkit-line-clamp: unset;
+}
+@media (max-width: 480px) {
+  html[data-ui="workbuddy"] .connector-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+html[data-ui="workbuddy"] {
+  /* 5.5.6 component aliases missing from the packaged foundation bundle. */
+  --wb-text-primary: var(--wb-color-text-primary);
+  --wb-text-secondary: var(--wb-color-text-secondary);
+  --wb-text-tertiary: var(--wb-color-text-tertiary);
+  --cb-text-primary: var(--wb-color-text-primary);
+  --cb-text-secondary: var(--wb-color-text-secondary);
+  --cb-text-tertiary: var(--wb-color-text-tertiary);
+  --cb-user-bubble-bg: #f2f2f2;
+  --vscode-editor-background: var(--wb-bg-primary);
+  --vscode-foreground: var(--wb-color-text-primary);
+  --vscode-sideBar-background: var(--wb-bg-secondary);
+  --fn-border-primary: var(--wb-border-default);
+  --fn-border-secondary: var(--wb-border-weak);
+  --fn-text-quaternary: var(--wb-color-text-disabled);
+  --fn-text-disabled: var(--wb-color-text-disabled);
+  --fn-bg-primary: var(--wb-bg-primary);
+  --fn-bg-secondary: var(--wb-bg-secondary);
+  --fn-bg-tertiary: var(--wb-bg-tertiary);
+  --fn-bg-elevated: var(--wb-bg-primary);
+  --fn-bg-container: var(--wb-bg-primary);
+  --fn-bg-layout: var(--wb-bg-primary);
+  --fn-bg-hover: var(--wb-bg-secondary);
+  --fn-bg-sidebar: var(--wb-bg-primary);
+  --fn-border-card: var(--wb-border-card-static);
+  --fn-bg-active: var(--wb-bg-tertiary);
+  --fn-text-primary: var(--wb-text-primary);
+  --fn-text-secondary: var(--wb-text-secondary);
+  --fn-text-tertiary: var(--wb-text-tertiary);
+  --fn-border-color: var(--wb-border-default);
+  --fn-border-light: var(--wb-border-weak);
+  --fn-sidebar-bg: var(--wb-bg-secondary);
+  --fn-sidebar-border: var(--wb-border-default);
+  --fn-sidebar-item-hover: var(--wb-bg-tertiary);
+  --fn-sidebar-item-active-bg: var(--wb-bg-tertiary);
+  --fn-sidebar-item-active-text: var(--wb-text-primary);
+  --fn-chat-chrome-height: 56px;
+  --fn-radius-md: 8px;
+  --fn-radius-lg: 12px;
+  --fn-assistant-bubble-bg-gradient: transparent;
+  --fn-assistant-bubble-border: transparent;
+  --fn-shadow-brand: none;
+  font-family:
+    "PingFang SC",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+html[data-ui="workbuddy"][data-theme="dark"] {
+  --cb-user-bubble-bg: #242424;
+}
+html[data-ui="workbuddy"] .wb-navigation {
+  padding: 8px 12px 0;
+}
+html[data-ui="workbuddy"] .wb-navigation__item,
+html[data-ui="workbuddy"] .wb-navigation__library summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--wb-text-secondary);
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 14px;
+  cursor: pointer;
+}
+html[data-ui="workbuddy"] .wb-navigation__item span {
+  flex: 1;
+  min-width: 0;
+}
+html[data-ui="workbuddy"] .wb-navigation__item small {
+  font-size: 10px;
+  color: var(--wb-text-tertiary);
+  white-space: nowrap;
+}
+html[data-ui="workbuddy"] .wb-navigation__item:hover,
+html[data-ui="workbuddy"] .wb-navigation__item--active {
+  background: var(--wb-bg-tertiary);
+  color: var(--wb-text-primary);
+}
+html[data-ui="workbuddy"] .wb-navigation__library summary {
+  list-style: none;
+}
+html[data-ui="workbuddy"]
+  .wb-navigation__library
+  summary::-webkit-details-marker {
+  display: none;
+}
+html[data-ui="workbuddy"] .wb-navigation__library summary span {
+  flex: 1;
+}
+html[data-ui="workbuddy"]
+  .wb-navigation__library[open]
+  summary
+  > svg:last-child {
+  transform: rotate(180deg);
+}
+html[data-ui="workbuddy"] .wb-navigation__library .wb-navigation__item {
+  font-size: 12px;
+  padding-left: 16px;
+}
+html[data-ui="workbuddy"] .wb-sidebar-brand img {
+  max-height: 28px;
+}
+html[data-ui="workbuddy"] .wb-sidebar-brand {
+  height: 56px;
+  padding: 0 16px !important;
+}
+html[data-ui="workbuddy"] .wb-nav-item {
+  min-height: 36px;
+  border-radius: 8px;
+}
+html[data-ui="workbuddy"] .wb-page-shell {
+  padding: 0 !important;
+  background: var(--wb-bg-primary);
+}
+html[data-ui="workbuddy"] .wb-page-body {
+  border-radius: 0 !important;
+  background: var(--wb-bg-primary) !important;
+}
+html[data-ui="workbuddy"] .wb-page-subtitle {
+  flex-shrink: 0;
+  padding: 16px 24px 0;
+  font-size: 12px;
+  color: var(--wb-color-text-secondary);
+}
+html[data-ui="workbuddy"] .wb-page-agent-bar {
+  margin: 16px 24px 0;
+  background: var(--wb-bg-primary);
+  box-shadow: none;
+}
+html[data-ui="workbuddy"] .workbuddy-topbar-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+html[data-ui="workbuddy"] .wb-chat {
+  --chat-column-max: 848px;
+  --chat-column-pad-x: 24px;
+}
+html[data-ui="workbuddy"] .wb-chat--welcome {
+  --chat-column-max: 800px;
+}
+html[data-ui="workbuddy"] .wb-chat-content {
+  background: var(--wb-bg-primary);
+}
+html[data-ui="workbuddy"] .wb-welcome {
+  width: 100%;
+  max-width: 848px;
+  margin: auto;
+  padding: 48px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+html[data-ui="workbuddy"] .wb-welcome .wb-scene-tabs {
+  margin-bottom: 24px;
+}
+html[data-ui="workbuddy"] .wb-welcome > .quick-actions-container {
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
+}
+html[data-ui="workbuddy"] .wb-welcome__cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  margin-top: 16px;
+}
+html[data-ui="workbuddy"] .wb-welcome__cards button {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--wb-border-default);
+  border-radius: 12px;
+  background: var(--wb-bg-primary);
+  color: var(--wb-text-primary);
+  cursor: pointer;
+  font: inherit;
+}
+html[data-ui="workbuddy"] .wb-welcome__cards span {
+  font-size: 12px;
+  color: var(--wb-text-secondary);
+}
+html[data-ui="workbuddy"] .wb-deferred-page {
+  padding: 24px 32px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+html[data-ui="workbuddy"] .wb-deferred-page__heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+html[data-ui="workbuddy"] .wb-deferred-page__heading h1 {
+  font-size: 20px;
+  font-weight: 600;
+}
+html[data-ui="workbuddy"] .wb-capability-badge {
+  border: 1px solid var(--wb-border-default);
+  color: var(--wb-text-secondary);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+html[data-ui="workbuddy"] .wb-deferred-page__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+  color: var(--wb-text-secondary);
+}
+html[data-ui="workbuddy"] .wb-deferred-page__empty h2 {
+  color: var(--wb-text-primary);
+  font-size: 18px;
+}
+html[data-ui="workbuddy"] .wb-deferred-page__empty p {
+  max-width: 560px;
+  line-height: 1.7;
+}
+html[data-ui="workbuddy"] .wb-deferred-page__empty button {
+  background: var(--wb-bg-pill-active);
+  color: var(--wb-text-on-primary);
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 20px;
+  cursor: pointer;
+}
+html[data-ui="workbuddy"] :is(button, a, summary):focus-visible {
+  outline: 2px solid var(--wb-border-focus);
+  outline-offset: 2px;
+}
+@media (min-width: 1681px) {
+  html[data-ui="workbuddy"] .wb-chat--welcome {
+    --chat-column-max: 960px;
+  }
+  html[data-ui="workbuddy"] .wb-welcome {
+    max-width: 1008px;
+  }
+}
+@media (max-width: 767px) {
+  html[data-ui="workbuddy"] .wb-chat {
+    --chat-column-pad-x: 12px;
+  }
+  html[data-ui="workbuddy"] .wb-page-shell {
+    padding: 0 !important;
+  }
+  html[data-ui="workbuddy"] .wb-page-subtitle {
+    padding: 12px 12px 0;
+  }
+  html[data-ui="workbuddy"] .wb-page-agent-bar {
+    margin: 12px 12px 0;
+  }
+  html[data-ui="workbuddy"] .wb-page-shell > .workbuddy-topbar {
+    height: auto;
+    min-height: 48px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-block: 8px;
+  }
+  html[data-ui="workbuddy"] .workbuddy-topbar-options {
+    flex-wrap: wrap;
+  }
+  html[data-ui="workbuddy"] .wb-welcome {
+    padding: 24px 20px;
+  }
+  html[data-ui="workbuddy"] .wb-welcome__cards {
+    grid-template-columns: 1fr;
+  }
+  html[data-ui="workbuddy"] .wb-deferred-page {
+    padding: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-ui="workbuddy"] .wb-navigation * {
+    transition: none;
+  }
+}
+
+html[data-ui="workbuddy"] .wb-composer {
+  border: 1px solid var(--wb-border-input);
+  border-radius: 16px;
+  box-shadow: none;
+  padding: 12px 16px;
+}
+html[data-ui="workbuddy"] .wb-history-agent {
+  border: 0;
+  background: transparent !important;
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-ui="workbuddy"] .wb-history-agent__header {
+  min-height: 48px;
+  margin: 4px 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+html[data-ui="workbuddy"] .wb-history-agent--active > .wb-history-agent__header,
+html[data-ui="workbuddy"] .wb-history-agent__header:hover {
+  background: var(--wb-bg-hover);
+}
+html[data-ui="workbuddy"] .wb-history-agent__sessions {
+  padding: 0 12px 8px;
+}
+html[data-ui="workbuddy"] .wb-session-row {
+  border-radius: 8px;
+  min-height: 32px;
+  padding: 6px 12px;
+  margin: 2px 0;
+  color: var(--wb-color-text-secondary);
+}
+html[data-ui="workbuddy"] .wb-session-row:hover,
+html[data-ui="workbuddy"] .wb-session-row--active {
+  background: var(--wb-bg-hover);
+  color: var(--wb-color-text-primary);
+}
+html[data-ui="workbuddy"] .wb-session-row__title {
+  font-size: 13px;
+  line-height: 20px;
+}
+html[data-ui="workbuddy"] .wb-session-row:focus-within .wb-session-row__more {
+  opacity: 1;
+}
+html[data-ui="workbuddy"] .wb-composer:focus-within {
+  border-color: var(--wb-border-focus);
+  box-shadow: none;
+}
+html[data-ui="workbuddy"] .wb-composer__textarea {
+  font-size: 14px;
+  line-height: 24px;
+}
+html[data-ui="workbuddy"] .wb-settings-modal .octop-modal-content {
+  background: var(--wb-bg-secondary);
+  padding: 0;
+  border-radius: var(--wb-radius-4xl);
+  overflow: hidden;
+}
+html[data-ui="workbuddy"] .wb-settings-modal .octop-modal-header {
+  padding: 20px 24px 0;
+  margin: 0;
+  background: var(--wb-bg-secondary);
+}
+html[data-ui="workbuddy"] .wb-settings-frame {
+  box-shadow: none;
+  border-radius: 0;
+  height: 720px;
+  max-height: 88vh;
+  width: 100%;
+  max-width: 100%;
+}
+html[data-ui="workbuddy"] .wb-settings-frame__content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 24px;
+  background: var(--wb-bg-primary);
+}
+html[data-ui="workbuddy"]
+  .wb-settings-frame[data-settings-panel="account"]
+  [data-settings-group="appearance"],
+html[data-ui="workbuddy"]
+  .wb-settings-frame[data-settings-panel="appearance"]
+  [data-settings-group="account"],
+html[data-ui="workbuddy"] .wb-settings-frame .octop-divider {
+  display: none;
+}
+html[data-ui="workbuddy"] .wb-settings-frame [data-settings-group] {
+  margin-bottom: 24px;
+}
+@media (max-width: 767px) {
+  html[data-ui="workbuddy"] .wb-settings-frame {
+    flex-direction: column;
+    height: 100%;
+    max-height: none;
+  }
+  html[data-ui="workbuddy"] .wb-settings-frame .settings-modal__nav {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 8px;
+    flex-shrink: 0;
+  }
+  html[data-ui="workbuddy"] .wb-settings-frame .settings-navigation__item {
+    width: auto;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  html[data-ui="workbuddy"] .wb-settings-frame__content {
+    padding: 16px;
+  }
+  html[data-ui="workbuddy"] .wb-settings-frame .settings-navigation {
+    width: max-content;
+    min-width: 100%;
+    flex: 0 0 auto;
+    gap: 4px;
+    padding-right: 40px;
+    border: 0;
+    overflow: visible;
+  }
+  html[data-ui="workbuddy"]
+    .wb-settings-frame
+    .settings-navigation__group-divider {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  html[data-ui="workbuddy"] .wb-settings-frame .settings-navigation {
+    flex-direction: row;
+  }
+}
+
+html[data-ui="workbuddy"] .wb-home-bottom-space {
+  display: none;
+}
+html[data-ui="workbuddy"] .wb-expert-grid {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+html[data-ui="workbuddy"] .wb-agent-card {
+  min-width: 0;
+  min-height: 154px;
+  border-radius: 16px;
+  border-color: var(--wb-border-card-static);
+  box-shadow: var(--wb-shadow-card-soft);
+}
+html[data-ui="workbuddy"] .wb-agent-card__header {
+  padding: 16px 20px;
+}
+html[data-ui="workbuddy"] .wb-agent-card__accent {
+  display: none;
+}
+html[data-ui="workbuddy"] .wb-agent-card__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+html[data-ui="workbuddy"] .wb-agent-card__avatar :is(svg, img) {
+  max-width: 36px;
+  max-height: 36px;
+}
+@media (min-width: 768px) {
+  html[data-ui="workbuddy"] .wb-chat--welcome .wb-chat-content {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  html[data-ui="workbuddy"] .wb-chat--welcome .wb-welcome {
+    margin: 0 auto;
+  }
+  html[data-ui="workbuddy"] .wb-home-bottom-space {
+    display: block;
+    flex: 1 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-ui="workbuddy"] .ec-expert-card {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Keep source hover controls reachable by keyboard and touch. */
+html[data-ui="workbuddy"] .wb-plugin-meta {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--wb-color-text-secondary);
+}
+html[data-ui="workbuddy"]
+  .wb-automation-row:focus-within
+  .atm-row-hover-actions {
+  display: flex;
+}
+html[data-ui="workbuddy"] .wb-automation-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  color: var(--wb-color-text-secondary);
+  cursor: pointer;
+}
+html[data-ui="workbuddy"] .wb-automation-action:disabled {
+  color: var(--wb-color-text-disabled);
+  cursor: default;
+}
+@media (hover: none), (max-width: 767px) {
+  html[data-ui="workbuddy"] .wb-automation-row .atm-row-hover-actions {
+    display: flex;
+  }
+  html[data-ui="workbuddy"] .wb-automation-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  html[data-ui="workbuddy"] .wb-automation-row .atm-row-main {
+    max-width: 70%;
+  }
+  html[data-ui="workbuddy"] .wb-automation-row .atm-row-right-text {
+    display: none;
+  }
+}
+
+/* Round 2: production geometry. Packaged 5.5.6 rules remain in generated/. */
+html[data-ui="workbuddy"][data-wb-appearance="standard"] {
+  --fn-color-brand: var(--wb-color-text-primary);
+  --fn-color-brand-hover: var(--wb-color-text-secondary);
+  --fn-color-brand-active: var(--wb-color-text-primary);
+  --fn-color-brand-light: var(--wb-bg-tertiary);
+  --fn-color-brand-rgb: 31, 31, 31;
+  --fn-shadow-brand: none;
+  --fn-color-primary: var(--wb-color-text-primary);
+}
+html[data-ui="workbuddy"] .wb-shell-sidebar {
+  width: 240px;
+  flex: 0 0 240px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--wb-bg-secondary);
+  border-right: 1px solid var(--wb-border-weak);
+  overflow: hidden;
+}
+html[data-ui="workbuddy"] .wb-shell-sidebar.conversation-list-collapsed {
+  width: 48px;
+  flex-basis: 48px;
+}
+html[data-ui="workbuddy"] .wb-shell-sidebar__brand {
+  height: 56px;
+  flex-shrink: 0;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+html[data-ui="workbuddy"] .wb-shell-sidebar__brand img {
+  width: auto;
+  max-width: 140px;
+  height: 24px;
+  object-fit: contain;
+}
+html[data-ui="workbuddy"] .wb-shell-sidebar__brand button,
+html[data-ui="workbuddy"] .wb-assistants header button,
+html[data-ui="workbuddy"] .wb-assistants-trigger {
+  border: 0;
+  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wb-color-text-secondary);
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+html[data-ui="workbuddy"]
+  .conversation-list-collapsed
+  .wb-shell-sidebar__brand {
+  padding: 0 12px;
+  height: 56px;
+  position: relative;
+}
+html[data-ui="workbuddy"]
+  .conversation-list-collapsed
+  .wb-shell-sidebar__brand
+  img {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+html[data-ui="workbuddy"]
+  .conversation-list-collapsed
+  .wb-shell-sidebar__brand
+  button {
+  position: absolute;
+  inset: 12px 8px;
+  opacity: 0;
+  background: var(--wb-bg-secondary);
+}
+html[data-ui="workbuddy"]
+  .conversation-list-collapsed
+  .wb-shell-sidebar__brand:hover
+  button,
+html[data-ui="workbuddy"]
+  .conversation-list-collapsed
+  .wb-shell-sidebar__brand
+  button:focus-visible {
+  opacity: 1;
+}
+html[data-ui="workbuddy"] .wb-shell-sidebar .wb-navigation {
+  flex: 0 0 auto;
+  padding: 0 12px 12px;
+  gap: 4px;
+}
+html[data-ui="workbuddy"] .wb-shell-sidebar .wb-navigation__item {
+  width: 100%;
+  min-height: 36px;
+  height: 36px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--wb-color-text-secondary);
+}
+html[data-ui="workbuddy"] .wb-shell-sidebar .wb-navigation__item span {
+  flex: 1;
+}
+html[data-ui="workbuddy"] .wb-shell-sidebar .wb-navigation__item:hover,
+html[data-ui="workbuddy"] .wb-shell-sidebar .wb-navigation__item.active {
+  background: var(--wb-bg-tertiary);
+  color: var(--wb-color-text-primary);
+}
+html[data-ui="workbuddy"] .conversation-list-collapsed .wb-navigation {
+  padding: 0 6px;
+}
+html[data-ui="workbuddy"] .conversation-list-collapsed .wb-navigation__item {
+  justify-content: center;
+  padding: 8px;
+}
+html[data-ui="workbuddy"] .wb-shell-sidebar__history {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 12px;
+}
+html[data-ui="workbuddy"] .wb-shell-sidebar__history[hidden] {
+  display: none;
+}
+html[data-ui="workbuddy"] .wb-shell-sidebar__footer {
+  flex: 0 0 auto;
+  padding: 12px;
+}
+html[data-ui="workbuddy"] .wb-task-history {
+  min-width: 0;
+}
+html[data-ui="workbuddy"] .wb-task-history__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 6px 8px;
+  color: var(--wb-color-text-tertiary);
+}
+html[data-ui="workbuddy"] .wb-task-history__search input {
+  min-width: 0;
+  width: 100%;
+  font: inherit;
+  font-size: 12px;
+  border: 0;
+  outline: 0;
+  color: var(--wb-color-text-primary);
+  background: transparent;
+}
+html[data-ui="workbuddy"] .wb-task-history__search:focus-within {
+  border-radius: 6px;
+  outline: 1px solid var(--wb-border-focus);
+}
+html[data-ui="workbuddy"] .wb-task-history h2 {
+  padding: 8px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--wb-color-text-tertiary);
+}
+html[data-ui="workbuddy"] .wb-task-history__empty {
+  padding: 12px 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--wb-color-text-tertiary);
+}
+html[data-ui="workbuddy"] .wb-task-history .wb-session-row {
+  margin: 0 0 2px;
+  padding: 6px 8px;
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+}
+html[data-ui="workbuddy"] .wb-task-history .wb-session-row:hover,
+html[data-ui="workbuddy"] .wb-task-history .wb-session-row--active {
+  background: var(--wb-bg-tertiary);
+}
+html[data-ui="workbuddy"] .wb-secondary-navigation {
+  flex: 0 0 200px;
+  min-height: 0;
+  background: var(--wb-bg-primary);
+  border-right: 1px solid var(--wb-border-weak);
+  overflow: auto;
+}
+html[data-ui="workbuddy"] .wb-secondary-navigation h2 {
+  margin: 0;
+  height: 56px;
+  padding: 18px 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+html[data-ui="workbuddy"] .wb-secondary-navigation nav {
+  padding: 8px 12px;
+}
+html[data-ui="workbuddy"] .wb-secondary-navigation p {
+  margin: 12px 8px 4px;
+  font-size: 11px;
+  color: var(--wb-color-text-tertiary);
+}
+html[data-ui="workbuddy"] .wb-secondary-navigation__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  color: var(--wb-color-text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+}
+html[data-ui="workbuddy"] .wb-secondary-navigation__item:hover,
+html[data-ui="workbuddy"] .wb-secondary-navigation__item.active {
+  color: var(--wb-color-text-primary);
+  background: var(--wb-bg-tertiary);
+}
+html[data-ui="workbuddy"] .wb-production-content .page-content {
+  padding: 0;
+}
+html[data-ui="workbuddy"] .wb-menu-status {
+  color: var(--wb-color-text-tertiary);
+  margin-left: 12px;
+  font-size: 11px;
+}
+html[data-ui="workbuddy"] .wb-conversation-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html[data-ui="workbuddy"] .wb-conversation-body__content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+html[data-ui="workbuddy"] .wb-conversation-body.wb-home-page {
+  width: 100%;
+  max-width: 848px;
+  margin: 0 auto;
+  padding: 0 24px;
+  min-height: 0;
+  overflow-y: auto;
+  position: relative;
+}
+html[data-ui="workbuddy"] .wb-home-page__main-content {
+  flex: 1 0 auto;
+  min-height: 432px;
+  width: 100%;
+  padding-bottom: 220px;
+}
+html[data-ui="workbuddy"] .wb-home-page .wb-chat-content {
+  flex: 0 0 auto;
+  min-height: 0;
+  width: 100%;
+  overflow: visible;
+  display: block;
+}
+html[data-ui="workbuddy"] .wb-home-page .wb-welcome {
+  padding: 0;
+  margin: 0;
+  gap: 0;
+  max-width: none;
+}
+html[data-ui="workbuddy"] .wb-home-page .wb-home-header {
+  margin-bottom: 16px;
+}
+html[data-ui="workbuddy"] .wb-home-page .wb-welcome .wb-scene-tabs {
+  margin-bottom: 64px;
+}
+html[data-ui="workbuddy"] .wb-home-page .wb-home-composer__chips {
+  margin-bottom: 8px;
+}
+html[data-ui="workbuddy"] .wb-home-page .wb-input {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+}
+html[data-ui="workbuddy"] .wb-home-page .wb-composer {
+  min-height: 132px;
+}
+html[data-ui="workbuddy"] .wb-home-page .wb-composer__textarea {
+  min-height: 52px;
+}
+html[data-ui="workbuddy"] .wb-home-page__related-playbooks-slot {
+  pointer-events: none;
+}
+html[data-ui="workbuddy"] .wb-assistants {
+  display: flex;
+  flex-direction: column;
+  width: 264px;
+  height: 100%;
+  background: var(--wb-bg-primary);
+  border-right: 1px solid var(--wb-border-weak);
+}
+html[data-ui="workbuddy"] .wb-assistants header {
+  height: 56px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+}
+html[data-ui="workbuddy"] .wb-assistants h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+html[data-ui="workbuddy"] .wb-assistants__list {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+html[data-ui="workbuddy"] .wb-assistants .claw-assistant-list-item {
+  border: 0;
+  background: transparent;
+  color: var(--wb-color-text-primary);
+  cursor: pointer;
+  font-family: inherit;
+  gap: 8px;
+  text-align: left;
+}
+html[data-ui="workbuddy"] .wb-assistants .claw-assistant-list-item:hover,
+html[data-ui="workbuddy"] .wb-assistants .claw-assistant-list-item--active {
+  background: var(--wb-bg-tertiary);
+}
+html[data-ui="workbuddy"] .wb-assistants__avatar {
+  flex: 0 0 32px;
+  display: flex;
+  justify-content: center;
+}
+html[data-ui="workbuddy"] .wb-assistants__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-ui="workbuddy"] .wb-assistants__name > span {
+  display: inline-flex;
+  margin-left: 4px;
+  gap: 4px;
+}
+html[data-ui="workbuddy"] .wb-assistants--floating {
+  position: absolute;
+  top: 56px;
+  left: 8px;
+  height: min(640px, calc(100% - 72px));
+  border: 1px solid var(--wb-border-default);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+html[data-ui="workbuddy"] .wb-assistants-trigger {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  background: var(--wb-bg-primary);
+}
+html[data-ui="workbuddy"] .wb-page-body .octop-card {
+  border-color: var(--wb-border-weak);
+  box-shadow: none;
+}
+html[data-ui="workbuddy"] .octop-modal-content,
+html[data-ui="workbuddy"] .octop-drawer-content,
+html[data-ui="workbuddy"] .octop-select-dropdown,
+html[data-ui="workbuddy"] .octop-dropdown-menu {
+  color: var(--wb-color-text-primary);
+  background: var(--wb-bg-primary);
+}
+html[data-ui="workbuddy"] .octop-btn-primary {
+  box-shadow: none;
+}
+html[data-ui="workbuddy"] button:focus-visible,
+html[data-ui="workbuddy"] a:focus-visible {
+  outline: 2px solid var(--wb-border-focus);
+  outline-offset: 2px;
+}
+@media (min-width: 1681px) {
+  html[data-ui="workbuddy"] .wb-conversation-body.wb-home-page {
+    max-width: 1008px;
+  }
+}
+@media (max-width: 767px) {
+  html[data-ui="workbuddy"] .wb-shell-sidebar--mobile {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 280px;
+    flex-basis: 280px;
+    z-index: 100;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.12);
+  }
+  html[data-ui="workbuddy"] .wb-shell-sidebar--mobile[data-collapsed="true"] {
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(-100%);
+  }
+  html[data-ui="workbuddy"] .wb-secondary-navigation {
+    flex-basis: auto;
+    width: 100%;
+    max-height: 96px;
+    border-right: 0;
+    border-bottom: 1px solid var(--wb-border-weak);
+  }
+  html[data-ui="workbuddy"] .wb-secondary-navigation h2,
+  html[data-ui="workbuddy"] .wb-secondary-navigation p {
+    display: none;
+  }
+  html[data-ui="workbuddy"] .wb-secondary-navigation nav {
+    display: flex;
+    overflow-x: auto;
+    padding: 8px 12px;
+  }
+  html[data-ui="workbuddy"] .wb-secondary-navigation nav > div {
+    display: contents;
+  }
+  html[data-ui="workbuddy"] .wb-secondary-navigation__item {
+    flex-shrink: 0;
+    margin: 0 4px 0 0;
+  }
+  html[data-ui="workbuddy"] .wb-secondary-navigation__item svg {
+    display: none;
+  }
+  html[data-ui="workbuddy"] .wb-conversation-body.wb-home-page {
+    padding: 24px 20px;
+  }
+  html[data-ui="workbuddy"] .wb-home-page__main-content {
+    min-height: 360px;
+    flex: 1 0 auto;
+    padding-bottom: 0;
+  }
+  html[data-ui="workbuddy"] .wb-home-page .wb-welcome .wb-scene-tabs {
+    margin-bottom: 32px;
+  }
+  html[data-ui="workbuddy"] .wb-home-page .wb-input {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html[data-ui="workbuddy"] .wb-home-page__related-playbooks-slot {
+    position: static;
+    padding: 24px 0 0;
+  }
+
+  html[data-ui="workbuddy"] .wb-assistants--floating {
+    width: min(264px, calc(100vw - 24px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-ui="workbuddy"] *,
+  html[data-ui="workbuddy"] *::before,
+  html[data-ui="workbuddy"] *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+html[data-ui="workbuddy"] .wb-app-shell {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wb-bg-primary);
+}
+html[data-ui="workbuddy"] .wb-shell-logo-dark {
+  display: none;
+}
+html[data-ui="workbuddy"][data-theme="dark"] .wb-shell-logo-light {
+  display: none;
+}
+html[data-ui="workbuddy"][data-theme="dark"] .wb-shell-logo-dark {
+  display: block;
+}
+html[data-ui="workbuddy"] .wb-composer__send {
+  background: var(--fn-color-brand);
+  color: var(--wb-bg-primary);
+  box-shadow: none;
+  border-radius: 8px;
+}
+html[data-ui="workbuddy"] .wb-composer__send:hover:not(:disabled) {
+  background: var(--fn-color-brand);
+  transform: none;
+  box-shadow: none;
+  opacity: 0.85;
+}
+html[data-ui="workbuddy"] .wb-composer__cancel {
+  background: var(--wb-bg-tertiary);
+  color: var(--wb-color-text-primary);
+  border-radius: 8px;
+}
+html[data-ui="workbuddy"] .wb-readiness-notice {
+  width: 100%;
+  margin: 12px 0;
+  border-color: var(--wb-border-default);
+  background: var(--wb-bg-secondary);
+  text-align: left;
+}
+html[data-ui="workbuddy"] .wb-readiness-notice .octop-alert-message {
+  font-size: 13px;
+}
+html[data-ui="workbuddy"] .wb-readiness-notice .octop-alert-description {
+  font-size: 12px;
+}
+html[data-ui="workbuddy"]
+  .wb-chat-main:has(.wb-assistants-trigger)
+  .workbuddy-topbar-left {
+  padding-left: 36px;
+}
+html[data-ui="workbuddy"]
+  .wb-chat:has(.wb-assistants-trigger)
+  .workbuddy-topbar-left {
+  padding-left: 36px;
+}
+@media (max-width: 767px) {
+  html[data-ui="workbuddy"] .wb-app-shell {
+    flex-direction: column;
+  }
+  html[data-ui="workbuddy"] .wb-readiness-notice .octop-alert-action {
+    margin-left: 8px;
+  }
+}
+
+html[data-ui="workbuddy"] .wb-related-playbooks {
+  pointer-events: auto;
+}
+html[data-ui="workbuddy"] .wb-recommendation-cover {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  text-align: left;
+  color: var(--wb-color-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+html[data-ui="workbuddy"] .wb-recommendation-cover > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+html[data-ui="workbuddy"] .wb-related-playbooks__pager:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+@media (max-width: 767px) {
+  html[data-ui="workbuddy"] .wb-related-playbooks__row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+html[data-ui="workbuddy"][data-wb-appearance="standard"] {
+  --fn-color-brand-soft: var(--wb-color-text-secondary);
+  --fn-color-brand-bg: var(--wb-bg-tertiary);
+  --fn-color-brand-glow: transparent;
+  --fn-text-brand: var(--wb-color-text-primary);
+}
+html[data-ui="workbuddy"] .wb-intervention {
+  background: var(--wb-bg-secondary);
+  border: 1px solid var(--wb-border-default);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: none;
+}
+html[data-ui="workbuddy"] .wb-intervention__title {
+  font-size: 14px;
+  color: var(--wb-color-text-primary);
+}
+html[data-ui="workbuddy"] .wb-intervention__primary {
+  background: var(--fn-color-brand);
+  border-color: var(--fn-color-brand);
+  color: var(--wb-bg-primary);
+  box-shadow: none;
+}
+html[data-ui="workbuddy"] .wb-intervention__secondary {
+  background: var(--wb-bg-primary);
+  border-color: var(--wb-border-default);
+  color: var(--wb-color-text-primary);
+}
+html[data-ui="workbuddy"] .wb-intervention__reject {
+  background: var(--wb-bg-primary);
+  border-color: var(--wb-border-default);
+}
+html[data-ui="workbuddy"] .wb-message__text {
+  color: var(--wb-color-text-primary);
+  font-size: 14px;
+  line-height: 24px;
+}
+html[data-ui="workbuddy"] .wb-message__text pre {
+  border: 1px solid var(--wb-border-default);
+  border-radius: 8px;
+  box-shadow: none;
+}
+html[data-ui="workbuddy"] .wb-message__actions {
+  font-size: 12px;
+  color: var(--wb-color-text-tertiary);
+}
+html[data-ui="workbuddy"] .wb-tool-process {
+  border: 1px solid var(--wb-border-default);
+  border-radius: 8px;
+  background: var(--wb-bg-secondary);
+  overflow: hidden;
+}
+html[data-ui="workbuddy"] .wb-tool-process__header {
+  padding: 10px 12px;
+  color: var(--wb-color-text-secondary);
+  font-size: 13px;
+}
+html[data-ui="workbuddy"] .wb-preview-panel {
+  border-color: var(--wb-border-default);
+  background: var(--wb-bg-primary);
+}
+html[data-ui="workbuddy"] .wb-preview-panel__toolbar {
+  min-height: 48px;
+  height: 48px;
+  background: var(--wb-bg-primary);
+  border-bottom: 1px solid var(--wb-border-default);
+  font-size: 14px;
+}
+
+html[data-ui="workbuddy"] .wb-topbar-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--wb-color-text-secondary);
+}
+html[data-ui="workbuddy"] .wb-chat-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+html[data-ui="workbuddy"] .wb-chat-toolbar-actions button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--wb-color-text-secondary);
+}
+html[data-ui="workbuddy"] .wb-chat-toolbar-actions button:hover:not(:disabled) {
+  background: var(--wb-bg-tertiary);
+  transform: none;
+}
+html[data-ui="workbuddy"] .wb-chat-toolbar-actions button:disabled {
+  opacity: 0.35;
+}
+html[data-ui="workbuddy"] .wb-auth-surface {
+  background: var(--wb-bg-primary) !important;
+  color: var(--wb-color-text-primary);
+  overflow-y: auto;
+}
+html[data-ui="workbuddy"] .wb-login-form {
+  flex: 0 0 auto;
+  max-width: 400px !important;
+  padding: 24px 16px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+html[data-ui="workbuddy"] .wb-login-form h2 {
+  font-size: 32px !important;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+html[data-ui="workbuddy"] .wb-login-form .octop-btn-primary {
+  height: 38px;
+  border-radius: 999px;
+}
+html[data-ui="workbuddy"] .wb-setup-surface > div,
+html[data-ui="workbuddy"] .wb-invite-surface > div > div {
+  box-shadow: none;
+  border-color: var(--wb-border-default);
+  background: var(--wb-bg-primary);
+}
+html[data-ui="workbuddy"] .wb-market-tabs {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  --ec-page-gutter: 0px;
+}
+html[data-ui="workbuddy"] .wb-market-tabs .ec-title-tabs {
+  overflow-x: auto;
+  max-width: 100%;
+  padding-bottom: 16px;
+}
+html[data-ui="workbuddy"] .wb-market-tabs .ec-title {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  white-space: nowrap;
+}
+html[data-ui="workbuddy"] .wb-market-tabs .ec-title svg {
+  display: none;
+}
+html[data-ui="workbuddy"] .wb-market-tabs__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+html[data-ui="workbuddy"] .wb-business-detail .octop-drawer-content {
+  background: var(--wb-bg-primary);
+}
+html[data-ui="workbuddy"] .wb-business-detail .octop-drawer-header,
+html[data-ui="workbuddy"] .wb-business-detail .octop-drawer-footer {
+  border-color: var(--wb-border-default);
+  padding: 16px 24px;
+}
+html[data-ui="workbuddy"] .wb-business-detail .octop-drawer-title {
+  font-size: 16px;
+  font-weight: 500;
+}
+html[data-ui="workbuddy"] .wb-business-detail .octop-drawer-body {
+  padding: 24px;
+}
+html[data-ui="workbuddy"] .wb-business-detail .octop-form-item {
+  margin-bottom: 20px;
+}
+@media (max-width: 767px) {
+  html[data-ui="workbuddy"] .workbuddy-topbar {
+    height: calc(48px + env(safe-area-inset-top, 0px));
+    min-height: calc(48px + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+    flex-shrink: 0;
+  }
+  html[data-ui="workbuddy"] .workbuddy-topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  html[data-ui="workbuddy"] .wb-mobile-chat-toolbar {
+    display: flex;
+    gap: 8px;
+    padding-inline: 12px;
+    border-bottom: 1px solid var(--wb-border-weak);
+    background: var(--wb-bg-primary);
+  }
+  html[data-ui="workbuddy"] .wb-assistants-trigger {
+    left: 48px;
+    top: calc(8px + env(safe-area-inset-top, 0px));
+  }
+  html[data-ui="workbuddy"]
+    .wb-chat:has(.wb-assistants-trigger)
+    .wb-mobile-chat-toolbar
+    > :nth-child(2) {
+    margin-left: 32px;
+  }
+}
+/* 5.5.6 expert detail uses a 520px, 16px-radius centred card. */
+html[data-ui="workbuddy"] .wb-business-modal .octop-modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
+  padding: 22px 20px 20px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--wb-bg-primary);
+  box-shadow: var(--wb-shadow-dialog-md);
+}
+
+html[data-ui="workbuddy"] .wb-business-modal .octop-modal-header {
+  flex-shrink: 0;
+  margin-bottom: 14px;
+  padding-right: 32px;
+}
+
+html[data-ui="workbuddy"] .wb-business-modal .octop-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+html[data-ui="workbuddy"] .wb-business-modal .octop-modal-footer {
+  flex-shrink: 0;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--wb-border-default);
+}
+
+html[data-ui="workbuddy"] .wb-business-modal .octop-modal-close {
+  inset-inline-end: 18px;
+  top: 18px;
+  width: 24px;
+  height: 24px;
+}
+
+/* 5.5.6: connector-token-config-modal 600px/24px, skill-view 640px/24px. */
+html[data-ui="workbuddy"] .wb-detail-connector .octop-modal-content {
+  border-radius: 24px;
+  max-height: min(90vh, 720px);
+  padding: 28px 32px 20px;
+}
+
+html[data-ui="workbuddy"] .wb-detail-skill {
+  max-width: calc(100vw - 40px);
+}
+
+html[data-ui="workbuddy"] .wb-detail-skill .octop-modal-content {
+  border-radius: 24px;
+  max-height: calc(100dvh - 112px);
+  padding: 24px 0 0;
+}
+
+html[data-ui="workbuddy"] .wb-detail-skill .octop-modal-header {
+  margin-inline: 24px;
+}
+
+html[data-ui="workbuddy"] .wb-detail-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Octop's document editors use the source settings-dialog width with their own content. */
+html[data-ui="workbuddy"] .wb-detail-editor {
+  max-width: calc(100vw - 40px);
+}
+
+html[data-ui="workbuddy"] .wb-detail-editor .octop-modal-content {
+  max-height: calc(100dvh - 64px);
+}
+
+html[data-ui="workbuddy"] .wb-detail-editor .octop-modal-body {
+  flex-shrink: 1;
+}
+
+html[data-ui="workbuddy"]
+  .wb-plugin-management:has(> .wb-plugin-detail)
+  > :not(.wb-plugin-detail) {
+  display: none;
+}
+
+html[data-ui="workbuddy"] .wb-plugin-detail {
+  height: auto;
+  min-height: 100%;
+}

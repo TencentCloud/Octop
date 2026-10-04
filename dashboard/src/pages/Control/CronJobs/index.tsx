@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
+import AutomationList from "../../../workbuddy/AutomationList";
 import {
   Button,
   Card,
@@ -295,31 +297,33 @@ function CronJobsPage() {
             ) : null}
           </span>
           <div className={styles.gridToolbarRight}>
-            <Segmented
-              size="small"
-              value={viewMode}
-              onChange={(v) => setViewMode(v as "table" | "card")}
-              options={[
-                {
-                  value: "table",
-                  label: (
-                    <span className={styles.viewModeLabel}>
-                      <List size={14} />
-                      {t("cronJobs.viewTable")}
-                    </span>
-                  ),
-                },
-                {
-                  value: "card",
-                  label: (
-                    <span className={styles.viewModeLabel}>
-                      <LayoutGrid size={14} />
-                      {t("cronJobs.viewCard")}
-                    </span>
-                  ),
-                },
-              ]}
-            />
+            {!WORKBUDDY_UI && (
+              <Segmented
+                size="small"
+                value={viewMode}
+                onChange={(v) => setViewMode(v as "table" | "card")}
+                options={[
+                  {
+                    value: "table",
+                    label: (
+                      <span className={styles.viewModeLabel}>
+                        <List size={14} />
+                        {t("cronJobs.viewTable")}
+                      </span>
+                    ),
+                  },
+                  {
+                    value: "card",
+                    label: (
+                      <span className={styles.viewModeLabel}>
+                        <LayoutGrid size={14} />
+                        {t("cronJobs.viewCard")}
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+            )}
             <Tooltip title={t("common.refresh")}>
               <Button
                 icon={<RefreshCw size={15} />}
@@ -355,7 +359,18 @@ function CronJobsPage() {
               <Spin size="small" />
             </div>
           ) : null}
-          {showCardView ? (
+          {WORKBUDDY_UI ? (
+            <AutomationList
+              jobs={jobs}
+              timeZone={cronTimezone}
+              disabled={contentBusy}
+              onDetail={handleDetail}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onExecuteNow={handleExecuteNow}
+              onToggleEnabled={handleToggleEnabled}
+            />
+          ) : showCardView ? (
             <div className={styles.cardGrid}>
               {jobs.map((job) => (
                 <CronJobCard

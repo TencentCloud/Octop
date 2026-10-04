@@ -1,0 +1,145 @@
+{
+  "date": "2026-10-04",
+  "octopBase": "709f9986d26de8ba13134859e42aedced1d21977",
+  "branch": "codex/workbuddy-556-ui",
+  "variant": "workbuddy",
+  "environment": {
+    "frontend": "http://127.0.0.1:5194",
+    "backend": "http://127.0.0.1:18089",
+    "home": "/private/tmp/octop-workbuddy-ui-acceptance-20261004",
+    "browser": "Codex in-app browser",
+    "language": "zh",
+    "timezone": "Asia/Shanghai",
+    "modelProvider": "not configured",
+    "setupPassword": "disabled only in disposable acceptance instance"
+  },
+  "scope": "Scoped real-browser checks against actual Octop HTTP/SQLite; no mocked business responses. Not full E2E or WorkBuddy original-render acceptance.",
+  "checks": [
+    {
+      "id": "setup-sqlite-admin-skip-model",
+      "result": "passed",
+      "steps": [
+        "save local SQLite configuration",
+        "create test admin through setup form",
+        "skip provider setup",
+        "finish and enter authenticated application"
+      ],
+      "limits": [
+        "no setup password validation, captcha or SSO checked"
+      ]
+    },
+    {
+      "id": "profile-draft-panel-switch-save-reload",
+      "result": "passed",
+      "steps": [
+        "edit display name",
+        "switch appearance panel and return",
+        "confirm draft remains",
+        "save display name",
+        "reload /home and verify updated account name"
+      ],
+      "evidence": [
+        "real-settings-light-1280.jpg",
+        "real-settings-light-1440.jpg"
+      ]
+    },
+    {
+      "id": "cron-create-edit-reload",
+      "result": "passed",
+      "steps": [
+        "create disabled text task",
+        "edit title through original Octop form",
+        "reload /tasks",
+        "verify edited task and disabled state"
+      ],
+      "evidence": [
+        "real-automation-light-1440.jpg"
+      ]
+    },
+    {
+      "id": "cron-enable-edit-restriction-disable",
+      "result": "passed",
+      "steps": [
+        "enable task",
+        "confirm Edit and Delete disabled in menu",
+        "disable task again"
+      ],
+      "limits": [
+        "run-now, execution history, deletion and shared-reader roles not checked; task left disabled"
+      ]
+    },
+    {
+      "id": "unconfigured-model-state",
+      "result": "passed",
+      "steps": [
+        "missing model error shown",
+        "chat send control disabled"
+      ],
+      "limits": [
+        "no streaming, tools, approvals, queue, reconnect or actual LLM execution checked"
+      ]
+    },
+    {
+      "id": "unsupported-project-controls",
+      "result": "passed",
+      "steps": [
+        "open actual /projects route",
+        "confirm unsupported message",
+        "confirm new project and search disabled"
+      ],
+      "evidence": [
+        "real-projects-light-1440.jpg",
+        "real-projects-light-390.jpg"
+      ]
+    },
+    {
+      "id": "real-responsive-geometry",
+      "result": "passed-scoped",
+      "observations": [
+        {
+          "page": "settings",
+          "viewport": [
+            1440,
+            900
+          ],
+          "frame": [
+            880,
+            720
+          ],
+          "navigationWidth": 200,
+          "contentWidth": 680,
+          "animation": "measured after transform none"
+        },
+        {
+          "page": "tasks",
+          "viewport": [
+            1440,
+            900
+          ],
+          "topbarHeight": 56,
+          "horizontalOverflow": 0
+        },
+        {
+          "page": "tasks",
+          "viewport": [
+            390,
+            844
+          ],
+          "topbarHeight": 48,
+          "horizontalOverflow": 0
+        },
+        {
+          "page": "projects",
+          "viewport": [
+            390,
+            844
+          ],
+          "horizontalOverflow": 0
+        }
+      ],
+      "limits": [
+        "not compared against 5.5.6 original runtime; JPEG evidence is not a pixel acceptance baseline"
+      ]
+    }
+  ]
+}

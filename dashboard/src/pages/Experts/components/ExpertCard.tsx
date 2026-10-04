@@ -1,3 +1,5 @@
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
+import ExpertTemplate from "../../../workbuddy/ExpertTemplate";
 // dashboard/src/pages/Experts/components/ExpertCard.tsx
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
@@ -39,6 +41,18 @@ export const ExpertCard = memo(function ExpertCard({
   const accent = expert.color || "var(--fn-color-brand)";
   const portraitUrl = resolveExpertAvatarUrl(expert.icon_url);
   const hasPortrait = Boolean(portraitUrl);
+
+  if (WORKBUDDY_UI)
+    return (
+      <ExpertTemplate
+        label={label}
+        description={desc}
+        iconUrl={portraitUrl}
+        iconName={expert.icon_name}
+        installed={isInstalled}
+        onCreate={() => onCreate(expert)}
+      />
+    );
 
   return (
     <div

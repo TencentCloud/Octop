@@ -1,0 +1,29 @@
+{
+  "name": "fixture-skills-1280x800-light-zh",
+  "status": "passed",
+  "language": "zh",
+  "overflow": 0,
+  "settings": null,
+  "tabs": [
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "false"
+    },
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "true"
+    },
+    {
+      "font": "14px",
+      "height": 28,
+      "selected": "false"
+    }
+  ],
+  "theme": "light",
+  "viewport": {
+    "height": 800,
+    "width": 1280
+  }
+}

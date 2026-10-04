@@ -1,3 +1,4 @@
+import BusinessDetailDialog from "../../../components/BusinessDetailDialog";
 // dashboard/src/pages/Experts/components/EditAgentDrawer.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -6,7 +7,6 @@ import {
   App,
   Button,
   Collapse,
-  Drawer,
   Dropdown,
   Form,
   Input,
@@ -1358,7 +1358,8 @@ export default function EditAgentDrawer({
   }, []);
 
   return (
-    <Drawer
+    <BusinessDetailDialog
+      rootClassName="wb-business-detail"
       open={open}
       title={t("experts.editExpert")}
       width={520}
@@ -1388,6 +1389,6 @@ export default function EditAgentDrawer({
           onSavingChange={setSaving}
         />
       ) : null}
-    </Drawer>
+    </BusinessDetailDialog>
   );
 }

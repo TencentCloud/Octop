@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Dropdown, Switch } from "antd";
 import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
@@ -15,7 +22,10 @@ import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";
 import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
-import { DESKTOP_DRAG_REGION_CLASS } from "../../../utils/desktopChrome";
+import {
+  DESKTOP_DRAG_REGION_CLASS,
+  DESKTOP_NO_DRAG_CLASS,
+} from "../../../utils/desktopChrome";
 import { useCollapseThinking } from "../hooks/useCollapseThinking";
 
 interface ChatTitleBarProps {
@@ -28,6 +38,7 @@ interface ChatTitleBarProps {
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   isTeam?: boolean;
+  actions?: ReactNode;
 }
 
 export default function ChatTitleBar({
@@ -40,6 +51,7 @@ export default function ChatTitleBar({
   forkDisabled,
   forkDisabledHint,
   isTeam = false,
+  actions,
 }: ChatTitleBarProps) {
   const { t } = useTranslation();
   const [collapseThinking, setCollapseThinking] = useCollapseThinking(isTeam);
@@ -136,7 +148,9 @@ export default function ChatTitleBar({
   const [moreOpen, setMoreOpen] = useState(false);
 
   return (
-    <div className={`${styles.chatTitleBar} ${DESKTOP_DRAG_REGION_CLASS}`}>
+    <div
+      className={`${styles.chatTitleBar} ${DESKTOP_DRAG_REGION_CLASS} workbuddy-topbar`}
+    >
       <div className={styles.chatTitleLeft}>
         <SessionChannelIcon
           channelType={session.channelType}
@@ -160,7 +174,10 @@ export default function ChatTitleBar({
           />
         ) : (
           <div className={styles.chatTitleHeading}>
-            <h1 className={styles.chatTitleText} title={title}>
+            <h1
+              className={`${styles.chatTitleText} workbuddy-topbar-title`}
+              title={title}
+            >
               {title}
             </h1>
             <TeamChatBadge show={isTeam} />
@@ -200,6 +217,11 @@ export default function ChatTitleBar({
           </div>
         )}
       </div>
+      {actions && (
+        <div className={`workbuddy-topbar-options ${DESKTOP_NO_DRAG_CLASS}`}>
+          {actions}
+        </div>
+      )}
     </div>
   );
 }

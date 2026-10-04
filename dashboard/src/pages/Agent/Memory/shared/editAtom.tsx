@@ -1,9 +1,11 @@
 /**
  * editAtom — shared confirmation flow for replacing one memory's assertion.
  */
-import { Input, Modal, Typography } from "antd";
+import { Input, Typography } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 import i18n from "@/i18n";
+import { WORKBUDDY_UI } from "../../../../workbuddy/variant";
 
 import {
   memoryDashboardApi,
@@ -20,7 +22,9 @@ export function confirmEditAtom({
   onSuccess?: (next: AtomItem) => void;
 }) {
   let assertion = atom.assertion;
-  Modal.confirm({
+  modal.confirm({
+    centered: WORKBUDDY_UI,
+    className: WORKBUDDY_UI ? "wb-business-modal" : undefined,
     title: i18n.t("memory.edit.title"),
     width: 520,
     content: (

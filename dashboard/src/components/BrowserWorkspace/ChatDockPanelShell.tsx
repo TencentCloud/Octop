@@ -441,7 +441,7 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     <div
       ref={panelRef}
       data-dock-panel=""
-      className={`${styles.chatBrowserPanel} ${styles[mode]} ${
+      className={`${styles.chatBrowserPanel} wb-preview-panel ${styles[mode]} ${
         popupPos && !popupFullscreen ? styles.popupPlaced : ""
       } ${isPopupDragging ? styles.popupDragging : ""} ${
         isPopupResizing ? styles.popupResizing : ""
@@ -449,7 +449,7 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
       style={popupStyle}
     >
       <div
-        className={styles.toolbar}
+        className={`${styles.toolbar} wb-preview-panel__toolbar`}
         onPointerDown={handlePopupDragStart}
         style={toolbarStyle}
       >

@@ -1,0 +1,292 @@
+/* Octop content adaptation; source um-/settings navigation rules are extracted from 5.5.6. */
+html[data-ui="workbuddy"] .wb-surface-portals[hidden] {
+  display: none !important;
+}
+html[data-ui="workbuddy"] .wb-unified-market {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--wb-bg-primary);
+  padding: 0 24px 24px;
+}
+html[data-ui="workbuddy"] .wb-unified-market[hidden],
+html[data-ui="workbuddy"] .wb-unified-market [hidden],
+html[data-ui="workbuddy"] .wb-settings-center [hidden] {
+  display: none !important;
+}
+html[data-ui="workbuddy"] .wb-market-pane {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+html[data-ui="workbuddy"] .wb-embedded-page {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+html[data-ui="workbuddy"] .wb-embedded-page__controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+html[data-ui="workbuddy"] .wb-embedded-page__body {
+  flex: 1;
+  min-height: 0;
+}
+html[data-ui="workbuddy"] .wb-market-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+html[data-ui="workbuddy"] .wb-market-agent,
+html[data-ui="workbuddy"] .wb-settings-agent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--wb-color-text-secondary);
+}
+html[data-ui="workbuddy"] .wb-settings-center .settings-modal__nav {
+  width: 200px;
+  flex: 0 0 200px;
+  overflow-y: auto;
+}
+html[data-ui="workbuddy"] .wb-settings-center .settings-navigation {
+  width: 100%;
+  padding: 16px 12px;
+}
+html[data-ui="workbuddy"] .wb-settings-group h3 {
+  padding: 8px 12px 4px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--wb-color-text-secondary);
+  font-weight: 400;
+}
+html[data-ui="workbuddy"] .wb-settings-group {
+  margin-bottom: 12px;
+}
+html[data-ui="workbuddy"] .wb-settings-center .settings-modal__content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+html[data-ui="workbuddy"] .wb-settings-center .settings-modal__header {
+  padding: 24px 44px 20px 24px;
+  flex-shrink: 0;
+}
+html[data-ui="workbuddy"] .wb-settings-panel {
+  min-height: 100%;
+}
+html[data-ui="workbuddy"] .wb-settings-panel-body {
+  min-width: 0;
+  min-height: 0;
+}
+html[data-ui="workbuddy"] .wb-settings-back {
+  display: none;
+}
+html[data-ui="workbuddy"]
+  .wb-settings-center[data-settings-panel="general"]
+  [data-settings-group="account"] {
+  display: none;
+}
+html[data-ui="workbuddy"] .wb-settings-center .wb-embedded-page__body > div {
+  min-width: 0;
+}
+html[data-ui="workbuddy"] .wb-settings-about p {
+  color: var(--wb-color-text-secondary);
+  line-height: 1.6;
+}
+html[data-ui="workbuddy"] .um-tab:focus-visible,
+html[data-ui="workbuddy"] .settings-navigation__item:focus-visible {
+  outline: 2px solid var(--wb-color-text-primary);
+  outline-offset: 2px;
+}
+@media (max-width: 767px) {
+  html[data-ui="workbuddy"] .wb-unified-market {
+    padding-inline: 12px;
+    padding-bottom: 12px;
+  }
+  html[data-ui="workbuddy"] .wb-unified-market .workbuddy-topbar {
+    overflow-x: auto;
+  }
+  html[data-ui="workbuddy"] .um-tab {
+    padding-inline: 8px;
+  }
+  html[data-ui="workbuddy"] .wb-market-agent {
+    flex-wrap: wrap;
+  }
+  html[data-ui="workbuddy"] .wb-settings-drawer .octop-drawer-body {
+    padding: 0;
+  }
+  html[data-ui="workbuddy"] .wb-settings-center {
+    height: 100%;
+    max-height: 100%;
+    flex-direction: row;
+  }
+  html[data-ui="workbuddy"] .wb-settings-center .settings-modal__nav {
+    width: 100%;
+    flex-basis: 100%;
+    padding: 0;
+    overflow-y: auto;
+  }
+  html[data-ui="workbuddy"] .wb-settings-center .settings-navigation {
+    flex-direction: column;
+    min-width: 0;
+    width: 100%;
+    padding: 16px 20px;
+    overflow-y: auto;
+  }
+  html[data-ui="workbuddy"] .wb-settings-center .settings-navigation__item {
+    width: 100%;
+    min-height: 40px;
+    justify-content: flex-start;
+    text-align: start;
+  }
+  html[data-ui="workbuddy"]
+    .wb-settings-center[data-settings-mobile-view="content"]
+    .settings-modal__nav,
+  html[data-ui="workbuddy"]
+    .wb-settings-center[data-settings-mobile-view="categories"]
+    .settings-modal__content {
+    display: none;
+  }
+  html[data-ui="workbuddy"] .wb-settings-center .settings-modal__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 20px 48px 16px 12px;
+  }
+  html[data-ui="workbuddy"] .wb-settings-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--wb-color-text-primary);
+  }
+}
+html[data-ui="workbuddy"] .wb-market-detail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+html[data-ui="workbuddy"] .wb-market-detail > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding-block: 8px 20px;
+}
+html[data-ui="workbuddy"] .wb-detail-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--wb-color-text-secondary);
+  padding: 8px 0;
+  cursor: pointer;
+}
+html[data-ui="workbuddy"] .wb-market-detail__body {
+  min-height: 0;
+}
+html[data-ui="workbuddy"] .wb-market-detail > footer {
+  margin-top: 20px;
+  max-width: 240px;
+}
+html[data-ui="workbuddy"]
+  .wb-market-pane
+  :has(> .wb-market-detail)
+  > :not(.wb-market-detail) {
+  display: none;
+}
+html[data-ui="workbuddy"]
+  .wb-skills-page:has(.wb-market-detail)
+  > :not(.wb-skills-content) {
+  display: none;
+}
+html[data-ui="workbuddy"] .skill-card:focus-visible {
+  outline: 2px solid var(--wb-color-text-primary);
+  outline-offset: 2px;
+}
+html[data-ui="workbuddy"] .wb-skill-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+html[data-ui="workbuddy"]
+  .wb-settings-center[data-settings-panel="appearance"]
+  [data-settings-preference="general"] {
+  display: none;
+}
+html[data-ui="workbuddy"]
+  .wb-settings-center[data-settings-panel="general"]
+  [data-settings-group="appearance"]:not([data-settings-preference="general"]) {
+  display: none;
+}
+html[data-ui="workbuddy"] .wb-settings-theme {
+  margin-top: 24px;
+}
+html[data-ui="workbuddy"] .wb-market-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+html[data-ui="workbuddy"] .wb-market-topbar-actions .octop-input-affix-wrapper {
+  max-width: 240px;
+}
+@media (max-width: 767px) {
+  html[data-ui="workbuddy"] .wb-unified-market > .workbuddy-topbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 56px;
+    gap: 8px;
+    padding-block: 8px;
+    flex-shrink: 0;
+  }
+  html[data-ui="workbuddy"] .wb-market-topbar-actions {
+    flex-wrap: wrap;
+  }
+  html[data-ui="workbuddy"]
+    .wb-market-topbar-actions
+    .octop-input-affix-wrapper {
+    max-width: 180px;
+  }
+}
+html[data-ui="workbuddy"]
+  .wb-unified-market
+  > .workbuddy-topbar
+  .workbuddy-topbar-options {
+  width: auto;
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+html[data-ui="workbuddy"]
+  .wb-unified-market
+  > .workbuddy-topbar
+  .workbuddy-topbar-left {
+  min-width: 220px;
+  flex-shrink: 0;
+  overflow: visible;
+}
+html[data-ui="workbuddy"] .wb-skill-categories {
+  margin-block: 4px 16px;
+}
+html[data-ui="workbuddy"] .wb-skill-categories .octop-select {
+  min-width: 160px;
+}

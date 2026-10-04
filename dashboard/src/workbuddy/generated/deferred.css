@@ -1,0 +1,735 @@
+/* Extracted from WorkBuddy 5.5.6; regenerate with npm run workbuddy:extract. */
+:where(html[data-ui="workbuddy"]) .project-grid {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  overflow: visible;
+  min-height: 0;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--wb-color-text-primary);
+  line-height: 22px;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__search {
+  width: 240px;
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__body {
+  min-height: 0;
+  overflow: visible;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__cards {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(
+      min(max(288px, calc((100% - 48px) / 4)), calc((100% - 16px) / 2)),
+      1fr
+    )
+  );
+  gap: 16px;
+  align-content: start;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__cards--collapsed {
+  max-height: calc(80px * 3 + 16px * 2);
+  overflow: hidden;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card {
+  position: relative;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 42px 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--wb-color-border-secondary);
+  background: var(--wb-bg-primary);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card:hover {
+  background: var(--wb-bg-card-hover);
+  border-color: var(--wb-border-strong);
+  box-shadow: var(--wb-shadow-sm);
+}
+:where(html[data-ui="workbuddy"])
+  .project-grid__card:hover
+  .project-grid__card-more,
+:where(html[data-ui="workbuddy"])
+  .project-grid__card--menu-open
+  .project-grid__card-more {
+  opacity: 1;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card--loading {
+  pointer-events: none;
+  cursor: default;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card-icon {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--wb-bg-active);
+  color: var(--wb-color-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card-name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--wb-color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card-name-text {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card-external-tag {
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card-pin {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wb-color-accent-brand, var(--wb-color-text-primary));
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card-pin svg {
+  width: 12px;
+  height: 12px;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card-desc {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wb-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__loading-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: linear-gradient(
+    90deg,
+    var(--wb-bg-active) 0%,
+    var(--wb-color-border-tertiary) 50%,
+    var(--wb-bg-active) 100%
+  );
+  background-size: 200% 100%;
+  animation: project-grid-loading 1.2s ease-in-out infinite;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__loading-lines {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__loading-line {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--wb-bg-active) 0%,
+    var(--wb-color-border-tertiary) 50%,
+    var(--wb-bg-active) 100%
+  );
+  background-size: 200% 100%;
+  animation: project-grid-loading 1.2s ease-in-out infinite;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__loading-line--title {
+  width: 42%;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__loading-line--desc {
+  width: 76%;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card-more-wrap {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card-more {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--wb-color-text-tertiary);
+  cursor: pointer;
+  opacity: 1;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__card-more:hover,
+:where(html[data-ui="workbuddy"]) .project-grid__card-more--active {
+  background: var(--wb-bg-hover);
+  color: var(--wb-color-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .project-grid__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 0;
+  color: var(--wb-color-text-tertiary);
+  font-size: 14px;
+  gap: 10px;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__empty-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--wb-bg-active);
+  border: 1px solid var(--wb-color-border-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wb-color-text-tertiary);
+}
+:where(html[data-ui="workbuddy"]) .project-grid__empty-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--wb-color-text-tertiary);
+}
+:where(html[data-ui="workbuddy"]) .project-grid__empty-text-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__empty-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  color: var(--wb-color-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .project-grid__empty-subtitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--wb-color-text-tertiary);
+}
+:where(html[data-ui="workbuddy"]) .project-grid__error {
+  padding: 56px 0;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__error-retry {
+  margin-top: 4px;
+  height: 32px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 8px;
+  background: var(--wb-button-confirm-bg);
+  color: var(--wb-button-primary-fg);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__error-retry:hover {
+  background: var(--wb-button-primary-bg-active);
+}
+:where(html[data-ui="workbuddy"]) .project-grid__error-retry:active {
+  background: var(--wb-button-primary-bg-active);
+}
+:where(html[data-ui="workbuddy"]) .project-grid__load-more {
+  width: 100%;
+  height: 1px;
+  overflow: hidden;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__load-more-text {
+  display: none;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__toggle {
+  width: 100%;
+  height: 24px;
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: var(--wb-text-muted);
+  font-size: 13px;
+  line-height: 20px;
+  font-family: inherit;
+  cursor: pointer;
+}
+:where(html[data-ui="workbuddy"]) .project-grid__toggle:hover {
+  color: var(--wb-color-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .landing-templates {
+  width: 100%;
+}
+:where(html[data-ui="workbuddy"]) .landing-templates-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+:where(html[data-ui="workbuddy"]) .landing-templates-head strong {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--wb-color-text-primary);
+  line-height: 22px;
+}
+:where(html[data-ui="workbuddy"]) .landing-templates-list {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(
+      min(max(288px, calc((100% - 48px) / 4)), calc((100% - 16px) / 2)),
+      1fr
+    )
+  );
+  gap: 16px;
+  align-content: start;
+}
+:where(html[data-ui="workbuddy"]) .landing-template-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-height: 80px;
+  padding: 14px 16px;
+  border: 1px solid var(--wb-color-border-secondary);
+  border-radius: 12px;
+  background: var(--wb-bg-primary);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+:where(html[data-ui="workbuddy"]) .landing-template-card:hover {
+  background: var(--wb-bg-card-hover);
+  border-color: var(--wb-border-strong);
+}
+:where(html[data-ui="workbuddy"]) .landing-template-card:active {
+  transform: translateY(1px);
+}
+:where(html[data-ui="workbuddy"]) .landing-template-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--wb-bg-active);
+  color: var(--wb-color-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .landing-template-icon svg {
+  display: block;
+}
+:where(html[data-ui="workbuddy"]) .landing-template-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+:where(html[data-ui="workbuddy"]) .landing-template-text strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wb-color-text-primary);
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:where(html[data-ui="workbuddy"]) .landing-template-text small {
+  font-size: 12px;
+  color: var(--wb-text-muted);
+  line-height: 18px;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+:where(html[data-ui="workbuddy"]) .create-project-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  padding: 4px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+:where(html[data-ui="workbuddy"])
+  .create-project-dialog__body
+  .cp-field__input:hover:not(:focus):not(:disabled):not(:read-only),
+:where(html[data-ui="workbuddy"])
+  .create-project-dialog__body
+  .cp-field__textarea:hover:not(:focus):not(:disabled):not(:read-only) {
+  border-color: var(--wb-color-border-secondary);
+}
+:where(html[data-ui="workbuddy"])
+  .create-project-dialog__body
+  .cp-field__input:focus:not(:disabled),
+:where(html[data-ui="workbuddy"])
+  .create-project-dialog__body
+  .cp-field__textarea:focus:not(:disabled) {
+  border-color: var(--wb-border-focus);
+}
+:where(html[data-ui="workbuddy"]) .project-list-dialog-content {
+  color: var(--wb-color-text-tertiary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+}
+:where(html[data-ui="workbuddy"]) .workbuddy-collab {
+  --wb-border-info: #bfdbfe;
+  --wb-bg-info: #eff6ff;
+  --wb-bg-action: #2563eb;
+  --wb-connector-code-bg: #f0fdf4;
+  --wb-connector-code-fg: #16a34a;
+  --wb-connector-docs-bg: #eff6ff;
+  --wb-connector-docs-fg: #2563eb;
+  --wb-connector-communication-bg: #fff7ed;
+  --wb-connector-communication-fg: #f97316;
+  --wb-connector-storage-bg: #fffbeb;
+  --wb-connector-storage-fg: #d97706;
+  --wb-connector-productivity-bg: #eef2ff;
+  --wb-connector-productivity-fg: #6366f1;
+  --wb-connector-google-drive-bg: #fff7ed;
+  --wb-connector-google-drive-fg: #f59e0b;
+  --wb-connector-gmail-bg: #fef2f2;
+  --wb-connector-gmail-fg: #ef4444;
+  --wb-connector-notion-bg: #eef2ff;
+  --wb-connector-notion-fg: #6366f1;
+  --wb-connector-slack-bg: #fff7ed;
+  --wb-connector-slack-fg: #f97316;
+  --wb-connector-google-sheets-bg: #eff6ff;
+  --wb-connector-google-sheets-fg: #2563eb;
+  --wb-connector-google-docs-bg: #eef2ff;
+  --wb-connector-google-docs-fg: #6366f1;
+  --wb-connector-github-bg: #f0fdf4;
+  --wb-connector-github-fg: #16a34a;
+  --wb-connector-tone-0-color: #4f7df3;
+  --wb-connector-tone-0-soft-bg: #eaf2ff;
+  --wb-connector-tone-0-soft-fg: #4f7df3;
+  --wb-connector-tone-1-color: #31a354;
+  --wb-connector-tone-1-soft-bg: #ecfdf3;
+  --wb-connector-tone-1-soft-fg: #31a354;
+  --wb-connector-tone-2-color: #f3b434;
+  --wb-connector-tone-2-soft-bg: #fff7e0;
+  --wb-connector-tone-2-soft-fg: #f3b434;
+  --wb-connector-tone-3-color: #e05243;
+  --wb-connector-tone-3-soft-bg: #fef0ee;
+  --wb-connector-tone-3-soft-fg: #e05243;
+  --wb-connector-tone-4-color: #7b61ff;
+  --wb-connector-tone-4-soft-bg: #f1eeff;
+  --wb-connector-tone-4-soft-fg: #7b61ff;
+  --wb-connector-tone-5-color: #f97316;
+  --wb-connector-tone-5-soft-bg: #fff0e6;
+  --wb-connector-tone-5-soft-fg: #f97316;
+  --wb-connector-tone-6-color: #64748b;
+  --wb-connector-tone-6-soft-bg: #f1f5f9;
+  --wb-connector-tone-6-soft-fg: #64748b;
+  --wb-connector-tone-7-color: #0ea5e9;
+  --wb-connector-tone-7-soft-bg: #e8f7ff;
+  --wb-connector-tone-7-soft-fg: #0ea5e9;
+  --wb-connector-linear-color: #6366f1;
+  --wb-connector-figma-color: #f05a3a;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  color: var(--wb-color-text-primary);
+}
+:where(html[data-ui="workbuddy"]) .workbuddy-collab--detail {
+  flex-direction: row;
+}
+:where(html[data-ui="workbuddy"]) .workbuddy-collab--portal {
+  display: contents;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  background: transparent;
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .workbuddy-collab,
+:where(html[data-ui="workbuddy"][data-theme="dark"]) .workbuddy-collab,
+:where(html[data-ui="workbuddy"])
+  .vscode-high-contrast:not(.vscode-high-contrast-light)
+  .workbuddy-collab {
+  --wb-border-info: rgba(59, 130, 246, 0.35);
+  --wb-bg-info: rgba(37, 99, 235, 0.16);
+  --wb-bg-action: #3b82f6;
+  --wb-connector-code-bg: rgba(22, 163, 74, 0.14);
+  --wb-connector-code-fg: #86efac;
+  --wb-connector-docs-bg: rgba(37, 99, 235, 0.16);
+  --wb-connector-docs-fg: #93c5fd;
+  --wb-connector-communication-bg: rgba(249, 115, 22, 0.16);
+  --wb-connector-communication-fg: #fdba74;
+  --wb-connector-storage-bg: rgba(217, 119, 6, 0.16);
+  --wb-connector-storage-fg: #fcd34d;
+  --wb-connector-productivity-bg: rgba(99, 102, 241, 0.16);
+  --wb-connector-productivity-fg: #a5b4fc;
+  --wb-connector-google-drive-bg: rgba(245, 158, 11, 0.16);
+  --wb-connector-google-drive-fg: #fcd34d;
+  --wb-connector-gmail-bg: rgba(239, 68, 68, 0.16);
+  --wb-connector-gmail-fg: #fca5a5;
+  --wb-connector-notion-bg: rgba(99, 102, 241, 0.16);
+  --wb-connector-notion-fg: #a5b4fc;
+  --wb-connector-slack-bg: rgba(249, 115, 22, 0.16);
+  --wb-connector-slack-fg: #fdba74;
+  --wb-connector-google-sheets-bg: rgba(37, 99, 235, 0.16);
+  --wb-connector-google-sheets-fg: #93c5fd;
+  --wb-connector-google-docs-bg: rgba(99, 102, 241, 0.16);
+  --wb-connector-google-docs-fg: #a5b4fc;
+  --wb-connector-github-bg: rgba(22, 163, 74, 0.14);
+  --wb-connector-github-fg: #86efac;
+  --wb-connector-tone-0-color: #4f7df3;
+  --wb-connector-tone-0-soft-bg: rgba(79, 125, 243, 0.16);
+  --wb-connector-tone-0-soft-fg: #93c5fd;
+  --wb-connector-tone-1-color: #31a354;
+  --wb-connector-tone-1-soft-bg: rgba(49, 163, 84, 0.16);
+  --wb-connector-tone-1-soft-fg: #86efac;
+  --wb-connector-tone-2-color: #f3b434;
+  --wb-connector-tone-2-soft-bg: rgba(243, 180, 52, 0.16);
+  --wb-connector-tone-2-soft-fg: #fcd34d;
+  --wb-connector-tone-3-color: #e05243;
+  --wb-connector-tone-3-soft-bg: rgba(224, 82, 67, 0.16);
+  --wb-connector-tone-3-soft-fg: #fca5a5;
+  --wb-connector-tone-4-color: #7b61ff;
+  --wb-connector-tone-4-soft-bg: rgba(123, 97, 255, 0.16);
+  --wb-connector-tone-4-soft-fg: #c4b5fd;
+  --wb-connector-tone-5-color: #f97316;
+  --wb-connector-tone-5-soft-bg: rgba(249, 115, 22, 0.16);
+  --wb-connector-tone-5-soft-fg: #fdba74;
+  --wb-connector-tone-6-color: #64748b;
+  --wb-connector-tone-6-soft-bg: rgba(100, 116, 139, 0.16);
+  --wb-connector-tone-6-soft-fg: #cbd5e1;
+  --wb-connector-tone-7-color: #0ea5e9;
+  --wb-connector-tone-7-soft-bg: rgba(14, 165, 233, 0.16);
+  --wb-connector-tone-7-soft-fg: #7dd3fc;
+  --wb-connector-linear-color: #6366f1;
+  --wb-connector-figma-color: #f05a3a;
+}
+:where(html[data-ui="workbuddy"]) .workbuddy-collab .landing {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 56px 24px 40px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+:where(html[data-ui="workbuddy"]) .workbuddy-collab .landing-header {
+  width: 100%;
+  min-height: 160px;
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 482px);
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  flex-shrink: 0;
+  column-gap: 24px;
+  margin-bottom: 40px;
+}
+:where(html[data-ui="workbuddy"]) .workbuddy-collab .landing-main {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 0;
+}
+:where(html[data-ui="workbuddy"]) .workbuddy-collab .landing-header__content {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+:where(html[data-ui="workbuddy"]) .workbuddy-collab .landing-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+:where(html[data-ui="workbuddy"]) .workbuddy-collab .landing-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--wb-color-text-primary);
+  letter-spacing: -0.01em;
+  line-height: 32px;
+}
+:where(html[data-ui="workbuddy"]) .workbuddy-collab .landing-subtitle {
+  font-size: 14px;
+  color: var(--wb-color-text-tertiary);
+  font-weight: 400;
+  line-height: 20px;
+}
+:where(html[data-ui="workbuddy"]) .workbuddy-collab .landing-new-btn {
+  width: fit-content;
+  flex-shrink: 0;
+}
+:where(html[data-ui="workbuddy"]) .workbuddy-collab .landing-hero {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 482px;
+  height: 160px;
+  justify-self: end;
+  object-fit: contain;
+  object-position: right center;
+  border-radius: 0;
+  background: transparent;
+}
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .workbuddy-collab
+  .landing-hero,
+:where(html[data-ui="workbuddy"][data-theme="dark"])
+  .workbuddy-collab
+  .landing-hero,
+:where(html[data-ui="workbuddy"])
+  .vscode-high-contrast:not(.vscode-high-contrast-light)
+  .workbuddy-collab
+  .landing-hero {
+  filter: invert(1) grayscale(1) contrast(2.2) brightness(0.78);
+  mix-blend-mode: screen;
+  opacity: 0.88;
+}
+@media (max-width: 760px) {
+  :where(html[data-ui="workbuddy"]) .workbuddy-collab .landing-header {
+    grid-template-columns: 1fr;
+    row-gap: 24px;
+    align-items: start;
+  }
+  :where(html[data-ui="workbuddy"]) .workbuddy-collab .landing-header__content {
+    width: 100%;
+  }
+  :where(html[data-ui="workbuddy"]) .workbuddy-collab .landing-hero {
+    width: min(100%, 360px);
+    justify-self: center;
+    height: auto;
+    max-height: 140px;
+  }
+}
+:where(html[data-ui="workbuddy"]) .space-panel {
+  position: relative;
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wb-bg-app, transparent);
+}
+:where(html[data-ui="workbuddy"]) .space-panel-iframe {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  margin: 0;
+  background: transparent;
+}
+:where(html[data-ui="workbuddy"]) .space-panel-loading {
+  position: absolute;
+  inset: 0;
+  background: #f5f6f7;
+  pointer-events: none;
+  z-index: 1;
+}
+:where(html[data-ui="workbuddy"]) .space-panel-error {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(245, 246, 247, 0.92);
+  backdrop-filter: blur(2px);
+}
+:where(html[data-ui="workbuddy"]) .space-panel-error__card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  max-width: 320px;
+  padding: 20px 24px;
+  color: var(--wb-text-primary, #111827);
+  text-align: center;
+  background: var(--wb-bg-app, #fff);
+  border: 1px solid var(--wb-border-secondary, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+}
+:where(html[data-ui="workbuddy"]) .space-panel-error__title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+:where(html[data-ui="workbuddy"]) .space-panel-error__desc {
+  color: var(--wb-text-secondary, #6b7280);
+  font-size: 12px;
+  line-height: 1.5;
+}
+:where(html[data-ui="workbuddy"]) .space-panel--empty {
+  align-items: center;
+  justify-content: center;
+  color: var(--wb-text-secondary, #6b7280);
+  font-size: 13px;
+}
+@keyframes project-grid-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

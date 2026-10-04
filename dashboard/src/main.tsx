@@ -2,6 +2,7 @@
 // registered synchronously before Chrome fires the event (which can happen
 // before React mounts and useEffect runs).
 import "./pwa-prompt";
+import { WORKBUDDY_UI } from "./workbuddy/variant";
 
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
@@ -58,7 +59,13 @@ if (typeof window !== "undefined") {
   });
 }
 
-void initI18n()
+const displayStyles = WORKBUDDY_UI
+  ? import("./workbuddy/styles.css").then(
+      () => import("./workbuddy/round3.css"),
+    )
+  : Promise.resolve();
+
+void Promise.all([initI18n(), displayStyles])
   .then(() => {
     createRoot(document.getElementById("root")!).render(<App />);
     // Delay clearing the one-shot reload guard until after first paint / lazy

@@ -1,6 +1,6 @@
 // dashboard/src/pages/Agent/Skills/components/SkillHubDetailDrawer.tsx
 import type { ReactNode } from "react";
-import { Drawer, Button, Tag, Empty } from "antd";
+import { Button, Tag, Empty } from "antd";
 import {
   CircleCheck,
   Download,
@@ -10,6 +10,8 @@ import {
   Zap,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import BusinessDetailDialog from "../../../../components/BusinessDetailDialog";
+import { WORKBUDDY_UI } from "../../../../workbuddy/variant";
 
 export interface SkillHubSkill {
   slug: string;
@@ -127,7 +129,8 @@ export function SkillHubDetailDrawer({
     typeof skill.stars === "number";
 
   return (
-    <Drawer
+    <BusinessDetailDialog
+      kind="skill"
       placement="right"
       onClose={onClose}
       open={open}
@@ -138,7 +141,7 @@ export function SkillHubDetailDrawer({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 12,
+            gap: WORKBUDDY_UI ? 16 : 12,
             minWidth: 0,
           }}
         >
@@ -147,9 +150,9 @@ export function SkillHubDetailDrawer({
               src={skill.iconUrl}
               alt=""
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 9,
+                width: WORKBUDDY_UI ? 68 : 36,
+                height: WORKBUDDY_UI ? 68 : 36,
+                borderRadius: WORKBUDDY_UI ? "50%" : 9,
                 objectFit: "cover",
                 flexShrink: 0,
               }}
@@ -157,9 +160,9 @@ export function SkillHubDetailDrawer({
           ) : (
             <span
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 9,
+                width: WORKBUDDY_UI ? 68 : 36,
+                height: WORKBUDDY_UI ? 68 : 36,
+                borderRadius: WORKBUDDY_UI ? "50%" : 9,
                 flexShrink: 0,
                 display: "inline-flex",
                 alignItems: "center",
@@ -174,7 +177,7 @@ export function SkillHubDetailDrawer({
           )}
           <span
             style={{
-              fontSize: 16,
+              fontSize: WORKBUDDY_UI ? 20 : 16,
               fontWeight: 600,
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -304,6 +307,6 @@ export function SkillHubDetailDrawer({
           </div>
         </div>
       </div>
-    </Drawer>
+    </BusinessDetailDialog>
   );
 }

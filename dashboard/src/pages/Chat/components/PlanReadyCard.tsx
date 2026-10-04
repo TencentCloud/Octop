@@ -15,7 +15,10 @@ export default function PlanReadyCard({
 }: PlanReadyCardProps) {
   const { t } = useTranslation();
   return (
-    <div className={styles.card} data-testid="plan-ready-card">
+    <div
+      className={`${styles.card} wb-intervention wb-plan`}
+      data-testid="plan-ready-card"
+    >
       <div className={styles.titleRow}>
         <span className={styles.iconWrap}>
           <ListTodo size={16} />
@@ -28,10 +31,18 @@ export default function PlanReadyCard({
         {t("chat.conversationMode.planReadyBody", { path })}
       </p>
       <div className={styles.actions}>
-        <button type="button" className={styles.execute} onClick={onExecute}>
+        <button
+          type="button"
+          className={`${styles.execute} wb-intervention__primary`}
+          onClick={onExecute}
+        >
           {t("chat.conversationMode.execute")}
         </button>
-        <button type="button" className={styles.keep} onClick={onKeepEditing}>
+        <button
+          type="button"
+          className={`${styles.keep} wb-intervention__secondary`}
+          onClick={onKeepEditing}
+        >
           {t("chat.conversationMode.keepEditing")}
         </button>
       </div>

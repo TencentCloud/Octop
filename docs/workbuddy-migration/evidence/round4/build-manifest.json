@@ -1,0 +1,23 @@
+{
+  "default": "legacy",
+  "committed": false,
+  "published": false,
+  "artifacts": [
+    {
+      "variant": "workbuddy",
+      "archive": "/private/tmp/octop-round4-workbuddy-dashboard.tar.gz",
+      "bytes": 10694498,
+      "sha256": "40a56e97a7e269a2736dc9b581e5314fb3915cbc2b31c7fa329ead088dc65ae7",
+      "command": "VITE_UI_VARIANT=workbuddy make build-frontend",
+      "precacheKiB": 7430.53
+    },
+    {
+      "variant": "legacy",
+      "archive": "/private/tmp/octop-round4-legacy-dashboard.tar.gz",
+      "bytes": 10594498,
+      "sha256": "910e4ab064a4dcb6c011efca5758e2cd96739ff4e7ff863b7a86aa185b70b320",
+      "command": "VITE_UI_VARIANT=legacy make build-frontend",
+      "precacheKiB": 6750.11
+    }
+  ]
+}

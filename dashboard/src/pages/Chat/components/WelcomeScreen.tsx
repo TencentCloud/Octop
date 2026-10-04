@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
+import WorkBuddyWelcome from "../../../workbuddy/Welcome";
 import { useTranslation } from "react-i18next";
 import { useWelcomeQuickCardsLayout } from "../hooks/useWelcomeQuickCardsLayout";
 import WelcomeQuickCards, { WelcomeQuickCardProbe } from "./WelcomeQuickCards";
@@ -65,6 +67,17 @@ export default function WelcomeScreen({
   };
 
   const showMascot = !hideMascot && !autoHideMascot;
+
+  if (WORKBUDDY_UI)
+    return (
+      <WorkBuddyWelcome
+        onPromptClick={onPromptClick}
+        agentName={agentName}
+        welcomeSuffix={welcomeSuffix}
+        quickCards={quickCards}
+        isTeam={isTeam}
+      />
+    );
 
   return (
     <div className={styles.welcome} ref={welcomeRef}>

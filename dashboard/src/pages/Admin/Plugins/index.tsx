@@ -7,6 +7,8 @@ import PageShell from "../../../layouts/PageShell";
 import TabLabel from "../../../components/TabLabel";
 import { InstalledPluginsPanel } from "./InstalledPluginsPanel";
 import { PluginMarketPanel } from "./PluginMarketPanel";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
+import MarketTabs from "../../../workbuddy/MarketTabs";
 
 type TabKey = "installed" | "market";
 
@@ -43,24 +45,43 @@ export default function AdminPluginsPage() {
       title={t("pageShell.adminPlugins.title")}
       subtitle={t("pageShell.adminPlugins.subtitle")}
     >
-      <Tabs
-        activeKey={activeTab}
-        onChange={selectTab}
-        items={[
-          {
-            key: "installed",
-            label: (
-              <TabLabel icon={Puzzle}>{t("plugins.tabInstalled")}</TabLabel>
-            ),
-            children: <InstalledPluginsPanel />,
-          },
-          {
-            key: "market",
-            label: <TabLabel icon={Store}>{t("plugins.tabMarket")}</TabLabel>,
-            children: <PluginMarketPanel />,
-          },
-        ]}
-      />
+      {WORKBUDDY_UI ? (
+        <MarketTabs
+          activeKey={activeTab}
+          onChange={selectTab}
+          items={[
+            {
+              key: "installed",
+              label: t("plugins.tabInstalled"),
+              children: <InstalledPluginsPanel />,
+            },
+            {
+              key: "market",
+              label: t("plugins.tabMarket"),
+              children: <PluginMarketPanel />,
+            },
+          ]}
+        />
+      ) : (
+        <Tabs
+          activeKey={activeTab}
+          onChange={selectTab}
+          items={[
+            {
+              key: "installed",
+              label: (
+                <TabLabel icon={Puzzle}>{t("plugins.tabInstalled")}</TabLabel>
+              ),
+              children: <InstalledPluginsPanel />,
+            },
+            {
+              key: "market",
+              label: <TabLabel icon={Store}>{t("plugins.tabMarket")}</TabLabel>,
+              children: <PluginMarketPanel />,
+            },
+          ]}
+        />
+      )}
     </PageShell.FillTabs>
   );
 }

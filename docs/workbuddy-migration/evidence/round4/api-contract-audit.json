@@ -1,0 +1,312 @@
+{
+  "baseline": "709f998",
+  "modules": [
+    {
+      "module": "acp.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "c38477828724335266fa73bf4b67278589cd6521bd7cf7d5dc2e747c94d98c17"
+    },
+    {
+      "module": "agent.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "5c845e7a16fb42cf242a6f316a63b30dbaa805e835e4621d592c01af24f2aa4b"
+    },
+    {
+      "module": "agentChat.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "024b968bc169acbc1838d48c6e015497aa4d8d05578ee322f1f16f8dc5cbdb7f"
+    },
+    {
+      "module": "agentTools.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "56a45f204031a315cf619a03d67082bfa9f3900a04efe6af4912a29caf31064f"
+    },
+    {
+      "module": "auth.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "dc5ecf820c0c9966e7f83fe84c9a05d003c082d6445c5f8e5feeb2618f27e6f5"
+    },
+    {
+      "module": "backup.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "0d474405eda9b87f10b8ef380e5cb06760868ad58979ca27717861ac3cb41cad"
+    },
+    {
+      "module": "bridge.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "6be075a44c6f06c248a3b20aff08a218a6f6afbfb125d9caccd68fa17353459d"
+    },
+    {
+      "module": "browser.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "5376ac9514cba2a2e8b75862719083d71961e96bdb0a1661db4644c696a15d95"
+    },
+    {
+      "module": "channel.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "d07eec0b4893283080839a382f2894a9d69b1742830a5b918ac93d757c706239"
+    },
+    {
+      "module": "connectors.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "8278c5dc986c82fab191cea3852ff32b7e6d8d1975c8ca572bacce7092114010"
+    },
+    {
+      "module": "cronjob.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "79c3e1014790fbe0594221c653c581ef0a20083a9b1d28faaf730d06f34df325"
+    },
+    {
+      "module": "desktop.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "8ec445ce21d958552c8d15977fa1ce7ec7501ca74637a01a0bd0dbecf2e65fa6"
+    },
+    {
+      "module": "embedding.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "6bc933b5c9affd0e14308e708b1ab8326e51a6e969fb434fcfb48f1d89bb1356"
+    },
+    {
+      "module": "env.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "c58f57e5993855639cbcbae5ba98eda92ef5e6c35bac472d95c7867505168405"
+    },
+    {
+      "module": "expertMarket.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "6b0dd84bee0e29471cd24f2fa25adcd93a9ec9f10dceb653248578fc00fa7003"
+    },
+    {
+      "module": "i18n.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "0e2a908ac835cce4622b5101cbf479c3badb0ba127b262550c23ea5c569d8e31"
+    },
+    {
+      "module": "invites.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "a795012b4e56018c8964b88f6c816dea029d4ee590a6cbb2f9c53f5427481963"
+    },
+    {
+      "module": "knowledgeBases.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "f796f5b2b6e08d11e17a0560e95fd296ff415df1c3ca740468b115effac2fb42"
+    },
+    {
+      "module": "mbti.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "59beb712250dd6025fa5607d6a97d5c57a20e76497b4ff738bb572c54a7b59a6"
+    },
+    {
+      "module": "mediaGeneration.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "49ae211f55d7caff998bfda78a2aa4429ef5b36b75383d812b5befdee3e871de"
+    },
+    {
+      "module": "memoryDashboard.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "c3daa14cab7e0046eb516562a2108a1122b23c14c9ca6dc33ab58436d19a8ff9"
+    },
+    {
+      "module": "memoryPortable.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "3af79d353f1c98e1c7cbbda13dc4f51d78f0d3c2b1d3e0204ebb645e6bcb4c2a"
+    },
+    {
+      "module": "mobile.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "d6aedb224c19fe792573d4bc2d39ebfbcf9d0f32c1b99180354b80ddac6bc4bb"
+    },
+    {
+      "module": "observability.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "6c06f7116c0532a27379efa3e58656259652c2f1a28e6976ecace26cabe1b65e"
+    },
+    {
+      "module": "octopAgents.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "56870a8157123d14c3725ee9c5e8b9a5f5fd06ae7e81b5dbad38293320ffe13f"
+    },
+    {
+      "module": "octopThreads.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "f385ef16e78126242f78e3dc8e79f0c7f32766f820e0abfe7ca5e6fe05739b79"
+    },
+    {
+      "module": "ollamaModel.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "70632557053be34267247ba1e753fb3d314b8a787ac32d49e8fe6477b8524873"
+    },
+    {
+      "module": "onnxDownloadWatcher.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "038b8ac15bd69a134525b94a9cf092d4b317bf380678ff9dce6595c6dbdf1593"
+    },
+    {
+      "module": "onnxModel.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "58c868f940eefae5bd23c3ea6d41747270fd166d3b305be5d061a801424fb1b0"
+    },
+    {
+      "module": "plugins.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "fc781c2201c5368ef591b198361ed55e254fcc8e90232006082476c887e6d7c8"
+    },
+    {
+      "module": "preferences.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "e029bb74b62659a6a2f6710bf4a0d436ac1b25d985e88209f6190225ee5aec47"
+    },
+    {
+      "module": "provider.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "83e010b5ce94648eb5f17ec33ff8de0fe25e2a5ecbe97091f6904676ba9adf20"
+    },
+    {
+      "module": "publishedExperts.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "bf3ce9f8050b79e5bc3d22560487325e4b4e2b17919aa59b27061cc57e9d6643"
+    },
+    {
+      "module": "root.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "4a2f9912f0fc56d661c3818c087fea12ab0ea9e1ed4c3e2adc60500381960d69"
+    },
+    {
+      "module": "security.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "d6bea48b10ff4a300a174ab4f0b7321824bfd08c21f5cee0ecacf9a51192f61a"
+    },
+    {
+      "module": "settings.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "ff49d2ba452355e0318753ed32ec388ac7c24407aba1dc43b15d0a71657eebce"
+    },
+    {
+      "module": "skillPackages.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "d928c20586832c7429a7bc2623eb1bc960cbcf9333816549b31ea5b08c719da6"
+    },
+    {
+      "module": "slash.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "3f4a6724bd1aad176ca7d286466f77e9c3f5def51230e97db55aa681c6bf4325"
+    },
+    {
+      "module": "sso.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "d15dba54e986372b6e9f2bc763df105eeb01c05d34993521b7121e2807e7b096"
+    },
+    {
+      "module": "subagents.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "35ea1eacf0f8b069d84d8af9c300221604ce55c738eece46413a3396ff19c70f"
+    },
+    {
+      "module": "teams.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "9e75bfad1ab4777693a5f37f2ce69105b1c92adb2d27b661141f479ad8d78bc3"
+    },
+    {
+      "module": "terminalAi.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "2ed652fa9a9a19afdc2eda2f9d21b3c53ec44d1ba96d33b7f409eded1797516d"
+    },
+    {
+      "module": "tls.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "f980b5a9bf6edaca2723c07b2aa30fb09dc7c2b6e1869b86c0b8635ad1831323"
+    },
+    {
+      "module": "trajectory.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "b2f8173eead627f94d39d6647cf8288ee9774d4ae8d962b18770220c69f0fa17"
+    },
+    {
+      "module": "update.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "351d6fd4fce846f7d4fc442beeaf07c45b3a6bd311274212a6d04d65758e6f14"
+    },
+    {
+      "module": "upload.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "10f306cc57a30e5a430a6deb71d375f7f827fdb3e210bb5ea2de3d85b00779c1"
+    },
+    {
+      "module": "userRoles.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "1e21675255bf928ead20704942e57e3b9af4fd75c028257fa8ca9f98ed7c7ac3"
+    },
+    {
+      "module": "voice.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "f13d0d6328302a3eb862bf8a38d8ec18944bdec92f248f44ec44b8d08e5e0ddd"
+    },
+    {
+      "module": "workspace.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "1d410389b6d269423daf8ea6bb11acad3aed58d1f43d0b9babcd5fc0eca5cee8"
+    },
+    {
+      "module": "wsChat.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "17debd4db7f2c8fc4fe9b74d6957a8c7509ed331ebc5f5d05dd1fa1f4deb185c"
+    },
+    {
+      "module": "wsNotifications.ts",
+      "baselineExists": true,
+      "unchanged": true,
+      "sha256": "adc57cb9ae857b4c97ee8f800ba619461be67d54693c807c2d74471da45d015a"
+    }
+  ],
+  "allUnchanged": true
+}

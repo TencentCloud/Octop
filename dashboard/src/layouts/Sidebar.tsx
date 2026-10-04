@@ -1,3 +1,5 @@
+import { WORKBUDDY_UI } from "../workbuddy/variant";
+import WorkBuddySidebar from "../workbuddy/Sidebar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -147,7 +149,7 @@ function NavItemButton({
 
   return (
     <div
-      className={styles.navItemRow}
+      className={`${styles.navItemRow} wb-nav-item`}
       style={{
         background: active ? "var(--fn-sidebar-item-active-bg)" : "transparent",
       }}
@@ -166,6 +168,7 @@ function NavItemButton({
       <button
         type="button"
         className={styles.navItemMain}
+        aria-current={active ? "page" : undefined}
         onClick={() => onNavigate(item.path)}
         style={{
           color: active
@@ -376,7 +379,7 @@ function NavList({
   );
 }
 
-export default function Sidebar({
+function LegacySidebar({
   selectedKey,
   collapsed,
   onToggle,
@@ -669,7 +672,7 @@ export default function Sidebar({
     </div>
   );
 
-  const navScrollBody = isMinimal ? minimalNavBody : classicNavBody;
+  const navScrollBody = <>{isMinimal ? minimalNavBody : classicNavBody}</>;
 
   // Mobile: fixed overlay drawer
   if (isMobile) {
@@ -785,7 +788,7 @@ export default function Sidebar({
       }}
     >
       <div
-        className={`${styles.sidebarBrand} ${DESKTOP_DRAG_REGION_CLASS}`}
+        className={`${styles.sidebarBrand} ${DESKTOP_DRAG_REGION_CLASS} wb-sidebar-brand`}
         style={{
           display: "flex",
           alignItems: "center",
@@ -815,5 +818,13 @@ export default function Sidebar({
       {userFooter}
       {customizer}
     </div>
+  );
+}
+
+export default function Sidebar(props: SidebarProps) {
+  return WORKBUDDY_UI ? (
+    <WorkBuddySidebar {...props} />
+  ) : (
+    <LegacySidebar {...props} />
   );
 }

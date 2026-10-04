@@ -442,6 +442,18 @@ export function normalizeChannelFieldValue(
   fieldName: string,
   value: unknown,
 ): unknown {
+  if (fieldName === "port") {
+    const port = Number(value);
+    if (
+      (typeof value !== "number" && typeof value !== "string") ||
+      !Number.isInteger(port) ||
+      port < 1 ||
+      port > 65535
+    ) {
+      throw new Error("Invalid network port");
+    }
+    return port;
+  }
   if (fieldName === "allowed_channel_ids" || fieldName === "allowed_user_ids") {
     const entries = Array.isArray(value)
       ? value

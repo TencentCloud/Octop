@@ -975,6 +975,7 @@ export default function ChatInputActionsRow({
           <Tooltip title={t("chatWelcome.newChat")} mouseEnterDelay={0.4}>
             <button
               className={styles.newChatBtn}
+              aria-label={t("chatWelcome.newChat")}
               onClick={onNewChat}
               type="button"
             >
@@ -986,6 +987,7 @@ export default function ChatInputActionsRow({
             <Tooltip title={t("chatWelcome.newChat")} mouseEnterDelay={0.4}>
               <button
                 className={styles.newChatBtn}
+                aria-label={t("chatWelcome.newChat")}
                 onClick={onNewChat}
                 type="button"
               >
@@ -995,6 +997,7 @@ export default function ChatInputActionsRow({
             <Tooltip title={t("chat.polish.tooltip")} mouseEnterDelay={0.4}>
               <button
                 className={styles.secondaryBtn}
+                aria-label={t("chat.polish.tooltip")}
                 onClick={onPolish}
                 type="button"
                 disabled={
@@ -1032,6 +1035,13 @@ export default function ChatInputActionsRow({
             type="button"
             disabled={disabled || isStreaming || transcribing || !_sttAvailable}
             onClick={onToggleVoice}
+            aria-label={t(
+              recording
+                ? "voice.stopRecording"
+                : transcribing
+                ? "voice.transcribing"
+                : "voice.startRecording",
+            )}
           >
             <Mic size={16} />
           </button>
@@ -1051,6 +1061,11 @@ export default function ChatInputActionsRow({
               }`}
               type="button"
               disabled={disabled || browserReplayBusy}
+              aria-label={t(
+                browserRecording
+                  ? "browser.recordReplay.stop"
+                  : "browser.recordReplay.start",
+              )}
               onClick={
                 browserRecording
                   ? onStopBrowserRecording
@@ -1089,6 +1104,7 @@ export default function ChatInputActionsRow({
                 !browserLastRecordingId
               }
               onClick={onReplayBrowserRecording}
+              aria-label={t("browser.recordReplay.replay")}
             >
               {browserReplayBusy ? (
                 <Loader2 size={16} className={styles.spinIcon} />
@@ -1102,7 +1118,7 @@ export default function ChatInputActionsRow({
           canSend ? (
             <Tooltip title={t("chat.queue.action")} mouseEnterDelay={0.4}>
               <button
-                className={styles.sendBtn}
+                className={`${styles.sendBtn} wb-composer__send`}
                 onClick={onSubmit}
                 title={t("chat.queue.action")}
                 type="button"
@@ -1124,7 +1140,7 @@ export default function ChatInputActionsRow({
               mouseEnterDelay={0.4}
             >
               <button
-                className={`${styles.sendBtn} ${styles.cancelBtn}`}
+                className={`${styles.sendBtn} ${styles.cancelBtn} wb-composer__cancel`}
                 onClick={onCancel}
                 title={
                   isTeam
@@ -1143,10 +1159,11 @@ export default function ChatInputActionsRow({
           )
         ) : (
           <button
-            className={styles.sendBtn}
+            className={`${styles.sendBtn} wb-composer__send`}
             onClick={onSubmit}
             disabled={!canSend}
             title={t("chat.send", "Send")}
+            aria-label={t("chat.send", "Send")}
             type="button"
           >
             <Send size={18} />

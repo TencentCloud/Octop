@@ -10,6 +10,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
+// The production translator is stable. A new mock function on every render
+// retriggers the catalogue effect and leaves the empty-catalogue case loading.
+vi.mock("react-i18next", () => {
+  const t = (
+    key: string,
+    fallback?: string | (Record<string, unknown> & { defaultValue?: string }),
+    values?: Record<string, unknown>,
+  ) => {
+    const options = typeof fallback === "object" ? fallback : values;
+    const template =
+      typeof fallback === "string" ? fallback : fallback?.defaultValue ?? key;
+    return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+      options && name in options ? String(options[name]) : match,
+    );
+  };
+  return { useTranslation: () => ({ t, i18n: { language: "zh" } }) };
+});
+
 vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn() }));
 
 vi.mock("../../../../context/AgentContext", () => ({

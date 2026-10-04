@@ -130,18 +130,24 @@ export function DefaultToolRenderer({
         : null,
     [toolData.arguments, toolName, toolData.output],
   );
-  const statusLabel = completed
-    ? t("common.done", "Done")
-    : running
-    ? t("common.running", "Running")
-    : t("common.pending", "Pending");
+  const statusLabel =
+    status === "error"
+      ? t("toolFeedback.failed")
+      : completed
+      ? t("common.done", "Done")
+      : running
+      ? t("common.running", "Running")
+      : t("common.pending", "Pending");
   const ToolIcon = builtinToolIcon(toolName);
 
   return (
-    <div className={styles.inlineToolBlock}>
+    <div
+      className={`${styles.inlineToolBlock} wb-tool-process`}
+      data-status={status}
+    >
       <button
         type="button"
-        className={`${styles.inlineToolSummary}${
+        className={`${styles.inlineToolSummary} wb-tool-process__header${
           running ? ` ${styles.inlineToolSummaryRunning}` : ""
         }`}
         onClick={() => setExpanded((v) => !v)}

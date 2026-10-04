@@ -10,7 +10,6 @@ import {
   Button,
   Checkbox,
   Collapse,
-  Drawer,
   Empty,
   Input,
   Modal,
@@ -50,6 +49,9 @@ import { PluginIconView } from "./PluginIconView";
 import { PluginGroupTag } from "./PluginGroupTag";
 import { PluginCardMeta } from "./PluginCardMeta";
 import { notifyPluginsChanged, PLUGINS_CHANGED_EVENT } from "./pluginsEvents";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
+import { InstalledPluginTile } from "./WorkBuddyPluginCards";
+import PluginDetails from "../../../workbuddy/PluginDetails";
 
 const { Text, Paragraph } = Typography;
 
@@ -307,7 +309,11 @@ export function InstalledPluginsPanel() {
   ];
 
   return (
-    <div className={styles.panel}>
+    <div
+      className={`${styles.panel} ${
+        WORKBUDDY_UI ? "wb-plugin-management" : ""
+      }`}
+    >
       <Collapse
         className={styles.guide}
         items={[
@@ -432,9 +438,22 @@ export function InstalledPluginsPanel() {
             }
           />
         ) : (
-          <div className={styles.cardGrid}>
+          <div className={WORKBUDDY_UI ? "sm-grid" : styles.cardGrid}>
             {plugins.map((row) => {
               const enabled = row.enabled !== false;
+              if (WORKBUDDY_UI)
+                return (
+                  <InstalledPluginTile
+                    key={row.id}
+                    plugin={row}
+                    toggling={togglingId === row.id}
+                    onOpen={() => setDetail(row)}
+                    onToggle={(checked) =>
+                      void handleToggleEnabled(row, checked)
+                    }
+                    onUninstall={() => void handleUninstall(row.id)}
+                  />
+                );
               return (
                 <article
                   key={row.id}
@@ -541,13 +560,17 @@ export function InstalledPluginsPanel() {
         />
       )}
 
-      <Drawer
+      <PluginDetails
         title={
           detail ? (
             <div className={styles.drawerTitleBar}>
               <PluginIconView icon={detail.icon} size={32} />
               <div className={styles.drawerTitleMeta}>
-                <div className={styles.drawerTitleText}>
+                <div
+                  className={`${styles.drawerTitleText} ${
+                    WORKBUDDY_UI ? "cb-plugin-detail-title" : ""
+                  }`}
+                >
                   {detail.name || detail.id}
                 </div>
                 <div className={styles.drawerTitleId}>{detail.id}</div>
@@ -658,7 +681,7 @@ export function InstalledPluginsPanel() {
             </section>
           </div>
         ) : null}
-      </Drawer>
+      </PluginDetails>
 
       <Modal
         title={t("plugins.installTitle")}

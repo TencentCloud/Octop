@@ -79,6 +79,9 @@ describe("<SsoPanel />", () => {
     render(<SsoPanel />);
 
     await waitFor(() => expect(getOidcConfig).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(document.querySelector('[class*="spin-blur"]')).toBeNull(),
+    );
     await user.click(
       screen.getByRole("button", { name: "adminSso.presetGoogle" }),
     );

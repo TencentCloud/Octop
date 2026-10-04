@@ -17,6 +17,8 @@ import { PluginIconView } from "./PluginIconView";
 import { PluginCardMeta } from "./PluginCardMeta";
 import { PLUGIN_GROUP_ORDER, isKnownPluginGroup } from "./pluginGroups";
 import { notifyPluginsChanged } from "./pluginsEvents";
+import { WORKBUDDY_UI } from "../../../workbuddy/variant";
+import { MarketPluginTile } from "./WorkBuddyPluginCards";
 
 const GROUP_ALL = "all";
 
@@ -181,10 +183,19 @@ export function PluginMarketPanel() {
           }
         />
       ) : (
-        <div className={styles.cardGrid}>
+        <div className={WORKBUDDY_UI ? "sm-grid" : styles.cardGrid}>
           {filtered.map((row) => {
             const installed = !!row.installed;
             const canUpdate = !!row.update_available;
+            if (WORKBUDDY_UI)
+              return (
+                <MarketPluginTile
+                  key={row.id}
+                  plugin={row}
+                  installing={installingId === row.id}
+                  onInstall={(force) => void handleInstall(row, force)}
+                />
+              );
             return (
               <article
                 key={row.id}

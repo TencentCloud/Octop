@@ -1,3 +1,10 @@
+import {
+  workBuddyBrandTokens,
+  workBuddySurfaceTokens,
+  workBuddyDarkComponents,
+} from "./workbuddy/theme";
+import { useWorkBuddyAppearance } from "./workbuddy/preferences";
+import { WORKBUDDY_UI } from "./workbuddy/variant";
 import { createGlobalStyle } from "antd-style";
 import { ConfigProvider, theme as antdTheme } from "antd";
 import zhCN from "antd/locale/zh_CN";
@@ -46,7 +53,17 @@ function ThemedApp() {
   const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const desktopChrome = useDesktopChrome();
-  const brandTokens = brandTokensFor(palette, isDark, customColor);
+  const [customAppearance] = useWorkBuddyAppearance();
+  const brandTokens =
+    WORKBUDDY_UI && !customAppearance
+      ? workBuddyBrandTokens(isDark)
+      : brandTokensFor(palette, isDark, customColor);
+  useEffect(() => {
+    if (WORKBUDDY_UI)
+      document.documentElement.dataset.wbAppearance = customAppearance
+        ? "custom"
+        : "standard";
+  }, [customAppearance]);
   // Make antd built-ins (Popconfirm OK/Cancel, Modal default footer, Empty,
   // Pagination, DatePicker, Table… ) follow the current UI language.
   // DatePicker month/weekday labels come from dayjs — keep it in sync too.
@@ -118,6 +135,16 @@ function ThemedApp() {
         }
       : {},
   };
+
+  if (WORKBUDDY_UI) {
+    Object.assign(
+      themeConfig.token,
+      workBuddySurfaceTokens(isDark, isMobile, customAppearance),
+    );
+    if (isDark) {
+      Object.assign(themeConfig.components, workBuddyDarkComponents());
+    }
+  }
 
   return (
     <ConfigProvider

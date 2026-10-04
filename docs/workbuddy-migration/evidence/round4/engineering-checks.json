@@ -1,0 +1,57 @@
+{
+  "makeAll": {
+    "command": "UV_NO_SYNC=1 make all",
+    "passed": 4166,
+    "skipped": 17,
+    "warnings": 68,
+    "format": true,
+    "ruff": true,
+    "mypy": true
+  },
+  "frontend": {
+    "workbuddy": {
+      "files": 236,
+      "tests": 1209,
+      "passed": true
+    },
+    "legacy": {
+      "files": 236,
+      "tests": 1209,
+      "passed": true
+    }
+  },
+  "tsc": true,
+  "lint": {
+    "errors": 0,
+    "warnings": 67
+  },
+  "visualFixtures": {
+    "cases": 80,
+    "originalPixelComparison": false
+  },
+  "settings": {
+    "categories": 27,
+    "viewports": [
+      [
+        1440,
+        900
+      ],
+      [
+        390,
+        844
+      ]
+    ],
+    "unhandledHorizontalOverflow": 0
+  },
+  "allComponentStatesVerified": false,
+  "allBusinessOperationsVerified": false,
+  "i18n": {
+    "tests": 75,
+    "passed": true
+  },
+  "formatCheck": true,
+  "migrationScriptTests": {
+    "tests": 6,
+    "passed": true
+  }
+}

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { Drawer, Form, Input, Button, Segmented, Tooltip } from "antd";
+import { Form, Input, Button, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { MinusCircle, PanelLeftOpen, Plus, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import EmojiPicker from "../../../../components/EmojiPicker";
+import BusinessDetailDialog from "../../../../components/BusinessDetailDialog";
+import { WORKBUDDY_UI } from "../../../../workbuddy/variant";
 import Markdown from "../../../../components/Markdown/LazyMarkdown";
 import { request } from "../../../../api/request";
 import { splitMarkdownFrontmatter } from "../../../../utils/markdown";
@@ -776,6 +778,9 @@ export function SkillDrawer({
     </div>
   );
 
+  const displayValues = editingSkill
+    ? parseSkillFormFromDetail(editingSkill)
+    : null;
   const mainPanel = (
     <Form
       form={form}
@@ -802,6 +807,47 @@ export function SkillDrawer({
               sourceEditBlock
             )}
           </div>
+        ) : WORKBUDDY_UI && editingSkill ? (
+          <div className={`${styles.viewScroll} ${styles.workBuddyView}`}>
+            <header className={styles.skillHeader}>
+              <div className={styles.skillIcon} aria-hidden>
+                {editingSkill.iconUrl ? (
+                  <img src={editingSkill.iconUrl} alt="" />
+                ) : (
+                  editingSkill.emoji || DEFAULT_SKILL_EMOJI
+                )}
+              </div>
+              <div className={styles.skillHeaderBody}>
+                <h2>{editingSkill.displayName || editingSkill.name}</h2>
+                <p>{editingSkill.description}</p>
+              </div>
+            </header>
+            <dl className={styles.skillInfo}>
+              {(
+                [
+                  [
+                    t("skills.sourceLabel"),
+                    editingSkill.kind === "builtin"
+                      ? t("skills.kindBuiltin")
+                      : t("skills.kindWorkspace"),
+                  ],
+                  [t("skills.pathLabel"), skillManifestPath(editingSkill)],
+                  [t("skills.displayNameZh"), displayValues?.labelZh],
+                  [t("skills.displayNameEn"), displayValues?.labelEn],
+                  [t("skills.displaySummaryZh"), displayValues?.summaryZh],
+                  [t("skills.displaySummaryEn"), displayValues?.summaryEn],
+                ] as const
+              ).map(([label, value]) =>
+                value ? (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ) : null,
+              )}
+            </dl>
+            {viewContentBlock}
+          </div>
         ) : (
           <div className={styles.viewScroll}>
             {nameField}
@@ -824,7 +870,8 @@ export function SkillDrawer({
   );
 
   return (
-    <Drawer
+    <BusinessDetailDialog
+      kind="skill"
       width={
         showFileTree && !fileTreeCollapsed
           ? "min(1060px, 95vw)"
@@ -842,22 +889,30 @@ export function SkillDrawer({
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          height: "calc(100vh - 55px)",
+          height: WORKBUDDY_UI
+            ? "min(620px, calc(100dvh - 200px))"
+            : "calc(100vh - 55px)",
         },
       }}
     >
-      <div className={styles.shell}>
+      <div
+        className={`${styles.shell} ${
+          WORKBUDDY_UI ? styles.workBuddyShell : ""
+        }`}
+      >
         <div className={showFileTree ? styles.splitBody : styles.singleBody}>
           {showFileTree && skillRoot && agentId && !fileTreeCollapsed ? (
-            <SkillFileTree
-              agentId={agentId}
-              skillRoot={skillRoot}
-              selectedPath={selectedFilePath}
-              onSelectPath={handleSelectFilePath}
-              onCollapse={toggleFileTreeCollapsed}
-              workspaceReady={workspaceReady}
-              selectionDisabled={isEdit}
-            />
+            <div className={styles.fileTree}>
+              <SkillFileTree
+                agentId={agentId}
+                skillRoot={skillRoot}
+                selectedPath={selectedFilePath}
+                onSelectPath={handleSelectFilePath}
+                onCollapse={toggleFileTreeCollapsed}
+                workspaceReady={workspaceReady}
+                selectionDisabled={isEdit}
+              />
+            </div>
           ) : null}
           <div
             className={`${styles.mainPane} ${
@@ -930,6 +985,6 @@ export function SkillDrawer({
           )}
         </div>
       </div>
-    </Drawer>
+    </BusinessDetailDialog>
   );
 }

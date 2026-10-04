@@ -1,6 +1,7 @@
+import BusinessDetailDialog from "../../../components/BusinessDetailDialog";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Collapse, Drawer, Form, Input, Select, Spin } from "antd";
+import { Alert, Collapse, Form, Input, Select, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -176,7 +177,8 @@ export default function TeamDrawer({
   };
 
   return (
-    <Drawer
+    <BusinessDetailDialog
+      rootClassName="wb-business-detail"
       title={
         mode === "edit"
           ? t("experts.teams.editTitle")
@@ -341,6 +343,6 @@ export default function TeamDrawer({
           />
         )}
       </div>
-    </Drawer>
+    </BusinessDetailDialog>
   );
 }

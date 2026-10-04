@@ -1,5 +1,22 @@
+import UnifiedMarketPage from "../../workbuddy/UnifiedMarketPage";
+import { marketTabForPath } from "../../workbuddy/marketModel";
+import { legacySettingsPath } from "../../workbuddy/settingsRegistry";
+import { SettingsBackgroundContext } from "../../workbuddy/SettingsBackground";
+import { WORKBUDDY_UI } from "../../workbuddy/variant";
+import { WorkBuddyNavigationProvider } from "../../workbuddy/navigationModel";
+import { ChatMessageQueueProvider } from "../../pages/Chat/hooks/ChatMessageQueueContext";
+import ShellFrame from "../../workbuddy/ShellFrame";
+import SecondaryNavigation from "../../workbuddy/SecondaryNavigation";
+import { WORKBUDDY_NAV_COLLAPSED_KEY } from "../../workbuddy/preferences";
 import { Layout } from "antd";
-import { lazy, Suspense, useEffect, useState, useCallback } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import Sidebar from "../Sidebar";
 import Header from "../Header";
@@ -32,11 +49,15 @@ const WorkbenchPage = lazy(() => import("../../pages/Control/Workbench"));
 
 const { Content } = Layout;
 
-const SIDEBAR_COLLAPSED_KEY = "octop:sidebar:collapsed";
+const SIDEBAR_COLLAPSED_KEY = WORKBUDDY_UI
+  ? WORKBUDDY_NAV_COLLAPSED_KEY
+  : "octop:sidebar:collapsed";
 
 function getSavedCollapsed(): boolean {
   try {
-    const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+    const saved =
+      localStorage.getItem(SIDEBAR_COLLAPSED_KEY) ??
+      (WORKBUDDY_UI ? localStorage.getItem("octop:sidebar:collapsed") : null);
     if (saved !== null) return saved === "true";
   } catch {
     // localStorage may be unavailable (e.g. private browsing restrictions)
@@ -55,13 +76,31 @@ function ChatWithKey() {
 
 export default function MainLayout() {
   const location = useLocation();
-  const currentPath = location.pathname;
+  const settingsVisible =
+    WORKBUDDY_UI &&
+    (location.pathname === "/settings" ||
+      location.pathname.startsWith("/settings/"));
+  const background = useRef({
+    ...location,
+    pathname: "/home",
+    search: "",
+    hash: "",
+    state: null,
+  });
+  if (
+    !settingsVisible &&
+    !(WORKBUDDY_UI && legacySettingsPath(location.pathname, location.search))
+  )
+    background.current = location;
+  const workspaceLocation = settingsVisible ? background.current : location;
+  const currentPath = workspaceLocation.pathname;
+  const marketVisible = WORKBUDDY_UI && Boolean(marketTabForPath(currentPath));
   const selectedKey = resolveSelectedKey(currentPath);
   const isMobile = useIsMobile();
   const { layoutMode } = useLayoutMode();
   useDashboardPushToast();
   useKeyboardOffset();
-  const isMinimalLayout = layoutMode === "minimal";
+  const isMinimalLayout = WORKBUDDY_UI || layoutMode === "minimal";
   const isFullscreen =
     FULLSCREEN_PATHS.has(currentPath) ||
     [...FULLSCREEN_PATHS].some((p) => currentPath.startsWith(p + "/")) ||
@@ -155,7 +194,7 @@ export default function MainLayout() {
 
   const routes = (
     <Suspense fallback={<PageLoading />}>
-      <Routes>
+      <Routes location={workspaceLocation}>
         {routeConfigs.map((rc) => {
           let el = rc.useWrapper ? <ChatWithKey /> : rc.element;
           if (!rc.useWrapper && routeNeedsPermission(rc.path)) {
@@ -176,10 +215,11 @@ export default function MainLayout() {
     };
   }, [isChatRoute]);
 
-  return (
+  const Root = WORKBUDDY_UI ? ShellFrame : "div";
+  const layout = (
     <ServiceRestartProvider>
       <BackupOperationProvider>
-        <div
+        <Root
           style={{
             height: "100%",
             boxSizing: "border-box",
@@ -188,7 +228,7 @@ export default function MainLayout() {
             paddingLeft: "env(safe-area-inset-left, 0px)",
             paddingRight: "env(safe-area-inset-right, 0px)",
             display: "flex",
-            flexDirection: "row",
+            flexDirection: WORKBUDDY_UI && isMobile ? "column" : "row",
             background: isChatRoute
               ? "var(--fn-bg-elevated, #fff)"
               : "var(--fn-bg-primary)",
@@ -224,7 +264,7 @@ export default function MainLayout() {
               onToggle={toggleCollapsed}
               isMobile={isMobile}
             />
-            {!isMobile && (
+            {!WORKBUDDY_UI && !isMobile && (
               <RailEdgeControl
                 expanded={!collapsed}
                 onToggle={handleNavRailToggle}
@@ -247,6 +287,8 @@ export default function MainLayout() {
             />
           )}
 
+          {WORKBUDDY_UI && <SecondaryNavigation />}
+
           {/* Right column: mobile header (if any) + page content */}
           <div
             style={{
@@ -258,7 +300,8 @@ export default function MainLayout() {
               overflow: "hidden",
             }}
           >
-            {isMobile &&
+            {!WORKBUDDY_UI &&
+              isMobile &&
               !(
                 SELF_HEADER_PATHS.has(currentPath) ||
                 [...SELF_HEADER_PATHS].some((p) =>
@@ -285,7 +328,7 @@ export default function MainLayout() {
               }}
             >
               <Content
-                className="page-container"
+                className="page-container wb-production-content"
                 style={{
                   background: isChatRoute
                     ? "var(--fn-bg-elevated, #fff)"
@@ -300,6 +343,10 @@ export default function MainLayout() {
               >
                 <PwaUpdatePrompt />
                 <PwaAutoPrompt />
+
+                {WORKBUDDY_UI && (
+                  <UnifiedMarketPage location={workspaceLocation} />
+                )}
 
                 {workbenchMounted && (
                   <div
@@ -326,7 +373,7 @@ export default function MainLayout() {
                     flex: 1,
                     minHeight: 0,
                     overflow: "hidden",
-                    display: onWorkbench ? "none" : "flex",
+                    display: onWorkbench || marketVisible ? "none" : "flex",
                     flexDirection: "column",
                   }}
                 >
@@ -349,8 +396,19 @@ export default function MainLayout() {
               </Content>
             </Layout>
           </div>
-        </div>
+        </Root>
       </BackupOperationProvider>
     </ServiceRestartProvider>
+  );
+  return WORKBUDDY_UI ? (
+    <ChatMessageQueueProvider>
+      <WorkBuddyNavigationProvider>
+        <SettingsBackgroundContext.Provider value={background.current}>
+          {layout}
+        </SettingsBackgroundContext.Provider>
+      </WorkBuddyNavigationProvider>
+    </ChatMessageQueueProvider>
+  ) : (
+    layout
   );
 }

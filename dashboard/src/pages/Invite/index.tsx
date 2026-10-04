@@ -133,7 +133,7 @@ export default function InvitePage() {
   };
 
   return (
-    <div className={styles.inviteShell}>
+    <div className={`${styles.inviteShell} wb-auth-surface wb-invite-surface`}>
       <div className={styles.inviteShellInner}>
         <div
           className={[styles.inviteCard, isDark ? styles.inviteCardDark : ""]

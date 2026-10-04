@@ -1,0 +1,6 @@
+{
+  "status": "passed",
+  "messages": 2,
+  "replies": 2,
+  "scenario": "stream with settings overlay, market switch, queued send and refresh"
+}

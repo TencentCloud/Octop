@@ -1,4 +1,4 @@
-import { Button, Result, Spin } from "antd";
+import { Alert, Button, Result, Spin } from "antd";
 import { Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -14,12 +14,14 @@ interface AgentNotReadyScreenProps {
   agent: OctopAgent | null;
   noAgents?: boolean;
   loading?: boolean;
+  compact?: boolean;
 }
 
 export default function AgentNotReadyScreen({
   agent,
   noAgents = false,
   loading = false,
+  compact = false,
 }: AgentNotReadyScreenProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -96,43 +98,53 @@ export default function AgentNotReadyScreen({
     subTitle = t("chat.agentStartingHint");
   }
 
+  const status = disconnected
+    ? "warning"
+    : state === "failed"
+    ? "error"
+    : state === "stopped" || state === "created"
+    ? "warning"
+    : "info";
+  const action = disconnected ? (
+    <Button type="primary" onClick={() => navigate("/bridge")}>
+      {t(
+        agent.bridge_inbound
+          ? "chat.remoteExpert.openBridge"
+          : "chat.remoteExpert.reconnect",
+      )}
+    </Button>
+  ) : isModelError ? (
+    <Button
+      type="primary"
+      icon={<Settings size={14} />}
+      onClick={() => navigate("/admin/models")}
+    >
+      {t("modelConfig.configureButton")}
+    </Button>
+  ) : (
+    <Button type="primary" onClick={() => navigate("/experts")}>
+      {t("chat.goToExperts")}
+    </Button>
+  );
+  if (compact) {
+    return (
+      <Alert
+        className="wb-readiness-notice"
+        type={status}
+        showIcon
+        message={title}
+        description={subTitle}
+        action={action}
+      />
+    );
+  }
   return (
     <div className={styles.agentNotReady}>
       <Result
-        status={
-          disconnected
-            ? "warning"
-            : state === "failed"
-            ? "error"
-            : state === "stopped" || state === "created"
-            ? "warning"
-            : "info"
-        }
+        status={status}
         title={title}
         subTitle={subTitle}
-        extra={
-          disconnected ? (
-            <Button type="primary" onClick={() => navigate("/bridge")}>
-              {t(
-                agent.bridge_inbound
-                  ? "chat.remoteExpert.openBridge"
-                  : "chat.remoteExpert.reconnect",
-              )}
-            </Button>
-          ) : isModelError ? (
-            <Button
-              type="primary"
-              icon={<Settings size={14} />}
-              onClick={() => navigate("/admin/models")}
-            >
-              {t("modelConfig.configureButton")}
-            </Button>
-          ) : (
-            <Button type="primary" onClick={() => navigate("/experts")}>
-              {t("chat.goToExperts")}
-            </Button>
-          )
-        }
+        extra={action}
       />
     </div>
   );

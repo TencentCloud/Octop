@@ -1,0 +1,62 @@
+[
+  {
+    "composer": {
+      "height": 134,
+      "width": 800,
+      "x": 562,
+      "y": 464
+    },
+    "height": 900,
+    "scrollWidth": 1440,
+    "theme": "light",
+    "width": 1440
+  },
+  {
+    "composer": {
+      "height": 134,
+      "width": 748,
+      "x": 508,
+      "y": 422
+    },
+    "height": 800,
+    "scrollWidth": 1280,
+    "theme": "light",
+    "width": 1280
+  },
+  {
+    "composer": {
+      "height": 134,
+      "width": 960,
+      "x": 722,
+      "y": 554
+    },
+    "height": 1080,
+    "scrollWidth": 1920,
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "composer": {
+      "height": 134,
+      "width": 342,
+      "x": 24,
+      "y": 484
+    },
+    "height": 844,
+    "scrollWidth": 390,
+    "theme": "light",
+    "width": 390
+  },
+  {
+    "composer": {
+      "height": 134,
+      "width": 500,
+      "x": 244,
+      "y": 526
+    },
+    "height": 1024,
+    "scrollWidth": 768,
+    "theme": "light",
+    "width": 768
+  }
+]

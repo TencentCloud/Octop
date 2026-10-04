@@ -13,6 +13,9 @@ import { useTranslation } from "react-i18next";
 import type { SkillSpec } from "../useSkills";
 import { useSkillDisplayName } from "../skillDisplayNames";
 import styles from "../index.module.less";
+import { Switch, Tooltip } from "antd";
+import SkillTile from "../../../../workbuddy/SkillTile";
+import { WORKBUDDY_UI } from "../../../../workbuddy/variant";
 
 interface SkillCardProps {
   skill: SkillSpec;
@@ -20,7 +23,7 @@ interface SkillCardProps {
   onClick: () => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
-  onToggleEnabled: (e: React.MouseEvent) => void;
+  onToggleEnabled: (e: React.SyntheticEvent) => void;
   onDelete?: (e?: React.MouseEvent) => void;
   /** When false, hide the enable/disable action (e.g. package not mounted). */
   showEnableToggle?: boolean;
@@ -200,6 +203,59 @@ export function SkillCard({
       onDelete(e);
     }
   };
+
+  if (WORKBUDDY_UI)
+    return (
+      <SkillTile
+        title={displayName}
+        description={displayDesc || t("skills.noDescription")}
+        icon={hubIcon ? <img src={hubIcon} alt="" /> : renderSkillIcon(skill)}
+        enabled={skill.enabled}
+        badge={
+          isBuiltin ? (
+            <span className="sm-card-badge sm-card-badge--builtin">
+              {t("skills.kindBuiltin")}
+            </span>
+          ) : undefined
+        }
+        onOpen={onClick}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        actions={
+          <>
+            {isCustomized && onDelete && (
+              <Tooltip
+                title={
+                  skill.enabled
+                    ? t("skills.disableBeforeDelete")
+                    : t("common.delete")
+                }
+              >
+                <button
+                  type="button"
+                  className="sm-add-btn"
+                  disabled={skill.enabled}
+                  onClick={handleDeleteClick}
+                  aria-label={t("common.delete")}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </Tooltip>
+            )}
+            {showEnableToggle && (
+              <Switch
+                size="small"
+                checked={skill.enabled}
+                aria-label={
+                  skill.enabled ? t("common.disable") : t("skills.applyNow")
+                }
+                onClick={(_checked, event) => onToggleEnabled(event)}
+              />
+            )}
+          </>
+        }
+      />
+    );
 
   return (
     <div

@@ -725,7 +725,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     return (
       <div
         ref={shellRef}
-        className={`${styles.chatInput} ${dragOver ? styles.dropActive : ""}`}
+        className={`${styles.chatInput} wb-input ${
+          dragOver ? styles.dropActive : ""
+        }`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -738,7 +740,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onReclaim={handleReclaimQueued}
           />
         )}
-        <div className={styles.inputWrapper}>
+        <div className={`${styles.inputWrapper} wb-composer`}>
           <ChatInputPreviewBar
             attachments={attachments}
             uploading={uploading}
@@ -756,7 +758,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <div className={styles.inputRow} style={{ position: "relative" }}>
             <textarea
               ref={textareaRef}
-              className={styles.textarea}
+              className={`${styles.textarea} wb-composer__textarea`}
               value={text}
               onChange={(e) => {
                 userHasEditedRef.current = true;

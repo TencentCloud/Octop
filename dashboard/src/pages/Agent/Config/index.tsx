@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { EmbeddedPageContext } from "../../../layouts/PageShell";
 import { Form, Button, Card } from "antd";
 import { message } from "@/utils/antdMessage";
 
@@ -14,6 +15,7 @@ import styles from "./index.module.less";
 
 function AgentConfigPage() {
   const { t } = useTranslation();
+  const embedded = useContext(EmbeddedPageContext);
   const { activeAgent, activeAgentId, refresh } = useAgent();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(true);
@@ -62,7 +64,7 @@ function AgentConfigPage() {
   };
 
   return (
-    <div className={styles.page}>
+    <div className={embedded ? styles.embeddedPage : styles.page}>
       {loading && (
         <div className={styles.centerState}>
           <span className={styles.stateText}>{t("common.loading")}</span>
@@ -80,7 +82,7 @@ function AgentConfigPage() {
           <p className={styles.description}>{t("agentConfig.description")}</p>
         </div>
 
-        <Card className={styles.formCard}>
+        <Card className={embedded ? styles.embeddedForm : styles.formCard}>
           <Form form={form} layout="vertical" className={styles.form}>
             <AgentAdvancedConfigFields requireLimits />
 
