@@ -173,20 +173,22 @@
   flex-shrink: 0;
   background: var(--fn-text-quaternary);
 
+  /* Colour-blind-safe state palette (audit A11Y-6): green/amber/red hues
+     distinguished by lightness, all ≥3:1 on white as graphics. */
   &[data-state="running"] {
-    background: #22c55e;
+    background: #047857;
   }
 
   &[data-state="stopped"],
   &[data-state="created"],
   &[data-state="stopping"],
   &[data-state="starting"] {
-    background: #eab308;
+    background: #b45309;
   }
 
   &[data-state="failed"],
   &[data-state="error"] {
-    background: #ef4444;
+    background: #b91c1c;
   }
 }
 

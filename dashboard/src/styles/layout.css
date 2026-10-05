@@ -520,3 +520,17 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
 html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.18);
 }
+
+/* A11Y-8(b): honour prefers-reduced-motion for every author-defined
+   animation and transition. Keyframes run at most once (no looping), and
+   transition durations collapse to near-zero. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
