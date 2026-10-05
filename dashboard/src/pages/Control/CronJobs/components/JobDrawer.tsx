@@ -31,6 +31,7 @@ import {
   MODEL_AUTO_VALUE,
   type ModelPickerOption,
 } from "../../../../utils/modelOptions";
+import styles from "../index.module.less";
 
 const { Text } = Typography;
 
@@ -101,6 +102,9 @@ export function JobDrawer({
     Array<{ label: string; value: string }>
   >([]);
   const [connectorsLoading, setConnectorsLoading] = useState(false);
+  const [mailOptions, setMailOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
 
   const presetOptions = useMemo(
     () =>
@@ -118,7 +122,12 @@ export function JobDrawer({
       form.setFieldsValue({
         ...editingJob,
         model: defaultModelToForm(editingJob.model),
-        _scheduleMode: matchedPreset ? "preset" : "custom",
+        _scheduleMode:
+          editingJob._scheduleMode === "agently"
+            ? "agently"
+            : matchedPreset
+            ? "preset"
+            : "custom",
         _preset: matchedPreset || editingJob._preset || "daily_9am",
       });
     } else {
@@ -175,6 +184,19 @@ export function JobDrawer({
     void connectorsApi
       .listInstances(remote ? activeAgentId : undefined)
       .then((instances) => {
+        setMailOptions(
+          (instances || [])
+            .filter(
+              (i) =>
+                i.kind === "agently-cli" &&
+                i.status === "active" &&
+                i.has_credentials,
+            )
+            .map((i) => ({
+              value: i.instance_id,
+              label: i.display_name || i.instance_id,
+            })),
+        );
         setConnectorOptions(
           (instances || [])
             .filter((i) => i.status === "active" && i.has_credentials)
@@ -190,7 +212,10 @@ export function JobDrawer({
             })),
         );
       })
-      .catch(() => setConnectorOptions([]))
+      .catch(() => {
+        setConnectorOptions([]);
+        setMailOptions([]);
+      })
       .finally(() => setConnectorsLoading(false));
   }, [open, activeAgentId, remote]);
 
@@ -289,10 +314,33 @@ export function JobDrawer({
             <Select.Option value="custom">
               {t("cronJobs.form.scheduleModeCustom")}
             </Select.Option>
+            {(mailOptions.length > 0 || scheduleMode === "agently") && (
+              <Select.Option value="agently">
+                {t("cronJobs.form.agentlyNewMail")}
+              </Select.Option>
+            )}
           </Select>
         </Form.Item>
 
-        {scheduleMode === "preset" ? (
+        {scheduleMode === "agently" ? (
+          <Form.Item
+            name="mail_instance_id"
+            label={t("cronJobs.form.agentlyMailbox")}
+            rules={[
+              {
+                required: true,
+                message: t("cronJobs.form.agentlySelectMailbox"),
+              },
+            ]}
+            extra={
+              <span className={styles.mailTriggerHint}>
+                {t("cronJobs.form.agentlyHint")}
+              </span>
+            }
+          >
+            <Select options={mailOptions} loading={connectorsLoading} />
+          </Form.Item>
+        ) : scheduleMode === "preset" ? (
           <Form.Item
             name="_preset"
             label={t("cronJobs.form.preset")}
