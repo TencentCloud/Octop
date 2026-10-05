@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
-from harness_agent.plugins import PluginContext, get_tool_config
+from octop_harness.plugins import PluginContext, get_tool_config
 
 BOCHA_SEARCH_URL = "https://api.bochaai.com/v1/web-search"
 

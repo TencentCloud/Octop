@@ -1,11 +1,15 @@
-"""Unit tests for the bocha-search plugin's pure logic (plugins/bocha-search)."""
+"""Unit tests for the bocha-search plugin (pure helpers + tool transport)."""
 
 from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+
+import httpx
 
 _PLUGIN_MAIN = Path(__file__).resolve().parents[2] / "plugins" / "bocha-search" / "main.py"
 
@@ -190,3 +194,56 @@ class TestFormatAndTool:
     def test_bad_args_return_error_not_raise(self, monkeypatch: Any) -> None:
         monkeypatch.setattr(mod, "get_tool_config", lambda _name: {"api_key": "k"})
         assert asyncio.run(mod.bocha_search("", 10, "bad")).startswith("Error:")
+
+
+class TestToolTransport:
+    """Tool-level transport behavior: no key, timeout, and error responses."""
+
+    @staticmethod
+    def _install_transport(
+        monkeypatch: Any,
+        *,
+        response: Any = None,
+        exc: Exception | None = None,
+    ) -> None:
+        class FakeClient:
+            async def __aenter__(self) -> FakeClient:
+                return self
+
+            async def __aexit__(self, *exc_info: Any) -> None:
+                return None
+
+            async def post(self, _url: str, **_kwargs: Any) -> Any:
+                if exc is not None:
+                    raise exc
+                return response
+
+        fake_httpx = SimpleNamespace(
+            AsyncClient=lambda **_kwargs: FakeClient(),
+            HTTPError=httpx.HTTPError,
+        )
+        monkeypatch.setattr(mod, "httpx", fake_httpx)
+
+    def _configure_key(self, monkeypatch: Any, api_key: str = "test-key") -> None:
+        monkeypatch.setattr(mod, "get_tool_config", lambda _name: {"api_key": api_key})
+
+    def test_empty_api_key_returns_error(self, monkeypatch: Any) -> None:
+        self._configure_key(monkeypatch, api_key="  ")
+        result = asyncio.run(mod.bocha_search("hello"))
+        assert result.startswith("Error: bocha_search is not configured")
+
+    def test_timeout_returns_error_string(self, monkeypatch: Any) -> None:
+        self._configure_key(monkeypatch)
+        self._install_transport(monkeypatch, exc=httpx.ReadTimeout("timed out"))
+        result = asyncio.run(mod.bocha_search("hello"))
+        assert result.startswith("Error: Bocha request failed")
+        assert "timed out" in result
+
+    def test_http_error_response_parsed_end_to_end(self, monkeypatch: Any) -> None:
+        self._configure_key(monkeypatch)
+        body = json.dumps({"code": "401", "message": "Invalid API KEY"}).encode()
+        self._install_transport(
+            monkeypatch, response=SimpleNamespace(status_code=401, content=body)
+        )
+        result = asyncio.run(mod.bocha_search("hello"))
+        assert result == "Error: Bocha API returned status 401: Invalid API KEY"
