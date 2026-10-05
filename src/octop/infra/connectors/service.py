@@ -34,6 +34,7 @@ from octop.infra.connectors.custom_mcp import (
     wrap_servers,
 )
 from octop.infra.connectors.default_open import merge_mcp_servers_with_defaults, read_default_open
+from octop.infra.connectors.gateway import agently_auth
 from octop.infra.connectors.gateway.cli_dirs import resolve_cli_config_key
 from octop.infra.connectors.gateway.feishu_user_auth import (
     complete_user_device_login,
@@ -53,6 +54,7 @@ _OAUTH_REFRESH_SKEW_SEC = 120
 
 # Shared only within one process and application repository.
 _QCC_LOCKS: WeakKeyDictionary[ConnectorRepo, dict[str, asyncio.Lock]] = WeakKeyDictionary()
+_AGENTLY_LOCKS: WeakKeyDictionary[ConnectorRepo, dict[str, asyncio.Lock]] = WeakKeyDictionary()
 
 
 class ConnectorNameTakenError(ValueError):
@@ -130,6 +132,10 @@ class ConnectorService:
                     or stored.get("internal_token")
                     or new_internal_token()
                 )
+            if row.kind == "agently-cli" and row.credential_blob:
+                # Editing a connector must never switch to another instance's grant.
+                existing = decrypt_credentials(self._secret_repo, row.credential_blob)
+                stored["cli_config_key"] = resolve_cli_config_key(existing)
         stored["instance_id"] = instance_id
         expires_at = stored.get("expires_at")
         exp = int(expires_at) if expires_at is not None else None
@@ -630,6 +636,30 @@ class ConnectorService:
         if not expected or expected != token:
             return None
         return creds
+
+    async def agently_auth_for_instance(
+        self,
+        instance_id: str,
+        user_id: int,
+        action: agently_auth.AuthAction,
+        *,
+        locale: str = "en",
+    ) -> agently_auth.AuthResult:
+        locks = _AGENTLY_LOCKS.setdefault(self._repo, {})
+        async with locks.setdefault(instance_id, asyncio.Lock()):
+            inst = self._repo.get(instance_id)
+            if inst is None:
+                raise OctopError.localized(ErrorCode.CONNECTOR_NOT_FOUND, locale)
+            if inst.user_id != user_id:
+                raise OctopError.localized(ErrorCode.FORBIDDEN, locale)
+            if inst.kind != "agently-cli":
+                raise OctopError.localized(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, locale)
+            creds = self.decrypt(instance_id)
+            creds.setdefault("instance_id", instance_id)
+            result = await agently_auth.authorize(creds, action, locale=locale)
+            if action == "disconnect" and result["status"] == "idle":
+                self._repo.delete(instance_id)
+            return result
 
     # --- Feishu CLI device-code user auth (domain orchestration) ---
 
