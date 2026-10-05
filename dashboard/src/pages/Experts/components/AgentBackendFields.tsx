@@ -25,6 +25,8 @@ interface AgentBackendFieldsProps {
   /** ``create`` fills empty root_dir with the filesystem default; ``edit`` leaves existing values. */
   rootDirMode?: "create" | "edit";
   disabled?: boolean;
+  /** Skip local ``/filesystem/defaults`` (peer experts have no host tree here). */
+  skipHostFilesystem?: boolean;
   onAddPathMapping: () => void;
   onRemovePathMapping: (index: number) => void;
   onUpdatePathMapping: (
@@ -41,6 +43,7 @@ export default function AgentBackendFields({
   pathMappings,
   rootDirMode = "create",
   disabled = false,
+  skipHostFilesystem = false,
   onAddPathMapping,
   onRemovePathMapping,
   onUpdatePathMapping,
@@ -51,6 +54,10 @@ export default function AgentBackendFields({
   const watchedRootDir = Form.useWatch("root_dir", form) as string | undefined;
 
   useEffect(() => {
+    if (skipHostFilesystem) {
+      setFsDefaults(null);
+      return;
+    }
     let cancelled = false;
     fetchFilesystemDefaults()
       .then((defaults) => {
@@ -62,7 +69,7 @@ export default function AgentBackendFields({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [skipHostFilesystem]);
 
   useEffect(() => {
     if (!fsDefaults || rootDirMode !== "create") return;

@@ -531,15 +531,14 @@ function BridgeConnectionCard({
       style={{ "--catalog-accent": BRIDGE_ACCENT } as CSSProperties}
     >
       <div className={styles.backendCardHeader}>
-        <div className={styles.backendCardIcon}>
-          {iconForName(row.icon_name || DEFAULT_BRIDGE_ICON, 18)}
-        </div>
         <div className={styles.backendCardTitle}>
+          <div className={styles.backendCardIcon}>
+            {iconForName(row.icon_name || DEFAULT_BRIDGE_ICON, 18)}
+          </div>
           <div className={styles.backendCardName}>
             <span className={styles.backendCardNameText}>
               {row.display_name}
             </span>
-            <span className={styles.backendCardUser}>{row.peer_username}</span>
             {isInboundConnection(row) ? (
               <Tag style={{ marginInlineEnd: 0 }}>
                 {t("advancedSettings.bridge.inboundTag")}
