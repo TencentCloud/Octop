@@ -77,6 +77,7 @@ import { useChatComposerResources } from "./useChatComposerResources";
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 describe("useChatComposerResources — per-expert KB selection", () => {
@@ -84,7 +85,7 @@ describe("useChatComposerResources — per-expert KB selection", () => {
     const threadId = "thread-existing"; // existing session → saved prefs apply
     const { result, rerender } = renderHook(
       ({ agentId }: { agentId: string }) =>
-        useChatComposerResources(agentId, threadId),
+        useChatComposerResources(agentId, threadId, null),
       { initialProps: { agentId: "expertA" } },
     );
 
@@ -123,7 +124,7 @@ describe("useChatComposerResources — per-expert KB selection", () => {
     const threadId = "thread-existing";
     const { result, rerender } = renderHook(
       ({ agentId }: { agentId: string }) =>
-        useChatComposerResources(agentId, threadId),
+        useChatComposerResources(agentId, threadId, null),
       { initialProps: { agentId: "expertA" } },
     );
     await waitFor(() =>
@@ -149,7 +150,7 @@ describe("useChatComposerResources — per-expert KB selection", () => {
     const threadId = "thread-existing";
     const { result, rerender } = renderHook(
       ({ agentId }: { agentId: string }) =>
-        useChatComposerResources(agentId, threadId),
+        useChatComposerResources(agentId, threadId, null),
       { initialProps: { agentId: "expertA" } },
     );
     await waitFor(() => expect(result.current.chatConnectors.length).toBe(2));
