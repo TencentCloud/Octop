@@ -33,6 +33,29 @@ def test_parse_action_requests() -> None:
     assert actions[0]["args"] == {"command": "ls"}
 
 
+def test_parse_action_requests_unwraps_interrupt_envelope() -> None:
+    from octop.infra.gateway.hitl.format import normalize_hitl_request
+
+    raw = {
+        "id": "int-1",
+        "value": {
+            "action_requests": [
+                {
+                    "name": "ask_user_question",
+                    "args": {"questions": [{"question": "Which DB?"}]},
+                }
+            ],
+            "review_configs": [
+                {"action_name": "ask_user_question", "allowed_decisions": ["respond"]}
+            ],
+        },
+    }
+    assert normalize_hitl_request(raw)["action_requests"][0]["name"] == "ask_user_question"
+    actions = parse_action_requests(raw)
+    assert actions[0]["name"] == "ask_user_question"
+    assert actions[0]["args"]["questions"][0]["question"] == "Which DB?"
+
+
 def test_hitl_store_register_and_resolve() -> None:
     store = HitlPendingStore()
     record = store.register(

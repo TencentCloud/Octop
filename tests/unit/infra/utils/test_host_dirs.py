@@ -9,7 +9,9 @@ import pytest
 
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
+    host_browse_roots,
     host_home_dir,
+    host_jail_enforced,
     is_within_host_home,
     list_host_subdirs,
     mkdir_host_subdir,
@@ -21,6 +23,70 @@ from octop.infra.utils.host_dirs import (
 # These tests assert POSIX path semantics (/proc, /etc, /root, "/" root, "~" home).
 # The denied-prefix logic and "/" root probe are intentionally POSIX-only.
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX-only path semantics")
+
+
+def test_host_browse_roots_posix_is_single_slash(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("octop.infra.utils.host_dirs.os.name", "posix")
+    assert host_browse_roots() == ["/"]
+
+
+def _fake_ready_drives(monkeypatch: pytest.MonkeyPatch, present: list[str]) -> None:
+    """Patch the module's own drive probe.
+
+    Patching ``os.path.isdir`` globally would break pytest's own path handling
+    while the test is active, so stub the seam instead.
+    """
+    monkeypatch.setattr("octop.infra.utils.host_dirs._ready_drive_roots", lambda: list(present))
+
+
+def test_host_browse_roots_windows_enumerates_drives_independent_of_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the browse tree used to be pinned to the home drive.
+
+    ``host_fs_tree_root`` returns ``Path.home().anchor`` (e.g. ``C:/``), so a
+    user whose profile is on ``C:`` could not reach ``D:`` at all. Enumeration
+    must not depend on where home happens to live.
+    """
+    home = tmp_path / "profile_on_c"
+    home.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs._ready_drive_roots", lambda: ["C:/", "D:/"])
+    monkeypatch.setattr("octop.infra.utils.host_dirs.os.name", "nt")
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+
+    assert host_browse_roots() == ["C:/", "D:/"]
+
+
+def test_host_browse_roots_windows_falls_back_when_no_drive_ready(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Never hand the picker an empty root list — it would render nothing."""
+    home = tmp_path / "profile"
+    home.mkdir()
+    _fake_ready_drives(monkeypatch, [])
+    monkeypatch.setattr("octop.infra.utils.host_dirs.os.name", "nt")
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+
+    roots = host_browse_roots()
+
+    assert len(roots) == 1
+    assert roots[0]
+
+
+def test_host_jail_enforced_is_false_off_linux(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Windows/macOS have no OS-level jail, so the UI must not claim one."""
+    monkeypatch.setattr("octop.infra.utils.host_dirs.os.name", "nt")
+    assert host_jail_enforced() is False
+
+
+def test_host_jail_enforced_follows_bwrap_availability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("octop.infra.utils.host_dirs.os.name", "posix")
+    monkeypatch.setattr("octop.infra.utils.host_dirs._bwrap_on_path", lambda: False)
+    assert host_jail_enforced() is False
+    monkeypatch.setattr("octop.infra.utils.host_dirs._bwrap_on_path", lambda: True)
+    assert host_jail_enforced() is True
 
 
 @posix_only

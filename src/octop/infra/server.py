@@ -34,7 +34,10 @@ from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
 
 if TYPE_CHECKING:
+    from octop.infra.auth.ldap.service import LdapAuthService
+    from octop.infra.auth.ldap.throttle import LdapBindThrottle
     from octop.infra.auth.sso.service import SsoService
+    from octop.infra.db.services import SharedServices
     from octop.infra.history.trajectory.service import TrajectoryService
 
 logger = logging.getLogger(__name__)
@@ -255,6 +258,9 @@ class OctopServer:
         self._started = False
         self._started_at: int | None = None
         self._sso_service: SsoService | None = None
+        self._ldap_service: LdapAuthService | None = None
+        self._ldap_bind_throttle: LdapBindThrottle | None = None
+        self._ldap_bind_throttle_services: SharedServices | None = None
 
     # Backward compat: expose user_manager directly
     @property
@@ -275,6 +281,43 @@ class OctopServer:
         ):
             self._sso_service = SsoServiceCls(self.services, self.user_manager)
         return self._sso_service
+
+    @property
+    def ldap_service(self) -> LdapAuthService:
+        """Process-level LDAP service, rebound whenever services are swapped."""
+        from octop.infra.auth.ldap.service import (
+            LdapAuthService as LdapAuthServiceCls,  # noqa: PLC0415
+        )
+
+        if self.services is None or self.user_manager is None:
+            raise RuntimeError("LDAP service requires a started server with user manager")
+        if (
+            self._ldap_service is None
+            or getattr(self._ldap_service, "_services", None) is not self.services
+            or getattr(self._ldap_service, "_user_manager", None) is not self.user_manager
+        ):
+            self._ldap_service = LdapAuthServiceCls(self.services, self.user_manager)
+        return self._ldap_service
+
+    @property
+    def ldap_bind_throttle(self) -> LdapBindThrottle:
+        """Process-level brute-force backoff for directory binds."""
+        from octop.infra.auth.ldap.throttle import LdapBindThrottle as ThrottleCls  # noqa: PLC0415
+
+        if self.services is None:
+            raise RuntimeError("LDAP throttle requires a started server")
+        if (
+            self._ldap_bind_throttle is None
+            or self._ldap_bind_throttle_services is not self.services
+        ):
+            config = self.services.config
+            self._ldap_bind_throttle = ThrottleCls(
+                max_attempts=config.login_max_attempts,
+                window_seconds=60,
+                block_seconds=config.login_lockout_seconds,
+            )
+            self._ldap_bind_throttle_services = self.services
+        return self._ldap_bind_throttle
 
     @property
     def database_bound(self) -> bool:
@@ -483,7 +526,7 @@ class OctopServer:
         await user_mgr.boot()
         await proactive_scheduler.start_all()
 
-        from octop.api.deps import sign_token
+        from octop.infra.auth.tokens import sign_token
         from octop.infra.bridge.manager import BridgeManager, public_base_url_from_config
 
         services = self.services
@@ -567,6 +610,9 @@ class OctopServer:
         if not self._started:
             return
         try:
+            from octop.infra.connectors.gateway import agently_auth
+
+            await agently_auth.close()
             if self.app_runtime is not None:
                 rt = self.app_runtime
                 await rt.proactive_scheduler.shutdown()
@@ -576,6 +622,9 @@ class OctopServer:
                 await rt.user_manager.shutdown_all()
                 if rt.history_archive is not None:
                     rt.history_archive.store.close()
+            from octop.infra.backend.browse import dispose_all_browse_sessions
+
+            dispose_all_browse_sessions()
         finally:
             if self.services is not None:
                 self.services.db.close()

@@ -44,6 +44,93 @@ export interface AskQuestion {
   multi_select?: boolean;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function parseJsonObject(raw: unknown): unknown {
+  if (typeof raw !== "string") return raw;
+  const text = raw.trim();
+  if (!text) return raw;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return raw;
+  }
+}
+
+/** Parse HITL ``args`` whether the provider sent an object or a JSON string. */
+export function parseActionArgs(raw: unknown): Record<string, unknown> {
+  return asRecord(parseJsonObject(raw)) ?? {};
+}
+
+/** Unwrap LangGraph Interrupt envelopes so `action_requests` is top-level. */
+export function normalizeHitlRequest(raw: unknown): Record<string, unknown> {
+  const fallback = asRecord(raw) ?? ({} as Record<string, unknown>);
+  let current: unknown = raw;
+  for (let i = 0; i < 3; i += 1) {
+    const obj = asRecord(current);
+    if (!obj) return fallback;
+    if (Array.isArray(obj.action_requests)) return obj;
+    if (asRecord(obj.value)) {
+      current = obj.value;
+      continue;
+    }
+    break;
+  }
+  return fallback;
+}
+
+function normalizeAskQuestion(
+  item: Record<string, unknown>,
+): AskQuestion | null {
+  const question =
+    typeof item.question === "string"
+      ? item.question
+      : typeof item.prompt === "string"
+      ? item.prompt
+      : typeof item.text === "string"
+      ? item.text
+      : "";
+  if (!question.trim()) return null;
+  return {
+    question,
+    header: typeof item.header === "string" ? item.header : undefined,
+    multi_select: item.multi_select === true,
+    options: Array.isArray(item.options)
+      ? item.options
+          .filter((opt): opt is Record<string, unknown> =>
+            Boolean(asRecord(opt)),
+          )
+          .map((opt) => ({
+            label: typeof opt.label === "string" ? opt.label : "",
+            description:
+              typeof opt.description === "string" ? opt.description : undefined,
+          }))
+          .filter((opt) => opt.label)
+      : [],
+  };
+}
+
+/** Parse a `questions` array from tool args or a HITL interrupt value. */
+export function questionsFromUnknown(raw: unknown): AskQuestion[] {
+  const parsed = parseJsonObject(raw);
+  if (Array.isArray(parsed)) {
+    return parsed
+      .map((item) => asRecord(item))
+      .filter((item): item is Record<string, unknown> => item !== null)
+      .map(normalizeAskQuestion)
+      .filter((item): item is AskQuestion => item !== null);
+  }
+  const obj = asRecord(parsed);
+  if (!obj) return [];
+  if (obj.questions !== undefined) return questionsFromUnknown(obj.questions);
+  const single = normalizeAskQuestion(obj);
+  return single ? [single] : [];
+}
+
 /** Extract the `questions` payload from an `ask_user_question` pause. */
 export function extractAskQuestions(
   actions: HitlActionRequest[] | undefined,
@@ -51,32 +138,9 @@ export function extractAskQuestions(
   if (!actions?.length) return [];
   for (const action of actions) {
     if (action.name !== ASK_USER_TOOL_NAME) continue;
-    const raw = action.args?.questions;
-    if (!Array.isArray(raw)) continue;
-    return raw
-      .filter((item): item is Record<string, unknown> =>
-        Boolean(item && typeof item === "object" && !Array.isArray(item)),
-      )
-      .map((item) => ({
-        question: typeof item.question === "string" ? item.question : "",
-        header: typeof item.header === "string" ? item.header : undefined,
-        multi_select: item.multi_select === true,
-        options: Array.isArray(item.options)
-          ? item.options
-              .filter((opt): opt is Record<string, unknown> =>
-                Boolean(opt && typeof opt === "object" && !Array.isArray(opt)),
-              )
-              .map((opt) => ({
-                label: typeof opt.label === "string" ? opt.label : "",
-                description:
-                  typeof opt.description === "string"
-                    ? opt.description
-                    : undefined,
-              }))
-              .filter((opt) => opt.label)
-          : [],
-      }))
-      .filter((q) => q.question);
+    const args = parseActionArgs(action.args);
+    const questions = questionsFromUnknown(args.questions ?? args);
+    if (questions.length > 0) return questions;
   }
   return [];
 }
