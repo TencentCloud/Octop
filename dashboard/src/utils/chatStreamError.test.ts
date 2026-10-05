@@ -111,4 +111,23 @@ describe("classifyChatStreamError", () => {
       "translated:stream_errors.stream_stall",
     );
   });
+
+  it("does not treat ordinary answers that mention errors as stream failures", () => {
+    expect(
+      isChatStreamError(
+        "If you see Error code: 429 or rate_limit, wait and retry.",
+      ),
+    ).toBe(false);
+    expect(isChatStreamError("Check HTTP 401 if the API key is wrong.")).toBe(
+      false,
+    );
+    expect(isChatStreamError("The request timed out; we can try again.")).toBe(
+      false,
+    );
+    expect(
+      classifyChatStreamError(
+        "If you see Error code: 429 or rate_limit, wait and retry.",
+      ),
+    ).toBe("stream_errors.rate_limit");
+  });
 });

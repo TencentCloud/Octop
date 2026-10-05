@@ -187,8 +187,18 @@ export function classifyChatStreamError(
   return null;
 }
 
+function isModelRetryEnvelope(message: string | null | undefined): boolean {
+  if (!message) return false;
+  const raw = normalizeMessage(message);
+  return (
+    raw.toLowerCase().includes("model call failed after") ||
+    raw.includes(MODEL_RETRY_FAILURE_MARK)
+  );
+}
+
+/** True only for ModelRetryMiddleware envelopes, not ordinary answers. */
 export function isChatStreamError(message: string | null | undefined): boolean {
-  return classifyChatStreamError(message) !== null;
+  return isModelRetryEnvelope(message);
 }
 
 /** Localized guidance for known failures; otherwise the original text. */
