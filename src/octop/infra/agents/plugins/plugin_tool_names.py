@@ -54,26 +54,30 @@ def _transliterate(name: str) -> str:
 
 
 def _dedupe(candidate: str, used: set[str]) -> str:
-    if candidate not in used:
+    if candidate not in used and len(candidate) <= _MAX_NAME_LEN:
         return candidate
     suffix = 2
-    while f"{candidate}_{suffix}" in used:
+    while True:
+        extra = f"_{suffix}"
+        room = _MAX_NAME_LEN - len(extra)
+        stem = candidate[:room].rstrip("_") or "tool"
+        next_name = f"{stem}{extra}"
+        if next_name not in used:
+            return next_name
         suffix += 1
-    return f"{candidate}_{suffix}"
 
 
 def sanitize_plugin_tool_name(name: str, *, used: set[str] | None = None) -> str:
     """Return a legal LLM tool name for ``name``, unique against ``used``."""
     used = used if used is not None else set()
     if _LLM_TOOL_NAME_RE.match(name):
-        candidate = _dedupe(name, used)
-        used.add(candidate)
-        return candidate
-    candidate = _transliterate(name).strip("_") or "plugin_tool"
-    if len(candidate) > _MAX_NAME_LEN:
+        base = name
+    else:
+        base = _transliterate(name).strip("_") or "plugin_tool"
+    if len(base) > _MAX_NAME_LEN:
         # Leave room for a possible dedupe suffix (_2, _3, ...).
-        candidate = candidate[: _MAX_NAME_LEN - 4].rstrip("_") or "plugin_tool"
-    candidate = _dedupe(candidate, used)
+        base = base[: _MAX_NAME_LEN - 4].rstrip("_") or "plugin_tool"
+    candidate = _dedupe(base, used)
     used.add(candidate)
     return candidate
 
