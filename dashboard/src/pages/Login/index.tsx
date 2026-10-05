@@ -295,31 +295,17 @@ export default function LoginPage() {
           {t("login.title")}
         </h2>
 
-        <div style={{ width: "100%" }}>
-          <Input
-            prefix={
-              <User size={16} style={{ color: "var(--fn-text-quaternary)" }} />
-            }
-            placeholder={t("login.username")}
-            size="large"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoFocus
-            aria-describedby="login-username-hint"
-            style={{ borderRadius: 10 }}
-          />
-          <div
-            id="login-username-hint"
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: "var(--fn-text-tertiary)",
-              lineHeight: 1.4,
-            }}
-          >
-            {t("login.usernameHint")}
-          </div>
-        </div>
+        <Input
+          prefix={
+            <User size={16} style={{ color: "var(--fn-text-quaternary)" }} />
+          }
+          placeholder={t("login.username")}
+          size="large"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoFocus
+          style={{ borderRadius: 10 }}
+        />
 
         <Input.Password
           prefix={

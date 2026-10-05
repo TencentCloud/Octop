@@ -14,6 +14,7 @@ import { PackageIcon } from "../../../SkillPackages/PackageIcon";
 import { showApiError } from "../../../../utils/showApiToast";
 import { createDetailRequestGate } from "../../../../utils/detailRequestGate";
 import { supportsHostSkillPackagesFromConfig } from "../../../Experts/components/agentBackendForm";
+import { resolveFigurativeSkillIcon } from "../builtinSkillIcon";
 import type { SkillSpec } from "../useSkills";
 import styles from "../index.module.less";
 
@@ -36,14 +37,22 @@ function resolvePackageSkillIcon(
 function PackageSkillIcon({
   iconUrl,
   emoji,
+  slug,
+  name,
 }: {
   iconUrl?: string;
   emoji?: string;
+  slug?: string;
+  name?: string;
 }) {
   if (iconUrl) {
     return (
       <img src={iconUrl} alt="" className={styles.packageSkillRowIconImg} />
     );
+  }
+  const figurative = resolveFigurativeSkillIcon(slug ?? "", emoji, name, 32);
+  if (figurative) {
+    return figurative.node;
   }
   if (emoji) {
     return <span className={styles.packageSkillRowEmoji}>{emoji}</span>;
@@ -390,6 +399,12 @@ export default function SkillPackagesTab({
                     installed,
                   );
                   const displayName = packageSkill.name || packageSkill.slug;
+                  const figurative = resolveFigurativeSkillIcon(
+                    packageSkill.slug,
+                    emoji,
+                    displayName,
+                    32,
+                  );
                   const displayDesc =
                     packageSkill.description || t("skills.noDescription");
                   const shadows = workspaceSlugs.has(packageSkill.slug);
@@ -403,10 +418,18 @@ export default function SkillPackagesTab({
                             className={styles.packageSkillRowIcon}
                             style={{
                               color: "#059669",
-                              background: iconUrl ? "transparent" : "#0596691a",
+                              background:
+                                iconUrl || figurative
+                                  ? "transparent"
+                                  : "#0596691a",
                             }}
                           >
-                            <PackageSkillIcon iconUrl={iconUrl} emoji={emoji} />
+                            <PackageSkillIcon
+                              iconUrl={iconUrl}
+                              emoji={emoji}
+                              slug={packageSkill.slug}
+                              name={displayName}
+                            />
                           </div>
                           <div className={styles.packageSkillRowMeta}>
                             <div className={styles.packageSkillRowLabel}>

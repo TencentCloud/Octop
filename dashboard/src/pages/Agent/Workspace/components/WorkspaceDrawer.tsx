@@ -47,6 +47,7 @@ import { workspaceApi } from "../../../../api/modules/workspace";
 import { useAgent } from "../../../../context/AgentContext";
 import { useIsMobile } from "../../../../hooks/useIsMobile";
 import { useHorizontalResize } from "../../../../hooks/useHorizontalResize";
+import { useListPanelCollapsed } from "../../../../hooks/useListPanelCollapsed";
 import { useServerTimezone } from "../../../../hooks/useServerTimezone";
 import { formatServerIsoDateTime } from "../../../../utils/formatMessageTime";
 import { isAgentChatReady } from "../../../../utils/agentError";
@@ -289,27 +290,13 @@ export default function WorkspaceDrawer({
   const [expandedKeys, setExpandedKeys] = useState<string[]>([
     workspaceRootKey(),
   ]);
-  const [treeCollapsed, setTreeCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(TREE_COLLAPSED_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
+  const { collapsed: treeCollapsed, toggle: toggleTreeCollapsed } =
+    useListPanelCollapsed(TREE_COLLAPSED_KEY, {
+      // Chat dock (embedded) starts with the folder tree hidden.
+      defaultCollapsed: embedded,
+    });
 
   const rootLabel = t("workspace.root", "工作区");
-
-  const toggleTreeCollapsed = useCallback(() => {
-    setTreeCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(TREE_COLLAPSED_KEY, next ? "1" : "0");
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
 
   const { size: treeWidth, onResizeStart } = useHorizontalResize({
     min: 180,
