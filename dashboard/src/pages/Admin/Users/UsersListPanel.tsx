@@ -614,10 +614,10 @@ function MaxAgentsInput({ value, onChange }: MaxAgentsInputProps) {
 }
 
 export function ResourcePolicyFields({
-  fsTreeRoot,
+  fsTreeRoots,
   workspaceRootAllowed,
 }: {
-  fsTreeRoot: string;
+  fsTreeRoots: string[];
   workspaceRootAllowed: boolean;
 }) {
   const { t } = useTranslation();
@@ -659,7 +659,7 @@ export function ResourcePolicyFields({
                   },
                 ]}
               >
-                <RootDirSelect treeRoot={fsTreeRoot} />
+                <RootDirSelect treeRoots={fsTreeRoots} />
               </Form.Item>
             ) : null
           }
@@ -1257,7 +1257,7 @@ export default function UsersListPanel() {
   const { viewMode, setViewMode, showCardView } = useCardTableView("table");
   const [permCatalog, setPermCatalog] = useState<PermissionCatalogItem[]>([]);
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
-  const [fsTreeRoot, setFsTreeRoot] = useState(HOST_FS_ROOT);
+  const [fsTreeRoots, setFsTreeRoots] = useState<string[]>([HOST_FS_ROOT]);
   const [workspaceRootAllowed, setWorkspaceRootAllowed] = useState(true);
 
   const permLabelByKey = useMemo(() => {
@@ -1611,11 +1611,15 @@ export default function UsersListPanel() {
       .catch(() => setUserRoles([]));
     fetchFilesystemDefaults()
       .then((defaults) => {
-        setFsTreeRoot(defaults.tree_root);
+        setFsTreeRoots(
+          defaults.browse_roots?.length
+            ? defaults.browse_roots
+            : [defaults.tree_root],
+        );
         setWorkspaceRootAllowed(!defaults.in_container);
       })
       .catch(() => {
-        setFsTreeRoot(HOST_FS_ROOT);
+        setFsTreeRoots([HOST_FS_ROOT]);
         setWorkspaceRootAllowed(true);
       });
   }, [refreshAll]);
@@ -2432,7 +2436,7 @@ export default function UsersListPanel() {
           </div>
 
           <ResourcePolicyFields
-            fsTreeRoot={fsTreeRoot}
+            fsTreeRoots={fsTreeRoots}
             workspaceRootAllowed={workspaceRootAllowed}
           />
         </Form>
@@ -2640,7 +2644,7 @@ export default function UsersListPanel() {
           </div>
 
           <ResourcePolicyFields
-            fsTreeRoot={fsTreeRoot}
+            fsTreeRoots={fsTreeRoots}
             workspaceRootAllowed={workspaceRootAllowed}
           />
         </Form>

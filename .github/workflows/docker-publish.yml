@@ -4,6 +4,10 @@ name: Docker Publish
 # 文档与对外引用统一使用：ghcr.io/tencentcloud/octop
 # （Hub 仍用 DOCKERHUB_* secrets 同步推送。）
 #
+# 架构：ubuntu-latest 打 linux/amd64，ubuntu-24.04-arm 打 linux/arm64，
+# 再合并为 :{version} / :latest 多架构清单。飞牛 Docker 版 FPK 共用一份，
+# NAS 按本机架构拉取对应镜像层。
+#
 # 触发路径：
 #   1. 人工推送 v* tag → on.push.tags
 #   2. Auto Tag 用 GITHUB_TOKEN 推 tag 后显式 workflow_dispatch（token push 不会触发 push 工作流）
@@ -27,17 +31,17 @@ permissions:
   packages: write
 
 jobs:
-  docker:
-    name: Build and push image
+  prepare:
+    name: Resolve version
     runs-on: ubuntu-latest
     # 拒绝在非 v* ref 上误跑（例如 UI 里对 main 点 Run workflow）
     if: startsWith(github.ref, 'refs/tags/v')
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
+      ghcr: ${{ steps.image.outputs.ghcr }}
+      hub: ${{ steps.image.outputs.hub }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Resolve version from tag ref
         id: ver
         run: |
@@ -53,6 +57,32 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Image names
+        id: image
+        run: |
+          echo "ghcr=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          echo "hub=${{ secrets.DOCKERHUB_USERNAME }}/octop" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.arch }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -70,23 +100,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Image names
-        id: image
-        run: |
-          echo "ghcr=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-          echo "hub=${{ secrets.DOCKERHUB_USERNAME }}/octop" >> "$GITHUB_OUTPUT"
-
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ steps.image.outputs.hub }}
-            ${{ steps.image.outputs.ghcr }}
-          # 显式 raw tag：兼容 push.tags 与 Auto Tag 的 workflow_dispatch
+            ${{ needs.prepare.outputs.hub }}
+            ${{ needs.prepare.outputs.ghcr }}
+          # 单架构中间 tag；:{version} / :latest 由 merge 合成多架构清单
           tags: |
-            type=raw,value=${{ steps.ver.outputs.version }}
-            type=raw,value=latest
+            type=raw,value=${{ needs.prepare.outputs.version }}-${{ matrix.arch }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -94,8 +117,66 @@ jobs:
           context: .
           file: ./docker/Dockerfile
           push: true
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=docker-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.arch }}
+
+  merge:
+    name: Multi-arch manifest
+    needs: [prepare, build]
+    # ARM runner 偶发失败时仍发布已有架构，避免卡住 :{version} 与 Docker FPK。
+    if: always() && needs.prepare.result == 'success' && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifests
+        env:
+          VER: ${{ needs.prepare.outputs.version }}
+          GHCR: ${{ needs.prepare.outputs.ghcr }}
+          HUB: ${{ needs.prepare.outputs.hub }}
+        run: |
+          set -euo pipefail
+          any_multi=0
+          for REG in "$GHCR" "$HUB"; do
+            sources=()
+            for arch in amd64 arm64; do
+              if docker buildx imagetools inspect "${REG}:${VER}-${arch}" >/dev/null 2>&1; then
+                sources+=("${REG}:${VER}-${arch}")
+              else
+                echo "::warning::missing ${REG}:${VER}-${arch}"
+              fi
+            done
+            if [ "${#sources[@]}" -eq 0 ]; then
+              echo "::error::No platform images published for ${REG}:${VER}"
+              exit 1
+            fi
+            if [ "${#sources[@]}" -ge 2 ]; then
+              any_multi=1
+            fi
+            docker buildx imagetools create \
+              -t "${REG}:${VER}" \
+              -t "${REG}:latest" \
+              "${sources[@]}"
+            echo "=== ${REG}:${VER} ==="
+            docker buildx imagetools inspect "${REG}:${VER}"
+          done
+          if [ "$any_multi" -eq 0 ]; then
+            echo "::warning:::${VER} is not multi-arch (ARM image missing). Docker FPK on ARM NAS will not run."
+          fi

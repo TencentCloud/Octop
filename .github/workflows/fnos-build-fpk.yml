@@ -15,8 +15,11 @@ name: Build Octop FPK
 #   - 产物挂到同一个 v* GitHub Release（与 wheel / 桌面包并列），不再单独打 fnos-* tag
 #
 # Jobs：
-#   version → ensure-image → fpk（Docker 版 .fpk，仅打包 compose）
-#           ↘ native（本地版 .fpk）→ release（把 .fpk 挂到已有的 v* GitHub Release）
+#   version → ensure-image → fpk（Docker 版 .fpk，仅打包 compose；镜像已是 amd64+arm64）
+#           ↘ native（x86_64 本地版 .fpk）
+#           ↘ native-arm64（ubuntu-24.04-arm 装 aarch64 site-packages）
+#             → native-arm64-pack（amd64 上用 fnpack 打 Octop-fnos-native-arm64-*.fpk）
+#           → release（把 .fpk 挂到已有的 v* GitHub Release）
 
 on:
   workflow_dispatch:
@@ -92,13 +95,14 @@ jobs:
           set -euo pipefail
           TAG="${IMAGE}:${VER}"
           echo "Waiting for ${TAG} (published by docker-publish)..."
-          for i in $(seq 1 90); do
+          # 多架构清单要等 amd64 + arm64 都推完再 merge，比单架构更久。
+          for i in $(seq 1 120); do
             if docker buildx imagetools inspect "$TAG" >/dev/null 2>&1; then
               echo "Image ready: $TAG"
-              docker buildx imagetools inspect "$TAG" | head -20
+              docker buildx imagetools inspect "$TAG" | head -40
               exit 0
             fi
-            echo "[$i/90] not ready yet..."
+            echo "[$i/120] not ready yet..."
             sleep 20
           done
           echo "::error::Timed out waiting for ${TAG}. Ensure Docker Publish finished for v${VER}."
@@ -224,8 +228,12 @@ jobs:
               python3.12 -m zipfile -e "$whl" "$SP"
             done
             cp dist/octop-*.whl "$SP/octop.whl"
+            mkdir -p "$SP/octop_harness/backends"
+            cp "${{ github.workspace }}/scripts/fnos/vendor/storage_errors.py" \
+              "$SP/octop_harness/backends/storage_errors.py"
+            bash "${{ github.workspace }}/scripts/fnos/slim-site-packages.sh" "$SP"
             PYTHONPATH="$SP" python3.12 \
-              -c "import octop, mcp, langchain_mcp_adapters; from octop.launch import run_foreground_blocking; print('octop', octop.__version__, '| mcp', mcp.__version__, '| lcma', langchain_mcp_adapters.__version__)"
+              -c "import octop, mcp, langchain_mcp_adapters; from octop.launch import run_foreground_blocking; from octop_harness.backends.storage_errors import classify_storage_error; print('octop', octop.__version__, '| mcp', mcp.__version__, '| lcma', langchain_mcp_adapters.__version__, '| storage_errors', classify_storage_error.__name__)"
           } 2>&1 | tee -a "$LOG"
 
       - name: Build native FPK
@@ -235,14 +243,14 @@ jobs:
         run: bash scripts/build-fpk.sh native
 
       - name: Show native fpk size
-        run: ls -lh dist/Octop-fnos-native-*.fpk
+        run: ls -lh dist/Octop-fnos-native-[0-9]*.fpk
 
       - name: Upload native fpk artifact
         id: upload_native
         uses: actions/upload-artifact@v4
         with:
           name: native-fpk
-          path: dist/Octop-fnos-native-*.fpk
+          path: dist/Octop-fnos-native-[0-9]*.fpk
           if-no-files-found: error
 
       - name: Upload native install log (for debugging)
@@ -253,10 +261,167 @@ jobs:
           path: native-install.log
           if-no-files-found: ignore
 
+  # 在 ARM runner 上安装 aarch64 扩展（.so），fnpack 只有 linux-amd64，打包放到下一 job。
+  native-arm64:
+    continue-on-error: true
+    needs: version
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      site_packages_ok: ${{ steps.upload_sp.outcome == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Try download wheel from GitHub Release
+        id: wheel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VER: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          REL_TAG="v${VER}"
+          if gh release download "$REL_TAG" --repo "${{ github.repository }}" -p 'octop-*.whl' -D dist 2>/tmp/wheel-dl.err; then
+            ls -lh dist/octop-*.whl
+            echo "source=release" >> "$GITHUB_OUTPUT"
+            echo "Reusing wheel from GitHub Release ${REL_TAG}"
+          else
+            echo "Release wheel not available yet:"
+            cat /tmp/wheel-dl.err || true
+            echo "source=build" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js 20 (frontend build)
+        if: steps.wheel.outputs.source == 'build'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Build Octop wheel from current source
+        if: steps.wheel.outputs.source == 'build'
+        run: |
+          set -e
+          echo "=== build frontend ==="
+          cd dashboard
+          npm ci --prefer-offline --no-audit
+          NODE_ENV=production NODE_OPTIONS="--max-old-space-size=4096" npm run build
+          cd ..
+          echo "=== frontend output ==="
+          ls -la src/octop/dashboard | head -20
+          echo "=== build wheel ==="
+          python3 -m pip install --quiet build
+          python3 -m build --wheel
+          echo "=== built wheel ==="
+          ls -lh dist/octop-*.whl
+
+      - name: Install Octop core into app/site-packages (aarch64)
+        id: install_core
+        timeout-minutes: 15
+        env:
+          UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}/.uv-python
+        run: |
+          set -x
+          LOG="${{ github.workspace }}/native-arm64-install.log"
+          : > "$LOG"
+          mkdir -p "${{ github.workspace }}/fnos/native/app/site-packages"
+          SP="${{ github.workspace }}/fnos/native/app/site-packages"
+          {
+            uname -m
+            python3.12 -c "import platform; print(platform.machine())"
+            python3 -m pip install --quiet uv
+            python3 -m uv pip install --python python3.12 \
+              --target "$SP" --no-cache --only-binary :all: \
+              "$(ls dist/octop-*.whl | head -1)"
+            rm -rf "$SP/mcp" "$SP"/mcp-*.dist-info \
+                   "$SP/langchain_mcp_adapters" "$SP"/langchain_mcp_adapters-*.dist-info
+            mkdir -p /tmp/octop-pinned
+            python3.12 -m pip download --only-binary :all: --no-deps --no-cache-dir \
+              -d /tmp/octop-pinned \
+              "mcp==1.28.1" "langchain-mcp-adapters==0.3.0"
+            for whl in /tmp/octop-pinned/*.whl; do
+              echo "Extracting pinned wheel: $whl"
+              python3.12 -m zipfile -e "$whl" "$SP"
+            done
+            cp dist/octop-*.whl "$SP/octop.whl"
+            mkdir -p "$SP/octop_harness/backends"
+            cp "${{ github.workspace }}/scripts/fnos/vendor/storage_errors.py" \
+              "$SP/octop_harness/backends/storage_errors.py"
+            bash "${{ github.workspace }}/scripts/fnos/slim-site-packages.sh" "$SP"
+            PYTHONPATH="$SP" python3.12 \
+              -c "import octop, mcp, langchain_mcp_adapters; from octop.launch import run_foreground_blocking; from octop_harness.backends.storage_errors import classify_storage_error; print('octop', octop.__version__, '| mcp', mcp.__version__, '| lcma', langchain_mcp_adapters.__version__, '| storage_errors', classify_storage_error.__name__)"
+          } 2>&1 | tee -a "$LOG"
+
+      - name: Upload aarch64 site-packages
+        id: upload_sp
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-arm64-site-packages
+          path: fnos/native/app/site-packages
+          if-no-files-found: error
+
+      - name: Upload native arm64 install log (for debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-arm64-install-log
+          path: native-arm64-install.log
+          if-no-files-found: ignore
+
+  native-arm64-pack:
+    continue-on-error: true
+    needs: [version, native-arm64]
+    if: needs.native-arm64.outputs.site_packages_ok == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Cache fnpack CLI
+        uses: actions/cache@v4
+        with:
+          path: .verify/fnpack
+          key: fnpack-${{ env.FNPACK_VERSION }}-linux-amd64
+
+      - name: Download aarch64 site-packages
+        uses: actions/download-artifact@v4
+        with:
+          name: native-arm64-site-packages
+          path: fnos/native/app/site-packages
+
+      - name: Build native ARM64 FPK
+        env:
+          FPK_NAME_PREFIX: Octop-fnos
+          FPK_ARCH: arm64
+        run: |
+          set -euo pipefail
+          test -d fnos/native/app/site-packages/octop
+          bash scripts/build-fpk.sh native
+
+      - name: Show native arm64 fpk size
+        run: ls -lh dist/Octop-fnos-native-arm64-*.fpk
+
+      - name: Upload native arm64 fpk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-arm64-fpk
+          path: dist/Octop-fnos-native-arm64-*.fpk
+          if-no-files-found: error
+
   release:
     # 即使原生版失败（continue-on-error）也要发布 Docker 版。
     if: always()
-    needs: [fpk, native, version]
+    needs: [fpk, native, native-arm64-pack, version]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -279,11 +444,20 @@ jobs:
           path: artifacts/native-fpk
           if-no-files-found: ignore
 
+      - name: Download native arm64 fpk artifact (best-effort)
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: native-arm64-fpk
+          path: artifacts/native-arm64-fpk
+          if-no-files-found: ignore
+
       - name: Stage dist
         run: |
           mkdir -p dist
           cp artifacts/docker-fpk/*.fpk dist/ || true
           cp artifacts/native-fpk/*.fpk dist/ || true
+          cp artifacts/native-arm64-fpk/*.fpk dist/ || true
           ls -lh dist
           if ! ls dist/*.fpk >/dev/null 2>&1; then
             echo "::error::No .fpk files to attach."
