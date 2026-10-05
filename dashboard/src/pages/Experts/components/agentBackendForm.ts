@@ -21,6 +21,18 @@ export interface BackendOption {
 export interface FilesystemDefaults {
   default_root_dir: string;
   tree_root: string;
+  /**
+   * Roots the picker may browse. Windows hosts list every ready drive, so the
+   * tree is not confined to whichever drive holds the server's home directory.
+   * Older servers omit this — fall back to `tree_root`.
+   */
+  browse_roots?: string[];
+  /**
+   * True only when a non-root `root_dir` really gets OS-level confinement
+   * (Linux + bubblewrap). Elsewhere it only bounds the agent's tool paths, so
+   * the UI must not promise a sandbox.
+   */
+  jail_enforced?: boolean;
   /** True when the Octop server process runs inside a container. */
   in_container?: boolean;
 }

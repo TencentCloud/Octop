@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from octop.infra.connectors.gateway.adapters import (
+    agently_cli,
     baidu_map,
     ctrip_wendao,
     feishu_cli,
@@ -30,6 +31,7 @@ class GatewayAdapter(Protocol):
 
 
 _ADAPTERS: dict[str, GatewayAdapter] = {
+    "agently-cli": agently_cli,
     "qq-mail": qq_mail,
     "qq-music": qq_music,
     "fliggy": fliggy,
