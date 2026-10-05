@@ -134,6 +134,8 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
             "scrape_url",
             "manage.export_file",
             "manage.search_file",
+            "manage.recent_online_file",
+            "get_content",
             "manage.set_privilege",
             "manage.folder_list",
         ),
