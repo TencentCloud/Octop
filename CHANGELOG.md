@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 修复
+- 图片附件的 MIME 为空或 `application/octet-stream` 时，根据内容嗅探真实图片类型；覆盖内嵌图片、URL 下载及发送模型前的工作区图片引用物化，已有引用无需修改 checkpoint。
+
 ## [1.0.2b6] - 2026-10-04
 
 ### 新增

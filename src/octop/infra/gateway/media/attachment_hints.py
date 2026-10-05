@@ -257,7 +257,7 @@ def make_workspace_image_ref(*, workspace_path: str, mime_type: str) -> dict[str
     return {
         "type": "image_url",
         "workspace_path": rel,
-        "mime_type": mime_type or "image/png",
+        "mime_type": mime_type,
         "image_url": {"url": f"{WORKSPACE_IMAGE_SCHEME}{rel}"},
     }
 
@@ -410,13 +410,15 @@ async def materialize_image_part(
     Inline ``part.data`` / remote URL downloads without a rematerializable path
     still produce ``data:`` URLs here (with size re-encode when needed).
     """
-    mime = part.mime_type or "image/png"
+    mime = part.mime_type or ""
 
     # Path-backed images: store a ref only (plan B). Do not inline base64 into
     # the checkpoint / history — rematerialize in wrap_model_call.
     if part.local_path:
         rel = inbound_rel_path(part.local_path)
-        guessed = part.mime_type or mimetypes.guess_type(part.local_path)[0] or "image/png"
+        # Keep missing MIME unresolved until the bytes are available, so a
+        # misleading extension cannot prevent magic-byte detection.
+        guessed = part.mime_type or ""
         # Without a media backend / workspace we cannot rematerialize later —
         # degrade to a tool path hint instead of a dangling workspace:// ref.
         if media_backend is None and workspace is None:
@@ -442,6 +444,7 @@ async def materialize_image_part(
                 sniffed = sniff_image_media_type(data)
                 if sniffed:
                     guessed = sniffed
+            guessed = guessed or mimetypes.guess_type(part.local_path)[0] or "image/png"
         return make_workspace_image_ref(workspace_path=rel, mime_type=guessed)
 
     if part.data:
@@ -463,7 +466,7 @@ async def materialize_image_part(
             if reencoded is not None:
                 return make_image_url_block(base64.b64encode(reencoded[0]).decode(), reencoded[1])
             return _image_as_path_hint(part, workspace=workspace, locale=locale)
-        return make_image_url_block(part.data, mime)
+        return make_image_url_block(part.data, mime or "image/png")
 
     if part.url:
         downloaded = await _download_image_url(part.url)
@@ -481,12 +484,12 @@ async def materialize_image_part(
                         base64.b64encode(reencoded[0]).decode(), reencoded[1]
                     )
                 return _image_as_path_hint(part, workspace=workspace, locale=locale)
-            mime = content_type or part.mime_type or "image/png"
+            mime = content_type or part.mime_type or ""
             if mime in ("application/octet-stream", ""):
                 sniffed = sniff_image_media_type(raw_bytes)
                 if sniffed:
                     mime = sniffed
-            return make_image_url_block(base64.b64encode(raw_bytes).decode(), mime)
+            return make_image_url_block(base64.b64encode(raw_bytes).decode(), mime or "image/png")
         if part.url.startswith(("http://", "https://")):
             return {"type": "image_url", "image_url": {"url": part.url}}
 
@@ -569,7 +572,12 @@ def _finalize_rematerialized_image(
             workspace=workspace,
             locale=locale,
         )
-    mime = mime_type or mimetypes.guess_type(path)[0] or "image/png"
+    # Resolve again at request time: existing checkpoints can still contain
+    # a generic MIME, and workspace-only refs have not read any bytes yet.
+    mime = mime_type
+    if mime in ("application/octet-stream", ""):
+        mime = sniff_image_media_type(data) or mime
+    mime = mime or mimetypes.guess_type(path)[0] or "image/png"
     if len(data) > VISION_MAX_BYTES:
         logger.info(
             "vision rematerialize %s: %d bytes > %d, re-encoding",
