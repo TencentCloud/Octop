@@ -55,6 +55,18 @@ class ProviderCreateBody(BaseModel):
     note: str | None = None
 
 
+def _with_default_model_first(models: list[dict[str, Any]], model: str) -> list[dict[str, Any]]:
+    """Return *models* with *model* moved to the front, which is how the UI reads the default.
+
+    Leaves the list untouched when the id is not part of it.
+    """
+    ids = [m.get("id") for m in models]
+    if model not in ids:
+        return models
+    idx = ids.index(model)
+    return [models[idx], *models[:idx], *models[idx + 1 :]]
+
+
 class ProviderPatchBody(BaseModel):
     kind: str | None = None
     base_url: str | None = None
@@ -63,6 +75,10 @@ class ProviderPatchBody(BaseModel):
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
+    model: str | None = None
+    # The dashboard's "default model" dropdown sends this. Without the field
+    # pydantic ignored it, so the save reported success while the default model
+    # never changed - the UI reads the default from the first entry of the list.
 
 
 # Fields that affect harness factory / agent runtime when patched.
@@ -244,6 +260,11 @@ async def admin_patch_provider(
     import json as _json
 
     models_json = _json.dumps(body.models) if body.models is not None else None
+    if body.model:
+        effective = body.models if body.models is not None else (row.models or [])
+        reordered = _with_default_model_first(list(effective), body.model)
+        if reordered != list(effective):
+            models_json = _json.dumps(reordered)
     server.services.provider_repo.update(
         provider_id,
         kind=body.kind,
