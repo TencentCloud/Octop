@@ -18,6 +18,20 @@
 
 可选 `user_question`：写入 inbox 消息，供 `compose_followup` 使用。
 
+### `ask_agent` 的目标是对等 Agent，不是工作区子代理
+
+`ask_agent` / `agent_list` 面向**对等 Agent**（同一用户下的其它 Agent，
+`expert` 参数传 `agent_id`，可用 `agent_list` 先查）。两类容易混淆的对象：
+
+| 对象 | 定义位置 | 调用方式 |
+|------|----------|----------|
+| 对等 Agent（expert） | `agents` 表 / Dashboard 专家 | `ask_agent(expert=<agent_id>, …)` |
+| 工作区子代理 | 工作区 `.octop/agents/*.md`（含专家模板内嵌 `agents/` 目录） | `task` 工具（subagent） |
+
+把工作区子代理名传给 `ask_agent` 会得到 `expert not found`——此时应改用
+`task` 工具派发；反之，需要独立工作区/记忆的跨 Agent 协作（如专家团队）才用
+`ask_agent`。
+
 ## Octop 侧保留代码
 
 | 路径 | 职责 |
