@@ -3,22 +3,68 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import time
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
 from octop.infra.agents.providers import KIND_TO_PROTOCOL
 from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
+from octop.infra.utils.ssrf_guard import UnsafeOutboundUrl, validate_https_url_resolved
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 _FETCH_MODELS_TIMEOUT_S = 30.0
 _EMBEDDING_PROBE_TEXT = "ping"
+_LOOPBACK_HOSTNAMES = frozenset({"localhost", "localhost.localdomain"})
+
+
+def is_loopback_base_url(base_url: str | None) -> bool:
+    """True when *base_url* points at this machine's loopback interface.
+
+    Deliberately narrower than ``is_ollama_local_provider``: that helper treats
+    private and link-local addresses as "local" so delete-protection and the
+    dashboard's local-runtime hints stay aligned. Those are exactly the hosts
+    the SSRF guard exists to block, so reusing it here would exempt the whole
+    attack surface. Local runtimes (Ollama, ONNX) listen on loopback, and
+    loopback is what we exempt here.
+    """
+    url = (base_url or "").strip()
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url if "://" in url else f"//{url}")
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").strip().lower().strip("[]")
+    if not host:
+        return False
+    if host in _LOOPBACK_HOSTNAMES:
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+async def assert_probe_base_url_safe(base_url: str | None) -> None:
+    """SEC-8: probe/fetch-models URLs go through the SSRF guard.
+
+    The Authorization header carries the provider API key, so a base_url
+    pointing at an internal service would leak it (and echo the response back
+    into the dashboard). Loopback is exempt so on-box runtimes keep working.
+    """
+    if not base_url or not base_url.strip():
+        return
+    if is_loopback_base_url(base_url):
+        return
+    await validate_https_url_resolved(base_url, field="base_url")
 
 
 def provider_headers(row: Any) -> dict[str, str]:
@@ -241,6 +287,14 @@ async def probe_provider_row(
         return result
 
     mid = _probe_model_id(row, model_id)
+    base_url = getattr(row, "base_url", None)
+    try:
+        await assert_probe_base_url_safe(base_url)
+    except UnsafeOutboundUrl as exc:
+        return {
+            "ok": False,
+            "error": _friendly_probe_error(f"base_url not allowed: {exc}", locale=locale),
+        }
     if _should_probe_embedding(row, model_id=mid, embedding=embedding):
         return await _probe_embedding_endpoint(row, model_id=mid, locale=locale)
     started = time.perf_counter()
@@ -275,6 +329,11 @@ async def fetch_openai_compatible_models(
 ) -> dict[str, Any]:
     """List models via OpenAI-compatible ``GET {base}/models``."""
     url = _models_list_url(base_url)
+    if not is_loopback_base_url(base_url):
+        try:
+            await validate_https_url_resolved(url, field="base_url")
+        except Exception as exc:
+            return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
     headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"}
     extra_headers = ensure_opencode_session_header(provider_name, extra_headers, base_url=base_url)
     if extra_headers:
