@@ -403,7 +403,7 @@ export default function RolesPanel() {
                     url={row.avatar_url}
                     icon={row.avatar_icon}
                     kind="role"
-                    className={styles.userCellAvatar}
+                    className={styles.roleCellAvatar}
                   />
                   <span className={styles.userCellText}>
                     <span className={styles.userCellName}>

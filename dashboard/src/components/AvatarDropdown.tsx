@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, type ReactNode } from "react";
 import {
-  Modal,
   Drawer,
   Form,
   Input,
@@ -335,6 +334,7 @@ export default function AvatarDropdown({
 
   const avatar = (
     <ProfileAvatar
+      key={`${user?.avatar_icon ?? ""}:${user?.avatar_url ?? ""}`}
       url={user?.avatar_url}
       icon={user?.avatar_icon}
       kind="user"
@@ -482,28 +482,18 @@ export default function AvatarDropdown({
   const settingsBody = (
     <div className={styles.settingsBody}>
       <div className={styles.settingsIdentity}>
-        <ProfileAvatar
-          url={user?.avatar_url}
-          icon={user?.avatar_icon}
-          kind="user"
-          className={`${styles.accountAvatar} ${styles.accountAvatarLarge}`}
-        />
-        <div className={styles.settingsIdentityText}>
-          <div className={styles.settingsIdentityName}>
-            <span>{displayName}</span>
-            <Tag
-              color={role === "admin" ? "blue" : "default"}
-              className={styles.roleTag}
-            >
-              {roleLabel}
-            </Tag>
-          </div>
-          {user?.username && (
-            <span className={styles.settingsIdentityHandle}>
-              @{user.username}
-            </span>
-          )}
-        </div>
+        <span className={styles.settingsIdentityName}>{displayName}</span>
+        {user?.username ? (
+          <span className={styles.settingsIdentityHandle}>
+            @{user.username}
+          </span>
+        ) : null}
+        <Tag
+          color={role === "admin" ? "blue" : "default"}
+          className={styles.roleTag}
+        >
+          {roleLabel}
+        </Tag>
       </div>
 
       <section className={styles.settingsSection}>
@@ -514,43 +504,52 @@ export default function AvatarDropdown({
           </p>
         </div>
         {user ? (
-          <ProfileAvatarPicker
-            kind="user"
-            avatarUrl={user.avatar_url}
-            icon={user.avatar_icon}
-            onSelectIcon={async (icon) => {
-              try {
-                onUserChange?.(await authApi.setAvatarIcon(icon));
-              } catch (err) {
-                message.error(
-                  apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
-                );
-                throw err;
-              }
-            }}
-            onPick={async (file) => {
-              try {
-                const result = await authApi.uploadAvatar(file);
-                onUserChange?.({ ...user, avatar_url: result.avatar_url });
-              } catch (err) {
-                message.error(
-                  apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
-                );
-                throw err;
-              }
-            }}
-            onRemove={async () => {
-              try {
-                await authApi.deleteAvatar();
-                onUserChange?.({ ...user, avatar_url: null });
-              } catch (err) {
-                message.error(
-                  apiErrorMessage(err, t("experts.avatarRemoveFailed"), t),
-                );
-                throw err;
-              }
-            }}
-          />
+          <div className={styles.settingsAvatarPicker}>
+            <ProfileAvatarPicker
+              kind="user"
+              avatarUrl={user.avatar_url}
+              icon={user.avatar_icon}
+              onSelectIcon={async (icon) => {
+                if (user) {
+                  onUserChange?.({
+                    ...user,
+                    avatar_icon: icon,
+                    avatar_url: null,
+                  });
+                }
+                try {
+                  onUserChange?.(await authApi.setAvatarIcon(icon));
+                } catch (err) {
+                  message.error(
+                    apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                  );
+                  throw err;
+                }
+              }}
+              onPick={async (file) => {
+                try {
+                  const result = await authApi.uploadAvatar(file);
+                  onUserChange?.({ ...user, avatar_url: result.avatar_url });
+                } catch (err) {
+                  message.error(
+                    apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                  );
+                  throw err;
+                }
+              }}
+              onRemove={async () => {
+                try {
+                  await authApi.deleteAvatar();
+                  onUserChange?.({ ...user, avatar_url: null });
+                } catch (err) {
+                  message.error(
+                    apiErrorMessage(err, t("experts.avatarRemoveFailed"), t),
+                  );
+                  throw err;
+                }
+              }}
+            />
+          </div>
         ) : null}
       </section>
 
@@ -575,7 +574,7 @@ export default function AvatarDropdown({
         >
           <Form.Item
             name="display_name"
-            style={{ marginBottom: 12 }}
+            style={{ marginBottom: 0 }}
             rules={[
               {
                 max: 64,
@@ -588,9 +587,6 @@ export default function AvatarDropdown({
               maxLength={64}
             />
           </Form.Item>
-          <Button type="primary" htmlType="submit" loading={saving} block>
-            {t("account.saveDisplayName")}
-          </Button>
         </Form>
       </section>
 
@@ -799,16 +795,12 @@ export default function AvatarDropdown({
                 },
               }),
             ]}
-            style={{ marginBottom: 12 }}
           >
             <Input.Password
               autoComplete="new-password"
               prefix={<LockOpen {...PASSWORD_FIELD_ICON_PROPS} />}
             />
           </Form.Item>
-          <Button type="primary" htmlType="submit" loading={changingPw} block>
-            {t("account.changePassword")}
-          </Button>
         </Form>
       </section>
     </div>
@@ -830,71 +822,53 @@ export default function AvatarDropdown({
         {triggerButton}
       </Popover>
 
-      {isMobile ? (
-        <Drawer
-          title={t("account.settings")}
-          open={settingsOpen}
-          onClose={closeSettings}
-          placement="bottom"
-          height="min(92dvh, 100%)"
-          destroyOnHidden
-          className={styles.settingsDrawer}
-          styles={{
-            body: {
-              paddingTop: 8,
-              paddingBottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
-            },
-          }}
-        >
-          {settingsBody}
-        </Drawer>
-      ) : (
-        <Modal
-          title={t("account.settings")}
-          open={settingsOpen}
-          onCancel={closeSettings}
-          footer={null}
-          destroyOnHidden
-          centered
-          width={480}
-          className={styles.settingsModal}
-        >
-          {settingsBody}
-        </Modal>
-      )}
+      <Drawer
+        title={t("account.settings")}
+        open={settingsOpen}
+        onClose={closeSettings}
+        placement="right"
+        width={isMobile ? "100%" : 480}
+        destroyOnHidden
+        className={styles.settingsDrawer}
+        footer={
+          <div className={styles.settingsDrawerFooter}>
+            <Button onClick={closeSettings}>{t("common.cancel")}</Button>
+            <Button
+              type="primary"
+              loading={saving}
+              onClick={() => profileForm.submit()}
+            >
+              {t("common.save")}
+            </Button>
+          </div>
+        }
+      >
+        {settingsBody}
+      </Drawer>
 
-      {isMobile ? (
-        <Drawer
-          title={t("account.changePassword")}
-          open={passwordOpen}
-          onClose={closePassword}
-          placement="bottom"
-          height="auto"
-          destroyOnHidden
-          className={styles.settingsDrawer}
-          styles={{
-            body: {
-              paddingTop: 8,
-              paddingBottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
-            },
-          }}
-        >
-          {passwordBody}
-        </Drawer>
-      ) : (
-        <Modal
-          title={t("account.changePassword")}
-          open={passwordOpen}
-          onCancel={closePassword}
-          footer={null}
-          destroyOnHidden
-          centered
-          width={420}
-          className={styles.settingsModal}
-        >
-          {passwordBody}
-        </Modal>
-      )}
+      <Drawer
+        title={t("account.changePassword")}
+        open={passwordOpen}
+        onClose={closePassword}
+        placement="right"
+        width={isMobile ? "100%" : 420}
+        destroyOnHidden
+        className={styles.settingsDrawer}
+        footer={
+          <div className={styles.settingsDrawerFooter}>
+            <Button onClick={closePassword}>{t("common.cancel")}</Button>
+            <Button
+              type="primary"
+              loading={changingPw}
+              onClick={() => pwForm.submit()}
+            >
+              {t("account.changePassword")}
+            </Button>
+          </div>
+        }
+      >
+        {passwordBody}
+      </Drawer>
     </>
   );
 }
