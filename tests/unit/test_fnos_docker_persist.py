@@ -19,12 +19,31 @@ COMPOSE = FNOS_DOCKER / "app" / "docker" / "docker-compose.yaml"
 LEGACY_DIR = "/var/apps/octop/share/octop/data"
 
 
+def _pyproject_version() -> str:
+    for line in (REPO / "pyproject.toml").read_text(encoding="utf-8").splitlines():
+        if line.startswith("version"):
+            return line.split("=", 1)[1].strip().strip('"')
+    raise AssertionError("pyproject.toml 没有 version")
+
+
 @pytest.mark.parametrize("manifest", [FNOS_DOCKER / "manifest", FNOS_NATIVE / "manifest"])
 def test_fnos_manifest_maintainer_and_tags(manifest: Path) -> None:
     text = manifest.read_text(encoding="utf-8")
     assert "maintainer=TencentCloud\n" in text
     assert "maintainer=TencentCloud OrcaKit" not in text
     assert "tags=AI,Practical Efficiency" in text
+
+
+@pytest.mark.parametrize("manifest", [FNOS_DOCKER / "manifest", FNOS_NATIVE / "manifest"])
+def test_fnos_manifest_version_matches_pyproject(manifest: Path) -> None:
+    text = manifest.read_text(encoding="utf-8")
+    assert f"version={_pyproject_version()}\n" in text
+
+
+def test_publish_skill_bumps_fnos_manifest_versions() -> None:
+    text = (REPO / ".cursor" / "skills" / "publish" / "SKILL.md").read_text(encoding="utf-8")
+    assert "fnos/docker/manifest" in text
+    assert "fnos/native/manifest" in text
 
 
 def test_fnos_docker_compose_uses_trim_data_share_paths() -> None:
