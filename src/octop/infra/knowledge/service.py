@@ -224,7 +224,7 @@ class KnowledgeService:
     def read_text_document(
         self, kb_id: str, doc_id: str, *, actor_user_id: int, is_admin: bool = False
     ) -> dict[str, str]:
-        """Return raw UTF-8 text for an editable md/txt knowledge document."""
+        """Decode editable md/txt content, preferring UTF-8 then GB18030."""
         self.get_readable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
         document = self._repo.get_document(doc_id)
         if document is None or document.kb_id != kb_id:
@@ -236,8 +236,11 @@ class KnowledgeService:
         raw = document_path(kb_id, doc_id, document.filename).read_bytes()
         try:
             text = raw.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise ValueError("knowledge document is not valid UTF-8 text") from exc
+        except UnicodeDecodeError:
+            try:
+                text = raw.decode("gb18030")
+            except UnicodeDecodeError as exc:
+                raise ValueError("knowledge document is not valid UTF-8 text") from exc
         return {
             "id": document.id,
             "filename": document.filename,
