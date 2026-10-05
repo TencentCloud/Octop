@@ -64,7 +64,7 @@ export default function RolesPanel() {
   const [rows, setRows] = useState<UserRole[]>([]);
   const [loading, setLoading] = useState(false);
   const [permCatalog, setPermCatalog] = useState<PermissionCatalogItem[]>([]);
-  const [fsTreeRoot, setFsTreeRoot] = useState(HOST_FS_ROOT);
+  const [fsTreeRoots, setFsTreeRoots] = useState<string[]>([HOST_FS_ROOT]);
   const [workspaceRootAllowed, setWorkspaceRootAllowed] = useState(true);
   const [editor, setEditor] = useState<UserRole | "new" | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -99,11 +99,15 @@ export default function RolesPanel() {
       .catch(() => setPermCatalog([]));
     fetchFilesystemDefaults()
       .then((defaults) => {
-        setFsTreeRoot(defaults.tree_root);
+        setFsTreeRoots(
+          defaults.browse_roots?.length
+            ? defaults.browse_roots
+            : [defaults.tree_root],
+        );
         setWorkspaceRootAllowed(!defaults.in_container);
       })
       .catch(() => {
-        setFsTreeRoot(HOST_FS_ROOT);
+        setFsTreeRoots([HOST_FS_ROOT]);
         setWorkspaceRootAllowed(true);
       });
   }, [refresh]);
@@ -653,7 +657,7 @@ export default function RolesPanel() {
                 <PermissionCheckboxPicker catalog={permCatalog} />
               </Form.Item>
               <ResourcePolicyFields
-                fsTreeRoot={fsTreeRoot}
+                fsTreeRoots={fsTreeRoots}
                 workspaceRootAllowed={workspaceRootAllowed}
               />
             </>

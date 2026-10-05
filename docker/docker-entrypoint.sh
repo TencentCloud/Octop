@@ -19,7 +19,8 @@
 set -euo pipefail
 
 export HOME="${HOME:-/data}"
-OCTOP_HOME="${HOME}/.octop"
+OCTOP_HOME="${OCTOP_HOME:-${HOME}/.octop}"
+export OCTOP_HOME
 DB_FILE="${OCTOP_HOME}/octop.db"
 CREDENTIAL_FILE="${OCTOP_HOME}/credential.txt"
 ADMIN_USERNAME="${OCTOP_ADMIN_USERNAME:-admin}"
@@ -52,19 +53,33 @@ if [ ! -f "$DB_FILE" ]; then
         echo "[entrypoint] 未设置 OCTOP_DEFAULT_PASSWORD，已自动生成随机密码。"
     fi
 
-    if ! octop init \
-        --yes \
-        --admin-username "$ADMIN_USERNAME" \
-        --admin-password "$DEFAULT_PASSWORD" \
-        ${ADMIN_DISPLAY_NAME:+--admin-display-name "$ADMIN_DISPLAY_NAME"}; then
-        echo "[entrypoint] 指定的初始密码未通过应用密码策略（过弱或过于常见），改用随机密码重试 ..."
-        DEFAULT_PASSWORD="$(octop_random_password)"
+    init_log="$(mktemp)"
+    run_init() {
         octop init \
             --yes \
             --admin-username "$ADMIN_USERNAME" \
             --admin-password "$DEFAULT_PASSWORD" \
-            ${ADMIN_DISPLAY_NAME:+--admin-display-name "$ADMIN_DISPLAY_NAME"}
+            ${ADMIN_DISPLAY_NAME:+--admin-display-name "$ADMIN_DISPLAY_NAME"} \
+            >"$init_log" 2>&1
+    }
+    if ! run_init; then
+        if grep -qiE 'password is too common|password too short|password must include' "$init_log"; then
+            echo "[entrypoint] 指定的初始密码未通过应用密码策略（过弱或过于常见），改用随机密码重试 ..."
+            DEFAULT_PASSWORD="$(octop_random_password)"
+            if ! run_init; then
+                cat "$init_log" >&2 || true
+                rm -f "$init_log"
+                echo "[entrypoint] 初始化失败，请检查上方日志。" >&2
+                exit 1
+            fi
+        else
+            cat "$init_log" >&2 || true
+            rm -f "$init_log"
+            echo "[entrypoint] 初始化失败（不是密码策略问题）。若数据目录已有文件但没有 octop.db，请检查卷挂载。" >&2
+            exit 1
+        fi
     fi
+    rm -f "$init_log"
 
     cat > "$CREDENTIAL_FILE" << EOF
 Octop Login Credential

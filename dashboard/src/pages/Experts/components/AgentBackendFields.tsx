@@ -72,7 +72,13 @@ export default function AgentBackendFields({
     }
   }, [fsDefaults, form, watchedRootDir, rootDirMode]);
 
-  const treeRoot = fsDefaults?.tree_root ?? HOST_FS_ROOT;
+  const treeRoots = useMemo(
+    () =>
+      fsDefaults?.browse_roots?.length
+        ? fsDefaults.browse_roots
+        : [fsDefaults?.tree_root ?? HOST_FS_ROOT],
+    [fsDefaults],
+  );
   const routeBackendOptions = useMemo(() => {
     const builtins = BUILTIN_BACKENDS.map((mode) => ({
       value: mode,
@@ -171,7 +177,7 @@ export default function AgentBackendFields({
             }
           >
             <RootDirSelect
-              treeRoot={treeRoot}
+              treeRoots={treeRoots}
               disabled={disabled || rootDirMode === "edit"}
             />
           </Form.Item>
@@ -206,7 +212,9 @@ export default function AgentBackendFields({
                     margin: "4px 0 0",
                   }}
                 >
-                  {t("experts.backendRootDirJailHint")}
+                  {fsDefaults?.jail_enforced
+                    ? t("experts.backendRootDirJailHint")
+                    : t("experts.backendRootDirPathLimitHint")}
                 </p>
               </>
             )}
