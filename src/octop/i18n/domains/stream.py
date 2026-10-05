@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import re
+
 from octop.i18n.loader import lookup, tr
 from octop.infra.utils.locale import Locale
+
+# Keep in sync with octop_harness.messages.MODEL_RETRY_FAILURE_MARK.
+# Defined locally so Octop still imports on older harness wheels.
+MODEL_RETRY_FAILURE_MARK = "[model_call_failed]"
 
 _PREFIX = "octop:"
 
@@ -23,6 +29,7 @@ __all__ = [
     "CONTEXT_LENGTH",
     "INSUFFICIENT_BALANCE",
     "MODEL_CALL_FAILED",
+    "MODEL_RETRY_FAILURE_MARK",
     "PATH_OUTSIDE_ROOT",
     "PROVIDER_UNAVAILABLE",
     "RATE_LIMIT",
@@ -32,13 +39,20 @@ __all__ = [
     "classify_stream_error_message",
     "exception_display_message",
     "format_stream_error",
+    "model_retry_failure_prompt",
     "stream_error_message",
+    "unwrap_model_retry_message",
 ]
 
 _STRIP_PREFIXES = (
     "agent error:",
     "error:",
 )
+
+_RETRY_WRAPPER_RE = re.compile(
+    r"(?is)^model call failed after \d+ attempts? with\s+",
+)
+_TECHNICAL_DETAIL_RE = re.compile(r"(?is)technical detail:\s*(.+)$")
 
 
 def _normalize_message(message: str) -> str:
@@ -52,14 +66,34 @@ def _normalize_message(message: str) -> str:
     return msg
 
 
+def _format_template(key: str, locale: str | Locale, **kwargs: object) -> str:
+    """Interpolate i18n text without treating exception braces as format fields."""
+    escaped = {
+        name: str(value).replace("{", "{{").replace("}", "}}") for name, value in kwargs.items()
+    }
+    return tr(key, locale, **escaped)
+
+
 def _looks_like_send_file_tool_error(message: str) -> bool:
     """True for ``send_file_to_user`` path failures that should not look like a model outage."""
     return "send_file_to_user:" in _normalize_message(message).lower()
 
 
+def unwrap_model_retry_message(message: str) -> str:
+    """Strip retry-wrapper / recovery-prompt chrome so the inner error can be classified."""
+    msg = _normalize_message(message)
+    if MODEL_RETRY_FAILURE_MARK in msg:
+        msg = msg.replace(MODEL_RETRY_FAILURE_MARK, " ").strip()
+    tech = _TECHNICAL_DETAIL_RE.search(msg)
+    if tech:
+        return tech.group(1).strip()
+    stripped = _RETRY_WRAPPER_RE.sub("", msg, count=1).strip()
+    return stripped or msg
+
+
 def classify_stream_error_message(message: str) -> str | None:
     """Return a stable ``octop:stream_errors.*`` key for known model failures."""
-    msg = _normalize_message(message)
+    msg = unwrap_model_retry_message(message)
     if not msg:
         return None
     lower = msg.lower()
@@ -152,7 +186,8 @@ def classify_stream_error_message(message: str) -> str | None:
     ):
         return TIMEOUT_NETWORK
 
-    if "model call failed after" in lower:
+    original = _normalize_message(message).lower()
+    if "model call failed after" in original or MODEL_RETRY_FAILURE_MARK in original:
         return MODEL_CALL_FAILED
 
     return None
@@ -194,15 +229,39 @@ def stream_error_message(error: str | None, locale: str | Locale = "en") -> str:
 
 
 def format_stream_error(exc: BaseException | str, locale: str | Locale = "en") -> str:
-    """Classify an exception or raw message; fall back to a generic localized message.
+    """Classify an exception or raw message; keep the actual cause when unknown.
 
     Tool / path failures (e.g. ``send_file_to_user`` missing file) pass through so
     the UI does not mislabel them as a model-call outage.
     """
     message = exception_display_message(exc)
-    classified = classify_stream_error_message(message)
-    if classified is not None:
+    inner = unwrap_model_retry_message(message)
+    classified = classify_stream_error_message(inner)
+    if classified is not None and classified != MODEL_CALL_FAILED:
         return tr(classified.removeprefix(_PREFIX), locale)
-    if _looks_like_send_file_tool_error(message):
-        return message
+    if _looks_like_send_file_tool_error(message) or _looks_like_send_file_tool_error(inner):
+        return message if _looks_like_send_file_tool_error(message) else inner
+    if inner:
+        return _format_template("stream_errors.model_call_failed_detail", locale, detail=inner)
     return tr(MODEL_CALL_FAILED.removeprefix(_PREFIX), locale)
+
+
+def model_retry_failure_prompt(exc: Exception, locale: str | Locale = "en") -> str:
+    """Return a model-visible recovery prompt after retries are exhausted.
+
+    Used as ``ModelRetryMiddleware.on_failure`` so the agent continues with a
+    specific cause instead of raising a generic retry-exhausted exception.
+    """
+    detail = unwrap_model_retry_message(exception_display_message(exc))
+    classified = classify_stream_error_message(detail)
+    if classified is not None:
+        guidance = tr(classified.removeprefix(_PREFIX), locale)
+    else:
+        guidance = _format_template("stream_errors.model_call_failed_detail", locale, detail=detail)
+    body = _format_template(
+        "stream_errors.model_retry_prompt",
+        locale,
+        guidance=guidance,
+        detail=detail,
+    )
+    return f"{MODEL_RETRY_FAILURE_MARK}\n{body}"

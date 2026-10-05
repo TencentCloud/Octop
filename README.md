@@ -229,7 +229,7 @@ See [scripts/README.md](scripts/README.md) for all install options (`--version`,
 | Windows | `Octop-desktop-windows-amd64-<version>.exe` (64-bit) / `Octop-desktop-windows-arm64-<version>.exe` (ARM64) — NSIS installer |
 | macOS | `Octop-desktop-darwin-arm64-<version>.dmg` (Apple Silicon) / `Octop-desktop-darwin-amd64-<version>.dmg` (Intel) |
 | Linux | `Octop-desktop-linux-amd64-<version>.tar.gz` / `Octop-desktop-linux-arm64-<version>.tar.gz` |
-| FnOS NAS | `Octop-fnos-docker-<version>.fpk` (Docker-backed) / `Octop-fnos-native-<version>.fpk` (no Docker) — install via App Center |
+| FnOS NAS | `Octop-fnos-docker-<version>.fpk` (recommended on ARM; amd64/arm64 image) / `Octop-fnos-native-<version>.fpk` (x86_64, no Docker) / `Octop-fnos-native-arm64-<version>.fpk` (ARM64 fallback if no Docker) — install via App Center |
 
 See [desktop/README.md](desktop/README.md) for the desktop shell and [fnos/README.md](fnos/README.md) for the FnOS packaging guide.
 
