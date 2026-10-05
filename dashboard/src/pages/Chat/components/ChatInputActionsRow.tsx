@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import {
@@ -19,14 +19,14 @@ import {
   GraduationCap,
   BookOpen,
   Bot,
-  MoreHorizontal,
+  Plus,
   Check,
   ChevronLeft,
   ChevronRight,
   Route,
   Info,
 } from "lucide-react";
-import { Tooltip, Popover, Drawer } from "antd";
+import { Tooltip, Popover } from "antd";
 import { message } from "@/utils/antdMessage";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
@@ -44,7 +44,10 @@ import ExpertPickerPopover from "./ExpertPickerPopover";
 import SubagentPickerPopover from "./SubagentPickerPopover";
 import ConnectorPickerPopover from "./ConnectorPickerPopover";
 import KnowledgePickerPopover from "./KnowledgePickerPopover";
-import ConversationModePicker from "./ConversationModePicker";
+import {
+  ConversationModeMenu,
+  conversationModeIcon,
+} from "./ConversationModePicker";
 import HitlPolicyPicker from "./HitlPolicyPicker";
 import SlashCommandMenu from "./SlashCommandMenu";
 import type { SlashMenuGroup } from "../../../utils/slashCategories";
@@ -52,7 +55,6 @@ import type { SlashMenuItem } from "../hooks/useSlashMentionInput";
 import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import { SHORTCUT_ICON_TONE_CLASS } from "../utils/slashShortcutStyles";
 import { isSttAvailable } from "../../../hooks/useVoiceInput";
-import { resolveTurnModelOverride } from "../utils/chatMessages";
 import { parseSkillSlugsInText } from "../utils/skillSlash";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import {
@@ -61,15 +63,15 @@ import {
 } from "../utils/expertMention";
 import styles from "../index.module.less";
 
-/** Shared by mobile drawers and narrow-desktop popovers. */
+/** Picker opened from the composer plus menu. */
 type CompactPickerKey =
+  | "mode"
   | "model"
   | "connector"
   | "knowledge"
   | "skill"
   | "expert"
-  | "subagent"
-  | "shortcut";
+  | "subagent";
 
 function resolveModelLogo(model: {
   provider_name: string;
@@ -175,7 +177,6 @@ export default function ChatInputActionsRow({
   contextMaxTokens = 128_000,
   availableModels,
   selectedModel,
-  defaultModel,
   onModelChange,
   reasoningMode = "auto",
   reasoningEffort = null,
@@ -211,28 +212,37 @@ export default function ChatInputActionsRow({
   const remoteManaged = Boolean(agentId?.startsWith("bridge:"));
   const skillDisplayName = useSkillDisplayName();
   const actionsRowRef = useRef<HTMLDivElement | null>(null);
+  const [plusMenuEl, setPlusMenuEl] = useState<HTMLDivElement | null>(null);
+  const [plusMenuHeight, setPlusMenuHeight] = useState<number | null>(null);
   const [isCompact, setIsCompact] = useState(false);
-  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
-  const [expertPickerOpen, setExpertPickerOpen] = useState(false);
-  const [subagentPickerOpen, setSubagentPickerOpen] = useState(false);
-  const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
-  const [knowledgePickerOpen, setKnowledgePickerOpen] = useState(false);
   const [shortcutOpen, setShortcutOpen] = useState(false);
-  const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [reasoningModelRef, setReasoningModelRef] = useState<string | null>(
     null,
   );
-  /** Mobile-only bottom drawer for the overflow ("more") menu. */
-  const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false);
-  /** Narrow-desktop overflow popover (tools / skills / …). */
+  /** Plus-button menu (model / skills / …). */
   const [overflowPopoverOpen, setOverflowPopoverOpen] = useState(false);
-  /** Active sub-picker for compact layouts (drawer on mobile, panel in popover). */
+  /** Picker panel opened from a plus-menu item. */
   const [compactPicker, setCompactPicker] = useState<CompactPickerKey | null>(
     null,
   );
 
-  const modelOverride = resolveTurnModelOverride(selectedModel, defaultModel);
   const useCompactControls = isMobile || isCompact;
+
+  useLayoutEffect(() => {
+    if (!plusMenuEl || isMobile) {
+      setPlusMenuHeight(null);
+      return;
+    }
+    const sync = () => {
+      const next = Math.round(plusMenuEl.getBoundingClientRect().height);
+      if (next <= 0) return;
+      setPlusMenuHeight((prev) => (prev === next ? prev : next));
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(plusMenuEl);
+    return () => observer.disconnect();
+  }, [plusMenuEl, isMobile]);
 
   useEffect(() => {
     if (isMobile) {
@@ -253,12 +263,6 @@ export default function ChatInputActionsRow({
   const showModelPicker = Boolean(
     availableModels && availableModels.length > 0 && onModelChange,
   );
-  const effectiveModelRef = selectedModel || defaultModel || "";
-  const selectedModelInfo = availableModels?.find(
-    (model) => modelOptionValue(model) === effectiveModelRef,
-  );
-  const reasoningCapability = selectedModelInfo?.reasoning_config;
-  const reasoningIsStatusOnly = reasoningCapability?.adapter === "status_only";
   const allowWriteTools = conversationMode === "craft";
   const showConnectorPicker = Boolean(
     allowWriteTools && availableConnectors && onConnectorsChange,
@@ -296,14 +300,15 @@ export default function ChatInputActionsRow({
     [availableSkills, skillDisplayName],
   );
   const activeSkillSlugs = parseSkillSlugsInText(text, skillTokenRefs);
-  const showShortcutPicker = true;
+  const showModePicker = Boolean(onConversationModeChange);
   const showOverflowMenu =
+    showModePicker ||
+    showModelPicker ||
     showConnectorPicker ||
     showKnowledgePicker ||
     showSkillPicker ||
     showExpertPicker ||
-    showSubagentPicker ||
-    showShortcutPicker;
+    showSubagentPicker;
 
   const overflowBadgeCount =
     selectedConnectors.length +
@@ -317,31 +322,34 @@ export default function ChatInputActionsRow({
     setReasoningModelRef(null);
   };
 
+  const closePlusMenu = () => {
+    setOverflowPopoverOpen(false);
+    closeCompactPicker();
+  };
+
   const openCompactPicker = (key: CompactPickerKey) => {
-    if (isMobile) setMobileOverflowOpen(false);
-    setCompactPicker(key);
+    setReasoningModelRef(null);
+    setCompactPicker((prev) => (prev === key ? null : key));
   };
 
   const handleExpertSelect = (agent: ChatAgentOption) => {
     onInsertExpertMention?.(agent);
-    setExpertPickerOpen(false);
-    closeCompactPicker();
+    closePlusMenu();
   };
 
   const handleSubagentSelect = (subagent: AgentSubagentSummary) => {
     onInsertSubagentMention?.(subagent);
-    setSubagentPickerOpen(false);
-    closeCompactPicker();
+    closePlusMenu();
   };
 
   const compactPickerTitle: Record<CompactPickerKey, string> = {
-    model: t("chat.selectModel", "Select model"),
+    mode: t("chat.conversationMode.picker"),
+    model: t("chat.selectModel", "Model"),
     connector: t("connectors.chatPicker"),
     knowledge: t("chat.knowledgePicker"),
     skill: t("chat.skillPicker"),
     expert: t("chat.expertPicker"),
     subagent: t("chat.subagentPicker"),
-    shortcut: t("shortcut.title", "快捷指令"),
   };
 
   const reasoningModel = availableModels?.find(
@@ -363,16 +371,7 @@ export default function ChatInputActionsRow({
           model: selectedModel.split("/").slice(1).join("/") || selectedModel,
         },
       )
-    : t("chat.selectModel", "Select model");
-  const selectedModelReasoningHint =
-    selectedModel && reasoningCapability
-      ? reasoningIsStatusOnly
-        ? t("chat.reasoningAlways", "始终推理")
-        : reasoningEffort || reasoningModeLabel(reasoningMode)
-      : null;
-  const modelTriggerTitle = selectedModelReasoningHint
-    ? `${selectedModelTriggerLabel} · ${selectedModelReasoningHint}`
-    : selectedModelTriggerLabel;
+    : t("chat.modelAuto", "Auto");
 
   const reasoningSummary = (model: ResolvedModel, active: boolean) => {
     const capability = model.reasoning_config;
@@ -397,16 +396,14 @@ export default function ChatInputActionsRow({
   const reasoningMenu = reasoningModelCapability ? (
     <div className={styles.reasoningMenuPanel}>
       <div className={styles.reasoningMenuHeader}>
-        {useCompactControls && (
-          <button
-            type="button"
-            className={styles.reasoningMenuBack}
-            onClick={() => setReasoningModelRef(null)}
-            aria-label={t("common.back", "返回")}
-          >
-            <ChevronLeft size={16} />
-          </button>
-        )}
+        <button
+          type="button"
+          className={styles.reasoningMenuBack}
+          onClick={() => setReasoningModelRef(null)}
+          aria-label={t("common.back", "返回")}
+        >
+          <ChevronLeft size={16} />
+        </button>
         <span>{reasoningModel ? modelOptionLabel(reasoningModel) : ""}</span>
       </div>
       {reasoningModelCapability.adapter === "status_only" ? (
@@ -470,12 +467,8 @@ export default function ChatInputActionsRow({
   ) : null;
 
   const modelMenu = (
-    <div
-      className={`${styles.modelPickerPanel} ${
-        reasoningMenu ? styles.modelPickerPanelExpanded : ""
-      }`}
-    >
-      {(!useCompactControls || !reasoningMenu) && (
+    <div className={styles.modelPickerPanel}>
+      {!reasoningMenu && (
         <div className={styles.modelMenuColumn}>
           <div className={styles.modelMenu}>
             <button
@@ -485,8 +478,7 @@ export default function ChatInputActionsRow({
               }`}
               onClick={() => {
                 onModelChange?.(null);
-                closeCompactPicker();
-                setModelPickerOpen(false);
+                closePlusMenu();
               }}
             >
               <span className={styles.modelMenuTitle}>
@@ -516,8 +508,7 @@ export default function ChatInputActionsRow({
                     className={styles.modelMenuSelect}
                     onClick={() => {
                       onModelChange?.(active ? null : value);
-                      closeCompactPicker();
-                      setModelPickerOpen(false);
+                      closePlusMenu();
                     }}
                   >
                     <img
@@ -561,8 +552,7 @@ export default function ChatInputActionsRow({
                 message.info(t("chat.remoteExpert.manageToast"));
                 return;
               }
-              closeCompactPicker();
-              setModelPickerOpen(false);
+              closePlusMenu();
               navigate("/admin/models");
             }}
           >
@@ -606,7 +596,6 @@ export default function ChatInputActionsRow({
           }
           onSelect={(command) => {
             setShortcutOpen(false);
-            closeCompactPicker();
             onSlashShortcutSelect(command);
           }}
           onHover={() => undefined}
@@ -615,16 +604,60 @@ export default function ChatInputActionsRow({
     </div>
   );
 
-  const renderMobileOverflowMenu = () => (
+  const ModeIcon = conversationModeIcon(conversationMode);
+
+  const renderPlusMenu = () => (
     <div className={styles.mobileOverflowMenu}>
+      {showModePicker && (
+        <button
+          type="button"
+          className={`${styles.mobileOverflowItem} ${
+            compactPicker === "mode" ? styles.mobileOverflowItemActive : ""
+          }`}
+          onClick={() => openCompactPicker("mode")}
+        >
+          <span className={styles.mobileOverflowItemMain}>
+            <ModeIcon size={16} />
+            <span>{t("chat.conversationMode.picker")}</span>
+          </span>
+          <span className={styles.mobileOverflowItemMeta}>
+            <span className={styles.mobileOverflowItemMetaLabel}>
+              {t(`chat.conversationMode.${conversationMode}`)}
+            </span>
+            <ChevronRight size={16} />
+          </span>
+        </button>
+      )}
+      {showModelPicker && (
+        <button
+          type="button"
+          className={`${styles.mobileOverflowItem} ${
+            compactPicker === "model" ? styles.mobileOverflowItemActive : ""
+          }`}
+          onClick={() => openCompactPicker("model")}
+        >
+          <span className={styles.mobileOverflowItemMain}>
+            <Cpu size={16} />
+            <span>{t("chat.selectModel", "Model")}</span>
+          </span>
+          <span className={styles.mobileOverflowItemMeta}>
+            <span className={styles.mobileOverflowItemMetaLabel}>
+              {selectedModelTriggerLabel}
+            </span>
+            <ChevronRight size={16} />
+          </span>
+        </button>
+      )}
       {showConnectorPicker && (
         <button
           type="button"
-          className={styles.mobileOverflowItem}
+          className={`${styles.mobileOverflowItem} ${
+            compactPicker === "connector" ? styles.mobileOverflowItemActive : ""
+          }`}
           onClick={() => openCompactPicker("connector")}
         >
           <span className={styles.mobileOverflowItemMain}>
-            <Link2 size={18} />
+            <Link2 size={16} />
             <span>{t("connectors.chatPicker")}</span>
           </span>
           <span className={styles.mobileOverflowItemMeta}>
@@ -640,11 +673,13 @@ export default function ChatInputActionsRow({
       {showKnowledgePicker && (
         <button
           type="button"
-          className={styles.mobileOverflowItem}
+          className={`${styles.mobileOverflowItem} ${
+            compactPicker === "knowledge" ? styles.mobileOverflowItemActive : ""
+          }`}
           onClick={() => openCompactPicker("knowledge")}
         >
           <span className={styles.mobileOverflowItemMain}>
-            <BookOpen size={18} />
+            <BookOpen size={16} />
             <span>{t("chat.knowledgePicker")}</span>
           </span>
           <span className={styles.mobileOverflowItemMeta}>
@@ -660,11 +695,13 @@ export default function ChatInputActionsRow({
       {showSkillPicker && (
         <button
           type="button"
-          className={styles.mobileOverflowItem}
+          className={`${styles.mobileOverflowItem} ${
+            compactPicker === "skill" ? styles.mobileOverflowItemActive : ""
+          }`}
           onClick={() => openCompactPicker("skill")}
         >
           <span className={styles.mobileOverflowItemMain}>
-            <Sparkles size={18} />
+            <Sparkles size={16} />
             <span>{t("chat.skillPicker")}</span>
           </span>
           <span className={styles.mobileOverflowItemMeta}>
@@ -680,11 +717,13 @@ export default function ChatInputActionsRow({
       {showExpertPicker && (
         <button
           type="button"
-          className={styles.mobileOverflowItem}
+          className={`${styles.mobileOverflowItem} ${
+            compactPicker === "expert" ? styles.mobileOverflowItemActive : ""
+          }`}
           onClick={() => openCompactPicker("expert")}
         >
           <span className={styles.mobileOverflowItemMain}>
-            <GraduationCap size={18} />
+            <GraduationCap size={16} />
             <span>{t("chat.expertPicker")}</span>
           </span>
           <span className={styles.mobileOverflowItemMeta}>
@@ -702,11 +741,13 @@ export default function ChatInputActionsRow({
       {showSubagentPicker && (
         <button
           type="button"
-          className={styles.mobileOverflowItem}
+          className={`${styles.mobileOverflowItem} ${
+            compactPicker === "subagent" ? styles.mobileOverflowItemActive : ""
+          }`}
           onClick={() => openCompactPicker("subagent")}
         >
           <span className={styles.mobileOverflowItemMain}>
-            <Bot size={18} />
+            <Bot size={16} />
             <span>{t("chat.subagentPicker")}</span>
           </span>
           <span className={styles.mobileOverflowItemMeta}>
@@ -721,26 +762,21 @@ export default function ChatInputActionsRow({
           </span>
         </button>
       )}
-      {showShortcutPicker && (
-        <button
-          type="button"
-          className={styles.mobileOverflowItem}
-          onClick={() => openCompactPicker("shortcut")}
-        >
-          <span className={styles.mobileOverflowItemMain}>
-            <Zap size={18} />
-            <span>{t("shortcut.title", "快捷指令")}</span>
-          </span>
-          <span className={styles.mobileOverflowItemMeta}>
-            <ChevronRight size={16} />
-          </span>
-        </button>
-      )}
     </div>
   );
 
   const renderCompactPickerContent = () => {
     switch (compactPicker) {
+      case "mode":
+        return (
+          <ConversationModeMenu
+            conversationMode={conversationMode}
+            onChange={(mode) => {
+              onConversationModeChange?.(mode);
+              closePlusMenu();
+            }}
+          />
+        );
       case "model":
         return modelMenu;
       case "connector":
@@ -749,7 +785,7 @@ export default function ChatInputActionsRow({
             connectors={availableConnectors ?? []}
             selectedConnectors={selectedConnectors}
             onConnectorsChange={onConnectorsChange!}
-            onNavigateAway={closeCompactPicker}
+            onNavigateAway={closePlusMenu}
           />
         );
       case "knowledge":
@@ -758,7 +794,7 @@ export default function ChatInputActionsRow({
             knowledgeBases={availableKnowledgeBases ?? []}
             selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
             onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange!}
-            onNavigateAway={closeCompactPicker}
+            onNavigateAway={closePlusMenu}
             remoteManaged={remoteManaged}
           />
         );
@@ -769,9 +805,9 @@ export default function ChatInputActionsRow({
             activeSlugs={activeSkillSlugs}
             onSelectSkill={(slug) => {
               onInsertSkillCommand?.(slug);
-              closeCompactPicker();
+              closePlusMenu();
             }}
-            onNavigateAway={closeCompactPicker}
+            onNavigateAway={closePlusMenu}
             remoteManaged={remoteManaged}
           />
         );
@@ -781,7 +817,7 @@ export default function ChatInputActionsRow({
             agents={availableExperts ?? []}
             selectedAgentIds={mentionedExperts}
             onSelect={handleExpertSelect}
-            onNavigateAway={closeCompactPicker}
+            onNavigateAway={closePlusMenu}
             remoteManaged={remoteManaged}
           />
         );
@@ -791,383 +827,97 @@ export default function ChatInputActionsRow({
             subagents={availableSubagents ?? []}
             selectedSlugs={mentionedSubagents}
             onSelect={handleSubagentSelect}
-            onNavigateAway={closeCompactPicker}
+            onNavigateAway={closePlusMenu}
             remoteManaged={remoteManaged}
           />
         );
-      case "shortcut":
-        return shortcutMenu;
       default:
         return null;
     }
   };
 
-  const compactPickerContent = compactPicker ? (
-    <div className={styles.compactPickerPanel}>
-      <button
-        type="button"
-        className={styles.compactPickerBack}
-        onClick={closeCompactPicker}
-      >
-        <ChevronLeft size={16} />
-        <span>{compactPickerTitle[compactPicker]}</span>
-      </button>
-      {renderCompactPickerContent()}
-    </div>
-  ) : (
-    renderMobileOverflowMenu()
-  );
-
   const renderSecondaryActions = () => {
-    if (useCompactControls) {
-      const modelButton = (
-        <button
-          className={`${styles.secondaryBtn} ${
-            modelOverride || reasoningMode !== "auto" || reasoningEffort
-              ? styles.secondaryBtnModelActive
-              : ""
-          }`}
-          type="button"
-          aria-label={modelTriggerTitle}
-          onClick={isMobile ? () => setCompactPicker("model") : undefined}
-        >
-          <Cpu size={16} />
-        </button>
-      );
-      const overflowButton = (
-        <button
-          className={`${styles.secondaryBtn} ${
-            overflowBadgeCount > 0 ? styles.secondaryBtnActive : ""
-          }`}
-          type="button"
-          onClick={isMobile ? () => setMobileOverflowOpen(true) : undefined}
-        >
-          <MoreHorizontal size={16} />
-          {overflowBadgeCount > 0 && (
-            <span className={styles.toolbarBadge}>{overflowBadgeCount}</span>
-          )}
-        </button>
-      );
-
-      return (
-        <>
-          {onConversationModeChange && (
-            <ConversationModePicker
-              conversationMode={conversationMode}
-              onChange={onConversationModeChange}
-            />
-          )}
-          {onHitlPolicyChange && (
-            <HitlPolicyPicker
-              policy={hitlPolicy ?? { mode: "ask" }}
-              onChange={onHitlPolicyChange}
-            />
-          )}
-          {showModelPicker &&
-            (isMobile ? (
-              modelButton
-            ) : (
-              <Popover
-                trigger="click"
-                placement="topLeft"
-                open={modelPickerOpen}
-                onOpenChange={(open) => {
-                  setModelPickerOpen(open);
-                  if (open) setOverflowPopoverOpen(false);
-                  if (!open) setReasoningModelRef(null);
-                }}
-                overlayClassName={styles.modelPopover}
-                content={modelMenu}
-              >
-                {modelButton}
-              </Popover>
-            ))}
-          <button
-            className={styles.secondaryBtn}
-            onClick={onFileSelect}
-            type="button"
-            disabled={uploading}
-          >
-            <Paperclip size={16} />
-          </button>
-          {showOverflowMenu &&
-            (isMobile ? (
-              overflowButton
-            ) : (
-              <Popover
-                trigger="click"
-                placement="topLeft"
-                open={overflowPopoverOpen}
-                overlayClassName={styles.skillPickerPopover}
-                content={compactPickerContent}
-                onOpenChange={(open) => {
-                  setOverflowPopoverOpen(open);
-                  if (open) {
-                    setModelPickerOpen(false);
-                    setCompactPicker(null);
-                    setReasoningModelRef(null);
-                  } else {
-                    closeCompactPicker();
-                  }
-                }}
-              >
-                {overflowButton}
-              </Popover>
-            ))}
-          {isMobile && (
-            <>
-              <Drawer
-                open={mobileOverflowOpen}
-                onClose={() => setMobileOverflowOpen(false)}
-                placement="bottom"
-                height="auto"
-                title={t("chat.composerMore", "更多工具")}
-                className={styles.mobilePickerDrawer}
-                styles={{ body: { padding: 0 } }}
-                destroyOnHidden
-              >
-                {renderMobileOverflowMenu()}
-              </Drawer>
-              <Drawer
-                open={compactPicker !== null}
-                onClose={closeCompactPicker}
-                placement="bottom"
-                height="auto"
-                title={compactPicker ? compactPickerTitle[compactPicker] : ""}
-                className={styles.mobilePickerDrawer}
-                styles={{ body: { padding: 0 } }}
-                destroyOnHidden
-              >
-                {renderCompactPickerContent()}
-              </Drawer>
-            </>
-          )}
-        </>
-      );
-    }
+    const plusButton = (
+      <button
+        className={`${styles.secondaryBtn} ${
+          overflowBadgeCount > 0 ? styles.secondaryBtnActive : ""
+        }`}
+        type="button"
+        aria-label={t("chat.composerMore", "更多工具")}
+        data-testid="composer-plus"
+      >
+        <Plus size={16} />
+        {overflowBadgeCount > 0 && (
+          <span className={styles.toolbarBadge}>{overflowBadgeCount}</span>
+        )}
+      </button>
+    );
 
     return (
       <>
-        {onConversationModeChange && (
-          <ConversationModePicker
-            conversationMode={conversationMode}
-            onChange={onConversationModeChange}
-          />
+        {showOverflowMenu && (
+          <Popover
+            trigger="click"
+            placement="topLeft"
+            arrow={false}
+            open={overflowPopoverOpen}
+            overlayClassName={styles.plusMenuPopover}
+            content={
+              <div className={styles.plusFlyout}>
+                {!isMobile || !compactPicker ? (
+                  <div ref={setPlusMenuEl} className={styles.plusFlyoutMenu}>
+                    {renderPlusMenu()}
+                  </div>
+                ) : null}
+                {compactPicker ? (
+                  <div
+                    className={
+                      isMobile
+                        ? styles.plusFlyoutPanelInPlace
+                        : styles.plusFlyoutPanel
+                    }
+                    style={
+                      !isMobile && plusMenuHeight
+                        ? { maxHeight: plusMenuHeight }
+                        : undefined
+                    }
+                    data-testid="composer-plus-panel"
+                  >
+                    {isMobile ? (
+                      <button
+                        type="button"
+                        className={styles.compactPickerBack}
+                        onClick={closeCompactPicker}
+                      >
+                        <ChevronLeft size={16} />
+                        <span>{compactPickerTitle[compactPicker]}</span>
+                      </button>
+                    ) : null}
+                    <div className={styles.plusFlyoutPanelBody}>
+                      {renderCompactPickerContent()}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            }
+            onOpenChange={(open) => {
+              setOverflowPopoverOpen(open);
+              if (!open) closeCompactPicker();
+            }}
+          >
+            <Tooltip
+              title={t("chat.composerMore", "更多工具")}
+              mouseEnterDelay={0.4}
+            >
+              {plusButton}
+            </Tooltip>
+          </Popover>
         )}
         {onHitlPolicyChange && (
           <HitlPolicyPicker
             policy={hitlPolicy ?? { mode: "ask" }}
             onChange={onHitlPolicyChange}
           />
-        )}
-        {showModelPicker && (
-          <Popover
-            trigger="click"
-            placement="topLeft"
-            open={modelPickerOpen}
-            onOpenChange={(open) => {
-              setModelPickerOpen(open);
-              if (!open) setReasoningModelRef(null);
-            }}
-            overlayClassName={styles.modelPopover}
-            content={modelMenu}
-          >
-            <Tooltip title={modelTriggerTitle} mouseEnterDelay={0.4}>
-              <button
-                className={`${styles.secondaryBtn} ${
-                  modelOverride || reasoningMode !== "auto" || reasoningEffort
-                    ? styles.secondaryBtnModelActive
-                    : ""
-                }`}
-                type="button"
-                aria-label={modelTriggerTitle}
-              >
-                <Cpu size={16} />
-              </button>
-            </Tooltip>
-          </Popover>
-        )}
-        {showConnectorPicker && (
-          <Popover
-            trigger="click"
-            placement="topLeft"
-            open={connectorPickerOpen}
-            onOpenChange={setConnectorPickerOpen}
-            overlayClassName={styles.skillPickerPopover}
-            content={
-              <ConnectorPickerPopover
-                connectors={availableConnectors!}
-                selectedConnectors={selectedConnectors}
-                onConnectorsChange={onConnectorsChange!}
-                onNavigateAway={() => setConnectorPickerOpen(false)}
-              />
-            }
-          >
-            <Tooltip title={t("connectors.chatPicker")} mouseEnterDelay={0.4}>
-              <button
-                className={`${styles.secondaryBtn} ${
-                  selectedConnectors.length > 0 ? styles.secondaryBtnActive : ""
-                }`}
-                type="button"
-              >
-                <Link2 size={16} />
-                {selectedConnectors.length > 0 && (
-                  <span className={styles.toolbarBadge}>
-                    {selectedConnectors.length}
-                  </span>
-                )}
-              </button>
-            </Tooltip>
-          </Popover>
-        )}
-        {showKnowledgePicker && (
-          <Popover
-            trigger="click"
-            placement="topLeft"
-            open={knowledgePickerOpen}
-            onOpenChange={setKnowledgePickerOpen}
-            overlayClassName={styles.skillPickerPopover}
-            content={
-              <KnowledgePickerPopover
-                knowledgeBases={availableKnowledgeBases!}
-                selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
-                onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange!}
-                onNavigateAway={() => setKnowledgePickerOpen(false)}
-                remoteManaged={remoteManaged}
-              />
-            }
-          >
-            <Tooltip title={t("chat.knowledgePicker")} mouseEnterDelay={0.4}>
-              <button
-                className={`${styles.secondaryBtn} ${
-                  selectedKnowledgeBaseIds.length > 0
-                    ? styles.secondaryBtnActive
-                    : ""
-                }`}
-                type="button"
-              >
-                <BookOpen size={16} />
-                {selectedKnowledgeBaseIds.length > 0 && (
-                  <span className={styles.toolbarBadge}>
-                    {selectedKnowledgeBaseIds.length}
-                  </span>
-                )}
-              </button>
-            </Tooltip>
-          </Popover>
-        )}
-        {showSkillPicker && (
-          <Popover
-            trigger="click"
-            placement="topLeft"
-            open={skillPickerOpen}
-            onOpenChange={setSkillPickerOpen}
-            overlayClassName={styles.skillPickerPopover}
-            content={
-              <SkillPickerPopover
-                skills={availableSkills!}
-                activeSlugs={activeSkillSlugs}
-                onSelectSkill={(slug) => {
-                  onInsertSkillCommand?.(slug);
-                  setSkillPickerOpen(false);
-                }}
-                onNavigateAway={() => setSkillPickerOpen(false)}
-                remoteManaged={remoteManaged}
-              />
-            }
-          >
-            <Tooltip title={t("chat.skillPicker")} mouseEnterDelay={0.4}>
-              <button
-                className={`${styles.secondaryBtn} ${
-                  activeSkillSlugs.length > 0 ? styles.secondaryBtnActive : ""
-                }`}
-                type="button"
-              >
-                <Sparkles size={16} />
-                {activeSkillSlugs.length > 0 ? (
-                  <span className={styles.toolbarBadge}>
-                    {activeSkillSlugs.length}
-                  </span>
-                ) : null}
-              </button>
-            </Tooltip>
-          </Popover>
-        )}
-        {showExpertPicker && (
-          <Popover
-            trigger="click"
-            placement="topLeft"
-            open={expertPickerOpen}
-            onOpenChange={setExpertPickerOpen}
-            overlayClassName={styles.skillPickerPopover}
-            content={
-              <ExpertPickerPopover
-                agents={availableExperts!}
-                selectedAgentIds={mentionedExperts}
-                onSelect={handleExpertSelect}
-                onNavigateAway={() => setExpertPickerOpen(false)}
-                remoteManaged={remoteManaged}
-              />
-            }
-          >
-            <Tooltip title={t("chat.expertPicker")} mouseEnterDelay={0.4}>
-              <button
-                className={`${styles.secondaryBtn} ${
-                  mentionedExperts.length > 0
-                    ? styles.secondaryBtnExpertActive
-                    : ""
-                }`}
-                type="button"
-              >
-                <GraduationCap size={16} />
-                {mentionedExperts.length > 0 && (
-                  <span
-                    className={`${styles.toolbarBadge} ${styles.toolbarBadgeExpert}`}
-                  >
-                    {mentionedExperts.length}
-                  </span>
-                )}
-              </button>
-            </Tooltip>
-          </Popover>
-        )}
-        {showSubagentPicker && (
-          <Popover
-            trigger="click"
-            placement="topLeft"
-            open={subagentPickerOpen}
-            onOpenChange={setSubagentPickerOpen}
-            overlayClassName={styles.skillPickerPopover}
-            content={
-              <SubagentPickerPopover
-                subagents={availableSubagents!}
-                selectedSlugs={mentionedSubagents}
-                onSelect={handleSubagentSelect}
-                onNavigateAway={() => setSubagentPickerOpen(false)}
-                remoteManaged={remoteManaged}
-              />
-            }
-          >
-            <Tooltip title={t("chat.subagentPicker")} mouseEnterDelay={0.4}>
-              <button
-                className={`${styles.secondaryBtn} ${
-                  mentionedSubagents.length > 0
-                    ? styles.secondaryBtnSubagentActive
-                    : ""
-                }`}
-                type="button"
-              >
-                <Bot size={16} />
-                {mentionedSubagents.length > 0 && (
-                  <span
-                    className={`${styles.toolbarBadge} ${styles.toolbarBadgeSubagent}`}
-                  >
-                    {mentionedSubagents.length}
-                  </span>
-                )}
-              </button>
-            </Tooltip>
-          </Popover>
         )}
         <Popover
           trigger="click"
@@ -1181,7 +931,11 @@ export default function ChatInputActionsRow({
             title={t("shortcut.title", "快捷指令")}
             mouseEnterDelay={0.4}
           >
-            <button className={styles.secondaryBtn} type="button">
+            <button
+              className={styles.secondaryBtn}
+              type="button"
+              aria-label={t("shortcut.title", "快捷指令")}
+            >
               <Zap size={16} />
             </button>
           </Tooltip>
@@ -1195,6 +949,7 @@ export default function ChatInputActionsRow({
             onClick={onFileSelect}
             type="button"
             disabled={uploading}
+            aria-label={t("upload.fileTooltip", "Upload attachment")}
           >
             <Paperclip size={16} />
           </button>

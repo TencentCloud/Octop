@@ -6,9 +6,12 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, cast
 
-import jwt
 from fastapi import Depends, Header, Query, Request
 
+from octop.infra.auth.tokens import InvalidToken as InvalidToken
+from octop.infra.auth.tokens import TokenExpired as TokenExpired
+from octop.infra.auth.tokens import decode_token as decode_token
+from octop.infra.auth.tokens import sign_token as sign_token
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.permissions import PERMISSIONS, user_has_permission
 
@@ -17,43 +20,6 @@ if TYPE_CHECKING:
     from octop.infra.users.identity import User
 else:
     from octop.infra.users.identity import User
-
-
-class InvalidToken(Exception): ...
-
-
-class TokenExpired(InvalidToken): ...
-
-
-def sign_token(
-    secret: bytes,
-    *,
-    sub: int,
-    uname: str,
-    role: str,
-    ttl_seconds: int = 86400,
-) -> str:
-    now = int(time.time())
-    payload = {
-        "sub": str(sub),
-        "uname": uname,
-        "role": role,
-        "iat": now,
-        "exp": now + ttl_seconds,
-    }
-    return jwt.encode(payload, secret, algorithm="HS256")
-
-
-def decode_token(secret: bytes, token: str) -> dict[str, Any]:
-    try:
-        payload = jwt.decode(token, secret, algorithms=["HS256"])
-        if "sub" in payload:
-            payload["sub"] = int(payload["sub"])
-        return payload
-    except jwt.ExpiredSignatureError as exc:
-        raise TokenExpired() from exc
-    except jwt.InvalidTokenError as exc:
-        raise InvalidToken(str(exc)) from exc
 
 
 # Sliding renew: when remaining life is below this fraction of configured TTL,
@@ -82,6 +48,7 @@ _JWT_EXEMPT_EXACT = (
     "/api/auth/oauth/start",
     "/api/auth/oauth/callback",
     "/api/auth/oauth/exchange",
+    "/api/auth/ldap/status",
     "/api/auth/invite/validate",
     "/api/auth/invite/redeem",
     "/api/docs",
