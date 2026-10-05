@@ -438,6 +438,10 @@ async def materialize_image_part(
                     data = None
             if data is None:
                 return _image_as_path_hint(part, workspace=workspace, locale=locale)
+            if guessed in ("application/octet-stream", ""):
+                sniffed = sniff_image_media_type(data)
+                if sniffed:
+                    guessed = sniffed
         return make_workspace_image_ref(workspace_path=rel, mime_type=guessed)
 
     if part.data:
@@ -445,6 +449,10 @@ async def materialize_image_part(
             raw = base64.b64decode(part.data, validate=False)
         except Exception:
             return _image_unavailable_block(locale=locale)
+        if mime in ("application/octet-stream", ""):
+            sniffed = sniff_image_media_type(raw)
+            if sniffed:
+                mime = sniffed
         if len(raw) > VISION_MAX_BYTES:
             logger.info(
                 "vision inline image %d bytes > %d, re-encoding",
@@ -474,6 +482,10 @@ async def materialize_image_part(
                     )
                 return _image_as_path_hint(part, workspace=workspace, locale=locale)
             mime = content_type or part.mime_type or "image/png"
+            if mime in ("application/octet-stream", ""):
+                sniffed = sniff_image_media_type(raw_bytes)
+                if sniffed:
+                    mime = sniffed
             return make_image_url_block(base64.b64encode(raw_bytes).decode(), mime)
         if part.url.startswith(("http://", "https://")):
             return {"type": "image_url", "image_url": {"url": part.url}}

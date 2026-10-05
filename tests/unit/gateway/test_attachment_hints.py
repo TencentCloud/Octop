@@ -438,3 +438,47 @@ def test_content_blocks_need_vision_detects_image_url() -> None:
     ]
     assert content_blocks_need_vision(content) is True
     assert content_blocks_need_vision("hello") is False
+
+
+@pytest.mark.asyncio
+async def test_materialize_inline_sniffs_octet_stream_to_real_type() -> None:
+    """QQ 渠道把图片报成 application/octet-stream（#1640）：嗅探兜底应还原真实类型。"""
+    import base64
+
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+    part = ImageContent(
+        data=base64.b64encode(png).decode(),
+        mime_type="application/octet-stream",
+    )
+    block = await materialize_image_part(part, media_backend=None, workspace=None)
+    assert block is not None
+    assert block["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+@pytest.mark.asyncio
+async def test_materialize_inline_sniffs_jpeg_magic_with_png_extension() -> None:
+    """文件名 .png 但实际内容是 JPEG（magic bytes ff d8 ff）：按内容嗅探。"""
+    import base64
+
+    jpeg = b"\xff\xd8\xff\xe1" + b"\x00" * 32
+    part = ImageContent(
+        data=base64.b64encode(jpeg).decode(),
+        mime_type="application/octet-stream",
+    )
+    block = await materialize_image_part(part, media_backend=None, workspace=None)
+    assert block is not None
+    assert block["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
+@pytest.mark.asyncio
+async def test_materialize_inline_keeps_octet_stream_when_sniff_fails() -> None:
+    """嗅探不出来的内容保持原样——不在无法判定时瞎猜。"""
+    import base64
+
+    part = ImageContent(
+        data=base64.b64encode(b"\x00\x01\x02\x03not-an-image").decode(),
+        mime_type="application/octet-stream",
+    )
+    block = await materialize_image_part(part, media_backend=None, workspace=None)
+    assert block is not None
+    assert block["image_url"]["url"].startswith("data:application/octet-stream;base64,")
