@@ -89,6 +89,7 @@ export function useChatComposerResources(
     }[]
   >([]);
   const [availableModels, setAvailableModels] = useState<ResolvedModel[]>([]);
+  const [modelsReady, setModelsReady] = useState(false);
   const [activeModelRef, setActiveModelRef] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [preferredModel, setPreferredModel] = useState<string | null>(null);
@@ -359,14 +360,21 @@ export function useChatComposerResources(
 
   useEffect(() => {
     let cancelled = false;
+    setModelsReady(false);
     const loadModels = () => {
       void providerApi
         .listResolvedModels(resolvedAgentId)
         .then((data) => {
-          if (!cancelled) setAvailableModels(data);
+          if (!cancelled) {
+            setAvailableModels(data);
+            setModelsReady(true);
+          }
         })
         .catch(() => {
-          if (!cancelled) setAvailableModels([]);
+          if (!cancelled) {
+            setAvailableModels([]);
+            setModelsReady(true);
+          }
         });
     };
     loadModels();
@@ -564,6 +572,7 @@ export function useChatComposerResources(
     chatConnectors,
     chatKnowledgeBases,
     availableModels,
+    modelsReady,
     activeModelRef,
     handleConnectorsChange,
     handleKnowledgeBaseIdsChange,

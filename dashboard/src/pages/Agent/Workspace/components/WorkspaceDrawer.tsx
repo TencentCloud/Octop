@@ -53,6 +53,7 @@ import { isAgentChatReady } from "../../../../utils/agentError";
 import { apiErrorMessage } from "../../../../utils/apiError";
 import AgentNotReadyScreen from "../../../Chat/components/AgentNotReadyScreen";
 import { fileTreeIcon } from "../../../../utils/fileTreeIcon";
+import { dedupeFileTreeInfos } from "../../../../utils/fileTreeNodes";
 import { workspaceEntryPath } from "../../../../utils/workspacePath";
 import FileViewer from "./FileViewer";
 import {
@@ -199,20 +200,8 @@ function joinPath(dir: string, name: string): string {
   return `${base}/${name}`;
 }
 
-function toTreeNodes(infos: FileInfo[]): TreeDataNode[] {
-  const sorted = [...infos].sort((a, b) => {
-    const ad = a.is_dir ? 0 : 1;
-    const bd = b.is_dir ? 0 : 1;
-    if (ad !== bd) return ad - bd;
-    const an = (
-      a.path.split("/").filter(Boolean).pop() || a.path
-    ).toLowerCase();
-    const bn = (
-      b.path.split("/").filter(Boolean).pop() || b.path
-    ).toLowerCase();
-    return an.localeCompare(bn);
-  });
-  return sorted.map((info) => {
+function toTreeNodes(infos: FileInfo[], listedPath?: string): TreeDataNode[] {
+  return dedupeFileTreeInfos(infos, listedPath).map((info) => {
     const fullPath = workspaceEntryPath(info.path);
     const fname = fullPath.split("/").filter(Boolean).pop() || fullPath;
     const key = nodeKey({ path: fullPath, is_dir: !!info.is_dir });
@@ -352,14 +341,16 @@ export default function WorkspaceDrawer({
         const data = await request<FileInfo[]>(
           withFromWorkspace(`/agents/${agentId}/workspace/tree?path=/`),
         );
-        setTreeData([buildWorkspaceRootNode(toTreeNodes(data))]);
+        setTreeData([
+          buildWorkspaceRootNode(toTreeNodes(data, WORKSPACE_ROOT_PATH)),
+        ]);
         setExpandedKeys([workspaceRootKey()]);
         if (opts?.activateRoot) {
           setSelectedKey(workspaceRootKey());
           setEditMode(false);
           setPreviewMode(false);
           setContent("");
-          setDirEntries(data);
+          setDirEntries(dedupeFileTreeInfos(data, WORKSPACE_ROOT_PATH));
           setDirLoading(false);
           if (isMobile) setMobilePane("viewer");
         }
@@ -399,7 +390,7 @@ export default function WorkspaceDrawer({
           `/agents/${agentId}/workspace/tree?path=${encodeURIComponent(path)}`,
         ),
       );
-      const children = toTreeNodes(data);
+      const children = toTreeNodes(data, path);
       const replace = (nodes: TreeDataNode[]): TreeDataNode[] =>
         nodes.map((n) =>
           n.key === node.key
@@ -433,7 +424,7 @@ export default function WorkspaceDrawer({
             )}`,
           ),
         );
-        const children = toTreeNodes(data);
+        const children = toTreeNodes(data, dirPath);
         const replace = (nodes: TreeDataNode[]): TreeDataNode[] =>
           nodes.map((n) =>
             n.key === dirKey
@@ -465,7 +456,7 @@ export default function WorkspaceDrawer({
             )}`,
           ),
         );
-        setDirEntries(data);
+        setDirEntries(dedupeFileTreeInfos(data, dirPath));
       } catch (err: unknown) {
         message.error(
           (err instanceof Error ? err.message : String(err)) ||
