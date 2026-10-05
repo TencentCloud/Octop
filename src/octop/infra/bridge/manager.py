@@ -22,6 +22,12 @@ from octop.infra.bridge.ids import (
     rewrite_peer_stream_frame,
 )
 from octop.infra.bridge.peer_auth import login_peer, normalize_peer_base_url, peer_ws_url
+from octop.infra.bridge.peer_turn import (
+    PeerBrowserRunner,
+    PeerTurnRejected,
+    PeerTurnRunner,
+    bridge_turn_ws_payload,
+)
 from octop.infra.bridge.transport import BridgeSession
 from octop.infra.db.repos.bridge_connections import BridgeConnectionRepo, BridgeConnectionRow
 from octop.infra.db.repos.secrets import SecretRepo
@@ -41,19 +47,8 @@ def _is_inbound(row: BridgeConnectionRow) -> bool:
     return not bool(row.credential_blob)
 
 
-def _bridge_turn_ws_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """Copy dashboard turn fields off a ``turn.start`` frame.
-
-    Hub relays the full ``user_turn`` body; dropping keys here would silently
-    ignore knowledge bases, HITL policy, and conversation mode.
-    """
-    from octop.api.routers.chat.models import UserTurnWsFrame
-
-    fields = UserTurnWsFrame.model_fields
-    out = {key: value for key, value in payload.items() if key in fields}
-    out["type"] = "user_turn"
-    out.setdefault("text", payload.get("text") or "")
-    return out
+# Re-export for existing unit tests.
+_bridge_turn_ws_payload = bridge_turn_ws_payload
 
 
 def _looks_like_endpoint_label(name: str) -> bool:
@@ -149,13 +144,28 @@ class BridgeManager:
         self._browser_waiters: dict[str, asyncio.Queue[dict[str, Any]]] = {}
         self._browser_peer_clients: dict[str, asyncio.Queue[dict[str, Any] | None]] = {}
         self._asgi_app: Any | None = None
+        self._peer_turn_runner: PeerTurnRunner | None = None
+        self._peer_browser_runner: PeerBrowserRunner | None = None
         self._lock = asyncio.Lock()
         # Manual disconnect / intentional stop — do not auto-reconnect until connect().
         self._user_stopped: set[str] = set()
         self._reconnect_failures: dict[str, int] = {}
 
-    def bind_asgi_app(self, app: Any) -> None:
+    def bind_asgi_app(
+        self,
+        app: Any,
+        *,
+        peer_turn_runner: PeerTurnRunner | None = None,
+        peer_browser_runner: PeerBrowserRunner | None = None,
+    ) -> None:
+        """Attach the local ASGI app and optional HTTP-layer peer runners.
+
+        ``peer_turn_runner`` / ``peer_browser_runner`` are provided by
+        ``api.app`` so this module never imports ``octop.api``.
+        """
         self._asgi_app = app
+        self._peer_turn_runner = peer_turn_runner
+        self._peer_browser_runner = peer_browser_runner
 
     def set_token_signer(self, signer: Any) -> None:
         self._token_signer = signer
@@ -1235,12 +1245,6 @@ class BridgeManager:
 
     async def _execute_peer_turn(self, connection_id: str, payload: dict[str, Any]) -> None:
         """Peer asked us to run a turn on a local agent; stream chunks back."""
-        from octop.api.routers.chat.models import UserTurnWsFrame
-        from octop.api.routers.chat.turn import (
-            build_dashboard_inbound,
-            prepare_dashboard_turn,
-            turn_has_content,
-        )
         from octop.infra.gateway.ws import WS_CHANNEL_ID
         from octop.infra.gateway.ws.ws_hub import stamp_thread_id
 
@@ -1296,32 +1300,25 @@ class BridgeManager:
         async def send_frame(frame: dict[str, Any]) -> None:
             await chunk_queue.put(frame)
 
+        runner = self._peer_turn_runner
+        if runner is None:
+            await sess.send_json(
+                {
+                    "type": "turn.error",
+                    "request_id": request_id,
+                    "message": "peer turn runner not wired",
+                }
+            )
+            return
+
         hub.register(bridge_conn_id, send_frame, user_id=user.id)
         try:
-            frame = UserTurnWsFrame.model_validate(_bridge_turn_ws_payload(payload))
-            turn = frame.to_turn_body()
-            if not turn_has_content(turn):
-                await sess.send_json(
-                    {
-                        "type": "turn.error",
-                        "request_id": request_id,
-                        "message": "empty message",
-                    }
-                )
-                return
-            prepared = await prepare_dashboard_turn(
-                server,
-                agent_id=agent_id,
+            prepared = await runner(
+                server=server,
                 user=user,
-                turn=turn,
-            )
-            inbound = build_dashboard_inbound(
                 agent_id=agent_id,
-                user_id=user.id,
-                prepared=prepared,
-                turn=turn,
+                payload=payload,
                 ws_connection_id=bridge_conn_id,
-                user_is_admin=bool(getattr(user, "is_admin", False)),
             )
             hub.subscribe(prepared.thread_id, bridge_conn_id)
             await sess.send_json(
@@ -1334,7 +1331,7 @@ class BridgeManager:
                     },
                 }
             )
-            channel_manager.enqueue(WS_CHANNEL_ID, inbound)
+            channel_manager.enqueue(WS_CHANNEL_ID, prepared.inbound)
             while True:
                 item = await chunk_queue.get()
                 if item is None:
@@ -1350,6 +1347,14 @@ class BridgeManager:
                 if str(stamped.get("type") or "") in {"done", "error"}:
                     break
             await sess.send_json({"type": "turn.end", "request_id": request_id})
+        except PeerTurnRejected as exc:
+            await sess.send_json(
+                {
+                    "type": "turn.error",
+                    "request_id": request_id,
+                    "message": str(exc)[:500],
+                }
+            )
         except Exception as exc:
             logger.exception("bridge peer turn failed")
             await sess.send_json(
@@ -1455,8 +1460,6 @@ class BridgeManager:
 
     async def _execute_peer_browser(self, connection_id: str, payload: dict[str, Any]) -> None:
         """Peer asked us to attach to the local browser harness and stream frames."""
-        from octop.api.routers.browser.stream import run_browser_stream_session
-
         request_id = str(payload.get("request_id") or "").strip()
         sess = self._sessions.get(connection_id)
         if sess is None or not request_id:
@@ -1506,8 +1509,20 @@ class BridgeManager:
         else:
             start_msg = {**start_msg, "type": "start"}
 
+        runner = self._peer_browser_runner
+        if runner is None:
+            await sess.send_json(
+                {
+                    "type": "browser.error",
+                    "request_id": request_id,
+                    "message": "peer browser runner not wired",
+                }
+            )
+            await sess.send_json({"type": "browser.end", "request_id": request_id})
+            return
+
         try:
-            await run_browser_stream_session(
+            await runner(
                 send_json=send_json,
                 is_connected=is_connected,
                 receive_text=receive_text,

@@ -107,6 +107,9 @@ scripts/dev-local-link.sh
 .verify/fnpack.exe.partial
 .buildtmp.*/
 
+# FnOS native FPK install target (CI / local pack scratch; do not vendor)
+fnos/native/app/site-packages/
+
 # Local agent planning docs (not for upstream)
 docs/superpowers/
 scripts/lh_image_install_octop_tencentos.sh
