@@ -15,6 +15,8 @@ Category = Literal["core", "session", "media", "system", "debug"]
 # Display order for /help and dashboard grouping.
 CATEGORY_ORDER: tuple[Category, ...] = ("core", "session", "media", "system", "debug")
 
+HITL_APPROVAL_COMMANDS: frozenset[str] = frozenset({"approve", "reject", "pending"})
+
 
 @dataclass(frozen=True)
 class SlashCommandSpec:
@@ -279,7 +281,11 @@ def spec_for(name: str) -> SlashCommandSpec | None:
     return _CATALOG_BY_NAME.get(name.lower())
 
 
-def list_specs(*, origin: str = "all") -> list[SlashCommandSpec]:
+def list_specs(
+    *,
+    origin: str = "all",
+    include_hitl_approval: bool = True,
+) -> list[SlashCommandSpec]:
     """Return primary specs (no alias duplicates) visible for *origin*."""
     seen: set[str] = set()
     out: list[SlashCommandSpec] = []
@@ -287,6 +293,8 @@ def list_specs(*, origin: str = "all") -> list[SlashCommandSpec]:
         if spec.name in seen:
             continue
         if not spec.visible_in(origin):
+            continue
+        if not include_hitl_approval and spec.name in HITL_APPROVAL_COMMANDS:
             continue
         seen.add(spec.name)
         out.append(spec)
@@ -308,5 +316,14 @@ def group_specs_by_category(
 
 
 def channel_origin(channel_type: str) -> str:
-    """Map gateway channel type to slash command *origin* filter."""
-    return "ui" if channel_type == "dashboard" else channel_type
+    """Map gateway channel type to slash command *origin* filter.
+
+    Dashboard and CLI are the only non-IM surfaces. Every other channel type
+    (wecom, lark, telegram, …) is treated as ``im`` so ``/help`` keeps IM-only
+    commands when a new platform is added.
+    """
+    if channel_type == "dashboard":
+        return "ui"
+    if channel_type == "cli":
+        return "cli"
+    return "im"

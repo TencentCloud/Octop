@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
+from octop.api.bridge_peer import prepare_peer_dashboard_turn
+from octop.api.routers.chat.models import UserTurnWsFrame
 from octop.infra.bridge.manager import _bridge_turn_ws_payload
+from octop.infra.bridge.peer_turn import USER_TURN_WS_KEYS, PeerTurnRejected
 
 
 def test_bridge_turn_ws_payload_keeps_composer_fields() -> None:
@@ -41,3 +46,20 @@ def test_bridge_turn_ws_payload_defaults_empty_text() -> None:
     assert out["type"] == "user_turn"
     assert out["text"] == ""
     assert out["messages"][0]["content"] == "x"
+
+
+def test_user_turn_ws_keys_match_dashboard_frame() -> None:
+    frame_keys = set(UserTurnWsFrame.model_fields) - {"type"}
+    assert frame_keys == USER_TURN_WS_KEYS
+
+
+@pytest.mark.asyncio
+async def test_empty_peer_turn_is_rejected() -> None:
+    with pytest.raises(PeerTurnRejected, match="empty message"):
+        await prepare_peer_dashboard_turn(
+            server=object(),
+            user=object(),
+            agent_id="a1",
+            payload={},
+            ws_connection_id="ws",
+        )
