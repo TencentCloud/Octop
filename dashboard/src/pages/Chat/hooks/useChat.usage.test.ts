@@ -157,4 +157,29 @@ describe("history token usage", () => {
       source: "history",
     });
   });
+
+  it("promotes an unanswered ask_user_question tool call into a pending card", () => {
+    const messages = convertHistoryMessages([
+      { role: "user", content: "help me choose", id: "u1" },
+      {
+        role: "assistant",
+        id: "a1",
+        content: [
+          {
+            type: "tool_use",
+            name: "ask_user_question",
+            id: "call-1",
+            input: {
+              questions: [{ question: "Which database?", header: "Storage" }],
+            },
+          },
+        ],
+      },
+    ]);
+    expect(messages[1]?.hitlData?.status).toBe("pending");
+    expect(messages[1]?.hitlData?.action_requests?.[0]?.name).toBe(
+      "ask_user_question",
+    );
+    expect(messages[1]?.status).toBe("done");
+  });
 });

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from octop.infra.gateway.slash.catalog import list_specs, spec_for
+from octop.infra.gateway.slash.catalog import channel_origin, list_specs, spec_for
 from octop.infra.gateway.slash.dispatcher import build_default_dispatcher
 
 
@@ -31,3 +31,21 @@ def test_dispatcher_registers_all_catalog_commands():
     known = {name for name, _ in d.known()}
     for spec in list_specs(origin="all"):
         assert spec.name in known
+
+
+def test_hitl_approval_commands_can_be_hidden():
+    shown = {s.name for s in list_specs(origin="cli")}
+    hidden = {s.name for s in list_specs(origin="cli", include_hitl_approval=False)}
+    assert {"approve", "reject", "pending"} <= shown
+    assert hidden.isdisjoint({"approve", "reject", "pending"})
+    assert "help" in hidden
+
+
+def test_channel_origin_maps_im_platforms():
+    assert channel_origin("dashboard") == "ui"
+    assert channel_origin("cli") == "cli"
+    assert channel_origin("wecom") == "im"
+    assert channel_origin("feishu") == "im"
+    assert channel_origin("lark") == "im"
+    assert channel_origin("telegram") == "im"
+    assert channel_origin("unknown") == "im"

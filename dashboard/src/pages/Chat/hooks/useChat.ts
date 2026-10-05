@@ -30,6 +30,7 @@ import {
   parseToolExecutionFeedback,
 } from "../../../utils/toolMediaBlocks";
 import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessage";
+import { promoteAskUserToolMessage } from "../utils/pendingHitl";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import type {
   ChatAttachment,
@@ -641,7 +642,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   }
   flushTurn();
 
-  return merged;
+  return merged.map(promoteAskUserToolMessage);
 }
 
 function toHistoryContentBlocks(content: unknown): unknown[] {
