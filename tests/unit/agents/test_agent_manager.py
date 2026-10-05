@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
 from octop.config import OctopConfig
@@ -1223,6 +1224,97 @@ def test_build_harness_config_without_default_model(manager: AgentManager) -> No
     assert cfg.backend == _expected_default_backend(manager, "01AGENT")
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_type", [TypeError, httpx.ReadTimeout])
+async def test_model_retry_exhaustion_fails_background_job(
+    manager: AgentManager, failure_type: type[Exception]
+) -> None:
+    from langchain.agents.middleware import ModelRetryMiddleware
+    from langchain_core.messages import AIMessage
+    from octop_harness.teams.inbox import HarnessAgentInboxManager, InboxMessage
+    from octop_harness.teams.processor import default_compose_followup
+
+    cfg = manager._build_harness_config(_row())
+    retries = [m for m in cfg.middleware or [] if isinstance(m, ModelRetryMiddleware)]
+    assert len(retries) == 1
+    assert not cfg.model_retry_enabled  # Do not nest the harness's continue-on-error retry.
+    retry = retries[0]
+    assert retry.max_retries == cfg.model_retry_max_retries
+    assert retry.initial_delay == cfg.model_retry_initial_delay
+    assert retry.max_delay == cfg.model_retry_max_delay
+    retry.initial_delay = 0
+    failure = failure_type("provider unavailable")
+    attempts = 0
+
+    async def fail(request: Any) -> Any:
+        nonlocal attempts
+        attempts += 1
+        raise failure
+
+    async def target(msg: Any) -> dict[str, Any]:
+        response = await retry.awrap_model_call(None, fail)
+        return {"messages": response.result}
+
+    # Exhausted retries become a model-visible prompt, not a raised exception.
+    response = await retry.awrap_model_call(None, fail)
+    text = str(response.result[0].content)
+    assert "provider unavailable" in text
+    assert "[model_call_failed]" in text
+    assert attempts == cfg.model_retry_max_retries + 1
+    attempts = 0
+
+    source = AsyncMock(return_value={"messages": [AIMessage(content="failure relayed")]})
+    processor = SimpleNamespace(
+        compose_followup=MagicMock(side_effect=default_compose_followup),
+        on_reply=AsyncMock(),
+    )
+    inbox = HarnessAgentInboxManager(call_agent=source, processor=processor, invoke_target=target)
+    msg = InboxMessage(
+        id="retry-failure",
+        target_agent_id="B",
+        source_agent_id="A",
+        source_thread_id="thread",
+        message="test",
+        user_id=1,
+    )
+    await inbox._process(msg)
+    assert attempts == cfg.model_retry_max_retries + 1
+    try:
+        from octop_harness.messages import is_model_retry_failure_text
+    except ImportError:
+        is_model_retry_failure_text = None  # type: ignore[assignment]
+    if is_model_retry_failure_text is None:
+        # Published harness still treats a continue-on-error AIMessage as success.
+        assert msg.status == "done"
+        return
+    assert is_model_retry_failure_text(text)
+    assert msg.status == "failed"
+    event = processor.on_reply.call_args.args[0]
+    assert event.status == "failed"
+    assert "provider unavailable" in event.error_text
+    assert processor.compose_followup.call_args.kwargs["result_text"] is None
+    assert processor.compose_followup.call_args.kwargs["error_text"] == event.error_text
+
+
+def test_model_retry_sync_failure_and_recovery(manager: AgentManager) -> None:
+    from langchain.agents.middleware import ModelResponse, ModelRetryMiddleware
+    from langchain_core.messages import AIMessage
+
+    cfg = manager._build_harness_config(_row())
+    retry = next(m for m in cfg.middleware or [] if isinstance(m, ModelRetryMiddleware))
+    retry.initial_delay = 0
+    failure = TypeError("model failed")
+    handler = MagicMock(side_effect=failure)
+    exhausted = retry.wrap_model_call(None, handler)
+    assert "model failed" in str(exhausted.result[0].content)
+    assert "[model_call_failed]" in str(exhausted.result[0].content)
+    assert handler.call_count == cfg.model_retry_max_retries + 1
+    response = ModelResponse(result=[AIMessage(content="recovered")])
+    handler = MagicMock(side_effect=[failure, response])
+    assert retry.wrap_model_call(None, handler) is response
+    assert handler.call_count == 2
+
+
 def test_build_harness_config_auto_expert_falls_back_to_first_model(
     manager: AgentManager,
 ) -> None:
@@ -1611,6 +1703,75 @@ def test_resolve_workspace_dir_uses_persisted_path(manager: AgentManager, tmp_pa
         config_json=json.dumps({"workspace_dir": str(custom)}),
     )
     assert manager.resolve_workspace_dir("WSDIR1") == custom.resolve()
+
+
+def test_resolve_workspace_dir_remaps_unwritable_host_path(
+    manager: AgentManager, tmp_path: Path
+) -> None:
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    stale = blocker / "YZQ7X4"
+    manager._repos.agent_repo.create(
+        agent_id="YZQ7X4",
+        user_id=None,
+        name="stale-root",
+        config_json=json.dumps(
+            {
+                "workspace_dir": str(stale),
+                "backend": {"type": "local_shell", "virtual_mode": True, "root_dir": "/"},
+            }
+        ),
+    )
+    resolved = manager.resolve_workspace_dir("YZQ7X4")
+    assert resolved == manager.paths.ensure_agent_workspace("YZQ7X4").resolve()
+    assert manager.get_config("YZQ7X4")["workspace_dir"] == str(resolved)
+
+
+def test_build_harness_config_remaps_unwritable_workspace(
+    manager: AgentManager, tmp_path: Path
+) -> None:
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    stale = blocker / "YZQ7X4"
+    manager._repos.agent_repo.create(
+        agent_id="YZQ7X4",
+        user_id=None,
+        name="stale-root",
+        config_json=json.dumps({"workspace_dir": str(stale), **_MEMORY_OFF}),
+    )
+    row = manager.get_row("YZQ7X4")
+    assert row is not None
+    cfg = manager._build_harness_config(row)
+    expected = manager.paths.ensure_agent_workspace("YZQ7X4").resolve()
+    assert Path(cfg.workspace_dir) == expected
+    assert manager.get_config("YZQ7X4")["workspace_dir"] == str(expected)
+
+
+def test_resolve_workspace_dir_remaps_unwritable_scoped_root(
+    manager: AgentManager, tmp_path: Path
+) -> None:
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    manager._repos.agent_repo.create(
+        agent_id="F46T8Y",
+        user_id=None,
+        name="stale-jail",
+        config_json=json.dumps(
+            {
+                "workspace_dir": "/.octop/workspaces/F46T8Y",
+                "backend": {
+                    "type": "local_shell",
+                    "virtual_mode": True,
+                    "root_dir": str(blocker),
+                },
+            }
+        ),
+    )
+    resolved = manager.resolve_workspace_dir("F46T8Y")
+    assert resolved == manager.paths.ensure_agent_workspace("F46T8Y").resolve()
+    cfg = manager.get_config("F46T8Y")
+    assert cfg["workspace_dir"] == str(resolved)
+    assert cfg["backend"]["root_dir"] == "/"
 
 
 def test_resolve_workspace_dir_backfills_legacy_row(manager: AgentManager) -> None:

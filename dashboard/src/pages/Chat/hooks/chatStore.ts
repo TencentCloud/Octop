@@ -38,6 +38,15 @@ import {
 } from "../utils/messageGrouping";
 import { turnStatusAction } from "./turnStatusGate";
 import { mergePatchedToolOutput } from "../../../plugins/toolRenderers/parseToolOutput";
+import {
+  isAskHitl,
+  normalizeHitlRequest,
+  parseActionArgs,
+} from "../../../api/types/hitl";
+import {
+  isPausedAskTool,
+  promoteAskUserToolMessage,
+} from "../utils/pendingHitl";
 import { frameBelongsToThread } from "./frameThread";
 import {
   MAX_STREAM_RESUME_ATTEMPTS,
@@ -430,7 +439,11 @@ function pruneIdleLiveSpeakers(state: SessionStreamState): void {
   for (const message of state.messages) {
     if (message.role !== "assistant") continue;
     const key = speakerLiveKey(message.speakerAgentId);
-    const inFlightTool = Boolean(message.toolData && !message.toolData.output);
+    const inFlightTool = Boolean(
+      message.toolData &&
+        message.toolData.output === undefined &&
+        !isPausedAskTool(message),
+    );
     if (message.status !== "streaming" && !inFlightTool) continue;
     busy.add(key);
     if (!key && host) busy.add(host);
@@ -1727,7 +1740,7 @@ function upsertToolCall(
           : m.toolData?.callId ?? callId;
       state.messages = [
         ...state.messages.slice(0, idx),
-        {
+        promoteAskUserToolMessage({
           ...m,
           speakerAgentId: speaker ?? m.speakerAgentId,
           toolData: {
@@ -1737,7 +1750,7 @@ function upsertToolCall(
             callId: nextCallId,
             arguments: nextArgs,
           },
-        },
+        }),
         ...state.messages.slice(idx + 1),
       ];
       registerToolCallKeys(state, existingMsgId, chunk, speaker);
@@ -1749,7 +1762,7 @@ function upsertToolCall(
   registerToolCallKeys(state, msgId, chunk, speaker);
   state.messages = [
     ...state.messages,
-    {
+    promoteAskUserToolMessage({
       id: msgId,
       role: "assistant",
       content: "",
@@ -1762,7 +1775,7 @@ function upsertToolCall(
       status: "streaming",
       timestamp: Date.now(),
       speakerAgentId: speaker,
-    },
+    }),
   ];
   emitToolEvent({
     kind: "toolStart",
@@ -2071,8 +2084,9 @@ function finalizeStreamingMessages(
 }
 
 function parseHitlRequest(raw: Record<string, unknown>) {
-  const requests = Array.isArray(raw.action_requests)
-    ? raw.action_requests
+  const normalized = normalizeHitlRequest(raw);
+  const requests = Array.isArray(normalized.action_requests)
+    ? normalized.action_requests
     : [];
   const action_requests = requests
     .filter((item) => item && typeof item === "object")
@@ -2080,16 +2094,13 @@ function parseHitlRequest(raw: Record<string, unknown>) {
       const row = item as Record<string, unknown>;
       return {
         name: typeof row.name === "string" ? row.name : "tool",
-        args:
-          row.args && typeof row.args === "object"
-            ? (row.args as Record<string, unknown>)
-            : {},
+        args: parseActionArgs(row.args),
         description:
           typeof row.description === "string" ? row.description : undefined,
       };
     });
-  const review_configs = Array.isArray(raw.review_configs)
-    ? raw.review_configs
+  const review_configs = Array.isArray(normalized.review_configs)
+    ? normalized.review_configs
         .filter((item) => item && typeof item === "object")
         .map(
           (item) =>
@@ -2099,7 +2110,18 @@ function parseHitlRequest(raw: Record<string, unknown>) {
             },
         )
     : undefined;
-  return { action_requests, review_configs, status: "pending" as const };
+  const pendingId =
+    typeof normalized.pending_id === "string"
+      ? normalized.pending_id
+      : typeof raw.pending_id === "string"
+      ? raw.pending_id
+      : undefined;
+  return {
+    action_requests,
+    review_configs,
+    status: "pending" as const,
+    ...(pendingId ? { pending_id: pendingId } : {}),
+  };
 }
 
 function resolveHitlPending(
@@ -2129,13 +2151,54 @@ function handleHitlRequired(
   finalizeStreamingMessages(state);
   clearStreamingFlags(state);
   clearAllLiveSpeakers(state);
+  const hitlData = parseHitlRequest(request);
+  const askPause = isAskHitl(hitlData.action_requests);
+  const existingIdx = [...state.messages]
+    .map((message, index) => ({ message, index }))
+    .reverse()
+    .find(({ message }) => {
+      const hitl = message.hitlData;
+      if (hitlData.pending_id && hitl?.pending_id === hitlData.pending_id) {
+        return true;
+      }
+      if (askPause) {
+        if (isPausedAskTool(message)) return true;
+        return (
+          Boolean(hitl) &&
+          (hitl?.status ?? "pending") === "pending" &&
+          isAskHitl(hitl?.action_requests) &&
+          !hitl?.pending_id
+        );
+      }
+      return (
+        Boolean(hitl) &&
+        (hitl?.status ?? "pending") === "pending" &&
+        !isAskHitl(hitl?.action_requests)
+      );
+    })?.index;
+  if (existingIdx !== undefined) {
+    const current = state.messages[existingIdx];
+    state.messages = [
+      ...state.messages.slice(0, existingIdx),
+      {
+        ...current,
+        hitlData: {
+          ...current.hitlData,
+          ...hitlData,
+        },
+        status: "done",
+      },
+      ...state.messages.slice(existingIdx + 1),
+    ];
+    return;
+  }
   state.messages = [
     ...state.messages,
     {
       id: generateId(),
       role: "assistant",
       content: "",
-      hitlData: parseHitlRequest(request),
+      hitlData,
       status: "done",
       timestamp: Date.now(),
     },

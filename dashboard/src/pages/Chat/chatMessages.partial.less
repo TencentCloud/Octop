@@ -378,11 +378,22 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--fn-color-brand);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
+  overflow: hidden;
+  flex-shrink: 0;
   user-select: none;
+
+  img,
+  svg {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
 }
 
 .avatarCol {

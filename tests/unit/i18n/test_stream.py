@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from octop.i18n.domains.stream import (
     MODEL_CALL_FAILED,
+    MODEL_RETRY_FAILURE_MARK,
     PATH_OUTSIDE_ROOT,
     RECURSION_LIMIT,
     STREAM_STALL,
     classify_stream_error_message,
     exception_display_message,
     format_stream_error,
+    model_retry_failure_prompt,
     stream_error_message,
+    unwrap_model_retry_message,
 )
 
 
@@ -92,6 +95,13 @@ def test_classify_recursion_limit() -> None:
     )
 
 
+def test_unwrap_model_retry_wrapper() -> None:
+    assert (
+        unwrap_model_retry_message("Model call failed after 3 attempts with RuntimeError: boom")
+        == "RuntimeError: boom"
+    )
+
+
 def test_classify_model_call_failed_fallback() -> None:
     assert (
         classify_stream_error_message("Model call failed after 3 attempts with RuntimeError: boom")
@@ -159,10 +169,10 @@ def test_stream_error_message_octop_key() -> None:
     assert "重试" in stream_error_message(STREAM_STALL, "zh")
 
 
-def test_format_stream_error_unknown_falls_back_to_localized() -> None:
+def test_format_stream_error_unknown_keeps_actual_cause() -> None:
     text = format_stream_error("disk full", "en")
-    assert "disk full" not in text
-    assert "model call failed" in text
+    assert "disk full" in text
+    assert "several retries" not in text
 
 
 def test_format_stream_error_passes_through_send_file_failures() -> None:
@@ -173,8 +183,19 @@ def test_format_stream_error_passes_through_send_file_failures() -> None:
     assert format_stream_error(msg, "zh") == msg
     assert format_stream_error(FileNotFoundError(msg), "en") == msg
     assert "模型调用" not in format_stream_error(msg, "zh")
-    # Generic missing-file noise must still fall back to the model-failure copy.
-    assert "model call failed" in format_stream_error("FileNotFoundError: config.json", "en")
+    # Unknown file errors keep the concrete cause instead of a generic retry line.
+    assert "config.json" in format_stream_error("FileNotFoundError: config.json", "en")
+
+
+def test_model_retry_failure_prompt_is_specific_and_model_visible() -> None:
+    prompt = model_retry_failure_prompt(
+        RuntimeError("Error code: 400 - This model's maximum context length is 128000 tokens"),
+        "en",
+    )
+    assert prompt.startswith(MODEL_RETRY_FAILURE_MARK)
+    assert "context" in prompt.lower()
+    assert "128000" in prompt
+    assert "Do not pretend the task succeeded" in prompt
 
 
 def test_exception_display_message_empty_falls_back_to_type() -> None:
@@ -193,4 +214,5 @@ def test_exception_display_message_empty_falls_back_to_type() -> None:
 def test_format_stream_error_empty_exception_still_localized() -> None:
     text = format_stream_error(TimeoutError(), "zh")
     assert text
-    assert "模型调用" in text
+    assert "模型调用失败" in text
+    assert "TimeoutError" in text

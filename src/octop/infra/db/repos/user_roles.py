@@ -238,18 +238,32 @@ class UserRoleRepo:
             return int(cur.rowcount or 0) > 0
 
 
+def role_assignment_for(
+    db: DatabasePool,
+    user_role_id: str,
+) -> tuple[str, str | None, builtins.list[str], builtins.list[tuple[str, str]]] | None:
+    """Defaults from one role template.
+
+    Returns ``(user_role_id, user_role_name, permissions, policies)``, or ``None``
+    when that template no longer exists. Permission keys are filtered to those the
+    running build knows, so a template saved by a newer build cannot smuggle in
+    unknown keys.
+    """
+    from octop.infra.users.permissions import PERMISSIONS
+
+    role = UserRoleRepo(db).get(user_role_id)
+    if role is None:
+        return None
+    permissions = [key for key in role.permissions if key in PERMISSIONS]
+    return role.user_role_id, role.user_role_name, permissions, list(role.policies)
+
+
 def seeded_user_role_assignment(
     db: DatabasePool,
-) -> tuple[str, str, builtins.list[str], builtins.list[tuple[str, str]]] | None:
+) -> tuple[str, str | None, builtins.list[str], builtins.list[tuple[str, str]]] | None:
     """Defaults from the preset user role, when that role still exists.
 
     Returns ``(user_role_id, user_role_name, permissions, policies)``. ``None`` means the
     preset was deleted, and new SSO or CLI users keep an empty permission set.
     """
-    from octop.infra.users.permissions import PERMISSIONS
-
-    role = UserRoleRepo(db).get(SEEDED_USER_ROLE_ID)
-    if role is None:
-        return None
-    permissions = [key for key in role.permissions if key in PERMISSIONS]
-    return role.user_role_id, role.user_role_name, permissions, list(role.policies)
+    return role_assignment_for(db, SEEDED_USER_ROLE_ID)

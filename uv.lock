@@ -1947,6 +1947,18 @@ wheels = [
 ]
 
 [[package]]
+name = "ldap3"
+version = "2.9.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyasn1" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/ac/96bd5464e3edbc61595d0d69989f5d9969ae411866427b2500a8e5b812c0/ldap3-2.9.1.tar.gz", hash = "sha256:f3e7fc4718e3f09dda568b57100095e0ce58633bcabbed8667ce3f8fbaa4229f", size = 398830, upload-time = "2021-07-18T06:34:21.786Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/f6/71d6ec9f18da0b2201287ce9db6afb1a1f637dedb3f0703409558981c723/ldap3-2.9.1-py2.py3-none-any.whl", hash = "sha256:5869596fc4948797020d3f03b7939da938778a0f9e2009f7a072ccf92b8e8d70", size = 432192, upload-time = "2021-07-18T06:34:12.905Z" },
+]
+
+[[package]]
 name = "librt"
 version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2454,7 +2466,7 @@ wheels = [
 
 [[package]]
 name = "octop"
-version = "1.0.2b5"
+version = "1.0.2b6"
 source = { editable = "." }
 dependencies = [
     { name = "acme" },
@@ -2469,6 +2481,7 @@ dependencies = [
     { name = "langchain-core" },
     { name = "langgraph-checkpoint-postgres" },
     { name = "lark-oapi" },
+    { name = "ldap3" },
     { name = "mcp" },
     { name = "octop-browser" },
     { name = "octop-gateway" },
@@ -2555,12 +2568,13 @@ requires-dist = [
     { name = "langchain-core", specifier = ">=1.4.8" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0" },
     { name = "lark-oapi", specifier = ">=1.7.3" },
+    { name = "ldap3", specifier = ">=2.9.1" },
     { name = "mcp", specifier = ">=1.9,<2" },
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "octop-browser", specifier = ">=1.0.0" },
     { name = "octop-gateway", specifier = ">=1.0.0" },
-    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.0" },
+    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.1" },
     { name = "octop-memory", specifier = ">=1.0.0" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
     { name = "openpyxl", specifier = ">=3.1" },
@@ -2650,7 +2664,7 @@ wheels = [
 
 [[package]]
 name = "octop-harness"
-version = "1.0.0"
+version = "1.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2668,9 +2682,9 @@ dependencies = [
     { name = "octop-memory" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/53/84/618b1299758b0ddd5fcf9f6740d154c64ece333bff28e949cdfd335364f0/octop_harness-1.0.0.tar.gz", hash = "sha256:63d049380547723de0756f1c4c307d5844281a098eb1b43fc0c30e8c98a8db2f", size = 931797, upload-time = "2026-09-24T10:13:33.321Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/11/42b756fae8e1a340109dec6219caf0de48cc510914cf9e574bf64bbe8a33/octop_harness-1.0.1.tar.gz", hash = "sha256:37d641fff84f219a93b211203f838f5059c30b79c3c1be37051c4180ac1e301f", size = 945740, upload-time = "2026-10-03T14:00:52.581Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/67/bc/726ceefa15fb84e54d10a4f078839c94758c680bfd4f2e67f9755e96630f/octop_harness-1.0.0-py3-none-any.whl", hash = "sha256:8448fbb9e5d6884d826a149cd8f58a65f690c1a8f3a0c52bf79da99b8319504e", size = 1133881, upload-time = "2026-09-24T10:13:32.064Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/b6/45dd42e5278234812a3eb38b205aa5282cafbdcb53fa29d2eb66266112c7/octop_harness-1.0.1-py3-none-any.whl", hash = "sha256:167700a86309ca4a73c414e6b8a94b4d8aa2c3a05cdb15738652af525ec72864", size = 1150981, upload-time = "2026-10-03T14:00:51.103Z" },
 ]
 
 [package.optional-dependencies]
@@ -2689,6 +2703,7 @@ all = [
     { name = "oss2" },
     { name = "pillow" },
     { name = "psutil" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pynput" },
 ]
 

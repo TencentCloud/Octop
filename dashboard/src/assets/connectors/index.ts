@@ -4,6 +4,7 @@ import ctripWendao from "./ctrip-wendao.png";
 import didi from "./didi.svg";
 import dida365 from "./dida365.png";
 import dify from "./dify.svg";
+import agentlyCli from "./agently-cli.png";
 import feishuCli from "./feishu-cli.png";
 import fliggy from "./fliggy.png";
 import meituanTravel from "./meituan-travel.png";
@@ -36,6 +37,7 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   "meituan-travel": meituanTravel,
   yuandian,
   "tencent-ima": tencentIma,
+  "agently-cli": agentlyCli,
   "feishu-cli": feishuCli,
   "wecom-cli": wecomCli,
   "tencent-lexiang": tencentLexiang,
