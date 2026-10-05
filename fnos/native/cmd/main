@@ -146,7 +146,12 @@ start_process() {
         fi
         rm -f "${PID_FILE}"
     }
-    trap '_abort_start' INT TERM HUP
+    # Signal abort must leave start, not resume the readiness poll.
+    _abort_start_and_exit() {
+        _abort_start
+        exit 1
+    }
+    trap '_abort_start_and_exit' INT TERM HUP
 
     local i
     for i in $(seq 1 "$START_WAIT_SECS"); do
