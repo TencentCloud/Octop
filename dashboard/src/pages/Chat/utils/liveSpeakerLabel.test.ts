@@ -62,6 +62,17 @@ describe("hasInFlightTool", () => {
       ]),
     ).toBe(false);
   });
+
+  it("ignores a paused ask_user_question tool", () => {
+    expect(
+      hasInFlightTool([
+        {
+          status: "streaming",
+          toolData: { name: "ask_user_question" },
+        },
+      ]),
+    ).toBe(false);
+  });
 });
 
 describe("hasStreamingThinking", () => {

@@ -48,8 +48,8 @@ export default function SearchablePickerPanel<T>({
       : styles.panelWide;
 
   return (
-    <div className={panelClass}>
-      <div className={styles.search}>
+    <div className={panelClass} data-picker-panel="">
+      <div className={styles.search} data-picker-search="">
         <input
           type="search"
           className={styles.searchInput}
@@ -60,7 +60,7 @@ export default function SearchablePickerPanel<T>({
         <Search size={15} className={styles.searchIcon} aria-hidden />
       </div>
 
-      <div className={styles.list}>
+      <div className={styles.list} data-picker-list="">
         {filtered.length === 0 ? (
           <div className={styles.empty}>{emptyMessage}</div>
         ) : (
@@ -85,6 +85,7 @@ export default function SearchablePickerPanel<T>({
       <button
         type="button"
         className={`${styles.footer} ${footerMuted ? styles.footerMuted : ""}`}
+        data-picker-footer=""
         onClick={onFooterClick}
       >
         {footerIcon}

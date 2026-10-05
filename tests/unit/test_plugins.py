@@ -140,6 +140,31 @@ def test_sanitize_truncates_overlong_names() -> None:
     assert len(sanitized) <= 64
 
 
+def test_sanitize_clamps_prefixed_mcp_tool_name() -> None:
+    # Remote MCP prefixes `{server}_{tool}`; tencent-docs + ULID + this tool is 66.
+    name = "tencent-docs__01ARZ3NDEKTSV4RRFFQ69G5FAV_create_smartcanvas_by_mdx"
+    assert len(name) > 64
+    assert len("create_smartcanvas_by_mdx") <= 64
+    sanitized = sanitize_plugin_tool_name(name)
+    assert len(sanitized) <= 64
+    assert sanitized.isascii()
+    assert all(ch.isalnum() or ch in "_-" for ch in sanitized)
+    tool = _make_tool(name, "create a smart canvas")
+    sanitize_plugin_tool_names([tool])
+    assert len(tool.name) <= 64
+    assert "[原名: " in tool.description
+
+
+def test_sanitize_dedupe_keeps_legal_names_within_limit() -> None:
+    base = "a" * 64
+    first = sanitize_plugin_tool_name(base)
+    second = sanitize_plugin_tool_name(base, used={first})
+    assert first == base
+    assert second != first
+    assert len(second) <= 64
+    assert second.endswith("_2")
+
+
 def test_sanitize_falls_back_to_underscores_without_pypinyin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
