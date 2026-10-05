@@ -10,7 +10,8 @@ from octop_gateway.media import MediaBackend
 from octop_gateway.models import MessageEvent
 
 from octop.i18n import channel_tool_hint_end, channel_tool_hint_start, tool_display_name
-from octop.infra.gateway.hitl.format import format_hitl_card
+from octop.infra.gateway.hitl.format import format_hitl_card, normalize_hitl_request
+from octop.infra.gateway.hitl.stream_compat import install_harness_hitl_compat
 from octop.infra.gateway.media.tool_media import (
     dedup_tool_result_messages,
     media_events_from_tool_result,
@@ -23,6 +24,8 @@ from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, normalize_locale
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
     from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator, HitlStreamContext
+
+install_harness_hitl_compat()
 
 
 @dataclass
@@ -181,8 +184,10 @@ async def _project_chunks(
             request = chunk.get("request")
             if not isinstance(request, dict):
                 request = {}
+            request = normalize_hitl_request(request)
             if hitl_coordinator is not None and hitl_ctx is not None:
                 record = hitl_coordinator.register_from_request(request, ctx=hitl_ctx)
+                request["pending_id"] = record.pending_id
                 card = format_hitl_card(
                     record.action_requests,
                     pending_id=record.pending_id,
