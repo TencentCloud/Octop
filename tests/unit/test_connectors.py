@@ -760,6 +760,23 @@ def test_build_gateway_langchain_tools():
     )
     names = {t.name for t in tools}
     assert "tencent-ima__inst1_list_notes" in names
+    assert all(len(name) <= 64 for name in names)
+
+
+def test_build_gateway_langchain_tools_clamps_overlong_prefixed_names():
+    from octop.infra.connectors.gateway.langchain import build_gateway_langchain_tools
+
+    entry = get_catalog_entry("tencent-ima")
+    assert entry is not None
+    tools = build_gateway_langchain_tools(
+        entry=entry,
+        instance_id="inst1",
+        mcp_server_name="x" * 70,
+        creds={"api_key": "k", "client_id": "c"},
+    )
+    assert tools
+    assert all(len(t.name) <= 64 for t in tools)
+    assert all(t.name.replace("_", "").replace("-", "").isalnum() for t in tools)
 
 
 def test_gateway_search_news_passes_query(monkeypatch: pytest.MonkeyPatch):
