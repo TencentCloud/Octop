@@ -1705,6 +1705,75 @@ def test_resolve_workspace_dir_uses_persisted_path(manager: AgentManager, tmp_pa
     assert manager.resolve_workspace_dir("WSDIR1") == custom.resolve()
 
 
+def test_resolve_workspace_dir_remaps_unwritable_host_path(
+    manager: AgentManager, tmp_path: Path
+) -> None:
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    stale = blocker / "YZQ7X4"
+    manager._repos.agent_repo.create(
+        agent_id="YZQ7X4",
+        user_id=None,
+        name="stale-root",
+        config_json=json.dumps(
+            {
+                "workspace_dir": str(stale),
+                "backend": {"type": "local_shell", "virtual_mode": True, "root_dir": "/"},
+            }
+        ),
+    )
+    resolved = manager.resolve_workspace_dir("YZQ7X4")
+    assert resolved == manager.paths.ensure_agent_workspace("YZQ7X4").resolve()
+    assert manager.get_config("YZQ7X4")["workspace_dir"] == str(resolved)
+
+
+def test_build_harness_config_remaps_unwritable_workspace(
+    manager: AgentManager, tmp_path: Path
+) -> None:
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    stale = blocker / "YZQ7X4"
+    manager._repos.agent_repo.create(
+        agent_id="YZQ7X4",
+        user_id=None,
+        name="stale-root",
+        config_json=json.dumps({"workspace_dir": str(stale), **_MEMORY_OFF}),
+    )
+    row = manager.get_row("YZQ7X4")
+    assert row is not None
+    cfg = manager._build_harness_config(row)
+    expected = manager.paths.ensure_agent_workspace("YZQ7X4").resolve()
+    assert Path(cfg.workspace_dir) == expected
+    assert manager.get_config("YZQ7X4")["workspace_dir"] == str(expected)
+
+
+def test_resolve_workspace_dir_remaps_unwritable_scoped_root(
+    manager: AgentManager, tmp_path: Path
+) -> None:
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    manager._repos.agent_repo.create(
+        agent_id="F46T8Y",
+        user_id=None,
+        name="stale-jail",
+        config_json=json.dumps(
+            {
+                "workspace_dir": "/.octop/workspaces/F46T8Y",
+                "backend": {
+                    "type": "local_shell",
+                    "virtual_mode": True,
+                    "root_dir": str(blocker),
+                },
+            }
+        ),
+    )
+    resolved = manager.resolve_workspace_dir("F46T8Y")
+    assert resolved == manager.paths.ensure_agent_workspace("F46T8Y").resolve()
+    cfg = manager.get_config("F46T8Y")
+    assert cfg["workspace_dir"] == str(resolved)
+    assert cfg["backend"]["root_dir"] == "/"
+
+
 def test_resolve_workspace_dir_backfills_legacy_row(manager: AgentManager) -> None:
     manager._repos.agent_repo.create(
         agent_id="WSDIR2",
