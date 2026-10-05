@@ -175,37 +175,76 @@ git checkout -B {RELEASE_BRANCH_PREFIX}{version} {REMOTE}/{INTEGRATION_BRANCH}
 
 如果 `## [Unreleased]` 标题不存在，在 `# Changelog` 标题行之后插入新条目（若无标题则插入到文件顶部）。
 
-**4b. 升级版本号（同步所有版本来源）：**
+**4b. 升级版本号（把旧号 X.Y.Z 全部换成当前号 A.B.C）：**
 
-发布版本号必须保持多文件一致。依次升级以下位置：
+表示「当前发布版本」的钉死号必须一致，**不得只改 `pyproject.toml`**。
+把旧版本 `X.Y.Z` 换成目标版本 `A.B.C`。缺文件则提示并继续（不中止）。
+
+必改清单（按顺序，用 Edit 工具精确替换，勿用会误伤 CHANGELOG 历史条目的全局 replace）：
 
 1. `VERSION_FILE`（`pyproject.toml`）— wheel / PyPI 的唯一版本源：
    ```bash
    grep -n '^\s*version\s*=\s*"[^"]+"' pyproject.toml
-   # 用 Edit 工具将该行的 "X.Y.Z" 替换为 "A.B.C"
+   # "X.Y.Z" → "A.B.C"
    ```
 2. 所有匹配 `README_GLOB` 且含 shields.io 版本徽标的 README（含多语言）：
    ```bash
-   # 发现需升级的文件（勿只改英文 README.md）
    grep -l 'shields.io/badge/version-' README.md README_*.md 2>/dev/null
-   # 对每一个命中文件：
    grep -n 'shields.io/badge/version-' {file}
-   # 用 Edit 工具将 `version-X.Y.Z-orange` 替换为 `version-A.B.C-orange`
+   # `version-X.Y.Z-orange` → `version-A.B.C-orange`
    ```
-   当前仓库至少包括 `README.md` 与 `README_CN.md`；若某语言文件无徽标则跳过该文件。
-   全部未命中则提示并继续（不中止）。
+   当前仓库至少包括 `README.md` 与 `README_CN.md`。全部未命中则提示并继续。
 3. `INIT_VERSION_FILE`（`src/octop/__init__.py`）— 运行时常量 `__version__`：
    ```bash
    grep -n '__version__' src/octop/__init__.py
-   # 用 Edit 工具将 `__version__ = "X.Y.Z"` 替换为 `"A.B.C"`
+   # `__version__ = "X.Y.Z"` → `"A.B.C"`
    ```
-   文件不存在则跳过并提示（不中止）。
-4. 飞牛 FnOS 两个 manifest 的 `version=` 字段（与 `pyproject.toml` 保持一致；`scripts/build-fpk.sh` 打包时也会再注入一次，但仓库源文件必须先改，避免商店展示/手工校验看到旧号）：
+4. 飞牛 FnOS 两个 manifest 的 `version=`（`scripts/build-fpk.sh` 打包时会再注入，但仓库源文件必须先改）：
    ```bash
    grep -n '^version=' fnos/docker/manifest fnos/native/manifest
-   # 用 Edit 工具将两处 `version=X.Y.Z` 替换为 `version=A.B.C`
+   # `version=X.Y.Z` → `version=A.B.C`（两个文件都要改）
    ```
-   两个文件都必须改。缺文件则提示并继续（不中止）。
+5. 飞牛 Docker compose 镜像标签（与本包版本相同，供 FPK 拉取 GHCR）：
+   ```bash
+   grep -n 'ghcr.io/tencentcloud/octop:' fnos/docker/app/docker/docker-compose.yaml
+   # `ghcr.io/tencentcloud/octop:X.Y.Z` → `:A.B.C`
+   # 不得改成 `:latest`（测试禁止 latest）
+   ```
+6. `uv.lock` 里可编辑包 `octop` 的版本（漏改会导致 lock 与 pyproject 不一致）：
+   ```bash
+   grep -n -A2 'name = "octop"' uv.lock | head -5
+   # 将该包的 `version = "X.Y.Z"` 改为 `"A.B.C"`
+   # 或在改完 pyproject.toml 后执行 `uv lock`，只接受 octop 版本行变化
+   ```
+
+**扫尾（必做）：** 全库搜索旧号，把漏网的「当前版本钉死」一并改掉：
+
+```bash
+git grep -n --fixed-strings "X.Y.Z"
+```
+
+对每一处命中：
+
+| 类型 | 处理 |
+|------|------|
+| 当前版本钉死（compose / badge / manifest / lock / `__version__` / 文档里「当前版本」） | 换成 `A.B.C` |
+| 测试里断言「等于当前发布号」的硬编码 | 改成读 `_pyproject_version()`（或同步为 `A.B.C`） |
+| `CHANGELOG.md` 已发布章节（`## [X.Y.Z]` 及正文） | **保留**，不要改历史 |
+| 测试夹具里拿旧号做比较（如 `1.0.2b4` vs `1.0.2b5`、解析示例） | **保留** |
+| workflow / 注释里的示例旧号（如 `0.9.28`） | **保留**（不是当前钉死） |
+
+提交前再扫必改清单，必须已经没有旧号：
+
+```bash
+git grep -n --fixed-strings "X.Y.Z" -- \
+  pyproject.toml src/octop/__init__.py \
+  README.md README_CN.md \
+  fnos/docker/manifest fnos/native/manifest \
+  fnos/docker/app/docker/docker-compose.yaml \
+  uv.lock
+```
+
+任一文件仍命中旧号：**补改后再提交**，不得带着半套版本号推 release。
 
 **4c. 提交：**
 
@@ -327,6 +366,6 @@ git checkout {original_branch}
 - 发版后删除 `release/*`；`main → develop` 由 `sync-main-to-develop.yml` 自动同步（失败时再手动补）
 - 中止前展示完整错误输出
 - 插入新版本条目后保持 `[Unreleased]` 为空
-- 同步升级所有含 shields.io 版本徽标的多语言 README（`README.md`、`README_CN.md` 等），勿只改英文
-- 同步升级 `fnos/docker/manifest` 与 `fnos/native/manifest` 的 `version=` 字段，勿只改 `pyproject.toml`
+- 把旧版本号 `X.Y.Z` 换成 `A.B.C`：`pyproject.toml`、`__version__`、多语言 README 徽标、`fnos/*/manifest`、`fnos/docker/app/docker/docker-compose.yaml` 镜像标签、`uv.lock` 的 octop 包版本；提交前 `git grep` 必改清单确认无旧号
+- 勿改 CHANGELOG 历史章节、测试夹具里的旧版本比较、workflow 示例号
 - 推送 tag 后提示用户关注 GitHub Actions 的发布结果
