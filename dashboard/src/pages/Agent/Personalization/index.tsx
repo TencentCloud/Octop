@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Empty } from "antd";
 import {
@@ -16,6 +16,7 @@ import { useIsMobile } from "../../../hooks/useIsMobile";
 import { usePathTabs } from "../../../hooks/usePathTabs";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { userCan } from "../../../utils/permissions";
+import { isTeamAgent } from "../../../utils/teamAgent";
 import SkillsTabs from "../Skills/components/SkillsTabs";
 import ToolsTabs from "../Tools/ToolsTabs";
 import SubagentManager from "../../Experts/components/SubagentManager";
@@ -97,12 +98,25 @@ export default function PersonalizationPage() {
   const pageTitle = `${t("personalization.title")} / ${t(
     `personalization.tabs.${activeTab}`,
   )}`;
+  const showTeams = activeTab === "memory" || activeTab === "channels";
+  const expertOnlyBlocked = isTeamAgent(activeAgent) && !showTeams;
+  const teamNeedsExpert = t("agentSelector.teamNeedsExpert", {
+    name: activeAgent?.name ?? "",
+    defaultValue: "当前是团队「{{name}}」，此页请选择专家",
+  });
+  const expertOnly = (node: ReactNode) =>
+    expertOnlyBlocked ? (
+      <Empty style={{ marginTop: 24 }} description={teamNeedsExpert} />
+    ) : (
+      node
+    );
 
   return (
     <PageShell
       title={pageTitle}
       subtitle={t("personalization.description")}
       agentScoped
+      showTeams={showTeams}
       fill={!isMobile}
       pathTabs={pathTabs}
     >
@@ -132,9 +146,11 @@ export default function PersonalizationPage() {
             style={{ display: activeTab === "skills" ? "flex" : "none" }}
             aria-hidden={activeTab !== "skills"}
           >
-            <div className={pageShellStyles.fillChild}>
-              <SkillsTabs agentId={activeAgentId} />
-            </div>
+            {expertOnly(
+              <div className={pageShellStyles.fillChild}>
+                <SkillsTabs agentId={activeAgentId} />
+              </div>,
+            )}
           </div>
         )}
 
@@ -144,9 +160,11 @@ export default function PersonalizationPage() {
             style={{ display: activeTab === "tools" ? "flex" : "none" }}
             aria-hidden={activeTab !== "tools"}
           >
-            <div className={pageShellStyles.fillChild}>
-              <ToolsTabs agentId={activeAgentId} />
-            </div>
+            {expertOnly(
+              <div className={pageShellStyles.fillChild}>
+                <ToolsTabs agentId={activeAgentId} />
+              </div>,
+            )}
           </div>
         )}
 
@@ -156,9 +174,11 @@ export default function PersonalizationPage() {
             style={{ display: activeTab === "plugins" ? "flex" : "none" }}
             aria-hidden={activeTab !== "plugins"}
           >
-            <div className={pageShellStyles.fillChild}>
-              <AgentPluginsPanel agentId={activeAgentId} />
-            </div>
+            {expertOnly(
+              <div className={pageShellStyles.fillChild}>
+                <AgentPluginsPanel agentId={activeAgentId} />
+              </div>,
+            )}
           </div>
         )}
 
@@ -168,10 +188,12 @@ export default function PersonalizationPage() {
             style={{ display: activeTab === "subagents" ? "flex" : "none" }}
             aria-hidden={activeTab !== "subagents"}
           >
-            {!activeAgentId ? (
+            {!activeAgentId || expertOnlyBlocked ? (
               <Empty
                 style={{ marginTop: isMobile ? 48 : 24 }}
-                description={t("subagents.pickAgent")}
+                description={
+                  expertOnlyBlocked ? teamNeedsExpert : t("subagents.pickAgent")
+                }
               />
             ) : (
               <SubagentManager
@@ -190,10 +212,12 @@ export default function PersonalizationPage() {
             style={{ display: activeTab === "mbti" ? "flex" : "none" }}
             aria-hidden={activeTab !== "mbti"}
           >
-            {!activeAgentId ? (
+            {!activeAgentId || expertOnlyBlocked ? (
               <Empty
                 style={{ marginTop: 24 }}
-                description={t("mbtiPage.pickAgent")}
+                description={
+                  expertOnlyBlocked ? teamNeedsExpert : t("mbtiPage.pickAgent")
+                }
               />
             ) : (
               <div className={pageShellStyles.fillChild}>

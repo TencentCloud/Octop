@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { ResolvedModel } from "../../../api/types";
@@ -19,50 +19,85 @@ const models: ResolvedModel[] = [
   },
 ];
 
-describe("ChatInputActionsRow compact pickers", () => {
-  it("uses a popover instead of a full-width drawer on narrow desktop", async () => {
-    const { container } = render(
+const baseProps = {
+  isMobile: false,
+  isStreaming: false,
+  canSend: false,
+  text: "",
+  polishing: false,
+  uploading: false,
+  recording: false,
+  transcribing: false,
+  availableModels: models,
+  onModelChange: vi.fn(),
+  onConversationModeChange: vi.fn(),
+  onHitlPolicyChange: vi.fn(),
+  slashPickerGroups: null,
+  slashMenuItems: [],
+  onSlashShortcutSelect: vi.fn(),
+  onFileSelect: vi.fn(),
+  onNewChat: vi.fn(),
+  onPolish: vi.fn(),
+  onToggleVoice: vi.fn(),
+  onCancel: vi.fn(),
+  onSubmit: vi.fn(),
+};
+
+describe("ChatInputActionsRow plus menu", () => {
+  it("keeps approval, shortcuts, and attachments on the toolbar", () => {
+    render(
       <MemoryRouter>
-        <ChatInputActionsRow
-          isMobile={false}
-          isStreaming={false}
-          canSend={false}
-          text=""
-          polishing={false}
-          uploading={false}
-          recording={false}
-          transcribing={false}
-          availableModels={models}
-          onModelChange={vi.fn()}
-          slashPickerGroups={null}
-          slashMenuItems={[]}
-          onSlashShortcutSelect={vi.fn()}
-          onFileSelect={vi.fn()}
-          onNewChat={vi.fn()}
-          onPolish={vi.fn()}
-          onToggleVoice={vi.fn()}
-          onCancel={vi.fn()}
-          onSubmit={vi.fn()}
-        />
+        <ChatInputActionsRow {...baseProps} />
       </MemoryRouter>,
     );
 
-    const modelButton = container
-      .querySelector("svg.lucide-cpu")
-      ?.closest("button");
-    expect(modelButton).not.toBeNull();
-    expect(modelButton).not.toHaveTextContent("Auto");
-    expect(modelButton).not.toHaveTextContent("Compact Model");
-    expect(modelButton).not.toHaveTextContent("compact-model");
+    expect(screen.getByTestId("composer-plus")).toBeInTheDocument();
+    expect(screen.getByTestId("hitl-policy-picker")).toBeInTheDocument();
+    expect(screen.getByLabelText("快捷指令")).toBeInTheDocument();
+    expect(screen.getByLabelText("Upload attachment")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("conversation-mode-picker"),
+    ).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(modelButton!);
+  it("hides the approval picker when HITL policy cannot be changed", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} onHitlPolicyChange={undefined} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByTestId("hitl-policy-picker")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("快捷指令")).toBeInTheDocument();
+  });
+
+  it("opens a flyout beside the plus menu instead of a window drawer", async () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByTestId("composer-plus"));
 
     await waitFor(() => {
       expect(document.querySelector(".ant-popover")).toBeInTheDocument();
     });
-    const popover = document.querySelector(".ant-popover");
-    expect(popover?.querySelector("svg.lucide-sparkles")).not.toBeNull();
-    expect(popover?.querySelector("img")).not.toBeNull();
+    expect(screen.getByText("Model")).toBeInTheDocument();
+    expect(screen.queryByTestId("composer-plus-panel")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Model"));
+
+    const panel = await screen.findByTestId("composer-plus-panel");
+    expect(panel.querySelector("img")).not.toBeNull();
+    const menu = document.querySelector("[class*='plusFlyoutMenu']");
+    if (menu && menu.getBoundingClientRect().height > 0) {
+      expect(Number.parseFloat(getComputedStyle(panel).maxHeight)).toBe(
+        Math.round(menu.getBoundingClientRect().height),
+      );
+    }
     expect(document.querySelector(".ant-drawer-content")).toBeNull();
+    expect(document.querySelector(".ant-popover")).toBeInTheDocument();
+    expect(screen.getByText("Model")).toBeInTheDocument();
   });
 });

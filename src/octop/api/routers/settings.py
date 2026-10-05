@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
 from octop.config import OctopConfig
+from octop.infra.agents.security import tool_execution_may_pause
 from octop.infra.auth.captcha import current_env, load_view, save_settings
 from octop.infra.users.identity import User
 
@@ -22,6 +23,16 @@ class TimezoneSettingsResponse(BaseModel):
 class UploadSettingsResponse(BaseModel):
     max_upload_mb: int = Field(description="Max upload size in MiB from config ``max_upload_mb``.")
     max_upload_bytes: int = Field(description="Max upload size in bytes.")
+
+
+class HitlSettingsResponse(BaseModel):
+    enabled: bool = Field(description="Whether global tool human-approval (HITL) is enabled.")
+    tool_guard_require_approval: bool = Field(
+        description="Whether command guard pauses risky shell calls for approval."
+    )
+    show_approval_ui: bool = Field(
+        description="Whether composer, slash help, and CLI should show tool-approval surfaces."
+    )
 
 
 @router.get(
@@ -52,6 +63,27 @@ async def get_upload_settings(
     return UploadSettingsResponse(
         max_upload_mb=cfg.max_upload_mb,
         max_upload_bytes=cfg.max_upload_bytes,
+    )
+
+
+@router.get(
+    "/settings/hitl",
+    summary="Tool human-approval switch",
+    response_model=HitlSettingsResponse,
+)
+async def get_hitl_settings(
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> HitlSettingsResponse:
+    """Return HITL and command-guard flags that drive approval UI."""
+    _ = user
+    assert server.app_runtime is not None
+    policy = server.app_runtime.agent_registry.security.load()
+    guard_require = bool(policy.tool_guard.enabled and policy.tool_guard.mode == "require_approval")
+    return HitlSettingsResponse(
+        enabled=bool(policy.hitl.enabled),
+        tool_guard_require_approval=guard_require,
+        show_approval_ui=tool_execution_may_pause(policy),
     )
 
 

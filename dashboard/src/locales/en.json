@@ -75,7 +75,10 @@
     "copyErrorForOctop": "Copy error details",
     "installLogEmpty": "(No install log available)",
     "tokenCountPresets": "Quick fill",
-    "tokenCountPreview": "About {{label}} tokens ({{exact}})"
+    "tokenCountPreview": "About {{label}} tokens ({{exact}})",
+    "back": "Back",
+    "comingSoon": "Coming soon",
+    "notImplemented": "This page is under construction."
   },
   "apiErrors": {
     "AUTH_FAILED": "Authentication failed.",
@@ -93,6 +96,7 @@
     "EMAIL_TAKEN": "Email is already taken.",
     "EMAIL_INVALID": "Invalid email address.",
     "PASSWORD_SAME_AS_OLD": "New password must be different from the current password.",
+    "PASSWORD_NOT_SET": "This account signs in through a directory and has no local password to change.",
     "PASSWORD_TOO_WEAK": "Password is too weak: at least 8 characters with letters and digits.",
     "SETUP_PASSWORD_WRONG": "Incorrect setup password.",
     "SETUP_RATE_LIMITED": "Too many setup password attempts. Try again later.",
@@ -112,6 +116,7 @@
     "STORAGE_BACKEND_NAME_TAKEN": "Storage backend name is already in use.",
     "STORAGE_BACKEND_REFERENCED": "Storage backend is in use and cannot be removed.",
     "STORAGE_BACKEND_DEPS_FAILED": "Could not install optional components for this storage backend. Check network access and retry.",
+    "STORAGE_BROWSE_FAILED": "Could not browse this storage backend.",
     "CHANNEL_KIND_UNSUPPORTED": "Unsupported channel type.",
     "CHANNEL_INVALID_CREDENTIALS": "Invalid channel credentials.",
     "CHANNEL_NAME_TAKEN": "This channel name is already in use. Please choose another.",
@@ -159,6 +164,10 @@
     "OIDC_BAD_REQUEST": "Invalid OIDC request: {{detail}}",
     "SSO_IDENTITY_TAKEN": "This login is already linked to another Octop account.",
     "SSO_UNBIND_REQUIRES_PASSWORD": "Set a password before unlinking single sign-on.",
+    "LDAP_BAD_REQUEST": "Invalid LDAP configuration: {{detail}}",
+    "LDAP_UNAVAILABLE": "The LDAP directory is unavailable. Check the server address and bind credentials.",
+    "LDAP_USER_NOT_PROVISIONED": "This directory account has no Octop account yet. Ask an administrator to create one or enable automatic provisioning.",
+    "LDAP_GROUP_NOT_ALLOWED": "This directory account is not in a group allowed to sign in. Ask an administrator to add you to an allowed group.",
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
     "DESKTOP_SESSION_LIMIT": "Too many concurrent remote desktop streams (max {{limit}}). Close other connections and try again.",
@@ -278,7 +287,8 @@
     "groupNamePlaceholder": "Group name",
     "groupNameRequired": "Enter a group name",
     "saveFailed": "Could not save the navigation layout",
-    "dragToReorder": "Drag to reorder"
+    "dragToReorder": "Drag to reorder",
+    "chatHistory": "Session list"
   },
   "skillPackages": {
     "title": "Skill Packages",
@@ -337,9 +347,9 @@
     "collapseListPanel": "Collapse list",
     "expandListPanel": "Expand list",
     "copyPolicy": "Copy policy",
-    "copyPolicyHint": "Controls whether users other than the creator can copy this package's skills into their agents.",
+    "copyPolicyHint": "Controls whether users other than the creator can copy this package's skills into their agents. Read-only copies are enforced on Dashboard and workspace HTTP writes; Agent tool writes still need harness support (#770).",
     "copyPolicySnapshot": "Copy freely",
-    "copyPolicyLock": "Copy read-only",
+    "copyPolicyLock": "Copy (console read-only)",
     "copyPolicyDeny": "No copying"
   },
   "knowledgeBases": {
@@ -930,6 +940,7 @@
     "agentDeleteFailed": "Failed to delete agent",
     "confirmDelete": "Delete \"{{name}}\"?",
     "confirmDeleteHint": "This cannot be undone. The agent workspace (including memory and session files) will also be permanently deleted and cannot be recovered.",
+    "agentDisable": "Disable",
     "patchFailed": "Failed to save changes",
     "defaultModelLabel": "Default Model",
     "defaultModelPlaceholder": "Select a model",
@@ -1003,9 +1014,10 @@
     "backendLabel": "Storage Backend",
     "backendRootDir": "Storage Root Dir",
     "backendRootDirPlaceholder": "Browse and select a directory",
-    "backendRootDirDesc": "Defaults to filesystem root `/`. You may also browse and pick another directory.",
-    "backendRootDirDescContainer": "Running in a container: defaults to filesystem root `/` (the container is already the isolation boundary). You may still browse and pick another directory.",
+    "backendRootDirDesc": "Defaults to the filesystem root (`/` on POSIX, the home drive on Windows). You may also browse and pick another directory.",
+    "backendRootDirDescContainer": "Running in a container: defaults to the filesystem root `/` (the container is already the isolation boundary). You may still browse and pick another directory.",
     "backendRootDirJailHint": "Saving to a non-root directory enables a sandbox and confines the AI filesystem to that folder. External ACP runners can’t be used with this setup; connecting via IDE / octop acp is unaffected.",
+    "backendRootDirPathLimitHint": "Saving to a non-root directory limits the AI’s file access to that folder, but this host provides no OS-level sandbox — the AI process still runs with the service account’s own permissions. External ACP runners can’t be used with this setup; connecting via IDE / octop acp is unaffected.",
     "backendRootDirImmutableHint": "Cannot be changed after creation.",
     "rootDirListFailed": "Could not list subdirectories. Check permissions or choose another path.",
     "rootDirMkdir": "New folder",
@@ -1100,7 +1112,8 @@
     "pluginsBtn": "Plugins",
     "mbtiBtn": "MBTI",
     "channelsBtn": "Channels",
-    "memoryBtn": "Memory"
+    "memoryBtn": "Memory",
+    "openChat": "Chat"
   },
   "subagents": {
     "catalogTitle": "Manage subagents",
@@ -1179,19 +1192,21 @@
     }
   },
   "agent_errors": {
-    "no_models_configured": "No models are configured. Go to Settings → Models to add a Provider, then enable this expert again.",
-    "model_ref_unavailable": "The default model is unavailable or disabled. Check Settings → Models or update this expert's default model, then try again."
+    "no_models_configured": "No models are configured. Go to Admin → Model Management to add a provider, then enable this expert again.",
+    "model_ref_unavailable": "The default model is unavailable or disabled. Check Admin → Model Management or update this expert's default model, then try again.",
+    "start_timeout": "This expert took too long to start (storage backend I/O). Try again, or switch it to a local workspace backend."
   },
   "stream_errors": {
     "stream_stall": "The model stopped sending content while the connection stayed open. Click Retry, or try again later with another model. If this happens often, check the provider status or ask an admin to review stream timeout settings.",
     "rate_limit": "The model provider rate-limited this request. Wait a moment and retry, or switch to another model.",
-    "auth": "Model authentication failed. Check that the API key under Settings → Models is correct and still valid.",
+    "auth": "Model authentication failed. Check that the API key under Admin → Model Management is correct and still valid.",
     "insufficient_balance": "The model provider rejected this request due to insufficient balance or quota. Top up or upgrade the plan for this API key, then try again.",
     "context_length": "This conversation is too long for the model's context window. Start a new chat, or shorten the history and try again.",
     "recursion_limit": "The agent hit its max iteration / recursion limit before finishing. Open Configuration and raise Max Iterations, then try again.",
     "timeout_network": "Connecting to the model timed out or the network failed. Check your network and retry. If you use a proxy or self-hosted endpoint, confirm it is reachable.",
     "provider_unavailable": "The model provider is temporarily unavailable. Retry later, or switch to another model.",
     "model_call_failed": "The model call failed after several retries. Wait a moment and retry. If it keeps failing, check the model settings or switch models.",
+    "model_call_failed_detail": "The model call failed: {{detail}}",
     "path_outside_root": "The file path is outside this expert's storage root, so it cannot be read or written. Use a path under the storage root, or widen the storage root in expert settings (on Windows, set an explicit drive path such as D:/octop-data)."
   },
   "chat": {
@@ -1296,7 +1311,7 @@
     "retry": "Retry",
     "like": "Helpful",
     "dislike": "Not helpful",
-    "selectModel": "Select model",
+    "selectModel": "Model",
     "modelAuto": "Auto",
     "modelAutoHint": "Use agent default model",
     "reasoningMode": "Thinking mode",
@@ -1392,10 +1407,10 @@
     "knowledgePickerSearch": "Search knowledge bases",
     "knowledgePickerEmpty": "No knowledge bases available",
     "manageKnowledgeBases": "Manage knowledge bases",
-    "skillPicker": "Select skills",
+    "skillPicker": "Skills",
     "skillPickerSearch": "Search skills",
     "skillPickerEmpty": "No skills available",
-    "expertPicker": "Select experts",
+    "expertPicker": "Experts",
     "expertPickerSearch": "Search experts",
     "expertPickerEmpty": "No other experts available",
     "expertPickerManage": "Manage experts",
@@ -1408,7 +1423,7 @@
     "expertListHidden": "Hidden experts ({{count}})",
     "expertListShowVisible": "Back to expert list",
     "expertListHiddenEmpty": "No hidden shared experts",
-    "subagentPicker": "Select subagents",
+    "subagentPicker": "Subagents",
     "subagentPickerSearch": "Search subagents",
     "subagentPickerEmpty": "No installed subagents",
     "subagentPickerManage": "Manage subagents",
@@ -1652,7 +1667,10 @@
     "toolUiDockedOpen": "Open side panel",
     "loadEarlierMessages": "Load earlier messages",
     "historyLoadFailed": "History could not be loaded. Existing messages have been kept. Please retry.",
-    "historyRetry": "Retry"
+    "historyRetry": "Retry",
+    "creatingSession": "Creating session…",
+    "resizePopup": "Resize window",
+    "unreadMessages": "Unread messages"
   },
   "tools": {
     "unknown": "Unknown tool",
@@ -2112,7 +2130,11 @@
     "tencentcloud-infra": "Tencent Cloud Infra",
     "publisher-multi-platform": "Multi-platform Publisher",
     "docker-management": "Docker Management",
-    "copyDenied": "The package creator has disabled copying"
+    "copyDenied": "The package creator has disabled copying",
+    "table": {
+      "actions": "Actions",
+      "enabled": "Enabled"
+    }
   },
   "cronJobs": {
     "title": "Cron Jobs",
@@ -2255,7 +2277,11 @@
       "timeoutSeconds": "Timeout (seconds)",
       "timeoutSecondsTooltip": "Maximum execution time in seconds. The job will be terminated if it exceeds this limit.",
       "misfireGrace": "Misfire Grace (seconds)",
-      "misfireGraceTooltip": "If the job was missed (e.g. server was down), it will still run if within this grace period. Set to 0 to skip missed runs."
+      "misfireGraceTooltip": "If the job was missed (e.g. server was down), it will still run if within this grace period. Set to 0 to skip missed runs.",
+      "agentlyNewMail": "Agent Mail new mail",
+      "agentlyMailbox": "Mailbox to watch",
+      "agentlySelectMailbox": "Select an Agent Mail mailbox",
+      "agentlyHint": "Run this task when the background connection receives new mail. Authorize the selected mailbox first; the model is not called while idle."
     },
     "preset": {
       "every5min": "Every 5 minutes",
@@ -2272,6 +2298,7 @@
     "col": {
       "id": "Job ID",
       "name": "Name",
+      "enabled": "Enabled",
       "scheduleType": "Schedule Type",
       "scheduleCron": "Schedule Cron",
       "scheduleTimezone": "Timezone",
@@ -2299,7 +2326,8 @@
       "runtimeTimeoutSeconds": "Timeout (s)",
       "runtimeMisfireGrace": "Misfire Grace (s)"
     },
-    "noAgentSelected": "Pick an expert in the top-right switcher first to manage its scheduled tasks"
+    "noAgentSelected": "Pick an expert in the top-right switcher first to manage its scheduled tasks",
+    "goToChat": "Send to chat"
   },
   "channels": {
     "title": "Channels",
@@ -2492,6 +2520,7 @@
     "dmPolicy": "DM Policy",
     "dmPolicyOpen": "Open — allow everyone",
     "dmPolicyAllowlist": "Allowlist — specified users only",
+    "dmPolicyDisabled": "Disable DMs",
     "allowFrom": "DM Allowlist",
     "allowFromTip": "Only effective when DM Policy is set to Allowlist",
     "allowFromPlaceholder": "Enter user ID and press Enter",
@@ -3301,7 +3330,8 @@
     "onnxNotReady": "not ready",
     "onnxCacheDir": "Cache: {{dir}}",
     "onnxLocalCached": "Cached models",
-    "onnxQuickDownload": "Quick download from catalog…"
+    "onnxQuickDownload": "Quick download from catalog…",
+    "defaultModelExtra": "Model used by Test connection; leave empty to use the first enabled model"
   },
   "advancedSettings": {
     "description": "Manage runtime configuration and environment variables.",
@@ -3606,7 +3636,20 @@
     "quietHoursEnd": "Do Not Disturb Until",
     "saveSuccess": "Proactive reminder settings saved",
     "saveFailed": "Failed to save proactive reminder settings",
-    "loadFailed": "Failed to load proactive reminder settings"
+    "loadFailed": "Failed to load proactive reminder settings",
+    "activeHoursEnd": "Care hours · end",
+    "activeHoursEndRequired": "Select an end time",
+    "activeHoursStart": "Care hours · start",
+    "activeHoursStartRequired": "Select a start time",
+    "episodeBannerText": "Octop picks a good moment from your episodes to send a caring message. See which entries are referenced in \"Episodes\".",
+    "intervalOrderError": "Minimum interval cannot exceed maximum interval",
+    "maxIntervalHours": "Max interval (hours)",
+    "maxIntervalRequired": "Enter the maximum interval",
+    "minIntervalHours": "Min interval (hours)",
+    "minIntervalMin": "Minimum interval is 1 hour",
+    "minIntervalRequired": "Enter the minimum interval",
+    "timeRangeError": "Care hours start must be earlier than end",
+    "viewEpisodes": "Open Episodes →"
   },
   "chatWelcome": {
     "greeting": "Hi! Your personal AI sidekick is here",
@@ -3683,14 +3726,15 @@
     "filesFailed": "Could not search workspace files"
   },
   "modelConfig": {
-    "promptTitle": "LLM Model Required",
-    "promptMessage": "Chat requires an LLM model to function. Without a configured model, conversations and messages cannot be sent to the backend for processing and storage, and will be lost after a page refresh. Would you like to configure a model now?",
-    "configureButton": "Configure Model",
+    "promptTitle": "A model is required",
+    "promptMessage": "Open Admin → Model Management, add a provider, and enable at least one model before you can chat.",
+    "promptMessageNoPermission": "No models are available yet. Ask an administrator to configure one before you can chat.",
+    "configureButton": "Configure models",
     "skipButton": "Skip",
     "chatDisabledTitle": "Chat Disabled",
     "chatDisabledMessage": "Chat functionality is disabled because no model is configured. Please configure a model to enable chat.",
     "configureNow": "Configure Model",
-    "modelNotConfigured": "Please configure a model in Settings before using chat"
+    "modelNotConfigured": "Please configure a model in Admin → Model Management before using chat"
   },
   "header": {
     "healthLabel": "Health",
@@ -3721,7 +3765,8 @@
   },
   "language": {
     "title": "Language",
-    "description": "Choose the display language for the console."
+    "description": "Choose the display language for the console.",
+    "saveFailed": "Failed to save language preference"
   },
   "theme": {
     "title": "Appearance Theme",
@@ -3947,7 +3992,8 @@
       "deleteModelCacheTitle": "Delete model cache?",
       "deleteModelCacheDesc": "Delete the local cache for {{model}}? You'll need to re-download it before vector search can be re-enabled.",
       "deleteModelCacheSuccess": "Model cache deleted",
-      "deleteModelCacheFailed": "Delete failed: the model may be activating. Switch, save, or restart before deleting."
+      "deleteModelCacheFailed": "Delete failed: the model may be activating. Switch, save, or restart before deleting.",
+      "selectModel": "Select a model"
     },
     "pipeline": {
       "title": "Memory pipeline",
@@ -3963,11 +4009,16 @@
       "emptyTitle": "Memories are still being distilled",
       "emptyNoRaw": "No memories yet. Start chatting and the system will capture material and distill memories automatically.",
       "emptyWithRaw": "{{n}} pieces of conversation material captured. Distillation runs automatically once a session goes idle; the first memories usually appear after a few exchanges.",
-      "emptyPendingSuffix": "{{n}} memory candidates are awaiting confirmation in Pending Review."
+      "emptyPendingSuffix": "{{n}} memory candidates are awaiting confirmation in Pending Review.",
+      "lastExtract": "Last organized {{time}}"
     },
     "library": {
       "viewRaw": "Raw material",
-      "hintRaw": "Raw conversation material captured before distillation (counts don't map 1:1 to Conversations)"
+      "hintRaw": "Raw conversation material captured before distillation (counts don't map 1:1 to Conversations)",
+      "hintAtoms": "All memories in a flat list, filterable by importance",
+      "hintTree": "Browse related memories grouped by people, projects, tools and more",
+      "viewAtoms": "List view",
+      "viewTree": "Topic view"
     },
     "raw": {
       "typeFilter": "Type",
@@ -4027,13 +4078,37 @@
       "episodes": "Emotional moments",
       "rawEvents": "Conversation memory",
       "candidatesPending": "Needs attention",
+      "subtitleRawEventsUnit": "raw events",
+      "dirtyPages": "Topics to refresh",
+      "dirtyPagesHint": "Some topic summaries need to be regenerated",
+      "dirtyPagesClean": "All topic summaries are up to date",
+      "processingStatus": "Processing",
+      "statusEmpty": "No status data yet",
+      "pendingReview": "Needs review",
+      "pendingReviewHint": "Memory drafts are waiting for you to adopt or discard",
+      "pendingReviewClean": "No memory drafts waiting for review",
+      "weeklyNewAtoms": "Added in 7 days",
+      "weeklyNewAtomsHint": "How quickly new memories have been settling",
+      "indexedEntities": "Indexed topics",
+      "indexedEntitiesHint": "Expand these topics in the memory library",
+      "profileEyebrow": "User profile",
       "kindsTitle": "Memory types",
       "kindsEmpty": "No memory type data yet",
       "turnsTitle": "Conversation turns · 7 days",
       "turnsEmpty": "No conversation turns in the last 7 days",
       "turns": "Turns",
       "growthTitle": "Memory growth · 7 days",
-      "growthEmpty": "No new memories in the last 7 days"
+      "growthEmpty": "No new memories in the last 7 days",
+      "atomsDelta7dShort": "added in 7 days",
+      "entitiesShort": "people & things",
+      "episodesShort": "conversation episodes",
+      "heroTitle": "User profile",
+      "memories": "memories",
+      "profileSubtitle": "A structured summary of what Octop currently understands about you — high-value conclusions only, not the full memory store.",
+      "reviewAction": "Tidy up profile",
+      "rowGoLibrary": "Open memory library →",
+      "rowHintToLibrary": "Wrong? Discard it in the memory library",
+      "viewAll": "View all"
     },
     "entitySummary": "Topic summary",
     "tree": {
@@ -4093,6 +4168,128 @@
       "ok": "Deprecate",
       "success": "Deprecated — Octop will no longer use this memory",
       "failed": "Operation failed: {{message}}"
+    },
+    "atomDetail": "Memory detail",
+    "episodeDetail": "Episode detail",
+    "candidates": {
+      "confirmPromote": "Adopt this memory?",
+      "confirmReject": "Confirm discard",
+      "detail": "Memory draft detail",
+      "empty": "No memory content yet",
+      "kindLabel": "Type",
+      "promote": "Adopt",
+      "promoteOk": "Adopted",
+      "reject": "Discard",
+      "rejectHint": "Discarded drafts never enter long-term memory. You can optionally give a reason for later review.",
+      "rejectOk": "Discarded",
+      "rejectReasonPlaceholder": "Optional reason, e.g. expired / inaccurate / not important",
+      "rejectTitle": "Discard this draft",
+      "statusLabel": "Status"
+    },
+    "journal": {
+      "action": {
+        "create": "Create",
+        "update": "Update",
+        "promote": "Adopt",
+        "deprecate": "Deprecate",
+        "reject": "Discard",
+        "merge": "Merge"
+      }
+    },
+    "confidence": {
+      "high": "High confidence",
+      "low": "Low confidence",
+      "medium": "Medium confidence"
+    },
+    "entityType": {
+      "concept": "Concept",
+      "event": "Event",
+      "organization": "Organization",
+      "other": "Other",
+      "person": "Person",
+      "place": "Place",
+      "project": "Project",
+      "tool": "Tool"
+    },
+    "episodes": {
+      "disclaimer": "This diary keeps the emotions and little stories from your time with Octop. It is not quoted in regular chats — it only helps Octop care for you better and feeds the weekly / monthly recaps."
+    },
+    "importance": {
+      "high": "Very important",
+      "low": "Normal",
+      "medium": "Important",
+      "title": "Importance"
+    },
+    "kind": {
+      "conflict": "Possible conflict",
+      "decision": "Decision",
+      "fact": "Fact",
+      "preference": "Preference",
+      "task": "Task"
+    },
+    "list": {
+      "importanceMin": "Importance at least",
+      "kind": "Type"
+    },
+    "migrate": {
+      "alreadyAdopted": "Already migrated, skipped",
+      "alreadyAdoptedAt": "This package was already imported at {{at}}",
+      "buttonLabel": "Migrate memory",
+      "chooseFile": "Choose file",
+      "comparePkgLabel": "Optional: upload a .hmpkg file to compare row counts",
+      "confirmDesc": "Once everything looks right, click \"Confirm & import\" to apply.",
+      "confirmImport": "Confirm & import",
+      "conflictLabel": "Conflict policy",
+      "conflictReplace": "Replace (overwrite with new data)",
+      "conflictSkip": "Skip (keep existing)",
+      "doctorAllPassed": "All checks passed ✓",
+      "doctorDesc": "Run a health check on this Octop memory store: schema, indexes, foreign-key integrity and more.",
+      "doctorFailed": "Some checks failed — see details",
+      "doctorLabel": "Validate migration",
+      "doctorTitle": "Validate migration health",
+      "dryRunResult": "Dry-run result",
+      "exportBtn": "Pack & download",
+      "exportDesc": "Pack all memories of this Octop into a .hmpkg file and download it. You can import the file on another host (openclaw / hermes) to keep using them.",
+      "exportLabel": "Export to file",
+      "exportSuccess": "Memory package downloaded",
+      "exportTitle": "Export memory to file",
+      "hostRewriteKeep": "Keep original host",
+      "hostRewriteLabel": "Host field",
+      "hostRewriteTarget": "Rewrite to target host",
+      "importBtn": "Import directly",
+      "importLabel": "Import from file",
+      "importStats": "Wrote {{n}}, skipped {{s}}",
+      "importSuccess": "Import finished — wrote {{n}} entries",
+      "importTitle": "Import memory from file",
+      "previewBtn": "Dry run",
+      "rowCountDiff": "Row count difference: ",
+      "runDoctor": "Run checks",
+      "selectFile": "Select a .hmpkg file first",
+      "selectFileLabel": "Select a .hmpkg file",
+      "targetHostLabel": "Target host",
+      "targetNs": "Target namespace: {{ns}}",
+      "willApply": "Will write: {{n}} entries",
+      "importDone": "Import finished"
+    },
+    "terminal": {
+      "aboutMe": "About you",
+      "currentFocus": "Current focus",
+      "emptyAboutMe": "Octop is still getting to know you — chat a bit more and it will fill in",
+      "emptyEntities": "No frequent people or things yet",
+      "emptyFocus": "No tasks in progress",
+      "emptyToldMe": "No explicit facts noted yet",
+      "atomCount": "{{n}} memories",
+      "entities": "Key people & things",
+      "entitiesDesc": "The most frequent topics in your memory",
+      "toldMe": "Facts you mentioned",
+      "toldMeDesc": "Key details recently noted by Octop",
+      "aboutMeDesc": "Stable preferences and facts",
+      "currentFocusDesc": "Tasks in progress and recent decisions"
+    },
+    "time": {
+      "daysAgo": "{{n}} days ago",
+      "today": "Today",
+      "yesterday": "Yesterday"
     }
   },
   "personalization": {
@@ -4190,6 +4387,16 @@
     "skillFiles": "Skills",
     "sceneIntro": "Scene Introduction",
     "clickToPreview": "Click to preview",
+    "sceneSelectTab": "Choose a scene",
+    "currentSceneTab": "Current scene",
+    "moreScenesComing": "More scenes on the way",
+    "moreScenesSub": "We will keep adding packs — stay tuned",
+    "noSceneApplied": "No scene applied yet",
+    "noSceneAppliedHint": "Pick a scene under “Choose a scene” to get started",
+    "yourConfiguration": "Configuration files",
+    "drawerConfigFiles": "Configuration files",
+    "drawerSkillFiles": "Included skills",
+    "drawerApply": "Apply this scene",
     "moreScenes": "More Scenes",
     "readOnlyHint": "Read-only — This is preset content. After applying, you can edit it in \"Current Scene\".",
     "fileCount": "{{count}} files"
@@ -4477,7 +4684,8 @@
     "mobileHint": "Tap the view to control the remote desktop; shortcut buttons send common key chords.",
     "adminOnlyTitle": "Admin access required",
     "adminOnlyDesc": "Remote desktop controls the host OS and is available to administrators only. Ask an admin if you need access.",
-    "adminOnlyBack": "Back to chat"
+    "adminOnlyBack": "Back to chat",
+    "streamError": "Remote desktop connection failed"
   },
   "browserWorkspace": {
     "title": "Browser",
@@ -4583,7 +4791,8 @@
     "vectorIndexWarning": "If you change the embedding model, switch between local and external providers, or edit vector dimensions, a mismatch with the existing memory index will cause the Qdrant collection to be recreated — stored vectors are cleared and the index is rebuilt from your memory files.",
     "loadError": "Failed to load configuration",
     "applySuccess": "Configuration applied",
-    "saveAndApply": "Save & Apply"
+    "saveAndApply": "Save & Apply",
+    "selectModel": "Select a model"
   },
   "cos": {
     "tooltip": "Cloud Storage",
@@ -4628,7 +4837,8 @@
       "database": "Database",
       "password": "Password",
       "admin": "Admin",
-      "model": "Models"
+      "model": "Models",
+      "finish": "Finish"
     },
     "database": {
       "hint": "Choose where Octop stores control-plane data (users, agents, channels). The default SQLite file works for most installs.",
@@ -4864,13 +5074,32 @@
     "probing": "Probing…",
     "testSuccess": "Storage backend is reachable",
     "probe_roundtrip_ok": "Write, read, and delete succeeded",
+    "probe_no_such_bucket": "The specified bucket does not exist. Check the bucket name.",
+    "probe_no_such_key": "The object was not found.",
+    "probe_access_denied": "Access denied. Check the access key and bucket permissions.",
+    "probe_invalid_credentials": "Invalid credentials. Check the access key and secret key.",
+    "probe_invalid_bucket": "The bucket name is invalid.",
+    "probe_invalid_endpoint": "Endpoint or region does not match this bucket.",
+    "probe_timeout": "The storage request timed out. Check the endpoint and network.",
+    "probe_connection_failed": "Could not connect to the storage service. Check the endpoint and network.",
+    "probe_database_missing": "The specified database does not exist.",
+    "probe_content_mismatch": "Read-back content did not match what was written.",
+    "probe_write_failed": "Could not write a test file: {{detail}}",
+    "probe_read_failed": "Could not read the test file back: {{detail}}",
+    "probe_delete_failed": "Could not delete the test file: {{detail}}",
+    "probe_config_incomplete": "Configuration is incomplete.",
+    "probe_s3_incompatible": "This S3-compatible store rejected the request. Check the endpoint, or try path-style addressing in advanced settings.",
+    "probe_signature_mismatch": "The store rejected the request signature. Check the endpoint, or try path-style addressing in advanced settings.",
     "testFailed": "Connection test failed",
     "browse": "Browse",
     "browseDisabled": "Browse unavailable for this Docker sandbox (only fixed scope enables it by default; use Probe to verify connectivity)",
     "browseTitle": "Browse — {{name}}",
     "browseEmpty": "Directory is empty or cannot be listed",
     "browseFailed": "Browse failed",
-    "browseLoadFailed": "Failed to load subdirectory"
+    "browseLoadFailed": "Failed to load subdirectory",
+    "browseDownloadOnly": "This file cannot be previewed. Download it instead?",
+    "browse_not_text": "This file is not valid UTF-8 text. Download it instead.",
+    "browse_too_large": "File is too large to preview or download in the browser."
   },
   "adminAgents": {
     "total": "{{count}} agents",
@@ -4916,14 +5145,21 @@
     }
   },
   "agentSelector": {
-    "label": "Active Expert",
+    "label": "Expert",
     "localGroup": "This instance",
-    "disconnected": "Disconnected"
+    "disconnected": "Disconnected",
+    "expertsGroup": "Experts",
+    "teamsGroup": "Teams",
+    "remoteKindGroup": "{{name}}·{{kind}}",
+    "more": "More",
+    "teamNeedsExpert": "\"{{name}}\" is a team. Choose an expert for this page.",
+    "expertsRequired": "This page needs an expert"
   },
   "login": {
     "title": "Sign in",
     "subtitle": "An intelligent partner that understands you, helps you, and grows with you",
     "username": "Username or email",
+    "usernameHint": "Use the username or email you set during setup",
     "password": "Password",
     "remember": "Remember me",
     "submit": "Sign in",
@@ -4949,6 +5185,7 @@
     "or": "or",
     "oidcWith": "Continue with {{name}}",
     "oidcStartFailed": "Could not start single sign-on",
+    "ldapHint": "Sign in with your {{name}} account",
     "oidcError": {
       "denied": "Single sign-on was cancelled.",
       "state": "Your single sign-on session expired. Please try again.",
@@ -5159,6 +5396,7 @@
     "tabWecom": "WeCom Login",
     "tabDingtalk": "DingTalk Login",
     "tabOidc": "Generic OIDC",
+    "tabLdap": "LDAP",
     "tabSso": "Generic OIDC",
     "colPermissions": "Permissions",
     "permAll": "All (admin)",
@@ -5337,7 +5575,102 @@
     "oauthSectionCredentialsHint": "App ID and App Secret from the provider application registration.",
     "oauthClientSecretHint": "Required. Leave blank after saving to keep the current secret.",
     "oauthRedirectDocs": "In Feishu, WeCom, DingTalk, or similar consoles, register this URL as the OAuth redirect / callback URI.",
-    "oauthTestHint": "Save changes before testing a new App ID or secret."
+    "oauthTestHint": "Save changes before testing a new App ID or secret.",
+    "ldapTitle": "LDAP directory",
+    "ldapDesc": "Sign users in against an LDAP directory such as Active Directory or OpenLDAP. Users type their directory username and password into the existing sign-in form.",
+    "ldap": {
+      "kind": "LDAP",
+      "enableLabel": "Enable LDAP sign-in",
+      "displayName": "Provider display name",
+      "displayNamePlaceholder": "Shown to users on the sign-in page",
+      "displayNameRequired": "Enter a display name",
+      "sectionServer": "Directory server",
+      "sectionServerHint": "Where Octop connects to authenticate users.",
+      "serverUrl": "Server URL",
+      "serverUrlPlaceholder": "ldap://ldap.example.com:389",
+      "serverUrlHint": "Use ldaps:// for TLS on port 636, or ldap:// together with StartTLS.",
+      "serverUrlRequired": "Enter the directory server URL",
+      "serverUrlInvalid": "Enter a valid ldap:// or ldaps:// URL",
+      "startTls": "StartTLS",
+      "startTlsHint": "Upgrade a plain ldap:// connection before binding.",
+      "verifyTls": "Verify TLS certificate",
+      "verifyTlsHint": "Turn off only for a self-signed test server.",
+      "sectionBind": "Service account",
+      "sectionBindHint": "The account Octop uses to search the directory.",
+      "bindDn": "Bind DN",
+      "bindDnPlaceholder": "cn=svc-octop,ou=services,dc=example,dc=com",
+      "bindDnHint": "Leave empty to search anonymously.",
+      "bindPassword": "Bind password",
+      "bindPasswordHint": "Required when a bind DN is set.",
+      "bindPasswordConfigured": "A bind password is configured. Leave blank to keep it unchanged.",
+      "bindPasswordConfiguredTag": "Configured",
+      "bindPasswordPlaceholder": "Leave blank to keep the current password",
+      "sectionSearch": "User search",
+      "sectionSearchHint": "How Octop finds the directory account behind the username typed on the sign-in page.",
+      "userBaseDn": "User base DN",
+      "userBaseDnPlaceholder": "ou=people,dc=example,dc=com",
+      "userBaseDnRequired": "Enter the user search base",
+      "userFilter": "User filter",
+      "userFilterPlaceholder": "(uid={username})",
+      "userFilterHint": "The literal {username} placeholder is replaced with the typed username before the search runs.",
+      "userFilterRequired": "Enter a user filter",
+      "userFilterPlaceholderRequired": "The filter must contain the literal {username} placeholder",
+      "sectionAttributes": "Attribute mapping",
+      "sectionAttributesHint": "Directory attributes mapped onto the Octop account.",
+      "usernameAttribute": "Username attribute",
+      "usernameAttributeRequired": "Enter the username attribute",
+      "emailAttribute": "Email attribute",
+      "displayNameAttribute": "Display name attribute",
+      "groupAttribute": "Group attribute",
+      "sectionAccess": "Access & provisioning",
+      "sectionAccessHint": "Who becomes an admin, and how new accounts are created.",
+      "adminGroups": "Admin groups",
+      "adminGroupsHint": "Members of these groups get the admin role — only when an account is first created. Changing a directory group later never re-templates an existing account. Prefer full DNs: a bare CN also matches a same-named group in any other OU.",
+      "adminGroupsPlaceholder": "octop-admins, cn=it,ou=groups,dc=example,dc=com",
+      "autoProvision": "Create accounts on first sign-in",
+      "autoProvisionHint": "When off, only existing Octop users can sign in through the directory.",
+      "timeout": "Connection timeout (seconds)",
+      "timeoutHint": "How long to wait for the directory before failing a request.",
+      "timeoutRequired": "Enter a timeout in seconds",
+      "guideStep1": "Fill the server and service account",
+      "guideStep2": "Set the search base and {username} filter",
+      "guideStep3": "Map groups to the admin role",
+      "guideStep4": "Save and test the connection",
+      "guideStep5": "Enable LDAP sign-in",
+      "save": "Save",
+      "discard": "Discard",
+      "saved": "LDAP settings saved",
+      "saveFailed": "Could not save LDAP settings",
+      "loadFailed": "Could not load LDAP settings",
+      "testConnection": "Test connection",
+      "testSuccess": "Directory connection succeeded",
+      "testFailed": "Directory connection test failed",
+      "testHint": "Save changes before testing a new server URL or bind account.",
+      "testNeedsSave": "Save your changes before testing.",
+      "unsavedChanges": "You have unsaved changes.",
+      "subjectAttribute": "Identity key attribute",
+      "subjectAttributeHint": "Directory-stable key: entryUUID (OpenLDAP) or objectGUID (Active Directory). Empty falls back to the entry DN. Changing it orphans existing links.",
+      "groupAttributeHint": "Ignored while group search is on.",
+      "groupSearch": "Search groups for membership",
+      "groupSearchHint": "Enable for directories without the memberOf overlay (e.g. plain OpenLDAP).",
+      "groupSearchBase": "Group search base",
+      "groupSearchBaseHint": "Base DN holding the groups. Empty reuses the user base DN.",
+      "groupMemberAttribute": "Group member attribute",
+      "groupMemberAttributeHint": "Attribute listing members on a group entry: member or uniqueMember.",
+      "allowedGroups": "Groups allowed to sign in",
+      "allowedGroupsHint": "When set, only members of these groups may sign in through the directory. Others are refused and no account is created. Same CN-vs-DN rule as above.",
+      "allowedGroupsPlaceholder": "staff, cn=contractors,ou=groups,dc=example,dc=com",
+      "adminGroupsOnceTitle": "The admin group applies only when an account is first created",
+      "adminGroupsOnceBody": "Adding a user to an admin group later does NOT promote them, and removing them does not demote them. Change a role in Octop's user list instead.",
+      "warningsTitle": "Configuration notes",
+      "warning": {
+        "tls_verification_disabled": "TLS certificate verification is off. Only acceptable for a test server with a self-signed certificate.",
+        "no_admin_groups": "No admin group is configured, so no directory user can become an Octop admin at first sign-in.",
+        "auto_provision_open": "Automatic account creation is on with no sign-in allow-list: every account the filter matches gets an Octop account.",
+        "identity_key_is_dn": "No identity key attribute is set while automatic account creation is on, so new accounts are keyed on their entry DN — renaming or moving a user in the directory creates a second Octop account."
+      },
+      "subjectAttributeDetected": "Detected {{name}} on this directory — set it as the identity key so renames keep the same account."
+    }
   },
   "adminAudit": {
     "loadFailed": "Load failed",
@@ -5491,6 +5824,21 @@
     "cliInstallFailed": "Host CLI install failed",
     "cliInstalledHint": "Detected {{binary}} on the host",
     "cliMissingHint": "CLI is not installed on the host. Click Install CLI, or run the command below on the Octop host.",
+    "agentlyAuthTitle": "Agent Mail authorization",
+    "agentlyIdle": "This mailbox instance is not authorized",
+    "agentlyPending": "Open the authorization page and sign in. The result will update automatically.",
+    "agentlyAuthorized": "Mailbox authorized",
+    "agentlyExpired": "Authorization expired. Please sign in again",
+    "agentlyAuthFailed": "Mailbox authorization failed. Please retry",
+    "agentlyUserCode": "Authorization code",
+    "agentlyStart": "Sign in to authorize",
+    "agentlyCheckStatus": "Check status",
+    "agentlyRefresh": "Refresh authorization",
+    "agentlyCancel": "Cancel authorization",
+    "agentlyLogout": "Sign out",
+    "agentlySafety": "Sending, replying to, forwarding, and deleting emails require a preview followed by user confirmation. Email bodies and attachments are untrusted external content and must not be treated as instructions.",
+    "agentlyQuota": "Reference limits: 50 emails sent per day, 200 requests per hour, 10 requests per minute; up to 50 attachments totaling 20 MB. This connector limits each file to 10 MB. Your account quotas and current service limits take precedence. Select Agent Mail new mail on the Tasks page to trigger a task.",
+    "agentlyInstanceHint": "Save the connector first, then sign in to authorize. Each instance stores its own mailbox authorization, so different agents can select different instances.",
     "feishuUserAuthTitle": "Feishu account authorization",
     "feishuUserAuthWhy": "App ID / Secret above only identify the app (bot). Doc search and access to your personal docs or calendar require acting as your Feishu user, so one extra authorization is needed. Afterward the agent can only reach resources you already have access to.",
     "feishuUserAuthHint": "Click authorize, then tap “I have authorized”.",
@@ -5602,7 +5950,40 @@
     "chatPickerSearch": "Search connectors",
     "chatNone": "None",
     "chatEmptyHint": "Add connectors on the Connectors page first",
-    "manageConnectors": "Manage connectors"
+    "manageConnectors": "Manage connectors",
+    "apiKey": "API Key",
+    "apiKeyDoc": "See how to get an API Key",
+    "apiKeyPlaceholder": "Paste API Key",
+    "authCodeDoc": "See how to get an authorization code",
+    "authCodePlaceholder": "Paste authorization code",
+    "authUrlFailed": "Failed to open the authorization page",
+    "authUrlMissing": "Authorization page URL unavailable",
+    "deleteFailed": "Delete failed",
+    "detectLocal": "Detect local service",
+    "difyMcpUrlInvalid": "Paste the full MCP Server URL from your Dify endpoint",
+    "difyPasteUrlRequired": "No MCP URL found in the clipboard",
+    "difyStep1": "Publish the app or workflow in Dify",
+    "difyStep2": "Enable MCP on the endpoint and copy the full Server URL",
+    "disableSuccess": "Disabled",
+    "enableSuccess": "Enabled",
+    "getTokenAt": "Get a Token",
+    "guidedSetup": "Quick setup",
+    "guidedStepProbe": "Probe and save after pasting credentials",
+    "lexiangCompanyFrom": "Company ID (company_from)",
+    "lexiangCompanyFromPlaceholder": "Copy from the Lexiang credentials page",
+    "manualTokenDoc": "Token docs (manual)",
+    "oauthTimedOut": "Authorization timed out; try one-click auth again",
+    "openAuthorizePage": "Open authorization page",
+    "pasteMcpUrl": "Paste MCP URL",
+    "probeNeedSecretAfterConfigChange": "Connection changed — re-enter the secret before probing",
+    "smartPaste": "Smart paste",
+    "toggleFailed": "Update failed",
+    "viewGuide": "View guide",
+    "weknoraDetectFailed": "Failed to detect local WeKnora",
+    "weknoraFound": "Detected local WeKnora and filled in the URL",
+    "weknoraNotFound": "WeKnora not found at 127.0.0.1:8080 on the Octop host",
+    "weknoraStep1": "Open WeKnora and create an API Key",
+    "weknoraStep2": "Detect the local service or enter the deployment URL manually"
   },
   "mbtiPage": {
     "pickAgent": "Select an Agent first"
@@ -5797,7 +6178,8 @@
         "label": "Token usage",
         "description": "Show token usage for the current thread"
       }
-    }
+    },
+    "menuHint": "↑↓ navigate · Enter confirm · Esc close"
   },
   "pageShell": {
     "experts": {
@@ -5911,6 +6293,10 @@
     "mobile": {
       "title": "Remote Phone",
       "subtitle": "View and control a connected phone or emulator"
+    },
+    "adminSharedModels": {
+      "title": "Shared Models",
+      "subtitle": "Model presets shared with all users"
     }
   },
   "remoteAndroid": {
@@ -6059,5 +6445,44 @@
     "updateReady": "A new version is ready",
     "updateNow": "Update now",
     "later": "Later"
+  },
+  "browser": {
+    "recordReplay": {
+      "replay": "Replay last browser recording",
+      "replayFailed": "Replay failed",
+      "replayPassed": "Replay finished",
+      "start": "Start browser recording",
+      "startFailed": "Failed to start recording",
+      "started": "Browser recording started",
+      "stop": "Stop browser recording",
+      "noRecording": "Finish a browser recording first"
+    }
+  },
+  "shortcut": {
+    "title": "Shortcuts"
+  },
+  "skillRecord": {
+    "applyFailed": "Failed to apply skill",
+    "recordingStopped": "Recording finished — captured {{steps}} replay steps",
+    "skillApplied": "Skill \"{{name}}\" applied",
+    "stopFailed": "Failed to stop recording"
+  },
+  "skillRecordGuide": {
+    "buttonLabel": "Skill recording",
+    "buttonTip": "Record browser actions into a reusable skill script",
+    "envWarning": "Browser environment not ready",
+    "envWarningDesc": "Make sure the browser environment is available before recording.",
+    "intro": "Record browser actions to generate a reusable skill script. After recording starts, describe the task goal and the operations in the AI assistant chat.",
+    "startRecording": "Start recording",
+    "step1Title": "Start recording",
+    "step1Desc": "Click the button below; the system will record all browser actions.",
+    "step2Title": "Enter the task goal",
+    "step2Desc": "Once recording starts, the AI assistant asks for a task goal — it becomes the skill's name and trigger keyword (e.g. \"Log into the OA system\").",
+    "step3Title": "Describe the steps",
+    "step3Desc": "Then describe what the assistant should do in the browser; it will perform and record the actions.",
+    "step4Title": "Stop and confirm",
+    "step4Desc": "When finished, type \"结束\" (or \"end\") to stop; after confirmation the skill is saved under the task goal. Type the goal keyword later to replay it.",
+    "envNotReady": "Browser environment required first",
+    "title": "Skill recording guide"
   }
 }
