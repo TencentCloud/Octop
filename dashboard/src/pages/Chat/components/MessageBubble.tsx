@@ -37,7 +37,6 @@ import { prepareSpeechText } from "../../../utils/plainTextForSpeech";
 import {
   chatStreamErrorAction,
   formatChatStreamError,
-  isChatStreamError,
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
@@ -630,9 +629,9 @@ function MessageBubble({
     const actions = message.hitlData.action_requests ?? [];
     const hitlStatus = message.hitlData.status ?? "pending";
     if (isAskHitl(actions)) {
-      // Pending questions are rendered in ChatPage's composer dock so they
-      // stay immediately above the input even when message history scrolls.
-      if (hitlStatus === "pending") return null;
+      // Recoverable pending questions stay in ChatPage's composer dock.
+      // Reconstructed history without pending_id stays in the transcript.
+      if (hitlStatus === "pending" && message.hitlData.pending_id) return null;
       const questions = extractAskQuestions(actions);
       return (
         <div
@@ -641,21 +640,7 @@ function MessageBubble({
           }`}
         >
           <div className={styles.bubbleContent}>
-            <AskQuestionCard
-              questions={questions}
-              status={hitlStatus}
-              onSubmit={
-                onHitlDecision
-                  ? (answer) =>
-                      onHitlDecision(
-                        actions.map(() => ({
-                          type: "respond",
-                          message: answer,
-                        })),
-                      )
-                  : undefined
-              }
-            />
+            <AskQuestionCard questions={questions} status={hitlStatus} />
           </div>
         </div>
       );
@@ -683,9 +668,7 @@ function MessageBubble({
     isUser && !isEditing && hasUserComposerTags(message.composerContext);
   const isStreaming = message.status === "streaming";
   const hasToolData = !!message.toolData;
-  const looksLikeStreamError =
-    !isUser && !hasToolData && !isStreaming && isChatStreamError(textContent);
-  const isError = message.status === "error" || looksLikeStreamError;
+  const isError = message.status === "error";
   const errorBodyText = isError
     ? formatChatStreamError(textContent, t)
     : textContent;

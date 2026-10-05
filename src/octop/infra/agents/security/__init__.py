@@ -6,7 +6,10 @@ from octop.infra.agents.security.hitl_session import (
     apply_session_bypass,
     parse_hitl_session_policy,
 )
-from octop.infra.agents.security.policy_store import SecuritySettingsStore
+from octop.infra.agents.security.policy_store import (
+    SecuritySettingsStore,
+    tool_execution_may_pause,
+)
 from octop.infra.agents.security.tool_guard_rules import ToolGuardRulesStore
 
 __all__ = [
@@ -14,6 +17,7 @@ __all__ = [
     "HitlSessionPolicyStore",
     "SecuritySettingsStore",
     "ToolGuardRulesStore",
+    "tool_execution_may_pause",
     "apply_session_bypass",
     "parse_hitl_session_policy",
 ]
