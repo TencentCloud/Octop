@@ -7,29 +7,32 @@ import (
 )
 
 func TestPortableVersionPrefersNewestPackageMetadata(t *testing.T) {
-	root := t.TempDir()
-	for versionIndex, version := range []string{"0.9.29", "0.9.32"} {
-		path := filepath.Join(
-			root,
-			"packages",
-			"octop-"+version+".dist-info",
-			"METADATA",
-		)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte("Version: "+version+"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		if versionIndex == 0 {
-			if err := os.WriteFile(filepath.Join(root, "VERSION.txt"), []byte("octop_version=0.9.28\n"), 0o644); err != nil {
+	for _, test := range []struct {
+		versions       []string
+		fromFile, want string
+	}{
+		{[]string{"0.9.29", "0.9.32"}, "0.9.28", "0.9.32"},
+		{[]string{"1.0.2b4", "1.0.2b5"}, "1.0.2b3", "1.0.2b5"},
+		{[]string{"1.0.2b9", "1.0.2b10", "1.0.2b4"}, "1.0.2b3", "1.0.2b10"},
+	} {
+		t.Run(test.want, func(t *testing.T) {
+			root := t.TempDir()
+			for _, version := range test.versions {
+				path := filepath.Join(root, "packages", "octop-"+version+".dist-info", "METADATA")
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("Version: "+version+"\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(root, "VERSION.txt"), []byte("octop_version="+test.fromFile+"\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-		}
-	}
-
-	if got := portableVersion(root); got != "0.9.32" {
-		t.Fatalf("portable version = %q, want 0.9.32", got)
+			if got := portableVersion(root); got != test.want {
+				t.Fatalf("portable version = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
