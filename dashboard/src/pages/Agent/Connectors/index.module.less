@@ -589,6 +589,28 @@
   color: var(--fn-text-primary);
 }
 
+.agentlyAuthBox {
+  border: 1px solid var(--fn-card-border-normal);
+
+  .quickAuthBar {
+    margin-bottom: 0;
+
+    > button,
+    > a {
+      padding-inline: 10px;
+    }
+  }
+}
+
+.agentlyAuthSuccess {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-color-success, #389e0d);
+}
+
 .feishuUserAuthWhy {
   margin: 0;
   font-size: 12px;
