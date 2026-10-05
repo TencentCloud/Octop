@@ -610,7 +610,7 @@ async def test_global_processor_iter_turn_chunks_expires_stale_hitl() -> None:
         user_id=1,
         session_key="sk",
         channel_type="dashboard",
-        action_requests=[{"name": "ask_user_question", "args": {"questions": []}}],
+        action_requests=[{"name": "execute", "args": {"command": "rm -rf /tmp/x"}}],
         review_configs=None,
     )
     processor = GlobalProcessor(

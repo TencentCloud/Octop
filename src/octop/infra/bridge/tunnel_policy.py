@@ -1,4 +1,13 @@
-"""Path policy for Bridge HTTP tunnel requests against the local ASGI app."""
+"""Path policy for Bridge HTTP tunnel requests against the local ASGI app.
+
+Keep the allowlist aligned with ``dashboard/src/utils/remoteExpert.ts``
+``SURFACES``: chat / history / tasks / workspace / memory / mbti / subagents
+are fully tunneled; tools / plugins / channels are limited writes (the
+Personalization UI still PATCHes tool-settings and may POST reload);
+skill packages, global ACP, connector admin, and knowledge-base admin stay
+peer-only in the UI even when a matching path would otherwise match.
+Management / auth / bridge control planes stay local-only.
+"""
 
 from __future__ import annotations
 

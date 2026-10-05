@@ -24,7 +24,9 @@ router = APIRouter()
 
 class CronCreateBody(BaseModel):
     name: str | None = None
-    trigger: str
+    trigger: str = Field(
+        description="Examples: cron:0 9 * * *, interval:3600, date:2030-01-01T08:00:00, or agently:INSTANCE_ID for new mail events."
+    )
     prompt: str
     session_key: str | None = None
     fresh_thread: bool = False
@@ -36,7 +38,10 @@ class CronCreateBody(BaseModel):
 
 class CronPatchBody(BaseModel):
     name: str | None = None
-    trigger: str | None = None
+    trigger: str | None = Field(
+        default=None,
+        description="Time schedule or agently:INSTANCE_ID for new mail events.",
+    )
     prompt: str | None = None
     session_key: str | None = None
     fresh_thread: bool | None = None
@@ -124,7 +129,7 @@ async def create_cron(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Schedule a recurring prompt. `trigger` uses cron syntax or natural `@every` aliases."""
+    """Schedule a prompt on a timer or on new mail from a visible Agent Mail instance."""
     from octop.api.common.validators import validate_chat_mcp_servers  # noqa: PLC0415
     from octop.infra.cron.manager import CronCreateSpec  # noqa: PLC0415
 
