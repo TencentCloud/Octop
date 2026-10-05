@@ -73,7 +73,8 @@ async def test_dashboard_hitl_resume_registers_followup_hitl_required() -> None:
         frames.append(frame)
 
     chunks = _parse_sse_chunks("".join(frames))
-    assert any(c.get("type") == "hitl_required" for c in chunks)
+    hitl_chunks = [c for c in chunks if c.get("type") == "hitl_required"]
+    assert hitl_chunks
     assert any(c.get("type") == "done" for c in chunks)
 
     followup = hitl.store.resolve_pending_for_thread(
@@ -82,6 +83,7 @@ async def test_dashboard_hitl_resume_registers_followup_hitl_required() -> None:
         user_id=1,
     )
     assert followup is not None
+    assert hitl_chunks[0]["request"]["pending_id"] == followup.pending_id
     assert followup.pending_id != first.pending_id
     assert followup.action_requests[0]["args"]["command"] == "ls -la /private/etc"
     assert hitl.store.get(first.pending_id) is not None

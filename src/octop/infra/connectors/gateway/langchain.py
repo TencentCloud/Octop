@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from octop_harness.mcp import mcp_args_model, sanitize_llm_tool_name
+from octop_harness.mcp import mcp_args_model
 
+from octop.infra.agents.plugins.plugin_tool_names import sanitize_plugin_tool_name
 from octop.infra.connectors.catalog import ConnectorCatalogEntry, is_inprocess_gateway
 from octop.infra.connectors.gateway.protocol import handle_mcp_request
 from octop.infra.connectors.gateway.registry import mcp_tools_for_kind
@@ -26,6 +27,7 @@ def build_gateway_langchain_tools(
     if not isinstance(entry, ConnectorCatalogEntry) or not is_inprocess_gateway(entry):
         return []
     out: list[Any] = []
+    used_names: set[str] = set()
 
     def _tool_fn(kind: str, tool_name: str) -> Any:
         def _run(**kwargs: Any) -> str:
@@ -66,7 +68,7 @@ def build_gateway_langchain_tools(
         input_schema = tool_def.get("inputSchema")
         if not isinstance(input_schema, dict):
             input_schema = {"type": "object", "properties": {}}
-        lc_name = sanitize_llm_tool_name(f"{mcp_server_name}_{name}")
+        lc_name = sanitize_plugin_tool_name(f"{mcp_server_name}_{name}", used=used_names)
         out.append(
             StructuredTool.from_function(
                 func=_tool_fn(entry.kind, name),
