@@ -7,22 +7,34 @@
 ## [Unreleased]
 
 ### 修复
-
-- 邮箱连接器读取含裸非 ASCII 字节邮件头（如未 MIME 编码的中文发件人/主题）时崩溃 `Object of type Header is not JSON serializable`：`search_emails`/`read_email` 改用 `email.policy.default` 解析并统一 `str()` 转换，同时自动解码 MIME 编码头为可读文本；正文中声明未知字符集（如 `unknown-8bit`）时回退 UTF-8 而非抛 `LookupError`。影响所有基于该通用 IMAP/SMTP 适配器的邮箱（QQ/网易/Gmail 等）。
 - 流式对话被**另一个任务**收尾时（SSE 客户端断开后由 async-generator finalizer 关闭、消费任务被取消后重建任务 `aclose()`），`hitl_thread_scope` 在 `finally` 里 `reset(token)` 抛 `ValueError … was created in a different Context`，且该异常发生在生成器拆解过程中无法被调用方捕获，只留下 `Task exception was never retrieved` 日志；改为按值恢复 ContextVar，收尾不再取决于在哪个任务里执行（Fixes #1477）。
+
+## [1.0.2b6] - 2026-10-04
+
 ### 新增
-- 专家可配置默认对话模式（Ask / Plan / Craft）：新建 / 编辑专家及从专家创建时可选，新建对话与无模式粘性的线程（含 IM / CLI / cron 渠道）按该默认解析，缺省为 Craft；已有对话保持各自粘性的模式不变（Fixes #1310）。
+- Agent Mail 连接器（授权、邮件工具、新邮件任务）
+- LDAP 目录登录
+- 专家默认对话模式；输入栏「+」菜单；未开审批时隐藏批准入口
+- 飞牛 ARM 安装包与多架构镜像
+
+### 变更
+- octop-harness 升到 1.0.1；飞牛安装改为建账号向导
 
 ### 修复
-- httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
+- 会话「放通所有 / 放通这些工具」后后续 execute 仍弹审批
+- 误报流式失败、提问卡不弹出、TLS 下内部 MCP、过长工具名
+- 远程存储卡住堵住启动；S3 / Postgres 浏览；桌面 beta 覆盖安装；飞牛 8089 残留
+- Windows 全盘存储根、邮箱非 ASCII 头、缺失界面文案
+- PWA 诊断页在手机上可滚动
 
 ## [1.0.2b5] - 2026-09-29
 
 ### 新增
-- Octop↔Octop 云端桥接，经隧道使用远程专家
+- Octop↔Octop 云端桥接，经隧道使用远程专家（聊天与工作区可写；工具/插件/渠道部分可写；技能包、全局 ACP、连接器、知识库仅本机）
 - 内置助手可回答产品与使用问题
 - 可配置 Ollama 本地模型下载目录
-- 账号可自定义侧边栏；角色字段改为存储模板 id
+- 账号可自定义侧边栏；角色改为存模板 id（账号侧栏与权限快照，不是运行时角色同步）
+
 
 ### 修复
 - 媒体预览 CSP、Langfuse 环境变量、IM 附件元数据
