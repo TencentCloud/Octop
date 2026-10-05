@@ -9,54 +9,124 @@
 set -u
 
 # ---------------------------------------------------------------------------
-# 释放 Octop 端口（8088=Docker 版，8089=本地版）并清理本应用残留进程。
-# 仅清理：(1) 占用 Octop 端口的进程；(2) 本安装目录（TRIM_APPDEST）下的
-# octop 服务进程。不使用宽泛的 `pgrep -f octop`，避免误杀其它用户/其它
-# 安装路径下的同名进程。
+# 杀掉 pid 及其子孙（先 TERM / 再由调用方决定 KILL）。
+# 本地版 start 经 runuser 拉起 bin/octop，PID 文件里往往是外壳，真正
+# 监听 8089 的是 exec 后的 Python 子进程；只杀外壳会留下孤儿占端口。
 # ---------------------------------------------------------------------------
-free_octop_ports() {
-    local port pid pids pat appdir
-    for port in 8088 8089; do
-        pids="$(ss -ltnp 2>/dev/null | grep -E "[:.]${port}([[:space:]]|$)" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u)" || true
-        if [ -z "$pids" ] && command -v fuser >/dev/null 2>&1; then
-            pids="$(fuser "${port}/tcp" 2>/dev/null | tr -cs '[:digit:]' ' ')" || true
-        fi
-        if [ -z "$pids" ] && command -v lsof >/dev/null 2>&1; then
-            pids="$(lsof -ti tcp:"$port" 2>/dev/null)" || true
-        fi
-        for pid in $pids; do
+octop_kill_pid_tree() {
+    local pid="${1:-}" sig="${2:-TERM}" child
+    [ -n "$pid" ] || return 0
+    for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+        octop_kill_pid_tree "$child" "$sig"
+    done
+    kill -s "$sig" "$pid" 2>/dev/null || true
+}
+
+octop_port_pids() {
+    local port="$1" pids
+    pids="$(ss -ltnp 2>/dev/null | grep -E "[:.]${port}([[:space:]]|$)" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u)" || true
+    if [ -z "$pids" ] && command -v fuser >/dev/null 2>&1; then
+        pids="$(fuser "${port}/tcp" 2>/dev/null | tr -cs '[:digit:]' ' ')" || true
+    fi
+    if [ -z "$pids" ] && command -v lsof >/dev/null 2>&1; then
+        pids="$(lsof -ti tcp:"$port" 2>/dev/null)" || true
+    fi
+    printf '%s' "$pids"
+}
+
+# 等一组 pid 退出。第一参数是 0.2s 的轮询次数，其余为 pid。
+octop_wait_pids_gone() {
+    local rounds="${1:-15}" pid still i
+    shift
+    for i in $(seq 1 "$rounds"); do
+        still=0
+        for pid in "$@"; do
             [ -n "$pid" ] || continue
-            if kill -TERM "$pid" 2>/dev/null; then
-                echo "[octop] 已发送 TERM 给占用 ${port} 的进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+            if kill -0 "$pid" 2>/dev/null; then
+                still=1
+                break
             fi
         done
-        sleep 1
+        [ "$still" = 0 ] && return 0
+        sleep 0.2
+    done
+    return 1
+}
+
+# bin/octop 会 exec 成 python -m octop.cli.main run，命令行不再含启动器路径。
+# 用安装时写入的 OCTOP_INSTALL_MODE=fpk-native 识别本包服务进程。
+octop_fpk_native_run_pids() {
+    local pid
+    for pid in $(pgrep -f -- 'octop.cli.main run' 2>/dev/null || true); do
+        [ -n "$pid" ] || continue
+        if tr '\0' '\n' < "/proc/${pid}/environ" 2>/dev/null | grep -qx 'OCTOP_INSTALL_MODE=fpk-native'; then
+            printf '%s\n' "$pid"
+        fi
+    done
+}
+
+octop_signal_pids() {
+    local sig="$1" pid
+    shift
+    for pid in "$@"; do
+        [ -n "$pid" ] || continue
+        octop_kill_pid_tree "$pid" "$sig"
+    done
+}
+
+# ---------------------------------------------------------------------------
+# 释放 Octop 端口并清理本应用残留进程。
+# 无参数：8088=Docker 版 + 8089=本地版（安装/卸载用）。
+# 有参数：只释放指定端口（本地版 stop 只清 8089，避免误伤 Docker 版）。
+# 仅清理：(1) 占用这些端口的进程；(2) 本安装目录下尚未 exec 的启动器；
+# (3) 带 OCTOP_INSTALL_MODE=fpk-native 的 `octop.cli.main run`（仅当本次
+# 要释放 8089 时）。不使用宽泛的 `pgrep -f octop`。
+# ---------------------------------------------------------------------------
+free_octop_ports() {
+    local port pid pids pat appdir ports
+    if [ "$#" -gt 0 ]; then
+        ports="$*"
+    else
+        ports="8088 8089"
+    fi
+    for port in $ports; do
+        pids="$(octop_port_pids "$port")"
+        octop_signal_pids TERM $pids
+        for pid in $pids; do
+            [ -n "$pid" ] || continue
+            echo "[octop] 已发送 TERM 给占用 ${port} 的进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+        done
+        octop_wait_pids_gone 10 $pids || true
+        octop_signal_pids KILL $pids
         for pid in $pids; do
             [ -n "$pid" ] || continue
             if kill -0 "$pid" 2>/dev/null; then
-                kill -KILL "$pid" 2>/dev/null || true
                 echo "[octop] 已强制 KILL 占用 ${port} 的进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
             fi
         done
     done
 
-    # 兜底：只按本安装目录精确匹配，防止误杀其它实例。
     appdir="${TRIM_APPDEST:-/var/apps/octop-native}"
     for pat in "$appdir/bin/octop" "$appdir/app/bin/octop"; do
         pids="$(pgrep -f -- "$pat" 2>/dev/null | tr '\n' ' ')" || true
         [ -z "$pids" ] && continue
         echo "[octop] 发现本应用残留服务进程（$pat）: $pids，准备清理" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
-        for pid in $pids; do
-            kill -TERM "$pid" 2>/dev/null || true
-        done
-        sleep 1
-        for pid in $pids; do
-            if kill -0 "$pid" 2>/dev/null; then
-                kill -KILL "$pid" 2>/dev/null || true
-                echo "[octop] 已强制 KILL 残留服务进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
-            fi
-        done
+        octop_signal_pids TERM $pids
+        octop_wait_pids_gone 10 $pids || true
+        octop_signal_pids KILL $pids
     done
+
+    case " ${ports} " in
+        *" 8089 "*)
+            pids="$(octop_fpk_native_run_pids | tr '\n' ' ')"
+            if [ -n "$pids" ]; then
+                echo "[octop] 发现 fpk-native 残留 run 进程: $pids，准备清理" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+                octop_signal_pids TERM $pids
+                octop_wait_pids_gone 10 $pids || true
+                octop_signal_pids KILL $pids
+            fi
+            ;;
+    esac
 }
 
 # ---------------------------------------------------------------------------

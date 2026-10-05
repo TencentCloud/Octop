@@ -15,11 +15,12 @@ import type { DocKind } from "../utils/docKind";
 import styles from "../index.module.less";
 
 interface DocumentPreviewProps {
-  agentId: string;
+  agentId?: string;
   path: string;
   kind: DocKind;
   /** Workspace UI paths use true; chat/tool paths use false. */
   fromWorkspace?: boolean;
+  fetchUrl?: string;
 }
 
 function documentDownloadUrl(
@@ -38,10 +39,12 @@ export default function DocumentPreview({
   path,
   kind,
   fromWorkspace = true,
+  fetchUrl,
 }: DocumentPreviewProps) {
   const { t } = useTranslation();
   const { message } = App.useApp();
-  const apiPath = documentDownloadUrl(agentId, path, fromWorkspace);
+  const apiPath =
+    fetchUrl || documentDownloadUrl(agentId ?? "", path, fromWorkspace);
   const filename = path.split("/").filter(Boolean).pop() || path;
 
   const fetchBlob = useCallback(
