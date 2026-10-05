@@ -30,11 +30,23 @@
   }
 }
 
-.askQuestionDockInner {
+.askQuestionDockInner,
+.modelConfigDockInner {
   width: 100%;
   max-width: var(--chat-column-max, 960px);
   margin: 0 auto;
   box-sizing: border-box;
+}
+
+.modelConfigDock {
+  flex-shrink: 0;
+  padding: 0 var(--chat-column-pad-x, 24px) 8px;
+  background: var(--fn-bg-elevated, #fff);
+  box-sizing: border-box;
+
+  @media (max-width: 767px) {
+    padding: 0 var(--chat-column-pad-x-narrow, 12px) 6px;
+  }
 }
 
 .chatInput {
