@@ -25,6 +25,7 @@ import {
 } from "./useStorageBackends";
 import { StorageBackendDrawer } from "./StorageBackendModal";
 import { StorageBrowseDrawer } from "./StorageBrowseDrawer";
+import { storageProbeMessage } from "./storageProbeMessage";
 import styles from "./storage.module.less";
 
 interface StorageBackendCardProps {
@@ -81,15 +82,11 @@ export function StorageBackendCard({
           }>(`/admin/storage-backends/${backend.id}/test`, { method: "POST" });
           hide();
           if (result.ok) {
-            const msg = result.message_key
-              ? t(
-                  `storage.${result.message_key}`,
-                  result.message || t("storage.testSuccess"),
-                )
-              : result.message || t("storage.testSuccess");
-            message.success(msg);
+            message.success(
+              storageProbeMessage(result, t, "storage.testSuccess"),
+            );
           } else {
-            message.error(result.message || t("storage.testFailed"));
+            message.error(storageProbeMessage(result, t, "storage.testFailed"));
           }
         } catch (err) {
           hide();
@@ -163,15 +160,9 @@ export function StorageBackendCard({
         message_key?: string;
       }>(`/admin/storage-backends/${backend.id}/test`, { method: "POST" });
       if (result.ok) {
-        const msg = result.message_key
-          ? t(
-              `storage.${result.message_key}`,
-              result.message || t("storage.testSuccess"),
-            )
-          : result.message || t("storage.testSuccess");
-        message.success(msg);
+        message.success(storageProbeMessage(result, t, "storage.testSuccess"));
       } else {
-        message.error(result.message || t("storage.testFailed"));
+        message.error(storageProbeMessage(result, t, "storage.testFailed"));
       }
     } catch (err) {
       message.error(

@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -213,43 +212,6 @@ func metadataVersion(text string) string {
 		}
 	}
 	return ""
-}
-
-func compareVersions(left, right string) int {
-	leftParts := strings.Split(left, ".")
-	rightParts := strings.Split(right, ".")
-	count := max(len(leftParts), len(rightParts))
-	for index := 0; index < count; index++ {
-		var leftPart, rightPart int
-		if index < len(leftParts) {
-			leftPart = versionPart(leftParts[index])
-		}
-		if index < len(rightParts) {
-			rightPart = versionPart(rightParts[index])
-		}
-		if leftPart < rightPart {
-			return -1
-		}
-		if leftPart > rightPart {
-			return 1
-		}
-	}
-	return 0
-}
-
-func versionPart(segment string) int {
-	numeric := ""
-	for _, ch := range segment {
-		if ch < '0' || ch > '9' {
-			break
-		}
-		numeric += string(ch)
-	}
-	if numeric == "" {
-		return 0
-	}
-	value, _ := strconv.Atoi(numeric)
-	return value
 }
 
 func extractPortable(root string) error {
