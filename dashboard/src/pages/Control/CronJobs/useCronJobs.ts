@@ -24,7 +24,8 @@ export interface CronJobFormValues {
     cron?: string;
     timezone: string;
   };
-  _scheduleMode?: "preset" | "custom";
+  _scheduleMode?: "preset" | "custom" | "agently";
+  mail_instance_id?: string;
   _preset?: string;
   prompt: string;
   task_type: "text" | "agent";
@@ -133,18 +134,28 @@ export function jobToFormValues(
     mcp_servers: Array.isArray(meta.octop_mcp_servers)
       ? (meta.octop_mcp_servers as string[])
       : [],
-    _scheduleMode: matchedPreset ? "preset" : "custom",
+    _scheduleMode: cronExpr.startsWith("agently:")
+      ? "agently"
+      : matchedPreset
+      ? "preset"
+      : "custom",
+    mail_instance_id: cronExpr.startsWith("agently:")
+      ? cronExpr.slice(8)
+      : undefined,
     _preset: matchedPreset || "daily_9am",
   };
 }
 
 function resolveCronExpression(values: CronJobFormValues): string {
+  if (values._scheduleMode === "agently") {
+    return `agently:${values.mail_instance_id || ""}`;
+  }
   if (values._scheduleMode === "preset" && values._preset) {
     const presetCron = presetToCron(values._preset);
     if (presetCron) return `cron:${presetCron}`;
   }
   const cron = values.schedule?.cron || "";
-  return /^(cron|interval|date):/.test(cron) ? cron : `cron:${cron}`;
+  return /^(cron|interval|date|agently):/.test(cron) ? cron : `cron:${cron}`;
 }
 
 function toOctopCreateBody(values: CronJobFormValues) {

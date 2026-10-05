@@ -358,7 +358,21 @@ def repl(
                     if text in ("/exit", "/quit"):
                         break
                     if text == "/help":
-                        print_slash_help()
+                        from octop.cli.support.db import resolve_cli_locale
+
+                        include_hitl = False
+                        if server.app_runtime is not None:
+                            from octop.infra.agents.security import (
+                                tool_execution_may_pause,
+                            )
+
+                            include_hitl = tool_execution_may_pause(
+                                server.app_runtime.agent_registry.security.load()
+                            )
+                        print_slash_help(
+                            locale=resolve_cli_locale(),
+                            include_hitl_approval=include_hitl,
+                        )
                         continue
                     if text == "/clear":
                         click.echo()

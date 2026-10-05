@@ -138,7 +138,9 @@ export function JobDetailDrawer({
       >
         <Descriptions.Item label={t("cronJobs.col.trigger")}>
           <Text code style={{ fontSize: 12 }}>
-            {job.schedule?.cron || "—"}
+            {job.schedule?.cron?.startsWith("agently:")
+              ? t("cronJobs.form.agentlyNewMail")
+              : job.schedule?.cron || "—"}
           </Text>
         </Descriptions.Item>
         <Descriptions.Item label={t("cronJobs.form.timezone")}>
