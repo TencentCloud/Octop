@@ -31,6 +31,7 @@ from octop.infra.gateway.hitl.coordinator import (
     HitlStreamContext,
     decision_rejection_reason,
 )
+from octop.infra.gateway.hitl.format import normalize_hitl_request
 from octop.infra.gateway.hitl.store import HitlPendingRecord
 from octop.infra.utils.llm_text import ainvoke_text
 from octop.infra.utils.locale import resolve_request_locale
@@ -150,7 +151,10 @@ async def iter_dashboard_hitl_resume_sse(
             if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
                 request_payload = chunk.get("request")
                 if isinstance(request_payload, dict):
-                    hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
+                    request_payload = normalize_hitl_request(request_payload)
+                    record = hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
+                    request_payload["pending_id"] = record.pending_id
+                    chunk["request"] = request_payload
             if not disconnected:
                 yield format_sse("chunk", chunk)
         if not disconnected:
