@@ -103,7 +103,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "settings",
-        "description": "Process-level settings (timezone, upload size limit, login captcha).",
+        "description": "Process-level settings (timezone, upload size limit, HITL switch, login captcha).",
     },
     {
         "name": "envs",
