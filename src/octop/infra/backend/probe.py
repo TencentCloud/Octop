@@ -84,10 +84,8 @@ def probe_storage_backend(row: BackendRow) -> dict[str, Any]:
     if spec is None:
         return {"ok": False, "message": "configuration incomplete"}
 
-    if kind == "postgres" and not spec.get("connection_string"):
-        if not row.endpoint:
-            return {"ok": False, "message": "host/endpoint not configured"}
-        return {"ok": True, "message": "postgres configuration present (no file round-trip)"}
+    if kind == "postgres" and not spec.get("host"):
+        return {"ok": False, "message": "host/endpoint not configured"}
 
     return probe_backend(spec)
 
