@@ -31,12 +31,15 @@ from octop.infra.agents.teams.team_manager import (
     stamp_team_host_chunk as _maybe_stamp_team_host,
 )
 from octop.infra.errors import OctopError
+from octop.infra.gateway.cli.events import message_event_to_cli_chunks
 from octop.infra.gateway.hitl.coordinator import (
     HitlAnswerOutcome,
     HitlChannelCoordinator,
     HitlSlashOutcome,
     HitlStreamContext,
 )
+from octop.infra.gateway.hitl.format import normalize_hitl_request
+from octop.infra.gateway.hitl.stream_compat import install_harness_hitl_compat
 from octop.infra.gateway.media.attachment_hints import (
     content_blocks_need_vision,
     inbound_attachments_from_parts,
@@ -66,7 +69,7 @@ from octop.infra.gateway.process.stream_project import (
     project_stream,
 )
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
-from octop.infra.gateway.slash.catalog import spec_for
+from octop.infra.gateway.slash.catalog import HITL_APPROVAL_COMMANDS, spec_for
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.parser import parse_slash
 from octop.infra.gateway.slash.runner import try_handle_slash
@@ -93,6 +96,7 @@ if TYPE_CHECKING:
     from octop.infra.gateway.threads import ThreadRegistry
 
 logger = logging.getLogger(__name__)
+install_harness_hitl_compat()
 
 
 def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
@@ -629,7 +633,7 @@ class GlobalProcessor:
             channel_type=channel_type,
             metadata=msg.metadata,
         )
-        if cmd is not None and cmd.name in ("approve", "reject", "pending"):
+        if cmd is not None and cmd.name in HITL_APPROVAL_COMMANDS:
             usage_tracker = UsageTracker()
             slash_outcome = HitlSlashOutcome()
             async for ev in self._hitl.iter_slash_resolution(
@@ -921,6 +925,111 @@ class GlobalProcessor:
         channel_type = msg.channel_type or "unknown"
         im_meta = sanitize_im_metadata(msg)
         meta = msg.metadata or {}
+        locale = resolve_user_locale(
+            user_repo=self._user_repo,
+            user_id=user_id,
+            channel_type=channel_type,
+            metadata=meta,
+        )
+        cmd = parse_slash(msg.text)
+        if cmd is not None and cmd.name in HITL_APPROVAL_COMMANDS:
+            usage_tracker = UsageTracker()
+            slash_outcome = HitlSlashOutcome()
+            async for ev in self._hitl.iter_slash_resolution(
+                cmd,
+                self._slash_ctx(
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    channel_type=channel_type,
+                    session_key=session_key,
+                    metadata=meta,
+                ),
+                agent_manager=self._agent_manager,
+                locale=locale,
+                usage_tracker=usage_tracker,
+                outcome=slash_outcome,
+                history_factory=self._begin_history,
+                history_finalize=self._complete_resumed_history,
+            ):
+                for frame in message_event_to_cli_chunks(ev):
+                    yield _maybe_stamp_team_host(frame, agent_id, team_host)
+            thread_id = self._thread_registry.get_bound_thread_id(session_key)
+            if thread_id is None:
+                thread_id = await self._thread_registry.get_or_create_by_key(
+                    session_key=session_key,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    channel_type=channel_type,
+                    channel_channel_id=msg.channel_id or None,
+                    channel_metadata=im_meta,
+                )
+            if slash_outcome.completed_turn and thread_id:
+                self._touch_thread_after_turn(thread_id, msg.text)
+                if usage_tracker.usage:
+                    self._record_turn_usage(
+                        agent_id=agent_id,
+                        user_id=user_id,
+                        thread_id=thread_id,
+                        usage=usage_tracker.usage,
+                    )
+            yield _maybe_stamp_team_host(
+                self._done_chunk(thread_id) if thread_id else {"type": "done"},
+                agent_id,
+                team_host,
+            )
+            return
+
+        if cmd is None and bool(msg.text and msg.text.strip()):
+            ask_record = self._hitl.resolve_ask_pending(
+                session_key,
+                agent_id=agent_id,
+                user_id=user_id,
+            )
+            if ask_record is not None:
+                usage_tracker = UsageTracker()
+                history_tracker = await self._begin_history(
+                    agent_id, ask_record.thread_id, {}, resume=True
+                )
+                answer_outcome = HitlAnswerOutcome()
+                try:
+                    async for ev in self._hitl.iter_answer_resolution(
+                        ask_record,
+                        msg.text,
+                        agent_manager=self._agent_manager,
+                        locale=locale,
+                        usage_tracker=usage_tracker,
+                        history_tracker=history_tracker,
+                        outcome=answer_outcome,
+                    ):
+                        for frame in message_event_to_cli_chunks(ev):
+                            yield _maybe_stamp_team_host(frame, agent_id, team_host)
+                finally:
+                    from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
+
+                    if (
+                        isinstance(history_tracker, RecordingTracker)
+                        and answer_outcome.awaiting_more
+                    ):
+                        history_tracker.paused = True
+                    await self._finish_history(
+                        history_tracker, completed=answer_outcome.completed_turn
+                    )
+                if answer_outcome.completed_turn:
+                    self._touch_thread_after_turn(ask_record.thread_id, msg.text)
+                    if usage_tracker.usage:
+                        self._record_turn_usage(
+                            agent_id=agent_id,
+                            user_id=user_id,
+                            thread_id=ask_record.thread_id,
+                            usage=usage_tracker.usage,
+                        )
+                    await self._record_turn_history(ask_record.thread_id, history_tracker)
+                yield _maybe_stamp_team_host(
+                    self._done_chunk(ask_record.thread_id),
+                    agent_id,
+                    team_host,
+                )
+                return
 
         handled, slash_lines, slash_actions = await try_handle_slash(
             msg.text,
@@ -967,12 +1076,6 @@ class GlobalProcessor:
             yield _maybe_stamp_team_host({"type": "done"}, agent_id, team_host)
             return
 
-        locale = resolve_user_locale(
-            user_repo=self._user_repo,
-            user_id=user_id,
-            channel_type=channel_type,
-            metadata=meta,
-        )
         thread_id = meta.get("thread_id")
         if not isinstance(thread_id, str) or not thread_id.strip():
             thread_id = await self._thread_registry.get_or_create_by_key(
@@ -1045,7 +1148,8 @@ class GlobalProcessor:
                     if isinstance(request_payload, dict):
                         from octop.infra.gateway.hitl.coordinator import HitlStreamContext
 
-                        self._hitl.register_from_request(
+                        request_payload = normalize_hitl_request(request_payload)
+                        record = self._hitl.register_from_request(
                             request_payload,
                             ctx=HitlStreamContext(
                                 thread_id=thread_id,
@@ -1055,6 +1159,12 @@ class GlobalProcessor:
                                 channel_type=channel_type,
                             ),
                         )
+                        request_payload["pending_id"] = record.pending_id
+                        chunk = {
+                            **chunk,
+                            "request": request_payload,
+                            "pending_id": record.pending_id,
+                        }
                 if chunk.get("type") == "tool_call_chunk":
                     saw_tool_call = True
                 if chunk.get("type") == "tool_result":
