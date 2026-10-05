@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import suppress
 from dataclasses import asdict
@@ -818,8 +819,12 @@ async def get_text_document(
     user: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, Any]:
     try:
-        return _knowledge_service(server).read_text_document(
-            kb_id, doc_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        return await asyncio.to_thread(
+            _knowledge_service(server).read_text_document,
+            kb_id,
+            doc_id,
+            actor_user_id=user.id,
+            is_admin=_is_admin(user),
         )
     except Exception as exc:
         raise _map_knowledge_error(
