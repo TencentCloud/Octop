@@ -19,6 +19,7 @@ from octop.infra.agents.security.hitl_session import (
     current_hitl_thread_id,
     hitl_thread_scope,
     parse_hitl_session_policy,
+    thread_id_from_interrupt_request,
     thread_id_from_request,
 )
 
@@ -67,6 +68,28 @@ def test_thread_id_from_request() -> None:
     assert thread_id_from_request({}) is None
 
 
+def test_thread_id_from_interrupt_request_reads_runtime_config() -> None:
+    assert current_hitl_thread_id() is None
+    req = SimpleNamespace(runtime=SimpleNamespace(config={"configurable": {"thread_id": "thr_lg"}}))
+    assert thread_id_from_interrupt_request(req) == "thr_lg"
+    with hitl_thread_scope("thr_bound"):
+        assert thread_id_from_interrupt_request(req) == "thr_bound"
+
+
+def test_thread_id_from_interrupt_request_reads_langgraph_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import langgraph.config as lg_config
+
+    monkeypatch.setattr(
+        lg_config,
+        "get_config",
+        lambda: {"configurable": {"thread_id": "thr_cfg"}},
+    )
+    assert current_hitl_thread_id() is None
+    assert thread_id_from_interrupt_request(None) == "thr_cfg"
+
+
 def test_current_thread_id_is_unbound_outside_scope() -> None:
     assert current_hitl_thread_id() is None
     with hitl_thread_scope("thr_1"):
@@ -84,6 +107,20 @@ def test_wrap_skips_when_thread_allows_all() -> None:
         assert wrapped["execute"]["when"](None) is False
     with hitl_thread_scope("other"):
         assert wrapped["execute"]["when"](None) is True
+
+
+def test_wrap_skips_execute_from_langgraph_config_without_scope() -> None:
+    store = HitlSessionPolicyStore()
+    store.set("thr_1", HitlSessionPolicy(mode="allow_all"))
+    wrapped = apply_session_bypass({"execute": {}}, store)
+    assert wrapped is not None
+    assert current_hitl_thread_id() is None
+    req = SimpleNamespace(runtime=SimpleNamespace(config={"configurable": {"thread_id": "thr_1"}}))
+    assert wrapped["execute"]["when"](req) is False
+    other = SimpleNamespace(
+        runtime=SimpleNamespace(config={"configurable": {"thread_id": "other"}})
+    )
+    assert wrapped["execute"]["when"](other) is True
 
 
 def test_wrap_respects_original_when() -> None:
