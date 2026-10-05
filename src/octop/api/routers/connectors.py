@@ -7,7 +7,7 @@ import json
 import logging
 import secrets
 from html import escape
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -145,6 +145,14 @@ class FeishuUserAuthCompleteBody(BaseModel):
     app_secret: str
     device_code: str
     cli_config_key: str | None = None
+
+
+class AgentlyAuthResponse(BaseModel):
+    status: Literal["idle", "pending", "authorized", "expired", "error"]
+    verification_url: str | None = Field(default=None, description="Device authorization URL")
+    user_code: str | None = Field(default=None, description="Code shown for device authorization")
+    expires_at: int | None = Field(default=None, description="Pending flow expiry, Unix seconds")
+    error: str | None = Field(default=None, description="Localized error, without CLI credentials")
 
 
 class CustomMcpPutBody(BaseModel):
@@ -444,11 +452,19 @@ def _credentials_preview(kind: str, creds: dict[str, Any]) -> dict[str, Any]:
     return preview
 
 
-def _schedule_connector_reload(server: Any, user_id: int, *, all_users: bool = False) -> None:
+def _schedule_connector_reload(
+    server: Any,
+    user_id: int,
+    *,
+    all_users: bool = False,
+    mail_instance_id: str | None = None,
+) -> None:
     assert server.app_runtime is not None
 
     async def _run() -> None:
         try:
+            if mail_instance_id:
+                await server.app_runtime.cron_manager.sync_mail_watch(mail_instance_id)
             if all_users:
                 await server.app_runtime.agent_registry.reload_all()
             else:
@@ -509,6 +525,7 @@ def _is_public_http_uri(uri: str) -> bool:
 
 @router.get("/connectors/catalog", summary="Connector catalog")
 async def get_catalog(
+    request: Request,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
@@ -516,7 +533,11 @@ async def get_catalog(
     del user
     settings = server.services.settings_repo
     return [
-        catalog_entry_to_dict(e, oauth_ready=oauth_ready_for_kind(e.kind, settings))
+        catalog_entry_to_dict(
+            e,
+            oauth_ready=oauth_ready_for_kind(e.kind, settings),
+            locale=resolve_request_locale(request),
+        )
         for e in list_catalog()
     ]
 
@@ -754,7 +775,12 @@ async def create_instance(
     )
     inst = repo.get(instance_id)
     assert inst is not None
-    _schedule_connector_reload(server, user.id, all_users=body.shared)
+    _schedule_connector_reload(
+        server,
+        user.id,
+        all_users=body.shared,
+        mail_instance_id=instance_id if body.kind == "agently-cli" else None,
+    )
     return _instance_to_dict(inst)
 
 
@@ -881,6 +907,7 @@ async def patch_instance(
         server,
         inst.user_id,
         all_users=inst.shared or body.shared is True or body.shared is False,
+        mail_instance_id=instance_id if inst.kind == "agently-cli" else None,
     )
     return _instance_to_dict(inst)
 
@@ -888,6 +915,7 @@ async def patch_instance(
 @router.delete("/connector-instances/{instance_id}", status_code=204, summary="Delete connector")
 async def delete_instance(
     instance_id: str,
+    request: Request,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> None:
@@ -920,23 +948,38 @@ async def delete_instance(
     _assert_can_manage_connector(inst, user)
     user_id = inst.user_id
     cli_creds: dict[str, Any] | None = None
-    if inst.kind in ("feishu-cli", "wecom-cli") and inst.has_credentials:
+    if inst.kind in ("feishu-cli", "wecom-cli", "agently-cli") and inst.has_credentials:
         try:
             cli_creds = _connector_service(server).decrypt(instance_id)
         except Exception:
             cli_creds = {"instance_id": instance_id}
         else:
             cli_creds = {**cli_creds, "instance_id": instance_id}
+    if inst.kind == "agently-cli":
+        result = await _connector_service(server).agently_auth_for_instance(
+            instance_id, inst.user_id, "disconnect", locale=resolve_request_locale(request)
+        )
+        if result["status"] == "error":
+            raise OctopError.localized(
+                ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
+                locale=resolve_request_locale(request),
+                details={"reason": result["error"]},
+            )
     if inst.kind == "qcc":
         try:
             await _connector_service(server).disconnect_qcc(instance_id)
         except ValueError as exc:
             raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
-    else:
+    elif inst.kind != "agently-cli":
         repo.delete(instance_id)
     if cli_creds is not None:
         cleanup_creds_cli_dirs(inst.kind, cli_creds)
-    _schedule_connector_reload(server, user_id, all_users=inst.shared)
+    _schedule_connector_reload(
+        server,
+        user_id,
+        all_users=inst.shared,
+        mail_instance_id=instance_id if inst.kind == "agently-cli" else None,
+    )
     server.services.audit_repo.write(
         actor=user.username,
         action="connector.instance.delete",
@@ -947,6 +990,7 @@ async def delete_instance(
 @router.post("/connector-instances/{instance_id}/test", summary="Test connector")
 async def test_instance(
     instance_id: str,
+    request: Request,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
@@ -975,6 +1019,8 @@ async def test_instance(
     creds = await svc.ensure_fresh_credentials(instance_id, inst.kind)
     if not creds:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "missing credentials")
+    if inst.kind == "agently-cli":
+        creds["_locale"] = resolve_request_locale(request)
 
     try:
         return await probe_connector(
@@ -991,6 +1037,7 @@ async def test_instance(
 @router.post("/connectors/test-credentials", summary="Test credentials")
 async def test_credentials(
     body: TestCredentialsBody,
+    request: Request,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
@@ -1013,6 +1060,8 @@ async def test_credentials(
             str(exc),
             details={"reason": str(exc)},
         ) from exc
+    if body.kind == "agently-cli":
+        cred_payload["_locale"] = resolve_request_locale(request)
     try:
         return await probe_connector(
             entry,
@@ -1027,7 +1076,7 @@ async def test_credentials(
 
 @router.get(
     "/connectors/{kind}/cli-status",
-    summary="Host CLI install status for Feishu/WeCom connectors",
+    summary="Host CLI install status for CLI connectors",
 )
 async def connector_cli_status(
     kind: str,
@@ -1048,7 +1097,7 @@ async def connector_cli_status(
 
 @router.post(
     "/connectors/{kind}/install-cli",
-    summary="Install host CLI for Feishu/WeCom connectors (admin)",
+    summary="Install host CLI for CLI connectors (admin)",
 )
 async def connector_install_cli(
     kind: str,
@@ -1127,6 +1176,83 @@ class FeishuUserAuthInstanceCompleteBody(BaseModel):
 
 
 @router.post(
+    "/connector-instances/{instance_id}/agently-auth/start",
+    response_model=AgentlyAuthResponse,
+    summary="Start Agent Mail device authorization",
+    description="Owner only. Starts one bounded background login for this saved instance.",
+)
+async def agently_auth_start(
+    instance_id: str,
+    request: Request,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> AgentlyAuthResponse:
+    result = await _connector_service(server).agently_auth_for_instance(
+        instance_id, user.id, "start", locale=resolve_request_locale(request)
+    )
+    return AgentlyAuthResponse(**result)
+
+
+@router.get(
+    "/connector-instances/{instance_id}/agently-auth/status",
+    response_model=AgentlyAuthResponse,
+    summary="Read Agent Mail authorization status",
+    description="Owner only. Poll a device login or check stored authorization without exposing tokens.",
+)
+async def agently_auth_status(
+    instance_id: str,
+    request: Request,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> AgentlyAuthResponse:
+    result = await _connector_service(server).agently_auth_for_instance(
+        instance_id, user.id, "status", locale=resolve_request_locale(request)
+    )
+    if result["status"] == "authorized":
+        assert server.app_runtime is not None
+        await server.app_runtime.cron_manager.resume_mail_watch(instance_id)
+    return AgentlyAuthResponse(**result)
+
+
+@router.post(
+    "/connector-instances/{instance_id}/agently-auth/logout",
+    response_model=AgentlyAuthResponse,
+    summary="Log out of Agent Mail",
+    description="Owner only. Cancels pending login, clears the CLI grant and attempts revocation.",
+)
+async def agently_auth_logout(
+    instance_id: str,
+    request: Request,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> AgentlyAuthResponse:
+    result = await _connector_service(server).agently_auth_for_instance(
+        instance_id, user.id, "logout", locale=resolve_request_locale(request)
+    )
+    assert server.app_runtime is not None
+    await server.app_runtime.cron_manager.stop_mail_watch(instance_id)
+    return AgentlyAuthResponse(**result)
+
+
+@router.post(
+    "/connector-instances/{instance_id}/agently-auth/refresh",
+    response_model=AgentlyAuthResponse,
+    summary="Refresh Agent Mail authorization",
+    description="Owner only. Refreshes the saved CLI grant and returns sanitized authorization status.",
+)
+async def agently_auth_refresh(
+    instance_id: str,
+    request: Request,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> AgentlyAuthResponse:
+    result = await _connector_service(server).agently_auth_for_instance(
+        instance_id, user.id, "refresh", locale=resolve_request_locale(request)
+    )
+    return AgentlyAuthResponse(**result)
+
+
+@router.post(
     "/connector-instances/{instance_id}/feishu-user-auth/start",
     summary="Start Feishu user login for an existing connector instance",
 )
@@ -1196,6 +1322,7 @@ async def refresh_instance(
 @router.get("/connectors/auth/{kind}/info", summary="Connector auth info")
 async def auth_info(
     kind: str,
+    request: Request,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, str | None]:
@@ -1203,7 +1330,10 @@ async def auth_info(
     del user
     if get_catalog_entry(kind) is None:
         raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, f"unknown kind {kind!r}")
-    return auth_info_for_kind(kind, server.services.settings_repo)
+    info = auth_info_for_kind(kind, server.services.settings_repo)
+    if kind == "agently-cli":
+        info["auth_hint"] = tr("connector.agently.auth_hint", resolve_request_locale(request))
+    return info
 
 
 @router.get("/connectors/auth/{kind}/authorize-url", summary="OAuth authorize URL")
