@@ -15,6 +15,10 @@
 #                    例如 FPK_NAME_PREFIX=Octop-fnos 会生成 Octop-fnos-docker-<ver>.fpk / Octop-fnos-native-<ver>.fpk
 #   FPK_ITER         迭代号，默认空
 #                    例如 FPK_ITER=01 会生成 ...-<ver>-01.fpk（通常不需要，按版本号发布）
+#   FPK_ARCH         本地版架构。arm64 → Octop-fnos-native-arm64-<ver>.fpk，
+#                    并写入 manifest platform=arm64。空或其它值保持现有 x86 包名。
+#                    fnpack 官方只有 linux-amd64，ARM 包应在 amd64 主机上打包
+#                    （site-packages 先在 aarch64 上装好再拷过来）。
 #
 # 说明：
 #   - Linux CI 下会自动下载 fnpack（版本见 FNPACK_VERSION，默认 1.2.3）；
@@ -105,7 +109,11 @@ build_one() {
       ;;
     native)
       PKG="$ROOT/fnos/native"
-      OUTNAME="${PREFIX}-native-${VER}${ITER_SUFFIX}.fpk"
+      if [ "${FPK_ARCH:-}" = "arm64" ]; then
+        OUTNAME="${PREFIX}-native-arm64-${VER}${ITER_SUFFIX}.fpk"
+      else
+        OUTNAME="${PREFIX}-native-${VER}${ITER_SUFFIX}.fpk"
+      fi
       ;;
     *) echo "未知类型: $KIND"; return 1 ;;
   esac
@@ -124,6 +132,39 @@ build_one() {
 
   # 注入版本号到 manifest（manifest 为 key=value 无空格格式）
   sed -i.bak "s/^version=.*/version=$VER/" "$BUILD/manifest" && rm -f "$BUILD/manifest.bak"
+
+  # ARM 本地版写入 platform=arm64，避免 x86 飞牛误装 aarch64 site-packages。
+  if [ "$KIND" = "native" ] && [ "${FPK_ARCH:-}" = "arm64" ]; then
+    sed -i.bak "s/^platform=.*/platform=arm64/" "$BUILD/manifest" && rm -f "$BUILD/manifest.bak"
+    echo "[build-fpk] native manifest platform=arm64"
+  fi
+
+  # 本地版写入架构标记，安装/启动时对一下，避免装错包。
+  if [ "$KIND" = "native" ]; then
+    local packed_arch
+    case "${FPK_ARCH:-}" in
+      arm64) packed_arch=arm64 ;;
+      amd64) packed_arch=amd64 ;;
+      *)
+        case "$(uname -m)" in
+          aarch64|arm64) packed_arch=arm64 ;;
+          *) packed_arch=amd64 ;;
+        esac
+        ;;
+    esac
+    printf '%s\n' "$packed_arch" > "$BUILD/cmd/fpk-arch"
+    echo "[build-fpk] native cmd/fpk-arch=$packed_arch"
+  fi
+
+  # Docker 版 compose 钉与本包相同的镜像标签；测试包可用 FPK_IMAGE_TAG=latest 覆盖。
+  if [ "$KIND" = "docker" ]; then
+    local compose="$BUILD/app/docker/docker-compose.yaml" image_tag="${FPK_IMAGE_TAG:-$VER}"
+    if [ -f "$compose" ]; then
+      sed -i.bak -E "s#ghcr.io/tencentcloud/octop:[^[:space:]]+#ghcr.io/tencentcloud/octop:${image_tag}#" "$compose"
+      rm -f "${compose}.bak"
+      echo "[build-fpk] compose 镜像: ghcr.io/tencentcloud/octop:${image_tag}"
+    fi
+  fi
 
   echo "[build-fpk] fnpack 校验并打包 $KIND ..."
   # fnpack 校验 manifest/cmd/config/wizard/app 后在当前目录生成 <appname>.fpk
