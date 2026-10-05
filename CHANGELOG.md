@@ -26,6 +26,7 @@
 - 登录页在用户名框下提示可用用户名或邮箱（目录账号与本地账号同一表单）。
 
 ### 修复
+- 记忆迁移「导出（pack）」在打包失败、请求取消或下载中途断开时，会把多 MB 的 `.hmpkg` 临时文件留在系统临时目录；现与 `adopt` / `doctor` 一致，失败与中断时都清理该临时文件。
 - 会话选了「放通所有 / 放通这些工具」后，后续 `execute` 等工具仍弹出「需要确认这次操作」：从 LangGraph runnable config 解析 thread id 以跳过审批，Dashboard 对仍卡住的活审批卡自动续跑；`ask_user_question` 仍每次询问。
 - 聊天页不再把普通回答里的「429 / rate_limit / 超时」等字样误判成流式失败：只有模型重试耗尽信封才会升成错误气泡；气泡样式跟随 `status=error`（Fixes #1074）。
 - 开启 TLS 后，内部 MCP（如企查查）改为连 `https://127.0.0.1:{port}/api/internal/mcp/...`，不再误走只做 ACME/跳转的 HTTP companion；本机自签/域名证书跳过 hostname 校验，启动日志会把 factory 写成占位符以免 `json.dumps` 崩溃（Fixes #1499）。

@@ -158,7 +158,15 @@ async def pack_agent_memory(
             tmp.flush()
             tmp_path = Path(tmp.name)
 
-        summary = pack(src, out=tmp_path)
+        try:
+            summary = pack(src, out=tmp_path)
+        except BaseException:
+            # ``pack`` failing (or the request being cancelled) must not leave a
+            # multi-MB .hmpkg behind: the temp file is created with
+            # ``delete=False``, so nobody else reclaims it. Mirrors the
+            # try/finally cleanup the adopt/doctor endpoints already do.
+            tmp_path.unlink(missing_ok=True)
+            raise
 
         # Read the file content and stream it back
         from datetime import UTC, datetime
@@ -167,10 +175,14 @@ async def pack_agent_memory(
         filename = f"{agent_id}-{ts}.hmpkg"
 
         def _iter_file() -> Any:
-            with open(tmp_path, "rb") as f:
-                while chunk := f.read(65536):
-                    yield chunk
-            tmp_path.unlink(missing_ok=True)
+            try:
+                with open(tmp_path, "rb") as f:
+                    while chunk := f.read(65536):
+                        yield chunk
+            finally:
+                # ``finally`` (not a trailing statement) so an aborted download
+                # — client disconnect, generator close — still reclaims the file.
+                tmp_path.unlink(missing_ok=True)
 
         return StreamingResponse(
             _iter_file(),
