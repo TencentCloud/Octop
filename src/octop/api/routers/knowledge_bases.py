@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import suppress
 from dataclasses import asdict
@@ -765,8 +766,12 @@ async def preview_document(
     user: User = Depends(current_user),
 ) -> dict[str, Any]:
     try:
-        return _knowledge_service(server).preview_document(
-            kb_id, doc_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        return await asyncio.to_thread(
+            _knowledge_service(server).preview_document,
+            kb_id,
+            doc_id,
+            actor_user_id=user.id,
+            is_admin=_is_admin(user),
         )
     except Exception as exc:
         raise _map_knowledge_error(
