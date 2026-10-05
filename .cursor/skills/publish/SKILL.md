@@ -200,6 +200,12 @@ git checkout -B {RELEASE_BRANCH_PREFIX}{version} {REMOTE}/{INTEGRATION_BRANCH}
    # 用 Edit 工具将 `__version__ = "X.Y.Z"` 替换为 `"A.B.C"`
    ```
    文件不存在则跳过并提示（不中止）。
+4. 飞牛 FnOS 两个 manifest 的 `version=` 字段（与 `pyproject.toml` 保持一致；`scripts/build-fpk.sh` 打包时也会再注入一次，但仓库源文件必须先改，避免商店展示/手工校验看到旧号）：
+   ```bash
+   grep -n '^version=' fnos/docker/manifest fnos/native/manifest
+   # 用 Edit 工具将两处 `version=X.Y.Z` 替换为 `version=A.B.C`
+   ```
+   两个文件都必须改。缺文件则提示并继续（不中止）。
 
 **4c. 提交：**
 
@@ -322,4 +328,5 @@ git checkout {original_branch}
 - 中止前展示完整错误输出
 - 插入新版本条目后保持 `[Unreleased]` 为空
 - 同步升级所有含 shields.io 版本徽标的多语言 README（`README.md`、`README_CN.md` 等），勿只改英文
+- 同步升级 `fnos/docker/manifest` 与 `fnos/native/manifest` 的 `version=` 字段，勿只改 `pyproject.toml`
 - 推送 tag 后提示用户关注 GitHub Actions 的发布结果
