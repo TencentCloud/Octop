@@ -44,6 +44,8 @@ def test_publish_skill_bumps_fnos_manifest_versions() -> None:
     text = (REPO / ".cursor" / "skills" / "publish" / "SKILL.md").read_text(encoding="utf-8")
     assert "fnos/docker/manifest" in text
     assert "fnos/native/manifest" in text
+    assert "fnos/docker/app/docker/docker-compose.yaml" in text
+    assert "uv.lock" in text
 
 
 def test_fnos_docker_compose_uses_trim_data_share_paths() -> None:
