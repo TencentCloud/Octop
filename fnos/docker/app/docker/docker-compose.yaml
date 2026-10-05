@@ -1,6 +1,6 @@
 services:
   octop:
-    image: ghcr.io/tencentcloud/octop:1.0.2b5
+    image: ghcr.io/tencentcloud/octop:1.0.2b6
     container_name: octop
     restart: unless-stopped
     pull_policy: missing
