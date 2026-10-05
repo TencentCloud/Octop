@@ -19,6 +19,82 @@ from octop.infra.knowledge.files import write_document
 from octop.infra.knowledge.index import KnowledgeIndex
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_first", [False, True])
+async def test_same_document_jobs_cannot_overwrite_newer_results(
+    tmp_path, monkeypatch, cancel_first
+):
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    jobs.reset_index_semaphore_for_tests()
+    monkeypatch.setattr(jobs, "INDEX_CONCURRENCY", 2)
+    entered = threading.Event()
+    release = threading.Event()
+    newer_entered = threading.Event()
+    older_finished = threading.Event()
+
+    def process(text, kb, doc):
+        if text == "older":
+            entered.set()
+            assert release.wait(timeout=10)
+        if text == "newer":
+            newer_entered.set()
+        try:
+            KnowledgeIndex(kb).replace_doc_chunks(doc, [text], [[1.0, 0.0]])
+        finally:
+            if text == "older":
+                older_finished.set()
+
+    monkeypatch.setattr(jobs, "process_document", process)
+    first = jobs.enqueue_index_document("older", "kb", "doc")
+    second = None
+    other = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 3)
+        if cancel_first:
+            first.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await first
+        second = jobs.enqueue_index_document("newer", "kb", "doc")
+        other = jobs.enqueue_index_document("other", "other-kb", "doc")
+        await asyncio.wait_for(asyncio.shield(other), 3)
+        # The queued same-document job must not occupy the other concurrency slot.
+        overlapped = newer_entered.is_set()
+    finally:
+        release.set()
+        await asyncio.gather(
+            *(t for t in (first, second, other) if t is not None), return_exceptions=True
+        )
+        # Cancellation returns before the worker completes; wait for that completion too.
+        assert await asyncio.to_thread(older_finished.wait, 3)
+    assert [h.text for h in KnowledgeIndex("kb").search([1.0, 0.0], 10)] == ["newer"]
+    assert not overlapped
+
+
+@pytest.mark.asyncio
+async def test_failed_document_job_does_not_block_retry(monkeypatch):
+    jobs.reset_index_semaphore_for_tests()
+
+    def process(value, _kb, _doc):
+        if value == "failed":
+            raise RuntimeError("test failure")
+
+    monkeypatch.setattr(jobs, "process_document", process)
+    first = jobs.enqueue_index_document("failed", "kb", "doc")
+    second = jobs.enqueue_index_document("retry", "kb", "doc")
+    with pytest.raises(RuntimeError, match="test failure"):
+        await first
+    await asyncio.wait_for(second, 3)
+
+
+@pytest.mark.asyncio
+async def test_completed_document_jobs_do_not_retain_lock_cache(monkeypatch):
+    jobs.reset_index_semaphore_for_tests()
+    monkeypatch.setattr(jobs, "process_document", lambda *_args: None)
+    await asyncio.gather(*(jobs.enqueue_index_document(None, "kb", f"doc-{i}") for i in range(30)))
+    await asyncio.sleep(0)
+    assert not jobs._document_locks
+
+
 def test_enqueue_index_document_limits_concurrency(monkeypatch: pytest.MonkeyPatch) -> None:
     jobs.reset_index_semaphore_for_tests()
     monkeypatch.setattr(jobs, "INDEX_CONCURRENCY", 1)
