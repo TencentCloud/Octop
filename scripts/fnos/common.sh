@@ -42,24 +42,92 @@ octop_is_own_pid() {
 }
 
 # ---------------------------------------------------------------------------
-# 释放 Octop 端口（8088=Docker 版，8089=本地版）上的本应用残留进程。
-# 仅清理：(1) 命令行指向本安装目录 / Octop 服务入口的端口占用进程；
-# (2) 本安装目录（TRIM_APPDEST）下的 octop 服务进程。端口被第三方进程占用时
+# 杀掉 pid 及其子孙（先 TERM / 再由调用方决定 KILL）。
+# 本地版 start 经 runuser 拉起 bin/octop，PID 文件里往往是外壳，真正
+# 监听 8089 的是 exec 后的 Python 子进程；只杀外壳会留下孤儿占端口。
+# ---------------------------------------------------------------------------
+octop_kill_pid_tree() {
+    local pid="${1:-}" sig="${2:-TERM}" child
+    [ -n "$pid" ] || return 0
+    for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+        octop_kill_pid_tree "$child" "$sig"
+    done
+    kill -s "$sig" "$pid" 2>/dev/null || true
+}
+
+octop_port_pids() {
+    local port="$1" pids
+    pids="$(ss -ltnp 2>/dev/null | grep -E "[:.]${port}([[:space:]]|$)" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u)" || true
+    if [ -z "$pids" ] && command -v fuser >/dev/null 2>&1; then
+        pids="$(fuser "${port}/tcp" 2>/dev/null | tr -cs '[:digit:]' ' ')" || true
+    fi
+    if [ -z "$pids" ] && command -v lsof >/dev/null 2>&1; then
+        pids="$(lsof -ti tcp:"$port" 2>/dev/null)" || true
+    fi
+    printf '%s' "$pids"
+}
+
+# 等一组 pid 退出。第一参数是 0.2s 的轮询次数，其余为 pid。
+octop_wait_pids_gone() {
+    local rounds="${1:-15}" pid still i
+    shift
+    for i in $(seq 1 "$rounds"); do
+        still=0
+        for pid in "$@"; do
+            [ -n "$pid" ] || continue
+            if kill -0 "$pid" 2>/dev/null; then
+                still=1
+                break
+            fi
+        done
+        [ "$still" = 0 ] && return 0
+        sleep 0.2
+    done
+    return 1
+}
+
+# bin/octop 会 exec 成 python -m octop.cli.main run，命令行不再含启动器路径。
+# 用安装时写入的 OCTOP_INSTALL_MODE=fpk-native 识别本包服务进程。
+octop_fpk_native_run_pids() {
+    local pid
+    for pid in $(pgrep -f -- 'octop.cli.main run' 2>/dev/null || true); do
+        [ -n "$pid" ] || continue
+        if tr '\0' '\n' < "/proc/${pid}/environ" 2>/dev/null | grep -qx 'OCTOP_INSTALL_MODE=fpk-native'; then
+            printf '%s\n' "$pid"
+        fi
+    done
+}
+
+octop_signal_pids() {
+    local sig="$1" pid
+    shift
+    for pid in "$@"; do
+        [ -n "$pid" ] || continue
+        octop_kill_pid_tree "$pid" "$sig"
+    done
+}
+
+# ---------------------------------------------------------------------------
+# 释放 Octop 端口并清理本应用残留进程。
+# 无参数：8088=Docker 版 + 8089=本地版（安装/卸载用）。
+# 有参数：只释放指定端口（本地版 stop 只清 8089，避免误伤 Docker 版）。
+# 仅清理：(1) 占用这些端口且命令行指向本安装目录 / Octop 服务入口的进程；
+# (2) 本安装目录下尚未 exec 的启动器；(3) 带 OCTOP_INSTALL_MODE=fpk-native 的
+# `octop.cli.main run`（仅当本次要释放 8089 时）。端口被第三方进程占用时
 # （例如把 8089 映射出去的 docker-proxy）不动它、只记一条日志：安装或卸载
 # 一个应用不应静默杀掉机器上其它正在运行的服务（issue #985）。
 # 不使用宽泛的 `pgrep -f octop`，避免误杀其它用户/其它安装路径下的同名进程。
 # ---------------------------------------------------------------------------
 free_octop_ports() {
-    local port pid pids pat appdir owned foreign
+    local port pid pids pat appdir ports owned foreign
     appdir="${TRIM_APPDEST:-/var/apps/octop-native}"
-    for port in 8088 8089; do
-        pids="$(ss -ltnp 2>/dev/null | grep -E "[:.]${port}([[:space:]]|$)" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u)" || true
-        if [ -z "$pids" ] && command -v fuser >/dev/null 2>&1; then
-            pids="$(fuser "${port}/tcp" 2>/dev/null | tr -cs '[:digit:]' ' ')" || true
-        fi
-        if [ -z "$pids" ] && command -v lsof >/dev/null 2>&1; then
-            pids="$(lsof -ti tcp:"$port" 2>/dev/null)" || true
-        fi
+    if [ "$#" -gt 0 ]; then
+        ports="$*"
+    else
+        ports="8088 8089"
+    fi
+    for port in $ports; do
+        pids="$(octop_port_pids "$port")"
         owned=""
         foreign=""
         for pid in $pids; do
@@ -67,7 +135,6 @@ free_octop_ports() {
             if octop_is_own_pid "$pid" "$appdir"; then
                 owned="${owned:+$owned }$pid"
                 echo "[octop] 清理本应用占用 ${port} 的残留进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
-                kill -TERM "$pid" 2>/dev/null || true
             else
                 foreign="${foreign:+$foreign,}$pid"
             fi
@@ -76,10 +143,12 @@ free_octop_ports() {
             echo "[octop] 端口 ${port} 由非本应用进程占用（pid=${foreign}），已保留该进程、未做清理。请把 Octop 改用其它空闲端口后重启服务（本地版：应用 var 目录下 .env 的 OCTOP_PORT；Docker 版：包内 docker-compose.yaml 的端口映射）。" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
         fi
         [ -n "$owned" ] || continue
-        sleep 1
+        octop_signal_pids TERM $owned
+        octop_wait_pids_gone 10 $owned || true
+        octop_signal_pids KILL $owned
         for pid in $owned; do
+            [ -n "$pid" ] || continue
             if kill -0 "$pid" 2>/dev/null; then
-                kill -KILL "$pid" 2>/dev/null || true
                 echo "[octop] 已强制 KILL 本应用残留进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
             fi
         done
@@ -90,17 +159,22 @@ free_octop_ports() {
         pids="$(pgrep -f -- "$pat" 2>/dev/null | tr '\n' ' ')" || true
         [ -z "$pids" ] && continue
         echo "[octop] 发现本应用残留服务进程（$pat）: $pids，准备清理" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
-        for pid in $pids; do
-            kill -TERM "$pid" 2>/dev/null || true
-        done
-        sleep 1
-        for pid in $pids; do
-            if kill -0 "$pid" 2>/dev/null; then
-                kill -KILL "$pid" 2>/dev/null || true
-                echo "[octop] 已强制 KILL 残留服务进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
-            fi
-        done
+        octop_signal_pids TERM $pids
+        octop_wait_pids_gone 10 $pids || true
+        octop_signal_pids KILL $pids
     done
+
+    case " ${ports} " in
+        *" 8089 "*)
+            pids="$(octop_fpk_native_run_pids | tr '\n' ' ')"
+            if [ -n "$pids" ]; then
+                echo "[octop] 发现 fpk-native 残留 run 进程: $pids，准备清理" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+                octop_signal_pids TERM $pids
+                octop_wait_pids_gone 10 $pids || true
+                octop_signal_pids KILL $pids
+            fi
+            ;;
+    esac
 }
 
 # ---------------------------------------------------------------------------

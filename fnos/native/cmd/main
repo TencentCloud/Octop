@@ -2,9 +2,9 @@
 #
 # Octop 本地版（原生 app）— 生命周期管理
 # 直接以进程方式运行在飞牛主机上（非 Docker），监听 0.0.0.0:8089。
-# start:  启动 Octop（后台，写 PID 文件）；端口未就绪则失败并写出原因
-# stop:   发送 SIGTERM，超时 SIGKILL
-# status: 查询进程状态
+# start:  启动 Octop（setsid 后台，写 PID 文件）；端口未就绪则失败并写出原因
+# stop:   杀进程树并释放 8089；超时 SIGKILL。启动被中途杀掉也会收尸。
+# status: PID 存活或 8089 仍在监听（防止外壳已死、Python 孤儿仍占端口时显示已停止）
 #
 
 set -uo pipefail
@@ -48,6 +48,28 @@ run_as_service() {
     fi
 }
 
+# 后台拉起服务：优先 setsid，整棵进程树同一进程组，stop 才能一次杀干净。
+# $! 是会话首进程（runuser 或启动器）；bin/octop 随后 exec 成 Python。
+run_as_service_bg() {
+    if id octop-native >/dev/null 2>&1 && command -v runuser >/dev/null 2>&1; then
+        if command -v setsid >/dev/null 2>&1; then
+            setsid runuser -u octop-native -- "$@" >> "${LOG_FILE}" 2>&1 &
+        else
+            runuser -u octop-native -- "$@" >> "${LOG_FILE}" 2>&1 &
+        fi
+    elif command -v setsid >/dev/null 2>&1; then
+        setsid "$@" >> "${LOG_FILE}" 2>&1 &
+    else
+        "$@" >> "${LOG_FILE}" 2>&1 &
+    fi
+}
+
+pid_alive() {
+    [ -f "${PID_FILE}" ] || return 1
+    pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
 fail_start() {
     local reason="$1"
     local detail
@@ -73,7 +95,7 @@ fail_start() {
 }
 
 start_process() {
-    if status; then return 0; fi
+    if pid_alive; then return 0; fi
     mkdir -p "${PKGVAR}" "${DATA_DIR}"
     : >> "${LOG_FILE}"
     chmod +x "$BIN" 2>/dev/null || true
@@ -83,6 +105,19 @@ start_process() {
     fi
     if type fix_ownership_and_perms >/dev/null 2>&1; then
         fix_ownership_and_perms "$PKGVAR" "${PKGVAR}/.env" >/dev/null || true
+    fi
+
+    # 上次 stop 可能只杀掉了 runuser 外壳，Python 仍占端口。
+    # 这里再清一次，供设置回调等直调 start，以及 checkport 关闭后的自愈。
+    if port_ready; then
+        log_msg "端口 ${PORT} 仍被占用，先清理残留进程"
+        if type free_octop_ports >/dev/null 2>&1; then
+            free_octop_ports "$PORT"
+        fi
+        if port_ready; then
+            fail_start "端口 ${PORT} 仍被占用。请确认没有其它程序占用该端口。"
+            return 1
+        fi
     fi
 
     log_msg "Starting Octop (native) on port ${PORT} ..."
@@ -95,25 +130,47 @@ start_process() {
         fi
     fi
 
-    OCTOP_PORT="$PORT" OCTOP_BIND_HOST=0.0.0.0 run_as_service "$BIN" --host 0.0.0.0 --port "$PORT" >> "${LOG_FILE}" 2>&1 &
+    OCTOP_PORT="$PORT" OCTOP_BIND_HOST=0.0.0.0 run_as_service_bg "$BIN" --host 0.0.0.0 --port "$PORT"
     octop_pid=$!
+    # 先写 PID：飞牛若在端口就绪前杀掉 start（超时 / 用户取消），stop 仍找得到进程。
+    printf "%s" "$octop_pid" > "${PID_FILE}"
+
+    _abort_start() {
+        trap - INT TERM HUP
+        if [ -n "${octop_pid:-}" ]; then
+            kill -TERM -- "-$octop_pid" 2>/dev/null || true
+            if type octop_kill_pid_tree >/dev/null 2>&1; then
+                octop_kill_pid_tree "$octop_pid" TERM
+                octop_kill_pid_tree "$octop_pid" KILL
+            else
+                kill -KILL "$octop_pid" 2>/dev/null || true
+            fi
+        fi
+        if type free_octop_ports >/dev/null 2>&1; then
+            free_octop_ports "$PORT"
+        fi
+        rm -f "${PID_FILE}"
+    }
+    trap '_abort_start' INT TERM HUP
 
     local i
     for i in $(seq 1 "$START_WAIT_SECS"); do
         if port_ready; then
-            printf "%s" "$octop_pid" > "${PID_FILE}"
+            trap - INT TERM HUP
             rm -f "${DATA_DIR}/octop-start-error.txt" "${PKGVAR}/last-error.txt"
             log_msg "Octop pid=$octop_pid 端口 ${PORT} 已就绪"
             return 0
         fi
         if ! kill -0 "$octop_pid" 2>/dev/null; then
+            trap - INT TERM HUP
+            rm -f "${PID_FILE}"
             fail_start "进程已退出，未能监听 ${PORT}。请打开数据目录 octop-start-error.txt。"
             return 1
         fi
         sleep 1
     done
 
-    kill -TERM "$octop_pid" 2>/dev/null || true
+    _abort_start
     fail_start "在 ${START_WAIT_SECS} 秒内未能监听 ${PORT}。请打开数据目录 octop-start-error.txt。"
     return 1
 }
@@ -124,25 +181,53 @@ stop_process() {
     if [ -r "${PID_FILE}" ]; then
         pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
-            for i in $(seq 1 10); do
-                sleep 1
-                if ! kill -0 "$pid" 2>/dev/null; then
+            # setsid 启动时 -$pid 即整组；失败则按进程树杀 runuser + Python 子进程。
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            if type octop_kill_pid_tree >/dev/null 2>&1; then
+                octop_kill_pid_tree "$pid" TERM
+            else
+                kill -TERM "$pid" 2>/dev/null || true
+            fi
+            local i
+            for i in $(seq 1 15); do
+                if ! kill -0 "$pid" 2>/dev/null && ! port_ready; then
                     break
                 fi
+                sleep 0.2
             done
-            if kill -0 "$pid" 2>/dev/null; then
-                kill -KILL "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+            if kill -0 "$pid" 2>/dev/null || port_ready; then
+                kill -KILL -- "-$pid" 2>/dev/null || true
+                if type octop_kill_pid_tree >/dev/null 2>&1; then
+                    octop_kill_pid_tree "$pid" KILL
+                else
+                    kill -KILL "$pid" 2>/dev/null || true
+                fi
             fi
         fi
         rm -f "${PID_FILE}"
     fi
 
-    return 0
+    # PID 文件里可能只是 runuser 外壳；exec 后的 Python 仍占 8089。
+    # 飞牛若在调用 start 前检查端口，残留监听会报「端口被占用」，但旧页面仍能打开。
+    if type free_octop_ports >/dev/null 2>&1; then
+        free_octop_ports "$PORT"
+    fi
+
+    local i
+    for i in $(seq 1 15); do
+        if ! port_ready; then
+            log_msg "Octop (native) stopped, port ${PORT} released"
+            return 0
+        fi
+        sleep 0.2
+    done
+    log_msg "警告：停止后端口 ${PORT} 仍在监听"
+    return 1
 }
 
 status() {
-    [ -f "${PID_FILE}" ] && pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]') && [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+    # 外壳已死但 Python 仍占端口：对应用中心仍报运行中，便于再次点停止。
+    pid_alive || port_ready
 }
 
 case $1 in

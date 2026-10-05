@@ -33,6 +33,10 @@ def test_pep440_order() -> None:
     assert parse_version("0.9.34rc1") < parse_version("0.9.34")
     assert parse_version("0.9.34-beta.1") == parse_version("0.9.34b1")
     assert parse_version("0.7.2") > parse_version("0.7.1")
+    assert parse_version("1.0.2b5") > parse_version("1.0.2b4")
+    assert parse_version("1.0.2b10") > parse_version("1.0.2b9")
+    assert parse_version("1.0.2") > parse_version("1.0.2b5")
+    assert parse_version("1.0.2+local.10") == parse_version("1.0.2")
 
 
 def test_is_prerelease() -> None:
