@@ -22,6 +22,28 @@ def _require_tool(name: str) -> str:
     return path
 
 
+_VERSION_MISMATCH_MARKER = "server version mismatch"
+
+
+def _failure_error(
+    name: str,
+    proc: subprocess.CompletedProcess[str],
+) -> OctopError:
+    detail = (proc.stderr or "").strip() or (proc.stdout or "").strip()
+    if _VERSION_MISMATCH_MARKER in detail:
+        return OctopError(
+            ErrorCode.BACKUP_TOOL_MISMATCH,
+            f"{name} aborted because the installed client tools do not match the "
+            f"server major version: {detail}. Install a postgresql-client build "
+            "matching the server major version (e.g. postgresql-client-18) and retry.",
+        )
+    return OctopError(ErrorCode.INTERNAL_ERROR, f"{name} failed: {detail}")
+
+
+def _mentions_version_mismatch(proc: subprocess.CompletedProcess[str]) -> bool:
+    return _VERSION_MISMATCH_MARKER in ((proc.stderr or "") + (proc.stdout or ""))
+
+
 def dump_postgres(
     conninfo: str,
     dest: Path,
@@ -40,10 +62,7 @@ def dump_postgres(
         check=False,
     )
     if proc.returncode != 0:
-        raise OctopError(
-            ErrorCode.INTERNAL_ERROR,
-            f"pg_dump failed: {proc.stderr.strip() or proc.stdout.strip()}",
-        )
+        raise _failure_error("pg_dump", proc)
 
 
 def restore_postgres(conninfo: str, dump_file: Path) -> None:
@@ -63,8 +82,9 @@ def restore_postgres(conninfo: str, dump_file: Path) -> None:
         check=False,
     )
     # pg_restore may return 1 with warnings; treat only >=2 as hard fail.
+    # A version-mismatch abort also exits 1, so it is raised before the
+    # threshold can swallow it (#1301).
+    if proc.returncode != 0 and _mentions_version_mismatch(proc):
+        raise _failure_error("pg_restore", proc)
     if proc.returncode >= 2:
-        raise OctopError(
-            ErrorCode.INTERNAL_ERROR,
-            f"pg_restore failed: {proc.stderr.strip() or proc.stdout.strip()}",
-        )
+        raise _failure_error("pg_restore", proc)

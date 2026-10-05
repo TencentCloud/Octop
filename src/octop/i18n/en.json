@@ -378,6 +378,7 @@
     "BACKUP_SCHEMA_INCOMPATIBLE": "This backup uses database schema version {archive_schema_version}, which cannot be restored by this Octop version (maximum supported: {runtime_schema_version}).",
     "BACKUP_IN_PROGRESS": "A backup or restore is already in progress. Try again shortly.",
     "BACKUP_TOOL_MISSING": "A required PostgreSQL client tool is not installed. Install postgresql-client (pg_dump/pg_restore) on the server and retry.",
+    "BACKUP_TOOL_MISMATCH": "The installed PostgreSQL client tools do not match the server major version. Install a postgresql-client build matching the server (e.g. postgresql-client-18) and retry.",
     "FORBIDDEN": "Permission denied.",
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",

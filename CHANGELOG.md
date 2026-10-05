@@ -15,7 +15,7 @@
 - 登录页去掉用户名提示；空状态与远程桌面/浏览器检查按钮更清晰
 
 ### 修复
-- 服务器缺少 pg_dump/pg_restore 时备份不再报 500「服务器内部错误」：改抛 `BACKUP_TOOL_MISSING`（400）并在消息中给出安装 postgresql-client 的指引（#1301）。
+- 服务器缺少 pg_dump/pg_restore 时备份不再报 500「服务器内部错误」：改抛 `BACKUP_TOOL_MISSING`（400）并在消息中给出安装 postgresql-client 的指引；客户端与服务器大版本不一致（如容器内 client 17 对服务器 18）时改抛 `BACKUP_TOOL_MISMATCH`（400），该类中止在 pg_restore 下不再被「退出码 1 视为警告」的规则吞掉（#1301）。
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
 
