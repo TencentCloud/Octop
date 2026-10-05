@@ -6,6 +6,7 @@ import {
   type AskQuestion,
 } from "../../../api/types/hitl";
 import type { ChatMessage, HitlActionRequest } from "../hooks/sseHelpers";
+import type { HitlSessionPolicy } from "./hitlSessionPolicy";
 
 export type PendingAsk = {
   messageId: string;
@@ -62,6 +63,26 @@ export function findPendingApproval(
       messageId: message.id,
       actions: hitl.action_requests,
     };
+  }
+  return null;
+}
+
+/** Pending tool approval that a session bypass can resume without asking. */
+export function findAutoResumableApproval(
+  policy: HitlSessionPolicy,
+  messages: ChatMessage[],
+): PendingApproval | null {
+  const pending = findPendingApproval(messages);
+  if (!pending) return null;
+  if (policy.mode === "allow_all") return pending;
+  if (policy.mode === "allow_tools") {
+    const allowed = new Set(policy.tools ?? []);
+    if (
+      pending.actions.length > 0 &&
+      pending.actions.every((action) => allowed.has(action.name))
+    ) {
+      return pending;
+    }
   }
   return null;
 }
