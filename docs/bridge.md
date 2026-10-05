@@ -62,11 +62,11 @@
 
 添加连接前可先 `POST /api/bridge/probe`：用填写的 `peer_base_url` + 用户名/密码对端 HTTP 登录，再拉 `GET /api/agents?scope=mine`，返回专家摘要列表（`agent_id` / `name` / `description` / 绝对 `icon_url` 等）。**不**写入 `bridge_connections`，**不**建立 Bridge WS。Dashboard 添加抽屉里的「探测」按钮走此接口。
 
-「保存并连接」仅在登录 + Bridge WS `hello_ack` 成功后落库；失败回滚。管理 API 按连接所有者鉴权（登录用户即可管理自己的桥）。入站隧道允许 agent 相关 path（含 `GET …/status`），以及只读的 `GET /api/providers/resolved`、`GET /api/providers/active-model`、`GET /api/knowledge-bases`、`GET /api/knowledge-bases/capability`（远端聊天 composer），以及 Chat dock 浏览器 viewer：`GET /api/browser/env-status`、`GET /api/browser/harness-sessions`、`POST /api/browser/sessions/{id}/handoff`。`history-migration` 仅本机处理，不入隧道。入站 hello 不得抢占他人 `connection_id`。旧入口 `/admin/advanced?tab=bridge` 会重定向到 `/bridge`。
+「保存并连接」仅在登录 + Bridge WS `hello_ack` 成功后落库；失败回滚。管理 API 按连接所有者鉴权（登录用户即可管理自己的桥）。入站隧道允许 **agent 范围内** 的读写（聊天、工作区、定时任务、状态，以及个性化里标记为 limited 的工具 / 插件 / 渠道，含 `PATCH …/tool-settings` 与 `POST …/reload`），外加只读 composer：`GET /api/providers/resolved`、`GET /api/providers/active-model`、`GET /api/knowledge-bases`、`GET /api/knowledge-bases/capability`，以及 Chat dock 浏览器 viewer：`GET /api/browser/env-status`、`GET /api/browser/harness-sessions`、`POST /api/browser/sessions/{id}/handoff`。技能包、全局 ACP、连接器管理、知识库管理在 Dashboard 标为 peer-only，应在对端操作。管理 / 认证 / Bridge 控制面不入隧道。`history-migration` 仅本机处理。入站 hello 不得抢占他人 `connection_id`。旧入口 `/admin/advanced?tab=bridge` 会重定向到 `/bridge`。
 
 
 依赖：`api` → `infra/bridge` → 现有 `infra`（对端登录、对端执行 agents/history/upload）。  
-禁止：`bridge` → `cli/` / `launch.py`；禁止用 Dashboard Hub 做机机通道。
+禁止：`bridge` → `api/` / `cli/` / `launch.py`（peer turn / browser runner 由 `build_app` 注入）；禁止用 Dashboard Hub 做机机通道。
 
 ## 4. 连接与身份
 
