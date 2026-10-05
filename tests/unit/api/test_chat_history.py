@@ -254,6 +254,44 @@ async def test_get_thread_history_returns_has_more(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
+@pytest.mark.asyncio
+async def test_get_thread_history_archive_skips_unrenderable_system_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """System-role messages are legitimate in checkpoints (mid-conversation
+    injected reminders); the archived page must skip them the way the
+    projection path does instead of failing the whole history read."""
+    server = MagicMock()
+    row = MagicMock(agent_id="agt_1", user_id=1, artifacts=())
+    server.app_runtime.gateway.thread_registry.get_thread.return_value = row
+    server.app_runtime.history_archive = MagicMock(spec=history_mod.HistoryArchive)
+
+    async def fake_read_page(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {
+            "messages": [
+                {"type": "system", "data": {"content": "injected reminder"}},
+                {"type": "human", "data": {"content": "hello"}},
+            ],
+            "has_more": False,
+            "next_cursor": None,
+        }
+
+    import octop.infra.history.reader as reader_mod
+
+    monkeypatch.setattr(reader_mod, "read_page", fake_read_page)
+
+    out = await history_mod.get_thread_history(
+        "agt_1",
+        "thr_1",
+        limit=HISTORY_DEFAULT_LIMIT,
+        offset=0,
+        user=MagicMock(id=1),
+        server=server,
+    )
+
+    assert [m["role"] for m in out["messages"]] == ["user"]
+
+
 async def test_get_legacy_history_enqueues_without_reading_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
