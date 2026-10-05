@@ -32,10 +32,12 @@ import { isProbablyText } from "../utils/fileKind";
 import styles from "../index.module.less";
 
 interface FileViewerProps {
-  agentId: string;
+  agentId?: string;
   path: string;
   /** Whether leading-slash paths come from the workspace UI. */
   fromWorkspace?: boolean;
+  /** Authenticated blob URL for media/docs (storage browse uses this). */
+  fetchUrl?: string;
   /** When true, text files render with the Monaco editor. */
   editMode: boolean;
   /** Current text content (for text/preview modes). */
@@ -53,6 +55,7 @@ export default function FileViewer({
   agentId,
   path,
   fromWorkspace = true,
+  fetchUrl,
   editMode,
   value,
   onChange,
@@ -77,6 +80,7 @@ export default function FileViewer({
         kind={mediaKind}
         refreshToken={refreshToken}
         fromWorkspace={fromWorkspace}
+        fetchUrl={fetchUrl}
       />
     );
   }
@@ -89,6 +93,7 @@ export default function FileViewer({
         path={path}
         kind={docKind}
         fromWorkspace={fromWorkspace}
+        fetchUrl={fetchUrl}
       />
     );
   }
