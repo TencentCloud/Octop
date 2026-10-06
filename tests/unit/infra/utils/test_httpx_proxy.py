@@ -114,6 +114,35 @@ def test_ipv6_cidr_does_not_crash_client(proxy_env: dict[str, str]) -> None:
         assert not _is_direct(client, "http://[2001:db9::1]/")
 
 
+@pytest.mark.parametrize("hostname", ["2001:db8::1", "[2001:db8::1]"])
+def test_exact_ipv6_mount_key_is_parseable_url(hostname: str) -> None:
+    key = no_proxy_mount_key(hostname)
+    assert key == "all://[2001:db8::1]"
+    assert httpx.URL(key).host == "2001:db8::1"
+
+
+@pytest.mark.parametrize(
+    "no_proxy",
+    ["[2001:db8::1]", "[2001:db8::1];2001:db8::1,[2001:db9::]/32"],
+)
+async def test_bracketed_ipv6_bypasses_proxy_without_crashing_clients(
+    proxy_env: dict[str, str], no_proxy: str
+) -> None:
+    proxy_env["no"] = no_proxy
+    with httpx.Client() as client:
+        assert _is_direct(client, "http://[2001:db8::1]/v1/models")
+        assert _is_direct(client, "https://[2001:db8::1]/health")
+        assert not _is_direct(client, "http://[2001:db8::2]/")
+        assert not _is_direct(client, "http://example.com/")
+    async with httpx.AsyncClient() as client:
+        assert client._transport_for_url(httpx.URL("http://[2001:db8::1]/")) is client._transport
+        assert client._transport_for_url(httpx.URL("https://[2001:db8::1]/")) is client._transport
+        assert (
+            client._transport_for_url(httpx.URL("http://[2001:db8::2]/")) is not client._transport
+        )
+        assert client._transport_for_url(httpx.URL("http://example.com/")) is not client._transport
+
+
 def test_urlpattern_cidr_match_does_not_use_network_address_only() -> None:
     from httpx._utils import URLPattern
 

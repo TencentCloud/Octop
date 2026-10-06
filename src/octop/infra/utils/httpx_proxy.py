@@ -87,8 +87,10 @@ def no_proxy_mount_key(hostname: str) -> str:
 
     if is_ipv4_hostname(hostname):
         return f"all://{hostname}"
-    if is_ipv6_hostname(hostname):
-        return f"all://[{hostname}]"
+    # Brackets delimit an IPv6 literal; do not treat them as part of a domain.
+    ipv6_host = _unwrap_ip_literal(hostname) if hostname.endswith("]") else hostname
+    if is_ipv6_hostname(ipv6_host):
+        return f"all://[{ipv6_host}]"
     if hostname.lower() == "localhost":
         return f"all://{hostname}"
     return f"all://*{hostname}"
