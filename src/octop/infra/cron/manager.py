@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.date import DateTrigger
 
 from octop.i18n import tr
 from octop.infra.connectors.crypto import decrypt_credentials
@@ -270,10 +271,21 @@ class CronManager:
             self._mail_watch.subscribe(source.instance_id, row.cron_id, creds, on_mail)
             return
         job = self._make_job(row)
+
+        async def run_once() -> None:
+            async with self._lock:
+                current = self._repos.cron_repo.get(row.cron_id)
+                if current is None or not current.enabled or current.trigger != row.trigger:
+                    return
+                # Persist consumption before delivery can yield to a reload. Manual
+                # runs bypass this callback and keep their future schedule enabled.
+                self._repos.cron_repo.update(row.cron_id, enabled=False)
+            await job.run()
+
         if self._scheduler.get_job(row.cron_id):
             self._scheduler.remove_job(row.cron_id)
         self._scheduler.add_job(
-            job.run,
+            run_once if isinstance(trigger, DateTrigger) else job.run,
             trigger=trigger,
             id=row.cron_id,
             replace_existing=True,
