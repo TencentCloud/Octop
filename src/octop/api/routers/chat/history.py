@@ -428,7 +428,7 @@ async def mark_thread_read(
 @router.post(
     "/agents/{agent_id}/threads/{thread_id}/fork",
     status_code=201,
-    summary="Fork thread from an assistant message",
+    summary="Fork through an assistant reply or before an edited user turn",
 )
 async def fork_thread(
     agent_id: str,
@@ -439,18 +439,33 @@ async def fork_thread(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Create a new dashboard thread with history through *message_id*.
+    """Create a new dashboard thread at the selected conversation boundary.
 
     The original thread is left unchanged. History includes the selected
-    assistant reply so the user can continue from that point.
+    assistant reply, or stops before the selected user turn for editing.
     """
-    if not (body.message_id or "").strip() and body.assistant_turns_from_end is None:
+    if (
+        not (body.message_id or "").strip()
+        and body.assistant_turns_from_end is None
+        and body.user_turns_from_end is None
+    ):
         raise OctopError(
             ErrorCode.SLASH_BAD_ARGS,
             "message_id or assistant_turns_from_end is required",
         )
     row = _require_thread(server, agent_id, thread_id, user, as_user)
     effective_uid = as_user if as_user is not None else user.id
+    if body.user_turns_from_end is not None and (
+        server.app_runtime.gateway.ws_hub.is_turn_active(thread_id)
+        or _agent_is_busy(server, agent_id)
+        or pending_hitl_payload(
+            server.app_runtime.gateway.processor.hitl_coordinator.store,
+            thread_id=thread_id,
+            agent_id=agent_id,
+            user_id=effective_uid,
+        )
+    ):
+        raise OctopError(ErrorCode.AGENT_BUSY, "finish the active turn before editing")
     harness = server.app_runtime.agent_registry.get_agent(agent_id)
     return await fork_dashboard_thread(
         thread_registry=server.app_runtime.gateway.thread_registry,
@@ -460,6 +475,7 @@ async def fork_thread(
         message_id=body.message_id,
         content=body.content,
         assistant_turns_from_end=body.assistant_turns_from_end,
+        user_turns_from_end=body.user_turns_from_end,
         locale=resolve_request_locale(request),
         thread_message_repo=server.services.thread_message_repo,
         history_archive=getattr(server.app_runtime, "history_archive", None),

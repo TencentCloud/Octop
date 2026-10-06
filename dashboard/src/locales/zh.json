@@ -1306,6 +1306,7 @@
     "forkSuccess": "已创建分叉对话",
     "forkSuccessEmpty": "已创建新的空对话",
     "forkFailed": "创建分叉失败",
+    "editFailed": "编辑消息失败",
     "forkDisabledWhileBusy": "请等待当前回复或审批完成后再分叉",
     "forkNoAssistant": "当前对话还没有可分叉的 AI 回复",
     "retry": "重试",

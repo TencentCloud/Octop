@@ -254,3 +254,92 @@ async def test_fork_dashboard_thread_deletes_row_when_write_fails() -> None:
         )
 
     registry.delete_thread.assert_called_once_with("thr_fork")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "suffix, expected", [(3, ["edited"]), (2, ["first", "first answer", "edited"])]
+)
+async def test_edited_turn_model_receives_only_prefix_with_real_langgraph(
+    suffix: int, expected: list[str]
+) -> None:
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.graph import END, START, MessagesState, StateGraph
+
+    received: list[list[str]] = []
+
+    def model(state: MessagesState) -> dict[str, Any]:
+        received.append([str(m.content) for m in state["messages"]])
+        return {"messages": [AIMessage(content="new answer")]}
+
+    builder = StateGraph(MessagesState)
+    builder.add_node("model", model)
+    builder.add_edge(START, "model")
+    builder.add_edge("model", END)
+    graph = builder.compile(checkpointer=InMemorySaver())
+    messages = [
+        HumanMessage(content="first", id="h1"),
+        AIMessage(content="first answer", id="a1"),
+        HumanMessage(content="old", id="h2"),
+        AIMessage(content="old answer", id="a2"),
+        HumanMessage(content="later", id="h3"),
+        AIMessage(content="later answer", id="a3"),
+    ]
+    await graph.aupdate_state({"configurable": {"thread_id": "source"}}, {"messages": messages})
+    registry = MagicMock()
+    registry.create_thread.return_value = "dest"
+    registry.rebind = AsyncMock()
+    created = await fork_dashboard_thread(
+        thread_registry=registry,
+        harness=SimpleNamespace(graph=graph),
+        source=MagicMock(thread_id="source", agent_id="a", title="Chat"),
+        user_id=1,
+        message_id="temporary-ui-id",
+        user_turns_from_end=suffix,
+    )
+    await graph.ainvoke(
+        {"messages": [HumanMessage(content="edited")]},
+        {"configurable": {"thread_id": created["thread_id"]}},
+    )
+    assert received == [expected]
+    state = await graph.aget_state({"configurable": {"thread_id": "source"}})
+    assert [m.id for m in state.values["messages"]] == [m.id for m in messages]
+
+
+def test_edit_locator_prefers_real_id_and_rejects_stale_ui_suffix() -> None:
+    from octop.infra.agents.threads.fork import find_user_edit_index
+
+    messages = [
+        HumanMessage(content="old", id="h1"),
+        AIMessage(content="answer", id="a1"),
+        HumanMessage(content="new from another tab", id="h2"),
+    ]
+    assert (
+        find_user_edit_index(messages, message_id="h1", user_turns_from_end=1, content="old") == 0
+    )
+    with pytest.raises(OctopError) as exc:
+        find_user_edit_index(messages, message_id="ui-id", user_turns_from_end=1, content="old")
+    assert exc.value.code is ErrorCode.NOT_FOUND
+
+
+def test_edit_locator_counts_multimodal_users_not_tool_messages() -> None:
+    from octop.infra.agents.threads.fork import find_user_edit_index
+
+    messages = [
+        HumanMessage(
+            content=[
+                {"type": "text", "text": "question"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,x"}},
+            ]
+        ),
+        AIMessage(content="search", tool_calls=[{"id": "call", "name": "search", "args": {}}]),
+        ToolMessage(content="result", tool_call_id="call"),
+        AIMessage(content="answer"),
+        HumanMessage(content="later"),
+    ]
+    assert (
+        find_user_edit_index(
+            messages, message_id="ui-image", user_turns_from_end=2, content="question"
+        )
+        == 0
+    )
