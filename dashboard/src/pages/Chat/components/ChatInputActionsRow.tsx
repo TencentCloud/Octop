@@ -177,6 +177,7 @@ export default function ChatInputActionsRow({
   contextMaxTokens = 128_000,
   availableModels,
   selectedModel,
+  defaultModel,
   onModelChange,
   reasoningMode = "auto",
   reasoningEffort = null,
@@ -311,11 +312,13 @@ export default function ChatInputActionsRow({
     showSubagentPicker;
 
   const overflowBadgeCount =
-    selectedConnectors.length +
     selectedKnowledgeBaseIds.length +
-    activeSkillSlugs.length +
-    mentionedExperts.length +
-    mentionedSubagents.length;
+    (allowWriteTools
+      ? selectedConnectors.length +
+        activeSkillSlugs.length +
+        mentionedExperts.length +
+        mentionedSubagents.length
+      : 0);
 
   const closeCompactPicker = () => {
     setCompactPicker(null);
@@ -364,6 +367,17 @@ export default function ChatInputActionsRow({
       ? t("chat.reasoningEnabled", "开启")
       : t("chat.reasoningDisabled", "关闭");
 
+  const expertDefaultModel = availableModels?.find(
+    (model) => modelOptionValue(model) === defaultModel,
+  );
+  const defaultModelLabel = defaultModel
+    ? t("chat.modelDefault", "Default: {{model}}", {
+        model:
+          expertDefaultModel?.name ||
+          defaultModel.split("/").slice(1).join("/") ||
+          defaultModel,
+      })
+    : t("chat.modelAuto", "Auto");
   const selectedModelTriggerLabel = selectedModel
     ? modelOptionLabel(
         availableModels?.find((m) => modelOptionValue(m) === selectedModel) ?? {
@@ -371,7 +385,7 @@ export default function ChatInputActionsRow({
           model: selectedModel.split("/").slice(1).join("/") || selectedModel,
         },
       )
-    : t("chat.modelAuto", "Auto");
+    : defaultModelLabel;
 
   const reasoningSummary = (model: ResolvedModel, active: boolean) => {
     const capability = model.reasoning_config;
@@ -484,11 +498,17 @@ export default function ChatInputActionsRow({
               <span className={styles.modelMenuTitle}>
                 <Route size={16} aria-hidden />
                 <span className={styles.modelMenuLabel}>
-                  {t("chat.modelAuto", "Auto")}
+                  {defaultModelLabel}
                 </span>
               </span>
               <span className={styles.modelMenuHint}>
-                {t("chat.modelAutoHint", "Use agent default")}
+                {defaultModel
+                  ? t("chat.modelDefaultHint", "Use agent default: {{model}}", {
+                      model: expertDefaultModel
+                        ? modelOptionLabel(expertDefaultModel)
+                        : defaultModel,
+                    })
+                  : t("chat.modelAutoHint", "Use agent default")}
               </span>
             </button>
             {availableModels?.map((model) => {
@@ -631,7 +651,7 @@ export default function ChatInputActionsRow({
       {showModelPicker && (
         <button
           type="button"
-          className={`${styles.mobileOverflowItem} ${
+          className={`${styles.mobileOverflowItem} ${styles.modelTriggerRow} ${
             compactPicker === "model" ? styles.mobileOverflowItemActive : ""
           }`}
           onClick={() => openCompactPicker("model")}
@@ -641,7 +661,10 @@ export default function ChatInputActionsRow({
             <span>{t("chat.selectModel", "Model")}</span>
           </span>
           <span className={styles.mobileOverflowItemMeta}>
-            <span className={styles.mobileOverflowItemMetaLabel}>
+            <span
+              className={`${styles.mobileOverflowItemMetaLabel} ${styles.modelTriggerLabel}`}
+              title={selectedModelTriggerLabel}
+            >
               {selectedModelTriggerLabel}
             </span>
             <ChevronRight size={16} />

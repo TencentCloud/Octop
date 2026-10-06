@@ -742,7 +742,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <ChatInputPreviewBar
             attachments={attachments}
             uploading={uploading}
-            selectedConnectors={selectedConnectors}
+            selectedConnectors={
+              conversationMode === "craft" ? selectedConnectors : []
+            }
             selectedModel={selectedModel}
             availableConnectors={availableConnectors}
             availableKnowledgeBases={availableKnowledgeBases}

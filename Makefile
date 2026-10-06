@@ -31,6 +31,10 @@ PIP  := $(if $(UV),uv pip,python3 -m pip)
 # Parallel workers for make test / make test-fast (override: make test PYTEST_JOBS=4)
 PYTEST_JOBS ?= auto
 
+ifeq ($(OS),Windows_NT)
+export PYTHONUTF8 := 1
+endif
+
 # ─── Help ────────────────────────────────────────────────────────────────────
 
 .PHONY: help

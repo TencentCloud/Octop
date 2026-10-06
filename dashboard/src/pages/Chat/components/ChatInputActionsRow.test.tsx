@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedModel } from "../../../api/types";
 import ChatInputActionsRow from "./ChatInputActionsRow";
 
@@ -43,7 +43,88 @@ const baseProps = {
   onSubmit: vi.fn(),
 };
 
+beforeEach(() => vi.clearAllMocks());
+
 describe("ChatInputActionsRow plus menu", () => {
+  it("follows default model changes without setting an explicit model override", async () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <ChatInputActionsRow
+          {...baseProps}
+          defaultModel="Provider/compact-model"
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId("composer-plus"));
+    const trigger = await screen.findByRole("button", {
+      name: "Model Default: Compact Model",
+    });
+    fireEvent.click(trigger);
+    const followDefault = await screen.findByRole("button", {
+      name: "Default: Compact Model Use agent default: Provider / Compact Model",
+    });
+    expect(baseProps.onModelChange).not.toHaveBeenCalled();
+    fireEvent.click(followDefault);
+    expect(baseProps.onModelChange).toHaveBeenCalledWith(null);
+    rerender(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} defaultModel="Other/new-model" />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId("composer-plus"));
+    expect(
+      await screen.findByRole("button", { name: "Model Default: new-model" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps an explicit model selection visible instead of the expert default", async () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow
+          {...baseProps}
+          selectedModel="Provider/compact-model"
+          defaultModel="Other/new-model"
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId("composer-plus"));
+    expect(
+      await screen.findByRole("button", {
+        name: "Model Provider / Compact Model",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it.each(["ask", "plan"] as const)(
+    "counts only KBs in %s and restores selected resources in Craft",
+    (mode) => {
+      const props = {
+        ...baseProps,
+        selectedConnectors: ["c1"],
+        selectedKnowledgeBaseIds: ["k1"],
+        text: "/skill",
+      };
+      const { rerender } = render(
+        <MemoryRouter>
+          <ChatInputActionsRow {...props} conversationMode={mode} />
+        </MemoryRouter>,
+      );
+      expect(screen.getByTestId("composer-plus")).toHaveTextContent("1");
+      rerender(
+        <MemoryRouter>
+          <ChatInputActionsRow {...props} conversationMode="craft" />
+        </MemoryRouter>,
+      );
+      expect(screen.getByTestId("composer-plus")).toHaveTextContent("3");
+      rerender(
+        <MemoryRouter>
+          <ChatInputActionsRow {...props} conversationMode={mode} />
+        </MemoryRouter>,
+      );
+      expect(screen.getByTestId("composer-plus")).toHaveTextContent("1");
+    },
+  );
+
   it("keeps approval, shortcuts, and attachments on the toolbar", () => {
     render(
       <MemoryRouter>
