@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 安装只有中文版本的内置子智能体时，选择英文不再写入空文件，改为回退到已有语言并记录日志
 
 ### 修复
 - 云端协同对端专家的模型、连接器、知识库和对话模式会显示在本端输入框上方

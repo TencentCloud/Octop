@@ -219,3 +219,37 @@ async def test_install_catalog_subagent_locale_override(env: Any) -> None:
     )
     assert r_file.status_code == 200, r_file.text
     assert "Software Architect" in r_file.json()["content"]
+
+
+async def test_install_catalog_subagent_falls_back_when_locale_missing(env: Any) -> None:
+    """An unavailable locale must install a bundled body, never an empty file."""
+    c, _srv, auth, aid = env
+
+    slug = "academic-study-planner"
+    r_detail = await c.get(f"/api/subagent-catalog/{slug}", headers=auth)
+    assert r_detail.status_code == 200, r_detail.text
+    # The catalog ships this agent in Chinese only.
+    assert r_detail.json()["available_locales"] == ["zh"]
+
+    r = await c.post(
+        f"/api/agents/{aid}/subagents/install",
+        headers=auth,
+        json={"slug": slug, "locale": "en"},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["requested_locale"] == "en"
+    assert body["locale"] == "zh"
+
+    r_file = await c.get(
+        f"/api/agents/{aid}/workspace/file",
+        params={"path": f"/agents/{slug}.md", "from_workspace": "true"},
+        headers=auth,
+    )
+    assert r_file.status_code == 200, r_file.text
+    content = r_file.json()["content"]
+    assert content.startswith("---"), f"expected non-empty body, got {content!r}"
+
+    r2 = await c.get(f"/api/agents/{aid}/subagents", headers=auth)
+    assert r2.status_code == 200, r2.text
+    assert slug in {row["slug"] for row in r2.json()}
