@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -24,9 +24,10 @@ def _payload(data: dict[str, Any], text: str) -> str:
 
 
 def _since_date(since: str) -> date:
+    """Cutoff for the `created:` qualifier, which GitHub evaluates in UTC."""
     key = (since or "daily").strip().lower()
     days = {"daily": 1, "weekly": 7, "monthly": 30}.get(key, 1)
-    return date.today() - timedelta(days=days)
+    return datetime.now(UTC).date() - timedelta(days=days)
 
 
 async def github_trending(language: str = "", since: str = "daily", limit: int = 10) -> str:
