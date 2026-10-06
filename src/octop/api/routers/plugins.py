@@ -139,7 +139,10 @@ async def install_plugin(
 ) -> dict[str, Any]:
     mgr = _plugin_manager(server)
     try:
-        loaded = mgr.install_url(body.url)
+        # ``install_url`` downloads the archive with a blocking ``urlretrieve``
+        # and extracts it; keep that off the event loop, like the sibling
+        # ``install_market_plugin`` handler already does.
+        loaded = await asyncio.to_thread(mgr.install_url, body.url)
     except OctopError:
         raise
     except Exception as exc:
@@ -179,7 +182,9 @@ async def upload_plugin(
             tmp.write(raw)
             tmp_path = Path(tmp.name)
         try:
-            loaded = mgr.install_archive(tmp_path, force=force)
+            # Zip extraction + ``copytree`` + plugin import block; run them on a
+            # worker thread so a large archive cannot stall the shared loop.
+            loaded = await asyncio.to_thread(mgr.install_archive, tmp_path, force=force)
         finally:
             tmp_path.unlink(missing_ok=True)
     except OctopError:
