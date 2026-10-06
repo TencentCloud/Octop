@@ -968,9 +968,10 @@ async def yuanbao_bot_creator_start(
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            bufsize=1,
-            universal_newlines=True,
+            # Same shape as the feishu creator above: stdout stays binary because
+            # parse_json_lines() decodes bytes, and stderr is merged into it so
+            # nothing can block on an undrained pipe.
+            stderr=subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1"},
             shell=False,
         )
