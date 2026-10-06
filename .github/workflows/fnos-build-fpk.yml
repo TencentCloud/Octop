@@ -233,7 +233,7 @@ jobs:
               "$SP/octop_harness/backends/storage_errors.py"
             bash "${{ github.workspace }}/scripts/fnos/slim-site-packages.sh" "$SP"
             PYTHONPATH="$SP" python3.12 \
-              -c "import octop, mcp, langchain_mcp_adapters; from octop.launch import run_foreground_blocking; from octop_harness.backends.storage_errors import classify_storage_error; print('octop', octop.__version__, '| mcp', mcp.__version__, '| lcma', langchain_mcp_adapters.__version__, '| storage_errors', classify_storage_error.__name__)"
+              -c "import octop, mcp, langchain_mcp_adapters; from octop.launch import run_foreground_blocking; from octop_harness.backends.storage_errors import classify_storage_error; print('octop', octop.__version__, '| mcp', mcp.__name__, '| lcma', langchain_mcp_adapters.__name__, '| storage_errors', classify_storage_error.__name__)"
           } 2>&1 | tee -a "$LOG"
 
       - name: Build native FPK
@@ -358,7 +358,7 @@ jobs:
               "$SP/octop_harness/backends/storage_errors.py"
             bash "${{ github.workspace }}/scripts/fnos/slim-site-packages.sh" "$SP"
             PYTHONPATH="$SP" python3.12 \
-              -c "import octop, mcp, langchain_mcp_adapters; from octop.launch import run_foreground_blocking; from octop_harness.backends.storage_errors import classify_storage_error; print('octop', octop.__version__, '| mcp', mcp.__version__, '| lcma', langchain_mcp_adapters.__version__, '| storage_errors', classify_storage_error.__name__)"
+              -c "import octop, mcp, langchain_mcp_adapters; from octop.launch import run_foreground_blocking; from octop_harness.backends.storage_errors import classify_storage_error; print('octop', octop.__version__, '| mcp', mcp.__name__, '| lcma', langchain_mcp_adapters.__name__, '| storage_errors', classify_storage_error.__name__)"
           } 2>&1 | tee -a "$LOG"
 
       - name: Upload aarch64 site-packages
