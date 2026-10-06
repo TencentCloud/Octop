@@ -118,6 +118,108 @@ def test_complete_user_login_sets_default_as_user(
     assert any(c[1:4] == ["config", "default-as", "user"] for c in calls)
 
 
+def test_complete_user_login_survives_success_receipt_with_error_exit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """lark-cli may print the token success receipt and still exit nonzero (#1615).
+
+    The CLI persists the token before failing, so completion must be judged by the
+    resulting user identity, not by the login command's exit code.
+    """
+
+    def _fake_run(
+        argv: list[str],
+        *,
+        env: dict[str, str] | None = None,
+        timeout_s: float = 30.0,
+        cwd: str | None = None,
+        stdin_text: str | None = None,
+    ) -> str:
+        del timeout_s, cwd, stdin_text, env
+        if argv[1:3] == ["config", "init"]:
+            return "{}"
+        if argv[1:3] == ["auth", "login"] and "--device-code" in argv:
+            # Real-world 1.0.97 behavior: success receipt on stderr, nonzero exit.
+            raise ValueError("[lark-cli] device-flow: token response received")
+        if argv[1:4] == ["config", "default-as", "user"]:
+            return "Default identity set to: user"
+        if argv[1:3] == ["auth", "status"]:
+            return json.dumps(
+                {
+                    "identity": "user",
+                    "defaultAs": "user",
+                    "identities": {
+                        "bot": {"available": True},
+                        "user": {"available": True, "tokenStatus": "valid"},
+                    },
+                }
+            )
+        if argv[1:3] == ["auth", "check"]:
+            return json.dumps({"ok": True})
+        if argv[1:3] == ["config", "default-as"]:
+            return "ok"
+        raise AssertionError(argv)
+
+    monkeypatch.setattr(feishu_user_auth, "run_cli", _fake_run)
+    monkeypatch.setattr(feishu_creds, "run_cli", _fake_run)
+    monkeypatch.setattr(feishu_creds, "resolve_binary", lambda _n: fake_bin_path("lark-cli"))
+
+    out = feishu_user_auth.complete_user_device_login(
+        config_dir=tmp_path,
+        app_id="cli_x",
+        app_secret="sec",
+        device_code="DEVCODE",
+    )
+    assert out["ok"] is True
+    assert out["user_available"] is True
+    assert out["default_as"] == "user"
+
+
+def test_complete_user_login_reraises_when_identity_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A nonzero login exit with no usable user identity must stay an error (#1615)."""
+
+    def _fake_run(
+        argv: list[str],
+        *,
+        env: dict[str, str] | None = None,
+        timeout_s: float = 30.0,
+        cwd: str | None = None,
+        stdin_text: str | None = None,
+    ) -> str:
+        del timeout_s, cwd, stdin_text, env
+        if argv[1:3] == ["config", "init"]:
+            return "{}"
+        if argv[1:3] == ["auth", "login"] and "--device-code" in argv:
+            raise ValueError("authorization failed: The device_code is invalid")
+        if argv[1:3] == ["auth", "status"]:
+            return json.dumps(
+                {
+                    "identity": "bot",
+                    "identities": {
+                        "bot": {"available": True},
+                        "user": {"available": False, "tokenStatus": "missing"},
+                    },
+                }
+            )
+        if argv[1:3] == ["config", "default-as"]:
+            return "ok"
+        raise AssertionError(argv)
+
+    monkeypatch.setattr(feishu_user_auth, "run_cli", _fake_run)
+    monkeypatch.setattr(feishu_creds, "run_cli", _fake_run)
+    monkeypatch.setattr(feishu_creds, "resolve_binary", lambda _n: fake_bin_path("lark-cli"))
+
+    with pytest.raises(ValueError, match="device_code is invalid"):
+        feishu_user_auth.complete_user_device_login(
+            config_dir=tmp_path,
+            app_id="cli_x",
+            app_secret="sec",
+            device_code="DEVCODE",
+        )
+
+
 def test_ensure_feishu_respects_default_as_user(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

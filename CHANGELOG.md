@@ -15,6 +15,7 @@
 - 登录页去掉用户名提示；空状态与远程桌面/浏览器检查按钮更清晰
 
 ### 修复
+- 飞书 CLI 用户授权（device flow）完成时，`lark-cli` 可能打印成功回执（如 `[lark-cli] device-flow: token response received`）却以非零码退出，完成请求被误判为「连接器凭证无效」而中断：`default_as=user` 不落库、`config.json` 保持 bot 身份，doc/base/calendar 工具随之无法暴露；现在改以授权后的实际用户身份（`auth status` 的 identities.user.available）判定完成，仅当用户身份确实不可用时才保留原错误，重试已完成授权的设备码也不再误报（Fixes #1615）
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
 
