@@ -81,7 +81,7 @@ from octop.infra.skills.workspace_catalog import (
     list_workspace_skill_summaries,
     repair_workspace_skill_manifests,
 )
-from octop.infra.utils.locale import Locale
+from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, locale_from_user_row
 from octop.infra.utils.ulid import new_short_id
 
 if TYPE_CHECKING:
@@ -1956,12 +1956,19 @@ class AgentManager:
 
         from octop.infra.agents.persona import PersonaLoader  # noqa: PLC0415
 
+        owner = self._repos.user_repo.get(row.user_id) if row.user_id is not None else None
+        locale: Locale = locale_from_user_row(owner) if owner is not None else DEFAULT_LOCALE
+        user_display = "用户" if locale == "zh" else "User"
+        if owner is not None:
+            user_display = owner.display_name or owner.username or user_display
+
         loader = PersonaLoader()
         persona_text = loader.render(
             mbti=norm,
             agent_name=row.name,
-            user_display="User",
+            user_display=user_display,
             custom=None,
+            locale=locale,
         )
 
         cfg = self.get_config(agent_id)

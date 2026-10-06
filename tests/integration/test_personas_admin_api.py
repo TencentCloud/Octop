@@ -56,6 +56,16 @@ async def test_get_persona_preview_substitutes_user(env: Any) -> None:
     assert "alice" in body["preview"].lower()
 
 
+async def test_get_persona_preview_follows_accept_language(env: Any) -> None:
+    c, _srv, _admin_auth, alice_auth = env
+    r = await c.get("/api/mbti/preview/INTJ", headers={**alice_auth, "Accept-Language": "zh-CN"})
+    assert r.status_code == 200
+    assert "建筑师" in r.json()["preview"]
+    r = await c.get("/api/mbti/preview/INTJ", headers={**alice_auth, "Accept-Language": "en"})
+    assert r.status_code == 200
+    assert "Architect" in r.json()["preview"]
+
+
 async def test_get_persona_default_returns_preview(env: Any) -> None:
     c, _srv, _admin_auth, alice_auth = env
     r = await c.get("/api/mbti/preview/_default", headers=alice_auth)
