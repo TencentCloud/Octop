@@ -149,6 +149,74 @@ def test_adapt_mkdir_path_is_noop() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "operation", ["aread", "awrite", "aedit", "agrep", "aglob", "aupload_files"]
+)
+async def test_async_operations_use_adaptation_and_bound_loop(operation, monkeypatch) -> None:
+    class _Remote(_StoredFiles):
+        async def als_info(self, path: str) -> list[dict[str, object]]:
+            loops.append(asyncio.get_running_loop())
+            return [{"path": path}]
+
+    loops: list[asyncio.AbstractEventLoop] = []
+    inner = _Remote()
+    inner.files["notes"] = ["hello hello", "second"]
+    wrapped = adapt_backend_protocol(inner)
+    marker = object()
+    seen = []
+
+    def watch_storage(fn):
+        async def call(*args, **kwargs):
+            assert asyncio.get_running_loop() is loops[0]
+            return await fn(*args, **kwargs)
+
+        return call
+
+    for name in ("_exists", "_get_file_data", "_put_file_data"):
+        monkeypatch.setattr(inner, name, watch_storage(getattr(inner, name)))
+
+    async def legacy_async(*args, **kwargs):
+        loop = asyncio.get_running_loop()
+        assert loop is loops[0], "remote pool called from a different event loop"
+        seen.append((args, kwargs))
+        return marker
+
+    monkeypatch.setattr(inner, operation, legacy_async, raising=False)
+    try:
+        await wrapped.als("root")  # bind the remote pool before the async operation
+        if operation == "aread":
+            result = await wrapped.aread("notes", offset=1, limit=1)
+            assert isinstance(result, ReadResult)
+            assert result.file_data == {"content": "second", "encoding": "utf-8"}
+            assert (await wrapped.aread("missing")).error is not None
+        elif operation == "awrite":
+            result = await wrapped.awrite("new", "你好")
+            assert result.error is None
+            assert result.path == "new"
+            assert inner.files["new"] == ["你好"]
+            assert (await wrapped.awrite("new", "overwrite")).error is not None
+            assert inner.files["new"] == ["你好"]
+        elif operation == "aedit":
+            result = await wrapped.aedit("notes", "hello", "bye", replace_all=True)
+            assert result.error is None
+            assert result.occurrences == 2
+            assert inner.files["notes"] == ["bye bye", "second"]
+            assert (await wrapped.aedit("missing", "a", "b")).error is not None
+        else:
+            args = [("asset", b"\x00\xff")] if operation == "aupload_files" else "pattern"
+            kwargs = {} if operation == "aupload_files" else {"path": "root"}
+            assert await getattr(wrapped, operation)(args, **kwargs) is marker
+            assert seen == [((args,), kwargs)]
+        assert len(loops) == 1
+    finally:
+        if loops:
+            loops[0].call_soon_threadsafe(loops[0].stop)
+            wrapped._thread.join(timeout=5)
+            assert not wrapped._thread.is_alive()
+            loops[0].close()
+
+
+@pytest.mark.asyncio
 async def test_adapt_sync_reads_share_one_loop() -> None:
     """Postgres/S3 sync read must not spawn a new loop per call (pool would hang)."""
     wrapped = adapt_backend_protocol(_LegacyRemote())

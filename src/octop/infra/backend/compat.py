@@ -317,6 +317,26 @@ class _LegacyProtocolBackend:
     def upload_files(self, *args: Any, **kwargs: Any) -> Any:
         return self._call_via_worker("upload_files", "aupload_files", *args, **kwargs)
 
+    async def aread(self, file_path: str, offset: int = 0, limit: int = 2000) -> Any:
+        return await asyncio.to_thread(self.read, file_path, offset, limit)
+
+    async def awrite(self, file_path: str, content: str) -> Any:
+        return await asyncio.to_thread(self.write, file_path, content)
+
+    async def aedit(
+        self, file_path: str, old_string: str, new_string: str, replace_all: bool = False
+    ) -> Any:
+        return await asyncio.to_thread(self.edit, file_path, old_string, new_string, replace_all)
+
+    async def agrep(self, *args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(self.grep, *args, **kwargs)
+
+    async def aglob(self, *args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(self.glob, *args, **kwargs)
+
+    async def aupload_files(self, *args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(self.upload_files, *args, **kwargs)
+
     def download_files(self, *args: Any, **kwargs: Any) -> Any:
         return self._call_via_worker("download_files", "adownload_files", *args, **kwargs)
 
