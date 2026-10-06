@@ -37,13 +37,13 @@ def test_the_snapshot_files_are_written_off_the_event_loop(tmp_path, monkeypatch
     monkeypatch.setattr(publish, "_workspace_file_paths", lambda ws: _paths(files))
 
     seen: dict[str, int] = {}
-    real = publish._write_file_blocking
+    real = Path.write_bytes
 
-    def _spy(target, content):
-        seen.setdefault("write", threading.get_ident())
-        return real(target, content)
+    def _spy(self, content):
+        seen.setdefault("threads", set()).add(threading.get_ident())
+        return real(self, content)
 
-    monkeypatch.setattr(publish, "_write_file_blocking", _spy)
+    monkeypatch.setattr(Path, "write_bytes", _spy)
 
     async def _go():
         seen["loop"] = threading.get_ident()
@@ -54,7 +54,10 @@ def test_the_snapshot_files_are_written_off_the_event_loop(tmp_path, monkeypatch
     exported = asyncio.run(_go())
 
     assert exported
-    assert seen["write"] != seen["loop"], "the snapshot was written on the event loop thread"
+    threads = seen["threads"]
+    assert threads, "no snapshot file was written"
+    # Every write has to happen off the loop, not just the first one.
+    assert seen["loop"] not in threads, "a snapshot file was written on the event loop thread"
 
 
 async def _paths(files):
