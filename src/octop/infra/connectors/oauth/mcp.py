@@ -76,6 +76,8 @@ async def fetch_authorization_metadata(issuer: str) -> dict[str, Any]:
     data = r.json()
     if not isinstance(data, dict):
         raise ValueError("invalid oauth metadata")
+    if data.get("issuer") != issuer.rstrip("/"):
+        raise ValueError("oauth metadata issuer does not match requested issuer")
     if not data.get("authorization_endpoint") or not data.get("token_endpoint"):
         raise ValueError("oauth metadata missing endpoints")
     return await _validate_metadata_endpoints(data, issuer=issuer)
