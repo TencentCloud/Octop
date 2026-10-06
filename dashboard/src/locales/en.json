@@ -1428,7 +1428,10 @@
     "subagentPickerEmpty": "No installed subagents",
     "subagentPickerManage": "Manage subagents",
     "modelPickerManage": "Manage models",
-    "sessionWorking": "Working",
+    "modelPickerSearch": "Search models",
+    "modelPickerEmpty": "No matching models",
+    "sessionWorking": "In progress",
+    "sessionWaiting": "Waiting for you",
     "composerContextLabel": "Message context",
     "contextWindow": {
       "tooltip": "Context {{used}} / {{max}} · {{percent}}% (last model request)",
@@ -1641,6 +1644,7 @@
     "trajectoryCollapsedToolCallMany": "{{count}} tool calls · {{names}}",
     "trajectoryCollapsedTurn": "{{steps}} steps · {{toolCalls}} tool calls",
     "trajectoryInspectorKind": "Kind",
+    "trajectoryInspectorModel": "Model",
     "trajectoryInspectorSource": "Source",
     "trajectoryInspectorStatus": "Status",
     "trajectoryInspectorError": "Error",
@@ -1720,7 +1724,8 @@
     "ask_user_question": "Ask the user",
     "generate_image": "Generate image",
     "generate_video": "Generate video",
-    "bilibili_search_anime": "Search Bilibili anime"
+    "bilibili_search_anime": "Search Bilibili anime",
+    "search_arxiv": "Search arXiv papers"
   },
   "toolSettings": {
     "title": "Tool settings",

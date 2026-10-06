@@ -84,7 +84,7 @@ export default function SkillPickerPopover({
     <SearchablePickerPanel
       items={enabledSkills}
       filterFn={filterFn}
-      searchPlaceholder={t("chat.skillPickerSearch")}
+      searchPlaceholder={t("chat.skillPickerSearch", "Search skills")}
       emptyMessage={t("chat.skillPickerEmpty")}
       width="wide"
       footerIcon={
