@@ -11,7 +11,7 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner
@@ -22,6 +22,7 @@ from octop.infra.agents.persona.mbti_profiles import (
     get_profile,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.locale import resolve_request_locale
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +205,7 @@ async def get_type(
 @router.get("/preview/{code}")
 async def get_persona_preview(
     code: str,
+    request: Request,
     user: Any = Depends(current_user),
 ) -> dict[str, Any]:
     """Render a persona markdown preview with the current user substituted."""
@@ -215,6 +217,7 @@ async def get_persona_preview(
         agent_name="Your Agent",
         user_display=user.label,
         custom="",
+        locale=resolve_request_locale(request),
     )
     return {"code": code, "preview": text}
 
