@@ -6,6 +6,9 @@ rem Usage:
 rem   start.bat
 rem   start.bat --home D:\octop-data
 rem   start.bat --home .\data --host 0.0.0.0 --port 8088
+rem
+rem When --host/--port are omitted, the bind address comes from config.json
+rem (default 127.0.0.1:8088), so hand-edited bind_host values are preserved.
 
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
@@ -13,6 +16,8 @@ if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 if not defined OCTOP_HOME set "OCTOP_HOME=%ROOT%\data"
 set "HOST=127.0.0.1"
 set "PORT=8088"
+set "HOST_ARGS="
+set "PORT_ARGS="
 set "EXTRA="
 
 :parse
@@ -33,6 +38,7 @@ if /I "%~1"=="--host" (
     exit /b 1
   )
   set "HOST=%~2"
+  set "HOST_ARGS=--host %~2"
   shift
   shift
   goto parse
@@ -43,6 +49,7 @@ if /I "%~1"=="--port" (
     exit /b 1
   )
   set "PORT=%~2"
+  set "PORT_ARGS=--port %~2"
   shift
   shift
   goto parse
@@ -60,8 +67,8 @@ echo Usage: start.bat [--home DIR] [--host HOST] [--port PORT] [octop run args..
 echo.
 echo Defaults:
 echo   OCTOP_HOME / --home   %%ROOT%%\data
-echo   --host                127.0.0.1
-echo   --port                8088
+echo   --host                127.0.0.1 (only forwarded when given; otherwise config.json decides)
+echo   --port                8088 (only forwarded when given; otherwise config.json decides)
 exit /b 0
 
 :run
@@ -84,5 +91,5 @@ set "PYTHONPATH="
 
 echo [octop] home=%OCTOP_HOME%
 echo [octop] http://%HOST%:%PORT%
-"%PY%" "%ROOT%\launch.py" run --host %HOST% --port %PORT% %EXTRA%
+"%PY%" "%ROOT%\launch.py" run %HOST_ARGS% %PORT_ARGS% %EXTRA%
 exit /b %ERRORLEVEL%

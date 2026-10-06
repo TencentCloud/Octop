@@ -17,10 +17,17 @@ func mustEnv(cmd *exec.Cmd, extra map[string]string) {
 	}
 }
 
+func octopRunArgs(port int) []string {
+	// The bind host is intentionally left to `octop run`, which resolves it from
+	// config.json (default 127.0.0.1). Passing --host here would override a user's
+	// bind_host and persist the override back to config.json.
+	return []string{"run", "--port", strconv.Itoa(port)}
+}
+
 func startOctop(root string, port int) (*exec.Cmd, error) {
 	py := pythonExe(root)
 	launch := filepath.Join(root, "launch.py")
-	cmd := exec.Command(py, launch, "run", "--host", "127.0.0.1", "--port", strconv.Itoa(port))
+	cmd := exec.Command(py, append([]string{launch}, octopRunArgs(port)...)...)
 	cmd.Dir = root
 	mustEnv(cmd, map[string]string{
 		"OCTOP_HOME":           octopHome(),
