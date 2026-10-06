@@ -29,3 +29,18 @@ def test_index_replaces_document_chunks_and_returns_cosine_top_k(tmp_path, monke
 
     index.delete_doc("doc-2")
     assert [hit.doc_id for hit in index.search([1.0, 0.0], k=5)] == ["doc-1"]
+
+
+def test_search_filters_documents_before_ranking(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    index = KnowledgeIndex("kb-1")
+    index.replace_doc_chunks("excluded", ["stale"] * 8, [[1.0, 0.0]] * 8)
+    index.replace_doc_chunks("ready", ["best", "second"], [[0.8, 0.2], [0.0, 1.0]])
+
+    assert [hit.text for hit in index.search([1.0, 0.0], 2, doc_ids={"ready"})] == [
+        "best",
+        "second",
+    ]
+    assert index.search([1.0, 0.0], 2, doc_ids=set()) == []
+    assert index.search([1.0, 0.0], 2, doc_ids={"missing"}) == []
+    assert index.search([1.0, 0.0], 1)[0].doc_id == "excluded"
