@@ -137,7 +137,9 @@ async def list_ollama_models(
             detail=f"Failed to list Ollama models: {api_exc}",
         ) from api_exc
 
-    if not _ollama_service_enabled(server):
+    # Reachable daemon that answered with no models is an empty list; only the
+    # "nothing is running" case is a 503.
+    if not service_on and not daemon_up:
         raise HTTPException(
             status_code=503,
             detail="Ollama service is disabled. Enable it from the provider card.",
