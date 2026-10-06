@@ -127,6 +127,20 @@ def _assert_zip_magic(archive: Path) -> None:
         )
 
 
+def _is_safe_plugin_id(plugin_id: str) -> bool:
+    """True when *plugin_id* may be used as a single directory name.
+
+    A plugin id is joined onto the plugins directory (``~/.octop/plugins/<id>``),
+    so a value carrying a path separator — or resolving to ``.`` / ``..`` — would
+    let a manifest reach outside that directory. ``market_plugin_dir`` applies the
+    same policy to catalog ids.
+    """
+    cleaned = plugin_id.strip()
+    if not cleaned or cleaned in {".", ".."}:
+        return False
+    return "/" not in cleaned and "\\" not in cleaned
+
+
 def _read_plugin_yaml(plugin_dir: Path) -> dict[str, Any]:
     raw = yaml.safe_load((plugin_dir / "plugin.yaml").read_text(encoding="utf-8"))
     return raw if isinstance(raw, dict) else {}
@@ -558,6 +572,8 @@ class PluginManager:
 
     def plugin_dir(self, plugin_id: str) -> Path | None:
         """Return the on-disk plugin directory when it exists."""
+        if not _is_safe_plugin_id(plugin_id):
+            return None
         dest = self._plugins_dir / plugin_id
         if dest.is_dir() and (dest / "plugin.yaml").is_file():
             return dest
@@ -616,6 +632,12 @@ class PluginManager:
                 ErrorCode.PLUGIN_INVALID_ARCHIVE,
                 f"invalid plugin manifest: {exc}",
             ) from exc
+        if not _is_safe_plugin_id(manifest.id):
+            raise OctopError(
+                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                f"invalid plugin id: {manifest.id!r}",
+                details={"id": manifest.id},
+            )
         dest = self._plugins_dir / manifest.id
         if dest.exists():
             if not force:
