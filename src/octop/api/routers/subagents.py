@@ -180,8 +180,8 @@ async def install_subagent(
 
     The ``locale`` body field (or, when omitted, the caller's stored
     preference / ``Accept-Language``) decides which language version is
-    installed. Missing translations fall back to English and are logged
-    so translation progress can be tracked.
+    installed. Missing translations fall back to English, then to any
+    bundled locale, and are logged so translation progress can be tracked.
     """
     slug = body.slug.strip()
     if not slug or "/" in slug or slug.startswith("."):
@@ -203,22 +203,21 @@ async def install_subagent(
         override=body.locale,
     )
     available = item.summary.available_locales
-    if requested not in available and "en" not in available:
-        # No English fallback available — honor the requested locale
-        # even if the slug has no translation yet, matching the catalog
-        # behavior of returning whatever file is on disk.
-        installed_locale = requested
-    elif requested in available:
-        installed_locale = requested
-    else:
-        installed_locale = "en"
+    # requested → English → any bundled locale. Falling through to the
+    # requested locale would resolve to an empty body and write a 0-byte
+    # ``agents/<slug>.md`` while still reporting success.
+    installed_locale = next(
+        (loc for loc in (requested, "en", *available) if loc in available),
+        requested,
+    )
     content = item.content_for(installed_locale)
     if installed_locale != requested:
         logger.info(
-            "subagent %r: no %s translation available (have %s); installing en",
+            "subagent %r: no %s translation available (have %s); installing %s",
             slug,
             requested,
             ",".join(available) or "none",
+            installed_locale,
         )
 
     workspace = await require_running_workspace(
