@@ -343,7 +343,7 @@ def hf_cache_snapshot_dir(cache_dir: Path, hf_repo: str, *, revision: str = COS_
     repo_dir = cache_dir / ("models--" + hf_repo.replace("/", "--"))
     refs = repo_dir / "refs"
     refs.mkdir(parents=True, exist_ok=True)
-    (refs / "main").write_text(revision + "\n", encoding="utf-8")
+    (refs / "main").write_text(revision, encoding="utf-8")
     dest = repo_dir / "snapshots" / revision
     dest.mkdir(parents=True, exist_ok=True)
     return dest
