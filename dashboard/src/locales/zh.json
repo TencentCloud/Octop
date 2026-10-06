@@ -167,6 +167,7 @@
     "PLUGIN_INSTALL_FAILED": "下载或安装插件失败：{{reason}}",
     "PLUGIN_ALREADY_EXISTS": "插件 {{id}} 已安装。",
     "KNOWLEDGE_FEATURE_DISABLED": "管理员尚未启用知识库功能。",
+    "KNOWLEDGE_PREREQUISITES_RESTART_REQUIRED": "知识库的向量模型或依赖已安装，但当前进程还加载不到，需要重启服务后生效。",
     "KNOWLEDGE_PREREQUISITES_FAILED": "知识库的向量模型或依赖尚未就绪。",
     "KNOWLEDGE_NOT_FOUND": "未找到知识库或文档。",
     "KNOWLEDGE_FORBIDDEN": "您没有此知识库的访问权限。",
