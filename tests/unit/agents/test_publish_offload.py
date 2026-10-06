@@ -32,7 +32,10 @@ class _Workspace:
 
 
 def test_the_snapshot_files_are_written_off_the_event_loop(tmp_path, monkeypatch):
-    files = {"persona.md": b"# persona", "manifest.json": json.dumps({"name": "demo"}).encode()}
+    files = {
+        "skills/demo/SKILL.md": b"# skill",
+        "manifest.json": json.dumps({"name": "demo"}).encode(),
+    }
     workspace = _Workspace(files)
     monkeypatch.setattr(publish, "_workspace_file_paths", lambda ws: _paths(files))
 
