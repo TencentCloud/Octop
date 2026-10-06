@@ -19,6 +19,7 @@ import contextlib
 import json
 import logging
 import os
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -110,7 +111,20 @@ def extract_token_expiry_ms(access_token: str, fallback_expires_in_s: int = 3600
 def save_codex_token(paths: PathLayout, cred: CodexOAuthCredentials) -> None:
     path = oauth_token_file(paths)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(cred, indent=2), encoding="utf-8")
+    # Publish through a temporary file: a token written in place is truncated
+    # first, so a failure here leaves JSON that load_codex_token cannot parse and
+    # the user is silently logged out with the file still on disk.
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(cred, indent=2))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(tmp_name, 0o600)
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
     with contextlib.suppress(OSError):
         os.chmod(path, 0o600)
 
