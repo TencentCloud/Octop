@@ -52,7 +52,9 @@ class AutoBackupSettingsBody(BaseModel):
     schedule: str = Field(default="cron:0 4 * * *", min_length=1)
     retention_count: int = Field(default=7, ge=1, le=365)
     include_config: bool = True
-    include_workspaces: bool = True
+    include_workspaces: bool = Field(
+        default=True, description="Include agent workspaces and published expert snapshots."
+    )
     include_skill_packages: bool = True
     include_plugins: bool = True
     include_knowledge: bool = True
@@ -61,7 +63,9 @@ class AutoBackupSettingsBody(BaseModel):
 
 class CreateBackupBody(BaseModel):
     include_config: bool = True
-    include_workspaces: bool = True
+    include_workspaces: bool = Field(
+        default=True, description="Include agent workspaces and published expert snapshots."
+    )
     include_skill_packages: bool = True
     include_plugins: bool = True
     include_knowledge: bool = True
@@ -377,7 +381,9 @@ async def remove_backup_file(
 async def export_backup(
     background_tasks: BackgroundTasks,
     include_config: bool = Query(default=True),
-    include_workspaces: bool = Query(default=True),
+    include_workspaces: bool = Query(
+        default=True, description="Include agent workspaces and published expert snapshots."
+    ),
     include_skill_packages: bool = Query(default=True),
     include_plugins: bool = Query(default=True),
     include_knowledge: bool = Query(default=True),

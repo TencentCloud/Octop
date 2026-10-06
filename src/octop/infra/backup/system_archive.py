@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 _CONFIG_DIR = "config"
 _DB_DIR = "db"
 _WORKSPACES_DIR = "workspaces"
+_PUBLISHED_EXPERTS_DIR = "published_experts"
 _SKILL_PACKAGES_DIR = "skill-packages"
 _PLUGINS_DIR = "plugins"
 _KNOWLEDGE_DIR = "knowledge"
@@ -181,6 +182,7 @@ def _build_manifest(
         includes_plugins=include_plugins,
         includes_knowledge=include_knowledge,
         includes_chats=include_chats,
+        includes_published_experts=include_workspaces,
     )
 
 
@@ -205,6 +207,9 @@ def create_system_backup(
     because thread/session history usually dominates archive size. Restore
     keeps live chats and omitted directories when the manifest says they were
     not packed.
+
+    ``include_workspaces`` also includes published expert snapshots, which are
+    stored separately from their source agents' workspaces.
 
     Returns the suggested basename (``octop-backup-….tar.gz``). Callers that
     need a different name should rename/move *dest* afterward.
@@ -295,6 +300,12 @@ def create_system_backup(
                 if include_config and env_path.is_file():
                     tf.add(root / _CONFIG_DIR / "env", arcname=f"{_CONFIG_DIR}/env")
                 if include_workspaces:
+                    _add_dir(
+                        tf,
+                        paths.published_experts_dir,
+                        _PUBLISHED_EXPERTS_DIR,
+                        skip_chats=False,
+                    )
                     for row in agent_rows:
                         agent_id = str(row.agent_id)
                         try:
@@ -606,6 +617,14 @@ def restore_system_backup(
             shutil.copy2(src_file, dest)
             restored_workspaces += 1
 
+        restored_published_expert_files = 0
+        if manifest.includes_published_experts:
+            restored_published_expert_files = _replace_tree_from_archive(
+                extracted,
+                paths.published_experts_dir,
+                _PUBLISHED_EXPERTS_DIR,
+            )
+
         restored_skill_package_files = 0
         if manifest.includes_skill_packages:
             restored_skill_package_files = _replace_tree_from_archive(
@@ -640,6 +659,7 @@ def restore_system_backup(
         "octop_version": manifest.octop_version,
         "agents": len(manifest.agents),
         "workspace_files": restored_workspaces,
+        "published_expert_files": restored_published_expert_files,
         "skill_package_files": restored_skill_package_files,
         "plugin_files": restored_plugin_files,
         "knowledge_files": restored_knowledge_files,
