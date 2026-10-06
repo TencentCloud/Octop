@@ -20,12 +20,17 @@ def read_available_bytes(stream: IO[bytes]) -> bytes:
     return read_available_posix(stream)
 
 
-def parse_json_lines(raw: bytes) -> list[dict[str, Any]]:
-    """Decode newline-delimited JSON objects from subprocess stdout."""
+def parse_json_lines(raw: bytes | str) -> list[dict[str, Any]]:
+    """Decode newline-delimited JSON objects from subprocess stdout.
+
+    ``read_available_bytes`` hands back ``str`` when the pipe was opened in text
+    mode (``universal_newlines=True``) on Windows, so text payloads are accepted
+    as-is instead of being decoded a second time.
+    """
     lines: list[dict[str, Any]] = []
     if not raw:
         return lines
-    text = raw.decode("utf-8", errors="replace")
+    text = raw if isinstance(raw, str) else raw.decode("utf-8", errors="replace")
     for line in text.splitlines():
         line = line.strip()
         if not line:

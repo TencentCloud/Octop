@@ -968,7 +968,10 @@ async def yuanbao_bot_creator_start(
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            # Merge stderr into stdout: the poll endpoint drains stdout only, so a
+            # piped-but-unread stderr blocks the child once it fills the OS pipe
+            # buffer.  The feishu creator above uses the same wiring.
+            stderr=subprocess.STDOUT,
             bufsize=1,
             universal_newlines=True,
             env={**os.environ, "PYTHONUNBUFFERED": "1"},

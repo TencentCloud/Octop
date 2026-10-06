@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -459,3 +460,47 @@ def test_channel_endpoints_reject_shell_metacharacters(mock_server_and_user, end
     client = TestClient(app)
     resp = client.post(endpoint, json=payload)
     assert resp.status_code == 400
+
+
+def test_yuanbao_bot_creator_survives_chatty_stderr(mock_server_and_user, tmp_path):
+    """The creator must not deadlock or crash when the child writes to stderr.
+
+    The poll endpoint only ever drains the child's stdout, so a piped-but-unread
+    stderr fills up and blocks the child inside ``write`` once it exceeds the OS
+    pipe buffer.  The scan-to-create flow then hangs with ``status="running"``
+    forever because nothing times the creator out.  On Windows the text-mode pipe
+    additionally makes ``parse_json_lines`` receive ``str`` and raise
+    ``AttributeError`` as soon as any output shows up.
+    """
+    server, user = mock_server_and_user
+
+    script = tmp_path / "chatty_yuanbao_creator.py"
+    script.write_text(
+        "import sys\n"
+        "for _ in range(64):\n"
+        "    sys.stderr.write('E' * 4096 + '\\n')\n"
+        "    sys.stderr.flush()\n"
+        'print(\'{"action": "finish", "level": "success", "step": "finish",'
+        ' "message": "ok", "data": {}}\', flush=True)\n',
+        encoding="utf-8",
+    )
+
+    app = _make_app(server, user)
+    client = TestClient(app)
+    with patch("octop.api.routers.channels._bot_creator_script", return_value=str(script)):
+        try:
+            start = client.post("/agents/agent1/channels/yuanbao/bot-creator/start", json={})
+            assert start.status_code == 200
+
+            status = "running"
+            for _ in range(400):
+                poll = client.post("/agents/agent1/channels/yuanbao/bot-creator/poll")
+                assert poll.status_code == 200
+                status = poll.json()["status"]
+                if status != "running":
+                    break
+                time.sleep(0.05)
+        finally:
+            client.post("/agents/agent1/channels/yuanbao/bot-creator/stop")
+
+    assert status == "finished"
