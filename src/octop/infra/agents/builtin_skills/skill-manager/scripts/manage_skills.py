@@ -522,11 +522,22 @@ def _remove(workspace: Path, name: str, *, confirmed: bool) -> dict[str, str]:
         destination = trash / f"{slug}-{suffix}"
         suffix += 1
     os.replace(source, destination)
-    (destination / ".skill-manager-trash.json").write_text(
-        json.dumps({"slug": slug}),
-        encoding="utf-8",
-    )
+    _write_json_atomically(destination / ".skill-manager-trash.json", {"slug": slug})
     return {"removed": slug, "trash_name": destination.name, "trash": str(destination)}
+
+
+def _write_json_atomically(path: Path, payload: dict[str, object]) -> None:
+    """Publish JSON through a temporary file so a partial write cannot survive."""
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
 
 
 def _restore(workspace: Path, trash_name: str) -> dict[str, str]:
