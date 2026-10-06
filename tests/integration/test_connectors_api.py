@@ -16,6 +16,7 @@ from octop.infra.connectors.oauth.registry import save_oauth_ctx
 from octop.infra.utils.ulid import new_ulid
 from tests.support.app import octop_client, write_octop_config
 from tests.support.auth import auth_header, bootstrap_admin, create_user, resolve_user_id
+from tests.support.certificates import make_test_certificate
 from tests.support.http import ws_chat_turn
 
 
@@ -839,3 +840,36 @@ async def test_oauth_callback_escapes_error_html(env, exchange_error):
     assert response.status_code == 400
     assert payload not in response.text
     assert escape(payload) in response.text
+
+
+async def test_custom_mcp_certificate_api_roundtrip_and_probe(env, tmp_path, monkeypatch):
+    client, _, auth, _ = env
+    certificate = make_test_certificate(tmp_path).ca_pem.strip()
+    spec = {
+        "transport": "streamable_http",
+        "url": "https://127.0.0.1/mcp",
+        "ca_cert": certificate,
+        "ca_cert_name": "private-ca.pem",
+    }
+    saved = await client.put(
+        "/api/connectors/custom-mcp", headers=auth, json={"servers": {"private": spec}}
+    )
+    assert saved.status_code == 200
+    loaded = await client.get("/api/connectors/custom-mcp", headers=auth)
+    assert loaded.json()["servers"]["private"]["ca_cert"] == certificate
+    assert loaded.json()["servers"]["private"]["ca_cert_name"] == "private-ca.pem"
+
+    probe = AsyncMock(return_value={"ok": True, "tools": [], "tool_count": 0})
+    monkeypatch.setattr("octop.api.routers.connectors.probe_custom_mcp_server", probe)
+    for body in ({"name": "private"}, {"server": spec}):
+        response = await client.post("/api/connectors/custom-mcp/test", headers=auth, json=body)
+        assert response.json()["ok"] is True
+        assert probe.await_args.args[0]["ca_cert"] == certificate
+
+    invalid = await client.put(
+        "/api/connectors/custom-mcp",
+        headers=auth,
+        json={"servers": {"private": {**spec, "ca_cert": "invalid"}}},
+    )
+    assert invalid.status_code == 400
+    assert invalid.json()["error"]["code"] == "CONNECTOR_MCP_CERT_INVALID"

@@ -1,5 +1,14 @@
 import type { CSSProperties } from "react";
-import { Alert, App, Button, Input, Select, Switch } from "antd";
+import {
+  Alert,
+  App,
+  Button,
+  Checkbox,
+  Input,
+  Select,
+  Switch,
+  Upload,
+} from "antd";
 import {
   Activity,
   Cable,
@@ -7,6 +16,7 @@ import {
   ChevronDown,
   ChevronUp,
   Trash2,
+  Upload as UploadIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -50,8 +60,9 @@ export function CustomMcpServerCard({
   onSharedChange,
 }: CustomMcpServerCardProps) {
   const { t } = useTranslation();
-  const { modal } = App.useApp();
+  const { modal, message } = App.useApp();
   const isHttp = card.transport === "streamable_http";
+  const isHttps = card.url.trim().toLowerCase().startsWith("https://");
   const label = friendlyServerLabel(card);
   const accent = accentForServerName(card.name.trim() || label);
   const summary = isHttp
@@ -248,6 +259,109 @@ export function CustomMcpServerCard({
                   onChange={(e) => onUpdate(card.key, { url: e.target.value })}
                   placeholder="https://mcp.example.com/mcp"
                 />
+              </div>
+              <div className={styles.customMcpField}>
+                <Checkbox
+                  checked={card.useCustomCertificate}
+                  disabled={!isHttps && !card.useCustomCertificate}
+                  onChange={(e) =>
+                    onUpdate(card.key, {
+                      useCustomCertificate: e.target.checked,
+                      ...(!e.target.checked
+                        ? { caCert: "", caCertName: "" }
+                        : {}),
+                    })
+                  }
+                >
+                  {t(
+                    "connectors.customMcp.customCertificate",
+                    "使用自签名／私有 CA 证书",
+                  )}
+                </Checkbox>
+                {card.useCustomCertificate ? (
+                  <>
+                    <div className={styles.customMcpFieldHint}>
+                      {t(
+                        "connectors.customMcp.certificateHint",
+                        "上传该服务的 CA 或自签名证书（PEM 格式，最多 64 KB）。仅用于此连接器，仍校验证书有效期和服务地址。",
+                      )}
+                    </div>
+                    <div className={styles.customMcpDefaultOpenRow}>
+                      <Upload
+                        accept=".crt,.pem,.cer"
+                        showUploadList={false}
+                        beforeUpload={async (file) => {
+                          if (file.size > 64 * 1024) {
+                            void message.error(
+                              t(
+                                "connectors.customMcp.certificateTooLarge",
+                                "证书文件不能超过 64 KB",
+                              ),
+                            );
+                            return Upload.LIST_IGNORE;
+                          }
+                          try {
+                            const pem = (await file.text()).trim();
+                            if (
+                              !pem.startsWith("-----BEGIN CERTIFICATE-----") ||
+                              pem.includes("PRIVATE KEY")
+                            ) {
+                              void message.error(
+                                t(
+                                  "connectors.customMcp.certificateInvalid",
+                                  "请上传 PEM 格式的证书文件，不要包含私钥",
+                                ),
+                              );
+                              return Upload.LIST_IGNORE;
+                            }
+                            onUpdate(card.key, {
+                              caCert: pem,
+                              caCertName: file.name,
+                            });
+                          } catch {
+                            void message.error(
+                              t(
+                                "connectors.customMcp.certificateReadFailed",
+                                "无法读取证书文件，请重新上传",
+                              ),
+                            );
+                          }
+                          return Upload.LIST_IGNORE;
+                        }}
+                      >
+                        <Button icon={<UploadIcon size={16} />}>
+                          {t(
+                            "connectors.customMcp.uploadCertificate",
+                            "上传证书",
+                          )}
+                        </Button>
+                      </Upload>
+                      {card.caCert ? (
+                        <>
+                          <span>
+                            {card.caCertName ||
+                              t(
+                                "connectors.customMcp.certificateConfigured",
+                                "已配置证书",
+                              )}
+                          </span>
+                          <Button
+                            type="text"
+                            size="small"
+                            onClick={() =>
+                              onUpdate(card.key, { caCert: "", caCertName: "" })
+                            }
+                          >
+                            {t(
+                              "connectors.customMcp.removeCertificate",
+                              "移除证书",
+                            )}
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
               </div>
               <div className={styles.customMcpField}>
                 <label>

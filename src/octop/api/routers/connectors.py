@@ -172,7 +172,7 @@ class CustomMcpServerPatchBody(BaseModel):
 
 
 class CustomMcpTestBody(BaseModel):
-    """Probe one server by name (saved) or by inline spec."""
+    """Probe a saved server or draft; name retains OAuth only for an unchanged URL."""
 
     name: str | None = None
     server: dict[str, Any] | None = None
@@ -649,7 +649,7 @@ async def test_custom_mcp(
     svc = _connector_service(server)
     spec: dict[str, Any] | None = None
     if body.server is not None:
-        spec = dict(body.server)
+        spec = svc.custom_probe_spec(user.id, body.name, body.server)
     elif body.name:
         saved = svc.get_custom_servers(user.id)
         raw = saved.get(body.name)
