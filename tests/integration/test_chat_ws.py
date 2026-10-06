@@ -509,3 +509,118 @@ async def test_fork_thread_from_assistant_message(env: Any) -> None:
         json={"message_id": "a1", "assistant_turns_from_end": 2},
     )
     assert denied.status_code in {403, 404}
+
+
+@pytest.mark.parametrize("user_turns_from_end, expected", [(2, []), (1, ["h1", "a1"])])
+@pytest.mark.parametrize("versioned", [False, True])
+async def test_fork_before_edited_user_preserves_checkpoint_and_history(
+    env: Any, tmp_path: Path, user_turns_from_end: int, expected: list[str], versioned: bool
+) -> None:
+    from langchain_core.messages import AIMessage, HumanMessage, message_to_dict
+
+    c, srv, _fake, auth, bob_auth, aid = env
+    source_id = (await c.post(f"/api/agents/{aid}/threads", headers=auth)).json()["thread_id"]
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    messages = [
+        HumanMessage(content="keep", id="h1"),
+        AIMessage(content="keep answer", id="a1"),
+        HumanMessage(content="old question", id="h2"),
+        AIMessage(content="old answer", id="a2"),
+    ]
+    agent.seed_thread_messages(source_id, messages)
+    archive = srv.app_runtime.history_archive
+    if versioned:
+        from octop.infra.history.service import HistoryArchive
+        from octop.infra.history.store import HistoryStore
+
+        archive = HistoryArchive(
+            HistoryStore(tmp_path / "history.sqlite", identity="test"),
+            srv.services.thread_message_repo,
+            srv.services.trajectory_event_repo,
+            enabled=True,
+        )
+        srv.app_runtime.history_archive = archive
+        turn = archive.begin(aid, source_id)
+        assert turn is not None
+        archive.save_messages(turn, [message_to_dict(m) for m in messages])
+        archive.finish(turn["id"], "complete")
+    srv.app_runtime.gateway.thread_registry.update_composer(
+        source_id,
+        model_ref="openai/test",
+        reasoning_mode="enabled",
+        reasoning_effort="high",
+        conversation_mode="ask",
+        hitl_policy='{"mode":"allow_all"}',
+    )
+    response = await c.post(
+        f"/api/agents/{aid}/threads/{source_id}/fork",
+        headers=auth,
+        json={"message_id": "temporary-ui-id", "user_turns_from_end": user_turns_from_end},
+    )
+    assert response.status_code == 201, response.text
+    dest = response.json()["thread_id"]
+    state = await agent.graph.aget_state({"configurable": {"thread_id": dest}})
+    assert [m.id for m in state.values.get("messages", [])] == expected
+    source_state = await agent.graph.aget_state({"configurable": {"thread_id": source_id}})
+    assert [m.id for m in source_state.values["messages"]] == ["h1", "a1", "h2", "a2"]
+    history = (await c.get(f"/api/agents/{aid}/threads/{dest}/history", headers=auth)).json()
+    assert [m["id"] for m in history["messages"]] == expected
+    row = srv.app_runtime.gateway.thread_registry.get_thread(dest)
+    assert row.model_ref == "openai/test"
+    assert row.reasoning_mode == "enabled"
+    assert row.reasoning_effort == "high"
+    assert row.conversation_mode == "ask"
+    assert row.hitl_policy == '{"mode":"allow_all"}'
+    if versioned:
+
+        async def no_legacy(_anchor: dict[str, Any]) -> list[Any]:
+            raise AssertionError("unexpected legacy read")
+
+        wires = await archive.all_messages(dest, no_legacy)
+        assert [wire["data"]["id"] for wire in wires] == expected
+    denied = await c.post(
+        f"/api/agents/{aid}/threads/{source_id}/fork",
+        headers=bob_auth,
+        json={"user_turns_from_end": user_turns_from_end},
+    )
+    assert denied.status_code in {403, 404}
+
+
+@pytest.mark.parametrize("reason", ["streaming", "hitl"])
+async def test_edit_fork_rejects_active_or_paused_turn(
+    env: Any, monkeypatch: Any, reason: str
+) -> None:
+    c, srv, _fake, auth, _bob_auth, aid = env
+    source = (await c.post(f"/api/agents/{aid}/threads", headers=auth)).json()["thread_id"]
+    registry = srv.app_runtime.gateway.thread_registry
+    row = registry.get_thread(source)
+    before = registry.list_threads(agent_id=aid, user_id=row.user_id)
+    if reason == "streaming":
+        monkeypatch.setattr(srv.app_runtime.gateway.ws_hub, "is_turn_active", lambda _tid: True)
+    else:
+        srv.app_runtime.gateway.processor.hitl_coordinator.store.register(
+            thread_id=source,
+            agent_id=aid,
+            user_id=row.user_id,
+            session_key=row.session_key,
+            channel_type="dashboard",
+            action_requests=[{"name": "execute", "args": {}}],
+            review_configs=None,
+        )
+    response = await c.post(
+        f"/api/agents/{aid}/threads/{source}/fork", headers=auth, json={"user_turns_from_end": 1}
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "AGENT_BUSY"
+    assert registry.list_threads(agent_id=aid, user_id=row.user_id) == before
+
+
+async def test_edit_fork_rejects_ambiguous_locators(env: Any) -> None:
+    c, _srv, _fake, auth, _bob_auth, aid = env
+    source = (await c.post(f"/api/agents/{aid}/threads", headers=auth)).json()["thread_id"]
+    response = await c.post(
+        f"/api/agents/{aid}/threads/{source}/fork",
+        headers=auth,
+        json={"user_turns_from_end": 1, "assistant_turns_from_end": 1},
+    )
+    assert response.status_code == 422

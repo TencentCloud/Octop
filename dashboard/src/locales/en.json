@@ -1306,6 +1306,7 @@
     "forkSuccess": "Forked into a new chat",
     "forkSuccessEmpty": "Forked into a new empty chat",
     "forkFailed": "Failed to fork this conversation",
+    "editFailed": "Could not edit this message",
     "forkDisabledWhileBusy": "Wait for the current reply or approval to finish",
     "forkNoAssistant": "No AI reply to fork from yet",
     "retry": "Retry",

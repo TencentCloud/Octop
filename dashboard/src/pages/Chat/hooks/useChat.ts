@@ -30,7 +30,10 @@ import {
   parseToolExecutionFeedback,
 } from "../../../utils/toolMediaBlocks";
 import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessage";
-import { promoteAskUserToolMessage } from "../utils/pendingHitl";
+import {
+  hasPendingHitl,
+  promoteAskUserToolMessage,
+} from "../utils/pendingHitl";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import type {
   ChatAttachment,
@@ -1123,38 +1126,77 @@ export function useChat(
     else await loadHistory(stableSessionId);
   }, [loadMoreHistory, refreshHistory, loadHistory, stableSessionId]);
 
-  /**
-   * Edit a historical user message: truncate everything from that message
-   * onwards, replace its content, then re-send to the backend.
-   * Mirrors the behaviour of Claude / ChatGPT "edit message".
-   */
+  const editInFlight = useRef(false);
+  /** Continue in a new thread seeded before the edited user turn. */
   const editAndResend = useCallback(
-    (
+    async (
       messageId: string,
       newText: string,
       _sessionKey: string,
       agentId: string,
     ) => {
-      const ok = chatStore.truncateAndReplaceUserMessage(
-        stableSessionId,
-        messageId,
-        newText,
-      );
-      if (!ok) return;
-
-      // Re-send without appending a new user message — it is already in the store
-      chatStore.sendTurn(
-        stableSessionId,
-        newText,
-        agentId,
-        "",
-        undefined,
-        undefined,
-        undefined,
-        stableSessionId !== "__empty__" ? stableSessionId : undefined,
-      );
+      const snap = chatStore.getSnapshot(stableSessionId);
+      const idx = snap.messages.findIndex((m) => m.id === messageId);
+      if (
+        editInFlight.current ||
+        !agentId ||
+        stableSessionId === "__empty__" ||
+        idx < 0 ||
+        snap.messages[idx].role !== "user" ||
+        snap.isStreaming ||
+        snap.liveSpeakers.length > 0 ||
+        hasPendingHitl(snap.messages)
+      )
+        return;
+      const original = snap.messages[idx];
+      editInFlight.current = true;
+      try {
+        const { octopThreadsApi } = await import(
+          "../../../api/modules/octopThreads"
+        );
+        const created = await octopThreadsApi.fork(agentId, stableSessionId, {
+          message_id: messageId,
+          content: original.content,
+          user_turns_from_end: snap.messages
+            .slice(idx)
+            .filter((m) => m.role === "user").length,
+        });
+        let loaded = await loadThreadHistory(agentId, created.thread_id);
+        while (loaded.projectionLoading) {
+          await new Promise((resolve) =>
+            window.setTimeout(
+              resolve,
+              Math.max(500, Math.min(loaded.retryAfterMs, 5000)),
+            ),
+          );
+          loaded = await loadThreadHistory(agentId, created.thread_id);
+        }
+        chatStore.setHistoryPage(created.thread_id, loaded.messages, {
+          hasMore: loaded.hasMore,
+          nextOffset: loaded.nextOffset,
+          nextCursor: loaded.nextCursor,
+        });
+        const context = original.composerContext;
+        sendMessage(
+          newText,
+          "",
+          agentId,
+          original.attachments,
+          created.thread_id,
+          context?.model,
+          context?.connectors,
+          context?.knowledgeBaseIds,
+          context?.targetAgents,
+          context,
+          context?.reasoningMode,
+          context?.reasoningEffort,
+        );
+        return created;
+      } finally {
+        editInFlight.current = false;
+      }
     },
-    [stableSessionId],
+    [stableSessionId, sendMessage],
   );
 
   const clearMessages = useCallback(() => {

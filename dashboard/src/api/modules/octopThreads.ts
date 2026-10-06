@@ -257,6 +257,7 @@ export const octopThreadsApi = {
       message_id?: string;
       content?: string;
       assistant_turns_from_end?: number;
+      user_turns_from_end?: number;
     },
   ) =>
     request<{
