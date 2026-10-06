@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import threading
 from types import SimpleNamespace
 
