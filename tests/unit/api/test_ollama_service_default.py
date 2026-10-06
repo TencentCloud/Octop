@@ -88,6 +88,22 @@ async def test_list_uses_running_daemon_when_service_disabled(
 
 
 @pytest.mark.asyncio
+async def test_list_returns_empty_when_reachable_daemon_has_no_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reachable daemon with nothing pulled yet is an empty list, not a 503."""
+    from octop.infra.utils import ollama_manager as om
+
+    monkeypatch.setattr(om, "is_ollama_reachable", lambda: True)
+    listed = MagicMock(return_value=[])
+    monkeypatch.setattr(om.OllamaModelManager, "list_models", listed)
+    server = _server({ollama_models._SETTINGS_KEY_OLLAMA_SERVICE: "false"})
+    result = await ollama_models.list_ollama_models(server=server, _=None)
+    assert result == []
+    listed.assert_called_once_with(start_if_needed=False)
+
+
+@pytest.mark.asyncio
 async def test_list_does_not_start_daemon_when_service_off_and_unreachable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
