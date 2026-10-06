@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
@@ -57,6 +59,54 @@ async def test_adapt_legacy_ls_and_read() -> None:
 def test_adapt_skips_backends_that_implement_ls() -> None:
     modern = SimpleNamespace(ls=lambda path: path)
     assert adapt_backend_protocol(modern) is modern
+
+
+def test_concurrent_first_io_starts_one_worker_loop(monkeypatch) -> None:
+    from octop.infra.backend import compat
+
+    class _LoopBound(_LegacyRemote):
+        async def als_info(self, path: str) -> list[dict[str, object]]:
+            return [{"path": path, "loop": asyncio.get_running_loop()}]
+
+    wrapped = adapt_backend_protocol(_LoopBound())
+    original_new_loop = asyncio.new_event_loop
+    first_created = threading.Event()
+    second_created = threading.Event()
+    release = threading.Event()
+    workers: list[tuple[asyncio.AbstractEventLoop, threading.Thread]] = []
+    guard = threading.Lock()
+
+    def delayed_new_loop() -> asyncio.AbstractEventLoop:
+        loop = original_new_loop()
+        with guard:
+            workers.append((loop, threading.current_thread()))
+            (first_created if len(workers) == 1 else second_created).set()
+        assert release.wait(timeout=10)
+        return loop
+
+    monkeypatch.setattr(compat.asyncio, "new_event_loop", delayed_new_loop)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as callers:
+            first = callers.submit(wrapped.ls, "first")
+            assert first_created.wait(timeout=5)
+            second = callers.submit(wrapped.ls, "second")
+            # Keep initialization incomplete while the second caller arrives.
+            # A correct adapter serializes startup; it cannot create another loop.
+            second_created.wait(timeout=1)
+            release.set()
+            results = [first.result(timeout=5), second.result(timeout=5)]
+        assert len(workers) == 1
+        loop = workers[0][0]
+        assert [result.entries[0]["loop"] for result in results] == [loop, loop]
+        assert wrapped.ls("warm").entries[0]["loop"] is loop
+        assert len(workers) == 1
+    finally:
+        release.set()
+        for loop, worker in workers:
+            loop.call_soon_threadsafe(loop.stop)
+            worker.join(timeout=5)
+            assert not worker.is_alive()
+            loop.close()
 
 
 def test_adapt_skips_modern_ls_even_if_als_info_exists() -> None:

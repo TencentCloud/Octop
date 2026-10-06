@@ -140,29 +140,31 @@ class _LegacyProtocolBackend:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._ready = threading.Event()
+        self._loop_lock = threading.Lock()
 
     def _worker_loop(self) -> asyncio.AbstractEventLoop:
-        if self._loop is not None:
+        with self._loop_lock:
+            if self._loop is not None:
+                return self._loop
+
+            def _runner() -> None:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                self._loop = loop
+                self._ready.set()
+                loop.run_forever()
+
+            self._thread = threading.Thread(
+                target=_runner,
+                name="octop-backend-loop",
+                daemon=True,
+            )
+            self._thread.start()
+            if not self._ready.wait(timeout=5):
+                raise RuntimeError("backend worker loop failed to start")
+            if self._loop is None:
+                raise RuntimeError("backend worker loop failed to start")
             return self._loop
-
-        def _runner() -> None:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            self._loop = loop
-            self._ready.set()
-            loop.run_forever()
-
-        self._thread = threading.Thread(
-            target=_runner,
-            name="octop-backend-loop",
-            daemon=True,
-        )
-        self._thread.start()
-        if not self._ready.wait(timeout=5):
-            raise RuntimeError("backend worker loop failed to start")
-        if self._loop is None:
-            raise RuntimeError("backend worker loop failed to start")
-        return self._loop
 
     def _run(self, value: Any) -> Any:
         if not inspect.isawaitable(value):
