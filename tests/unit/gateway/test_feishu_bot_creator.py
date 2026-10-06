@@ -128,3 +128,64 @@ def test_parse_version() -> None:
     assert creator._parse_version("1.5.5") >= creator.MIN_LARK_OAPI
     assert creator._parse_version("1.5.4") < creator.MIN_LARK_OAPI
     assert creator._parse_version("1.7.0") >= creator.MIN_LARK_OAPI
+
+
+class _FakeResponse:
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self) -> _FakeResponse:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+
+def test_send_greeting_bounds_both_http_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both greeting HTTP calls must pass an explicit timeout.
+
+    ``urlopen`` without ``timeout`` falls back to ``socket._GLOBAL_DEFAULT_TIMEOUT``
+    (block forever) and the repo never calls ``socket.setdefaulttimeout``, so an
+    endpoint that accepts the connection but never answers hangs the whole
+    scan-to-create flow instead of skipping the best-effort greeting.
+    """
+    calls: list[dict[str, Any]] = []
+
+    def fake_urlopen(req: Any, *_args: Any, **kwargs: Any) -> _FakeResponse:
+        calls.append({"url": req.full_url, **kwargs})
+        if len(calls) == 1:
+            return _FakeResponse(json.dumps({"tenant_access_token": "t-1"}).encode())
+        return _FakeResponse(b"{}")
+
+    monkeypatch.setattr(creator.urllib.request, "urlopen", fake_urlopen)
+
+    creator._send_greeting(
+        "cli_1", "sec", "ou_1", open_base="https://open.feishu.cn", greeting="hi"
+    )
+
+    assert [call["url"] for call in calls] == [
+        "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+        "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=open_id",
+    ]
+    unbounded = [call["url"] for call in calls if not call.get("timeout")]
+    assert unbounded == []
+
+
+def test_send_greeting_skips_send_when_token_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A token response without ``tenant_access_token`` must not send a message."""
+    calls: list[str] = []
+
+    def fake_urlopen(req: Any, *_args: Any, **_kwargs: Any) -> _FakeResponse:
+        calls.append(req.full_url)
+        return _FakeResponse(b"{}")
+
+    monkeypatch.setattr(creator.urllib.request, "urlopen", fake_urlopen)
+
+    creator._send_greeting(
+        "cli_1", "sec", "ou_1", open_base="https://open.feishu.cn", greeting="hi"
+    )
+
+    assert len(calls) == 1
