@@ -17,6 +17,7 @@
 
 ### 修复
 - Ask / Plan 模式下输入栏「+」菜单的选择面板过矮（模型、知识库一次只看得见一条），改为按视口可用高度封顶（目标 400px，且不低于左侧菜单）；右侧比左侧矮时上对齐、更高时下对齐向上长；连接器/技能/专家/子智能体数量角标与知识库一样跟在文字后；模型列表现在可搜索
+- 工作区写接口未校验宿主路径边界：`PUT /file`、`POST /upload`、`mkdir`、`DELETE`、`move`、`PUT /doc` 接受 `file://`、前导 `/`、`~` 与 Windows 盘符/UNC 写法，可读写删 agent workspace 之外的任意宿主文件（`DELETE` 会真的删掉目标）。现在统一解析后要求落在该 agent 的 workspace 内，越界返回 403；workspace 相对路径与指向 workspace 内部的 `file://` 不受影响。沙箱后端（Docker / OpenSandbox）的 agent 内容在容器内，宿主边界检查对其不适用，`file:///workspace/…` 这类容器内路径照常可写；但受保护路径的判定会先把容器拼法折回工作区（`workspace_path` 显式设为 `/workspace` 时，`file:///workspace/_builtin_skills/x` 与 `_builtin_skills/x` 是同一个文件，此前前者会被当成名为 `workspace` 的普通子目录放行），且折叠后不得把容器根变成空 key —— 否则 `DELETE /file?path=/` 会 `rm -rf` 整个容器工作区而不是被「不可修改工作区根」拦下）。同时收紧五处细节：受保护的 `_builtin_skills` 只匹配工作区根与 `.octop/` 两种拼写（`/sub/../_builtin_skills/x` 也会被折叠后拦下，但同名子目录恢复可写）、`~name`（非 `~/`）直接拒绝而不是按 cwd 解析、写接口返回的 `path` 改为实际落点（含 `..` 时不再回显原始请求）、省略 `path` 的上传按 workspace 相对落盘。
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
 
