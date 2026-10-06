@@ -437,7 +437,9 @@ class KnowledgeService:
         if document is None or document.kb_id != kb_id:
             raise LookupError("knowledge document not found")
         cleaned = (new_name or "").strip()
-        if not cleaned or "/" in cleaned or "\\" in cleaned:
+        # "." and ".." are path components, not names: normalizing them moved a
+        # folder's descendants out of it and left an empty-path row behind.
+        if not cleaned or "/" in cleaned or "\\" in cleaned or cleaned in {".", ".."}:
             raise ValueError("invalid knowledge document name")
         new_path = normalize_kb_path(f"{path_parent(document.path)}/{cleaned}")
         if new_path == document.path:
