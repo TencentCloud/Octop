@@ -6,8 +6,6 @@ import asyncio
 import threading
 from pathlib import Path
 
-import pytest
-
 from octop.infra.gateway.media import attachment_hints as ah
 
 
