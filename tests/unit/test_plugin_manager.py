@@ -404,3 +404,50 @@ def test_set_enabled_preserves_unrelated_keys(tmp_path: Path) -> None:
     assert data["bind_host"] == "0.0.0.0"
     assert data["database"] == {"driver": "postgresql", "host": "db.internal"}
     assert data["plugins"]["echo-tool"]["enabled"] is False
+
+
+def test_uninstall_rejects_parent_directory_id(tmp_path: Path) -> None:
+    home = tmp_path / ".octop"
+    home.mkdir()
+    config_path = home / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    agents = home / "agents"
+    agents.mkdir()
+    (agents / "soul.md").write_text("keep me", encoding="utf-8")
+    plugins = home / "plugins"
+    plugins.mkdir()
+    mgr = PluginManager(plugins_dir=plugins, config_path=config_path)
+
+    with pytest.raises(OctopError) as excinfo:
+        mgr.uninstall("..")
+
+    assert excinfo.value.code is ErrorCode.NOT_FOUND
+    assert (agents / "soul.md").is_file()
+    assert plugins.is_dir()
+
+
+def test_uninstall_rejects_nested_plugin_id(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    plugins = tmp_path / "plugins"
+    (plugins / "echo-tool").mkdir(parents=True)
+    mgr = PluginManager(plugins_dir=plugins, config_path=config_path)
+
+    with pytest.raises(OctopError):
+        mgr.uninstall("sub/../echo-tool")
+
+    assert (plugins / "echo-tool").is_dir()
+
+
+def test_uninstall_removes_only_the_named_plugin(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    plugins = tmp_path / "plugins"
+    mgr = PluginManager(plugins_dir=plugins, config_path=config_path)
+    mgr.install_path(_FIXTURE, force=True)
+    (plugins / "other-plugin").mkdir()
+
+    mgr.uninstall("echo-tool")
+
+    assert not (plugins / "echo-tool").exists()
+    assert (plugins / "other-plugin").is_dir()
