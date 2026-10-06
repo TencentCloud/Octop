@@ -6,7 +6,7 @@ import json
 import math
 import sqlite3
 import struct
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -95,8 +95,10 @@ class KnowledgeIndex:
         with self._connect() as conn:
             conn.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
 
-    def search(self, query_vec: Sequence[float], k: int) -> list[Hit]:
-        """Return the ``k`` best chunk hits using in-process cosine similarity."""
+    def search(
+        self, query_vec: Sequence[float], k: int, *, doc_ids: Collection[str] | None = None
+    ) -> list[Hit]:
+        """Return the ``k`` best hits, optionally restricted to eligible documents."""
         if k <= 0:
             return []
         query = [float(value) for value in query_vec]
@@ -110,7 +112,10 @@ class KnowledgeIndex:
                 "SELECT chunk_id, doc_id, ordinal, text, embedding, meta_json FROM chunks"
             ).fetchall()
         hits: list[Hit] = []
+        allowed = set(doc_ids) if doc_ids is not None else None
         for chunk_id, doc_id, ordinal, text, blob, meta_json in rows:
+            if allowed is not None and doc_id not in allowed:
+                continue
             embedding = struct.unpack(f"<{len(blob) // 4}f", blob)
             if len(embedding) != len(query):
                 continue
