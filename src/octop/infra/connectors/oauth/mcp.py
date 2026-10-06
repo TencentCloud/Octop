@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from typing import Any
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode, urlparse, urlsplit
 
 import httpx
 
@@ -69,7 +69,11 @@ async def _validate_metadata_endpoints(metadata: dict[str, Any], *, issuer: str)
 
 
 async def fetch_authorization_metadata(issuer: str) -> dict[str, Any]:
-    metadata_url = f"{issuer.rstrip('/')}/.well-known/oauth-authorization-server"
+    parsed = urlsplit(issuer.rstrip("/"))
+    # RFC 8414 section 3.1 inserts the well-known suffix before the issuer path.
+    metadata_url = (
+        f"{parsed.scheme}://{parsed.netloc}/.well-known/oauth-authorization-server{parsed.path}"
+    )
     await _ensure_mcp_oauth_url(metadata_url, issuer=issuer, field="issuer_metadata")
     r = await safe_request("GET", metadata_url, timeout=20.0)
     r.raise_for_status()
