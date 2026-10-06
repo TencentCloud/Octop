@@ -168,7 +168,10 @@ def peek_backup_contents(path: Path) -> BackupContentFlags:
         return _FULL_CONTENTS
     return BackupContentFlags(
         includes_config=bool(manifest.includes_config or manifest.includes_env),
-        includes_workspaces=any(entry.workspace_included for entry in manifest.agents),
+        includes_workspaces=(
+            manifest.includes_published_experts
+            or any(entry.workspace_included for entry in manifest.agents)
+        ),
         includes_skill_packages=bool(manifest.includes_skill_packages),
         includes_plugins=bool(manifest.includes_plugins),
         includes_knowledge=bool(manifest.includes_knowledge),
