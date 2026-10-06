@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 安装只有中文版本的内置子智能体时，选择英文不再写入空文件，改为回退到已有语言并记录日志
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
