@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from octop.infra.knowledge.index import KnowledgeIndex
 
 QUERY = [1.0, 0.0]
