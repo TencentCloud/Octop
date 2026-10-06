@@ -56,4 +56,4 @@ def test_the_remove_path_no_longer_writes_the_manifest_directly():
     source = SCRIPT.read_text(encoding="utf-8")
 
     assert '".skill-manager-trash.json").write_text(' not in source
-    assert "_write_json_atomically(destination / \".skill-manager-trash.json\"" in source
+    assert '_write_json_atomically(destination / ".skill-manager-trash.json"' in source
