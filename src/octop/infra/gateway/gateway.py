@@ -10,10 +10,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from harness_gateway.channel import ChannelCredentialsError
-from harness_gateway.channels import ChannelKind
-from harness_gateway.manager import ChannelManager
-from harness_gateway.models import ChannelSubject
+from octop_gateway.channel import ChannelCredentialsError
+from octop_gateway.channels import ChannelKind
+from octop_gateway.manager import ChannelManager
+from octop_gateway.models import ChannelSubject
 
 from octop.i18n import channel_probe_incomplete, channel_runtime_reason, tr
 from octop.infra.db.repos.channels import ChannelRow
@@ -24,6 +24,7 @@ from octop.infra.gateway.history_backfill import HistoryBackfillQueue
 from octop.infra.gateway.process import media_backend_for_agent
 from octop.infra.gateway.process.processor import GlobalProcessor
 from octop.infra.gateway.process.response_mode import (
+    ChannelResponseMode,
     normalize_channel_response_mode,
     processor_for_response_mode,
     qq_channel_response_mode,
@@ -93,7 +94,7 @@ async def _probe_processor(_msg: Any) -> Any:
 class Gateway:
     """Global AI interaction entry point.
 
-    Owns the harness-gateway ChannelManager. Routes IM messages
+    Owns the octop-gateway ChannelManager. Routes IM messages
     by ``InboundMessage.tenant_id`` (== agent ULID) via GlobalProcessor.
     """
 
@@ -133,6 +134,7 @@ class Gateway:
         )
         if self._processor is not None:
             self._processor.replace_thread_message_repo(repos.thread_message_repo)
+            self._processor.hitl_coordinator.session_policies.replace_repo(repos.thread_repo)
 
     @property
     def ws_hub(self) -> WebSocketHub:
@@ -180,6 +182,21 @@ class Gateway:
         return self._thread_registry
 
     def get_runtime_status(self, channel_id: str) -> ChannelRuntimeStatus | None:
+        status = self._runtime_status.get(channel_id)
+        if status is None or status.reason in ("disabled", "unregistered"):
+            return status
+        channel = self._channel_manager.get_channel(channel_id) if self._channel_manager else None
+        connected = getattr(channel, "is_connected", None)
+        if isinstance(connected, bool):
+            detail = getattr(channel, "runtime_error", None)
+            detail = detail if isinstance(detail, str) else None
+            if connected != status.connected or detail != status.detail:
+                self._set_runtime_status(
+                    channel_id,
+                    connected=connected,
+                    reason=None if connected else "error",
+                    detail=detail,
+                )
         return self._runtime_status.get(channel_id)
 
     def runtime_status_to_dict(
@@ -192,7 +209,8 @@ class Gateway:
         if status.reason is not None:
             error = channel_runtime_reason(status.reason, locale)
             if status.detail:
-                error = f"{error}: {status.detail}"
+                detail = self._format_probe_error(RuntimeError(status.detail), locale)
+                error = f"{error}: {detail}"
         return {
             "connected": status.connected,
             "error": error,
@@ -200,6 +218,11 @@ class Gateway:
         }
 
     async def boot(self) -> None:
+        from octop.infra.gateway.process.channel_thinking import (
+            install_channel_thinking_clean,
+        )
+
+        install_channel_thinking_clean()
         self._processor = GlobalProcessor(
             agent_manager=self._agent_manager,
             thread_registry=self._thread_registry,
@@ -423,10 +446,7 @@ class Gateway:
             self._resolve_push_subject(session),
             text,
         )
-        if session.channel_type in (
-            ThreadRegistry.CHANNEL_DASHBOARD,
-            ThreadRegistry.CHANNEL_CLI,
-        ):
+        if ThreadRegistry.is_virtual_channel(session.channel_type):
             self._bump_virtual_session(session, title_source or text)
 
     @staticmethod
@@ -442,12 +462,9 @@ class Gateway:
         return session.channel_id
 
     def _resolve_push_subject(self, session: SessionRow) -> ChannelSubject:
-        """Build ChannelSubject from session; IM routing enrichment is in harness-gateway."""
+        """Build ChannelSubject from session; IM routing enrichment is in octop-gateway."""
         subject = session.to_channel_subject()
-        if session.channel_type not in (
-            ThreadRegistry.CHANNEL_DASHBOARD,
-            ThreadRegistry.CHANNEL_CLI,
-        ):
+        if not ThreadRegistry.is_virtual_channel(session.channel_type):
             return subject
         metadata = dict(subject.metadata or {})
         metadata["thread_id"] = session.thread_id
@@ -526,8 +543,33 @@ class Gateway:
         subject: ChannelSubject,
         text: str,
     ) -> None:
-        """Proactively push text to an IM user via ChannelManager."""
-        await self._require_channel_manager().push_text(channel_id, subject, text)
+        """Proactively push text to an IM user via ChannelManager.
+
+        Applies the target channel's ``show_thinking`` flag so embedded
+        ``<think>`` / ``<thinking>`` tags never leak past the display switch
+        (team wrap-up and other push paths bypass the inbound event loop).
+        """
+        from octop.infra.utils.llm_text import prepare_channel_text
+
+        manager = self._require_channel_manager()
+        channel = manager.get_channel(channel_id)
+        # Match ChannelConstraints defaults when the live channel is missing.
+        show_thinking = False
+        thinking_template = "💭 Thinking: {content}"
+        if channel is not None:
+            constraints = channel.constraints
+            show_thinking = bool(constraints.show_thinking)
+            thinking_template = str(
+                getattr(constraints, "thinking_template", thinking_template) or thinking_template
+            )
+        cleaned = prepare_channel_text(
+            text,
+            show_thinking=show_thinking,
+            thinking_template=thinking_template,
+        )
+        if not cleaned:
+            return
+        await manager.push_text(channel_id, subject, cleaned)
 
     async def probe_channel(
         self, channel_id: str, *, locale: Locale = DEFAULT_LOCALE
@@ -596,6 +638,15 @@ class Gateway:
     @staticmethod
     def _format_probe_error(exc: Exception, locale: Locale) -> str:
         msg = str(exc)
+        if msg in {
+            "discord_invalid_token",
+            "discord_intents_required",
+            "discord_connect_timeout",
+            "discord_connection_failed",
+            "discord_disconnected",
+            "discord_proxy_auth_invalid",
+        }:
+            return tr(f"channel.probe.{msg}", locale)
         lower = msg.lower()
         if "invalid appid or secret" in lower or "100016" in msg:
             return tr("channel.probe.invalid_credentials", locale)
@@ -633,11 +684,22 @@ class Gateway:
         if not self._channel_manager or not self._processor:
             return
         config = self._config_from_row(row)
-        response_mode = (
-            qq_channel_response_mode(config)
-            if row.kind == "qq"
-            else normalize_channel_response_mode(config.get("response_mode"))
-        )
+        from octop.infra.agents.teams.service import is_team_agent  # noqa: PLC0415
+
+        team_host = False
+        if self._agent_manager is not None:
+            try:
+                team_host = is_team_agent(self._agent_manager.get_row(row.agent_id))
+            except Exception:
+                team_host = False
+        if team_host:
+            # Team IM UX needs the host dispatch narration before ask_agent;
+            # invoke-mode collapse would drop it. Force stream for team hosts.
+            response_mode: ChannelResponseMode = "stream"
+        elif row.kind == "qq":
+            response_mode = qq_channel_response_mode(config)
+        else:
+            response_mode = normalize_channel_response_mode(config.get("response_mode"))
         processor = processor_for_response_mode(self._processor, response_mode)
         manager = self._require_channel_manager()
         await manager.add_channel(

@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Segmented, Typography } from "antd";
 import AgentSelector from "../components/AgentSelector";
+import RemoteDisconnectBanner from "../components/RemoteDisconnectBanner";
+import { useAgent } from "../context/AgentContext";
 import { useIsMobile } from "../hooks/useIsMobile";
 import {
   titleRowEndPadding,
@@ -36,6 +38,8 @@ interface PageShellProps {
   pathTabs?: PathTabsConfig;
   /** Render agent picker below the title row, outside the scrollable content card. */
   agentScoped?: boolean;
+  /** Include team hosts in the agent picker (memory / channels). */
+  showTeams?: boolean;
   /** When true, the content area does not scroll; children fill remaining height. */
   fill?: boolean;
   children: React.ReactNode;
@@ -92,15 +96,28 @@ function PageShell({
   actions,
   pathTabs,
   agentScoped,
+  showTeams,
   fill,
   children,
 }: PageShellProps) {
   const isMobile = useIsMobile();
+  const { activeAgent } = useAgent();
   const outerPad = isMobile ? 12 : 32;
   const outerPadTop = isMobile ? 12 : 24;
   const contentPad = isMobile ? 12 : 24;
   /** Fill layout, or mobile path-tabs that must stay pinned above the body. */
   const pinBody = Boolean(fill || (isMobile && pathTabs));
+  /**
+   * iOS PWA home-indicator band. When the content area scrolls, the inset
+   * belongs at the end of the scrollport so it is only spent once the user
+   * reaches the bottom; a fixed outer pad would waste it on every screen.
+   * Pinned bodies cannot scroll clear of the indicator, so they keep it
+   * outside the card.
+   */
+  const safeBottom = "env(safe-area-inset-bottom, 0px)";
+  const outerPadBottom = pinBody
+    ? `calc(${outerPad}px + ${safeBottom})`
+    : `${outerPad}px`;
 
   const titleActions =
     !isMobile && pathTabs ? (
@@ -119,7 +136,7 @@ function PageShell({
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        padding: `${outerPadTop}px ${outerPad}px ${outerPad}px`,
+        padding: `${outerPadTop}px ${outerPad}px ${outerPadBottom}`,
         boxSizing: "border-box",
         overflow: "hidden",
       }}
@@ -164,7 +181,7 @@ function PageShell({
 
       {agentScoped && (
         <div className={styles.agentBar}>
-          <AgentSelector />
+          <AgentSelector showTeams={showTeams} />
         </div>
       )}
 
@@ -178,6 +195,9 @@ function PageShell({
           background: "var(--fn-bg-container, var(--fn-bg-elevated))",
           borderRadius: 8,
           padding: contentPad,
+          paddingBottom: pinBody
+            ? contentPad
+            : `calc(${contentPad}px + ${safeBottom})`,
           // Mobile: never create a page-level horizontal scrollbar; wide
           // tables scroll via antd scroll.x inside their own wrapper.
           overflowX: pinBody || isMobile ? "hidden" : "auto",
@@ -193,6 +213,12 @@ function PageShell({
             <PathTabsSegmented pathTabs={pathTabs} isMobile />
           </div>
         )}
+        {agentScoped && activeAgent?.bridge_disconnected ? (
+          <RemoteDisconnectBanner
+            connectionName={activeAgent.bridge_connection_name}
+            inbound={Boolean(activeAgent.bridge_inbound)}
+          />
+        ) : null}
         {children}
       </div>
     </div>

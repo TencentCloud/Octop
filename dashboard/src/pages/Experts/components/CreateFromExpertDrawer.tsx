@@ -1,5 +1,5 @@
 // dashboard/src/pages/Experts/components/CreateFromExpertDrawer.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -48,6 +48,11 @@ import {
   defaultModelFromForm,
   MODEL_AUTO_VALUE,
 } from "../../../utils/modelOptions";
+import {
+  CONVERSATION_MODES,
+  DEFAULT_CONVERSATION_MODE,
+  type ConversationMode,
+} from "../../Chat/utils/conversationMode";
 import type { ExpertSummary } from "./ExpertCard";
 import { groupExpertFiles, type NamedFileContent } from "./expertFileGroups";
 import { metaForFile } from "./iconForName";
@@ -67,6 +72,13 @@ import {
 import AgentBackendFields from "./AgentBackendFields";
 import ExpertAvatarPicker from "./ExpertAvatarPicker";
 import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
+import WelcomeConfig, { type WelcomeConfigRef } from "./WelcomeConfig";
+import {
+  normalizeQuickPrompts,
+  serializeQuickPrompts,
+  shouldWriteWelcomeManifest,
+  type QuickPrompt,
+} from "./welcomeManifest";
 import FileEditModal from "./FileEditModal";
 import SkillSourcePickerModal, {
   type PickedAgentSkill,
@@ -89,6 +101,7 @@ type FileContent = NamedFileContent;
 interface ExpertDetail {
   file_contents?: FileContent[];
   welcome_message?: { zh?: string; en?: string };
+  quick_prompts?: QuickPrompt[];
 }
 
 export type CreateFromTemplateSource =
@@ -170,6 +183,10 @@ function warnComposerPartial(
   }
 }
 
+function sourceQuickPrompts(source: CreateFromTemplateSource): QuickPrompt[] {
+  return normalizeQuickPrompts(source.expert.quick_prompts);
+}
+
 function sourceIcon(source: CreateFromTemplateSource | null): {
   iconUrl: string | null;
   iconName: string | null;
@@ -208,6 +225,7 @@ export default function CreateFromExpertDrawer({
       agent_id?: string;
       welcome_message?: string;
       default_model: string;
+      conversation_mode: ConversationMode;
       backend_choice: string;
       composite_default: string;
       root_dir?: string;
@@ -243,6 +261,11 @@ export default function CreateFromExpertDrawer({
   const [colorPalette, setColorPalette] = useState<string>("rose");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [detailPrompts, setDetailPrompts] = useState<QuickPrompt[] | null>(
+    null,
+  );
+  const [promptsSourceKey, setPromptsSourceKey] = useState("");
+  const welcomeConfigRef = useRef<WelcomeConfigRef>(null);
 
   const backendChoice =
     Form.useWatch("backend_choice", form) ?? DEFAULT_BACKEND;
@@ -263,6 +286,15 @@ export default function CreateFromExpertDrawer({
     if (source.kind === "published") return `published:${source.expert.id}`;
     return `market:${source.expert.slug}`;
   }, [source]);
+  const listPrompts = useMemo(
+    () => (source ? sourceQuickPrompts(source) : []),
+    [source],
+  );
+  if (promptsSourceKey !== sourceKey) {
+    setPromptsSourceKey(sourceKey);
+    setDetailPrompts(null);
+  }
+  const templatePrompts = detailPrompts ?? listPrompts;
 
   useEffect(() => {
     if (!open || !source) return;
@@ -282,6 +314,7 @@ export default function CreateFromExpertDrawer({
       agent_id: undefined,
       welcome_message: defaults.welcome_message,
       default_model: MODEL_AUTO_VALUE,
+      conversation_mode: DEFAULT_CONVERSATION_MODE,
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
       skill_package_ids: [],
@@ -294,6 +327,7 @@ export default function CreateFromExpertDrawer({
     setPendingCopySkills([]);
     setLocalEditPath(null);
     setSubagentPickerOpen(false);
+    setDetailPrompts(null);
     if (source.kind === "market") {
       setFileContents(ensurePromptFiles([]));
       setOriginalFileContents([]);
@@ -312,6 +346,7 @@ export default function CreateFromExpertDrawer({
         const files = data.file_contents ?? [];
         setFileContents(ensurePromptFiles(files));
         setOriginalFileContents(files);
+        setDetailPrompts(normalizeQuickPrompts(data.quick_prompts));
         const welcome = data.welcome_message;
         const welcomeText = pickLocale(welcome, lang);
         if (welcomeText) {
@@ -402,6 +437,12 @@ export default function CreateFromExpertDrawer({
         originalFileContents,
         fileContents,
       );
+      const welcomeSnap = welcomeConfigRef.current?.getSnapshot();
+      const pageConfigPrompts =
+        welcomeSnap &&
+        shouldWriteWelcomeManifest(welcomeSnap.status, welcomeSnap.dirty)
+          ? serializeQuickPrompts(welcomeSnap.data.quick_prompts)
+          : undefined;
       const payload = {
         name: values.name,
         description: values.description || undefined,
@@ -419,6 +460,7 @@ export default function CreateFromExpertDrawer({
         ...(welcomeText ? { welcome_message: welcomeText } : {}),
         ...buildAgentRuntimeRequest(values),
         enable_trajectory: values.enable_trajectory === true,
+        conversation_mode: values.conversation_mode,
         ...(composerPatch.file_overrides.length
           ? { file_overrides: composerPatch.file_overrides }
           : {}),
@@ -427,6 +469,9 @@ export default function CreateFromExpertDrawer({
           : {}),
         ...(pendingHubSkills.length ? { hub_skills: pendingHubSkills } : {}),
         ...(pendingCopySkills.length ? { copy_skills: pendingCopySkills } : {}),
+        ...(pageConfigPrompts !== undefined
+          ? { quick_prompts: pageConfigPrompts }
+          : {}),
       };
 
       let body: {
@@ -661,6 +706,29 @@ export default function CreateFromExpertDrawer({
           />
         </Form.Item>
 
+        <Collapse
+          ghost
+          items={[
+            {
+              key: "pageConfig",
+              label: t("experts.pageConfigTitle"),
+              children:
+                detailLoading && templatePrompts.length === 0 ? (
+                  <div className={styles.welcomeConfigLoading}>
+                    {t("common.loading")}
+                  </div>
+                ) : (
+                  <WelcomeConfig
+                    key={sourceKey}
+                    ref={welcomeConfigRef}
+                    initialPrompts={templatePrompts}
+                    disabled={detailLoading || submitting}
+                  />
+                ),
+            },
+          ]}
+        />
+
         <Form.Item label={t("experts.avatar")}>
           <ExpertAvatarPicker
             iconUrl={avatarPreview ?? sourceIcon(source).iconUrl}
@@ -694,6 +762,20 @@ export default function CreateFromExpertDrawer({
 
         <Form.Item label={t("experts.color")} extra={t("experts.colorHint")}>
           <ExpertColorPicker value={colorPalette} onChange={setColorPalette} />
+        </Form.Item>
+
+        <Form.Item
+          name="conversation_mode"
+          label={t("experts.defaultModeLabel")}
+          tooltip={t("experts.defaultModeHint")}
+          initialValue={DEFAULT_CONVERSATION_MODE}
+        >
+          <Select
+            options={CONVERSATION_MODES.map((mode) => ({
+              value: mode,
+              label: t(`chat.conversationMode.${mode}`),
+            }))}
+          />
         </Form.Item>
 
         <Form.Item

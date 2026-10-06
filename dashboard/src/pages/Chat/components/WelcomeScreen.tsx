@@ -90,7 +90,11 @@ export default function WelcomeScreen({
             />
           )}
           <h1 className={styles.welcomeTitle}>
-            {isTeam ? t("chatWelcome.teamHeading") : t("chatWelcome.greeting")}
+            {isTeam
+              ? t("chatWelcome.teamHeading", {
+                  name: agentName?.trim() || t("chatWelcome.teamNameFallback"),
+                })
+              : t("chatWelcome.greeting")}
           </h1>
           <p className={styles.welcomeSubtitle}>
             {isTeam ? (

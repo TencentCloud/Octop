@@ -22,6 +22,7 @@ from octop.api.routers.update_store import (
     update_task,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.server import OctopServer
 from octop.infra.setup.self_update import (
     UpgradeResult,
     fetch_pypi_info,
@@ -367,8 +368,19 @@ def _is_desktop_process() -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
-def _restart_desktop_process() -> None:
+def _restart_desktop_process(server: OctopServer) -> None:
     time.sleep(0.4)
+
+    # Flush SQLite WAL before replacing the process image, otherwise uncheckpointed
+    # writes (common in WAL mode) are lost when the connection FD is closed by execv.
+    if server.services is not None and getattr(server.services.db, "dialect", None) == "sqlite":
+        try:
+            with server.services.db.connect() as conn:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            server.services.db.close()
+        except Exception:
+            logger.exception("failed to checkpoint/close database before desktop restart")
+
     argv = list(getattr(sys, "orig_argv", None) or [sys.executable, *sys.argv])
     os.execv(argv[0], argv)
 
@@ -383,10 +395,11 @@ def _restart_service_task(runtime: ServiceRuntime) -> None:
 @router.post("/restart")
 async def restart_service_endpoint(
     background_tasks: BackgroundTasks,
+    server: OctopServer = Depends(get_server),
     _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
     if _is_desktop_process():
-        background_tasks.add_task(_restart_desktop_process)
+        background_tasks.add_task(_restart_desktop_process, server)
         return {"status": "restarting", "service_mode": "desktop"}
     mode = detect_service_mode()
     if mode is None:

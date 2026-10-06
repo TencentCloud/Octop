@@ -1,5 +1,46 @@
-import type { HitlPendingPayload } from "../types/hitl";
+import type { HitlPendingPayload, HitlSessionPolicy } from "../types/hitl";
 import { request } from "../request";
+
+/** Workspace file produced in a thread; ``agent_id`` is the producer. */
+export type ThreadArtifact = {
+  path: string;
+  agent_id?: string;
+};
+
+/**
+ * Prefer ``artifact_refs``; fall back to legacy ``artifacts`` (strings or
+ * objects) so older servers / clients keep working.
+ */
+export function normalizeThreadArtifacts(
+  raw: unknown,
+  fallbackAgentId?: string | null,
+  refs?: unknown,
+): ThreadArtifact[] {
+  const source = Array.isArray(refs) && refs.length > 0 ? refs : raw;
+  if (!Array.isArray(source)) return [];
+  const out: ThreadArtifact[] = [];
+  const seen = new Set<string>();
+  const fallback = (fallbackAgentId || "").trim();
+  for (const item of source) {
+    let path = "";
+    let agentId = fallback;
+    if (typeof item === "string") {
+      path = item.trim();
+    } else if (item && typeof item === "object") {
+      const row = item as { path?: unknown; agent_id?: unknown };
+      if (typeof row.path === "string") path = row.path.trim();
+      if (typeof row.agent_id === "string" && row.agent_id.trim()) {
+        agentId = row.agent_id.trim();
+      }
+    }
+    if (!path) continue;
+    const key = `${agentId}\0${path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(agentId ? { path, agent_id: agentId } : { path });
+  }
+  return out;
+}
 
 export interface OctopThread {
   thread_id: string;
@@ -17,7 +58,11 @@ export interface OctopThread {
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
   pending_plan_path?: string | null;
-  artifacts?: string[];
+  hitl_policy?: HitlSessionPolicy | null;
+  /** Legacy path list (compat). Prefer ``artifact_refs`` when present. */
+  artifacts?: Array<string | ThreadArtifact>;
+  /** Structured refs with producer ``agent_id``. */
+  artifact_refs?: ThreadArtifact[];
 }
 
 export interface OctopThreadHistory {
@@ -39,6 +84,7 @@ export interface OctopThreadHistory {
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
   pending_plan_path?: string | null;
+  hitl_policy?: HitlSessionPolicy | null;
   has_more?: boolean;
   limit?: number;
   offset?: number;
@@ -51,7 +97,10 @@ export interface OctopThreadHistory {
   turn_active?: boolean;
   /** Pending tool approval for this thread (survives page reload). */
   hitl_pending?: HitlPendingPayload | null;
-  artifacts?: string[];
+  /** Legacy path list (compat). Prefer ``artifact_refs`` when present. */
+  artifacts?: Array<string | ThreadArtifact>;
+  /** Structured refs with producer ``agent_id``. */
+  artifact_refs?: ThreadArtifact[];
 }
 
 export interface OctopThreadPatch {
@@ -61,6 +110,7 @@ export interface OctopThreadPatch {
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
+  hitl_policy?: HitlSessionPolicy | null;
 }
 
 export type ContextUsageSegmentKey =
@@ -180,6 +230,7 @@ export const octopThreadsApi = {
       reasoning_effort?: string | null;
       conversation_mode?: "ask" | "plan" | "craft" | null;
       pending_plan_path?: string | null;
+      hitl_policy?: HitlSessionPolicy | null;
     }>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
         threadId,

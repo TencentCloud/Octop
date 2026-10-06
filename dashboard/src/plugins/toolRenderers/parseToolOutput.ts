@@ -82,3 +82,31 @@ export function mergePatchedToolOutput(
     return String(nextData);
   }
 }
+
+/**
+ * Resolve the effective UI payload for a tool result.
+ *
+ * Precedence: an explicit ``data`` key always wins (e.g. after an L2
+ * ``patchResult`` rewrite); an offloaded envelope (``data_ref: "artifact"``)
+ * falls back to the message ``artifact``; otherwise legacy shapes pass through
+ * (``raw`` for JSON, ``output`` text otherwise).
+ */
+export function resolvePluginUiData(
+  parsed: ParsedToolOutput,
+  artifact: unknown,
+  output: string | undefined,
+): unknown {
+  if (parsed.data !== undefined) return parsed.data;
+  const raw = parsed.raw;
+  if (
+    parsed.octopUi &&
+    raw !== null &&
+    typeof raw === "object" &&
+    !Array.isArray(raw) &&
+    (raw as Record<string, unknown>).data_ref === "artifact" &&
+    artifact != null
+  ) {
+    return artifact;
+  }
+  return parsed.isJson ? parsed.raw : output;
+}

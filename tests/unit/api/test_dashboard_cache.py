@@ -23,7 +23,7 @@ def test_hashed_assets_are_immutable() -> None:
 
 
 def test_other_static_files_leave_cache_unset() -> None:
-    assert dashboard_cache_control("logo.svg") is None
+    assert dashboard_cache_control("logo_vertical_dark.svg") is None
     assert dashboard_cache_control("offline.html") is None
 
 

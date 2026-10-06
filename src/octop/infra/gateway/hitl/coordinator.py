@@ -6,10 +6,11 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
-from harness_agent.slash import SlashCommand
-from harness_gateway.models import MessageEvent
+from octop_gateway.models import MessageEvent
+from octop_harness.slash import SlashCommand
 
 from octop.i18n.domains.slash import tr
+from octop.infra.agents.security.hitl_session import HitlSessionPolicyStore
 from octop.infra.gateway.hitl.format import (
     extract_questions,
     format_ask_card,
@@ -110,8 +111,13 @@ def decision_rejection_reason(
 
 
 class HitlChannelCoordinator:
-    def __init__(self, store: HitlPendingStore | None = None) -> None:
+    def __init__(
+        self,
+        store: HitlPendingStore | None = None,
+        session_policies: HitlSessionPolicyStore | None = None,
+    ) -> None:
         self._store = store or HitlPendingStore()
+        self.session_policies = session_policies or HitlSessionPolicyStore()
 
     @property
     def store(self) -> HitlPendingStore:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from harness_gateway.models import MessageEvent, MessageEventType, TextContent
+from octop_gateway.models import MessageEvent, MessageEventType, TextContent
 
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
@@ -31,6 +31,29 @@ def test_parse_action_requests() -> None:
     assert len(actions) == 1
     assert actions[0]["name"] == "execute"
     assert actions[0]["args"] == {"command": "ls"}
+
+
+def test_parse_action_requests_unwraps_interrupt_envelope() -> None:
+    from octop.infra.gateway.hitl.format import normalize_hitl_request
+
+    raw = {
+        "id": "int-1",
+        "value": {
+            "action_requests": [
+                {
+                    "name": "ask_user_question",
+                    "args": {"questions": [{"question": "Which DB?"}]},
+                }
+            ],
+            "review_configs": [
+                {"action_name": "ask_user_question", "allowed_decisions": ["respond"]}
+            ],
+        },
+    }
+    assert normalize_hitl_request(raw)["action_requests"][0]["name"] == "ask_user_question"
+    actions = parse_action_requests(raw)
+    assert actions[0]["name"] == "ask_user_question"
+    assert actions[0]["args"]["questions"][0]["question"] == "Which DB?"
 
 
 def test_hitl_store_register_and_resolve() -> None:
@@ -131,7 +154,7 @@ async def test_coordinator_slash_approve_resumes() -> None:
     ctx.channel_type = "feishu"
     ctx.thread_registry = MagicMock()
 
-    from harness_agent.slash import SlashCommand
+    from octop_harness.slash import SlashCommand
 
     cmd = SlashCommand(name="approve", args="")
     events: list[MessageEvent] = []
@@ -166,7 +189,7 @@ async def test_coordinator_slash_approve_invalid_pending_id() -> None:
         review_configs=None,
     )
 
-    from harness_agent.slash import SlashCommand
+    from octop_harness.slash import SlashCommand
 
     ctx = MagicMock()
     ctx.session_key = "sk1"
@@ -219,7 +242,7 @@ async def test_coordinator_resume_failure_keeps_pending() -> None:
     ctx.channel_type = "feishu"
     ctx.thread_registry = MagicMock()
 
-    from harness_agent.slash import SlashCommand
+    from octop_harness.slash import SlashCommand
 
     cmd = SlashCommand(name="approve", args="")
     async for _ in coordinator.iter_slash_resolution(
@@ -401,7 +424,7 @@ async def test_slash_outcome_completed_turn() -> None:
     ctx.channel_type = "feishu"
     ctx.thread_registry = MagicMock()
 
-    from harness_agent.slash import SlashCommand
+    from octop_harness.slash import SlashCommand
 
     outcome = HitlSlashOutcome()
     cmd = SlashCommand(name="approve", args="")

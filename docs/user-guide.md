@@ -97,7 +97,7 @@ source ~/.bashrc  # Bash
 
 安装脚本会把 `octop` 命令放入 `~/.octop/bin` 并加入 PATH，并在 `~/.octop/venv` 创建隔离环境；**不会改动系统 Python**。
 
-> **可选附加组件**：安装脚本支持通过 `--extras` 追加能力，例如浏览器自动化 `--extras browser`、飞书通道 `--extras channels-feishu`；也可用 `--version` 指定版本、`--mirror <url>` 使用国内 PyPI 镜像。更多选项见 [scripts/README.md](../scripts/README.md)。
+> **可选附加组件**：安装脚本支持通过 `--extras` 追加能力，例如浏览器自动化 `--extras browser`；也可用 `--version` 指定版本、`--mirror <url>` 使用国内 PyPI 镜像。更多选项见 [scripts/README.md](../scripts/README.md)。
 
 ### 2.3 验证安装
 
@@ -277,6 +277,8 @@ octop provider --help     # 供应商增删改查帮助
 ### 4.6 本地模型 Ollama
 
 若本机已运行 Ollama，可选择 `ollama` 预设（默认 `base_url` 为本地地址），无需 API Key 即可接入本地模型，适合隐私敏感或离线场景。
+
+如果 Ollama 把模型存在非默认目录（例如从系统盘改到其它磁盘），在供应商设置里填写 **模型下载目录** 后保存。Octop 会按该路径识别已下载模型，并在启动本地 Ollama 服务时设置 `OLLAMA_MODELS`。
 
 ### 4.7 图片与视频生成模型
 

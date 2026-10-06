@@ -18,7 +18,7 @@ export interface ConnectorCatalogEntry {
   icon: string;
   color: string;
   phase: "available" | "coming_soon";
-  mcp_mode: "remote" | "gateway";
+  mcp_mode: "remote" | "gateway" | "internal";
   category: ConnectorCategory;
   quick_auth_url?: string | null;
   login_url?: string | null;
@@ -190,13 +190,26 @@ export interface FeishuUserAuthCompleteResult {
   cli_config_key: string;
 }
 
+export interface AgentlyAuthStatus {
+  status: "idle" | "pending" | "authorized" | "expired" | "error";
+  verification_url: string | null;
+  user_code: string | null;
+  expires_at: number | null;
+  error: string | null;
+}
+
 export const connectorsApi = {
   catalog: () => request<ConnectorCatalogEntry[]>("/connectors/catalog"),
 
   detectLocalWeKnora: () =>
     request<WeKnoraLocalDetection>("/connectors/weknora/detect-local"),
 
-  listInstances: () => request<ConnectorInstance[]>("/connector-instances"),
+  listInstances: (agentId?: string | null) =>
+    request<ConnectorInstance[]>("/connector-instances", {
+      headers: agentId?.trim()
+        ? { "X-Octop-Agent-Id": agentId.trim() }
+        : undefined,
+    }),
 
   getInstance: (instanceId: string) =>
     request<ConnectorInstanceDetail>(
@@ -310,6 +323,17 @@ export const connectorsApi = {
     request<ConnectorCliInstallResult>(
       `/connectors/${encodeURIComponent(kind)}/install-cli`,
       { method: "POST" },
+    ),
+
+  agentlyAuth: (
+    instanceId: string,
+    action: "start" | "status" | "logout" | "refresh",
+  ) =>
+    request<AgentlyAuthStatus>(
+      `/connector-instances/${encodeURIComponent(
+        instanceId,
+      )}/agently-auth/${action}`,
+      { method: action === "status" ? "GET" : "POST" },
     ),
 
   feishuUserAuthStart: (body: {

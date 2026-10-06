@@ -22,7 +22,7 @@ interface AgentBackendFieldsProps {
   backendsLoading: boolean;
   backendChoice: string;
   pathMappings: PathMapping[];
-  /** ``create`` fills empty root_dir with home; ``edit`` leaves existing values. */
+  /** ``create`` fills empty root_dir with the filesystem default; ``edit`` leaves existing values. */
   rootDirMode?: "create" | "edit";
   disabled?: boolean;
   onAddPathMapping: () => void;
@@ -72,7 +72,13 @@ export default function AgentBackendFields({
     }
   }, [fsDefaults, form, watchedRootDir, rootDirMode]);
 
-  const treeRoot = fsDefaults?.tree_root ?? HOST_FS_ROOT;
+  const treeRoots = useMemo(
+    () =>
+      fsDefaults?.browse_roots?.length
+        ? fsDefaults.browse_roots
+        : [fsDefaults?.tree_root ?? HOST_FS_ROOT],
+    [fsDefaults],
+  );
   const routeBackendOptions = useMemo(() => {
     const builtins = BUILTIN_BACKENDS.map((mode) => ({
       value: mode,
@@ -171,7 +177,7 @@ export default function AgentBackendFields({
             }
           >
             <RootDirSelect
-              treeRoot={treeRoot}
+              treeRoots={treeRoots}
               disabled={disabled || rootDirMode === "edit"}
             />
           </Form.Item>
@@ -197,9 +203,7 @@ export default function AgentBackendFields({
                 >
                   {fsDefaults?.in_container
                     ? t("experts.backendRootDirDescContainer")
-                    : t("experts.backendRootDirDesc", {
-                        home: fsDefaults?.home ?? "~",
-                      })}
+                    : t("experts.backendRootDirDesc")}
                 </p>
                 <p
                   style={{
@@ -208,7 +212,9 @@ export default function AgentBackendFields({
                     margin: "4px 0 0",
                   }}
                 >
-                  {t("experts.backendRootDirJailHint")}
+                  {fsDefaults?.jail_enforced
+                    ? t("experts.backendRootDirJailHint")
+                    : t("experts.backendRootDirPathLimitHint")}
                 </p>
               </>
             )}

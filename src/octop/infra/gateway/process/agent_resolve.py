@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from harness_agent.backends.workspace import BackendWorkspace
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.infra.gateway.media.ingress import AgentBackedMediaBackend
 
@@ -31,7 +31,7 @@ def media_backend_for_agent(
     agent_manager: AgentManager,
     agent_id: str,
 ) -> AgentBackedMediaBackend | None:
-    """harness-gateway ``MediaBackend`` adapter for IM channel ingress."""
+    """octop-gateway ``MediaBackend`` adapter for IM channel ingress."""
     workspace = harness_workspace_for_agent(agent_manager, agent_id)
     if workspace is None:
         return None

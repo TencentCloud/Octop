@@ -25,10 +25,10 @@
 
   @media (max-width: 767px) {
     position: fixed;
-    top: 12px;
-    bottom: 12px;
-    left: 16px;
-    right: 20px;
+    top: max(12px, env(safe-area-inset-top, 0px));
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    left: max(16px, env(safe-area-inset-left, 0px));
+    right: max(20px, env(safe-area-inset-right, 0px));
     width: auto;
     min-width: unset;
     z-index: 200;

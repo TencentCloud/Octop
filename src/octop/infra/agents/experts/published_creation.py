@@ -12,16 +12,18 @@ from typing import Any, cast
 
 from psycopg import IntegrityError as PsycopgIntegrityError
 
-from octop.infra.agents.avatar import (
+from octop.infra.agents.experts.avatar import (
     bind_workspace_avatar_icon_url,
     public_portrait_icon_url,
 )
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
+    apply_workspace_quick_prompts,
     parse_task_examples,
     read_workspace_manifest_task_examples,
     read_workspace_manifest_welcome,
     seed_expert_directory,
+    welcome_payload_from_manifest_data,
 )
 from octop.infra.agents.experts.publish import (
     PublishedExpertSnapshotMeta,
@@ -53,9 +55,11 @@ class PublishedExpertInstallOptions:
     welcome_message: str | None = None
     runtime_config: dict[str, Any] | None = None
     enable_trajectory: bool = True
+    conversation_mode: str | None = None
     workspace_patch: Any = None
     composer_copies: tuple[tuple[str, Any], ...] = ()
     composer_report: Any = None
+    quick_prompts: list[dict[str, Any]] | None = None
 
 
 def _snapshot_dir(services: Any, expert_id: str) -> Path:
@@ -159,6 +163,11 @@ def require_published_expert(services: Any, expert_id: str) -> PublishedExpertRo
 
 def snapshot_welcome_message(snapshot_dir: Path) -> tuple[str, str]:
     return _manifest_welcome(_read_snapshot_manifest(snapshot_dir))
+
+
+def snapshot_welcome_payload(snapshot_dir: Path) -> dict[str, Any]:
+    """Welcome copy + quick-start cards from a published snapshot manifest."""
+    return welcome_payload_from_manifest_data(_read_snapshot_manifest(snapshot_dir))
 
 
 async def publish_agent_expert(
@@ -354,6 +363,8 @@ async def install_published_expert(
     if options.backend:
         config_extra["backend"] = options.backend
     apply_enable_trajectory(config_extra, options.enable_trajectory)
+    if options.conversation_mode:
+        config_extra["conversation_mode"] = options.conversation_mode
 
     async def seed_snapshot(created_row: Any, workspace: Any) -> None:
         await seed_expert_directory(expert_dir=snapshot_dir, workspace=workspace)
@@ -371,6 +382,8 @@ async def install_published_expert(
                 copies=options.composer_copies,
                 report=options.composer_report,
             )
+        if options.quick_prompts is not None:
+            await apply_workspace_quick_prompts(workspace, options.quick_prompts)
 
     created = await registry.create(
         AgentCreateSpec(

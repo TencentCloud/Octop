@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 from unittest.mock import AsyncMock, patch
+from urllib.parse import urlparse
 
-from octop.infra.providers.codex_oauth import CodexOAuthDeviceCodeError
+from octop.infra.agents.providers.codex_oauth import CodexOAuthDeviceCodeError
 
 
 async def test_admin_test_draft_requires_api_key(env: Any) -> None:
@@ -68,7 +69,7 @@ async def test_admin_codex_oauth_start(env: Any) -> None:
     body = r.json()
     assert body["state_id"]
     assert body["user_code"] == "ABCD-1234"
-    assert "auth.openai.com" in body["verification_url"]
+    assert urlparse(body["verification_url"]).hostname == "auth.openai.com"
 
 
 async def test_admin_codex_oauth_start_reports_upstream_failure(env: Any) -> None:

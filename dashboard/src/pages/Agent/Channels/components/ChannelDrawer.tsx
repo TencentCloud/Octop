@@ -160,8 +160,29 @@ interface ChannelDrawerProps {
   agentId: string;
 }
 
-function FormItemForField({ field }: { field: ChannelField }) {
+function FormItemForField({
+  field,
+  disabled = false,
+}: {
+  field: ChannelField;
+  disabled?: boolean;
+}) {
   const { t } = useTranslation();
+  const label = field.label.startsWith("channels.")
+    ? t(field.label)
+    : field.label;
+  if (field.type === "switch") {
+    return (
+      <Form.Item
+        name={field.name}
+        label={label}
+        valuePropName="checked"
+        extra={field.helpKey ? t(field.helpKey) : undefined}
+      >
+        <Switch />
+      </Form.Item>
+    );
+  }
   const Input1 =
     field.type === "password"
       ? Input.Password
@@ -172,7 +193,7 @@ function FormItemForField({ field }: { field: ChannelField }) {
     ? [
         {
           required: true,
-          message: t("channels.fieldRequired", { label: field.label }),
+          message: t("channels.fieldRequired", { label }),
         },
       ]
     : [];
@@ -190,9 +211,24 @@ function FormItemForField({ field }: { field: ChannelField }) {
       },
     });
   }
+  if (
+    field.name === "allowed_channel_ids" ||
+    field.name === "allowed_user_ids"
+  ) {
+    rules.push({
+      validator: async (_: unknown, value: unknown) => {
+        try {
+          normalizeChannelFieldValue(field.name, value);
+        } catch {
+          throw new Error(t("channels.discordInvalidIds"));
+        }
+      },
+    });
+  }
   return (
-    <Form.Item name={field.name} label={field.label} rules={rules}>
+    <Form.Item name={field.name} label={label} rules={rules}>
       <Input1
+        disabled={disabled}
         placeholder={field.placeholder}
         {...(field.type === "textarea" || field.type === "json"
           ? { rows: 5 }
@@ -486,6 +522,8 @@ export function ChannelDrawer({
   agentId,
 }: ChannelDrawerProps) {
   const { t } = useTranslation();
+  const allowAllDiscordChannels =
+    Form.useWatch("allow_all_channels", form) !== false;
   const isEdit = editing !== null;
   const [selectedKind, setSelectedKind] = useState<ChannelKey>(
     initialValues?.kind ?? "feishu",
@@ -1841,8 +1879,26 @@ export function ChannelDrawer({
                 </Form.Item>
               )}
 
+              {selectedKind === "discord" && (
+                <Alert
+                  type="info"
+                  showIcon
+                  message={t("channels.discordSetupHelp")}
+                  style={{ marginBottom: 16 }}
+                />
+              )}
               {hasSchema ? (
-                fields!.map((f) => <FormItemForField key={f.name} field={f} />)
+                fields!.map((f) => (
+                  <FormItemForField
+                    key={f.name}
+                    field={f}
+                    disabled={
+                      selectedKind === "discord" &&
+                      f.name === "allowed_channel_ids" &&
+                      allowAllDiscordChannels
+                    }
+                  />
+                ))
               ) : (
                 <Form.Item
                   name="__raw_config"
