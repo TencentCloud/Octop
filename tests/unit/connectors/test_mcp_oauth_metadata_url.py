@@ -27,7 +27,10 @@ requested: dict[str, str] = {}
 @pytest.mark.parametrize(
     ("issuer", "expected"),
     [
-        ("https://auth.example.com", "https://auth.example.com/.well-known/oauth-authorization-server"),
+        (
+            "https://auth.example.com",
+            "https://auth.example.com/.well-known/oauth-authorization-server",
+        ),
         (
             "https://auth.example.com/realms/tenant",
             "https://auth.example.com/.well-known/oauth-authorization-server/realms/tenant",
