@@ -72,6 +72,8 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
   "enable_api_docs": false,
   "require_setup_password": true,
   "max_upload_mb": 100,
+  "browser_idle_timeout_minutes": 30,
+  "history_v2_enabled": false,
   "database": {
     "driver": "sqlite",
     "sqlite_path": "octop.db",
@@ -92,6 +94,17 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
     "expires_at": "",
     "acme_staging": false,
     "http_port": 80
+  },
+  "backup": {
+    "auto_enabled": false,
+    "schedule": "cron:0 4 * * *",
+    "retention_count": 7,
+    "include_config": true,
+    "include_workspaces": true,
+    "include_skill_packages": true,
+    "include_plugins": true,
+    "include_knowledge": true,
+    "include_chats": false
   }
 }
 ```
@@ -120,6 +133,11 @@ Notes:
   impose their own body-size limit (for example nginx
   `client_max_body_size`). Agent workspace file upload, plugin ZIPs,
   and backup archives use separate limits and are not this setting.
+- `backup` drives the automatic system backup feature. `schedule` uses the
+  `cron:<expr>` form and `retention_count` must be ≥ 1; `include_chats`
+  defaults to `false` because transcripts are both the largest and the most
+  sensitive part of an archive. Every key also has an `OCTOP_BACKUP_*`
+  environment override (see below).
 - `plugins.<id>.enabled` is the **global** plugin switch (Dashboard Admin →
   Plugins). Bundled plugins are copied into `~/.octop/plugins/` on init and
   server start with `enabled: false`. `bundled_plugins_seeded` lists ids
@@ -154,6 +172,17 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_ENABLE_API_DOCS` | bool | `false` | Expose Scalar API docs at `/api/docs` |
 | `OCTOP_REQUIRE_SETUP_PASSWORD` | bool | `true` | Require wizard password during initial setup |
 | `OCTOP_MAX_UPLOAD_MB` | int | `100` | Max upload size in MiB for chat attachments, IM inbound, and knowledge documents (1–1024) |
+| `OCTOP_BROWSER_IDLE_TIMEOUT_MINUTES` | int | `30` | Release an idle browser session after this many minutes |
+| `OCTOP_ENABLE_MOBILE` | bool | `false` | Force the Remote Android capability (`capabilities.mobile`) on or off, overriding the install-time probe |
+| `OCTOP_BACKUP_AUTO_ENABLED` | bool | `false` | Run scheduled automatic system backups |
+| `OCTOP_BACKUP_SCHEDULE` | cron string | `cron:0 4 * * *` | Backup cadence in `cron:<expr>` form; a blank value keeps the on-disk schedule |
+| `OCTOP_BACKUP_RETENTION_COUNT` | int | `7` | How many backups to keep; values `< 1` are logged and ignored |
+| `OCTOP_BACKUP_INCLUDE_CONFIG` | bool | `true` | Include `config.json` in the archive |
+| `OCTOP_BACKUP_INCLUDE_WORKSPACES` | bool | `true` | Include agent workspaces |
+| `OCTOP_BACKUP_INCLUDE_SKILL_PACKAGES` | bool | `true` | Include installed skill packages |
+| `OCTOP_BACKUP_INCLUDE_PLUGINS` | bool | `true` | Include installed plugins |
+| `OCTOP_BACKUP_INCLUDE_KNOWLEDGE` | bool | `true` | Include knowledge-base documents |
+| `OCTOP_BACKUP_INCLUDE_CHATS` | bool | `false` | Include chat transcripts |
 | `OCTOP_DATABASE_URL` | string | empty | Full DSN — overrides the `OCTOP_DATABASE_*` fields below |
 | `OCTOP_DATABASE_DRIVER` | `sqlite` \| `postgresql` | `sqlite` | Storage backend |
 | `OCTOP_DATABASE_SQLITE_PATH` | path | `octop.db` | SQLite file path (relative to `OCTOP_HOME` unless absolute) |
