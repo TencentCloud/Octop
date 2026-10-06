@@ -37,6 +37,8 @@ elif command == 'logout':
 elif command == 'refresh':
     if not (root / 'authorized').exists():
         sys.exit(1)
+if command == 'status' and (root / 'status_hang').exists():
+    time.sleep(30)
 print(json.dumps({'ok': True, 'data': {
     'logged_in': (root / 'authorized').exists(), 'access_token': 'DO-NOT-RETURN-THIS',
     'token_status': 'expired' if (root / 'expired').exists() else 'auto_refresh'
@@ -100,6 +102,26 @@ async def test_login_timeout_and_logout_reap_process(cli: Path, monkeypatch) -> 
     assert (await agently_auth.authorize(creds, "logout"))["status"] == "idle"
     assert session.task is not None and session.task.done()
     assert agently_auth._key(creds) not in agently_auth._sessions
+
+
+async def test_status_timeout_is_not_reported_as_expired_login(
+    cli: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hung `auth status` must not be mistaken for the 10-minute login deadline."""
+    monkeypatch.setattr(agently_auth, "_COMMAND_TIMEOUT", 0.2)
+    creds = {"cli_config_key": "status-hang"}
+    root = cli / "status-hang"
+    root.mkdir()
+    (root / "authorized").touch()
+    (root / "status_hang").touch()
+    session = agently_auth._Login()
+    await agently_auth._login(creds, session)
+    assert session.status == "error"
+    assert session.error_key == "login_failed"
+    result = agently_auth._result(session.status, session=session, locale="en")
+    assert result["status"] == "error"
+    assert "expired" not in (result["error"] or "").lower()
+    assert "DO-NOT-RETURN-THIS" not in str(result)
 
 
 async def test_login_error_and_refresh_never_expose_cli_output(cli: Path) -> None:
