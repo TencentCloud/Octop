@@ -18,6 +18,7 @@
 ### 修复
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
+- 电影/动画搜索（`search_movie`）此前向 Bangumi 请求 `responseGroup=small`，返回体不含 `rating`，导致卡片与文本摘要里的评分恒为「—」；现请求带评分的 `large` 分组
 
 ## [1.0.2b6] - 2026-10-04
 
