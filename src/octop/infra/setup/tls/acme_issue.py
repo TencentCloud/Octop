@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Callable
 from datetime import UTC
 from pathlib import Path
@@ -14,12 +13,10 @@ from acme.crypto_util import make_csr
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-
-from octop.infra.setup.tls.store import _atomic_write_bytes
 from josepy import JWKRSA  # type: ignore[attr-defined]
 
 from octop.infra.setup.tls.challenge import challenge_store
-from octop.infra.setup.tls.store import account_key_path
+from octop.infra.setup.tls.store import _atomic_write_bytes, account_key_path
 from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
