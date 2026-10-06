@@ -78,11 +78,21 @@ def complete_user_device_login(
     if not code:
         raise ValueError("device_code is required")
     binary, env = _prepare(config_dir, app_id=app_id, app_secret=app_secret, default_as="bot")
-    run_cli(
-        [binary, "auth", "login", "--device-code", code, "--json"],
-        env=env,
-        timeout_s=120.0,
-    )
+    try:
+        run_cli(
+            [binary, "auth", "login", "--device-code", code, "--json"],
+            env=env,
+            timeout_s=120.0,
+        )
+    except ValueError:
+        # lark-cli can exit nonzero even after persisting the token: e.g. 1.0.97
+        # prints the success receipt "[lark-cli] device-flow: token response
+        # received" and still fails, and a retried completion sees "The
+        # device_code is invalid" although the first attempt logged in. The
+        # receipt is not authoritative — judge completion by the identity that
+        # actually resulted, and only surface the CLI error when none did.
+        if not _user_identity_available(binary=binary, env=env):
+            raise
     run_cli([binary, "config", "default-as", "user"], env=env, timeout_s=30.0)
     status = read_auth_status(binary=binary, env=env)
     user = (
@@ -119,6 +129,16 @@ def complete_user_device_login(
 def read_auth_status(*, binary: str, env: dict[str, str]) -> dict[str, Any]:
     raw = run_cli([binary, "auth", "status", "--json"], env=env, timeout_s=60.0)
     return _parse_json_object(raw)
+
+
+def _user_identity_available(*, binary: str, env: dict[str, str]) -> bool:
+    try:
+        status = read_auth_status(binary=binary, env=env)
+    except ValueError:
+        return False
+    identities = status.get("identities")
+    user = identities.get("user") if isinstance(identities, dict) else None
+    return isinstance(user, dict) and bool(user.get("available"))
 
 
 def live_user_auth_preview(creds: dict[str, Any]) -> dict[str, Any]:

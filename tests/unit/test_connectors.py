@@ -882,6 +882,31 @@ def test_tencent_news_probe_rejects_bad_api_key(monkeypatch: pytest.MonkeyPatch)
     assert "api key" in out["error"].lower()
 
 
+def test_feishu_cli_credentials_preserve_default_as():
+    """A PATCH that only flips the default identity must keep it (#1615).
+
+    feishu-cli is auth_kind="api_key", so validate_create_credentials rebuilds the
+    payload; the routing field ``default_as`` must survive that rebuild together
+    with the stored app credentials.
+    """
+    stored = {
+        "app_id": "cli_x",
+        "app_secret": "sec",
+        "internal_token": "tok",
+        "cli_config_key": "key1",
+    }
+    payload = validate_create_credentials("feishu-cli", {**stored, "default_as": "user"})
+    assert payload["default_as"] == "user"
+    assert payload["app_id"] == "cli_x"
+    assert payload["app_secret"] == "sec"
+    assert payload["cli_config_key"] == "key1"
+
+
+def test_feishu_cli_credentials_default_to_bot_without_explicit_field():
+    payload = validate_create_credentials("feishu-cli", {"app_id": "cli_x", "app_secret": "sec"})
+    assert "default_as" not in payload
+
+
 def test_mail_provider_netease():
     payload = validate_create_credentials(
         "qq-mail",
