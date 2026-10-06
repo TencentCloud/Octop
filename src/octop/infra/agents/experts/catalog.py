@@ -12,6 +12,7 @@ Templates are discovered at server start by :class:`ExpertCatalog`.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -224,16 +225,23 @@ async def seed_expert_directory(
     copies library ``manifest.json`` to :data:`WORKSPACE_MANIFEST_PATH` when
     present (chat welcome source of truth).
     """
-    paths = seed_paths if seed_paths is not None else discover_seed_paths(expert_dir)
-    pairs: list[tuple[str, bytes]] = []
-    for rel in paths:
-        fpath = expert_dir / rel
-        if not fpath.is_file():
-            continue
-        pairs.append((rel.lstrip("/"), fpath.read_bytes()))
-    manifest_path = expert_dir / MANIFEST_FILENAME
-    if manifest_path.is_file():
-        pairs.append((WORKSPACE_MANIFEST_PATH, manifest_path.read_bytes()))
+
+    def _collect_pairs() -> list[tuple[str, bytes]]:
+        # Discovery plus reads are blocking; templates run to megabytes, so they
+        # belong on a worker thread rather than the event loop (AGENTS.md §8).
+        found = seed_paths if seed_paths is not None else discover_seed_paths(expert_dir)
+        collected: list[tuple[str, bytes]] = []
+        for rel in found:
+            fpath = expert_dir / rel
+            if not fpath.is_file():
+                continue
+            collected.append((rel.lstrip("/"), fpath.read_bytes()))
+        manifest_path = expert_dir / MANIFEST_FILENAME
+        if manifest_path.is_file():
+            collected.append((WORKSPACE_MANIFEST_PATH, manifest_path.read_bytes()))
+        return collected
+
+    pairs = await asyncio.to_thread(_collect_pairs)
     if not pairs:
         return 0
     await workspace.aupload_many(pairs)
