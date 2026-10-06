@@ -13,7 +13,7 @@ async def start_tetris() -> str:
         {
             "octop_ui": {"renderer": "tetris_game", "version": 1},
             "data": {"kind": "tetris"},
-            "text": "俄罗斯方块已开始。点击卡片后用 ← → 移动、↑ 或空格旋转、↓ 加速、空格硬降。",
+            "text": "俄罗斯方块已开始。点击卡片后用 ← → 移动、↑ 旋转、↓ 加速、空格硬降。",
         },
         ensure_ascii=False,
     )
