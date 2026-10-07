@@ -12,6 +12,8 @@
 - 新增 `021_coding_sessions` 迁移（SQLite / Postgres），持久化编码会话、运行时、工作树与授权请求
 - 「代码」页支持切换模型：新增 per-runner 模型环境变量映射（`ANTHROPIC_MODEL` 等），并可通过 `code_model_env` 配置为任意 Runner（含 Kimi Code / Cursor CLI / Pi 等）补充映射
 - 「代码」页沙箱镜像可按 Runner 指定（`OCTOP_CODE_SANDBOX_IMAGE_<RUNNER>`），镜像缺少对应 CLI 时输出可诊断日志
+- 「代码」页前端（`pages/Code`）与 `/code` 路由、侧边栏入口、中英文案；入口默认仅管理员可见
+- 新增可选依赖组 `code-sandbox`（Docker SDK），仅在开启沙箱模式时需要
 
 ### 变更
 - 运行轨迹弹框中 ASSISTANT 摘要显示所用模型

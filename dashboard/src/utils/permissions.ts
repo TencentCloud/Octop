@@ -38,6 +38,7 @@ export const NAV_PERMISSIONS = {
   "remote-desktop": ["desktop", "mobile"],
   "remote-phone": PERM.mobile,
   acp: "admin",
+  code: "admin",
   "admin-users": PERM.usersPage,
   models: PERM.modelsPage,
   "admin-storage": PERM.storage,
@@ -214,6 +215,10 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   }
   // ACP: no module key this round — admin role only.
   if (pathname === "/acp" || pathname.startsWith("/acp/")) {
+    return "admin";
+  }
+  // Code Console: drives coding CLIs against a workspace — admin role only.
+  if (pathname === "/code" || pathname.startsWith("/code/")) {
     return "admin";
   }
   return null;

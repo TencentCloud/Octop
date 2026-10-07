@@ -1,4 +1,4 @@
--- Schema v16: coding sessions persistence (S3) — PostgreSQL dialect.
+-- Schema v21: coding sessions persistence (S3) — PostgreSQL dialect.
 -- agent_events 跟随主库双方言，不强制 Postgres。
 -- coding_runtimes / coding_worktrees / repositories / approval_requests 为
 -- S4/S5/S6 预留表：本阶段只建表，不接 repo/业务代码。
@@ -116,4 +116,4 @@ CREATE TABLE IF NOT EXISTS approval_requests (
 CREATE INDEX IF NOT EXISTS idx_approval_requests_session
   ON approval_requests (session_id, created_at DESC);
 
-UPDATE _schema_version SET version = 16;
+UPDATE _schema_version SET version = 21;

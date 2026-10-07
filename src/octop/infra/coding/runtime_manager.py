@@ -21,13 +21,28 @@ import socket
 import tarfile
 import time
 import uuid
-
-import docker
-from docker.models.containers import Container
+from typing import TYPE_CHECKING, Any
 
 from octop.infra.db.repos.coding_runtimes import RuntimeRepo, RuntimeRow
 
+if TYPE_CHECKING:
+    import docker
+    from docker.models.containers import Container
+
 logger = logging.getLogger(__name__)
+
+
+def _docker() -> Any:
+    """Import the docker SDK lazily.
+
+    Sandboxes are optional: the package is only needed when
+    ``OCTOP_CODE_SANDBOX`` is on, so a missing SDK must not break importing
+    the code console router (or app startup) everywhere else.
+    """
+    import docker  # noqa: PLC0415 - optional dependency
+
+    return docker
+
 
 DEFAULT_IMAGE = "octop-codebuddy-sandbox:2.162"
 DEFAULT_CPUS = 1.0
@@ -115,7 +130,7 @@ class RuntimeManager:
     @property
     def client(self) -> docker.DockerClient:
         if self._client is None:
-            self._client = docker.from_env()
+            self._client = _docker().from_env()
         return self._client
 
     @property
@@ -171,7 +186,7 @@ class RuntimeManager:
         try:
             stale = self.client.containers.get(name)
             stale.remove(force=True)
-        except docker.errors.NotFound:
+        except _docker().errors.NotFound:
             pass
 
         # Worktrees live inside the octop-data Docker volume, which is NOT a
@@ -303,7 +318,7 @@ class RuntimeManager:
     def get_container(self, session_id: str) -> Container | None:
         try:
             return self.client.containers.get(self._container_name(session_id))
-        except docker.errors.NotFound:
+        except _docker().errors.NotFound:
             return None
 
     def exec_command(self, session_id: str, cmd: list[str]) -> list[str]:
@@ -345,6 +360,7 @@ class RuntimeManager:
         if c is None:
             return ""
         try:
-            return c.logs(tail=tail).decode("utf-8", errors="replace")
+            out: str = c.logs(tail=tail).decode("utf-8", errors="replace")
         except Exception:
             return ""
+        return out

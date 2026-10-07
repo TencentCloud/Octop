@@ -536,7 +536,8 @@ async def get_session(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     sm, row = await _load_owned(server, session_id, user)
-    return sm.runtime_view(row, streaming=session_id in _streams)
+    view: dict[str, Any] = sm.runtime_view(row, streaming=session_id in _streams)
+    return view
 
 
 @router.delete("/code/sessions/{session_id}", summary="Close a code console session")
@@ -861,7 +862,7 @@ async def _apply_policy(
         conv = await service.get_session(session_id, session_runner)
         if conv is None or not getattr(conv, "acp_session_id", None):
             return result
-        resumed = await service.resume_permission(
+        resumed: dict[str, Any] = await service.resume_permission(
             acp_session_id=conv.acp_session_id,
             option_id=target,
             on_message=on_message,
@@ -989,7 +990,7 @@ async def _run_turn(
         rec["started"] = True
 
         async def _turn(restart: bool) -> dict[str, Any]:
-            return await service.run_turn(
+            outcome: dict[str, Any] = await service.run_turn(
                 thread_id=session_id,
                 runner=session_runner,
                 prompt_blocks=[{"type": "text", "text": effective_text}],
@@ -998,6 +999,7 @@ async def _run_turn(
                 restart=restart,
                 require_existing=not restart,
             )
+            return outcome
 
         try:
             result = await _turn(first_turn)

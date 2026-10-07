@@ -12,6 +12,7 @@ const PersonalizationPage = lazy(
   () => import("../pages/Agent/Personalization"),
 );
 const ACPPage = lazy(() => import("../pages/Agent/ACP"));
+const CodeConsolePage = lazy(() => import("../pages/Code"));
 const TokenUsagePage = lazy(() => import("../pages/Control/TokenUsage"));
 
 // Lazy-loaded pages — Control
@@ -68,6 +69,7 @@ export const pathToKey: Record<string, string> = {
   "/agent-config": "agent-config",
   // Control
   "/acp": "acp",
+  "/code": "code",
   "/channels": "channels",
   "/workbench": "workbench",
   "/workbench/terminal": "workbench",
@@ -169,6 +171,7 @@ export const routeConfigs: RouteConfig[] = [
 
   // Control (RequirePermission via pathPermissionKeys in MainLayout)
   { path: "/acp", element: <ACPPage /> },
+  { path: "/code", element: <CodeConsolePage /> },
   {
     path: "/channels",
     element: <RedirectPreserveSearch to="/personalization/channels" />,

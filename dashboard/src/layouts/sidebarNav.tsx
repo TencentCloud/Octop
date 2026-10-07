@@ -19,6 +19,7 @@ import {
   GraduationCap,
   Shield,
   PanelsTopLeft,
+  CodeXml,
 } from "lucide-react";
 import type { OctopUser } from "../api/modules/auth";
 import { navAllowed, userCan } from "../utils/permissions";
@@ -62,6 +63,7 @@ export const SIDEBAR_NAV_KEYS = [
   "workbench",
   "remote-desktop",
   "acp",
+  "code",
   "admin-users",
   "models",
   "admin-storage",
@@ -116,6 +118,7 @@ export const SIDEBAR_GROUPED_NAV_KEYS = [
   "workbench",
   "remote-desktop",
   "acp",
+  "code",
   "admin-users",
   "models",
   "admin-storage",
@@ -250,6 +253,15 @@ export function buildNavSections(
       path: "/acp",
       icon: <Share2 size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.acp",
+    });
+  }
+  // Code Console: drives coding CLIs against a workspace — admin role only.
+  if (navAllowed(user, "code")) {
+    controlItems.push({
+      key: "code",
+      path: "/code",
+      icon: <CodeXml size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.code",
     });
   }
   if (controlItems.length > 0) {
