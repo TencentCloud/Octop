@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shlex
 import shutil
 import signal
 import socket
@@ -41,18 +42,26 @@ def _wait_until(predicate, *, timeout: float = 8.0) -> bool:
     return False
 
 
-def _listen_script(port: int) -> str:
+def _listen_script(port: int | None = None) -> str:
+    port_expression = str(port) if port is not None else "int(sys.argv[1])"
     return (
-        "import signal,socket,time;"
-        "signal.signal(signal.SIGHUP,signal.SIG_IGN);"
-        "s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);"
-        f"s.bind(('127.0.0.1',{port}));s.listen(1);time.sleep(120)"
+        "import signal,socket,sys,time\n"
+        "signal.signal(signal.SIGHUP,signal.SIG_IGN)\n"
+        "s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)\n"
+        f"s.bind(('127.0.0.1',{port_expression}));s.listen(1);s.settimeout(0.2)\n"
+        "deadline=time.monotonic()+120\n"
+        "while time.monotonic()<deadline:\n"
+        " try:\n"
+        "  client,_=s.accept()\n"
+        " except socket.timeout:\n"
+        "  continue\n"
+        " client.close()\n"
     )
 
 
 def _start_wrapper_listener(port: int) -> subprocess.Popen[bytes]:
     return subprocess.Popen(
-        ["bash", "-c", f"python3 -c {_listen_script(port)!r} & wait"],
+        ["bash", "-c", f"python3 -c {shlex.quote(_listen_script(port))} & wait"],
     )
 
 
@@ -61,7 +70,11 @@ def _direct_children(pid: int) -> list[int]:
     try:
         return [int(x) for x in path.read_text(encoding="utf-8").split() if x.isdigit()]
     except OSError:
-        return []
+        # macOS is POSIX but does not expose Linux's /proc children file.
+        result = subprocess.run(
+            ["pgrep", "-P", str(pid)], capture_output=True, text=True, timeout=5
+        )
+        return [int(x) for x in result.stdout.split() if x.isdigit()]
 
 
 # pgrep/ss walk all of /proc; a crowded host (zombies, leftover suites) makes them stall.
@@ -72,6 +85,10 @@ octop_kill_pid_tree() {
   [ -n "$pid" ] || return 0
   if [ -r "/proc/${pid}/task/${pid}/children" ]; then
     for child in $(cat "/proc/${pid}/task/${pid}/children" 2>/dev/null || true); do
+      octop_kill_pid_tree "$child" "$sig"
+    done
+  else
+    for child in $(pgrep -P "$pid" 2>/dev/null || true); do
       octop_kill_pid_tree "$child" "$sig"
     done
   fi
@@ -117,6 +134,22 @@ def test_native_manifest_does_not_block_start_on_stale_port() -> None:
     assert "checkport=false" in text
     assert "service_port=8089" in text
     assert "ctl_stop=true" in text
+
+
+@posix_only
+def test_listener_fixture_accepts_repeated_readiness_probes() -> None:
+    """Readiness probes must not exhaust an unaccepted TCP listen queue."""
+    port = _free_tcp_port()
+    proc = subprocess.Popen(["python3", "-c", _listen_script(port)])
+    try:
+        assert _wait_until(lambda: _port_open(port)), f"listener did not bind {port}"
+        for _ in range(10):
+            assert _port_open(port), "readiness probe filled the listener backlog"
+            assert proc.poll() is None
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait(timeout=3)
 
 
 @posix_only
@@ -232,9 +265,7 @@ def test_native_main_stop_frees_port_after_wrapper_start(tmp_path: Path) -> None
         "while [ $# -gt 0 ]; do\n"
         '  case "$1" in --port) port="$2"; shift 2 ;; *) shift ;; esac\n'
         "done\n"
-        'python3 -c "import signal,socket,time;signal.signal(signal.SIGHUP,signal.SIG_IGN);'
-        "s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);"
-        "s.bind(('127.0.0.1',int('$port')));s.listen(1);time.sleep(120)\" &\n"
+        f'python3 -c {shlex.quote(_listen_script())} "$port" &\n'
         "wait\n",
         encoding="utf-8",
     )
