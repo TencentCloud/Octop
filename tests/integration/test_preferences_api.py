@@ -42,6 +42,19 @@ async def test_preferences_patch_locale_only_still_works(env) -> None:
 
 
 @pytest.mark.asyncio
+async def test_preferences_patch_locale_ja_roundtrip(env) -> None:
+    client, _srv, auth = env
+    r = await client.patch("/api/preferences", headers=auth, json={"locale": "ja"})
+    assert r.status_code == 200
+    assert r.json()["locale"] == "ja"
+
+    r = await client.get("/api/preferences", headers=auth)
+    assert r.json()["locale"] == "ja"
+    r = await client.get("/api/auth/me", headers=auth)
+    assert r.json()["locale"] == "ja"
+
+
+@pytest.mark.asyncio
 async def test_preferences_patch_requires_one_field(env) -> None:
     client, _srv, auth = env
     r = await client.patch("/api/preferences", headers=auth, json={})

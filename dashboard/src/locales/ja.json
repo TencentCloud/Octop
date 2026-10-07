@@ -217,7 +217,7 @@
     "tasks": "自動化",
     "connectors": "コネクタ",
     "bridge": "クラウド連携",
-    "acp": "ACP",
+    "acp": "ACP連携",
     "agents": "エージェント",
     "providers": "プロバイダー",
     "models": "モデル管理",
@@ -292,7 +292,7 @@
   },
   "skillPackages": {
     "title": "スキルパッケージ",
-    "subtitle": "エージェントにマウントできる再利用可能なスキルコレクションを作成・管理します。",
+    "subtitle": "再利用できるスキルパッケージを作成・管理し、スキルを追加してエキスパートにマウントします",
     "createPackage": "スキルパッケージを作成",
     "editPackage": "スキルパッケージを編集",
     "createPackageHint": "スキルパッケージはスキルを共有するコレクションです。作成後、スキルを追加し、パッケージをエージェントにマウントします。",
@@ -354,7 +354,7 @@
   },
   "knowledgeBases": {
     "title": "ナレッジベース",
-    "subtitle": "チャットでの検索用にドキュメントをインデックス化します。必要に応じて、このインスタンスのユーザーと共有できます。",
+    "subtitle": "ドキュメントをアップロード・インデックス化してチャットで検索に使い、必要に応じて共有します",
     "featureTitle": "ナレッジベースを有効にする",
     "settingsTitle": "ナレッジベース設定",
     "settingsLead": "インスタンス全体のスイッチです。オンにすると埋め込みモデルを設定できます。オフにすると、全員がナレッジベースを利用できなくなります。",
@@ -1428,7 +1428,10 @@
     "subagentPickerEmpty": "インストール済みのサブエージェントがありません",
     "subagentPickerManage": "サブエージェントを管理",
     "modelPickerManage": "モデルを管理",
-    "sessionWorking": "作業中",
+    "modelPickerSearch": "モデルを検索",
+    "modelPickerEmpty": "一致するモデルがありません",
+    "sessionWorking": "処理中",
+    "sessionWaiting": "あなたの応答待ち",
     "composerContextLabel": "メッセージのコンテキスト",
     "contextWindow": {
       "tooltip": "コンテキスト {{used}} / {{max}} · {{percent}}%(直近のモデルリクエスト)",
@@ -1641,6 +1644,7 @@
     "trajectoryCollapsedToolCallMany": "ツール呼び出し {{count}} 件 · {{names}}",
     "trajectoryCollapsedTurn": "{{steps}} ステップ · ツール呼び出し {{toolCalls}} 件",
     "trajectoryInspectorKind": "種類",
+    "trajectoryInspectorModel": "モデル",
     "trajectoryInspectorSource": "ソース",
     "trajectoryInspectorStatus": "ステータス",
     "trajectoryInspectorError": "エラー",
@@ -1720,7 +1724,8 @@
     "ask_user_question": "ユーザーに質問",
     "generate_image": "画像を生成",
     "generate_video": "動画を生成",
-    "bilibili_search_anime": "Bilibili でアニメを検索"
+    "bilibili_search_anime": "Bilibili でアニメを検索",
+    "search_arxiv": "arXiv論文を検索"
   },
   "toolSettings": {
     "title": "ツール設定",
@@ -1740,7 +1745,7 @@
     "pluginToolCount": "{{count}} 個のツール",
     "tabs": {
       "builtin": "組み込みツール",
-      "acp": "ACP ツール",
+      "acp": "ACP連携ツール",
       "plugin": "プラグインツール"
     },
     "categories": {
@@ -3841,6 +3846,7 @@
     "passwordTooWeak": "パスワードが脆弱すぎます。より強力なものを選んでください",
     "langZh": "中文",
     "langEn": "English",
+    "langJa": "日本語",
     "layoutMode": "レイアウト",
     "layoutModeHint": "クラシックは 2 つのサイドバーを維持し、ミニマルはナビゲーションと履歴を左サイドバーに統合します。",
     "layoutClassic": "クラシック",
@@ -3859,8 +3865,7 @@
     "ssoUnbindSuccess": "シングルサインオンの連携を解除しました",
     "ssoBindFailed": "アカウント連携を開始できませんでした",
     "ssoUnbindFailed": "シングルサインオンの連携を解除できませんでした",
-    "ssoPopupBlocked": "シングルサインオンを続行するには、ポップアップを許可してください。",
-    "langJa": "日本語"
+    "ssoPopupBlocked": "シングルサインオンを続行するには、ポップアップを許可してください。"
   },
   "user": {
     "title": "ユーザー設定",
@@ -4295,7 +4300,7 @@
   },
   "personalization": {
     "title": "パーソナライズ",
-    "description": "このエージェントのスキル、ツール、プラグイン、サブエージェント、チャネル、性格、メモリを設定します。",
+    "description": "このエキスパートのスキル、ツール、プラグイン、サブエージェント、チャネル、パーソナリティ、メモリを設定します",
     "tabs": {
       "skills": "スキル",
       "tools": "ツール",
@@ -4404,7 +4409,7 @@
   },
   "workbench": {
     "title": "ワークベンチ",
-    "description": "エージェントとリアルタイムでやり取りするためのターミナルとブラウザー",
+    "description": "エキスパートのターミナルとブラウザーを表示・操作し、実行状況をリアルタイムで確認します",
     "tabs": {
       "terminal": "ターミナル",
       "browser": "ブラウザー"
@@ -4412,7 +4417,7 @@
   },
   "remoteDesktopHub": {
     "title": "リモートデスクトップ",
-    "description": "ブラウザーからホストのデスクトップや接続中のスマートフォンを操作します",
+    "description": "ブラウザーからホストのデスクトップや接続されたスマートフォンを操作し、リモートで作業します",
     "tabs": {
       "desktop": "サーバー",
       "phone": "スマートフォン"
@@ -4931,7 +4936,7 @@
   },
   "storage": {
     "pageTitle": "ストレージ管理",
-    "pageSubtitle": "エキスパートが使用するストレージバックエンド(ローカル、オブジェクトストレージ、サンドボックス、データベース)を管理します",
+    "pageSubtitle": "エキスパートが使うローカル、オブジェクト、サンドボックス、データベースのストレージバックエンドを管理します",
     "myStorage": "マイストレージ",
     "supportedTypes": "対応タイプ",
     "addBackend": "ストレージバックエンドを追加",
@@ -5160,7 +5165,6 @@
     "title": "サインイン",
     "subtitle": "あなたを理解し、支え、共に成長するインテリジェントなパートナー",
     "username": "ユーザー名またはメールアドレス",
-    "usernameHint": "セットアップ時に設定したユーザー名またはメールアドレスを使用してください",
     "password": "パスワード",
     "remember": "ログイン状態を保持",
     "submit": "サインイン",
@@ -5324,21 +5328,24 @@
     "avatarSamples": "サンプルアイコン",
     "avatarDefault": "デフォルトアイコン",
     "avatarIconUser": "メンバー",
-    "avatarIconBusiness": "ビジネス",
-    "avatarIconResearch": "リサーチ",
-    "avatarIconMedical": "医療",
-    "avatarIconLaptop": "技術",
-    "avatarIconTeach": "教育",
-    "avatarIconDesign": "デザイン",
-    "avatarIconLearner": "学習者",
+    "avatarIconAdmin": "管理者",
+    "avatarIconStaff": "ユーザー",
+    "avatarIconDoctor": "医師",
+    "avatarIconNurse": "看護師",
+    "avatarIconStudent": "学生",
+    "avatarIconTeacher": "教師",
+    "avatarIconSupport": "サポート",
+    "avatarIconOps": "運用",
+    "avatarIconFinance": "財務",
+    "avatarIconBoss": "経営者",
     "avatarIconMember": "メンバー",
-    "avatarIconAward": "アワード",
-    "avatarIconTerminal": "ターミナル",
-    "avatarIconPen": "ペン",
-    "avatarIconChart": "チャート",
-    "avatarIconHeadset": "ヘッドセット",
-    "avatarIconWrench": "レンチ",
-    "avatarIconScale": "天秤",
+    "avatarIconAward": "王冠",
+    "avatarIconTerminal": "コード",
+    "avatarIconPen": "羽根ペン",
+    "avatarIconChart": "円グラフ",
+    "avatarIconHeadset": "メガホン",
+    "avatarIconWrench": "歯車",
+    "avatarIconScale": "機関",
     "noEmail": "メールアドレスなし",
     "formUserRolePlaceholder": "ロールなし",
     "formUserRoleStale": "記録されているロール名: {{name}}。このテンプレートは削除または名前変更されました。別のロールを選択するまで、現在の権限が維持されます。",
@@ -6185,19 +6192,19 @@
   "pageShell": {
     "experts": {
       "title": "エキスパート",
-      "subtitle": "AI エキスパートを作成・管理するか、シナリオテンプレートを選んですぐに始められます。"
+      "subtitle": "AIエキスパートを作成・管理するか、テンプレートからすぐに作成します"
     },
     "tasks": {
       "title": "オートメーション",
-      "subtitle": "cron トリガーで実行される定期タスク"
+      "subtitle": "エキスパートの定期タスクを作成・管理するか、すぐに実行します"
     },
     "connectors": {
       "title": "コネクタ",
-      "subtitle": "アカウント単位のドキュメント、クラウド、メール — チャットごとに選択"
+      "subtitle": "ドキュメント、クラウドストレージ、メールを接続し、チャットで必要に応じて使います"
     },
     "acp": {
-      "title": "ACP",
-      "subtitle": "外部のコーディングエージェントランナー(OpenCode、Claude Code など)を設定します"
+      "title": "ACP連携",
+      "subtitle": "外部のコーディングエージェント実行環境を設定し、エキスパートごとに有効化します"
     },
     "skills": {
       "title": "スキル",
@@ -6205,39 +6212,39 @@
     },
     "tools": {
       "title": "ツール",
-      "subtitle": "このエージェントの組み込みツールとプラグインツールを有効/無効にします"
+      "subtitle": "このエキスパートの組み込みツールとプラグインツールを有効/無効にし、使える機能を管理します"
     },
     "tokenUsage": {
       "title": "トークン使用量",
-      "subtitle": "アカウントのトークン概要と多次元分析"
+      "subtitle": "アカウントのトークン使用量を確認し、チャネル別・会話別に分析します"
     },
     "channels": {
       "title": "チャネル",
-      "subtitle": "IM と Webhook の連携管理"
+      "subtitle": "IMチャネルとWebhook連携を管理し、エキスパートが外部チャットで返信できるようにします"
     },
     "mbti": {
       "title": "MBTI 性格",
-      "subtitle": "MBTI タイプを選ぶか、3 分間のテストを受けて、エージェントに独自の性格を与えましょう!"
+      "subtitle": "このエキスパートのMBTIパーソナリティを選択またはテストし、話し方を設定します"
     },
     "subagents": {
       "title": "サブエージェント",
-      "subtitle": "現在のエキスパートのサブエージェントを管理します — サブエージェントのスキルをインストールまたは編集"
+      "subtitle": "このエキスパートのサブエージェントを管理し、スキルをインストール・編集します"
     },
     "memory": {
       "title": "メモリ",
-      "subtitle": "会話履歴と日次メモリを表示します"
+      "subtitle": "このエキスパートが保存したメモリ(保留中の下書きを含む)を表示・整理します"
     },
     "workspace": {
       "title": "ワークスペース",
-      "subtitle": "エージェントのローカルファイルシステム上のワークスペース"
+      "subtitle": "このエキスパートのワークスペースのファイルを閲覧・プレビュー・管理し、編集やダウンロードを行います"
     },
     "models": {
       "title": "モデル管理",
-      "subtitle": "会話、生成、音声、検索エンジンを設定します"
+      "subtitle": "チャット、生成、音声、検索のモデルを設定し、デフォルトのサービスを選択します"
     },
     "voice": {
       "title": "音声サービス",
-      "subtitle": "音声認識と音声合成を設定します"
+      "subtitle": "音声認識と音声合成を設定し、使用するモデルを選択します"
     },
     "adminUsers": {
       "title": "ユーザー管理",
@@ -6245,59 +6252,59 @@
     },
     "adminSso": {
       "title": "Generic OIDC",
-      "subtitle": "OpenID Connect の ID プロバイダーを設定します"
+      "subtitle": "統合サインイン用の OpenID Connect IDプロバイダーを設定します"
     },
     "adminStorage": {
       "title": "ストレージ",
-      "subtitle": "共有ストレージバックエンド(COS など)を設定します"
+      "subtitle": "オブジェクトストレージやサンドボックスなど、エキスパート用のストレージバックエンドを設定します"
     },
     "adminAudit": {
       "title": "監査ログ",
-      "subtitle": "システム操作と API アクセスの記録"
+      "subtitle": "トラブルシューティングや監査のために、システム操作とAPIアクセスの記録を確認します"
     },
     "adminAgents": {
       "title": "エージェント",
-      "subtitle": "全ユーザーのエージェントを表示・管理します"
+      "subtitle": "全ユーザーのエージェントを表示・管理し、ユーザーをまたいで検索・操作します"
     },
     "adminAdvanced": {
       "title": "アプリケーション設定",
-      "subtitle": "環境変数、バックアップ、HTTPS、アップデート"
+      "subtitle": "環境変数、バックアップ、HTTPS、アップデートを管理します"
     },
     "bridge": {
       "title": "クラウドコラボレーション",
-      "subtitle": "別の Octop インスタンスをリンクし、このダッシュボードからそのエキスパートとチャットします"
+      "subtitle": "別のOctopインスタンスに接続し、そのエキスパートを閲覧してインスタンスをまたいでチャットします"
     },
     "security": {
       "title": "セキュリティ",
-      "subtitle": "ツールの承認、コマンドガード、ファイルシステムルール、PII のマスキング"
+      "subtitle": "ツール承認、コマンドガード、ファイルアクセス、個人情報保護を設定します"
     },
     "adminPlugins": {
       "title": "プラグイン管理",
-      "subtitle": "サーバーのプラグインをインストール・管理します。各エージェントの設定は「パーソナライズ → プラグイン」で行います"
+      "subtitle": "サーバープラグインをインストール・管理し、パーソナライズでエキスパートごとに有効化します"
     },
     "adminUpdates": {
       "title": "アップデート",
-      "subtitle": "バージョンを確認し、システムをアップグレードします"
+      "subtitle": "現在のバージョンを確認してその場でアップグレードするか、インストール方法別のガイドを確認します"
     },
     "browser": {
       "title": "Browser AI+",
-      "subtitle": "ヘッドレス Chromium ブラウザーセッション"
+      "subtitle": "リモートのヘッドレスブラウザーを表示・操作し、エキスパートのWebセッションを引き継ぎます"
     },
     "desktop": {
       "title": "リモートデスクトップ",
-      "subtitle": "Octop ホスト OS のデスクトップを表示・操作します"
+      "subtitle": "Octopホストのデスクトップを表示・操作し、リモートでタスクを完了します"
     },
     "terminal": {
       "title": "Terminal AI+",
-      "subtitle": "ブラウザー上で対話型シェルターミナルを実行します"
+      "subtitle": "ブラウザーで対話型のシェルターミナルを実行し、エキスパートのコマンドをリアルタイムで確認します"
     },
     "mobile": {
       "title": "リモートフォン",
-      "subtitle": "接続中のスマートフォンまたはエミュレーターを表示・操作します"
+      "subtitle": "接続されたスマートフォンやエミュレーターを表示・操作し、画面をリモートで操作します"
     },
     "adminSharedModels": {
       "title": "共有モデル",
-      "subtitle": "全ユーザーと共有されるモデルのプリセット"
+      "subtitle": "全ユーザーで共有するモデルプリセットを管理し、すべてのエキスパートで同じ設定を使えるようにします"
     }
   },
   "remoteAndroid": {

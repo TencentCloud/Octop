@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   detectBrowserLocale,
+  normalizeUiLocale,
   readStoredUiLocale,
   resolveInitialLocale,
   speechLocaleFromUi,
@@ -30,6 +31,26 @@ describe("localePrefs", () => {
     expect(detectBrowserLocale()).toBe("en");
   });
 
+  it("detectBrowserLocale detects Japanese", () => {
+    vi.stubGlobal("navigator", {
+      language: "ja-JP",
+      languages: ["ja-JP", "en-US"],
+    });
+    expect(detectBrowserLocale()).toBe("ja");
+  });
+
+  it("normalizeUiLocale keeps ja and maps unknown tags to en", () => {
+    expect(normalizeUiLocale("ja")).toBe("ja");
+    expect(normalizeUiLocale("ja-JP")).toBe("ja");
+    expect(normalizeUiLocale("fr")).toBe("en");
+    expect(normalizeUiLocale(null)).toBe("zh");
+  });
+
+  it("stored ja preference round-trips", () => {
+    storeUiLocale("ja");
+    expect(readStoredUiLocale()).toBe("ja");
+  });
+
   it("resolveInitialLocale uses stored preference over browser", () => {
     vi.stubGlobal("navigator", {
       language: "en-US",
@@ -47,6 +68,7 @@ describe("localePrefs", () => {
     expect(speechLocaleFromUi("zh-CN")).toBe("zh-CN");
     expect(speechLocaleFromUi("en")).toBe("en-US");
     expect(speechLocaleFromUi("en-US")).toBe("en-US");
+    expect(speechLocaleFromUi("ja")).toBe("ja-JP");
     expect(speechLocaleFromUi(null)).toBe("zh-CN");
   });
 });
