@@ -89,8 +89,10 @@ does **not** run `npm install`).
 
 **Dashboard:** Admin → Plugins → Install. Paste a **direct ZIP download URL**.
 
-After installing a **tool** plugin, open **Tool management** and enable the
-tools. **Skill** plugins sync on agent start. **Hook** middleware attaches for
+After installing a **tool** plugin, its tools are on for every agent by default
+(switch them off under **Personalization → Tools**). Tools with `config_fields`
+are configured per agent under **Personalization → Plugins → View details →
+Configure**. **Skill** plugins sync on agent start. **Hook** middleware attaches for
 globally enabled plugins. **UI** loads when you open chat.
 
 ## Package rules

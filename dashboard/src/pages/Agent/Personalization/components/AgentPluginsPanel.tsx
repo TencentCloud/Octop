@@ -50,6 +50,15 @@ function toolsConfig(tools: AgentPluginTool[]): AgentPluginsConfig {
   return plugins;
 }
 
+/** A tool declares required config fields that are still blank for this agent. */
+export function toolNeedsConfig(tool: AgentPluginTool): boolean {
+  return (tool.config_fields ?? []).some((field) => {
+    if (!field.required) return false;
+    const value = tool.config?.[field.name];
+    return value == null || (typeof value === "string" && value.trim() === "");
+  });
+}
+
 function configField(field: PluginConfigField) {
   const props = {
     label: field.label || field.name,
@@ -122,6 +131,16 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
       void load();
     });
   }, [load]);
+
+  const pluginsNeedingConfig = useMemo(
+    () =>
+      new Set(
+        tools
+          .filter((tool) => tool.enabled && toolNeedsConfig(tool))
+          .map((tool) => tool.plugin_id),
+      ),
+    [tools],
+  );
 
   const detail = plugins.find((plugin) => plugin.id === detailId) ?? null;
   const detailTools = useMemo(
@@ -292,6 +311,9 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
                       {!plugin.global_enabled ? (
                         <Tag>{t("plugins.globallyDisabled")}</Tag>
                       ) : null}
+                      {plugin.enabled && pluginsNeedingConfig.has(plugin.id) ? (
+                        <Tag color="warning">{t("plugins.needsConfig")}</Tag>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -357,6 +379,7 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
                 {detailTools.map((tool) => {
                   const key = `tool:${tool.plugin_id}:${tool.name}`;
                   const configurable = (tool.config_fields?.length ?? 0) > 0;
+                  const needsConfig = tool.enabled && toolNeedsConfig(tool);
                   return (
                     <div key={key} className={pluginStyles.detailToolItem}>
                       <span className={pluginStyles.detailToolIcon} aria-hidden>
@@ -365,6 +388,14 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
                       <div className={pluginStyles.detailToolMeta}>
                         <div className={pluginStyles.detailToolName}>
                           {tool.name}
+                          {needsConfig ? (
+                            <Tag
+                              color="warning"
+                              className={styles.needsConfigTag}
+                            >
+                              {t("plugins.needsConfig")}
+                            </Tag>
+                          ) : null}
                         </div>
                         {tool.description ? (
                           <div className={pluginStyles.detailToolDesc}>
@@ -375,13 +406,14 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
                       <div className={pluginStyles.detailToolActions}>
                         {configurable ? (
                           <Button
-                            type="text"
+                            type={needsConfig ? "primary" : "default"}
                             size="small"
-                            icon={<Settings2 size={15} />}
+                            icon={<Settings2 size={14} />}
                             disabled={!detail.enabled}
                             onClick={() => openConfig(tool)}
-                            aria-label={t("plugins.configure")}
-                          />
+                          >
+                            {t("plugins.configure")}
+                          </Button>
                         ) : null}
                         <Switch
                           size="small"
