@@ -19,6 +19,7 @@
 - Ask / Plan 模式下输入栏「+」菜单的选择面板过矮（模型、知识库一次只看得见一条），改为按视口可用高度封顶（目标 400px，且不低于左侧菜单）；右侧比左侧矮时上对齐、更高时下对齐向上长；连接器/技能/专家/子智能体数量角标与知识库一样跟在文字后；模型列表现在可搜索
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
+- 安装不存在的 SkillHub 技能却被提示「检测到 Python SSL 错误，请 `brew reinstall openssl@3` 或检查系统 CA 证书」（HTTP 502）：`_map_skillhub_install_error` 先跑 TLS 启发式，而 `looks_like_ssl_error` 把 `ssl` 当作裸子串匹配，CLI 又把传入的技能名原样回显在「未找到」文案里，于是 `openssl-audit`、`mysql-ssl` 这类 slug 的注册表 404 被判成 TLS 故障。现改为在 TLS 判定前剔除回显的技能名：真正的握手失败仍返回 502，`No such file or directory: '/usr/lib/ssl/openssl.cnf'` 这类 TLS 环境故障也不被降级成 404（Fixes #1469）
 
 ## [1.0.2b6] - 2026-10-04
 

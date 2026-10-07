@@ -50,6 +50,58 @@ def test_map_install_error_ssl_record_layer() -> None:
     assert exc.detail == error_message("SKILLHUB_SSL_FAILED", "en")
 
 
+def test_map_install_error_404_for_slug_naming_ssl() -> None:
+    """A registry 404 must not become a TLS failure because the slug says "ssl"."""
+    err = (
+        '[skillhub] info: "openssl-audit" not in index, using remote registry exact match\n'
+        "Error: Download failed: HTTP 404 for https://api.skillhub.cn/api/v1/download?slug=openssl-audit"
+    )
+    exc = _map_skillhub_install_error(err, "openssl-audit")
+    assert isinstance(exc, HTTPException)
+    assert exc.status_code == 404
+    assert "openssl-audit" in str(exc.detail)
+
+
+def test_map_install_error_not_found_for_slug_naming_ssl() -> None:
+    exc = _map_skillhub_install_error("skillhub: skill not found: mysql-ssl", "mysql-ssl")
+    assert isinstance(exc, HTTPException)
+    assert exc.status_code == 404
+
+
+def test_map_install_error_ssl_failure_on_ssl_named_slug_stays_502() -> None:
+    """Stripping the echoed slug must not swallow a real TLS marker next to it."""
+    from octop.i18n import error_message
+
+    err = (
+        'skillhub: install failed for "ssl-troubleshooter": '
+        "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed"
+    )
+    exc = _map_skillhub_install_error(err, "ssl-troubleshooter")
+    assert isinstance(exc, HTTPException)
+    assert exc.status_code == 502
+    assert exc.detail == error_message("SKILLHUB_SSL_FAILED", "en")
+
+
+def test_map_install_error_missing_ssl_config_file_stays_502() -> None:
+    """ "no such file" under an ssl path is a TLS-stack problem, not a 404."""
+    from octop.i18n import error_message
+
+    err = "FileNotFoundError: [Errno 2] No such file or directory: '/usr/lib/ssl/openssl.cnf'"
+    exc = _map_skillhub_install_error(err, "pdf-tools")
+    assert isinstance(exc, HTTPException)
+    assert exc.status_code == 502
+    assert exc.detail == error_message("SKILLHUB_SSL_FAILED", "en")
+
+
+def test_map_install_error_ssl_marker_without_a_slug() -> None:
+    from octop.i18n import error_message
+
+    exc = _map_skillhub_install_error("[SSL: RECORD_LAYER_FAILURE] record layer failure", "")
+    assert isinstance(exc, HTTPException)
+    assert exc.status_code == 502
+    assert exc.detail == error_message("SKILLHUB_SSL_FAILED", "en")
+
+
 def test_skillhub_cli_failure_detail_ssl() -> None:
     from octop.api.routers.skills import _skillhub_cli_failure_detail
     from octop.i18n import error_message
