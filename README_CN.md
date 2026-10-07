@@ -40,7 +40,7 @@
 
 **Octop** 是一个开源、自托管的 AI 助手。它不仅是工具，更是可并行运作的数字生命体。通过多 Agent 架构，它为团队、家庭和个人构建了既独立又协作的智能环境。并且这一切都运行在你的机器上——完全自托管的设计让隐私不再是妥协，而单进程启动的便捷性，则让强大的 Web 控制台、CLI 与 IM 集成触手可及。
 
-借助飞书、钉钉、QQ、微信、企业微信或 HTTP/SSE/WebSocket API 与任意 Agent 对话；通过**专家库**一键创建专业角色，通过 **Connector**（OAuth + MCP）接入外部服务，通过 **ACP** 与 IDE / 终端 AI 工具双向协作。
+借助飞书、钉钉、QQ、微信、Telegram、Discord、企业微信或 HTTP/SSE/WebSocket API 与任意 Agent 对话；通过**专家库**一键创建专业角色，通过 **Connector**（OAuth + MCP）接入外部服务，通过 **ACP** 与 IDE / 终端 AI 工具双向协作。
 
 ## ✨ 亮点
 
@@ -65,7 +65,7 @@
 
 ## 📌 概述
 
-Octop 是面向家庭与小团队的自托管 AI 助手平台。单进程同时提供 Web 控制台、CLI、IM 通道（飞书、钉钉、QQ、微信、企业微信等）与定时任务，共享 `~/.octop/` 下的控制面数据库（默认 SQLite；可选 PostgreSQL）。
+Octop 是面向家庭与小团队的自托管 AI 助手平台。单进程同时提供 Web 控制台、CLI、IM 通道（飞书、钉钉、QQ、微信、Telegram、Discord、企业微信等）与定时任务，共享 `~/.octop/` 下的控制面数据库（默认 SQLite；可选 PostgreSQL）。
 
 > Octop 的设计目标：让每一次对话、工作区与凭据都留在你自己的机器上，同时为每个用户配备一组可按场景切换的专业 Agent。
 
@@ -121,7 +121,7 @@ Octop 不依赖外部消息队列或中间件，而是通过进程内的 `Harnes
 - 工作区后端（专家文件）：本地磁盘、Docker 沙箱、PostgreSQL、COS/S3 及其他远程存储 — 与控制面数据库分离
 
 ### 通道与自动化
-- IM 通道：飞书、钉钉、QQ、微信、企业微信等
+- IM 通道：飞书、钉钉、QQ、微信、Telegram、Discord、企业微信等
 - 主动定时任务，支持自然语言和斜杠命令触发
 - Web UI、IM、定时任务共用同一套消息处理链路
 
@@ -388,6 +388,8 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 | **钉钉** | App Key、App Secret |
 | **QQ** | Bot AppID、Token |
 | **微信** | 扫码绑定 / 账号凭证；见 [CLI](docs/cli.md) |
+| **Telegram** | Bot Token |
+| **Discord** | Bot Token；默认允许机器人可访问的全部频道，可选频道 / 私聊白名单；[配置与验证](docs/discord-channel.md) |
 | **企业微信** | Corp ID、Agent Secret |
 | **Web 控制台** | 默认启用 |
 
