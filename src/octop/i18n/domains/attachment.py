@@ -10,6 +10,7 @@ __all__ = [
     "attachment_empty_message",
     "attachment_image_unavailable",
     "attachment_path_hint",
+    "attachment_voice_transcript",
 ]
 
 
@@ -42,3 +43,16 @@ def attachment_empty_image(locale: str | Locale = "en") -> str:
 
 def attachment_image_unavailable(locale: str | Locale = "en") -> str:
     return tr("attachment.image_unavailable", locale)
+
+
+def attachment_voice_transcript(
+    text: str,
+    *,
+    truncated: bool = False,
+    minutes: int = 5,
+    locale: str | Locale = "en",
+) -> str:
+    """Speech-to-text transcript of an inbound voice note / audio attachment."""
+    if truncated:
+        return tr("attachment.voice_transcript_truncated", locale, text=text, minutes=minutes)
+    return tr("attachment.voice_transcript", locale, text=text)

@@ -724,7 +724,9 @@
     "size": "Size: {size} bytes",
     "empty_message": "[empty message]",
     "empty_image": "User sent an image.",
-    "image_unavailable": "[Attachment] Image could not be loaded for the model."
+    "image_unavailable": "[Attachment] Image could not be loaded for the model.",
+    "voice_transcript": "[Voice message transcript]\n{text}",
+    "voice_transcript_truncated": "[Voice message transcript, first {minutes} min]\n{text}"
   },
   "knowledge": {
     "retrieval": {

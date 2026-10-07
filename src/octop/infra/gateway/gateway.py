@@ -239,6 +239,7 @@ class Gateway:
             gateway=self,
             trajectory_service=self._trajectory_service,
             history_archive=self._history_archive,
+            voice_provider_repo=getattr(self._repos, "voice_provider_repo", None),
         )
 
         self._channel_manager = ChannelManager(channels={})

@@ -13,6 +13,7 @@ from octop.i18n.domains.attachment import (
     attachment_empty_message,
     attachment_image_unavailable,
     attachment_path_hint,
+    attachment_voice_transcript,
 )
 from octop.i18n.domains.channel import channel_tool_hint_end, channel_tool_hint_start
 from octop.i18n.domains.errors import error_message
@@ -40,6 +41,7 @@ __all__ = [
     "attachment_empty_message",
     "attachment_image_unavailable",
     "attachment_path_hint",
+    "attachment_voice_transcript",
     "classify_agent_start_error_message",
     "classify_stream_error_message",
     "format_agent_start_error",

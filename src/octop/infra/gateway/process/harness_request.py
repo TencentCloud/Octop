@@ -8,7 +8,11 @@ from typing import Any
 from octop_gateway.media import MediaBackend
 from octop_gateway.models import ContentPart, ImageContent, InboundMessage, TextContent
 
-from octop.i18n.domains.attachment import attachment_empty_image, attachment_empty_message
+from octop.i18n.domains.attachment import (
+    attachment_empty_image,
+    attachment_empty_message,
+    attachment_voice_transcript,
+)
 from octop.infra.gateway.media.attachment_hints import (
     VISION_MAX_COUNT,
     content_blocks_need_vision,
@@ -18,6 +22,7 @@ from octop.infra.gateway.media.attachment_hints import (
 from octop.infra.gateway.media.ingress import AgentBackedMediaBackend
 from octop.infra.gateway.process.message_keys import images_from_message
 from octop.infra.utils.locale import Locale, normalize_locale
+from octop.infra.voice.inbound import InboundAudioTranscriber
 
 
 def _workspace_from_media_backend(media_backend: MediaBackend | None) -> Any:
@@ -98,11 +103,14 @@ async def build_content_from_message(
     *,
     media_backend: MediaBackend | None = None,
     locale: str | Locale = "en",
+    transcriber: InboundAudioTranscriber | None = None,
 ) -> str | list[dict[str, Any]]:
     """Convert ``InboundMessage.content`` into harness user content.
 
     Images within :data:`VISION_MAX_COUNT` / size limits become ``image_url``
     blocks; excess / oversized / non-image attachments become path-hint text.
+    With a ``transcriber`` (server-side STT configured), audio attachments also
+    get a transcript ahead of their path hint.
     """
     workspace = _workspace_from_media_backend(media_backend)
     images = images_from_message(msg)
@@ -151,7 +159,23 @@ async def build_content_from_message(
             continue
         image_blocks.append(block)
 
-    current_text = "\n\n".join(part for part in [msg.text or "", *file_hints] if part)
+    transcript_texts: list[str] = []
+    if transcriber is not None:
+        for transcript in await transcriber.transcribe_parts(
+            msg.content, media_backend=media_backend
+        ):
+            transcript_texts.append(
+                attachment_voice_transcript(
+                    transcript.text,
+                    truncated=transcript.truncated,
+                    minutes=max(1, transcript.max_seconds // 60),
+                    locale=locale,
+                )
+            )
+
+    current_text = "\n\n".join(
+        part for part in [msg.text or "", *transcript_texts, *file_hints] if part
+    )
     combined_text = _group_turn_text(msg, current_text, workspace=workspace, locale=locale)
 
     if not image_blocks:
