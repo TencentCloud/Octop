@@ -273,8 +273,9 @@ docker run -d \
 <pre><code class="language-bash">octop run       # 前台启动 API + Web 控制台
 </code></pre>
 <p>若希望服务在后台常驻，可注册为系统服务：</p>
-<pre><code class="language-bash">octop service start   # Linux(systemd) / macOS(launchd) / Windows 服务
+<pre><code class="language-bash">octop service start   # Linux(systemd) / macOS(launchd)
 </code></pre>
+<p>Windows 暂不支持注册系统服务：让 <code>octop run</code> 保持在前台终端运行，或在任务计划程序（Task Scheduler）中配置开机/登录时启动 <code>octop run</code>。</p>
 <p>启动后打开 <strong>http://127.0.0.1:8088</strong>。</p>
 <p>首次访问会<strong>自动跳转到设置向导页面</strong>（URL 类似 <code>/setup</code>）。向导会先要求输入一个"设置密码"以保护首次配置过程。</p>
 <h3 id="h3-2">3.2 向导步骤说明</h3>

@@ -150,8 +150,10 @@ octop run       # 前台启动 API + Web 控制台
 若希望服务在后台常驻，可注册为系统服务：
 
 ```bash
-octop service start   # Linux(systemd) / macOS(launchd) / Windows 服务
+octop service start   # Linux(systemd) / macOS(launchd)
 ```
+
+Windows 暂不支持注册系统服务：让 `octop run` 保持在前台终端运行，或在任务计划程序（Task Scheduler）中配置开机/登录时启动 `octop run`。
 
 启动后打开 **http://127.0.0.1:8088**。
 

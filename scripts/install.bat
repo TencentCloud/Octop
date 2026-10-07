@@ -162,8 +162,10 @@ echo.
 echo Then run:
 echo   octop init
 echo   octop run
-echo   octop service start
 echo   http://127.0.0.1:8088
+echo.
+echo System services are only supported on Linux and macOS; on Windows keep
+echo 'octop run' in a terminal, or start it from Task Scheduler.
 exit /b 0
 
 ::detect_chrome

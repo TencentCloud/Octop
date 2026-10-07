@@ -267,7 +267,7 @@ octop run
 # 自定义主机与端口
 octop run --host 0.0.0.0 --port 8088
 
-# 注册为系统服务（systemd / launchd / Windows 服务）
+# 注册为系统服务（仅 Linux systemd / macOS launchd）
 octop service start
 ```
 

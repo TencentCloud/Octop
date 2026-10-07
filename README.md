@@ -266,7 +266,7 @@ octop run
 # Custom host / port
 octop run --host 0.0.0.0 --port 8088
 
-# Register as a system service (systemd / launchd / Windows service)
+# Register as a system service (Linux systemd / macOS launchd only)
 octop service start
 ```
 

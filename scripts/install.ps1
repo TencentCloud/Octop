@@ -375,7 +375,9 @@ Write-Host ""
 Write-Host "Then run:"
 Write-Host "  octop init" -ForegroundColor White
 Write-Host "  octop run" -ForegroundColor White
-Write-Host "  octop service start" -ForegroundColor White
 Write-Host "  http://127.0.0.1:8088" -ForegroundColor White
+Write-Host ""
+Write-Host "System services are only supported on Linux and macOS; on Windows keep" -ForegroundColor Yellow
+Write-Host "'octop run' in a terminal, or start it from Task Scheduler." -ForegroundColor Yellow
 
 } @args

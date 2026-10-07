@@ -54,7 +54,7 @@ docker run -d \\
   -v octop-data:/data/.octop \\
   -e HOME=/data \\
   octop:latest`,
-  restart: `# system service (systemd / launchd / Windows service)
+  restart: `# system service (Linux systemd / macOS launchd)
 octop service restart
 
 # foreground process — stop the old process, then:

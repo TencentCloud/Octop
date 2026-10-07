@@ -35,6 +35,11 @@ SYSTEMD_UNIT = f"{SERVICE_NAME}.service"
 LAUNCHD_LABEL = SERVICE_NAME
 NOFILE_DROPIN_NAME = "10-nofile.conf"
 
+WINDOWS_UNSUPPORTED_DETAIL = (
+    "system services are only supported on Linux and macOS; on Windows keep `octop run` "
+    "in a terminal, or start it from Task Scheduler"
+)
+
 # Give freshly-started services a moment to bind the port before health checks
 # begin.  `octop run` typically takes several seconds to initialise DB, load
 # agents, and start accepting HTTP requests.
@@ -275,7 +280,7 @@ def build_runtime(
 ) -> ServiceRuntime:
     resolved_mode = mode or detect_platform_mode()
     if resolved_mode is None:
-        raise RuntimeError("system services are only supported on Linux and macOS")
+        raise RuntimeError(WINDOWS_UNSUPPORTED_DETAIL)
     run_as_user = resolve_run_as_user()
     root = home or resolve_service_home(run_as_user=run_as_user)
     bind_host, bind_port = resolve_bind_options(root)
@@ -887,7 +892,7 @@ def collect_service_status(
             installed=False,
             active=False,
             enabled=None,
-            detail="system services are only supported on Linux and macOS",
+            detail=WINDOWS_UNSUPPORTED_DETAIL,
         )
 
     scope = runtime.scope if runtime is not None else resolve_service_scope()
