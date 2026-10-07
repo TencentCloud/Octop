@@ -18,7 +18,7 @@ export interface CreateAdminBody {
   display_name: string | null;
   email?: string | null;
   password: string;
-  /** UI locale for the initial admin (zh|en). */
+  /** UI locale for the initial admin (zh|en|ko). */
   locale?: string;
 }
 
