@@ -128,3 +128,37 @@ def test_parse_version() -> None:
     assert creator._parse_version("1.5.5") >= creator.MIN_LARK_OAPI
     assert creator._parse_version("1.5.4") < creator.MIN_LARK_OAPI
     assert creator._parse_version("1.7.0") >= creator.MIN_LARK_OAPI
+
+
+def test_send_greeting_bounds_both_http_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both greeting HTTP calls must carry an explicit finite timeout."""
+
+    class _FakeResponse:
+        def __init__(self, payload: bytes) -> None:
+            self._payload = payload
+
+        def __enter__(self) -> _FakeResponse:
+            return self
+
+        def __exit__(self, *_exc: Any) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return self._payload
+
+    calls_without_timeout: list[str] = []
+
+    def fake_urlopen(req: Any, **kwargs: Any) -> _FakeResponse:
+        if not kwargs.get("timeout"):
+            calls_without_timeout.append(req.full_url)
+        if "tenant_access_token" in req.full_url:
+            return _FakeResponse(json.dumps({"tenant_access_token": "t-123"}).encode())
+        return _FakeResponse(b"{}")
+
+    monkeypatch.setattr(creator.urllib.request, "urlopen", fake_urlopen)
+
+    creator._send_greeting(
+        "cli_1", "secret", "ou_1", open_base="https://open.feishu.cn", greeting="hi"
+    )
+
+    assert calls_without_timeout == []

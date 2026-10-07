@@ -65,6 +65,7 @@ _PLATFORM_CONFIGS = {
 
 STATE_DIR = "/tmp"
 MIN_LARK_OAPI = (1, 5, 5)
+_GREETING_HTTP_TIMEOUT_SECONDS = 30
 
 
 def _pcfg(key: str) -> Any:
@@ -157,7 +158,9 @@ def _send_greeting(
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(token_req, context=ctx) as resp:
+        with urllib.request.urlopen(
+            token_req, context=ctx, timeout=_GREETING_HTTP_TIMEOUT_SECONDS
+        ) as resp:
             token_data = json.loads(resp.read())
         token = token_data.get("tenant_access_token")
         if not token:
@@ -182,7 +185,9 @@ def _send_greeting(
         },
     )
     try:
-        with urllib.request.urlopen(send_req, context=ctx) as resp:
+        with urllib.request.urlopen(
+            send_req, context=ctx, timeout=_GREETING_HTTP_TIMEOUT_SECONDS
+        ) as resp:
             resp.read()
     except Exception:
         pass
