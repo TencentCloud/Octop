@@ -15,7 +15,7 @@ from octop.infra.auth.captcha import current_env, ensure_captcha, load_effective
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.email import normalize_email
 from octop.infra.users.permissions import effective_permissions
-from octop.infra.utils.locale import normalize_locale
+from octop.infra.utils.locale import normalize_ui_locale
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ router = APIRouter()
 
 
 def _user_json(user: Any, *, locale: str | None = None) -> dict[str, Any]:
-    loc = normalize_locale(locale)
+    loc = normalize_ui_locale(locale)
     return {
         "id": user.id,
         "username": user.username,

@@ -1,4 +1,4 @@
-export type UiLocale = "zh" | "en";
+export type UiLocale = "zh" | "en" | "ja";
 
 export const UI_LOCALE_STORAGE_KEY = "octop:ui-locale";
 
@@ -14,11 +14,13 @@ export function detectBrowserLocale(): UiLocale {
   for (const raw of candidates) {
     const lang = raw?.toLowerCase() ?? "";
     if (lang.startsWith("zh")) return "zh";
+    if (lang.startsWith("ja")) return "ja";
     if (lang.startsWith("en")) return "en";
   }
 
   const primary = navigator.language?.toLowerCase() ?? "";
   if (primary.startsWith("zh")) return "zh";
+  if (primary.startsWith("ja")) return "ja";
   if (primary.startsWith("en")) return "en";
 
   return "en";
@@ -26,13 +28,16 @@ export function detectBrowserLocale(): UiLocale {
 
 export function normalizeUiLocale(raw: string | null | undefined): UiLocale {
   if (!raw) return "zh";
-  return raw.toLowerCase().startsWith("zh") ? "zh" : "en";
+  const lower = raw.toLowerCase();
+  if (lower.startsWith("zh")) return "zh";
+  if (lower.startsWith("ja")) return "ja";
+  return "en";
 }
 
 export function readStoredUiLocale(): UiLocale | null {
   try {
     const raw = localStorage.getItem(UI_LOCALE_STORAGE_KEY);
-    if (raw === "zh" || raw === "en") return raw;
+    if (raw === "zh" || raw === "en" || raw === "ja") return raw;
   } catch {
     // localStorage unavailable
   }
@@ -54,10 +59,12 @@ export function resolveInitialLocale(): UiLocale {
 
 export function syncDocumentLang(locale: UiLocale): void {
   if (typeof document === "undefined") return;
-  document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+  document.documentElement.lang =
+    locale === "zh" ? "zh-CN" : locale === "ja" ? "ja" : "en";
 }
 
 /** BCP-47 tag for STT / SpeechRecognition from dashboard UI locale. */
 export function speechLocaleFromUi(locale: string | null | undefined): string {
-  return normalizeUiLocale(locale) === "zh" ? "zh-CN" : "en-US";
+  const ui = normalizeUiLocale(locale);
+  return ui === "zh" ? "zh-CN" : ui === "ja" ? "ja-JP" : "en-US";
 }

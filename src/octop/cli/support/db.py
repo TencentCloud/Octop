@@ -64,8 +64,9 @@ def resolve_cli_locale() -> str:
             uid = resolve_cli_user_id(None, services=svc)
             if uid is not None:
                 row = svc.user_repo.get(uid)
-                if row is not None and row.locale in ("zh", "en"):
-                    return row.locale
+                if row is not None and row.locale in ("zh", "en", "ja"):
+                    # CLI output only ships zh/en; ja falls back to en.
+                    return "en" if row.locale == "ja" else row.locale
     except Exception:
         pass
     return "zh"

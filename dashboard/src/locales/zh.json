@@ -3846,6 +3846,7 @@
     "passwordTooWeak": "密码过弱，请换一个更安全的密码",
     "langZh": "中文",
     "langEn": "English",
+    "langJa": "日本語",
     "layoutMode": "页面布局",
     "layoutModeHint": "经典模式保留双栏；极简模式将导航与记录合并到左侧。",
     "layoutClassic": "经典模式",
