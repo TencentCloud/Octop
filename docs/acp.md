@@ -164,7 +164,7 @@ Runner shape:
 
 ## Prerequisites
 
-- **harness-agent `[acp]` extra** — pulls in `agent-client-protocol` (included in the Octop wheel dependency on harness-agent).
+- **octop-harness `[acp]` extra** — pulls in `agent-client-protocol` (included in the Octop wheel dependency on octop-harness).
 - **Outbound:** install external CLIs (`opencode`, `codebuddy`, …) on the machine running `octop run`.
 - **Inbound:** agent must start successfully (provider + model configured).
 
@@ -190,4 +190,4 @@ Runner shape:
 - Dashboard: `/acp`
 - CLI: `octop acp --help`
 - OpenAPI: `/api/docs`
-- Harness implementation: `harness-agent` → `harness_agent.acp` (server + `acp_runner` tool)
+- Harness implementation: `octop-harness` → `octop_harness.acp` (server + `acp_runner` tool)

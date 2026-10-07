@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from octop.i18n import tr
+
 AuthKind = Literal[
     "personal_token",
     "oauth2",
@@ -65,7 +67,7 @@ class ConnectorCatalogEntry:
     # None means no restriction (all tools from the MCP server are available).
     allowed_tools: tuple[str, ...] | None = None
     # Catalog-driven remote MCP OAuth (Notion / Ardot / Linear…):
-    # when auth_kind=oauth2 + mcp_mode=remote and both issuer + mcp_url are set,
+    # when auth_kind=oauth2 + mcp_mode=remote/internal and issuer + mcp_url are set,
     # Octop uses DCR + PKCE against oauth_issuer and talks to mcp_url.
     oauth_issuer: str | None = None
     mcp_url: str | None = None
@@ -87,10 +89,10 @@ def uses_internal_http_mcp(entry: ConnectorCatalogEntry) -> bool:
 
 
 def is_mcp_oauth_remote(entry: ConnectorCatalogEntry) -> bool:
-    """True when this catalog entry is a dynamic-OAuth remote MCP connector."""
+    """True when this catalog entry is a dynamic-OAuth MCP connector (remote or internal HTTP)."""
     return (
         entry.auth_kind == "oauth2"
-        and entry.mcp_mode == "remote"
+        and entry.mcp_mode in {"remote", "internal"}
         and bool(entry.oauth_issuer)
         and bool(entry.mcp_url)
     )
@@ -377,8 +379,8 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
     ConnectorCatalogEntry(
         kind="qcc",
         name="企查查",
-        description="用一份 API Key 接入企查查五类 MCP：企业数据、风险数据、知识产权、经营信息与董监高信息",
-        auth_kind="api_key",
+        description="一键 OAuth 或粘贴 API Key，接入企业、风险、知识产权、经营及董监高五类数据",
+        auth_kind="oauth2",
         doc_url="https://agent.qcc.com/",
         icon="qcc",
         color="#008CFF",
@@ -388,7 +390,12 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         quick_auth_url="https://agent.qcc.com/",
         guide_url="https://agent.qcc.com/guide",
         manual_url="https://agent.qcc.com/",
-        auth_hint="登录企查查智能体平台，在个人中心复制 API Key 并粘贴到下方；查询范围以账户权限为准，未开通的类别会跳过",
+        auth_hint="有公网 HTTPS 或本机 localhost 时可用一键 OAuth；否则打开授权页获取 API Key 后粘贴。查询范围以账户权限为准。",
+        oauth_issuer="https://agent.qcc.com",
+        mcp_url="https://agent.qcc.com/mcp/company/stream",
+        oauth_resource="https://agent.qcc.com/mcp/company/stream",
+        oauth_scopes="mcp:tools",
+        remote_transport="streamable_http",
     ),
     ConnectorCatalogEntry(
         kind="tencent-ardot",
@@ -509,6 +516,21 @@ _CATALOG: tuple[ConnectorCatalogEntry, ...] = (
         auth_hint="填写长连接智能机器人 Bot ID 与 Secret；主机需已安装 @wecom/cli（wecom-cli）",
     ),
     ConnectorCatalogEntry(
+        kind="agently-cli",
+        name="Agent Mail",
+        description="通过官方 Agent Mail CLI 使用独立 Agent 邮箱（需主机安装 CLI）",
+        auth_kind="custom_fields",
+        doc_url="https://github.com/Tencent/AgentlyMail",
+        icon="agently-cli",
+        color="#0052d9",
+        phase="available",
+        mcp_mode="gateway",
+        category="office",
+        guide_url="https://help.agent.qq.com/detail/0/1092",
+        manual_url="https://agent.qq.com/",
+        auth_hint="先保存连接器，再完成设备码授权；每个实例独立绑定邮箱",
+    ),
+    ConnectorCatalogEntry(
         kind="weknora",
         name="WeKnora",
         description="连接 WeKnora 私有知识库，提供只读检索与文档阅读",
@@ -592,7 +614,7 @@ def get_catalog_entry(kind: str) -> ConnectorCatalogEntry | None:
 
 
 def catalog_entry_to_dict(
-    entry: ConnectorCatalogEntry, *, oauth_ready: bool = False
+    entry: ConnectorCatalogEntry, *, oauth_ready: bool = False, locale: str = "en"
 ) -> dict[str, object]:
     from octop.infra.connectors.oauth import oauth_mode_for_kind  # noqa: PLC0415
 
@@ -600,7 +622,9 @@ def catalog_entry_to_dict(
     return {
         "kind": entry.kind,
         "name": entry.name,
-        "description": entry.description,
+        "description": tr("connector.agently.description", locale)
+        if entry.kind == "agently-cli"
+        else entry.description,
         "auth_kind": entry.auth_kind,
         "doc_url": entry.doc_url,
         "icon": entry.icon,
@@ -612,7 +636,9 @@ def catalog_entry_to_dict(
         "login_url": entry.login_url,
         "guide_url": entry.guide_url or entry.doc_url,
         "manual_url": entry.manual_url or entry.guide_url or entry.doc_url,
-        "auth_hint": entry.auth_hint,
+        "auth_hint": tr("connector.agently.auth_hint", locale)
+        if entry.kind == "agently-cli"
+        else entry.auth_hint,
         "oauth_mode": oauth_mode,
         "oauth_ready": oauth_ready,
         "credential_fields": [

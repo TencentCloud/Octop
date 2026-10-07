@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from harness_gateway.models import ChannelSubject, ImageContent, InboundMessage, TextContent
+from octop_gateway.models import ChannelSubject, ImageContent, InboundMessage, TextContent
 
 from octop.infra.gateway.media.tool_media import enrich_media_block_preview
 from octop.infra.gateway.ws import WS_CHANNEL_ID, WebSocketChannel, WebSocketHub
@@ -610,7 +610,7 @@ async def test_global_processor_iter_turn_chunks_expires_stale_hitl() -> None:
         user_id=1,
         session_key="sk",
         channel_type="dashboard",
-        action_requests=[{"name": "ask_user_question", "args": {"questions": []}}],
+        action_requests=[{"name": "execute", "args": {"command": "rm -rf /tmp/x"}}],
         review_configs=None,
     )
     processor = GlobalProcessor(

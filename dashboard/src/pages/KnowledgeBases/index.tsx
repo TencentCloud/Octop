@@ -1563,23 +1563,28 @@ export default function KnowledgeBasesPage() {
     }
   };
 
+  // Depend on selected.id (not the whole selected object). Silent indexing
+  // polls call setSelected(base) every 2.5s with a new object reference; that
+  // used to recreate fetchBlob and re-run DocumentPreviewCore's load effect,
+  // aborting slow Office parsers (docx/pptx/xlsx) while fast PDF survived.
+  const selectedId = selected?.id;
   const fetchPreviewBlob = useCallback(
     async (
       onProgress?: (loaded: number, total: number) => void,
       signal?: AbortSignal,
     ) => {
-      if (!selected || !previewDocId) {
+      if (!selectedId || !previewDocId) {
         throw new Error("missing knowledge document preview target");
       }
       return knowledgeBasesApi.fetchDocumentFile(
-        selected.id,
+        selectedId,
         previewDocId,
         "inline",
         onProgress,
         signal,
       );
     },
-    [selected, previewDocId],
+    [selectedId, previewDocId],
   );
 
   useEffect(() => {

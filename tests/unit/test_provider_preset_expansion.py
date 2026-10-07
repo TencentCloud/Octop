@@ -23,7 +23,7 @@ def test_load_provider_presets_integration() -> None:
 
     token_plan = next(p for p in presets if p["id"] == "tencent-token-plan")
     token_ids = {m["id"] for m in token_plan["models"]}
-    # Match by prefix: harness-agent tags token-plan model ids with a release
+    # Match by prefix: octop-harness tags token-plan model ids with a release
     # date suffix (e.g. deepseek-v4-flash-202605) and bumps catalog entries
     # over time, so assert the model family is present rather than an exact id.
     assert any(mid.startswith("deepseek-v4-flash") for mid in token_ids)

@@ -6,7 +6,7 @@ import hashlib
 from collections.abc import Sequence
 from typing import Any
 
-from harness_agent.backends.workspace import DEFAULT_MEMORY_FILES
+from octop_harness.backends.workspace import DEFAULT_MEMORY_FILES
 
 # Mirror harness ``SkillFilterMiddleware``: memory files are injected via
 # ``BackendWorkspace.memory_paths(DEFAULT_MEMORY_FILES)``.

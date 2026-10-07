@@ -2,8 +2,8 @@
 
 Octop is a self-hosted AI assistant platform for multiple users and agents,
 delivered as a single Python process.
-It glues three reusable libraries — `harness-agent` (LangGraph-based
-chat runtime), `harness-gateway` (IM channel pipeline), and a React
+It glues three reusable libraries — `octop-harness` (LangGraph-based
+chat runtime), `octop-gateway` (IM channel pipeline), and a React
 + TypeScript dashboard — into one wheel that ships with a CLI, an
 HTTP/WebSocket API, and a web UI.
 
@@ -23,7 +23,7 @@ HTTP/WebSocket API, and a web UI.
 │  Domain layer     │  AgentManager   Gateway   GlobalProcessor     │
 │                   │  CronManager    UserManager   SharedServices │
 ├──────────────────────────────────────────────────────────────────┤
-│  Reusable libs    │  harness-agent   harness-gateway            │
+│  Reusable libs    │  octop-harness   octop-gateway            │
 ├──────────────────────────────────────────────────────────────────┤
 │  Storage          │  SQLite or PostgreSQL control plane + file workspaces│
 └──────────────────────────────────────────────────────────────────┘
@@ -112,7 +112,7 @@ sessions, audit, JWT secret) lives in either:
 Migrations: `src/octop/infra/db/migrations/NNN_*.sql` (SQLite) and
 `NNN_*.pg.sql` (PostgreSQL). Connection PRAGMAs live on the SQLite pool;
 PostgreSQL extensions (e.g. `vector`) are docker/ops init, not app
-migrations. Agent memory DDL is owned by harness-memory. See
+migrations. Agent memory DDL is owned by octop-memory. See
 [ADR 002](./adr/002-database-backends.md).
 
 The wheel ships the built dashboard SPA, so the entire stack is one
@@ -120,7 +120,7 @@ The wheel ships the built dashboard SPA, so the entire stack is one
 
 Per-agent workspace files (Markdown, skills, expert templates) are
 read and written through the agent's `BackendWorkspace`
-(`octop.infra.backend` → `harness_agent.backends`). The default
+(`octop.infra.backend` → `octop_harness.backends`). The default
 backend is a `filesystem` adapter rooted at
 `~/.octop/agents/<agent_id>/`; remote backends (S3, COS) are mounted
 on top of the same root_dir and the Octop service never reads

@@ -11,10 +11,10 @@ from langchain_core.messages import AIMessage, HumanMessage
 from octop.i18n import tr
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.gateway.process import build_harness_request
-from octop.infra.gateway.process.history_projection import TurnHistoryTracker, message_inputs
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.threads import ThreadRegistry
+from octop.infra.history.projection import TurnHistoryTracker, message_inputs
 from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.utils.llm_text import strip_thinking
 from octop.infra.utils.locale import resolve_user_locale
@@ -140,13 +140,16 @@ class CronDeliveryService:
         parts: list[str] = []
         interaction_required = False
         try:
-            async for chunk in self._agent_manager.stream(command.agent_id, request):
-                tracker.observe(chunk)
-                usage.observe(chunk)
-                if chunk.get("type") in ("token", "delta"):
-                    parts.append(str(chunk.get("content") or chunk.get("text") or ""))
-                elif chunk.get("type") == "hitl_required":
-                    interaction_required = True
+            from octop.infra.connectors.gateway.adapters.agently_cli import write_scope
+
+            with write_scope(allowed=False):
+                async for chunk in self._agent_manager.stream(command.agent_id, request):
+                    tracker.observe(chunk)
+                    usage.observe(chunk)
+                    if chunk.get("type") in ("token", "delta"):
+                        parts.append(str(chunk.get("content") or chunk.get("text") or ""))
+                    elif chunk.get("type") == "hitl_required":
+                        interaction_required = True
             if interaction_required:
                 raise RuntimeError("cron agent run requires user interaction")
             outbound = strip_thinking("".join(parts)).strip()

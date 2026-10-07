@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Checkbox, Drawer, Empty, Modal, Spin, Switch } from "antd";
 import { Copy, Info } from "lucide-react";
 import { message } from "@/utils/antdMessage";
@@ -12,7 +12,9 @@ import type {
 import { useAgent } from "../../../../context/AgentContext";
 import { PackageIcon } from "../../../SkillPackages/PackageIcon";
 import { showApiError } from "../../../../utils/showApiToast";
+import { createDetailRequestGate } from "../../../../utils/detailRequestGate";
 import { supportsHostSkillPackagesFromConfig } from "../../../Experts/components/agentBackendForm";
+import { resolveFigurativeSkillIcon } from "../builtinSkillIcon";
 import type { SkillSpec } from "../useSkills";
 import styles from "../index.module.less";
 
@@ -35,14 +37,22 @@ function resolvePackageSkillIcon(
 function PackageSkillIcon({
   iconUrl,
   emoji,
+  slug,
+  name,
 }: {
   iconUrl?: string;
   emoji?: string;
+  slug?: string;
+  name?: string;
 }) {
   if (iconUrl) {
     return (
       <img src={iconUrl} alt="" className={styles.packageSkillRowIconImg} />
     );
+  }
+  const figurative = resolveFigurativeSkillIcon(slug ?? "", emoji, name, 32);
+  if (figurative) {
+    return figurative.node;
   }
   if (emoji) {
     return <span className={styles.packageSkillRowEmoji}>{emoji}</span>;
@@ -82,6 +92,10 @@ export default function SkillPackagesTab({
   const [copying, setCopying] = useState(false);
   const [selectedCopySlugs, setSelectedCopySlugs] = useState<string[]>([]);
   const [copyOverwrite, setCopyOverwrite] = useState(false);
+  // The drawer and the copy modal fetch the same endpoint for different surfaces,
+  // so each keeps its own gate: one opening must not invalidate the other.
+  const detailRequestGate = useRef(createDetailRequestGate());
+  const copyRequestGate = useRef(createDetailRequestGate());
 
   useEffect(() => {
     let cancelled = false;
@@ -145,21 +159,27 @@ export default function SkillPackagesTab({
   };
 
   const openDetail = async (pack: SkillPackage) => {
+    const requestId = detailRequestGate.current.begin();
     setDetailOpen(true);
     setDetailLoading(true);
     setDetailPackage(null);
     try {
       const detail = await skillPackagesApi.get(pack.id);
+      if (!detailRequestGate.current.isCurrent(requestId)) return;
       setDetailPackage(detail);
     } catch (error) {
+      if (!detailRequestGate.current.isCurrent(requestId)) return;
       showApiError(error, t("skills.packagesLoadFailed"), t);
       setDetailOpen(false);
     } finally {
-      setDetailLoading(false);
+      if (detailRequestGate.current.isCurrent(requestId)) {
+        setDetailLoading(false);
+      }
     }
   };
 
   const openCopyModal = async (pack: SkillPackage) => {
+    const requestId = copyRequestGate.current.begin();
     setCopyModalOpen(true);
     setCopyLoading(true);
     setCopyPackage(null);
@@ -167,13 +187,17 @@ export default function SkillPackagesTab({
     setCopyOverwrite(false);
     try {
       const detail = await skillPackagesApi.get(pack.id);
+      if (!copyRequestGate.current.isCurrent(requestId)) return;
       setCopyPackage(detail);
       setSelectedCopySlugs(detail.skills.map((skill) => skill.slug));
     } catch (error) {
+      if (!copyRequestGate.current.isCurrent(requestId)) return;
       showApiError(error, t("skills.packagesLoadFailed"), t);
       setCopyModalOpen(false);
     } finally {
-      setCopyLoading(false);
+      if (copyRequestGate.current.isCurrent(requestId)) {
+        setCopyLoading(false);
+      }
     }
   };
 
@@ -321,6 +345,12 @@ export default function SkillPackagesTab({
                     <button
                       type="button"
                       className={styles.detailBtn}
+                      disabled={pack.can_copy === false}
+                      title={
+                        pack.can_copy === false
+                          ? t("skills.copyDenied")
+                          : undefined
+                      }
                       onClick={() => void openCopyModal(pack)}
                     >
                       <Copy size={14} />
@@ -369,6 +399,12 @@ export default function SkillPackagesTab({
                     installed,
                   );
                   const displayName = packageSkill.name || packageSkill.slug;
+                  const figurative = resolveFigurativeSkillIcon(
+                    packageSkill.slug,
+                    emoji,
+                    displayName,
+                    32,
+                  );
                   const displayDesc =
                     packageSkill.description || t("skills.noDescription");
                   const shadows = workspaceSlugs.has(packageSkill.slug);
@@ -382,10 +418,18 @@ export default function SkillPackagesTab({
                             className={styles.packageSkillRowIcon}
                             style={{
                               color: "#059669",
-                              background: iconUrl ? "transparent" : "#0596691a",
+                              background:
+                                iconUrl || figurative
+                                  ? "transparent"
+                                  : "#0596691a",
                             }}
                           >
-                            <PackageSkillIcon iconUrl={iconUrl} emoji={emoji} />
+                            <PackageSkillIcon
+                              iconUrl={iconUrl}
+                              emoji={emoji}
+                              slug={packageSkill.slug}
+                              name={displayName}
+                            />
                           </div>
                           <div className={styles.packageSkillRowMeta}>
                             <div className={styles.packageSkillRowLabel}>

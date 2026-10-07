@@ -41,3 +41,10 @@ export function ownedSoloExperts<
 >(agents: T[]): T[] {
   return ownedExperts(agents).filter((item) => !isTeamAgent(item));
 }
+
+/** Owned team hosts — memory / channels pickers. */
+export function ownedTeamAgents<
+  T extends SharedExpertAccess & { kind?: string },
+>(agents: T[]): T[] {
+  return ownedExperts(agents).filter(isTeamAgent);
+}

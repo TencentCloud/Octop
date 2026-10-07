@@ -17,6 +17,14 @@ from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlparse
 
+from octop.infra.skills.skillhub_common import (
+    DEFAULT_SKILLHUB_HOST,
+    HTTP_READ_CHUNK,
+    MAX_HTTP_BYTES,
+    MAX_ZIP_COMPRESSION_RATIO,
+    MAX_ZIP_ENTRIES,
+    MAX_ZIP_UNCOMPRESSED_BYTES,
+)
 from octop.infra.utils.utf8_text import (
     InvalidSkillManifestEncodingError,
     coerce_utf8_text_bytes,
@@ -24,7 +32,6 @@ from octop.infra.utils.utf8_text import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SKILLHUB_HOST = "https://api.skillhub.cn"
 SEARCH_ENDPOINT = "/api/v1/search"
 DOWNLOAD_ENDPOINT = "/api/v1/download"
 RANKING_ENDPOINTS = {
@@ -35,11 +42,14 @@ RANKING_ENDPOINTS = {
     "trending": "/api/v1/showcase/trending",
     "paid": "/api/v1/showcase/paid",
 }
-_MAX_HTTP_BYTES = 32 * 1024 * 1024
-_MAX_ZIP_ENTRIES = 2_000
-_MAX_ZIP_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
-_MAX_ZIP_COMPRESSION_RATIO = 100
-_HTTP_READ_CHUNK = 64 * 1024
+_MAX_HTTP_BYTES = MAX_HTTP_BYTES
+_MAX_ZIP_ENTRIES = MAX_ZIP_ENTRIES
+_MAX_ZIP_UNCOMPRESSED_BYTES = MAX_ZIP_UNCOMPRESSED_BYTES
+_MAX_ZIP_COMPRESSION_RATIO = MAX_ZIP_COMPRESSION_RATIO
+_HTTP_READ_CHUNK = HTTP_READ_CHUNK
+# JSON responses (search, showcase rankings) are small metadata documents; the
+# cap only exists so a hostile or broken host cannot stream the process to death.
+_MAX_JSON_BYTES = 4 * 1024 * 1024
 
 
 class SkillHubMarketError(RuntimeError):
@@ -134,7 +144,7 @@ def _fetch_search_json(
         f"{host}{SEARCH_ENDPOINT}?{params}",
         accept="application/json",
         timeout=timeout,
-        max_bytes=4 * 1024 * 1024,
+        max_bytes=_MAX_JSON_BYTES,
     )
     try:
         data = json.loads(payload.decode("utf-8"))
@@ -302,28 +312,17 @@ def _fetch_ranking_json(
     if path is None:
         raise SkillHubMarketError(f"Unsupported ranking type: {ranking_type}")
 
-    url = f"{host}{path}"
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/json",
-            "User-Agent": "octop-skillhub-market/1.0",
-        },
+    # Same transport as search/install: capped, chunked reads and the full
+    # URLError/HTTPError/HTTPException/OSError ladder. Hand-rolling urlopen here
+    # buffered the whole body and let a reset surface as a bare OSError, which
+    # ``/skills/hub/rankings`` (it maps only SkillHubMarketError/Timeout) cannot
+    # turn into a clean 502/504.
+    payload = _http_request(
+        f"{host}{path}",
+        accept="application/json",
+        timeout=timeout,
+        max_bytes=_MAX_JSON_BYTES,
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = response.read()
-    except urllib.error.HTTPError as exc:
-        raise SkillHubMarketError(
-            f"Failed to fetch {ranking_type} rankings: HTTP {exc.code}"
-        ) from exc
-    except urllib.error.URLError as exc:
-        if isinstance(exc.reason, TimeoutError):
-            raise SkillHubMarketTimeout(f"Timed out fetching {ranking_type} rankings") from exc
-        raise SkillHubMarketError(f"Failed to fetch {ranking_type} rankings: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise SkillHubMarketTimeout(f"Timed out fetching {ranking_type} rankings") from exc
-
     try:
         data = json.loads(payload.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:

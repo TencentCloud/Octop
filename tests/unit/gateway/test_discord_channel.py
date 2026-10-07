@@ -5,8 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from harness_gateway.channels.discord import DiscordChannel, DiscordConfig
-from harness_gateway.models import ChannelSubject, InboundMessage, MessageEvent
+from octop_gateway.channels.discord import DiscordChannel, DiscordConfig
+from octop_gateway.models import ChannelSubject, InboundMessage, MessageEvent
 from tests.unit.gateway.test_gateway_runtime_status import _make_gateway
 
 from octop.infra.gateway.gateway import ChannelCreateSpec, ChannelKind, Gateway
@@ -73,8 +73,8 @@ async def test_discord_registration_forwards_config_and_routing(tmp_path, monkey
     import json
     from unittest.mock import AsyncMock, MagicMock
 
-    from harness_gateway.manager import ChannelManager
-    from harness_gateway.media import FileSystemMediaBackend
+    from octop_gateway.manager import ChannelManager
+    from octop_gateway.media import FileSystemMediaBackend
 
     async def processor(msg):
         yield MessageEvent.completed()

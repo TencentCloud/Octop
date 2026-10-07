@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from harness_agent.slash import (
+from octop_harness.slash import (
     RuntimeSlashDispatcher,
     SlashCommand,
     SlashSink,
@@ -55,8 +55,13 @@ class SlashDispatcher:
             out.append((spec.name, spec.description_for("en")))
         return sorted(out)
 
-    def list_command_specs(self, *, origin: str = "all") -> list[SlashCommandSpec]:
-        return list_specs(origin=origin)
+    def list_command_specs(
+        self,
+        *,
+        origin: str = "all",
+        include_hitl_approval: bool = True,
+    ) -> list[SlashCommandSpec]:
+        return list_specs(origin=origin, include_hitl_approval=include_hitl_approval)
 
     def spec_for(self, name: str) -> SlashCommandSpec | None:
         return spec_for(name)

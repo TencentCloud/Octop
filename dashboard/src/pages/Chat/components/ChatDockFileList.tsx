@@ -13,14 +13,17 @@ import {
   listDockFilePathsForTree,
   mergeDockExpandedFolders,
   toDockWorkspaceApiPath,
+  type DockFileRef,
   type DockPathTreeNode,
 } from "../utils/dockFilePath";
 import styles from "../index.module.less";
 
 interface ChatDockFileListProps {
   agentId: string;
-  filePaths: string[];
-  onOpenFile: (path: string) => void;
+  filePaths: Array<string | DockFileRef>;
+  onOpenFile: (path: string, agentId?: string | null) => void;
+  /** Map producer agent_id → display name (team file dock). */
+  agentNameById?: Record<string, string>;
 }
 
 function FolderRow({
@@ -60,6 +63,7 @@ function FileRow({
   onOpen,
   onDownload,
   downloadLabel,
+  agentLabel,
 }: {
   node: DockPathTreeNode;
   depth: number;
@@ -67,6 +71,7 @@ function FileRow({
   onOpen: () => void;
   onDownload: () => void;
   downloadLabel: string;
+  agentLabel?: string;
 }) {
   return (
     <div
@@ -77,13 +82,18 @@ function FileRow({
         type="button"
         className={styles.dockFileTreeFileMain}
         onClick={onOpen}
-        title={node.path}
+        title={agentLabel ? `${node.path} · ${agentLabel}` : node.path}
       >
         <span className={styles.dockFileTreeIcon} aria-hidden>
           {fileTreeIcon(node.path, 15)}
         </span>
-        <span className={styles.dockFileTreeFileName}>
-          {dockFileBasename(node.path)}
+        <span className={styles.dockFileTreeFileMeta}>
+          <span className={styles.dockFileTreeFileName}>
+            {dockFileBasename(node.path)}
+          </span>
+          {agentLabel ? (
+            <span className={styles.dockFileTreeFileAgent}>{agentLabel}</span>
+          ) : null}
         </span>
       </button>
       <Tooltip title={downloadLabel}>
@@ -113,15 +123,21 @@ function TreeNodes({
   onOpenFile,
   onDownload,
   downloadLabel,
+  defaultAgentId,
+  agentNameById,
+  showAgentLabels,
 }: {
   nodes: DockPathTreeNode[];
   depth: number;
   expanded: Set<string>;
   toggle: (path: string) => void;
   downloading: string | null;
-  onOpenFile: (path: string) => void;
-  onDownload: (path: string) => void;
+  onOpenFile: (path: string, agentId?: string | null) => void;
+  onDownload: (path: string, agentId?: string | null) => void;
   downloadLabel: string;
+  defaultAgentId: string;
+  agentNameById?: Record<string, string>;
+  showAgentLabels: boolean;
 }) {
   return (
     <>
@@ -146,20 +162,30 @@ function TreeNodes({
                   onOpenFile={onOpenFile}
                   onDownload={onDownload}
                   downloadLabel={downloadLabel}
+                  defaultAgentId={defaultAgentId}
+                  agentNameById={agentNameById}
+                  showAgentLabels={showAgentLabels}
                 />
               ) : null}
             </div>
           );
         }
+        const fileAgent = node.agentId || defaultAgentId;
+        const downloadKey = `${fileAgent}\0${node.path}`;
+        const agentLabel =
+          showAgentLabels && fileAgent
+            ? agentNameById?.[fileAgent] || fileAgent
+            : undefined;
         return (
           <FileRow
-            key={`f:${node.path}`}
+            key={`f:${downloadKey}`}
             node={node}
             depth={depth}
-            downloading={downloading === node.path}
-            onOpen={() => onOpenFile(node.path)}
-            onDownload={() => onDownload(node.path)}
+            downloading={downloading === downloadKey}
+            onOpen={() => onOpenFile(node.path, fileAgent)}
+            onDownload={() => onDownload(node.path, fileAgent)}
             downloadLabel={downloadLabel}
+            agentLabel={agentLabel}
           />
         );
       })}
@@ -174,16 +200,22 @@ export default function ChatDockFileList({
   agentId,
   filePaths,
   onOpenFile,
+  agentNameById,
 }: ChatDockFileListProps) {
   const { t } = useTranslation();
-  const paths = useMemo(
+  const refs = useMemo(
     () => listDockFilePathsForTree(filePaths, agentId),
     [filePaths, agentId],
   );
-  const tree = useMemo(
-    () => buildDockPathTree(paths, agentId),
-    [paths, agentId],
-  );
+  const showAgentLabels = useMemo(() => {
+    const ids = new Set(
+      refs.map((ref) => (ref.agentId || agentId || "").trim()).filter(Boolean),
+    );
+    if (ids.size > 1) return true;
+    const only = [...ids][0];
+    return Boolean(only && only !== agentId);
+  }, [refs, agentId]);
+  const tree = useMemo(() => buildDockPathTree(refs, agentId), [refs, agentId]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [downloading, setDownloading] = useState<string | null>(null);
   const seenFoldersRef = useRef<Set<string>>(new Set());
@@ -212,15 +244,17 @@ export default function ChatDockFileList({
   }, []);
 
   const handleDownload = useCallback(
-    async (path: string) => {
-      if (!agentId || !path) return;
-      setDownloading(path);
+    async (path: string, fileAgentId?: string | null) => {
+      const owner = (fileAgentId || agentId || "").trim();
+      if (!owner || !path) return;
+      const downloadKey = `${owner}\0${path}`;
+      setDownloading(downloadKey);
       try {
         const blob = await requestBlob(
           `/agents/${encodeURIComponent(
-            agentId,
+            owner,
           )}/workspace/download?path=${encodeURIComponent(
-            toDockWorkspaceApiPath(path, agentId),
+            toDockWorkspaceApiPath(path, owner),
           )}`,
         );
         const a = document.createElement("a");
@@ -266,7 +300,7 @@ export default function ChatDockFileList({
     </div>
   );
 
-  if (paths.length === 0) {
+  if (refs.length === 0) {
     return (
       <div className={styles.dockFileList}>
         {listHint}
@@ -291,7 +325,7 @@ export default function ChatDockFileList({
       <div className={styles.dockFileTreeWrap}>
         <div className={styles.dockFileTreeSummary}>
           {t("chat.dockFileListCount", {
-            count: paths.length,
+            count: refs.length,
             defaultValue: "{{count}} 个文件",
           })}
         </div>
@@ -303,8 +337,11 @@ export default function ChatDockFileList({
             toggle={toggle}
             downloading={downloading}
             onOpenFile={onOpenFile}
-            onDownload={(p) => void handleDownload(p)}
+            onDownload={(p, aid) => void handleDownload(p, aid)}
             downloadLabel={downloadLabel}
+            defaultAgentId={agentId}
+            agentNameById={agentNameById}
+            showAgentLabels={showAgentLabels}
           />
         </div>
       </div>

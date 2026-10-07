@@ -19,11 +19,11 @@ from octop.api.routers.chat.serialize import (
     _clamp_history_limit,
     _load_projected_thread_messages,
 )
-from octop.infra.agents.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
-from octop.infra.agents.middleware.thread_artifacts import artifacts_for_response
 from octop.infra.agents.security.hitl_session import parse_hitl_session_policy
-from octop.infra.agents.thread_fork import fork_dashboard_thread
-from octop.infra.agents.workspace_dir import agent_facing_workspace_dir_from_config
+from octop.infra.agents.threads.artifact import thread_artifacts_payload
+from octop.infra.agents.threads.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
+from octop.infra.agents.threads.fork import fork_dashboard_thread
+from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_config
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages
@@ -104,7 +104,11 @@ async def list_threads(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """List conversation threads for an agent, including which thread is active for this user."""
+    """List conversation threads for an agent, including which thread is active for this user.
+
+    ``turn_active`` is true while a turn is still streaming; ``awaiting_user``
+    is true when the thread is paused on a HITL approval or question.
+    """
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     thread_registry = server.app_runtime.gateway.thread_registry
     effective_uid = as_user if as_user is not None else user.id
@@ -113,6 +117,10 @@ async def list_threads(
         ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=effective_uid)
     )
     workspace_dir = _agent_facing_workspace_dir(server, agent_id)
+    hub = server.app_runtime.gateway.ws_hub
+    awaiting_ids = server.app_runtime.gateway.processor.hitl_coordinator.store.pending_thread_ids(
+        agent_id=agent_id, user_id=effective_uid
+    )
     return [
         {
             "thread_id": r.thread_id,
@@ -130,7 +138,13 @@ async def list_threads(
             "conversation_mode": r.conversation_mode or "craft",
             "pending_plan_path": r.pending_plan_path,
             "hitl_policy": _hitl_policy_payload(r),
-            "artifacts": artifacts_for_response(r.artifacts, workspace_dir),
+            "turn_active": hub.is_turn_active(r.thread_id),
+            "awaiting_user": r.thread_id in awaiting_ids,
+            **thread_artifacts_payload(
+                r.artifacts,
+                workspace_dir,
+                default_agent_id=agent_id,
+            ),
         }
         for r in rows
     ]
@@ -249,7 +263,7 @@ async def get_thread_context_usage(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Return persisted context-window usage for a thread (harness-agent snapshot)."""
+    """Return persisted context-window usage for a thread (octop-harness snapshot)."""
     _require_thread(server, agent_id, thread_id, user, as_user)
     registry = server.app_runtime.agent_registry
     effective_max = registry.resolve_context_max_tokens(agent_id, fallback=max_tokens)
@@ -383,7 +397,11 @@ async def get_thread_history(
         "history_retry_after_ms": 1500 if history_loading else 0,
         "turn_active": server.app_runtime.gateway.ws_hub.is_turn_active(thread_id),
         "hitl_pending": hitl_pending,
-        "artifacts": artifacts_for_response(row.artifacts, workspace_dir),
+        **thread_artifacts_payload(
+            row.artifacts,
+            workspace_dir,
+            default_agent_id=agent_id,
+        ),
         "conversation_mode": row.conversation_mode or "craft",
         "pending_plan_path": row.pending_plan_path,
         "hitl_policy": _hitl_policy_payload(row),

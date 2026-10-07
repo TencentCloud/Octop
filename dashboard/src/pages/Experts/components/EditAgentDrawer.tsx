@@ -28,6 +28,11 @@ import { isAgentChatReady } from "../../../utils/agentError";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
 import { octopAgentsApi } from "../../../api/modules/octopAgents";
 import { useAgent, type OctopAgent } from "../../../context/AgentContext";
+import {
+  CONVERSATION_MODES,
+  parseConversationMode,
+  type ConversationMode,
+} from "../../Chat/utils/conversationMode";
 import ExpertAvatarPicker from "./ExpertAvatarPicker";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import {
@@ -49,6 +54,8 @@ import {
   omitAgentRuntimeConfig,
   readAgentRuntimeFormValues,
 } from "../../../utils/agentRuntimeConfig";
+import { isBridgeAgentId } from "../../../utils/remoteExpert";
+import EditExpertDrawerTitle from "./EditExpertDrawerTitle";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import { DEFAULT_SKILL_EMOJI } from "../../Agent/Skills/skillMarkdown";
 import FileEditModal from "./FileEditModal";
@@ -77,10 +84,6 @@ import {
 import AgentBackendFields from "./AgentBackendFields";
 import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
 import SkillCatalogDrawer from "./SkillCatalogDrawer";
-import SkillSourcePickerModal, {
-  type PickedAgentSkill,
-  type PickedHubSkill,
-} from "./SkillSourcePickerModal";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
 import styles from "../index.module.less";
 
@@ -136,6 +139,7 @@ interface EditFormValues {
   welcome_message?: string;
   is_shared?: boolean;
   default_model: string;
+  conversation_mode: ConversationMode;
   backend_choice: string;
   composite_default: string;
   root_dir?: string;
@@ -233,8 +237,9 @@ function EditAgentDrawerBody({
   const [workspaceFiles, setWorkspaceFiles] = useState<string[]>([]);
   const [agentSkills, setAgentSkills] = useState<SkillSummary[]>([]);
   const [agentSubagents, setAgentSubagents] = useState<SubagentSummary[]>([]);
+  const remote = Boolean(agent.bridge) || isBridgeAgentId(agent.agent_id);
   const { models, modelsLoading, backends, backendsLoading } =
-    useAgentFormResources(true);
+    useAgentFormResources(true, agent.agent_id);
   const [pathMappings, setPathMappings] = useState<PathMapping[]>([]);
   const [agentConfig, setAgentConfig] = useState<Record<string, unknown>>({});
   const [colorPalette, setColorPalette] = useState<string>(
@@ -255,9 +260,7 @@ function EditAgentDrawerBody({
   );
   const [listRenameSaving, setListRenameSaving] = useState(false);
   const [subagentCatalogOpen, setSubagentCatalogOpen] = useState(false);
-  const [subagentCatalogTab, setSubagentCatalogTab] = useState("installed");
   const [skillCatalogOpen, setSkillCatalogOpen] = useState(false);
-  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const welcomeConfigRef = useRef<WelcomeConfigRef>(null);
 
   const installedSubagentSlugs = useMemo(
@@ -313,6 +316,7 @@ function EditAgentDrawerBody({
             typeof ag.welcome_message === "string" ? ag.welcome_message : "",
           is_shared: agent.is_shared ?? false,
           default_model: defaultModelToForm(ag.default_model),
+          conversation_mode: parseConversationMode(cfg.conversation_mode),
           backend_choice: parsedBackend.backendChoice,
           composite_default: parsedBackend.compositeDefault,
           root_dir: parsedBackend.rootDir,
@@ -396,7 +400,7 @@ function EditAgentDrawerBody({
         return;
       }
     }
-    if (shouldProbeRootDir(values.backend_choice, values.root_dir)) {
+    if (!remote && shouldProbeRootDir(values.backend_choice, values.root_dir)) {
       const probe = await probeRootDir(values.root_dir ?? "/");
       if (!probe.ok) {
         message.error(
@@ -410,7 +414,10 @@ function EditAgentDrawerBody({
     setSaving(true);
     let bwrapToast: { kind: "success" | "warning"; text: string } | null = null;
     try {
-      if (shouldProbeRootDir(values.backend_choice, values.root_dir)) {
+      if (
+        !remote &&
+        shouldProbeRootDir(values.backend_choice, values.root_dir)
+      ) {
         const bwrap = await ensureBubblewrapAfterProbe();
         const kind = ensureBwrapToastKind(bwrap.status);
         if (kind !== "none") {
@@ -432,6 +439,7 @@ function EditAgentDrawerBody({
         ...agentConfig,
         backend: backendSpec,
         enable_trajectory: values.enable_trajectory === true,
+        conversation_mode: values.conversation_mode,
       });
       delete nextConfig.color;
       delete nextConfig.icon_name;
@@ -485,7 +493,7 @@ function EditAgentDrawerBody({
         }),
       });
 
-      if (!skillPackagesSupported) {
+      if (!remote && !skillPackagesSupported) {
         try {
           await skillPackagesApi.replaceMounted(agent.agent_id, []);
         } catch (pkgErr) {
@@ -521,6 +529,7 @@ function EditAgentDrawerBody({
     agent.agent_id,
     agent.state,
     agentConfig,
+    remote,
     colorPalette,
     form,
     iconUrl,
@@ -604,49 +613,6 @@ function EditAgentDrawerBody({
         await reloadConfigFiles();
       },
     });
-  };
-
-  const installedSkillSlugs = useMemo(
-    () => new Set(agentSkills.map((skill) => skill.slug ?? skill.name)),
-    [agentSkills],
-  );
-
-  const handlePickHubSkill = async (skill: PickedHubSkill) => {
-    try {
-      await request(`/agents/${agent.agent_id}/skills/hub/install`, {
-        method: "POST",
-        body: JSON.stringify({
-          skill_name: skill.skill_name,
-          display_name: skill.display_name,
-          icon_url: skill.icon_url || null,
-          label: skill.label,
-          summary: skill.summary,
-          overwrite: true,
-          enable: true,
-        }),
-      });
-      message.success(t("skills.installSuccess"));
-      await reloadSkills();
-    } catch (err) {
-      message.error(apiErrorMessage(err, t("skills.installFailed"), t));
-    }
-  };
-
-  const handlePickAgentSkill = async (skill: PickedAgentSkill) => {
-    try {
-      await request(`/agents/${agent.agent_id}/skills/copy`, {
-        method: "POST",
-        body: JSON.stringify({
-          source_agent_id: skill.agent_id,
-          slug: skill.slug,
-          overwrite: true,
-        }),
-      });
-      message.success(t("skills.createSuccess"));
-      await reloadSkills();
-    } catch (err) {
-      message.error(apiErrorMessage(err, t("experts.copySkillFailed"), t));
-    }
   };
 
   const confirmDeleteSkill = (skill: SkillSummary) => {
@@ -745,6 +711,14 @@ function EditAgentDrawerBody({
         </div>
       ) : (
         <>
+          {remote ? (
+            <Alert
+              type="info"
+              showIcon
+              message={t("chat.remoteExpert.editBanner")}
+              style={{ marginBottom: 16 }}
+            />
+          ) : null}
           <div className={styles.drawerSection} style={{ marginBottom: 0 }}>
             <div className={styles.drawerSectionTitle}>
               {t("experts.basicInfo")}
@@ -848,6 +822,18 @@ function EditAgentDrawerBody({
                 <Switch />
               </Form.Item>
               <Form.Item
+                name="conversation_mode"
+                label={t("experts.defaultModeLabel")}
+                tooltip={t("experts.defaultModeHint")}
+              >
+                <Select
+                  options={CONVERSATION_MODES.map((mode) => ({
+                    value: mode,
+                    label: t(`chat.conversationMode.${mode}`),
+                  }))}
+                />
+              </Form.Item>
+              <Form.Item
                 name="default_model"
                 label={t("experts.defaultModelLabel")}
               >
@@ -874,12 +860,13 @@ function EditAgentDrawerBody({
                 pathMappings={pathMappings}
                 rootDirMode="edit"
                 disabled
+                skipHostFilesystem={remote}
                 onAddPathMapping={addPathMapping}
                 onRemovePathMapping={removePathMapping}
                 onUpdatePathMapping={updatePathMapping}
               />
               <AgentTrajectoryField />
-              <ExpertComposerDefaultsFields />
+              <ExpertComposerDefaultsFields agentId={agent.agent_id} />
               {!skillPackagesSupported ? (
                 <Alert
                   type="info"
@@ -1068,30 +1055,17 @@ function EditAgentDrawerBody({
                             count: agentSkills.length,
                           })}
                         </span>
-                        <span style={{ display: "inline-flex", gap: 12 }}>
-                          <Button
-                            type="link"
-                            size="small"
-                            style={{ padding: 0, height: "auto" }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSkillPickerOpen(true);
-                            }}
-                          >
-                            {t("experts.addSkill")}
-                          </Button>
-                          <Button
-                            type="link"
-                            size="small"
-                            style={{ padding: 0, height: "auto" }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSkillCatalogOpen(true);
-                            }}
-                          >
-                            {t("experts.manageSkills")}
-                          </Button>
-                        </span>
+                        <Button
+                          type="link"
+                          size="small"
+                          style={{ padding: 0, height: "auto" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSkillCatalogOpen(true);
+                          }}
+                        >
+                          {t("experts.manageSkills")}
+                        </Button>
                       </div>
                     ),
                     children: (
@@ -1214,32 +1188,17 @@ function EditAgentDrawerBody({
                             count: agentSubagents.length,
                           })}
                         </span>
-                        <span style={{ display: "inline-flex", gap: 12 }}>
-                          <Button
-                            type="link"
-                            size="small"
-                            style={{ padding: 0, height: "auto" }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSubagentCatalogTab("all");
-                              setSubagentCatalogOpen(true);
-                            }}
-                          >
-                            {t("experts.addSubagent")}
-                          </Button>
-                          <Button
-                            type="link"
-                            size="small"
-                            style={{ padding: 0, height: "auto" }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSubagentCatalogTab("installed");
-                              setSubagentCatalogOpen(true);
-                            }}
-                          >
-                            {t("experts.manageSubagents")}
-                          </Button>
-                        </span>
+                        <Button
+                          type="link"
+                          size="small"
+                          style={{ padding: 0, height: "auto" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSubagentCatalogOpen(true);
+                          }}
+                        >
+                          {t("experts.manageSubagents")}
+                        </Button>
                       </div>
                     ),
                     children: (
@@ -1356,7 +1315,6 @@ function EditAgentDrawerBody({
         agentState={agent.state}
         open={subagentCatalogOpen}
         installedSlugs={installedSubagentSlugs}
-        initialTab={subagentCatalogTab}
         onClose={() => setSubagentCatalogOpen(false)}
         onInstalled={() => {
           void reloadSubagents();
@@ -1369,15 +1327,6 @@ function EditAgentDrawerBody({
           setSkillCatalogOpen(false);
           void reloadSkills();
         }}
-      />
-      <SkillSourcePickerModal
-        open={skillPickerOpen}
-        excludeSlugs={installedSkillSlugs}
-        excludeAgentId={agent.agent_id}
-        loadContent={false}
-        onClose={() => setSkillPickerOpen(false)}
-        onPickHub={(skill) => void handlePickHubSkill(skill)}
-        onPickAgentSkill={(skill) => void handlePickAgentSkill(skill)}
       />
       <Modal
         title={t("workspace.rename")}
@@ -1427,7 +1376,7 @@ export default function EditAgentDrawer({
   return (
     <Drawer
       open={open}
-      title={t("experts.editExpert")}
+      title={<EditExpertDrawerTitle agent={agent} />}
       width={520}
       onClose={onClose}
       destroyOnHidden
