@@ -64,6 +64,18 @@ def _channel_row_to_dict(row: Any) -> dict[str, Any]:
     }
 
 
+def _merge_config(existing: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Apply a nested JSON object patch without dropping existing settings."""
+    merged = dict(existing)
+    for key, value in patch.items():
+        current = merged.get(key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            merged[key] = _merge_config(current, value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def _require_username(services: Any, username: str) -> int:
     try:
         return resolve_username(username, services)
@@ -479,10 +491,19 @@ def patch_channel_offline(
         row = svc.channel_repo.get(channel_id)
         if row is None or row.agent_id != agent_id:
             raise OctopError(ErrorCode.NOT_FOUND, f"channel {channel_id!r} not found")
+        merged_config: str | None = None
+        if config is not None:
+            try:
+                stored_config = json.loads(row.config_json or "{}")
+            except json.JSONDecodeError:
+                stored_config = {}
+            if not isinstance(stored_config, dict):
+                stored_config = {}
+            merged_config = json.dumps(_merge_config(stored_config, config))
         svc.channel_repo.update(
             channel_id,
             name=name,
-            config_json=json.dumps(config) if config is not None else None,
+            config_json=merged_config,
             enabled=enabled,
         )
         updated = svc.channel_repo.get(channel_id)
