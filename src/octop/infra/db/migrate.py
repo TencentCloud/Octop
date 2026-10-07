@@ -9,9 +9,12 @@ from __future__ import annotations
 import json
 import re
 import time
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
+from filelock import FileLock
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.utils.ulid import new_ulid
@@ -1908,7 +1911,47 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         conn.executescript(sql)
 
 
+@contextmanager
+def _migration_guard(db: DatabasePool) -> Iterator[None]:
+    """Serialize complete migration runs across processes without changing SQL transactions."""
+    if db.dialect == "sqlite":
+        with db.connect() as conn:
+            databases = conn.execute("PRAGMA database_list").fetchall()
+        filename = next(row["file"] for row in databases if row["name"] == "main")
+        if not filename:
+            # An in-memory database has no other process sharing its file. Keep
+            # the existing reentrant connection lock across this complete run.
+            with db.connect():
+                yield
+            return
+        with FileLock(f"{Path(filename).resolve()}.migration.lock"):
+            yield
+        return
+
+    import psycopg  # noqa: PLC0415
+
+    # Release the borrowed connection before holding a dedicated lock session:
+    # helpers below need pool connections, including when max_size is one.
+    with db.connect() as conn:
+        conninfo = conn.info.dsn
+        password = conn.info.password
+    with psycopg.connect(conninfo, password=password, autocommit=True) as lock_conn:
+        # PostgreSQL advisory locks are database scoped; distinguish schemas
+        # so independent installations in the same database do not serialize.
+        lock_conn.execute(
+            "SELECT pg_advisory_lock(hashtext('octop:schema:migrations'), "
+            "hashtext(current_schema()))"
+        )
+        # Closing this dedicated session releases the lock on success or error.
+        yield
+
+
 def run_migrations(db: DatabasePool) -> None:
+    with _migration_guard(db):
+        _run_migrations(db)
+
+
+def _run_migrations(db: DatabasePool) -> None:
     if db.dialect == "sqlite":
         _repair_legacy_schema(db)
     for version, path in _discover(db.dialect):

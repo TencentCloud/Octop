@@ -36,6 +36,7 @@ dependencies = [
     "octop-browser>=1.0.0",
     "playwright>=1.40",
     "psycopg[binary]>=3.2",
+    "filelock>=3.20",
     "langgraph-checkpoint-postgres>=2.0",
     "mcp>=1.9,<2",
     "pillow>=10.0",
