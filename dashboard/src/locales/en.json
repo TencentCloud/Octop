@@ -6101,6 +6101,7 @@
     "enablePluginFirst": "Enable this plugin first. Tools are on by default; you can still turn them off per agent.",
     "detailToolsHint": "On by default. Turning a tool off applies only to the agent selected in the sidebar (same config as Experts → Tools). Takes effect on the next turn — no restart needed.",
     "configure": "Configure",
+    "needsConfig": "Needs setup",
     "colName": "Name",
     "colId": "ID",
     "colVersion": "Version",

@@ -6101,6 +6101,7 @@
     "enablePluginFirst": "请先启用该插件。启用后工具默认可用，也可按专家单独关闭。",
     "detailToolsHint": "默认开启。关闭后仅对侧栏当前选中的专家生效（与专家「工具设置」共用配置）；下一轮对话即可生效，无需重启。",
     "configure": "配置",
+    "needsConfig": "待配置",
     "colName": "名称",
     "colId": "ID",
     "colVersion": "版本",
