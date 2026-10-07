@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Callable
 from datetime import UTC
 from pathlib import Path
@@ -17,7 +16,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from josepy import JWKRSA  # type: ignore[attr-defined]
 
 from octop.infra.setup.tls.challenge import challenge_store
-from octop.infra.setup.tls.store import account_key_path
+from octop.infra.setup.tls.store import _atomic_write_bytes, account_key_path
 from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
@@ -40,8 +39,7 @@ def _load_or_create_account_key(path: Path) -> JWKRSA:
         format=serialization.PrivateFormat.TraditionalOpenSSL,
         encryption_algorithm=serialization.NoEncryption(),
     )
-    path.write_bytes(pem)
-    os.chmod(path, 0o600)
+    _atomic_write_bytes(path, pem, mode=0o600)
     return JWKRSA(key=key)
 
 
