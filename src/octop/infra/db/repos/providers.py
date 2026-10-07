@@ -8,11 +8,13 @@ from typing import TYPE_CHECKING
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import (
+    UNSET,
     DbRow,
     bool_int,
     insert_returning_id,
     map_rows,
     now_ts,
+    optional_updates,
     partial_updates,
 )
 
@@ -108,22 +110,37 @@ class ProviderRepo:
         *,
         kind: str | None = None,
         base_url: str | None = None,
-        api_key: str | None = None,
+        api_key: object = UNSET,
         extra_json: str | None = None,
         models_json: str | None = None,
         note: str | None = None,
         enabled: bool | None = None,
     ) -> None:
+        """Patch a provider row.
+
+        ``api_key`` uses the ``UNSET`` sentinel rather than ``None`` so that
+        "revoke this credential" (``None``) is expressible and distinct from
+        "leave the credential alone" (omitted). It previously took
+        ``str | None = None`` and went through ``partial_updates``, whose
+        None-means-skip rule made a revoke a silent no-op while the dashboard
+        reported success.
+
+        The other columns keep None-means-skip: they have no "clear this"
+        affordance in the UI, and an explicit ``null`` for them should not start
+        writing SQL NULL as a side effect of this fix.
+        """
         fields, params = partial_updates(
             [
                 ("kind", kind),
                 ("base_url", base_url),
-                ("api_key", api_key),
                 ("extra_json", extra_json),
                 ("models_json", models_json),
                 ("note", note),
             ]
         )
+        api_fields, api_params = optional_updates([("api_key", api_key)])
+        fields += api_fields
+        params += api_params
         if enabled is not None:
             fields.append("enabled = ?")
             params.append(bool_int(enabled))

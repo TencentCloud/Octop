@@ -130,19 +130,27 @@ export function VoiceSettingsPanel() {
     } else {
       extra = { model: preset.kind === "openai" ? "whisper-1" : undefined };
     }
-    return {
+    const payload: VoiceProviderInput = {
       name: preset.id,
       kind: preset.kind,
       capability: preset.capability,
       base_url: baseUrl,
-      api_key:
-        preset.kind === "tencent"
-          ? secretId && secretKey
-            ? `${secretId}:${secretKey}`
-            : null
-          : apiKey || null,
       extra_json: JSON.stringify(extra),
     };
+    const nextKey =
+      preset.kind === "tencent"
+        ? secretId && secretKey
+          ? `${secretId}:${secretKey}`
+          : null
+        : apiKey || null;
+    // Omit the field entirely when the user typed no key. An explicit null
+    // means "revoke" on the server, so sending null here would wipe the stored
+    // credential on any save that did not re-type it; the revoke button is the
+    // only way to clear one.
+    if (nextKey !== null) {
+      payload.api_key = nextKey;
+    }
+    return payload;
   };
 
   const validateCredentials = () => {
