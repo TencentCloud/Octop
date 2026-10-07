@@ -97,7 +97,10 @@ def write_json_atomic(path: Path, data: dict[str, Any]) -> None:
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
         try:
-            os.write(fd, payload)
+            # A raw os.write may write fewer bytes without raising (e.g. a file
+            # size limit). Flush a buffered writer completely before replacing.
+            with os.fdopen(fd, "wb", closefd=False) as stream:
+                stream.write(payload)
         finally:
             os.close(fd)
         if os.name == "posix":
