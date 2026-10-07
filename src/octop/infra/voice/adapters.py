@@ -100,7 +100,7 @@ async def transcribe_openai(
     base_url = (row.base_url or "https://api.openai.com/v1").rstrip("/")
     await _guard_voice_base_url(base_url)
     extra = row.get_extra()
-    model = str(extra.get("model") or "whisper-1")
+    model = str(extra.get("stt_model") or extra.get("model") or "whisper-1")
     ext = "webm" if "webm" in mime else "wav"
     files = {"file": (f"audio.{ext}", audio, mime or "audio/webm")}
     data: dict[str, str] = {"model": model}
@@ -132,7 +132,7 @@ async def synthesize_openai(
     base_url = (row.base_url or "https://api.openai.com/v1").rstrip("/")
     await _guard_voice_base_url(base_url)
     extra = row.get_extra()
-    model = str(extra.get("model") or "tts-1")
+    model = str(extra.get("tts_model") or extra.get("model") or "tts-1")
     voice = voice_id or str(extra.get("voice_id") or "alloy")
     payload = {
         "model": model,

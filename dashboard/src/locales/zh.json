@@ -1725,7 +1725,8 @@
     "generate_image": "生成图片",
     "generate_video": "生成视频",
     "bilibili_search_anime": "搜索番剧",
-    "search_arxiv": "查询 arXiv 论文"
+    "search_arxiv": "查询 arXiv 论文",
+    "custom_search": "自定义网页搜索"
   },
   "toolSettings": {
     "title": "工具设置",
@@ -2771,7 +2772,18 @@
     "readAloud": "朗读",
     "micNotAvailable": "此设备不支持录音，请通过 HTTPS 访问",
     "sttNotAvailable": "此设备不支持语音输入（需要 HTTPS）",
-    "ttsAutoplayBlocked": "浏览器阻止了自动播放，请再次点击朗读按钮"
+    "ttsAutoplayBlocked": "浏览器阻止了自动播放，请再次点击朗读按钮",
+    "addCustom": "添加自定义语音服务",
+    "customProvider": "自定义语音服务",
+    "customHint": "需要兼容 OpenAI 的 /audio/transcriptions（识别）和 /audio/speech（合成）接口。填写公网 HTTPS 基础地址及 API 前缀（如 /v1）。百度／千问原生语音接口需要通过兼容网关接入。",
+    "providerName": "服务名称",
+    "capability": "支持能力",
+    "both": "语音识别和合成",
+    "sttModel": "语音识别模型",
+    "ttsModel": "语音合成模型",
+    "uniqueNameRequired": "请填写唯一的服务名称，不能与内置预设重名。",
+    "endpointModelRequired": "请填写公网 HTTPS API 地址及所选能力的模型名称。",
+    "deleteConfirm": "删除此语音服务？"
   },
   "security": {
     "intro": "配置专家运行时的安全防护策略。保存后已运行的专家会自动重新加载配置。",
@@ -3478,7 +3490,15 @@
       "sourceBuiltinTitle": "当前搜索源：内置搜索",
       "sourceBuiltinDesc": "未配置第三方搜索服务时，仍可使用产品内置搜索服务；该服务无需 API Key，但不保证稳定性和可用性。配置第三方服务后会自动切换。",
       "sourceConfiguredTitle": "当前搜索源：{{name}}",
-      "sourceConfiguredDesc": "已配置第三方搜索服务，内置搜索默认不再加载，避免多个搜索工具同时暴露给模型。"
+      "sourceConfiguredDesc": "已配置第三方搜索服务，内置搜索默认不再加载，避免多个搜索工具同时暴露给模型。",
+      "customProvider": "自定义搜索",
+      "customHint": "可配置 Tavily 兼容搜索接口或百度千帆 Web Search。自定义搜索优先于内置服务。请填写公网 HTTPS 接口地址；接口需返回 results（Tavily）或 references（千帆）列表。",
+      "CUSTOM_SEARCH_URL": "搜索接口地址",
+      "CUSTOM_SEARCH_API_KEY": "API Key",
+      "CUSTOM_SEARCH_PROTOCOL": "接口协议",
+      "httpsRequired": "请填写公网 HTTPS 地址。",
+      "tavilyCompatible": "Tavily 兼容协议",
+      "qianfanProtocol": "百度千帆 Web Search"
     },
     "update": {
       "title": "版本与更新",

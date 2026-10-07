@@ -3243,6 +3243,14 @@ class AgentManager:
         ]
 
         merged_tools: list[Any] = []
+        from octop.infra.agents.search_tools import build_custom_search_tools
+
+        custom_search_tools = (
+            build_custom_search_tools()
+            if not team_host and cfg.get("web_search_tools") is not False
+            else []
+        )
+        merged_tools.extend(custom_search_tools)
         if cron_tools:
             merged_tools.extend(cron_tools)
         merged_tools.extend(knowledge_tools)
@@ -3375,6 +3383,7 @@ class AgentManager:
             backend=harness_backend,  # spec, or live OpenSandbox instance
             mcp_server_configs=mcp_server_configs,
             tools=merged_tools or None,
+            web_search_tools=False if custom_search_tools else cfg.get("web_search_tools", "auto"),
             middleware=agent_middleware or None,
             bootstrap_enabled=not team_host,
             acp_runners=acp_config.runners,

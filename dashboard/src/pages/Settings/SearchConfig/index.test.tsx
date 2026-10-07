@@ -48,4 +48,27 @@ describe("<SearchConfigPage />", () => {
 
     expect(screen.getByText("当前搜索源：Tavily")).toBeInTheDocument();
   });
+
+  it("prioritizes a configured custom search provider", async () => {
+    api.listEnvs.mockResolvedValue(
+      envResp([
+        "TAVILY_API_KEY",
+        "CUSTOM_SEARCH_URL",
+        "CUSTOM_SEARCH_API_KEY",
+        "CUSTOM_SEARCH_PROTOCOL",
+      ]),
+    );
+    render(<SearchConfigPage />);
+    expect(
+      await screen.findByText("当前搜索源：Custom Search"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not activate custom search with incomplete configuration", async () => {
+    api.listEnvs.mockResolvedValue(
+      envResp(["CUSTOM_SEARCH_URL", "TAVILY_API_KEY"]),
+    );
+    render(<SearchConfigPage />);
+    expect(await screen.findByText("当前搜索源：Tavily")).toBeInTheDocument();
+  });
 });

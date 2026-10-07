@@ -13,16 +13,19 @@ from typing import Any, Literal
 
 import httpx
 
+from octop.infra.utils.custom_search import request_custom_search
+
 ErrorType = Literal["auth_error", "timeout", "network_error", "invalid_config", "unknown"]
 
 _TIMEOUT_S = 30.0
 _TEST_QUERY = "octop connectivity probe"
-_KNOWN: frozenset[str] = frozenset({"tavily", "brave", "google", "kimi"})
+_KNOWN: frozenset[str] = frozenset({"tavily", "brave", "google", "kimi", "custom"})
 _REQUIRED: dict[str, tuple[str, ...]] = {
     "tavily": ("TAVILY_API_KEY",),
     "brave": ("BRAVE_API_KEY",),
     "google": ("GOOGLE_API_KEY", "GOOGLE_CSE_ID"),
     "kimi": ("MOONSHOT_API_KEY",),
+    "custom": ("CUSTOM_SEARCH_URL", "CUSTOM_SEARCH_API_KEY"),
 }
 
 
@@ -73,6 +76,14 @@ async def _probe(provider_id: str, env_vars: Mapping[str, str]) -> dict[str, Any
         }
 
     creds = {k: str(env_vars[k]).strip() for k in _REQUIRED[provider_id]}
+    if provider_id == "custom":
+        try:
+            result = await request_custom_search(env_vars, _TEST_QUERY, 1)
+        except ValueError as exc:
+            return {"success": False, "error": str(exc), "error_type": "invalid_config"}
+        except httpx.HTTPStatusError as exc:
+            return _http_failure(exc.response) or {"success": False}
+        return {"success": True, "result_count": len(result["results"])}
     async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
         if provider_id == "tavily":
             return await _tavily(client, creds["TAVILY_API_KEY"])

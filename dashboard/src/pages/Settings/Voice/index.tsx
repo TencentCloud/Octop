@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Divider, Drawer, Form, Input, Select, Typography } from "antd";
+import {
+  Button,
+  Divider,
+  Drawer,
+  Form,
+  Input,
+  Popconfirm,
+  Select,
+  Typography,
+} from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Activity, Mic2, Check, Settings2 } from "lucide-react";
@@ -24,6 +33,7 @@ function voiceLogoForKind(kind: string): string {
 interface ConfigureState {
   preset: VoicePreset;
   existing?: VoiceProviderRow;
+  custom?: boolean;
 }
 
 /** Voice provider settings panel — embeddable in the Models page tab. */
@@ -35,6 +45,11 @@ export function VoiceSettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [configure, setConfigure] = useState<ConfigureState | null>(null);
   const [apiKey, setApiKey] = useState("");
+  const [providerName, setProviderName] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [sttModel, setSttModel] = useState("whisper-1");
+  const [ttsModel, setTtsModel] = useState("tts-1");
+  const [voiceId, setVoiceId] = useState("alloy");
   const [secretId, setSecretId] = useState("");
   const [secretKey, setSecretKey] = useState("");
   const [mimoEndpoint, setMimoEndpoint] = useState<"payg" | "tokenplan">(
@@ -67,15 +82,42 @@ export function VoiceSettingsPanel() {
     void fetchAll();
   }, [fetchAll]);
 
+  const availablePresets = useMemo(
+    () => [
+      ...presets,
+      ...providers
+        .filter(
+          (row) =>
+            !presets.some((p) => p.id === row.name || p.name === row.name),
+        )
+        .map(
+          (row): VoicePreset => ({
+            id: row.name,
+            name: row.name,
+            kind: row.kind,
+            capability: row.capability,
+            free: false,
+            requires_key: true,
+            description: t("voice.customHint"),
+          }),
+        ),
+    ],
+    [presets, providers, t],
+  );
+
   const sttPresets = useMemo(
     () =>
-      presets.filter((p) => p.capability === "stt" || p.capability === "both"),
-    [presets],
+      availablePresets.filter(
+        (p) => p.capability === "stt" || p.capability === "both",
+      ),
+    [availablePresets],
   );
   const ttsPresets = useMemo(
     () =>
-      presets.filter((p) => p.capability === "tts" || p.capability === "both"),
-    [presets],
+      availablePresets.filter(
+        (p) => p.capability === "tts" || p.capability === "both",
+      ),
+    [availablePresets],
   );
 
   const findConfigured = (preset: VoicePreset) =>
@@ -96,9 +138,18 @@ export function VoiceSettingsPanel() {
 
   const openConfigure = (preset: VoicePreset) => {
     const existing = findConfigured(preset);
-    setConfigure({ preset, existing });
+    setConfigure({
+      preset,
+      existing,
+      custom: !presets.some((p) => p.id === preset.id),
+    });
+    setProviderName(existing?.name ?? "");
+    setBaseUrl(existing?.base_url ?? "https://api.openai.com/v1");
     setApiKey(existing?.api_key ?? "");
     const extra = existing?.extra ?? {};
+    setSttModel(String(extra.stt_model ?? extra.model ?? "whisper-1"));
+    setTtsModel(String(extra.tts_model ?? extra.model ?? "tts-1"));
+    setVoiceId(String(extra.voice_id ?? "alloy"));
     setSecretId(String(extra.secret_id ?? ""));
     setSecretKey(String(extra.secret_key ?? ""));
     setMimoEndpoint(extra.endpoint_type === "tokenplan" ? "tokenplan" : "payg");
@@ -109,7 +160,7 @@ export function VoiceSettingsPanel() {
     if (!configure) return null;
     const { preset } = configure;
     let extra: Record<string, unknown>;
-    let baseUrl: string | null = null;
+    let providerBaseUrl: string | null = null;
     if (preset.kind === "tencent") {
       extra = {
         secret_id: secretId,
@@ -119,7 +170,7 @@ export function VoiceSettingsPanel() {
     } else if (preset.kind === "edge") {
       extra = { voice_id: "zh-CN-XiaoxiaoNeural" };
     } else if (preset.kind === "mimo") {
-      baseUrl =
+      providerBaseUrl =
         mimoEndpoint === "tokenplan"
           ? "https://token-plan-cn.xiaomimimo.com/v1"
           : "https://api.xiaomimimo.com/v1";
@@ -128,13 +179,21 @@ export function VoiceSettingsPanel() {
         voice_id: preset.capability === "tts" ? mimoVoiceId : undefined,
       };
     } else {
-      extra = { model: preset.kind === "openai" ? "whisper-1" : undefined };
+      extra =
+        preset.kind === "openai"
+          ? {
+              stt_model: sttModel.trim(),
+              tts_model: ttsModel.trim(),
+              voice_id: voiceId.trim(),
+            }
+          : {};
+      if (preset.kind === "openai") providerBaseUrl = baseUrl.trim();
     }
     return {
-      name: preset.id,
+      name: configure.custom ? providerName.trim() : preset.id,
       kind: preset.kind,
       capability: preset.capability,
-      base_url: baseUrl,
+      base_url: providerBaseUrl,
       api_key:
         preset.kind === "tencent"
           ? secretId && secretKey
@@ -146,6 +205,32 @@ export function VoiceSettingsPanel() {
   };
 
   const validateCredentials = () => {
+    if (
+      configure?.custom &&
+      (!providerName.trim() ||
+        (!configure.existing &&
+          (presets.some(
+            (p) =>
+              p.id === providerName.trim() || p.name === providerName.trim(),
+          ) ||
+            providers.some((p) => p.name === providerName.trim()))))
+    ) {
+      message.warning(t("voice.uniqueNameRequired"));
+      return false;
+    }
+    if (
+      configure?.preset.kind === "openai" &&
+      (!/^https:\/\/[^\s]+$/.test(baseUrl.trim()) ||
+        ((configure.preset.capability === "stt" ||
+          configure.preset.capability === "both") &&
+          !sttModel.trim()) ||
+        ((configure.preset.capability === "tts" ||
+          configure.preset.capability === "both") &&
+          !ttsModel.trim()))
+    ) {
+      message.warning(t("voice.endpointModelRequired"));
+      return false;
+    }
     if (!configure?.preset.requires_key) return true;
     const complete =
       configure.preset.kind === "tencent"
@@ -197,7 +282,7 @@ export function VoiceSettingsPanel() {
         (preset.capability === "stt" || preset.capability === "both") &&
         active.stt === "browser"
       ) {
-        const next = await voiceApi.setActive({ stt: preset.id });
+        const next = await voiceApi.setActive({ stt: payload.name });
         setActive(next);
         invalidateVoiceConfigCache();
       }
@@ -206,7 +291,7 @@ export function VoiceSettingsPanel() {
         (preset.capability === "tts" || preset.capability === "both") &&
         active.tts === "browser"
       ) {
-        const next = await voiceApi.setActive({ tts: preset.id });
+        const next = await voiceApi.setActive({ tts: payload.name });
         setActive(next);
         invalidateVoiceConfigCache();
       }
@@ -333,6 +418,29 @@ export function VoiceSettingsPanel() {
                   {t("common.edit")}
                 </Button>
               ) : null}
+              {configured && !presets.some((p) => p.id === preset.id) && (
+                <Popconfirm
+                  title={t("voice.deleteConfirm")}
+                  onConfirm={async () => {
+                    try {
+                      await voiceApi.deleteProvider(configured.id);
+                      await fetchAll();
+                    } catch {
+                      message.error(t("common.deleteFailed"));
+                    }
+                  }}
+                >
+                  <Button
+                    size="small"
+                    danger
+                    disabled={
+                      active.stt === preset.id || active.tts === preset.id
+                    }
+                  >
+                    {t("common.delete")}
+                  </Button>
+                </Popconfirm>
+              )}
             </>
           )}
         </div>
@@ -347,6 +455,22 @@ export function VoiceSettingsPanel() {
         title={t("models.voiceModelsTab")}
         description={t("voice.description")}
       />
+
+      <Button
+        onClick={() =>
+          openConfigure({
+            id: "",
+            name: t("voice.customProvider"),
+            kind: "openai",
+            capability: "both",
+            free: false,
+            requires_key: true,
+            description: t("voice.customHint"),
+          })
+        }
+      >
+        {t("voice.addCustom")}
+      </Button>
 
       {loading ? (
         <Text type="secondary">{t("voice.loading")}</Text>
@@ -402,6 +526,34 @@ export function VoiceSettingsPanel() {
         }
       >
         <Form layout="vertical">
+          {configure?.custom && (
+            <>
+              <Form.Item label={t("voice.providerName")} required>
+                <Input
+                  value={providerName}
+                  placeholder={t("voice.providerName")}
+                  disabled={!!configure.existing}
+                  onChange={(e) => setProviderName(e.target.value)}
+                />
+              </Form.Item>
+              <Form.Item label={t("voice.capability")} required>
+                <Select
+                  value={configure.preset.capability}
+                  onChange={(capability: VoicePreset["capability"]) =>
+                    setConfigure({
+                      ...configure,
+                      preset: { ...configure.preset, capability },
+                    })
+                  }
+                  options={[
+                    { value: "stt", label: t("voice.sttSection") },
+                    { value: "tts", label: t("voice.ttsSection") },
+                    { value: "both", label: t("voice.both") },
+                  ]}
+                />
+              </Form.Item>
+            </>
+          )}
           {configure?.preset.kind === "tencent" && (
             <>
               <div className={styles.drawerHint}>{t("voice.tencentHint")}</div>
@@ -423,7 +575,7 @@ export function VoiceSettingsPanel() {
           )}
           {configure?.preset.kind === "openai" && (
             <>
-              <div className={styles.drawerHint}>{t("voice.openaiHint")}</div>
+              <div className={styles.drawerHint}>{t("voice.customHint")}</div>
               <Form.Item label="API Key" required>
                 <Input.Password
                   placeholder="API Key"
@@ -431,18 +583,37 @@ export function VoiceSettingsPanel() {
                   onChange={(e) => setApiKey(e.target.value)}
                 />
               </Form.Item>
-              <Form.Item label={t("voice.mimoEndpoint")}>
-                <Select
-                  value="https://api.openai.com/v1"
-                  disabled
-                  options={[
-                    {
-                      value: "https://api.openai.com/v1",
-                      label: "OpenAI API",
-                    },
-                  ]}
+              <Form.Item label={t("voice.mimoEndpoint")} required>
+                <Input
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="https://api.openai.com/v1"
                 />
               </Form.Item>
+              {configure.preset.capability !== "tts" && (
+                <Form.Item label={t("voice.sttModel")} required>
+                  <Input
+                    value={sttModel}
+                    onChange={(e) => setSttModel(e.target.value)}
+                  />
+                </Form.Item>
+              )}
+              {configure.preset.capability !== "stt" && (
+                <>
+                  <Form.Item label={t("voice.ttsModel")} required>
+                    <Input
+                      value={ttsModel}
+                      onChange={(e) => setTtsModel(e.target.value)}
+                    />
+                  </Form.Item>
+                  <Form.Item label={t("voice.mimoVoice")}>
+                    <Input
+                      value={voiceId}
+                      onChange={(e) => setVoiceId(e.target.value)}
+                    />
+                  </Form.Item>
+                </>
+              )}
             </>
           )}
           {configure?.preset.kind === "mimo" && (

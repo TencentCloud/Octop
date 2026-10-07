@@ -28,6 +28,9 @@ SEARCH_ENV_KEYS = frozenset(
         "GOOGLE_API_KEY",
         "GOOGLE_CSE_ID",
         "MOONSHOT_API_KEY",
+        "CUSTOM_SEARCH_URL",
+        "CUSTOM_SEARCH_API_KEY",
+        "CUSTOM_SEARCH_PROTOCOL",
     }
 )
 

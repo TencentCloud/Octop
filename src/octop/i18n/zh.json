@@ -614,7 +614,8 @@
     "generate_image": "生成图片",
     "generate_video": "生成视频",
     "bilibili_search_anime": "搜索番剧",
-    "search_arxiv": "查询 arXiv 论文"
+    "search_arxiv": "查询 arXiv 论文",
+    "custom_search": "自定义网页搜索"
   },
   "plugins": {
     "arxiv_search": {

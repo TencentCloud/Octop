@@ -1,5 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
-import { App, Button, Drawer, Form, Input, Typography, Spin } from "antd";
+import {
+  App,
+  Button,
+  Drawer,
+  Form,
+  Input,
+  Select,
+  Typography,
+  Spin,
+} from "antd";
 
 import {
   Activity,
@@ -29,6 +38,17 @@ interface SearchProvider {
 }
 
 const SEARCH_PROVIDERS: SearchProvider[] = [
+  {
+    id: "custom",
+    name: "Custom Search",
+    descriptionKey: "advancedSettings.search.customHint",
+    required_keys: [
+      "CUSTOM_SEARCH_URL",
+      "CUSTOM_SEARCH_API_KEY",
+      "CUSTOM_SEARCH_PROTOCOL",
+    ],
+    configured: false,
+  },
   {
     id: "tavily",
     name: "Tavily",
@@ -95,8 +115,10 @@ function ConfigureDrawer({
     provider.required_keys.forEach((key) => {
       if (envVars[key]) initialValues[key] = envVars[key];
     });
+    if (provider.id === "custom" && !initialValues.CUSTOM_SEARCH_PROTOCOL)
+      initialValues.CUSTOM_SEARCH_PROTOCOL = "tavily";
     form.setFieldsValue(initialValues);
-  }, [envVars, provider.required_keys, form, open]);
+  }, [envVars, provider.id, provider.required_keys, form, open]);
 
   const handleSave = async () => {
     try {
@@ -219,12 +241,24 @@ function ConfigureDrawer({
           <Form.Item
             key={key}
             name={key}
-            label={key}
+            label={
+              provider.id === "custom"
+                ? t(`advancedSettings.search.${key}`)
+                : key
+            }
             rules={[
               {
                 required: true,
                 message: t("setupWizard.search.required", { key }),
               },
+              ...(key === "CUSTOM_SEARCH_URL"
+                ? [
+                    {
+                      pattern: /^https:\/\/[^\s]+$/,
+                      message: t("advancedSettings.search.httpsRequired"),
+                    },
+                  ]
+                : []),
             ]}
             extra={
               key === "GOOGLE_CSE_ID" ? (
@@ -254,10 +288,27 @@ function ConfigureDrawer({
               ) : undefined
             }
           >
-            <Input.Password
-              placeholder={t("setupWizard.search.required", { key })}
-              autoComplete="off"
-            />
+            {key === "CUSTOM_SEARCH_PROTOCOL" ? (
+              <Select
+                options={[
+                  {
+                    value: "tavily",
+                    label: t("advancedSettings.search.tavilyCompatible"),
+                  },
+                  {
+                    value: "qianfan",
+                    label: t("advancedSettings.search.qianfanProtocol"),
+                  },
+                ]}
+              />
+            ) : key === "CUSTOM_SEARCH_URL" ? (
+              <Input placeholder="https://qianfan.baidubce.com/v2/ai_search/web_search" />
+            ) : (
+              <Input.Password
+                placeholder={t("setupWizard.search.required", { key })}
+                autoComplete="off"
+              />
+            )}
           </Form.Item>
         ))}
       </Form>
@@ -295,7 +346,9 @@ export default function SearchConfigPage() {
       setProviders(
         SEARCH_PROVIDERS.map((p) => ({
           ...p,
-          configured: p.required_keys.every((key) => !!envMap[key]),
+          configured: p.required_keys.every(
+            (key) => key === "CUSTOM_SEARCH_PROTOCOL" || !!envMap[key],
+          ),
         })),
       );
     } catch (err) {
@@ -347,7 +400,15 @@ export default function SearchConfigPage() {
               ? t(
                   "advancedSettings.search.sourceConfiguredTitle",
                   "当前搜索源：{{name}}",
-                  { name: activeSource.name },
+                  {
+                    name:
+                      activeSource.id === "custom"
+                        ? t(
+                            "advancedSettings.search.customProvider",
+                            "Custom Search",
+                          )
+                        : activeSource.name,
+                  },
                 )
               : t(
                   "advancedSettings.search.sourceBuiltinTitle",
@@ -410,7 +471,11 @@ export default function SearchConfigPage() {
                 </div>
                 <div className={styles.titleBlock}>
                   <div className={styles.nameRow}>
-                    <span className={styles.name}>{provider.name}</span>
+                    <span className={styles.name}>
+                      {provider.id === "custom"
+                        ? t("advancedSettings.search.customProvider")
+                        : provider.name}
+                    </span>
                   </div>
                 </div>
                 <div className={styles.badges}>

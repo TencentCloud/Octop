@@ -40,7 +40,8 @@ class TestSearchResponse(BaseModel):
     description=(
         "Run a one-shot query against a web-search provider using the supplied "
         "env vars (TAVILY_API_KEY, BRAVE_API_KEY, GOOGLE_API_KEY + GOOGLE_CSE_ID, "
-        "or MOONSHOT_API_KEY). Credentials are not written to ~/.octop/env."
+        "MOONSHOT_API_KEY, or CUSTOM_SEARCH_URL + CUSTOM_SEARCH_API_KEY with "
+        "CUSTOM_SEARCH_PROTOCOL=tavily|qianfan). Credentials are not persisted."
     ),
 )
 async def test_search_provider(

@@ -614,7 +614,8 @@
     "generate_image": "Generate image",
     "generate_video": "Generate video",
     "bilibili_search_anime": "Search Bilibili anime",
-    "search_arxiv": "Search arXiv papers"
+    "search_arxiv": "Search arXiv papers",
+    "custom_search": "Custom web search"
   },
   "plugins": {
     "arxiv_search": {

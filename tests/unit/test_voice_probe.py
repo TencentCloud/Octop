@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -58,6 +59,53 @@ def _raising(exc: Exception) -> Callable[..., AsyncIterator[bytes]]:
 
 
 TENCENT_EXTRA = {"secret_id": "sid", "secret_key": "sk", "region": "ap-guangzhou"}
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_custom_voice_uses_endpoint_and_separate_models(
+    monkeypatch: pytest.MonkeyPatch, legacy: bool
+) -> None:
+    row = replace(
+        _row(
+            kind="openai",
+            extra={"model": "legacy-model"}
+            if legacy
+            else {"stt_model": "custom-stt", "tts_model": "custom-tts", "voice_id": "custom-voice"},
+        ),
+        base_url="https://voice.example/v1/",
+    )
+
+    async def guard(url: str) -> None:
+        assert url == "https://voice.example/v1"
+
+    monkeypatch.setattr(voice_adapters, "_guard_voice_base_url", guard)
+    called: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        called.append(request.url.path)
+        assert request.headers["Authorization"] == "Bearer k"
+        if request.url.path.endswith("transcriptions"):
+            assert (b"legacy-model" if legacy else b"custom-stt") in request.content
+            return httpx.Response(200, json={"text": "transcribed"})
+        body = json.loads(request.content)
+        assert body["model"] == ("legacy-model" if legacy else "custom-tts")
+        assert body["voice"] == ("alloy" if legacy else "custom-voice")
+        return httpx.Response(200, content=b"audio")
+
+    real = httpx.AsyncClient
+
+    def factory(**kwargs: Any) -> httpx.AsyncClient:
+        return real(**{**kwargs, "transport": httpx.MockTransport(handler)})
+
+    monkeypatch.setattr(voice_adapters.httpx, "AsyncClient", factory)
+    result = await voice_adapters.transcribe_openai(row, b"audio", mime="audio/wav", language="en")
+    assert result.text == "transcribed"
+    chunks = [
+        chunk
+        async for chunk in voice_adapters.synthesize_openai(row, "hello", voice_id=None, speed=1.0)
+    ]
+    assert b"".join(chunks) == b"audio"
+    assert called == ["/v1/audio/transcriptions", "/v1/audio/speech"]
 
 
 @pytest.mark.asyncio

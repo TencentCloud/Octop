@@ -689,6 +689,19 @@ def test_build_harness_config_includes_search_knowledge_without_cron(
     assert any(isinstance(item, KnowledgeSearchHintMiddleware) for item in (cfg.middleware or []))
 
 
+@pytest.mark.parametrize("search_enabled", [True, False])
+def test_custom_search_mounts_and_respects_search_policy(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch, search_enabled: bool
+) -> None:
+    monkeypatch.setenv("CUSTOM_SEARCH_URL", "https://search.example/search")
+    monkeypatch.setenv("CUSTOM_SEARCH_API_KEY", "key")
+    row = _row(agent_id="AGT001", config_json=json.dumps({"web_search_tools": search_enabled}))
+    cfg = manager._build_harness_config(row)
+    names = {t.name for t in (cfg.tools or [])}
+    assert ("custom_search" in names) is search_enabled
+    assert cfg.web_search_tools is False
+
+
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
     assert cfg.backend == _expected_default_backend(manager, "AGT001")

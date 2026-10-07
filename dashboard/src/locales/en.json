@@ -1725,7 +1725,8 @@
     "generate_image": "Generate image",
     "generate_video": "Generate video",
     "bilibili_search_anime": "Search Bilibili anime",
-    "search_arxiv": "Search arXiv papers"
+    "search_arxiv": "Search arXiv papers",
+    "custom_search": "Custom web search"
   },
   "toolSettings": {
     "title": "Tool settings",
@@ -2771,7 +2772,18 @@
     "readAloud": "Read aloud",
     "micNotAvailable": "Audio recording unavailable — please use HTTPS",
     "sttNotAvailable": "Voice input not available on this device (HTTPS required)",
-    "ttsAutoplayBlocked": "Autoplay blocked by browser — tap read-aloud again"
+    "ttsAutoplayBlocked": "Autoplay blocked by browser — tap read-aloud again",
+    "addCustom": "Add custom voice provider",
+    "customProvider": "Custom voice provider",
+    "customHint": "Requires OpenAI-compatible /audio/transcriptions (STT) and /audio/speech (TTS) endpoints. Enter a public HTTPS base URL including its API prefix (for example /v1). Native Baidu/Qwen voice APIs require a compatible gateway.",
+    "providerName": "Provider name",
+    "capability": "Capabilities",
+    "both": "Speech recognition and synthesis",
+    "sttModel": "Speech recognition model",
+    "ttsModel": "Speech synthesis model",
+    "uniqueNameRequired": "Enter a unique provider name that is not a built-in preset.",
+    "endpointModelRequired": "Enter a public HTTPS API endpoint and the models for the selected capabilities.",
+    "deleteConfirm": "Delete this voice provider?"
   },
   "security": {
     "intro": "Configure runtime security policies for agents. Running agents reload automatically after save.",
@@ -3478,7 +3490,15 @@
       "sourceBuiltinTitle": "Current search source: built-in search",
       "sourceBuiltinDesc": "When no third-party search provider is configured, Octop still provides its built-in search service. It requires no API key, but its stability and availability are not guaranteed. It switches automatically once a third-party provider is configured.",
       "sourceConfiguredTitle": "Current search source: {{name}}",
-      "sourceConfiguredDesc": "A third-party search provider is configured, so the built-in search is no longer loaded by default, avoiding multiple search tools being exposed to the model at once."
+      "sourceConfiguredDesc": "A third-party search provider is configured, so the built-in search is no longer loaded by default, avoiding multiple search tools being exposed to the model at once.",
+      "customProvider": "Custom Search",
+      "customHint": "Configure a Tavily-compatible search endpoint or Baidu Qianfan Web Search. Custom search takes priority over built-in providers. The endpoint must be a public HTTPS URL and return results (Tavily) or references (Qianfan).",
+      "CUSTOM_SEARCH_URL": "Search endpoint URL",
+      "CUSTOM_SEARCH_API_KEY": "API Key",
+      "CUSTOM_SEARCH_PROTOCOL": "API protocol",
+      "httpsRequired": "Enter a public HTTPS URL.",
+      "tavilyCompatible": "Tavily-compatible",
+      "qianfanProtocol": "Baidu Qianfan Web Search"
     },
     "update": {
       "title": "Version & Updates",
