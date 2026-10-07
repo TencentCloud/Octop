@@ -27,6 +27,7 @@ from octop.api.common.content_disposition import content_disposition
 from octop.api.common.usage_xlsx import build_usage_xlsx
 from octop.api.deps import current_user, get_server
 from octop.i18n import tr
+from octop.infra.db.repos.usage import DETAIL_EXPORT_LIMIT
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import normalize_locale, resolve_request_locale
 
@@ -71,7 +72,9 @@ def _summary_or_raise(
     agent_id: str | None,
     window: str,
     granularity: str,
+    bucket_limit: int | None = None,
 ) -> dict[str, Any]:
+    options = {} if bucket_limit is None else {"bucket_limit": bucket_limit}
     try:
         return cast(
             "dict[str, Any]",
@@ -81,6 +84,7 @@ def _summary_or_raise(
                 window=window,
                 granularity=granularity,
                 timezone=_server_timezone(server),
+                **options,
             ),
         )
     except ValueError as exc:
@@ -157,6 +161,7 @@ def _export_response(
         agent_id=agent_id,
         window=window,
         granularity="by_day",
+        bucket_limit=DETAIL_EXPORT_LIMIT,
     )["buckets"]
     by_agent = _summary_or_raise(
         server=server,
@@ -164,6 +169,7 @@ def _export_response(
         agent_id=agent_id,
         window=window,
         granularity="by_agent",
+        bucket_limit=DETAIL_EXPORT_LIMIT,
     )["buckets"]
     by_model = _summary_or_raise(
         server=server,
@@ -171,6 +177,7 @@ def _export_response(
         agent_id=agent_id,
         window=window,
         granularity="by_model",
+        bucket_limit=DETAIL_EXPORT_LIMIT,
     )["buckets"]
 
     payload = build_usage_xlsx(
