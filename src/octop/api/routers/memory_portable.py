@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,21 @@ from octop.infra.errors import ErrorCode, OctopError
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _stream_file_and_cleanup(path: Path) -> Iterator[bytes]:
+    """Yield ``path`` in chunks and remove it when the stream ends or closes.
+
+    ``finally`` also runs when the generator is closed because the client
+    disconnected mid-download, so the temp ``.hmpkg`` never survives a partial
+    transfer.
+    """
+    try:
+        with open(path, "rb") as f:
+            while chunk := f.read(65536):
+                yield chunk
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def _agent_config_dict(server: Any, agent_id: str) -> dict[str, Any]:
@@ -158,7 +174,11 @@ async def pack_agent_memory(
             tmp.flush()
             tmp_path = Path(tmp.name)
 
-        summary = pack(src, out=tmp_path)
+        try:
+            summary = pack(src, out=tmp_path)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
         # Read the file content and stream it back
         from datetime import UTC, datetime
@@ -166,14 +186,8 @@ async def pack_agent_memory(
         ts = datetime.now(UTC).strftime("%Y%m%d-%H%M")
         filename = f"{agent_id}-{ts}.hmpkg"
 
-        def _iter_file() -> Any:
-            with open(tmp_path, "rb") as f:
-                while chunk := f.read(65536):
-                    yield chunk
-            tmp_path.unlink(missing_ok=True)
-
         return StreamingResponse(
-            _iter_file(),
+            _stream_file_and_cleanup(tmp_path),
             media_type="application/octet-stream",
             headers={
                 "Content-Disposition": content_disposition(filename),
