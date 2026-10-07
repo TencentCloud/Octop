@@ -3,23 +3,11 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
-try:
-    from psycopg import errors as pg_errors
-except ImportError:  # pragma: no cover - optional PostgreSQL driver
-    pg_errors = None  # type: ignore[assignment]
-
 from octop.infra.db.pool import DatabasePool
-from octop.infra.db.repos._base import DbRow, bool_int, insert_returning_id, map_rows, now_ts
-
-
-def _is_unique_violation(exc: BaseException) -> bool:
-    if isinstance(exc, sqlite3.IntegrityError):
-        return "unique" in str(exc).lower()
-    return pg_errors is not None and isinstance(exc, pg_errors.UniqueViolation)
+from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
 
 
 def _parse_extra(raw: object) -> dict[str, Any]:
@@ -170,35 +158,36 @@ class SsoRepo:
                 "SELECT * FROM sso_providers WHERE kind = ?", (kind,)
             ).fetchone()
             if existing is None:
-                try:
-                    provider_id = insert_returning_id(
-                        conn,
-                        "INSERT INTO sso_providers("
-                        "enabled, display_name, issuer, client_id, client_secret_enc, scopes, "
-                        "dashboard_origin, kind, extra, created_at, updated_at"
-                        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (
-                            bool_int(enabled),
-                            display_name,
-                            issuer,
-                            client_id,
-                            client_secret_enc,
-                            scopes,
-                            dashboard_origin,
-                            kind,
-                            extra_json,
-                            ts,
-                            ts,
-                        ),
-                    )
-                except Exception as exc:
-                    if not _is_unique_violation(exc):
-                        raise
+                # A caught PostgreSQL unique violation still aborts its transaction.
+                # Let the unique index resolve concurrent first saves without raising.
+                inserted = conn.execute(
+                    "INSERT INTO sso_providers("
+                    "enabled, display_name, issuer, client_id, client_secret_enc, scopes, "
+                    "dashboard_origin, kind, extra, created_at, updated_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(kind) DO NOTHING RETURNING id",
+                    (
+                        bool_int(enabled),
+                        display_name,
+                        issuer,
+                        client_id,
+                        client_secret_enc,
+                        scopes,
+                        dashboard_origin,
+                        kind,
+                        extra_json,
+                        ts,
+                        ts,
+                    ),
+                ).fetchone()
+                if inserted is not None:
+                    provider_id = int(inserted["id"])
+                else:
                     existing = conn.execute(
                         "SELECT * FROM sso_providers WHERE kind = ?", (kind,)
                     ).fetchone()
                     if existing is None:
-                        raise
+                        raise RuntimeError("concurrent SSO provider insert returned no row")
                     provider_id = self._update_provider(
                         conn,
                         int(existing["id"]),
