@@ -5,6 +5,7 @@
  *   - ``window.matchMedia`` (used by Grid responsive breakpoints)
  *   - ``ResizeObserver`` (used by Card/Drawer/Modal portals)
  *   - ``IntersectionObserver`` (used by virtual lists)
+ *   - ``DOMMatrix`` (``pdfjs-dist`` needs it at module scope; see below)
  *
  * Recharts also wants ``ResizeObserver`` for the ``ResponsiveContainer``;
  * it'll log a console error otherwise even though our snapshot tests
@@ -106,6 +107,37 @@ if (typeof window !== "undefined") {
         IntersectionObserver: typeof _IntersectionObserver;
       }
     ).IntersectionObserver = _IntersectionObserver;
+  }
+
+  // DOMMatrix — ``pdfjs-dist`` evaluates ``const SCALE_MATRIX = new DOMMatrix()``
+  // while its module is still loading, so every suite that transitively imports a
+  // document-preview component died during collection without running a single
+  // test. Identity-only on purpose: a fake that also answered matrix math would
+  // let painted-output assertions pass silently. Tests that assert PDF rendering
+  // keep mocking ``react-pdf`` (see PdfDocumentPreview.windowed.test.tsx).
+  class _DOMMatrix {
+    constructor(init?: unknown) {
+      if (init !== undefined) {
+        throw new Error(
+          "jsdom DOMMatrix stub is identity-only; mock react-pdf to test painted output",
+        );
+      }
+    }
+    readonly a = 1;
+    readonly b = 0;
+    readonly c = 0;
+    readonly d = 1;
+    readonly e = 0;
+    readonly f = 0;
+    readonly is2D = true;
+    readonly isIdentity = true;
+    inverse() {
+      return new _DOMMatrix();
+    }
+  }
+  if (!window.DOMMatrix) {
+    (window as unknown as { DOMMatrix: typeof _DOMMatrix }).DOMMatrix =
+      _DOMMatrix;
   }
 
   // jsdom doesn't implement ``getComputedStyle().transition`` properly,
