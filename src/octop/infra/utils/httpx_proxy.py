@@ -78,6 +78,10 @@ def no_proxy_mount_key(hostname: str) -> str:
     """Mount key for one ``NO_PROXY`` token, CIDR-safe for IPv4 and IPv6."""
     if "://" in hostname:
         return hostname
+    if hostname.startswith("*"):
+        # httpx adds the wildcard itself; keeping the user's ``*`` would put a literal
+        # star in the host regex (``all://**.example.com``), which no host can match.
+        hostname = hostname[1:].lstrip(".")
     network = cidr_network_from_host(hostname)
     if network is not None:
         if isinstance(network, IPv6Network):

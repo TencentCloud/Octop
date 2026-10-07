@@ -142,3 +142,21 @@ def test_install_is_idempotent() -> None:
     from httpx._utils import URLPattern
 
     assert URLPattern("all://10.0.0.0/8").matches(httpx.URL("http://10.1.2.3/"))
+
+
+def test_no_proxy_mount_key_uses_httpxs_own_wildcard_marker() -> None:
+    """A user-written ``*`` must not survive into the host regex as a literal star."""
+    assert no_proxy_mount_key("*.example.com") == "all://*example.com"
+    assert no_proxy_mount_key("*example.com") == "all://*example.com"
+    assert no_proxy_mount_key(".example.com") == "all://*.example.com"
+    assert no_proxy_mount_key("example.com") == "all://*example.com"
+
+
+def test_wildcard_no_proxy_tokens_bypass_the_proxy(proxy_env: dict[str, str]) -> None:
+    proxy_env["no"] = "*.example.com,*internal.example.org"
+    mounts = get_environment_proxies()
+    assert "all://**.example.com" not in mounts
+    with httpx.Client() as client:
+        assert _is_direct(client, "http://www.example.com/")
+        assert _is_direct(client, "http://a.internal.example.org/")
+        assert not _is_direct(client, "http://other.org/")
