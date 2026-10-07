@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 Locale = Literal["zh", "en"]
+UiLocale = Literal["zh", "en", "ko"]
 
 DEFAULT_LOCALE: Locale = "zh"
 SUPPORTED_LOCALES: tuple[Locale, ...] = ("zh", "en")
@@ -17,6 +18,13 @@ def normalize_locale(raw: str | None) -> Locale:
     if lower.startswith("zh"):
         return "zh"
     return "en"
+
+
+def normalize_ui_locale(raw: str | None) -> UiLocale:
+    """Keep dashboard locales while server-generated text uses zh/en bundles."""
+    if raw and raw.lower().replace("_", "-").startswith("ko"):
+        return "ko"
+    return normalize_locale(raw)
 
 
 def resolve_locale(

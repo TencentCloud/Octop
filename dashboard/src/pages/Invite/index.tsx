@@ -19,7 +19,7 @@ import {
   applyGuestLocale,
   applyUserLocale,
   storeUiLocale,
-  type UiLocale,
+  normalizeUiLocale,
 } from "../../utils/locale";
 import {
   MIN_PASSWORD_LENGTH,
@@ -77,10 +77,10 @@ export default function InvitePage() {
     if (initialCode) setCode(initialCode);
   }, [initialCode]);
 
-  const currentLang = i18n.language?.startsWith("zh") ? "zh" : "en";
+  const currentLang = normalizeUiLocale(i18n.language);
 
   const handleLanguageChange = (lang: string) => {
-    const locale: UiLocale = lang.startsWith("zh") ? "zh" : "en";
+    const locale = normalizeUiLocale(lang);
     storeUiLocale(locale);
     void ensureLocaleBundle(locale).then(() => i18n.changeLanguage(locale));
   };
@@ -151,6 +151,7 @@ export default function InvitePage() {
               options={[
                 { label: t("account.langZh"), value: "zh" },
                 { label: t("account.langEn"), value: "en" },
+                { label: t("account.langKo"), value: "ko" },
               ]}
               onChange={handleLanguageChange}
             />

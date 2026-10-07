@@ -3846,6 +3846,7 @@
     "passwordTooWeak": "Password is too weak. Choose a stronger one",
     "langZh": "中文",
     "langEn": "English",
+    "langKo": "한국어",
     "layoutMode": "Layout",
     "layoutModeHint": "Classic keeps two rails; Minimal merges navigation and records into the left sidebar.",
     "layoutClassic": "Classic",

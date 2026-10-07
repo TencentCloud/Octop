@@ -42,6 +42,19 @@ async def test_preferences_patch_locale_only_still_works(env) -> None:
 
 
 @pytest.mark.asyncio
+async def test_korean_locale_roundtrip_survives_user_cache_reload(env) -> None:
+    client, server, auth = env
+    response = await client.patch("/api/preferences", headers=auth, json={"locale": "ko"})
+    assert response.status_code == 200
+    assert response.json()["locale"] == "ko"
+    await server.user_manager.boot()
+    for path in ("/api/preferences", "/api/auth/me"):
+        response = await client.get(path, headers=auth)
+        assert response.status_code == 200
+        assert response.json()["locale"] == "ko"
+
+
+@pytest.mark.asyncio
 async def test_preferences_patch_requires_one_field(env) -> None:
     client, _srv, auth = env
     r = await client.patch("/api/preferences", headers=auth, json={})

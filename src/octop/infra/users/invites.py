@@ -17,7 +17,7 @@ from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.password import hash_password, validate_password_policy
-from octop.infra.utils.locale import normalize_locale
+from octop.infra.utils.locale import normalize_ui_locale
 
 DEFAULT_EXPIRES_DAYS = 7
 MIN_EXPIRES_DAYS = 1
@@ -172,7 +172,7 @@ class InviteService:
         if not cleaned_username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty", status=400)
         validate_password_policy(password)
-        loc = normalize_locale(locale)
+        loc = normalize_ui_locale(locale)
         name = display_name.strip() if isinstance(display_name, str) else None
         if name == "":
             name = None

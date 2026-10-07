@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 新增
+- Korean (`ko`) dashboard translation, persistent language selection, and Korean calendar/speech locale. Server-generated text falls back to English.
+
 ### 变更
 - 运行轨迹弹框中 ASSISTANT 摘要显示所用模型
 - 编辑对端专家时模型、知识库、连接器走对端隧道；抽屉标题显示对端标识

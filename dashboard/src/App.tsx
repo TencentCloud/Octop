@@ -2,8 +2,10 @@ import { createGlobalStyle } from "antd-style";
 import { ConfigProvider, theme as antdTheme } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import enUS from "antd/locale/en_US";
+import koKR from "antd/locale/ko_KR";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
+import "dayjs/locale/ko";
 import { useEffect } from "react";
 import DesktopWindowControls from "./components/DesktopWindowControls";
 import {
@@ -51,8 +53,9 @@ function ThemedApp() {
   // Pagination, DatePicker, Table… ) follow the current UI language.
   // DatePicker month/weekday labels come from dayjs — keep it in sync too.
   const isZh = i18n.language?.toLowerCase().startsWith("zh") ?? false;
-  const antdLocale = isZh ? zhCN : enUS;
-  dayjs.locale(isZh ? "zh-cn" : "en");
+  const isKo = i18n.language?.toLowerCase().startsWith("ko") ?? false;
+  const antdLocale = isZh ? zhCN : isKo ? koKR : enUS;
+  dayjs.locale(isZh ? "zh-cn" : isKo ? "ko" : "en");
 
   useUnauthorizedRedirect();
 

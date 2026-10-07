@@ -17,7 +17,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.setup import password_file as _wizard
 from octop.infra.setup.wizard_tokens import RateLimited
 from octop.infra.users.identity import Role
-from octop.infra.utils.locale import normalize_locale, resolve_request_locale
+from octop.infra.utils.locale import normalize_ui_locale, resolve_request_locale
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class SetupBody(BaseModel):
     email: str | None = Field(default=None, max_length=254)
     locale: str | None = Field(
         default=None,
-        description="UI locale for the initial admin (zh|en). Defaults to Accept-Language.",
+        description="UI locale for the initial admin (zh|en|ko). Defaults to Accept-Language.",
     )
 
 
@@ -351,7 +351,7 @@ async def initial_admin(
     _enforce_wizard_open(server)
     require_database(server)
     _require_wizard_token(authorization, server)
-    locale = normalize_locale(body.locale or resolve_request_locale(request))
+    locale = normalize_ui_locale(body.locale or resolve_request_locale(request))
     assert server.user_manager is not None
     assert server.services is not None
     from octop.infra.db.repos.user_roles import ADMIN_USER_ROLE_ID, UserRoleRepo
