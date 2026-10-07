@@ -144,6 +144,69 @@ def test_ensure_chrome_runtime_env_uses_platform_runtime_dir(
     assert S_IMODE(path.stat().st_mode) == 0o700
 
 
+@posix_only
+def test_ensure_chrome_runtime_env_keeps_usable_runtime_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An already usable $XDG_RUNTIME_DIR must be kept, not relocated.
+
+    Wayland clients (Chromium included) resolve their compositor socket as
+    ``$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY``. Relocating the variable to ``/tmp``
+    hides ``wayland-0`` and makes Chrome abort with "Failed to connect to
+    Wayland display: No such file or directory (2)" instead of starting.
+    """
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    socket = runtime / "wayland-0"
+    socket.write_text("")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setenv("DISPLAY", ":0")
+
+    path = ensure_chrome_runtime_env()
+
+    assert path == runtime
+    assert os.environ["XDG_RUNTIME_DIR"] == str(runtime)
+    # A live session keeps its Wayland hint.
+    assert os.environ["WAYLAND_DISPLAY"] == "wayland-0"
+
+
+@posix_only
+def test_ensure_chrome_runtime_env_drops_stale_wayland_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A WAYLAND_DISPLAY without a socket must not force the Wayland backend."""
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-gone")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+    monkeypatch.setenv("DISPLAY", ":0")
+
+    path = ensure_chrome_runtime_env()
+
+    assert path == runtime
+    assert os.environ["XDG_RUNTIME_DIR"] == str(runtime)
+    assert "WAYLAND_DISPLAY" not in os.environ
+    assert "XDG_SESSION_TYPE" not in os.environ
+
+
+@posix_only
+def test_ensure_chrome_runtime_env_drops_wayland_hint_after_relocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Relocating the runtime dir invalidates the compositor socket path."""
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "missing"))
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+
+    path = ensure_chrome_runtime_env()
+
+    assert path == _runtime_dir_for_uid()
+    assert "WAYLAND_DISPLAY" not in os.environ
+    assert "XDG_SESSION_TYPE" not in os.environ
+
+
 def test_non_linux_temp_dirs_use_gettempdir_with_stable_token(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

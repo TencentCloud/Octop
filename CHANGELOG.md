@@ -16,6 +16,7 @@
 - 登录页去掉用户名提示；空状态与远程桌面/浏览器检查按钮更清晰
 
 ### 修复
+- Wayland 桌面（GNOME/KDE）上启动浏览器失败：`ensure_chrome_runtime_env` 无条件把 `XDG_RUNTIME_DIR` 改写到 `/tmp`，而 Wayland 客户端按 `$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY` 找合成器 socket，Chrome 因此报 `Failed to connect to Wayland display: No such file or directory (2)` 并立即退出（`Chrome exited immediately (returncode=1)`），即使 `DISPLAY` 完全可用。现改为：`$XDG_RUNTIME_DIR` 已可用时保留（不再改写），仅在确实缺失/不可写时（容器、root）才回退到 `/tmp`；同时清理指向不存在 socket 的 `WAYLAND_DISPLAY` / `XDG_SESSION_TYPE`，让 Chromium 回落 X11 而不是直接退出
 - Ask / Plan 模式下输入栏「+」菜单的选择面板过矮（模型、知识库一次只看得见一条），改为按视口可用高度封顶（目标 400px，且不低于左侧菜单）；右侧比左侧矮时上对齐、更高时下对齐向上长；连接器/技能/专家/子智能体数量角标与知识库一样跟在文字后；模型列表现在可搜索
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
