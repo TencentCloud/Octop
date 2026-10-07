@@ -25,6 +25,8 @@ interface AgentBackendFieldsProps {
   /** ``create`` fills empty root_dir with the filesystem default; ``edit`` leaves existing values. */
   rootDirMode?: "create" | "edit";
   disabled?: boolean;
+  /** Skip local ``/filesystem/defaults`` (peer experts have no host tree here). */
+  skipHostFilesystem?: boolean;
   onAddPathMapping: () => void;
   onRemovePathMapping: (index: number) => void;
   onUpdatePathMapping: (
@@ -41,6 +43,7 @@ export default function AgentBackendFields({
   pathMappings,
   rootDirMode = "create",
   disabled = false,
+  skipHostFilesystem = false,
   onAddPathMapping,
   onRemovePathMapping,
   onUpdatePathMapping,
@@ -51,6 +54,10 @@ export default function AgentBackendFields({
   const watchedRootDir = Form.useWatch("root_dir", form) as string | undefined;
 
   useEffect(() => {
+    if (skipHostFilesystem) {
+      setFsDefaults(null);
+      return;
+    }
     let cancelled = false;
     fetchFilesystemDefaults()
       .then((defaults) => {
@@ -62,7 +69,7 @@ export default function AgentBackendFields({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [skipHostFilesystem]);
 
   useEffect(() => {
     if (!fsDefaults || rootDirMode !== "create") return;
@@ -72,7 +79,13 @@ export default function AgentBackendFields({
     }
   }, [fsDefaults, form, watchedRootDir, rootDirMode]);
 
-  const treeRoot = fsDefaults?.tree_root ?? HOST_FS_ROOT;
+  const treeRoots = useMemo(
+    () =>
+      fsDefaults?.browse_roots?.length
+        ? fsDefaults.browse_roots
+        : [fsDefaults?.tree_root ?? HOST_FS_ROOT],
+    [fsDefaults],
+  );
   const routeBackendOptions = useMemo(() => {
     const builtins = BUILTIN_BACKENDS.map((mode) => ({
       value: mode,
@@ -171,7 +184,7 @@ export default function AgentBackendFields({
             }
           >
             <RootDirSelect
-              treeRoot={treeRoot}
+              treeRoots={treeRoots}
               disabled={disabled || rootDirMode === "edit"}
             />
           </Form.Item>
@@ -206,7 +219,9 @@ export default function AgentBackendFields({
                     margin: "4px 0 0",
                   }}
                 >
-                  {t("experts.backendRootDirJailHint")}
+                  {fsDefaults?.jail_enforced
+                    ? t("experts.backendRootDirJailHint")
+                    : t("experts.backendRootDirPathLimitHint")}
                 </p>
               </>
             )}

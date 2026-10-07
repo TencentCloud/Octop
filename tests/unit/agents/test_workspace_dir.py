@@ -142,3 +142,39 @@ def test_default_workspace_ensure_false_does_not_mkdir(tmp_path: Path) -> None:
     out = default_agent_workspace_dir(paths, "A1", ensure=False)
     assert out == paths.agent_workspace("A1")
     assert not out.exists()
+
+
+def test_workspace_dir_from_config_falls_back_when_unwritable(tmp_path: Path) -> None:
+    paths = PathLayout(tmp_path / "octop-home")
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    stale = blocker / "YZQ7X4"
+    cfg = {"workspace_dir": str(stale)}
+    out = workspace_dir_from_config(cfg, paths=paths, agent_id="YZQ7X4")
+    assert out == paths.agent_workspace("YZQ7X4")
+    assert out.is_dir()
+    assert not stale.exists()
+
+
+def test_default_workspace_falls_back_when_scoped_root_unwritable(tmp_path: Path) -> None:
+    paths = PathLayout(tmp_path / "octop-home")
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    cfg = _scoped_cfg(blocker)
+    out = default_agent_workspace_dir(paths, "F46T8Y", cfg=cfg)
+    assert out == paths.agent_workspace("F46T8Y")
+    assert out.is_dir()
+
+
+def test_neutralize_unwritable_local_root(tmp_path: Path) -> None:
+    from octop.infra.agents.workspace.dir import neutralize_unwritable_local_root
+
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    cfg = _scoped_cfg(blocker, workspace_dir="/.octop/workspaces/F46T8Y")
+    out = neutralize_unwritable_local_root(cfg)
+    assert out["backend"]["root_dir"] == "/"
+    writable = tmp_path / "home"
+    writable.mkdir()
+    keep = neutralize_unwritable_local_root(_scoped_cfg(writable))
+    assert keep["backend"]["root_dir"] == str(writable)

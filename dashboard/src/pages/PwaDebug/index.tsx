@@ -495,9 +495,15 @@ export default function PwaDebugPage() {
   return (
     <div
       style={{
-        padding: "20px 16px 40px",
+        flex: "1 1 auto",
+        minHeight: 0,
+        overflowY: "auto",
+        WebkitOverflowScrolling: "touch",
+        padding: "20px 16px calc(40px + env(safe-area-inset-bottom, 0px))",
         maxWidth: 640,
+        width: "100%",
         margin: "0 auto",
+        boxSizing: "border-box",
         fontFamily: "system-ui, sans-serif",
       }}
     >

@@ -27,6 +27,8 @@ export interface Session {
   pendingPlanPath?: string | null;
   hitlPolicy?: HitlSessionPolicy | null;
   artifacts?: ThreadArtifact[];
+  turnActive?: boolean;
+  awaitingUser?: boolean;
 }
 
 /** Result of probing whether a thread exists for the current agent. */
@@ -51,6 +53,8 @@ export function toSession(row: {
   artifacts?: Array<string | ThreadArtifact> | null;
   artifact_refs?: ThreadArtifact[] | null;
   agent_id?: string | null;
+  turn_active?: boolean;
+  awaiting_user?: boolean;
 }): Session {
   const hasActivity =
     Boolean(row.has_messages) || Boolean(row.title) || row.last_active > 0;
@@ -84,6 +88,8 @@ export function toSession(row: {
       row.agent_id,
       row.artifact_refs,
     ),
+    turnActive: Boolean(row.turn_active),
+    awaitingUser: Boolean(row.awaiting_user),
   };
 }
 
