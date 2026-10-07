@@ -13,7 +13,10 @@ from pathlib import Path
 import pytest
 from tests.support.fakes import FakeHarnessAgent
 
-from octop.infra.agents.builtin_skills import sync_octop_builtin_skills
+from octop.infra.agents.builtin_skills import (
+    is_octop_builtin_skills_path,
+    sync_octop_builtin_skills,
+)
 
 _PACKAGE = "octop.infra.agents.builtin_skills"
 
@@ -35,6 +38,44 @@ def _run_manager(workspace: Path, *args: str) -> subprocess.CompletedProcess[str
         capture_output=True,
         text=True,
     )
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "_builtin_skills",
+        "_builtin_skills/web-search/SKILL.md",
+        "./_builtin_skills/web-search/SKILL.md",
+        "docs/../_builtin_skills/web-search/SKILL.md",
+        "/_builtin_skills/web-search/SKILL.md",
+        "\\_builtin_skills\\web-search\\SKILL.md",
+        ".octop/_builtin_skills/web-search/SKILL.md",
+        "./.octop/_builtin_skills/web-search/SKILL.md",
+        "x/../.octop/_builtin_skills/web-search/SKILL.md",
+    ],
+)
+def test_builtin_skills_predicate_recognizes_every_spelling(rel: str) -> None:
+    """The workspace write guard and the backup import filter share this predicate.
+
+    The backend resolves ``./`` and ``x/../`` before opening the file, so matching
+    only one spelling left Octop-owned paths writable through a second route.
+    """
+    assert is_octop_builtin_skills_path(rel)
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "skills/web-search/SKILL.md",
+        "./skills/web-search/SKILL.md",
+        "AGENTS.md",
+        "_builtin_skills_notes.md",
+        "docs/_builtin_skills/x.md",
+        "docs/../skills/x.md",
+    ],
+)
+def test_builtin_skills_predicate_leaves_user_paths_alone(rel: str) -> None:
+    assert not is_octop_builtin_skills_path(rel)
 
 
 @pytest.mark.asyncio

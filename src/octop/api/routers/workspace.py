@@ -22,6 +22,11 @@ from octop.api.common.workspace import (
     workspace_api_path,
 )
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.builtin_skills import (
+    OCTOP_BUILTIN_SKILLS_ROOT,
+    is_octop_builtin_skills_path,
+    normalize_workspace_rel,
+)
 from octop.infra.backend.tree_listing import dedupe_tree_rows
 from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
 from octop.infra.errors import ErrorCode, OctopError
@@ -35,21 +40,20 @@ from octop.infra.utils.doc_edit import DocConverter, get_doc_converter
 
 logger = logging.getLogger(__name__)
 
-_PROTECTED_PREFIX = "_builtin_skills"
+_PROTECTED_PREFIX = OCTOP_BUILTIN_SKILLS_ROOT
 
 
 def _assert_workspace_mutable(path: str) -> str:
-    """Mutating ops always treat paths as workspace-relative (``from_workspace=true``)."""
+    """Mutating ops always treat paths as workspace-relative (``from_workspace=true``).
+
+    Both rules read the folded fragment: the backend resolves ``..`` before touching
+    disk, so ``/keep/..`` addresses the workspace root even though it reads like a
+    sub-path.
+    """
     rel = _workspace_io_path(path, from_workspace=True)
-    if rel == ".":
+    if normalize_workspace_rel(rel) == "":
         raise OctopError(ErrorCode.FORBIDDEN, "cannot modify workspace root")
-    posix = rel.replace("\\", "/").strip("/")
-    if (
-        posix == _PROTECTED_PREFIX
-        or posix.startswith(f"{_PROTECTED_PREFIX}/")
-        or posix == f".octop/{_PROTECTED_PREFIX}"
-        or posix.startswith(f".octop/{_PROTECTED_PREFIX}/")
-    ):
+    if is_octop_builtin_skills_path(rel):
         raise OctopError(ErrorCode.FORBIDDEN, f"cannot modify {_PROTECTED_PREFIX!r} paths")
     return rel
 
@@ -181,10 +185,12 @@ async def write_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Overwrite ``path`` with ``body.content`` (text)."""
+    rel = _assert_workspace_mutable(path)
+    _ = from_workspace  # API surface; mutations always use workspace-relative paths.
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
-    converter = get_doc_converter(path)
+    converter = get_doc_converter(rel)
     if converter is not None:
         # Editable-document paths are always stored as the binary document
         # format. This matters for workspace "new file": an empty .docx created
@@ -200,7 +206,7 @@ async def write_file(
     else:
         data = body.content.encode("utf-8")
     try:
-        await ws.aupload_bytes(_workspace_io_path(path, from_workspace=from_workspace), data)
+        await ws.aupload_bytes(rel, data)
     except Exception as exc:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot write {path!r}: {exc}") from exc
     return {"path": path, "size": len(data)}
@@ -312,16 +318,15 @@ async def upload_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Upload a binary file via multipart ``file=@...``."""
+    target = path or f"/{file.filename or 'upload.bin'}"
+    rel = _assert_workspace_mutable(target)
+    _ = from_workspace  # API surface; mutations always use workspace-relative paths.
     ws = await require_running_workspace(
         agent_id, user=user, as_user=as_user, server=server, owner_only=True
     )
-    target = path or f"/{file.filename or 'upload.bin'}"
     data = await file.read()
     try:
-        await ws.aupload_bytes(
-            _workspace_io_path(target, from_workspace=from_workspace),
-            data,
-        )
+        await ws.aupload_bytes(rel, data)
     except Exception as exc:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot upload to {target!r}: {exc}") from exc
     return {"path": target, "size": len(data)}

@@ -408,6 +408,96 @@ async def test_delete_builtin_skills_forbidden(env: Any) -> None:
     assert r.status_code == 403
 
 
+@pytest.mark.parametrize(
+    ("method", "url_tail", "payload"),
+    [
+        ("put", "/file", {"content": "tampered"}),
+        ("post", "/upload", None),
+    ],
+    ids=["write-file", "upload"],
+)
+async def test_write_builtin_skills_forbidden(
+    env: Any, method: str, url_tail: str, payload: dict | None
+) -> None:
+    """Text write and upload skipped the guard that mkdir/delete/move/doc-write apply."""
+    c, _srv, auth, aid = env
+    kwargs: dict = {
+        "params": {**FROM_WORKSPACE, "path": "/_builtin_skills/foo/SKILL.md"},
+        "headers": auth,
+    }
+    if payload is None:
+        kwargs["files"] = {"file": ("SKILL.md", b"tampered", "text/markdown")}
+    else:
+        kwargs["json"] = payload
+    r = await getattr(c, method)(f"/api/agents/{aid}/workspace{url_tail}", **kwargs)
+    assert r.status_code == 403, r.text
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/_builtin_skills/foo/SKILL.md",
+        "./_builtin_skills/foo/SKILL.md",
+        "docs/../_builtin_skills/foo/SKILL.md",
+        "/.octop/_builtin_skills/foo/SKILL.md",
+        "./.octop/_builtin_skills/foo/SKILL.md",
+        "x/../.octop/_builtin_skills/foo/SKILL.md",
+    ],
+)
+async def test_delete_builtin_skills_forbidden_in_every_spelling(env: Any, path: str) -> None:
+    """The guard must key on the resolved path, not on one spelling of it."""
+    c, _srv, auth, aid = env
+    r = await c.delete(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": path},
+        headers=auth,
+    )
+    assert r.status_code == 403, (path, r.text)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/sub/../_builtin_skills/foo/SKILL.md",
+        "/.octop/sub/../_builtin_skills/foo/SKILL.md",
+    ],
+)
+async def test_write_builtin_skills_via_dotdot_forbidden(env: Any, path: str) -> None:
+    """``..`` must not fold a write back into the Octop-owned skill root."""
+    c, _srv, auth, aid = env
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": path},
+        headers=auth,
+        json={"content": "tampered"},
+    )
+    assert r.status_code == 403, (path, r.text)
+
+
+async def test_delete_workspace_root_via_dotdot_forbidden(env: Any) -> None:
+    """``/keep/..`` reads like a sub-path but resolves onto the workspace root."""
+    c, _srv, auth, aid = env
+    r = await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/keep/a.txt"},
+        headers=auth,
+        json={"content": "keep me"},
+    )
+    assert r.status_code == 200, r.text
+    r = await c.delete(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/keep/.."},
+        headers=auth,
+    )
+    assert r.status_code == 403, r.text
+    r = await c.get(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/keep/a.txt"},
+        headers=auth,
+    )
+    assert r.json()["content"] == "keep me"
+
+
 # --- editable document (Markdown round-trip) --------------------------------
 
 

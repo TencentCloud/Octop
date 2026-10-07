@@ -14,13 +14,36 @@ _BUILTIN_TOKEN = b"{{OCTOP_BUILTIN_SKILLS}}"
 _PACKAGE = "octop.infra.agents.builtin_skills"
 
 
+def normalize_workspace_rel(rel: str) -> str:
+    """Collapse ``.`` and ``x/../`` spellings of a workspace-relative path.
+
+    ``..`` is clamped at the workspace root: an escaping fragment is the backend's
+    problem to reject, and collapsing it here would let an escape attempt read as an
+    unrelated in-workspace path.
+    """
+    parts: list[str] = []
+    for part in str(rel).replace("\\", "/").split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(part)
+    return "/".join(parts)
+
+
 def is_octop_builtin_skills_path(rel: str) -> bool:
     """True for workspace-relative paths inside the Octop-owned built-in Skills root.
 
-    Mirrors the two spellings ``_assert_workspace_mutable`` guards: the API name, and
-    the ``.octop/``-prefixed system location newer agents keep it in.
+    Compares the normalized path, so ``./_builtin_skills/x`` and
+    ``docs/../_builtin_skills/x`` are recognized like ``_builtin_skills/x``: the
+    backend resolves those fragments before writing, and this predicate is what
+    tells Octop-owned files apart from user files in the workspace API and in
+    backup import. Two roots are checked: the API name, and the ``.octop/``
+    prefixed system location newer agents keep it in.
     """
-    posix = str(rel).replace("\\", "/").strip("/")
+    posix = normalize_workspace_rel(rel)
     for prefix in (OCTOP_BUILTIN_SKILLS_ROOT, f".octop/{OCTOP_BUILTIN_SKILLS_ROOT}"):
         if posix == prefix or posix.startswith(f"{prefix}/"):
             return True
@@ -90,5 +113,6 @@ async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
 __all__ = [
     "OCTOP_BUILTIN_SKILLS_ROOT",
     "is_octop_builtin_skills_path",
+    "normalize_workspace_rel",
     "sync_octop_builtin_skills",
 ]

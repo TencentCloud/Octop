@@ -257,6 +257,9 @@ async def test_import_skips_octop_builtin_skills(tmp_path: Path) -> None:
         zf.writestr("notes.md", "keep me")
         zf.writestr("_builtin_skills/evil/SKILL.md", "plant")
         zf.writestr(".octop/_builtin_skills/evil/SKILL.md", "plant")
+        # ``_safe_zip_name`` already collapses ``./``, so this entry was never an import
+        # bypass; pinning it keeps both layers on the same verdict.
+        zf.writestr("./_builtin_skills/evil2/SKILL.md", "plant")
     data = buf.getvalue()
 
     result = await import_workspace_zip(workspace, data, mode="merge", local_workspace_dir=None)
