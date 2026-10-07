@@ -586,8 +586,22 @@ def _write_managed_file(destination: Path, content: str, *, run_as_user: str) ->
         return
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(content, encoding="utf-8")
-    destination.chmod(0o644)
+    # Same temporary-file step the sudo branch above already takes: a unit file
+    # written in place is truncated first, so a failure here leaves systemd with
+    # a unit it cannot parse and the service stays down.
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(destination.parent), prefix=f".{destination.name}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(tmp_name, 0o644)
+        os.replace(tmp_name, destination)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
     if is_root() and run_as_user != "root":
         chown(destination, pwd.getpwnam(run_as_user).pw_uid, -1)
 
