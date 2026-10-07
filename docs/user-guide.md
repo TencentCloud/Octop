@@ -278,6 +278,8 @@ octop provider --help     # 供应商增删改查帮助
 
 若本机已运行 Ollama，可选择 `ollama` 预设（默认 `base_url` 为本地地址），无需 API Key 即可接入本地模型，适合隐私敏感或离线场景。
 
+如果 Ollama 把模型存在非默认目录（例如从系统盘改到其它磁盘），在供应商设置里填写 **模型下载目录** 后保存。Octop 会按该路径识别已下载模型，并在启动本地 Ollama 服务时设置 `OLLAMA_MODELS`。
+
 ### 4.7 图片与视频生成模型
 
 具备云模型管理权限的用户可以打开 **设置 → 模型 → 生成模型**，为所有 Agent
@@ -398,6 +400,7 @@ Octop 支持两个方向的 ACP 集成：
 | `octop service stop` | 停止系统服务 |
 | `octop agent` | 创建、列出、启停 Agent |
 | `octop channel` | 安装与管理 IM 通道 |
+| `octop bridge` | 添加 / 探测 / 编辑 / 删除远程 Octop 对端 |
 | `octop chats` | REPL 与会话管理 |
 | `octop acp` | 为 IDE 提供 stdio ACP 服务 |
 | `octop cron` | 管理定时任务 |

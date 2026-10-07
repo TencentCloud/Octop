@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Segmented, Typography } from "antd";
 import AgentSelector from "../components/AgentSelector";
+import RemoteDisconnectBanner from "../components/RemoteDisconnectBanner";
+import { useAgent } from "../context/AgentContext";
 import { useIsMobile } from "../hooks/useIsMobile";
 import {
   titleRowEndPadding,
@@ -36,6 +38,8 @@ interface PageShellProps {
   pathTabs?: PathTabsConfig;
   /** Render agent picker below the title row, outside the scrollable content card. */
   agentScoped?: boolean;
+  /** Include team hosts in the agent picker (memory / channels). */
+  showTeams?: boolean;
   /** When true, the content area does not scroll; children fill remaining height. */
   fill?: boolean;
   children: React.ReactNode;
@@ -92,10 +96,12 @@ function PageShell({
   actions,
   pathTabs,
   agentScoped,
+  showTeams,
   fill,
   children,
 }: PageShellProps) {
   const isMobile = useIsMobile();
+  const { activeAgent } = useAgent();
   const outerPad = isMobile ? 12 : 32;
   const outerPadTop = isMobile ? 12 : 24;
   const contentPad = isMobile ? 12 : 24;
@@ -175,7 +181,7 @@ function PageShell({
 
       {agentScoped && (
         <div className={styles.agentBar}>
-          <AgentSelector />
+          <AgentSelector showTeams={showTeams} />
         </div>
       )}
 
@@ -207,6 +213,12 @@ function PageShell({
             <PathTabsSegmented pathTabs={pathTabs} isMobile />
           </div>
         )}
+        {agentScoped && activeAgent?.bridge_disconnected ? (
+          <RemoteDisconnectBanner
+            connectionName={activeAgent.bridge_connection_name}
+            inbound={Boolean(activeAgent.bridge_inbound)}
+          />
+        ) : null}
         {children}
       </div>
     </div>

@@ -63,6 +63,10 @@ export interface OctopThread {
   artifacts?: Array<string | ThreadArtifact>;
   /** Structured refs with producer ``agent_id``. */
   artifact_refs?: ThreadArtifact[];
+  /** True while a turn is still streaming server-side for this thread. */
+  turn_active?: boolean;
+  /** True when this thread is paused on a HITL approval or question. */
+  awaiting_user?: boolean;
 }
 
 export interface OctopThreadHistory {

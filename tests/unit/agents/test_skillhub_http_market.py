@@ -210,3 +210,55 @@ def test_http_request_rejects_oversized_content_length(
             timeout=1,
             max_bytes=100,
         )
+
+
+def test_fetch_ranking_json_rejects_oversized_content_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(skillhub_market, "_MAX_JSON_BYTES", 16)
+
+    def fake_urlopen(_request: Any, timeout: float) -> _BytesResponse:
+        return _BytesResponse(b'{"section": "hot"}', headers={"Content-Length": "999"})
+
+    monkeypatch.setattr(skillhub_market.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(skillhub_market.SkillHubPackageTooLarge, match="exceeds"):
+        skillhub_market._fetch_ranking_json("https://api.example.com", "hot", timeout=3)
+
+
+def test_fetch_ranking_json_caps_chunked_body_without_content_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(skillhub_market, "_MAX_JSON_BYTES", 16)
+
+    def fake_urlopen(_request: Any, timeout: float) -> _BytesResponse:
+        return _BytesResponse(b'{"skills": [' + b"0" * 64 + b"]}")
+
+    monkeypatch.setattr(skillhub_market.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(skillhub_market.SkillHubPackageTooLarge, match="exceeds"):
+        skillhub_market._fetch_ranking_json("https://api.example.com", "hot", timeout=3)
+
+
+def test_fetch_ranking_json_wraps_stream_reset_as_market_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dropped connection must surface as ``SkillHubMarketError``.
+
+    ``/skills/hub/rankings`` only maps ``SkillHubMarketError`` (502) and
+    ``SkillHubMarketTimeout`` (504); a bare ``OSError`` escaping here turns a
+    retryable upstream hiccup into an opaque 500.
+    """
+
+    class _ResettingResponse(_BytesResponse):
+        def read(self, size: int = -1) -> bytes:
+            raise ConnectionResetError("connection reset by peer")
+
+    def fake_urlopen(_request: Any, timeout: float) -> _ResettingResponse:
+        return _ResettingResponse(b"")
+
+    monkeypatch.setattr(skillhub_market.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(skillhub_market.SkillHubMarketError) as excinfo:
+        skillhub_market._fetch_ranking_json("https://api.example.com", "hot", timeout=3)
+    assert not isinstance(excinfo.value, skillhub_market.SkillHubPackageError)

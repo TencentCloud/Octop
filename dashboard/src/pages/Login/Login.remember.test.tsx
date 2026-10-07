@@ -37,5 +37,15 @@ describe("Login remember-me checkbox", () => {
       name: /login\.remember|记住登录状态|Remember me/,
     });
     expect(checkbox).toBeChecked();
+    expect(
+      screen.getByPlaceholderText(
+        /login\.username|用户名或邮箱|username or email/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /login\.usernameHint|可用安装时设置|set during setup/i,
+      ),
+    ).not.toBeInTheDocument();
   });
 });
