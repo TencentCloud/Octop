@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import stat
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -105,3 +107,58 @@ def test_write_new_file_uses_umask_default_not_mkstemp_0600(tmp_path: Path) -> N
     path = tmp_path / "fresh.json"
     write_json_atomic(path, {"a": 1})
     assert stat.S_IMODE(path.stat().st_mode) == 0o666 & ~mask
+
+
+@posix_only
+def test_native_partial_write_preserves_config_and_closes_temp(tmp_path: Path) -> None:
+    """A genuine file-size cap makes the first raw write partially succeed."""
+    path = tmp_path / "config.json"
+    original = b'{"database": {"backend": "postgresql"}}'
+    path.write_bytes(original)
+    script = r"""import errno
+import json
+import os
+import resource
+import signal
+import sys
+from pathlib import Path
+from octop.infra.utils import json_file
+path = Path(sys.argv[1])
+original = path.read_bytes()
+created_fds = []
+mkstemp = json_file.tempfile.mkstemp
+def tracked_mkstemp(*args, **kwargs):
+    fd, name = mkstemp(*args, **kwargs)
+    created_fds.append(fd)
+    return fd, name
+json_file.tempfile.mkstemp = tracked_mkstemp
+signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+resource.setrlimit(resource.RLIMIT_FSIZE, (128, 128))
+data = {"database": {"backend": "postgresql"},
+        "plugins": {f"plugin-{i}": {"enabled": True} for i in range(12)}}
+try:
+    json_file.write_json_atomic(path, data)
+except OSError as exc:
+    assert exc.errno == errno.EFBIG, exc
+else:
+    raise AssertionError("partial write was reported as a successful save")
+assert path.read_bytes() == original
+assert list(path.parent.iterdir()) == [path]
+assert len(created_fds) == 1
+try:
+    os.fstat(created_fds[0])
+except OSError as exc:
+    assert exc.errno == errno.EBADF, exc
+else:
+    raise AssertionError("temporary descriptor was left open")
+print("original bytes preserved; temporary file removed; descriptor closed")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(path)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert path.read_bytes() == original
