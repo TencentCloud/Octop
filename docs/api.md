@@ -501,7 +501,7 @@ dashboard mirrors every code under `apiErrors.*` in
 |------|------|---------|
 | `AUTH_FAILED` | 401 | Bad credentials |
 | `TOKEN_EXPIRED` | 401 | JWT past its TTL |
-| `LOGIN_LOCKED` | 423 | Too many failed attempts — wait `login_lockout_seconds` or call `/users/{id}/unlock-login` |
+| `LOGIN_LOCKED` | 429 | Too many failed attempts — wait `login_lockout_seconds` or call `/users/{id}/unlock-login` |
 | `SETUP_REQUIRED` | 409 | Initial admin not yet created (or wizard not finished) |
 | `FORBIDDEN` | 403 | Authenticated but not allowed |
 | `NOT_FOUND` | 404 | No such row / route |
@@ -513,17 +513,11 @@ dashboard mirrors every code under `apiErrors.*` in
 | `PROVIDER_NAME_TAKEN` | 409 | Conflict on `providers.name` |
 | `PROVIDER_NOT_VISIBLE` | 400 | Agent config references a provider the user can't see |
 | `PROVIDER_REFERENCED` | 409 | Delete blocked because agents still reference the row |
-| `PROVIDER_TEST_FAILED` | 400 | `/providers/{id}/test` failed |
 | `CHANNEL_KIND_UNSUPPORTED` | 400 | `kind` not in registered builders |
 | `CHANNEL_INVALID_CREDENTIALS` | 400 | Channel config rejected by the platform |
-| `CHANNEL_PROBE_INCOMPLETE` | 400 | Probe couldn't reach the platform |
 | `CRON_TRIGGER_INVALID` | 400 | Trigger string did not parse |
-| `CRON_PROMPT_INVALID` | 400 | Empty or too-long prompt |
 | `SLASH_UNKNOWN` | 400 | `/<cmd>` is not a registered handler |
 | `SLASH_BAD_ARGS` | 400 | Slash handler rejected its arguments |
 | `ATTACHMENT_UNSUPPORTED_TYPE` | 400 | Chat / inbound attachment rejected (media type not allowed) |
 | `ATTACHMENT_TOO_LARGE` | 413 | Chat / inbound attachment exceeds the configured size limit (`max_mb` in details) |
-| `WORKSPACE_PATH_INVALID` | 400 | Path outside the agent's workspace |
-| `STORAGE_BACKEND_UNREACHABLE` | 502 | Remote backend connect / list failed |
-| `CONNECTOR_OAUTH_FAILED` | 400 | OAuth flow could not complete |
 | `INTERNAL_ERROR` | 500 | Unhandled exception (logged with traceback) |
