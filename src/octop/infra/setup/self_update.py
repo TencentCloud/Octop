@@ -23,9 +23,16 @@ from octop.infra.utils.paths import PathLayout
 logger = logging.getLogger(__name__)
 
 _PACKAGE_NAME = "octop"
-_PYPI_URL = f"https://pypi.org/pypi/{_PACKAGE_NAME}/json"
 _PYPI_SIMPLE = "https://pypi.org/simple"
 _PYPI_UA = {"User-Agent": f"{_PACKAGE_NAME}-updater/1.0"}
+
+# Version-lookup bases, tried in order. The simple indexes in ``_MIRRORS``
+# cannot serve these. Entries must answer ``/pypi/<name>/json``; the other
+# mirrors returned 404 there when last checked.
+_PYPI_JSON_BASES: list[tuple[str, str]] = [
+    ("pypi.org", "https://pypi.org/pypi"),
+    ("mirrors.cloud.tencent.com", "https://mirrors.cloud.tencent.com/pypi/pypi"),
+]
 _GREEN_PACKAGES_ENV = "OCTOP_GREEN_PACKAGES"
 _STASH_SUFFIX = ".octop-old"
 _PROBE_TIMEOUT_S = 8
@@ -186,11 +193,11 @@ def pick_latest_versions(versions: list[str]) -> tuple[str | None, str | None]:
     return latest_any, latest_stable
 
 
-def _pypi_json_url(version: str | None = None) -> str:
+def _pypi_json_url(base: str, version: str | None = None) -> str:
     if not version:
-        return _PYPI_URL
+        return f"{base}/{_PACKAGE_NAME}/json"
     encoded = urllib.parse.quote(version, safe="")
-    return f"https://pypi.org/pypi/{_PACKAGE_NAME}/{encoded}/json"
+    return f"{base}/{_PACKAGE_NAME}/{encoded}/json"
 
 
 def _load_pypi_json(url: str, timeout: int) -> dict[str, Any]:
@@ -201,6 +208,7 @@ def _load_pypi_json(url: str, timeout: int) -> dict[str, Any]:
 
 
 def _description_for_version(
+    base: str,
     version: str,
     fallback: str | None,
     timeout: int,
@@ -212,7 +220,7 @@ def _description_for_version(
     ``/pypi/<name>/<version>/json``.
     """
     try:
-        data = _load_pypi_json(_pypi_json_url(version), timeout)
+        data = _load_pypi_json(_pypi_json_url(base, version), timeout)
         description = data["info"].get("description")
         if isinstance(description, str) and description.strip():
             return description
@@ -224,34 +232,40 @@ def _description_for_version(
 def fetch_pypi_info(timeout: int = 10) -> PyPIInfo | None:
     """Fetch version and long description from the PyPI JSON API.
 
-    ``version`` is the newest release including pre-releases. ``latest_stable``
-    is the newest non-pre-release (None when the index only has pre-releases).
-    Returns None on any network or parse failure.
+    Tries each base in ``_PYPI_JSON_BASES`` in order; ``source`` names the one
+    that answered. ``version`` is the newest release including pre-releases,
+    ``latest_stable`` the newest non-pre-release. None when every base fails.
     """
-    try:
-        data = _load_pypi_json(_PYPI_URL, timeout)
-        info = data["info"]
-        versions = _usable_release_versions(data)
-        info_version = str(info["version"])
-        if info_version and info_version not in versions:
-            versions.append(info_version)
-        latest_any, latest_stable = pick_latest_versions(versions)
-        if latest_any is None:
-            latest_any = info_version
-            latest_stable = info_version if not is_prerelease(info_version) else None
-        raw_description = info.get("description")
-        description = raw_description if isinstance(raw_description, str) else None
-        if latest_any and latest_any != info_version:
-            description = _description_for_version(latest_any, description, timeout)
+    errors: list[str] = []
+    for label, base in _PYPI_JSON_BASES:
+        try:
+            data = _load_pypi_json(_pypi_json_url(base), timeout)
+            info = data["info"]
+            versions = _usable_release_versions(data)
+            info_version = str(info["version"])
+            if info_version and info_version not in versions:
+                versions.append(info_version)
+            latest_any, latest_stable = pick_latest_versions(versions)
+            if latest_any is None:
+                latest_any = info_version
+                latest_stable = info_version if not is_prerelease(info_version) else None
+            raw_description = info.get("description")
+            description = raw_description if isinstance(raw_description, str) else None
+            if latest_any and latest_any != info_version:
+                description = _description_for_version(base, latest_any, description, timeout)
+        except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
+            errors.append(f"{label}: {exc}")
+            continue
+        if errors:
+            logger.info("PyPI info served by %s after: %s", label, "; ".join(errors))
         return PyPIInfo(
             version=latest_any,
             latest_stable=latest_stable,
             description=description,
-            source="pypi.org",
+            source=label,
         )
-    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
-        logger.warning("failed to fetch PyPI info: %s", exc)
-        return None
+    logger.warning("failed to fetch PyPI info from every base: %s", "; ".join(errors))
+    return None
 
 
 def parse_changelog_for_version(description: str | None, version: str) -> str | None:
