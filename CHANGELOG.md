@@ -19,6 +19,7 @@
 - Ask / Plan 模式下输入栏「+」菜单的选择面板过矮（模型、知识库一次只看得见一条），改为按视口可用高度封顶（目标 400px，且不低于左侧菜单）；右侧比左侧矮时上对齐、更高时下对齐向上长；连接器/技能/专家/子智能体数量角标与知识库一样跟在文字后；模型列表现在可搜索
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
+- `config.json` 存成非 UTF-8（Windows PowerShell 默认 `Out-File` 写 UTF-16LE、cmd 重定向按 cp936 写）时，`octop backup create` 等命令只抛一串 `UnicodeDecodeError` 栈帧、既不指出是哪个文件也不给修复方向；现按 `infra/utils/json_file.py` 的同一措辞报出「路径 + 不是合法 UTF-8 + 字节偏移 + 重新存为无 BOM 的 UTF-8」，仍不回显文件内容 (#1774)
 
 ## [1.0.2b6] - 2026-10-04
 

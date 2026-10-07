@@ -419,7 +419,8 @@ def env_bind_overrides() -> tuple[str | None, int | None]:
 def load_config(path: Path) -> OctopConfig:
     """Load ``config.json``; write defaults if absent. Apply env overrides.
 
-    A corrupt file raises with the path and parser position named, and is never
+    A corrupt file raises with the path and the reason named — the parser
+    position, or the byte offset when the file is not UTF-8 — and is never
     treated as empty: this is the same policy as ``infra/utils/json_file.py``,
     duplicated here because ``octop.config`` must stay free of ``infra`` imports
     (AGENTS.md §5). The message never echoes file contents — they hold database
@@ -428,7 +429,19 @@ def load_config(path: Path) -> OctopConfig:
     file_defaults = _defaults_for_file()
     if path.exists():
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            # ``read_text`` raises before the parser runs, so without this branch
+            # the CLI prints a traceback that never names the file the user has
+            # to fix. Same stem as ``infra/utils/json_file.py`` so one search
+            # finds both readers of ``config.json``.
+            raise ValueError(
+                f"{path} is not valid JSON (not valid UTF-8, byte at position"
+                f" {exc.start}); re-save it as UTF-8 without BOM and retry"
+                " — no settings were changed"
+            ) from exc
+        try:
+            raw = json.loads(text)
         except json.JSONDecodeError as exc:
             raise ValueError(
                 f"{path} is not valid JSON (line {exc.lineno}, column {exc.colno});"

@@ -424,6 +424,35 @@ def test_corrupt_config_names_file_and_position_without_leaking_contents(tmp_pat
     assert cfg_path.read_text(encoding="utf-8") == original
 
 
+def test_non_utf8_config_names_file_and_remedy_without_leaking_contents(tmp_path: Path):
+    """issue #1774: a cp936-saved config.json raised a bare UnicodeDecodeError naming no file."""
+    cfg_path = tmp_path / "config.json"
+    original = json.dumps(
+        {"database": {"password": "s3cret", "path": "D:\\数据\\octop.db"}},
+        ensure_ascii=False,
+    )
+    blob = original.encode("gbk")
+    cfg_path.write_bytes(blob)
+    with pytest.raises(ValueError, match=r"not valid UTF-8, byte at position \d+") as excinfo:
+        load_config(cfg_path)
+    msg = str(excinfo.value)
+    assert str(cfg_path) in msg
+    assert "s3cret" not in msg
+    assert "re-save it as UTF-8" in msg
+    # the file is left exactly as the user wrote it
+    assert cfg_path.read_bytes() == blob
+
+
+def test_utf16_config_reports_the_bom_byte_position(tmp_path: Path):
+    """Windows PowerShell's default `Out-File` encoding writes UTF-16LE + BOM (#1774)."""
+    cfg_path = tmp_path / "config.json"
+    blob = json.dumps({"port": 8088}).encode("utf-16")
+    cfg_path.write_bytes(blob)
+    with pytest.raises(ValueError, match="not valid UTF-8, byte at position 0"):
+        load_config(cfg_path)
+    assert cfg_path.read_bytes() == blob
+
+
 def test_non_object_config_raises(tmp_path: Path):
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text("[1, 2]", encoding="utf-8")
