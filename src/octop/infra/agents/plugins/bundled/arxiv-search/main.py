@@ -52,6 +52,10 @@ def _payload(data: dict[str, Any], text: str) -> str:
 def _identifier(query: str) -> str | None:
     candidate = re.sub(r"^(?:arxiv:|id:)\s*", "", query, flags=re.IGNORECASE)
     parsed = urlsplit(candidate)
+    if not parsed.scheme:
+        # urlsplit treats a scheme-less paste ("arxiv.org/abs/2501.01234", the form IM chats
+        # produce) as one path, so re-read it in network-location form to get host and path.
+        parsed = urlsplit(f"//{candidate}")
     if parsed.hostname in {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}:
         for prefix in ("/abs/", "/pdf/"):
             if parsed.path.startswith(prefix):

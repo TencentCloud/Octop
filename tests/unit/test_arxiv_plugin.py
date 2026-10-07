@@ -183,6 +183,12 @@ async def test_advanced_query_is_passed_to_arxiv_unchanged(
         ("https://arxiv.org/pdf/2501.01234v2.pdf", "2501.01234v2"),
         ("hep-th/9901001v2", "hep-th/9901001v2"),
         ("http://arxiv.org/pdf/math.GT/0309136.pdf", "math.GT/0309136"),
+        ("arxiv.org/abs/2501.01234", "2501.01234"),
+        ("www.arxiv.org/abs/2501.01234v2", "2501.01234v2"),
+        ("export.arxiv.org/abs/2501.01234", "2501.01234"),
+        ("arxiv.org/pdf/2501.01234", "2501.01234"),
+        ("arxiv.org/pdf/2501.01234.pdf", "2501.01234"),
+        ("arxiv.org/abs/hep-th/9901001v2", "hep-th/9901001v2"),
     ],
 )
 async def test_paper_ids_and_urls_use_id_list(
@@ -195,6 +201,26 @@ async def test_paper_ids_and_urls_use_id_list(
     await arxiv.search_arxiv(query)
     assert requests[0].url.params["id_list"] == paper_id
     assert "search_query" not in requests[0].url.params
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "arxiv.org",
+        "/abs/2501.01234",
+        "transformer site:arxiv.org/abs/1706.03762",
+    ],
+)
+async def test_url_lookalikes_that_are_not_arxiv_links_stay_keyword_search(
+    arxiv: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+) -> None:
+    """Recognising scheme-less links must not swallow text that merely contains one."""
+    requests = _success_client(monkeypatch)
+    await arxiv.search_arxiv(query)
+    assert requests[0].url.params["search_query"] == f"all:{query}"
+    assert "id_list" not in requests[0].url.params
 
 
 async def test_legacy_entry_keeps_full_id_and_https_links(

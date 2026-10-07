@@ -19,6 +19,7 @@
 - Ask / Plan 模式下输入栏「+」菜单的选择面板过矮（模型、知识库一次只看得见一条），改为按视口可用高度封顶（目标 400px，且不低于左侧菜单）；右侧比左侧矮时上对齐、更高时下对齐向上长；连接器/技能/专家/子智能体数量角标与知识库一样跟在文字后；模型列表现在可搜索
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
+- arXiv 论文查询插件认不出粘帖时丢了协议头的链接：`arxiv.org/abs/2501.01234`、`www.arxiv.org/…`、`export.arxiv.org/…`、`arxiv.org/pdf/….pdf` 被当成关键词做全文检索（实测官方 API：`search_query=all:arxiv.org/abs/2501.01234` 返回 `totalResults=0`，同一篇用 `id_list=2501.01234` 返回 1 篇），工具于是回「查不到这篇论文」。原因是 `_identifier()` 用 `urlsplit` 解析，无协议头时整串被当作 path、拿不到 hostname；现在按 network-location 形式重解析一次，这些形态与带 `https://` 时一样走 `id_list` 精确查询，裸编号、`ti:/cat:` 语法和纯关键词检索的分支不变（Fixes #1785）
 
 ## [1.0.2b6] - 2026-10-04
 
