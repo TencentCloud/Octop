@@ -65,6 +65,23 @@ def _load_plugin_dir(plugin_dir: Path, *, install_deps: bool) -> LoadedPlugin:
     return load_plugin_dir(plugin_dir, install_deps=install_deps)
 
 
+def _safe_plugin_id(plugin_id: str) -> str | None:
+    """Return ``plugin_id`` when it is a single safe directory name.
+
+    Mirrors the policy already applied by :meth:`PluginManager.market_plugin_dir`
+    and additionally rejects ``.`` (which resolves to the plugins root) and
+    Windows drive-relative ids such as ``C:evil``.
+    """
+    cleaned = plugin_id.strip()
+    if not cleaned or cleaned in {".", ".."} or ".." in cleaned:
+        return None
+    if "/" in cleaned or "\\" in cleaned:
+        return None
+    if Path(cleaned).name != cleaned or Path(cleaned).drive:
+        return None
+    return cleaned
+
+
 def _read_global_plugins(config_path: Path) -> dict[str, bool]:
     if not config_path.is_file():
         return {}
@@ -310,8 +327,8 @@ class PluginManager:
 
     def market_plugin_dir(self, plugin_id: str) -> Path | None:
         """Return a catalog plugin directory when it exists under the market root."""
-        cleaned = plugin_id.strip()
-        if not cleaned or ".." in cleaned or "/" in cleaned or "\\" in cleaned:
+        cleaned = _safe_plugin_id(plugin_id)
+        if cleaned is None:
             return None
         dest = self.market_root() / cleaned
         if dest.is_dir() and (dest / "plugin.yaml").is_file():
@@ -558,7 +575,10 @@ class PluginManager:
 
     def plugin_dir(self, plugin_id: str) -> Path | None:
         """Return the on-disk plugin directory when it exists."""
-        dest = self._plugins_dir / plugin_id
+        cleaned = _safe_plugin_id(plugin_id)
+        if cleaned is None:
+            return None
+        dest = self._plugins_dir / cleaned
         if dest.is_dir() and (dest / "plugin.yaml").is_file():
             return dest
         return None
@@ -616,17 +636,23 @@ class PluginManager:
                 ErrorCode.PLUGIN_INVALID_ARCHIVE,
                 f"invalid plugin manifest: {exc}",
             ) from exc
-        dest = self._plugins_dir / manifest.id
+        plugin_id = _safe_plugin_id(manifest.id)
+        if plugin_id is None:
+            raise OctopError(
+                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                f"invalid plugin id: {manifest.id!r}",
+            )
+        dest = self._plugins_dir / plugin_id
         if dest.exists():
             if not force:
                 raise OctopError(
                     ErrorCode.PLUGIN_ALREADY_EXISTS,
-                    f"plugin already installed: {manifest.id}",
-                    details={"id": manifest.id},
+                    f"plugin already installed: {plugin_id}",
+                    details={"id": plugin_id},
                 )
             shutil.rmtree(dest)
         shutil.copytree(source, dest)
-        unload_plugin(manifest.id)
+        unload_plugin(plugin_id)
         try:
             return _load_plugin_dir(dest, install_deps=True)
         except Exception as exc:
@@ -713,10 +739,16 @@ class PluginManager:
                 ) from exc
 
     def uninstall(self, plugin_id: str) -> None:
-        unload_plugin(plugin_id)
-        self._tool_catalog.pop(plugin_id, None)
-        self._skill_catalog.pop(plugin_id, None)
-        dest = self._plugins_dir / plugin_id
+        cleaned = _safe_plugin_id(plugin_id)
+        if cleaned is None:
+            raise OctopError(
+                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                f"invalid plugin id: {plugin_id!r}",
+            )
+        unload_plugin(cleaned)
+        self._tool_catalog.pop(cleaned, None)
+        self._skill_catalog.pop(cleaned, None)
+        dest = self._plugins_dir / cleaned
         if dest.is_dir():
             shutil.rmtree(dest)
 
