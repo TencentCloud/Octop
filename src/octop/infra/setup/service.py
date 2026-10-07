@@ -757,6 +757,14 @@ def start_service(runtime: ServiceRuntime, *, apply_unit: bool = False) -> None:
         proc = _systemd_run(runtime, verb, SERVICE_NAME)
     else:
         proc = _launchctl_run(runtime.scope, "kickstart", "-k", launchd_domain(runtime.scope))
+        if (
+            proc.returncode != 0
+            and "could not find service" in (proc.stderr or proc.stdout or "").lower()
+        ):
+            # Service plist is installed but was unloaded (e.g. after `octop service stop`
+            # on macOS). Bootstrap it back into launchd, then kickstart again.
+            _launchd_bootstrap(runtime)
+            proc = _launchctl_run(runtime.scope, "kickstart", "-k", launchd_domain(runtime.scope))
     _cmd_ok(proc, "start failed")
     _wait_for_startup()
 

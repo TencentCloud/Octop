@@ -651,6 +651,52 @@ def test_start_service_launchd_user_does_not_use_sudo(
     assert args[2] == launchd_domain("user")
 
 
+def test_start_service_launchd_bootstraps_when_unloaded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """After `octop service stop` on macOS the service is booted out of launchd.
+
+    A subsequent `start` must bootstrap the plist back before kickstart can
+    succeed. Regression for #838.
+    """
+    runtime = replace(_runtime(tmp_path), mode="launchd", scope="user")
+    calls: list[tuple[str, list[str]]] = []
+    bootstrap_calls: list[tuple[str, list[str]]] = []
+
+    def _fake_launchctl_run(scope: str, *args: str) -> object:
+        calls.append((scope, list(args)))
+
+        class _Proc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        # First kickstart fails because the service is not loaded; second succeeds.
+        if (
+            args[:2] == ("kickstart", "-k")
+            and len([c for c in calls if c[1][:2] == ["kickstart", "-k"]]) == 1
+        ):
+            _Proc.returncode = 1
+            _Proc.stderr = 'Could not find service "octop" in domain for user gui: 501'
+        return _Proc()
+
+    def _fake_bootstrap(rt: ServiceRuntime) -> None:
+        bootstrap_calls.append((rt.scope, ["bootstrap", launchd_bootstrap_target(rt.scope)]))
+
+    monkeypatch.setattr(service_mod, "_launchctl_run", _fake_launchctl_run)
+    monkeypatch.setattr(service_mod, "_launchd_bootstrap", _fake_bootstrap)
+    monkeypatch.setattr(service_mod, "_wait_for_startup", lambda: None)
+
+    service_mod.start_service(runtime)
+
+    kickstarts = [c for c in calls if c[1][:2] == ["kickstart", "-k"]]
+    assert len(kickstarts) == 2
+    assert kickstarts[0][1][2] == launchd_domain("user")
+    assert kickstarts[1][1][2] == launchd_domain("user")
+    assert len(bootstrap_calls) == 1
+    assert bootstrap_calls[0][1][1] == launchd_bootstrap_target("user")
+
+
 def test_restart_service_waits_for_startup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """restart must apply the same startup grace as start, otherwise the
     health probe races the new process."""
