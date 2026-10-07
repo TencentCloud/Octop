@@ -79,6 +79,17 @@ describe("<SsoPanel />", () => {
     render(<SsoPanel />);
 
     await waitFor(() => expect(getOidcConfig).toHaveBeenCalledOnce());
+    // The panel wraps its content in <Spin spinning={loading}>, which blocks
+    // pointer events until the config has been applied. Waiting only for the
+    // request to be *issued* left the click landing inside that window on a
+    // loaded machine, where user-event refuses to click a
+    // `pointer-events: none` element. Wait for a control the component itself
+    // gates on `loading` instead.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: "adminSso.oidcEnabled" }),
+      ).toBeEnabled();
+    });
     await user.click(
       screen.getByRole("button", { name: "adminSso.presetGoogle" }),
     );

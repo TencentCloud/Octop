@@ -80,20 +80,31 @@ describe("AuthGuard offline boot", () => {
     render(
       <MemoryRouter initialEntries={["/a"]}>
         <AuthGuard>
-          <Routes>
-            <Route path="/a" element={<NavProbe />} />
-            <Route path="/b" element={<div>protected-shell</div>} />
-          </Routes>
+          <div data-testid="shell-host">
+            <Routes>
+              <Route path="/a" element={<NavProbe />} />
+              <Route path="/b" element={<div>protected-shell</div>} />
+            </Routes>
+          </div>
         </AuthGuard>
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("protected-shell")).toBeInTheDocument();
+    // Hold the element the guard itself renders, not the matched route's node:
+    // navigating /a -> /b replaces that node by design, so an assertion on a
+    // reference taken before the swap fails whenever the navigation lands after
+    // the first paint — which only happens under full-suite load.
+    const shellHost = await screen.findByTestId("shell-host");
+    await waitFor(() => {
+      expect(screen.getByText("protected-shell")).toBeInTheDocument();
+    });
+    expect(shellHost.isConnected).toBe(true);
     await waitFor(() => {
       expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
     });
     // Give route-driven navigate identity churn a tick; gate must not re-run.
     await waitFor(() => {
+      expect(screen.getByTestId("shell-host")).toBeInTheDocument();
       expect(screen.getByText("protected-shell")).toBeInTheDocument();
     });
     expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
