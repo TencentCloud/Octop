@@ -306,10 +306,12 @@ class ThreadRepo:
         if not incoming:
             return
         with self._db.transaction() as conn:
-            row = conn.execute(
-                "SELECT artifacts FROM threads WHERE thread_id = ?",
-                (thread_id,),
-            ).fetchone()
+            select = "SELECT artifacts FROM threads WHERE thread_id = ?"
+            if self._db.dialect == "postgresql":
+                # Serialize read/merge/write across workers sharing a team room.
+                # SQLite already takes the writer lock in transaction().
+                select += " FOR UPDATE"
+            row = conn.execute(select, (thread_id,)).fetchone()
             if row is None:
                 return
             current = parse_thread_artifacts(row["artifacts"])
