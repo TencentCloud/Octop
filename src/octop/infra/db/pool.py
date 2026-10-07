@@ -121,6 +121,15 @@ class _PgConnectionProxy:
     def execute(self, sql: str, params: Any = None) -> Any:
         return self._conn.execute(qmark_to_pyformat(sql), params)
 
+    def executemany(self, sql: str, params: Any) -> Any:
+        cursor = self._conn.cursor()
+        try:
+            cursor.executemany(qmark_to_pyformat(sql), params)
+        except Exception:
+            cursor.close()
+            raise
+        return cursor
+
     def executescript(self, sql: str) -> None:
         # Used only if something still calls it; prefer migrate splitter.
         for stmt in _split_sql_statements(sql):
