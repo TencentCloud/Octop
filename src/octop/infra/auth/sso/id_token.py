@@ -7,8 +7,20 @@ from typing import Any
 import httpx as httpx_module
 import jwt
 
-# Only asymmetric algorithms used by mainstream OIDC IdPs.
-_ALLOWED_ALGORITHMS = ("RS256", "ES256")
+# Asymmetric algorithms only: an HS* or `none` header must never verify against a
+# JWKS public key. Includes ES384 / ES512 / EdDSA so Logto-style IdPs work (#1761).
+_ALLOWED_ALGORITHMS = (
+    "RS256",
+    "RS384",
+    "RS512",
+    "PS256",
+    "PS384",
+    "PS512",
+    "ES256",
+    "ES384",
+    "ES512",
+    "EdDSA",
+)
 
 
 def _signing_key(id_token: str, *, jwks_uri: str, httpx: httpx_module.Client) -> jwt.PyJWK:

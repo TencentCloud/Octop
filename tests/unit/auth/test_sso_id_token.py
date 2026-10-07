@@ -8,7 +8,7 @@ import time
 import httpx
 import jwt
 import pytest
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from octop.infra.auth.sso.id_token import verify_id_token
 
@@ -132,3 +132,70 @@ def test_verify_id_token_rejects_disallowed_algorithm(
             nonce="nonce",
             httpx=jwks_client,
         )
+
+
+def test_verify_id_token_rejects_unsigned_token(
+    signing_key: rsa.RSAPrivateKey, jwks_client: httpx.Client
+) -> None:
+    now = int(time.time())
+    unsigned = jwt.encode(
+        {
+            "iss": "https://issuer.example",
+            "aud": "octop-client",
+            "exp": now + 300,
+            "iat": now,
+            "nonce": "nonce",
+            "sub": "user-1",
+        },
+        None,
+        algorithm="none",
+        headers={"kid": "test-key"},
+    )
+    with pytest.raises(jwt.InvalidTokenError, match="not allowed"):
+        verify_id_token(
+            unsigned,
+            jwks_uri="https://issuer.example/jwks",
+            issuer="https://issuer.example",
+            client_id="octop-client",
+            nonce="nonce",
+            httpx=jwks_client,
+        )
+
+
+def _ec_jwks_client(public_key: ec.EllipticCurvePublicKey) -> httpx.Client:
+    jwk = json.loads(jwt.algorithms.ECAlgorithm.to_jwk(public_key))
+    jwk.update({"kid": "ec-key", "use": "sig", "alg": "ES384"})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://issuer.example/jwks"
+        return httpx.Response(200, json={"keys": [jwk]})
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_verify_id_token_accepts_es384() -> None:
+    """Logto signs ID tokens with ES384 (issue #1761)."""
+    signing_key = ec.generate_private_key(ec.SECP384R1())
+    now = int(time.time())
+    token = jwt.encode(
+        {
+            "iss": "https://issuer.example",
+            "aud": "octop-client",
+            "exp": now + 300,
+            "iat": now,
+            "nonce": "nonce",
+            "sub": "user-1",
+        },
+        signing_key,
+        algorithm="ES384",
+        headers={"kid": "ec-key"},
+    )
+    claims = verify_id_token(
+        token,
+        jwks_uri="https://issuer.example/jwks",
+        issuer="https://issuer.example",
+        client_id="octop-client",
+        nonce="nonce",
+        httpx=_ec_jwks_client(signing_key.public_key()),
+    )
+    assert claims["sub"] == "user-1"
