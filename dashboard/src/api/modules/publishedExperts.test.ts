@@ -43,6 +43,11 @@ describe("publishedExpertsApi", () => {
       "/experts/published/expert%2F1/refresh",
       {
         method: "POST",
+        body: JSON.stringify({
+          name: "Updated",
+          description: "New description",
+          welcome_message: { zh: "欢迎", en: "Welcome" },
+        }),
       },
     );
     expect(request).toHaveBeenNthCalledWith(
@@ -50,6 +55,18 @@ describe("publishedExpertsApi", () => {
       "/experts/published/expert%2F1",
       {
         method: "DELETE",
+      },
+    );
+  });
+
+  it("refreshes without a body when the caller edits nothing", () => {
+    publishedExpertsApi.refresh("expert-1");
+
+    expect(request).toHaveBeenCalledWith(
+      "/experts/published/expert-1/refresh",
+      {
+        method: "POST",
+        body: undefined,
       },
     );
   });

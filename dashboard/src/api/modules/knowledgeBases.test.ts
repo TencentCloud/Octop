@@ -5,7 +5,11 @@ const { request, requestUpload } = vi.hoisted(() => ({
   requestUpload: vi.fn(),
 }));
 
-vi.mock("../request", () => ({ request, requestUpload }));
+vi.mock("../request", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../request")>()),
+  request,
+  requestUpload,
+}));
 
 import { knowledgeBasesApi } from "./knowledgeBases";
 
@@ -22,7 +26,9 @@ describe("knowledgeBasesApi", () => {
     knowledgeBasesApi.getOnnxDownloadStatus();
     knowledgeBasesApi.activateOnnx("BAAI/bge-small-zh-v1.5");
 
-    expect(request).toHaveBeenNthCalledWith(1, "/knowledge-bases/capability");
+    expect(request).toHaveBeenNthCalledWith(1, "/knowledge-bases/capability", {
+      headers: undefined,
+    });
     expect(request).toHaveBeenNthCalledWith(2, "/knowledge-bases/feature", {
       method: "PUT",
       body: JSON.stringify({ enabled: true, model: "BAAI/bge-small" }),
@@ -47,6 +53,28 @@ describe("knowledgeBasesApi", () => {
         body: JSON.stringify({ model: "BAAI/bge-small-zh-v1.5" }),
       },
     );
+  });
+
+  it("tunnels the agent id only for callers that pass one", () => {
+    knowledgeBasesApi.getCapability();
+    knowledgeBasesApi.list();
+    knowledgeBasesApi.getCapability("agent-9");
+    knowledgeBasesApi.list("  ");
+
+    expect(request).toHaveBeenNthCalledWith(1, "/knowledge-bases/capability", {
+      headers: undefined,
+    });
+    expect(request).toHaveBeenNthCalledWith(2, "/knowledge-bases", {
+      headers: undefined,
+    });
+    expect(request).toHaveBeenNthCalledWith(3, "/knowledge-bases/capability", {
+      headers: { "X-Octop-Agent-Id": "agent-9" },
+    });
+    // A blank id is not an id: the settings page must keep talking to this
+    // instance instead of hopping to a peer.
+    expect(request).toHaveBeenNthCalledWith(4, "/knowledge-bases", {
+      headers: undefined,
+    });
   });
 
   it("requests the full ONNX catalog when expanding embedding options", () => {

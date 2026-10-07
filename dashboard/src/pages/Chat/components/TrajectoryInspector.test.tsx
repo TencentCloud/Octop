@@ -19,6 +19,12 @@ vi.mock("../../../api/modules/trajectory", async (importOriginal) => {
 
 import TrajectoryInspector, { findSourceEventId } from "./TrajectoryInspector";
 
+// The Preview tab renders through LazyMarkdown (React.lazy + Suspense), whose
+// first paint is the raw-markdown fallback. Warm the chunk so the markdown
+// assertions do not race a dynamic import against vitest's 1s waitFor, which a
+// loaded machine can lose.
+await import("../../../components/Markdown/index");
+
 function event(
   overrides: Partial<TrajectoryEvent> &
     Pick<TrajectoryEvent, "event_id" | "kind">,
