@@ -17,6 +17,7 @@
 
 ### 修复
 - Ask / Plan 模式下输入栏「+」菜单的选择面板过矮（模型、知识库一次只看得见一条），改为按视口可用高度封顶（目标 400px，且不低于左侧菜单）；右侧比左侧矮时上对齐、更高时下对齐向上长；连接器/技能/专家/子智能体数量角标与知识库一样跟在文字后；模型列表现在可搜索
+- 自定义供应商的 `extra_json` 现在认 `stream_usage` 布尔值（默认 `true`）：设为 `false` 后不再发送 `stream_options: {"include_usage": true}`。此前 `ProviderStore` 构造 `ProviderConfig` 时没读这个键也没传值，无从关闭。
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
 

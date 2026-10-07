@@ -141,11 +141,16 @@ class ProviderStore:
             if not models:
                 continue
             headers: dict[str, str] = {}
+            stream_usage = True
             if row.extra_json:
                 try:
                     extra = json.loads(row.extra_json)
-                    if isinstance(extra, dict) and isinstance(extra.get("headers"), dict):
-                        headers = {str(k): str(v) for k, v in extra["headers"].items()}
+                    if isinstance(extra, dict):
+                        if isinstance(extra.get("headers"), dict):
+                            headers = {str(k): str(v) for k, v in extra["headers"].items()}
+                        # 只接受显式布尔值，其他类型忽略，保持默认。
+                        if isinstance(extra.get("stream_usage"), bool):
+                            stream_usage = extra["stream_usage"]
                 except Exception:
                     pass
             out.append(
@@ -158,6 +163,7 @@ class ProviderStore:
                     models=models,
                     headers=headers,
                     session_header=session_header_for_provider(row.name, row.base_url),
+                    stream_usage=stream_usage,
                 )
             )
         return out

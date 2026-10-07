@@ -122,6 +122,44 @@ def test_build_harness_configs_maps_kind_to_protocol(store: ProviderStore) -> No
     assert providers[0].protocol == "anthropic"
 
 
+def test_build_harness_configs_honors_extra_json_stream_usage(store: ProviderStore) -> None:
+    """``extra_json.stream_usage`` must reach ``ProviderConfig`` for openai providers."""
+    store._provider_repo.create(
+        name="strict",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps([{"id": "m1", "name": "m1"}]),
+        extra_json=json.dumps({"stream_usage": False, "headers": {"X-Tenant": "t1"}}),
+    )
+    store._provider_repo.create(
+        name="default",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps([{"id": "m2", "name": "m2"}]),
+    )
+
+    by_id = {p.id: p for p in store.build_harness_configs()}
+    assert by_id["strict"].stream_usage is False
+    assert by_id["strict"].headers == {"X-Tenant": "t1"}
+    assert by_id["default"].stream_usage is True
+
+
+def test_build_harness_configs_ignores_non_boolean_stream_usage(store: ProviderStore) -> None:
+    """A non-boolean value must not silently turn streamed usage reporting off."""
+    store._provider_repo.create(
+        name="sloppy",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps([{"id": "m1", "name": "m1"}]),
+        extra_json=json.dumps({"stream_usage": "false"}),
+    )
+
+    assert store.build_harness_configs()[0].stream_usage is True
+
+
 def test_build_harness_configs_maps_context_window_to_max_input_tokens(
     store: ProviderStore,
 ) -> None:
