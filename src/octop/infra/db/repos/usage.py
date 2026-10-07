@@ -220,12 +220,16 @@ class UsageRepo:
         window: str = "last_30d",
         granularity: str = "by_day",
         timezone: str = "UTC",
+        bucket_limit: int = 100,
     ) -> dict[str, Any]:
         """Aggregate usage rows, optionally filtered to one user/agent.
 
         ``user_id=None`` and ``agent_id=None`` returns global totals
         (admin scope); otherwise rows are scoped accordingly.
+        Category buckets default to the dashboard's top 100; exports can
+        request more, bounded by the detail export limit.
         """
+        cap = max(1, min(int(bucket_limit), DETAIL_EXPORT_LIMIT))
         where_sql, params, start, end = self._scope_filter(
             user_id=user_id,
             agent_id=agent_id,
@@ -282,9 +286,9 @@ class UsageRepo:
                     FROM usage_log WHERE {where_sql}
                     GROUP BY bucket
                     ORDER BY bucket DESC
-                    LIMIT 100
+                    LIMIT ?
                     """,
-                    params,
+                    [*params, cap],
                 ).fetchall()
                 buckets = [
                     {
@@ -319,9 +323,9 @@ class UsageRepo:
                     FROM usage_log WHERE {where_sql}
                     GROUP BY bucket
                     ORDER BY total_tokens DESC
-                    LIMIT 100
+                    LIMIT ?
                     """,
-                    params,
+                    [*params, cap],
                 ).fetchall()
                 buckets = [
                     {
@@ -356,9 +360,9 @@ class UsageRepo:
                     FROM usage_log WHERE {where_sql}
                     GROUP BY bucket
                     ORDER BY total_tokens DESC
-                    LIMIT 100
+                    LIMIT ?
                     """,
-                    params,
+                    [*params, cap],
                 ).fetchall()
                 buckets = [
                     {

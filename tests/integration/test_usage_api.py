@@ -702,3 +702,71 @@ def test_extract_usage_returns_none_when_absent() -> None:
     assert _extract_usage_from_chunk({"type": "token", "content": "hi"}) is None
     assert _extract_usage_from_chunk({"type": "state_snapshot", "data": {}}) is None
     assert _extract_usage_from_chunk(None) is None  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("groups", [30, 101])
+@pytest.mark.parametrize("admin_scope", [False, True])
+async def test_usage_export_includes_all_category_groups(
+    env: Any, groups: int, admin_scope: bool
+) -> None:
+    """Exports must not reuse the dashboard's top-100 category limit."""
+    from datetime import UTC, datetime
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    c, srv, admin_auth, alice_auth, ctx = env
+    agent_ids = [f"export-group-{i}" for i in range(groups)]
+    _seed_usage_agents(srv, agent_ids, user_id=ctx["alice_id"])
+    repo = srv.services.usage_repo
+    start = int(datetime(2025, 1, 1, 12, tzinfo=UTC).timestamp())
+    for i, aid in enumerate(agent_ids):
+        repo.record(
+            agent_id=aid,
+            user_id=ctx["alice_id"],
+            model=f"export-model-{i}",
+            input_tokens=10 + i,
+            output_tokens=5,
+            ts=start + i * 86_400,
+        )
+    prefix = "/api/admin/usage" if admin_scope else "/api/usage"
+    auth = admin_auth if admin_scope else alice_auth
+    response = await c.get(
+        f"{prefix}/export.xlsx?window=all",
+        headers={**auth, "Accept-Language": "en"},
+    )
+    assert response.status_code == 200
+    wb = load_workbook(BytesIO(response.content))
+    detail = wb["Detail"]
+    detail_total = sum(row[13].value for row in detail.iter_rows(min_row=2, max_row=groups + 1))
+    assert detail.max_row == groups + 3
+    for name, granularity, total_col in (
+        ("By day", "by_day", 4),
+        ("By expert", "by_agent", 5),
+        ("By model", "by_model", 4),
+    ):
+        sheet = wb[name]
+        assert sheet.max_row == groups + 3
+        assert (
+            sum(row[total_col - 1].value for row in sheet.iter_rows(min_row=2, max_row=groups + 1))
+            == detail_total
+        )
+        col_letter = "E" if total_col == 5 else "D"
+        assert (
+            sheet.cell(sheet.max_row, total_col).value
+            == f"=SUM({col_letter}2:{col_letter}{groups + 1})"
+        )
+        summary = await c.get(
+            f"{prefix}/summary?window=all&granularity={granularity}", headers=auth
+        )
+        assert summary.status_code == 200
+        buckets = summary.json()["buckets"]
+        assert len(buckets) == min(groups, 100)
+        values = [
+            bucket["key"] if granularity == "by_day" else bucket["total_tokens"]
+            for bucket in buckets
+        ]
+        assert values == sorted(values, reverse=True)
+    # The detail export still selects its newest bounded rows, returned oldest first.
+    bounded = repo.list_detail(user_id=ctx["alice_id"], window="all", limit=3)
+    assert [row.agent_id for row in bounded] == agent_ids[-3:]
