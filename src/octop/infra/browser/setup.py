@@ -60,22 +60,87 @@ def _relocated_profiles_root_for_uid(uid: int | None = None) -> Path:
     return Path(tempfile.gettempdir()) / f"octop-browser-profiles-{token}"
 
 
+def _current_runtime_dir_usable() -> bool:
+    """True when ``$XDG_RUNTIME_DIR`` is a writable dir owned by this uid."""
+    raw = (os.environ.get("XDG_RUNTIME_DIR") or "").strip()
+    if not raw:
+        return False
+    path = Path(raw)
+    try:
+        st = path.stat()
+    except OSError:
+        return False
+    if not path.is_dir():
+        return False
+    getuid = getattr(os, "getuid", None)
+    if callable(getuid) and st.st_uid != getuid():
+        return False
+    return os.access(path, os.W_OK | os.X_OK)
+
+
+def _drop_unusable_wayland_hint() -> None:
+    """Clear stale Wayland hints when the compositor socket is unreachable.
+
+    Chromium picks its Ozone backend from ``XDG_SESSION_TYPE`` /
+    ``WAYLAND_DISPLAY`` and, unlike GTK/Qt, does **not** fall back to X11 when
+    the Wayland platform fails to initialize — it exits immediately:
+
+        Failed to connect to Wayland display: No such file or directory (2)
+        Failed to initialize Wayland platform
+        The platform failed to initialize.  Exiting.
+
+    A ``WAYLAND_DISPLAY`` whose socket does not exist (stale session, or a
+    runtime dir this helper had to relocate) must therefore not force the
+    Wayland backend: dropping both hints lets Chromium use ``DISPLAY`` again.
+    """
+    wayland_display = (os.environ.get("WAYLAND_DISPLAY") or "").strip()
+    if not wayland_display:
+        return
+    if os.path.isabs(wayland_display):
+        socket_path = Path(wayland_display)
+    else:
+        runtime_dir = (os.environ.get("XDG_RUNTIME_DIR") or "").strip()
+        if not runtime_dir:
+            return
+        socket_path = Path(runtime_dir) / wayland_display
+    if socket_path.exists():
+        return
+    logger.info(
+        "Dropping stale Wayland hints (WAYLAND_DISPLAY=%r, no socket at %s); "
+        "Chromium will fall back to X11",
+        wayland_display,
+        socket_path,
+    )
+    os.environ.pop("WAYLAND_DISPLAY", None)
+    os.environ.pop("XDG_SESSION_TYPE", None)
+
+
 def ensure_chrome_runtime_env() -> Path:
-    """Force a writable ``XDG_RUNTIME_DIR`` for Chrome on Linux.
+    """Ensure a writable ``XDG_RUNTIME_DIR`` for Chrome on Linux.
 
     Chrome defaults to ``/run/user/<uid>``, which is often missing or
     unwritable on headless / root / container hosts (``mkdir: cannot create
-    directory '/run/user/0': Permission denied``). Always point at a private
-    ``/tmp`` directory owned by the current process.
+    directory '/run/user/0': Permission denied``). In that case point at a
+    private ``/tmp`` directory owned by the current process.
 
-    Chrome expects ``XDG_RUNTIME_DIR`` mode ``0700``; set that only on the
-    directory we just created — never on profile trees or system paths.
+    An already usable ``$XDG_RUNTIME_DIR`` is **kept**: Wayland clients resolve
+    their compositor socket as ``$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY``, so
+    relocating the variable to ``/tmp`` hides ``wayland-0`` and makes Chromium
+    abort with "Failed to connect to Wayland display: No such file or
+    directory" even though ``DISPLAY`` is perfectly usable.
     """
+    if _current_runtime_dir_usable():
+        _drop_unusable_wayland_hint()
+        return Path(os.environ["XDG_RUNTIME_DIR"])
+
     path = _runtime_dir_for_uid()
     path.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         os.chmod(path, 0o700)
     os.environ["XDG_RUNTIME_DIR"] = str(path)
+    # A relocated runtime dir can no longer resolve the compositor socket, so
+    # a leftover WAYLAND_DISPLAY would point Chromium at a nonexistent path.
+    _drop_unusable_wayland_hint()
     return path
 
 
