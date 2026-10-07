@@ -339,6 +339,7 @@ docker run -d \
 | 本地脚本 | Windows | `scripts\install.bat` 或 `install.ps1` |
 | PyPI | 全平台 | `pip install octop`（可选 extras 如 `local-embedding`） |
 | Docker | 全平台 | `docker/docker-compose.yml` |
+| 1Panel | Linux（amd64） | 在 1Panel 应用商店搜索 `Octop` 一键安装（镜像 `ghcr.io/tencentcloud/octop`，数据持久化到宿主机 `./data`） |
 
 所有安装脚本均在 `~/.octop/venv` 创建隔离环境，并通过 `~/.octop/bin/octop` 包装 CLI，不会影响系统 Python。
 

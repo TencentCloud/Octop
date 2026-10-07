@@ -337,6 +337,7 @@ See [`.env.example`](.env.example) for the full list.
 | Local script | Windows | `scripts\install.bat` or `install.ps1` |
 | PyPI | Any | `pip install octop` (optional extras such as `local-embedding`) |
 | Docker | Any | `docker/docker-compose.yml` |
+| 1Panel | Linux (amd64) | one-click install from the 1Panel app store (image `ghcr.io/tencentcloud/octop`, state persisted to host `./data`) |
 
 All install scripts provision an isolated environment at `~/.octop/venv` and a `~/.octop/bin/octop` wrapper — they do not touch system Python.
 
