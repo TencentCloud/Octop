@@ -32,6 +32,7 @@
 - COS 下载的 ONNX 模型可完全离线加载，不再查询 Hugging Face API
 - Docker 使用 PostgreSQL 等外部数据库时，容器重启不再重复执行初始化导致 `UniqueViolation` 崩溃：`octop init` 成功后写入数据卷初始化标记（`~/.octop/.initialized`），重启直接启动；`octop init` 对已有管理员改为幂等跳过（#1866）
 - 更新提示仅对拥有「应用更新」权限的用户显示：非管理员不再看到 PWA「新版本已就绪」横幅，且关闭后同一标签页会话内不再重复弹出
+- Wayland 桌面（GNOME/KDE）上启动浏览器失败：`ensure_chrome_runtime_env` 无条件把 `XDG_RUNTIME_DIR` 改写到 `/tmp`，而 Wayland 客户端按 `$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY` 找合成器 socket，Chrome 因此报 `Failed to connect to Wayland display: No such file or directory (2)` 并立即退出（`Chrome exited immediately (returncode=1)`），即使 `DISPLAY` 完全可用。现改为：Chrome 子进程的 `XDG_RUNTIME_DIR` 在系统值可用时直接用它，仅在确实缺失/不可写（容器、root）时才用私有 /tmp 目录，且不再写入进程级 `os.environ`（与 #1861 一致）；同时清理指向不存在 socket 的 `WAYLAND_DISPLAY` / `XDG_SESSION_TYPE`，让 Chromium 回落 X11 而不是直接退出
 
 ## [1.0.2b8] - 2026-10-14
 
