@@ -81,6 +81,7 @@
     "notImplemented": "This page is under construction."
   },
   "apiErrors": {
+    "EXPERT_PUSH_UNSAFE": "This expert cannot be safely copied with its current backend or files.",
     "AUTH_FAILED": "Authentication failed.",
     "TOKEN_EXPIRED": "Session expired. Please sign in again.",
     "SETUP_REQUIRED": "Initial setup is required.",
@@ -5414,6 +5415,9 @@
     "createSectionAccount": "Account",
     "createSectionAccess": "Role & permissions",
     "createSectionPolicy": "Resource usage policy",
+    "createSectionExperts": "Push experts",
+    "createExpertsHint": "Click to copy your experts and their configuration, including the storage backend. Each copy gets a separate workspace; shared backend access follows its existing permissions. Experts with knowledge bases or connectors unavailable to the new user cannot be pushed.",
+    "noSourceExperts": "You have no experts to push yet",
     "policyWorkspaceRoot": "Allowed storage root",
     "policyWorkspaceRootHint": "Restricts roots for “{{localShell}}” and “{{filesystem}}” when creating experts. Off means no extra limit.",
     "policyWorkspaceRootRequired": "Choose an allowed storage root",

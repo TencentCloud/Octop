@@ -153,6 +153,7 @@ interface CreateValues extends PolicyFormValues {
   role: string;
   permissions?: string[];
   role_name?: string | null;
+  source_agent_ids?: string[];
 }
 
 interface EditValues extends PolicyFormValues {
@@ -1316,6 +1317,18 @@ export default function UsersListPanel() {
     return map;
   }, [agents]);
 
+  const sourceExperts = useMemo(
+    () =>
+      agents.filter(
+        (agent) =>
+          actorIsAdmin &&
+          currentUserId !== null &&
+          agent.user_id === currentUserId &&
+          agent.kind === "expert",
+      ),
+    [agents, actorIsAdmin, currentUserId],
+  );
+
   const drawerAgents = agentDrawerUser
     ? agentsByUserId.get(agentDrawerUser.id) ?? []
     : [];
@@ -1637,6 +1650,7 @@ export default function UsersListPanel() {
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
           role_name: values.role_name?.trim() || null,
+          source_agent_ids: values.source_agent_ids ?? [],
           ...policyPayload(values, { workspaceRootAllowed }),
         }),
       });
@@ -1667,11 +1681,9 @@ export default function UsersListPanel() {
       );
       form.resetFields();
       setCreateOpen(false);
-      void refreshUsers();
+      void refreshAll();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.createFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.createFailed"), t));
     } finally {
       setSubmitting(false);
     }
@@ -1690,6 +1702,7 @@ export default function UsersListPanel() {
       email: undefined,
       password: undefined,
       confirm: undefined,
+      source_agent_ids: [],
       limit_workspace_root: false,
       workspace_root_dir: undefined,
       limit_token_quota: false,
@@ -2299,6 +2312,7 @@ export default function UsersListPanel() {
             limit_workspace_root: false,
             limit_token_quota: false,
             limit_max_agents: false,
+            source_agent_ids: [],
           }}
           className={styles.createUserForm}
         >
@@ -2439,6 +2453,46 @@ export default function UsersListPanel() {
             fsTreeRoots={fsTreeRoots}
             workspaceRootAllowed={workspaceRootAllowed}
           />
+
+          {actorIsAdmin && (
+            <div className={styles.createSection}>
+              <div className={styles.createSectionTitle}>
+                {t("adminUsers.createSectionExperts")}
+              </div>
+              <p className={styles.createExpertHint}>
+                {t("adminUsers.createExpertsHint")}
+              </p>
+              <Spin spinning={agentsLoading}>
+                {sourceExperts.length === 0 ? (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description={t("adminUsers.noSourceExperts")}
+                  />
+                ) : (
+                  <Form.Item name="source_agent_ids">
+                    <Checkbox.Group
+                      className={styles.createExpertPicker}
+                      options={sourceExperts.map((agent) => ({
+                        value: agent.agent_id,
+                        label: (
+                          <span className={styles.createExpertOption}>
+                            <span className={styles.createExpertName}>
+                              {agent.name}
+                            </span>
+                            {agent.description && (
+                              <span className={styles.createExpertDescription}>
+                                {agent.description}
+                              </span>
+                            )}
+                          </span>
+                        ),
+                      }))}
+                    />
+                  </Form.Item>
+                )}
+              </Spin>
+            </div>
+          )}
         </Form>
       </Drawer>
 

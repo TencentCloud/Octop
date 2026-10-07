@@ -81,6 +81,7 @@
     "notImplemented": "页面建设中。"
   },
   "apiErrors": {
+    "EXPERT_PUSH_UNSAFE": "该专家当前的后端配置或文件无法安全推送。",
     "AUTH_FAILED": "认证失败。",
     "TOKEN_EXPIRED": "登录已过期，请重新登录。",
     "SETUP_REQUIRED": "需要完成初始设置。",
@@ -5414,6 +5415,9 @@
     "createSectionAccount": "账号信息",
     "createSectionAccess": "角色与权限",
     "createSectionPolicy": "资源使用策略",
+    "createSectionExperts": "推送专家",
+    "createExpertsHint": "点击选择自己的专家并复制给新用户，配置（含存储后端）会一并复制。每份专家有单独的工作目录；共享后端的访问范围仍由原后端配置决定。若专家绑定了新用户无法访问的知识库或连接器，则无法推送。",
+    "noSourceExperts": "您还没有可推送的专家",
     "policyWorkspaceRoot": "允许的存储根目录",
     "policyWorkspaceRootHint": "限制该用户创建专家时「{{localShell}}」/「{{filesystem}}」的根目录。关闭表示不额外限制。",
     "policyWorkspaceRootRequired": "请选择允许的存储根目录",
