@@ -13,11 +13,13 @@ this is only the Code Console transport (selectable via ``OCTOP_CODE_DRIVER``).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
 import uuid
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -165,10 +167,8 @@ class DirectAgent:
         try:
             await asyncio.wait_for(proc.wait(), timeout=5)
         except (TimeoutError, ProcessLookupError):
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 proc.kill()
-            except ProcessLookupError:
-                pass
 
     # ------------------------------------------------------------------ #
     # transport
@@ -237,9 +237,7 @@ class DirectAgent:
             self._pending.pop(rid, None)
             tail = self.stderr_tail
             suffix = f" | stderr: {tail}" if tail else ""
-            raise DirectAgentError(
-                f"{method} timed out after {timeout:.0f}s{suffix}"
-            ) from None
+            raise DirectAgentError(f"{method} timed out after {timeout:.0f}s{suffix}") from None
         if "error" in msg:
             err = msg["error"]
             raise DirectAgentError(f"{method} failed: {err}")

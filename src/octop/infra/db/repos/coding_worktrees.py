@@ -77,7 +77,17 @@ class WorktreeRepo:
                 "worktree_id, repository_id, session_id, project_id, branch, path, "
                 "status, meta_json, created_at, updated_at"
                 ") VALUES (?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)",
-                (worktree_id, repository_id, session_id, project_id, branch, path, status, now, now),
+                (
+                    worktree_id,
+                    repository_id,
+                    session_id,
+                    project_id,
+                    branch,
+                    path,
+                    status,
+                    now,
+                    now,
+                ),
             )
         row = self.get(worktree_id)
         assert row is not None

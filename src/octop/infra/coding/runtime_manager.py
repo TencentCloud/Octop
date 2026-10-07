@@ -16,11 +16,11 @@ import json
 import logging
 import os
 import re
+import shlex
 import socket
 import tarfile
 import time
 import uuid
-from typing import Any
 
 import docker
 from docker.models.containers import Container
@@ -35,6 +35,20 @@ DEFAULT_MEMORY = "1g"
 DEFAULT_PIDS_LIMIT = 200
 CONTAINER_PREFIX = "octop-code-"
 SANDBOX_WORKDIR = "/workspace"
+
+# Sandbox image per runner. DEFAULT_IMAGE only ships codebuddy, so every other
+# runner needs its own image to run isolated. Point at one with
+# ``OCTOP_CODE_SANDBOX_IMAGE_<RUNNER>=<image:tag>`` (runner name upper-cased,
+# dashes turned into underscores), e.g.::
+#
+#   OCTOP_CODE_SANDBOX_IMAGE_CLAUDE_CODE=octop-claude-code-sandbox:latest
+#
+# Runners without an image fall back to DEFAULT_IMAGE and run only if the CLI
+# happens to be present there — see ``_probe_missing_command``.
+_RUNNER_SANDBOX_IMAGE: dict[str, str] = {
+    "codebuddy": "octop-codebuddy-sandbox:2.162",
+}
+_SANDBOX_IMAGE_ENV_PREFIX = "OCTOP_CODE_SANDBOX_IMAGE_"
 
 # Per-session Codex config (DeepSeek provider). Mirrors codex-config.toml baked
 # into the image; the model line is rewritten when a session picks a model.
@@ -53,6 +67,21 @@ env_key = "DEEPSEEK_API_KEY"
 """
 
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/\-]{0,63}$")
+
+
+def _sandbox_image(runner: str | None, image: str | None = None) -> str:
+    """Resolve the sandbox image for *runner* (explicit > env > table)."""
+    if image:
+        return image
+    name = (runner or "").strip()
+    if name:
+        env_key = _SANDBOX_IMAGE_ENV_PREFIX + name.upper().replace("-", "_")
+        from_env = (os.environ.get(env_key) or "").strip()
+        if from_env:
+            return from_env
+        if name in _RUNNER_SANDBOX_IMAGE:
+            return _RUNNER_SANDBOX_IMAGE[name]
+    return DEFAULT_IMAGE
 
 
 def _self_container_id() -> str:
@@ -102,7 +131,7 @@ class RuntimeManager:
         self,
         *,
         session_id: str,
-        image: str = DEFAULT_IMAGE,
+        image: str | None = None,
         cpus: float = DEFAULT_CPUS,
         memory: str = DEFAULT_MEMORY,
         pids_limit: int = DEFAULT_PIDS_LIMIT,
@@ -110,21 +139,23 @@ class RuntimeManager:
         worktree_path: str | None = None,
         runner: str | None = None,
         model: str | None = None,
+        command: str | None = None,
     ) -> RuntimeRow:
         """Create a sandbox container for the session and record it.
 
         Returns the persisted runtime row. If a container already exists for
-        the session it is reused.
+        the session it is reused. *command* (the runner's binary) is probed
+        inside the image so a missing CLI is reported instead of timing out.
         """
         existing = self._repo.by_session(session_id)
-        if existing is not None:
-            # A live/recently created row is reusable; a row left over from a
-            # failed prestart (error/destroyed) must be recreated instead.
-            if existing.status not in ("error", "destroyed", "stopped"):
-                return existing
+        # A live/recently created row is reusable; a row left over from a
+        # failed prestart (error/destroyed) must be recreated instead.
+        if existing is not None and existing.status not in ("error", "destroyed", "stopped"):
+            return existing
 
         runtime_id = f"rt_{uuid.uuid4().hex[:12]}"
-        row = self._repo.create(
+        image = _sandbox_image(runner, image)
+        self._repo.create(
             runtime_id=runtime_id,
             session_id=session_id,
             image=image,
@@ -179,7 +210,11 @@ class RuntimeManager:
         if worktree_path and worktree_path != SANDBOX_WORKDIR:
             try:
                 container.exec_run(
-                    ["sh", "-c", f"rm -rf {SANDBOX_WORKDIR} && ln -sfn {worktree_path} {SANDBOX_WORKDIR}"],
+                    [
+                        "sh",
+                        "-c",
+                        f"rm -rf {SANDBOX_WORKDIR} && ln -sfn {worktree_path} {SANDBOX_WORKDIR}",
+                    ],
                     user="root",
                 )
                 # The worktree is created by octop (root); the sandbox runs as
@@ -191,6 +226,19 @@ class RuntimeManager:
             except Exception:  # noqa: BLE001 - non-fatal
                 logger.exception("failed to prepare /workspace for %s", session_id)
 
+        # A runner whose CLI is missing from the image later dies with an
+        # opaque ACP handshake timeout; name the cause here instead.
+        if command and self._probe_missing_command(container, command):
+            logger.warning(
+                "sandbox image %r does not provide %r required by runner %r; "
+                "set %s%s to an image that ships it, or run unsandboxed",
+                image,
+                command,
+                runner,
+                _SANDBOX_IMAGE_ENV_PREFIX,
+                (runner or "").upper().replace("-", "_"),
+            )
+
         # Per-session model selection (S7): rewrite the runner's model config
         # inside the sandbox. Secrets are never part of these files.
         if runner and model:
@@ -201,6 +249,23 @@ class RuntimeManager:
 
         self._repo.set_container(runtime_id, container.id)
         return self._repo.get(runtime_id)  # type: ignore[return-value]
+
+    @staticmethod
+    def _probe_missing_command(container: Container, command: str) -> bool:
+        """True when *command* is not on PATH inside the sandbox.
+
+        Best effort by design: an image without a shell, or any exec failure,
+        reports "not missing" so this probe can never block a working setup.
+        """
+        if not command:
+            return False
+        try:
+            _code, out = container.exec_run(
+                ["sh", "-c", f"command -v {shlex.quote(command)} >/dev/null 2>&1 || echo missing"]
+            )
+        except Exception:  # noqa: BLE001 - diagnostic only
+            return False
+        return b"missing" in (out or b"")
 
     @staticmethod
     def _put_home_file(container: Container, path: str, content: str) -> None:
@@ -218,9 +283,7 @@ class RuntimeManager:
         # others); chown by name so the runner can read/rewrite the file.
         container.exec_run(["chown", "agent:agent", path], user="root")
 
-    def _apply_model_config(
-        self, container: Container, *, runner: str, model: str
-    ) -> None:
+    def _apply_model_config(self, container: Container, *, runner: str, model: str) -> None:
         if not _MODEL_ID_RE.match(model):
             raise ValueError(f"invalid model id: {model!r}")
         if runner == "codex":

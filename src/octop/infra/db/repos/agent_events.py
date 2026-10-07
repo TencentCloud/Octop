@@ -12,12 +12,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from octop.infra.db.pool import DatabasePool
-from octop.infra.db.repos._base import bool_int
-from octop.infra.db.repos._base import DbRow
+from octop.infra.db.repos._base import DbRow, bool_int
 
-_EVENT_COLS = (
-    "id, event_id, session_id, turn_id, seq, ts, kind, is_error, payload_json"
-)
+_EVENT_COLS = "id, event_id, session_id, turn_id, seq, ts, kind, is_error, payload_json"
 
 # Event kinds that carry conversational text usable for context replay.
 REPLAY_KINDS = ("user_prompt", "agent_message")

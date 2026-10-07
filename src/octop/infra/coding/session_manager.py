@@ -13,13 +13,13 @@ from typing import Any
 
 from octop.infra.db.repos.agent_events import AgentEventRepo
 from octop.infra.db.repos.coding_sessions import (
-    CodingSessionRepo,
-    CodingSessionRow,
     STATUS_AWAITING,
     STATUS_IDLE,
     STATUS_INTERRUPTED,
     STATUS_READY,
     STATUS_RUNNING,
+    CodingSessionRepo,
+    CodingSessionRow,
 )
 
 DEFAULT_REPLAY_MESSAGES = 20
@@ -94,9 +94,7 @@ class SessionManager:
         row = self.get(session_id)
         return bool(row and row.turns > 0)
 
-    def list_events(
-        self, session_id: str, *, after_seq: int = 0, limit: int = 500
-    ) -> list[Any]:
+    def list_events(self, session_id: str, *, after_seq: int = 0, limit: int = 500) -> list[Any]:
         return self._events.list_for_session(session_id, after_seq=after_seq, limit=limit)
 
     def recover_on_startup(self) -> int:

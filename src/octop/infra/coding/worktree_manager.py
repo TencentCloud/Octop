@@ -14,9 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
-import time
 import uuid
-from typing import Any
 
 from octop.infra.db.repos.coding_worktrees import WorktreeRepo, WorktreeRow
 
@@ -35,7 +33,7 @@ class WorktreeManager:
     def __init__(self, worktree_repo: WorktreeRepo) -> None:
         self._repo = worktree_repo
 
-    def _run(self, *args: str, cwd: str | None = None) -> subprocess.CompletedProcess:
+    def _run(self, *args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
         # Worktrees are chown'd to the sandbox 'agent' user, so git sees a
         # different owner than the octop process (root). Bypass the ownership
         # safety check for these directories.

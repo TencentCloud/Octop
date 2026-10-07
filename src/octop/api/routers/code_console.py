@@ -21,6 +21,7 @@ import os
 import re
 import time
 import uuid
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
@@ -59,6 +60,7 @@ def _use_sandbox() -> bool:
     raw = (os.environ.get("OCTOP_CODE_SANDBOX") or "0").strip().lower()
     return raw in ("1", "true", "yes", "on")
 
+
 _SERVICE_KEY = "code-console"
 _DEFAULT_CWD = "/data/.octop/code-workspace"
 _FLUSH_TIMEOUT = 2.0
@@ -66,26 +68,64 @@ _FLUSH_TIMEOUT = 2.0
 # Uploads accepted by POST /code/sessions/{id}/files.
 _UPLOAD_MAX_BYTES = 2 * 1024 * 1024
 _UPLOAD_EXTENSIONS = {
-    ".txt", ".md", ".markdown", ".rst", ".log", ".csv", ".json", ".yaml",
-    ".yml", ".toml", ".ini", ".conf", ".py", ".js", ".ts", ".tsx", ".sh",
-    ".sql", ".html", ".css", ".xml", ".diff", ".patch",
+    ".txt",
+    ".md",
+    ".markdown",
+    ".rst",
+    ".log",
+    ".csv",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".conf",
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".sh",
+    ".sql",
+    ".html",
+    ".css",
+    ".xml",
+    ".diff",
+    ".patch",
 }
 _SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/\-]{0,63}$")
 
 # Built-in per-runner model catalog; can be overridden per user via the
 # ``code_models:user:<id>`` settings key (JSON map runner -> [{id,label}]).
+# Runners missing here start empty and are filled from the runner's own env
+# (see ``_model_env_var``) and/or the per-user override, so a brand-new runner
+# needs no code change to be selectable.
 _DEFAULT_MODEL_CATALOG: dict[str, list[dict[str, str]]] = {
     "codex": [
         {"id": "deepseek-chat", "label": "DeepSeek Chat"},
         {"id": "deepseek-reasoner", "label": "DeepSeek Reasoner"},
     ],
 }
-# Env vars on the runner config that carry its default model (display only).
-_RUNNER_MODEL_ENV = {
+
+# Env vars on the runner config that carry its default model. The same key is
+# used to *inject* the model the user picked in the UI, so display and runtime
+# can never drift apart.
+_RUNNER_MODEL_ENV: dict[str, str] = {
     "codebuddy": "CODEBUDDY_MODEL",
     "opencode": "OPENCODE_MODEL",
+    # Upstream wires claude_code to Zed's ACP adapter, which spawns the Claude
+    # Code CLI and inherits the environment; ANTHROPIC_MODEL is that CLI's own
+    # documented model override.
+    "claude_code": "ANTHROPIC_MODEL",
 }
+
+# kimi_code / cursor_cli / pi and any custom runner have no publicly documented
+# model env var, so nothing is hardcoded for them here — inventing one would
+# silently write into a variable nobody reads. Instead the operator maps runner
+# -> env var through the ``code_model_env:user:<id>`` settings key (JSON map),
+# and the runner becomes fully switchable with no code change. Example:
+#   {"kimi_code": "KIMI_MODEL", "cursor_cli": "CURSOR_MODEL"}
+_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 
 # codex-rs core prepends this notice to agent text when the model slug is not
 # in its built-in metadata table (every third-party model). It is pure noise
@@ -103,9 +143,39 @@ def _strip_runner_notices(text: Any) -> Any:
     return text
 
 
+def _model_env_var(server: Any, user_id: int, runner: str) -> str:
+    """Return the env var carrying *runner*'s model (built-ins ∪ user override).
+
+    Returns ``""`` when the runner has no mapped model env var. Picking a model
+    for such a runner is then a no-op, and ``/code/models`` reports that back so
+    the UI can say "not switchable" instead of silently ignoring the choice.
+    """
+    var = _RUNNER_MODEL_ENV.get(runner, "")
+    try:
+        raw = server.services.settings_repo.get(f"code_model_env:user:{user_id}")
+        override = json.loads(raw) if raw else {}
+    except json.JSONDecodeError:
+        logger.warning("ignoring malformed code_model_env for user %s", user_id)
+        override = {}
+    except Exception:  # noqa: BLE001 - settings must never break session starts
+        logger.debug("code_model_env lookup failed for user %s", user_id, exc_info=True)
+        override = {}
+    if isinstance(override, dict):
+        candidate = str(override.get(runner, "") or "").strip()
+        if candidate and _ENV_NAME_RE.match(candidate):
+            var = candidate
+    return var
+
+
+def _model_env(server: Any, user_id: int, runner: str, model: str) -> dict[str, str]:
+    """Env overrides that pin *runner* to *model* (empty when unsupported)."""
+    var = _model_env_var(server, user_id, runner)
+    return {var: model} if var and model else {}
+
+
 # Process-local ACP runtime cache: session_id -> rec. Source of truth is the DB.
 _sessions: dict[str, dict[str, Any]] = {}
-_streams: dict[str, asyncio.Queue] = {}
+_streams: dict[str, asyncio.Queue[dict[str, Any]]] = {}
 _state_lock = asyncio.Lock()
 
 # Process-local persistence components (initialised on first request).
@@ -139,7 +209,7 @@ def _registry(server: Any) -> Any:
     return server.app_runtime.agent_registry
 
 
-def _acp_config(server: Any, user_id: int):
+def _acp_config(server: Any, user_id: int) -> Any:
     from harness_agent.acp.models import ACPConfig
 
     registry = _registry(server)
@@ -147,7 +217,7 @@ def _acp_config(server: Any, user_id: int):
     return ACPConfig.from_dict({"runners": runners})
 
 
-def _service(server: Any, user_id: int):
+def _service(server: Any, user_id: int) -> Any:
     from harness_agent.acp.service import get_acp_service, init_acp_service
 
     service = get_acp_service(_SERVICE_KEY)
@@ -156,7 +226,7 @@ def _service(server: Any, user_id: int):
     return service
 
 
-_IDLE_TIMEOUT_S = 30 * 60       # 30 minutes idle -> reclaim sandbox
+_IDLE_TIMEOUT_S = 30 * 60  # 30 minutes idle -> reclaim sandbox
 _MAX_CONCURRENT_SANDBOXES = 10
 _REAPER_INTERVAL_S = 60
 
@@ -176,8 +246,13 @@ async def _reap_idle_sandboxes() -> None:
                         _runtime_mgr.destroy(rt.session_id)
                         continue
                     idle = now - (srow.updated_at or srow.created_at or now)
-                    if idle > _IDLE_TIMEOUT_S and srow.status not in ("running", "awaiting_permission"):
-                        logger.info("reaping idle sandbox for session %s (idle %.0fs)", rt.session_id, idle)
+                    if idle > _IDLE_TIMEOUT_S and srow.status not in (
+                        "running",
+                        "awaiting_permission",
+                    ):
+                        logger.info(
+                            "reaping idle sandbox for session %s (idle %.0fs)", rt.session_id, idle
+                        )
                         _runtime_mgr.destroy(rt.session_id)
                 # 2) enforce concurrency cap: destroy oldest idle beyond limit
                 still_active = _runtime_mgr._repo.list_active()  # noqa: SLF001
@@ -191,9 +266,14 @@ async def _reap_idle_sandboxes() -> None:
         await asyncio.sleep(_REAPER_INTERVAL_S)
 
 
-async def _components(server: Any):
+async def _components(server: Any) -> Any:
     global _sm, _sink, _runtime_mgr, _worktree_mgr, _recovered, _reaper_started
-    if _sm is not None and _sink is not None and _runtime_mgr is not None and _worktree_mgr is not None:
+    if (
+        _sm is not None
+        and _sink is not None
+        and _runtime_mgr is not None
+        and _worktree_mgr is not None
+    ):
         return _sm, _sink, _runtime_mgr, _worktree_mgr
     async with _components_lock:
         if _sm is None or _sink is None or _runtime_mgr is None or _worktree_mgr is None:
@@ -268,7 +348,7 @@ async def _flush_sink(sink: EventSink) -> None:
         logger.warning("event sink flush exceeded %.1fs", _FLUSH_TIMEOUT)
 
 
-async def _load_owned(server: Any, session_id: str, user: Any):
+async def _load_owned(server: Any, session_id: str, user: Any) -> Any:
     sm, _sink, _rt_mgr, _wt_mgr = await _components(server)
     row = sm.get(session_id)
     if row is None:
@@ -318,6 +398,9 @@ async def list_runners(
                 "trusted": bool(runner.trusted),
                 "tool_parse_mode": runner.tool_parse_mode,
                 "env_keys": sorted(runner.env.keys()),
+                # null => picking a model cannot take effect for this runner
+                # until a code_model_env mapping is provided.
+                "model_env": _model_env_var(server, user.id, name) or None,
             }
         )
     return {"runners": items, "default_cwd": _DEFAULT_CWD}
@@ -330,8 +413,11 @@ async def list_models(
 ) -> dict[str, Any]:
     """Return the per-runner model catalog.
 
-    Combines the built-in defaults with any runner default exposed through its
-    environment and an optional per-user override (``code_models:user:<id>``).
+    Combines the built-in defaults with the runner's own default model (read
+    from the env var mapped in ``_model_env_var``) and an optional per-user
+    override (``code_models:user:<id>``). ``model_env`` echoes back which env
+    var each runner will actually receive, so the UI can flag runners whose
+    model cannot be switched yet.
     """
     cfg = _acp_config(server, user.id)
     settings_repo = server.services.settings_repo
@@ -342,10 +428,13 @@ async def list_models(
         override = {}
 
     catalog: dict[str, list[dict[str, str]]] = {}
+    model_envs: dict[str, str | None] = {}
     for name in cfg.enabled_runner_names():
         runner = cfg.runners[name]
+        env_var = _model_env_var(server, user.id, name)
+        model_envs[name] = env_var or None
         items = [dict(m) for m in _DEFAULT_MODEL_CATALOG.get(name, [])]
-        env_model = (runner.env or {}).get(_RUNNER_MODEL_ENV.get(name, ""))
+        env_model = (runner.env or {}).get(env_var) if env_var else ""
         if env_model and not any(m["id"] == env_model for m in items):
             items.append({"id": env_model, "label": env_model})
         for m in override.get(name, []) or []:
@@ -354,7 +443,7 @@ async def list_models(
             if mid and not any(x["id"] == mid for x in items):
                 items.append({"id": mid, "label": label})
         catalog[name] = items
-    return {"models": catalog}
+    return {"models": catalog, "model_env": model_envs}
 
 
 @router.get("/code/sessions", summary="List code console sessions")
@@ -403,11 +492,11 @@ async def create_session(
             worktree_path = wt.path
         except ValueError as exc:
             sm.close(row.session_id)
-            raise HTTPException(status_code=400, detail=str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:  # noqa: BLE001
             logger.exception("worktree creation failed")
             sm.close(row.session_id)
-            raise HTTPException(status_code=500, detail=f"worktree creation failed: {exc}")
+            raise HTTPException(status_code=500, detail=f"worktree creation failed: {exc}") from exc
 
     # Persist the per-session model choice (applied when the sandbox starts).
     if model:
@@ -461,7 +550,9 @@ async def close_session(
         rec = _sessions.get(session_id)
         try:
             service = _service(server, row.user_id)
-            await service.close_thread_session(thread_id=session_id, runner=f"{row.runner}__sandbox__{session_id}")
+            await service.close_thread_session(
+                thread_id=session_id, runner=f"{row.runner}__sandbox__{session_id}"
+            )
             # Clean up the per-session sandbox runner config.
             service.config.runners.pop(f"{row.runner}__sandbox__{session_id}", None)
         except (Exception, asyncio.CancelledError):  # noqa: BLE001 - best effort teardown
@@ -499,9 +590,9 @@ async def close_session(
         return {"closed": True}
     except HTTPException:
         raise
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         logger.exception("close_session unhandled error for %s", session_id)
-        raise HTTPException(status_code=500, detail="failed to close session")
+        raise HTTPException(status_code=500, detail="failed to close session") from exc
 
 
 # --------------------------------------------------------------------------- #
@@ -571,7 +662,11 @@ def _permission_view(suspended: Any) -> dict[str, Any]:
             oid = str(opt.get("id") or opt.get("optionId") or "")
             if oid and all(o["id"] != oid for o in view["options"]):
                 view["options"].append(
-                    {"id": oid, "name": str(opt.get("name") or oid), "kind": str(opt.get("kind") or "")}
+                    {
+                        "id": oid,
+                        "name": str(opt.get("name") or oid),
+                        "kind": str(opt.get("kind") or ""),
+                    }
                 )
     view["raw"] = _safe_payload(data if isinstance(data, dict) else {})
     return view
@@ -610,20 +705,18 @@ def _render_attachments(
         if budget < 0:
             break
         sections.append(
-            f"--- 附件: {rel}"
-            + ("（过长，已截断）" if truncated else "")
-            + f" ---\n{content}"
+            f"--- 附件: {rel}" + ("（过长，已截断）" if truncated else "") + f" ---\n{content}"
         )
     if not sections:
         return ""
-    return (
-        "以下是本轮附带的项目文件（相对工作区路径，请用文件工具读取完整内容）：\n"
-        + "\n\n".join(sections)
+    return "以下是本轮附带的项目文件（相对工作区路径，请用文件工具读取完整内容）：\n" + "\n\n".join(
+        sections
     )
 
 
 def _ensure_sandbox_runner(
     *,
+    server: Any,
     service: Any,
     rt_mgr: RuntimeManager,
     wt_mgr: WorktreeManager,
@@ -649,11 +742,13 @@ def _ensure_sandbox_runner(
     worktree_path = wt.path if wt is not None else row.cwd
 
     model = str((row.meta or {}).get("model") or "").strip()
-    rt_row = rt_mgr.create(
+    rt_mgr.create(
         session_id=session_id,
         worktree_path=worktree_path,
         runner=row.runner,
         model=model or None,
+        # Used for image selection and a presence probe inside the sandbox.
+        command=base.command,
     )
     container_name = rt_mgr._container_name(session_id)  # noqa: SLF001
 
@@ -661,9 +756,7 @@ def _ensure_sandbox_runner(
         exec_args = ["exec", "-i"]
         env = dict(base.env)
         # Env-driven runners honour the per-session model as an override.
-        model_env = _RUNNER_MODEL_ENV.get(row.runner)
-        if model_env and model:
-            env[model_env] = model
+        env.update(_model_env(server, row.user_id, row.runner, model))
         for k, v in env.items():
             exec_args += ["-e", f"{k}={v}"]
         exec_args += [container_name, base.command, *base.args]
@@ -725,7 +818,8 @@ async def _apply_policy(
 
     if action == "ask":
         sink.submit(
-            session_id, "policy_ask",
+            session_id,
+            "policy_ask",
             {"approval_id": approval.id, "reason": decision["reason"]},
             turn_id=turn_id,
         )
@@ -734,8 +828,11 @@ async def _apply_policy(
     # auto allow / deny: pick the matching option and resume.
     options = getattr(suspended, "options", None) or []
     target = None
-    keywords = ("allow", "approve", "yes", "accept") if action == "allow" \
+    keywords = (
+        ("allow", "approve", "yes", "accept")
+        if action == "allow"
         else ("deny", "reject", "no", "cancel")
+    )
     for opt in options:
         if isinstance(opt, dict):
             name = str(opt.get("name") or opt.get("label") or opt.get("id") or "").lower()
@@ -746,12 +843,17 @@ async def _apply_policy(
         target = str(options[0].get("id") or options[0].get("optionId") or "")
 
     if not target:
-        sink.submit(session_id, "policy_error",
-                    {"text": f"no option to auto-{action} permission"}, turn_id=turn_id)
+        sink.submit(
+            session_id,
+            "policy_error",
+            {"text": f"no option to auto-{action} permission"},
+            turn_id=turn_id,
+        )
         return result
 
     sink.submit(
-        session_id, f"policy_{action}",
+        session_id,
+        f"policy_{action}",
         {"approval_id": approval.id, "option_id": target, "reason": decision["reason"]},
         turn_id=turn_id,
     )
@@ -783,7 +885,7 @@ async def _run_turn(
     rec: dict[str, Any],
     session_id: str,
     body: PromptBody,
-    queue: asyncio.Queue,
+    queue: asyncio.Queue[dict[str, Any]],
 ) -> None:
     service = _service(server, row.user_id)
     if _driver_mode() == "direct" and not _use_sandbox():
@@ -791,7 +893,12 @@ async def _run_turn(
         session_runner = row.runner
     else:
         session_runner = _ensure_sandbox_runner(
-            service=service, rt_mgr=rt_mgr, wt_mgr=wt_mgr, row=row, session_id=session_id,
+            server=server,
+            service=service,
+            rt_mgr=rt_mgr,
+            wt_mgr=wt_mgr,
+            row=row,
+            session_id=session_id,
         )
     _register_runner_secrets(sink, service, session_runner)
     policy = PolicyEngine(server.services.settings_repo, row.user_id)
@@ -799,10 +906,21 @@ async def _run_turn(
 
     if _driver_mode() == "direct":
         await _run_turn_direct(
-            sm=sm, sink=sink, rt_mgr=rt_mgr, wt_mgr=wt_mgr,
-            approval_repo=approval_repo, row=row, rec=rec, session_id=session_id,
-            body=body, queue=queue, service=service, session_runner=session_runner,
-            policy=policy, turn_id=turn_id,
+            sm=sm,
+            sink=sink,
+            rt_mgr=rt_mgr,
+            wt_mgr=wt_mgr,
+            approval_repo=approval_repo,
+            row=row,
+            rec=rec,
+            session_id=session_id,
+            body=body,
+            queue=queue,
+            service=service,
+            session_runner=session_runner,
+            policy=policy,
+            turn_id=turn_id,
+            server=server,
         )
         return
 
@@ -820,15 +938,20 @@ async def _run_turn(
             bound = await service.get_session(session_id, session_runner)
             if bound is None:
                 sink.submit(
-                    session_id, "turn_error", {"text": "no active ACP session"},
-                    turn_id=turn_id, is_error=True,
+                    session_id,
+                    "turn_error",
+                    {"text": "no active ACP session"},
+                    turn_id=turn_id,
+                    is_error=True,
                 )
                 await queue.put({"type": "error", "text": "no active ACP session"})
                 await queue.put({"__final__": True, "status": "error"})
                 return
             sink.submit(
-                session_id, "permission_resolved",
-                {"option_id": body.option_id.strip()}, turn_id=turn_id,
+                session_id,
+                "permission_resolved",
+                {"option_id": body.option_id.strip()},
+                turn_id=turn_id,
             )
             result = await service.resume_permission(
                 acp_session_id=bound.acp_session_id,
@@ -840,8 +963,9 @@ async def _run_turn(
 
         # ---- normal prompt branch ----
         prompt_text = body.text or ""
-        sink.submit(session_id, "user_prompt", {"type": "user_prompt", "text": prompt_text},
-                    turn_id=turn_id)
+        sink.submit(
+            session_id, "user_prompt", {"type": "user_prompt", "text": prompt_text}, turn_id=turn_id
+        )
         sm.bump_turns(session_id)
         sm.mark_running(session_id)
 
@@ -912,8 +1036,7 @@ async def _run_turn(
     except Exception as exc:  # noqa: BLE001 - surface to the UI stream
         logger.exception("ACP turn failed for session %s", session_id)
         sm.mark_idle(session_id)
-        sink.submit(session_id, "turn_error", {"text": str(exc)},
-                    turn_id=turn_id, is_error=True)
+        sink.submit(session_id, "turn_error", {"text": str(exc)}, turn_id=turn_id, is_error=True)
         await _flush_sink(sink)
         await queue.put({"__final__": True, "status": "error", "text": str(exc)})
 
@@ -929,11 +1052,12 @@ async def _run_turn_direct(
     rec: dict[str, Any],
     session_id: str,
     body: Any,
-    queue: asyncio.Queue,
+    queue: asyncio.Queue[dict[str, Any]],
     service: Any,
     session_runner: str,
     policy: Any,
     turn_id: str,
+    server: Any,
 ) -> None:
     """Drive the coding CLI directly (no ACP) so thoughts reach the UI."""
     from octop.infra.coding.direct_agent import DirectAgent, permission_view
@@ -943,6 +1067,21 @@ async def _run_turn_direct(
         raise RuntimeError(f"runner {session_runner!r} is not configured")
     command = [cfg.command, *list(cfg.args or [])]
     env = dict(getattr(cfg, "env", None) or {})
+    # The model the user picked in the UI: without this the selection only
+    # affected sandboxed sessions, since the in-place run inherits the runner's
+    # stock environment.
+    model = str((row.meta or {}).get("model") or "").strip()
+    if model:
+        env.update(_model_env(server, row.user_id, row.runner, model))
+        if not _model_env_var(server, row.user_id, row.runner):
+            logger.warning(
+                "session %s: runner %r has no model env mapping; "
+                "model %r ignored (set code_model_env, or run sandboxed for "
+                "config-file runners such as codex)",
+                session_id,
+                row.runner,
+                model,
+            )
 
     agent = _DIRECT_AGENTS.get(session_id)
     if agent is None:
@@ -952,8 +1091,9 @@ async def _run_turn_direct(
         except Exception as exc:  # noqa: BLE001
             logger.exception("direct agent start failed for %s", session_id)
             sm.mark_idle(session_id)
-            sink.submit(session_id, "turn_error", {"text": str(exc)},
-                        turn_id=turn_id, is_error=True)
+            sink.submit(
+                session_id, "turn_error", {"text": str(exc)}, turn_id=turn_id, is_error=True
+            )
             await _flush_sink(sink)
             await queue.put({"__final__": True, "status": "error", "text": str(exc)})
             return
@@ -994,8 +1134,11 @@ async def _run_turn_direct(
             },
         )
         if action in ("allow", "deny"):
-            keywords = ("allow", "approve", "yes", "accept") if action == "allow" \
+            keywords = (
+                ("allow", "approve", "yes", "accept")
+                if action == "allow"
                 else ("deny", "reject", "no", "cancel")
+            )
             target = ""
             for opt in options:
                 name = str(opt.get("name") or "").lower()
@@ -1004,9 +1147,12 @@ async def _run_turn_direct(
                     break
             if not target and options:
                 target = str(options[0].get("id") or "")
-            sink.submit(session_id, f"policy_{action}",
-                        {"approval_id": approval.id, "option_id": target,
-                         "reason": decision["reason"]}, turn_id=turn_id)
+            sink.submit(
+                session_id,
+                f"policy_{action}",
+                {"approval_id": approval.id, "option_id": target, "reason": decision["reason"]},
+                turn_id=turn_id,
+            )
             if target:
                 approval_repo.resolve(approval.id, target, row.user_id)
                 return target
@@ -1014,13 +1160,15 @@ async def _run_turn_direct(
 
         sink.submit(session_id, "permission_request", view, turn_id=turn_id)
         await _flush_sink(sink)
-        fut: asyncio.Future = asyncio.get_running_loop().create_future()
+        fut: asyncio.Future[str] = asyncio.get_running_loop().create_future()
         rec["pending_perm"] = fut
-        await queue.put({
-            "__final__": True,
-            "status": "permission_required",
-            "permission": view,
-        })
+        await queue.put(
+            {
+                "__final__": True,
+                "status": "permission_required",
+                "permission": view,
+            }
+        )
         chosen = await fut
         approval_repo.resolve(approval.id, str(chosen), row.user_id)
         return str(chosen)
@@ -1037,8 +1185,9 @@ async def _run_turn_direct(
     if attachment_block:
         text = f"{text}\n\n{attachment_block}".strip()
 
-    sink.submit(session_id, "user_prompt",
-                {"type": "user_prompt", "text": body.text or ""}, turn_id=turn_id)
+    sink.submit(
+        session_id, "user_prompt", {"type": "user_prompt", "text": body.text or ""}, turn_id=turn_id
+    )
     sm.bump_turns(session_id)
     sm.mark_running(session_id)
 
@@ -1047,16 +1196,16 @@ async def _run_turn_direct(
     except Exception as exc:  # noqa: BLE001
         logger.exception("direct turn failed for %s", session_id)
         sm.mark_idle(session_id)
-        sink.submit(session_id, "turn_error", {"text": str(exc)},
-                    turn_id=turn_id, is_error=True)
+        sink.submit(session_id, "turn_error", {"text": str(exc)}, turn_id=turn_id, is_error=True)
         await _flush_sink(sink)
         await queue.put({"__final__": True, "status": "error", "text": str(exc)})
         return
 
     final_text = (buffer["text"] or "").strip()
     if final_text:
-        sink.submit(session_id, "agent_message",
-                    {"type": "text", "text": final_text}, turn_id=turn_id)
+        sink.submit(
+            session_id, "agent_message", {"type": "text", "text": final_text}, turn_id=turn_id
+        )
     stop = str(result.get("stopReason") or result.get("stop_reason") or "")
     status = "cancelled" if stop == "cancelled" else "completed"
     sm.mark_idle(session_id)
@@ -1068,7 +1217,7 @@ async def _run_turn_direct(
     await queue.put(payload)
 
 
-async def _attach_generator(queue: asyncio.Queue, session_id: str) -> Any:
+async def _attach_generator(queue: asyncio.Queue[dict[str, Any]], session_id: str) -> Any:
     """Stream the remainder of a suspended (permission) turn."""
     try:
         while True:
@@ -1083,7 +1232,7 @@ async def _attach_generator(queue: asyncio.Queue, session_id: str) -> Any:
 async def _finalize(
     sm: SessionManager,
     sink: EventSink,
-    queue: asyncio.Queue,
+    queue: asyncio.Queue[dict[str, Any]],
     session_id: str,
     turn_id: str,
     result: dict[str, Any],
@@ -1127,7 +1276,7 @@ async def stream_turn(
     body: PromptBody = Body(...),
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
-):
+) -> StreamingResponse:
     sm, row = await _load_owned(server, session_id, user)
     if row.status == "closed":
         raise HTTPException(status_code=409, detail="session is closed")
@@ -1153,17 +1302,25 @@ async def stream_turn(
             )
 
     approval_repo = server.services.approval_repo
-    queue: asyncio.Queue = asyncio.Queue()
+    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
     _streams[session_id] = queue
     task = asyncio.create_task(
         _run_turn(
-            server=server, sm=sm, sink=sink, rt_mgr=rt_mgr, wt_mgr=wt_mgr,
+            server=server,
+            sm=sm,
+            sink=sink,
+            rt_mgr=rt_mgr,
+            wt_mgr=wt_mgr,
             approval_repo=approval_repo,
-            row=row, rec=rec, session_id=session_id, body=body, queue=queue,
+            row=row,
+            rec=rec,
+            session_id=session_id,
+            body=body,
+            queue=queue,
         )
     )
 
-    async def generator():
+    async def generator() -> AsyncGenerator[str, None]:
         try:
             while True:
                 item = await queue.get()
@@ -1243,8 +1400,19 @@ async def list_session_files(
     base_dir = wt.path if wt is not None else row.cwd
 
     skip_dirs = {
-        ".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build",
-        ".next", ".cache", ".mypy_cache", ".pytest_cache", ".ruff_cache", "uploads",
+        ".git",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "dist",
+        "build",
+        ".next",
+        ".cache",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "uploads",
     }
     needle = (query or "").strip().lower()
     found: list[dict[str, str]] = []
@@ -1296,11 +1464,15 @@ async def upload_session_files(
             raise HTTPException(status_code=400, detail=f"file type not allowed: {ext}")
         data = await up.read(_UPLOAD_MAX_BYTES + 1)
         if len(data) > _UPLOAD_MAX_BYTES:
-            raise HTTPException(status_code=413, detail=f"file too large (max {_UPLOAD_MAX_BYTES} bytes)")
+            raise HTTPException(
+                status_code=413, detail=f"file too large (max {_UPLOAD_MAX_BYTES} bytes)"
+            )
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
-            raise HTTPException(status_code=400, detail=f"binary file not supported: {name}") from None
+            raise HTTPException(
+                status_code=400, detail=f"binary file not supported: {name}"
+            ) from None
         with open(os.path.join(upload_dir, name), "w", encoding="utf-8") as fh:
             fh.write(text)
         saved.append({"name": name, "path": f"uploads/{name}", "size": len(data)})
@@ -1331,16 +1503,18 @@ async def list_approvals(
     for a in rows:
         row = sm.get(a.session_id)
         if row is not None and sm.can_access(row, user_id=user.id, is_admin=_is_admin(user)):
-            visible.append({
-                "id": a.id,
-                "request_id": a.request_id,
-                "session_id": a.session_id,
-                "turn_id": a.turn_id,
-                "tool_name": a.tool_name,
-                "tool_kind": a.tool_kind,
-                "payload": a.payload,
-                "created_at": a.created_at,
-            })
+            visible.append(
+                {
+                    "id": a.id,
+                    "request_id": a.request_id,
+                    "session_id": a.session_id,
+                    "turn_id": a.turn_id,
+                    "tool_name": a.tool_name,
+                    "tool_kind": a.tool_kind,
+                    "payload": a.payload,
+                    "created_at": a.created_at,
+                }
+            )
     return {"approvals": visible}
 
 
@@ -1383,7 +1557,8 @@ async def resolve_approval(
         acp_sid = getattr(conv, "acp_session_id", None) if conv is not None else None
         if conv is not None and acp_sid:
             await service.resume_permission(
-                acp_session_id=acp_sid, option_id=option_id,
+                acp_session_id=acp_sid,
+                option_id=option_id,
                 on_message=_on_resume_message,
             )
             resumed = True

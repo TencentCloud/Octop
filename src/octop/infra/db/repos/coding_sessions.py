@@ -166,8 +166,7 @@ class CodingSessionRepo:
     def bump_turns(self, session_id: str) -> None:
         with self._db.transaction() as conn:
             conn.execute(
-                "UPDATE coding_sessions SET turns = turns + 1, updated_at = ? "
-                "WHERE session_id = ?",
+                "UPDATE coding_sessions SET turns = turns + 1, updated_at = ? WHERE session_id = ?",
                 (time.time(), session_id),
             )
 
@@ -178,8 +177,7 @@ class CodingSessionRepo:
         meta.update(patch)
         with self._db.transaction() as conn:
             conn.execute(
-                "UPDATE coding_sessions SET meta_json = ?, updated_at = ? "
-                "WHERE session_id = ?",
+                "UPDATE coding_sessions SET meta_json = ?, updated_at = ? WHERE session_id = ?",
                 (json.dumps(meta, ensure_ascii=False), time.time(), session_id),
             )
 
@@ -199,8 +197,7 @@ class CodingSessionRepo:
         """
         with self._db.transaction() as conn:
             cur = conn.execute(
-                "UPDATE coding_sessions SET status = ?, updated_at = ? "
-                "WHERE status IN (?, ?)",
+                "UPDATE coding_sessions SET status = ?, updated_at = ? WHERE status IN (?, ?)",
                 (STATUS_INTERRUPTED, time.time(), *ACTIVE_STATUSES),
             )
             return int(cur.rowcount or 0)
