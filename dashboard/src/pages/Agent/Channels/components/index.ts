@@ -27,6 +27,9 @@ export {
   hasRequiredCredentials,
   partitionChannelKeys,
   isCollapsedChannelKey,
+  registerPluginChannelKind,
+  isPluginChannelKind,
   type ChannelKey,
   type ChannelField,
+  type PluginChannelKindInfo,
 } from "./constants";
