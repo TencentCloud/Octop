@@ -333,17 +333,16 @@ async def test_upgrade_worker_records_unexpected_error(
 
 
 @pytest.mark.asyncio
-async def test_upgrade_worker_advances_percent_while_installing(
+async def test_upgrade_worker_heartbeats_elapsed_without_fake_percent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    percents: list[int] = []
+    heartbeats: list[tuple[int | None, int | None]] = []
     original_update_task = update_router.update_task
 
     async def tracking_update_task(task_id: str, **fields: Any) -> Any:
         result = await original_update_task(task_id, **fields)
-        percent = fields.get("percent")
-        if isinstance(percent, int):
-            percents.append(percent)
+        if "elapsed_s" in fields:
+            heartbeats.append((fields.get("percent"), fields.get("elapsed_s")))
         return result
 
     real_wait_for = asyncio.wait_for
@@ -368,7 +367,11 @@ async def test_upgrade_worker_advances_percent_while_installing(
     stored = await get_task(task.task_id)
     assert stored is not None
     assert stored.status == UpgradeTaskStatus.COMPLETE
-    assert 25 in percents
+    # 安装期间必须发心跳，但不得伪造百分比（issue #1755：假进度让用户读成卡死）
+    assert heartbeats
+    assert all(percent is None for percent, _ in heartbeats)
+    assert all(elapsed is not None and elapsed >= 0 for _, elapsed in heartbeats)
+    assert stored.percent == 100
 
 
 def _settings_server(stable_only: bool | None = None) -> Any:

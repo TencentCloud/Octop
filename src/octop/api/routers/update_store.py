@@ -25,6 +25,8 @@ class UpgradeTask(BaseModel):
     status: UpgradeTaskStatus = UpgradeTaskStatus.RUNNING
     stage: str | None = "starting"
     percent: int | None = 0
+    elapsed_s: int | None = None
+    """已耗时秒数，用于安装阶段判断任务是否仍在推进。"""
     new_version: str | None = None
     success: bool | None = None
     error: str | None = None

@@ -50,6 +50,8 @@ router = APIRouter(prefix="/update", tags=["update"])
 
 _STABLE_ONLY_KEY = "update.stable_only"
 _CACHE_INTERNAL = frozenset({"latest_any", "latest_stable", "description"})
+# 安装阶段的心跳间隔：安装器不汇报进度，只能靠 elapsed_s 区分「在装」和「卡死」。
+_HEARTBEAT_INTERVAL_S = 5
 
 
 class UpdateSettingsBody(BaseModel):
@@ -263,7 +265,10 @@ async def _upgrade_worker(
     version: str | None = None,
     locale: str = DEFAULT_LOCALE,
 ) -> None:
-    await update_task(task_id, stage="downloading", percent=20)
+    started = time.monotonic()
+    # 安装器不汇报真实进度，percent 全程置空、只发 elapsed_s 心跳，
+    # 避免编造的百分比让用户把长时间安装读成卡死。
+    await update_task(task_id, stage="downloading", percent=None, elapsed_s=0)
     upgrade_task = asyncio.create_task(
         asyncio.to_thread(
             run_upgrade,
@@ -273,18 +278,21 @@ async def _upgrade_worker(
             locale=locale,
         )
     )
-    percent = 20
     try:
         while True:
             try:
                 result: UpgradeResult = await asyncio.wait_for(
                     asyncio.shield(upgrade_task),
-                    timeout=5,
+                    timeout=_HEARTBEAT_INTERVAL_S,
                 )
                 break
             except TimeoutError:
-                percent = min(percent + 5, 85)
-                await update_task(task_id, stage="installing", percent=percent)
+                await update_task(
+                    task_id,
+                    stage="installing",
+                    percent=None,
+                    elapsed_s=int(time.monotonic() - started),
+                )
     except Exception as exc:
         logger.exception("upgrade task %s failed unexpectedly", task_id)
         await update_task(
@@ -372,6 +380,7 @@ async def upgrade_progress(
         "status": task.status.value,
         "stage": task.stage,
         "percent": task.percent,
+        "elapsed_s": task.elapsed_s,
         "new_version": task.new_version,
         "success": task.success,
         "error": task.error,
