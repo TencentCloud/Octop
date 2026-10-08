@@ -5833,6 +5833,7 @@
       "serverId": "服务器 ID",
       "serverIdHint": "技术标识，仅支持字母、数字、下划线与连字符。",
       "headers": "Headers（每行 Key: Value，可选 Bearer）",
+      "userScopeHint": "可用 ${octop.user_id} 与 ${octop.username}（URL 和 Header 都支持）：Octop 会按当前登录用户解析，一份共享连接器也能带上每个人自己的身份；未知占位符会在保存时被拒绝。",
       "args": "Args（一行一个参数）",
       "env": "Env（每行 KEY=VALUE）",
       "loadFailed": "加载自定义 MCP 失败",

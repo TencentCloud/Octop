@@ -281,6 +281,7 @@ def _connector_service(server: Any) -> ConnectorService:
         secret_repo=server.services.secret_repo,
         settings_repo=server.services.settings_repo,
         config=server.services.config,
+        user_repo=server.services.repos.user_repo,
     )
 
 
@@ -663,7 +664,9 @@ async def test_custom_mcp(
             ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
             "provide name or server spec to probe",
         )
-    result = await probe_custom_mcp_server(spec)
+    # Probe with the clicking user's identity so ``${octop.*}`` templates resolve
+    # exactly as they will during that user's chat turns.
+    result = await probe_custom_mcp_server(spec, user_scope=svc.user_scope_for(user.id))
     if body.name:
         try:
             if result.get("oauth", {}).get("available") and not oauth_configured(spec):
@@ -1003,7 +1006,7 @@ async def test_instance(
         raw = saved.get(synthetic_name)
         if not isinstance(raw, dict):
             raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
-        return await probe_custom_mcp_server(dict(raw))
+        return await probe_custom_mcp_server(dict(raw), user_scope=svc.user_scope_for(user.id))
 
     repo = server.services.repos.connector_repo
     inst = repo.get(instance_id)

@@ -5833,6 +5833,7 @@
       "serverId": "Server ID",
       "serverIdHint": "Technical id: letters, digits, underscore, or hyphen only.",
       "headers": "Headers (one Key: Value per line; optional Bearer)",
+      "userScopeHint": "${octop.user_id} and ${octop.username} are available (in both URL and headers): Octop resolves them per signed-in user, so one shared connector carries each person's own identity. Unknown placeholders are rejected on save.",
       "args": "Args (one argument per line)",
       "env": "Env (one KEY=VALUE per line)",
       "loadFailed": "Failed to load custom MCP",

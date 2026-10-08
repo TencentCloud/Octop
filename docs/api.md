@@ -406,6 +406,15 @@ registration (DCR), stores encrypted tokens in the custom MCP spec, and injects 
 Bearer` when loading tools. Loopback and LAN MCP URLs may use HTTP and do not use remote OAuth
 discovery.
 
+Per-user identity on a shared server: the `url` path and any header value of a custom MCP server may
+reference the requesting user with `${octop.user_id}` or `${octop.username}`. The template is stored
+verbatim — one shared server stays a single configuration — and is substituted only when Octop
+materializes the connection spec for a given user, so each user presents their own identity to a
+multi-tenant MCP server. Substituted values are limited to `[A-Za-z0-9._-]` and 64 characters
+(over-budget names fall back to the numeric id rather than being truncated, so two long names cannot
+collide); `${octop.*}` is rejected inside the host portion of the URL and unknown tokens are rejected
+at save and probe time, so the test button exercises the same substitution as real calls.
+
 ## Internal MCP (octop-harness agents)
 
 | Method | Path | Auth | Notes |

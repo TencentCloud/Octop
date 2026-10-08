@@ -50,6 +50,7 @@ async def validate_chat_mcp_servers(
         secret_repo=server.services.secret_repo,
         settings_repo=server.services.settings_repo,
         config=server.services.config,
+        user_repo=server.services.repos.user_repo,
     )
     try:
         return list(svc.validate_mcp_servers_for_user(user_id, names))
