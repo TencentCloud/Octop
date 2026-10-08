@@ -118,6 +118,29 @@ async def test_iter_turn_chunks_persists_streamed_tokens_without_state() -> None
 
 
 @pytest.mark.asyncio
+async def test_iter_turn_chunks_reports_unresolved_file_failure() -> None:
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "tool_call_chunk", "id": "edit-1", "name": "edit_file"}
+        yield {
+            "type": "tool_result",
+            "id": "edit-1",
+            "name": "edit_file",
+            "status": "error",
+            "content": "Error editing file",
+        }
+        yield {"type": "token", "content": "I will rewrite it."}
+
+    processor, msg, appended = _processor_with_stream(stream)
+    chunks = [chunk async for chunk in processor.iter_turn_chunks(msg)]
+
+    errors = [chunk for chunk in chunks if chunk.get("type") == "error"]
+    assert len(errors) == 1
+    assert "file change" in errors[0]["message"]
+    assert chunks[-1]["type"] == "done"
+    assert appended
+
+
+@pytest.mark.asyncio
 async def test_iter_turn_chunks_persists_partial_when_cancelled() -> None:
     async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
         yield {"type": "token", "content": "partial answer"}
