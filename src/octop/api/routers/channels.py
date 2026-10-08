@@ -26,7 +26,7 @@ from octop.infra.gateway.bot_creators.feishu_runner import extract_feishu_creden
 from octop.infra.gateway.channels import dingtalk_registration, qr_bind
 from octop.infra.gateway.gateway import ChannelKind
 from octop.infra.utils.locale import DEFAULT_LOCALE, resolve_request_locale
-from octop.infra.utils.subprocess_io import parse_subprocess_json_lines
+from octop.infra.utils.subprocess_io import parse_json_lines, parse_subprocess_json_lines
 
 logger = logging.getLogger(__name__)
 
@@ -968,10 +968,9 @@ async def yuanbao_bot_creator_start(
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            bufsize=1,
-            universal_newlines=True,
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            stderr=subprocess.STDOUT,
+            bufsize=0,
+            env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
             shell=False,
         )
         async with state["lock"]:
@@ -1006,19 +1005,9 @@ async def yuanbao_bot_creator_poll(
         finished = return_code is not None
 
         if finished and proc.stdout:
-            remaining = proc.stdout.read()
-            if remaining:
-                for line in remaining.strip().split("\n"):
-                    line = line.strip()
-                    if line:
-                        try:
-                            data = json.loads(line)
-                            new_lines.append(data)
-                            state["lines"].append(data)
-                        except json.JSONDecodeError:
-                            new_lines.append(
-                                {"action": "log", "level": "info", "step": "raw", "message": line}
-                            )
+            remaining = parse_json_lines(await asyncio.to_thread(proc.stdout.read))
+            new_lines.extend(remaining)
+            state["lines"].extend(remaining)
 
         status = "running"
         if finished:

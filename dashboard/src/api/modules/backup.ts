@@ -92,6 +92,7 @@ export const backupApi = {
     name: string;
     agents: number;
     workspace_files: number;
+    published_expert_files: number;
   }> => {
     const qs = restoreConfig ? "" : "?restore_config=false";
     return request(

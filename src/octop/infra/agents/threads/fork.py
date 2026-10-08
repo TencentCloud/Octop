@@ -1,8 +1,7 @@
-"""Fork a conversation thread from a selected assistant reply.
+"""Fork a conversation through an assistant reply or before an edited user turn.
 
-Copies LangGraph checkpoint messages *through* that assistant turn into a new
-thread, leaving the source transcript unchanged. The client continues in the
-forked thread without prefilling the previous user question.
+Copies the retained LangGraph checkpoint messages into a new thread, leaving
+the source transcript unchanged. The client continues in the forked thread.
 """
 
 from __future__ import annotations
@@ -156,6 +155,42 @@ async def load_checkpoint_messages(harness: Any, thread_id: str) -> list[Any]:
     return []
 
 
+def find_user_edit_index(
+    messages: list[Any],
+    *,
+    message_id: str | None,
+    user_turns_from_end: int,
+    content: str | None = None,
+) -> int:
+    """Locate a user turn, including temporary UI ids and paginated history.
+
+    Prefer a checkpoint id when available: another client may have appended a
+    turn since the dashboard loaded. The suffix locator handles local UI ids.
+    """
+    users = [
+        i
+        for i, msg in enumerate(messages)
+        if (
+            str(msg.get("role") or msg.get("type") or "")
+            if isinstance(msg, dict)
+            else str(getattr(msg, "type", None) or getattr(msg, "role", ""))
+        )
+        in ("human", "user")
+    ]
+    if message_id:
+        for i in users:
+            if _msg_id(messages[i]) == message_id:
+                return i
+    if 1 <= user_turns_from_end <= len(users):
+        idx = users[-user_turns_from_end]
+        text = _message_text(messages[idx])
+        # File/image hints may be appended server-side to the original text.
+        wanted = (content or "").strip()
+        if not wanted or text == wanted or text.startswith(wanted + "\n\n"):
+            return idx
+    raise OctopError(ErrorCode.NOT_FOUND, "user message not found in thread")
+
+
 async def write_checkpoint_messages(
     harness: Any,
     *,
@@ -187,11 +222,12 @@ async def fork_dashboard_thread(
     message_id: str | None = None,
     content: str | None = None,
     assistant_turns_from_end: int | None = None,
+    user_turns_from_end: int | None = None,
     locale: str = "en",
     thread_message_repo: Any | None = None,
     history_archive: Any | None = None,
 ) -> dict[str, Any]:
-    """Create a dashboard thread seeded through the selected assistant reply."""
+    """Seed through an assistant reply or before a user turn being edited."""
     from langchain_core.messages import message_to_dict, messages_from_dict  # noqa: PLC0415
 
     from octop.infra.history.legacy import checkpoint_wires  # noqa: PLC0415
@@ -212,14 +248,23 @@ async def fork_dashboard_thread(
         messages = messages_from_dict(await archive.all_messages(source.thread_id, read_legacy))
     else:
         messages = await load_checkpoint_messages(harness, source.thread_id)
-    idx = find_assistant_fork_index(
-        messages,
-        message_id=message_id,
-        content=content,
-        assistant_turns_from_end=assistant_turns_from_end,
-    )
-    # Include the selected assistant message (and any tool traffic before it).
-    prefix = messages[: idx + 1]
+    if user_turns_from_end is not None:
+        idx = find_user_edit_index(
+            messages,
+            message_id=message_id,
+            user_turns_from_end=user_turns_from_end,
+            content=content,
+        )
+        # Editing restarts before the old question, not after its answer.
+        prefix = messages[:idx]
+    else:
+        idx = find_assistant_fork_index(
+            messages,
+            message_id=message_id,
+            content=content,
+            assistant_turns_from_end=assistant_turns_from_end,
+        )
+        prefix = messages[: idx + 1]
     prefix_projection_inputs: list[Any] | None = None
     if thread_message_repo is not None:
         from octop.infra.history.projection import (  # noqa: PLC0415
@@ -271,6 +316,8 @@ async def fork_dashboard_thread(
         model_ref=source.model_ref,
         reasoning_mode=source.reasoning_mode,
         reasoning_effort=source.reasoning_effort,
+        conversation_mode=source.conversation_mode,
+        hitl_policy=source.hitl_policy,
     )
     await thread_registry.rebind(
         session_key=session_key,

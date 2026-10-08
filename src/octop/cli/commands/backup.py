@@ -34,7 +34,11 @@ def backup() -> None:
     "--home", type=click.Path(path_type=Path), default=None, help="Octop home (default ~/.octop)."
 )
 @click.option("--no-config", is_flag=True, help="Do not include config.json / env.")
-@click.option("--no-workspaces", is_flag=True, help="Do not include agent workspaces.")
+@click.option(
+    "--no-workspaces",
+    is_flag=True,
+    help="Do not include agent workspaces or published expert snapshots.",
+)
 @click.option("--no-skill-packages", is_flag=True, help="Do not include global skill packages.")
 @click.option("--no-plugins", is_flag=True, help="Do not include installed plugins.")
 @click.option("--no-knowledge", is_flag=True, help="Do not include knowledge base files.")

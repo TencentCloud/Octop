@@ -40,10 +40,8 @@ fi
 
 mkdir -p "$DATA_DIR" "$PKGVAR"
 
-# 加载安装向导写入的配置（OCTOP_PORT / 管理员账号 等）
-if [ -f "$PKGVAR/.env" ]; then
-    set -a; . "$PKGVAR/.env"; set +a
-fi
+# 按原文加载向导配置，避免密码中的 $、反引号或空格被 shell 解释。
+octop_env_load "$PKGVAR/.env"
 
 # 查找飞牛应用商店提供的 Python 3.12
 

@@ -408,6 +408,25 @@ octop_validate_optional_password_change() {
     octop_validate_password "$pass"
 }
 
+# 按字面量导入向导写入的 KEY=VALUE，不能用 source / eval 执行用户数据。
+# 保留值中的空格、$、反引号和等号；忽略空行、注释和无效键。
+octop_env_load() {
+    local file="$1" line key
+    [ -f "$file" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            ''|'#'*) continue ;;
+            *=*)
+                key="${line%%=*}"
+                case "$key" in
+                    ''|*[!A-Za-z0-9_]*|[0-9]*) continue ;;
+                esac
+                export "${key}=${line#*=}"
+                ;;
+        esac
+    done < "$file"
+}
+
 # 从 .env 文件读取 KEY=VALUE 的值（容忍引号与行尾空白）。
 octop_env_get() {
     local file="$1" key="$2" line

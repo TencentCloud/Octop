@@ -747,40 +747,6 @@ export function appendUserMessage(sessionId: string, msg: ChatMessage) {
   notify(state);
 }
 
-/**
- * Truncate all messages from messageId (inclusive) onwards, replacing that
- * message's content with newContent. Also aborts any in-flight stream.
- * Returns true if the message was found, false otherwise.
- */
-export function truncateAndReplaceUserMessage(
-  sessionId: string,
-  messageId: string,
-  newContent: string,
-): boolean {
-  const state = getOrCreate(sessionId);
-  const idx = state.messages.findIndex((m) => m.id === messageId);
-  if (idx < 0) return false;
-
-  // Abort any in-flight stream before rewriting history
-  state.abortController?.abort();
-  state.abortController = null;
-
-  const original = state.messages[idx];
-  state.messages = [
-    ...state.messages.slice(0, idx),
-    { ...original, content: newContent, status: "done" as const },
-  ];
-  clearStreamingFlags(state);
-  state.runUsage = null;
-  usageSamplesByState.delete(state);
-  state.streamMsg = "";
-  state.streamId = "";
-  state.streamBlockType = "";
-  state.toolCallIdIndex = {};
-  notify(state);
-  return true;
-}
-
 /** Append a push (proactive/cron) assistant message to all active sessions. */
 export function appendPushMessage(text: string) {
   const msg: ChatMessage = {
