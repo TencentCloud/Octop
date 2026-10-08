@@ -140,13 +140,16 @@ class CronDeliveryService:
         parts: list[str] = []
         interaction_required = False
         try:
-            async for chunk in self._agent_manager.stream(command.agent_id, request):
-                tracker.observe(chunk)
-                usage.observe(chunk)
-                if chunk.get("type") in ("token", "delta"):
-                    parts.append(str(chunk.get("content") or chunk.get("text") or ""))
-                elif chunk.get("type") == "hitl_required":
-                    interaction_required = True
+            from octop.infra.connectors.gateway.adapters.agently_cli import write_scope
+
+            with write_scope(allowed=False):
+                async for chunk in self._agent_manager.stream(command.agent_id, request):
+                    tracker.observe(chunk)
+                    usage.observe(chunk)
+                    if chunk.get("type") in ("token", "delta"):
+                        parts.append(str(chunk.get("content") or chunk.get("text") or ""))
+                    elif chunk.get("type") == "hitl_required":
+                        interaction_required = True
             if interaction_required:
                 raise RuntimeError("cron agent run requires user interaction")
             outbound = strip_thinking("".join(parts)).strip()

@@ -526,7 +526,7 @@ class OctopServer:
         await user_mgr.boot()
         await proactive_scheduler.start_all()
 
-        from octop.api.deps import sign_token
+        from octop.infra.auth.tokens import sign_token
         from octop.infra.bridge.manager import BridgeManager, public_base_url_from_config
 
         services = self.services
@@ -610,6 +610,9 @@ class OctopServer:
         if not self._started:
             return
         try:
+            from octop.infra.connectors.gateway import agently_auth
+
+            await agently_auth.close()
             if self.app_runtime is not None:
                 rt = self.app_runtime
                 await rt.proactive_scheduler.shutdown()
@@ -619,6 +622,9 @@ class OctopServer:
                 await rt.user_manager.shutdown_all()
                 if rt.history_archive is not None:
                     rt.history_archive.store.close()
+            from octop.infra.backend.browse import dispose_all_browse_sessions
+
+            dispose_all_browse_sessions()
         finally:
             if self.services is not None:
                 self.services.db.close()

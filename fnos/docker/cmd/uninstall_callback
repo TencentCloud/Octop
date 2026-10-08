@@ -3,11 +3,26 @@
 # 根据卸载向导选择：完全删除时清理 data-share 用户数据；保留数据时不作处理。
 set -euo pipefail
 
+_OCTOP_COMMON="$(dirname "$0")/common.sh"
+[ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop/cmd/common.sh"
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
+
 if [ "${wizard_delete_data:-no}" = "yes" ]; then
-    DATA_DIR="/vol1/@appshare/octop/data"
-    if [ -d "$DATA_DIR" ]; then
+    DATA_DIR="${TRIM_DATA_SHARE_PATHS:-}"
+    DATA_DIR="${DATA_DIR%%:*}"
+    if [ -z "$DATA_DIR" ] && type octop_data_share_dir >/dev/null 2>&1; then
+        DATA_DIR="$(octop_data_share_dir octop/data)"
+    fi
+    if [ -n "$DATA_DIR" ] && [ -d "$DATA_DIR" ]; then
         rm -rf "$DATA_DIR" 2>/dev/null || true
         echo "[octop] 已删除用户数据: $DATA_DIR" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+    fi
+    LEGACY=""
+    if type octop_legacy_docker_data_dir >/dev/null 2>&1; then
+        LEGACY="$(octop_legacy_docker_data_dir)"
+    fi
+    if [ -n "$LEGACY" ] && [ -d "$LEGACY" ] && [ "$LEGACY" != "$DATA_DIR" ]; then
+        rm -rf "$LEGACY" 2>/dev/null || true
     fi
 fi
 

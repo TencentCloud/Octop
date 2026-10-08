@@ -89,6 +89,7 @@
     "BACKUP_SCHEMA_INCOMPATIBLE": "该备份使用数据库结构版本 {{archive_schema_version}}，当前 Octop 版本无法恢复（最高支持版本：{{runtime_schema_version}}）。",
     "BACKUP_IN_PROGRESS": "已有备份或恢复任务正在进行，请稍后再试。",
     "FORBIDDEN": "没有权限。",
+    "UPDATE_TARGET_NOT_NEWER": "目标版本 {{target}} 必须高于已安装版本 {{current}}，不支持重装同版本或降级。",
     "NOT_FOUND": "未找到。",
     "USER_DISABLED": "账号已禁用。",
     "LOGIN_LOCKED": "登录失败次数过多，请 {{minutes}} 分钟后再试。",
@@ -116,6 +117,7 @@
     "STORAGE_BACKEND_NAME_TAKEN": "存储后端名称已被占用。",
     "STORAGE_BACKEND_REFERENCED": "存储后端正在使用中，无法删除。",
     "STORAGE_BACKEND_DEPS_FAILED": "无法安装此后端所需的可选组件。请检查网络后重试。",
+    "STORAGE_BROWSE_FAILED": "无法浏览此存储后端。",
     "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",
     "CHANNEL_INVALID_CREDENTIALS": "通道凭证无效。",
     "CHANNEL_NAME_TAKEN": "该通道名称已被使用，请换一个名称。",
@@ -216,7 +218,7 @@
     "tasks": "自动化",
     "connectors": "连接器",
     "bridge": "云端协同",
-    "acp": "ACP",
+    "acp": "ACP 协作",
     "agents": "专家",
     "providers": "Providers",
     "models": "模型",
@@ -291,7 +293,7 @@
   },
   "skillPackages": {
     "title": "技能包",
-    "subtitle": "创建和维护可复用的技能集合，并可挂载到专家。",
+    "subtitle": "创建和维护可复用的技能包，添加技能后挂载到专家",
     "createPackage": "创建技能包",
     "editPackage": "编辑技能包",
     "createPackageHint": "技能包是可共享的技能集合。创建后可添加技能，并在专家上挂载使用。",
@@ -346,14 +348,14 @@
     "collapseListPanel": "收起列表",
     "expandListPanel": "展开列表",
     "copyPolicy": "复制策略",
-    "copyPolicyHint": "控制创建者以外的用户能否把包内技能复制到自己 Agent 的工作区。",
+    "copyPolicyHint": "控制创建者以外的用户能否把包内技能复制到自己 Agent 的工作区。只读副本由控制台与工作区 HTTP 写接口强制执行；Agent 工具层写保护仍依赖 harness（#770）。",
     "copyPolicySnapshot": "可复制",
-    "copyPolicyLock": "可复制但只读",
+    "copyPolicyLock": "可复制（控制台只读）",
     "copyPolicyDeny": "禁止复制"
   },
   "knowledgeBases": {
     "title": "知识库",
-    "subtitle": "上传文档建立索引，在对话中检索引用；可按需共享给同实例用户。",
+    "subtitle": "上传文档建立索引，在对话中检索引用，也可共享给同实例用户",
     "featureTitle": "启用知识库",
     "settingsTitle": "知识库设置",
     "settingsLead": "实例级开关。启用后需配置向量模型；关闭后全实例不可使用知识库。",
@@ -940,6 +942,7 @@
     "confirmDelete": "删除「{{name}}」？",
     "confirmDeleteHint": "此操作不可撤销。工作区目录（含记忆与会话文件）也会被永久删除，且无法恢复。",
     "agentDisable": "停用",
+    "removeMapping": "删除",
     "defaultModelLabel": "默认模型",
     "defaultModelPlaceholder": "选择一个模型",
     "defaultModeLabel": "默认对话模式",
@@ -1190,19 +1193,21 @@
     }
   },
   "agent_errors": {
-    "no_models_configured": "未配置可用模型，请前往「设置 → 模型」配置模型，然后重新启用此专家。",
-    "model_ref_unavailable": "默认模型不可用或已禁用，请检查「设置 → 模型」或修改此专家的默认模型后重试。"
+    "no_models_configured": "未配置可用模型，请前往「管理 → 模型」配置模型，然后重新启用此专家。",
+    "model_ref_unavailable": "默认模型不可用或已禁用，请检查「管理 → 模型」或修改此专家的默认模型后重试。",
+    "start_timeout": "专家启动超时（存储后端读写过慢）。请重试，或改用本地工作区后端。"
   },
   "stream_errors": {
     "stream_stall": "模型响应中断：连接仍在，但长时间没有新内容。请点击「重试」，或稍后更换模型再试。若经常出现，请检查供应商状态，或联系管理员排查流式超时设置。",
     "rate_limit": "模型请求过于频繁，已被限流。请稍等片刻后重试，或切换其他模型。",
-    "auth": "模型服务鉴权失败。请检查「设置 → 模型」中的 API Key 是否正确、是否过期。",
+    "auth": "模型服务鉴权失败。请检查「管理 → 模型」中的 API Key 是否正确、是否过期。",
     "insufficient_balance": "模型服务返回余额或额度不足。请为该 API Key 对应的账户充值或升级套餐后再试。",
     "context_length": "对话上下文过长，超出模型限制。请新开会话，或精简历史后再试。",
     "recursion_limit": "智能体已达到最大迭代次数（递归上限），任务尚未完成。请前往「运行配置」调高「最大迭代次数」后重试。",
     "timeout_network": "连接模型服务超时或网络异常。请检查网络后重试；若使用代理或自建服务，请确认其可达。",
     "provider_unavailable": "模型服务暂时不可用。请稍后重试，或切换其他模型。",
     "model_call_failed": "模型调用多次重试后仍失败。请稍后重试；若持续失败，请检查模型配置或更换模型。",
+    "model_call_failed_detail": "模型调用失败：{{detail}}",
     "path_outside_root": "文件路径超出当前专家的存储根目录，无法读写。请改用存储根目录内的路径，或在专家设置中扩大存储根目录（Windows 上请显式指定盘符路径，例如 D:/octop-data）。"
   },
   "chat": {
@@ -1424,7 +1429,10 @@
     "subagentPickerEmpty": "暂无已安装的子智能体",
     "subagentPickerManage": "管理子智能体",
     "modelPickerManage": "管理模型",
-    "sessionWorking": "正在回复",
+    "modelPickerSearch": "搜索模型",
+    "modelPickerEmpty": "没有匹配的模型",
+    "sessionWorking": "进行中",
+    "sessionWaiting": "待确认",
     "composerContextLabel": "消息附加上下文",
     "contextWindow": {
       "tooltip": "上下文占用 {{used}} / {{max}} · {{percent}}%（最近一次模型请求）",
@@ -1637,6 +1645,7 @@
     "trajectoryCollapsedToolCallMany": "{{count}} 次工具调用 · {{names}}",
     "trajectoryCollapsedTurn": "{{steps}} 步 · {{toolCalls}} 次工具调用",
     "trajectoryInspectorKind": "类型",
+    "trajectoryInspectorModel": "模型",
     "trajectoryInspectorSource": "来源",
     "trajectoryInspectorStatus": "状态",
     "trajectoryInspectorError": "错误",
@@ -1716,7 +1725,8 @@
     "ask_user_question": "向你提问",
     "generate_image": "生成图片",
     "generate_video": "生成视频",
-    "bilibili_search_anime": "搜索番剧"
+    "bilibili_search_anime": "搜索番剧",
+    "search_arxiv": "查询 arXiv 论文"
   },
   "toolSettings": {
     "title": "工具设置",
@@ -1736,7 +1746,7 @@
     "pluginToolCount": "{{count}} 个工具",
     "tabs": {
       "builtin": "内置工具",
-      "acp": "ACP 工具",
+      "acp": "ACP 协作工具",
       "plugin": "插件工具"
     },
     "categories": {
@@ -2272,7 +2282,11 @@
       "timeoutSeconds": "超时时间（秒）",
       "timeoutSecondsTooltip": "任务执行的最长允许时间（秒），超时后将被强制终止。",
       "misfireGrace": "错过容忍（秒）",
-      "misfireGraceTooltip": "如果因服务停机等原因错过了执行时间，在容忍时间内仍会补执行。设为 0 表示不补执行。"
+      "misfireGraceTooltip": "如果因服务停机等原因错过了执行时间，在容忍时间内仍会补执行。设为 0 表示不补执行。",
+      "agentlyNewMail": "Agent Mail 新邮件",
+      "agentlyMailbox": "监听邮箱",
+      "agentlySelectMailbox": "请选择 Agent Mail 邮箱",
+      "agentlyHint": "通过后台长连接接收新邮件，收到后执行此任务。请先授权所选邮箱；空闲时不调用模型。"
     },
     "preset": {
       "every5min": "每 5 分钟",
@@ -2755,6 +2769,7 @@
     "ttsFallback": "服务端朗读失败，已切换浏览器朗读",
     "micDenied": "无法访问麦克风，请检查浏览器权限",
     "micBlockedByHost": "宿主页禁止了麦克风访问，请在 iframe 中允许 microphone 权限",
+    "browserOnly": "由浏览器处理",
     "readAloud": "朗读",
     "micNotAvailable": "此设备不支持录音，请通过 HTTPS 访问",
     "sttNotAvailable": "此设备不支持语音输入（需要 HTTPS）",
@@ -3718,14 +3733,15 @@
     "filesFailed": "无法搜索工作区文件"
   },
   "modelConfig": {
-    "promptTitle": "需要配置大语言模型",
-    "promptMessage": "聊天功能需要大语言模型才能运行。未配置模型时，对话和消息无法发送到后端进行处理和保存，刷新页面后将会丢失。是否立即配置模型？",
-    "configureButton": "配置模型",
+    "promptTitle": "还没有可用模型",
+    "promptMessage": "请先到「管理 → 模型」添加提供商并启用至少一个模型，才能开始对话。",
+    "promptMessageNoPermission": "当前没有可用模型，请联系管理员配置后再开始对话。",
+    "configureButton": "去配置模型",
     "skipButton": "跳过",
     "chatDisabledTitle": "聊天已禁用",
     "chatDisabledMessage": "聊天功能已禁用，因为未配置模型。请配置模型以启用聊天功能。",
     "configureNow": "配置模型",
-    "modelNotConfigured": "请先在设置中配置模型后再使用聊天功能"
+    "modelNotConfigured": "请先在「管理 → 模型」配置模型后再使用聊天功能"
   },
   "header": {
     "healthLabel": "健康状态",
@@ -4285,7 +4301,7 @@
   },
   "personalization": {
     "title": "个性化",
-    "description": "配置当前智能体的技能、工具、插件、子智能体、通道、人格与记忆。",
+    "description": "配置当前专家的技能、工具、插件、子智能体、通道、人格与记忆",
     "tabs": {
       "skills": "技能",
       "tools": "工具",
@@ -4394,7 +4410,7 @@
   },
   "workbench": {
     "title": "工作台",
-    "description": "终端与浏览器合一，实时查看并接管专家的执行面",
+    "description": "查看并接管专家的终端与浏览器，实时跟进执行过程",
     "tabs": {
       "terminal": "终端",
       "browser": "浏览器"
@@ -4402,7 +4418,7 @@
   },
   "remoteDesktopHub": {
     "title": "远程桌面",
-    "description": "在浏览器中操控服务器桌面或已连接的手机",
+    "description": "在浏览器中操控服务器桌面或已连接的手机，远程完成操作",
     "tabs": {
       "desktop": "服务器",
       "phone": "手机"
@@ -4494,6 +4510,7 @@
     "idleHint": "实时查看专家的浏览器窗口，也可以提前登录网站、管理书签等。关闭此页面后，登录状态仍会保留，专家可继续复用。",
     "goBack": "后退",
     "goForward": "前进",
+    "reload": "刷新",
     "go": "访问",
     "fullscreen": "切换全屏",
     "fullscreenFailed": "无法进入全屏",
@@ -4920,7 +4937,7 @@
   },
   "storage": {
     "pageTitle": "存储管理",
-    "pageSubtitle": "管理存储后端（本地、对象存储、沙箱、数据库），供专家使用",
+    "pageSubtitle": "管理本地、对象存储、沙箱与数据库等存储后端，供专家使用",
     "myStorage": "我的存储",
     "supportedTypes": "支持类型",
     "addBackend": "添加存储后端",
@@ -5064,13 +5081,32 @@
     "probing": "探测中…",
     "testSuccess": "存储后端可用",
     "probe_roundtrip_ok": "写入、读取与删除均成功",
+    "probe_no_such_bucket": "存储桶不存在，请检查 Bucket 名称",
+    "probe_no_such_key": "对象不存在",
+    "probe_access_denied": "没有访问权限，请检查密钥和存储桶权限",
+    "probe_invalid_credentials": "访问密钥无效，请检查 Access Key / Secret Key",
+    "probe_invalid_bucket": "Bucket 名称不合法",
+    "probe_invalid_endpoint": "Endpoint 或 Region 与存储桶不匹配",
+    "probe_timeout": "连接超时，请检查 Endpoint 或网络",
+    "probe_connection_failed": "无法连接到存储服务，请检查 Endpoint 和网络",
+    "probe_database_missing": "指定的数据库不存在",
+    "probe_content_mismatch": "写入后读回的内容不一致",
+    "probe_write_failed": "写入探测失败：{{detail}}",
+    "probe_read_failed": "读取探测失败：{{detail}}",
+    "probe_delete_failed": "删除探测失败：{{detail}}",
+    "probe_config_incomplete": "配置不完整",
+    "probe_s3_incompatible": "该 S3 兼容存储不支持当前请求方式。请检查 Endpoint，或在高级配置中尝试 path-style",
+    "probe_signature_mismatch": "存储拒绝了请求签名。请检查 Endpoint，或在高级配置中尝试 path-style",
     "testFailed": "检测失败",
     "browse": "浏览",
     "browseDisabled": "当前 Docker 沙箱不可浏览（仅 fixed 作用域默认开启；可用探测验证连通性）",
     "browseTitle": "浏览 — {{name}}",
     "browseEmpty": "目录为空或无法列出",
     "browseFailed": "浏览失败",
-    "browseLoadFailed": "加载子目录失败"
+    "browseLoadFailed": "加载子目录失败",
+    "browseDownloadOnly": "该文件不支持预览，是否下载？",
+    "browse_not_text": "该文件不是 UTF-8 文本，请下载查看",
+    "browse_too_large": "文件过大，无法在浏览器中预览或下载"
   },
   "adminAgents": {
     "total": "共 {{count}} 个智能体",
@@ -5116,9 +5152,15 @@
     }
   },
   "agentSelector": {
-    "label": "当前专家",
+    "label": "专家",
     "localGroup": "本机",
-    "disconnected": "已断开"
+    "disconnected": "已断开",
+    "expertsGroup": "专家",
+    "teamsGroup": "团队",
+    "remoteKindGroup": "{{name}}·{{kind}}",
+    "more": "更多",
+    "teamNeedsExpert": "当前是团队「{{name}}」，此页请选择专家",
+    "expertsRequired": "此页需要专家"
   },
   "login": {
     "title": "登录",
@@ -5287,21 +5329,24 @@
     "avatarSamples": "示例图标",
     "avatarDefault": "默认图标",
     "avatarIconUser": "成员",
-    "avatarIconBusiness": "商务",
-    "avatarIconResearch": "研究",
-    "avatarIconMedical": "医疗",
-    "avatarIconLaptop": "技术",
-    "avatarIconTeach": "教学",
-    "avatarIconDesign": "设计",
-    "avatarIconLearner": "学员",
+    "avatarIconAdmin": "管理员",
+    "avatarIconStaff": "普通用户",
+    "avatarIconDoctor": "医生",
+    "avatarIconNurse": "护士",
+    "avatarIconStudent": "学生",
+    "avatarIconTeacher": "老师",
+    "avatarIconSupport": "客服",
+    "avatarIconOps": "运营",
+    "avatarIconFinance": "财务",
+    "avatarIconBoss": "老板",
     "avatarIconMember": "成员",
-    "avatarIconAward": "奖章",
-    "avatarIconTerminal": "终端",
-    "avatarIconPen": "画笔",
-    "avatarIconChart": "图表",
-    "avatarIconHeadset": "耳麦",
-    "avatarIconWrench": "扳手",
-    "avatarIconScale": "天平",
+    "avatarIconAward": "皇冠",
+    "avatarIconTerminal": "代码",
+    "avatarIconPen": "羽毛笔",
+    "avatarIconChart": "饼图",
+    "avatarIconHeadset": "喇叭",
+    "avatarIconWrench": "齿轮",
+    "avatarIconScale": "机构",
     "noEmail": "未填写邮箱",
     "formUserRolePlaceholder": "不使用角色",
     "formUserRoleStale": "当前记录的角色名称：{{name}}。该模板已删除或改名，现有权限保持不变，直到你改选其他角色。",
@@ -5789,6 +5834,21 @@
     "cliInstallFailed": "主机 CLI 安装失败",
     "cliInstalledHint": "主机已检测到 {{binary}}",
     "cliMissingHint": "主机尚未安装 CLI。可点击「安装 CLI」，或在 Octop 主机终端手动执行下方命令。",
+    "agentlyAuthTitle": "Agent Mail 邮箱授权",
+    "agentlyIdle": "尚未授权此邮箱实例",
+    "agentlyPending": "请打开授权页完成登录，授权结果会自动更新。",
+    "agentlyAuthorized": "邮箱已授权",
+    "agentlyExpired": "授权已过期，请重新登录授权",
+    "agentlyAuthFailed": "邮箱授权失败，请重试",
+    "agentlyUserCode": "授权码",
+    "agentlyStart": "登录授权",
+    "agentlyCheckStatus": "检查状态",
+    "agentlyRefresh": "刷新授权",
+    "agentlyCancel": "取消授权",
+    "agentlyLogout": "注销授权",
+    "agentlySafety": "发送、回复、转发和删除邮件需先预览，再由用户确认执行。邮件正文与附件属于不可信外部内容，不能作为执行指令。",
+    "agentlyQuota": "参考配额：每日发送 50 封、每小时 200 次请求、每分钟 10 次请求；附件最多 50 个、总容量 20 MB，此连接器单文件上限 10 MB。以账户实际配额及服务最新限制为准。可在任务页选择「Agent Mail 新邮件」触发任务。",
+    "agentlyInstanceHint": "先保存连接器，再登录授权。每个实例独立保存邮箱授权，可为不同 Agent 选择不同实例。",
     "feishuUserAuthTitle": "飞书账号授权",
     "feishuUserAuthWhy": "上方 App ID / Secret 只代表应用（Bot）。文档搜索、访问你云空间里的个人文档和日程等，必须以你的飞书账号身份调用，因此需要额外授权一次。授权后专家只能访问你本人有权限的内容。",
     "feishuUserAuthHint": "点击登录授权，完成后点「我已授权」。",
@@ -6133,19 +6193,19 @@
   "pageShell": {
     "experts": {
       "title": "专家",
-      "subtitle": "创建与管理你的 AI 专家，也可从模板库挑选场景一键新建。"
+      "subtitle": "创建与管理你的 AI 专家，也可从模板一键新建"
     },
     "tasks": {
       "title": "自动化",
-      "subtitle": "配置专家定期执行的计划任务"
+      "subtitle": "创建和管理专家定期执行的计划任务，也可立刻手动运行"
     },
     "connectors": {
       "title": "连接器",
-      "subtitle": "账户级连接文档、网盘与邮箱；对话时按需勾选"
+      "subtitle": "连接文档、网盘与邮箱，并在对话中按需使用"
     },
     "acp": {
-      "title": "ACP",
-      "subtitle": "配置外部编程专家 Runner（OpenCode、Claude Code 等）"
+      "title": "ACP 协作",
+      "subtitle": "配置外部编程专家 Runner，并按专家开启协作"
     },
     "skills": {
       "title": "技能",
@@ -6153,99 +6213,99 @@
     },
     "tools": {
       "title": "工具",
-      "subtitle": "启用或关闭当前智能体的内置工具与插件工具"
+      "subtitle": "启用或关闭当前专家的内置工具与插件工具，控制可用能力"
     },
     "tokenUsage": {
       "title": "Token 统计",
-      "subtitle": "账户 Token 消耗总览与多维分析"
+      "subtitle": "查看账户 Token 消耗总览，并按渠道与会话做多维分析"
     },
     "channels": {
       "title": "通道",
-      "subtitle": "IM 渠道与 Webhook 接入管理"
+      "subtitle": "管理 IM 渠道与 Webhook 接入，让专家在外部会话中回复"
     },
     "mbti": {
       "title": "MBTI 人格",
-      "subtitle": "选一个 MBTI 人格类型，或花 3 分钟做个测试，让 TA 拥有独一无二的性格！"
+      "subtitle": "为当前专家选择或测试 MBTI 人格，设定说话风格与性格"
     },
     "subagents": {
       "title": "子智能体",
-      "subtitle": "管理当前专家的子智能体，安装或编辑子智能体技能"
+      "subtitle": "管理当前专家的子智能体，安装或编辑它们的技能"
     },
     "memory": {
       "title": "记忆",
-      "subtitle": "查看 Octop 的记忆内容，也可以顺手整理一下"
+      "subtitle": "查看并整理当前专家记下的记忆，也可处理待确认草稿"
     },
     "workspace": {
       "title": "工作区",
-      "subtitle": "专家的本地文件系统工作空间"
+      "subtitle": "浏览、预览和管理专家工作区中的文件，也可编辑或下载"
     },
     "models": {
       "title": "模型配置",
-      "subtitle": "配置对话模型、生成模型、语音模型与搜索引擎"
+      "subtitle": "配置对话、生成、语音与搜索所用的模型，并设置默认服务"
     },
     "voice": {
       "title": "语音服务",
-      "subtitle": "配置语音识别与朗读服务"
+      "subtitle": "配置语音识别与朗读服务，并选择当前使用的模型"
     },
     "adminUsers": {
       "title": "用户管理",
-      "subtitle": "管理内置账号与登录方式（通用OIDC、飞书、企微、钉钉）"
+      "subtitle": "管理内置账号与登录方式（通用 OIDC、飞书、企微、钉钉）"
     },
     "adminSso": {
       "title": "通用OIDC",
-      "subtitle": "配置 OpenID Connect 身份提供商"
+      "subtitle": "配置 OpenID Connect 身份提供商，用于统一登录"
     },
     "adminStorage": {
       "title": "存储管理",
-      "subtitle": "配置共享存储后端（COS 等）"
+      "subtitle": "配置可供专家使用的存储后端，如对象存储与沙箱"
     },
     "adminAudit": {
       "title": "审计日志",
-      "subtitle": "系统操作与 API 访问记录"
+      "subtitle": "查看系统操作与 API 访问记录，便于排查与审计"
     },
     "adminAgents": {
       "title": "智能体",
-      "subtitle": "查看并管理所有用户的智能体"
+      "subtitle": "查看并管理所有用户的智能体，支持跨用户检索与操作"
     },
     "adminAdvanced": {
       "title": "应用设置",
-      "subtitle": "环境变量、备份、HTTPS 与更新"
+      "subtitle": "管理环境变量、备份、HTTPS 与系统更新"
     },
     "bridge": {
       "title": "云端协同",
-      "subtitle": "连接另一台 Octop，在本机与对端专家对话"
+      "subtitle": "连接另一台 Octop，在本机浏览对端专家并跨实例对话"
     },
     "security": {
       "title": "安全防护",
-      "subtitle": "工具审批、命令防护、文件访问与敏感信息防护"
+      "subtitle": "配置工具审批、命令防护、文件访问与敏感信息防护"
     },
     "adminPlugins": {
       "title": "插件管理",
-      "subtitle": "安装并管理服务器插件；各专家的启用状态在「个性化 → 插件」中配置"
+      "subtitle": "安装并管理服务器插件，各专家可在个性化中单独启用"
     },
     "adminUpdates": {
       "title": "应用更新",
-      "subtitle": "检查版本与系统升级"
+      "subtitle": "检查当前版本并一键升级系统，也可查看安装说明"
     },
     "browser": {
       "title": "浏览器 AI+",
-      "subtitle": "基于 Chromium 的无头浏览器会话"
+      "subtitle": "查看并操控远端无头浏览器，实时接管专家的网页操作"
     },
     "desktop": {
       "title": "远程桌面",
-      "subtitle": "查看并操控 Octop 主机操作系统桌面"
+      "subtitle": "查看并操控 Octop 主机操作系统桌面，远程完成桌面操作"
     },
     "terminal": {
       "title": "终端 AI+",
-      "subtitle": "在浏览器中运行交互式 Shell 终端"
+      "subtitle": "在浏览器中运行交互式 Shell 终端，实时查看专家的命令执行"
     },
     "mobile": {
       "title": "远程手机",
-      "subtitle": "查看并控制已连接的手机或模拟器"
+      "subtitle": "查看并控制已连接的手机或模拟器，远程操作屏幕"
     },
     "adminSharedModels": {
       "title": "共享模型",
-      "subtitle": "面向全体用户共享的模型配置"
+      "subtitle": "管理面向全体用户共享的模型配置，供各专家统一使用"
     }
   },
   "remoteAndroid": {
