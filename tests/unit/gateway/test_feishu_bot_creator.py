@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import io
 import json
+import ssl
 from typing import Any
 
 import pytest
@@ -128,3 +130,28 @@ def test_parse_version() -> None:
     assert creator._parse_version("1.5.5") >= creator.MIN_LARK_OAPI
     assert creator._parse_version("1.5.4") < creator.MIN_LARK_OAPI
     assert creator._parse_version("1.7.0") >= creator.MIN_LARK_OAPI
+
+
+def test_send_greeting_uses_verifying_tls_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The app_secret must never travel over a connection with verification off."""
+    contexts: list[ssl.SSLContext | None] = []
+
+    def fake_urlopen(
+        _req: Any, context: ssl.SSLContext | None = None, **_kwargs: Any
+    ) -> io.BytesIO:
+        contexts.append(context)
+        return io.BytesIO(json.dumps({"tenant_access_token": "tok"}).encode())
+
+    monkeypatch.setattr(creator.urllib.request, "urlopen", fake_urlopen)
+
+    creator._send_greeting(
+        "cli_1", "sec", "ou_1", open_base="https://open.feishu.cn", greeting="hi"
+    )
+
+    assert len(contexts) == 2
+    for ctx in contexts:
+        assert ctx is not None
+        assert ctx.verify_mode == ssl.CERT_REQUIRED
+        assert ctx.check_hostname is True
