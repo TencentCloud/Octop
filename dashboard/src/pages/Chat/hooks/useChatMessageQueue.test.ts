@@ -1,9 +1,15 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TFunction } from "i18next";
+import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
+import type { ConversationMode } from "../utils/conversationMode";
+import { useChatSend } from "./useChatSend";
 import {
   CHAT_QUEUE_MAX_ITEMS,
   useChatMessageQueue,
 } from "./useChatMessageQueue";
+
+vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn() }));
 
 describe("useChatMessageQueue", () => {
   beforeEach(() => {
@@ -15,6 +21,137 @@ describe("useChatMessageQueue", () => {
   });
 
   const idleStreaming = () => false;
+
+  it.each(["ask", "plan"] as const)(
+    "keeps a queued %s turn's policy when it flushes behind another conversation",
+    (queuedMode) => {
+      const sendMessage = vi.fn();
+      let emitEnd: ((sessionId: string) => void) | undefined;
+      const subscribeStreamEnd = (listener: (sessionId: string) => void) => {
+        emitEnd = listener;
+        return () => {
+          emitEnd = undefined;
+        };
+      };
+      const { result, rerender } = renderHook(
+        ({
+          agentId,
+          threadId,
+          mode,
+          policy,
+          isStreaming,
+        }: {
+          agentId: string;
+          threadId: string;
+          mode: ConversationMode;
+          policy: HitlSessionPolicy;
+          isStreaming: boolean;
+        }) => {
+          const { handleSend } = useChatSend({
+            resolvedAgentId: agentId,
+            activeThreadId: threadId,
+            sessions: [],
+            messagesLength: 1,
+            selectedModel: null,
+            selectedConnectors: ["active-connector"],
+            selectedKnowledgeBaseIds: [],
+            reasoningMode: "auto",
+            reasoningEffort: null,
+            conversationMode: mode,
+            hitlPolicy: policy,
+            sendMessage,
+            createSession: vi.fn(),
+            renameSession: vi.fn(),
+            t: ((key: string) => key) as TFunction,
+          });
+          return useChatMessageQueue({
+            agentId,
+            threadId,
+            isStreaming,
+            subscribeStreamEnd,
+            isThreadStreaming: idleStreaming,
+            onFlush: (item, ctx) =>
+              handleSend(item.text, item.attachments, {
+                ...item,
+                threadId: ctx.threadId,
+                agentId: ctx.agentId,
+              }),
+          });
+        },
+        {
+          initialProps: {
+            agentId: "agent-a",
+            threadId: "thread-a",
+            mode: queuedMode as ConversationMode,
+            policy: { mode: "ask" } as HitlSessionPolicy,
+            isStreaming: true,
+          },
+        },
+      );
+      act(() => {
+        result.current.enqueue({
+          text: "analyze this file",
+          conversationMode: queuedMode,
+          hitlPolicy: { mode: "ask" },
+        });
+      });
+      rerender({
+        agentId: "agent-b",
+        threadId: "thread-b",
+        mode: "craft",
+        policy: { mode: "allow_all" },
+        isStreaming: false,
+      });
+      expect(sendMessage).not.toHaveBeenCalled();
+      act(() => {
+        emitEnd?.("thread-a");
+        vi.runAllTimers();
+      });
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+      const args = sendMessage.mock.calls[0]!;
+      expect(args[2]).toBe("agent-a");
+      expect(args[4]).toBe("thread-a");
+      expect(args[6]).toEqual([]);
+      expect(args[12]).toBe(queuedMode);
+      expect(args[13]).toEqual({ mode: "ask" });
+    },
+  );
+
+  it("snapshots allow_tools lists and retains settings when reclaiming", () => {
+    const policy: HitlSessionPolicy = {
+      mode: "allow_tools",
+      tools: ["read_file"],
+    };
+    const { result } = renderHook(() =>
+      useChatMessageQueue({
+        agentId: "agent-1",
+        threadId: "thread-1",
+        isStreaming: true,
+        onFlush: vi.fn(),
+        subscribeStreamEnd: () => () => undefined,
+        isThreadStreaming: idleStreaming,
+      }),
+    );
+    act(() => {
+      result.current.enqueue({
+        text: "edit me",
+        conversationMode: "plan",
+        hitlPolicy: policy,
+      });
+    });
+    policy.mode = "allow_all";
+    policy.tools!.push("execute");
+    const id = result.current.items[0]!.id;
+    let reclaimed: ReturnType<typeof result.current.reclaim> = null;
+    act(() => {
+      reclaimed = result.current.reclaim(id);
+    });
+    expect(reclaimed).toMatchObject({
+      conversationMode: "plan",
+      hitlPolicy: { mode: "allow_tools", tools: ["read_file"] },
+    });
+    expect(result.current.items).toEqual([]);
+  });
 
   it("enqueues FIFO and enforces the max size", () => {
     const onFlush = vi.fn();

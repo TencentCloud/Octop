@@ -798,6 +798,8 @@ function ChatPageInner() {
         selectedTargetAgents: item.composerContext?.targetAgents,
         threadId: ctx.threadId,
         agentId: ctx.agentId || undefined,
+        conversationMode: item.conversationMode,
+        hitlPolicy: item.hitlPolicy,
       });
       if (!ok) {
         antMessage.error(t("chat.queue.flushFailed"));
