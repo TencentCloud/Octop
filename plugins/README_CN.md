@@ -88,7 +88,7 @@ octop plugin install ./demo-ui-card.zip --force
 **Dashboard：** Admin → Plugins → 安装。请粘贴 ZIP 的 **直接下载地址**
 （GitHub 请用 `raw.githubusercontent.com` 或 Download / raw 链接，不要用 `/blob/` 页面）。
 
-- **tool**：安装后到「工具管理」为具体 Agent 启用工具  
+- **tool**：安装后到「个性化 → 工具 → 插件工具」为具体 Agent 启用工具；需要填写配置的工具可点击工具行的「配置」按钮
 - **skill**：Agent 启动时同步到工作区 `skills/`  
 - **hook**：全局启用的插件会挂上对应 middleware  
 - **ui**：随插件安装；打开聊天页后自动加载渲染器  

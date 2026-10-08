@@ -5,14 +5,18 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Empty, Segmented, Spin, Switch, Tooltip } from "antd";
+import { Button, Empty, Segmented, Spin, Switch, Tag, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/antdMessage";
 import {
   agentToolsApi,
   type ToolSettingsItem,
 } from "../../../api/modules/agentTools";
-import { pluginsApi, type AgentPlugin } from "../../../api/modules/plugins";
+import {
+  pluginsApi,
+  type AgentPlugin,
+  type AgentPluginTool,
+} from "../../../api/modules/plugins";
 import { builtinToolIcon } from "../../../utils/builtinToolIcons";
 import { PluginIconView } from "../../Admin/Plugins/PluginIconView";
 import { PluginGroupTag } from "../../Admin/Plugins/PluginGroupTag";
@@ -22,6 +26,8 @@ import {
 } from "../../Admin/Plugins/pluginGroups";
 import pluginStyles from "../../Admin/Plugins/index.module.less";
 import styles from "./ToolsPanel.module.less";
+import PluginToolConfigDrawer from "../../../components/plugins/PluginToolConfigDrawer";
+import { pluginToolNeedsConfig } from "../../../utils/pluginToolConfig";
 
 const GROUP_ALL = "all";
 
@@ -100,6 +106,8 @@ export default function ToolsPanel({
   const [tools, setTools] = useState<ToolSettingsItem[]>([]);
   const [enabledMap, setEnabledMap] = useState<Record<string, boolean>>({});
   const [pluginMeta, setPluginMeta] = useState<Record<string, PluginMeta>>({});
+  const [pluginTools, setPluginTools] = useState<AgentPluginTool[]>([]);
+  const [configTool, setConfigTool] = useState<AgentPluginTool | null>(null);
   const [activeGroup, setActiveGroup] = useState<string>(GROUP_ALL);
 
   const applyTools = useCallback(
@@ -129,6 +137,7 @@ export default function ToolsPanel({
   }, []);
 
   const load = useCallback(async () => {
+    setConfigTool(null);
     if (!agentId) {
       setTools([]);
       setEnabledMap({});
@@ -138,12 +147,14 @@ export default function ToolsPanel({
     setLoading(true);
     try {
       if (source === "plugin") {
-        const [toolsRes, pluginsRes] = await Promise.all([
+        const [toolsRes, pluginsRes, pluginToolsRes] = await Promise.all([
           agentToolsApi.get(agentId),
           pluginsApi.listAgentPlugins(agentId),
+          pluginsApi.listAgentTools(agentId),
         ]);
         applyTools(toolsRes.tools);
         applyPluginMeta(pluginsRes.plugins);
+        setPluginTools(pluginToolsRes.tools);
       } else {
         const res = await agentToolsApi.get(agentId);
         applyTools(res.tools);
@@ -353,6 +364,25 @@ export default function ToolsPanel({
 
     return (
       <div className={styles.panel}>
+        {configTool ? (
+          <PluginToolConfigDrawer
+            key={`${agentId}:${configTool.plugin_id}:${configTool.name}`}
+            agentId={agentId}
+            tool={configTool}
+            onClose={() => setConfigTool(null)}
+            onSaved={(config) => {
+              setPluginTools((current) =>
+                current.map((tool) =>
+                  tool.plugin_id === configTool.plugin_id &&
+                  tool.name === configTool.name
+                    ? { ...tool, config }
+                    : tool,
+                ),
+              );
+              setConfigTool(null);
+            }}
+          />
+        ) : null}
         <p className={styles.hint}>{t("toolSettings.hintPlugin")}</p>
         {groupOptions.length > 1 ? (
           <div className={pluginStyles.groupTabsWrap}>
@@ -408,6 +438,11 @@ export default function ToolsPanel({
                       {group.tools.map((tool) => {
                         const key = toolKey(tool);
                         const title = pluginToolTitle(tool);
+                        const pluginTool = pluginTools.find(
+                          (item) =>
+                            item.plugin_id === tool.plugin_id &&
+                            item.name === tool.name,
+                        );
                         const showDesc =
                           !!tool.description &&
                           tool.description !== title &&
@@ -429,6 +464,12 @@ export default function ToolsPanel({
                                 >
                                   {title}
                                 </span>
+                                {pluginTool &&
+                                pluginToolNeedsConfig(pluginTool) ? (
+                                  <Tag color="warning">
+                                    {t("plugins.needsConfig")}
+                                  </Tag>
+                                ) : null}
                                 {tool.available === false ? (
                                   <Tooltip
                                     title={t("toolSettings.unavailableHint")}
@@ -452,6 +493,15 @@ export default function ToolsPanel({
                               ) : null}
                             </div>
                             <div className={pluginStyles.detailToolActions}>
+                              {pluginTool &&
+                              pluginTool.config_fields.length > 0 ? (
+                                <Button
+                                  size="small"
+                                  onClick={() => setConfigTool(pluginTool)}
+                                >
+                                  {t("plugins.configure")}
+                                </Button>
+                              ) : null}
                               {renderSwitch(tool)}
                             </div>
                           </div>
