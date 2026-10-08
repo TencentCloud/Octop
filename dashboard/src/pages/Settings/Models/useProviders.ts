@@ -71,6 +71,8 @@ export interface ProviderRow {
   models: ProviderModel[];
   note: string | null;
   enabled: boolean;
+  /** Resolved: custom defaults off, bundled presets default on. */
+  stream_usage?: boolean;
 }
 
 export interface UseProvidersResult {
