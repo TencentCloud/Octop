@@ -343,10 +343,37 @@ def hf_cache_snapshot_dir(cache_dir: Path, hf_repo: str, *, revision: str = COS_
     repo_dir = cache_dir / ("models--" + hf_repo.replace("/", "--"))
     refs = repo_dir / "refs"
     refs.mkdir(parents=True, exist_ok=True)
-    (refs / "main").write_text(revision + "\n", encoding="utf-8")
+    # huggingface_hub reads the ref file verbatim: a trailing newline resolves
+    # to a snapshot directory that does not exist and local loads fail.
+    (refs / "main").write_text(revision, encoding="utf-8")
     dest = repo_dir / "snapshots" / revision
     dest.mkdir(parents=True, exist_ok=True)
     return dest
+
+
+def repair_hf_cache_refs(cache_dir: Path) -> list[Path]:
+    """Strip stray whitespace from ref files written by older Octop versions.
+
+    Older versions wrote ``refs/main`` with a trailing newline. Since
+    ``huggingface_hub`` resolves the ref verbatim, such caches can never be
+    loaded locally and would be re-downloaded on every attempt. Rewriting the
+    ref in place lets them load again without touching the snapshot files.
+    """
+    repaired: list[Path] = []
+    for ref in cache_dir.glob("models--*/refs/*"):
+        try:
+            raw = ref.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        stripped = raw.strip()
+        if not stripped or stripped == raw:
+            continue
+        try:
+            ref.write_text(stripped, encoding="utf-8")
+        except OSError:
+            continue
+        repaired.append(ref)
+    return repaired
 
 
 def _download_http_file(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -279,6 +280,36 @@ def test_embed_texts_empty_input(monkeypatch) -> None:
     monkeypatch.setattr(mod, "_build_text_embedding", boom)
     assert mod.embed_texts("BAAI/bge-small-zh-v1.5", []) == []
     assert called["n"] == 0
+
+
+def test_build_text_embedding_repairs_stale_cache_refs(tmp_path, monkeypatch) -> None:
+    """Caches written before the ref-line fix must still load, not re-download."""
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    from octop.infra.agents.providers import onnx_service as mod
+
+    repo = mod.embedding_models_dir() / "models--Qdrant--bge-small-zh-v1.5"
+    (repo / "snapshots" / "cos-mirror").mkdir(parents=True)
+    ref = repo / "refs" / "main"
+    ref.parent.mkdir(parents=True)
+    ref.write_text("cos-mirror\n", encoding="utf-8")
+
+    observed: dict[str, str] = {}
+
+    class FakeEmbed:
+        def __init__(self, *, model_name: str, cache_dir: str) -> None:
+            observed["model"] = model_name
+            observed["ref"] = (
+                Path(cache_dir)
+                .joinpath("models--Qdrant--bge-small-zh-v1.5", "refs", "main")
+                .read_text(encoding="utf-8")
+            )
+
+    monkeypatch.setitem(sys.modules, "fastembed", SimpleNamespace(TextEmbedding=FakeEmbed))
+
+    mod._build_text_embedding("BAAI/bge-small-zh-v1.5")
+
+    assert observed["model"] == "BAAI/bge-small-zh-v1.5"
+    assert observed["ref"] == "cos-mirror"
 
 
 def test_embedding_prerequisites_ok_for_model(monkeypatch) -> None:
