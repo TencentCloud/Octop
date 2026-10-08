@@ -510,6 +510,62 @@ async def test_create_package_skill_files_overwrite_replaces_stale_siblings(env:
     assert not (skill_dir / "stale.txt").exists()
 
 
+@pytest.mark.parametrize("method", ["PUT", "POST"])
+@pytest.mark.parametrize("paths", [("a", "a/b"), ("a/b", "a"), ("a", "a/"), ("a/", "a")])
+async def test_package_skill_replace_rejects_path_conflicts_without_data_loss(
+    env: Any, method: str, paths: tuple[str, str]
+) -> None:
+    from octop.infra.skills.skill_package_store import SkillPackageStore
+
+    client, server, auth = env
+    package = await client.post("/api/skill-packages", headers=auth, json={"name": "Conflict"})
+    assert package.status_code == 200, package.text
+    package_id = package.json()["id"]
+    url = f"/api/skill-packages/{package_id}/skills"
+    original = {
+        "SKILL.md": SAMPLE_SKILL.encode(),
+        "references/guide.md": b"Original guide",
+        "assets/data.bin": b"\x00\xff\x01",
+    }
+    created = await client.post(
+        url,
+        headers=auth,
+        json={
+            "name": "path-conflict",
+            "files": [
+                {"path": path, "content_base64": base64.b64encode(content).decode("ascii")}
+                for path, content in original.items()
+            ],
+        },
+    )
+    assert created.status_code == 200, created.text
+    payload: dict[str, Any] = {
+        "files": [
+            {"path": "SKILL.md", "content_base64": _b64("# Replacement")},
+            *({"path": path, "content_base64": ""} for path in paths),
+        ]
+    }
+    if method == "POST":
+        payload.update(name="path-conflict", overwrite=True)
+    else:
+        url += "/path-conflict"
+
+    response = await client.request(method, url, headers=auth, json=payload)
+
+    assert response.status_code == 400, response.text
+    assert response.json()["error"]["code"] == "SLASH_BAD_ARGS"
+    store = SkillPackageStore(
+        repo=server.services.skill_package_repo, root=server.paths.skill_packages_dir
+    )
+    skill_dir = store.package_skills_dir(package_id) / "path-conflict"
+    assert {
+        path.relative_to(skill_dir).as_posix(): path.read_bytes()
+        for path in skill_dir.rglob("*")
+        if path.is_file()
+    } == original
+    assert store.repo.get(package_id).skill_count == 1
+
+
 async def test_create_package_skill_rejects_invalid_base64_files(env: Any) -> None:
     client, _server, auth = env
     package_id = (

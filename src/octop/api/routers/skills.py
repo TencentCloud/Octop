@@ -804,15 +804,16 @@ async def create_skill(
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
     try:
         name = validate_skill_slug(body.name)
+    except SkillPackageError:
+        raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
+    try:
         package = resolve_skill_package(
             slug=name,
             files=_files_from_skill_body(content=body.content, files=body.files),
             source="manual",
         )
-    except SkillPackageTooLarge as exc:
+    except SkillPackageError as exc:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
-    except SkillPackageError:
-        raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
     await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, name, user)
     # Conflict check must use SKILL.md — ZIP payloads often list siblings first,
     # and soft-delete only marks the manifest (leaving sibling files behind).
@@ -857,15 +858,16 @@ async def update_skill(
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
     try:
         slug = validate_skill_slug(name)
+    except SkillPackageError:
+        raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
+    try:
         package = resolve_skill_package(
             slug=slug,
             files=_files_from_skill_body(content=body.content, files=body.files),
             source="manual",
         )
-    except SkillPackageTooLarge as exc:
+    except SkillPackageError as exc:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
-    except SkillPackageError:
-        raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
 
     await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, slug, user)
     existing = await _aread_text(ctx.workspace, f"skills/{slug}/SKILL.md")

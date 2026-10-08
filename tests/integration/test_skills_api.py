@@ -715,6 +715,87 @@ async def test_create_skill_files_overwrite_replaces_stale_siblings(env: Any) ->
     assert await agent.workspace.aread_text("skills/zip-demo/stale.txt") is None
 
 
+@pytest.mark.parametrize("method", ["PUT", "POST"])
+@pytest.mark.parametrize("paths", [("a", "a/b"), ("a/b", "a"), ("a", "a/"), ("a/", "a")])
+async def test_skill_replace_rejects_path_conflicts_without_data_loss(
+    env: Any, method: str, paths: tuple[str, str]
+) -> None:
+    client, server, auth, agent_id = env
+    url = f"/api/agents/{agent_id}/skills"
+    original = {
+        "SKILL.md": SAMPLE_SKILL.encode(),
+        "references/guide.md": b"Original guide",
+        "assets/data.bin": b"\x00\xff\x01",
+    }
+    created = await client.post(
+        url,
+        headers=auth,
+        json={
+            "name": "path-conflict",
+            "files": [
+                {"path": path, "content_base64": base64.b64encode(content).decode("ascii")}
+                for path, content in original.items()
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    payload: dict[str, Any] = {
+        "files": [
+            {"path": "SKILL.md", "content_base64": _b64("# Replacement")},
+            *({"path": path, "content_base64": ""} for path in paths),
+        ]
+    }
+    if method == "POST":
+        payload.update(name="path-conflict", overwrite=True)
+    else:
+        url += "/path-conflict"
+
+    response = await client.request(method, url, headers=auth, json=payload)
+
+    assert response.status_code == 400, response.text
+    assert response.json()["error"]["code"] == "SLASH_BAD_ARGS"
+    workspace = server.app_runtime.agent_registry.get_agent(agent_id).workspace
+    for path, content in original.items():
+        assert await workspace.adownload_bytes(f"skills/path-conflict/{path}") == content
+    assert not await workspace.aexists("skills/path-conflict/a")
+
+
+@pytest.mark.parametrize("method", ["PUT", "POST"])
+@pytest.mark.parametrize(
+    "files",
+    [
+        [("guide.md", b"No manifest")],
+        [("SKILL.md", b"\xff")],
+        [("SKILL.md", b"# skill"), ("../escape", b"bad")],
+        [("SKILL.md", b"# skill"), ("SKILL.md", b"duplicate")],
+    ],
+)
+async def test_skill_write_rejects_invalid_package_as_bad_request(
+    env: Any, method: str, files: list[tuple[str, bytes]]
+) -> None:
+    client, _server, auth, agent_id = env
+    url = f"/api/agents/{agent_id}/skills"
+    created = await client.post(
+        url, headers=auth, json={"name": "invalid-package", "content": SAMPLE_SKILL}
+    )
+    assert created.status_code == 201, created.text
+    payload: dict[str, Any] = {
+        "files": [
+            {"path": path, "content_base64": base64.b64encode(content).decode("ascii")}
+            for path, content in files
+        ]
+    }
+    if method == "POST":
+        payload.update(name="invalid-package", overwrite=True)
+    else:
+        url += "/invalid-package"
+
+    response = await client.request(method, url, headers=auth, json=payload)
+
+    assert response.status_code == 400, response.text
+    assert response.json()["error"]["code"] == "SLASH_BAD_ARGS"
+
+
 async def test_create_skill_rejects_invalid_base64_files(env: Any) -> None:
     c, _srv, auth, aid = env
     r = await c.post(

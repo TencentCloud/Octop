@@ -68,6 +68,42 @@ def test_resolve_package_rejects_unsafe_paths(path: str) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "paths",
+    [
+        ("a", "a/b"),
+        ("a", "a/"),
+        ("nested/a", "nested/a/b"),
+        ("a", "a/b/"),
+        ("./a", "a//./b"),
+        ("SKILL.md/child",),
+        ("SKILL.md/",),
+    ],
+)
+@pytest.mark.parametrize("reverse", [False, True])
+def test_normalize_skill_files_rejects_file_directory_conflicts(
+    paths: tuple[str, ...], reverse: bool
+) -> None:
+    files = [("SKILL.md", b"# skill"), *((path, b"") for path in paths)]
+    if reverse:
+        files.reverse()
+
+    with pytest.raises(skill_packages.SkillPackageError, match="conflict"):
+        skill_packages.normalize_skill_files(files)
+
+
+@pytest.mark.parametrize("paths", [("a/", "a/b", "a/c", "empty/"), ("a", "ab/b")])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_normalize_skill_files_accepts_compatible_paths(
+    paths: tuple[str, ...], reverse: bool
+) -> None:
+    files = [("SKILL.md", b"# skill"), *((path, b"") for path in paths)]
+    if reverse:
+        files.reverse()
+
+    assert skill_packages.normalize_skill_files(files) == tuple(files)
+
+
 def test_resolve_package_preserves_empty_directory_markers() -> None:
     package = skill_packages.resolve_skill_package(
         slug="word-docx",
