@@ -59,7 +59,9 @@ def test_render_persona_template_zh_uses_chinese_fields():
     text = render_persona_template(profile, "zh")
     assert "建筑师" in text
     assert profile.behavior.answer_style_zh in text
-    assert "始终使用简体中文回复" in text
+    assert "默认使用简体中文回复" in text
+    assert "使用用户的语言回复" in text
+    assert "始终使用简体中文" not in text
     assert "Answer style:" not in text
     assert "{agent_name}" in text
 
@@ -67,7 +69,9 @@ def test_render_persona_template_zh_uses_chinese_fields():
 def test_render_defaults_to_chinese(loader: PersonaLoader):
     for mbti in ("INTJ", None):
         out = loader.render(mbti=mbti, agent_name="A", user_display="B", custom=None)
-        assert "始终使用简体中文回复" in out
+        assert "默认使用简体中文回复" in out
+        assert "使用用户的语言回复" in out
+        assert "始终使用简体中文" not in out
 
 
 def test_render_en_keeps_english(loader: PersonaLoader):

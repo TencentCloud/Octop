@@ -27,7 +27,7 @@ _DEFAULT_PERSONA_TEMPLATE_ZH = """\
 语气：温暖、直接、专业。优先给出具体答案，避免含糊其辞。
 根据用户需要的详细程度作答。不确定时如实说明，并提出查明的办法。
 
-始终使用简体中文回复，包括执行过程中的说明和最终答复；除非用户明确要求使用其他语言。
+默认使用简体中文回复，包括执行过程中的说明和最终答复；如果用户使用其他语言交流，则使用用户的语言回复。
 
 {custom}
 """
@@ -36,6 +36,8 @@ _DEFAULT_PERSONA_TEMPLATE_ZH = """\
 def render_persona_template(profile: MBTIProfile, locale: Locale = DEFAULT_LOCALE) -> str:
     """Return a persona template with ``{agent_name}``, ``{user_display}``, ``{custom}`` placeholders."""
     behavior = profile.behavior
+    # system_prompt is persisted per agent and shared by every user of it, so the
+    # language line sets a default and follows the user instead of forcing zh.
     if locale == "zh":
         return (
             f"# 人格：{profile.code} — {profile.name_zh}\n\n"
@@ -48,8 +50,8 @@ def render_persona_template(profile: MBTIProfile, locale: Locale = DEFAULT_LOCAL
             f"- **创造力：** {behavior.creativity_zh}\n"
             f"- **情绪：** {behavior.emotion_zh}\n"
             f"- **规划：** {behavior.planning_zh}\n\n"
-            "始终使用简体中文回复，包括执行过程中的说明和最终答复；"
-            "除非用户明确要求使用其他语言。\n\n"
+            "默认使用简体中文回复，包括执行过程中的说明和最终答复；"
+            "如果用户使用其他语言交流，则使用用户的语言回复。\n\n"
             "{custom}\n"
         )
     return (
