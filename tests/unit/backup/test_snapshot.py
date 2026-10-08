@@ -5,16 +5,18 @@ from __future__ import annotations
 import os
 import sqlite3
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 from octop.infra.backup.snapshot import (
     capture_jwt_secret_from_pool,
+    capture_users_from_pool,
     restore_jwt_secret_into_pool,
     snapshot_sqlite_file,
 )
 from octop.infra.db.migrate import run_migrations
-from octop.infra.db.pool import SqlitePool
+from octop.infra.db.pool import DatabasePool, SqlitePool
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Windows disallows '?' in path names")
@@ -34,6 +36,53 @@ def test_snapshot_sqlite_file_with_special_chars_in_path(tmp_path: Path) -> None
         row = conn.execute("SELECT v FROM t").fetchone()
     assert row is not None
     assert row[0] == "ok"
+
+
+def test_capture_users_reads_mapping_values_and_serializes_jsonb_permissions() -> None:
+    """PostgreSQL rows iterate over column names and decode JSONB as lists."""
+    row = {
+        "id": 1,
+        "username": "alice",
+        "password_hash": "hash",
+        "role": "user",
+        "display_name": None,
+        "disabled": 0,
+        "created_at": 1,
+        "locale": "zh",
+        "preferences_json": "{}",
+        "login_failed_count": 0,
+        "login_locked_until": 0,
+        "email": "alice@example.com",
+        "permissions": ["channels", "knowledge_bases"],
+        "role_name": "User",
+        "avatar_icon": None,
+    }
+    pool = MagicMock(spec=DatabasePool)
+    pool.connect.return_value.__enter__.return_value.execute.return_value.fetchall.return_value = [
+        row
+    ]
+
+    captured = capture_users_from_pool(pool)
+
+    assert captured == [
+        (
+            1,
+            "alice",
+            "hash",
+            "user",
+            None,
+            0,
+            1,
+            "zh",
+            "{}",
+            0,
+            0,
+            "alice@example.com",
+            '["channels", "knowledge_bases"]',
+            "User",
+            None,
+        )
+    ]
 
 
 def test_jwt_secret_capture_and_restore(tmp_path: Path) -> None:
