@@ -25,6 +25,8 @@ vendor_one() {
   req_file="${GREEN_ROOT}/requirements-${plat}.txt"
   echo "[wheels] ${plat}: exporting frozen deps → ${req_file}" >&2
   uv export --frozen --no-dev --no-emit-project --no-hashes -o "$req_file" >/dev/null
+  # Keep offline bundles equipped with the same online updater as package.sh.
+  echo "uv==${GREEN_UV_VERSION}" >> "$req_file"
 
   override_file="$(write_green_overrides "$plat" || true)"
   local extra=()

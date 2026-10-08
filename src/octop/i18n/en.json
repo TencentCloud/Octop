@@ -378,6 +378,7 @@
     "BACKUP_SCHEMA_INCOMPATIBLE": "This backup uses database schema version {archive_schema_version}, which cannot be restored by this Octop version (maximum supported: {runtime_schema_version}).",
     "BACKUP_IN_PROGRESS": "A backup or restore is already in progress. Try again shortly.",
     "FORBIDDEN": "Permission denied.",
+    "UPDATE_TARGET_NOT_NEWER": "Target version {target} must be newer than installed version {current}. Reinstalling or downgrading is not supported.",
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",
     "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {minutes} minutes.",
@@ -877,6 +878,14 @@
   "conversation_mode": {
     "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",
     "execute": "Execute {path}"
+  },
+  "update": {
+    "completed": "Upgraded to {version}.",
+    "fpk_completed": "Upgraded to {version}. Restart the service in the app center to load the new version.",
+    "fpk_target_missing": "FPK site-packages directory does not exist: {path}",
+    "version_unavailable": "The installer finished, but the installed Octop version could not be verified.",
+    "version_mismatch": "The installer finished, but installed version {actual} does not match requested version {expected}.",
+    "version_not_newer": "The installer finished, but installed version {actual} is not newer than {previous}."
   },
   "ldap": {
     "test": {

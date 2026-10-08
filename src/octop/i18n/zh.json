@@ -378,6 +378,7 @@
     "BACKUP_SCHEMA_INCOMPATIBLE": "该备份使用数据库结构版本 {archive_schema_version}，当前 Octop 版本无法恢复（最高支持版本：{runtime_schema_version}）。",
     "BACKUP_IN_PROGRESS": "已有备份或恢复任务正在进行，请稍后再试。",
     "FORBIDDEN": "没有权限。",
+    "UPDATE_TARGET_NOT_NEWER": "目标版本 {target} 必须高于已安装版本 {current}，不支持重装同版本或降级。",
     "NOT_FOUND": "未找到。",
     "USER_DISABLED": "账号已禁用。",
     "LOGIN_LOCKED": "登录失败次数过多，请 {minutes} 分钟后再试。",
@@ -877,6 +878,14 @@
   "conversation_mode": {
     "plan_ready": "计划已写入 `{path}`。回复「按计划执行」开始执行，或继续改计划。",
     "execute": "请按 {path} 执行"
+  },
+  "update": {
+    "completed": "已升级到 {version}。",
+    "fpk_completed": "已升级到 {version}，请在应用中心重启服务以加载新版。",
+    "fpk_target_missing": "FPK site-packages 目录不存在：{path}",
+    "version_unavailable": "安装程序已结束，但无法确认已安装的 Octop 版本。",
+    "version_mismatch": "安装程序已结束，但已安装版本 {actual} 与目标版本 {expected} 不一致。",
+    "version_not_newer": "安装程序已结束，但已安装版本 {actual} 不高于原版本 {previous}。"
   },
   "ldap": {
     "test": {

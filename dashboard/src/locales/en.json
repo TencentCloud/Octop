@@ -89,6 +89,7 @@
     "BACKUP_SCHEMA_INCOMPATIBLE": "This backup uses database schema version {{archive_schema_version}}, which cannot be restored by this Octop version (maximum supported: {{runtime_schema_version}}).",
     "BACKUP_IN_PROGRESS": "A backup or restore is already in progress. Try again shortly.",
     "FORBIDDEN": "Permission denied.",
+    "UPDATE_TARGET_NOT_NEWER": "Target version {{target}} must be newer than installed version {{current}}. Reinstalling or downgrading is not supported.",
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",
     "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {{minutes}} minutes.",
@@ -254,6 +255,7 @@
     "tokenUsage": "Token Usage",
     "checkUpdates": "App Updates",
     "newVersionBadge": "New version",
+    "newVersionBadgeShort": "NEW",
     "admin": "Admin",
     "adminUsers": "Users",
     "adminSso": "Single sign-on",
@@ -706,6 +708,24 @@
       "logs": "Installation Logs",
       "skipHint": "You can skip this step. Web browsing, screenshots, and online automation features will not be available until a browser is installed."
     }
+  },
+  "mbti": {
+    "INTJ": "Architect",
+    "INTP": "Logician",
+    "ENTJ": "Commander",
+    "ENTP": "Debater",
+    "INFJ": "Advocate",
+    "INFP": "Mediator",
+    "ENFJ": "Protagonist",
+    "ENFP": "Campaigner",
+    "ISTJ": "Logistician",
+    "ISFJ": "Defender",
+    "ESTJ": "Executive",
+    "ESFJ": "Consul",
+    "ISTP": "Virtuoso",
+    "ISFP": "Adventurer",
+    "ESTP": "Entrepreneur",
+    "ESFP": "Entertainer"
   },
   "experts": {
     "subtitle": "Spin up a pre-configured agent (with identity / soul / heartbeat baked in) from a scenario template. Each expert ships with its own system prompt — once created, just bind a provider and start it.",
@@ -4609,7 +4629,23 @@
       "recordingPlaceholder": "Recording... type \"end\" to stop",
       "confirmPlaceholder": "Type \"confirm\" to apply",
       "placeholderWithSkills": "Type skill to replay, or chat",
-      "inputPlaceholder": "Ask about page or control browser..."
+      "inputPlaceholder": "Ask about page or control browser...",
+      "objectiveSet": "✅ Task objective set: **{{objective}}**\n\nNext, describe what you want the AI assistant to do in the browser.\n\nExample: \"Open Bilibili, Xiaohongshu and Baidu and search for today's weather\".\n\nOnce described, the AI will perform the actions; when finished, type \"end\" to stop recording.",
+      "previewMessage": "✅ Recording finished! {{steps}} replay steps generated.\n\n📝 **Skill \"{{name}}\" script preview:**\n\n{{preview}}{{truncation}}\n\nReply \"confirm\" to apply this skill.\n\nOnce applied, just type **\"{{name}}\"** to replay the same workflow in one step.",
+      "previewNoScript": "✅ Recording finished! {{steps}} replay steps generated.\n\n⚠️ Failed to generate the skill script. Please try again later.",
+      "skillAppliedMessage": "🎉 Skill **\"{{name}}\"** applied successfully!\n\nFrom now on, just type **\"{{name}}\"** to replay the same browser workflow in one step.",
+      "noRecordingFound": "⚠️ No recording found for skill \"{{name}}\"; replay failed.",
+      "recordingNotFound": "Recording not found",
+      "replayDone": "🎬 Browser-Skill \"{{name}}\" replay finished!",
+      "stepLine": "Step {{id}} ({{kind}}): {{error}}",
+      "stepFailed": "failed",
+      "replayFailedDetail": "⚠️ Skill \"{{name}}\" replay failed:\n{{detail}}",
+      "replayError": "⚠️ Skill replay error: {{error}}",
+      "unknownError": "Unknown error",
+      "replayComplete": "🔄 Skill replay finished! All steps completed successfully.",
+      "replayFailedSimple": "⚠️ Skill replay failed: {{error}}",
+      "replayingSkill": "🔄 Replaying with skill \"{{text}}\"...",
+      "recordingHint": "💡 Recording is still in progress. If you have finished, type \"end\" to stop and generate the skill script."
     }
   },
   "remoteDesktop": {
@@ -6462,7 +6498,25 @@
   "pwa": {
     "updateReady": "A new version is ready",
     "updateNow": "Update now",
-    "later": "Later"
+    "later": "Later",
+    "addToHomeScreen": "Add to Home Screen",
+    "close": "Close",
+    "installAsAppDesc": "Install Octop as an app for one-tap access anytime.",
+    "iosStep1Prefix": "Tap the",
+    "iosStep1Suffix": "Share button in the bottom toolbar",
+    "iosStep2": "Scroll down and tap \"Add to Home Screen\"",
+    "iosStep3": "Tap \"Add\" in the top-right corner to finish installing",
+    "installDesktopApp": "Install as desktop app",
+    "desktopGuideDesc": "One-click install is not ready in this browser yet. Follow the steps below, or refresh the page and use the install button in the header.",
+    "desktopStep1Prefix": "Look for the",
+    "desktopStep1Suffix": "install icon on the right of the address bar and click it",
+    "desktopStep2": "Or open the browser menu and choose \"{{action}} Octop\"",
+    "desktopStep3": "After confirming, launch it any time from your desktop or dock",
+    "desktopHint": "Browsers only offer installation over HTTPS; if you access Octop via a LAN IP, HTTPS is required.",
+    "menuActionApply": "Install",
+    "menuActionInstall": "Install",
+    "installApp": "Install app",
+    "install": "Install"
   },
   "browser": {
     "recordReplay": {
@@ -6480,7 +6534,12 @@
     "title": "Shortcuts"
   },
   "skillRecord": {
+    "appliedMessage": "🎉 Skill **{{name}}** applied successfully!\n\nYou can now trigger the same browser workflow from chat in one step.",
     "applyFailed": "Failed to apply skill",
+    "previewMessage": "✅ Recording finished! {{steps}} replay steps generated.\n\n📝 **Skill script preview:**\n\n{{preview}}{{truncation}}\n\nReply \"confirm\" to apply this skill; afterwards you can replay the same workflow in one step.",
+    "previewNoScript": "✅ Recording finished! {{steps}} replay steps generated.\n\n⚠️ Failed to generate the skill script. Please retry later or generate it manually.",
+    "previewTruncation": "\n\n... ({{lines}} lines in total; the full content will be saved after confirmation)",
+    "recordingStartedMessage": "🎬 Recording started! Perform the operations you want to automate in the browser.\n\nWhen finished, type \"end\" to stop recording; the skill script will be generated automatically.",
     "recordingStopped": "Recording finished — captured {{steps}} replay steps",
     "skillApplied": "Skill \"{{name}}\" applied",
     "stopFailed": "Failed to stop recording"
