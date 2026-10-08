@@ -23,8 +23,7 @@ import base64
 import contextlib
 import json
 import os
-import random
-import string
+import secrets
 import sys
 import time
 from urllib.parse import urlencode
@@ -102,9 +101,8 @@ def save_credential(token, new_cred, profile):
 
 
 def generate_state():
-    """生成随机 state"""
-    characters = string.ascii_letters + string.digits
-    return "".join(random.choice(characters) for _ in range(10))
+    """生成高熵随机 state（CSPRNG，防预测）"""
+    return secrets.token_urlsafe(32)
 
 
 def save_state(state):
@@ -207,14 +205,19 @@ def do_login_with_code(args):
         print("请确保复制了完整的 base64 验证码字符串。")
         return 1
 
-    # 验证 state（如果有保存的话）
+    # 验证 state（fail-closed：本地会话缺失或不匹配一律拒绝，
+    # 防止旧授权链接或被注入的验证码换发凭证）
     token_state = token.get("state")
-    if saved_state and token_state != saved_state:
-        print("⚠️  警告: state 不匹配")
-        print(f"   期望: {saved_state}")
-        print(f"   实际: {token_state}")
+    if saved_state is None:
+        print("❌ state 校验失败: 本地无有效授权会话（未运行 --get-url 或已超过 10 分钟）")
         print()
-        print("可能是使用了旧的授权链接。继续尝试...")
+        print("请重新运行: python3 tccli-oauth-helper.py --get-url")
+        return 1
+    if token_state != saved_state:
+        print("❌ state 不匹配: 验证码与本次授权会话不一致（可能使用了旧的授权链接）")
+        print()
+        print("请重新运行 --get-url 并使用新链接完成登录")
+        return 1
 
     try:
         # 获取临时凭证
