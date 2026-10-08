@@ -59,6 +59,14 @@ def persist_database_config(config_path: Path, db_config: DatabaseConfig) -> Oct
             if db_config.password:
                 section["password"] = db_config.password
 
+    # The wizard payload has no pool fields, so a hand-edited policy has to be
+    # carried over or re-running the database step would reset it.
+    existing = raw.get("database")
+    if isinstance(existing, dict):
+        for key in ("pool_min_size", "pool_max_size", "pool_max_idle_seconds"):
+            if key in existing:
+                section[key] = existing[key]
+
     raw["database"] = section
     _atomic_write_json(config_path, raw)
     return load_config(config_path)

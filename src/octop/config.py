@@ -19,6 +19,13 @@ DEFAULT_BROWSER_IDLE_TIMEOUT_MINUTES = 30
 
 _VALID_DRIVERS = frozenset({"sqlite", "postgresql"})
 
+# PostgreSQL pool policy. ``pool_min_size=0`` means an idle Octop holds no
+# server-side connection at all; psycopg only ever shrinks back to this floor.
+DEFAULT_POOL_MIN_SIZE = 0
+DEFAULT_POOL_MAX_SIZE = 8
+DEFAULT_POOL_MAX_IDLE_SECONDS = 60.0
+MAX_POOL_MAX_IDLE_SECONDS = 86400.0
+
 _DATABASE_ENV_KEYS = (
     "OCTOP_DATABASE_URL",
     "OCTOP_DATABASE_DRIVER",
@@ -30,9 +37,12 @@ _DATABASE_ENV_KEYS = (
     "OCTOP_DATABASE_PASSWORD",
 )
 
+# ``OCTOP_DATABASE_POOL_*`` keys are deliberately absent: they tune a pool that
+# is already configured, and must not make a SQLite install look env-configured.
+
 
 def database_env_configured() -> bool:
-    """True when any ``OCTOP_DATABASE_*`` env var is set."""
+    """True when any ``OCTOP_DATABASE_*`` connection env var is set."""
     return any(os.environ.get(k) for k in _DATABASE_ENV_KEYS)
 
 
@@ -48,6 +58,9 @@ class DatabaseConfig:
     user: str = "octop"
     password: str | None = None
     url: str | None = None  # verbatim OCTOP_DATABASE_URL when set
+    pool_min_size: int = DEFAULT_POOL_MIN_SIZE
+    pool_max_size: int = DEFAULT_POOL_MAX_SIZE
+    pool_max_idle_seconds: float = DEFAULT_POOL_MAX_IDLE_SECONDS
 
     @property
     def is_sqlite(self) -> bool:
@@ -292,6 +305,75 @@ def _coerce_bool(name: str, value: str, default: bool) -> bool:
     return default
 
 
+def _coerce_float(name: str, value: str, default: float) -> float:
+    try:
+        return float(value)
+    except ValueError:
+        logger.warning("env %s is not a number; using %s", name, default)
+        return default
+
+
+def _number_or(value: Any, default: float) -> float:
+    """Config-file value as a float, falling back to *default* when unusable."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _pool_int(name: str, value: Any, default: int) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        raise ValueError(f"database.{name} must be an integer, got {value!r}")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"database.{name} must be an integer, got {value!r}") from None
+
+
+def _pool_float(name: str, value: Any, default: float) -> float:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        raise ValueError(f"database.{name} must be a number, got {value!r}")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"database.{name} must be a number, got {value!r}") from None
+
+
+def _parse_pool_policy(merged: dict[str, Any]) -> tuple[int, int, float]:
+    """Validate the PostgreSQL connection-pool policy shared by both drivers.
+
+    SQLite parses these and ignores them, because a typo here decides how many
+    connections a shared Postgres server loses: report it at startup, naming the
+    key, instead of shipping an unbounded pool.
+    """
+    pool_min = _pool_int("pool_min_size", merged.get("pool_min_size"), DEFAULT_POOL_MIN_SIZE)
+    pool_max = _pool_int("pool_max_size", merged.get("pool_max_size"), DEFAULT_POOL_MAX_SIZE)
+    pool_idle = _pool_float(
+        "pool_max_idle_seconds",
+        merged.get("pool_max_idle_seconds"),
+        DEFAULT_POOL_MAX_IDLE_SECONDS,
+    )
+    if pool_min < 0:
+        raise ValueError(f"database.pool_min_size must be 0 or greater, got {pool_min}")
+    if pool_max < 1:
+        raise ValueError(f"database.pool_max_size must be 1 or greater, got {pool_max}")
+    if pool_min > pool_max:
+        raise ValueError(
+            f"database.pool_min_size ({pool_min}) must not exceed "
+            f"database.pool_max_size ({pool_max})"
+        )
+    if not 0 < pool_idle <= MAX_POOL_MAX_IDLE_SECONDS:
+        raise ValueError(
+            f"database.pool_max_idle_seconds must be within 0-{MAX_POOL_MAX_IDLE_SECONDS:g},"
+            f" got {pool_idle:g}"
+        )
+    return pool_min, pool_max, pool_idle
+
+
 def _parse_database_url(url: str) -> dict[str, Any]:
     parsed = urlparse(url)
     if parsed.scheme not in ("postgresql", "postgres"):
@@ -336,7 +418,14 @@ def parse_database_config(merged: dict[str, Any]) -> DatabaseConfig:
         sqlite_path = str(merged.get("sqlite_path", "octop.db")).strip()
         if not sqlite_path:
             raise ValueError("database.sqlite_path must not be empty")
-        return DatabaseConfig(driver=driver, sqlite_path=sqlite_path)
+        pool_min, pool_max, pool_idle = _parse_pool_policy(merged)
+        return DatabaseConfig(
+            driver=driver,
+            sqlite_path=sqlite_path,
+            pool_min_size=pool_min,
+            pool_max_size=pool_max,
+            pool_max_idle_seconds=pool_idle,
+        )
 
     host = str(merged.get("host", "")).strip()
     database = str(merged.get("database", "")).strip()
@@ -360,6 +449,7 @@ def parse_database_config(merged: dict[str, Any]) -> DatabaseConfig:
     raw_url = merged.get("url")
     url = str(raw_url).strip() if raw_url is not None and str(raw_url).strip() else None
 
+    pool_min, pool_max, pool_idle = _parse_pool_policy(merged)
     return DatabaseConfig(
         driver=driver,
         host=host,
@@ -368,6 +458,9 @@ def parse_database_config(merged: dict[str, Any]) -> DatabaseConfig:
         user=user,
         password=password,
         url=url,
+        pool_min_size=pool_min,
+        pool_max_size=pool_max,
+        pool_max_idle_seconds=pool_idle,
     )
 
 
@@ -389,6 +482,24 @@ def _apply_database_env(merged_db: dict[str, Any]) -> dict[str, Any]:
         out["user"] = v
     if v := os.environ.get("OCTOP_DATABASE_PASSWORD"):
         out["password"] = v
+    if v := os.environ.get("OCTOP_DATABASE_POOL_MIN_SIZE"):
+        out["pool_min_size"] = _coerce_int(
+            "OCTOP_DATABASE_POOL_MIN_SIZE",
+            v,
+            int(_number_or(out.get("pool_min_size"), DEFAULT_POOL_MIN_SIZE)),
+        )
+    if v := os.environ.get("OCTOP_DATABASE_POOL_MAX_SIZE"):
+        out["pool_max_size"] = _coerce_int(
+            "OCTOP_DATABASE_POOL_MAX_SIZE",
+            v,
+            int(_number_or(out.get("pool_max_size"), DEFAULT_POOL_MAX_SIZE)),
+        )
+    if v := os.environ.get("OCTOP_DATABASE_POOL_MAX_IDLE_SECONDS"):
+        out["pool_max_idle_seconds"] = _coerce_float(
+            "OCTOP_DATABASE_POOL_MAX_IDLE_SECONDS",
+            v,
+            _number_or(out.get("pool_max_idle_seconds"), DEFAULT_POOL_MAX_IDLE_SECONDS),
+        )
     return out
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from octop.config import load_config, parse_database_config
+from octop.config import database_env_configured, load_config, parse_database_config
 
 
 def test_defaults_when_missing(tmp_path: Path):
@@ -430,3 +430,104 @@ def test_non_object_config_raises(tmp_path: Path):
     with pytest.raises(ValueError, match="JSON object"):
         load_config(cfg_path)
     assert cfg_path.read_text(encoding="utf-8") == "[1, 2]"
+
+
+# --- PostgreSQL pool policy (issue #1795) ---
+
+_PG_DB: dict[str, object] = {
+    "driver": "postgresql",
+    "host": "db.example.com",
+    "port": 5433,
+    "database": "octop",
+    "user": "octop",
+}
+
+
+def _db(**overrides: object):
+    return parse_database_config({**_PG_DB, **overrides})
+
+
+def test_pg_pool_defaults_leave_no_connection_open_at_rest():
+    cfg = _db()
+    assert (cfg.pool_min_size, cfg.pool_max_size, cfg.pool_max_idle_seconds) == (0, 8, 60.0)
+
+
+def test_sqlite_parses_pool_keys_so_typos_are_still_reported():
+    cfg = parse_database_config({"driver": "sqlite", "pool_max_size": 4})
+    assert cfg.pool_max_size == 4
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expect"),
+    [
+        ({}, (0, 8, 60.0)),
+        ({"pool_min_size": 2, "pool_max_size": 6}, (2, 6, 60.0)),
+        ({"pool_max_idle_seconds": 5.5}, (0, 8, 5.5)),
+        ({"pool_min_size": "3"}, (3, 8, 60.0)),
+    ],
+)
+def test_pool_policy_from_config_file(
+    tmp_path: Path,
+    overrides: dict[str, object],
+    expect: tuple[int, int, float],
+):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps({"database": {**_PG_DB, **overrides}}),
+        encoding="utf-8",
+    )
+    db = load_config(cfg_path).database
+    assert (db.pool_min_size, db.pool_max_size, db.pool_max_idle_seconds) == expect
+
+
+def test_pool_policy_env_overrides_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps({"database": {**_PG_DB, "pool_max_size": 3}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("OCTOP_DATABASE_POOL_MIN_SIZE", "1")
+    monkeypatch.setenv("OCTOP_DATABASE_POOL_MAX_SIZE", "12")
+    monkeypatch.setenv("OCTOP_DATABASE_POOL_MAX_IDLE_SECONDS", "90")
+    db = load_config(cfg_path).database
+    assert (db.pool_min_size, db.pool_max_size, db.pool_max_idle_seconds) == (1, 12, 90.0)
+
+
+def test_unusable_pool_env_keeps_the_file_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps({"database": {**_PG_DB, "pool_max_size": 16}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("OCTOP_DATABASE_POOL_MAX_SIZE", "many")
+    assert load_config(cfg_path).database.pool_max_size == 16
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"pool_min_size": -1},
+        {"pool_max_size": 0},
+        {"pool_min_size": 9, "pool_max_size": 8},
+        {"pool_max_idle_seconds": 0},
+        {"pool_max_idle_seconds": 86401},
+        {"pool_min_size": "lots"},
+        {"pool_max_idle_seconds": "soon"},
+    ],
+)
+def test_pool_policy_typos_are_rejected_at_load(overrides: dict[str, object]):
+    with pytest.raises(ValueError, match=r"database\.pool_"):
+        _db(**overrides)
+
+
+def test_pool_env_alone_does_not_count_as_a_configured_database(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A pool knob tunes a database that may not be chosen yet (greenfield deferral)."""
+    for key in (
+        "OCTOP_DATABASE_POOL_MIN_SIZE",
+        "OCTOP_DATABASE_POOL_MAX_SIZE",
+        "OCTOP_DATABASE_POOL_MAX_IDLE_SECONDS",
+    ):
+        monkeypatch.setenv(key, "2")
+    assert database_env_configured() is False

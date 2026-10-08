@@ -80,7 +80,10 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
     "database": "octop",
     "user": "octop",
     "password": null,
-    "url": null
+    "url": null,
+    "pool_min_size": 0,
+    "pool_max_size": 8,
+    "pool_max_idle_seconds": 60.0
   },
   "tls": {
     "enabled": false,
@@ -108,6 +111,19 @@ Notes:
   a `OCTOP_DATABASE_URL` that includes the password, and restrict
   `config.json` file permissions. Environment variables always override the
   same-named setting in the file.
+- `database.pool_min_size` / `pool_max_size` / `pool_max_idle_seconds` bound
+  the PostgreSQL control-plane pool, and are ignored by SQLite. The pool opens
+  connections on demand and reviews them once every `pool_max_idle_seconds`,
+  handing back at most one connection that went unused during that window —
+  down to `pool_min_size`, never below. Draining a burst of 7 extra
+  connections therefore takes about 7 × `pool_max_idle_seconds`. The default
+  floor of `0` means an Octop that is not serving requests holds **no**
+  Postgres connection, so a shared server's `max_connections` is not consumed
+  by long-lived idle sessions; raise it to `1` or more to keep connections warm
+  and avoid a TCP + auth round trip after a quiet period. The ceiling is per
+  process: `octop run --workers N` can use up to `N × pool_max_size`
+  connections. These keys are discrete settings — a `pool_*` query parameter
+  inside `OCTOP_DATABASE_URL` is rejected by libpq, not read by Octop.
 - `enable_api_docs=false` keeps `/api/docs` (Scalar) off in production
   while still serving `/api/openapi.json` to the dashboard.
 - `require_setup_password=true` adds the wizard password gate to the
@@ -162,6 +178,9 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_DATABASE_NAME` | string | `octop` | PostgreSQL database name |
 | `OCTOP_DATABASE_USER` | string | `octop` | PostgreSQL user |
 | `OCTOP_DATABASE_PASSWORD` | string | empty | PostgreSQL password (overrides file; prefer env in production) |
+| `OCTOP_DATABASE_POOL_MIN_SIZE` | int | `0` | Postgres connections the pool keeps open at all times (0 = release them all when idle) |
+| `OCTOP_DATABASE_POOL_MAX_SIZE` | int | `8` | Postgres connections one Octop process may open at peak |
+| `OCTOP_DATABASE_POOL_MAX_IDLE_SECONDS` | float | `60` | Seconds a connection may sit unused before the pool hands one back per interval |
 | `OCTOP_ADMIN_USERNAME` | string | empty | Pre-fills the first-admin username in `octop init` |
 | `OCTOP_ADMIN_PASSWORD` | string | empty | Pre-fills the first-admin password in `octop init` |
 | `OCTOP_ADMIN_DISPLAY_NAME` | string | empty | Pre-fills the admin display name |

@@ -151,13 +151,23 @@ def _split_sql_statements(sql: str) -> list[str]:
 class PostgresPool:
     dialect: str = "postgresql"
 
-    def __init__(self, conninfo: str, *, min_size: int = 1, max_size: int = 8) -> None:
+    def __init__(
+        self,
+        conninfo: str,
+        *,
+        min_size: int = 0,
+        max_size: int = 8,
+        max_idle: float = 60.0,
+    ) -> None:
         from psycopg_pool import ConnectionPool
 
         self._pool = ConnectionPool(
             conninfo=conninfo,
             min_size=min_size,
             max_size=max_size,
+            # psycopg drops at most one connection per ``max_idle``, never below
+            # ``min_size``: this is what lets an idle Octop give Postgres back.
+            max_idle=max_idle,
             kwargs={"row_factory": _compat_row_factory},
             open=True,
         )
