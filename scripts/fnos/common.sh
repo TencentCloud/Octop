@@ -639,15 +639,27 @@ USER_NAME="${OCTOP_ADMIN_USERNAME:-admin}"
 PASSWORD="${OCTOP_DEFAULT_PASSWORD:-}"
 DISPLAY_NAME="${OCTOP_ADMIN_DISPLAY_NAME:-}"
 ADMIN_EMAIL="${OCTOP_ADMIN_EMAIL:-}"
+# fnos-admin.env 是向导原样写入的 KEY=VALUE 数据，只能按文本读：source 会对值做
+# 变量展开和命令替换——未定义的 $VAR 在 set -u 下直接退出，含空格的值会被当成命令，
+# $(...) 会被执行。同一个键取最后一次，与 host 侧 octop_env_get 一致。
+fnos_env_get() {
+    local key="$1" line="" out=""
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            "$key="*) out="${line#"$key"=}" ;;
+        esac
+    done < /data/fnos-admin.env
+    printf '%s' "$out"
+}
 if [ -f /data/fnos-admin.env ]; then
-    set -a
-    # shellcheck disable=SC1091
-    . /data/fnos-admin.env
-    set +a
-    USER_NAME="${OCTOP_ADMIN_USERNAME:-$USER_NAME}"
-    PASSWORD="${OCTOP_DEFAULT_PASSWORD:-$PASSWORD}"
-    DISPLAY_NAME="${OCTOP_ADMIN_DISPLAY_NAME:-$DISPLAY_NAME}"
-    ADMIN_EMAIL="${OCTOP_ADMIN_EMAIL:-$ADMIN_EMAIL}"
+    env_user="$(fnos_env_get OCTOP_ADMIN_USERNAME)"
+    env_pass="$(fnos_env_get OCTOP_DEFAULT_PASSWORD)"
+    env_display="$(fnos_env_get OCTOP_ADMIN_DISPLAY_NAME)"
+    env_email="$(fnos_env_get OCTOP_ADMIN_EMAIL)"
+    USER_NAME="${env_user:-$USER_NAME}"
+    PASSWORD="${env_pass:-$PASSWORD}"
+    DISPLAY_NAME="${env_display:-$DISPLAY_NAME}"
+    ADMIN_EMAIL="${env_email:-$ADMIN_EMAIL}"
 fi
 if [ -z "$PASSWORD" ]; then
     echo "[fnos-boot] 缺少管理员密码（/data/fnos-admin.env），无法启动。" >&2
