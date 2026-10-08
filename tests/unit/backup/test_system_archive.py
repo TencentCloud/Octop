@@ -15,7 +15,10 @@ from octop.infra.backup.manifest import MANIFEST_VERSION, BackupManifest
 from octop.infra.backup.system_archive import create_system_backup, restore_system_backup
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
+from octop.infra.db.repos.users import UserRepo
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.identity import User
+from octop.infra.users.permissions import user_has_permission
 from octop.infra.utils.paths import PathLayout
 
 
@@ -844,6 +847,7 @@ def _make_migration_backup(
     *,
     username: str = "lc_user",
     jwt_secret: bytes | None = b"foreign-jwt-from-migration-backup!!!!",
+    extra_user_email: str | None = None,
 ) -> SqlitePool:
     """Build a fake LightClaw migration backup at *dest*; return source_pool."""
     pool = SqlitePool(layout.db)
@@ -895,6 +899,12 @@ def _make_migration_backup(
             conn.execute(
                 "INSERT INTO secrets(k, v, created_at) VALUES (?, ?, ?)",
                 ("jwt", jwt_secret, 1),
+            )
+        if extra_user_email is not None:
+            conn.execute(
+                "INSERT INTO users(id, username, password_hash, role, created_at, email) "
+                "VALUES (20, 'archive_email_owner', 'archive-hash', 'user', 1, ?)",
+                (extra_user_email,),
             )
 
     class Row:
@@ -1009,6 +1019,83 @@ def test_migration_restore_preserves_current_users_and_imported_agents(
         assert lc_row is None, "lc_user from backup was not removed after user write-back"
 
     tgt_pool.close()
+
+
+@pytest.mark.parametrize("user_id", [1, 2], ids=["existing-id", "new-id"])
+@pytest.mark.parametrize(
+    "archive_email", [None, "alice@example.com"], ids=["no-conflict", "email-conflict"]
+)
+def test_migration_restore_preserves_current_account_fields(
+    tmp_path: Path, user_id: int, archive_email: str | None
+) -> None:
+    """Preserve fields in both UPDATE (id collision) and INSERT restore paths."""
+    source_layout = PathLayout(tmp_path / "source")
+    source_layout.root.mkdir()
+    archive = tmp_path / "migration-account-fields.tar.gz"
+    source_pool = _make_migration_backup(source_layout, archive, extra_user_email=archive_email)
+    source_pool.close()
+
+    target_layout = PathLayout(tmp_path / "target")
+    target_pool = SqlitePool(target_layout.db)
+    run_migrations(target_pool)
+    permissions = ["channels", "knowledge_bases"]
+    jwt_secret = b"current-instance-jwt-secret"
+    with target_pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(id, username, password_hash, role, created_at, email, "
+            "permissions, role_name, avatar_icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                user_id,
+                "alice",
+                "current-password-hash",
+                "user",
+                2,
+                "alice@example.com",
+                json.dumps(permissions),
+                "Local user",
+                "engineer",
+            ),
+        )
+        conn.execute(
+            "INSERT INTO users(id, username, password_hash, role, created_at) "
+            "VALUES (10, 'local_admin', 'admin-hash', 'admin', 2)"
+        )
+        conn.execute("INSERT INTO secrets(k, v, created_at) VALUES ('jwt', ?, 2)", (jwt_secret,))
+    repo = UserRepo(target_pool)
+    before = repo.get(user_id)
+    assert before is not None
+
+    result = restore_system_backup(
+        archive,
+        paths=target_layout,
+        pool=target_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+    )
+    assert result["users_preserved"] is True
+    assert result["jwt_preserved"] is True
+    # Read afresh rather than inspecting a cached user from before the restore.
+    after = repo.get(user_id)
+    assert after == before
+    assert repo.get_by_email("alice@example.com") == before
+    assert repo.get(20) is None
+    restored_user = User(
+        id=after.id,
+        username=after.username,
+        role=after.role,
+        display_name=after.display_name,
+        permissions=after.permissions,
+    )
+    assert all(user_has_permission(restored_user, key) for key in permissions)
+    with target_pool.connect() as conn:
+        assert (
+            bytes(conn.execute("SELECT v FROM secrets WHERE k = 'jwt'").fetchone()[0]) == jwt_secret
+        )
+        assert (
+            conn.execute("SELECT user_id FROM agents WHERE agent_id = 'agent-lc'").fetchone()[0]
+            == 10
+        )
+    target_pool.close()
 
 
 def test_migration_restore_remaps_ownership_to_admin_user_id_2(tmp_path: Path) -> None:

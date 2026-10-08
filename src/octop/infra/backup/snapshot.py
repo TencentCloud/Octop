@@ -75,7 +75,7 @@ def restore_sqlite_into_pool(backup_file: Path, pool: SqlitePool) -> None:
 # User helpers for migration restores
 # ---------------------------------------------------------------------------
 
-# All columns in the users table (must match schema in 001_initial.sql).
+# Local account fields; SSO links depend on providers from the restored database.
 _USER_COLUMNS = (
     "id",
     "username",
@@ -88,6 +88,10 @@ _USER_COLUMNS = (
     "preferences_json",
     "login_failed_count",
     "login_locked_until",
+    "email",
+    "permissions",
+    "role_name",
+    "avatar_icon",
 )
 _USER_COLS_SQL = ", ".join(_USER_COLUMNS)
 _USER_PLACEHOLDERS = ", ".join("?" for _ in _USER_COLUMNS)
@@ -97,7 +101,16 @@ def capture_users_from_pool(pool: DatabasePool) -> list[tuple[object, ...]]:
     """Return all rows from the live *users* table as plain tuples."""
     with pool.connect() as conn:
         rows = conn.execute(f"SELECT {_USER_COLS_SQL} FROM users").fetchall()
-    return [tuple(r) for r in rows]
+    # PostgreSQL rows iterate over keys, and its JSONB permissions are decoded lists.
+    return [
+        tuple(
+            json.dumps(r[col], ensure_ascii=False)
+            if col == "permissions" and isinstance(r[col], list)
+            else r[col]
+            for col in _USER_COLUMNS
+        )
+        for r in rows
+    ]
 
 
 def upsert_users_into_pool(pool: DatabasePool, users: list[tuple[object, ...]]) -> None:
@@ -108,11 +121,19 @@ def upsert_users_into_pool(pool: DatabasePool, users: list[tuple[object, ...]]) 
     if not users:
         return
     set_clause = ", ".join(f"{col} = ?" for col in _USER_COLUMNS[1:])
+    email_idx = _USER_COLUMNS.index("email")
     dialect = pool.dialect
     with pool.transaction() as conn:
         for row in users:
             pk = row[0]
             rest = row[1:]
+            # Release a restored account's unique email without deleting FK children.
+            # Current users take precedence; archived-only users are pruned after remap.
+            email = row[email_idx]
+            if email:
+                conn.execute(
+                    "UPDATE users SET email = NULL WHERE email = ? AND id != ?", (email, pk)
+                )
             cur = conn.execute(f"UPDATE users SET {set_clause} WHERE id = ?", (*rest, pk))
             if dialect == "sqlite":
                 updated = int(conn.execute("SELECT changes()").fetchone()[0]) > 0
