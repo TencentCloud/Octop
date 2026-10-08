@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Decision types understood by langchain's HumanInTheLoopMiddleware.
 _DECISION_TYPES: frozenset[str] = frozenset({"approve", "edit", "reject", "respond"})
@@ -152,17 +152,28 @@ class RebindSessionBody(BaseModel):
 class ForkThreadBody(BaseModel):
     message_id: str | None = Field(
         default=None,
-        description="Selected assistant message id from the chat UI (optional with turns locator).",
+        description="Selected message id from the chat UI (optional with a turn locator).",
     )
     content: str | None = Field(
         default=None,
-        description="Plain text of that assistant message, used when ids differ.",
+        description="Original message text, used when ids differ; validated for user edits.",
     )
     assistant_turns_from_end: int | None = Field(
         default=None,
         ge=1,
         description="1 = latest assistant answer, 2 = second-to-last, … (preferred locator).",
     )
+    user_turns_from_end: int | None = Field(
+        default=None,
+        ge=1,
+        description="Fork before this user turn for editing; 1 = latest user turn.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_locator(self) -> ForkThreadBody:
+        if self.user_turns_from_end is not None and self.assistant_turns_from_end is not None:
+            raise ValueError("choose either a user or assistant turn locator")
+        return self
 
 
 class RenameThreadBody(BaseModel):

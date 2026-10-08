@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -413,6 +415,140 @@ def test_yuanbao_bot_creator_stop_not_running(mock_server_and_user):
     resp = client.post("/agents/agent1/channels/yuanbao/bot-creator/stop")
     assert resp.status_code == 200
     assert resp.json()["status"] in ("stopped", "not_running")
+
+
+@pytest.fixture
+def yuanbao_subprocess_client(mock_server_and_user, monkeypatch, tmp_path):
+    """Exercise the real pipe/poll path with a local creator script."""
+    from octop.api.routers import channels
+
+    server, user = mock_server_and_user
+    script = tmp_path / "yuanbao_creator.py"
+    states = {}
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setattr(channels, "_yuanbao_creator_states", states)
+    monkeypatch.setattr(channels, "_bot_creator_script", lambda _: str(script))
+    with TestClient(_make_app(server, user)) as client:
+        try:
+            yield client, script, states
+        finally:
+            for state in states.values():
+                proc = state["proc"]
+                if proc is not None:
+                    if proc.poll() is None:
+                        proc.kill()
+                    proc.wait(timeout=5)
+                    for stream in (proc.stdout, proc.stderr):
+                        if stream is not None:
+                            stream.close()
+
+
+def test_yuanbao_poll_with_stream_read_returns_events(yuanbao_subprocess_client, monkeypatch):
+    """Windows reads through stream.read(), which must yield bytes, not text."""
+    from octop.infra.utils import subprocess_io
+
+    client, script, states = yuanbao_subprocess_client
+    event = {"action": "scan_code", "scan_code": "code-1", "scan_url": "https://example.com/qr"}
+    script.write_text(f"print({json.dumps(event)!r}, flush=True)\n", encoding="utf-8")
+    base = "/agents/agent1/channels/yuanbao/bot-creator"
+    assert client.post(base + "/start", json={}).status_code == 200
+    states["agent1"]["proc"].wait(timeout=5)
+    # After the child exits read() cannot block; this matches the Windows
+    # reader's return type without requiring Windows pipe APIs on POSIX.
+    monkeypatch.setattr(subprocess_io, "read_available_bytes", lambda stream: stream.read())
+    response = client.post(base + "/poll")
+    assert response.status_code == 200
+    result = response.json()
+    assert result["status"] == "finished"
+    assert result["events"] == [event]
+    assert result["scan_code"] == "code-1"
+    assert result["scan_url"] == event["scan_url"]
+
+
+@pytest.mark.parametrize("return_code", [0, 3])
+def test_yuanbao_poll_drains_large_stderr(yuanbao_subprocess_client, return_code):
+    client, script, _ = yuanbao_subprocess_client
+    finish = {
+        "action": "finish",
+        "level": "success" if return_code == 0 else "error",
+        "data": {"app_key": "test-key", "app_secret": "test-secret"},
+    }
+    script.write_text(
+        "import sys\n"
+        # More than 256 KiB must be drained before the creator can finish.
+        "sys.stderr.write(('creator diagnostic: ' + 'x' * 1024 + '\\n') * 256)\n"
+        "sys.stderr.flush()\n"
+        f"print({json.dumps(finish)!r}, flush=True)\n"
+        f"sys.exit({return_code})\n",
+        encoding="utf-8",
+    )
+    base = "/agents/agent1/channels/yuanbao/bot-creator"
+    assert client.post(base + "/start", json={}).status_code == 200
+    deadline = time.monotonic() + 10
+    events = []
+    while time.monotonic() < deadline:
+        response = client.post(base + "/poll")
+        assert response.status_code == 200
+        result = response.json()
+        events.extend(result["events"])
+        if result["status"] != "running":
+            break
+        time.sleep(0.01)
+    assert result["status"] == ("finished" if return_code == 0 else "failed")
+    assert result["return_code"] == return_code
+    assert finish in events
+    assert any("creator diagnostic:" in event.get("message", "") for event in events)
+    assert result["app_key"] == ("test-key" if return_code == 0 else None)
+    assert result["app_secret"] == ("test-secret" if return_code == 0 else None)
+
+
+def test_yuanbao_poll_decodes_utf8_regardless_of_parent_encoding(
+    yuanbao_subprocess_client,
+    monkeypatch,
+):
+    client, script, states = yuanbao_subprocess_client
+    monkeypatch.setenv("PYTHONIOENCODING", "ascii")
+    event = {"action": "log", "message": "请扫描二维码"}
+    script.write_text(
+        f"print({json.dumps(event, ensure_ascii=False)!r}, flush=True)\n", encoding="utf-8"
+    )
+    base = "/agents/agent1/channels/yuanbao/bot-creator"
+    assert client.post(base + "/start", json={}).status_code == 200
+    states["agent1"]["proc"].wait(timeout=5)
+    response = client.post(base + "/poll")
+    assert response.status_code == 200
+    assert response.json()["status"] == "finished"
+    assert event in response.json()["events"]
+
+
+def test_yuanbao_poll_parses_output_arriving_at_exit(yuanbao_subprocess_client, monkeypatch):
+    from octop.api.routers import channels
+
+    client, script, states = yuanbao_subprocess_client
+    finish = {
+        "action": "finish",
+        "level": "success",
+        "data": {"app_key": "test-key", "app_secret": "test-secret"},
+    }
+    script.write_text(
+        f"print('123')\nprint('not-json')\nprint({json.dumps(finish)!r}, flush=True)\n",
+        encoding="utf-8",
+    )
+    base = "/agents/agent1/channels/yuanbao/bot-creator"
+    assert client.post(base + "/start", json={}).status_code == 200
+    states["agent1"]["proc"].wait(timeout=5)
+    # Simulate output arriving between the non-blocking read and the exit check.
+    monkeypatch.setattr(channels, "parse_subprocess_json_lines", lambda _: [])
+    response = client.post(base + "/poll")
+    assert response.status_code == 200
+    result = response.json()
+    assert result["status"] == "finished"
+    assert result["app_key"] == "test-key"
+    assert result["app_secret"] == "test-secret"
+    assert result["events"][-1] == finish
+    assert [event["message"] for event in result["events"][:-1]] == ["123", "not-json"]
+    assert all(event["step"] == "raw" for event in result["events"][:-1])
+    assert client.post(base + "/poll").json()["events"] == []
 
 
 @pytest.mark.parametrize(

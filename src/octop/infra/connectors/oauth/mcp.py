@@ -13,6 +13,7 @@ from urllib.parse import urlencode, urlparse
 
 import httpx
 
+from octop.i18n import tr
 from octop.infra.connectors.catalog import get_mcp_oauth_remote, mcp_oauth_remote_kinds
 from octop.infra.utils.ssrf_guard import (
     UnsafeOutboundUrl,
@@ -69,13 +70,19 @@ async def _validate_metadata_endpoints(metadata: dict[str, Any], *, issuer: str)
 
 
 async def fetch_authorization_metadata(issuer: str) -> dict[str, Any]:
-    metadata_url = f"{issuer.rstrip('/')}/.well-known/oauth-authorization-server"
+    parsed = urlparse(issuer.rstrip("/"))
+    # RFC 8414 §3.1 inserts the well-known component before the issuer path.
+    metadata_url = parsed._replace(
+        path=f"/.well-known/oauth-authorization-server{parsed.path}"
+    ).geturl()
     await _ensure_mcp_oauth_url(metadata_url, issuer=issuer, field="issuer_metadata")
     r = await safe_request("GET", metadata_url, timeout=20.0)
     r.raise_for_status()
     data = r.json()
     if not isinstance(data, dict):
         raise ValueError("invalid oauth metadata")
+    if data.get("issuer") != issuer.rstrip("/"):
+        raise ValueError(tr("connector.oauth.metadata_issuer_mismatch"))
     if not data.get("authorization_endpoint") or not data.get("token_endpoint"):
         raise ValueError("oauth metadata missing endpoints")
     return await _validate_metadata_endpoints(data, issuer=issuer)

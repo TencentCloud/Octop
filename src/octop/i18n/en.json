@@ -328,6 +328,7 @@
   },
   "connector": {
     "oauth": {
+      "metadata_issuer_mismatch": "OAuth metadata issuer is missing or does not match the requested issuer.",
       "callback_auth_failed": "Authorization failed: {error}",
       "callback_missing_params": "Missing authorization code or state.",
       "callback_invalid_state": "Invalid or expired authorization state.",

@@ -157,7 +157,7 @@ def _send_greeting(
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(token_req, context=ctx) as resp:
+        with urllib.request.urlopen(token_req, context=ctx, timeout=30) as resp:
             token_data = json.loads(resp.read())
         token = token_data.get("tenant_access_token")
         if not token:
@@ -182,7 +182,7 @@ def _send_greeting(
         },
     )
     try:
-        with urllib.request.urlopen(send_req, context=ctx) as resp:
+        with urllib.request.urlopen(send_req, context=ctx, timeout=30) as resp:
             resp.read()
     except Exception:
         pass

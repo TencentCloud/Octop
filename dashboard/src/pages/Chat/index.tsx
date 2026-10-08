@@ -1011,21 +1011,45 @@ function ChatPageInner() {
     [messages, wrappedHandleSend, hasPendingHitlPause, t],
   );
 
-  // Edit user message: truncate history from that message onwards, replace
-  // its content, and re-send — mirrors Claude / ChatGPT "edit message" behaviour.
+  const [forking, setForking] = useState(false);
+  // Editing preserves the original conversation and continues in a new one.
   const handleEditUserMessage = useCallback(
-    (messageId: string, newText: string) => {
-      if (!activeThreadId) return;
+    async (messageId: string, newText: string) => {
+      if (!activeThreadId || !resolvedAgentId || forking || isStreaming) return;
       if (hasPendingHitlPause) {
         antMessage.warning(t("chat.hitl.finishPendingFirst"));
         return;
       }
-      editAndResend(messageId, newText, "", resolvedAgentId ?? "");
+      setForking(true);
+      try {
+        const created = await editAndResend(
+          messageId,
+          newText,
+          "",
+          resolvedAgentId,
+        );
+        if (!created) return;
+        await ensureThreadInList(created.thread_id);
+        navigate(`/chat/${resolvedAgentId}/${created.thread_id}`);
+      } catch (error) {
+        antMessage.error(apiErrorMessage(error, t("chat.editFailed"), t));
+      } finally {
+        setForking(false);
+      }
     },
-    [activeThreadId, editAndResend, resolvedAgentId, hasPendingHitlPause, t],
+    [
+      activeThreadId,
+      editAndResend,
+      resolvedAgentId,
+      hasPendingHitlPause,
+      forking,
+      isStreaming,
+      ensureThreadInList,
+      navigate,
+      t,
+    ],
   );
 
-  const [forking, setForking] = useState(false);
   const forkDisabled = forking || isStreaming || hasPendingHitlPause;
   const forkDisabledHint =
     !forking && (isStreaming || hasPendingHitlPause)

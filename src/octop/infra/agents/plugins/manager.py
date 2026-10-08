@@ -274,6 +274,16 @@ def _version_tuple(version: str | None) -> tuple[int, ...]:
 _MARKET_ASSET_SUFFIXES = frozenset({".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"})
 
 
+def _is_safe_plugin_id(plugin_id: str) -> bool:
+    """Reject path components and Windows drive-qualified IDs on every platform."""
+    return (
+        bool(plugin_id)
+        and plugin_id == plugin_id.strip()
+        and plugin_id != "."
+        and not any(part in plugin_id for part in ("..", "/", "\\", ":", "\x00"))
+    )
+
+
 class PluginManager:
     def __init__(self, *, plugins_dir: Path, config_path: Path) -> None:
         self._plugins_dir = plugins_dir
@@ -311,7 +321,7 @@ class PluginManager:
     def market_plugin_dir(self, plugin_id: str) -> Path | None:
         """Return a catalog plugin directory when it exists under the market root."""
         cleaned = plugin_id.strip()
-        if not cleaned or ".." in cleaned or "/" in cleaned or "\\" in cleaned:
+        if not _is_safe_plugin_id(cleaned):
             return None
         dest = self.market_root() / cleaned
         if dest.is_dir() and (dest / "plugin.yaml").is_file():
@@ -558,6 +568,8 @@ class PluginManager:
 
     def plugin_dir(self, plugin_id: str) -> Path | None:
         """Return the on-disk plugin directory when it exists."""
+        if not _is_safe_plugin_id(plugin_id):
+            return None
         dest = self._plugins_dir / plugin_id
         if dest.is_dir() and (dest / "plugin.yaml").is_file():
             return dest
@@ -616,6 +628,11 @@ class PluginManager:
                 ErrorCode.PLUGIN_INVALID_ARCHIVE,
                 f"invalid plugin manifest: {exc}",
             ) from exc
+        if not _is_safe_plugin_id(manifest.id):
+            raise OctopError.localized(
+                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                details={"reason": "invalid_plugin_id", "id": manifest.id},
+            )
         dest = self._plugins_dir / manifest.id
         if dest.exists():
             if not force:
@@ -713,6 +730,8 @@ class PluginManager:
                 ) from exc
 
     def uninstall(self, plugin_id: str) -> None:
+        if not _is_safe_plugin_id(plugin_id):
+            raise OctopError.localized(ErrorCode.NOT_FOUND, details={"id": plugin_id})
         unload_plugin(plugin_id)
         self._tool_catalog.pop(plugin_id, None)
         self._skill_catalog.pop(plugin_id, None)

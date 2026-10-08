@@ -7,15 +7,24 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import pytest
+import yaml
+
 _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "plugins" / "echo-tool"
 
 
-def _echo_zip() -> bytes:
+def _echo_zip(plugin_id: str = "echo-tool") -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         for path in _FIXTURE.rglob("*"):
             if path.is_file():
-                zf.write(path, arcname=f"echo-tool/{path.relative_to(_FIXTURE).as_posix()}")
+                arcname = f"echo-tool/{path.relative_to(_FIXTURE).as_posix()}"
+                if path.name == "plugin.yaml":
+                    manifest = yaml.safe_load(path.read_text(encoding="utf-8"))
+                    manifest["id"] = plugin_id
+                    zf.writestr(arcname, yaml.safe_dump(manifest))
+                else:
+                    zf.write(path, arcname=arcname)
     return buf.getvalue()
 
 
@@ -77,3 +86,79 @@ async def test_list_plugins_is_available_to_authenticated_users(env_admin_alice:
     client, _srv, _admin_auth, alice_auth = env_admin_alice
     response = await client.get("/api/plugins", headers=alice_auth)
     assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize("plugin_id", ["..", "../outside", "nested/plugin", "..\\outside"])
+@pytest.mark.parametrize("force", [False, True])
+async def test_upload_rejects_invalid_id_without_modifying_existing_files(
+    env: Any, plugin_id: str, force: bool
+) -> None:
+    client, srv, auth = env
+    plugins_dir = srv.plugin_manager.plugins_dir
+    outside = plugins_dir.parent / "outside"
+    outside.mkdir()
+    marker = outside / "keep.txt"
+    marker.write_text("keep", encoding="utf-8")
+    existing = plugins_dir / "existing"
+    existing.mkdir()
+    (existing / "keep.txt").write_text("existing", encoding="utf-8")
+
+    response = await client.post(
+        "/api/plugins/upload",
+        files={"file": ("plugin.zip", _echo_zip(plugin_id), "application/zip")},
+        data={"force": str(force).lower()},
+        headers=auth,
+    )
+
+    assert response.status_code == 400, response.text
+    assert response.json()["error"]["code"] == "PLUGIN_INVALID_ARCHIVE"
+    assert response.json()["error"]["details"]["reason"] == "invalid_plugin_id"
+    assert marker.read_text(encoding="utf-8") == "keep"
+    assert (existing / "keep.txt").read_text(encoding="utf-8") == "existing"
+    assert list(plugins_dir.iterdir()) == [existing]
+    assert list(outside.iterdir()) == [marker]
+
+
+async def test_install_url_rejects_invalid_manifest_id(
+    env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, srv, auth = env
+
+    def fake_retrieve(url: str, filename: str | Path) -> tuple[str, None]:
+        Path(filename).write_bytes(_echo_zip("../outside"))
+        return str(filename), None
+
+    monkeypatch.setattr(
+        "octop.infra.agents.plugins.manager.urllib.request.urlretrieve", fake_retrieve
+    )
+    response = await client.post(
+        "/api/plugins/install", json={"url": "https://example.com/plugin.zip"}, headers=auth
+    )
+
+    assert response.status_code == 400, response.text
+    assert response.json()["error"]["code"] == "PLUGIN_INVALID_ARCHIVE"
+    assert not (srv.plugin_manager.plugins_dir.parent / "outside").exists()
+
+
+@pytest.mark.parametrize("method", ["GET", "PATCH", "DELETE"])
+async def test_plugin_routes_reject_parent_directory_id(env: Any, method: str) -> None:
+    client, srv, auth = env
+    home = srv.plugin_manager.plugins_dir.parent
+    manifest = home / "plugin.yaml"
+    manifest.write_text("id: outside\nversion: 1.0.0\n", encoding="utf-8")
+    marker = home / "private.txt"
+    marker.write_text("private", encoding="utf-8")
+    config = home / "config.json"
+    config_before = config.read_bytes()
+    path = "/api/plugins/%2e%2e"
+    if method == "GET":
+        path += "/ui/private.txt"
+    kwargs = {"json": {"enabled": False}} if method == "PATCH" else {}
+
+    response = await client.request(method, path, headers=auth, **kwargs)
+
+    assert response.status_code == 404, response.text
+    assert response.json()["error"]["code"] == "NOT_FOUND"
+    assert marker.read_text(encoding="utf-8") == "private"
+    assert config.read_bytes() == config_before
+    assert srv.plugin_manager.plugins_dir.is_dir()

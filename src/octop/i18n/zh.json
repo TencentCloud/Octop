@@ -328,6 +328,7 @@
   },
   "connector": {
     "oauth": {
+      "metadata_issuer_mismatch": "OAuth 元数据缺少 issuer，或与请求的授权服务器标识不一致。",
       "callback_auth_failed": "授权失败：{error}",
       "callback_missing_params": "缺少 code 或 state。",
       "callback_invalid_state": "无效或过期的 state。",
