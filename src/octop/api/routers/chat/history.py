@@ -333,7 +333,16 @@ async def get_thread_history(
         for message in messages_from_dict(page["messages"]):
             item = _serialize_history_message(message, user=user)
             if item is None:
-                raise ValueError("An archived history message could not be rendered")
+                # System-role and empty tool messages are legitimate in
+                # checkpoints (e.g. mid-conversation injected reminders); the
+                # projection path skips them, so the archive path must not
+                # turn one unrenderable message into a 500 for the whole page.
+                logger.warning(
+                    "skipping unrenderable archived history message thread=%s doc_kind=%s",
+                    thread_id,
+                    type(message).__name__,
+                )
+                continue
             messages.append(item)
         messages = _enrich_history_tool_media(messages, agent_id=agent_id)
         history_loading = False
