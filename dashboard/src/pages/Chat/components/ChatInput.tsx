@@ -234,6 +234,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       dragOver,
       fileInputRef,
       handleFileSelect,
+      nativeCaptureAvailable,
+      capturing,
+      handleNativeCapture,
       handleFileChange,
       removeAttachment,
       clearAttachments,
@@ -243,7 +246,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       handleDragLeave,
       handleDragOver,
       handleDrop,
-    } = useChatAttachments(agentId);
+    } = useChatAttachments(agentId, threadId);
 
     // Expose an imperative handle so the parent can push a new prefill without
     // triggering a prop change that would cause a re-render cascade.
@@ -506,7 +509,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     const submitMessage = useCallback(() => {
       const trimmed = text.trim();
-      if ((!trimmed && attachments.length === 0) || disabled) return;
+      if ((!trimmed && attachments.length === 0) || disabled || capturing)
+        return;
       const wireText = materializeSkillSlashes(trimmed, skillTokenRefs).trim();
       const slashItem = matchSlashCommand(wireText);
       if (slashItem && slashItem.spec.client_action !== "none") {
@@ -550,6 +554,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onSend,
       onQueue,
       disabled,
+      capturing,
       isStreaming,
       isTeam,
       matchSlashCommand,
@@ -719,7 +724,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }, [text, agentId, polishing, isStreaming, disabled, selectedModel, t]);
 
     const canSend = Boolean(
-      (text.trim() || attachments.length > 0) && !disabled,
+      (text.trim() || attachments.length > 0) && !disabled && !capturing,
     );
 
     return (
@@ -899,6 +904,11 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             slashMenuItems={slashMenuItems}
             onSlashShortcutSelect={handleSlashSelect}
             onFileSelect={handleFileSelect}
+            onNativeCapture={
+              nativeCaptureAvailable
+                ? (mode) => void handleNativeCapture(mode)
+                : undefined
+            }
             onNewChat={onNewChat}
             onPolish={() => void handlePolish()}
             onToggleVoice={() => toggleVoice()}

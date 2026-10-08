@@ -1,3 +1,4 @@
+import type { NativeCaptureMode } from "../../../api/modules/upload";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -6,6 +7,9 @@ import {
   Square,
   MessageSquarePlus,
   Paperclip,
+  ScanLine,
+  Camera,
+  Images,
   Zap,
   Link2,
   Sparkles,
@@ -27,7 +31,7 @@ import {
   Info,
   Search,
 } from "lucide-react";
-import { Tooltip, Popover } from "antd";
+import { Tooltip, Popover, Dropdown } from "antd";
 import { message } from "@/utils/antdMessage";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
@@ -174,6 +178,7 @@ interface ChatInputActionsRowProps {
   slashMenuItems: SlashMenuItem[];
   onSlashShortcutSelect: (command: string) => void;
   onFileSelect: () => void;
+  onNativeCapture?: (mode: NativeCaptureMode) => void;
   onNewChat: () => void;
   onPolish: () => void;
   onToggleVoice: () => void;
@@ -228,6 +233,7 @@ export default function ChatInputActionsRow({
   slashMenuItems,
   onSlashShortcutSelect,
   onFileSelect,
+  onNativeCapture,
   onNewChat,
   onPolish,
   onToggleVoice,
@@ -1011,20 +1017,64 @@ export default function ChatInputActionsRow({
             </button>
           </Tooltip>
         </Popover>
-        <Tooltip
-          title={t("upload.fileTooltip", "Upload attachment")}
-          mouseEnterDelay={0.4}
-        >
-          <button
-            className={styles.secondaryBtn}
-            onClick={onFileSelect}
-            type="button"
-            disabled={uploading}
-            aria-label={t("upload.fileTooltip", "Upload attachment")}
+        {onNativeCapture ? (
+          <Dropdown
+            trigger={["click"]}
+            menu={{
+              items: [
+                {
+                  key: "file",
+                  label: t("upload.capture.import"),
+                  icon: <Paperclip size={16} />,
+                  onClick: onFileSelect,
+                },
+                {
+                  key: "scan",
+                  label: t("upload.capture.iphone"),
+                  icon: <ScanLine size={16} />,
+                  onClick: () => onNativeCapture("scan"),
+                },
+                {
+                  key: "photo",
+                  label: t("upload.capture.photo"),
+                  icon: <Camera size={16} />,
+                  onClick: () => onNativeCapture("photo"),
+                },
+                {
+                  key: "album",
+                  label: t("upload.capture.album"),
+                  icon: <Images size={16} />,
+                  onClick: () => onNativeCapture("album"),
+                },
+              ],
+            }}
           >
-            <Paperclip size={16} />
-          </button>
-        </Tooltip>
+            <button
+              className={styles.secondaryBtn}
+              type="button"
+              disabled={uploading || disabled}
+              aria-label={t("upload.capture.addContent")}
+              title={t("upload.capture.addContent")}
+            >
+              {uploading ? <Loader2 size={16} /> : <Paperclip size={16} />}
+            </button>
+          </Dropdown>
+        ) : (
+          <Tooltip
+            title={t("upload.fileTooltip", "Upload attachment")}
+            mouseEnterDelay={0.4}
+          >
+            <button
+              className={styles.secondaryBtn}
+              onClick={onFileSelect}
+              type="button"
+              disabled={uploading}
+              aria-label={t("upload.fileTooltip", "Upload attachment")}
+            >
+              <Paperclip size={16} />
+            </button>
+          </Tooltip>
+        )}
       </>
     );
   };

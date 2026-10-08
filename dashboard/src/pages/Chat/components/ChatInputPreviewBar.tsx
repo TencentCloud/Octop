@@ -139,7 +139,7 @@ export default function ChatInputPreviewBar({
                 className={styles.imagePreviewItem}
               >
                 <ComposerImagePreview
-                  url={attachment.url}
+                  url={attachment.previewUrl || attachment.url}
                   alt={attachment.filename || "preview"}
                   className={styles.imagePreviewThumb}
                 />
@@ -195,6 +195,13 @@ export default function ChatInputPreviewBar({
             key={`${attachment.url}-${idx}`}
             className={styles.attachmentPreviewCard}
           >
+            {attachment.previewUrl && (
+              <ComposerImagePreview
+                url={attachment.previewUrl}
+                alt={attachment.filename || "preview"}
+                className={styles.imagePreviewThumb}
+              />
+            )}
             <div className={styles.attachmentPreviewMeta}>
               <FileText size={14} className={styles.attachmentPreviewIcon} />
               <span className={styles.attachmentPreviewName}>

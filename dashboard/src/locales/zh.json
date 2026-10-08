@@ -3712,6 +3712,17 @@
     "quickPrompt12Text": "请帮我优化以下简历内容，使其更专业、更有吸引力，并突出核心优势：\n\n"
   },
   "upload": {
+    "capture": {
+      "addContent": "添加内容",
+      "import": "导入文件",
+      "iphone": "iPhone 扫描文稿",
+      "timeout": "采集已超时，请重试。",
+      "unavailable": "原生采集需要 macOS，并先构建 OctopCapture。",
+      "error": "采集失败，请重试。",
+      "busy": "已有采集窗口，请先完成或关闭它。",
+      "photo": "iPhone 拍照",
+      "album": "从 iPhone 相册选择（USB）"
+    },
     "fileTooltip": "上传附件",
     "unsupportedType": "不支持的文件类型：{{type}}",
     "tooLarge": "文件过大（最大 {{maxMb}}MB）：{{name}}",
