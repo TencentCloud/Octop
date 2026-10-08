@@ -1383,6 +1383,8 @@ class BridgeManager:
         sess = self.require_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_turn_waiter(request_id)
+        closed_task = asyncio.create_task(sess.wait_closed())
+        receive_task: asyncio.Task[dict[str, Any]] | None = None
         try:
             await sess.send_json(
                 {
@@ -1393,7 +1395,18 @@ class BridgeManager:
                 }
             )
             while True:
-                msg = await asyncio.wait_for(queue.get(), timeout=600.0)
+                receive_task = asyncio.create_task(queue.get())
+                done, _ = await asyncio.wait(
+                    (receive_task, closed_task),
+                    timeout=600.0,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if receive_task in done:
+                    msg = receive_task.result()
+                elif closed_task in done:
+                    raise ConnectionError("bridge session closed")
+                else:
+                    raise TimeoutError("bridge turn timeout")
                 msg_type = str(msg.get("type") or "")
                 if msg_type == "turn.chunk":
                     frame = msg.get("frame")
@@ -1418,6 +1431,14 @@ class BridgeManager:
                     break
         finally:
             self.close_turn_waiter(request_id)
+            if receive_task is not None:
+                receive_task.cancel()
+            closed_task.cancel()
+            await asyncio.gather(
+                closed_task,
+                *([receive_task] if receive_task is not None else []),
+                return_exceptions=True,
+            )
 
     # -- browser stream relay ------------------------------------------------
 
