@@ -400,6 +400,7 @@ Octop 支持两个方向的 ACP 集成：
 | `octop service stop` | 停止系统服务 |
 | `octop agent` | 创建、列出、启停 Agent |
 | `octop channel` | 安装与管理 IM 通道 |
+| `octop bridge` | 添加 / 探测 / 编辑 / 删除远程 Octop 对端 |
 | `octop chats` | REPL 与会话管理 |
 | `octop acp` | 为 IDE 提供 stdio ACP 服务 |
 | `octop cron` | 管理定时任务 |

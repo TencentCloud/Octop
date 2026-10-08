@@ -33,6 +33,29 @@ def test_parse_action_requests() -> None:
     assert actions[0]["args"] == {"command": "ls"}
 
 
+def test_parse_action_requests_unwraps_interrupt_envelope() -> None:
+    from octop.infra.gateway.hitl.format import normalize_hitl_request
+
+    raw = {
+        "id": "int-1",
+        "value": {
+            "action_requests": [
+                {
+                    "name": "ask_user_question",
+                    "args": {"questions": [{"question": "Which DB?"}]},
+                }
+            ],
+            "review_configs": [
+                {"action_name": "ask_user_question", "allowed_decisions": ["respond"]}
+            ],
+        },
+    }
+    assert normalize_hitl_request(raw)["action_requests"][0]["name"] == "ask_user_question"
+    actions = parse_action_requests(raw)
+    assert actions[0]["name"] == "ask_user_question"
+    assert actions[0]["args"]["questions"][0]["question"] == "Which DB?"
+
+
 def test_hitl_store_register_and_resolve() -> None:
     store = HitlPendingStore()
     record = store.register(
@@ -316,6 +339,8 @@ def test_hitl_store_resolve_pending_for_thread() -> None:
     assert pending is not None
     assert pending.action_requests[0]["name"] == "execute"
     assert store.resolve_pending_for_thread("thr-a", agent_id="agent1", user_id=2) is None
+    assert store.pending_thread_ids(agent_id="agent1", user_id=1) == frozenset({"thr-a", "thr-b"})
+    assert store.pending_thread_ids(agent_id="agent1", user_id=2) == frozenset()
 
 
 def test_pending_hitl_payload() -> None:

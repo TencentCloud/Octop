@@ -81,8 +81,6 @@
 }
 
 .backendCardIcon {
-  width: 28px;
-  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -92,6 +90,9 @@
 }
 
 .backendCardTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex: 1;
   min-width: 0;
 }
@@ -109,17 +110,6 @@
 
 .backendCardNameText {
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.backendCardUser {
-  min-width: 0;
-  flex-shrink: 1;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--fn-text-tertiary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
