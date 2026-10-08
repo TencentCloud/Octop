@@ -58,6 +58,7 @@ class BridgeSession:
         self._on_browser_frame = on_browser_frame
         self._on_raw = on_raw
         self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self._handler_tasks: set[asyncio.Task[None]] = set()
         self._closed = asyncio.Event()
         self._lock = asyncio.Lock()
         self.close_reason: str | None = None
@@ -67,7 +68,7 @@ class BridgeSession:
         return self._closed.is_set()
 
     async def close(self) -> None:
-        if self._closed.is_set():
+        if self.closed:
             return
         self._closed.set()
         pending = list(self._pending.items())
@@ -75,6 +76,32 @@ class BridgeSession:
         for _rid, fut in pending:
             if not fut.done():
                 fut.set_exception(ConnectionError("bridge session closed"))
+        current = asyncio.current_task()
+        tasks = [task for task in self._handler_tasks if task is not current]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._handler_tasks.difference_update(tasks)
+
+    async def wait_closed(self) -> None:
+        await self._closed.wait()
+
+    def _start_handler(self, handler: TurnHandler, payload: dict[str, Any]) -> None:
+        async def run() -> None:
+            await handler(payload)
+
+        task = asyncio.create_task(run(), name=f"bridge-handler-{self.connection_id}")
+        self._handler_tasks.add(task)
+        task.add_done_callback(self._handler_done)
+
+    def _handler_done(self, task: asyncio.Task[None]) -> None:
+        self._handler_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("bridge session %s: handler failed", self.connection_id, exc_info=exc)
 
     async def send_json(self, payload: dict[str, Any]) -> None:
         await self._send_text(
@@ -82,6 +109,8 @@ class BridgeSession:
         )
 
     async def handle_message(self, raw: str) -> None:
+        if self.closed:
+            return
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError:
@@ -95,32 +124,7 @@ class BridgeSession:
             await self.close()
             return
         if msg_type == "tunnel.request" and self._on_tunnel_request is not None:
-            req_id = str(payload.get("id") or "")
-            try:
-                result = await self._on_tunnel_request(payload)
-                await self.send_json({"type": "tunnel.response", "id": req_id, **result})
-            except Exception as exc:
-                from octop.infra.errors import OctopError
-
-                if isinstance(exc, OctopError):
-                    await self.send_json(
-                        {
-                            "type": "tunnel.error",
-                            "id": req_id,
-                            "code": exc.code.value,
-                            "message": str(exc)[:500],
-                        }
-                    )
-                else:
-                    logger.exception("bridge tunnel request failed id=%s", req_id)
-                    await self.send_json(
-                        {
-                            "type": "tunnel.error",
-                            "id": req_id,
-                            "code": "TUNNEL_ERROR",
-                            "message": str(exc)[:500],
-                        }
-                    )
+            self._start_handler(self._handle_tunnel_request, payload)
             return
         if msg_type in {"tunnel.response", "tunnel.error"}:
             req_id = str(payload.get("id") or "")
@@ -129,13 +133,46 @@ class BridgeSession:
                 fut.set_result(payload)
             return
         if msg_type.startswith("turn.") and self._on_turn_frame is not None:
-            await self._on_turn_frame(payload)
+            if msg_type == "turn.start":
+                # Running a peer turn must not block the receive pump for its replies.
+                self._start_handler(self._on_turn_frame, payload)
+            else:
+                await self._on_turn_frame(payload)
             return
         if msg_type.startswith("browser.") and self._on_browser_frame is not None:
             await self._on_browser_frame(payload)
             return
         if self._on_raw is not None:
             await self._on_raw(payload)
+
+    async def _handle_tunnel_request(self, payload: dict[str, Any]) -> None:
+        assert self._on_tunnel_request is not None
+        req_id = str(payload.get("id") or "")
+        try:
+            result = await self._on_tunnel_request(payload)
+            await self.send_json({"type": "tunnel.response", "id": req_id, **result})
+        except Exception as exc:
+            from octop.infra.errors import OctopError
+
+            if isinstance(exc, OctopError):
+                await self.send_json(
+                    {
+                        "type": "tunnel.error",
+                        "id": req_id,
+                        "code": exc.code.value,
+                        "message": str(exc)[:500],
+                    }
+                )
+            else:
+                logger.exception("bridge tunnel request failed id=%s", req_id)
+                await self.send_json(
+                    {
+                        "type": "tunnel.error",
+                        "id": req_id,
+                        "code": "TUNNEL_ERROR",
+                        "message": str(exc)[:500],
+                    }
+                )
 
     async def tunnel_request(
         self,
@@ -168,8 +205,6 @@ class BridgeSession:
             await self.send_json(frame)
             return await asyncio.wait_for(fut, timeout=timeout)
         except TimeoutError as exc:
-            self._pending.pop(req_id, None)
             raise TimeoutError(f"bridge tunnel timeout id={req_id}") from exc
-        except Exception:
+        finally:
             self._pending.pop(req_id, None)
-            raise
