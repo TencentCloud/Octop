@@ -336,3 +336,36 @@ def test_resolve_multimodal_model_ref_prefers_inferred_vision_model(store: Provi
         ),
     )
     assert store.resolve_multimodal_model_ref() == "p/gpt-4o"
+
+
+def test_canonical_model_ref_maps_numeric_provider_id(store: ProviderStore) -> None:
+    provider_id = store._provider_repo.create(
+        name="OpenCode Go (Anthropic)",
+        kind="anthropic",
+        base_url="https://opencode.ai/zen/go",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [{"id": "deepseek-v4-pro", "name": "d", "enabled": True}]
+        ),
+    )
+    assert store.canonical_model_ref(f"{provider_id}/deepseek-v4-pro") == (
+        "OpenCode Go (Anthropic)",
+        "deepseek-v4-pro",
+    )
+    assert store.canonical_model_ref("OpenCode Go (Anthropic)/deepseek-v4-pro") == (
+        "OpenCode Go (Anthropic)",
+        "deepseek-v4-pro",
+    )
+
+
+def test_canonical_model_ref_rejects_unusable(store: ProviderStore) -> None:
+    store._provider_repo.create(
+        name="p",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps([{"id": "off", "name": "off", "enabled": False}]),
+    )
+    assert store.canonical_model_ref("p/off") is None
+    assert store.canonical_model_ref("missing/model") is None
+    assert store.canonical_model_ref("no-slash") is None
