@@ -138,7 +138,14 @@ def build_app(server: OctopServer) -> FastAPI:
     install_setup_lockdown(app, server)
 
     if server.app_runtime is not None and server.app_runtime.bridge_manager is not None:
-        server.app_runtime.bridge_manager.bind_asgi_app(app)
+        from octop.api.bridge_peer import prepare_peer_dashboard_turn
+        from octop.api.routers.browser.stream import run_browser_stream_session
+
+        server.app_runtime.bridge_manager.bind_asgi_app(
+            app,
+            peer_turn_runner=prepare_peer_dashboard_turn,
+            peer_browser_runner=run_browser_stream_session,
+        )
 
     from octop.infra.setup.tls.challenge import challenge_store
 
@@ -156,6 +163,7 @@ def build_app(server: OctopServer) -> FastAPI:
         agent_tools,
         agents,
         auth,
+        auth_ldap,
         auth_oauth,
         auth_oidc,
         backup,
@@ -217,6 +225,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(auth.router, "/api/auth", ["auth"]),
             _RouterMount(auth_oidc.router, "/api/auth", ["auth"]),
             _RouterMount(auth_oauth.router, "/api/auth", ["auth"]),
+            _RouterMount(auth_ldap.router, "/api/auth", ["auth"]),
             _RouterMount(invites.public_router, "/api/auth/invite", ["auth"]),
             _RouterMount(preferences.router, "/api", ["auth"]),
             _RouterMount(i18n.router, "/api", ["i18n"]),

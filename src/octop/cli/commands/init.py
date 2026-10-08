@@ -60,20 +60,26 @@ def init(
     paths = PathLayout.from_env()
     home = paths.root
 
+    # Sidecar files (octop-login.txt, NAS share metadata) must not block first
+    # bootstrap. Only an existing control-plane DB counts as an install.
+    has_db = (home / "octop.db").is_file()
     if home.exists() and any(home.iterdir()):
-        if not force:
+        if has_db and not force:
             click.echo(
                 f"error: {home} already exists and is not empty. Use --force to reset.",
                 err=True,
             )
             raise SystemExit(1)
-        if not non_interactive:
-            from octop.cli.support import prompts as _prompts
+        if force:
+            if not non_interactive:
+                from octop.cli.support import prompts as _prompts
 
-            if not _prompts.confirm(f"Wipe {home}? This deletes ALL Octop state.", default=False):
-                click.echo("aborted", err=True)
-                raise SystemExit(1)
-        shutil.rmtree(home)
+                if not _prompts.confirm(
+                    f"Wipe {home}? This deletes ALL Octop state.", default=False
+                ):
+                    click.echo("aborted", err=True)
+                    raise SystemExit(1)
+            shutil.rmtree(home)
 
     paths.ensure_root()
     PluginManager(plugins_dir=paths.plugins_dir, config_path=paths.config).seed_bundled()

@@ -91,7 +91,8 @@
 }
 
 .sessionList {
-  padding: 22px 12px 10px;
+  /* No right padding — .sessionItems is the scrollport and must reach the rail edge. */
+  padding: 22px 0 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -275,6 +276,20 @@
   gap: 0;
   /* Align session title with agent name (8 + 22 + 6 − row pad 10). */
   padding: 1px 4px 4px 26px;
+
+  /* Status icon sits in the indent, not in the title flex track. */
+  .sessionRowCompact {
+    position: relative;
+  }
+
+  .sessionRowLead {
+    position: absolute;
+    left: -20px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+  }
 }
 
 .minimalAgentEmpty {
@@ -284,29 +299,34 @@
   color: var(--fn-text-tertiary);
 }
 
-.sessionRowWorkingDot {
+.sessionRowWorkingSpinner,
+.sessionRowWaitingIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--fn-color-brand);
-  animation: sessionWorkingPulse 1.2s ease-in-out infinite;
+  width: 12px;
+  height: 12px;
+  color: var(--fn-color-brand);
 }
 
-@keyframes sessionWorkingPulse {
-  0%,
-  100% {
-    opacity: 0.25;
-  }
-  50% {
-    opacity: 1;
+.sessionRowWorkingSpinner {
+  animation: sessionWorkingSpin 0.8s linear infinite;
+}
+
+.sessionRowWaitingIcon {
+  color: var(--fn-text-tertiary);
+}
+
+@keyframes sessionWorkingSpin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sessionRowWorkingDot {
+  .sessionRowWorkingSpinner {
     animation: none;
-    opacity: 1;
   }
 }
 
@@ -339,7 +359,7 @@
 .sessionSearchWrap {
   position: relative;
   flex-shrink: 0;
-  margin: 0 0 10px;
+  margin: 0 12px 10px 0;
 }
 
 .sessionSearchIcon {
@@ -430,12 +450,18 @@
 }
 .sessionItems {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  scrollbar-gutter: stable;
+}
+
+/* Keep rows inset; width:auto so 100% children do not overflow the right margin. */
+.sessionItems > * {
+  margin-right: 12px;
+  width: auto;
 }
 
 .sessionItem {

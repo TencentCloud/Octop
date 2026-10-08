@@ -9,15 +9,21 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from email.parser import BytesParser
 from pathlib import Path
 from typing import Any
 
+from octop.i18n import lookup, tr
+from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.locale import DEFAULT_LOCALE
 from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
@@ -29,8 +35,9 @@ _PYPI_UA = {"User-Agent": f"{_PACKAGE_NAME}-updater/1.0"}
 _GREEN_PACKAGES_ENV = "OCTOP_GREEN_PACKAGES"
 _STASH_SUFFIX = ".octop-old"
 _PROBE_TIMEOUT_S = 8
+_PROBE_PREFIX = "__OCTOP_PROBE__"
 _INSTALL_TIMEOUT_S = 90
-_FPK_INSTALL_TIMEOUT_S = 900
+_TARGET_INSTALL_TIMEOUT_S = 900
 
 _MIRRORS = [
     "https://mirrors.cloud.tencent.com/pypi/simple",
@@ -100,7 +107,19 @@ def resolve_venv_python() -> str:
     return sys.executable
 
 
+def _bundled_uv_executable() -> str | None:
+    target = green_packages_dir()
+    if target is None:
+        return None
+    candidate = target / "bin" / ("uv.exe" if os.name == "nt" else "uv")
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return str(candidate)
+    return None
+
+
 def detect_installer() -> str:
+    if _bundled_uv_executable() is not None:
+        return "uv"
     if shutil.which("uv"):
         return "uv"
     for candidate in _COMMON_UV_PATHS:
@@ -110,6 +129,9 @@ def detect_installer() -> str:
 
 
 def find_uv_executable() -> str:
+    bundled = _bundled_uv_executable()
+    if bundled is not None:
+        return bundled
     if shutil.which("uv"):
         return "uv"
     for candidate in _COMMON_UV_PATHS:
@@ -122,6 +144,10 @@ def get_local_version() -> str:
     try:
         from importlib.metadata import version
 
+        target = green_packages_dir()
+        fpk_target = os.environ.get("OCTOP_FPK_SITE_PACKAGES", "").strip()
+        if target is not None or fpk_target:
+            return get_version_in_dir(sys.executable, str(target or fpk_target)) or "0.0.0"
         return version(_PACKAGE_NAME)
     except Exception:
         return "0.0.0"
@@ -373,6 +399,16 @@ def is_newer(remote: str, local: str) -> bool:
     return parse_version(remote) > parse_version(local)
 
 
+def validate_upgrade_target(version: str | None, local_ver: str) -> None:
+    """Reject reinstalls/downgrades before any installer changes the environment."""
+    if version is not None and not is_newer(version, local_ver):
+        raise OctopError(
+            ErrorCode.UPDATE_TARGET_NOT_NEWER,
+            tr("errors.UPDATE_TARGET_NOT_NEWER", "en", target=version, current=local_ver),
+            details={"target": version, "current": local_ver},
+        )
+
+
 def get_editable_path() -> str | None:
     try:
         import importlib.metadata as meta
@@ -562,24 +598,127 @@ def get_installed_version(python_exe: str) -> str | None:
     return None
 
 
-def get_version_in_dir(python_exe: str, target: str) -> str | None:
-    """Return the octop version installed in *target* (a ``pip --target`` dir)."""
+def get_version_in_dir(python_exe: str, target: str, *, check_cli: bool = False) -> str | None:
+    """Read the loaded target version, optionally exercising its CLI entry point."""
     try:
         code = (
-            "import sys; sys.path.insert(0, sys.argv[1]); "
-            "from importlib.metadata import version; print(version('octop'))"
+            "import json, site, sys; from pathlib import Path; "
+            "target = Path(sys.argv[1]).resolve(); "
+            "sys.path.insert(0, str(target)); site.addsitedir(str(target)); "
+            "import octop; "
+            "actual = octop.__version__ if "
+            "Path(octop.__file__).resolve().is_relative_to(target) else None\n"
+            "if actual is not None and sys.argv[2] == '1':\n"
+            " import contextlib, io, runpy\n"
+            " sys.argv = ['octop', '--version']\n"
+            " with contextlib.redirect_stdout(io.StringIO()):\n"
+            "  try:\n"
+            "   runpy.run_module('octop', run_name='__main__', alter_sys=True)\n"
+            "  except SystemExit as exc:\n"
+            "   if exc.code not in (None, 0): raise\n"
+            f"print('\\n{_PROBE_PREFIX}' + json.dumps(actual))"
         )
         result = subprocess.run(
-            [python_exe, "-c", code, target],
+            [python_exe, "-B", "-c", code, target, "1" if check_cli else "0"],
             capture_output=True,
             text=True,
             check=False,
+            timeout=_PROBE_TIMEOUT_S,
         )
         if result.returncode == 0:
-            return result.stdout.strip() or None
+            payloads = [
+                line.removeprefix(_PROBE_PREFIX)
+                for line in result.stdout.splitlines()
+                if line.startswith(_PROBE_PREFIX)
+            ]
+            if len(payloads) != 1:
+                return None
+            loaded_version = json.loads(payloads[0])
+            return loaded_version if isinstance(loaded_version, str) and loaded_version else None
     except Exception:
         pass
     return None
+
+
+def _target_dependencies_satisfied(
+    target: Path, wheel: Path, *, version: str | None = None
+) -> bool:
+    """Check a downloaded wheel's dependency closure before modifying the target."""
+    try:
+        from importlib.metadata import Distribution, distributions
+
+        from packaging.requirements import Requirement
+        from packaging.specifiers import SpecifierSet
+        from packaging.utils import canonicalize_name
+        from packaging.version import Version
+
+        with zipfile.ZipFile(wheel) as archive:
+            records = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
+            if len(records) != 1:
+                return False
+            release = BytesParser().parsebytes(archive.read(records[0]))
+        if (
+            len(release.get_all("Name", [])) != 1
+            or len(release.get_all("Version", [])) != 1
+            or canonicalize_name(release.get("Name", "")) != _PACKAGE_NAME
+        ):
+            return False
+        actual_version = Version(release.get("Version", ""))
+        if version is not None and actual_version != Version(version):
+            return False
+
+        installed: dict[str, list[Distribution]] = {}
+        for dist in distributions(path=[str(target)]):
+            name = canonicalize_name(dist.metadata.get("Name", ""))
+            installed.setdefault(name, []).append(dist)
+        seen: set[tuple[str, frozenset[str]]] = set()
+
+        def satisfied(
+            name: str,
+            requirements: list[str],
+            python_required: str | None,
+            extras: frozenset[str],
+        ) -> bool:
+            key = (name, extras)
+            if key in seen:
+                return True
+            seen.add(key)
+            # The portable path uses sys.executable, so this is the target's Python.
+            if python_required and not SpecifierSet(python_required).contains(
+                ".".join(map(str, sys.version_info[:3])), prereleases=True
+            ):
+                return False
+            for raw in requirements:
+                requirement = Requirement(raw)
+                if requirement.marker and not any(
+                    requirement.marker.evaluate({"extra": extra}) for extra in {"", *extras}
+                ):
+                    continue
+                candidates = installed.get(canonicalize_name(requirement.name), [])
+                # Ambiguous metadata or direct URLs cannot establish a safe fast path.
+                if requirement.url or len(candidates) != 1:
+                    return False
+                dependency = candidates[0]
+                if not requirement.specifier.contains(dependency.version, prereleases=True):
+                    return False
+                if not satisfied(
+                    canonicalize_name(requirement.name),
+                    dependency.requires or [],
+                    dependency.metadata.get("Requires-Python"),
+                    frozenset(requirement.extras),
+                ):
+                    return False
+            return True
+
+        return satisfied(
+            _PACKAGE_NAME,
+            release.get_all("Requires-Dist", []),
+            release.get("Requires-Python"),
+            frozenset(),
+        )
+    except Exception:
+        # Missing packaging, malformed metadata, or unreadable records require resolution.
+        return False
 
 
 def index_label(index_url: str) -> str:
@@ -727,38 +866,21 @@ def _verify_fpk_upgrade(
     site_packages: str,
     python_exe: str,
     mirror_errors: list[str],
+    *,
+    version: str | None = None,
+    locale: str = DEFAULT_LOCALE,
 ) -> UpgradeResult:
-    actual_ver: str | None = None
-    for attempt in range(3):
-        actual_ver = get_version_in_dir(python_exe, site_packages)
-        if actual_ver and actual_ver != local_ver:
-            break
-        if attempt < 2:
-            time.sleep(0.5)
-
-    if actual_ver and is_newer(actual_ver, local_ver):
-        return UpgradeResult(
-            success=True,
-            message=f"已升级到 {actual_ver}，请重启服务生效（应用中心托管的服务重启后加载新版）。",
-            installed_version=actual_ver,
-            mirror_errors=mirror_errors,
-        )
-    if actual_ver == local_ver:
-        return UpgradeResult(
-            success=False,
-            error=(
-                f"安装完成但版本仍为 {actual_ver}；"
-                "请确认新版已发布，或改用飞牛应用中心安装新版 FPK。"
-            ),
-            installed_version=actual_ver,
-            mirror_errors=mirror_errors,
-        )
-    return UpgradeResult(
-        success=True,
-        message="upgrade completed",
-        installed_version=actual_ver,
-        mirror_errors=mirror_errors,
+    result = _verify_upgrade(
+        local_ver,
+        python_exe,
+        mirror_errors,
+        version=version,
+        locale=locale,
+        target=Path(site_packages),
     )
+    if result.success:
+        result.message = tr("update.fpk_completed", locale, version=result.installed_version)
+    return result
 
 
 def _run_fpk_upgrade(
@@ -767,6 +889,7 @@ def _run_fpk_upgrade(
     verbose: bool = False,
     allow_prerelease: bool = False,
     version: str | None = None,
+    locale: str = DEFAULT_LOCALE,
 ) -> UpgradeResult:
     """FnOS FPK 部署下的在线升级：把新版安装到 launcher 实际加载的打包目录。
 
@@ -781,7 +904,7 @@ def _run_fpk_upgrade(
     if not os.path.isdir(site_packages):
         return UpgradeResult(
             success=False,
-            error=f"FPK site-packages 目录不存在：{site_packages}",
+            error=tr("update.fpk_target_missing", locale, path=site_packages),
         )
     local_ver = get_local_version()
     ordered, mirror_errors = rank_install_indexes(version)
@@ -829,12 +952,14 @@ def _run_fpk_upgrade(
             _build_cmd(index_url),
             label,
             verbose=verbose,
-            timeout=_FPK_INSTALL_TIMEOUT_S,
+            timeout=_TARGET_INSTALL_TIMEOUT_S,
         )
         if rc != 0:
             mirror_errors.append(f"{label}: {err_snippet or 'unknown error'}")
             continue
-        res = _verify_fpk_upgrade(local_ver, site_packages, python_exe, mirror_errors)
+        res = _verify_fpk_upgrade(
+            local_ver, site_packages, python_exe, mirror_errors, version=version, locale=locale
+        )
         if res.success:
             return res
         # 镜像装到了同版本/旧版（同步滞后）：继续尝试下一个镜像
@@ -848,7 +973,15 @@ def run_upgrade(
     verbose: bool = False,
     allow_prerelease: bool = False,
     version: str | None = None,
+    locale: str = DEFAULT_LOCALE,
 ) -> UpgradeResult:
+    try:
+        validate_upgrade_target(version, get_local_version())
+    except OctopError as exc:
+        return UpgradeResult(success=False, error=exc.localized_message(locale))
+    # Cache this running updater's locale bundles before installation replaces
+    # its package resources, so result messages use the matching translations.
+    lookup("update.completed", locale)
     # [FPK] FnOS FPK 部署：launcher 通过 PYTHONPATH 从应用中心托管的打包
     # site-packages 加载 octop，在线安装到系统 Python 永远不会被加载（重启
     # 无效）。launcher 导出 OCTOP_FPK_SITE_PACKAGES 指向该打包目录，升级即
@@ -860,6 +993,7 @@ def run_upgrade(
             verbose=verbose,
             allow_prerelease=allow_prerelease,
             version=version,
+            locale=locale,
         )
 
     # Windows keeps the running octop.exe locked (os error 32), so pip / uv
@@ -871,6 +1005,7 @@ def run_upgrade(
             verbose=verbose,
             allow_prerelease=allow_prerelease,
             version=version,
+            locale=locale,
         )
     except BaseException:
         restore_console_scripts(stashed)
@@ -887,13 +1022,18 @@ def _run_managed_upgrade(
     verbose: bool = False,
     allow_prerelease: bool = False,
     version: str | None = None,
+    locale: str = DEFAULT_LOCALE,
 ) -> UpgradeResult:
     installer = detect_installer()
     venv_python = resolve_venv_python()
     local_ver = get_local_version()
+    target = green_packages_dir()
     ordered, mirror_errors = rank_install_indexes(version)
+    fallback_deadline: float | None = None
 
     for index_url, label in ordered:
+        if fallback_deadline is not None and time.monotonic() >= fallback_deadline:
+            break
         cmd = build_upgrade_command(
             installer,
             venv_python,
@@ -907,14 +1047,86 @@ def _run_managed_upgrade(
                 error="pip is not available for the Octop virtual environment.",
                 mirror_errors=mirror_errors,
             )
-        rc, err_snippet = _run_install_cmd(
-            cmd,
-            label,
-            verbose=verbose,
-            timeout=_INSTALL_TIMEOUT_S,
-        )
+        fast_path = installer == "pip" and target is not None
+        if fast_path and target is not None:
+            pip_cmd = cmd[: cmd.index("install")]
+            with tempfile.TemporaryDirectory(prefix="octop-upgrade-") as download_dir:
+                download_timeout = float(_INSTALL_TIMEOUT_S)
+                if fallback_deadline is not None:
+                    download_timeout = min(download_timeout, fallback_deadline - time.monotonic())
+                if download_timeout <= 0:
+                    break
+                download_cmd = [
+                    *pip_cmd,
+                    "download",
+                    "--no-deps",
+                    "--only-binary=:all:",
+                    "--dest",
+                    download_dir,
+                    "-i",
+                    index_url,
+                ]
+                append_prerelease_flags(download_cmd, installer, allow_prerelease=allow_prerelease)
+                download_cmd.append(package_requirement(version))
+                rc, err_snippet = _run_install_cmd(
+                    download_cmd, label, verbose=verbose, timeout=download_timeout
+                )
+                if rc != 0:
+                    # The fast path requires a prebuilt wheel. A download failure leaves
+                    # the target untouched; try another mirror instead of a cold install.
+                    mirror_errors.append(f"{label}: {err_snippet or 'unknown error'}")
+                    continue
+                wheels = list(Path(download_dir).glob("*.whl"))
+                if len(wheels) == 1 and _target_dependencies_satisfied(
+                    target, wheels[0], version=version
+                ):
+                    install_timeout = float(_INSTALL_TIMEOUT_S)
+                    if fallback_deadline is not None:
+                        install_timeout = min(install_timeout, fallback_deadline - time.monotonic())
+                    if install_timeout <= 0:
+                        break
+                    rc, err_snippet = _run_install_cmd(
+                        [
+                            *pip_cmd,
+                            "install",
+                            "--no-index",
+                            "--no-deps",
+                            "--upgrade",
+                            "--target",
+                            str(target),
+                            str(wheels[0]),
+                        ],
+                        label,
+                        verbose=verbose,
+                        timeout=install_timeout,
+                    )
+                    if rc == 0:
+                        result = _verify_upgrade(
+                            local_ver, venv_python, mirror_errors, version=version, locale=locale
+                        )
+                        if result.success:
+                            return result
+                logger.debug(
+                    "%s: application-only upgrade unavailable; installing dependencies", label
+                )
+
+        timeout = float(_INSTALL_TIMEOUT_S)
+        if fast_path:
+            now = time.monotonic()
+            if fallback_deadline is None:
+                # One window starts at the first cold install, never once per mirror.
+                fallback_deadline = now + _TARGET_INSTALL_TIMEOUT_S
+            timeout = fallback_deadline - now
+            if timeout <= 0:
+                break
+        rc, err_snippet = _run_install_cmd(cmd, label, verbose=verbose, timeout=timeout)
         if rc == 0:
-            return _verify_upgrade(local_ver, venv_python, mirror_errors)
+            result = _verify_upgrade(
+                local_ver, venv_python, mirror_errors, version=version, locale=locale
+            )
+            if result.success:
+                return result
+            err_snippet = result.error or tr("update.version_unavailable", locale)
         mirror_errors.append(f"{label}: {err_snippet or 'unknown error'}")
 
     return _all_mirrors_failed(mirror_errors)
@@ -924,32 +1136,42 @@ def _verify_upgrade(
     local_ver: str,
     venv_python: str,
     mirror_errors: list[str],
+    *,
+    version: str | None = None,
+    locale: str = DEFAULT_LOCALE,
+    target: Path | None = None,
 ) -> UpgradeResult:
+    target = target if target is not None else green_packages_dir()
     actual_ver: str | None = None
     for attempt in range(3):
-        actual_ver = get_installed_version(venv_python)
-        if actual_ver and actual_ver != local_ver:
-            break
+        actual_ver = (
+            get_version_in_dir(venv_python, str(target), check_cli=True)
+            if target is not None
+            else get_installed_version(venv_python)
+        )
+        if (
+            actual_ver
+            and is_newer(actual_ver, local_ver)
+            and (version is None or parse_version(actual_ver) == parse_version(version))
+        ):
+            return UpgradeResult(
+                success=True,
+                message=tr("update.completed", locale, version=actual_ver),
+                installed_version=actual_ver,
+                mirror_errors=mirror_errors,
+            )
         if attempt < 2:
             time.sleep(0.5)
 
-    if actual_ver and is_newer(actual_ver, local_ver):
-        return UpgradeResult(
-            success=True,
-            message=f"upgraded to {actual_ver}",
-            installed_version=actual_ver,
-            mirror_errors=mirror_errors,
-        )
-    if actual_ver == local_ver:
-        return UpgradeResult(
-            success=True,
-            message=f"installer finished but version is still {actual_ver}",
-            installed_version=actual_ver,
-            mirror_errors=mirror_errors,
-        )
+    if actual_ver is None:
+        error = tr("update.version_unavailable", locale)
+    elif version is not None and parse_version(actual_ver) != parse_version(version):
+        error = tr("update.version_mismatch", locale, actual=actual_ver, expected=version)
+    else:
+        error = tr("update.version_not_newer", locale, actual=actual_ver, previous=local_ver)
     return UpgradeResult(
-        success=True,
-        message="upgrade completed",
+        success=False,
+        error=error,
         installed_version=actual_ver,
         mirror_errors=mirror_errors,
     )
