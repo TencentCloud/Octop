@@ -19,7 +19,13 @@
  *   - the candidate diff view (vs existing atoms) — covered elsewhere.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Alert,
   Button,
@@ -48,6 +54,7 @@ import {
   type ListCandidatesBody,
 } from "../../../api/modules/memoryDashboard";
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import { useMemoryRequestGate } from "./shared/useMemoryRequestGate";
 import styles from "./CandidatesReview.module.less";
 
 const PAGE_SIZE = 20;
@@ -92,8 +99,26 @@ export default function CandidatesReview({ agentId }: Props) {
 
   // per-row pending state so the spinning button is local, not global
   const [busyId, setBusyId] = useState<string | null>(null);
+  const listGate = useMemoryRequestGate(
+    JSON.stringify([agentId, page, status, kind]),
+  );
+  const agentGate = useMemoryRequestGate(agentId);
+
+  useLayoutEffect(() => {
+    setItems([]);
+    setTotal(0);
+    setPage(1);
+    setLoading(Boolean(agentId));
+    setSelected(null);
+    setRejectTarget(null);
+    setRejectReason("");
+    setRejecting(false);
+    setBusyId(null);
+  }, [agentId]);
 
   const load = useCallback(async () => {
+    const isCurrent = listGate.begin();
+    if (!isCurrent) return;
     setLoading(true);
     const body: ListCandidatesBody = {
       offset: (page - 1) * PAGE_SIZE,
@@ -103,17 +128,22 @@ export default function CandidatesReview({ agentId }: Props) {
     if (kind) body.candidate_type = kind;
     try {
       const r = await memoryDashboardApi.listCandidates(agentId, body);
+      if (!isCurrent()) return;
       setItems(r.items);
       setTotal(r.total);
     } catch (e) {
-      message.error((e as Error).message ?? "load failed");
+      if (isCurrent()) message.error((e as Error).message ?? "load failed");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
     // ``t`` is intentionally NOT a dependency — the i18n hook returns
     // a fresh ``t`` ref on every render, which would re-fire the load
     // effect on every keystroke / hover.
-  }, [agentId, page, status, kind]);
+  }, [agentId, page, status, kind, listGate]);
+  const reload = useRef(load);
+  useLayoutEffect(() => {
+    reload.current = load;
+  }, [load]);
 
   useEffect(() => {
     if (!agentId) return;
@@ -121,9 +151,11 @@ export default function CandidatesReview({ agentId }: Props) {
   }, [agentId, load]);
 
   const handlePromote = async (c: CandidateItem) => {
+    if (!agentGate.isActive()) return;
     setBusyId(c.id);
     try {
       const r = await memoryDashboardApi.promoteCandidate(agentId, c.id);
+      if (!agentGate.isActive()) return;
       const detail =
         r.merged > 0
           ? `与现有记忆合并 ${r.merged} 条`
@@ -133,29 +165,32 @@ export default function CandidatesReview({ agentId }: Props) {
       message.success(
         t("memory.candidates.promoteOk", "已采纳") + ` · ${detail}`,
       );
-      void load();
+      void reload.current();
     } catch (e) {
-      message.error((e as Error).message ?? "操作失败");
+      if (agentGate.isActive())
+        message.error((e as Error).message ?? "操作失败");
     } finally {
-      setBusyId(null);
+      if (agentGate.isActive()) setBusyId(null);
     }
   };
 
   const handleReject = async () => {
-    if (!rejectTarget) return;
+    if (!rejectTarget || !agentGate.isActive()) return;
     setRejecting(true);
     try {
       await memoryDashboardApi.rejectCandidate(agentId, rejectTarget.id, {
         reason: rejectReason.trim() || undefined,
       });
+      if (!agentGate.isActive()) return;
       message.success(t("memory.candidates.rejectOk", "已忽略"));
       setRejectTarget(null);
       setRejectReason("");
-      void load();
+      void reload.current();
     } catch (e) {
-      message.error((e as Error).message ?? "操作失败");
+      if (agentGate.isActive())
+        message.error((e as Error).message ?? "操作失败");
     } finally {
-      setRejecting(false);
+      if (agentGate.isActive()) setRejecting(false);
     }
   };
 

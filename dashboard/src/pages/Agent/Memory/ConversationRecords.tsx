@@ -38,6 +38,7 @@ import {
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { showConfirmModal } from "../../../utils/confirmModal";
+import { useMemoryRequestGate } from "./shared/useMemoryRequestGate";
 import {
   formatMessageTime,
   formatServerDateTime,
@@ -170,20 +171,25 @@ export default function ConversationRecords({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [cardPage, setCardPage] = useState(1);
   const [cardPageSize, setCardPageSize] = useState(THREAD_LIST_PAGE_SIZE);
+  const listGate = useMemoryRequestGate(agentId);
 
   const loadThreads = useCallback(async () => {
+    const isCurrent = listGate.begin();
+    if (!isCurrent) return;
     setListLoading(true);
     try {
       const list = await octopThreadsApi.list(agentId, 100);
+      if (!isCurrent()) return;
       list.sort((a, b) => b.last_active - a.last_active);
       setThreads(list);
     } catch {
+      if (!isCurrent()) return;
       setThreads([]);
       message.error(t("memory.loadFailed"));
     } finally {
-      setListLoading(false);
+      if (isCurrent()) setListLoading(false);
     }
-  }, [agentId, t]);
+  }, [agentId, t, listGate]);
 
   const resetHistoryState = useCallback(() => {
     setMessages([]);
@@ -193,13 +199,21 @@ export default function ConversationRecords({
     scrollHeightBeforePrependRef.current = null;
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    setThreads([]);
+    setListLoading(Boolean(agentId));
     setSelectedThread(null);
     setDrawerOpen(false);
     resetHistoryState();
+    setHistoryLoading(false);
+    setDeletingId(null);
     setCardPage(1);
+  }, [agentId, resetHistoryState]);
+
+  useEffect(() => {
+    if (!agentId) return;
     void loadThreads();
-  }, [agentId, loadThreads, resetHistoryState]);
+  }, [agentId, loadThreads]);
 
   const fetchThreadHistory = useCallback(
     async (threadId: string, offset: number) => {
@@ -298,9 +312,11 @@ export default function ConversationRecords({
 
   const handleDelete = useCallback(
     async (thread: OctopThread) => {
+      if (!listGate.isActive()) return;
       setDeletingId(thread.thread_id);
       try {
         await octopThreadsApi.delete(agentId, thread.thread_id);
+        if (!listGate.isActive()) return;
         message.success(t("memory.conversationDeleteSuccess"));
         if (selectedThread?.thread_id === thread.thread_id) {
           closeDrawer();
@@ -309,12 +325,13 @@ export default function ConversationRecords({
           prev.filter((row) => row.thread_id !== thread.thread_id),
         );
       } catch {
-        message.error(t("memory.conversationDeleteFailed"));
+        if (listGate.isActive())
+          message.error(t("memory.conversationDeleteFailed"));
       } finally {
-        setDeletingId(null);
+        if (listGate.isActive()) setDeletingId(null);
       }
     },
-    [agentId, closeDrawer, selectedThread?.thread_id, t],
+    [agentId, closeDrawer, selectedThread?.thread_id, t, listGate],
   );
 
   const confirmDelete = useCallback(
@@ -539,7 +556,12 @@ export default function ConversationRecords({
               scroll={{ x: 980 }}
               locale={{ emptyText: t("memory.noConversations") }}
               pagination={{
-                defaultPageSize: THREAD_LIST_PAGE_SIZE,
+                current: cardPage,
+                pageSize: cardPageSize,
+                onChange: (page, size) => {
+                  setCardPage(size !== cardPageSize ? 1 : page);
+                  setCardPageSize(size);
+                },
                 showSizeChanger: true,
                 pageSizeOptions: THREAD_LIST_PAGE_SIZE_OPTIONS.map(String),
                 showTotal: threadPaginationTotal,
