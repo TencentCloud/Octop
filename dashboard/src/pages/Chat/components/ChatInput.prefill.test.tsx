@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { createRef } from "react";
+import type { QueuedChatItem } from "../hooks/useChatMessageQueue";
 
 vi.mock("../../../hooks/useIsMobile", () => ({
   useIsMobile: () => false,
@@ -75,7 +76,18 @@ vi.mock("./ChatInputActionsRow", () => ({
 }));
 
 vi.mock("./ChatQueuedMessages", () => ({
-  default: () => null,
+  default: ({
+    items,
+    onReclaim,
+  }: {
+    items: QueuedChatItem[];
+    onReclaim: (id: string) => void;
+  }) =>
+    items.map((item) => (
+      <button key={item.id} onClick={() => onReclaim(item.id)}>
+        reclaim
+      </button>
+    )),
 }));
 
 vi.mock("./SlashCommandMenu", () => ({
@@ -132,6 +144,66 @@ beforeEach(() => {
 });
 
 describe("ChatInput prefill clear-on-send", () => {
+  it("queues the current conversation mode and policy", () => {
+    const onQueue = vi.fn(() => "ok" as const);
+    render(
+      <ChatInput
+        onSend={vi.fn()}
+        onCancel={vi.fn()}
+        onNewChat={vi.fn()}
+        isStreaming
+        onQueue={onQueue}
+        conversationMode="ask"
+        hitlPolicy={{ mode: "ask" }}
+        agentId="agent-1"
+        threadId="thread-1"
+      />,
+    );
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "queued message" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    expect(onQueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "queued message",
+        conversationMode: "ask",
+        hitlPolicy: { mode: "ask" },
+      }),
+    );
+  });
+
+  it("restores queued mode and policy when reclaiming into the composer", () => {
+    const onConversationModeChange = vi.fn();
+    const onHitlPolicyChange = vi.fn();
+    const item: QueuedChatItem = {
+      id: "queued-1",
+      text: "edit this message",
+      conversationMode: "plan",
+      hitlPolicy: { mode: "allow_tools", tools: ["read_file"] },
+      createdAt: 0,
+    };
+    render(
+      <ChatInput
+        onSend={vi.fn()}
+        onCancel={vi.fn()}
+        onNewChat={vi.fn()}
+        isStreaming
+        queuedItems={[item]}
+        onRemoveQueued={vi.fn()}
+        onReclaimQueued={() => item}
+        conversationMode="craft"
+        hitlPolicy={{ mode: "allow_all" }}
+        onConversationModeChange={onConversationModeChange}
+        onHitlPolicyChange={onHitlPolicyChange}
+        agentId="agent-1"
+        threadId="thread-1"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "reclaim" }));
+    expect(screen.getByRole("textbox")).toHaveValue(item.text);
+    expect(onConversationModeChange).toHaveBeenCalledWith("plan");
+    expect(onHitlPolicyChange).toHaveBeenCalledWith(item.hitlPolicy);
+  });
   it("does not restore stale initialText after send (skill-card prefill path)", async () => {
     // Mirrors welcome skill/quick-card flow:
     // 1) setPrefillText fills the composer imperatively while parent initialText

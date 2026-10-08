@@ -532,6 +532,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             reasoningEffort,
           }),
           modelRef: resolveTurnModelRef(selectedModel, defaultModel),
+          conversationMode,
+          hitlPolicy,
         });
         if (result === "full") {
           antMessage.warning(t("chat.queue.full"));
@@ -562,6 +564,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       selectedModel,
       reasoningMode,
       reasoningEffort,
+      conversationMode,
+      hitlPolicy,
       defaultModel,
       t,
     ]);
@@ -586,6 +590,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               : item.text;
           setText(restoredText);
           restoreAttachments(item.attachments ?? []);
+          onConversationModeChange?.(item.conversationMode);
+          onHitlPolicyChange?.(item.hitlPolicy);
           if (ctx) {
             onConnectorsChange?.(ctx.connectors ?? []);
             onKnowledgeBaseIdsChange?.(ctx.knowledgeBaseIds ?? []);
@@ -634,6 +640,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         onKnowledgeBaseIdsChange,
         onModelChange,
         onReasoningChange,
+        onConversationModeChange,
+        onHitlPolicyChange,
         availableAgents,
       ],
     );

@@ -2,6 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { generateId } from "../../../utils/messageParser";
 import type { ChatAttachment, UserComposerContext } from "./sseHelpers";
 import * as chatStore from "./chatStore";
+import {
+  parseConversationMode,
+  type ConversationMode,
+} from "../utils/conversationMode";
+import {
+  parseHitlSessionPolicy,
+  type HitlSessionPolicy,
+} from "../utils/hitlSessionPolicy";
 
 export const CHAT_QUEUE_MAX_ITEMS = 10;
 
@@ -11,6 +19,8 @@ export type QueuedChatItem = {
   attachments?: ChatAttachment[];
   composerContext?: UserComposerContext;
   modelRef?: string | null;
+  conversationMode: ConversationMode;
+  hitlPolicy: HitlSessionPolicy;
   createdAt: number;
 };
 
@@ -19,6 +29,8 @@ export type EnqueueChatItemInput = {
   attachments?: ChatAttachment[];
   composerContext?: UserComposerContext;
   modelRef?: string | null;
+  conversationMode?: ConversationMode;
+  hitlPolicy?: HitlSessionPolicy;
 };
 
 export type ChatQueueFlushContext = {
@@ -157,6 +169,8 @@ export function useChatMessageQueue({
           ? { ...input.composerContext }
           : undefined,
         modelRef: input.modelRef ?? null,
+        conversationMode: parseConversationMode(input.conversationMode),
+        hitlPolicy: { ...parseHitlSessionPolicy(input.hitlPolicy) },
         createdAt: Date.now(),
       };
       writeQueues({ ...queuesRef.current, [key]: [...latest, item] });
