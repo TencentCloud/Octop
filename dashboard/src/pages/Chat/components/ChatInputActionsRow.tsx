@@ -25,6 +25,7 @@ import {
   ChevronRight,
   Route,
   Info,
+  Search,
 } from "lucide-react";
 import { Tooltip, Popover } from "antd";
 import { message } from "@/utils/antdMessage";
@@ -90,6 +91,32 @@ function resolveModelLogo(model: {
 
 // These browser APIs never change at runtime — compute once.
 const _sttAvailable = isSttAvailable();
+const PICKER_PANEL_TARGET_HEIGHT = 400;
+const PICKER_PANEL_VIEWPORT_GUTTER = 16;
+
+function capPickerPanelHeight(menuHeight: number): number {
+  const available = window.innerHeight - PICKER_PANEL_VIEWPORT_GUTTER;
+  return Math.max(menuHeight, Math.min(PICKER_PANEL_TARGET_HEIGHT, available));
+}
+
+function PlusMenuCount({
+  count,
+  className,
+}: {
+  count: number;
+  className?: string;
+}) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className={`${styles.mobileOverflowItemCount}${
+        className ? ` ${className}` : ""
+      }`}
+    >
+      <span className={styles.mobileOverflowItemCountText}>{count}</span>
+    </span>
+  );
+}
 
 interface ChatInputActionsRowProps {
   isMobile: boolean;
@@ -214,7 +241,12 @@ export default function ChatInputActionsRow({
   const skillDisplayName = useSkillDisplayName();
   const actionsRowRef = useRef<HTMLDivElement | null>(null);
   const [plusMenuEl, setPlusMenuEl] = useState<HTMLDivElement | null>(null);
-  const [plusMenuHeight, setPlusMenuHeight] = useState<number | null>(null);
+  const [plusPanelEl, setPlusPanelEl] = useState<HTMLDivElement | null>(null);
+  const [plusPanelMaxHeight, setPlusPanelMaxHeight] = useState<number | null>(
+    null,
+  );
+  const [plusPanelAlignBottom, setPlusPanelAlignBottom] = useState(false);
+  const [modelQuery, setModelQuery] = useState("");
   const [isCompact, setIsCompact] = useState(false);
   const [shortcutOpen, setShortcutOpen] = useState(false);
   const [reasoningModelRef, setReasoningModelRef] = useState<string | null>(
@@ -231,19 +263,35 @@ export default function ChatInputActionsRow({
 
   useLayoutEffect(() => {
     if (!plusMenuEl || isMobile) {
-      setPlusMenuHeight(null);
+      setPlusPanelMaxHeight(null);
+      setPlusPanelAlignBottom(false);
       return;
     }
     const sync = () => {
-      const next = Math.round(plusMenuEl.getBoundingClientRect().height);
-      if (next <= 0) return;
-      setPlusMenuHeight((prev) => (prev === next ? prev : next));
+      const menuH = Math.round(plusMenuEl.getBoundingClientRect().height);
+      if (menuH > 0) {
+        const capped = capPickerPanelHeight(menuH);
+        setPlusPanelMaxHeight((prev) => (prev === capped ? prev : capped));
+      }
+      if (!plusPanelEl) {
+        setPlusPanelAlignBottom(false);
+        return;
+      }
+      const panelH = plusPanelEl.getBoundingClientRect().height;
+      if (menuH > 0 && panelH > 0) {
+        setPlusPanelAlignBottom(panelH > menuH);
+      }
     };
     sync();
     const observer = new ResizeObserver(sync);
     observer.observe(plusMenuEl);
-    return () => observer.disconnect();
-  }, [plusMenuEl, isMobile]);
+    if (plusPanelEl) observer.observe(plusPanelEl);
+    window.addEventListener("resize", sync);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", sync);
+    };
+  }, [plusMenuEl, plusPanelEl, isMobile]);
 
   useEffect(() => {
     if (isMobile) {
@@ -323,6 +371,7 @@ export default function ChatInputActionsRow({
   const closeCompactPicker = () => {
     setCompactPicker(null);
     setReasoningModelRef(null);
+    setModelQuery("");
   };
 
   const closePlusMenu = () => {
@@ -332,6 +381,7 @@ export default function ChatInputActionsRow({
 
   const openCompactPicker = (key: CompactPickerKey) => {
     setReasoningModelRef(null);
+    if (key !== "model") setModelQuery("");
     setCompactPicker((prev) => (prev === key ? null : key));
   };
 
@@ -386,6 +436,28 @@ export default function ChatInputActionsRow({
         },
       )
     : defaultModelLabel;
+
+  const modelQueryNormalized = modelQuery.trim().toLowerCase();
+  const filteredModels = (availableModels ?? []).filter((model) => {
+    if (!modelQueryNormalized) return true;
+    return (
+      modelOptionLabel(model).toLowerCase().includes(modelQueryNormalized) ||
+      model.model.toLowerCase().includes(modelQueryNormalized) ||
+      model.provider_name.toLowerCase().includes(modelQueryNormalized)
+    );
+  });
+  const autoLabel = defaultModelLabel;
+  const autoHint = defaultModel
+    ? t("chat.modelDefaultHint", "Use agent default: {{model}}", {
+        model: expertDefaultModel
+          ? modelOptionLabel(expertDefaultModel)
+          : defaultModel,
+      })
+    : t("chat.modelAutoHint", "Use agent default");
+  const showAutoModel = !modelQueryNormalized
+    ? true
+    : autoLabel.toLowerCase().includes(modelQueryNormalized) ||
+      autoHint.toLowerCase().includes(modelQueryNormalized);
 
   const reasoningSummary = (model: ResolvedModel, active: boolean) => {
     const capability = model.reasoning_config;
@@ -484,34 +556,40 @@ export default function ChatInputActionsRow({
     <div className={styles.modelPickerPanel}>
       {!reasoningMenu && (
         <div className={styles.modelMenuColumn}>
+          <div className={styles.skillPickerSearch}>
+            <input
+              type="search"
+              className={styles.skillPickerSearchInput}
+              placeholder={t("chat.modelPickerSearch", "Search models")}
+              value={modelQuery}
+              onChange={(event) => setModelQuery(event.target.value)}
+            />
+            <Search
+              size={15}
+              className={styles.skillPickerSearchIcon}
+              aria-hidden
+            />
+          </div>
           <div className={styles.modelMenu}>
-            <button
-              type="button"
-              className={`${styles.modelMenuItem} ${
-                !selectedModel ? styles.modelMenuItemActive : ""
-              }`}
-              onClick={() => {
-                onModelChange?.(null);
-                closePlusMenu();
-              }}
-            >
-              <span className={styles.modelMenuTitle}>
-                <Route size={16} aria-hidden />
-                <span className={styles.modelMenuLabel}>
-                  {defaultModelLabel}
+            {showAutoModel ? (
+              <button
+                type="button"
+                className={`${styles.modelMenuItem} ${
+                  !selectedModel ? styles.modelMenuItemActive : ""
+                }`}
+                onClick={() => {
+                  onModelChange?.(null);
+                  closePlusMenu();
+                }}
+              >
+                <span className={styles.modelMenuTitle}>
+                  <Route size={16} aria-hidden />
+                  <span className={styles.modelMenuLabel}>{autoLabel}</span>
                 </span>
-              </span>
-              <span className={styles.modelMenuHint}>
-                {defaultModel
-                  ? t("chat.modelDefaultHint", "Use agent default: {{model}}", {
-                      model: expertDefaultModel
-                        ? modelOptionLabel(expertDefaultModel)
-                        : defaultModel,
-                    })
-                  : t("chat.modelAutoHint", "Use agent default")}
-              </span>
-            </button>
-            {availableModels?.map((model) => {
+                <span className={styles.modelMenuHint}>{autoHint}</span>
+              </button>
+            ) : null}
+            {filteredModels.map((model) => {
               const value = modelOptionValue(model);
               const active = selectedModel === value;
               const capability = model.reasoning_config;
@@ -560,6 +638,11 @@ export default function ChatInputActionsRow({
                 </div>
               );
             })}
+            {!showAutoModel && filteredModels.length === 0 ? (
+              <div className={styles.skillPickerEmpty}>
+                {t("chat.modelPickerEmpty", "No matching models")}
+              </div>
+            ) : null}
           </div>
           <div className={styles.modelMenuDivider} />
           <button
@@ -682,13 +765,9 @@ export default function ChatInputActionsRow({
           <span className={styles.mobileOverflowItemMain}>
             <Link2 size={16} />
             <span>{t("connectors.chatPicker")}</span>
+            <PlusMenuCount count={selectedConnectors.length} />
           </span>
           <span className={styles.mobileOverflowItemMeta}>
-            {selectedConnectors.length > 0 && (
-              <span className={styles.toolbarBadge}>
-                {selectedConnectors.length}
-              </span>
-            )}
             <ChevronRight size={16} />
           </span>
         </button>
@@ -704,13 +783,9 @@ export default function ChatInputActionsRow({
           <span className={styles.mobileOverflowItemMain}>
             <BookOpen size={16} />
             <span>{t("chat.knowledgePicker")}</span>
+            <PlusMenuCount count={selectedKnowledgeBaseIds.length} />
           </span>
           <span className={styles.mobileOverflowItemMeta}>
-            {selectedKnowledgeBaseIds.length > 0 && (
-              <span className={styles.toolbarBadge}>
-                {selectedKnowledgeBaseIds.length}
-              </span>
-            )}
             <ChevronRight size={16} />
           </span>
         </button>
@@ -726,13 +801,9 @@ export default function ChatInputActionsRow({
           <span className={styles.mobileOverflowItemMain}>
             <Sparkles size={16} />
             <span>{t("chat.skillPicker")}</span>
+            <PlusMenuCount count={activeSkillSlugs.length} />
           </span>
           <span className={styles.mobileOverflowItemMeta}>
-            {activeSkillSlugs.length > 0 ? (
-              <span className={styles.toolbarBadge}>
-                {activeSkillSlugs.length}
-              </span>
-            ) : null}
             <ChevronRight size={16} />
           </span>
         </button>
@@ -748,15 +819,12 @@ export default function ChatInputActionsRow({
           <span className={styles.mobileOverflowItemMain}>
             <GraduationCap size={16} />
             <span>{t("chat.expertPicker")}</span>
+            <PlusMenuCount
+              count={mentionedExperts.length}
+              className={styles.mobileOverflowItemCountExpert}
+            />
           </span>
           <span className={styles.mobileOverflowItemMeta}>
-            {mentionedExperts.length > 0 && (
-              <span
-                className={`${styles.toolbarBadge} ${styles.toolbarBadgeExpert}`}
-              >
-                {mentionedExperts.length}
-              </span>
-            )}
             <ChevronRight size={16} />
           </span>
         </button>
@@ -772,15 +840,12 @@ export default function ChatInputActionsRow({
           <span className={styles.mobileOverflowItemMain}>
             <Bot size={16} />
             <span>{t("chat.subagentPicker")}</span>
+            <PlusMenuCount
+              count={mentionedSubagents.length}
+              className={styles.mobileOverflowItemCountSubagent}
+            />
           </span>
           <span className={styles.mobileOverflowItemMeta}>
-            {mentionedSubagents.length > 0 && (
-              <span
-                className={`${styles.toolbarBadge} ${styles.toolbarBadgeSubagent}`}
-              >
-                {mentionedSubagents.length}
-              </span>
-            )}
             <ChevronRight size={16} />
           </span>
         </button>
@@ -894,17 +959,23 @@ export default function ChatInputActionsRow({
                 ) : null}
                 {compactPicker ? (
                   <div
+                    ref={isMobile ? undefined : setPlusPanelEl}
                     className={
                       isMobile
                         ? styles.plusFlyoutPanelInPlace
-                        : styles.plusFlyoutPanel
+                        : `${styles.plusFlyoutPanel}${
+                            plusPanelAlignBottom
+                              ? ` ${styles.plusFlyoutPanelAlignBottom}`
+                              : ""
+                          }`
                     }
                     style={
-                      !isMobile && plusMenuHeight
-                        ? { maxHeight: plusMenuHeight }
+                      !isMobile && plusPanelMaxHeight
+                        ? { maxHeight: plusPanelMaxHeight }
                         : undefined
                     }
                     data-testid="composer-plus-panel"
+                    data-align={plusPanelAlignBottom ? "bottom" : "top"}
                   >
                     {isMobile ? (
                       <button

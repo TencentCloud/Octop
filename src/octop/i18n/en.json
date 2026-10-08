@@ -378,6 +378,7 @@
     "BACKUP_SCHEMA_INCOMPATIBLE": "This backup uses database schema version {archive_schema_version}, which cannot be restored by this Octop version (maximum supported: {runtime_schema_version}).",
     "BACKUP_IN_PROGRESS": "A backup or restore is already in progress. Try again shortly.",
     "FORBIDDEN": "Permission denied.",
+    "UPDATE_TARGET_NOT_NEWER": "Target version {target} must be newer than installed version {current}. Reinstalling or downgrading is not supported.",
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",
     "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {minutes} minutes.",
@@ -613,7 +614,20 @@
     "ask_user_question": "Ask the user",
     "generate_image": "Generate image",
     "generate_video": "Generate video",
-    "bilibili_search_anime": "Search Bilibili anime"
+    "bilibili_search_anime": "Search Bilibili anime",
+    "search_arxiv": "Search arXiv papers"
+  },
+  "plugins": {
+    "arxiv_search": {
+      "empty_query": "Please provide keywords, an arXiv paper ID, or an arXiv URL.",
+      "invalid_sort": "sort_by must be relevance, lastUpdatedDate, or submittedDate; sort_order must be ascending or descending.",
+      "invalid_feed": "arXiv returned an invalid Atom feed.",
+      "failed": "arXiv search failed: {error}",
+      "no_results": "No arXiv papers found for “{query}” on this page.",
+      "results": "arXiv: {count} of {total} papers for “{query}”",
+      "paper": "{index}. {title}\nAuthors: {authors}\nAbstract: {summary}\n{url}\nPDF: {pdf_url}",
+      "tool_description": "Search arXiv papers without an API key. query accepts English keywords, a paper ID (1706.03762), an arXiv abstract/PDF URL, or arXiv syntax (ti:transformer AND cat:cs.AI, au:Vaswani, submittedDate:[202401010000 TO 202412312359]). Returns titles, authors, full abstracts, categories, publication/update timestamps, and abstract/PDF URLs. limit defaults to 5 (1–20); start is a zero-based result offset for pagination. sort_by: relevance (default), submittedDate (newest papers), lastUpdatedDate. sort_order defaults to descending. Use English search terms for Chinese requests."
+    }
   },
   "skills": {
     "pdf": "PDF",
@@ -864,6 +878,14 @@
   "conversation_mode": {
     "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",
     "execute": "Execute {path}"
+  },
+  "update": {
+    "completed": "Upgraded to {version}.",
+    "fpk_completed": "Upgraded to {version}. Restart the service in the app center to load the new version.",
+    "fpk_target_missing": "FPK site-packages directory does not exist: {path}",
+    "version_unavailable": "The installer finished, but the installed Octop version could not be verified.",
+    "version_mismatch": "The installer finished, but installed version {actual} does not match requested version {expected}.",
+    "version_not_newer": "The installer finished, but installed version {actual} is not newer than {previous}."
   },
   "ldap": {
     "test": {

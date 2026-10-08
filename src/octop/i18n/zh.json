@@ -378,6 +378,7 @@
     "BACKUP_SCHEMA_INCOMPATIBLE": "该备份使用数据库结构版本 {archive_schema_version}，当前 Octop 版本无法恢复（最高支持版本：{runtime_schema_version}）。",
     "BACKUP_IN_PROGRESS": "已有备份或恢复任务正在进行，请稍后再试。",
     "FORBIDDEN": "没有权限。",
+    "UPDATE_TARGET_NOT_NEWER": "目标版本 {target} 必须高于已安装版本 {current}，不支持重装同版本或降级。",
     "NOT_FOUND": "未找到。",
     "USER_DISABLED": "账号已禁用。",
     "LOGIN_LOCKED": "登录失败次数过多，请 {minutes} 分钟后再试。",
@@ -613,7 +614,20 @@
     "ask_user_question": "向你提问",
     "generate_image": "生成图片",
     "generate_video": "生成视频",
-    "bilibili_search_anime": "搜索番剧"
+    "bilibili_search_anime": "搜索番剧",
+    "search_arxiv": "查询 arXiv 论文"
+  },
+  "plugins": {
+    "arxiv_search": {
+      "empty_query": "请提供关键词、arXiv 论文编号或 arXiv 链接。",
+      "invalid_sort": "sort_by 必须为 relevance、lastUpdatedDate 或 submittedDate；sort_order 必须为 ascending 或 descending。",
+      "invalid_feed": "arXiv 返回了无效的 Atom 数据。",
+      "failed": "arXiv 论文查询失败：{error}",
+      "no_results": "当前页未找到与「{query}」相关的 arXiv 论文。",
+      "results": "arXiv「{query}」：返回 {count} 篇，共 {total} 篇论文",
+      "paper": "{index}. {title}\n作者：{authors}\n摘要：{summary}\n{url}\nPDF：{pdf_url}",
+      "tool_description": "无需 API Key 查询 arXiv 论文。query 支持英文关键词、论文编号（1706.03762）、arXiv 摘要/PDF 链接或 arXiv 查询语法（ti:transformer AND cat:cs.AI、au:Vaswani、submittedDate:[202401010000 TO 202412312359]）。返回标题、作者、完整摘要、分类、发表及更新时间和摘要/PDF 链接。limit 默认 5，范围 1–20；start 为从 0 开始的分页偏移。sort_by 支持 relevance（默认相关度）、submittedDate（新论文）、lastUpdatedDate；sort_order 默认 descending。中文请求请转换为英文关键词搜索。"
+    }
   },
   "skills": {
     "pdf": "PDF 处理",
@@ -864,6 +878,14 @@
   "conversation_mode": {
     "plan_ready": "计划已写入 `{path}`。回复「按计划执行」开始执行，或继续改计划。",
     "execute": "请按 {path} 执行"
+  },
+  "update": {
+    "completed": "已升级到 {version}。",
+    "fpk_completed": "已升级到 {version}，请在应用中心重启服务以加载新版。",
+    "fpk_target_missing": "FPK site-packages 目录不存在：{path}",
+    "version_unavailable": "安装程序已结束，但无法确认已安装的 Octop 版本。",
+    "version_mismatch": "安装程序已结束，但已安装版本 {actual} 与目标版本 {expected} 不一致。",
+    "version_not_newer": "安装程序已结束，但已安装版本 {actual} 不高于原版本 {previous}。"
   },
   "ldap": {
     "test": {

@@ -9,6 +9,7 @@ rem   start.bat --home .\data --host 0.0.0.0 --port 8088
 
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+set "OCTOP_GREEN_PACKAGES=%ROOT%\packages"
 
 if not defined OCTOP_HOME set "OCTOP_HOME=%ROOT%\data"
 set "HOST=127.0.0.1"
