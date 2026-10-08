@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import http.client
 import io
 import json
 import logging
 import os
+import socket
 import stat
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -77,6 +80,98 @@ def _resolve_host(host: str | None) -> str:
     return resolved
 
 
+class _FallbackHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS connection that fails over across every resolved address.
+
+    ``http.client`` connects through ``socket.create_connection``, which only
+    retries the next address while the TCP connect itself fails. Once the TCP
+    handshake succeeds, a peer that stalls or resets during the TLS handshake
+    (observed with multi-IPv4 Tencent COS accelerate hosts) fails the whole
+    request even when other addresses of the same host are healthy. Retry the
+    TCP + TLS handshake per address instead. ``Host`` and TLS SNI keep the real
+    hostname, and the certificate hostname check is unchanged.
+    """
+
+    def connect(self) -> None:
+        if self._tunnel_host:  # type: ignore[attr-defined]
+            # HTTPS through an HTTP proxy: keep the stdlib tunnel flow.
+            super().connect()
+            return
+        sys.audit("http.client.connect", self, self.host, self.port)
+        addrinfos = socket.getaddrinfo(self.host, self.port, 0, socket.SOCK_STREAM)
+        last_error: OSError | None = None
+        for family, socktype, proto, _canonname, sockaddr in addrinfos:
+            try:
+                self._connect_address(family, socktype, proto, sockaddr)
+            except OSError as exc:
+                # Like socket.create_connection: remember the last failure.
+                last_error = exc
+                logger.warning(
+                    "SkillHub HTTPS connect via %s failed, trying the next address: %s",
+                    sockaddr[0],
+                    exc,
+                )
+                continue
+            return
+        if last_error is None:
+            raise socket.gaierror(f"getaddrinfo returned no address for {self.host!r}")
+        raise last_error
+
+    def _connect_address(
+        self,
+        family: socket.AddressFamily,
+        socktype: socket.SocketKind,
+        proto: int,
+        sockaddr: tuple[str, int] | tuple[str, int, int, int] | tuple[int, bytes],
+    ) -> None:
+        sock = socket.socket(family, socktype, proto)
+        try:
+            if self.timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:  # type: ignore[attr-defined]
+                sock.settimeout(self.timeout)
+            if self.source_address:  # type: ignore[attr-defined]
+                sock.bind(self.source_address)  # type: ignore[attr-defined]
+            sock.connect(sockaddr)
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except OSError as exc:  # mirrors http.client.HTTPConnection.connect
+                if exc.errno != errno.ENOPROTOOPT:
+                    raise
+            self.sock = self._context.wrap_socket(sock, server_hostname=self.host)  # type: ignore[attr-defined]
+        except BaseException:
+            sock.close()
+            raise
+
+
+class _FallbackHTTPSHandler(urllib.request.HTTPSHandler):
+    """``HTTPSHandler`` whose connections retry every resolved address."""
+
+    def https_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
+        return self.do_open(
+            _FallbackHTTPSConnection,
+            req,
+            context=self._context,  # type: ignore[attr-defined]
+        )
+
+
+def _build_opener() -> urllib.request.OpenerDirector:
+    """Opener with ``urlopen`` defaults (proxies, redirects) plus IP fallback."""
+    return urllib.request.build_opener(_FallbackHTTPSHandler())
+
+
+_shared_opener: urllib.request.OpenerDirector | None = None
+
+
+def _urlopen(request: urllib.request.Request, timeout: float) -> Any:
+    """``urllib.request.urlopen`` equivalent with per-address HTTPS fallback.
+
+    Module-level seam: tests monkeypatch this instead of the stdlib ``urlopen``.
+    """
+    global _shared_opener
+    if _shared_opener is None:
+        _shared_opener = _build_opener()
+    return _shared_opener.open(request, timeout=timeout)
+
+
 def _http_request(
     url: str,
     *,
@@ -92,7 +187,7 @@ def _http_request(
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _urlopen(request, timeout=timeout) as response:
             headers = getattr(response, "headers", None)
             content_length = headers.get("Content-Length") if headers is not None else None
             if content_length:
