@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.2b5-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.2b6-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -230,7 +230,7 @@ curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install
 | Windows | `Octop-desktop-windows-amd64-<version>.exe`（64 位）/ `Octop-desktop-windows-arm64-<version>.exe`（ARM64）— NSIS 安装程序 |
 | macOS | `Octop-desktop-darwin-arm64-<version>.dmg`（Apple 芯片）/ `Octop-desktop-darwin-amd64-<version>.dmg`（Intel） |
 | Linux | `Octop-desktop-linux-amd64-<version>.tar.gz` / `Octop-desktop-linux-arm64-<version>.tar.gz` |
-| 飞牛 NAS（FnOS） | `Octop-fnos-docker-<version>.fpk`（依赖 Docker）/ `Octop-fnos-native-<version>.fpk`（无需 Docker）— 通过应用中心安装 |
+| 飞牛 NAS（FnOS） | `Octop-fnos-docker-<version>.fpk`（推荐，尤其是 ARM；amd64/arm64 镜像）/ `Octop-fnos-native-<version>.fpk`（x86_64，无需 Docker）/ `Octop-fnos-native-arm64-<version>.fpk`（ARM64，无 Docker 时再用）— 通过应用中心安装 |
 
 桌面客户端说明见 [desktop/README.md](desktop/README.md)，飞牛打包指南见 [fnos/README.md](fnos/README.md)。
 

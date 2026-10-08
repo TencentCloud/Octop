@@ -754,6 +754,18 @@
   gap: 12px;
 }
 
+.presetPortrait {
+  background: transparent !important;
+  overflow: hidden;
+}
+
+.presetPortraitImg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
 .profileAvatarPicker {
   display: flex;
   flex-direction: column;
@@ -790,6 +802,17 @@
   svg {
     width: 26px;
     height: 26px;
+  }
+}
+
+.profileAvatarPickerPreviewRole {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+
+  svg {
+    width: 30px;
+    height: 30px;
   }
 }
 
@@ -833,10 +856,23 @@
     height: 18px;
   }
 
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 8px;
+  }
+
   &:disabled {
     cursor: not-allowed;
     opacity: 0.5;
   }
+}
+
+.avatarPresetPortrait {
+  background: transparent;
+  overflow: hidden;
 }
 
 .avatarPresetActive {
@@ -846,8 +882,16 @@
 }
 
 .avatarPresetPlain {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   background: transparent;
   color: var(--fn-text-secondary);
+
+  svg {
+    width: 22px;
+    height: 22px;
+  }
 
   &.avatarPresetActive {
     background: transparent;
@@ -893,9 +937,9 @@
 }
 
 .roleCardAvatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -911,8 +955,32 @@
   }
 
   svg {
-    width: 18px;
-    height: 18px;
+    width: 26px;
+    height: 26px;
+  }
+}
+
+.roleCellAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  color: var(--fn-text-secondary);
+  background: transparent;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  svg {
+    width: 22px;
+    height: 22px;
   }
 }
 
