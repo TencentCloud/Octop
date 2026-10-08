@@ -79,3 +79,62 @@ def test_retrieve_context_skips_empty_non_text_turn() -> None:
     )
 
     assert context == ""
+
+
+def test_retrieve_context_cites_only_chunks_injected_within_budget(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "home"))
+    pool = SqlitePool(tmp_path / "octop.db")
+    run_migrations(pool)
+    services = SimpleNamespace(
+        knowledge_repo=KnowledgeRepo(pool),
+        settings_repo=SettingsRepo(pool),
+        user_repo=UserRepo(pool),
+    )
+    reader = services.user_repo.create(username="reader", password_hash="h", role="user")
+    base = services.knowledge_repo.create_base(owner_user_id=reader, name="Policies")
+    doc_a = services.knowledge_repo.create_document(
+        kb_id=base.id,
+        filename="a.md",
+        content_type="text/markdown",
+        byte_size=100,
+        status="ready",
+    )
+    doc_b = services.knowledge_repo.create_document(
+        kb_id=base.id,
+        filename="b.md",
+        content_type="text/markdown",
+        byte_size=100,
+        status="ready",
+    )
+    KnowledgeIndex(base.id).replace_doc_chunks(
+        doc_a.id,
+        ["first fact " * 20],
+        [[1.0, 0.0]],
+    )
+    KnowledgeIndex(base.id).replace_doc_chunks(
+        doc_b.id,
+        ["second fact " * 20],
+        [[0.5, 0.0]],
+    )
+    services.settings_repo.set("knowledge_embedding_model", "test-model")
+    monkeypatch.setattr(retrieve_module, "assert_knowledge_usable", lambda *_args: None)
+    monkeypatch.setattr(
+        retrieve_module, "embed_knowledge_texts", lambda _services, _texts: [[1.0, 0.0]]
+    )
+
+    context = asyncio.run(
+        retrieve_module.retrieve_context(
+            services,
+            user_id=reader,
+            is_admin=False,
+            query="What facts are available?",
+            knowledge_base_ids=[base.id],
+            k=5,
+            char_budget=200,
+        )
+    )
+
+    assert "first fact" in context
+    assert "second fact" not in context
+    assert f'"doc_id":"{doc_a.id}"' in context
+    assert f'"doc_id":"{doc_b.id}"' not in context
