@@ -90,6 +90,7 @@
     "BACKUP_SCHEMA_INCOMPATIBLE": "该备份使用数据库结构版本 {{archive_schema_version}}，当前 Octop 版本无法恢复（最高支持版本：{{runtime_schema_version}}）。",
     "BACKUP_IN_PROGRESS": "已有备份或恢复任务正在进行，请稍后再试。",
     "FORBIDDEN": "没有权限。",
+    "UPDATE_TARGET_NOT_NEWER": "目标版本 {{target}} 必须高于已安装版本 {{current}}，不支持重装同版本或降级。",
     "NOT_FOUND": "未找到。",
     "USER_DISABLED": "账号已禁用。",
     "LOGIN_LOCKED": "登录失败次数过多，请 {{minutes}} 分钟后再试。",
@@ -259,6 +260,7 @@
     "tokenUsage": "Token 统计",
     "checkUpdates": "应用更新",
     "newVersionBadge": "有新版本",
+    "newVersionBadgeShort": "新",
     "admin": "管理",
     "adminUsers": "用户",
     "adminSso": "单点登录",
@@ -711,6 +713,24 @@
       "logs": "安装日志",
       "skipHint": "你可以跳过此步骤。在安装浏览器之前，网页浏览、截图和在线自动化功能将不可用。"
     }
+  },
+  "mbti": {
+    "INTJ": "建筑师",
+    "INTP": "逻辑学家",
+    "ENTJ": "指挥官",
+    "ENTP": "辩论家",
+    "INFJ": "提倡者",
+    "INFP": "调停者",
+    "ENFJ": "主人公",
+    "ENFP": "竞选者",
+    "ISTJ": "物流师",
+    "ISFJ": "守卫者",
+    "ESTJ": "总经理",
+    "ESFJ": "执政官",
+    "ISTP": "鉴赏家",
+    "ISFP": "探险家",
+    "ESTP": "企业家",
+    "ESFP": "表演者"
   },
   "experts": {
     "subtitle": "基于已配置的场景模板,一键创建预置身份/灵魂/心跳的智能体。每个专家自带 system prompt,新建后再绑定 provider 并启动即可。",
@@ -4625,7 +4645,23 @@
       "recordingPlaceholder": "录制中...输入\"结束\"停止",
       "confirmPlaceholder": "输入\"确认\"应用技能，或继续对话",
       "placeholderWithSkills": "输入技能名回放，或继续对话",
-      "inputPlaceholder": "问问网页，或继续操作浏览器..."
+      "inputPlaceholder": "问问网页，或继续操作浏览器...",
+      "objectiveSet": "✅ 任务目标已设定：**{{objective}}**\n\n接下来请描述你想让AI助手在浏览器中执行的具体操作。\n\n例如：\"打开B站、小红书和百度，搜索今天天气\"。\n\n描述完成后AI会自动执行操作；操作结束后输入\"结束\"即可停止录制。",
+      "previewMessage": "✅ 录制完成！已生成 {{steps}} 个回放步骤。\n\n📝 **技能「{{name}}」脚本预览：**\n\n{{preview}}{{truncation}}\n\n回复\"确认\"即可应用此技能。\n\n应用后，只需输入 **\"{{name}}\"** 即可一键触发回放相同操作流程。",
+      "previewNoScript": "✅ 录制完成！已生成 {{steps}} 个回放步骤。\n\n⚠️ 技能脚本生成失败，请稍后重试。",
+      "skillAppliedMessage": "🎉 技能 **「{{name}}」** 已成功应用！\n\n之后只需输入 **\"{{name}}\"** 即可一键触发回放相同的浏览器操作流程。",
+      "noRecordingFound": "⚠️ 无法找到技能「{{name}}」的录制记录，回放失败。",
+      "recordingNotFound": "找不到录制记录",
+      "replayDone": "🎬 Browser-Skill「{{name}}」回放完成！",
+      "stepLine": "步骤 {{id}} ({{kind}}): {{error}}",
+      "stepFailed": "执行失败",
+      "replayFailedDetail": "⚠️ 技能「{{name}}」回放失败：\n{{detail}}",
+      "replayError": "⚠️ 技能回放出错：{{error}}",
+      "unknownError": "未知错误",
+      "replayComplete": "🔄 技能回放完成！所有步骤已成功执行。",
+      "replayFailedSimple": "⚠️ 技能回放失败：{{error}}",
+      "replayingSkill": "🔄 正在使用技能「{{text}}」进行回放...",
+      "recordingHint": "💡 录制还在进行中。如果操作已完成，输入\"结束\"即可停止录制并生成技能脚本。"
     }
   },
   "remoteDesktop": {
@@ -6478,7 +6514,25 @@
   "pwa": {
     "updateReady": "新版本已就绪",
     "updateNow": "立即更新",
-    "later": "稍后更新"
+    "later": "稍后更新",
+    "addToHomeScreen": "添加到主屏幕",
+    "close": "关闭",
+    "installAsAppDesc": "将 Octop 安装为 App，随时一键打开。",
+    "iosStep1Prefix": "点击底部工具栏的",
+    "iosStep1Suffix": "分享按钮",
+    "iosStep2": "向下滚动，点击「添加到主屏幕」",
+    "iosStep3": "点击右上角「添加」完成安装",
+    "installDesktopApp": "安装为桌面应用",
+    "desktopGuideDesc": "浏览器尚未准备好一键安装。请按以下方式操作，或刷新页面后再点 Header 中的安装按钮。",
+    "desktopStep1Prefix": "查看地址栏右侧的",
+    "desktopStep1Suffix": "安装图标并点击",
+    "desktopStep2": "或打开浏览器菜单，选择「{{action}} Octop」/ Install Octop",
+    "desktopStep3": "确认安装后，可从桌面或程序坞一键打开",
+    "desktopHint": "通过局域网 IP 访问时需使用 HTTPS，否则浏览器不会提供安装选项。",
+    "menuActionApply": "应用",
+    "menuActionInstall": "安装",
+    "installApp": "安装应用",
+    "install": "安装"
   },
   "browser": {
     "recordReplay": {
@@ -6496,7 +6550,12 @@
     "title": "快捷指令"
   },
   "skillRecord": {
+    "appliedMessage": "🎉 技能 **{{name}}** 已成功应用！\n\n之后可以通过聊天输入相关指令，一键回放相同的浏览器操作流程。",
     "applyFailed": "应用技能失败",
+    "previewMessage": "✅ 录制完成！已生成 {{steps}} 个回放步骤。\n\n📝 **技能脚本预览：**\n\n{{preview}}{{truncation}}\n\n回复\"确认\"即可应用此技能，之后可以一键回放相同操作流程。",
+    "previewNoScript": "✅ 录制完成！已生成 {{steps}} 个回放步骤。\n\n⚠️ 技能脚本生成失败，请稍后重试或手动生成。",
+    "previewTruncation": "\n\n... (共 {{lines}} 行，完整内容将在确认后保存)",
+    "recordingStartedMessage": "🎬 录制已开始！请在浏览器中进行你想要自动化的操作。\n\n操作完成后，输入\"结束\"即可结束录制，系统将自动生成技能脚本。",
     "recordingStopped": "录制完成，已生成 {{steps}} 个回放步骤",
     "skillApplied": "技能 \"{{name}}\" 已成功应用",
     "stopFailed": "停止录制失败"
