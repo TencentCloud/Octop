@@ -329,5 +329,27 @@ class _LegacyProtocolBackend:
             raise AttributeError("adownload_files")
         return await asyncio.to_thread(self._run, download(*args, **kwargs))
 
+    # Async callers must get the same adaptation and worker-loop affinity as the
+    # synchronous ones above. Without these, __getattr__ handed back the legacy
+    # coroutine, which then ran on the caller's loop and skipped the result
+    # shaping (aread returns cat-style numbered text, for instance).
+    async def aread(self, *args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(self.read, *args, **kwargs)
+
+    async def awrite(self, *args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(self.write, *args, **kwargs)
+
+    async def aedit(self, *args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(self.edit, *args, **kwargs)
+
+    async def agrep(self, *args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(self.grep, *args, **kwargs)
+
+    async def aglob(self, *args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(self.glob, *args, **kwargs)
+
+    async def aupload_files(self, *args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(self.upload_files, *args, **kwargs)
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
