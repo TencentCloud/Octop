@@ -1,0 +1,6 @@
+id: nong-gateway
+version: 0.1.0
+name: "Nong Gateway 桥（元宝/Kimi → Octop 专家）"
+kind: hook
+entry: main.py
+description: "多 agent 元宝/Kimi 群桥：一个机器人绑一个专家，mention 默认拒绝、白名单、自消息滤除；不注册工具与中间件，模型上下文零占用。配置在 ~/.nong-gateway/config.json（0600）。"
