@@ -430,7 +430,13 @@ async def materialize_image_part(
             if data is None:
                 local = media_backend.get_local_path(part.local_path)
                 if local is not None and Path(local).is_file():
-                    data = Path(local).read_bytes()
+                    # Keep the read off the event loop (the re-encode below already
+                    # runs in a thread) and degrade like the branches either side of
+                    # this one instead of letting OSError abort the turn.
+                    try:
+                        data = await asyncio.to_thread(Path(local).read_bytes)
+                    except OSError:
+                        data = None
             if data is None and workspace is not None:
                 try:
                     data = await workspace.adownload_bytes(rel)
