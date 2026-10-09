@@ -46,6 +46,9 @@ export function useExpertChatWelcome(agent: OctopAgent | null): {
       return;
     }
 
+    setFetchedCards([]);
+    setWelcomeSuffix(null);
+
     void agentChatApi
       .welcome(agentId)
       .then((data) => {
