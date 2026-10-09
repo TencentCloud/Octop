@@ -243,6 +243,10 @@ def _map_knowledge_error(
         return OctopError.localized(ErrorCode.KNOWLEDGE_NAME_TAKEN, locale)
     if "invalid knowledge document name" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_NAME_INVALID, locale)
+    # Both messages mean "the caller's path was rejected": `normalize_kb_path` for a
+    # `..` segment, `ensure_folder` for a path that normalizes to empty (``.``, ``/``).
+    if "invalid knowledge document path" in text or "invalid knowledge folder path" in text:
+        return OctopError.localized(ErrorCode.KNOWLEDGE_PATH_INVALID, locale)
     if "prerequisite" in text or "embedding model" in text or "embedding_model" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED, locale)
     logger.exception("unhandled error in knowledge base router: %s", exc)
