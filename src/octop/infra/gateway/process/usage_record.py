@@ -26,7 +26,9 @@ def _token_int(value: Any) -> int:
         return 0
     try:
         count = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # float("inf") arrives from providers that emit Infinity in their JSON,
+        # and int() raises OverflowError for it - not ValueError.
         return 0
     return count if count > 0 else 0
 
