@@ -151,6 +151,9 @@ export interface HistoryMigrationStatus {
 
 export const CHAT_HISTORY_PAGE_SIZE = 25;
 
+/** Mirrors the backend's ``HISTORY_MAX_LIMIT``; the thread-list endpoint 422s above it. */
+export const THREAD_LIST_MAX_LIMIT = 200;
+
 export const octopThreadsApi = {
   list: (agentId: string, limit = 50) =>
     request<OctopThread[]>(

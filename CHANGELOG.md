@@ -19,6 +19,7 @@
 ### 修复
 - 修复便携版程序内升级重复解析已有依赖导致超时的问题；随包提供 uv，独立启动脚本将升级安装到实际加载的 packages 目录。未带 uv 的旧包先下载应用 wheel，确认已有依赖满足新版约束后才离线安装，避免依赖不兼容时提前覆盖应用；下载和本地安装各有 90 秒预算，依赖不满足或安装后 CLI 校验失败时再完整安装依赖，跨镜像回退共用从首次完整安装开始的 900 秒计时窗口。升级校验读取实际加载的代码版本并忽略导入时的额外输出，避免 pip 遗留 dist-info 或包无法加载造成误判；同版本和旧版本在安装前拒绝（#1562）。
 - Ask / Plan 模式下输入栏「+」菜单的选择面板过矮（模型、知识库一次只看得见一条），改为按视口可用高度封顶（目标 400px，且不低于左侧菜单）；右侧比左侧矮时上对齐、更高时下对齐向上长；连接器/技能/专家/子智能体数量角标与知识库一样跟在文字后；模型列表现在可搜索
+- `GET /api/agents/{agent_id}/threads` 的 `limit` 参数补上边界校验（`ge=1, le=HISTORY_MAX_LIMIT`）：此前它被原样交给 SQL `LIMIT`，`limit=-1` 因 SQLite 把负 LIMIT 解释为「不限制」而返回该用户的全部 thread，`limit>200` 也不被拒绝（PostgreSQL 上同一条语句直接报 `LIMIT must not be negative`）。采用与 `admin.py` 的 audit-log 相同的 `Query(ge=1, le=...)` 显式拒绝（422），而不是本模块 message 分页端点的 `_clamp_history_limit` 静默夹取：`limit=-1` 在两个后端行为不一致（SQLite 返回全部、PostgreSQL 报错），夹取会把这个差异藏起来（Fixes #1426）。配套修正 dashboard 侧：会话列表用 `limit + 1` 探测下一页，翻到上限后会请求 `?limit=201` 而收到 422，`loadMoreSessions` 静默吞掉该错误、`hasMore` 仍为 true，按钮继续显示却再也点不动。现在请求值在客户端夹取到同一上限，到顶后不再显示「加载更多」。
 - 飞牛原生 start 被中途杀掉时立刻退出，不再继续就绪轮询
 - 飞牛 Docker / 本地版清单版本与 pyproject 对齐为 1.0.2b6
 - Docker 首次启动：未设置或不合格的 `OCTOP_DEFAULT_PASSWORD` 不再静默生成随机管理员，改为写入向导口令并走设置向导

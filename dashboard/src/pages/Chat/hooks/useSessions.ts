@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import {
   normalizeThreadArtifacts,
   octopThreadsApi,
+  THREAD_LIST_MAX_LIMIT,
   type ThreadArtifact,
 } from "../../../api/modules/octopThreads";
 import type { HitlSessionPolicy } from "../../../api/types/hitl";
@@ -316,7 +317,11 @@ async function fetchSessionsPage(
   agentId: string,
   limit: number,
 ): Promise<{ sessions: Session[]; hasMore: boolean }> {
-  const rows = await octopThreadsApi.list(agentId, limit + 1);
+  // The +1 only probes for "is there more", and the endpoint 422s above
+  // THREAD_LIST_MAX_LIMIT. Clamp the request, not the page the caller asked for:
+  // at the ceiling a full page of rows means there is genuinely nothing left.
+  const requestLimit = Math.min(limit + 1, THREAD_LIST_MAX_LIMIT);
+  const rows = await octopThreadsApi.list(agentId, requestLimit);
   const hasMore = rows.length > limit;
   const sessions = sortSessions(
     rows.slice(0, limit).map((row) => toSession({ ...row, agent_id: agentId })),
@@ -425,7 +430,10 @@ export function useSessions(agentId: string | null) {
       if (!agentId || _loadingMore || !_hasMore) return;
       setModuleLoadingMore(true);
       try {
-        const nextLimit = getLoadedLimit(agentId) + SESSION_PAGE_SIZE;
+        const nextLimit = Math.min(
+          getLoadedLimit(agentId) + SESSION_PAGE_SIZE,
+          THREAD_LIST_MAX_LIMIT,
+        );
         const { sessions: valid, hasMore: more } = await fetchSessionsPage(
           agentId,
           nextLimit,
@@ -464,7 +472,10 @@ export function useSessions(agentId: string | null) {
       if (_sessions.some((s) => s.id === threadId)) return "found";
       try {
         const limit = getLoadedLimit(agentId);
-        const probeLimit = Math.max(limit + 1, 50);
+        const probeLimit = Math.min(
+          Math.max(limit + 1, 50),
+          THREAD_LIST_MAX_LIMIT,
+        );
         const { sessions: valid, hasMore: more } = await fetchSessionsPage(
           agentId,
           probeLimit,
