@@ -52,7 +52,7 @@ def display_agent_icon_url(
     *,
     agent_id: str,
     stored: str | None,
-    updated_at: int | None = None,
+    updated_at: int | str | None = None,
 ) -> str | None:
     """Return the public ``icon_url``, cache-busting local workspace avatars."""
     text = str(stored or "").strip()
@@ -61,7 +61,12 @@ def display_agent_icon_url(
     local = agent_avatar_api_path(agent_id)
     if text.split("?", 1)[0] != local:
         return text
-    version = int(updated_at or 0)
+    try:
+        version = int(updated_at or 0)
+    except (TypeError, ValueError):
+        # Some deployments store ``updated_at`` as a text datetime; fall back to
+        # the unversioned URL instead of failing the whole agent listing.
+        return local
     if version <= 0:
         return local
     return f"{local}?v={version}"

@@ -96,6 +96,22 @@ def test_display_agent_icon_url_cache_busts_local_avatar() -> None:
     )
 
 
+def test_display_agent_icon_url_tolerates_text_datetime_updated_at() -> None:
+    local = "/api/agents/agt1/avatar"
+    # Some deployments store ``updated_at`` as TEXT (issue #1832): the URL must
+    # fall back to the unversioned path instead of raising.
+    assert (
+        display_agent_icon_url(agent_id="agt1", stored=local, updated_at="2026-10-08 17:56:48")
+        == local
+    )
+    assert (
+        display_agent_icon_url(
+            agent_id="agt1", stored="https://cdn/x.png", updated_at="2026-10-08 17:56:48"
+        )
+        == "https://cdn/x.png"
+    )
+
+
 def test_read_snapshot_avatar_and_display_url(tmp_path) -> None:
     assert read_snapshot_avatar(tmp_path) is None
     assert (
