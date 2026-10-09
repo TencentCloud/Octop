@@ -59,6 +59,7 @@ import styles from "./BridgeSettings.module.less";
 
 const BRIDGE_ACCENT = "var(--fn-color-brand)";
 const DEFAULT_BRIDGE_ICON = "cloudy";
+const MAX_BRIDGE_CONNECTIONS = 10;
 const BRIDGE_ICON_OPTIONS = [
   "cloudy",
   "cloud",
@@ -1055,19 +1056,31 @@ export default function BridgeSettingsPanel({
     />
   );
 
+  const atConnectionLimit = rows.length >= MAX_BRIDGE_CONNECTIONS;
   const headerActions = (
     <>
       {rows.length > 0 ? viewToggle : null}
       <Button icon={<RefreshCw size={14} />} onClick={() => void reload()}>
         {t("common.refresh")}
       </Button>
-      <Button
-        type="primary"
-        icon={<Plus size={14} />}
-        onClick={() => setCreateOpen(true)}
+      <Tooltip
+        title={
+          atConnectionLimit
+            ? t("advancedSettings.bridge.addDisabled", {
+                limit: MAX_BRIDGE_CONNECTIONS,
+              })
+            : undefined
+        }
       >
-        {t("advancedSettings.bridge.add")}
-      </Button>
+        <Button
+          type="primary"
+          icon={<Plus size={14} />}
+          disabled={atConnectionLimit}
+          onClick={() => setCreateOpen(true)}
+        >
+          {t("advancedSettings.bridge.add")}
+        </Button>
+      </Tooltip>
     </>
   );
 
@@ -1173,6 +1186,7 @@ export default function BridgeSettingsPanel({
             <Button
               type="primary"
               loading={creating}
+              disabled={atConnectionLimit}
               icon={<Cloudy size={14} />}
               onClick={() => void onCreate()}
             >
@@ -1186,6 +1200,11 @@ export default function BridgeSettingsPanel({
         </p>
         <p className={styles.drawerHint}>
           {t("advancedSettings.bridge.directionHint")}
+        </p>
+        <p className={styles.drawerHint}>
+          {t("advancedSettings.bridge.limitHint", {
+            limit: MAX_BRIDGE_CONNECTIONS,
+          })}
         </p>
         <Form
           form={form}

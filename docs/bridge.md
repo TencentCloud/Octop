@@ -57,6 +57,7 @@
 | `infra/bridge/router.py` | 本机侧：目标为 `bridge:*`（或显式 connection 上下文）时改走隧道 |
 | `infra/bridge/chat_bridge.py` | 远程对话：本机 chat WS ↔ 桥上对端 turn 流 |
 | `api/routers/bridge.py` | 连接管理 HTTP（探测/添加/列表/删除/连接/改名）；Dashboard 入口在 **设置 → 远程桥接**（`/bridge`，知识库下方） |
+| `cli/commands/bridge.py` | 同一套管理面的 CLI：`octop bridge`（list/get/probe/create/patch/delete/connect/disconnect/agents） |
 
 ### 探测（probe，不落库）
 
@@ -211,6 +212,7 @@
 |------|------|
 | 包 | `octop.infra.bridge` |
 | HTTP 管理 API | `/api/bridge/...` |
+| CLI | `octop bridge`（与 Dashboard 对端管理同一套 `BridgeManager`） |
 | 远程 agent id | `bridge:{connection_id}:{remote_agent_id}` |
 | 表 | `bridge_connections` |
 | 产品文案 | 「远程节点」/ Bridge（中英文另定） |

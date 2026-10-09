@@ -84,6 +84,7 @@ from octop.infra.users.preferences import (
     get_preferred_model_from_json,
 )
 from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.turn_failure import log_failed_tool_results, log_turn_failure
 from octop.infra.utils.ulid import new_ulid
 
 if TYPE_CHECKING:
@@ -853,7 +854,9 @@ class GlobalProcessor:
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
         except Exception as exc:
-            await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
+            await self._record_stream_error(
+                user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
+            )
             message, error_code = _stream_error(exc, locale)
             if error_code:
                 message = f"[{error_code}] {message}"
@@ -1129,6 +1132,7 @@ class GlobalProcessor:
         saw_tool_call = False
         emitted_media_ids: set[str] = set()
         emitted_attachment_keys: set[str] = set()
+        emitted_tool_error_ids: set[str] = set()
 
         try:
             async for chunk in self._agent_manager.stream(agent_id, request):
@@ -1168,6 +1172,13 @@ class GlobalProcessor:
                 if chunk.get("type") == "tool_call_chunk":
                     saw_tool_call = True
                 if chunk.get("type") == "tool_result":
+                    log_failed_tool_results(
+                        chunk,
+                        agent_id=agent_id,
+                        thread_id=thread_id,
+                        seen=emitted_tool_error_ids,
+                        live=saw_tool_call,
+                    )
                     if harness_workspace is not None:
                         chunk = await enrich_tool_result_with_backend(
                             chunk,
@@ -1198,7 +1209,9 @@ class GlobalProcessor:
                 yield _maybe_stamp_team_host(chunk, agent_id, team_host)
             stream_ok = True
         except Exception as exc:
-            await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
+            await self._record_stream_error(
+                user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
+            )
             message, error_code = _stream_error(exc, locale)
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
@@ -1240,6 +1253,8 @@ class GlobalProcessor:
         persist_failed_turn = False
         traj_on = self._agent_trajectory_enabled(agent_id)
         team_host = is_team_agent(self._agent_manager.get_row(agent_id))
+        saw_tool_call = False
+        emitted_tool_error_ids: set[str] = set()
         try:
             async for chunk in self._agent_manager.resume_hitl(
                 agent_id,
@@ -1257,10 +1272,22 @@ class GlobalProcessor:
                     chunk=chunk,
                     enabled=traj_on,
                 )
+                if chunk.get("type") == "tool_call_chunk":
+                    saw_tool_call = True
+                if chunk.get("type") == "tool_result":
+                    log_failed_tool_results(
+                        chunk,
+                        agent_id=agent_id,
+                        thread_id=thread_id,
+                        seen=emitted_tool_error_ids,
+                        live=saw_tool_call,
+                    )
                 yield _maybe_stamp_team_host(chunk, agent_id, team_host)
             completed = True
         except Exception as exc:
-            await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
+            await self._record_stream_error(
+                user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
+            )
             locale = resolve_user_locale(
                 user_repo=self._user_repo,
                 user_id=user_id,
@@ -1591,11 +1618,25 @@ class GlobalProcessor:
             return None
         return merged
 
-    async def _record_stream_error(self, *, user_id: int, agent_id: str, exc: Exception) -> None:
+    async def _record_stream_error(
+        self,
+        *,
+        user_id: int,
+        agent_id: str,
+        exc: Exception,
+        thread_id: str = "",
+    ) -> None:
         from octop.infra.metrics import METRICS as _M  # noqa: PLC0415
 
         _M.inc("stream_errors_total")
-        logger.exception("agent.stream failed for agent %s", agent_id)
+        log_turn_failure(
+            "stream",
+            detail=str(exc),
+            agent_id=agent_id,
+            thread_id=thread_id,
+            exc=exc,
+            level=logging.ERROR,
+        )
         user_row = self._user_repo.get(user_id)
         actor = user_row.username if user_row else str(user_id)
         self._audit_repo.write(

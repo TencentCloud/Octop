@@ -143,7 +143,11 @@ func injectExternalLinksJS() string {
 	var origOpen = window.open;
 	window.open = function(url, target) {
 		var name = target == null ? "_blank" : String(target);
-		if (url && name.toLowerCase() === "_blank" && openExternal(url)) return null;
+		var lower = name.toLowerCase();
+		if (lower === "_self" || lower === "_parent" || lower === "_top") {
+			return origOpen.apply(this, arguments);
+		}
+		if (url && openExternal(url)) return null;
 		return origOpen.apply(this, arguments);
 	};
 })();`

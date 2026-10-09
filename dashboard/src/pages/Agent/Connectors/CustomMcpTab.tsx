@@ -26,6 +26,11 @@ import {
   type EditorMode,
   type ServerCardState,
 } from "./customMcpUtils";
+import {
+  isAuthPopupBlocked,
+  navigateAuthWindow,
+  tryOpenAuthPopup,
+} from "./openAuthWindow";
 import styles from "./index.module.less";
 
 interface CustomMcpTabProps {
@@ -442,8 +447,8 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       message.warning(t("connectors.customMcp.emptyName", "请填写服务器名称"));
       return;
     }
-    const popup = window.open("", "octop-oauth", "width=520,height=720");
-    if (!popup) {
+    const popup = tryOpenAuthPopup("", "octop-oauth", "width=520,height=720");
+    if (isAuthPopupBlocked(popup)) {
       message.error(
         t(
           "connectors.oauthPopupBlocked",
@@ -470,7 +475,7 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       settled = true;
       cleanup();
       try {
-        popup.close();
+        popup?.close();
       } catch {
         // ignore
       }
@@ -519,7 +524,7 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       const servers = resolveServersForSave();
       if (!servers) {
         try {
-          popup.close();
+          popup?.close();
         } catch {
           // ignore
         }
@@ -548,12 +553,12 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
           t("connectors.oauthTimedOut", "授权超时，请重试一键授权"),
         );
       }, 120_000);
-      popup.location.replace(authorize_url);
+      navigateAuthWindow(popup, authorize_url);
     } catch (e) {
       cleanup();
       setAuthorizingKey(null);
       try {
-        popup.close();
+        popup?.close();
       } catch {
         // ignore
       }

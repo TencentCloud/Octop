@@ -162,6 +162,23 @@ class HitlPendingStore:
         rows.sort(key=lambda r: r.created_at, reverse=True)
         return rows
 
+    def pending_thread_ids(self, *, agent_id: str, user_id: int) -> frozenset[str]:
+        """Thread ids with a still-pending HITL pause for this agent/user."""
+        self._gc()
+        now = time.time()
+        out: set[str] = set()
+        for record in self._records.values():
+            if record.status != "pending":
+                continue
+            if record.agent_id != agent_id or record.user_id != user_id:
+                continue
+            if now - record.created_at > self.ttl_seconds:
+                continue
+            tid = (record.thread_id or "").strip()
+            if tid:
+                out.add(tid)
+        return frozenset(out)
+
     def expire_pending_for_thread(
         self,
         thread_id: str,
