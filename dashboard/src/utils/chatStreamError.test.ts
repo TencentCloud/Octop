@@ -47,6 +47,18 @@ describe("classifyChatStreamError", () => {
     });
   });
 
+  it("classifies MindIE 422 parameter rejection as invalid_request", () => {
+    const msg =
+      "Error code: 422 - {error:'Check open ai req parameter error'," +
+      "'error_type': 'Input Validation Error'}";
+    expect(classifyChatStreamError(msg)).toBe("stream_errors.invalid_request");
+    expect(chatStreamErrorAction(msg)).toEqual({
+      path: "/admin/models",
+      labelKey: "chat.disableStreamUsageAndRetry",
+      fix: "disable_stream_usage",
+    });
+  });
+
   it("classifies HTTP 5xx as provider_unavailable", () => {
     expect(classifyChatStreamError("HTTP 503: service overloaded")).toBe(
       "stream_errors.provider_unavailable",

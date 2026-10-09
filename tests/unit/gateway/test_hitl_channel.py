@@ -339,6 +339,8 @@ def test_hitl_store_resolve_pending_for_thread() -> None:
     assert pending is not None
     assert pending.action_requests[0]["name"] == "execute"
     assert store.resolve_pending_for_thread("thr-a", agent_id="agent1", user_id=2) is None
+    assert store.pending_thread_ids(agent_id="agent1", user_id=1) == frozenset({"thr-a", "thr-b"})
+    assert store.pending_thread_ids(agent_id="agent1", user_id=2) == frozenset()
 
 
 def test_pending_hitl_payload() -> None:

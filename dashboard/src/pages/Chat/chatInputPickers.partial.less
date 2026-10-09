@@ -977,6 +977,7 @@
     white-space: nowrap;
   }
 
+  .skillPickerSearch,
   .modelMenuDivider,
   .modelMenuFooter {
     flex-shrink: 0;
@@ -1014,6 +1015,11 @@
   top: 0;
   left: calc(100% + 16px);
   max-width: calc(100vw - 48px);
+}
+
+.plusFlyoutPanelAlignBottom {
+  top: auto;
+  bottom: 0;
 }
 
 .plusFlyoutPanelInPlace {
@@ -1122,6 +1128,36 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mobileOverflowItemCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  color: #fff;
+  background: #2563eb;
+  position: relative;
+  top: 1px;
+}
+
+.mobileOverflowItemCountExpert {
+  background: #d97706;
+}
+
+.mobileOverflowItemCountSubagent {
+  background: #0d9488;
+}
+
+.mobileOverflowItemCountText {
+  text-box: trim-both cap alphabetic;
 }
 
 .connectorMenuIcon {

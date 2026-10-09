@@ -996,7 +996,7 @@ export default function DesktopPanel({
   const pageTitle = t("nav.remoteDesktop", "远程桌面");
   const pageSubtitle = t(
     "pageShell.desktop.subtitle",
-    "查看并操控 Octop 主机操作系统桌面",
+    "查看并操控 Octop 主机操作系统桌面，远程完成桌面操作",
   );
   const setupMascot = <OctopEmptyMascot />;
 

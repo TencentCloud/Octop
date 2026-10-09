@@ -38,6 +38,7 @@ from octop.infra.history.projection import (
     message_inputs,
 )
 from octop.infra.utils.locale import DEFAULT_LOCALE, resolve_user_locale
+from octop.infra.utils.turn_failure import log_failed_tool_results
 from octop.infra.utils.ulid import new_ulid
 
 # Matches dashboard FILE_TOOL_NAMES — drives the "edited N files" history card.
@@ -330,11 +331,23 @@ class TeamManager:
         text_parts: list[str] = []
         reasoning_parts: list[str] = []
         relayed_visible = False
+        saw_tool_call = False
+        emitted_tool_error_ids: set[str] = set()
         try:
             async for chunk in self._agent_manager.stream(speaker_id, payload):
                 if not isinstance(chunk, dict):
                     continue
                 kind = str(chunk.get("type") or "")
+                if kind == "tool_call_chunk":
+                    saw_tool_call = True
+                elif kind == "tool_result":
+                    log_failed_tool_results(
+                        chunk,
+                        agent_id=speaker_id,
+                        thread_id=member_tid or room_thread_id,
+                        seen=emitted_tool_error_ids,
+                        live=saw_tool_call,
+                    )
                 if kind == "token":
                     piece = str(chunk.get("content") or "")
                     if piece:
