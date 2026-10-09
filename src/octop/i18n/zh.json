@@ -730,7 +730,9 @@
     "size": "大小：{size} 字节",
     "empty_message": "[空消息]",
     "empty_image": "用户发送了图片。",
-    "image_unavailable": "[附件] 图片无法加载到模型。"
+    "image_unavailable": "[附件] 图片无法加载到模型。",
+    "voice_transcript": "[语音消息转写]\n{text}",
+    "voice_transcript_truncated": "[语音消息转写（前 {minutes} 分钟）]\n{text}"
   },
   "knowledge": {
     "retrieval": {

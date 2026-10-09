@@ -86,6 +86,8 @@ from octop.infra.users.preferences import (
 from octop.infra.utils.locale import resolve_user_locale
 from octop.infra.utils.turn_failure import log_failed_tool_results, log_turn_failure
 from octop.infra.utils.ulid import new_ulid
+from octop.infra.voice.inbound import InboundAudioTranscriber
+from octop.infra.voice.manager import VoiceManager
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
@@ -155,6 +157,7 @@ class GlobalProcessor:
         hitl: HitlChannelCoordinator | None = None,
         trajectory_service: Any | None = None,
         history_archive: Any | None = None,
+        voice_provider_repo: Any | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._thread_registry = thread_registry
@@ -178,6 +181,15 @@ class GlobalProcessor:
         self._hitl = hitl or HitlChannelCoordinator()
         self._trajectory_service = trajectory_service
         self._history_archive = history_archive
+        # Server-side STT for inbound voice notes; inert while the active STT
+        # provider is the browser-only default.
+        self._audio_transcriber = (
+            InboundAudioTranscriber(
+                VoiceManager(settings_repo=settings_repo, voice_provider_repo=voice_provider_repo)
+            )
+            if settings_repo is not None and voice_provider_repo is not None
+            else None
+        )
         self.teams = TeamManager(
             agent_manager=agent_manager,
             thread_registry=thread_registry,
@@ -759,6 +771,7 @@ class GlobalProcessor:
             msg,
             media_backend=media_backend,
             locale=locale,
+            transcriber=self._audio_transcriber,
         )
         model_ref = self._resolve_harness_model(
             agent_id,
@@ -1340,6 +1353,7 @@ class GlobalProcessor:
             msg,
             media_backend=media_backend,
             locale=locale,
+            transcriber=self._audio_transcriber,
         )
         model_ref = self._resolve_harness_model(
             agent_id,
