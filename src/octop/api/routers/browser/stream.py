@@ -13,6 +13,7 @@ Client → Server::
   {"type": "mousemove", "x": 150, "y": 250, "button": "left", "buttons": 1}
   {"type": "mousemove", "x": 160, "y": 260, "button": "none", "buttons": 0}
   {"type": "mouseup", "x": 150, "y": 250, "button": "left", "buttons": 0}
+  {"type": "keydown", "key": "Backspace"}
   {"type": "stop"}
 
 Server → Client::
@@ -224,6 +225,40 @@ def _cdp_click_count(msg: dict[str, Any]) -> int:
         return 1
 
 
+# Non-printable keys the dashboard forwards as ``{"type": "keydown", "key": …}``;
+# printable characters arrive as ``{"type": "type"}`` instead. Maps
+# ``KeyboardEvent.key`` to the CDP virtual key code + ``KeyboardEvent.code``
+# consumed by ``Input.dispatchKeyEvent``. Enter keeps its own ``sess.type`` path.
+_CDP_KEY_TABLE: dict[str, tuple[int, str]] = {
+    "Backspace": (8, "Backspace"),
+    "Tab": (9, "Tab"),
+    "Escape": (27, "Escape"),
+    "PageUp": (33, "PageUp"),
+    "PageDown": (34, "PageDown"),
+    "End": (35, "End"),
+    "Home": (36, "Home"),
+    "ArrowLeft": (37, "ArrowLeft"),
+    "ArrowUp": (38, "ArrowUp"),
+    "ArrowRight": (39, "ArrowRight"),
+    "ArrowDown": (40, "ArrowDown"),
+    "Delete": (46, "Delete"),
+}
+
+
+async def _dispatch_key(sess: Any, key: str) -> None:
+    vk, code = _CDP_KEY_TABLE[key]
+    for event_type in ("rawKeyDown", "keyUp"):
+        await sess._internal.client.send(  # noqa: SLF001
+            "Input.dispatchKeyEvent",
+            {
+                "type": event_type,
+                "key": key,
+                "code": code,
+                "windowsVirtualKeyCode": vk,
+            },
+        )
+
+
 async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
     t = msg.get("type")
     if t == "navigate":
@@ -306,6 +341,8 @@ async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
         key = str(msg.get("key") or "")
         if key in ("Enter",):
             await sess.type("\n")
+        elif key in _CDP_KEY_TABLE:
+            await _dispatch_key(sess, key)
     elif t == "tab_switch":
         tab_id = msg.get("tab_id")
         if tab_id is not None:
