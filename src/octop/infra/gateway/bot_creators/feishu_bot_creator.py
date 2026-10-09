@@ -67,6 +67,11 @@ STATE_DIR = "/tmp"
 MIN_LARK_OAPI = (1, 5, 5)
 
 
+# Greeting is best-effort; without a timeout urlopen blocks forever when the peer
+# completes the handshake and then never answers (the yuanbao creator uses 30s).
+_GREETING_TIMEOUT_S = 30
+
+
 def _pcfg(key: str) -> Any:
     return _PLATFORM_CONFIGS[PLATFORM][key]
 
@@ -157,7 +162,7 @@ def _send_greeting(
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(token_req, context=ctx) as resp:
+        with urllib.request.urlopen(token_req, context=ctx, timeout=_GREETING_TIMEOUT_S) as resp:
             token_data = json.loads(resp.read())
         token = token_data.get("tenant_access_token")
         if not token:
@@ -182,7 +187,7 @@ def _send_greeting(
         },
     )
     try:
-        with urllib.request.urlopen(send_req, context=ctx) as resp:
+        with urllib.request.urlopen(send_req, context=ctx, timeout=_GREETING_TIMEOUT_S) as resp:
             resp.read()
     except Exception:
         pass
