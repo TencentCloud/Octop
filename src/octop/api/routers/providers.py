@@ -43,6 +43,7 @@ from octop.infra.agents.providers.store import (
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_request_locale
+from octop.infra.utils.provider_keys import resolve_api_key
 from octop.infra.utils.ulid import new_ulid
 
 logger = logging.getLogger(__name__)
@@ -139,7 +140,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "name": r.name,
         "kind": r.kind,
         "base_url": r.base_url,
-        "api_key": r.api_key,
+        "api_key": getattr(r, "api_key_reference", None) or r.api_key,
         "models": models,
         "note": r.note,
         "enabled": bool(r.enabled),
@@ -317,7 +318,7 @@ async def admin_test_provider_draft(
     _: Any = Depends(require_permission("providers")),
 ) -> dict[str, Any]:
     """Probe connectivity for a provider draft before it is saved."""
-    api_key = (body.api_key or "").strip()
+    api_key = (resolve_api_key(body.api_key) or "").strip()
     if not api_key:
         return {"ok": False, "error": "api_key is required"}
     model_id = body.model_id.strip()
@@ -352,7 +353,7 @@ async def admin_fetch_provider_models(
             "ok": False,
             "error": "fetch models is only supported for openai-compatible providers",
         }
-    api_key = (body.api_key or "").strip()
+    api_key = (resolve_api_key(body.api_key) or "").strip()
     if not api_key:
         return {"ok": False, "error": "api_key is required"}
     draft = SimpleNamespace(extra_json=body.extra_json)

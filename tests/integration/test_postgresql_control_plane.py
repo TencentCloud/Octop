@@ -26,6 +26,77 @@ def _conninfo() -> str:
     return os.environ["OCTOP_TEST_DATABASE_URL"]
 
 
+@requires_postgresql
+@pytest.mark.postgresql
+def test_pg_credential_migration_and_backup_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not shutil.which("pg_dump") or not shutil.which("pg_restore"):
+        pytest.skip("pg_dump/pg_restore not on PATH")
+
+    from cryptography.fernet import Fernet
+
+    from octop.config import DatabaseConfig
+    from octop.infra.backup.system_archive import create_system_backup, restore_system_backup
+    from octop.infra.db.credential_cipher import PREFIX, CredentialCipher
+    from octop.infra.db.migrate import run_migrations
+    from octop.infra.db.pool import PostgresPool
+    from octop.infra.db.repos.providers import ProviderRepo
+    from octop.infra.db.repos.secrets import SecretRepo
+    from octop.infra.errors import ErrorCode, OctopError
+    from octop.infra.utils.paths import PathLayout
+
+    monkeypatch.setenv("OCTOP_SECRET_KEY", Fernet.generate_key().decode())
+    paths = PathLayout(tmp_path / "home")
+    paths.root.mkdir()
+    pool = PostgresPool(_conninfo(), secrets_home=paths.root)
+    config = DatabaseConfig(driver="postgresql", url=_conninfo())
+    try:
+        _reset_public_schema(pool)
+        run_migrations(pool)
+        with pool.transaction() as conn:
+            conn.execute("INSERT INTO secrets(k,v,created_at) VALUES ('jwt',?,1)", (b"legacy-jwt",))
+            conn.execute(
+                "INSERT INTO providers(name,kind,api_key,created_at,updated_at) VALUES ('old','openai',?,1,1)",
+                ("legacy-api-key",),
+            )
+        run_migrations(pool)
+        providers, secrets = ProviderRepo(pool), SecretRepo(pool)
+        row = providers.get_by_name("old")
+        assert row.api_key == "legacy-api-key"
+        assert secrets.get("jwt") == b"legacy-jwt"
+        with pool.connect() as conn:
+            assert (
+                conn.execute("SELECT api_key FROM providers")
+                .fetchone()[0]
+                .encode()
+                .startswith(PREFIX)
+            )
+            assert bytes(
+                conn.execute("SELECT v FROM secrets WHERE k='jwt'").fetchone()[0]
+            ).startswith(PREFIX)
+        archive = tmp_path / "postgres.tar.gz"
+        create_system_backup(paths=paths, agent_rows=[], pool=pool, db_config=config, dest=archive)
+        providers.update(row.id, api_key="changed")
+        secrets.rotate("jwt", b"changed-jwt")
+        restore_system_backup(archive, paths=paths, pool=pool, db_config=config)
+        assert providers.get_by_name("old").api_key == "legacy-api-key"
+        assert secrets.get("jwt") == b"legacy-jwt"
+        providers.update(row.id, api_key="must-survive-failed-restore")
+        with pool.connect() as conn:
+            before = conn.execute("SELECT api_key FROM providers").fetchone()[0]
+        monkeypatch.setenv("OCTOP_SECRET_KEY", Fernet.generate_key().decode())
+        pool.credential_cipher = CredentialCipher(paths.root)
+        with pytest.raises(OctopError) as exc:
+            restore_system_backup(archive, paths=paths, pool=pool, db_config=config)
+        assert exc.value.code == ErrorCode.SECRET_STORAGE_UNAVAILABLE
+        with pool.connect() as conn:
+            assert conn.execute("SELECT api_key FROM providers").fetchone()[0] == before
+    finally:
+        pool.close()
+
+
 def _reset_public_schema(pool: object) -> None:
     with pool.connect() as conn:  # type: ignore[attr-defined]
         conn.execute("DROP SCHEMA public CASCADE")

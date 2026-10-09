@@ -11,6 +11,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from octop.infra.db.credential_cipher import CredentialCipher
+from octop.infra.utils.paths import PathLayout
+
 
 def qmark_to_pyformat(sql: str) -> str:
     """Rewrite ``?`` placeholders to psycopg ``%s`` (no string-literal awareness)."""
@@ -20,6 +23,7 @@ def qmark_to_pyformat(sql: str) -> str:
 @runtime_checkable
 class DatabasePool(Protocol):
     dialect: str
+    credential_cipher: CredentialCipher
 
     @contextmanager
     def connect(self) -> Iterator[Any]: ...
@@ -35,8 +39,9 @@ class SqlitePool:
 
     dialect: str = "sqlite"
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, secrets_home: Path | None = None):
         self.path = Path(path)
+        self.credential_cipher = CredentialCipher(secrets_home or self.path.parent)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         first_create = not self.path.exists()
         self._conn = sqlite3.connect(
@@ -47,6 +52,7 @@ class SqlitePool:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.execute("PRAGMA journal_mode = WAL")
+        self._conn.execute("PRAGMA secure_delete = ON")
         self._lock = threading.RLock()
         if first_create and os.name == "posix":
             os.chmod(self.path, 0o600)
@@ -151,9 +157,17 @@ def _split_sql_statements(sql: str) -> list[str]:
 class PostgresPool:
     dialect: str = "postgresql"
 
-    def __init__(self, conninfo: str, *, min_size: int = 1, max_size: int = 8) -> None:
+    def __init__(
+        self,
+        conninfo: str,
+        *,
+        min_size: int = 1,
+        max_size: int = 8,
+        secrets_home: Path | None = None,
+    ) -> None:
         from psycopg_pool import ConnectionPool
 
+        self.credential_cipher = CredentialCipher(secrets_home or PathLayout.from_env().root)
         self._pool = ConnectionPool(
             conninfo=conninfo,
             min_size=min_size,

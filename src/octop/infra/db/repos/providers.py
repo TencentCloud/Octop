@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from octop.infra.db.pool import DatabasePool
@@ -11,10 +11,10 @@ from octop.infra.db.repos._base import (
     DbRow,
     bool_int,
     insert_returning_id,
-    map_rows,
     now_ts,
     partial_updates,
 )
+from octop.infra.utils.provider_keys import api_key_reference, resolve_api_key
 
 if TYPE_CHECKING:
     from octop.infra.db.repos.agents import AgentRepo
@@ -33,6 +33,7 @@ class ProviderRow:
     enabled: int
     created_at: int
     updated_at: int
+    api_key_reference: str | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> ProviderRow:
@@ -66,6 +67,21 @@ class ProviderRepo:
     def __init__(self, db: DatabasePool) -> None:
         self._db = db
 
+    def _encode_key(self, value: str | None) -> str | None:
+        if not value or api_key_reference(value):
+            return value
+        return self._db.credential_cipher.encrypt(value.encode("utf-8")).decode("ascii")
+
+    def _decode_row(self, row: DbRow) -> ProviderRow:
+        value = row["api_key"]
+        if value:
+            value = self._db.credential_cipher.decrypt(value.encode("utf-8")).decode("utf-8")
+        return replace(
+            ProviderRow.from_row(row),
+            api_key=resolve_api_key(value),
+            api_key_reference=api_key_reference(value),
+        )
+
     def create(
         self,
         *,
@@ -84,23 +100,33 @@ class ProviderRepo:
                 "INSERT INTO providers(name, kind, base_url, api_key, "
                 "extra_json, models_json, note, enabled, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-                (name, kind, base_url, api_key, extra_json, models_json, note, ts, ts),
+                (
+                    name,
+                    kind,
+                    base_url,
+                    self._encode_key(api_key),
+                    extra_json,
+                    models_json,
+                    note,
+                    ts,
+                    ts,
+                ),
             )
 
     def get(self, provider_id: int) -> ProviderRow | None:
         with self._db.connect() as conn:
             r = conn.execute("SELECT * FROM providers WHERE id = ?", (provider_id,)).fetchone()
-        return ProviderRow.from_row(r) if r else None
+        return self._decode_row(r) if r else None
 
     def get_by_name(self, name: str) -> ProviderRow | None:
         with self._db.connect() as conn:
             r = conn.execute("SELECT * FROM providers WHERE name = ?", (name,)).fetchone()
-        return ProviderRow.from_row(r) if r else None
+        return self._decode_row(r) if r else None
 
     def list_all(self) -> list[ProviderRow]:
         with self._db.connect() as conn:
             rows = conn.execute("SELECT * FROM providers ORDER BY name").fetchall()
-        return map_rows(rows, ProviderRow)
+        return [self._decode_row(row) for row in rows]
 
     def update(
         self,
@@ -118,7 +144,7 @@ class ProviderRepo:
             [
                 ("kind", kind),
                 ("base_url", base_url),
-                ("api_key", api_key),
+                ("api_key", self._encode_key(api_key)),
                 ("extra_json", extra_json),
                 ("models_json", models_json),
                 ("note", note),

@@ -989,7 +989,8 @@ def test_migration_restore_preserves_current_users_and_imported_agents(
         # JWT secret from the current instance must survive (not the foreign backup's).
         jwt_row = conn.execute("SELECT v FROM secrets WHERE k = ?", ("jwt",)).fetchone()
         assert jwt_row is not None, "jwt secret missing after migration restore"
-        assert bytes(jwt_row[0]) == local_jwt, "jwt secret replaced by migration backup value"
+        assert tgt_pool.credential_cipher.decrypt(bytes(jwt_row[0])) == local_jwt
+        assert bytes(jwt_row[0]) != local_jwt
 
         # The imported agent from the backup must still exist after users write-back.
         # With the old DELETE-then-INSERT, foreign_keys=ON would cascade-delete this row.

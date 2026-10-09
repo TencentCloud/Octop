@@ -15,7 +15,7 @@ class SecretRepo:
     def get(self, k: str) -> bytes | None:
         with self._db.connect() as conn:
             r = conn.execute("SELECT v FROM secrets WHERE k = ?", (k,)).fetchone()
-        return bytes(r["v"]) if r else None
+        return self._db.credential_cipher.decrypt(bytes(r["v"])) if r else None
 
     def get_or_create(self, k: str, factory: Callable[[], bytes]) -> bytes:
         existing = self.get(k)
@@ -26,10 +26,10 @@ class SecretRepo:
             # Check again inside transaction to avoid race
             r = conn.execute("SELECT v FROM secrets WHERE k = ?", (k,)).fetchone()
             if r is not None:
-                return bytes(r["v"])
+                return self._db.credential_cipher.decrypt(bytes(r["v"]))
             conn.execute(
                 "INSERT INTO secrets(k, v, created_at) VALUES (?, ?, ?)",
-                (k, value, now_ts()),
+                (k, self._db.credential_cipher.encrypt(value), now_ts()),
             )
         return value
 
@@ -37,5 +37,5 @@ class SecretRepo:
         with self._db.transaction() as conn:
             conn.execute(
                 "UPDATE secrets SET v = ?, rotated_at = ? WHERE k = ?",
-                (new_value, now_ts(), k),
+                (self._db.credential_cipher.encrypt(new_value), now_ts(), k),
             )

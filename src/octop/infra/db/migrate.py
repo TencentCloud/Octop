@@ -1960,3 +1960,7 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_sso_provider_kind_schema(db)
     _ensure_user_role_schema(db)
     _ensure_bridge_connections_schema(db)
+    from octop.infra.db.credential_migration import migrate_credentials
+
+    if _table_exists(db, "secrets") and _table_exists(db, "providers"):
+        migrate_credentials(db)

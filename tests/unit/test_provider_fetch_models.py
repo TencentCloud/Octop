@@ -17,7 +17,11 @@ def _mock_response(status: int, payload: Any) -> httpx.Response:
 
 
 @pytest.mark.asyncio
-async def test_fetch_models_parses_openai_list() -> None:
+@pytest.mark.parametrize("from_env", [False, True])
+async def test_fetch_models_parses_openai_list(
+    monkeypatch: pytest.MonkeyPatch, from_env: bool
+) -> None:
+    monkeypatch.setenv("TEST_PROVIDER_API_KEY", "sk-test")
     response = _mock_response(
         200,
         {"data": [{"id": "gpt-4o"}, {"id": "gpt-4o-mini", "owned_by": "system"}]},
@@ -30,7 +34,7 @@ async def test_fetch_models_parses_openai_list() -> None:
     with patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=mock_client):
         result = await fetch_openai_compatible_models(
             base_url="https://api.example.com/v1",
-            api_key="sk-test",
+            api_key="env:TEST_PROVIDER_API_KEY" if from_env else "sk-test",
         )
 
     assert result["ok"] is True

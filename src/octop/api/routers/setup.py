@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -295,10 +296,10 @@ async def apply_database(
     except ValueError as exc:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
     probe_database(db_cfg, server.paths)
-    assert_control_plane_database_empty(db_cfg, server.paths)
+    await asyncio.to_thread(assert_control_plane_database_empty, db_cfg, server.paths)
     persist_database_config(server.paths.config, db_cfg)
     if server.database_bound:
-        rebind_control_plane(server)
+        await asyncio.to_thread(rebind_control_plane, server)
     else:
         await server.bind_control_plane()
     assert server.services is not None

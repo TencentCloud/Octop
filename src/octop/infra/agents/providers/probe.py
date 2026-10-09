@@ -13,6 +13,7 @@ import httpx
 
 from octop.infra.agents.providers import KIND_TO_PROTOCOL
 from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
+from octop.infra.utils.provider_keys import resolve_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,7 @@ def make_probe_provider_row(
         name=name,
         kind=kind,
         base_url=base_url,
-        api_key=api_key,
+        api_key=resolve_api_key(api_key),
         extra_json=extra_json,
         get_models=lambda: [model],
     )
@@ -283,6 +284,7 @@ async def fetch_openai_compatible_models(
     provider_name: str | None = None,
 ) -> dict[str, Any]:
     """List models via OpenAI-compatible ``GET {base}/models``."""
+    api_key = resolve_api_key(api_key) or ""
     url = _models_list_url(base_url)
     headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"}
     extra_headers = ensure_opencode_session_header(provider_name, extra_headers, base_url=base_url)

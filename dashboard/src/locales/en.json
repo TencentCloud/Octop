@@ -89,6 +89,7 @@
     "BACKUP_DRIVER_MISMATCH": "This backup was made with a different database engine (SQLite vs PostgreSQL). Switch the runtime to match the backup, or create a new backup on the current engine. Cross-engine restore is not supported.",
     "BACKUP_SCHEMA_INCOMPATIBLE": "This backup uses database schema version {{archive_schema_version}}, which cannot be restored by this Octop version (maximum supported: {{runtime_schema_version}}).",
     "BACKUP_IN_PROGRESS": "A backup or restore is already in progress. Try again shortly.",
+    "SECRET_STORAGE_UNAVAILABLE": "Secure credential storage is unavailable. Check the encryption key, key store permissions, and backup key compatibility. See docs/secrets.md.",
     "FORBIDDEN": "Permission denied.",
     "UPDATE_TARGET_NOT_NEWER": "Target version {{target}} must be newer than installed version {{current}}. Reinstalling or downgrading is not supported.",
     "NOT_FOUND": "Not found.",
