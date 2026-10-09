@@ -5,11 +5,13 @@ from __future__ import annotations
 import csv
 import io
 import json
+import threading
 from collections.abc import Iterable
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from octop.config import DEFAULT_MAX_CSV_FIELD_CHARS
 from octop.infra.knowledge.ocr import OCR_IMAGE_SUFFIXES
 
 if TYPE_CHECKING:
@@ -251,8 +253,33 @@ def _sheet_text(title: str, rows: Iterable[Iterable[object]]) -> str:
     return "\n".join(lines)
 
 
+# ``csv`` breaks rows only on ``\r``/``\n``; fold what ``splitlines()`` also honoured.
+_EXTRA_LINE_BREAKS = str.maketrans(dict.fromkeys("\v\f\x1c\x1d\x1e\x85\u2028\u2029", "\n"))
+
+# ``csv.field_size_limit`` is process-global, so raising it races with every other parse.
+_CSV_FIELD_LIMIT_LOCK = threading.Lock()
+
+
+def _raise_csv_field_limit(size: int) -> None:
+    """Lift ``csv``'s per-field cap to *size*, never lowering or exceeding the upload bound.
+
+    One quoted cell may span a whole document and so outgrow the 128 KiB default, which
+    the line-fed reader never hit. The cap is raised only when the text demands it and is
+    never restored afterwards: restoring would let a finishing parse drop the limit under
+    another thread that is still reading. Capping it keeps the growth a hostile CSV can
+    cause within what an upload is allowed to weigh.
+    """
+    target = min(size, DEFAULT_MAX_CSV_FIELD_CHARS)
+    with _CSV_FIELD_LIMIT_LOCK:
+        if csv.field_size_limit() < target:
+            csv.field_size_limit(target)
+
+
 def _parse_delimited(path: Path, *, delimiter: str) -> str:
-    reader = csv.reader(_read_text(path).splitlines(), delimiter=delimiter)
+    # Feed the decoded text as one stream; ``splitlines()`` cut inside quoted fields.
+    text = _read_text(path).translate(_EXTRA_LINE_BREAKS)
+    _raise_csv_field_limit(len(text))
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     return _sheet_text(path.stem, reader)
 
 

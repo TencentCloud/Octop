@@ -241,6 +241,11 @@ def upload_mb_to_bytes(mb: int) -> int:
     return int(mb) * 1024 * 1024
 
 
+# ``csv`` caps one field at 128 KiB by default; the largest a knowledge document can
+# hold is bounded by the upload limit, so that is as far as the cap ever needs to go.
+DEFAULT_MAX_CSV_FIELD_CHARS = upload_mb_to_bytes(DEFAULT_MAX_UPLOAD_MB)
+
+
 def parse_max_upload_mb(raw: object, *, default: int = DEFAULT_MAX_UPLOAD_MB) -> int:
     """Coerce a config/env value to a sane megabyte limit."""
     mb: int
