@@ -12,6 +12,8 @@ export OCTOP_GREEN_PACKAGES="${ROOT}/packages"
 
 HOST="127.0.0.1"
 PORT="8088"
+HOST_SET=""
+PORT_SET=""
 EXTRA=()
 
 while [[ $# -gt 0 ]]; do
@@ -24,11 +26,13 @@ while [[ $# -gt 0 ]]; do
     --host)
       [[ $# -ge 2 ]] || { echo "start.sh: --host requires a value" >&2; exit 1; }
       HOST="$2"
+      HOST_SET=1
       shift 2
       ;;
     --port)
       [[ $# -ge 2 ]] || { echo "start.sh: --port requires a value" >&2; exit 1; }
       PORT="$2"
+      PORT_SET=1
       shift 2
       ;;
     -h|--help)
@@ -39,8 +43,8 @@ Usage: ./start.sh [--home DIR] [--host HOST] [--port PORT] [octop run args...]
 
 Defaults:
   OCTOP_HOME / --home   ${ROOT}/data
-  --host                127.0.0.1
-  --port                8088
+  --host / --port       config.json (fresh install: 127.0.0.1:8088)
+                        --host/--port are only saved to config.json when passed
 
 Environment:
   OCTOP_HOME            User data directory (overridden by --home)
@@ -71,10 +75,26 @@ fi
 export PYTHONNOUSERSITE=1
 unset PYTHONPATH || true
 
-echo "[octop] home=${OCTOP_HOME}"
-echo "[octop] http://${HOST}:${PORT}"
-if [[ ${#EXTRA[@]} -gt 0 ]]; then
-  exec "$PY" "${ROOT}/launch.py" run --host "$HOST" --port "$PORT" "${EXTRA[@]}"
-else
-  exec "$PY" "${ROOT}/launch.py" run --host "$HOST" --port "$PORT"
+# Only forward --host/--port the user passed explicitly: `octop run` persists
+# CLI overrides into config.json, so unconditionally passing the launcher
+# defaults rewrote hand-edited bind settings on every start (issue #1816).
+BIND_ARGS=()
+if [[ -n "$HOST_SET" ]]; then
+  BIND_ARGS+=(--host "$HOST")
 fi
+if [[ -n "$PORT_SET" ]]; then
+  BIND_ARGS+=(--port "$PORT")
+fi
+
+echo "[octop] home=${OCTOP_HOME}"
+if [[ -n "$HOST_SET" && -n "$PORT_SET" ]]; then
+  echo "[octop] http://${HOST}:${PORT}"
+elif [[ -n "$HOST_SET" ]]; then
+  echo "[octop] host ${HOST} from --host, port from config.json"
+elif [[ -n "$PORT_SET" ]]; then
+  echo "[octop] http://127.0.0.1:${PORT} - host from config.json"
+else
+  echo "[octop] bind host/port come from config.json"
+fi
+# Guarded expansions keep the optional argv empty-safe under bash 3.2 + set -u.
+exec "$PY" "${ROOT}/launch.py" run ${BIND_ARGS[@]+"${BIND_ARGS[@]}"} ${EXTRA[@]+"${EXTRA[@]}"}

@@ -47,6 +47,33 @@ def test_cli_flags_win_over_env_and_file(octop_home: Path, monkeypatch: pytest.M
     assert resolve_bind("10.0.0.1", 7777) == ("10.0.0.1", 7777)
 
 
+def test_env_overrides_do_not_touch_config_file(
+    octop_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Desktop launchers bind via env, never via flags (issue #1816).
+
+    ``octop run --host/--port`` persists the flags into config.json; the
+    desktop app / portable launchers must therefore pass
+    ``OCTOP_BIND_HOST``/``OCTOP_PORT`` so a restart cannot rewrite a
+    hand-edited bind setting.
+    """
+    cfg = octop_home / "config.json"
+    original = json.dumps({"bind_host": "0.0.0.0", "port": 9000})
+    cfg.write_text(original, encoding="utf-8")
+    monkeypatch.setenv("OCTOP_BIND_HOST", "127.0.0.1")
+    monkeypatch.setenv("OCTOP_PORT", "8088")
+
+    with patch("octop.cli.commands.run._run_uvicorn") as mocked:
+        result = CliRunner().invoke(run, [])
+
+    assert result.exit_code == 0, result.output
+    assert mocked.called
+    assert mocked.call_args.kwargs["host"] == "127.0.0.1"
+    assert mocked.call_args.kwargs["port"] == 8088
+    assert cfg.read_text(encoding="utf-8") == original
+    assert "Saved config" not in result.output
+
+
 def test_invalid_env_port_falls_back_to_file(
     octop_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
