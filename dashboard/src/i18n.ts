@@ -3,6 +3,7 @@ import { initReactI18next } from "react-i18next";
 import { getApiUrl } from "./api/config";
 import { i18nApi } from "./api/modules/i18n";
 import {
+  normalizeUiLocale,
   resolveInitialLocale,
   syncDocumentLang,
   type UiLocale,
@@ -13,6 +14,9 @@ export type { UiLocale } from "./utils/localePrefs";
 async function loadLocaleBundle(locale: UiLocale) {
   if (locale === "zh") {
     return (await import("./locales/zh.json")).default;
+  }
+  if (locale === "ja") {
+    return (await import("./locales/ja.json")).default;
   }
   return (await import("./locales/en.json")).default;
 }
@@ -37,15 +41,17 @@ async function isSetupRequired(): Promise<boolean> {
 }
 
 async function hydrateToolLabels(lng: string) {
-  const locale = lng.startsWith("zh") ? "zh" : "en";
+  const locale = normalizeUiLocale(lng);
   try {
     const { labels } = await i18nApi.getToolLabels();
+    // Server only ships zh/en labels; for ja keep bundled translations and
+    // use the server's (English) labels only to fill missing keys.
     i18n.addResourceBundle(
       locale,
       "translation",
       { tools: labels },
       true,
-      true,
+      locale !== "ja",
     );
   } catch {
     // bundled locale JSON remains the fallback
@@ -53,15 +59,17 @@ async function hydrateToolLabels(lng: string) {
 }
 
 async function hydrateSkillLabels(lng: string) {
-  const locale = lng.startsWith("zh") ? "zh" : "en";
+  const locale = normalizeUiLocale(lng);
   try {
     const { labels } = await i18nApi.getSkillLabels();
+    // Server only ships zh/en labels; for ja keep bundled translations and
+    // use the server's (English) labels only to fill missing keys.
     i18n.addResourceBundle(
       locale,
       "translation",
       { skills: labels },
       true,
-      true,
+      locale !== "ja",
     );
   } catch {
     // bundled locale JSON remains the fallback
@@ -84,7 +92,7 @@ export function initI18n(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
       const initial = resolveInitialLocale();
-      const fallback: UiLocale = initial === "zh" ? "en" : "zh";
+      const fallback: UiLocale = initial === "en" ? "zh" : "en";
       const primaryBundle = await loadLocaleBundle(initial);
 
       await i18n.use(initReactI18next).init({
@@ -93,7 +101,7 @@ export function initI18n(): Promise<void> {
         },
         lng: initial,
         fallbackLng: fallback,
-        supportedLngs: ["zh", "en"],
+        supportedLngs: ["zh", "en", "ja"],
         nonExplicitSupportedLngs: true,
         interpolation: {
           escapeValue: false,
@@ -112,7 +120,7 @@ export function initI18n(): Promise<void> {
       }
 
       i18n.on("languageChanged", (lng) => {
-        const locale: UiLocale = lng.startsWith("zh") ? "zh" : "en";
+        const locale: UiLocale = normalizeUiLocale(lng);
         syncDocumentLang(locale);
         void ensureLocaleBundle(locale).then(() => hydrateServerLabels(lng));
       });

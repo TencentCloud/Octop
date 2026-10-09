@@ -99,7 +99,7 @@ async def try_bootstrap_default_agent(
             server.app_runtime.agent_registry,
             server.expert_catalog,
             user_id=user_id,
-            locale=locale,
+            locale=normalize_locale(locale),
             agent_id=agent_id,
             root_dir=user_policy_workspace_root(server, user_id),
         )

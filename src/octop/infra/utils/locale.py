@@ -19,6 +19,20 @@ def normalize_locale(raw: str | None) -> Locale:
     return "en"
 
 
+UiLocale = Literal["zh", "en", "ja"]
+
+
+def normalize_ui_locale(raw: str | None) -> UiLocale:
+    """Dashboard UI locale. Like ``normalize_locale`` but keeps ``ja``.
+
+    Server-generated text (errors, tool labels, prompts) only ships zh/en, so
+    backend code keeps calling ``normalize_locale`` which maps ``ja`` to ``en``.
+    """
+    if raw and raw.lower().startswith("ja"):
+        return "ja"
+    return normalize_locale(raw)
+
+
 def resolve_locale(
     *,
     user_locale: str | None = None,

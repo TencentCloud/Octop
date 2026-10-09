@@ -4,7 +4,11 @@ import { Segmented, Steps, Typography } from "antd";
 import { Lock, UserCog, Cpu, CheckCircle, Wand2, Database } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ensureLocaleBundle } from "../../i18n";
-import { storeUiLocale, type UiLocale } from "../../utils/locale";
+import {
+  normalizeUiLocale,
+  storeUiLocale,
+  type UiLocale,
+} from "../../utils/locale";
 
 import { authApi } from "../../api/modules/auth";
 import { preferencesApi } from "../../api/modules/preferences";
@@ -208,10 +212,10 @@ export default function SetupPage() {
   }
 
   const isModelStep = current === STEP_MODEL;
-  const currentLang = i18n.language?.startsWith("zh") ? "zh" : "en";
+  const currentLang = normalizeUiLocale(i18n.language);
 
   const handleLanguageChange = (lang: string) => {
-    const locale: UiLocale = lang.startsWith("zh") ? "zh" : "en";
+    const locale: UiLocale = normalizeUiLocale(lang);
     storeUiLocale(locale);
     void ensureLocaleBundle(locale).then(() => i18n.changeLanguage(locale));
     const setupJwt = wizardSession.loadSetupJwt();
@@ -278,6 +282,7 @@ export default function SetupPage() {
               options={[
                 { label: t("account.langZh"), value: "zh" },
                 { label: t("account.langEn"), value: "en" },
+                { label: t("account.langJa", "日本語"), value: "ja" },
               ]}
               onChange={handleLanguageChange}
             />
