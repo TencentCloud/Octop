@@ -10,7 +10,7 @@ from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.voice_providers import VoiceProviderRepo, VoiceProviderRow
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.voice import adapters
-from octop.infra.voice.presets import is_builtin_preset
+from octop.infra.voice.presets import is_builtin_preset, load_voice_presets
 
 
 @dataclass(frozen=True)
@@ -36,20 +36,44 @@ class VoiceManager:
         tts = self._settings.get(self._KEY_TTS) or self._DEFAULT
         return {"stt": stt, "tts": tts}
 
+    def validate_configuration(self, *, name: str, kind: str) -> None:
+        """Keep preset names bound to their built-in protocol."""
+        reserved = {"mimo": "mimo"}
+        for preset in load_voice_presets():
+            reserved[preset["id"]] = preset["kind"]
+            reserved[preset["name"]] = preset["kind"]
+        if name in reserved and reserved[name] != kind:
+            raise OctopError(
+                ErrorCode.PROVIDER_NAME_TAKEN,
+                f"voice provider name {name!r} is reserved for a built-in provider",
+            )
+
     def set_active(self, *, stt: str | None = None, tts: str | None = None) -> dict[str, str]:
         current = self.get_active()
         if stt is not None:
             self._validate_provider_name(stt, capability="stt")
+        if tts is not None:
+            self._validate_provider_name(tts, capability="tts")
+        if stt is not None:
             self._settings.set(self._KEY_STT, stt)
             current = {**current, "stt": stt}
         if tts is not None:
-            self._validate_provider_name(tts, capability="tts")
             self._settings.set(self._KEY_TTS, tts)
             current = {**current, "tts": tts}
         return current
 
+    def validate_update(self, *, name: str, kind: str, capability: str, enabled: bool) -> None:
+        self.validate_configuration(name=name, kind=kind)
+        for mode, active_name in self.get_active().items():
+            if active_name == name and (not enabled or capability not in {mode, "both"}):
+                raise OctopError(
+                    ErrorCode.PROVIDER_REFERENCED,
+                    f"voice provider {name!r} is currently active for {mode}",
+                )
+
     def _validate_provider_name(self, name: str, *, capability: str) -> None:
-        if is_builtin_preset(name):
+        row = self._repo.get_by_name(name)
+        if row is None and is_builtin_preset(name):
             if name == "edge" and capability == "stt":
                 raise OctopError(
                     ErrorCode.VOICE_CAPABILITY_MISMATCH, "Edge TTS does not support STT"
@@ -57,7 +81,6 @@ class VoiceManager:
             if name == "browser":
                 return
             return
-        row = self._repo.get_by_name(name)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, f"voice provider {name!r} not found")
         if not row.enabled:
@@ -72,9 +95,9 @@ class VoiceManager:
             )
 
     def resolve(self, name: str) -> ResolvedVoiceProvider:
-        if is_builtin_preset(name):
-            return ResolvedVoiceProvider(name=name, kind=name, row=self._repo.get_by_name(name))
         row = self._repo.get_by_name(name)
+        if row is None and is_builtin_preset(name):
+            return ResolvedVoiceProvider(name=name, kind=name, row=None)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, f"voice provider {name!r} not found")
         if not row.enabled:
@@ -87,7 +110,7 @@ class VoiceManager:
         """HTTP content type of the synthesize() stream for the given provider."""
         name = provider_name or self.get_active()["tts"]
         kind = self.resolve(name).kind
-        return "audio/wav" if kind == "mimo" else "audio/mpeg"
+        return "audio/wav" if kind in {"mimo", "dashscope"} else "audio/mpeg"
 
     async def transcribe(
         self,
@@ -98,6 +121,7 @@ class VoiceManager:
         provider_name: str | None = None,
     ) -> adapters.STTResult:
         name = provider_name or self.get_active()["stt"]
+        self._validate_provider_name(name, capability="stt")
         resolved = self.resolve(name)
         kind = resolved.kind
         if kind == "browser":
@@ -107,6 +131,9 @@ class VoiceManager:
                 details={"provider": name},
             )
         row = resolved.row
+        if kind == "dashscope":
+            assert row is not None
+            return await adapters.transcribe_dashscope(row, audio, mime=mime, language=language)
         if kind == "openai":
             if row is None:
                 raise OctopError(ErrorCode.NOT_FOUND, "OpenAI voice provider is not configured")
@@ -130,6 +157,7 @@ class VoiceManager:
         provider_name: str | None = None,
     ) -> AsyncIterator[bytes]:
         name = provider_name or self.get_active()["tts"]
+        self._validate_provider_name(name, capability="tts")
         resolved = self.resolve(name)
         kind = resolved.kind
         if kind == "browser":
@@ -139,6 +167,13 @@ class VoiceManager:
                 details={"provider": name},
             )
         row = resolved.row
+        if kind == "dashscope":
+            assert row is not None
+            async for chunk in adapters.synthesize_dashscope(
+                row, text, voice_id=voice_id, speed=speed
+            ):
+                yield chunk
+            return
         if kind == "edge":
             source = row or VoiceProviderRow(
                 id=0,
@@ -204,6 +239,7 @@ class VoiceManager:
         mode: str,
         locale: str = "en",
     ) -> dict[str, Any]:
+        self.validate_configuration(name=name, kind=kind)
         row = VoiceProviderRow(
             id=0,
             name=name,

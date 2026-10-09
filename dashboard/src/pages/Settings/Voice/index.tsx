@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Divider, Drawer, Form, Input, Select, Typography } from "antd";
+import {
+  Button,
+  Divider,
+  Drawer,
+  Form,
+  Input,
+  Popconfirm,
+  Select,
+  Tooltip,
+  Typography,
+} from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { Activity, Mic2, Check, Settings2 } from "lucide-react";
+import { Activity, Mic2, Check, Plus, Settings2, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   voiceApi,
@@ -12,7 +22,9 @@ import {
 } from "../../../api/modules/voice";
 import { customProviderLogo, getProviderLogo } from "../../../assets/providers";
 import { invalidateVoiceConfigCache } from "../../../hooks/useVoiceConfig";
+import { apiErrorMessage } from "../../../utils/apiError";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
+import { CustomVoiceProviderDrawer } from "./CustomVoiceProviderDrawer";
 import styles from "./index.module.less";
 
 const { Text } = Typography;
@@ -34,6 +46,9 @@ export function VoiceSettingsPanel() {
   const [active, setActive] = useState({ stt: "browser", tts: "browser" });
   const [loading, setLoading] = useState(true);
   const [configure, setConfigure] = useState<ConfigureState | null>(null);
+  const [customConfigure, setCustomConfigure] = useState<{
+    existing?: VoiceProviderRow;
+  } | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [secretId, setSecretId] = useState("");
   const [secretKey, setSecretKey] = useState("");
@@ -76,6 +91,23 @@ export function VoiceSettingsPanel() {
     () =>
       presets.filter((p) => p.capability === "tts" || p.capability === "both"),
     [presets],
+  );
+
+  const reservedNames = useMemo(
+    () => [
+      "browser",
+      "edge",
+      "tencent",
+      "openai",
+      "mimo",
+      "mimo-stt",
+      "mimo-tts",
+      ...presets.flatMap((preset) => [preset.id, preset.name]),
+    ],
+    [presets],
+  );
+  const customProviders = providers.filter(
+    (provider) => !reservedNames.includes(provider.name),
   );
 
   const findConfigured = (preset: VoicePreset) =>
@@ -126,6 +158,15 @@ export function VoiceSettingsPanel() {
       extra = {
         endpoint_type: mimoEndpoint,
         voice_id: preset.capability === "tts" ? mimoVoiceId : undefined,
+      };
+    } else if (preset.kind === "openai") {
+      const existingExtra = configure.existing?.extra ?? {};
+      extra = {
+        ...existingExtra,
+        stt_model:
+          existingExtra.stt_model ?? existingExtra.model ?? "whisper-1",
+        tts_model: existingExtra.tts_model ?? "tts-1",
+        voice_id: existingExtra.voice_id ?? "alloy",
       };
     } else {
       extra = { model: preset.kind === "openai" ? "whisper-1" : undefined };
@@ -220,9 +261,32 @@ export function VoiceSettingsPanel() {
     }
   };
 
-  const renderPresetCard = (preset: VoicePreset, kind: "stt" | "tts") => {
-    const configured = findConfigured(preset);
+  const handleCustomSaved = async () => {
+    invalidateVoiceConfigCache();
+    await fetchAll();
+  };
+
+  const handleDeleteProvider = async (provider: VoiceProviderRow) => {
+    try {
+      await voiceApi.deleteProvider(provider.id);
+      message.success(t("voice.providerDeleted"));
+      await handleCustomSaved();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("common.deleteFailed"), t));
+    }
+  };
+
+  const renderPresetCard = (
+    preset: VoicePreset,
+    kind: "stt" | "tts",
+    customProvider?: VoiceProviderRow,
+  ) => {
+    const configured = customProvider ?? findConfigured(preset);
     const isActive = active[kind] === preset.id;
+    const isActiveProvider =
+      customProvider &&
+      (active.stt === customProvider.name ||
+        active.tts === customProvider.name);
     const needsSetup =
       preset.requires_key && !configured && preset.kind !== "browser";
     const logo = voiceLogoForKind(preset.kind);
@@ -290,6 +354,9 @@ export function VoiceSettingsPanel() {
                 {t("voice.notConfigured")}
               </span>
             )}
+            {customProvider && !customProvider.enabled && (
+              <span className={styles.badge}>{t("voice.disabled")}</span>
+            )}
           </div>
         </div>
 
@@ -313,7 +380,7 @@ export function VoiceSettingsPanel() {
               <Button
                 size="small"
                 type={isActive ? "default" : "primary"}
-                disabled={isActive}
+                disabled={isActive || customProvider?.enabled === false}
                 onClick={(e) => {
                   e.stopPropagation();
                   void setActiveProvider(kind, preset.id);
@@ -321,18 +388,50 @@ export function VoiceSettingsPanel() {
               >
                 {isActive ? t("voice.current") : t("voice.setActive")}
               </Button>
-              {preset.requires_key && configured ? (
+              {(preset.requires_key && configured) ||
+              (customProvider &&
+                ["openai", "dashscope"].includes(customProvider.kind)) ? (
                 <Button
                   size="small"
                   icon={<Settings2 size={14} />}
                   onClick={(e) => {
                     e.stopPropagation();
-                    openConfigure(preset);
+                    if (customProvider)
+                      setCustomConfigure({ existing: customProvider });
+                    else openConfigure(preset);
                   }}
                 >
                   {t("common.edit")}
                 </Button>
               ) : null}
+              {customProvider && (
+                <Tooltip
+                  title={
+                    isActiveProvider ? t("voice.switchBeforeDelete") : undefined
+                  }
+                >
+                  <span>
+                    <Popconfirm
+                      title={t("voice.deleteProviderConfirm", {
+                        name: customProvider.name,
+                      })}
+                      disabled={!!isActiveProvider}
+                      onConfirm={() => handleDeleteProvider(customProvider)}
+                      okText={t("common.delete")}
+                      cancelText={t("common.cancel")}
+                    >
+                      <Button
+                        size="small"
+                        danger
+                        disabled={!!isActiveProvider}
+                        icon={<Trash2 size={14} />}
+                      >
+                        {t("common.delete")}
+                      </Button>
+                    </Popconfirm>
+                  </span>
+                </Tooltip>
+              )}
             </>
           )}
         </div>
@@ -340,12 +439,48 @@ export function VoiceSettingsPanel() {
     );
   };
 
+  const renderCustomProvider = (
+    provider: VoiceProviderRow,
+    kind: "stt" | "tts",
+  ) =>
+    renderPresetCard(
+      {
+        id: provider.name,
+        name: provider.name,
+        kind: provider.kind,
+        capability: provider.capability,
+        free: false,
+        requires_key: false,
+        description: [
+          provider.extra[kind === "stt" ? "stt_model" : "tts_model"] ??
+            provider.extra.model,
+          kind === "tts" ? provider.extra.voice_id : null,
+          provider.note,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      },
+      kind,
+      provider,
+    );
+
   return (
     <>
       <TabPanelHeader
         icon={<Mic2 size={22} />}
         title={t("models.voiceModelsTab")}
         description={t("voice.description")}
+        actions={
+          <Button
+            type="primary"
+            size="small"
+            icon={<Plus size={14} />}
+            disabled={loading}
+            onClick={() => setCustomConfigure({})}
+          >
+            {t("voice.addCustomProvider")}
+          </Button>
+        }
       />
 
       {loading ? (
@@ -356,6 +491,9 @@ export function VoiceSettingsPanel() {
             <h3 className={styles.sectionTitle}>{t("voice.sttSection")}</h3>
             <div className={styles.grid}>
               {sttPresets.map((p) => renderPresetCard(p, "stt"))}
+              {customProviders
+                .filter((p) => p.capability !== "tts")
+                .map((p) => renderCustomProvider(p, "stt"))}
             </div>
           </section>
 
@@ -365,10 +503,22 @@ export function VoiceSettingsPanel() {
             <h3 className={styles.sectionTitle}>{t("voice.ttsSection")}</h3>
             <div className={styles.grid}>
               {ttsPresets.map((p) => renderPresetCard(p, "tts"))}
+              {customProviders
+                .filter((p) => p.capability !== "stt")
+                .map((p) => renderCustomProvider(p, "tts"))}
             </div>
           </section>
         </>
       )}
+
+      <CustomVoiceProviderDrawer
+        open={!!customConfigure}
+        existing={customConfigure?.existing}
+        reservedNames={reservedNames}
+        providers={providers}
+        onClose={() => setCustomConfigure(null)}
+        onSaved={handleCustomSaved}
+      />
 
       <Drawer
         title={t("voice.configureTitle", {

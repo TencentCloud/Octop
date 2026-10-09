@@ -277,9 +277,13 @@ reloads running agents so the image and video tools receive the new configuratio
 | `GET`  | `/voice/providers` | user | user's voice providers |
 | `GET`  | `/voice/active` | user | active TTS / STT configuration |
 | `PUT`  | `/voice/active` | user | update active voice configuration |
-| `POST` | `/voice/stt` | user | body `{audio, format?, language?}` → `{text, segments?}` |
-| `POST` | `/voice/tts` | user | body `{text, voice?, format?}` → audio bytes |
-| `GET`/`POST`/`PATCH`/`DELETE` | `/admin/voice/providers` | admin | admin voice provider CRUD |
+| `POST` | `/voice/stt` | user | multipart `audio`, optional `language` / `provider` → `{text, confidence}` |
+| `POST` | `/voice/tts` | user | body `{text, provider?, voice_id?, speed?}` → audio bytes |
+| `GET`/`POST` | `/admin/voice/providers` | voice permission | list / create providers |
+| `PATCH`/`DELETE` | `/admin/voice/providers/{id}` | voice permission | update / delete a provider |
+| `POST` | `/admin/voice/providers/test-configuration` | voice permission | probe unsaved configuration |
+| `POST` | `/admin/voice/providers/{id}/test` | voice permission | probe a saved provider |
+
 
 ## MBTI & personas
 

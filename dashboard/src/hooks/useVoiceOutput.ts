@@ -19,6 +19,8 @@ export function useVoiceOutput() {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const streamPlayerRef = useRef<WavStreamPlayer | null>(null);
+  const streamReaderRef =
+    useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const speakingIdRef = useRef<string | null>(null);
   const playGenerationRef = useRef(0);
 
@@ -32,6 +34,8 @@ export function useVoiceOutput() {
     stopBrowserSpeech();
     streamPlayerRef.current?.stop();
     streamPlayerRef.current = null;
+    void streamReaderRef.current?.cancel().catch(() => {});
+    streamReaderRef.current = null;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.onended = null;
@@ -50,66 +54,74 @@ export function useVoiceOutput() {
     primeAudioElement(audio);
   }, []);
 
-  /**
-   * Stream the MiMo WAV response and schedule chunks as they arrive.
-   * Returns false when streaming is unsupported or the response is not a
-   * WAV — the caller then falls back to the buffered blob path.
-   */
-  const speakMimoStream = useCallback(
-    async (plain: string, gen: number) => {
-      const player = new WavStreamPlayer();
-      streamPlayerRef.current = player;
+  const primeWavPlayer = useCallback(() => {
+    const player = new WavStreamPlayer();
+    try {
+      if (player.ensureContext()) {
+        streamPlayerRef.current = player;
+        return;
+      }
+    } catch {
+      // Buffer the response when the browser cannot create an AudioContext.
+    }
+    player.stop();
+  }, []);
+
+  const speakWavStream = useCallback(
+    async (
+      body: ReadableStream<Uint8Array>,
+      gen: number,
+      player: WavStreamPlayer,
+    ) => {
+      const reader = body.getReader();
+      streamReaderRef.current = reader;
       try {
-        if (!player.ensureContext()) return false;
-        const { contentType, body } = await voiceApi.synthesizeStream(plain);
-        if (
-          !contentType.includes("audio/wav") &&
-          !contentType.includes("audio/wave")
-        ) {
-          try {
-            await body.cancel();
-          } catch {
-            /* ignore */
-          }
-          return false;
-        }
-        const reader = body.getReader();
-        // Read until the WAV header plus first audio chunk are scheduled —
-        // malformed streams can still fall back to the blob path here.
+        // A response's 44-byte WAV header may arrive in multiple network chunks.
+        const headerChunks: Uint8Array[] = [];
+        let headerLength = 0;
+        let headerReady = false;
         for (;;) {
           const { done, value } = await reader.read();
+          if (playGenerationRef.current !== gen) {
+            await reader.cancel();
+            player.stop();
+            return true;
+          }
           if (done) break;
           if (!value) continue;
-          if (!player.push(value)) {
-            player.stop();
-            return false;
-          }
-          if (player.hasAudio) break;
-        }
-        // Feed remaining chunks in the background until the stream ends.
-        void (async () => {
-          try {
-            for (;;) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              if (value) player.push(value);
+          let chunk = value;
+          if (!headerReady) {
+            headerChunks.push(value);
+            headerLength += value.length;
+            if (headerLength < 44) continue;
+            chunk = new Uint8Array(headerLength);
+            let offset = 0;
+            for (const part of headerChunks) {
+              chunk.set(part, offset);
+              offset += part.length;
             }
-          } catch {
-            /* network hiccup — keep whatever was scheduled */
-          } finally {
-            const wait = Math.max(player.msRemaining(), 0);
-            window.setTimeout(() => {
-              player.stop();
-              if (playGenerationRef.current === gen) finishSpeaking();
-            }, wait);
+            headerChunks.length = 0;
+            headerReady = true;
           }
-        })();
-        if (playGenerationRef.current !== gen) {
-          player.stop();
+          if (!player.push(chunk)) throw new Error("Unsupported WAV stream");
         }
+        if (!player.hasAudio) throw new Error("Empty WAV stream");
+        const wait = Math.max(player.msRemaining(), 0);
+        window.setTimeout(() => {
+          player.stop();
+          if (streamPlayerRef.current === player)
+            streamPlayerRef.current = null;
+          if (playGenerationRef.current === gen) finishSpeaking();
+        }, wait);
         return true;
-      } catch {
-        return false;
+      } catch (err) {
+        player.stop();
+        if (streamPlayerRef.current === player) streamPlayerRef.current = null;
+        await reader.cancel().catch(() => {});
+        throw err;
+      } finally {
+        if (streamReaderRef.current === reader) streamReaderRef.current = null;
+        reader.releaseLock();
       }
     },
     [finishSpeaking],
@@ -117,16 +129,31 @@ export function useVoiceOutput() {
 
   const speakWithServer = useCallback(
     async (plain: string, gen: number, provider?: string) => {
-      // MiMo streams a live WAV — play it chunk-by-chunk for low latency.
-      // Other providers stream MP3, which needs the buffered blob path.
-      const active = cachedActiveVoice();
-      const ttsProvider = provider ?? active?.tts;
-      if (ttsProvider === "mimo-tts" || ttsProvider === "mimo") {
-        if (await speakMimoStream(plain, gen)) return;
-      }
-
+      const preparedPlayer = streamPlayerRef.current;
       try {
-        const blob = await voiceApi.synthesize(plain, provider);
+        const { contentType, body } = await voiceApi.synthesizeStream(
+          plain,
+          provider,
+        );
+        if (playGenerationRef.current !== gen) {
+          await body.cancel();
+          return;
+        }
+        const mime = contentType.split(";", 1)[0].trim().toLowerCase();
+        if (
+          preparedPlayer &&
+          ["audio/wav", "audio/wave", "audio/x-wav"].includes(mime)
+        ) {
+          await speakWavStream(body, gen, preparedPlayer);
+          return;
+        }
+        preparedPlayer?.stop();
+        if (streamPlayerRef.current === preparedPlayer)
+          streamPlayerRef.current = null;
+        // Reuse the response for MP3 and browsers without WebAudio.
+        const blob = await new Response(body, {
+          headers: { "Content-Type": contentType },
+        }).blob();
         if (playGenerationRef.current !== gen) return;
 
         const url = URL.createObjectURL(blob);
@@ -154,6 +181,9 @@ export function useVoiceOutput() {
 
         await audio.play();
       } catch (err) {
+        preparedPlayer?.stop();
+        if (streamPlayerRef.current === preparedPlayer)
+          streamPlayerRef.current = null;
         if (playGenerationRef.current !== gen) return;
         if (isAutoplayBlockedError(err)) {
           antMessage.warning(t("voice.ttsAutoplayBlocked"));
@@ -163,7 +193,7 @@ export function useVoiceOutput() {
         finishSpeaking();
       }
     },
-    [finishSpeaking, speakMimoStream, t],
+    [finishSpeaking, speakWavStream, t],
   );
 
   const speakWithBrowser = useCallback(
@@ -193,9 +223,14 @@ export function useVoiceOutput() {
       speakingIdRef.current = messageId;
       setSpeakingId(messageId);
 
+      if (tts === "browser") {
+        streamPlayerRef.current?.stop();
+        streamPlayerRef.current = null;
+      }
+
       // Mobile: browser speechSynthesis + async Edge fallback break the tap
       // gesture chain on iOS/Android — use Edge TTS directly.
-      if (isMobileUserAgent()) {
+      if (isMobileUserAgent() && tts === "browser") {
         stopBrowserSpeech();
         void speakWithServer(plain, gen, "edge");
         return;
@@ -232,8 +267,9 @@ export function useVoiceOutput() {
       primeMobileAudio();
 
       const cached = cachedActiveVoice();
-      if (cached || isMobileUserAgent()) {
-        beginPlayback(messageId, plain, gen, cached?.tts ?? "browser");
+      if (cached?.tts !== "browser") primeWavPlayer();
+      if (cached) {
+        beginPlayback(messageId, plain, gen, cached.tts);
         return;
       }
 
@@ -244,9 +280,10 @@ export function useVoiceOutput() {
         .catch(() => {
           if (playGenerationRef.current !== gen) return;
           antMessage.error(t("voice.ttsFailed"));
+          abortPlayback();
         });
     },
-    [abortPlayback, beginPlayback, primeMobileAudio, t],
+    [abortPlayback, beginPlayback, primeMobileAudio, primeWavPlayer, t],
   );
 
   return { speakingId, speak, stop: abortPlayback };
