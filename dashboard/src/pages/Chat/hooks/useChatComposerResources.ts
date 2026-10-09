@@ -58,6 +58,9 @@ export function useChatComposerResources(
   const currentUserId = user?.id ?? null;
   const { agents } = useAgent();
   const expert = agents.find((item) => item.agent_id === resolvedAgentId);
+  const expertDefaultMode = parseConversationMode(
+    expert?.config?.conversation_mode,
+  );
   const teamHost = isTeamAgent(expert);
   const bridgeConnectionId =
     expert?.bridge && expert.bridge_connection_id
@@ -86,6 +89,7 @@ export function useChatComposerResources(
     }[]
   >([]);
   const [availableModels, setAvailableModels] = useState<ResolvedModel[]>([]);
+  const [modelsReady, setModelsReady] = useState(false);
   const [activeModelRef, setActiveModelRef] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [preferredModel, setPreferredModel] = useState<string | null>(null);
@@ -182,10 +186,10 @@ export function useChatComposerResources(
   useEffect(() => {
     setConversationMode(
       isNewSession
-        ? DEFAULT_CONVERSATION_MODE
+        ? expertDefaultMode
         : parseConversationMode(stickyConversationMode),
     );
-  }, [isNewSession, stickyConversationMode, activeThreadId]);
+  }, [isNewSession, stickyConversationMode, activeThreadId, expertDefaultMode]);
 
   useEffect(() => {
     setHitlPolicy(
@@ -356,14 +360,21 @@ export function useChatComposerResources(
 
   useEffect(() => {
     let cancelled = false;
+    setModelsReady(false);
     const loadModels = () => {
       void providerApi
         .listResolvedModels(resolvedAgentId)
         .then((data) => {
-          if (!cancelled) setAvailableModels(data);
+          if (!cancelled) {
+            setAvailableModels(data);
+            setModelsReady(true);
+          }
         })
         .catch(() => {
-          if (!cancelled) setAvailableModels([]);
+          if (!cancelled) {
+            setAvailableModels([]);
+            setModelsReady(true);
+          }
         });
     };
     loadModels();
@@ -561,6 +572,7 @@ export function useChatComposerResources(
     chatConnectors,
     chatKnowledgeBases,
     availableModels,
+    modelsReady,
     activeModelRef,
     handleConnectorsChange,
     handleKnowledgeBaseIdsChange,

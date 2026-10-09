@@ -36,13 +36,14 @@ vendor_one() {
   # interpreter so requires-python on octop/deps can resolve.
   uv python install 3.12 >/dev/null
   echo "[wheels] ${plat}: downloading → ${wheel_dir}" >&2
+  # bash 3.2 (macOS /bin/bash) + set -u: expanding an empty array is unbound.
   uv pip download \
     --dest "$wheel_dir" \
     --python 3.12 \
     --python-platform "$pyplat" \
     --python-version 3.12 \
     --only-binary cryptography \
-    "${extra[@]}" \
+    "${extra[@]+"${extra[@]}"}" \
     -r "$req_file"
 
   echo "[wheels] ${plat}: done ($(find "$wheel_dir" -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' ') wheels)"

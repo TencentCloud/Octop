@@ -15,6 +15,22 @@ fi
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
+# Documentation-only commits do not need code checks or a dashboard build.
+# Include deletions and both sides of renames when deciding what changed.
+DOCS_ONLY=1
+HAS_CHANGES=0
+while IFS= read -r -d '' path; do
+  HAS_CHANGES=1
+  case "$path" in
+    README.md|README.*.md) ;;
+    *) DOCS_ONLY=0 ;;
+  esac
+done < <(git diff --cached --name-only --no-renames -z)
+if [[ "$HAS_CHANGES" == "1" && "$DOCS_ONLY" == "1" ]]; then
+  echo "[pre-commit] Documentation-only changes — skipping code checks and dashboard build"
+  exit 0
+fi
+
 # Remember staged paths so we can re-add them after auto-format rewrites the worktree.
 # Portable (bash 3.2+): avoid `mapfile` (bash 4+ only).
 STAGED_FILES=()

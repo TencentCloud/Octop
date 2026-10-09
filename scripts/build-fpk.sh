@@ -15,9 +15,15 @@
 #                    例如 FPK_NAME_PREFIX=Octop-fnos 会生成 Octop-fnos-docker-<ver>.fpk / Octop-fnos-native-<ver>.fpk
 #   FPK_ITER         迭代号，默认空
 #                    例如 FPK_ITER=01 会生成 ...-<ver>-01.fpk（通常不需要，按版本号发布）
+#   FPK_ARCH         本地版架构。arm64 → Octop-fnos-native-arm64-<ver>.fpk，
+#                    并写入 manifest platform=arm64。空或其它值保持现有 x86 包名。
+#                    fnpack 官方只有 linux-amd64，ARM 包应在 amd64 主机上打包
+#                    （site-packages 先在 aarch64 上装好再拷过来）。
 #
 # 说明：
-#   - Linux CI 下会自动下载 fnpack-1.2.3-linux-amd64；
+#   - Linux CI 下会自动下载 fnpack（版本见 FNPACK_VERSION，默认 1.2.3）；
+#     curl 对 RST / 超时等瞬时错误重试。成功后落到 .verify/fnpack 供本机与
+#     Actions cache 复用。
 #   - 本地若已存在 .verify/fnpack(.exe) 则直接复用，不再联网下载。
 #   - 版本号同时来自仓库根 pyproject.toml，并注入到 manifest 的 version 字段
 #     （manifest 采用 key=value 无空格格式，故用 `^version=` 匹配）。
@@ -52,22 +58,43 @@ fi
 echo "[build-fpk] 包名前缀: $PREFIX, 迭代后缀: ${ITER_SUFFIX:-<none>}"
 
 # --- 获取 fnpack CLI ---
+# Keep FNPACK_VERSION in sync with .github/workflows/fnos-build-fpk.yml cache key.
+FNPACK_VER="${FNPACK_VERSION:-1.2.3}"
+VERIFY_DIR="$ROOT/.verify"
+mkdir -p "$VERIFY_DIR"
+if [ -f "$VERIFY_DIR/fnpack.exe" ]; then
+  chmod +x "$VERIFY_DIR/fnpack.exe" 2>/dev/null || true
+fi
+if [ -f "$VERIFY_DIR/fnpack" ]; then
+  chmod +x "$VERIFY_DIR/fnpack" 2>/dev/null || true
+fi
 FNPACK=""
-if [ -x "$ROOT/.verify/fnpack.exe" ]; then
-  FNPACK="$ROOT/.verify/fnpack.exe"
-elif [ -x "$ROOT/.verify/fnpack" ]; then
-  FNPACK="$ROOT/.verify/fnpack"
+if [ -x "$VERIFY_DIR/fnpack.exe" ]; then
+  FNPACK="$VERIFY_DIR/fnpack.exe"
+elif [ -x "$VERIFY_DIR/fnpack" ]; then
+  FNPACK="$VERIFY_DIR/fnpack"
 else
   OS="$(uname -s)"
   case "$OS" in
-    Linux)  FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64" ;;
-    Darwin) FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.3-darwin-amd64" ;;
-    *)      FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.3-windows-amd64" ;;
+    Linux)  FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VER}-linux-amd64" ;;
+    Darwin) FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VER}-darwin-amd64" ;;
+    *)      FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VER}-windows-amd64" ;;
   esac
-  FNPACK="$TMP/fnpack"
+  case "$OS" in
+    Linux|Darwin) FNPACK="$VERIFY_DIR/fnpack" ;;
+    *)            FNPACK="$VERIFY_DIR/fnpack.exe" ;;
+  esac
   echo "[build-fpk] 下载 fnpack: $FNPACK_URL"
-  curl -fsSL -o "$FNPACK" "$FNPACK_URL"
+  curl -fsSL --connect-timeout 20 --max-time 120 \
+    --retry 5 --retry-delay 2 --retry-all-errors \
+    -o "${FNPACK}.partial" "$FNPACK_URL"
+  mv "${FNPACK}.partial" "$FNPACK"
   chmod +x "$FNPACK"
+  if [ ! -s "$FNPACK" ]; then
+    echo "[build-fpk] 下载的 fnpack 为空: $FNPACK_URL"
+    rm -f "$FNPACK"
+    exit 1
+  fi
 fi
 echo "[build-fpk] 使用 fnpack: $FNPACK"
 
@@ -82,7 +109,11 @@ build_one() {
       ;;
     native)
       PKG="$ROOT/fnos/native"
-      OUTNAME="${PREFIX}-native-${VER}${ITER_SUFFIX}.fpk"
+      if [ "${FPK_ARCH:-}" = "arm64" ]; then
+        OUTNAME="${PREFIX}-native-arm64-${VER}${ITER_SUFFIX}.fpk"
+      else
+        OUTNAME="${PREFIX}-native-${VER}${ITER_SUFFIX}.fpk"
+      fi
       ;;
     *) echo "未知类型: $KIND"; return 1 ;;
   esac
@@ -101,6 +132,39 @@ build_one() {
 
   # 注入版本号到 manifest（manifest 为 key=value 无空格格式）
   sed -i.bak "s/^version=.*/version=$VER/" "$BUILD/manifest" && rm -f "$BUILD/manifest.bak"
+
+  # ARM 本地版写入 platform=arm64，避免 x86 飞牛误装 aarch64 site-packages。
+  if [ "$KIND" = "native" ] && [ "${FPK_ARCH:-}" = "arm64" ]; then
+    sed -i.bak "s/^platform=.*/platform=arm64/" "$BUILD/manifest" && rm -f "$BUILD/manifest.bak"
+    echo "[build-fpk] native manifest platform=arm64"
+  fi
+
+  # 本地版写入架构标记，安装/启动时对一下，避免装错包。
+  if [ "$KIND" = "native" ]; then
+    local packed_arch
+    case "${FPK_ARCH:-}" in
+      arm64) packed_arch=arm64 ;;
+      amd64) packed_arch=amd64 ;;
+      *)
+        case "$(uname -m)" in
+          aarch64|arm64) packed_arch=arm64 ;;
+          *) packed_arch=amd64 ;;
+        esac
+        ;;
+    esac
+    printf '%s\n' "$packed_arch" > "$BUILD/cmd/fpk-arch"
+    echo "[build-fpk] native cmd/fpk-arch=$packed_arch"
+  fi
+
+  # Docker 版 compose 钉与本包相同的镜像标签；测试包可用 FPK_IMAGE_TAG=latest 覆盖。
+  if [ "$KIND" = "docker" ]; then
+    local compose="$BUILD/app/docker/docker-compose.yaml" image_tag="${FPK_IMAGE_TAG:-$VER}"
+    if [ -f "$compose" ]; then
+      sed -i.bak -E "s#ghcr.io/tencentcloud/octop:[^[:space:]]+#ghcr.io/tencentcloud/octop:${image_tag}#" "$compose"
+      rm -f "${compose}.bak"
+      echo "[build-fpk] compose 镜像: ghcr.io/tencentcloud/octop:${image_tag}"
+    fi
+  fi
 
   echo "[build-fpk] fnpack 校验并打包 $KIND ..."
   # fnpack 校验 manifest/cmd/config/wizard/app 后在当前目录生成 <appname>.fpk
