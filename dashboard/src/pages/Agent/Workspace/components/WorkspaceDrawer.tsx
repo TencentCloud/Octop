@@ -52,6 +52,7 @@ import { useServerTimezone } from "../../../../hooks/useServerTimezone";
 import { formatServerIsoDateTime } from "../../../../utils/formatMessageTime";
 import { isAgentChatReady } from "../../../../utils/agentError";
 import { apiErrorMessage } from "../../../../utils/apiError";
+import { saveBlobAsFile } from "../../../../utils/saveBlobAsFile";
 import AgentNotReadyScreen from "../../../Chat/components/AgentNotReadyScreen";
 import { fileTreeIcon } from "../../../../utils/fileTreeIcon";
 import { dedupeFileTreeInfos } from "../../../../utils/fileTreeNodes";
@@ -952,11 +953,7 @@ export default function WorkspaceDrawer({
           )}`,
         ),
       );
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = path.split("/").pop() || "download";
-      a.click();
-      URL.revokeObjectURL(a.href);
+      await saveBlobAsFile(blob, path.split("/").pop() || "download");
     } catch (err: unknown) {
       message.error(
         (err instanceof Error ? err.message : String(err)) ||
@@ -1004,11 +1001,7 @@ export default function WorkspaceDrawer({
     setArchiveExporting(true);
     try {
       const blob = await workspaceApi.downloadWorkspaceArchive(agentId);
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `workspace-${agentId}.zip`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      await saveBlobAsFile(blob, `workspace-${agentId}.zip`);
       message.success(t("workspace.archiveExportSuccess"));
     } catch (err: unknown) {
       message.error(

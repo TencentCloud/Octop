@@ -8,6 +8,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export OCTOP_HOME="${OCTOP_HOME:-${ROOT}/data}"
+export OCTOP_GREEN_PACKAGES="${ROOT}/packages"
 
 HOST="127.0.0.1"
 PORT="8088"

@@ -11,6 +11,7 @@ const _STREAM_ERROR_KEYS = [
   "stream_errors.recursion_limit",
   "stream_errors.timeout_network",
   "stream_errors.provider_unavailable",
+  "stream_errors.invalid_request",
   "stream_errors.model_call_failed",
   "stream_errors.path_outside_root",
 ] as const;
@@ -20,6 +21,8 @@ export type StreamErrorKey = (typeof _STREAM_ERROR_KEYS)[number];
 export type StreamErrorAction = {
   path: string;
   labelKey: string;
+  /** One-click fix the chat bubble can run instead of only navigating. */
+  fix?: "disable_stream_usage";
 };
 
 const MODEL_RETRY_FAILURE_MARK = "[model_call_failed]";
@@ -35,6 +38,11 @@ const STREAM_ERROR_ACTIONS: Partial<Record<StreamErrorKey, StreamErrorAction>> =
     "stream_errors.insufficient_balance": {
       path: "/admin/models",
       labelKey: "modelConfig.configureButton",
+    },
+    "stream_errors.invalid_request": {
+      path: "/admin/models",
+      labelKey: "chat.disableStreamUsageAndRetry",
+      fix: "disable_stream_usage",
     },
     "stream_errors.recursion_limit": {
       path: "/agent-config",
@@ -131,6 +139,15 @@ export function classifyChatStreamError(
       (lower.includes("api") || lower.includes("key")))
   ) {
     return "stream_errors.auth";
+  }
+
+  if (
+    lower.includes("error code: 422") ||
+    lower.includes("http 422") ||
+    lower.includes("check open ai req parameter") ||
+    lower.includes("input validation error")
+  ) {
+    return "stream_errors.invalid_request";
   }
 
   if (

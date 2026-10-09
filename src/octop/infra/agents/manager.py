@@ -82,6 +82,7 @@ from octop.infra.skills.workspace_catalog import (
     repair_workspace_skill_manifests,
 )
 from octop.infra.utils.locale import Locale
+from octop.infra.utils.turn_failure import turn_model_scope
 from octop.infra.utils.ulid import new_short_id
 
 if TYPE_CHECKING:
@@ -97,11 +98,39 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _model_retry_on_failure(exc: Exception) -> str:
+def _model_retry_on_failure(
+    exc: Exception,
+    *,
+    agent_id: str = "",
+    manager: AgentManager | None = None,
+) -> str:
     # Feed a specific, model-visible prompt instead of raising. Inbox jobs still
     # mark failed when the reply carries MODEL_RETRY_FAILURE_MARK.
-    from octop.i18n.domains.stream import model_retry_failure_prompt
+    from octop.i18n.domains.stream import exception_display_message, model_retry_failure_prompt
+    from octop.infra.agents.security.hitl_session import current_hitl_thread_id
+    from octop.infra.metrics import METRICS
+    from octop.infra.utils.turn_failure import current_turn_model, log_turn_failure
 
+    thread_id = current_hitl_thread_id() or ""
+    model = current_turn_model()
+    if not model and manager is not None and agent_id and thread_id:
+        with suppress(Exception):
+            model = manager.get_thread_model(agent_id, thread_id) or ""
+    if not model and manager is not None and agent_id:
+        with suppress(Exception):
+            row = manager.get_row(agent_id)
+            if row is not None:
+                model = (row.default_model or "").strip()
+    log_turn_failure(
+        "model_retry",
+        detail=exception_display_message(exc),
+        agent_id=agent_id,
+        thread_id=thread_id,
+        model=model,
+        exc=exc,
+        level=logging.ERROR,
+    )
+    METRICS.inc("stream_errors_total")
     return model_retry_failure_prompt(exc, "en")
 
 
@@ -1302,7 +1331,10 @@ class AgentManager:
         ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
-            with hitl_thread_scope(thread_id_from_request(req)):
+            with (
+                hitl_thread_scope(thread_id_from_request(req)),
+                turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
+            ):
                 async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
                     yield chunk
             self._apply_pending_bootstrap_graph_refresh(agent_id)
@@ -1314,7 +1346,11 @@ class AgentManager:
         async with self._track_invocation(agent_id):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
-            with hitl_thread_scope(thread_id_from_request(req)):
+            thread_id = str(req.get("thread_id") or thread_id_from_request(req) or "")
+            with (
+                hitl_thread_scope(thread_id_from_request(req)),
+                turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
+            ):
                 result = await self._harness_manager.call(agent_id, cast(Any, req))
             self._apply_pending_bootstrap_graph_refresh(agent_id)
         if not isinstance(result, dict):
@@ -1335,7 +1371,10 @@ class AgentManager:
             self._track_invocation(agent_id),
         ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
-            with hitl_thread_scope(thread_id):
+            with (
+                hitl_thread_scope(thread_id),
+                turn_model_scope(self._stream_model_label(agent_id, {}, thread_id)),
+            ):
                 async for chunk in self._harness_manager.resume_hitl(
                     agent_id, thread_id, decisions
                 ):
@@ -3065,6 +3104,26 @@ class AgentManager:
             req["configurable"] = configurable
         return apply_agent_runtime_to_stream_request(req, agent_cfg)
 
+    def _stream_model_label(self, agent_id: str, request: dict[str, Any], thread_id: str) -> str:
+        raw = request.get("model")
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+        cfg = request.get("configurable")
+        if isinstance(cfg, dict):
+            nested = cfg.get("model")
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
+        if thread_id:
+            with suppress(Exception):
+                override = self.get_thread_model(agent_id, thread_id)
+                if override:
+                    return override
+        with suppress(Exception):
+            row = self.get_row(agent_id)
+            if row is not None and (row.default_model or "").strip():
+                return str(row.default_model).strip()
+        return ""
+
     def _build_harness_config(self, row: AgentRow) -> HarnessAgentConfig:
         """Convert an AgentRow into a HarnessAgentConfig."""
         from octop_harness.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
@@ -3410,6 +3469,11 @@ class AgentManager:
         if applied.model_retry_enabled:
             from langchain.agents.middleware import ModelRetryMiddleware
 
+            bound_agent_id = row.agent_id
+
+            def _on_model_retry_failure(exc: Exception) -> str:
+                return _model_retry_on_failure(exc, agent_id=bound_agent_id, manager=self)
+
             applied = replace(
                 applied,
                 model_retry_enabled=False,
@@ -3418,7 +3482,7 @@ class AgentManager:
                         max_retries=applied.model_retry_max_retries,
                         initial_delay=applied.model_retry_initial_delay,
                         max_delay=applied.model_retry_max_delay,
-                        on_failure=_model_retry_on_failure,
+                        on_failure=_on_model_retry_failure,
                     ),
                     *(applied.middleware or []),
                 ],

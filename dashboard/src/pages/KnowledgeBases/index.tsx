@@ -88,6 +88,7 @@ import { useListPanelCollapsed } from "../../hooks/useListPanelCollapsed";
 import { useServerTimezone } from "../../hooks/useServerTimezone";
 import PageShell from "../../layouts/PageShell";
 import { apiErrorMessage, isNotFoundApiError } from "../../utils/apiError";
+import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { getDocKind, type DocKind } from "../../utils/docKind";
 import { formatBytes, formatSizeGb } from "../../utils/embeddingDownload";
@@ -1550,12 +1551,7 @@ export default function KnowledgeBasesPage() {
         documentId,
         "attachment",
       );
-      const url = URL.createObjectURL(blob);
-      const a = window.document.createElement("a");
-      a.href = url;
-      a.download = filename || "download";
-      a.click();
-      URL.revokeObjectURL(url);
+      await saveBlobAsFile(blob, filename || "download");
     } catch (error) {
       message.error(
         apiErrorMessage(error, t("knowledgeBases.downloadOriginalFailed"), t),

@@ -9,6 +9,7 @@
  */
 
 import { requestBlob, requestUpload } from "../request";
+import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 
 // ---------------------------------------------------------------------------
 // Wire types
@@ -83,14 +84,7 @@ async function packAndDownload(agentId: string): Promise<void> {
     "0",
   )}${String(now.getMinutes()).padStart(2, "0")}`;
   const filename = `${agentId}-${ts}.hmpkg`;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  await saveBlobAsFile(blob, filename);
 }
 
 /** Upload an .hmpkg file and import it into the target host. */
