@@ -20,9 +20,15 @@ func mustEnv(cmd *exec.Cmd, extra map[string]string) {
 func startOctop(root string, port int) (*exec.Cmd, error) {
 	py := pythonExe(root)
 	launch := filepath.Join(root, "launch.py")
-	cmd := exec.Command(py, launch, "run", "--host", "127.0.0.1", "--port", strconv.Itoa(port))
+	// Pass the bind overrides through the environment, not as CLI flags:
+	// `octop run --host/--port` persists them into config.json, so flag-based
+	// desktop launches overwrote a hand-edited bind_host on every start
+	// (issue #1816). Env overrides win in `resolve_bind` and are never saved.
+	cmd := exec.Command(py, launch, "run")
 	cmd.Dir = root
 	mustEnv(cmd, map[string]string{
+		"OCTOP_BIND_HOST":      "127.0.0.1",
+		"OCTOP_PORT":           strconv.Itoa(port),
 		"OCTOP_HOME":           octopHome(),
 		"OCTOP_GREEN_PACKAGES": filepath.Join(root, "packages"),
 		"PYTHONNOUSERSITE":     "1",
