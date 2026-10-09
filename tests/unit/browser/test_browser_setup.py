@@ -138,10 +138,13 @@ def test_ensure_chrome_runtime_env_uses_platform_runtime_dir(
     path = ensure_chrome_runtime_env()
     # Linux uses /tmp/<uid>; other POSIX (e.g. macOS) uses tempfile + pid.
     assert path == _runtime_dir_for_uid()
-    assert os.environ["XDG_RUNTIME_DIR"] == str(path)
     assert path.is_dir()
     assert os.access(path, os.W_OK | os.X_OK)
     assert S_IMODE(path.stat().st_mode) == 0o700
+    # Must not redirect the process-global XDG_RUNTIME_DIR: systemctl --user
+    # resolves the user bus via $XDG_RUNTIME_DIR/bus. Chrome receives the
+    # private dir through its launch environment instead.
+    assert os.environ["XDG_RUNTIME_DIR"] == "/run/user/0"
 
 
 def test_non_linux_temp_dirs_use_gettempdir_with_stable_token(
