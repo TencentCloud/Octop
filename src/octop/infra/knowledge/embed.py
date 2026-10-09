@@ -67,4 +67,10 @@ def _embed_remote_batched(
         out.extend(list(item["embedding"]) for item in data)
     if len(out) != len(texts):
         raise RuntimeError("knowledge embedding count mismatch")
+    # A provider may answer with a different width per item; cosine search skips
+    # chunks whose width differs from the query, so a mixed response would mark the
+    # document ready while silently dropping it from retrieval.
+    dimensions = {len(vector) for vector in out}
+    if len(dimensions) != 1 or next(iter(dimensions), 0) == 0:
+        raise RuntimeError("knowledge embedding dimensions must be one nonzero size")
     return out
