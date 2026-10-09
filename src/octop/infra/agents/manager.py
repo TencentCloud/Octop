@@ -655,6 +655,7 @@ class AgentManager:
                 config["persona"] = spec.persona_mbti.upper()
             from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
                 DEFAULT_SYSTEM_FILES_PATH,
+                cfg_for_workspace_paths,
                 seed_workspace_dir_on_create,
             )
             from octop.infra.users.resource_policy import (
@@ -662,6 +663,14 @@ class AgentManager:
                 raise_if_backend_outside_user_root,
             )
 
+            path_cfg = cfg_for_workspace_paths(
+                config,
+                storage_backend_repo=getattr(
+                    self._repos,
+                    "storage_backend_repo",
+                    None,
+                ),
+            )
             if spec.user_id is not None:
                 kind = spec.kind if spec.kind in {"expert", "team"} else "expert"
                 if kind == "expert":
@@ -673,12 +682,15 @@ class AgentManager:
                 raise_if_backend_outside_user_root(
                     self._repos.user_policy_repo,
                     spec.user_id,
-                    config.get("backend"),
+                    path_cfg.get("backend"),
                 )
 
             # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
+            # Expand named local storage for path math only — persist keeps
+            # ``type: named`` so SOUL/.octop land under ``{root}/.octop/workspaces/<id>/``.
             # After insert, resolve_workspace_dir reads the DB value as source of truth.
-            seed_workspace_dir_on_create(config, paths=self._paths, agent_id=agent_id)
+            seed_workspace_dir_on_create(path_cfg, paths=self._paths, agent_id=agent_id)
+            config["workspace_dir"] = path_cfg["workspace_dir"]
             # ``system_files_path`` is an internal layout control and must not
             # be user-configurable. New agents always use the default prefix.
             config.pop("system_files_path", None)
@@ -1135,17 +1147,27 @@ class AgentManager:
         config — do not route harness through this host join.
         """
         from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
+            cfg_for_workspace_paths,
             neutralize_unwritable_local_root,
             resolve_workspace_host_path,
             workspace_dir_from_config,
         )
 
         cfg = self.get_config(agent_id)
-        raw = cfg.get("workspace_dir")
+        storage_repo = getattr(self._repos, "storage_backend_repo", None)
+        path_cfg = cfg_for_workspace_paths(
+            cfg,
+            storage_backend_repo=storage_repo,
+        )
+        raw = path_cfg.get("workspace_dir")
         if isinstance(raw, str) and raw.strip():
-            out = workspace_dir_from_config(cfg, paths=self._paths, agent_id=agent_id)
+            out = workspace_dir_from_config(
+                path_cfg,
+                paths=self._paths,
+                agent_id=agent_id,
+            )
             try:
-                intended = resolve_workspace_host_path(raw, cfg)
+                intended = resolve_workspace_host_path(raw, path_cfg)
             except ValueError:
                 intended = out
             if persist_if_missing and out.resolve() != intended.resolve():
@@ -1155,7 +1177,11 @@ class AgentManager:
                     intended,
                     out,
                 )
-                new_cfg = neutralize_unwritable_local_root(dict(cfg))
+                # Named refs must stay named; only inline local roots neutralize.
+                if path_cfg is cfg:
+                    new_cfg = neutralize_unwritable_local_root(dict(cfg))
+                else:
+                    new_cfg = dict(cfg)
                 new_cfg["workspace_dir"] = str(out.resolve())
                 if self._repos.agent_repo.get(agent_id) is not None:
                     self.persist_harness_config(agent_id, new_cfg)
@@ -3129,13 +3155,19 @@ class AgentManager:
         from octop_harness.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
 
         from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
+            cfg_for_workspace_paths,
             harness_workspace_path,
             resolve_workspace_host_path,
             system_files_path_from_config,
         )
 
         cfg = self._agent_config_dict(row)
-        raw = cfg.get("workspace_dir")
+        storage_repo = getattr(self._repos, "storage_backend_repo", None)
+        path_cfg = cfg_for_workspace_paths(
+            cfg,
+            storage_backend_repo=storage_repo,
+        )
+        raw = path_cfg.get("workspace_dir")
         stored = self._repos.agent_repo.get(row.agent_id) is not None
         if isinstance(raw, str) and raw.strip() and stored:
             # Host mkdir may remap an unwritable leftover (e.g. /root/.octop/…)
@@ -3144,15 +3176,19 @@ class AgentManager:
             persisted = self.get_config(row.agent_id)
             if persisted:
                 cfg = persisted
-            raw = cfg.get("workspace_dir")
+                path_cfg = cfg_for_workspace_paths(
+                    cfg,
+                    storage_backend_repo=storage_repo,
+                )
+            raw = path_cfg.get("workspace_dir")
             if isinstance(raw, str) and raw.strip():
-                harness_workspace = harness_workspace_path(raw, cfg)
+                harness_workspace = harness_workspace_path(raw, path_cfg)
             else:
                 harness_workspace = workspace_dir
         elif isinstance(raw, str) and raw.strip():
             # Unit tests pass an in-memory row that is not in the repo.
-            harness_workspace = harness_workspace_path(raw, cfg)
-            workspace_dir = resolve_workspace_host_path(raw, cfg)
+            harness_workspace = harness_workspace_path(raw, path_cfg)
+            workspace_dir = resolve_workspace_host_path(raw, path_cfg)
             workspace_dir.mkdir(parents=True, exist_ok=True)
         else:
             # Legacy / incomplete row: backfill classic host workspace (also

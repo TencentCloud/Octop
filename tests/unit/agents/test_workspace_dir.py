@@ -9,6 +9,7 @@ import pytest
 from octop.infra.agents.workspace.dir import (
     agent_facing_workspace_dir_from_config,
     agent_facing_workspace_root,
+    cfg_for_workspace_paths,
     default_agent_workspace_dir,
     harness_workspace_path,
     join_agent_facing,
@@ -17,6 +18,9 @@ from octop.infra.agents.workspace.dir import (
     seed_workspace_dir_on_create,
     workspace_dir_from_config,
 )
+from octop.infra.db.migrate import run_migrations
+from octop.infra.db.pool import SqlitePool
+from octop.infra.db.repos.backends import BackendRepo
 from octop.infra.utils.paths import PathLayout
 
 
@@ -29,6 +33,13 @@ def _scoped_cfg(root: Path, **extra: object) -> dict:
         },
         **extra,
     }
+
+
+@pytest.fixture
+def storage_repo(tmp_path: Path) -> BackendRepo:
+    db = SqlitePool(tmp_path / "octop.db")
+    run_migrations(db)
+    return BackendRepo(db)
 
 
 def test_scoped_default_persists_agent_facing_path(tmp_path: Path) -> None:
@@ -178,3 +189,55 @@ def test_neutralize_unwritable_local_root(tmp_path: Path) -> None:
     writable.mkdir()
     keep = neutralize_unwritable_local_root(_scoped_cfg(writable))
     assert keep["backend"]["root_dir"] == str(writable)
+
+
+def test_named_filesystem_create_scopes_workspace_under_storage(
+    tmp_path: Path,
+    storage_repo: BackendRepo,
+) -> None:
+    """#1641: named local storage must seed under ``{root}/.octop/workspaces/<id>``."""
+    root = tmp_path / "vol" / "workspaces"
+    root.mkdir(parents=True)
+    storage_repo.create(name="fnos-disk", kind="filesystem", bucket=str(root))
+    paths = PathLayout(tmp_path / "octop-home")
+    cfg: dict = {"backend": {"type": "named", "name": "fnos-disk"}}
+
+    path_cfg = cfg_for_workspace_paths(cfg, storage_backend_repo=storage_repo)
+    host = seed_workspace_dir_on_create(path_cfg, paths=paths, agent_id="N4M3D1")
+    cfg["workspace_dir"] = path_cfg["workspace_dir"]
+
+    assert cfg["backend"] == {"type": "named", "name": "fnos-disk"}
+    assert cfg["workspace_dir"] == "/.octop/workspaces/N4M3D1"
+    assert host == (root / ".octop" / "workspaces" / "N4M3D1").resolve()
+    assert host.is_dir()
+    assert not (tmp_path / "octop-home" / "agents" / "N4M3D1").exists()
+
+    # Runtime host ops must still map through the named storage root.
+    runtime = cfg_for_workspace_paths(cfg, storage_backend_repo=storage_repo)
+    assert resolve_workspace_host_path(cfg["workspace_dir"], runtime) == host
+
+
+def test_named_remote_backend_keeps_octop_home_workspace(
+    tmp_path: Path,
+    storage_repo: BackendRepo,
+) -> None:
+    storage_repo.create(
+        name="my-cos",
+        kind="cos",
+        access_key="AKID",
+        secret_key="SECRET",
+        bucket="b-125",
+        region="ap-guangzhou",
+    )
+    paths = PathLayout(tmp_path / "octop-home")
+    cfg: dict = {"backend": {"type": "named", "name": "my-cos"}}
+    path_cfg = cfg_for_workspace_paths(cfg, storage_backend_repo=storage_repo)
+    assert path_cfg is cfg
+    host = seed_workspace_dir_on_create(cfg, paths=paths, agent_id="R3M0T1")
+    assert cfg["workspace_dir"] == str(host)
+    assert host == (tmp_path / "octop-home" / "agents" / "R3M0T1").resolve()
+
+
+def test_cfg_for_workspace_paths_without_repo_is_noop(tmp_path: Path) -> None:
+    cfg = {"backend": {"type": "named", "name": "missing"}}
+    assert cfg_for_workspace_paths(cfg, storage_backend_repo=None) is cfg
