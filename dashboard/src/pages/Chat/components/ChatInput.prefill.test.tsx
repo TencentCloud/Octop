@@ -57,7 +57,9 @@ vi.mock("../hooks/chatStore", () => ({
 }));
 
 vi.mock("./ChatInputPreviewBar", () => ({
-  default: () => null,
+  default: ({ selectedConnectors }: { selectedConnectors: string[] }) => (
+    <div data-testid="preview-connectors">{selectedConnectors.join(",")}</div>
+  ),
 }));
 
 vi.mock("./ChatInputActionsRow", () => ({
@@ -132,6 +134,27 @@ beforeEach(() => {
 });
 
 describe("ChatInput prefill clear-on-send", () => {
+  it.each(["ask", "plan"] as const)(
+    "hides connector previews in %s and restores them in Craft",
+    (mode) => {
+      const props = {
+        onSend: vi.fn(),
+        onCancel: vi.fn(),
+        onNewChat: vi.fn(),
+        isStreaming: false,
+        selectedConnectors: ["c1"],
+      };
+      const { rerender } = render(
+        <ChatInput {...props} conversationMode={mode} />,
+      );
+      expect(screen.getByTestId("preview-connectors")).toBeEmptyDOMElement();
+      rerender(<ChatInput {...props} conversationMode="craft" />);
+      expect(screen.getByTestId("preview-connectors")).toHaveTextContent("c1");
+      rerender(<ChatInput {...props} conversationMode={mode} />);
+      expect(screen.getByTestId("preview-connectors")).toBeEmptyDOMElement();
+    },
+  );
+
   it("does not restore stale initialText after send (skill-card prefill path)", async () => {
     // Mirrors welcome skill/quick-card flow:
     // 1) setPrefillText fills the composer imperatively while parent initialText

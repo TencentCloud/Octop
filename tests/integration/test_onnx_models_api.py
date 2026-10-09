@@ -5,7 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 MODEL = "BAAI/bge-small-zh-v1.5"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_embedding_install(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.api.routers import knowledge_bases, onnx_models
+
+    monkeypatch.setattr(knowledge_bases, "ensure_local_embedding_deps_async", _ready)
+    monkeypatch.setattr(onnx_models, "ensure_local_embedding_deps_async", _ready)
 
 
 def _seed_cache(home: Path, model: str) -> None:
