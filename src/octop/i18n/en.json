@@ -1,4 +1,21 @@
 {
+  "search": {
+    "invalid_url": "Enter a valid HTTP or HTTPS search endpoint without embedded credentials.",
+    "missing_query": "Include {query} in the query parameters (GET) or JSON body (POST).",
+    "api_key_required": "An API key is required when a request template contains {api_key}.",
+    "empty_query": "The search query cannot be empty.",
+    "timeout": "The search request timed out.",
+    "network_error": "Unable to connect to the search service.",
+    "invalid_request": "The search request configuration is invalid. Header names and values must use ASCII characters.",
+    "http_error": "The search service returned HTTP {status}.",
+    "invalid_json": "The search service did not return valid JSON.",
+    "results_array": "The configured results path must point to a JSON array.",
+    "invalid_result": "A search result is missing its URL or has invalid text fields. Check the field mappings.",
+    "duplicate_ids": "Custom search provider IDs must be unique.",
+    "invalid_active": "The selected search engine does not exist.",
+    "preset_unconfigured": "Configure this search engine's credentials before enabling it.",
+    "tool_description": "Search the web using {name}. Returns titles, URLs, and snippets."
+  },
   "slash": {
     "error": {
       "unknown_command": "Unknown command: /{name}. Type /help for available commands."
@@ -593,6 +610,7 @@
     "google_search": "Google web search",
     "kimi_search": "Kimi web search",
     "searchfree_search": "AI web search",
+    "custom_search": "Custom Search",
     "cronjob_list": "List cron jobs",
     "cronjob_get": "Get cron job",
     "cronjob_create": "Create cron job",

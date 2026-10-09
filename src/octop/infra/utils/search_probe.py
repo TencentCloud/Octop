@@ -7,6 +7,7 @@ request body and are never written to ``os.environ``.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from collections.abc import Mapping
 from typing import Any, Literal
@@ -29,12 +30,19 @@ _REQUIRED: dict[str, tuple[str, ...]] = {
 async def probe_search_provider(
     provider_id: str,
     env_vars: Mapping[str, str],
+    *,
+    use_saved_credentials: bool = False,
 ) -> dict[str, Any]:
     """Run a one-shot search against ``provider_id`` using ``env_vars``.
 
     Returns a dict matching the dashboard ``TestSearchResponse`` shape.
     """
     started = time.perf_counter()
+    if use_saved_credentials:
+        env_vars = {
+            **{key: os.environ.get(key, "") for key in _REQUIRED.get(provider_id, ())},
+            **env_vars,
+        }
     try:
         outcome = await asyncio.wait_for(
             _probe(provider_id, env_vars),

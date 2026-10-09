@@ -269,6 +269,44 @@ reloads running agents so the image and video tools receive the new configuratio
 | `PUT` | `/admin/media-generation` | providers | Save enabled tools and Seedream/Seedance model IDs; an included API key is verified before saving |
 | `POST` | `/admin/media-generation/test` | providers | Test credentials or a selected image/video model; model tests submit real, potentially billable requests |
 
+### Search engines
+
+These instance-wide endpoints require the `search` permission (administrators bypass
+permission checks). Custom engines adapt HTTP APIs that return JSON search results.
+The existing Tavily, Brave, Google, and Kimi settings continue to use `/envs`.
+GET/PUT responses include `configured_preset_ids`, the presets whose credentials are
+available from either the saved environment file or the server process environment.
+This read-only list contains provider names, never credentials, and lets the dashboard
+keep their switches usable after switching off an engine configured through environment variables.
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET` | `/search/custom` | search | `{providers, active_provider_id}`; includes the selected custom, preset, or built-in source; custom API keys are omitted and `api_key_set` indicates whether one is stored |
+| `PUT` | `/search/custom` | search | Replace the custom-engine list, persist the selected search source, and reload running agents; omitted custom engines and their keys are deleted |
+| `POST` | `/search/custom/test` | search | body `{provider: {...}}`; probe an unsaved engine configuration without persisting it |
+| `POST` | `/search/{provider_id}/test` | search | body `{env_vars: {...}, use_saved_credentials?: false}`; probe a preset without saving credentials; `true` uses the server's configured credentials, with supplied env vars overriding them |
+
+`active_provider_id` selects exactly one search source:
+
+- A custom engine ID selects that engine from `providers`.
+- `preset:tavily`, `preset:brave`, `preset:google`, or `preset:kimi` selects that preset.
+  Its required credentials must already be configured through `/envs`.
+- `null` explicitly selects only built-in search, including when preset API keys exist.
+
+Switching sources retains preset credentials. Keep existing custom engines in the
+`providers` list to retain their configurations and keys. For example,
+`{"providers": [], "active_provider_id": "preset:brave"}` selects Brave without deleting
+Tavily's API key; saving the same list with `active_provider_id: null` uses only built-in
+search while preserving both keys. GET returns the saved selection so a page reload
+does not re-enable a preset that the user switched off.
+
+For older installations without an explicit saved selection, Octop preserves the
+previous automatic choice using the first configured preset in Tavily, Brave, Google,
+Kimi order. After a PUT, the explicit selection controls the source. Selecting an
+unconfigured preset or an unknown custom ID returns HTTP `400` with `SLASH_BAD_ARGS`
+and a localized `details.reason`.
+
+
 ## Voice
 
 | Method | Path | Auth | Notes |

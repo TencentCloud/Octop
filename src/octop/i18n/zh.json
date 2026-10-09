@@ -1,4 +1,21 @@
 {
+  "search": {
+    "invalid_url": "请输入有效的 HTTP 或 HTTPS 搜索接口地址，地址中不能包含认证信息。",
+    "missing_query": "请在 GET 查询参数或 POST JSON 请求体中包含 {query} 占位符。",
+    "api_key_required": "请求模板包含 {api_key} 时必须配置 API Key。",
+    "empty_query": "搜索词不能为空。",
+    "timeout": "搜索请求超时。",
+    "network_error": "无法连接到搜索服务。",
+    "invalid_request": "搜索请求配置无效，请检查请求头；请求头名称和值必须使用 ASCII 字符。",
+    "http_error": "搜索服务返回 HTTP {status}。",
+    "invalid_json": "搜索服务未返回有效的 JSON。",
+    "results_array": "配置的结果路径必须指向 JSON 数组。",
+    "invalid_result": "搜索结果缺少 URL 或文本字段类型不正确，请检查字段映射。",
+    "duplicate_ids": "自定义搜索引擎的标识不能重复。",
+    "invalid_active": "选中的搜索引擎不存在。",
+    "preset_unconfigured": "请先配置该搜索引擎的凭证，再启用。",
+    "tool_description": "使用 {name} 搜索网络，返回标题、链接和摘要。"
+  },
   "slash": {
     "error": {
       "unknown_command": "未知指令：/{name}。输入 /help 查看可用指令。"
@@ -593,6 +610,7 @@
     "google_search": "Google 联网搜索",
     "kimi_search": "Kimi 联网搜索",
     "searchfree_search": "AI 联网搜索",
+    "custom_search": "自定义搜索",
     "cronjob_list": "列出定时任务",
     "cronjob_get": "查看定时任务",
     "cronjob_create": "创建定时任务",
