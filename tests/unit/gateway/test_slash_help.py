@@ -2,8 +2,26 @@
 
 from __future__ import annotations
 
-from octop.infra.gateway.slash.catalog import list_specs
+from octop.infra.gateway.slash.catalog import channel_origin, list_specs
 from octop.infra.gateway.slash.help import format_help
+
+
+def test_channel_origin_maps_surfaces():
+    assert channel_origin("dashboard") == "ui"
+    assert channel_origin("cli") == "cli"
+    for im_channel in ("feishu", "telegram", "dingtalk", "wecom", "unknown"):
+        assert channel_origin(im_channel) == "im"
+
+
+def test_im_help_lists_hitl_commands():
+    """/approve, /reject and /pending are declared im-only, so IM /help must show them."""
+    for im_channel in ("feishu", "telegram", "unknown"):
+        specs = list_specs(origin=channel_origin(im_channel))
+        names = {s.name for s in specs}
+        assert {"approve", "reject", "pending"} <= names
+        text = format_help(specs, "en")
+        assert "`/approve [pending_id]`" in text
+        assert "`/pending`" in text
 
 
 def test_help_groups_by_category_zh():
