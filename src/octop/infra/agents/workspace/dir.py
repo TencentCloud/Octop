@@ -83,6 +83,40 @@ def local_backend_root_dir(cfg: dict[str, Any] | None) -> str | None:
     return None
 
 
+def cfg_for_workspace_paths(
+    cfg: dict[str, Any],
+    *,
+    storage_backend_repo: Any | None,
+) -> dict[str, Any]:
+    """Copy of *cfg* with named/composite backends expanded for path math.
+
+    Agent rows keep ``backend: {type: named, …}`` so storage renames stay intact.
+    Workspace helpers only understand inline ``filesystem`` / ``local_shell``
+    ``root_dir`` values — expand those refs here when they resolve to a local
+    root. Remote named backends (COS/S3/…) are left unchanged so create still
+    defaults to ``{OCTOP_HOME}/agents/<id>/``.
+    """
+    backend = cfg.get("backend")
+    if not isinstance(backend, dict) or storage_backend_repo is None:
+        return cfg
+    kind = str(backend.get("type") or "").lower()
+    if kind not in {"named", "composite"}:
+        return cfg
+    from octop.infra.backend.resolver import resolve_agent_backend_spec  # noqa: PLC0415
+
+    try:
+        resolved = resolve_agent_backend_spec(backend, repo=storage_backend_repo)
+    except ValueError:
+        return cfg
+    if not isinstance(resolved, dict):
+        return cfg
+    probe = dict(cfg)
+    probe["backend"] = resolved
+    if local_backend_root_dir(probe) is None:
+        return cfg
+    return probe
+
+
 def uses_scoped_workspace_default(cfg: dict[str, Any] | None) -> bool:
     root_raw = local_backend_root_dir(cfg)
     return root_raw is not None and not _is_host_root_sentinel(root_raw)
@@ -417,6 +451,7 @@ __all__ = [
     "agent_auth_dir",
     "agent_facing_workspace_dir_from_config",
     "agent_facing_workspace_root",
+    "cfg_for_workspace_paths",
     "default_agent_workspace_dir",
     "harness_workspace_path",
     "host_system_dir",
