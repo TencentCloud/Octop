@@ -72,8 +72,8 @@ async def test_acp_builtin_runner_cannot_delete(env) -> None:
     assert r.status_code == 403
 
 
-async def test_acp_tool_rejected_for_scoped_root_dir(env) -> None:
-    """Directory sandbox blocks enabling outbound acp_runner."""
+async def test_acp_tool_allowed_for_scoped_root_dir(env) -> None:
+    """Directory sandbox does not block enabling outbound acp_runner."""
     c, _srv, auth, _agent_id = env
     from tests.support.auth import create_agent
 
@@ -94,5 +94,5 @@ async def test_acp_tool_rejected_for_scoped_root_dir(env) -> None:
         headers=auth,
         json={"tool_enabled": True},
     )
-    assert r.status_code == 400
-    assert r.json()["error"]["code"] == "ACP_BACKEND_UNSUPPORTED"
+    assert r.status_code == 200
+    assert r.json()["tool_enabled"] is True

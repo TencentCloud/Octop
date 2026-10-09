@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 from octop_harness.middleware.conversation_mode import (
@@ -10,9 +11,13 @@ from octop_harness.middleware.conversation_mode import (
     CONFIG_MODE_KEY,
     DEFAULT_CONVERSATION_MODE,
     ConversationMode,
-    is_allowed_plan_path,
     parse_conversation_mode,
 )
+from octop_harness.middleware.conversation_mode import (
+    is_allowed_plan_path as _harness_is_allowed_plan_path,
+)
+
+from octop.infra.agents.workspace.dir import join_agent_facing
 
 HOST_READ_TOOLS: tuple[str, ...] = ("search_knowledge",)
 
@@ -47,15 +52,16 @@ def resolve_conversation_mode(
     *,
     explicit: object | None = None,
     thread_mode: object | None = None,
+    default_mode: object | None = None,
 ) -> ConversationMode:
-    """explicit (if a valid mode string) → thread sticky → craft."""
+    """explicit (if a valid mode string) → thread sticky → expert default → craft."""
     if isinstance(explicit, str) and explicit in {"ask", "plan", "craft"}:
         return explicit  # type: ignore[return-value]
     if explicit is not None:
         return DEFAULT_CONVERSATION_MODE
     if thread_mode is not None:
         return parse_conversation_mode(thread_mode)
-    return DEFAULT_CONVERSATION_MODE
+    return parse_conversation_mode(default_mode)
 
 
 def plan_relpath_from_artifact(path: str) -> str:
@@ -64,10 +70,43 @@ def plan_relpath_from_artifact(path: str) -> str:
     parts = [p for p in raw.lstrip("/").split("/") if p and p != "."]
     if len(parts) >= 2 and parts[-2] == "plans":
         rel = f"plans/{parts[-1]}"
-        if is_allowed_plan_path(rel):
+        if _harness_is_allowed_plan_path(rel):
             return rel
     stripped = raw.lstrip("/")
-    return stripped if is_allowed_plan_path(stripped) else ""
+    return stripped if _harness_is_allowed_plan_path(stripped) else ""
+
+
+def is_allowed_plan_path(path: str) -> bool:
+    """True for ``plans/<slug>.md`` or the same file under a workspace prefix."""
+    return bool(plan_relpath_from_artifact(path))
+
+
+def workspace_plan_path(path: str, workspace_dir: Path | str) -> str:
+    """Map ``plans/<slug>.md`` / ``/plans/<slug>.md`` onto the workspace.
+
+    ``write_file`` turns a relative plan path into ``/plans/…``. POSIX default
+    backends use ``root_dir=/``, so that write hits the container root.
+    """
+    rel = plan_relpath_from_artifact(path)
+    if not rel:
+        return path
+    ws = str(workspace_dir).strip().replace("\\", "/").rstrip("/")
+    # write_file rejects Windows drive paths; those backends already scope to workspace.
+    if not ws or (len(ws) >= 2 and ws[1] == ":") or ws.startswith("//"):
+        return path
+    mapped = join_agent_facing(ws, *rel.split("/"))
+    raw = (path or "").strip().replace("\\", "/").rstrip("/")
+    return path if raw == mapped.rstrip("/") else mapped
+
+
+def _install_harness_plan_path_allowlist() -> None:
+    """Let Plan mode accept the rewritten workspace-prefixed plan path."""
+    import octop_harness.middleware.conversation_mode as harness_cm
+
+    harness_cm.is_allowed_plan_path = is_allowed_plan_path
+
+
+_install_harness_plan_path_allowlist()
 
 
 def execute_user_message(plan_path: str, locale: str | None = None) -> str:
@@ -125,4 +164,5 @@ __all__ = [
     "plan_relpath_from_artifact",
     "resolve_conversation_mode",
     "stamp_conversation_mode",
+    "workspace_plan_path",
 ]

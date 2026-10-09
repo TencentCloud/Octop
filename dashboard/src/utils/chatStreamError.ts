@@ -11,7 +11,9 @@ const _STREAM_ERROR_KEYS = [
   "stream_errors.recursion_limit",
   "stream_errors.timeout_network",
   "stream_errors.provider_unavailable",
+  "stream_errors.invalid_request",
   "stream_errors.model_call_failed",
+  "stream_errors.path_outside_root",
 ] as const;
 
 export type StreamErrorKey = (typeof _STREAM_ERROR_KEYS)[number];
@@ -19,7 +21,13 @@ export type StreamErrorKey = (typeof _STREAM_ERROR_KEYS)[number];
 export type StreamErrorAction = {
   path: string;
   labelKey: string;
+  /** One-click fix the chat bubble can run instead of only navigating. */
+  fix?: "disable_stream_usage";
 };
+
+const MODEL_RETRY_FAILURE_MARK = "[model_call_failed]";
+const RETRY_WRAPPER_RE = /^model call failed after \d+ attempts?\s+with\s+/i;
+const TECHNICAL_DETAIL_RE = /technical detail:\s*([\s\S]+)$/i;
 
 const STREAM_ERROR_ACTIONS: Partial<Record<StreamErrorKey, StreamErrorAction>> =
   {
@@ -31,7 +39,16 @@ const STREAM_ERROR_ACTIONS: Partial<Record<StreamErrorKey, StreamErrorAction>> =
       path: "/admin/models",
       labelKey: "modelConfig.configureButton",
     },
+    "stream_errors.invalid_request": {
+      path: "/admin/models",
+      labelKey: "chat.disableStreamUsageAndRetry",
+      fix: "disable_stream_usage",
+    },
     "stream_errors.recursion_limit": {
+      path: "/agent-config",
+      labelKey: "chat.goToAgentConfig",
+    },
+    "stream_errors.path_outside_root": {
       path: "/agent-config",
       labelKey: "chat.goToAgentConfig",
     },
@@ -49,15 +66,33 @@ function normalizeMessage(message: string): string {
   return msg;
 }
 
+function unwrapModelRetryMessage(message: string): string {
+  let msg = normalizeMessage(message)
+    .replaceAll(MODEL_RETRY_FAILURE_MARK, " ")
+    .trim();
+  const tech = msg.match(TECHNICAL_DETAIL_RE);
+  if (tech?.[1]) return tech[1].trim();
+  msg = msg.replace(RETRY_WRAPPER_RE, "").trim();
+  return msg || normalizeMessage(message);
+}
+
 /** Return a stable i18n key for known model/stream failures, else null. */
 export function classifyChatStreamError(
   message: string | null | undefined,
 ): StreamErrorKey | null {
   if (!message) return null;
-  const msg = normalizeMessage(message);
-  if (!msg) return null;
+  const raw = normalizeMessage(message);
+  const msg = unwrapModelRetryMessage(message);
+  if (!msg && !raw) return null;
   const lower = msg.toLowerCase();
   const compact = lower.replace(/[_\s]/g, "");
+
+  if (
+    lower.includes("outside root directory") ||
+    lower.includes("path traversal not allowed")
+  ) {
+    return "stream_errors.path_outside_root";
+  }
 
   if (
     compact.includes("streamchunktimeouterror") ||
@@ -107,6 +142,15 @@ export function classifyChatStreamError(
   }
 
   if (
+    lower.includes("error code: 422") ||
+    lower.includes("http 422") ||
+    lower.includes("check open ai req parameter") ||
+    lower.includes("input validation error")
+  ) {
+    return "stream_errors.invalid_request";
+  }
+
+  if (
     lower.includes("context_length_exceeded") ||
     lower.includes("maximum context length") ||
     lower.includes("prompt is too long") ||
@@ -150,15 +194,28 @@ export function classifyChatStreamError(
     return "stream_errors.timeout_network";
   }
 
-  if (lower.includes("model call failed after")) {
+  if (
+    raw.toLowerCase().includes("model call failed after") ||
+    raw.includes(MODEL_RETRY_FAILURE_MARK)
+  ) {
     return "stream_errors.model_call_failed";
   }
 
   return null;
 }
 
+function isModelRetryEnvelope(message: string | null | undefined): boolean {
+  if (!message) return false;
+  const raw = normalizeMessage(message);
+  return (
+    raw.toLowerCase().includes("model call failed after") ||
+    raw.includes(MODEL_RETRY_FAILURE_MARK)
+  );
+}
+
+/** True only for ModelRetryMiddleware envelopes, not ordinary answers. */
 export function isChatStreamError(message: string | null | undefined): boolean {
-  return classifyChatStreamError(message) !== null;
+  return isModelRetryEnvelope(message);
 }
 
 /** Localized guidance for known failures; otherwise the original text. */
@@ -168,8 +225,18 @@ export function formatChatStreamError(
 ): string {
   if (!message) return "";
   const key = classifyChatStreamError(message);
-  if (!key) return message;
-  return t(key, { defaultValue: message });
+  const detail = unwrapModelRetryMessage(message);
+  if (key && key !== "stream_errors.model_call_failed") {
+    return t(key, { defaultValue: message });
+  }
+  if (detail && detail !== normalizeMessage(message)) {
+    return t("stream_errors.model_call_failed_detail", {
+      detail,
+      defaultValue: detail,
+    });
+  }
+  if (key) return t(key, { defaultValue: message });
+  return message;
 }
 
 /** Optional settings deep-link for known stream failures. */

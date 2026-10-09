@@ -50,10 +50,12 @@ export type NavPermissionKey = keyof typeof NAV_PERMISSIONS;
 
 export const USERS_TAB_PERMISSIONS = {
   local: "users",
+  roles: "users",
   feishu: "sso",
   wecom: "sso",
   dingtalk: "sso",
   oidc: "sso",
+  ldap: "sso",
 } as const;
 
 export const ADVANCED_TAB_PERMISSIONS = {
@@ -179,6 +181,9 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
     pathname.startsWith("/knowledge-bases/")
   ) {
     return PERM.knowledgeBasesPage;
+  }
+  if (pathname === "/bridge" || pathname.startsWith("/bridge/")) {
+    return null;
   }
   if (pathname === "/remote-desktop/desktop") {
     return PERM.desktop;
