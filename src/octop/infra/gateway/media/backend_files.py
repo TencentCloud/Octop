@@ -412,7 +412,9 @@ async def _read_host_file_bytes(abs_path: str) -> bytes | None:
     """Best-effort host read when BackendWorkspace cannot open a Windows abs path."""
     try:
         return await asyncio.to_thread(Path(abs_path).read_bytes)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
+        # A path carrying a NUL byte raises ValueError, not OSError, so it has to
+        # be caught here too or the best-effort read escapes as a 500.
         logger.warning("host file read failed for %s: %s", abs_path, exc)
         return None
 
