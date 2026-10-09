@@ -479,27 +479,29 @@ export default function AgentExpertsTable({
                     <Pencil size={13} />
                   </button>
                 </Tooltip>
-                <Popconfirm
-                  title={deleteConfirm.title}
-                  description={deleteConfirm.description}
-                  onConfirm={() => void handleDelete(row)}
-                  okText={t("common.delete", "Delete")}
-                  cancelText={t("common.cancel")}
-                  okButtonProps={{ danger: true }}
-                >
-                  <Tooltip
-                    title={t("common.delete", "Delete")}
-                    mouseEnterDelay={0.5}
+                {!row.bridge && (
+                  <Popconfirm
+                    title={deleteConfirm.title}
+                    description={deleteConfirm.description}
+                    onConfirm={() => void handleDelete(row)}
+                    okText={t("common.delete", "Delete")}
+                    cancelText={t("common.cancel")}
+                    okButtonProps={{ danger: true }}
                   >
-                    <button
-                      type="button"
-                      className={styles.tableActionBtn}
-                      aria-label={t("common.delete", "Delete")}
+                    <Tooltip
+                      title={t("common.delete", "Delete")}
+                      mouseEnterDelay={0.5}
                     >
-                      <Trash2 size={13} />
-                    </button>
-                  </Tooltip>
-                </Popconfirm>
+                      <button
+                        type="button"
+                        className={styles.tableActionBtn}
+                        aria-label={t("common.delete", "Delete")}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </Tooltip>
+                  </Popconfirm>
+                )}
                 {onPublishedChange && (
                   <PublishTemplateButton
                     agent={row}
