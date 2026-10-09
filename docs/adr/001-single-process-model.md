@@ -32,4 +32,4 @@ Everything runs in a single Python process served by uvicorn. There is no extern
 
 - All async; blocking calls must use `run_in_executor`.
 - `SharedServices` (DI container) is process-global — safe because the process owns all state.
-- Future scale-out would require extracting the worker into a separate process and adding a queue; that seam is already partially visible in `infra/gateway/processor.py`.
+- Future scale-out would require extracting the worker into a separate process and adding a queue; that seam is already partially visible in `infra/gateway/process/processor.py`.

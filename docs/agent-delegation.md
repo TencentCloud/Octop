@@ -22,7 +22,7 @@
 
 | 路径 | 职责 |
 |------|------|
-| `infra/gateway/processor.py` | `GlobalProcessor` 实现 `TeamProcessor`（`compose_followup` / `on_reply`） |
+| `infra/gateway/process/processor.py` | `GlobalProcessor` 实现 `TeamProcessor`（`compose_followup` / `on_reply`） |
 | `infra/agents/manager.py` | 注册 `team_tools()`、`apply_mentions` 薄封装 |
 
 **已移除**：`agent_delegations` 表、`DelegationRepo`、`/delegate` slash（状态由 harness inbox 内存队列管理）。
