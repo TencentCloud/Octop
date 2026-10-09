@@ -49,7 +49,7 @@
 | F16 | 插件 UI 用 `{...d, ...next}` 全量回传 patch（纯前端内存） | `bilibili-anime/ui/index.js:42-45`；`parseToolOutput.ts:66-88` |
 | F17 | team host 白名单仅 5 个内置工具，插件工具在 host 被 deny；team member 是独立 agent，工具+中间件齐全 | `infra/agents/teams/service.py:32-50`、`manager.py:3233-3235` |
 | F18 | 备份导出按原始行拷贝 `thread_messages`，artifact 随 message_json 存活 | `infra/backup/chats.py:81-110` |
-| F19 | `thread_fork.py:223-228` 把 messages（含 artifact）灌进新 checkpoint —— 但由 F3，artifact 永不进模型请求；fork 仅复制 checkpoint 存储，**不构成上下文回灌** | `infra/agents/thread_fork.py:223-228` + F3 |
+| F19 | `threads/fork.py` 把 messages（含 artifact）灌进新 checkpoint —— 但由 F3，artifact 永不进模型请求；fork 仅复制 checkpoint 存储，**不构成上下文回灌** | `infra/agents/threads/fork.py`（`write_checkpoint_messages()` 定义于 `:159`，fork 在 `:246` 以 `prefix` 调用）+ F3 |
 | F20 | 当前 26 个 octop_ui 插件的 `data` 中均不含 `file://`/workspace 媒体路径（grep 零命中） | `src/octop/infra/agents/plugins/bundled/` |
 
 ## 4. 方案
