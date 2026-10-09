@@ -3,11 +3,12 @@ import { Radio, Space } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { preferencesApi } from "../../../api/modules/preferences";
-import { applyUserLocale } from "../../../utils/locale";
+import { applyUserLocale, normalizeUiLocale } from "../../../utils/locale";
 
 const languages = [
   { value: "en", label: "English" },
   { value: "zh", label: "简体中文" },
+  { value: "ko", label: "한국어" },
 ];
 
 export default function LanguagePage() {
@@ -47,7 +48,7 @@ export default function LanguagePage() {
       </p>
 
       <Radio.Group
-        value={i18n.language?.startsWith("zh") ? "zh" : "en"}
+        value={normalizeUiLocale(i18n.language)}
         onChange={(e) => void handleChange(e.target.value)}
       >
         <Space direction="vertical" size={12}>

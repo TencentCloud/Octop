@@ -7,6 +7,9 @@
 ## [Unreleased]
 - 暗色主题下专家 / 技能 / 子智能体 Markdown 编辑器白底：Monaco 未跟随应用主题渲染为亮色 `vs`；编辑器现按应用明暗模式切换主题（工作区文件编辑器同样改为读取应用主题，而非仅系统偏好）（Fixes #1355）
 
+### 新增
+- Korean (`ko`) dashboard translation, persistent language selection, and Korean calendar/speech locale. Server-generated text falls back to English.
+
 ### 变更
 - 运行轨迹弹框中 ASSISTANT 摘要显示所用模型
 - 编辑对端专家时模型、知识库、连接器走对端隧道；抽屉标题显示对端标识

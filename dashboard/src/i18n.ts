@@ -4,6 +4,7 @@ import { getApiUrl } from "./api/config";
 import { i18nApi } from "./api/modules/i18n";
 import {
   resolveInitialLocale,
+  normalizeUiLocale,
   syncDocumentLang,
   type UiLocale,
 } from "./utils/localePrefs";
@@ -11,6 +12,9 @@ import {
 export type { UiLocale } from "./utils/localePrefs";
 
 async function loadLocaleBundle(locale: UiLocale) {
+  if (locale === "ko") {
+    return (await import("./locales/ko.json")).default;
+  }
   if (locale === "zh") {
     return (await import("./locales/zh.json")).default;
   }
@@ -37,7 +41,7 @@ async function isSetupRequired(): Promise<boolean> {
 }
 
 async function hydrateToolLabels(lng: string) {
-  const locale = lng.startsWith("zh") ? "zh" : "en";
+  const locale = normalizeUiLocale(lng);
   try {
     const { labels } = await i18nApi.getToolLabels();
     i18n.addResourceBundle(
@@ -45,7 +49,8 @@ async function hydrateToolLabels(lng: string) {
       "translation",
       { tools: labels },
       true,
-      true,
+      // Server bundles currently ship zh/en; preserve bundled Korean labels.
+      locale !== "ko",
     );
   } catch {
     // bundled locale JSON remains the fallback
@@ -53,7 +58,7 @@ async function hydrateToolLabels(lng: string) {
 }
 
 async function hydrateSkillLabels(lng: string) {
-  const locale = lng.startsWith("zh") ? "zh" : "en";
+  const locale = normalizeUiLocale(lng);
   try {
     const { labels } = await i18nApi.getSkillLabels();
     i18n.addResourceBundle(
@@ -61,7 +66,7 @@ async function hydrateSkillLabels(lng: string) {
       "translation",
       { skills: labels },
       true,
-      true,
+      locale !== "ko",
     );
   } catch {
     // bundled locale JSON remains the fallback
@@ -84,7 +89,7 @@ export function initI18n(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
       const initial = resolveInitialLocale();
-      const fallback: UiLocale = initial === "zh" ? "en" : "zh";
+      const fallback: UiLocale = initial === "en" ? "zh" : "en";
       const primaryBundle = await loadLocaleBundle(initial);
 
       await i18n.use(initReactI18next).init({
@@ -92,8 +97,8 @@ export function initI18n(): Promise<void> {
           [initial]: { translation: primaryBundle },
         },
         lng: initial,
-        fallbackLng: fallback,
-        supportedLngs: ["zh", "en"],
+        fallbackLng: { ko: ["en"], default: [fallback] },
+        supportedLngs: ["zh", "en", "ko"],
         nonExplicitSupportedLngs: true,
         interpolation: {
           escapeValue: false,
@@ -112,7 +117,7 @@ export function initI18n(): Promise<void> {
       }
 
       i18n.on("languageChanged", (lng) => {
-        const locale: UiLocale = lng.startsWith("zh") ? "zh" : "en";
+        const locale = normalizeUiLocale(lng);
         syncDocumentLang(locale);
         void ensureLocaleBundle(locale).then(() => hydrateServerLabels(lng));
       });

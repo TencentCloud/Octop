@@ -93,20 +93,21 @@ async def test_initial_admin_rejects_weak_password(env: Any) -> None:
     assert r.json()["error"]["code"] == "PASSWORD_TOO_WEAK"
 
 
-async def test_initial_admin_respects_locale_body(env: Any) -> None:
+@pytest.mark.parametrize("locale", ["en", "zh", "ko"])
+async def test_initial_admin_respects_locale_body(env: Any, locale: str) -> None:
     c, srv, _home = env
     pw = read_password(Path.home())
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     r = await c.post(
         "/api/setup/initial-admin",
-        json={"username": "admin", "password": "TestPass12", "locale": "en"},
+        json={"username": "admin", "password": "TestPass12", "locale": locale},
         headers={"Authorization": f"Bearer {tok}"},
     )
     assert r.status_code == 201
-    assert r.json()["locale"] == "en"
+    assert r.json()["locale"] == locale
     user = srv.user_manager.get("admin")
     assert user is not None
-    assert user.locale == "en"
+    assert user.locale == locale
 
 
 # ─── /setup/status ─────────────────────────────────────────────────

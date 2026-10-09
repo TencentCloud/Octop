@@ -9,7 +9,7 @@ import pytest
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.users import UserRepo
-from octop.infra.utils.locale import normalize_locale, resolve_locale
+from octop.infra.utils.locale import normalize_locale, normalize_ui_locale, resolve_locale
 
 
 @pytest.fixture
@@ -78,3 +78,9 @@ def test_resolve_locale_prefers_user_setting():
 def test_normalize_locale_bcp47():
     assert normalize_locale("zh-CN") == "zh"
     assert normalize_locale("en-US") == "en"
+
+
+@pytest.mark.parametrize("raw", ["ko", "ko-KR", "ko_KR", "KO-kr"])
+def test_korean_ui_locale_keeps_preference_and_server_text_falls_back(raw: str):
+    assert normalize_ui_locale(raw) == "ko"
+    assert normalize_locale(raw) == "en"

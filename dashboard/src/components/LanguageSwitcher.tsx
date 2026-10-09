@@ -3,16 +3,17 @@ import { Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { preferencesApi } from "../api/modules/preferences";
-import { applyUserLocale } from "../utils/locale";
+import { applyUserLocale, normalizeUiLocale } from "../utils/locale";
 
 const LANGUAGES = [
-  { key: "zh", label: "中" },
-  { key: "en", label: "EN" },
+  { key: "zh", label: "中", title: "简体中文" },
+  { key: "en", label: "EN", title: "English" },
+  { key: "ko", label: "한", title: "한국어" },
 ];
 
 export default function LanguageSwitcher() {
   const { i18n, t } = useTranslation();
-  const currentLanguage = i18n.language?.startsWith("zh") ? "zh" : "en";
+  const currentLanguage = normalizeUiLocale(i18n.language);
 
   const changeLanguage = async (lang: string) => {
     try {
@@ -36,14 +37,10 @@ export default function LanguageSwitcher() {
         background: "var(--fn-bg-tertiary)",
       }}
     >
-      {LANGUAGES.map(({ key, label }) => {
+      {LANGUAGES.map(({ key, label, title }) => {
         const active = currentLanguage === key;
         return (
-          <Tooltip
-            key={key}
-            title={key === "zh" ? "简体中文" : "English"}
-            mouseEnterDelay={0.4}
-          >
+          <Tooltip key={key} title={title} mouseEnterDelay={0.4}>
             <button
               onClick={() => void changeLanguage(key)}
               style={{

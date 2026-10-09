@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   detectBrowserLocale,
+  normalizeUiLocale,
   readStoredUiLocale,
   resolveInitialLocale,
   speechLocaleFromUi,
@@ -48,5 +49,19 @@ describe("localePrefs", () => {
     expect(speechLocaleFromUi("en")).toBe("en-US");
     expect(speechLocaleFromUi("en-US")).toBe("en-US");
     expect(speechLocaleFromUi(null)).toBe("zh-CN");
+  });
+
+  it("detects, stores and restores Korean with Korean speech and document tags", () => {
+    vi.stubGlobal("navigator", {
+      language: "ko-KR",
+      languages: ["ko-KR", "en-US"],
+    });
+    expect(detectBrowserLocale()).toBe("ko");
+    expect(normalizeUiLocale("ko-KR")).toBe("ko");
+    storeUiLocale("ko");
+    expect(readStoredUiLocale()).toBe("ko");
+    expect(resolveInitialLocale()).toBe("ko");
+    expect(speechLocaleFromUi("ko")).toBe("ko-KR");
+    expect(speechLocaleFromUi("ko-KR")).toBe("ko-KR");
   });
 });

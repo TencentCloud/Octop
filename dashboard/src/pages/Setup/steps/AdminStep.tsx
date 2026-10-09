@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Form, Input, Button, Alert, Typography, Space } from "antd";
 import { User, Lock, IdCard, Mail } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { normalizeUiLocale } from "../../../utils/locale";
 
 import { wizardApi, wizardSession } from "../wizardClient";
 import { setAuthToken } from "../../../api/request";
@@ -59,7 +60,7 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
     }
     setSubmitting(true);
     try {
-      const locale = i18n.language?.startsWith("zh") ? "zh" : "en";
+      const locale = normalizeUiLocale(i18n.language);
       const created = await wizardApi.createAdmin(
         {
           username: values.username,

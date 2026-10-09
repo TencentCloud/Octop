@@ -8,9 +8,11 @@ import pytest
 from click.testing import CliRunner
 
 from octop.cli.main import cli
+from octop.cli.support import db as cli_db
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.threads import ThreadRepo
+from octop.infra.db.repos.users import UserRepo
 from octop.infra.utils.paths import PathLayout
 from octop.infra.utils.ulid import new_ulid
 
@@ -80,3 +82,23 @@ def test_agent_list_offline_flag(fake_home: Path) -> None:
     result = runner.invoke(cli, ["agent", "list", "--user", "alice"])
     assert result.exit_code == 0, result.output
     assert "ag1" in result.output
+
+
+def test_cli_locale_preserves_legacy_defaults(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bootstrap(fake_home)
+    monkeypatch.setattr(cli_db, "resolve_cli_user_id", lambda *args, **kwargs: 1)
+    db = SqlitePool(PathLayout(fake_home / ".octop").db)
+    try:
+        for locale, expected in [
+            ("fr", "zh"),
+            ("en-US", "zh"),
+            ("zh", "zh"),
+            ("en", "en"),
+            ("ko", "en"),
+        ]:
+            UserRepo(db).set_locale(1, locale)
+            assert cli_db.resolve_cli_locale() == expected
+    finally:
+        db.close()

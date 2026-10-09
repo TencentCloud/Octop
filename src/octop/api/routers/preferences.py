@@ -22,7 +22,7 @@ from octop.infra.users.preferences import (
     merge_sidebar_nav_json,
     parse_preferences_json,
 )
-from octop.infra.utils.locale import normalize_locale
+from octop.infra.utils.locale import normalize_ui_locale
 
 router = APIRouter()
 
@@ -125,7 +125,7 @@ def _bookmarks_response(row: Any) -> list[RemoteBrowserBookmarkModel]:
 def _response(row: Any) -> PreferencesResponse:
     raw = row.preferences_json if row else None
     return PreferencesResponse(
-        locale=normalize_locale(row.locale if row else None),
+        locale=normalize_ui_locale(row.locale if row else None),
         remote_browser_bookmarks=_bookmarks_response(row),
         preferred_model=get_preferred_model_from_json(raw),
         model_reasoning={
