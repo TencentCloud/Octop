@@ -478,6 +478,7 @@
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
     "KNOWLEDGE_NAME_INVALID": "Invalid name.",
+    "KNOWLEDGE_MOVE_INVALID": "Cannot move a folder into itself or one of its subfolders.",
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
     "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
     "INVITE_INVALID": "This invite code is invalid.",

@@ -139,6 +139,14 @@ class RenameDocumentBody(BaseModel):
     new_name: str = Field(min_length=1, max_length=255, description="New document or folder name.")
 
 
+class MoveDocumentBody(BaseModel):
+    target_folder: str = Field(
+        default="",
+        max_length=1024,
+        description="Destination folder path. Empty string moves the document to the root.",
+    )
+
+
 def _knowledge_service(server: OctopServer) -> KnowledgeService:
     if server.services is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "knowledge services are not initialized")
@@ -243,6 +251,8 @@ def _map_knowledge_error(
         return OctopError.localized(ErrorCode.KNOWLEDGE_NAME_TAKEN, locale)
     if "invalid knowledge document name" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_NAME_INVALID, locale)
+    if "cannot move a knowledge folder" in text:
+        return OctopError.localized(ErrorCode.KNOWLEDGE_MOVE_INVALID, locale)
     if "prerequisite" in text or "embedding model" in text or "embedding_model" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED, locale)
     logger.exception("unhandled error in knowledge base router: %s", exc)
@@ -874,6 +884,33 @@ async def rename_document(
             doc_id,
             actor_user_id=user.id,
             new_name=body.new_name.strip(),
+            is_admin=_is_admin(user),
+        )
+        return _row_payload(document)
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
+
+
+@router.post(
+    "/{kb_id}/documents/{doc_id}/move",
+    summary="Move a document or folder into another folder",
+)
+async def move_document(
+    kb_id: str,
+    doc_id: str,
+    body: MoveDocumentBody,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> dict[str, Any]:
+    try:
+        document = _knowledge_service(server).move_document(
+            kb_id,
+            doc_id,
+            actor_user_id=user.id,
+            target_folder=body.target_folder,
             is_admin=_is_admin(user),
         )
         return _row_payload(document)

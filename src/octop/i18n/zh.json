@@ -478,6 +478,7 @@
     "KNOWLEDGE_UNSUPPORTED_TYPE": "知识库不支持此文档类型。",
     "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。",
     "KNOWLEDGE_NAME_INVALID": "名称无效。",
+    "KNOWLEDGE_MOVE_INVALID": "不能将文件夹移动到自身或其子文件夹内。",
     "AVATAR_INVALID": "头像须为 PNG、JPEG、WebP 或 GIF 图片。",
     "AVATAR_TOO_LARGE": "头像超过 5 MB 大小限制。",
     "INVITE_INVALID": "邀请码无效。",
