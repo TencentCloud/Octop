@@ -228,6 +228,36 @@ async def test_agent_hitl_does_not_push() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("partial_text", [True, False])
+async def test_agent_error_chunk_does_not_push_or_notify(partial_text: bool) -> None:
+    async def stream(_aid: str, _request: dict):
+        if partial_text:
+            yield {"type": "token", "content": "partial result"}
+        yield {"type": "error", "message": "synthetic failure"}
+
+    manager = MagicMock()
+    manager.merge_turn_mcp_servers.return_value = None
+    manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    manager.stream = stream
+    manager.get_row.return_value = None
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session.return_value = _session(channel_type=ThreadRegistry.CHANNEL_DASHBOARD)
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+    repos = MagicMock()
+    service = CronDeliveryService(gateway=gateway, agent_manager=manager, repos=repos)
+
+    with pytest.raises(RuntimeError, match="stream failed"):
+        await service.deliver(_command(task_type="agent", prompt="run"))
+    gateway.push_session_text.assert_not_awaited()
+    gateway.notify_dashboard_push.assert_not_awaited()
+    projected = repos.thread_message_repo.append_if_ready.call_args.args[1]
+    assert projected[0].role == "human"
+    assert "run" in projected[0].message_json
+
+
+@pytest.mark.asyncio
 async def test_agent_empty_reply_does_not_push() -> None:
     session = _session(channel_type="feishu")
 
