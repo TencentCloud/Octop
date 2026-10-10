@@ -307,7 +307,7 @@ export function useChatSend({
               const pushMsg = {
                 id: generateId(),
                 role: "assistant" as const,
-                content: `🎬 录制已开始！请在浏览器中进行你想要自动化的操作。\n\n操作完成后，输入"结束"即可结束录制，系统将自动生成技能脚本。`,
+                content: t("skillRecord.recordingStartedMessage"),
                 timestamp: Date.now(),
                 status: "done" as const,
               };
@@ -328,7 +328,7 @@ export function useChatSend({
     window.addEventListener("octop:pending-chat-message", handler);
     return () =>
       window.removeEventListener("octop:pending-chat-message", handler);
-  }, [handleSend, activeThreadId, onAutoRecordingStarted]);
+  }, [handleSend, activeThreadId, onAutoRecordingStarted, t]);
 
   return { handleSend };
 }

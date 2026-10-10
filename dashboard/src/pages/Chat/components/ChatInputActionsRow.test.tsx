@@ -58,6 +58,39 @@ describe("ChatInputActionsRow plus menu", () => {
     expect(
       screen.queryByTestId("conversation-mode-picker"),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("conversation-mode-hint"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a non-interactive Ask/Plan reminder in the toolbar gap", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} conversationMode="plan" />
+      </MemoryRouter>,
+    );
+
+    const hint = screen.getByTestId("conversation-mode-hint");
+    expect(hint).toHaveTextContent("chat.conversationMode.planReminder");
+    expect(hint.parentElement?.className).not.toMatch(/actionsRowCompact/);
+    expect(
+      screen.queryByTestId("conversation-mode-picker"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the Ask/Plan reminder on mobile without a toolbar button", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} isMobile conversationMode="ask" />
+      </MemoryRouter>,
+    );
+
+    const hint = screen.getByTestId("conversation-mode-hint");
+    expect(hint).toHaveTextContent("chat.conversationMode.askReminder");
+    expect(hint.parentElement?.className).toMatch(/actionsRowCompact/);
+    expect(
+      screen.queryByTestId("conversation-mode-picker"),
+    ).not.toBeInTheDocument();
   });
 
   it("hides the approval picker when HITL policy cannot be changed", () => {
