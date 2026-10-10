@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import json
 from collections.abc import AsyncIterator
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import (
     APIRouter,
@@ -20,7 +20,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 from starlette.websockets import WebSocketState
 
 from octop.api.deps import (
@@ -72,22 +72,38 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
     }
 
 
+VoiceKind = Literal["browser", "edge", "tencent", "openai", "mimo", "dashscope"]
+VoiceCapability = Literal["stt", "tts", "both"]
+
+
+def _validate_extra_json(value: str) -> str:
+    if not isinstance(json.loads(value), dict):
+        raise ValueError("extra_json must contain a JSON object")
+    return value
+
+
+VoiceExtraJson = Annotated[str, AfterValidator(_validate_extra_json)]
+
+
 class VoiceProviderCreateBody(BaseModel):
-    name: str
-    kind: str
-    capability: str
-    base_url: str | None = None
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    kind: VoiceKind = Field(description="API protocol; openai supports compatible services.")
+    capability: VoiceCapability
+    base_url: str | None = Field(default=None, description="Provider HTTPS API base URL.")
     api_key: str | None = None
-    extra_json: str | None = None
+    extra_json: VoiceExtraJson | None = Field(
+        default=None,
+        description="JSON object with stt_model, tts_model and voice_id; legacy model is supported.",
+    )
     note: str | None = None
 
 
 class VoiceProviderPatchBody(BaseModel):
-    kind: str | None = None
-    capability: str | None = None
+    kind: VoiceKind | None = None
+    capability: VoiceCapability | None = None
     base_url: str | None = None
     api_key: str | None = None
-    extra_json: str | None = None
+    extra_json: VoiceExtraJson | None = None
     note: str | None = None
     enabled: bool | None = None
 
@@ -112,12 +128,28 @@ class VoiceConfigurationTestBody(VoiceProviderCreateBody):
     mode: Literal["stt", "tts"] = "tts"
 
 
+class VoiceProviderResponse(BaseModel):
+    id: int
+    name: str
+    kind: str
+    capability: VoiceCapability
+    base_url: str | None
+    api_key: str | None
+    extra: dict[str, Any]
+    note: str | None
+    enabled: bool
+
+
 @router.get("/presets")
 async def list_voice_presets(_: Any = Depends(current_user)) -> list[dict[str, Any]]:
     return load_voice_presets()
 
 
-@router.get("/providers")
+@router.get(
+    "/providers",
+    summary="List configured voice providers",
+    response_model=list[VoiceProviderResponse],
+)
 async def list_voice_providers(
     _: Any = Depends(current_user),
     server: Any = Depends(get_server),
@@ -182,7 +214,7 @@ async def synthesize_speech(
         ):
             yield chunk
 
-    # Mimo streams a live WAV (24kHz PCM16LE); other providers stream MP3.
+    # Mimo and DashScope stream WAV (24kHz PCM16LE); other providers stream MP3.
     return StreamingResponse(_stream(), media_type=mgr.media_type(body.provider))
 
 
@@ -332,7 +364,11 @@ async def stream_transcription(
                 await websocket.close()
 
 
-@admin_router.get("")
+@admin_router.get(
+    "",
+    summary="List voice providers for configuration",
+    response_model=list[VoiceProviderResponse],
+)
 async def admin_list_voice_providers(
     _: Any = Depends(require_permission("voice")),
     server: Any = Depends(get_server),
@@ -340,13 +376,16 @@ async def admin_list_voice_providers(
     return [_row_to_dict(r) for r in server.services.voice_provider_repo.list_all()]
 
 
-@admin_router.post("", status_code=201)
+@admin_router.post(
+    "", status_code=201, summary="Add a voice provider", response_model=VoiceProviderResponse
+)
 async def admin_create_voice_provider(
     body: VoiceProviderCreateBody,
     _: Any = Depends(require_permission("voice")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     repo = server.services.voice_provider_repo
+    _voice_manager(server).validate_configuration(name=body.name, kind=body.kind)
     if repo.get_by_name(body.name):
         raise OctopError(
             ErrorCode.PROVIDER_NAME_TAKEN, f"voice provider {body.name!r} already exists"
@@ -365,7 +404,9 @@ async def admin_create_voice_provider(
     return _row_to_dict(created)
 
 
-@admin_router.patch("/{provider_id}")
+@admin_router.patch(
+    "/{provider_id}", summary="Update a voice provider", response_model=VoiceProviderResponse
+)
 async def admin_patch_voice_provider(
     provider_id: int,
     body: VoiceProviderPatchBody,
@@ -376,6 +417,12 @@ async def admin_patch_voice_provider(
     row = repo.get(provider_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "voice provider not found")
+    _voice_manager(server).validate_update(
+        name=row.name,
+        kind=body.kind or row.kind,
+        capability=body.capability or row.capability,
+        enabled=bool(row.enabled) if body.enabled is None else body.enabled,
+    )
     repo.update(
         provider_id,
         kind=body.kind,
@@ -423,7 +470,7 @@ async def admin_test_voice_provider(
     )
 
 
-@admin_router.post("/test-configuration")
+@admin_router.post("/test-configuration", summary="Test an unsaved voice provider configuration")
 async def admin_test_voice_configuration(
     body: VoiceConfigurationTestBody,
     request: Request,

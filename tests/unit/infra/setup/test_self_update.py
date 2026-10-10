@@ -1137,6 +1137,7 @@ def test_cold_target_install_budget_preserves_regular_timeout(
 ) -> None:
     from octop.infra.setup import self_update
 
+    monkeypatch.setattr(self_update.time, "monotonic", lambda: 0.0)
     monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path) if portable else "")
     monkeypatch.setattr(self_update, "detect_installer", lambda: installer)
     monkeypatch.setattr(self_update, "has_pip", lambda _: True)
