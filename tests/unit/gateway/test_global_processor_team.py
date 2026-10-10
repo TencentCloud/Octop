@@ -16,6 +16,7 @@ from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.sessions import SessionRepo
 from octop.infra.db.repos.threads import ThreadRepo
+from octop.infra.db.repos.usage import UsageRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.gateway.process.processor import GlobalProcessor
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher
@@ -72,9 +73,201 @@ def processor_env(tmp_path: Path) -> dict[str, object]:
         user_repo=repos.user_repo,
         connector_repo=repos.connector_repo,
         dispatcher=SlashDispatcher(),
+        usage_repo=UsageRepo(db),
         gateway=gw,
     )
     return {"processor": processor, "gateway": gw, "parent_sk": parent_sk}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("event_format", ["explicit", "snapshot"])
+async def test_team_member_and_wrapup_record_usage(processor_env: dict, event_format: str) -> None:
+    from langchain_core.messages import AIMessage, HumanMessage
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    # Usage belongs to the caller, even when the expert is owned by another user.
+    caller = processor._user_repo.create(username="caller", password_hash="h", role="user")
+    processor._agent_manager.is_agent_active.return_value = False
+    processor._agent_manager.get_agent.return_value.aget_history = AsyncMock(return_value=[])
+
+    async def stream(agent_id: str, request: dict) -> object:
+        yield {"type": "token", "content": "answer"}
+        messages = [
+            HumanMessage(content="old"),
+            AIMessage(
+                content="old",
+                usage_metadata={
+                    "input_tokens": 9000,
+                    "output_tokens": 1000,
+                    "total_tokens": 10000,
+                },
+            ),
+            HumanMessage(content="task"),
+        ]
+        for index in range(2):
+            usage = {
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "total_tokens": 120,
+                "input_token_details": {"cache_read": 30, "cache_creation": 10},
+                "output_token_details": {"reasoning": 5},
+            }
+            messages.append(
+                AIMessage(
+                    content="answer",
+                    id=f"{agent_id}-{index}",
+                    usage_metadata=usage,
+                    response_metadata={"model_name": "test-model"},
+                )
+            )
+            if event_format == "explicit":
+                chunk = {
+                    "type": "usage",
+                    "call_id": f"{agent_id}-{index}",
+                    "model": "test-model",
+                    "usage": usage,
+                }
+            else:
+                chunk = {"type": "state_snapshot", "data": {"messages": list(messages)}}
+            yield chunk
+            yield chunk  # Stream replay must not duplicate billed model calls.
+        yield {"type": "state_snapshot", "data": {"messages": messages}}
+
+    processor._agent_manager.stream = stream
+    await processor.teams.stream_peer_to_room(
+        ChatRequest(
+            messages="task",
+            user=str(caller),
+            thread_id="thr_parent~child",
+            agent_id="child",
+            source="inbox",
+        ),
+        room_thread_id="thr_parent",
+        speaker_id="child",
+    )
+    await processor.teams.stream_host_followup_to_room(
+        {"messages": "wrap up", "user": caller, "source": "inbox"},
+        room_thread_id="thr_parent",
+        speaker_id="parent",
+    )
+
+    rows = processor._usage_repo.list_detail(user_id=caller, window="all")
+    assert len(rows) == 2
+    assert {(row.agent_id, row.thread_id) for row in rows} == {
+        ("child", "thr_parent~child"),
+        ("parent", "thr_parent"),
+    }
+    for row in rows:
+        assert row.source == "inbox"
+        assert row.model == "test-model"
+        assert row.input_tokens == 200
+        assert row.uncached_input_tokens == 120
+        assert row.cache_read_tokens == 60
+        assert row.cache_write_tokens == 20
+        assert row.output_tokens == 40
+        assert row.reasoning_tokens == 10
+        assert row.total_tokens == 240
+        assert row.model_calls == 2
+    assert processor._usage_repo.total_tokens_for_user(1) == 0
+    assert processor._usage_repo.total_tokens_for_user(caller) == 480
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["error", "cancel"])
+async def test_team_stream_records_consumed_usage_on_failure(
+    processor_env: dict, failure: str
+) -> None:
+    import asyncio
+
+    processor = processor_env["processor"]
+    error = RuntimeError("stream failed") if failure == "error" else asyncio.CancelledError()
+
+    async def stream(_agent_id: str, _request: dict) -> object:
+        yield {
+            "type": "usage",
+            "call_id": "call-1",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 20,
+            },
+        }
+        raise error
+
+    processor._agent_manager.stream = stream
+    with pytest.raises(type(error)):
+        await processor.teams.stream_peer_to_room(
+            {"messages": "task", "user": "1", "thread_id": "thr_parent~child"},
+            room_thread_id="thr_parent",
+            speaker_id="child",
+        )
+    rows = processor._usage_repo.list_detail(window="all")
+    assert len(rows) == 1
+    assert rows[0].total_tokens == 120
+    assert rows[0].source == "chat"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("user", [None, "anonymous", "²", 0, -1, True])
+async def test_team_stream_does_not_guess_usage_owner(processor_env: dict, user: object) -> None:
+    processor = processor_env["processor"]
+    processor._agent_manager.get_agent.return_value.aget_history = AsyncMock(return_value=[])
+
+    async def stream(_agent_id: str, _request: dict) -> object:
+        yield {"type": "usage", "usage": {"input_tokens": 100, "output_tokens": 20}}
+
+    processor._agent_manager.stream = stream
+    await processor.teams.stream_peer_to_room(
+        {"messages": "task", "user": user, "thread_id": "thr_parent~child"},
+        room_thread_id="thr_parent",
+        speaker_id="child",
+    )
+    assert processor._usage_repo.list_detail(window="all") == []
+
+
+@pytest.mark.asyncio
+async def test_team_stream_without_usage_does_not_create_row(processor_env: dict) -> None:
+    processor = processor_env["processor"]
+    processor._agent_manager.get_agent.return_value.aget_history = AsyncMock(return_value=[])
+
+    async def stream(_agent_id: str, _request: dict) -> object:
+        yield {"type": "token", "content": "answer"}
+
+    processor._agent_manager.stream = stream
+    await processor.teams.stream_peer_to_room(
+        {"messages": "task", "user": 1, "thread_id": "thr_parent~child"},
+        room_thread_id="thr_parent",
+        speaker_id="child",
+    )
+    assert processor._usage_repo.list_detail(window="all") == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("repo_available", [False, True])
+async def test_team_stream_usage_storage_does_not_break_reply(
+    processor_env: dict, repo_available: bool
+) -> None:
+    processor = processor_env["processor"]
+    processor.teams._usage_repo = (
+        SimpleNamespace(record=MagicMock(side_effect=RuntimeError("database unavailable")))
+        if repo_available
+        else None
+    )
+    processor._agent_manager.get_agent.return_value.aget_history = AsyncMock(return_value=[])
+
+    async def stream(_agent_id: str, _request: dict) -> object:
+        yield {"type": "token", "content": "answer"}
+        yield {"type": "usage", "usage": {"input_tokens": 100, "output_tokens": 20}}
+
+    processor._agent_manager.stream = stream
+    result = await processor.teams.stream_peer_to_room(
+        {"messages": "task", "user": 1, "thread_id": "thr_parent~child"},
+        room_thread_id="thr_parent",
+        speaker_id="child",
+    )
+    assert result["stream_text"] == "answer"
+    if repo_available:
+        processor.teams._usage_repo.record.assert_called_once()
 
 
 def test_compose_followup_uses_peer_display_name(processor_env: dict) -> None:

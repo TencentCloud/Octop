@@ -33,6 +33,7 @@ from octop.i18n import tr
 from octop.infra.agents.teams.service import is_team_agent
 from octop.infra.agents.threads.artifact import artifact_path_allowed, extract_artifact_paths
 from octop.infra.gateway.media.tool_media import tool_name_base
+from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.history.projection import (
     live_message_inputs,
     message_inputs,
@@ -107,12 +108,14 @@ class TeamManager:
         agent_manager: AgentManager,
         thread_registry: ThreadRegistry,
         user_repo: UserRepo,
+        usage_repo: Any | None = None,
         thread_message_repo: Any | None = None,
         gateway: Any | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._thread_registry = thread_registry
         self._user_repo = user_repo
+        self._usage_repo = usage_repo
         self._thread_message_repo = thread_message_repo
         self._gateway = gateway
         self._peer_prompts: dict[tuple[str, str], tuple[str, str]] = {}
@@ -328,6 +331,16 @@ class TeamManager:
         """Run the member turn and fan tokens to both chat pages."""
         payload = _chat_request_payload(request, speaker_id)
         member_tid = str(payload.get("thread_id") or "").strip()
+        user = payload.get("user")
+        try:
+            user_id = (
+                _octop_user_id(user)
+                if isinstance(user, (str, int)) and not isinstance(user, bool)
+                else None
+            )
+        except ValueError:
+            user_id = None
+        usage_tracker = UsageTracker()
         text_parts: list[str] = []
         reasoning_parts: list[str] = []
         relayed_visible = False
@@ -337,6 +350,7 @@ class TeamManager:
             async for chunk in self._agent_manager.stream(speaker_id, payload):
                 if not isinstance(chunk, dict):
                     continue
+                usage_tracker.observe(chunk)
                 kind = str(chunk.get("type") or "")
                 if kind == "tool_call_chunk":
                     saw_tool_call = True
@@ -379,6 +393,16 @@ class TeamManager:
             )
             raise
         finally:
+            usage = usage_tracker.usage
+            if self._usage_repo is not None and user_id is not None and usage:
+                record_turn_usage(
+                    self._usage_repo,
+                    agent_id=speaker_id,
+                    user_id=user_id,
+                    thread_id=member_tid or room_thread_id,
+                    usage=usage,
+                    source=str(payload.get("source") or "chat"),
+                )
             done: dict[str, Any] = {"type": "done"}
             if extra_stamp:
                 done = {**done, **extra_stamp}

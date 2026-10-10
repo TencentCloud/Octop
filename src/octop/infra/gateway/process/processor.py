@@ -182,6 +182,7 @@ class GlobalProcessor:
             agent_manager=agent_manager,
             thread_registry=thread_registry,
             user_repo=user_repo,
+            usage_repo=usage_repo,
             thread_message_repo=thread_message_repo,
             gateway=gateway,
         )
