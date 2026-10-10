@@ -674,7 +674,7 @@ def test_fetch_ranking_json_uses_showcase_endpoint(monkeypatch: pytest.MonkeyPat
         seen["timeout"] = timeout
         return _Response({"section": "hot_downloads", "skills": [], "total": 0})
 
-    monkeypatch.setattr(skillhub_market.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(skillhub_market, "_urlopen", fake_urlopen)
 
     result = skillhub_market._fetch_ranking_json(
         "https://api.example.com",
@@ -737,7 +737,7 @@ def test_fetch_ranking_maps_url_timeout(monkeypatch: pytest.MonkeyPatch) -> None
     def fake_urlopen(_request: Any, timeout: float) -> _Response:
         raise urllib.error.URLError(TimeoutError())
 
-    monkeypatch.setattr(skillhub_market.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(skillhub_market, "_urlopen", fake_urlopen)
 
     with pytest.raises(skillhub_market.SkillHubMarketTimeout):
         skillhub_market._fetch_ranking_json(
