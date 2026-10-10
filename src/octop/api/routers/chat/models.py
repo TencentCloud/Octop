@@ -145,6 +145,13 @@ class PolishBody(BaseModel):
     default_model: str | None = None
 
 
+class CancelThreadResponse(BaseModel):
+    thread_id: str = Field(description="Thread targeted by the cancellation request.")
+    requested: bool = Field(
+        description="Cancellation entry called for an active turn; not proof it stopped."
+    )
+
+
 class RebindSessionBody(BaseModel):
     thread_id: str
 
