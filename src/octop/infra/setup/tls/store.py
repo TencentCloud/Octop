@@ -51,7 +51,7 @@ def _merge_config_file(config_path: Path, patch: dict[str, Any]) -> None:
             data[key] = merged
         else:
             data[key] = value
-    config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    _atomic_write_bytes(config_path, (json.dumps(data, indent=2) + "\n").encode("utf-8"))
 
 
 def install_letsencrypt_cert(
