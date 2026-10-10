@@ -6,7 +6,7 @@ import asyncio
 import json
 import os
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -48,6 +48,18 @@ def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str,
         row=_row(agent_id=agent_id),
         workspace_dir=ws,
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_plugin_registry() -> Iterator[None]:
+    """Keep tools loaded by other tests out of harness configuration checks."""
+    from octop_harness.plugins import PluginRegistry
+
+    PluginRegistry.reset()
+    try:
+        yield
+    finally:
+        PluginRegistry.reset()
 
 
 @pytest.fixture

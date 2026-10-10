@@ -140,6 +140,7 @@ class CronDeliveryService:
         usage = UsageTracker()
         parts: list[str] = []
         interaction_required = False
+        stream_failed = False
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
         try:
@@ -164,8 +165,12 @@ class CronDeliveryService:
                         parts.append(str(chunk.get("content") or chunk.get("text") or ""))
                     elif kind == "hitl_required":
                         interaction_required = True
+                    elif kind == "error":
+                        stream_failed = True
             if interaction_required:
                 raise RuntimeError("cron agent run requires user interaction")
+            if stream_failed:
+                raise RuntimeError("cron agent stream failed")
             outbound = strip_thinking("".join(parts)).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")

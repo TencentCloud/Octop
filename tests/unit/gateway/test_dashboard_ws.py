@@ -7,9 +7,16 @@ import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
-from octop_gateway.models import ChannelSubject, ImageContent, InboundMessage, TextContent
+from octop_gateway.models import (
+    ChannelSubject,
+    FileContent,
+    ImageContent,
+    InboundMessage,
+    TextContent,
+)
 
 from octop.infra.gateway.media.tool_media import enrich_media_block_preview
 from octop.infra.gateway.ws import WS_CHANNEL_ID, WebSocketChannel, WebSocketHub
@@ -17,6 +24,56 @@ from octop.infra.gateway.ws import WS_CHANNEL_ID, WebSocketChannel, WebSocketHub
 
 def _token(content: str, thread_id: str) -> dict[str, Any]:
     return {"type": "token", "content": content, "thread_id": thread_id}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("destination", ["thread_id", "ws_connection_id"])
+@pytest.mark.parametrize("with_text", [True, False])
+async def test_content_delivers_attachments_before_done(destination: str, with_text: bool) -> None:
+    hub = WebSocketHub()
+    frames: list[dict[str, Any]] = []
+    other: list[dict[str, Any]] = []
+
+    async def capture(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    async def capture_other(frame: dict[str, Any]) -> None:
+        other.append(frame)
+
+    hub.register("target", capture)
+    hub.register("other", capture_other)
+    hub.subscribe("target", "target")
+    hub.subscribe("other", "other")
+    channel = WebSocketChannel(object(), hub=hub)  # type: ignore[arg-type]
+    parts = [FileContent(data="eA==", filename="report.txt")]
+    await channel._send_content(
+        ChannelSubject(subject_id="1", metadata={destination: "target"}),
+        [TextContent(text="report"), *parts] if with_text else parts,
+    )
+    expected = ["token", "attachment", "done"] if with_text else ["attachment", "done"]
+    assert [frame["type"] for frame in frames] == expected
+    assert frames[-2]["filename"] == "report.txt"
+    assert frames[-2]["data"] == "eA=="
+    assert other == []
+
+
+@pytest.mark.asyncio
+async def test_content_invalid_attachment_does_not_emit_done(monkeypatch) -> None:
+    hub = WebSocketHub()
+    frames: list[dict[str, Any]] = []
+
+    async def capture(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    hub.register("target", capture)
+    channel = WebSocketChannel(object(), hub=hub)  # type: ignore[arg-type]
+    monkeypatch.setattr(channel, "load_media_bytes", AsyncMock(side_effect=ValueError("bad media")))
+    with pytest.raises(ValueError, match="bad media"):
+        await channel._send_content(
+            ChannelSubject(subject_id="1", metadata={"ws_connection_id": "target"}),
+            [TextContent(text="report"), FileContent(data="eA==", filename="report.txt")],
+        )
+    assert frames == []
 
 
 @pytest.mark.asyncio

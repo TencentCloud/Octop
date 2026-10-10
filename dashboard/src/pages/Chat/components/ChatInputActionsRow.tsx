@@ -264,9 +264,6 @@ export default function ChatInputActionsRow({
   const [reasoningModelRef, setReasoningModelRef] = useState<string | null>(
     null,
   );
-  /** Mobile-only bottom drawer for the overflow ("more") menu. */
-  const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false);
-
   // Press-and-hold dictation: start on pointerdown, finish on release or when
   // the pointer slides off the button (also covers touch cancel).
   const handleVoicePressStart = () => {

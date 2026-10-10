@@ -188,9 +188,28 @@ class WebSocketChannel(BaseChannel):
             await self._hub.push(conn_id, {"type": "done"})
 
     async def _send_content(self, subject: ChannelSubject, parts: list[ContentPart]) -> None:
+        thread_id = str(subject.metadata.get("thread_id") or "").strip()
+        conn_id = str(subject.metadata.get("ws_connection_id") or "")
+        if not thread_id and not conn_id:
+            return
+
+        # Resolve attachments before emitting a partial response or its done frame.
+        attachments = [
+            await self._media_frame(part) for part in parts if not isinstance(part, TextContent)
+        ]
+        frames: list[dict[str, Any]] = []
         text = "\n".join(p.text for p in parts if isinstance(p, TextContent) and p.text)
         if text:
-            await self._send_text(subject, text)
+            frames.append({"type": "token", "content": text})
+        frames.extend(attachments)
+        if not frames:
+            return
+        frames.append({"type": "done"})
+        for frame in frames:
+            if thread_id:
+                await self._hub.push_to_thread(thread_id, frame)
+            else:
+                await self._hub.push(conn_id, frame)
 
     async def _send_media(self, subject: ChannelSubject, media: ContentPart) -> None:
         thread_id = str(subject.metadata.get("thread_id") or "").strip()
@@ -198,11 +217,17 @@ class WebSocketChannel(BaseChannel):
         if not thread_id and not conn_id:
             return
         try:
-            raw_bytes, mime = await self.load_media_bytes(media)
+            frame = await self._media_frame(media)
         except (ValueError, RuntimeError, OSError) as exc:
             logger.warning("websocket channel: failed to load media bytes: %s", exc)
             return
+        if thread_id:
+            await self._hub.push_to_thread(thread_id, frame)
+        else:
+            await self._hub.push(conn_id, frame)
 
+    async def _media_frame(self, media: ContentPart) -> dict[str, Any]:
+        raw_bytes, mime = await self.load_media_bytes(media)
         frame: dict[str, Any] = {
             "type": "attachment",
             "kind": _media_kind(media),
@@ -215,10 +240,7 @@ class WebSocketChannel(BaseChannel):
         alt = getattr(media, "alt_text", None)
         if isinstance(alt, str) and alt.strip():
             frame["alt_text"] = alt.strip()
-        if thread_id:
-            await self._hub.push_to_thread(thread_id, frame)
-        else:
-            await self._hub.push(conn_id, frame)
+        return frame
 
 
 def _media_kind(media: ContentPart) -> str:
