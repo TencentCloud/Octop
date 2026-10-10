@@ -210,6 +210,58 @@ bash -n "{share}/fnos-boot.sh"
 
 
 @posix_only
+def test_octop_boot_reads_wizard_credentials_as_data(tmp_path: Path) -> None:
+    """引导脚本必须把 fnos-admin.env 当数据读：$、空格、$(...) 都不许被 shell 展开或执行。"""
+    share = tmp_path / "share"
+    bin_dir = tmp_path / "bin"
+    home = tmp_path / "home"
+    argv_log = tmp_path / "octop-argv.txt"
+    marker = tmp_path / "pwned"
+    bin_dir.mkdir()
+    stub = bin_dir / "octop"
+    stub.write_text(
+        "#!/bin/bash\n"
+        'printf \'%s\\n\' "$@" >> "$OCTOP_STUB_ARGV"\n'
+        'if [ "$1" = "init" ]; then mkdir -p "${OCTOP_HOME:?}"; : > "${OCTOP_HOME}/octop.db"; fi\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+
+    password = f"S3cret$(touch {marker})"
+    render = f"""
+set -euo pipefail
+source "{COMMON_SH}"
+octop_write_fnos_bootstrap "{share}" admin '{password}' "Zhang San" demo@example.com
+"""
+    subprocess.check_call(["bash", "-c", render])
+    boot = (share / "fnos-boot.sh").read_text(encoding="utf-8")
+    # 容器里这个文件固定在 /data/fnos-admin.env；测试只换路径，脚本内容保持生成结果。
+    boot_path = share / "boot-test.sh"
+    boot_path.write_text(
+        boot.replace("/data/fnos-admin.env", str(share / "fnos-admin.env")), encoding="utf-8"
+    )
+
+    result = subprocess.run(
+        ["bash", str(boot_path)],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "HOME": str(home),
+            "OCTOP_STUB_ARGV": str(argv_log),
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert argv[0] == "init"
+    assert password in argv, "密码必须原样传给 octop init，不做变量展开或命令替换"
+    assert argv[argv.index("--admin-display-name") + 1] == "Zhang San"
+    assert not marker.exists(), "$(...) 被当成命令执行了"
+
+
+@posix_only
 def test_octop_write_login_file_is_backup_only(tmp_path: Path) -> None:
     script = f"""
 set -euo pipefail
