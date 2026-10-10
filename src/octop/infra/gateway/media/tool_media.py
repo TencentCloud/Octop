@@ -44,6 +44,17 @@ from octop.infra.gateway.media.inbound_store import display_name_from_stored
 logger = logging.getLogger(__name__)
 
 _MEDIA_BLOCK_TYPES = frozenset({"image", "video", "audio", "file"})
+
+
+def _is_media_block_type(value: Any) -> bool:
+    """True when ``value`` is one of the known media block type strings.
+
+    Tool output JSON is untrusted: ``type`` may be a dict/list (not hashable),
+    which must never reach a frozenset membership test (issue #1869).
+    """
+    return isinstance(value, str) and value in _MEDIA_BLOCK_TYPES
+
+
 # Only these tools may push media to the user (dashboard attachments / IM).
 # write_file / read_file / browser dumps often look like media and would re-push
 # prior outbound files if every tool_result were treated as a delivery.
@@ -196,7 +207,7 @@ def iter_media_blocks(content: Any) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
     for candidate in candidates:
         blocks.extend(_generated_media_blocks(candidate))
-        if isinstance(candidate, dict) and candidate.get("type") in _MEDIA_BLOCK_TYPES:
+        if isinstance(candidate, dict) and _is_media_block_type(candidate.get("type")):
             blocks.append(candidate)
     return blocks
 
@@ -343,7 +354,7 @@ async def _amap_content_blocks(
 
 def enrich_media_block_preview(block: Any, *, agent_id: str) -> Any:
     """Rewrite media blocks for dashboard history (no workspace import)."""
-    if not isinstance(block, dict) or block.get("type") not in _MEDIA_BLOCK_TYPES:
+    if not isinstance(block, dict) or not _is_media_block_type(block.get("type")):
         return block
     btype = str(block.get("type") or "")
     if btype == "file":
@@ -492,7 +503,7 @@ def _file_block_path(block: dict[str, Any], raw_url: str) -> str | None:
 async def _enrich_block_with_backend(
     block: Any, *, agent_id: str, workspace: BackendWorkspace
 ) -> Any:
-    if not isinstance(block, dict) or block.get("type") not in _MEDIA_BLOCK_TYPES:
+    if not isinstance(block, dict) or not _is_media_block_type(block.get("type")):
         return block
     btype = str(block.get("type") or "")
     # File blocks may already be path-only (no preview_url).
@@ -832,7 +843,7 @@ async def block_to_content_part(
     workspace: BackendWorkspace,
 ) -> ContentPart | None:
     btype = block.get("type")
-    if btype not in _MEDIA_BLOCK_TYPES:
+    if not _is_media_block_type(btype):
         return None
 
     source = block.get("source") or {}

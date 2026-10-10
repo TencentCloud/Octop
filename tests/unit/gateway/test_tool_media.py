@@ -304,6 +304,52 @@ def testenrich_media_block_preview_outbound() -> None:
     assert enriched["filename"] == "chart.png"
 
 
+@pytest.mark.parametrize("bad_type", [{"kind": "image"}, ["image"], {"kind": {"nested": 1}}])
+def test_enrich_media_block_preview_tolerates_non_string_type(bad_type: object) -> None:
+    """Untrusted tool JSON: a non-string ``type`` must not raise (issue #1869)."""
+    block = {"type": bad_type}
+    assert enrich_media_block_preview(block, agent_id="agent-x") == block
+
+
+def test_iter_media_blocks_tolerates_non_string_type() -> None:
+    content = json.dumps(
+        [
+            {"type": {"kind": "image"}},
+            {"type": ["image"]},
+            {"type": "image", "source": {"type": "url", "url": "https://x"}},
+        ]
+    )
+    blocks = iter_media_blocks(content)
+    assert len(blocks) == 1
+    assert blocks[0]["type"] == "image"
+
+
+def test_enrich_tool_output_string_sync_tolerates_non_string_block_type() -> None:
+    """Reproduces the issue #1869 crash path: history tool output with dict type."""
+    from octop.infra.gateway.media.tool_media import enrich_tool_output_string_sync
+
+    text = json.dumps([{"type": {"kind": "image"}}, {"type": "text", "text": "plain"}])
+    assert enrich_tool_output_string_sync(text, agent_id="agent-x") == text
+
+
+@pytest.mark.asyncio
+async def test_enrich_tool_result_with_backend_tolerates_non_string_block_type() -> None:
+    """Streaming tool-result enrichment must also survive dict-typed blocks."""
+    with tempfile.TemporaryDirectory() as ws:
+        workspace = _workspace(ws, virtual_mode=True)
+        content = [{"type": {"kind": "image"}}, {"type": "text", "text": "ok"}]
+        chunk = {
+            "type": "tool_result",
+            "messages": [{"name": "send_file_to_user", "content": content}],
+        }
+        enriched = await enrich_tool_result_with_backend(
+            chunk,
+            agent_id="agent-1",
+            workspace=workspace,
+        )
+        assert enriched["messages"][0]["content"] == content
+
+
 @pytest.mark.asyncio
 async def test_enrich_send_file_keeps_absolute_path_without_copy() -> None:
     """send_file with a host-absolute path must keep that path (no outbound copy).

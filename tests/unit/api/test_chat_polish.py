@@ -67,6 +67,53 @@ def test_enrich_history_tool_media_prefers_entry_agent_id(monkeypatch: pytest.Mo
     assert out[1]["content"][0]["output"] == "shot host|host"
 
 
+def test_enrich_history_tool_media_tolerates_non_string_block_types() -> None:
+    """Issue #1869: dict-typed blocks in tool output must not 500 the history API."""
+    output = '[{"type": {"kind": "image"}}, {"text": "plain"}]'
+    out = _enrich_history_tool_media(
+        [
+            {
+                "role": "tool",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "id": "c1",
+                        "name": "run_script",
+                        "output": output,
+                    }
+                ],
+            }
+        ],
+        agent_id="host",
+    )
+    assert out[0]["content"][0]["output"] == output
+
+
+def test_enrich_history_tool_media_keeps_output_when_enrich_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preview URL rewrite is display-only: failures must degrade, not bubble up."""
+
+    def boom(output: str, *, agent_id: str, workspace: Any = None) -> str:
+        _ = workspace, agent_id
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        "octop.infra.gateway.media.tool_media.enrich_tool_output_string_sync",
+        boom,
+    )
+    out = _enrich_history_tool_media(
+        [
+            {
+                "role": "tool",
+                "content": [{"type": "tool_result", "id": "c1", "name": "run", "output": "raw"}],
+            }
+        ],
+        agent_id="host",
+    )
+    assert out[0]["content"][0]["output"] == "raw"
+
+
 def test_serialize_history_message_includes_thinking_and_tools() -> None:
     user = _serialize_history_message(HumanMessage(content="hello"))
     assert user is not None
