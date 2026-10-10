@@ -26,7 +26,10 @@ from octop.infra.agents.providers.onnx_catalog import (
     get_onnx_model_meta,
     list_onnx_catalog_models,
 )
-from octop.infra.agents.providers.onnx_download import download_model_raced
+from octop.infra.agents.providers.onnx_download import (
+    download_model_raced,
+    repair_hf_cache_refs,
+)
 from octop.infra.utils.paths import PathLayout
 from octop.infra.utils.runtime_packages import (
     PackageInstallSpec,
@@ -389,7 +392,9 @@ def require_embedding_prerequisites(settings_get: Any) -> OnnxServiceConfig:
 def _build_text_embedding(model: str) -> Any:
     from fastembed import TextEmbedding
 
-    return TextEmbedding(model_name=model, cache_dir=str(embedding_models_dir()))
+    cache_dir = embedding_models_dir()
+    repair_hf_cache_refs(cache_dir)
+    return TextEmbedding(model_name=model, cache_dir=str(cache_dir))
 
 
 def embed_texts(model: str, texts: Sequence[str]) -> list[list[float]]:

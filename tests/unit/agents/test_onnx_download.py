@@ -307,7 +307,31 @@ def test_cos_download_writes_hf_cache(monkeypatch, tmp_path: Path) -> None:
     assert (snapshot / "model.onnx").read_bytes() == b"onnx-bytes"
     assert (cache / "models--Qdrant--bge-small-zh-v1.5" / "refs" / "main").read_text(
         encoding="utf-8"
-    ).strip() == "cos-mirror"
+    ) == "cos-mirror"
+
+
+def test_repair_hf_cache_refs_strips_trailing_newline(tmp_path: Path) -> None:
+    from octop.infra.agents.providers.onnx_download import repair_hf_cache_refs
+
+    ref = tmp_path / "models--Qdrant--bge-small-zh-v1.5" / "refs" / "main"
+    ref.parent.mkdir(parents=True)
+    ref.write_text("cos-mirror\n", encoding="utf-8")
+
+    repaired = repair_hf_cache_refs(tmp_path)
+
+    assert repaired == [ref]
+    assert ref.read_text(encoding="utf-8") == "cos-mirror"
+
+
+def test_repair_hf_cache_refs_leaves_healthy_cache_untouched(tmp_path: Path) -> None:
+    from octop.infra.agents.providers.onnx_download import repair_hf_cache_refs
+
+    ref = tmp_path / "models--Qdrant--bge-small-zh-v1.5" / "refs" / "main"
+    ref.parent.mkdir(parents=True)
+    ref.write_text("cos-mirror", encoding="utf-8")
+
+    assert repair_hf_cache_refs(tmp_path) == []
+    assert ref.read_text(encoding="utf-8") == "cos-mirror"
 
 
 def test_cos_download_rejects_parent_paths(monkeypatch, tmp_path: Path) -> None:
