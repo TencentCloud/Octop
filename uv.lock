@@ -2573,7 +2573,7 @@ requires-dist = [
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "octop-browser", specifier = ">=1.0.0" },
-    { name = "octop-gateway", specifier = ">=1.0.0" },
+    { name = "octop-gateway", specifier = ">=1.0.1" },
     { name = "octop-harness", extras = ["all"], specifier = ">=1.0.1" },
     { name = "octop-memory", specifier = ">=1.0.0" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
@@ -2639,7 +2639,7 @@ wheels = [
 
 [[package]]
 name = "octop-gateway"
-version = "1.0.0"
+version = "1.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2657,9 +2657,9 @@ dependencies = [
     { name = "websockets" },
     { name = "wecom-aibot-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/94/6c/b24f7d8d9f975a7dbe47bcd616429d5a0d75153b2dc0866d6136e653b2db/octop_gateway-1.0.0.tar.gz", hash = "sha256:3630e9f9d40014d961bf8839c19759a676da6e311057df064885fc69cdd789fa", size = 608199, upload-time = "2026-09-24T09:52:46.666Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9b/b8/ccac3dc2ae508acca8875e85a4c459836f8563d2752151d20bbaf180e531/octop_gateway-1.0.1.tar.gz", hash = "sha256:8b7cc5c143280a5514342ff00d9502d4636c731456230857368bf1b9a441dbd7", size = 609434, upload-time = "2026-10-09T06:33:59.316Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/77/c6d42986b1140c148da0f4777bbff31d189179f2bc69ac276392a73f8589/octop_gateway-1.0.0-py3-none-any.whl", hash = "sha256:bb4aeee8b8bbf683f15d29f8adcff9f5c4963544276c56dca858b01eed78ecaa", size = 160304, upload-time = "2026-09-24T09:52:45.299Z" },
+    { url = "https://files.pythonhosted.org/packages/68/7a/b4cc0aafdf5531c94ead6287c5117f20ab524a0bb6ed86e404b567cbc3b3/octop_gateway-1.0.1-py3-none-any.whl", hash = "sha256:cc0334b2cf0f971f9b539da4673e2dd0af4903ca71fe9f5d814d8b6d1ec8a32d", size = 160806, upload-time = "2026-10-09T06:33:50.914Z" },
 ]
 
 [[package]]

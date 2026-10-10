@@ -2596,7 +2596,9 @@
     "discordInvalidIds": "Enter numeric IDs separated by commas or newlines.",
     "discordAllowAllChannels": "Allow all accessible channels",
     "discordAllowAllChannelsHelp": "On by default; no channel IDs needed. Turn off to restrict access to the channels listed below. Mention the bot to get a reply.",
-    "discordSetupHelp": "Enable Message Content Intent on the Discord Bot page and invite the bot to your server. All server text channels the bot can access are allowed by default; mention the bot to get a reply. DMs only accept the user IDs listed below; leave empty to disable DMs."
+    "discordSetupHelp": "Enable Message Content Intent on the Discord Bot page and invite the bot to your server. All server text channels the bot can access are allowed by default; mention the bot to get a reply. DMs only accept the user IDs listed below; leave empty to disable DMs.",
+    "telegramAllowedUsers": "Allowed Telegram user IDs (comma or newline separated)",
+    "telegramAllowedUsersHelp": "Only these numeric user IDs can talk to the bot, in private chats and groups. Leave empty to let anyone who finds the bot use it."
   },
   "tokenUsage": {
     "title": "Token Usage Analytics",

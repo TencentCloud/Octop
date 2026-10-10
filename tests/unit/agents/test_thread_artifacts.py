@@ -177,8 +177,9 @@ def test_extract_screenshot_from_tool_result_text(tmp_path: Path) -> None:
     assert paths == [abs_path]
 
 
-def test_middleware_rewrites_plan_write_onto_workspace(tmp_path: Path) -> None:
-    ws = _ws(tmp_path)
+def test_middleware_rewrites_plan_write_onto_workspace() -> None:
+    # POSIX-style so the container-root rewrite branch is exercised on Windows too.
+    ws = Path("/data/.octop/agents/ABC123")
     mw = ThreadArtifactsMiddleware(thread_repo=_FakeThreads(), workspace_dir=ws)
     seen: list[str] = []
 

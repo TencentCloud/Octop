@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal
 
 import pytest
@@ -57,8 +57,10 @@ def test_harness_allowlist_accepts_workspace_plan_after_octop_patch() -> None:
     assert not harness_ok("SOUL.md")
 
 
-def test_workspace_plan_path_rewrites_container_root(tmp_path: Path) -> None:
-    ws = tmp_path / ".octop" / "agents" / "ABC123"
+def test_workspace_plan_path_rewrites_container_root() -> None:
+    # POSIX-style so the container-root rewrite branch is exercised on Windows too;
+    # drive-path workspaces are intentionally passed through below.
+    ws = PurePosixPath("/data/.octop/agents/ABC123")
     expected = f"{ws.as_posix()}/plans/foo.md"
     assert workspace_plan_path("plans/foo.md", ws) == expected
     assert workspace_plan_path("/plans/foo.md", ws) == expected
