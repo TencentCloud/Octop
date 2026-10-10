@@ -112,12 +112,19 @@ def init(
             click.echo(f"error: {exc.message}", err=True)
             raise SystemExit(1) from None
 
-        UserRepo(db).create(
-            username=username,
-            password_hash=hash_password(password or ""),
-            role="admin",
-            display_name=display_name,
-        )
+        user_repo = UserRepo(db)
+        if user_repo.get_by_username(username) is not None:
+            # 幂等引导（issue #1866）：外部数据库（PostgreSQL）不会在 ~/.octop
+            # 生成 octop.db，容器重启后 entrypoint 会重跑 init；此时跳过创建，
+            # 避免管理员 INSERT 撞 UNIQUE(username) 直接崩溃。
+            click.echo(f"  admin user '{username}' already exists, skipping.")
+        else:
+            user_repo.create(
+                username=username,
+                password_hash=hash_password(password or ""),
+                role="admin",
+                display_name=display_name,
+            )
     finally:
         db.close()
 
