@@ -14,13 +14,13 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path as _FsPath
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
-from pydantic import BaseModel, ValidationError
+from pydantic import AfterValidator, BaseModel, ValidationError
 
 from octop.api.common.agent import require_agent_owner_row
-from octop.api.deps import get_server, require_permission
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.bot_creators.feishu_runner import extract_feishu_credentials
 from octop.infra.gateway.channels import dingtalk_registration, qr_bind
@@ -33,21 +33,48 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _validate_channel_kind(value: str) -> str:
+    """Accept builtin kinds plus plugin-registered kinds (case-normalized)."""
+    from octop_harness.plugins.registry import PluginRegistry  # noqa: PLC0415
+
+    normalized = str(value).strip().lower()
+    try:
+        ChannelKind(normalized)
+        return normalized
+    except ValueError:
+        pass
+    # Older octop-harness releases lack all_channels(); treat as "no plugin
+    # kinds" instead of crashing the request.
+    all_channels = getattr(PluginRegistry(), "all_channels", None)
+    if callable(all_channels) and any(
+        reg.kind == normalized for reg in all_channels()
+    ):
+        return normalized
+    raise ValueError(
+        f"unknown channel kind {value!r}; "
+        f"builtin kinds: {[k.value for k in ChannelKind]}, "
+        "plus kinds registered by installed channel plugins"
+    )
+
+
+_ChannelKindField = Annotated[str, AfterValidator(_validate_channel_kind)]
+
+
 class ChannelCreateBody(BaseModel):
-    kind: ChannelKind
+    kind: _ChannelKindField
     name: str
     config: dict[str, Any] = {}
 
 
 class ChannelPatchBody(BaseModel):
-    kind: ChannelKind | None = None
+    kind: _ChannelKindField | None = None
     name: str | None = None
     config: dict[str, Any] | None = None
     enabled: bool | None = None
 
 
 class ChannelProbeBody(BaseModel):
-    kind: ChannelKind
+    kind: _ChannelKindField
     config: dict[str, Any] = {}
 
 
@@ -113,6 +140,21 @@ def _require_agent_access(
 
 def _acting_user_id(user: Any, as_user: int | None) -> int:
     return int(as_user if as_user is not None else user.id)
+
+
+@router.get("/channels/plugin-kinds", summary="List plugin-contributed channel kinds")
+async def list_plugin_channel_kinds(
+    _user: Any = Depends(current_user),
+) -> list[dict[str, Any]]:
+    """Channel kinds contributed by installed ``kind: channel`` plugins.
+
+    The dashboard merges these into the channel catalogue (cards, drawer
+    form schemas). Returns summaries with ``kind``/``label``/``icon``/
+    ``intro_url``/``fields``/``plugin_id``.
+    """
+    from octop.infra.gateway.plugin_channels import plugin_channel_kinds  # noqa: PLC0415
+
+    return [info.to_dict() for info in plugin_channel_kinds()]
 
 
 @router.get("/agents/{agent_id}/channels")

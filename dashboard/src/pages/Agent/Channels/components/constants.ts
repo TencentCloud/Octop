@@ -486,3 +486,84 @@ export function hasRequiredCredentials(
     return v !== undefined && v !== null && String(v).trim() !== "";
   });
 }
+
+/**
+ * Catalogue entry contributed by an installed ``kind: channel`` plugin
+ * (shape of ``GET /api/channels/plugin-kinds`` items).
+ */
+export interface PluginChannelKindInfo {
+  kind: string;
+  label: string;
+  icon: string;
+  intro_url: string;
+  fields?: {
+    name: string;
+    label?: string;
+    type?: string;
+    placeholder?: string;
+    required?: boolean;
+  }[];
+  plugin_id: string;
+}
+
+/** Kinds registered at runtime through ``registerPluginChannelKind``. */
+const PLUGIN_CHANNEL_KINDS: string[] = [];
+
+/** True once ``registerPluginChannelKind`` has accepted this kind. */
+export function isPluginChannelKind(key: string): boolean {
+  return PLUGIN_CHANNEL_KINDS.includes(key);
+}
+
+/**
+ * Merge one plugin-contributed kind into the catalogue lookups above.
+ *
+ * Builtin constants stay compile-time; plugin kinds join the same lookup
+ * tables so ChannelCard / ChannelDrawer need no per-kind code. Idempotent
+ * (first registration wins, mirroring the gateway's
+ * ``register_channel_kind``), and builtin kinds are never shadowed.
+ * Returns true when the kind was added.
+ */
+export function registerPluginChannelKind(
+  info: PluginChannelKindInfo,
+): boolean {
+  const kind = String(info?.kind ?? "")
+    .trim()
+    .toLowerCase();
+  if (!kind || PLUGIN_CHANNEL_KINDS.includes(kind)) return false;
+  if (CHANNEL_KEYS.includes(kind as ChannelKey)) return false;
+
+  PLUGIN_CHANNEL_KINDS.push(kind);
+  const typed = kind as ChannelKey;
+  CHANNEL_KEYS.push(typed);
+  // No CHANNEL_LABEL_KEYS entry on purpose: an unknown i18n key would render
+  // verbatim, so the label falls back to CHANNEL_LABELS / the raw kind.
+  if (info.label) {
+    (CHANNEL_LABELS as Record<string, string>)[typed] = String(info.label);
+  }
+  if (info.icon) {
+    (CHANNEL_ICONS as Record<string, string>)[typed] = String(info.icon);
+  }
+  if (info.intro_url) {
+    CHANNEL_URLS[typed] = String(info.intro_url);
+  }
+  const fields = Array.isArray(info.fields) ? info.fields : [];
+  if (fields.length > 0) {
+    (CHANNEL_FIELDS as Record<string, ChannelField[]>)[typed] = fields.map(
+      (f) => ({
+        name: String(f?.name ?? ""),
+        label: String(f?.label ?? f?.name ?? ""),
+        type:
+          f?.type === "password" ||
+          f?.type === "textarea" ||
+          f?.type === "json" ||
+          f?.type === "switch"
+            ? f.type
+            : "text",
+        placeholder: f?.placeholder ? String(f.placeholder) : undefined,
+        required: f?.required === true,
+      }),
+    );
+  }
+  // Kinds without fields keep the drawer's raw-JSON fallback editor.
+  return true;
+}
