@@ -227,6 +227,53 @@ def test_iter_media_blocks_dict_content() -> None:
     assert len(iter_media_blocks(block)) == 1
 
 
+@pytest.mark.parametrize(
+    "dirty_type",
+    [{"kind": "image"}, ["image"], 3, None],
+)
+def test_media_blocks_ignore_non_string_type(dirty_type: object) -> None:
+    """A JSON block whose ``type`` is not a string must not raise TypeError."""
+    block = {"type": dirty_type, "text": "plain"}
+    payload = json.dumps([block])
+
+    assert iter_media_blocks(payload) == []
+    assert enrich_media_block_preview(block, agent_id="A1") == block
+
+
+def test_enrich_sync_tolerates_non_string_block_type() -> None:
+    from octop.infra.gateway.media.tool_media import enrich_tool_output_string_sync
+
+    payload = json.dumps([{"type": {"kind": "image"}}, {"text": "plain"}])
+    assert enrich_tool_output_string_sync(payload, agent_id="A1") == payload
+
+
+@pytest.mark.asyncio
+async def test_enrich_tool_result_tolerates_non_string_block_type() -> None:
+    """Live tool-result enrichment must skip the dirty block, not crash."""
+    from octop.infra.gateway.media.tool_media import enrich_tool_result_with_backend
+
+    payload = json.dumps([{"type": {"kind": "image"}}, {"text": "plain"}])
+    chunk = {
+        "type": "tool_result",
+        "name": "desktop_screenshot",
+        "messages": [{"name": "desktop_screenshot", "content": payload}],
+    }
+    with tempfile.TemporaryDirectory() as ws:
+        enriched = await enrich_tool_result_with_backend(
+            chunk, agent_id="A1", workspace=_workspace(ws)
+        )
+    assert enriched["messages"][0]["content"] == payload
+
+
+@pytest.mark.asyncio
+async def test_block_to_content_part_ignores_non_string_type() -> None:
+    from octop.infra.gateway.media.tool_media import block_to_content_part
+
+    with tempfile.TemporaryDirectory() as ws:
+        part = await block_to_content_part({"type": {"kind": "image"}}, workspace=_workspace(ws))
+    assert part is None
+
+
 @pytest.mark.asyncio
 async def test_enrich_send_file_dict_content() -> None:
     with tempfile.TemporaryDirectory() as ws, tempfile.TemporaryDirectory() as ext_dir:
