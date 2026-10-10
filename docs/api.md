@@ -269,6 +269,15 @@ reloads running agents so the image and video tools receive the new configuratio
 | `PUT` | `/admin/media-generation` | providers | Save enabled tools and Seedream/Seedance model IDs; an included API key is verified before saving |
 | `POST` | `/admin/media-generation/test` | providers | Test credentials or a selected image/video model; model tests submit real, potentially billable requests |
 
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET` | `/search/custom` | search | `{providers, active_provider_id}`; includes the selected custom, preset, or built-in source; custom API keys are omitted and `api_key_set` indicates whether one is stored |
+| `PUT` | `/search/custom` | search | Replace the custom-engine list, persist the selected search source, and reload running agents; omitted custom engines and their keys are deleted |
+| `POST` | `/search/custom/test` | search | body `{provider: {...}}`; probe an unsaved engine configuration without persisting it |
+| `POST` | `/search/{provider_id}/test` | search | body `{env_vars: {...}, use_saved_credentials?: false}`; probe a preset without saving credentials; `true` uses the server's configured credentials, with supplied env vars overriding them |
+
+
 ## Voice
 
 | Method | Path | Auth | Notes |

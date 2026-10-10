@@ -689,6 +689,114 @@ def test_build_harness_config_includes_search_knowledge_without_cron(
     assert any(isinstance(item, KnowledgeSearchHintMiddleware) for item in (cfg.middleware or []))
 
 
+def test_build_harness_config_uses_custom_search_instead_of_builtin_search(
+    manager: AgentManager,
+) -> None:
+    from octop.infra.agents.settings.search import (
+        CustomSearchProviderUpdate,
+        CustomSearchSettingsUpdate,
+    )
+
+    manager.search_settings.save(
+        CustomSearchSettingsUpdate(
+            providers=[
+                CustomSearchProviderUpdate(
+                    id="local",
+                    name="Local Search",
+                    url="https://search.example.com/search",
+                )
+            ],
+            active_provider_id="local",
+        )
+    )
+
+    cfg = manager._build_harness_config(_row())
+
+    assert "custom_search" in {tool.name for tool in (cfg.tools or [])}
+    assert cfg.web_search_tools is False
+
+
+def test_build_harness_config_keeps_builtin_search_without_custom_provider(
+    manager: AgentManager,
+) -> None:
+    from octop.infra.agents.settings.search import CustomSearchSettingsUpdate
+
+    manager.search_settings.save(CustomSearchSettingsUpdate(providers=[], active_provider_id=None))
+
+    cfg = manager._build_harness_config(_row())
+
+    assert cfg.web_search_tools == ["searchfree"]
+    assert "custom_search" not in {tool.name for tool in (cfg.tools or [])}
+
+
+@pytest.mark.parametrize(
+    ("active_provider_id", "expected_tool"),
+    [("preset:brave", "brave_search"), (None, "searchfree_search")],
+)
+def test_build_harness_config_loads_only_selected_search_and_keeps_saved_keys(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+    active_provider_id: str | None,
+    expected_tool: str,
+) -> None:
+    from octop_harness.builtin.tools.web_search import load_web_search_tools
+
+    from octop.infra.agents.settings.search import CustomSearchSettingsUpdate
+    from octop.infra.utils.env_file import env_file_path, load_env_file, save_env_file
+
+    keys = {
+        "TAVILY_API_KEY": "saved-tavily-key",
+        "BRAVE_API_KEY": "saved-brave-key",
+        "GOOGLE_API_KEY": "saved-google-key",
+        "GOOGLE_CSE_ID": "saved-google-cse",
+        "MOONSHOT_API_KEY": "saved-kimi-key",
+    }
+    path = env_file_path(manager.paths.root)
+    save_env_file(path, keys)
+    for name, key in keys.items():
+        monkeypatch.setenv(name, key)
+    manager.search_settings.save(
+        CustomSearchSettingsUpdate(providers=[], active_provider_id=active_provider_id)
+    )
+
+    cfg = manager._build_harness_config(_row())
+
+    assert [tool.name for tool in load_web_search_tools(cfg.web_search_tools)] == [expected_tool]
+    assert "custom_search" not in {tool.name for tool in (cfg.tools or [])}
+    assert {name: os.environ.get(name) for name in keys} == keys
+    assert load_env_file(path) == keys
+
+
+def test_build_harness_config_respects_disabled_web_search(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    build_tool = MagicMock(return_value=SimpleNamespace(name="custom_search"))
+    monkeypatch.setattr(manager.search_settings, "build_tool", build_tool)
+
+    cfg = manager._build_harness_config(_row(config_json=json.dumps({"web_search_tools": False})))
+
+    build_tool.assert_not_called()
+    assert cfg.web_search_tools is False
+    assert "custom_search" not in {tool.name for tool in (cfg.tools or [])}
+
+
+def test_build_harness_config_excludes_custom_search_from_team_host(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataclasses import replace
+
+    build_tool = MagicMock(return_value=SimpleNamespace(name="custom_search"))
+    monkeypatch.setattr(manager.search_settings, "build_tool", build_tool)
+
+    cfg = manager._build_harness_config(replace(_row(), kind="team"))
+
+    build_tool.assert_not_called()
+    assert cfg.tools is None
+    assert "custom_search" in cfg.tools_disabled
+
+
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
     assert cfg.backend == _expected_default_backend(manager, "AGT001")

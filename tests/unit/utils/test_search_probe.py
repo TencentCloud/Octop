@@ -90,3 +90,33 @@ async def test_brave_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert result["success"] is True
     assert result["result_count"] == 1
+
+
+@pytest.mark.parametrize("override", [None, "draft-key"])
+async def test_saved_credentials_probe_uses_environment_without_mutating_it(
+    monkeypatch: pytest.MonkeyPatch, override: str | None
+) -> None:
+    monkeypatch.setenv("BRAVE_API_KEY", "saved-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["X-Subscription-Token"] == (override or "saved-key")
+        return httpx.Response(200, json={"web": {"results": []}})
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "brave",
+        {"BRAVE_API_KEY": override} if override is not None else {},
+        use_saved_credentials=True,
+    )
+    assert result["success"]
+    assert search_probe.os.environ["BRAVE_API_KEY"] == "saved-key"
+    assert "saved-key" not in str(result)
+
+
+async def test_draft_probe_does_not_use_saved_key_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BRAVE_API_KEY", "saved-key")
+    result = await search_probe.probe_search_provider("brave", {})
+    assert result["success"] is False
+    assert result["error_type"] == "invalid_config"

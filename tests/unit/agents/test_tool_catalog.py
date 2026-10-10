@@ -21,6 +21,7 @@ def test_team_host_tools_are_dispatch_only() -> None:
     assert "ask_agent" in HOST_TOOLS_ALLOWED
     assert "write_file" in HOST_TOOLS_DISABLED
     assert "task" in HOST_TOOLS_DISABLED
+    assert "custom_search" in HOST_TOOLS_DISABLED
 
 
 def test_critical_tools_are_in_catalog() -> None:
@@ -97,6 +98,13 @@ def test_builtin_tool_available_gates() -> None:
     assert (
         builtin_tool_available(
             "tavily_search",
+            agent_cfg={"web_search_tools": False},
+        )
+        is False
+    )
+    assert (
+        builtin_tool_available(
+            "custom_search",
             agent_cfg={"web_search_tools": False},
         )
         is False
