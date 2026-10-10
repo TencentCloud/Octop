@@ -239,6 +239,9 @@ class _LegacyProtocolBackend:
             return ReadResult(file_data={"content": result, "encoding": "utf-8"})
         return result
 
+    async def aread(self, file_path: str, offset: int = 0, limit: int = 2000) -> Any:
+        return await asyncio.to_thread(self.read, file_path, offset, limit)
+
     def write(self, file_path: str, content: str) -> Any:
         from datetime import UTC, datetime
 
@@ -269,6 +272,9 @@ class _LegacyProtocolBackend:
         if callable(awrite):
             return self._run(awrite(file_path, content))
         return self._inner.write(file_path, content)
+
+    async def awrite(self, file_path: str, content: str) -> Any:
+        return await asyncio.to_thread(self.write, file_path, content)
 
     def edit(
         self,
@@ -302,6 +308,15 @@ class _LegacyProtocolBackend:
             return self._run(aedit(file_path, old_string, new_string, replace_all))
         return self._inner.edit(file_path, old_string, new_string, replace_all)
 
+    async def aedit(
+        self,
+        file_path: str,
+        old_string: str,
+        new_string: str,
+        replace_all: bool = False,
+    ) -> Any:
+        return await asyncio.to_thread(self.edit, file_path, old_string, new_string, replace_all)
+
     def mkdir_path(self, path: str) -> None:
         """Object-store / postgres prefixes have no real directories."""
         inner = getattr(self._inner, "mkdir_path", None)
@@ -311,11 +326,20 @@ class _LegacyProtocolBackend:
     def grep(self, *args: Any, **kwargs: Any) -> Any:
         return self._call_via_worker("grep", "agrep", *args, **kwargs)
 
+    async def agrep(self, *args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(self.grep, *args, **kwargs)
+
     def glob(self, *args: Any, **kwargs: Any) -> Any:
         return self._call_via_worker("glob", "aglob", *args, **kwargs)
 
+    async def aglob(self, *args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(self.glob, *args, **kwargs)
+
     def upload_files(self, *args: Any, **kwargs: Any) -> Any:
         return self._call_via_worker("upload_files", "aupload_files", *args, **kwargs)
+
+    async def aupload_files(self, *args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(self.upload_files, *args, **kwargs)
 
     def download_files(self, *args: Any, **kwargs: Any) -> Any:
         return self._call_via_worker("download_files", "adownload_files", *args, **kwargs)
