@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -14,6 +15,9 @@ from octop.infra.setup.password_file import read_password
 from octop.infra.users.password import _COMMON_PASSWORDS, validate_password_policy
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="bash entrypoint helpers")
+# Same tests, but runnable anywhere a bash is on PATH (e.g. Git Bash on Windows).
+bash_exe = shutil.which("bash")
+bash_only = pytest.mark.skipif(bash_exe is None, reason="requires a bash shell")
 
 REPO = Path(__file__).resolve().parents[2]
 ENTRYPOINT = REPO / "docker" / "docker-entrypoint.sh"
@@ -272,3 +276,142 @@ octop_validate_password "$pw"
     pw = result.stdout.strip()
     assert pw
     validate_password_policy(pw)
+
+
+# ---------------------------------------------------------------------------
+# Init guard across restarts (issue #1866). PostgreSQL / external backends
+# never create ``octop.db`` in the data volume, so "already bootstrapped"
+# must be tracked with a backend-agnostic marker written by the entrypoint
+# after a successful ``octop init``.
+# ---------------------------------------------------------------------------
+
+_STUB_OCTOP = r"""#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$OCTOP_STUB_LOG"
+if [ "$1" = "init" ]; then
+    if [ "${OCTOP_STUB_INIT_FAIL:-0}" = "1" ]; then
+        echo "unexpected database error" >&2
+        exit 1
+    fi
+    if [ "${OCTOP_STUB_INIT_ALREADY_EXISTS:-0}" = "1" ]; then
+        printf "  admin user 'octop' already exists, skipping.\n"
+    fi
+fi
+exit 0
+"""
+
+
+def _init_marker(tmp_path: Path) -> Path:
+    return tmp_path / "data" / ".octop" / ".initialized"
+
+
+def _run_entrypoint(
+    tmp_path: Path,
+    *,
+    extra_env: dict[str, str] | None = None,
+    args: tuple[str, ...] = (),
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    """Run the real entrypoint with a stub ``octop`` on PATH; return (result, octop argv lines)."""
+    assert bash_exe is not None
+    home = tmp_path / "data"
+    stub_dir = tmp_path / "stub-bin"
+    stub_dir.mkdir(exist_ok=True)
+    stub = stub_dir / "octop"
+    if not stub.exists():
+        stub.write_text(_STUB_OCTOP, encoding="utf-8", newline="\n")
+        stub.chmod(0o755)
+    log = tmp_path / "octop-calls.log"
+    log.write_text("", encoding="utf-8")
+    env = os.environ.copy()
+    env.update(
+        {
+            "HOME": str(home),
+            "OCTOP_HOME": str(home / ".octop"),
+            "PATH": str(stub_dir) + os.pathsep + env.get("PATH", ""),
+            "OCTOP_STUB_LOG": str(log),
+            "OCTOP_DEFAULT_PASSWORD": "Str0ngPass1",
+            "OCTOP_PORT": "8088",
+        }
+    )
+    if extra_env:
+        env.update(extra_env)
+    result = subprocess.run(
+        [bash_exe, str(ENTRYPOINT), *args],
+        check=False,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+        timeout=60,
+    )
+    calls = [line for line in log.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return result, calls
+
+
+@bash_only
+def test_entrypoint_restart_skips_init_for_external_db(tmp_path: Path) -> None:
+    """Issue #1866: with PostgreSQL there is no octop.db; a restart must not re-run init."""
+    pg_env = {
+        "OCTOP_DATABASE_DRIVER": "postgresql",
+        "OCTOP_DATABASE_URL": "postgresql://octop:octop@postgres:5432/octop",
+    }
+    first, calls = _run_entrypoint(tmp_path, extra_env=pg_env)
+    assert first.returncode == 0, first.stderr
+    assert any(call.startswith("init ") for call in calls), calls
+    assert any(call.startswith("run --host") for call in calls), calls
+    assert not (tmp_path / "data" / ".octop" / "octop.db").exists()
+    assert _init_marker(tmp_path).is_file(), first.stdout
+
+    second, calls = _run_entrypoint(tmp_path, extra_env=pg_env)
+    assert second.returncode == 0, second.stderr
+    assert not any(call.startswith("init") for call in calls), calls
+    assert any(call.startswith("run --host") for call in calls), calls
+
+
+@bash_only
+def test_entrypoint_sqlite_install_skips_init_without_marker(tmp_path: Path) -> None:
+    """Backward compat: an existing octop.db still short-circuits the guard."""
+    octop_home = tmp_path / "data" / ".octop"
+    octop_home.mkdir(parents=True)
+    (octop_home / "octop.db").write_text("", encoding="utf-8")
+
+    result, calls = _run_entrypoint(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert not any(call.startswith("init") for call in calls), calls
+    assert any(call.startswith("run --host") for call in calls), calls
+
+
+@bash_only
+def test_entrypoint_adopts_existing_admin_without_rewriting_credentials(tmp_path: Path) -> None:
+    """Upgrade path: init now no-ops on an already-bootstrapped DB; the credential card must survive."""
+    octop_home = tmp_path / "data" / ".octop"
+    octop_home.mkdir(parents=True)
+    credential = octop_home / "credential.txt"
+    credential.write_text("ORIGINAL CREDENTIALS\n", encoding="utf-8")
+
+    result, _ = _run_entrypoint(tmp_path, extra_env={"OCTOP_STUB_INIT_ALREADY_EXISTS": "1"})
+    assert result.returncode == 0, result.stderr
+    assert credential.read_text(encoding="utf-8") == "ORIGINAL CREDENTIALS\n"
+    assert _init_marker(tmp_path).is_file()
+
+    second, calls = _run_entrypoint(tmp_path)
+    assert second.returncode == 0, second.stderr
+    assert not any(call.startswith("init") for call in calls), calls
+
+
+@bash_only
+def test_entrypoint_init_failure_leaves_no_marker_and_retries_next_boot(tmp_path: Path) -> None:
+    first, _ = _run_entrypoint(tmp_path, extra_env={"OCTOP_STUB_INIT_FAIL": "1"})
+    assert first.returncode == 1, first.stdout
+    assert not _init_marker(tmp_path).exists()
+
+    second, calls = _run_entrypoint(tmp_path)
+    assert second.returncode == 0, second.stderr
+    assert any(call.startswith("init ") for call in calls), calls
+
+
+def test_init_skip_message_couples_entrypoint_and_init_command() -> None:
+    """The entrypoint greps init output for this message — keep both sides in sync."""
+    marker_text = "already exists, skipping"
+    assert marker_text in ENTRYPOINT.read_text(encoding="utf-8")
+    init_cmd = REPO / "src" / "octop" / "cli" / "commands" / "init.py"
+    assert marker_text in init_cmd.read_text(encoding="utf-8")
