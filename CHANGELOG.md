@@ -45,6 +45,8 @@
 - octop-harness 升到 1.0.1；飞牛安装改为建账号向导
 
 ### 修复
+- 修复远程 Embedding 服务返回乱序结果时向量与文本错位的问题
+- httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
 - 会话「放通所有 / 放通这些工具」后后续 execute 仍弹审批
 - 误报流式失败、提问卡不弹出、TLS 下内部 MCP、过长工具名
 - 远程存储卡住堵住启动；S3 / Postgres 浏览；桌面 beta 覆盖安装；飞牛 8089 残留
