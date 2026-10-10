@@ -73,6 +73,16 @@ def test_remote_ocr_requires_image_capable_model() -> None:
         provider_repo=repo,
     )
     assert ocr.get_ocr_capability(values.get, repo)["usable"] is True
+    repo.get_by_name = lambda name: provider if name == "prov-name" else None
+    ocr.set_ocr_settings(
+        values.__setitem__,
+        enabled=True,
+        backend="remote",
+        model="vision-1",
+        provider_id="prov-name",
+        provider_repo=repo,
+    )
+    assert ocr.get_ocr_capability(values.get, repo)["usable"] is True
 
 
 def test_image_and_blank_pdf_use_ocr(tmp_path: Path) -> None:
