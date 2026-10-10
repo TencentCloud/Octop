@@ -11,12 +11,29 @@ export function getCanvasCoords(
   if (!canvas) return { x: 0, y: 0 };
   const rect = canvas.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return { x: 0, y: 0 };
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  return {
-    x: Math.round((e.clientX - rect.left) * scaleX),
-    y: Math.round((e.clientY - rect.top) * scaleY),
-  };
+  if (canvas.width === 0 || canvas.height === 0) return { x: 0, y: 0 };
+  // The canvas element fills its container while the drawn bitmap is shown
+  // with `object-fit: contain` (letterboxed), so the pointer must be mapped
+  // through the displayed image rectangle, not the element box — mapping the
+  // stretched element rect sends clicks in the padding area and along the
+  // smaller axis to the wrong remote coordinates.
+  const scale = Math.min(
+    rect.width / canvas.width,
+    rect.height / canvas.height,
+  );
+  const displayWidth = canvas.width * scale;
+  const displayHeight = canvas.height * scale;
+  const offsetX = (rect.width - displayWidth) / 2;
+  const offsetY = (rect.height - displayHeight) / 2;
+  const x = Math.round(
+    Math.min(Math.max(e.clientX - rect.left - offsetX, 0), displayWidth) /
+      scale,
+  );
+  const y = Math.round(
+    Math.min(Math.max(e.clientY - rect.top - offsetY, 0), displayHeight) /
+      scale,
+  );
+  return { x, y };
 }
 
 /** Paint a JPEG base64 frame onto a canvas (WebSocket stream). */
