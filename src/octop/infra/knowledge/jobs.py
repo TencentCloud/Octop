@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from weakref import WeakValueDictionary
 
 from octop.infra.knowledge.chunk import chunk_text
 from octop.infra.knowledge.embed import embed_knowledge_texts
@@ -16,12 +17,16 @@ from octop.infra.knowledge.parse import parse_document
 
 INDEX_CONCURRENCY = 2
 _index_semaphore: asyncio.Semaphore | None = None
+_document_locks: WeakValueDictionary[tuple[asyncio.AbstractEventLoop, str, str], asyncio.Lock] = (
+    WeakValueDictionary()
+)
 
 
 def reset_index_semaphore_for_tests() -> None:
     """Drop the cached semaphore so tests can change INDEX_CONCURRENCY."""
     global _index_semaphore
     _index_semaphore = None
+    _document_locks.clear()
 
 
 def _get_index_semaphore() -> asyncio.Semaphore:
@@ -64,10 +69,34 @@ def enqueue_index_document(services: Any, kb_id: str, doc_id: str) -> asyncio.Ta
     """Schedule CPU- and I/O-bound indexing outside the event loop."""
     loop = asyncio.get_running_loop()
     sem = _get_index_semaphore()
+    key = (loop, kb_id, doc_id)
+    document_lock = _document_locks.setdefault(key, asyncio.Lock())
 
     async def _run() -> None:
-        async with sem:
-            await loop.run_in_executor(None, process_document, services, kb_id, doc_id)
+        # Waiting duplicates must not occupy a global indexing slot.
+        await document_lock.acquire()
+        try:
+            await sem.acquire()
+        except BaseException:
+            document_lock.release()
+            raise
+        try:
+            work = loop.run_in_executor(None, process_document, services, kb_id, doc_id)
+        except BaseException:
+            sem.release()
+            document_lock.release()
+            raise
+
+        def finished(future: asyncio.Future[None]) -> None:
+            sem.release()
+            document_lock.release()
+            # Retrieve failures even if the caller cancelled its Task.
+            if not future.cancelled():
+                future.exception()
+
+        work.add_done_callback(finished)
+        # Cancellation cannot stop executor work. Hold its leases until completion.
+        await asyncio.shield(work)
 
     return asyncio.create_task(_run())
 
