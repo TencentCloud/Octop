@@ -160,6 +160,8 @@ async def test_resume_hitl_binds_thread_scope() -> None:
     manager._history_backfills = {}
     manager._invocation_waiters = {}
     manager._active_invocations = {}
+    manager._reload_reservations = {}
+    manager._agent_quiet_events = {}
     manager._thread_execution_locks = {}
     manager._bootstrap_graph_refresh_pending = set()
 

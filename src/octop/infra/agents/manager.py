@@ -436,6 +436,12 @@ class AgentManager:
         self._active_invocations: dict[str, int] = {}
         self._invocation_waiters: dict[str, int] = {}
         self._history_backfills: dict[str, asyncio.Event] = {}
+        # Agents reserved for one in-flight rebuild: new invocations wait for
+        # the fresh registry entry instead of racing the teardown (see
+        # ``_reload_agent`` / ``_begin_invocation``).
+        self._reload_reservations: dict[str, asyncio.Event] = {}
+        # Wakes reload waiters when an agent leaves a busy state.
+        self._agent_quiet_events: dict[str, asyncio.Event] = {}
         self._reload_dirty: set[str] = set()
         self._reload_worker_running: dict[str, bool] = {}
         self._bootstrap_graph_refresh_pending: set[str] = set()
@@ -1274,13 +1280,29 @@ class AgentManager:
         """Whether the agent is currently executing a user-visible invocation."""
         return self._active_invocations.get(agent_id, 0) > 0
 
-    def try_begin_history_backfill(self, agent_id: str) -> bool:
-        """Reserve an idle agent for one history backfill without racing a new turn."""
-        if (
+    def _agent_has_pending_work(self, agent_id: str) -> bool:
+        """Whether detaching the registry entry now would interrupt live work.
+
+        Covers an in-flight invocation, invocations queued behind a history
+        backfill, a running backfill, and an in-flight rebuild. Hot reloads and
+        backfills must all wait for this to clear before touching the instance.
+        """
+        return (
             self.is_agent_active(agent_id)
             or self._invocation_waiters.get(agent_id, 0) > 0
             or agent_id in self._history_backfills
-        ):
+            or agent_id in self._reload_reservations
+        )
+
+    def _notify_agent_quiet(self, agent_id: str) -> None:
+        """Wake reload waiters after the agent may have left a busy state."""
+        event = self._agent_quiet_events.get(agent_id)
+        if event is not None:
+            event.set()
+
+    def try_begin_history_backfill(self, agent_id: str) -> bool:
+        """Reserve an idle agent for one history backfill without racing a new turn."""
+        if self._agent_has_pending_work(agent_id):
             return False
         self._history_backfills[agent_id] = asyncio.Event()
         return True
@@ -1290,11 +1312,48 @@ class AgentManager:
         event = self._history_backfills.pop(agent_id, None)
         if event is not None:
             event.set()
+        self._notify_agent_quiet(agent_id)
+
+    def _try_reserve_reload(self, agent_id: str) -> asyncio.Event | None:
+        """Reserve a quiet agent for one rebuild; ``None`` while work is in flight."""
+        if self._agent_has_pending_work(agent_id):
+            return None
+        event = asyncio.Event()
+        self._reload_reservations[agent_id] = event
+        return event
+
+    def _release_reload_reservation(self, agent_id: str, event: asyncio.Event) -> None:
+        """Drop a rebuild reservation and wake invocations waiting on it."""
+        if self._reload_reservations.get(agent_id) is event:
+            self._reload_reservations.pop(agent_id, None)
+        event.set()
+        self._notify_agent_quiet(agent_id)
+
+    async def _wait_for_reload_slot(self, agent_id: str) -> asyncio.Event:
+        """Block until the agent is quiet, then reserve it for one rebuild."""
+        while True:
+            event = self._try_reserve_reload(agent_id)
+            if event is not None:
+                return event
+            waiter = self._agent_quiet_events.get(agent_id)
+            if waiter is None:
+                waiter = asyncio.Event()
+                self._agent_quiet_events[agent_id] = waiter
+            # Nothing can set the event between the state re-check below and
+            # the ``wait()`` registration (single-threaded event loop, no
+            # await in between), so a fresh wake-up cannot be missed.
+            if waiter.is_set():
+                waiter.clear()
+            if not self._agent_has_pending_work(agent_id):
+                continue
+            await waiter.wait()
 
     async def _begin_invocation(self, agent_id: str) -> None:
         self._invocation_waiters[agent_id] = self._invocation_waiters.get(agent_id, 0) + 1
         try:
-            while event := self._history_backfills.get(agent_id):
+            while event := (
+                self._history_backfills.get(agent_id) or self._reload_reservations.get(agent_id)
+            ):
                 await event.wait()
         finally:
             waiting = self._invocation_waiters.get(agent_id, 1) - 1
@@ -1302,6 +1361,7 @@ class AgentManager:
                 self._invocation_waiters[agent_id] = waiting
             else:
                 self._invocation_waiters.pop(agent_id, None)
+                self._notify_agent_quiet(agent_id)
         self._active_invocations[agent_id] = self._active_invocations.get(agent_id, 0) + 1
 
     def _end_invocation(self, agent_id: str) -> None:
@@ -1310,6 +1370,7 @@ class AgentManager:
             self._active_invocations[agent_id] = active
         else:
             self._active_invocations.pop(agent_id, None)
+            self._notify_agent_quiet(agent_id)
 
     @asynccontextmanager
     async def _track_invocation(self, agent_id: str) -> AsyncIterator[None]:
@@ -2917,7 +2978,32 @@ class AgentManager:
     # Internal — background reload worker
     # ------------------------------------------------------------------
 
-    async def _reload_agent(self, agent_id: str) -> None:
+    async def _reload_agent(self, agent_id: str, *, wait_for_quiet: bool = False) -> bool:
+        """Rebuild the harness runtime for one agent.
+
+        A rebuild replaces the registry entry (``aremove_agent`` + create), so
+        it must never run while the agent still executes a turn: the detached
+        instance keeps running its turn, which is then silently dropped
+        together with every message it has not persisted yet. When work is in
+        flight the rebuild is rerouted to the background reload worker and
+        ``False`` is returned; the worker passes ``wait_for_quiet=True`` and
+        blocks until the agent is quiet instead. Returns ``True`` once the
+        rebuild (or removal) actually ran.
+        """
+        assert self._harness_manager is not None
+        reservation = self._try_reserve_reload(agent_id)
+        if reservation is None:
+            if not wait_for_quiet:
+                self._schedule_reload(agent_id)
+                return False
+            reservation = await self._wait_for_reload_slot(agent_id)
+        try:
+            await self._rebuild_agent(agent_id)
+        finally:
+            self._release_reload_reservation(agent_id, reservation)
+        return True
+
+    async def _rebuild_agent(self, agent_id: str) -> None:
         assert self._harness_manager is not None
         async with self._lifecycle_lock_for(agent_id):
             self._bootstrap_graph_refresh_pending.discard(agent_id)
@@ -2955,7 +3041,11 @@ class AgentManager:
                 )
 
     def _schedule_reload(self, agent_id: str) -> None:
-        """Queue a background harness reload; coalesces rapid successive updates."""
+        """Queue a background harness reload; coalesces rapid successive updates.
+
+        Also the deferral path for reloads requested while the agent is
+        mid-turn: the worker waits for the turn to finish before rebuilding.
+        """
         self._reload_dirty.add(agent_id)
         if self._reload_worker_running.get(agent_id):
             return
@@ -2967,7 +3057,7 @@ class AgentManager:
             while agent_id in self._reload_dirty:
                 self._reload_dirty.discard(agent_id)
                 try:
-                    await self._reload_agent(agent_id)
+                    await self._reload_agent(agent_id, wait_for_quiet=True)
                 except Exception:
                     logger.exception("Background reload failed for agent %s", agent_id)
                 if agent_id not in self._reload_dirty:
