@@ -88,16 +88,35 @@ export function hubInstallPresentation(skill: SkillHubSkill): {
 }
 
 function normalizeHubSkill(raw: Record<string, unknown>): SkillHubSkill {
-  const slug = String(raw.slug ?? raw.name ?? "");
+  const slug = firstText(raw.slug, raw.name);
   return {
     ...(raw as unknown as SkillHubSkill),
     slug,
-    name: String(raw.name ?? raw.display_name_zh ?? raw.display_name ?? slug),
+    name: firstText(raw.name, raw.display_name_zh, raw.display_name, slug),
     iconUrl:
       (raw.iconUrl as string | null | undefined) ??
       (raw.icon_url as string | null | undefined) ??
       null,
   };
+}
+
+/**
+ * The market ranks one entry per publisher namespace, so several entries can
+ * share one public ``slug`` (e.g. ``@a/libai`` and ``@b/libai``). The card
+ * grid, React keys and install path all identify a skill by ``slug``, so keep
+ * only the best-ranked entry of each slug instead of rendering twins.
+ */
+function dedupeHubSkills(skills: SkillHubSkill[]): SkillHubSkill[] {
+  const seen = new Set<string>();
+  const unique: SkillHubSkill[] = [];
+  for (const skill of skills) {
+    if (skill.slug) {
+      if (seen.has(skill.slug)) continue;
+      seen.add(skill.slug);
+    }
+    unique.push(skill);
+  }
+  return unique;
 }
 
 export default function SkillHubTab({
@@ -312,7 +331,9 @@ export default function SkillHubTab({
   );
 
   const displaySkills = useMemo(() => {
-    const base = searchKeyword ? hubSkills : rankings[activeRanking] ?? [];
+    const base = dedupeHubSkills(
+      searchKeyword ? hubSkills : rankings[activeRanking] ?? [],
+    );
     return base.slice().sort((a, b) => {
       const ai = isInstalled(a.slug) ? 0 : 1;
       const bi = isInstalled(b.slug) ? 0 : 1;
