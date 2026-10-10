@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 用户取消的 Dashboard / IM / HITL 回合在新旧历史格式中均记录为 `interrupted`，保留部分回复；取消标记仅属于当前活动回合，结束后清理
 - 暗色主题下专家 / 技能 / 子智能体 Markdown 编辑器白底：Monaco 未跟随应用主题渲染为亮色 `vs`；编辑器现按应用明暗模式切换主题（工作区文件编辑器同样改为读取应用主题，而非仅系统偏好）（Fixes #1355）
 
 ### 变更
