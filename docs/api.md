@@ -402,8 +402,18 @@ for non-`/` paths.
 
 Custom MCP OAuth (streamable HTTP, public HTTPS URL only): Octop discovers the authorization
 server from the MCP URL (401 / RFC 9728 protected-resource metadata), requires dynamic client
-registration (DCR), stores encrypted tokens in the custom MCP spec, and injects `Authorization:
-Bearer` when loading tools. Loopback and LAN MCP URLs may use HTTP and do not use remote OAuth
+registration (DCR), and stores encrypted tokens in the custom MCP spec. Runtime tools read
+these credentials before each HTTP request, including calls through already-loaded/cached
+tools. Tokens expiring within two minutes are refreshed when a refresh token is available;
+concurrent calls sharing a grant reuse one refresh. A 401 can trigger one refresh and one
+retry. Tokens without an expiry are refreshed on 401 rather than on every request.
+
+Expired credentials that cannot refresh, rejected refresh grants, and a second 401 set
+`oauth: {configured: false, required: true}` in `GET /connectors/custom-mcp`. The custom MCP
+page then offers OAuth authorization again. Re-authorization is picked up by existing tools
+without restarting Octop or opening a new conversation. A transient refresh failure keeps
+an access token that is still valid. Fixed-header, unauthenticated and stdio servers retain
+their existing behavior. Loopback and LAN MCP URLs may use HTTP and do not use remote OAuth
 discovery.
 
 ## Internal MCP (octop-harness agents)
