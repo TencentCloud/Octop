@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Spin } from "antd";
 import { clearAuthToken, getAuthToken } from "../api/request";
 import { authApi, type OctopUser } from "../api/modules/auth";
@@ -7,6 +7,7 @@ import { applyUserLocale } from "../utils/locale";
 import { isNetworkFetchError } from "../utils/networkError";
 import { CurrentUserProvider } from "../hooks/useCurrentUser";
 import BootOfflinePanel from "./BootOfflinePanel";
+import { chatLoginPath } from "../utils/chatRoute";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -36,6 +37,9 @@ interface AuthGuardProps {
  */
 export default function AuthGuard({ children }: AuthGuardProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const loginPathRef = useRef(chatLoginPath(location));
+  loginPathRef.current = chatLoginPath(location);
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
 
@@ -68,7 +72,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
             setAuthed(false);
             // Stay on the spinner until navigation away completes — do not
             // flip ``checking`` off or children would mount and 401→/login.
-            navigateRef.current("/login", { replace: true });
+            navigateRef.current(loginPathRef.current, { replace: true });
           }
           return;
         }
@@ -93,7 +97,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
             return;
           }
           setAuthed(false);
-          navigateRef.current("/login", { replace: true });
+          navigateRef.current(loginPathRef.current, { replace: true });
         }
       } catch (err) {
         if (cancelled) return;

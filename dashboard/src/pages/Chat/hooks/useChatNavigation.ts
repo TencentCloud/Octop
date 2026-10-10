@@ -1,3 +1,4 @@
+import { useChatRoute } from "../../../hooks/useChatRoute";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
@@ -42,6 +43,7 @@ export function useChatNavigation({
   refreshAgents,
 }: UseChatNavigationParams) {
   const navigate = useNavigate();
+  const { chatPath } = useChatRoute();
   const location = useLocation();
   // One-shot blank-chat intent from minimal nav "+" on non-chat routes.
   const preferEmptyChatRef = useRef(false);
@@ -128,11 +130,11 @@ export function useChatNavigation({
       threadId === prev.threadId
     ) {
       initialNavDone.current = null;
-      navigate(`/chat/${routeAgentId}`, { replace: true });
+      navigate(chatPath(routeAgentId), { replace: true });
       clearMessages();
     }
     chatUrlStateRef.current = { agentId: routeAgentId, threadId };
-  }, [routeAgentId, threadId, navigate, clearMessages]);
+  }, [routeAgentId, threadId, navigate, chatPath, clearMessages]);
 
   useEffect(() => {
     if (sessionsLoading || prefillInputRef.current) return;
@@ -152,10 +154,10 @@ export function useChatNavigation({
       const preferred = pickPreferredSession(sessions);
       if (preferred) {
         void octopThreadsApi.rebind(agent, preferred.id).catch(() => {});
-        navigate(`/chat/${agent}/${preferred.id}`, { replace: true });
+        navigate(chatPath(agent, preferred.id), { replace: true });
       }
     } else if (!routeAgentId) {
-      navigate(`/chat/${agent}`, { replace: true });
+      navigate(chatPath(agent), { replace: true });
     }
   }, [
     sessions,
@@ -164,6 +166,7 @@ export function useChatNavigation({
     resolvedAgentId,
     routeAgentId,
     navigate,
+    chatPath,
     prefillInputRef,
   ]);
 
@@ -201,9 +204,9 @@ export function useChatNavigation({
         void octopThreadsApi
           .rebind(resolvedAgentId, preferred.id)
           .catch(() => {});
-        navigate(`/chat/${resolvedAgentId}/${preferred.id}`, { replace: true });
+        navigate(chatPath(resolvedAgentId, preferred.id), { replace: true });
       } else {
-        navigate(`/chat/${resolvedAgentId}`, { replace: true });
+        navigate(chatPath(resolvedAgentId), { replace: true });
       }
     });
   }, [
@@ -212,6 +215,7 @@ export function useChatNavigation({
     sessions,
     sessionsLoading,
     navigate,
+    chatPath,
     ensureThreadInList,
   ]);
 

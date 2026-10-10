@@ -13,6 +13,8 @@ import {
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import MainLayout from "./layouts/MainLayout";
+import EmbeddedChat from "./pages/Chat/EmbeddedChat";
+import NotFoundPage from "./components/NotFoundPage";
 import LoginPage from "./pages/Login";
 import OidcComplete from "./pages/Login/OidcComplete";
 import SetupPage from "./pages/Setup";
@@ -136,6 +138,18 @@ function ThemedApp() {
             <Route path="/login/oidc/complete" element={<OidcComplete />} />
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/invite" element={<InvitePage />} />
+            <Route
+              path="/embed/chat/:agentId/:threadId?"
+              element={<EmbeddedChat />}
+            />
+            <Route
+              path="/embed/chat/*"
+              element={
+                <div style={{ height: "100%", display: "flex" }}>
+                  <NotFoundPage />
+                </div>
+              }
+            />
             <Route
               path="/*"
               element={

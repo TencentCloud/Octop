@@ -57,6 +57,20 @@
   }
 }
 
+.embeddedChat {
+  min-height: 0;
+
+  .chatMain,
+  .inputWrapper {
+    min-width: 0;
+  }
+
+  .askQuestionDock {
+    max-height: 50%;
+    overflow-y: auto;
+  }
+}
+
 /* Turn timeline rail visible: align title, message column, and composer gutters. */
 .chatMainWithTurnRail {
   --chat-turn-rail-gutter: 48px;

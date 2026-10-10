@@ -48,8 +48,10 @@ vi.mock("./chatStore", () => ({
   invalidateHistory: (...args: unknown[]) => invalidateHistoryMock(...args),
 }));
 
+let initialPath = "/";
+
 function wrapper({ children }: { children: ReactNode }) {
-  return <MemoryRouter>{children}</MemoryRouter>;
+  return <MemoryRouter initialEntries={[initialPath]}>{children}</MemoryRouter>;
 }
 
 function session(id: string): Session {
@@ -65,6 +67,7 @@ function session(id: string): Session {
 
 describe("useChatNavigation stale thread", () => {
   beforeEach(() => {
+    initialPath = "/";
     navigateMock.mockReset();
     rebindMock.mockReset().mockResolvedValue({});
   });
@@ -165,40 +168,104 @@ describe("useChatNavigation stale thread", () => {
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
-  it("prefers an existing session when the URL thread is missing", async () => {
-    const ensureThreadInList = vi.fn().mockResolvedValue("missing");
-    const prefillInputRef = { current: "" };
-    const sessions = [session("thr_ok")];
+  it.each(["/chat", "/embed/chat"])(
+    "keeps %s when the URL thread is missing",
+    async (base) => {
+      initialPath = `${base}/agent-a/thr_gone`;
+      const ensureThreadInList = vi.fn().mockResolvedValue("missing");
+      const prefillInputRef = { current: "" };
+      const sessions = [session("thr_ok")];
 
-    renderHook(
-      () =>
-        useChatNavigation({
-          routeAgentId: "agent-a",
-          threadId: "thr_gone",
-          resolvedAgentId: "agent-a",
-          activeThreadId: "thr_gone",
-          sessions,
-          sessionsLoading: false,
-          prefillInputRef,
-          loadHistory: vi.fn().mockResolvedValue(undefined),
-          clearMessages: vi.fn(),
-          ensureThreadInList,
-          fetchSessions: vi.fn().mockResolvedValue(sessions),
-          refreshAgents: vi.fn().mockResolvedValue(undefined),
-        }),
-      { wrapper },
-    );
+      renderHook(
+        () =>
+          useChatNavigation({
+            routeAgentId: "agent-a",
+            threadId: "thr_gone",
+            resolvedAgentId: "agent-a",
+            activeThreadId: "thr_gone",
+            sessions,
+            sessionsLoading: false,
+            prefillInputRef,
+            loadHistory: vi.fn().mockResolvedValue(undefined),
+            clearMessages: vi.fn(),
+            ensureThreadInList,
+            fetchSessions: vi.fn().mockResolvedValue(sessions),
+            refreshAgents: vi.fn().mockResolvedValue(undefined),
+          }),
+        { wrapper },
+      );
 
-    await waitFor(() => {
-      expect(navigateMock).toHaveBeenCalledWith("/chat/agent-a/thr_ok", {
-        replace: true,
+      await waitFor(() => {
+        expect(navigateMock).toHaveBeenCalledWith(`${base}/agent-a/thr_ok`, {
+          replace: true,
+        });
       });
+    },
+  );
+});
+
+describe("useChatNavigation embedded entry without a thread", () => {
+  beforeEach(() => {
+    initialPath = "/embed/chat/agent-a";
+    navigateMock.mockReset();
+    rebindMock.mockReset().mockResolvedValue({});
+  });
+
+  function renderEntry(sessions: Session[], loading = false) {
+    const clearMessages = vi.fn();
+    const loadHistory = vi.fn().mockResolvedValue(undefined);
+    const params = {
+      routeAgentId: "agent-a",
+      threadId: undefined,
+      resolvedAgentId: "agent-a",
+      activeThreadId: null,
+      sessions,
+      prefillInputRef: { current: "" },
+      loadHistory,
+      clearMessages,
+      ensureThreadInList: vi.fn().mockResolvedValue("found"),
+      fetchSessions: vi.fn().mockResolvedValue(sessions),
+      refreshAgents: vi.fn().mockResolvedValue(undefined),
+    };
+    return {
+      ...renderHook(
+        ({ sessionsLoading }) =>
+          useChatNavigation({ ...params, sessionsLoading }),
+        { wrapper, initialProps: { sessionsLoading: loading } },
+      ),
+      clearMessages,
+      loadHistory,
+    };
+  }
+
+  it("waits for the session list and selects the current agent's active thread", async () => {
+    const preferred = { ...session("thr_active"), isActive: true };
+    const { rerender } = renderEntry([session("thr_other"), preferred], true);
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(rebindMock).not.toHaveBeenCalled();
+
+    rerender({ sessionsLoading: false });
+    await waitFor(() => {
+      expect(rebindMock).toHaveBeenCalledWith("agent-a", "thr_active");
+      expect(navigateMock).toHaveBeenCalledWith(
+        "/embed/chat/agent-a/thr_active",
+        { replace: true },
+      );
     });
+  });
+
+  it("keeps the empty entry ready for a first message when there are no sessions", () => {
+    const { clearMessages, loadHistory } = renderEntry([]);
+    expect(clearMessages).toHaveBeenCalled();
+    expect(loadHistory).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(rebindMock).not.toHaveBeenCalled();
   });
 });
 
 describe("useChatNavigation proactive session events", () => {
   beforeEach(() => {
+    initialPath = "/";
     navigateMock.mockReset();
     rebindMock.mockReset().mockResolvedValue({});
     invalidateHistoryMock.mockReset();

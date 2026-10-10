@@ -16,6 +16,7 @@ import { Alert, Button, Tooltip } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 import { showConfirmModal } from "../../utils/confirmModal";
 import PlanReadyCard from "./components/PlanReadyCard";
+import { useChatRoute } from "../../hooks/useChatRoute";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { useHitlEnabled } from "../../hooks/useHitlEnabled";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -123,6 +124,7 @@ export default function ChatPage() {
 function ChatPageInner() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { embedded, chatPath } = useChatRoute();
   const location = useLocation();
   prefetchVoiceConfig();
   const { agentId: routeAgentId, threadId } = useParams<{
@@ -857,7 +859,7 @@ function ChatPageInner() {
 
   useEffect(() => {
     return chatStore.onSlashAction((ev) => {
-      if (ev.action === "switch_agent" && ev.agent_id) {
+      if (!embedded && ev.action === "switch_agent" && ev.agent_id) {
         navigateToAgent(ev.agent_id);
       }
       if (
@@ -867,7 +869,7 @@ function ChatPageInner() {
         handleConversationModeChange(ev.mode);
       }
     });
-  }, [navigateToAgent, handleConversationModeChange]);
+  }, [navigateToAgent, handleConversationModeChange, embedded]);
 
   const handlePromptClick = useCallback(
     (text: string, options?: { prefill?: boolean }) => {
@@ -1094,14 +1096,14 @@ function ChatPageInner() {
       created: { thread_id: string; copied_messages: number },
     ) => {
       await ensureThreadInList(created.thread_id);
-      navigate(`/chat/${agent}/${created.thread_id}`);
+      navigate(chatPath(agent, created.thread_id));
       antMessage.success(
         created.copied_messages > 0
           ? t("chat.forkSuccess")
           : t("chat.forkSuccessEmpty"),
       );
     },
-    [ensureThreadInList, navigate, t],
+    [ensureThreadInList, navigate, chatPath, t],
   );
 
   const handleForkAssistantMessage = useCallback(
@@ -1234,7 +1236,7 @@ function ChatPageInner() {
         setActiveAgent(agentId);
         if (agentId && agentId !== resolvedAgentId) {
           void octopThreadsApi.rebind(agentId, sessionId).catch(() => {});
-          navigate(`/chat/${agentId}/${sessionId}`);
+          navigate(chatPath(agentId, sessionId));
           if (isMobile) setSidebarOpen(false);
           return;
         }
@@ -1271,13 +1273,13 @@ function ChatPageInner() {
         closeToolUiPanel={closeToolUiPanel}
         focusToolUiPanel={focusToolUiTab}
       >
-        {chatHistoryRail
+        {!embedded && chatHistoryRail
           ? createPortal(chatSidebarPanel, chatHistoryRail)
           : null}
         <div
           className={`${styles.chatPage} ${
-            dockIsResizing ? styles.panelResizeActive : ""
-          } ${
+            embedded ? styles.embeddedChat : ""
+          } ${dockIsResizing ? styles.panelResizeActive : ""} ${
             dockOpen && dockMode === "bottom"
               ? styles.chatPageWithBottomDock
               : ""
@@ -1293,7 +1295,7 @@ function ChatPageInner() {
               .join(" ")}
           >
             {/* Mobile toolbar — session list + optional title + agent profile */}
-            {isMobile && (
+            {!embedded && isMobile && (
               <div className={styles.mobileToolbar}>
                 <button
                   className={styles.menuBtn}
@@ -1371,7 +1373,7 @@ function ChatPageInner() {
               </div>
             )}
 
-            {!isMobile && activeSession && activeSessionTitle && (
+            {!embedded && !isMobile && activeSession && activeSessionTitle && (
               <ChatTitleBar
                 session={activeSession}
                 title={activeSessionTitle}
@@ -1424,7 +1426,8 @@ function ChatPageInner() {
               {!agentChatReady || noAgents ? (
                 <AgentNotReadyScreen
                   agent={activeAgent}
-                  noAgents={noAgents}
+                  noAgents={!embedded && noAgents}
+                  embedded={embedded}
                   loading={agentsLoading}
                 />
               ) : showWelcome && modelsReady && availableModels.length === 0 ? (
@@ -1440,7 +1443,9 @@ function ChatPageInner() {
                 />
               ) : (
                 <ChatAgentProfileProvider
-                  canOpen={Boolean(resolvedAgentId) && !sharedExpertViewer}
+                  canOpen={
+                    !embedded && Boolean(resolvedAgentId) && !sharedExpertViewer
+                  }
                   onOpen={(agentId) => {
                     setProfileAgentId(
                       agentId && agentId !== resolvedAgentId ? agentId : null,
@@ -1472,7 +1477,9 @@ function ChatPageInner() {
                     onAcpPermissionSelect={handleAcpPermissionSelect}
                     onHitlDecision={handleHitlDecision}
                     onTurnRailVisibilityChange={setTurnRailVisible}
-                    onOpenBrowser={hasBrowserTool ? openBrowserTab : undefined}
+                    onOpenBrowser={
+                      !embedded && hasBrowserTool ? openBrowserTab : undefined
+                    }
                     onEditFile={
                       !sharedExpertViewer && panelFilePaths.length > 0
                         ? openFileList
@@ -1483,7 +1490,8 @@ function ChatPageInner() {
               )}
             </div>
 
-            {!isMobile &&
+            {!embedded &&
+              !isMobile &&
               !dockOpen &&
               !agentProfileOpen &&
               !trajectoryDrawerOpen && (
@@ -1769,9 +1777,13 @@ function ChatPageInner() {
                 isTeamChat ? undefined : handleKnowledgeBaseIdsChange
               }
               availableSkills={isTeamChat ? undefined : chatSkills}
-              availableAgents={chatAgentOptions}
+              availableAgents={embedded ? [] : chatAgentOptions}
               availableExperts={
-                isTeamChat ? teamExpertOptions : chatAgentOptionsPickable
+                embedded
+                  ? []
+                  : isTeamChat
+                  ? teamExpertOptions
+                  : chatAgentOptionsPickable
               }
               availableSubagents={isTeamChat ? undefined : chatSubagents}
               agentId={resolvedAgentId}
@@ -1803,10 +1815,10 @@ function ChatPageInner() {
             onModeChange={handleDockModeChange}
             onClose={handleDockClose}
             onResizeStart={dockHandleResizeStart}
-            addTab={dockAddTab}
+            addTab={embedded ? undefined : dockAddTab}
           />
 
-          {!sharedExpertViewer && (
+          {!embedded && !sharedExpertViewer && (
             <AgentProfileDrawer
               open={agentProfileOpen}
               agent={profileAgent}
@@ -1817,7 +1829,7 @@ function ChatPageInner() {
               }}
             />
           )}
-          {trajectoryEnabled && (
+          {!embedded && trajectoryEnabled && (
             <TrajectoryDrawer
               agentId={resolvedAgentId ?? ""}
               threadId={activeThreadId}

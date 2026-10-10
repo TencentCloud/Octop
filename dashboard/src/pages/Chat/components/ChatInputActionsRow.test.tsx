@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedModel } from "../../../api/types";
 import ChatInputActionsRow from "./ChatInputActionsRow";
+import * as voiceInput from "../../../hooks/useVoiceInput";
 
 vi.mock("./ContextWindowRing", () => ({
   default: () => null,
@@ -44,6 +45,26 @@ const baseProps = {
 };
 
 describe("ChatInputActionsRow plus menu", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("explains host-policy blocking on the disabled microphone button", async () => {
+    vi.spyOn(voiceInput, "isSttAvailable").mockReturnValue(false);
+    vi.spyOn(voiceInput, "isMicrophoneBlockedByPolicy").mockReturnValue(true);
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} />
+      </MemoryRouter>,
+    );
+    const microphone = screen.getByRole("button", {
+      name: "voice.startRecording",
+    });
+    expect(microphone).toBeDisabled();
+    fireEvent.mouseEnter(microphone.parentElement!);
+    expect(
+      await screen.findByText("voice.micBlockedByHost"),
+    ).toBeInTheDocument();
+  });
+
   it("keeps approval, shortcuts, and attachments on the toolbar", () => {
     render(
       <MemoryRouter>

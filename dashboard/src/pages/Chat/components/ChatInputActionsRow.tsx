@@ -55,7 +55,10 @@ import type { SlashMenuGroup } from "../../../utils/slashCategories";
 import type { SlashMenuItem } from "../hooks/useSlashMentionInput";
 import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import { SHORTCUT_ICON_TONE_CLASS } from "../utils/slashShortcutStyles";
-import { isSttAvailable } from "../../../hooks/useVoiceInput";
+import {
+  isMicrophoneBlockedByPolicy,
+  isSttAvailable,
+} from "../../../hooks/useVoiceInput";
 import { parseSkillSlugsInText } from "../utils/skillSlash";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import {
@@ -89,8 +92,6 @@ function resolveModelLogo(model: {
   );
 }
 
-// These browser APIs never change at runtime — compute once.
-const _sttAvailable = isSttAvailable();
 const PICKER_PANEL_TARGET_HEIGHT = 400;
 const PICKER_PANEL_VIEWPORT_GUTTER = 16;
 
@@ -235,6 +236,7 @@ export default function ChatInputActionsRow({
   onSubmit,
 }: ChatInputActionsRowProps) {
   const { t } = useTranslation();
+  const sttAvailable = isSttAvailable();
   const navigate = useNavigate();
   const remoteManaged = Boolean(agentId?.startsWith("bridge:"));
   const skillDisplayName = useSkillDisplayName();
@@ -1098,8 +1100,13 @@ export default function ChatInputActionsRow({
         )}
         <Tooltip
           title={
-            !_sttAvailable
-              ? t("voice.sttNotAvailable", "此设备不支持语音输入（需要 HTTPS）")
+            !sttAvailable
+              ? isMicrophoneBlockedByPolicy()
+                ? t("voice.micBlockedByHost")
+                : t(
+                    "voice.sttNotAvailable",
+                    "此设备不支持语音输入（需要 HTTPS）",
+                  )
               : recording
               ? t("voice.stopRecording", "停止录音")
               : transcribing
@@ -1108,16 +1115,21 @@ export default function ChatInputActionsRow({
           }
           mouseEnterDelay={0.4}
         >
-          <button
-            className={`${styles.secondaryBtn} ${
-              recording || transcribing ? styles.secondaryBtnActive : ""
-            }`}
-            type="button"
-            disabled={disabled || isStreaming || transcribing || !_sttAvailable}
-            onClick={onToggleVoice}
-          >
-            <Mic size={16} />
-          </button>
+          <span style={{ display: "inline-flex" }}>
+            <button
+              className={`${styles.secondaryBtn} ${
+                recording || transcribing ? styles.secondaryBtnActive : ""
+              }`}
+              type="button"
+              disabled={
+                disabled || isStreaming || transcribing || !sttAvailable
+              }
+              aria-label={t("voice.startRecording")}
+              onClick={onToggleVoice}
+            >
+              <Mic size={16} />
+            </button>
+          </span>
         </Tooltip>
         {(onStartBrowserRecording || onStopBrowserRecording) && (
           <Tooltip

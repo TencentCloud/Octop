@@ -2801,6 +2801,7 @@
     "browserNoChineseVoice": "Chrome has no Chinese voice — using Edge TTS instead",
     "ttsFallback": "Server TTS failed — switched to browser speech",
     "micDenied": "Microphone access denied",
+    "micBlockedByHost": "The host page blocks microphone access. Its iframe must allow microphone access.",
     "browserOnly": "Handled by the browser",
     "readAloud": "Read aloud",
     "micNotAvailable": "Audio recording unavailable — please use HTTPS",
