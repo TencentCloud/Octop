@@ -35,11 +35,22 @@ fi
 
 mkdir -p "$DATA_DIR" "$PKGVAR"
 
-# 加载向导配置（install_callback / config_callback 写入）
+# 加载向导配置（install_callback / config_callback 写入）。
+# 按字面量逐行 export，不能用 `.`：这里的值是向导收下的用户数据（密码允许含 $ 和反引号），
+# 交给 shell 解释会展开变量、执行命令替换，未定义变量还会在 set -u 下让启动器直接退出。
 if [ -f "$PKGVAR/.env" ]; then
-    set -a
-    . "$PKGVAR/.env"
-    set +a
+    while IFS= read -r _env_line || [ -n "$_env_line" ]; do
+        case "$_env_line" in
+            ''|'#'*) continue ;;
+            *=*)
+                _env_key="${_env_line%%=*}"
+                case "$_env_key" in
+                    ''|*[!A-Za-z0-9_]*|[0-9]*) continue ;;
+                esac
+                export "${_env_key}=${_env_line#*=}"
+                ;;
+        esac
+    done < "$PKGVAR/.env"
 fi
 
 export HOME="$DATA_DIR"
