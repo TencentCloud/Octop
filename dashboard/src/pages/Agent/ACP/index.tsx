@@ -231,7 +231,14 @@ export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
   const handleSubmit = async (values: Record<string, unknown>) => {
     const targetKey = String(values.runnerKey || activeKey || "").trim();
     if (!targetKey) return;
-    if ((isCreateMode || targetKey !== activeKey) && runners[targetKey]) {
+    const existing = runners[targetKey];
+    // A disabled custom runner may be overwritten (and re-enabled) by saving
+    // a new runner under the same key; only enabled or builtin keys collide.
+    if (
+      (isCreateMode || targetKey !== activeKey) &&
+      existing &&
+      (existing.enabled || isBuiltinRunner(targetKey))
+    ) {
       message.error(t("acp.runnerKeyExists"));
       return;
     }
