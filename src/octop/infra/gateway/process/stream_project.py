@@ -46,6 +46,11 @@ class _ToolProjectionState:
     # historical tool results (replayed via PatchToolCallsMiddleware / Overwrite)
     # must not trigger re-sends.
     saw_tool_call: bool = False
+    # ids of the tool calls started in this stream. A tool_result message for any
+    # other id is a replayed historical result (summarization / media offload /
+    # PatchToolCallsMiddleware rewrite the whole history mid-turn) and must not
+    # be pushed to the channel again.
+    live_tool_call_ids: set[str] = field(default_factory=set)
     # Track tool_call_ids whose media we've already emitted to prevent
     # re-emission when PatchToolCallsMiddleware emits Overwrite(full_history).
     emitted_media_ids: set[str] = field(default_factory=set)
@@ -140,6 +145,9 @@ async def _project_chunks(
 
         elif ctype == "tool_call_chunk":
             tool_state.saw_tool_call = True
+            call_id = chunk.get("id")
+            if isinstance(call_id, str) and call_id:
+                tool_state.live_tool_call_ids.add(call_id)
             idx_key = f"_idx_{chunk.get('index', 0)}"
             tool_state.active_tool_idx = idx_key
 
@@ -180,7 +188,11 @@ async def _project_chunks(
                 tool_state.tool_started.discard(idx)
                 tool_state.active_tool_idx = None
             if harness_workspace is not None and tool_state.saw_tool_call:
-                chunk_for_media = dedup_tool_result_messages(chunk, tool_state.emitted_media_ids)
+                chunk_for_media = dedup_tool_result_messages(
+                    chunk,
+                    tool_state.emitted_media_ids,
+                    live_ids=tool_state.live_tool_call_ids,
+                )
                 if chunk_for_media is not None:
                     async for media_event in media_events_from_tool_result(
                         chunk_for_media,

@@ -595,6 +595,30 @@ def test_dedup_tool_result_messages_skips_replayed_ids() -> None:
     assert dedup_tool_result_messages(first, emitted) is None
 
 
+def test_dedup_tool_result_messages_live_ids_drop_historical_results() -> None:
+    from octop.infra.gateway.media.tool_media import dedup_tool_result_messages
+
+    emitted: set[str] = set()
+    replay = {
+        "type": "tool_result",
+        "messages": [
+            {"tool_call_id": "old-1", "name": "send_file_to_user", "content": "a"},
+            {"tool_call_id": "old-2", "name": "send_file_to_user", "content": "b"},
+            {"tool_call_id": "new-1", "name": "send_file_to_user", "content": "c"},
+            {"name": "send_file_to_user", "content": "no id"},
+        ],
+    }
+    kept = dedup_tool_result_messages(replay, emitted, live_ids={"new-1"})
+    assert kept is not None
+    assert [m["content"] for m in kept["messages"]] == ["c", "no id"]
+    # Historical ids are not recorded as emitted: they were never pushed here.
+    assert emitted == {"new-1"}
+
+    only_old = {"type": "tool_result", "messages": replay["messages"][:2]}
+    assert dedup_tool_result_messages(only_old, emitted, live_ids={"new-1"}) is None
+    assert dedup_tool_result_messages(only_old, emitted, live_ids=set()) is None
+
+
 @pytest.mark.asyncio
 async def test_iter_dashboard_attachment_frames_requires_live_tool_call() -> None:
     """Historical Overwrite dumps before any tool_call_chunk must not push."""

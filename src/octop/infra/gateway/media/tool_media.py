@@ -101,12 +101,21 @@ def tool_message_name(message: Any, *, chunk_name: str | None = None) -> str | N
 def dedup_tool_result_messages(
     chunk: dict[str, Any],
     emitted_ids: set[str],
+    *,
+    live_ids: set[str] | None = None,
 ) -> dict[str, Any] | None:
     """Keep only ``tool_result`` messages not yet emitted in this stream.
 
     When ``PatchToolCallsMiddleware`` returns ``Overwrite(full_history)`` the
     chunk can contain every prior ToolMessage. Skip ones whose ``tool_call_id``
     was already pushed so old files/images are not re-sent.
+
+    ``emitted_ids`` only remembers this stream. Middleware that rewrites the
+    message list mid-turn (summarization, media offload) replays results from
+    earlier turns that this stream never saw, so callers that know which tool
+    calls the current stream started pass them as ``live_ids``: a message whose
+    ``tool_call_id`` is not in that set is a replayed historical result and is
+    dropped. Messages without a ``tool_call_id`` are kept either way.
 
     Returns the (possibly trimmed) chunk, or ``None`` when all messages are
     duplicates.
@@ -120,7 +129,7 @@ def dedup_tool_result_messages(
         msg_id = getattr(msg, "tool_call_id", None) or (
             msg.get("tool_call_id") if isinstance(msg, dict) else None
         )
-        if msg_id and msg_id in emitted_ids:
+        if msg_id and (msg_id in emitted_ids or (live_ids is not None and msg_id not in live_ids)):
             continue
         new_messages.append(msg)
         if msg_id:
