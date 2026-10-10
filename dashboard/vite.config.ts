@@ -139,6 +139,10 @@ export default defineConfig(({ mode }) => {
               )
                 return undefined;
               if (id.includes("lucide-react")) return "vendor-icons";
+              // js-tiktoken ships a large BPE table; keep it as its own chunk
+              // so the chat-page entry bundle does not balloon when the user
+              // has not opened the chat composer.
+              if (id.includes("js-tiktoken")) return "vendor-tiktoken";
               if (
                 id.includes("i18next") ||
                 id.includes("ahooks") ||
