@@ -271,7 +271,7 @@ octop run --host 0.0.0.0 --port 8088
 octop service start
 ```
 
-打开 **http://127.0.0.1:8088**。Docker 首次初始化会自动生成随机管理员密码（写入 `/data/.octop/credential.txt`），除非设置了 `OCTOP_DEFAULT_PASSWORD`。交互式 `octop init` / 设置向导会让你自行设置密码（至少 8 位，且同时包含字母和数字）。
+打开 **http://127.0.0.1:8088**。Docker 若设置了合格的 `OCTOP_DEFAULT_PASSWORD`，首次启动会创建管理员（凭据写入 `/data/.octop/credential.txt`）；未设置或密码不合格则打开设置向导（向导口令在 `/data/.octop/octop-login.txt`）。交互式 `octop init` / 设置向导会让你自行设置密码（至少 8 位，且同时包含字母和数字）。
 
 ### Docker（推荐用于生产部署）
 
@@ -285,18 +285,18 @@ docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
-  -e OCTOP_DEFAULT_PASSWORD="<自定义强密码，留空则自动生成随机密码>" \
+  -e OCTOP_DEFAULT_PASSWORD="<自定义强密码，留空则进入设置向导>" \
   octop:latest
 ```
 
-打开 `http://localhost:8088`。首次初始化会创建管理员账号，并把凭据写入容器内 `/data/.octop/credential.txt`。未设置 `OCTOP_DEFAULT_PASSWORD` 时自动生成随机强密码；自行设置的密码须 ≥8 位且同时包含字母和数字（被应用密码策略拒绝的常见弱密码会自动回退为随机密码）。可通过 `OCTOP_ADMIN_USERNAME` 覆盖用户名。
+打开 `http://localhost:8088`。`OCTOP_DEFAULT_PASSWORD` 合格时首次启动会创建管理员，并把凭据写入 `/data/.octop/credential.txt`。未设置或密码被策略拒绝时不自动建账号，打开页面走设置向导（向导口令在 `/data/.octop/octop-login.txt`）。可通过 `OCTOP_ADMIN_USERNAME` 覆盖用户名。
 
 > **密码策略：** 至少 8 位，且同时包含字母和数字。
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `OCTOP_PORT` | `8088` | HTTP 监听端口 |
-| `OCTOP_DEFAULT_PASSWORD` | _(未设置)_ | 首次运行管理员密码（Docker 引导）。未设置 = 自动生成随机密码并写入 `credential.txt` |
+| `OCTOP_DEFAULT_PASSWORD` | _(未设置)_ | 首次运行管理员密码（Docker 引导）。合格则建账号；未设置或不合格则走设置向导 |
 | `OCTOP_ADMIN_USERNAME` | `admin` | 首次运行管理员用户名 |
 | `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载） |
 

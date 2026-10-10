@@ -82,6 +82,8 @@ interface MessageBubbleProps {
   agentId?: string | null;
   composerLookups?: ComposerTagLookups;
   onRegenerate?: (messageId: string) => void;
+  /** Turn off streamed token usage then retry (invalid_request / MindIE). */
+  onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
@@ -534,6 +536,7 @@ function MessageBubble({
   agentId = null,
   composerLookups,
   onRegenerate,
+  onDisableStreamUsage,
   onEditUserMessage,
   onForkAssistantMessage,
   forkDisabled,
@@ -883,9 +886,26 @@ function MessageBubble({
                     ))}
                   </div>
                 )}
-                {((!embedded && errorAction) || onRegenerate) && (
+                {((!embedded && errorAction) ||
+                  (errorAction?.fix === "disable_stream_usage" &&
+                    onDisableStreamUsage) ||
+                  onRegenerate) && (
                   <div className={styles.errorActionRow}>
-                    {!embedded && errorAction && (
+                    {errorAction?.fix === "disable_stream_usage" &&
+                    onDisableStreamUsage ? (
+                      <button
+                        className={styles.errorRetryBtn}
+                        onClick={() => {
+                          void onDisableStreamUsage().then((ok) => {
+                            if (ok) onRegenerate?.(message.id);
+                          });
+                        }}
+                        type="button"
+                      >
+                        <RotateCcw size={13} />
+                        {t(errorAction.labelKey)}
+                      </button>
+                    ) : !embedded && errorAction ? (
                       <button
                         className={styles.errorConfigBtn}
                         onClick={() => navigate(errorAction.path)}
@@ -894,7 +914,7 @@ function MessageBubble({
                         <Settings size={13} />
                         {t(errorAction.labelKey)}
                       </button>
-                    )}
+                    ) : null}
                     {onRegenerate && (
                       <button
                         className={styles.errorRetryBtn}

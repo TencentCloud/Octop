@@ -177,6 +177,23 @@ def test_extract_screenshot_from_tool_result_text(tmp_path: Path) -> None:
     assert paths == [abs_path]
 
 
+def test_middleware_rewrites_plan_write_onto_workspace(tmp_path: Path) -> None:
+    ws = _ws(tmp_path)
+    mw = ThreadArtifactsMiddleware(thread_repo=_FakeThreads(), workspace_dir=ws)
+    seen: list[str] = []
+
+    def handler(req: Any) -> ToolMessage:
+        seen.append(str(req.tool_call["args"]["file_path"]))
+        return ToolMessage(content="ok", tool_call_id="tc1")
+
+    with patch(
+        "octop.infra.agents.middleware.thread_artifacts.current_thread_id",
+        return_value="thr_1",
+    ):
+        mw.wrap_tool_call(_request("write_file", {"file_path": "plans/foo.md"}), handler)
+    assert seen == [f"{ws.as_posix()}/plans/foo.md"]
+
+
 def test_middleware_records_successful_write(tmp_path: Path) -> None:
     ws = _ws(tmp_path)
     store = _FakeThreads()

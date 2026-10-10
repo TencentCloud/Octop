@@ -1032,11 +1032,23 @@ export default function ChatInputActionsRow({
   };
 
   return (
-    <div ref={actionsRowRef} className={styles.actionsRow}>
+    <div
+      ref={actionsRowRef}
+      className={`${styles.actionsRow}${
+        isMobile ? ` ${styles.actionsRowCompact}` : ""
+      }`}
+    >
       <div className={styles.secondaryActions}>{renderSecondaryActions()}</div>
+      {conversationMode !== "craft" ? (
+        <p className={styles.modeHint} data-testid="conversation-mode-hint">
+          <ModeIcon size={14} aria-hidden />
+          <span>{t(`chat.conversationMode.${conversationMode}Reminder`)}</span>
+        </p>
+      ) : null}
       <div className={styles.inputActions}>
         <ContextWindowRing
           usedTokens={contextUsedTokens}
+          usageEstimated={contextUsedTokens == null}
           maxTokens={contextMaxTokens}
           agentId={agentId}
           threadId={threadId}

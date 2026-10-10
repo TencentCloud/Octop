@@ -44,6 +44,10 @@ import {
   parseHitlSessionPolicy,
 } from "./utils/hitlSessionPolicy";
 import { useChatContextWindow } from "./hooks/useChatContextWindow";
+import {
+  disableProviderStreamUsage,
+  providerIdForTurn,
+} from "../../utils/disableProviderStreamUsage";
 import { useBrowserToolDetection } from "./hooks/useBrowserToolDetection";
 import { useSkillRecordingWorkflow } from "./hooks/useSkillRecordingWorkflow";
 import { listDockFilePathsForTree } from "./utils/dockFilePath";
@@ -1013,6 +1017,41 @@ function ChatPageInner() {
     [messages, wrappedHandleSend, hasPendingHitlPause, t],
   );
 
+  const handleDisableStreamUsage = useCallback(async () => {
+    let lastUserModel: string | null = null;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].role === "user") {
+        lastUserModel = messages[i].composerContext?.model ?? null;
+        break;
+      }
+    }
+    const providerId = providerIdForTurn(availableModels, [
+      lastUserModel,
+      selectedModel,
+      activeAgent?.default_model,
+      activeModelRef,
+    ]);
+    if (providerId == null) {
+      antMessage.error(t("chat.disableStreamUsageFailed"));
+      return false;
+    }
+    try {
+      await disableProviderStreamUsage(providerId);
+      antMessage.success(t("chat.disableStreamUsageSuccess"));
+      return true;
+    } catch {
+      antMessage.error(t("chat.disableStreamUsageFailed"));
+      return false;
+    }
+  }, [
+    availableModels,
+    selectedModel,
+    activeAgent?.default_model,
+    activeModelRef,
+    messages,
+    t,
+  ]);
+
   // Edit user message: truncate history from that message onwards, replace
   // its content, and re-send — mirrors Claude / ChatGPT "edit message" behaviour.
   const handleEditUserMessage = useCallback(
@@ -1430,6 +1469,7 @@ function ChatPageInner() {
                     thinkingStartedAt={thinkingStartedAt}
                     sessionKey={activeThreadId ?? undefined}
                     onRegenerate={handleRegenerate}
+                    onDisableStreamUsage={handleDisableStreamUsage}
                     onEditUserMessage={handleEditUserMessage}
                     onForkAssistantMessage={handleForkAssistantMessage}
                     forkDisabled={forkDisabled}
