@@ -298,6 +298,53 @@ def test_rename_document_missing_or_wrong_kb_returns_none(
     assert repo.rename_document(kb.id, "missing-doc", "x") is None
 
 
+def test_move_file_keeps_basename(repo: KnowledgeRepo, owner_id: int) -> None:
+    kb = repo.create_base(owner_user_id=owner_id, name="Docs")
+    repo.ensure_folder(kb.id, "archive")
+    doc = repo.create_document(
+        kb_id=kb.id,
+        filename="readme.md",
+        content_type="text/markdown",
+        byte_size=4,
+    )
+    moved = repo.move_document(kb.id, doc.id, "archive/readme.md")
+    assert moved is not None
+    assert moved.path == "archive/readme.md"
+    assert moved.filename == "readme.md"
+
+
+def test_move_folder_rewrites_descendant_paths(repo: KnowledgeRepo, owner_id: int) -> None:
+    kb = repo.create_base(owner_user_id=owner_id, name="Docs")
+    folder = repo.ensure_folder(kb.id, "notes/law")
+    doc = repo.create_document(
+        kb_id=kb.id,
+        filename="act.md",
+        path="notes/law/act.md",
+        content_type="text/markdown",
+        byte_size=4,
+    )
+    repo.ensure_folder(kb.id, "archive")
+    moved = repo.move_document(kb.id, folder.id, "archive/law")
+    assert moved is not None
+    assert moved.path == "archive/law"
+    assert moved.filename == "law"
+    nested = repo.list_children(kb.id, "archive/law")
+    assert [row.path for row in nested] == ["archive/law/act.md"]
+    refreshed = repo.get_document(doc.id)
+    assert refreshed is not None
+    assert refreshed.path == "archive/law/act.md"
+    assert refreshed.filename == "act.md"
+
+
+def test_move_document_missing_or_wrong_kb_returns_none(repo: KnowledgeRepo, owner_id: int) -> None:
+    kb = repo.create_base(owner_user_id=owner_id, name="Docs")
+    other = repo.create_base(owner_user_id=owner_id, name="Other")
+    folder = repo.ensure_folder(kb.id, "notes")
+    assert repo.move_document("missing-kb", folder.id, "x") is None
+    assert repo.move_document(other.id, folder.id, "x") is None
+    assert repo.move_document(kb.id, "missing-doc", "x") is None
+
+
 def test_update_base_persists_max_documents(repo: KnowledgeRepo, owner_id: int) -> None:
     kb = repo.create_base(owner_user_id=owner_id, name="Docs")
     assert kb.max_documents == 100

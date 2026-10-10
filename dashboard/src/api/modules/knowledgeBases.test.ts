@@ -1,16 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { request, requestUpload } = vi.hoisted(() => ({
-  request: vi.fn(),
-  requestUpload: vi.fn(),
-}));
+const { bridgeAgentHeaders, request, requestBlob, requestUpload } = vi.hoisted(
+  () => ({
+    bridgeAgentHeaders: vi.fn(),
+    request: vi.fn(),
+    requestBlob: vi.fn(),
+    requestUpload: vi.fn(),
+  }),
+);
 
-vi.mock("../request", () => ({ request, requestUpload }));
+vi.mock("../request", () => ({
+  bridgeAgentHeaders,
+  request,
+  requestBlob,
+  requestUpload,
+}));
 
 import { knowledgeBasesApi } from "./knowledgeBases";
 
 beforeEach(() => {
+  bridgeAgentHeaders.mockClear();
   request.mockClear();
+  requestBlob.mockClear();
   requestUpload.mockClear();
 });
 
@@ -22,7 +33,9 @@ describe("knowledgeBasesApi", () => {
     knowledgeBasesApi.getOnnxDownloadStatus();
     knowledgeBasesApi.activateOnnx("BAAI/bge-small-zh-v1.5");
 
-    expect(request).toHaveBeenNthCalledWith(1, "/knowledge-bases/capability");
+    expect(request).toHaveBeenNthCalledWith(1, "/knowledge-bases/capability", {
+      headers: undefined,
+    });
     expect(request).toHaveBeenNthCalledWith(2, "/knowledge-bases/feature", {
       method: "PUT",
       body: JSON.stringify({ enabled: true, model: "BAAI/bge-small" }),
@@ -97,6 +110,22 @@ describe("knowledgeBasesApi", () => {
       expect.any(FormData),
       { method: "POST" },
       onProgress,
+    );
+  });
+
+  it("posts document rename and move requests", () => {
+    knowledgeBasesApi.renameDocument("kb-1", "doc-1", "new.md");
+    knowledgeBasesApi.moveDocument("kb-1", "doc-1", "folder/sub");
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      "/knowledge-bases/kb-1/documents/doc-1/rename",
+      { method: "POST", body: JSON.stringify({ new_name: "new.md" }) },
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      "/knowledge-bases/kb-1/documents/doc-1/move",
+      { method: "POST", body: JSON.stringify({ target_folder: "folder/sub" }) },
     );
   });
 });

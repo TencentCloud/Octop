@@ -668,6 +668,111 @@ async def test_rename_document_maps_invalid_name(
 
 
 @pytest.mark.asyncio
+async def test_move_document_returns_row_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    server = SimpleNamespace(services=_services())
+    moved = _Document(id="doc-1", is_dir=False, path="archive/notes.md", filename="notes.md")
+    received: dict[str, object] = {}
+
+    class _FakeService:
+        def move_document(self, *_args: object, **kwargs: object) -> _Document:
+            received.update(kwargs)
+            return moved
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", lambda _server: _FakeService())
+
+    result = await knowledge_bases.move_document(
+        kb_id="kb-1",
+        doc_id="doc-1",
+        body=knowledge_bases.MoveDocumentBody(target_folder="archive"),
+        request=_request(),
+        server=server,
+        user=SimpleNamespace(id=1, is_admin=False),
+    )
+
+    assert received["target_folder"] == "archive"
+    assert received["actor_user_id"] == 1
+    assert result["document_id"] == "doc-1"
+    assert result["path"] == "archive/notes.md"
+    assert result["filename"] == "notes.md"
+
+
+@pytest.mark.asyncio
+async def test_move_document_maps_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise LookupError("knowledge target folder not found")
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", fail)
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.move_document(
+            kb_id="kb-1",
+            doc_id="doc-1",
+            body=knowledge_bases.MoveDocumentBody(target_folder="missing"),
+            request=_request(),
+            server=SimpleNamespace(services=_services()),
+            user=object(),
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_move_document_maps_invalid_move(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise ValueError("cannot move a knowledge folder into itself or its subfolder")
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", fail)
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.move_document(
+            kb_id="kb-1",
+            doc_id="doc-1",
+            body=knowledge_bases.MoveDocumentBody(target_folder="notes/law"),
+            request=_request(),
+            server=SimpleNamespace(services=_services()),
+            user=object(),
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_MOVE_INVALID
+
+
+@pytest.mark.asyncio
+async def test_move_document_maps_name_taken(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise ValueError("a knowledge document with this name already exists")
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", fail)
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.move_document(
+            kb_id="kb-1",
+            doc_id="doc-1",
+            body=knowledge_bases.MoveDocumentBody(target_folder="archive"),
+            request=_request(),
+            server=SimpleNamespace(services=_services()),
+            user=object(),
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_NAME_TAKEN
+
+
+@pytest.mark.asyncio
 async def test_update_base_accepts_max_documents(monkeypatch: pytest.MonkeyPatch) -> None:
     from octop.api.routers import knowledge_bases
 

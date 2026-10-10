@@ -258,6 +258,130 @@ def test_shared_reader_cannot_rename(service: KnowledgeService) -> None:
         service.rename_document(kb.id, folder.id, actor_user_id=viewer, new_name="b")
 
 
+def test_move_document_into_folder_and_root(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    service.create_folder(kb.id, actor_user_id=owner, path="archive")
+    doc = service.upload_document(
+        kb.id,
+        actor_user_id=owner,
+        filename="notes.md",
+        content_type="text/markdown",
+        content=b"x",
+    )
+
+    moved = service.move_document(kb.id, doc.id, actor_user_id=owner, target_folder="archive")
+    assert moved.path == "archive/notes.md"
+    assert moved.filename == "notes.md"
+
+    back = service.move_document(kb.id, doc.id, actor_user_id=owner, target_folder="")
+    assert back.path == "notes.md"
+    assert back.filename == "notes.md"
+
+
+def test_move_folder_rewrites_descendants(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    service.create_folder(kb.id, actor_user_id=owner, path="archive")
+    folder = service.create_folder(kb.id, actor_user_id=owner, path="notes/law")
+    doc = service.upload_document(
+        kb.id,
+        actor_user_id=owner,
+        filename="act.md",
+        content_type="text/markdown",
+        content=b"x",
+        path="notes/law/act.md",
+    )
+
+    moved = service.move_document(kb.id, folder.id, actor_user_id=owner, target_folder="archive")
+    assert moved.path == "archive/law"
+    assert moved.filename == "law"
+    refreshed = service._services.knowledge_repo.get_document(doc.id)
+    assert refreshed is not None
+    assert refreshed.path == "archive/law/act.md"
+
+
+def test_move_to_same_parent_is_idempotent(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    service.create_folder(kb.id, actor_user_id=owner, path="notes")
+    doc = service.upload_document(
+        kb.id,
+        actor_user_id=owner,
+        filename="a.md",
+        content_type="text/markdown",
+        content=b"x",
+        path="notes/a.md",
+    )
+
+    result = service.move_document(kb.id, doc.id, actor_user_id=owner, target_folder="notes")
+    assert result.id == doc.id
+    assert result.path == "notes/a.md"
+
+
+def test_move_rejects_missing_target_folder(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    doc = service.upload_document(
+        kb.id,
+        actor_user_id=owner,
+        filename="a.md",
+        content_type="text/markdown",
+        content=b"x",
+    )
+
+    with pytest.raises(LookupError, match="target folder"):
+        service.move_document(kb.id, doc.id, actor_user_id=owner, target_folder="missing")
+
+
+def test_move_folder_into_own_subtree_is_rejected(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    parent = service.create_folder(kb.id, actor_user_id=owner, path="notes")
+    child = service.create_folder(kb.id, actor_user_id=owner, path="notes/law")
+
+    with pytest.raises(ValueError, match="cannot move a knowledge folder"):
+        service.move_document(kb.id, parent.id, actor_user_id=owner, target_folder="notes/law")
+    with pytest.raises(ValueError, match="cannot move a knowledge folder"):
+        service.move_document(kb.id, parent.id, actor_user_id=owner, target_folder="notes")
+    # Rejected moves leave the subtree untouched.
+    assert service._services.knowledge_repo.get_document(child.id).path == "notes/law"
+
+
+def test_move_rejects_name_collision(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    service.create_folder(kb.id, actor_user_id=owner, path="a/b")
+    service.create_folder(kb.id, actor_user_id=owner, path="b")
+    repo = service._services.knowledge_repo
+    moving = repo.get_document_by_path(kb.id, "b")
+
+    with pytest.raises(ValueError, match="already exists"):
+        service.move_document(kb.id, moving.id, actor_user_id=owner, target_folder="a")
+
+
+def test_shared_reader_cannot_move(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    viewer = users.create(username="viewer", password_hash="h", role="user")
+    kb = service._services.knowledge_repo.create_base(owner_user_id=owner, name="Docs", shared=True)
+    doc = service._services.knowledge_repo.create_document(
+        kb_id=kb.id,
+        filename="a.md",
+        content_type="text/markdown",
+        byte_size=1,
+    )
+
+    with pytest.raises(PermissionError, match="write"):
+        service.move_document(kb.id, doc.id, actor_user_id=viewer, target_folder="")
+
+
 def test_update_base_validates_max_documents_range(service: KnowledgeService) -> None:
     users = service._services.user_repo
     owner = users.create(username="ow", password_hash="h", role="user")

@@ -324,4 +324,13 @@ export const knowledgeBasesApi = {
         body: JSON.stringify({ new_name: newName }),
       },
     ),
+
+  moveDocument: (id: string, documentId: string, targetFolder: string) =>
+    request<KnowledgeDocument>(
+      `/knowledge-bases/${id}/documents/${documentId}/move`,
+      {
+        method: "POST",
+        body: JSON.stringify({ target_folder: targetFolder }),
+      },
+    ),
 };

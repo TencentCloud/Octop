@@ -491,6 +491,32 @@ class KnowledgeRepo:
             )
         return self.get_document(doc_id)
 
+    def move_document(self, kb_id: str, doc_id: str, new_path: str) -> KnowledgeDocumentRow | None:
+        """Move a document (file or folder) to *new_path*, rewriting descendants.
+
+        Unlike :meth:`rename_document` the basename (``filename``) is kept.
+        """
+        document = self.get_document(doc_id)
+        if document is None or document.kb_id != kb_id:
+            return None
+        new_path = normalize_kb_path(new_path)
+        ts = now_ts()
+        with self._db.transaction() as conn:
+            if document.is_dir:
+                # Rewrite the folder's own prefix once across all descendants.
+                prefix = f"{document.path}/"
+                conn.execute(
+                    "UPDATE knowledge_documents SET "
+                    "path = ? || substr(path, ?), updated_at = ? "
+                    "WHERE kb_id = ? AND substr(path, 1, ?) = ?",
+                    (new_path, len(document.path) + 1, ts, kb_id, len(prefix), prefix),
+                )
+            conn.execute(
+                "UPDATE knowledge_documents SET path = ?, updated_at = ? WHERE document_id = ?",
+                (new_path, ts, doc_id),
+            )
+        return self.get_document(doc_id)
+
     def resume_pending_documents(self) -> list[KnowledgeDocumentRow]:
         """Return pending work after resetting jobs interrupted while processing."""
         ts = now_ts()

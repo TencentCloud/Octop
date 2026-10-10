@@ -42,6 +42,7 @@ import {
   FilePlus,
   FileUp,
   Folder,
+  FolderInput,
   FolderPlus,
   LayoutGrid,
   List as ListIcon,
@@ -108,6 +109,7 @@ import {
   joinKnowledgePath,
   knowledgeBasename,
   knowledgeBreadcrumb,
+  knowledgePathParent,
   shouldOpenKnowledgeFolder,
 } from "./knowledgeFolder";
 import { resolveKnowledgeDeepLink } from "./knowledgeDeepLink";
@@ -301,6 +303,12 @@ export default function KnowledgeBasesPage() {
     null,
   );
   const [renameName, setRenameName] = useState("");
+  const [moveModalOpen, setMoveModalOpen] = useState(false);
+  const [moveTarget, setMoveTarget] = useState<KnowledgeDocument | null>(null);
+  const [moveFolder, setMoveFolder] = useState("");
+  const [moveFolders, setMoveFolders] = useState<KnowledgeDocument[]>([]);
+  const [moveFoldersLoading, setMoveFoldersLoading] = useState(false);
+  const [moveLoading, setMoveLoading] = useState(false);
   const [capability, setCapability] = useState<KnowledgeCapability | null>(
     null,
   );
@@ -1453,6 +1461,53 @@ export default function KnowledgeBasesPage() {
     }
   };
 
+  const openMoveDocument = async (document: KnowledgeDocument) => {
+    if (!selected) return;
+    setMoveTarget(document);
+    setMoveFolder(knowledgePathParent(document.path || document.filename));
+    setMoveModalOpen(true);
+    setMoveFoldersLoading(true);
+    try {
+      const all = await knowledgeBasesApi.listDocuments(selected.id);
+      setMoveFolders(all.filter((entry) => entry.is_dir));
+    } catch (error) {
+      message.error(
+        apiErrorMessage(error, t("knowledgeBases.moveLoadFoldersFailed"), t),
+      );
+    } finally {
+      setMoveFoldersLoading(false);
+    }
+  };
+
+  const moveDocument = async () => {
+    if (!selected || !moveTarget) return;
+    if (
+      knowledgePathParent(moveTarget.path || moveTarget.filename) === moveFolder
+    ) {
+      setMoveModalOpen(false);
+      return;
+    }
+    setMoveLoading(true);
+    try {
+      await knowledgeBasesApi.moveDocument(
+        selected.id,
+        moveTarget.id,
+        moveFolder,
+      );
+      setMoveModalOpen(false);
+      setMoveTarget(null);
+      setMoveFolder("");
+      await loadDetail(selected.id);
+      message.success(t("knowledgeBases.moveDocumentSuccess"));
+    } catch (error) {
+      message.error(
+        apiErrorMessage(error, t("knowledgeBases.moveDocumentFailed"), t),
+      );
+    } finally {
+      setMoveLoading(false);
+    }
+  };
+
   const deleteDocument = async (documentId: string) => {
     if (!selected) return;
     try {
@@ -1824,6 +1879,18 @@ export default function KnowledgeBasesPage() {
                 />
               </Tooltip>
             ) : null}
+            <Tooltip title={t("knowledgeBases.moveToFolder")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<FolderInput size={14} />}
+                aria-label={t("knowledgeBases.moveToFolder")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void openMoveDocument(document);
+                }}
+              />
+            </Tooltip>
             <Popconfirm
               title={
                 document.is_dir
@@ -1859,6 +1926,25 @@ export default function KnowledgeBasesPage() {
     setViewMode(mode);
     localStorage.setItem(DOCS_VIEW_STORAGE_KEY, mode);
   };
+
+  // Exclude the moved folder itself and its descendants: a folder cannot be
+  // moved inside its own subtree.
+  const moveFolderOptions = (() => {
+    if (!moveTarget) return [] as string[];
+    const currentPath = moveTarget.path || moveTarget.filename;
+    const excluded = new Set<string>();
+    if (moveTarget.is_dir) {
+      excluded.add(currentPath);
+      for (const folder of moveFolders) {
+        const path = folder.path || folder.filename;
+        if (path.startsWith(`${currentPath}/`)) excluded.add(path);
+      }
+    }
+    return moveFolders
+      .map((folder) => folder.path || folder.filename)
+      .filter((path) => Boolean(path) && !excluded.has(path))
+      .sort((a, b) => a.localeCompare(b));
+  })();
 
   return (
     <PageShell
@@ -2581,7 +2667,7 @@ export default function KnowledgeBasesPage() {
                           {
                             title: t("common.actions"),
                             key: "actions",
-                            width: canWriteSelected ? 120 : 48,
+                            width: canWriteSelected ? 150 : 48,
                             render: (_, document) => (
                               <div
                                 className={styles.tableActions}
@@ -2963,6 +3049,29 @@ export default function KnowledgeBasesPage() {
           onChange={(event) => setRenameName(event.target.value)}
           placeholder={t("knowledgeBases.folderNamePlaceholder")}
           onPressEnter={() => void renameFolder()}
+        />
+      </Modal>
+
+      <Modal
+        title={t("knowledgeBases.moveToFolder")}
+        open={moveModalOpen}
+        onCancel={() => setMoveModalOpen(false)}
+        onOk={() => void moveDocument()}
+        okText={t("common.move")}
+        confirmLoading={moveLoading}
+        cancelText={t("common.cancel")}
+        destroyOnHidden
+      >
+        <Select
+          style={{ width: "100%" }}
+          value={moveFolder}
+          onChange={setMoveFolder}
+          loading={moveFoldersLoading}
+          placeholder={t("knowledgeBases.moveTargetFolderPlaceholder")}
+          options={[
+            { value: "", label: t("knowledgeBases.moveRootOption") },
+            ...moveFolderOptions.map((path) => ({ value: path, label: path })),
+          ]}
         />
       </Modal>
 

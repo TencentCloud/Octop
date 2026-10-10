@@ -449,6 +449,38 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         return cast(KnowledgeDocumentRow, result)
 
+    def move_document(
+        self,
+        kb_id: str,
+        doc_id: str,
+        *,
+        target_folder: str,
+        actor_user_id: int,
+        is_admin: bool = False,
+    ) -> KnowledgeDocumentRow:
+        """Move a document (file or folder) under *target_folder* ("" = root)."""
+        self.get_writable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        document = self._repo.get_document(doc_id)
+        if document is None or document.kb_id != kb_id:
+            raise LookupError("knowledge document not found")
+        target = normalize_kb_path(target_folder)
+        if target:
+            folder = self._repo.get_document_by_path(kb_id, target)
+            if folder is None or not folder.is_dir:
+                raise LookupError("knowledge target folder not found")
+        if document.is_dir and (target == document.path or target.startswith(f"{document.path}/")):
+            raise ValueError("cannot move a knowledge folder into itself or its subfolder")
+        name = path_basename(document.path) or document.filename
+        new_path = normalize_kb_path(f"{target}/{name}" if target else name)
+        if new_path == document.path:
+            return cast(KnowledgeDocumentRow, document)
+        if self._repo.get_document_by_path(kb_id, new_path) is not None:
+            raise ValueError("a knowledge document with this name already exists")
+        result = self._repo.move_document(kb_id, doc_id, new_path)
+        if result is None:
+            raise LookupError("knowledge document not found")
+        return cast(KnowledgeDocumentRow, result)
+
     def delete_base(self, kb_id: str, *, actor_user_id: int, is_admin: bool = False) -> None:
         self.require_owner(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
         self._repo.delete_base(kb_id)
