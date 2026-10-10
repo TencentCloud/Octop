@@ -2962,6 +2962,19 @@ class AgentManager:
         self._reload_worker_running[agent_id] = True
         asyncio.create_task(self._reload_worker(agent_id), name=f"reload-agent-{agent_id}")
 
+    def is_reload_pending(self, agent_id: str) -> bool:
+        """Whether a queued or running background reload has not finished yet.
+
+        Between the DB write and the harness rebuild completing, turns keep
+        reaching the previous runtime (e.g. the old default model) while the
+        row already reports the new one — the silent window behind the team
+        probe confusion (#19). Callers and the UI can use this to wait or
+        show a "reloading" state instead of claiming the config is live.
+        """
+        return agent_id in self._reload_dirty or bool(
+            self._reload_worker_running.get(agent_id)
+        )
+
     async def _reload_worker(self, agent_id: str) -> None:
         try:
             while agent_id in self._reload_dirty:

@@ -201,6 +201,11 @@ def _row_dict(
             payload["member_ids"] = teams.visible_member_ids(row.agent_id)
         else:
             payload["member_ids"] = []
+    registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
+    is_reload_pending = getattr(registry, "is_reload_pending", None)
+    payload["reload_pending"] = (
+        bool(is_reload_pending(row.agent_id)) if callable(is_reload_pending) else False
+    )
     if bootstrap_pending is not None:
         payload["bootstrap_pending"] = bootstrap_pending
     return payload
