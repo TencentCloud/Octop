@@ -28,6 +28,7 @@
 - Plan 模式把 `plans/*.md` 写回专家工作区，避免 POSIX 默认后端落到容器根目录 `/plans`
 - 对话失败与工具错误写入可检索的服务端日志；聊天里可一键关闭实时 Token 后重试
 - 英文界面残留中文文案：浏览器 AI 助手对话消息、技能录制与回放提示、PWA 安装引导、MBTI 人格标签、侧边栏更新徽标
+- 安装脚本 `scripts/install.sh` / `scripts/install-octop.sh` 的 `--version` / `--extras` / `--mirror` 缺少取值时给出用法提示，不再抛出生硬的 bash `unbound variable` 报错；同时不再把紧随其后的另一个选项（如 `--version --help`）当成取值吞掉。
 
 ## [1.0.2b6] - 2026-10-04
 

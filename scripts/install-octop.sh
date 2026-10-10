@@ -58,6 +58,7 @@ die()   { error "$@"; exit 1; }
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --version)
+            [[ $# -ge 2 && "$2" != --* ]] || die "Option $1 requires a value (try --help)"
             VERSION="$2"; shift 2 ;;
         --from-source)
             FROM_SOURCE=true
@@ -71,8 +72,10 @@ while [[ $# -gt 0 ]]; do
             SOURCE_DIR=""
             shift ;;
         --extras)
+            [[ $# -ge 2 && "$2" != --* ]] || die "Option $1 requires a value (try --help)"
             EXTRAS="$2"; shift 2 ;;
         --mirror)
+            [[ $# -ge 2 && "$2" != --* ]] || die "Option $1 requires a value (try --help)"
             PYPI_MIRROR="$2"; shift 2 ;;
         -h|--help)
             cat <<EOF
