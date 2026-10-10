@@ -39,12 +39,14 @@ from octop.infra.backup.snapshot import (
     snapshot_sqlite_file,
     upsert_users_into_pool,
 )
+from octop.infra.db.credential_cipher import KEY_ENV, KEY_FILE_ENV, KEYRING_ENV, storage_error
+from octop.infra.db.credential_migration import migrate_credentials, validate_sqlite_credentials
 from octop.infra.db.migrate import _current_version, _max_discovered_version, run_migrations
 from octop.infra.db.pool import DatabasePool, SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.utils.env_file import env_file_path
+from octop.infra.utils.env_file import env_file_path, format_env_file, load_env_file
 from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
@@ -59,6 +61,7 @@ _MANIFEST_NAME = "manifest.json"
 _SQLITE_DB_ARC = f"{_DB_DIR}/octop.db"
 _PG_DUMP_ARC = f"{_DB_DIR}/octop.dump"
 _MIGRATION_VERSION_SUFFIX = "-migrated-from-lightclaw"
+_KEY_ENV_VARS = frozenset({KEY_ENV, KEY_FILE_ENV, KEYRING_ENV})
 
 # Align with workspace zip export; keep backups smaller / faster.
 _SKIP_DIR_NAMES = frozenset(
@@ -110,11 +113,14 @@ def _add_dir(
     *,
     skip_chats: bool,
     system_files_path: str = "",
+    exclude_file: Path | None = None,
 ) -> None:
     if not src.is_dir():
         return
     for path in sorted(src.rglob("*")):
         if not path.is_file():
+            continue
+        if exclude_file is not None and path.samefile(exclude_file):
             continue
         rel = path.relative_to(src)
         if _should_skip_path(
@@ -222,6 +228,7 @@ def create_system_backup(
         if not pool.path.is_file():
             raise OctopError(ErrorCode.NOT_FOUND, f"database not found: {pool.path}")
 
+    migrate_credentials(pool)
     env_path = env_file_path(paths.root)
     manifest = _build_manifest(
         paths=paths,
@@ -238,6 +245,9 @@ def create_system_backup(
         include_knowledge=include_knowledge,
         include_chats=include_chats,
     )
+    manifest.secrets_key_id = pool.credential_cipher.key_id()
+    key_file = pool.credential_cipher.key_path
+    excluded_key = key_file if key_file.is_file() else None
     filename = suggested_backup_filename()
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -278,7 +288,10 @@ def create_system_backup(
             if include_config and env_path.is_file():
                 cfg_dir = root / _CONFIG_DIR
                 cfg_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(env_path, cfg_dir / "env")
+                safe_env = {
+                    k: v for k, v in load_env_file(env_path).items() if k not in _KEY_ENV_VARS
+                }
+                (cfg_dir / "env").write_text(format_env_file(safe_env), encoding="utf-8")
 
             with tarfile.open(partial, mode="w:gz") as tf:
                 tf.add(manifest_path, arcname=_MANIFEST_NAME)
@@ -312,6 +325,7 @@ def create_system_backup(
                                 f"{_WORKSPACES_DIR}/{agent_id}",
                                 skip_chats=not include_chats,
                                 system_files_path=_system_files_path_from_row(row),
+                                exclude_file=excluded_key,
                             )
                         except OSError:
                             logger.warning(
@@ -325,6 +339,7 @@ def create_system_backup(
                         paths.skill_packages_dir,
                         _SKILL_PACKAGES_DIR,
                         skip_chats=False,
+                        exclude_file=excluded_key,
                     )
                 if include_plugins and paths.plugins_dir.is_dir():
                     _add_dir(
@@ -332,6 +347,7 @@ def create_system_backup(
                         paths.plugins_dir,
                         _PLUGINS_DIR,
                         skip_chats=False,
+                        exclude_file=excluded_key,
                     )
                 if include_knowledge and paths.knowledge_dir.is_dir():
                     _add_dir(
@@ -339,6 +355,7 @@ def create_system_backup(
                         paths.knowledge_dir,
                         _KNOWLEDGE_DIR,
                         skip_chats=False,
+                        exclude_file=excluded_key,
                     )
 
         partial.replace(dest)
@@ -491,6 +508,27 @@ def restore_system_backup(
         if not db_path.is_file():
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "backup archive missing database file")
 
+        if (
+            manifest.secrets_key_id is not None
+            and manifest.secrets_key_id != pool.credential_cipher.key_id()
+        ):
+            raise storage_error()
+        if pool.dialect == "sqlite":
+            validate_sqlite_credentials(db_path, pool.credential_cipher)
+
+        key_path = pool.credential_cipher.key_path.resolve()
+        replaced_trees = (
+            (manifest.includes_skill_packages, paths.skill_packages_dir),
+            (manifest.includes_plugins, paths.plugins_dir),
+            (manifest.includes_knowledge, paths.knowledge_dir),
+        )
+        if any(
+            included and key_path.is_relative_to(root.resolve())
+            for included, root in replaced_trees
+        ):
+            # These trees are replaced wholesale. Never delete the live key while restoring.
+            raise storage_error()
+
         saved_chats = (
             capture_chat_tables(pool, Path(tmp) / "preserved-chats.sqlite")
             if not manifest.includes_chats
@@ -553,7 +591,14 @@ def restore_system_backup(
             if env_blob_path.is_file():
                 env_path = env_file_path(paths.root)
                 env_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(env_blob_path, env_path)
+                # Preserve this deployment's key source, even when importing an old archive.
+                restored_env = {
+                    k: v for k, v in load_env_file(env_blob_path).items() if k not in _KEY_ENV_VARS
+                }
+                restored_env.update(
+                    {k: v for k, v in load_env_file(env_path).items() if k in _KEY_ENV_VARS}
+                )
+                env_path.write_text(format_env_file(restored_env), encoding="utf-8")
 
         # Migration ownership remap must run after the target owner exists and
         # before pruning backup placeholder users (avoids ON DELETE CASCADE).
@@ -597,6 +642,8 @@ def restore_system_backup(
                     _system_files_path_from_row(agent_row) if agent_row is not None else ""
                 )
             dest = dest_root / rest
+            if dest.resolve() == key_path:
+                continue
             if not manifest.includes_chats and is_chat_workspace_rel(
                 Path(rest),
                 system_files_path=system_path_by_agent.get(agent_id, ""),

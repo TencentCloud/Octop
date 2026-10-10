@@ -12,8 +12,7 @@ on first server start (or by `octop init` / `octop run`).
 ├── octop.db                 # SQLite — users, agents, providers, sessions, audit
 ├── cli_state.json           # CLI token + pinned defaults (`octop user login`)
 ├── repl_history             # readline-style history for `octop chats repl`
-├── secrets/
-│   └── jwt_secret           # 32-byte random; rotate with `octop admin rotate-jwt-secret`
+├── secrets.key              # independent credential master key (default private-file backend)
 ├── agents/<agent_id>/       # per-agent workspace (LangGraph state, attachments, …)
 ├── plugins/                 # installed third-party plugins
 ├── ssl/                     # self-signed certs when `octop run --ssl` is used without --cert/--key
@@ -52,6 +51,11 @@ That file is excluded from published-expert snapshots.
 The root can be overridden with `OCTOP_HOME` (absolute path). Most
 sub-paths are exposed as properties on `PathLayout` in
 `octop.infra.utils.paths`.
+
+Provider API keys and database secrets are encrypted using a master key outside
+the database. For OS keyring/server key configuration, `env:VARIABLE` provider
+references, upgrade steps and separate-key backup recovery, see
+[Credential storage and recovery](secrets.md).
 
 ## `config.json`
 

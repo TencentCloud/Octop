@@ -41,7 +41,7 @@ def _provider_row_to_dict(row: Any) -> dict[str, Any]:
         "name": row.name,
         "kind": row.kind,
         "base_url": row.base_url,
-        "api_key": row.api_key,
+        "api_key": getattr(row, "api_key_reference", None) or row.api_key,
         "models": row.get_models(),
         "note": row.note,
         "enabled": bool(row.enabled),

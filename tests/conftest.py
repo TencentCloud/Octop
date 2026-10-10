@@ -88,6 +88,9 @@ def _isolated_user_home(
         "OCTOP_CAPTCHA_SITE_KEY",
         "OCTOP_CAPTCHA_SECRET",
         "OCTOP_CAPTCHA_V3_MIN_SCORE",
+        "OCTOP_SECRET_KEY",
+        "OCTOP_SECRET_KEY_FILE",
+        "OCTOP_SECRET_KEY_KEYRING",
     ):
         monkeypatch.delenv(key, raising=False)
     return home

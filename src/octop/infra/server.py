@@ -365,7 +365,7 @@ class OctopServer:
             return
 
         db = open_database(config, self.paths)
-        run_migrations(db)
+        await asyncio.to_thread(run_migrations, db)
         self.services = build_shared_services(db=db, paths=self.paths, config=config)
         from octop.infra.auth.captcha import boot_from_services  # noqa: PLC0415
 
@@ -389,7 +389,7 @@ class OctopServer:
         self.config = config
         db = open_database(config, self.paths)
         try:
-            run_migrations(db)
+            await asyncio.to_thread(run_migrations, db)
         except Exception:
             db.close()
             raise

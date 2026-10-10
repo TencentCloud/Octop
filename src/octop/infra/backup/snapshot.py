@@ -323,7 +323,7 @@ def capture_jwt_secret_from_pool(pool: DatabasePool) -> bytes | None:
         ).fetchone()
     if row is None:
         return None
-    return bytes(row["v"])
+    return pool.credential_cipher.decrypt(bytes(row["v"]))
 
 
 def restore_jwt_secret_into_pool(pool: DatabasePool, secret: bytes) -> None:
@@ -332,6 +332,7 @@ def restore_jwt_secret_into_pool(pool: DatabasePool, secret: bytes) -> None:
     Used after a migration restore so outstanding browser sessions remain valid.
     Does not bump ``rotated_at`` — this is a preserve, not an admin rotation.
     """
+    secret = pool.credential_cipher.encrypt(secret)
     with pool.transaction() as conn:
         row = conn.execute(
             "SELECT 1 FROM secrets WHERE k = ?",

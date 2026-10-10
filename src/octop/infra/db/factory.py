@@ -39,6 +39,6 @@ def open_database(config: OctopConfig, paths: PathLayout) -> DatabasePool:
     """
     db_cfg = config.database
     if db_cfg.is_postgresql:
-        return PostgresPool(db_cfg.postgresql_conninfo())
+        return PostgresPool(db_cfg.postgresql_conninfo(), secrets_home=paths.root)
 
-    return SqlitePool(resolve_sqlite_db_path(config, paths))
+    return SqlitePool(resolve_sqlite_db_path(config, paths), secrets_home=paths.root)
