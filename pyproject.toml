@@ -76,6 +76,8 @@ knowledge-ocr = [
     "onnxruntime>=1.17",
     "pymupdf>=1.24",
 ]
+# Code Console sandboxes (OCTOP_CODE_SANDBOX=1) drive docker.sock directly.
+code-sandbox = ["docker>=7.0"]
 
 [dependency-groups]
 # PEP 735 dev group — installed by default on `uv sync`. Mirrors the
@@ -199,6 +201,12 @@ disable_error_code = ["attr-defined"]
 [[tool.mypy.overrides]]
 module = "octop.infra.utils.subprocess_io_win"
 disable_error_code = ["attr-defined"]
+
+# The `docker` SDK is optional (imported lazily) and ships no type information,
+# so `docker.DockerClient` cannot be resolved.
+[[tool.mypy.overrides]]
+module = "octop.infra.coding.runtime_manager"
+disable_error_code = ["name-defined"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

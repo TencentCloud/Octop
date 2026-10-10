@@ -1,0 +1,289 @@
+.layout {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  gap: 12px;
+}
+
+// ── Session rail ────────────────────────────────────────────────────────────
+
+.sidebar {
+  flex: 0 0 232px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--fn-border, rgba(127, 127, 127, 0.28));
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-secondary, rgba(127, 127, 127, 0.05));
+  overflow: hidden;
+}
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-secondary);
+  border-bottom: 1px solid var(--fn-border, rgba(127, 127, 127, 0.28));
+  flex: 0 0 auto;
+}
+
+.sessionList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.sessionItem {
+  position: relative;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--fn-transition, 0.2s);
+
+  &:hover {
+    background: var(--fn-bg-tertiary, rgba(127, 127, 127, 0.12));
+  }
+}
+
+.active {
+  background: var(--fn-bg-tertiary, rgba(127, 127, 127, 0.16));
+}
+
+.sessionMeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.sessionStatus {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+}
+
+.sessionId {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+  font-family: var(--fn-font-mono, ui-monospace, Menlo, Consolas, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  // Leave room for the close button parked in the corner.
+  padding-right: 24px;
+}
+
+.sessionActions {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  opacity: 0;
+  transition: opacity var(--fn-transition, 0.2s);
+
+  .sessionItem:hover & {
+    opacity: 1;
+  }
+}
+
+// ── Chat column ─────────────────────────────────────────────────────────────
+
+.chat {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chatHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  flex: 0 0 auto;
+}
+
+.cwd {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  font-family: var(--fn-font-mono, ui-monospace, Menlo, Consolas, monospace);
+}
+
+.messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 2px 12px;
+}
+
+.emptyCenter {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attachBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 8px;
+  flex: 0 0 auto;
+}
+
+// ── Composer ────────────────────────────────────────────────────────────────
+
+.composer {
+  border: 1px solid var(--fn-border, rgba(127, 127, 127, 0.28));
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-elevated, var(--fn-bg-container, transparent));
+  padding: 8px 10px 10px;
+  box-shadow: var(--fn-shadow-sm);
+  flex: 0 0 auto;
+}
+
+.composerTools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.composerFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 260px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  font-family: var(--fn-font-mono, ui-monospace, Menlo, Consolas, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// ── Tool cards ──────────────────────────────────────────────────────────────
+
+.toolCard {
+  border: 1px solid var(--fn-border, rgba(127, 127, 127, 0.28));
+  border-radius: 10px;
+  padding: 7px 10px;
+  margin-bottom: 8px;
+  background: var(--fn-bg-secondary, rgba(127, 127, 127, 0.05));
+}
+
+.toolHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+}
+
+.toolTitle {
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolOk {
+  color: var(--fn-color-success, #52c41a);
+}
+
+.toolFail {
+  color: var(--fn-color-error, #cf1322);
+}
+
+.toolDetail {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--fn-text-tertiary);
+  font-family: var(--fn-font-mono, ui-monospace, Menlo, Consolas, monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// ── Permission modal ────────────────────────────────────────────────────────
+
+.permission {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.permTitle {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.permDetail {
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.permTool {
+  display: flex;
+  gap: 6px;
+}
+
+.permOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+// ── Patch viewer ────────────────────────────────────────────────────────────
+
+.patch {
+  margin: 0;
+  max-height: 60vh;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.6;
+  font-family: var(--fn-font-mono, ui-monospace, Menlo, Consolas, monospace);
+  white-space: pre;
+}
+
+// ── Shared ──────────────────────────────────────────────────────────────────
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+}

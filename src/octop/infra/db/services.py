@@ -6,12 +6,17 @@ from dataclasses import dataclass
 
 from octop.config import OctopConfig
 from octop.infra.db.pool import DatabasePool
+from octop.infra.db.repos.agent_events import AgentEventRepo
 from octop.infra.db.repos.agents import AgentRepo
+from octop.infra.db.repos.approval_requests import ApprovalRepo
 from octop.infra.db.repos.audit import AuditRepo
 from octop.infra.db.repos.backends import BackendRepo
 from octop.infra.db.repos.bridge_connections import BridgeConnectionRepo
 from octop.infra.db.repos.care_push import CarePushRepo
 from octop.infra.db.repos.channels import ChannelRepo
+from octop.infra.db.repos.coding_runtimes import RuntimeRepo
+from octop.infra.db.repos.coding_sessions import CodingSessionRepo
+from octop.infra.db.repos.coding_worktrees import WorktreeRepo
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.db.repos.cron import CronJobRepo
 from octop.infra.db.repos.invites import InviteRepo
@@ -63,6 +68,12 @@ class RepoBundle:
     care_push_repo: CarePushRepo
     proactive_care_config_repo: ProactiveCareConfigRepo
     sso_repo: SsoRepo
+    # Code Console (coding sessions)
+    coding_session_repo: CodingSessionRepo
+    agent_event_repo: AgentEventRepo
+    runtime_repo: RuntimeRepo
+    worktree_repo: WorktreeRepo
+    approval_repo: ApprovalRepo
 
     @classmethod
     def from_pool(cls, db: DatabasePool) -> RepoBundle:
@@ -93,6 +104,11 @@ class RepoBundle:
             care_push_repo=CarePushRepo(db),
             proactive_care_config_repo=ProactiveCareConfigRepo(db),
             sso_repo=SsoRepo(db),
+            coding_session_repo=CodingSessionRepo(db),
+            agent_event_repo=AgentEventRepo(db),
+            runtime_repo=RuntimeRepo(db),
+            worktree_repo=WorktreeRepo(db),
+            approval_repo=ApprovalRepo(db),
         )
 
 
@@ -205,6 +221,26 @@ class SharedServices:
     @property
     def sso_repo(self) -> SsoRepo:
         return self.repos.sso_repo
+
+    @property
+    def coding_session_repo(self) -> CodingSessionRepo:
+        return self.repos.coding_session_repo
+
+    @property
+    def agent_event_repo(self) -> AgentEventRepo:
+        return self.repos.agent_event_repo
+
+    @property
+    def runtime_repo(self) -> RuntimeRepo:
+        return self.repos.runtime_repo
+
+    @property
+    def worktree_repo(self) -> WorktreeRepo:
+        return self.repos.worktree_repo
+
+    @property
+    def approval_repo(self) -> ApprovalRepo:
+        return self.repos.approval_repo
 
 
 def build_shared_services(

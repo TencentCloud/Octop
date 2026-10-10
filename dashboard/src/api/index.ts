@@ -28,6 +28,7 @@ import { ollamaModelApi } from "./modules/ollamaModel";
 import { onnxModelApi } from "./modules/onnxModel";
 import { uploadApi } from "./modules/upload";
 import { acpApi } from "./modules/acp";
+import { codeApi } from "./modules/code";
 import { embeddingApi } from "./modules/embedding";
 import { browserApi } from "./modules/browser";
 import { mbtiApi } from "./modules/mbti";
@@ -51,6 +52,9 @@ export const api = {
 
   // ACP
   ...acpApi,
+
+  // Code Console
+  ...codeApi,
 
   // Channels
   ...channelApi,

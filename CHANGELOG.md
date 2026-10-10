@@ -7,6 +7,15 @@
 ## [Unreleased]
 - 暗色主题下专家 / 技能 / 子智能体 Markdown 编辑器白底：Monaco 未跟随应用主题渲染为亮色 `vs`；编辑器现按应用明暗模式切换主题（工作区文件编辑器同样改为读取应用主题，而非仅系统偏好）（Fixes #1355）
 
+### 新增
+- 新增「代码」页（`/code`）：面向用户的编码会话控制台，支持选择 Runner、多会话管理、SSE 实时流式输出、思考链、工具调用、权限应答与附件上传；输入框复用对话页组件与数据源
+- 新增 `/api/code/*` 网关与编码会话子系统：每会话独立 Docker 沙箱运行时、Git worktree 隔离、权限策略引擎（allow / deny / ask）、事件异步批写入
+- 新增 `021_coding_sessions` 迁移（SQLite / Postgres），持久化编码会话、运行时、工作树与授权请求
+- 「代码」页支持切换模型：新增 per-runner 模型环境变量映射（`ANTHROPIC_MODEL` 等），并可通过 `code_model_env` 配置为任意 Runner（含 Kimi Code / Cursor CLI / Pi 等）补充映射
+- 「代码」页沙箱镜像可按 Runner 指定（`OCTOP_CODE_SANDBOX_IMAGE_<RUNNER>`），镜像缺少对应 CLI 时输出可诊断日志
+- 「代码」页前端（`pages/Code`）与 `/code` 路由、侧边栏入口、中英文案；入口默认仅管理员可见
+- 新增可选依赖组 `code-sandbox`（Docker SDK），仅在开启沙箱模式时需要
+
 ### 变更
 - 运行轨迹弹框中 ASSISTANT 摘要显示所用模型
 - 编辑对端专家时模型、知识库、连接器走对端隧道；抽屉标题显示对端标识
