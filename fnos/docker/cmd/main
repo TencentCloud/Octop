@@ -10,7 +10,7 @@ _OCTOP_COMMON="$(dirname "$0")/common.sh"
 [ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop/cmd/common.sh"
 [ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
 
-FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
+FILE_PATH="${TRIM_APPDEST:-/var/apps/octop/target}/docker/docker-compose.yaml"
 ENV_FILE="${TRIM_APPDEST:-/var/apps/octop/target}/docker/.env"
 
 ensure_persist() {
