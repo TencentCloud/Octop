@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from tests.support.certificates import make_test_certificate
 
 from octop.config import OctopConfig
 from octop.infra.connectors.builder import build_mcp_server_configs_for_user, mcp_server_name
@@ -239,6 +240,51 @@ def test_harness_spec_streamable_http_adds_accept():
     assert spec["headers"]["Authorization"] == "Bearer x"
     assert spec["headers"]["Accept"] == "application/json, text/event-stream"
     assert "enabled" not in spec
+
+
+def test_certificate_persists_and_can_be_removed(
+    svc: ConnectorService, db: SqlitePool, tmp_path: Path
+):
+    uid = _ensure_user(db)
+    certificate = make_test_certificate(tmp_path).ca_pem
+    spec = {
+        "transport": "streamable_http",
+        "url": "https://127.0.0.1/mcp",
+        "ca_cert": certificate,
+        "ca_cert_name": "company.crt",
+    }
+    svc.put_custom_servers(uid, {"private": spec})
+    saved = svc.get_custom_servers_for_api(uid)["private"]
+    assert saved["ca_cert"] == certificate.strip()
+    assert saved["ca_cert_name"] == "company.crt"
+    runtime = svc.custom_harness_configs(uid)["private"]
+    assert callable(runtime["httpx_client_factory"])
+    assert "ca_cert_name" not in runtime
+
+    svc.put_custom_servers(uid, {"private": {"transport": "streamable_http", "url": spec["url"]}})
+    assert "ca_cert" not in svc.get_custom_servers_for_api(uid)["private"]
+    assert "httpx_client_factory" not in svc.custom_harness_configs(uid)["private"]
+
+
+def test_certificate_draft_preserves_oauth_only_for_saved_url(
+    svc: ConnectorService, db: SqlitePool, tmp_path: Path
+):
+    uid = _ensure_user(db)
+    spec = {"transport": "streamable_http", "url": "https://mcp.example.com/mcp"}
+    svc.put_custom_servers(uid, {"private": spec})
+    row = svc.list_user_instances(uid)[0]
+    svc.encrypt_and_store(
+        instance_id=row.instance_id,
+        payload={"servers": {"private": {**spec, "oauth": {"access_token": "saved-token"}}}},
+    )
+    draft = {**spec, "ca_cert": make_test_certificate(tmp_path).ca_pem}
+    prepared = svc.custom_probe_spec(uid, "private", draft)
+    assert prepared["ca_cert"] == draft["ca_cert"]
+    assert prepared["oauth"]["access_token"] == "saved-token"
+    assert "oauth" not in svc.custom_probe_spec(
+        uid, "private", {**draft, "url": "https://different.example/mcp"}
+    )
+    assert "ca_cert" not in svc.get_custom_servers(uid)["private"]
 
 
 def test_put_and_expand_custom_mcp(svc: ConnectorService, db: SqlitePool):

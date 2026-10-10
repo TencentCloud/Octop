@@ -298,6 +298,22 @@ class ConnectorService:
     def get_custom_servers_for_api(self, user_id: int) -> dict[str, Any]:
         return redact_servers_for_api(self.get_custom_servers(user_id))
 
+    def custom_probe_spec(
+        self, user_id: int, name: str | None, draft: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Test draft certificates while keeping saved OAuth bound to the same URL."""
+        spec = dict(draft)
+        if name:
+            saved = self.get_custom_servers(user_id).get(name)
+            spec.pop("oauth", None)
+            if (
+                isinstance(saved, dict)
+                and spec.get("url") == saved.get("url")
+                and isinstance(saved.get("oauth"), dict)
+            ):
+                spec["oauth"] = dict(saved["oauth"])
+        return spec
+
     def put_custom_servers(self, user_id: int, servers: dict[str, Any]) -> dict[str, Any]:
         existing = self.get_custom_servers(user_id)
         merged = merge_preserved_oauth(servers, existing)

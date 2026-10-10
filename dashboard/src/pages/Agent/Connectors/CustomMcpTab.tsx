@@ -328,7 +328,12 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
     }
     setOauthAvailable((prev) => ({ ...prev, [card.key]: false }));
     if (!fromSave) {
-      message.error(result.error ?? t("connectors.probeFailed", "探测失败"));
+      const fallback = result.error ?? t("connectors.probeFailed", "探测失败");
+      message.error(
+        result.error_code
+          ? t(`apiErrors.${result.error_code}`, { defaultValue: fallback })
+          : fallback,
+      );
     }
   };
 
@@ -342,12 +347,15 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
     clearProbeResult(card.key);
     try {
       let result: ConnectorProbeResult;
-      if (byName || card.oauthConfigured) {
+      if (byName) {
         result = await connectorsApi.testCustomMcp({ name: card.name.trim() });
       } else {
         const map = cardsToServers([card]);
         const server = map[card.name.trim()];
-        result = await connectorsApi.testCustomMcp({ server });
+        result = await connectorsApi.testCustomMcp({
+          server,
+          ...(card.oauthConfigured ? { name: card.name.trim() } : {}),
+        });
       }
       applyProbeResult(card, result, { fromSave });
     } catch (e) {
@@ -386,6 +394,13 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       } else if (code === "empty_name") {
         message.warning(
           t("connectors.customMcp.emptyName", "请填写服务器名称"),
+        );
+      } else if (code === "certificate_required") {
+        message.warning(
+          t(
+            "connectors.customMcp.certificateRequired",
+            "请填写 HTTPS 地址并上传证书",
+          ),
         );
       } else {
         message.warning(
@@ -432,9 +447,14 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
   const handleProbe = async (card: ServerCardState) => {
     try {
       cardsToServers([card]);
-    } catch {
+    } catch (e) {
       message.warning(
-        t("connectors.customMcp.probeNeedConfig", "请先填写完整配置再探测"),
+        e instanceof Error && e.message === "certificate_required"
+          ? t(
+              "connectors.customMcp.certificateRequired",
+              "请填写 HTTPS 地址并上传证书",
+            )
+          : t("connectors.customMcp.probeNeedConfig", "请先填写完整配置再探测"),
       );
       return;
     }

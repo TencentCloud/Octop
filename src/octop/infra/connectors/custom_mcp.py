@@ -6,6 +6,7 @@ import re
 from typing import Any, Literal
 from urllib.parse import urlparse
 
+from octop.infra.connectors.mcp_tls import certificate_client_factory, normalize_ca_cert
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.ssrf_guard import (
     UnsafeOutboundUrl,
@@ -20,7 +21,7 @@ _SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _META_KEYS = frozenset({"enabled", "display_name", "default_open", "shared"})
 _OAUTH_KEY = "oauth"
 _SECRET_KEYS = frozenset({_OAUTH_KEY})
-_HARNESS_STRIP_KEYS = _META_KEYS | _SECRET_KEYS
+_HARNESS_STRIP_KEYS = _META_KEYS | _SECRET_KEYS | {"ca_cert", "ca_cert_name"}
 _DISPLAY_NAME_MAX = 64
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
 
@@ -196,6 +197,16 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
         headers = _normalize_headers(raw.get("headers"))
         if headers:
             spec["headers"] = headers
+        if raw.get("ca_cert"):
+            if urlparse(url).scheme != "https":
+                raise OctopError(
+                    ErrorCode.CONNECTOR_MCP_CERT_INVALID,
+                    "custom MCP certificates require an HTTPS URL",
+                )
+            spec["ca_cert"] = normalize_ca_cert(raw["ca_cert"])
+            cert_name = str(raw.get("ca_cert_name") or "").strip()
+            if cert_name:
+                spec["ca_cert_name"] = cert_name[:255]
     else:
         command = str(raw.get("command") or "").strip()
         if not command:
@@ -380,6 +391,8 @@ def harness_spec_for_server(spec: dict[str, Any]) -> dict[str, Any]:
             headers["Authorization"] = f"Bearer {token}"
         headers.setdefault("Accept", _MCP_STREAMABLE_HTTP_ACCEPT)
         out["headers"] = headers
+        if spec.get("ca_cert"):
+            out["httpx_client_factory"] = certificate_client_factory(spec["ca_cert"])
     return out
 
 

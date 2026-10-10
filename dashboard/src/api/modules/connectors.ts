@@ -110,6 +110,7 @@ export interface ConnectorProbeResult {
   tool_count?: number;
   tools?: { name: string; description: string }[];
   error?: string;
+  error_code?: string;
   error_type?: string;
   status_code?: number;
   oauth?: {
@@ -134,6 +135,9 @@ export interface CustomMcpOAuthPreview {
 }
 
 export interface CustomMcpServerSpec {
+  /** PEM trust certificate/bundle used only for this HTTPS MCP server. */
+  ca_cert?: string;
+  ca_cert_name?: string;
   transport: CustomMcpTransport;
   url?: string;
   headers?: Record<string, string>;

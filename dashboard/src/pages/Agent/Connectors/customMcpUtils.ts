@@ -13,6 +13,9 @@ export interface ServerCardState {
   transport: CustomMcpTransport;
   url: string;
   headersText: string;
+  useCustomCertificate: boolean;
+  caCert: string;
+  caCertName: string;
   command: string;
   argsText: string;
   envText: string;
@@ -121,6 +124,9 @@ export function serversToCards(servers: CustomMcpServers): ServerCardState[] {
     transport: spec.transport === "stdio" ? "stdio" : "streamable_http",
     url: spec.url ?? "",
     headersText: headersToText(spec.headers),
+    useCustomCertificate: Boolean(spec.ca_cert),
+    caCert: spec.ca_cert ?? "",
+    caCertName: spec.ca_cert_name ?? "",
     command: spec.command ?? "",
     argsText: (spec.args ?? []).join("\n"),
     envText: envToText(spec.env),
@@ -159,6 +165,16 @@ export function cardsToServers(cards: ServerCardState[]): CustomMcpServers {
     }
     if (card.transport === "streamable_http") {
       spec.url = card.url.trim();
+      if (card.useCustomCertificate) {
+        if (
+          !spec.url.toLowerCase().startsWith("https://") ||
+          !card.caCert.trim()
+        ) {
+          throw new Error("certificate_required");
+        }
+        spec.ca_cert = card.caCert.trim();
+        if (card.caCertName) spec.ca_cert_name = card.caCertName;
+      }
       const headers = parseHeadersText(card.headersText);
       if (Object.keys(headers).length > 0) {
         spec.headers = headers;
@@ -243,6 +259,9 @@ export function newCard(
     transport,
     url: "",
     headersText: "",
+    useCustomCertificate: false,
+    caCert: "",
+    caCertName: "",
     command: "",
     argsText: "",
     envText: "",

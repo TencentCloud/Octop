@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
+from mcp.shared._httpx_utils import McpHttpClientFactory
 from mcp.shared.exceptions import McpError
 
 from octop.config import OctopConfig
@@ -274,13 +275,13 @@ async def _probe_mcp_sse(
                 logger.warning("%s SSE probe transient failure, retrying: %s", kind, exc)
                 continue
             logger.exception("%s SSE probe failed", kind)
-            return {"ok": False, "error": str(exc)}
+            return {"ok": False, "error": format_probe_exception(exc)}
         except Exception as exc:
             if attempt == 0:
                 logger.warning("%s SSE probe transient failure, retrying: %s", kind, exc)
                 continue
             logger.exception("%s SSE probe failed", kind)
-            return {"ok": False, "error": str(exc)}
+            return {"ok": False, "error": format_probe_exception(exc)}
     return {"ok": False, "error": "SSE probe failed after retry"}
 
 
@@ -332,6 +333,7 @@ async def probe_streamable_http_mcp(
     headers: dict[str, str],
     *,
     kind: str,
+    httpx_client_factory: McpHttpClientFactory | None = None,
 ) -> dict[str, Any]:
     """Probe Notion/Figma-style remote MCP via Streamable HTTP (session + SSE).
 
@@ -343,10 +345,15 @@ async def probe_streamable_http_mcp(
     from mcp import ClientSession
     from mcp.client.streamable_http import streamablehttp_client
 
+    client_options: dict[str, Any] = {}
+    if httpx_client_factory is not None:
+        client_options["httpx_client_factory"] = httpx_client_factory
     for attempt in range(2):
         try:
             async with (
-                streamablehttp_client(url, headers=headers, timeout=20, sse_read_timeout=20) as (
+                streamablehttp_client(
+                    url, headers=headers, timeout=20, sse_read_timeout=20, **client_options
+                ) as (
                     read,
                     write,
                     _get_session_id,
@@ -386,7 +393,7 @@ async def probe_streamable_http_mcp(
                 )
                 continue
             logger.exception("streamable HTTP MCP probe failed for %s", kind)
-            return {"ok": False, "error": str(exc)}
+            return {"ok": False, "error": format_probe_exception(exc)}
         except Exception as exc:
             if attempt == 0:
                 logger.warning(
@@ -394,7 +401,7 @@ async def probe_streamable_http_mcp(
                 )
                 continue
             logger.exception("streamable HTTP MCP probe failed for %s", kind)
-            return {"ok": False, "error": str(exc)}
+            return {"ok": False, "error": format_probe_exception(exc)}
     return {"ok": False, "error": "streamable HTTP probe failed after retry"}
 
 
@@ -555,7 +562,10 @@ async def probe_custom_mcp_server(spec: dict[str, Any]) -> dict[str, Any]:
         headers = {str(k): str(v) for k, v in dict(connection.get("headers") or {}).items()}
         # Ensure streamable Accept if caller omitted it.
         headers.setdefault("Accept", "application/json, text/event-stream")
-        result = await probe_streamable_http_mcp(url, headers, kind="custom-mcp")
+        probe_options: dict[str, Any] = {}
+        if "httpx_client_factory" in connection:
+            probe_options["httpx_client_factory"] = connection["httpx_client_factory"]
+        result = await probe_streamable_http_mcp(url, headers, kind="custom-mcp", **probe_options)
         return await _maybe_attach_oauth_discovery(result, url=url, headers=headers)
 
     if transport == "stdio":

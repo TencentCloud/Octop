@@ -104,3 +104,37 @@ async def test_streamable_http_probe_does_not_retry_an_auth_rejection(
     assert result["ok"] is False
     assert result["error_type"] == "auth"
     assert len(attempts) == 1
+
+
+@pytest.mark.parametrize("transport", ["sse", "streamable_http"])
+@pytest.mark.parametrize("nested", [False, True])
+async def test_http_probe_surfaces_certificate_error(
+    monkeypatch: pytest.MonkeyPatch,
+    transport: str,
+    nested: bool,
+) -> None:
+    """TLS failures stay actionable even when the MCP client wraps them in TaskGroups."""
+    message = (
+        "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+        "unable to get local issuer certificate"
+    )
+    failure: Exception = httpx.ConnectError(message)
+    if nested:
+        failure = ExceptionGroup(
+            "unhandled errors in a TaskGroup",
+            [ExceptionGroup("unhandled errors in a TaskGroup", [failure])],
+        )
+
+    @asynccontextmanager
+    async def failing_client(*args: Any, **kwargs: Any):
+        raise failure
+        yield  # pragma: no cover
+
+    if transport == "sse":
+        monkeypatch.setattr("mcp.client.sse.sse_client", failing_client)
+        result = await probe._probe_mcp_sse(_URL, {}, kind="custom-mcp")
+    else:
+        monkeypatch.setattr("mcp.client.streamable_http.streamablehttp_client", failing_client)
+        result = await probe.probe_streamable_http_mcp(_URL, {}, kind="custom-mcp")
+
+    assert result == {"ok": False, "error": message}
