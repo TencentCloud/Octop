@@ -61,12 +61,18 @@ def _relocated_profiles_root_for_uid(uid: int | None = None) -> Path:
 
 
 def ensure_chrome_runtime_env() -> Path:
-    """Force a writable ``XDG_RUNTIME_DIR`` for Chrome on Linux.
+    """Prepare a writable ``XDG_RUNTIME_DIR`` for Chrome on Linux.
 
     Chrome defaults to ``/run/user/<uid>``, which is often missing or
     unwritable on headless / root / container hosts (``mkdir: cannot create
-    directory '/run/user/0': Permission denied``). Always point at a private
-    ``/tmp`` directory owned by the current process.
+    directory '/run/user/0': Permission denied``). Prepare a private ``/tmp``
+    directory owned by the current process; the browser launcher injects it
+    into Chrome's subprocess env.
+
+    Deliberately does not write ``os.environ``: ``XDG_RUNTIME_DIR`` is
+    process-global, and ``systemctl --user`` resolves the user bus via
+    ``$XDG_RUNTIME_DIR/bus``, so redirecting it here would silently break
+    service restarts issued by this process.
 
     Chrome expects ``XDG_RUNTIME_DIR`` mode ``0700``; set that only on the
     directory we just created — never on profile trees or system paths.
@@ -75,7 +81,6 @@ def ensure_chrome_runtime_env() -> Path:
     path.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         os.chmod(path, 0o700)
-    os.environ["XDG_RUNTIME_DIR"] = str(path)
     return path
 
 
@@ -280,7 +285,8 @@ async def prepare_harness_profile_for_launch(
 ) -> Path:
     """Make an octop-browser profile safe to (re)launch Chrome against.
 
-    - Forces a writable ``XDG_RUNTIME_DIR``
+    - Prepares a writable ``XDG_RUNTIME_DIR`` for Chrome (without touching
+      the process env)
     - Injects virtual-desktop ``DISPLAY`` when Xvnc is up
     - Prefers shared ``~/.octop/browser-profiles`` (cross-agent)
     - If CDP is already listening, leaves the running browser alone

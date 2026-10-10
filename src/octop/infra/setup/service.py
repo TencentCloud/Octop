@@ -297,11 +297,20 @@ def _sudo_as_user_prefix(run_as_user: str) -> list[str]:
 
 
 def _systemd_user_cmd_prefix(run_as_user: str) -> list[str]:
-    """Prefix for ``systemctl --user`` when the installer is root but the owner is not."""
+    """Prefix for ``systemctl --user`` that pins the real ``XDG_RUNTIME_DIR``.
+
+    ``systemctl --user`` finds the user bus via ``$XDG_RUNTIME_DIR/bus``. The
+    calling process may have redirected ``XDG_RUNTIME_DIR`` (e.g. the browser
+    harness points Chrome at a private /tmp runtime dir and that can leak into
+    the server env), so always pin the target user's systemd runtime dir.
+    """
     prefix = _sudo_as_user_prefix(run_as_user)
-    if not prefix:
-        return []
-    uid = pwd.getpwnam(run_as_user).pw_uid
+    if run_as_user == "root":
+        return prefix
+    try:
+        uid = pwd.getpwnam(run_as_user).pw_uid
+    except KeyError:
+        return prefix
     # ``VAR=val`` only works in a shell; subprocess needs ``env VAR=val``.
     return [*prefix, "env", f"XDG_RUNTIME_DIR=/run/user/{uid}"]
 

@@ -761,6 +761,29 @@ def test_systemctl_user_wraps_xdg_runtime_dir_for_root_install(
     ]
 
 
+def test_systemctl_user_pins_real_runtime_dir_for_non_root_install(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The server process env may have XDG_RUNTIME_DIR redirected (browser
+    # harness); systemctl --user must still resolve the real user bus.
+    monkeypatch.setattr(service_mod, "is_root", lambda: False)
+    monkeypatch.setattr(
+        service_mod.pwd,
+        "getpwnam",
+        lambda _name: type("Pw", (), {"pw_uid": 1000, "pw_dir": "/home/wang"})(),
+    )
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/tmp/runtime-octop-browser-1000")
+    cmd = service_mod._systemctl("user", "restart", "octop", run_as_user="wang")
+    assert cmd == [
+        "env",
+        "XDG_RUNTIME_DIR=/run/user/1000",
+        "systemctl",
+        "--user",
+        "restart",
+        "octop",
+    ]
+
+
 def test_auto_scope_root_always_system(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
