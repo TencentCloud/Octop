@@ -203,7 +203,7 @@ async def test_save_attachment_pdf_uses_extension() -> None:
             media_type="application/pdf",
             data=b"%PDF-1.4",
         )
-        assert re.fullmatch(r"inbound/\d{10,}_report\.pdf", stored.data_path)
+        assert re.fullmatch(r"inbound/[0-9a-f]{32}/\d{10,}_report\.pdf", stored.data_path)
         assert stored.filename == "report.pdf"
         assert stored.data_path.endswith(".pdf")
 

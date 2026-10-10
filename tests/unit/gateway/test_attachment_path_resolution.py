@@ -55,7 +55,7 @@ async def test_upload_stores_timestamped_path_keeps_display_filename() -> None:
             data=b"%PDF-1.4",
         )
         assert stored.data_path.startswith("inbound/")
-        assert re.search(r"/\d{10,}_我的报告\.pdf$", stored.data_path)
+        assert re.search(r"/[0-9a-f]{32}/\d{10,}_我的报告\.pdf$", stored.data_path)
         assert stored.filename == "我的报告.pdf"
 
 
