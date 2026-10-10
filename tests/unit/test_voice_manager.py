@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.voice_providers import VoiceProviderRepo, VoiceProviderRow
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.tencent_asr_sign import DEFAULT_ENGINE
 from octop.infra.voice import adapters
 from octop.infra.voice.manager import VoiceManager
 
@@ -26,6 +28,36 @@ def voice_repos(tmp_path: Path) -> tuple[SettingsRepo, VoiceProviderRepo]:
 def voice_mgr(voice_repos: tuple[SettingsRepo, VoiceProviderRepo]) -> VoiceManager:
     settings, repo = voice_repos
     return VoiceManager(settings_repo=settings, voice_provider_repo=repo)
+
+
+@pytest.fixture
+def tencent_mgr(tmp_path: Path) -> tuple[VoiceManager, VoiceProviderRepo]:
+    db = SqlitePool(tmp_path / "octop.db")
+    run_migrations(db)
+    repo = VoiceProviderRepo(db)
+    manager = VoiceManager(settings_repo=SettingsRepo(db), voice_provider_repo=repo)
+    return manager, repo
+
+
+def _add_tencent(
+    repo: VoiceProviderRepo, extra: dict[str, object], *, name: str = "tencent"
+) -> None:
+    repo.create(
+        name=name,
+        kind="tencent",
+        capability="both",
+        api_key="sid:skey",
+        extra_json=json.dumps(extra),
+    )
+
+
+TENCENT_REALTIME_EXTRA: dict[str, object] = {
+    "secret_id": "sid",
+    "secret_key": "skey",
+    "region": "ap-guangzhou",
+    "realtime_stt": True,
+    "app_id": "1302566622",
+}
 
 
 def test_default_active_is_browser(voice_mgr: VoiceManager) -> None:
@@ -138,3 +170,61 @@ def test_invalid_tts_does_not_partially_change_active_providers(
         voice_mgr.set_active(stt="MyASR", tts="MyASR")
     assert exc.value.code == ErrorCode.VOICE_CAPABILITY_MISMATCH
     assert voice_mgr.get_active() == initial
+
+
+def test_realtime_config_is_none_by_default(voice_mgr: VoiceManager) -> None:
+    assert voice_mgr.realtime_stt_config() is None
+
+
+@pytest.mark.parametrize("name", ["tencent", "CustomTencent"])
+def test_realtime_config_needs_tencent_as_active_stt(
+    tencent_mgr: tuple[VoiceManager, VoiceProviderRepo], name: str
+) -> None:
+    manager, repo = tencent_mgr
+    _add_tencent(repo, TENCENT_REALTIME_EXTRA, name=name)
+
+    assert manager.realtime_stt_config() is None
+
+    manager.set_active(stt=name)
+    config = manager.realtime_stt_config()
+    assert config is not None
+    assert config.app_id == "1302566622"
+    assert config.secret_id == "sid"
+    assert config.secret_key == "skey"
+    assert config.engine == DEFAULT_ENGINE
+
+
+def test_realtime_config_needs_the_switch_on(
+    tencent_mgr: tuple[VoiceManager, VoiceProviderRepo],
+) -> None:
+    manager, repo = tencent_mgr
+    _add_tencent(repo, {**TENCENT_REALTIME_EXTRA, "realtime_stt": False})
+    manager.set_active(stt="tencent")
+
+    assert manager.realtime_stt_config() is None
+
+
+@pytest.mark.parametrize("app_id", ["", "   ", None])
+def test_realtime_config_needs_an_app_id(
+    tencent_mgr: tuple[VoiceManager, VoiceProviderRepo], app_id: str | None
+) -> None:
+    manager, repo = tencent_mgr
+    _add_tencent(repo, {**TENCENT_REALTIME_EXTRA, "app_id": app_id})
+    manager.set_active(stt="tencent")
+
+    assert manager.realtime_stt_config() is None
+
+
+def test_realtime_config_needs_complete_credentials(
+    tencent_mgr: tuple[VoiceManager, VoiceProviderRepo],
+) -> None:
+    manager, repo = tencent_mgr
+    repo.create(
+        name="tencent",
+        kind="tencent",
+        capability="both",
+        extra_json=json.dumps({"realtime_stt": True, "app_id": "1302566622"}),
+    )
+    manager.set_active(stt="tencent")
+
+    assert manager.realtime_stt_config() is None

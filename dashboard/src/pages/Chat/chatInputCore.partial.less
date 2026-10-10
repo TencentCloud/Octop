@@ -76,6 +76,7 @@
 }
 
 .inputWrapper {
+  position: relative;
   max-width: var(--chat-column-max, 960px);
   min-width: 280px;
   margin: 0 auto;
@@ -871,6 +872,30 @@
     box-shadow: 0 0 0 2px var(--fn-color-brand-glow);
     background: var(--fn-bg-hover);
   }
+}
+
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  border-radius: inherit;
+  border: 1.5px dashed var(--fn-color-brand);
+  background: color-mix(
+    in srgb,
+    var(--fn-bg-primary) 82%,
+    var(--fn-color-brand)
+  );
+  color: var(--fn-color-brand);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* A right-docked workspace can narrow the chat without narrowing the viewport.

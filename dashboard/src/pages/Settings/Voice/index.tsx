@@ -7,6 +7,7 @@ import {
   Input,
   Popconfirm,
   Select,
+  Switch,
   Tooltip,
   Typography,
 } from "antd";
@@ -52,6 +53,8 @@ export function VoiceSettingsPanel() {
   const [apiKey, setApiKey] = useState("");
   const [secretId, setSecretId] = useState("");
   const [secretKey, setSecretKey] = useState("");
+  const [realtimeStt, setRealtimeStt] = useState(false);
+  const [appId, setAppId] = useState("");
   const [mimoEndpoint, setMimoEndpoint] = useState<"payg" | "tokenplan">(
     "payg",
   );
@@ -133,6 +136,8 @@ export function VoiceSettingsPanel() {
     const extra = existing?.extra ?? {};
     setSecretId(String(extra.secret_id ?? ""));
     setSecretKey(String(extra.secret_key ?? ""));
+    setRealtimeStt(extra.realtime_stt === true);
+    setAppId(String(extra.app_id ?? ""));
     setMimoEndpoint(extra.endpoint_type === "tokenplan" ? "tokenplan" : "payg");
     setMimoVoiceId(String(extra.voice_id ?? "冰糖"));
   };
@@ -147,6 +152,8 @@ export function VoiceSettingsPanel() {
         secret_id: secretId,
         secret_key: secretKey,
         region: "ap-guangzhou",
+        realtime_stt: realtimeStt,
+        app_id: appId.trim() || undefined,
       };
     } else if (preset.kind === "edge") {
       extra = { voice_id: "zh-CN-XiaoxiaoNeural" };
@@ -193,6 +200,10 @@ export function VoiceSettingsPanel() {
         ? Boolean(secretId.trim() && secretKey.trim())
         : Boolean(apiKey.trim());
     if (!complete) message.warning(t("voice.credentialsRequired"));
+    if (complete && realtimeStt && !appId.trim()) {
+      message.warning(t("voice.realtimeAppIdRequired"));
+      return false;
+    }
     return complete;
   };
 
@@ -233,6 +244,9 @@ export function VoiceSettingsPanel() {
       } else {
         await voiceApi.createProvider(payload);
       }
+      // The active payload carries `stt_realtime`, so drop the cache even when
+      // the active provider itself does not change (e.g. the switch was toggled).
+      invalidateVoiceConfigCache();
       if (
         preset.kind !== "browser" &&
         (preset.capability === "stt" || preset.capability === "both") &&
@@ -240,7 +254,6 @@ export function VoiceSettingsPanel() {
       ) {
         const next = await voiceApi.setActive({ stt: preset.id });
         setActive(next);
-        invalidateVoiceConfigCache();
       }
       if (
         preset.kind !== "browser" &&
@@ -249,7 +262,6 @@ export function VoiceSettingsPanel() {
       ) {
         const next = await voiceApi.setActive({ tts: preset.id });
         setActive(next);
-        invalidateVoiceConfigCache();
       }
       message.success(t("voice.saved"));
       setConfigure(null);
@@ -569,6 +581,26 @@ export function VoiceSettingsPanel() {
                   onChange={(e) => setSecretKey(e.target.value)}
                 />
               </Form.Item>
+              <Form.Item
+                label={t("voice.realtimeStt")}
+                style={{ marginBottom: 8 }}
+              >
+                <Switch checked={realtimeStt} onChange={setRealtimeStt} />
+              </Form.Item>
+              <Form.Item label="AppID" required={realtimeStt}>
+                <Input
+                  placeholder="1300000000"
+                  value={appId}
+                  disabled={!realtimeStt}
+                  inputMode="numeric"
+                  onChange={(e) => setAppId(e.target.value)}
+                />
+              </Form.Item>
+              {realtimeStt && (
+                <div className={styles.drawerHint}>
+                  {t("voice.realtimeSttHint")}
+                </div>
+              )}
             </>
           )}
           {configure?.preset.kind === "openai" && (

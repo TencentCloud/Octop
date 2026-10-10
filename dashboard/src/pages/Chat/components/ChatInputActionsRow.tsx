@@ -6,6 +6,8 @@ import {
   Square,
   MessageSquarePlus,
   Paperclip,
+  FileUp,
+  FolderUp,
   Zap,
   Link2,
   Sparkles,
@@ -130,6 +132,10 @@ interface ChatInputActionsRowProps {
   uploading: boolean;
   recording: boolean;
   transcribing: boolean;
+  /** Realtime STT streams while held down, so the mic is press-and-hold. */
+  voiceHoldToTalk?: boolean;
+  onVoiceStart?: () => void;
+  onVoiceStop?: () => void;
   browserRecording?: boolean;
   browserReplayBusy?: boolean;
   browserLastRecordingId?: string | null;
@@ -174,6 +180,7 @@ interface ChatInputActionsRowProps {
   slashMenuItems: SlashMenuItem[];
   onSlashShortcutSelect: (command: string) => void;
   onFileSelect: () => void;
+  onFolderSelect: () => void;
   onNewChat: () => void;
   onPolish: () => void;
   onToggleVoice: () => void;
@@ -192,6 +199,9 @@ export default function ChatInputActionsRow({
   uploading,
   recording,
   transcribing,
+  voiceHoldToTalk = false,
+  onVoiceStart,
+  onVoiceStop,
   browserRecording = false,
   browserReplayBusy = false,
   browserLastRecordingId = null,
@@ -228,6 +238,7 @@ export default function ChatInputActionsRow({
   slashMenuItems,
   onSlashShortcutSelect,
   onFileSelect,
+  onFolderSelect,
   onNewChat,
   onPolish,
   onToggleVoice,
@@ -239,6 +250,7 @@ export default function ChatInputActionsRow({
   const remoteManaged = Boolean(agentId?.startsWith("bridge:"));
   const skillDisplayName = useSkillDisplayName();
   const actionsRowRef = useRef<HTMLDivElement | null>(null);
+  const voiceHeldRef = useRef(false);
   const [plusMenuEl, setPlusMenuEl] = useState<HTMLDivElement | null>(null);
   const [plusPanelEl, setPlusPanelEl] = useState<HTMLDivElement | null>(null);
   const [plusPanelMaxHeight, setPlusPanelMaxHeight] = useState<number | null>(
@@ -248,9 +260,23 @@ export default function ChatInputActionsRow({
   const [modelQuery, setModelQuery] = useState("");
   const [isCompact, setIsCompact] = useState(false);
   const [shortcutOpen, setShortcutOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [reasoningModelRef, setReasoningModelRef] = useState<string | null>(
     null,
   );
+  // Press-and-hold dictation: start on pointerdown, finish on release or when
+  // the pointer slides off the button (also covers touch cancel).
+  const handleVoicePressStart = () => {
+    if (voiceHeldRef.current) return;
+    voiceHeldRef.current = true;
+    onVoiceStart?.();
+  };
+
+  const handleVoicePressEnd = () => {
+    if (!voiceHeldRef.current) return;
+    voiceHeldRef.current = false;
+    onVoiceStop?.();
+  };
   /** Plus-button menu (model / skills / …). */
   const [overflowPopoverOpen, setOverflowPopoverOpen] = useState(false);
   /** Picker panel opened from a plus-menu item. */
@@ -1011,20 +1037,57 @@ export default function ChatInputActionsRow({
             </button>
           </Tooltip>
         </Popover>
-        <Tooltip
-          title={t("upload.fileTooltip", "Upload attachment")}
-          mouseEnterDelay={0.4}
+        <Popover
+          trigger="click"
+          placement="topLeft"
+          open={uploadOpen}
+          onOpenChange={setUploadOpen}
+          overlayClassName={styles.skillPickerPopover}
+          content={
+            <div className={styles.mobileOverflowMenu} role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className={styles.mobileOverflowItem}
+                onClick={() => {
+                  setUploadOpen(false);
+                  onFileSelect();
+                }}
+              >
+                <span className={styles.mobileOverflowItemMain}>
+                  <FileUp size={16} />
+                  <span>{t("upload.files", "Files")}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className={styles.mobileOverflowItem}
+                onClick={() => {
+                  setUploadOpen(false);
+                  onFolderSelect();
+                }}
+              >
+                <span className={styles.mobileOverflowItemMain}>
+                  <FolderUp size={16} />
+                  <span>{t("upload.folder", "Folder")}</span>
+                </span>
+              </button>
+            </div>
+          }
         >
-          <button
-            className={styles.secondaryBtn}
-            onClick={onFileSelect}
-            type="button"
-            disabled={uploading}
-            aria-label={t("upload.fileTooltip", "Upload attachment")}
-          >
-            <Paperclip size={16} />
-          </button>
-        </Tooltip>
+          <Tooltip title={t("upload.tooltip", "Upload")} mouseEnterDelay={0.4}>
+            <button
+              className={styles.secondaryBtn}
+              type="button"
+              disabled={uploading}
+              aria-label={t("upload.tooltip", "Upload")}
+              aria-haspopup="menu"
+            >
+              <Paperclip size={16} />
+            </button>
+          </Tooltip>
+        </Popover>
       </>
     );
   };
@@ -1100,6 +1163,10 @@ export default function ChatInputActionsRow({
           title={
             !_sttAvailable
               ? t("voice.sttNotAvailable", "此设备不支持语音输入（需要 HTTPS）")
+              : voiceHoldToTalk
+              ? recording
+                ? t("voice.releaseToStop", "松开结束")
+                : t("voice.holdToTalk", "按住说话")
               : recording
               ? t("voice.stopRecording", "停止录音")
               : transcribing
@@ -1113,8 +1180,29 @@ export default function ChatInputActionsRow({
               recording || transcribing ? styles.secondaryBtnActive : ""
             }`}
             type="button"
-            disabled={disabled || isStreaming || transcribing || !_sttAvailable}
-            onClick={onToggleVoice}
+            // Dictation only fills the composer, so it stays available while a
+            // reply is still streaming.
+            disabled={disabled || transcribing || !_sttAvailable}
+            onClick={voiceHoldToTalk ? undefined : onToggleVoice}
+            onPointerDown={
+              voiceHoldToTalk
+                ? (event) => {
+                    event.preventDefault();
+                    handleVoicePressStart();
+                  }
+                : undefined
+            }
+            onPointerUp={voiceHoldToTalk ? handleVoicePressEnd : undefined}
+            onPointerLeave={voiceHoldToTalk ? handleVoicePressEnd : undefined}
+            onPointerCancel={voiceHoldToTalk ? handleVoicePressEnd : undefined}
+            onContextMenu={
+              voiceHoldToTalk ? (event) => event.preventDefault() : undefined
+            }
+            style={
+              voiceHoldToTalk
+                ? { touchAction: "none", userSelect: "none" }
+                : undefined
+            }
           >
             <Mic size={16} />
           </button>

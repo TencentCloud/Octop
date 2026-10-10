@@ -101,7 +101,7 @@ async def test_custom_voice_provider_lifecycle_and_dispatch(
         json={"stt": "MyVoice", "tts": "MyVoice"},
     )
     assert active.status_code == 200
-    assert active.json() == {"stt": "MyVoice", "tts": "MyVoice"}
+    assert active.json() == {"stt": "MyVoice", "tts": "MyVoice", "stt_realtime": False}
     assert (await client.get("/api/voice/active", headers=auth)).json() == active.json()
 
     for changes in ({"capability": "stt"}, {"enabled": False}):

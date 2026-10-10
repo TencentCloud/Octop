@@ -1183,7 +1183,11 @@ class BridgeManager:
             mapped["remote_agent_id"] = remote_id
             mapped["bridge"] = True
             mapped["bridge_inbound"] = _is_inbound(row)
-            mapped["is_owner"] = True
+            # scope=mine also includes experts shared by other users. Keep the
+            # peer account's ownership so those rows are not offered for delete.
+            # Peers that omit the field predate this flag; treat them as owned.
+            mapped["is_owner"] = bool(item["is_owner"]) if "is_owner" in item else True
+            mapped["is_shared"] = bool(item.get("is_shared"))
             # Shadow experts are chat-ready while the bridge link is live.
             mapped["state"] = "running"
             # Keep bundled /experts/avatars and CDN URLs; proxy uploaded avatars.
