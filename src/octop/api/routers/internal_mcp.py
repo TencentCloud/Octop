@@ -31,6 +31,7 @@ def _service(server: Any) -> ConnectorService:
         secret_repo=server.services.secret_repo,
         settings_repo=server.services.settings_repo,
         config=server.services.config,
+        user_repo=server.services.repos.user_repo,
     )
 
 

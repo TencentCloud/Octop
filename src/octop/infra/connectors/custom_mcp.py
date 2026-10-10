@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -13,6 +14,8 @@ from octop.infra.utils.ssrf_guard import (
     validate_https_url,
 )
 
+logger = logging.getLogger(__name__)
+
 CUSTOM_MCP_KIND = "custom-mcp"
 CUSTOM_MCP_DISPLAY_NAME = "自定义 MCP"
 
@@ -23,6 +26,28 @@ _SECRET_KEYS = frozenset({_OAUTH_KEY})
 _HARNESS_STRIP_KEYS = _META_KEYS | _SECRET_KEYS
 _DISPLAY_NAME_MAX = 64
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
+
+# --- Per-user scope placeholders -------------------------------------------------
+# A ``headers`` value may reference the *requesting* user via ``${octop.user_id}``
+# or ``${octop.username}``. The template is stored verbatim and substituted when
+# Octop materializes the MCP connection spec for one user, so a single
+# ``shared: true`` connector can carry a different identity header per end user
+# (e.g. a multi-tenant server that keys sessions by a tenant header) instead of
+# forcing one private connector per user.
+_USER_SCOPE_TOKENS = frozenset({"user_id", "username"})
+_USER_SCOPE_RE = re.compile(r"\$\{octop\.([A-Za-z_][A-Za-z0-9_]*)\}")
+_USER_SCOPE_LITERAL = "${octop."
+# A resolved value becomes part of an HTTP header *and* usually feeds a
+# server-side identity key. Keep it inside the strictest shape those consumers
+# accept: ``[A-Za-z0-9._-]`` and 64 chars. Anything looser is not cosmetic - a
+# downstream app that rejects the key tends to fall back to one shared default
+# identity, which silently merges every user back together.
+_SCOPE_VALUE_SAFE_RE = re.compile(r"[^A-Za-z0-9._-]")
+_SCOPE_VALUE_MAX = 64
+# Sanity bound for the raw header text before the identity budget is applied;
+# overshoots drop to the numeric id instead of being truncated (truncation can
+# make two users collide on the same key).
+_SCOPE_VALUE_HARD_MAX = 512
 
 Transport = Literal["streamable_http", "stdio"]
 
@@ -191,11 +216,16 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
         spec["display_name"] = display_name
 
     if transport == "streamable_http":
-        url = validate_mcp_http_url(str(raw.get("url") or ""))
-        spec["url"] = url
+        raw_url = str(raw.get("url") or "").strip()
+        validate_url_template(name, raw_url)
+        # Validate the host through a filled-in copy, but store the template as
+        # configured so the dashboard keeps showing what the operator wrote.
+        validate_mcp_http_url(url_template_probe(raw_url))
+        spec["url"] = raw_url
         headers = _normalize_headers(raw.get("headers"))
         if headers:
             spec["headers"] = headers
+        validate_user_scope_templates(name, spec)
     else:
         command = str(raw.get("command") or "").strip()
         if not command:
@@ -365,32 +395,179 @@ def merge_preserved_oauth(
     return out
 
 
-def harness_spec_for_server(spec: dict[str, Any]) -> dict[str, Any]:
-    """Strip Octop meta keys; keep langchain-mcp-adapters connection fields."""
+def harness_spec_for_server(
+    spec: dict[str, Any],
+    *,
+    user_scope: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Strip Octop meta keys; keep langchain-mcp-adapters connection fields.
+
+    ``user_scope`` (see :func:`user_scope_context`) resolves ``${octop.*}``
+    placeholders in the url path and header values for the user this connection
+    is built for.
+    """
     out = {k: v for k, v in spec.items() if k not in _HARNESS_STRIP_KEYS}
     # Ensure stdio always has args list for adapters.
     if out.get("transport") == "stdio" and "args" not in out:
         out["args"] = []
     # Streamable HTTP MCP requires both content types (same as built-in remote).
     if out.get("transport") == "streamable_http":
+        if isinstance(out.get("url"), str):
+            out["url"] = resolve_user_scope_url(out["url"], user_scope)
         headers = {str(k): str(v) for k, v in dict(out.get("headers") or {}).items()}
         oauth = oauth_tokens_from_spec(spec)
         token = str(oauth.get("access_token") or "").strip()
         if token:
             headers["Authorization"] = f"Bearer {token}"
         headers.setdefault("Accept", _MCP_STREAMABLE_HTTP_ACCEPT)
-        out["headers"] = headers
+        out["headers"] = apply_user_scope(headers, user_scope)
     return out
 
 
-def enabled_harness_configs(servers: dict[str, Any]) -> dict[str, Any]:
+def sanitize_scope_value(raw: Any) -> str:
+    """Keep a substituted value header-safe: ASCII, no CR/LF, bounded length."""
+    text = _SCOPE_VALUE_SAFE_RE.sub("_", str(raw or "").strip())
+    return text[:_SCOPE_VALUE_HARD_MAX]
+
+
+def user_scope_context(*, user_id: int, username: str | None = None) -> dict[str, str]:
+    """Build the ``${octop.*}`` substitution map for one end user.
+
+    ``username`` falls back to the numeric id when it is missing, collapses to
+    only dots, or cannot fit ``_SCOPE_VALUE_MAX`` - in every case the id is
+    still unique, whereas a blank/oversized value would be rejected downstream
+    and collapse all users onto the same server-side tenant/session (exactly
+    the cross-account leak this feature is meant to prevent).
+    """
+    uid = sanitize_scope_value(int(user_id))
+    name = sanitize_scope_value(username or "")
+    if not name or not name.strip(".") or len(name) > _SCOPE_VALUE_MAX:
+        name = uid
+    return {"user_id": uid, "username": name}
+
+
+def iter_user_scope_tokens(spec: dict[str, Any]) -> set[str]:
+    """Every ``${octop.<token>}`` name referenced by a spec's url or header values."""
+    found: set[str] = set()
+    headers = spec.get("headers")
+    if isinstance(headers, dict):
+        for value in headers.values():
+            found.update(match.group(1) for match in _USER_SCOPE_RE.finditer(str(value)))
+    url = spec.get("url")
+    if isinstance(url, str):
+        found.update(match.group(1) for match in _USER_SCOPE_RE.finditer(url))
+    return found
+
+
+def validate_user_scope_templates(name: str, spec: dict[str, Any]) -> None:
+    """Reject unknown placeholder tokens at save/probe time so typos fail loudly."""
+    unknown = sorted(iter_user_scope_tokens(spec) - _USER_SCOPE_TOKENS)
+    if unknown:
+        supported = ", ".join(f"${{octop.{token}}}" for token in sorted(_USER_SCOPE_TOKENS))
+        raise ValueError(
+            f"server {name!r}: unknown placeholder(s): {', '.join(unknown)}; supported: {supported}"
+        )
+
+
+def validate_url_template(name: str, url: str) -> None:
+    """Keep ``${octop.*}`` below the host so URL validation still sees a real host.
+
+    Only the path/query may be templated; a templated scheme or hostname would
+    move the SSRF / HTTPS decision to after the check has run.
+    """
+    if _USER_SCOPE_LITERAL not in url:
+        return
+    body = url[url.find("://") + 3 :] if "://" in url else url
+    authority = body.split("/", 1)[0].split("?", 1)[0]
+    if _USER_SCOPE_LITERAL in authority:
+        raise ValueError(
+            f"server {name!r}: placeholders are only allowed in the url path or query, not the host"
+        )
+
+
+def url_template_probe(url: str) -> str:
+    """Return *url* with placeholders filled by a dummy segment, for validation."""
+    return _USER_SCOPE_RE.sub(lambda m: "u", url)
+
+
+def resolve_user_scope_url(url: str, scope: dict[str, str] | None) -> str:
+    """Resolve ``${octop.*}`` in a streamable-HTTP url for one user.
+
+    The host is never templated (see :func:`validate_url_template`), so the saved
+    URL already passed host validation and re-validating the resolved text adds
+    nothing.
+    """
+    if not scope or _USER_SCOPE_LITERAL not in url:
+        return url
+    resolved = _USER_SCOPE_RE.sub(lambda m: scope.get(m.group(1), m.group(0)), url)
+    if _USER_SCOPE_LITERAL in resolved:
+        raise ValueError(f"url {url!r} references an unknown placeholder")
+    return resolved
+
+
+def _render_all_tokens_as_uid(text: str, uid: str) -> str:
+    """Re-render *text* with every placeholder replaced by the numeric id.
+
+    Used when the resolved value does not fit ``_SCOPE_VALUE_MAX``: the numeric id
+    is always in budget and still unique per user, and replacing every token
+    wholesale avoids truncation, which could collide two long names onto one key.
+    """
+    return _USER_SCOPE_RE.sub(lambda _m: uid, text)
+
+
+def apply_user_scope(
+    headers: dict[str, str],
+    scope: dict[str, str] | None,
+) -> dict[str, str]:
+    """Resolve ``${octop.<token>}`` in header values against *scope*.
+
+    Without a scope the template is left untouched — callers that open a live
+    connection must pass one (``ConnectorService.user_scope_for``), while API
+    previews keep the literal so the configured template stays visible.
+
+    A resolved value that no longer fits ``_SCOPE_VALUE_MAX`` is re-rendered
+    with the numeric id for every token (still unique per user); a template
+    whose literal text alone is too big raises, because sending it would get the
+    key rejected server-side and silently merge users onto one identity.
+    """
+    if not scope:
+        return headers
+    out: dict[str, str] = {}
+    for key, value in headers.items():
+        text = str(value)
+        if _USER_SCOPE_LITERAL not in text:
+            out[key] = text
+            continue
+        resolved = _USER_SCOPE_RE.sub(lambda m: scope.get(m.group(1), m.group(0)), text)
+        if len(resolved) > _SCOPE_VALUE_MAX:
+            resolved = _render_all_tokens_as_uid(text, scope.get("user_id") or "")
+            if len(resolved) > _SCOPE_VALUE_MAX:
+                raise ValueError(
+                    f"header {key!r}: resolved value does not fit {_SCOPE_VALUE_MAX} "
+                    f"characters; shorten the literal part of the template"
+                )
+        out[key] = resolved
+    return out
+
+
+def enabled_harness_configs(
+    servers: dict[str, Any],
+    *,
+    user_scope: dict[str, str] | None = None,
+) -> dict[str, Any]:
     configs: dict[str, Any] = {}
     for name, spec in servers.items():
         if not isinstance(spec, dict):
             continue
         if not server_enabled(spec):
             continue
-        configs[name] = harness_spec_for_server(spec)
+        try:
+            configs[name] = harness_spec_for_server(spec, user_scope=user_scope)
+        except ValueError as exc:
+            # A template that cannot be resolved for this user is dropped rather
+            # than sent: the server would reject the key and fall back to one
+            # shared identity, which is the leak this feature exists to avoid.
+            logger.warning("custom MCP server %s skipped for this user: %s", name, exc)
     return configs
 
 

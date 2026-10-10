@@ -30,6 +30,7 @@ from octop.infra.connectors.custom_mcp import (
     server_enabled,
     set_oauth_required_in_spec,
     shared_mcp_server_name,
+    user_scope_context,
     validate_servers_map,
     wrap_servers,
 )
@@ -85,11 +86,14 @@ class ConnectorService:
         secret_repo: SecretRepo,
         settings_repo: Any,
         config: OctopConfig,
+        user_repo: Any | None = None,
     ) -> None:
         self._repo = repo
         self._secret_repo = secret_repo
         self._settings_repo = settings_repo
         self._config = config
+        # Optional: resolves ``${octop.username}`` for per-user header placeholders.
+        self._user_repo = user_repo
 
     def list_user_instances(
         self,
@@ -581,8 +585,37 @@ class ConnectorService:
             raise ValueError(f"mcp_servers not available for user: {unknown}")
         return list(names)
 
+    def user_scope_for(self, user_id: int | None) -> dict[str, str] | None:
+        """Resolve the ``${octop.*}`` substitution map for *user_id*.
+
+        Returns ``None`` when there is no user context (nothing to attribute the
+        connection to). ``username`` degrades to the numeric id when the user row
+        is missing, so placeholders always resolve to *some* per-user value rather
+        than being sent literally and collapsing users onto one shared session.
+        """
+        if user_id is None:
+            return None
+        username: str | None = None
+        if self._user_repo is not None:
+            try:
+                row = self._user_repo.get(user_id)
+            except Exception:  # noqa: BLE001 - identity lookup must never break a turn
+                logger.warning("user scope: user_repo.get(%s) failed", user_id, exc_info=True)
+                row = None
+            if row is not None:
+                username = str(getattr(row, "username", "") or "").strip() or None
+        if username is None:
+            # Visible in logs: every ${octop.username} header for this user will
+            # carry the numeric id instead, which is still unique per user.
+            logger.warning(
+                "user scope: no username for user_id=%s; placeholders degrade to the numeric id",
+                user_id,
+            )
+        return user_scope_context(user_id=int(user_id), username=username)
+
     def custom_harness_configs(self, user_id: int) -> dict[str, Any]:
-        configs = enabled_harness_configs(self.get_custom_servers(user_id))
+        scope = self.user_scope_for(user_id)
+        configs = enabled_harness_configs(self.get_custom_servers(user_id), user_scope=scope)
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
                 continue
@@ -594,7 +627,7 @@ class ConnectorService:
                     or not server_enabled(spec)
                 ):
                     continue
-                built = enabled_harness_configs({name: spec}).get(name)
+                built = enabled_harness_configs({name: spec}, user_scope=scope).get(name)
                 if built is not None:
                     configs[shared_mcp_server_name(parent.instance_id, name)] = built
         return configs

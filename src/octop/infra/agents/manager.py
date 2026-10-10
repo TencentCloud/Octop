@@ -463,6 +463,7 @@ class AgentManager:
             secret_repo=repos.secret_repo,
             settings_repo=repos.settings_repo,
             config=self._config,
+            user_repo=repos.user_repo,
         )
         # User-scoped custom MCP tools: (user_id, server_name, fingerprint) -> tools
         self._mcp_tool_cache: dict[tuple[int, str, str], list[Any]] = {}
@@ -494,6 +495,7 @@ class AgentManager:
             secret_repo=repos.secret_repo,
             settings_repo=repos.settings_repo,
             config=self._config,
+            user_repo=repos.user_repo,
         )
 
     def set_cron_manager(self, cron_manager: CronManager) -> None:

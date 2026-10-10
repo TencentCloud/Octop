@@ -264,6 +264,12 @@ export function CustomMcpServerCard({
                   autoSize={{ minRows: 2, maxRows: 6 }}
                   placeholder={"Authorization: Bearer sk-..."}
                 />
+                <div className={styles.customMcpFieldHint}>
+                  {t(
+                    "connectors.customMcp.userScopeHint",
+                    "可用 ${octop.user_id} 与 ${octop.username}（URL 与 Header 均支持）：连接由平台按当前登录用户解析，每个用户各带自己的身份；未知占位符会被保存校验拒绝。",
+                  )}
+                </div>
               </div>
             </>
           ) : (

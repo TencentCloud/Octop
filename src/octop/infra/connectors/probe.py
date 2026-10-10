@@ -531,8 +531,17 @@ def format_probe_exception(exc: BaseException) -> str:
     return msg or type(exc).__name__
 
 
-async def probe_custom_mcp_server(spec: dict[str, Any]) -> dict[str, Any]:
-    """Probe one user-defined MCP server (streamable_http or stdio)."""
+async def probe_custom_mcp_server(
+    spec: dict[str, Any],
+    *,
+    user_scope: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Probe one user-defined MCP server (streamable_http or stdio).
+
+    ``user_scope`` resolves ``${octop.*}`` header placeholders against the probing
+    user, so a shared connector templated with a per-user identity can be verified
+    end-to-end instead of failing on an unresolved template.
+    """
     from octop.infra.connectors.custom_mcp import harness_spec_for_server, normalize_server_spec
 
     try:
@@ -547,7 +556,7 @@ async def probe_custom_mcp_server(spec: dict[str, Any]) -> dict[str, Any]:
     except ValueError as exc:
         return {"ok": False, "error": str(exc), "error_type": "validation"}
 
-    connection = harness_spec_for_server(normalized)
+    connection = harness_spec_for_server(normalized, user_scope=user_scope)
     transport = str(connection.get("transport") or "")
 
     if transport == "streamable_http":
