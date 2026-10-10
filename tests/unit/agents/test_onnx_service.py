@@ -262,7 +262,7 @@ def test_embed_texts_returns_vectors(monkeypatch) -> None:
                 yield [0.1, 0.2, 0.3]
 
     monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
-    monkeypatch.setattr(mod, "_build_text_embedding", lambda _model: FakeEmb())
+    monkeypatch.setattr(mod, "_build_text_embedding", lambda _model, **_kwargs: FakeEmb())
     vectors = mod.embed_texts("BAAI/bge-small-zh-v1.5", ["hello"])
     assert len(vectors) == 1 and len(vectors[0]) == 3
 
@@ -272,7 +272,7 @@ def test_embed_texts_empty_input(monkeypatch) -> None:
 
     called = {"n": 0}
 
-    def boom(_model: str) -> None:
+    def boom(_model: str, **_kwargs: object) -> None:
         called["n"] += 1
         raise AssertionError("should not build embedding for empty input")
 
@@ -441,3 +441,93 @@ async def test_provider_probe_never_leaves_the_host_for_local_onnx(monkeypatch) 
     )
     assert explicit["ok"] is True
     assert explicit["model"] == "BAAI/bge-small-zh-v1.5"
+
+
+async def test_probe_local_model_loads_cached_model_offline(monkeypatch) -> None:
+    """Regression #1165: the probe must force fastembed's local-only load path.
+
+    With the default load, fastembed falls back to HuggingFace/GCS downloads
+    whenever local resolution fails, and the raw connection error escapes as a
+    bare ``[Errno 101]`` on offline hosts.
+    """
+    from octop.infra.agents.providers import onnx_service as mod
+
+    class FakeEmb:
+        def embed(self, texts):
+            for _ in texts:
+                yield [0.1, 0.2, 0.3]
+
+    captured: dict[str, object] = {}
+
+    def fake_build(model: str, *, local_files_only: bool = False) -> FakeEmb:
+        captured["model"] = model
+        captured["local_files_only"] = local_files_only
+        return FakeEmb()
+
+    monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
+    monkeypatch.setattr(mod, "is_model_downloaded", lambda _m: True)
+    monkeypatch.setattr(mod, "_build_text_embedding", fake_build)
+
+    result = await mod.probe_local_model("BAAI/bge-small-zh-v1.5")
+
+    assert result["ok"] is True
+    assert result["dim"] == 3
+    assert captured["local_files_only"] is True
+    assert captured["model"] == "BAAI/bge-small-zh-v1.5"
+
+
+async def test_probe_local_model_never_installs_deps(monkeypatch) -> None:
+    """The probe is a healthcheck: missing components surface, pip never runs."""
+    from octop.infra.agents.providers import onnx_service as mod
+
+    def boom(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("probe must not install packages")
+
+    monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: False)
+    monkeypatch.setattr(mod, "install_packages", boom)
+
+    result = await mod.probe_local_model("BAAI/bge-small-zh-v1.5")
+
+    assert result["ok"] is False
+    assert "not installed" in result["error"]
+
+
+async def test_probe_local_model_maps_network_error_to_hint(monkeypatch) -> None:
+    """A network error escaping the load becomes actionable, not bare Errno 101."""
+    import httpx
+
+    from octop.infra.agents.providers import onnx_service as mod
+
+    def fake_build(_model: str, *, local_files_only: bool = False) -> object:
+        del local_files_only
+        raise httpx.ConnectError("[Errno 101] Network is unreachable")
+
+    monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
+    monkeypatch.setattr(mod, "is_model_downloaded", lambda _m: True)
+    monkeypatch.setattr(mod, "_build_text_embedding", fake_build)
+
+    result = await mod.probe_local_model("BAAI/bge-small-zh-v1.5")
+
+    assert result["ok"] is False
+    assert "Errno 101" in result["error"], "original detail kept for diagnosis"
+    assert "re-download" in result["error"]
+    assert "offline" in result["error"]
+
+
+async def test_probe_local_model_maps_incomplete_cache_to_hint(monkeypatch) -> None:
+    """fastembed's local-only ValueError must point the user at re-downloading."""
+    from octop.infra.agents.providers import onnx_service as mod
+
+    def fake_build(_model: str, *, local_files_only: bool = False) -> object:
+        del local_files_only
+        raise ValueError("Could not load model BAAI/bge-small-zh-v1.5 from any source.")
+
+    monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
+    monkeypatch.setattr(mod, "is_model_downloaded", lambda _m: True)
+    monkeypatch.setattr(mod, "_build_text_embedding", fake_build)
+
+    result = await mod.probe_local_model("BAAI/bge-small-zh-v1.5")
+
+    assert result["ok"] is False
+    assert "from any source" in result["error"]
+    assert "re-download" in result["error"]

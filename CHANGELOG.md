@@ -41,6 +41,8 @@
 - octop-harness 升到 1.0.1；飞牛安装改为建账号向导
 
 ### 修复
+- httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
+- ONNX 本地 embedding 的"测试连接"在断网环境（如 docker）报裸 ``[Errno 101] Network is unreachable``：探测路径强制以 ``local_files_only=True`` 加载已缓存模型（fastembed 在本地缓存解析失败时会静默回退 HuggingFace/GCS 下载，裸连接错误直接穿透），且探测不再静默 pip 联网安装依赖；缓存不完整或网络异常时返回"重新下载模型"的可操作提示而非裸错误（Fixes #1165）。
 - 会话「放通所有 / 放通这些工具」后后续 execute 仍弹审批
 - 误报流式失败、提问卡不弹出、TLS 下内部 MCP、过长工具名
 - 远程存储卡住堵住启动；S3 / Postgres 浏览；桌面 beta 覆盖安装；飞牛 8089 残留
