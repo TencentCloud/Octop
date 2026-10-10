@@ -1,6 +1,6 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import type { TFunction } from "i18next";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { ChatAttachment, UserComposerContext } from "./useChat";
 import {
   isPendingThread,
@@ -9,7 +9,7 @@ import {
 } from "./useSessions";
 import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import * as chatStore from "./chatStore";
-import { EMPTY_CHAT_SESSION_KEY, PENDING_THREAD_ID } from "../constants";
+import { EMPTY_CHAT_SESSION_KEY } from "../constants";
 import { clipThreadTitle } from "../utils/threadTitle";
 import { message } from "@/utils/antdMessage";
 
@@ -98,6 +98,14 @@ export function useChatSend({
   t,
 }: UseChatSendParams) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const visiblePathRef = useRef<string | null>(pathname);
+  useLayoutEffect(() => {
+    visiblePathRef.current = pathname;
+    return () => {
+      visiblePathRef.current = null;
+    };
+  }, [pathname]);
 
   /** @returns false when the send was rejected before starting a turn. */
   const handleSend = useCallback(
@@ -196,25 +204,26 @@ export function useChatSend({
       const userMsg = buildUserMessage(trimmed, attachments, composerContext);
       chatStore.appendUserMessage(EMPTY_CHAT_SESSION_KEY, userMsg);
 
-      const { resolvedId } = createSession();
+      const { session, resolvedId } = createSession();
+      const pendingId = session.id;
+      const pendingPath = `/chat/${agent}/${pendingId}`;
       const snap = chatStore.getSnapshot(EMPTY_CHAT_SESSION_KEY);
-      // Break any leftover ``__pending__`` → previous thr_* alias so this new
-      // chat cannot mutate / stream into an older thread's bucket.
-      chatStore.detachSessionKey(PENDING_THREAD_ID);
-      chatStore.setMessages(PENDING_THREAD_ID, snap.messages);
+      chatStore.setMessages(pendingId, snap.messages);
       chatStore.clearMessages(EMPTY_CHAT_SESSION_KEY);
-      navigate(`/chat/${agent}/${PENDING_THREAD_ID}`);
+      navigate(pendingPath);
 
       void resolvedId.then((tid) => {
         if (!tid) {
-          chatStore.clearMessages(PENDING_THREAD_ID);
-          navigate(`/chat/${agent}`, { replace: true });
+          chatStore.removeSession(pendingId);
+          if (visiblePathRef.current === pendingPath) {
+            navigate(`/chat/${agent}`, { replace: true });
+          }
           message.error(t("chat.createSessionFailed", "创建会话失败，请重试"));
           return;
         }
-        const currentSnap = chatStore.getSnapshot(PENDING_THREAD_ID);
+        const currentSnap = chatStore.getSnapshot(pendingId);
         const hadMessages = currentSnap.messages.length > 1;
-        chatStore.renameSessionKey(PENDING_THREAD_ID, tid);
+        chatStore.renameSessionKey(pendingId, tid);
         // ``sessions`` in this closure predates the thread just created, so the
         // name lookup in maybeRenameNewThread always misses here. A freshly
         // created thread has no title yet — rename it straight away.
@@ -237,7 +246,10 @@ export function useChatSend({
           mode,
           policy,
         );
-        navigate(`/chat/${agent}/${tid}`, { replace: true });
+        // The accepted turn still runs in the background after navigation.
+        if (visiblePathRef.current === pendingPath) {
+          navigate(`/chat/${agent}/${tid}`, { replace: true });
+        }
       });
       return true;
     },

@@ -11,6 +11,8 @@ import * as chatStore from "./chatStore";
 import { onSessionEvent } from "./chatStore";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { parseHitlSessionPolicy } from "../utils/hitlSessionPolicy";
+import { isPendingThreadId, PENDING_THREAD_ID } from "../constants";
+import { generateId } from "../../../utils/messageParser";
 
 export interface Session {
   id: string;
@@ -236,7 +238,7 @@ export async function fetchAndSyncSessionArtifacts(
 }
 
 export function isPendingThread(threadId: string): boolean {
-  return threadId === "__pending__" || _pendingThreadIds.has(threadId);
+  return isPendingThreadId(threadId) || _pendingThreadIds.has(threadId);
 }
 
 function notifyListeners() {
@@ -539,7 +541,7 @@ export function useSessions(agentId: string | null) {
       return { session: empty, resolvedId: Promise.resolve("") };
     }
     const placeholder: Session = {
-      id: "__pending__",
+      id: `${PENDING_THREAD_ID}-${generateId()}`,
       name: "New Chat",
       threadId: "",
       updatedAt: new Date().toISOString(),
@@ -560,16 +562,22 @@ export function useSessions(agentId: string | null) {
           channel_type: "dashboard",
           agent_id: agentId,
         });
-        setModuleSessions((prev) =>
-          sortSessions([
-            session,
-            ...prev.filter((s) => s.id !== "__pending__"),
-          ]),
-        );
+        if (_storeAgentId === agentId) {
+          setModuleSessions((prev) =>
+            sortSessions([
+              session,
+              ...prev.filter((s) => s.id !== placeholder.id),
+            ]),
+          );
+        }
         return created.thread_id;
       })
       .catch(() => {
-        setModuleSessions((prev) => prev.filter((s) => s.id !== "__pending__"));
+        if (_storeAgentId === agentId) {
+          setModuleSessions((prev) =>
+            prev.filter((s) => s.id !== placeholder.id),
+          );
+        }
         return "";
       });
     return { session: placeholder, resolvedId };
