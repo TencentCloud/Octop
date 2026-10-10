@@ -60,18 +60,27 @@ func attachOpenURLEventListener(app *application.App, open func(string) error) {
 	if app == nil || open == nil {
 		return
 	}
+	appendWailsEventListener(app, &openURLEventListener{open: open})
+}
+
+// appendWailsEventListener receives events emitted with wails:event:emit.
+// The remote dashboard never loads /wails/runtime.js, so this is the channel
+// back from window._wails.invoke.
+func appendWailsEventListener(app *application.App, listener application.WailsEventListener) {
+	if app == nil || listener == nil {
+		return
+	}
 	root := reflect.ValueOf(app).Elem()
 	lockField := root.FieldByName("wailsEventListenerLock")
 	listField := root.FieldByName("wailsEventListeners")
 	if !lockField.IsValid() || !listField.IsValid() {
-		log.Printf("open-url: wails event listener field missing")
+		log.Printf("wails event listener field missing")
 		return
 	}
 	lock := reflect.NewAt(lockField.Type(), unsafe.Pointer(lockField.UnsafeAddr())).Interface().(*sync.Mutex)
 	lock.Lock()
 	defer lock.Unlock()
 	list := reflect.NewAt(listField.Type(), unsafe.Pointer(listField.UnsafeAddr())).Elem()
-	var listener application.WailsEventListener = &openURLEventListener{open: open}
 	list.Set(reflect.Append(list, reflect.ValueOf(listener)))
 }
 

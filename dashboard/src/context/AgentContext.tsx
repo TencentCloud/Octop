@@ -284,6 +284,8 @@ function mapBridgeAgent(
     kind?: string | null;
     state?: string | null;
     member_ids?: unknown;
+    is_owner?: boolean;
+    is_shared?: boolean;
   },
   conn: {
     connection_id: string;
@@ -321,8 +323,8 @@ function mapBridgeAgent(
     kind: agent.kind === "team" ? "team" : "expert",
     member_ids: memberIds,
     bridge: true,
-    is_owner: true,
-    is_shared: false,
+    is_owner: agent.is_owner !== false,
+    is_shared: agent.is_shared === true,
     bridge_disconnected: false,
     bridge_inbound: Boolean(conn.inbound) || conn.has_password === false,
     bridge_connection_id: conn.connection_id,

@@ -6,6 +6,8 @@ import {
   Square,
   MessageSquarePlus,
   Paperclip,
+  FileUp,
+  FolderUp,
   Zap,
   Link2,
   Sparkles,
@@ -174,6 +176,7 @@ interface ChatInputActionsRowProps {
   slashMenuItems: SlashMenuItem[];
   onSlashShortcutSelect: (command: string) => void;
   onFileSelect: () => void;
+  onFolderSelect: () => void;
   onNewChat: () => void;
   onPolish: () => void;
   onToggleVoice: () => void;
@@ -228,6 +231,7 @@ export default function ChatInputActionsRow({
   slashMenuItems,
   onSlashShortcutSelect,
   onFileSelect,
+  onFolderSelect,
   onNewChat,
   onPolish,
   onToggleVoice,
@@ -248,6 +252,7 @@ export default function ChatInputActionsRow({
   const [modelQuery, setModelQuery] = useState("");
   const [isCompact, setIsCompact] = useState(false);
   const [shortcutOpen, setShortcutOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [reasoningModelRef, setReasoningModelRef] = useState<string | null>(
     null,
   );
@@ -1011,20 +1016,57 @@ export default function ChatInputActionsRow({
             </button>
           </Tooltip>
         </Popover>
-        <Tooltip
-          title={t("upload.fileTooltip", "Upload attachment")}
-          mouseEnterDelay={0.4}
+        <Popover
+          trigger="click"
+          placement="topLeft"
+          open={uploadOpen}
+          onOpenChange={setUploadOpen}
+          overlayClassName={styles.skillPickerPopover}
+          content={
+            <div className={styles.mobileOverflowMenu} role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className={styles.mobileOverflowItem}
+                onClick={() => {
+                  setUploadOpen(false);
+                  onFileSelect();
+                }}
+              >
+                <span className={styles.mobileOverflowItemMain}>
+                  <FileUp size={16} />
+                  <span>{t("upload.files", "Files")}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className={styles.mobileOverflowItem}
+                onClick={() => {
+                  setUploadOpen(false);
+                  onFolderSelect();
+                }}
+              >
+                <span className={styles.mobileOverflowItemMain}>
+                  <FolderUp size={16} />
+                  <span>{t("upload.folder", "Folder")}</span>
+                </span>
+              </button>
+            </div>
+          }
         >
-          <button
-            className={styles.secondaryBtn}
-            onClick={onFileSelect}
-            type="button"
-            disabled={uploading}
-            aria-label={t("upload.fileTooltip", "Upload attachment")}
-          >
-            <Paperclip size={16} />
-          </button>
-        </Tooltip>
+          <Tooltip title={t("upload.tooltip", "Upload")} mouseEnterDelay={0.4}>
+            <button
+              className={styles.secondaryBtn}
+              type="button"
+              disabled={uploading}
+              aria-label={t("upload.tooltip", "Upload")}
+              aria-haspopup="menu"
+            >
+              <Paperclip size={16} />
+            </button>
+          </Tooltip>
+        </Popover>
       </>
     );
   };

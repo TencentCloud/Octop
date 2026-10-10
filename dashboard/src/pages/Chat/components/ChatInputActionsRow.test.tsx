@@ -36,6 +36,7 @@ const baseProps = {
   slashMenuItems: [],
   onSlashShortcutSelect: vi.fn(),
   onFileSelect: vi.fn(),
+  onFolderSelect: vi.fn(),
   onNewChat: vi.fn(),
   onPolish: vi.fn(),
   onToggleVoice: vi.fn(),
@@ -54,13 +55,40 @@ describe("ChatInputActionsRow plus menu", () => {
     expect(screen.getByTestId("composer-plus")).toBeInTheDocument();
     expect(screen.getByTestId("hitl-policy-picker")).toBeInTheDocument();
     expect(screen.getByLabelText("快捷指令")).toBeInTheDocument();
-    expect(screen.getByLabelText("Upload attachment")).toBeInTheDocument();
+    expect(screen.getByLabelText("Upload")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Folder" })).toBeNull();
     expect(
       screen.queryByTestId("conversation-mode-picker"),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId("conversation-mode-hint"),
     ).not.toBeInTheDocument();
+  });
+
+  it("starts a folder upload from the toolbar", () => {
+    const onFolderSelect = vi.fn();
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} onFolderSelect={onFolderSelect} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByLabelText("Upload"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Folder" }));
+    expect(onFolderSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts a file upload from the same menu", () => {
+    const onFileSelect = vi.fn();
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} onFileSelect={onFileSelect} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByLabelText("Upload"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Files" }));
+    expect(onFileSelect).toHaveBeenCalledTimes(1);
   });
 
   it("shows a non-interactive Ask/Plan reminder in the toolbar gap", () => {

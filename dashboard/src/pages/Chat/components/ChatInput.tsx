@@ -192,6 +192,20 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const skillDisplayName = useSkillDisplayName();
     const isMobile = useIsMobile();
     const shellRef = useRef<HTMLDivElement>(null);
+    const [nativeDropActive, setNativeDropActive] = useState(false);
+    useEffect(() => {
+      const el = shellRef.current;
+      if (!el) return;
+      const sync = () => {
+        setNativeDropActive(el.classList.contains("file-drop-target-active"));
+      };
+      const observer = new MutationObserver(sync);
+      observer.observe(el, {
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+      return () => observer.disconnect();
+    }, []);
     const keepComposerInView =
       typeof window !== "undefined" &&
       !isPwaDisplay() &&
@@ -233,7 +247,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       uploading,
       dragOver,
       fileInputRef,
+      folderInputRef,
       handleFileSelect,
+      handleFolderSelect,
       handleFileChange,
       removeAttachment,
       clearAttachments,
@@ -721,11 +737,15 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const canSend = Boolean(
       (text.trim() || attachments.length > 0) && !disabled,
     );
+    const showDrop = dragOver || nativeDropActive;
 
     return (
       <div
         ref={shellRef}
-        className={`${styles.chatInput} ${dragOver ? styles.dropActive : ""}`}
+        id="octop-chat-file-drop"
+        data-file-drop-target=""
+        data-octop-chat-drop="1"
+        className={`${styles.chatInput} ${showDrop ? styles.dropActive : ""}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -739,6 +759,11 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           />
         )}
         <div className={styles.inputWrapper}>
+          {showDrop && (
+            <div className={styles.dropOverlay} data-testid="chat-drop-overlay">
+              {t("upload.dropHint", "Drop files or a folder to upload")}
+            </div>
+          )}
           <ChatInputPreviewBar
             attachments={attachments}
             uploading={uploading}
@@ -899,6 +924,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             slashMenuItems={slashMenuItems}
             onSlashShortcutSelect={handleSlashSelect}
             onFileSelect={handleFileSelect}
+            onFolderSelect={handleFolderSelect}
             onNewChat={onNewChat}
             onPolish={() => void handlePolish()}
             onToggleVoice={() => toggleVoice()}
@@ -908,6 +934,13 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
           <input
             ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+          />
+          <input
+            ref={folderInputRef}
             type="file"
             multiple
             style={{ display: "none" }}

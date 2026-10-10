@@ -114,6 +114,22 @@ def test_cascade_delete_on_user(repo: AgentRepo, user_id: int, db: SqlitePool):
     assert repo.get(aid) is None
 
 
+def test_from_row_coerces_text_datetime_timestamps(repo: AgentRepo, user_id: int, db: SqlitePool):
+    aid = new_ulid()
+    repo.create(agent_id=aid, user_id=user_id, name="bot")
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE agents SET created_at = ?, updated_at = ? WHERE agent_id = ?",
+            ("2026-10-08 16:00:00", "2026-10-08 17:56:48", aid),
+        )
+    row = repo.get(aid)
+    assert row is not None
+    assert isinstance(row.created_at, int)
+    assert isinstance(row.updated_at, int)
+    assert row.created_at > 0
+    assert row.updated_at > row.created_at
+
+
 def test_create_and_update_profile_fields(repo: AgentRepo, user_id: int):
     aid = new_ulid()
     repo.create(

@@ -965,6 +965,9 @@
     "agentDeleteFailed": "删除专家失败",
     "confirmDelete": "删除「{{name}}」？",
     "confirmDeleteHint": "此操作不可撤销。工作区目录（含记忆与会话文件）也会被永久删除，且无法恢复。",
+    "confirmDeleteRemote": "删除对端上的「{{name}}」？",
+    "confirmDeleteRemoteWhere": "「{{connection}}」",
+    "confirmDeleteRemoteHint": "这会在对端{{connection}}永久删除，包括工作区、记忆和会话，且无法恢复。本机列表只是入口。",
     "agentDisable": "停用",
     "removeMapping": "删除",
     "defaultModelLabel": "默认模型",
@@ -3759,7 +3762,12 @@
     "quickPrompt12Text": "请帮我优化以下简历内容，使其更专业、更有吸引力，并突出核心优势：\n\n"
   },
   "upload": {
-    "fileTooltip": "上传附件",
+    "tooltip": "上传文件或文件夹。也可拖到输入框。",
+    "files": "文件",
+    "folder": "文件夹",
+    "dropHint": "松开以上传文件或文件夹",
+    "emptyDrop": "没有可上传的文件",
+    "tooMany": "一次最多上传 {{max}} 个文件，其余已跳过",
     "unsupportedType": "不支持的文件类型：{{type}}",
     "tooLarge": "文件过大（最大 {{maxMb}}MB）：{{name}}",
     "failed": "上传失败"

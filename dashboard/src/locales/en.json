@@ -965,6 +965,9 @@
     "agentDeleteFailed": "Failed to delete agent",
     "confirmDelete": "Delete \"{{name}}\"?",
     "confirmDeleteHint": "This cannot be undone. The agent workspace (including memory and session files) will also be permanently deleted and cannot be recovered.",
+    "confirmDeleteRemote": "Delete \"{{name}}\" on the peer?",
+    "confirmDeleteRemoteWhere": " \"{{connection}}\"",
+    "confirmDeleteRemoteHint": "This permanently deletes it on the peer{{connection}}, including the workspace, memory, and sessions. This cannot be undone. The local list is only an entry point.",
     "agentDisable": "Disable",
     "patchFailed": "Failed to save changes",
     "defaultModelLabel": "Default Model",
@@ -3759,7 +3762,12 @@
     "quickPrompt12Text": "Please improve the following resume to make it more professional and impactful, and highlight the key strengths:\n\n"
   },
   "upload": {
-    "fileTooltip": "Upload attachment",
+    "tooltip": "Upload files or a folder. You can also drop them on the input.",
+    "files": "Files",
+    "folder": "Folder",
+    "dropHint": "Drop files or a folder to upload",
+    "emptyDrop": "No files to upload",
+    "tooMany": "Only the first {{max}} files can be uploaded at once",
     "unsupportedType": "Unsupported file type: {{type}}",
     "tooLarge": "File too large (max {{maxMb}}MB): {{name}}",
     "failed": "Upload failed"
