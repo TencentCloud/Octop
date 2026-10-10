@@ -34,6 +34,8 @@ def make_manager(tmp_path):
     registry._active_invocations = {}
     registry._invocation_waiters = {}
     registry._history_backfills = {}
+    registry._reload_reservations = {}
+    registry._agent_quiet_events = {}
     registry.get_agent = lambda _: agent
     registry.memory_slim = MemorySlimCoordinator(registry)
     registry._lock = asyncio.Lock()

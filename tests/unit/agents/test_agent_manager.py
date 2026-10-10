@@ -1035,6 +1035,165 @@ async def test_waiting_agent_stream_prevents_next_history_backfill(
     manager.end_history_backfill(agent_id)
 
 
+# ---------------------------------------------------------------------------
+# Hot reload vs. in-flight turns (#1863)
+# ---------------------------------------------------------------------------
+
+
+async def _wait_until(predicate: Any, *, timeout: float = 2.0) -> None:
+    async def _poll() -> None:
+        while not predicate():
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_poll(), timeout=timeout)
+
+
+def _seed_running_agent(manager: AgentManager, agent_id: str) -> None:
+    manager._repos.agent_repo.create(agent_id=agent_id, user_id=None, name=agent_id.lower())
+    manager._repos.agent_repo.set_state(agent_id, "running")
+
+
+def _install_blocking_stream(
+    manager: AgentManager,
+) -> tuple[MagicMock, asyncio.Event, asyncio.Event]:
+    """Harness mock whose stream() blocks until the returned release event is set."""
+    started, release = asyncio.Event(), asyncio.Event()
+    harness_manager = MagicMock()
+    harness_manager.shared_factory = object()
+
+    async def fake_stream(*_args: Any, **_kwargs: Any) -> AsyncIterator[dict[str, str]]:
+        started.set()
+        await release.wait()
+        yield {"type": "done"}
+
+    harness_manager.stream = fake_stream
+    harness_manager.get_agent.return_value = MagicMock(agent=MagicMock())
+    harness_manager.arebuild_agent = AsyncMock(return_value=MagicMock(agent=MagicMock()))
+    harness_manager.aremove_agent = AsyncMock()
+    manager._harness_manager = harness_manager
+    manager._post_start_agent = AsyncMock()  # type: ignore[method-assign]
+    return harness_manager, started, release
+
+
+def _install_rebuild_spy(manager: AgentManager) -> MagicMock:
+    harness_manager = MagicMock()
+    harness_manager.shared_factory = object()
+    harness_manager.arebuild_agent = AsyncMock(return_value=MagicMock(agent=MagicMock()))
+    harness_manager.aremove_agent = AsyncMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=MagicMock())
+    manager._harness_manager = harness_manager
+    manager._post_start_agent = AsyncMock()  # type: ignore[method-assign]
+    return harness_manager
+
+
+@pytest.mark.asyncio
+async def test_update_defers_reload_until_active_turn_finishes(manager: AgentManager) -> None:
+    """Saving config while a turn is running must not detach the live agent (#1863)."""
+    agent_id = "AGT_DEFER_UPDATE"
+    _seed_running_agent(manager, agent_id)
+    harness_manager, started, release = _install_blocking_stream(manager)
+
+    turn = asyncio.create_task(_collect_async(manager.stream(agent_id, {"thread_id": "thr"})))
+    await started.wait()
+    assert manager.is_agent_active(agent_id) is True
+
+    await manager.update(agent_id, name="renamed")
+    await asyncio.sleep(0.05)
+    harness_manager.arebuild_agent.assert_not_awaited()
+
+    release.set()
+    await turn
+    await _wait_until(lambda: harness_manager.arebuild_agent.await_count == 1)
+    assert manager.is_agent_active(agent_id) is False
+
+
+@pytest.mark.asyncio
+async def test_reload_all_defers_busy_agent_and_rebuilds_idle_one(
+    manager: AgentManager,
+) -> None:
+    """reload_all() rebuilds idle agents inline and defers the busy one."""
+    busy_id, idle_id = "AGT_BUSY_RELOAD", "AGT_IDLE_RELOAD"
+    _seed_running_agent(manager, busy_id)
+    _seed_running_agent(manager, idle_id)
+    harness_manager, started, release = _install_blocking_stream(manager)
+
+    turn = asyncio.create_task(_collect_async(manager.stream(busy_id, {"thread_id": "thr"})))
+    await started.wait()
+
+    await manager.reload_all()
+    rebuilt = [call.args[0] for call in harness_manager.arebuild_agent.await_args_list]
+    assert rebuilt == [idle_id]
+
+    release.set()
+    await turn
+    await _wait_until(lambda: harness_manager.arebuild_agent.await_count == 2)
+    rebuilt = [call.args[0] for call in harness_manager.arebuild_agent.await_args_list]
+    assert rebuilt == [idle_id, busy_id]
+
+
+@pytest.mark.asyncio
+async def test_new_turn_waits_for_in_flight_rebuild(manager: AgentManager) -> None:
+    """A turn starting mid-rebuild must wait for the fresh registry entry."""
+    agent_id = "AGT_RESERVE"
+    _seed_running_agent(manager, agent_id)
+    harness_manager, stream_started, release = _install_blocking_stream(manager)
+    rebuild_started, rebuild_release = asyncio.Event(), asyncio.Event()
+
+    async def blocking_rebuild(*_args: Any, **_kwargs: Any) -> MagicMock:
+        rebuild_started.set()
+        await rebuild_release.wait()
+        return MagicMock(agent=MagicMock())
+
+    harness_manager.arebuild_agent = AsyncMock(side_effect=blocking_rebuild)
+
+    reload_task = asyncio.create_task(manager.reload(agent_id))
+    await rebuild_started.wait()
+    # The agent is reserved for the rebuild: no backfill may slip in either.
+    assert manager.try_begin_history_backfill(agent_id) is False
+
+    turn = asyncio.create_task(_collect_async(manager.stream(agent_id, {"thread_id": "thr"})))
+    await asyncio.sleep(0.05)
+    assert stream_started.is_set() is False
+
+    rebuild_release.set()
+    await reload_task
+    await _wait_until(stream_started.is_set)
+    release.set()
+    assert await asyncio.wait_for(turn, timeout=1) == [{"type": "done"}]
+
+    assert manager.try_begin_history_backfill(agent_id) is True
+    manager.end_history_backfill(agent_id)
+
+
+@pytest.mark.asyncio
+async def test_reload_waits_for_history_backfill(manager: AgentManager) -> None:
+    """A running history backfill also holds the agent against a rebuild."""
+    agent_id = "AGT_BACKFILL_RELOAD"
+    _seed_running_agent(manager, agent_id)
+    harness_manager = _install_rebuild_spy(manager)
+
+    assert manager.try_begin_history_backfill(agent_id) is True
+    await manager.reload(agent_id)
+    await asyncio.sleep(0.05)
+    harness_manager.arebuild_agent.assert_not_awaited()
+
+    manager.end_history_backfill(agent_id)
+    await _wait_until(lambda: harness_manager.arebuild_agent.await_count == 1)
+
+
+@pytest.mark.asyncio
+async def test_reload_rebuilds_immediately_when_agent_is_idle(manager: AgentManager) -> None:
+    """An idle agent still reloads inline, without waiting for a worker tick."""
+    agent_id = "AGT_IDLE_NOW"
+    _seed_running_agent(manager, agent_id)
+    harness_manager = _install_rebuild_spy(manager)
+
+    await manager.reload(agent_id)
+
+    harness_manager.arebuild_agent.assert_awaited_once()
+    assert agent_id not in manager._reload_worker_running
+
+
 @pytest.mark.asyncio
 async def test_reload_agent_clears_bootstrap_refresh_pending(manager: AgentManager) -> None:
     agent_id = "AGT_RELOAD"
