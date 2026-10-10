@@ -60,8 +60,16 @@ def _mock_async_client(*, post: AsyncMock) -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_embedding_probe_posts_embeddings_endpoint() -> None:
-    request = httpx.Request("POST", "https://api.example.com/v1/embeddings")
+@pytest.mark.parametrize(
+    ("base_url", "model_id"),
+    [
+        ("https://api.example.com/v1/", "text-embedding-3-small"),
+        ("https://ark.cn-beijing.volces.com/api/v3/", "doubao-embedding-large-text-250515"),
+    ],
+)
+async def test_embedding_probe_posts_embeddings_endpoint(base_url: str, model_id: str) -> None:
+    url = f"{base_url.rstrip('/')}/embeddings"
+    request = httpx.Request("POST", url)
     response = httpx.Response(200, json={"data": [{"embedding": [0.1, 0.2]}]}, request=request)
     post = AsyncMock(return_value=response)
     with (
@@ -71,15 +79,64 @@ async def test_embedding_probe_posts_embeddings_endpoint() -> None:
         ),
         patch("octop.infra.agents.providers.probe.build_probe_chat_model") as chat,
     ):
-        result = await probe_provider_row(_embedding_row(), model_id="text-embedding-3-small")
+        result = await probe_provider_row(
+            _embedding_row(
+                base_url=base_url,
+                models=[{"id": model_id, "name": model_id, "embedding": True}],
+            ),
+            model_id=model_id,
+        )
 
     assert result["ok"] is True
     assert isinstance(result["latency_ms"], int)
     chat.assert_not_called()
     args, kwargs = post.await_args
-    assert args[0] == "https://api.example.com/v1/embeddings"
+    assert args[0] == url
     assert kwargs["headers"]["Authorization"] == "Bearer sk-test"
-    assert kwargs["json"] == {"model": "text-embedding-3-small", "input": ["ping"]}
+    assert kwargs["json"] == {"model": model_id, "input": ["ping"]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("base_url", "model_id"),
+    [
+        ("https://ark.cn-beijing.volces.com/api/v3/", "doubao-embedding-vision-251215"),
+        (
+            "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal/",
+            "doubao-embedding-vision-251215",
+        ),
+        ("https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal", "ep-test"),
+    ],
+)
+async def test_volcengine_embedding_probe_uses_multimodal_protocol(
+    base_url: str, model_id: str
+) -> None:
+    url = "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal"
+    response = httpx.Response(
+        200,
+        json={"data": {"embedding": [0.1, 0.2], "object": "embedding"}},
+        request=httpx.Request("POST", url),
+    )
+    post = AsyncMock(return_value=response)
+    row = _embedding_row(base_url=base_url, models=[])
+    with (
+        patch(
+            "octop.infra.agents.providers.probe.httpx.AsyncClient",
+            return_value=_mock_async_client(post=post),
+        ),
+        patch("octop.infra.agents.providers.probe.build_probe_chat_model") as chat,
+    ):
+        result = await probe_provider_row(row, model_id=model_id, embedding=True)
+
+    assert result["ok"] is True
+    chat.assert_not_called()
+    assert post.await_args.args[0] == url
+    assert post.await_args.kwargs["headers"]["Authorization"] == "Bearer sk-test"
+    assert post.await_args.kwargs["json"] == {
+        "model": model_id,
+        "input": [{"type": "text", "text": "ping"}],
+        "encoding_format": "float",
+    }
 
 
 @pytest.mark.asyncio

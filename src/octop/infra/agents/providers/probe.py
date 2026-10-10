@@ -159,6 +159,16 @@ def _embeddings_url(base_url: str | None) -> str:
     return f"{root}/embeddings"
 
 
+def volcengine_multimodal_embeddings_url(base_url: str, model_id: str) -> str | None:
+    """Resolve Doubao vision embeddings, including an explicitly configured endpoint."""
+    root = base_url.strip().rstrip("/")
+    if root.endswith("/embeddings/multimodal"):
+        return root
+    if model_id.startswith("doubao-embedding-vision-"):
+        return f"{root}/embeddings/multimodal"
+    return None
+
+
 def _friendly_probe_error(exc: BaseException | str, *, locale: str) -> str:
     """Map raw provider exceptions / HTTP bodies to localized guidance when known."""
     from octop.i18n.domains.stream import exception_display_message, stream_error_message
@@ -170,9 +180,15 @@ def _friendly_probe_error(exc: BaseException | str, *, locale: str) -> str:
 async def _probe_embedding_endpoint(
     row: Any, *, model_id: str, locale: str = "en"
 ) -> dict[str, Any]:
-    """POST OpenAI-compatible ``{base}/embeddings`` and time the round-trip."""
+    """Probe OpenAI text or Volcengine multimodal embeddings."""
     started = time.perf_counter()
-    url = _embeddings_url(getattr(row, "base_url", None))
+    base_url = getattr(row, "base_url", None) or _DEFAULT_OPENAI_BASE_URL
+    multimodal_url = volcengine_multimodal_embeddings_url(base_url, model_id)
+    url = multimodal_url or _embeddings_url(base_url)
+    body: dict[str, Any] = {"model": model_id, "input": [_EMBEDDING_PROBE_TEXT]}
+    if multimodal_url:
+        body["input"] = [{"type": "text", "text": _EMBEDDING_PROBE_TEXT}]
+        body["encoding_format"] = "float"
     headers: dict[str, str] = {"Authorization": f"Bearer {getattr(row, 'api_key', None) or ''}"}
     extra = ensure_opencode_session_header(
         getattr(row, "name", None),
@@ -185,7 +201,7 @@ async def _probe_embedding_endpoint(
             response = await client.post(
                 url,
                 headers=headers,
-                json={"model": model_id, "input": [_EMBEDDING_PROBE_TEXT]},
+                json=body,
             )
     except Exception as exc:
         logger.info(
@@ -214,7 +230,7 @@ async def _probe_embedding_endpoint(
         }
 
     data = payload.get("data") if isinstance(payload, dict) else None
-    first = data[0] if isinstance(data, list) and data else None
+    first = data if multimodal_url else (data[0] if isinstance(data, list) and data else None)
     vector = first.get("embedding") if isinstance(first, dict) else None
     if not isinstance(vector, list) or not vector:
         return {
