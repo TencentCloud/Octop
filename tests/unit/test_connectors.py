@@ -199,6 +199,43 @@ def test_weknora_catalog_and_credentials():
     assert payload["internal_token"]
 
 
+def test_obsidian_cli_catalog_and_credentials(tmp_path: Path):
+    from octop.infra.connectors.catalog import list_catalog
+
+    entry = get_catalog_entry("obsidian-cli")
+    assert entry is not None
+    assert entry.mcp_mode == "gateway"
+    assert entry.auth_kind == "custom_fields"
+    assert entry.category == "knowledge"
+    kinds = [item.kind for item in list_catalog()]
+    assert kinds.index("obsidian-cli") < kinds.index("weknora")
+    assert kinds[-2:] == ["weknora", "dify"]
+
+    binary = tmp_path / "obsidian"
+    binary.write_text("", encoding="utf-8")
+    payload = validate_create_credentials(
+        "obsidian-cli",
+        {"vault": "My Vault", "binary_path": str(binary)},
+    )
+    assert payload["vault"] == "My Vault"
+    assert payload["binary_path"] == str(binary)
+    assert payload["internal_token"]
+
+    bare = validate_create_credentials("obsidian-cli", {"vault": "Notes", "binary_path": "  "})
+    assert bare["vault"] == "Notes"
+    assert "binary_path" not in bare
+
+    with pytest.raises(ValueError, match="vault is required"):
+        validate_create_credentials("obsidian-cli", {"vault": "  "})
+    with pytest.raises(ValueError, match="cannot contain newlines"):
+        validate_create_credentials("obsidian-cli", {"vault": "A\nB"})
+    with pytest.raises(ValueError, match="existing file"):
+        validate_create_credentials(
+            "obsidian-cli",
+            {"vault": "Notes", "binary_path": str(tmp_path / "missing")},
+        )
+
+
 def test_weknora_rejects_non_https_remote_url():
     from octop.infra.errors import ErrorCode, OctopError
 

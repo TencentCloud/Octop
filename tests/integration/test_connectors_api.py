@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from html import escape
 from pathlib import Path
@@ -454,9 +455,63 @@ async def test_catalog_weknora_dify_last(env):
     assert "feishu-cli" in kinds
     assert "wecom-cli" in kinds
     assert kinds.index("feishu-cli") < kinds.index("weknora")
+    assert kinds.index("obsidian-cli") < kinds.index("weknora")
     assert kinds.index("wecom-cli") < kinds.index("dify")
     assert kinds.index("didi") < kinds.index("weknora")
     assert kinds[-2:] == ["weknora", "dify"]
+
+
+async def test_obsidian_cli_install_registers_binary(
+    env, monkeypatch: pytest.MonkeyPatch, tmp_path
+):
+    c, _, auth, _ = env
+    home = tmp_path / "home"
+    source = tmp_path / "Obsidian.app" / "Contents" / "MacOS" / "obsidian-cli"
+    source.parent.mkdir(parents=True)
+    source.write_text("obsidian", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("PATH", os.environ.get("PATH", ""))
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.cli_install.obsidian_bundle_candidates",
+        lambda: [str(source)],
+    )
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.cli_install._prefix_writable",
+        lambda _prefix: False,
+    )
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.cli_install._read_version",
+        lambda _path: "1.12.7",
+    )
+    dest_name = "obsidian.exe" if os.name == "nt" else "obsidian"
+    dest = home / ".local" / "bin" / dest_name
+
+    def _which(name: str) -> str | None:
+        if name == "obsidian" and dest.is_file():
+            return str(dest)
+        return None
+
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.cli_install.shutil.which",
+        _which,
+    )
+
+    status = await c.get("/api/connectors/obsidian-cli/cli-status", headers=auth)
+    assert status.status_code == 200
+    body = status.json()
+    assert body["installed"] is False
+    assert body["binary"] == "obsidian"
+    assert body["install_command"]
+    assert "npm" not in body["install_command"]
+
+    installed = await c.post("/api/connectors/obsidian-cli/install-cli", headers=auth)
+    assert installed.status_code == 200
+    payload = installed.json()
+    assert payload["ok"] is True
+    assert payload["already_installed"] is False
+    assert payload["installed"] is True
+    assert dest.is_file()
 
 
 async def test_install_cli_forbidden_for_non_admin(env):

@@ -70,7 +70,9 @@ def _format_cli_error(returncode: int, stdout: str, stderr: str) -> str:
             if not hint:
                 hint = str(err.get("hint") or "").strip()
         # Never forward CLI "run xxx" hints to agents — they cause shell/auth loops.
-        if hint and ("lark-cli" in hint.lower() or "wecom-cli" in hint.lower()):
+        if hint and any(
+            name in hint.lower() for name in ("lark-cli", "wecom-cli", "agently-cli", "obsidian")
+        ):
             hint = ""
         parts = [p for p in (message, hint) if p]
         if parts:

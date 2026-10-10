@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import secrets
 from typing import Any
@@ -229,6 +230,29 @@ def _build_gateway_spec(
     return spec
 
 
+def _reject_obsidian_control_chars(field: str, value: str) -> None:
+    if any(char in value for char in "\n\r\x00"):
+        raise ValueError(f"{field} cannot contain newlines")
+
+
+def _obsidian_cli_credentials(credentials: dict[str, Any]) -> dict[str, Any]:
+    vault = str(credentials.get("vault") or "").strip()
+    _reject_obsidian_control_chars("vault", vault)
+    if not vault:
+        raise ValueError("vault is required for Obsidian CLI")
+    out: dict[str, Any] = {
+        "vault": vault,
+        "internal_token": new_internal_token(),
+    }
+    binary_path = str(credentials.get("binary_path") or "").strip()
+    if binary_path:
+        _reject_obsidian_control_chars("binary_path", binary_path)
+        if not os.path.isfile(binary_path):
+            raise ValueError("binary_path must be an existing file")
+        out["binary_path"] = binary_path
+    return out
+
+
 def validate_create_credentials(
     kind: str,
     credentials: dict[str, Any],
@@ -427,6 +451,8 @@ def validate_create_credentials(
         if entry.kind == "agently-cli":
             # A caller must never select another instance's CLI credential directory.
             return {"internal_token": new_internal_token(), "cli_config_key": new_ulid()}
+        if entry.kind == "obsidian-cli":
+            return _obsidian_cli_credentials(credentials)
         if entry.kind == "weknora":
             base_url = normalize_weknora_base_url(str(credentials.get("base_url") or ""))
             out = {

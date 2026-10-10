@@ -5920,6 +5920,7 @@
     "cliInstallFailed": "Host CLI install failed",
     "cliInstalledHint": "Detected {{binary}} on the host",
     "cliMissingHint": "CLI is not installed on the host. Click Install CLI, or run the command below on the Octop host.",
+    "obsidianCliGuide": "Obsidian CLI official install guide: https://obsidian.md/zh/cli",
     "agentlyAuthTitle": "Agent Mail authorization",
     "agentlyIdle": "This mailbox instance is not authorized",
     "agentlyPending": "Open the authorization page and sign in. The result will update automatically.",
