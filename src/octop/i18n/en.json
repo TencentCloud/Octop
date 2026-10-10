@@ -95,6 +95,7 @@
       "usage": "Usage: /delete <thread_short_id>",
       "not_found": "No thread matches {short!r}.",
       "active": "Cannot delete the active thread. Use /new first.",
+      "failed": "Could not delete this thread. It is still in the list; try again.",
       "done": "Deleted thread {short}."
     },
     "pin": {
@@ -310,11 +311,11 @@
       },
       "memory": {
         "label": "Memory maintenance",
-        "description": "Back up and slim memory databases, or check maintenance progress."
+        "description": "Slim memory databases, reclaim freed disk with VACUUM FULL, or check maintenance progress."
       }
     },
     "memory": {
-      "usage": "Usage: /memory slim (explain the purpose and impact), /memory slim --all (list your eligible running agents), /memory status (progress). Viewing the explanation does not pause chat.",
+      "usage": "Usage: /memory slim (explain the purpose and impact), /memory slim --all (list your eligible running agents), /memory compact (explain VACUUM FULL), /memory status (progress). Viewing the explanation does not pause chat.",
       "accepted": "Confirmed maintenance for {count} agents. The host will back up, deduplicate, and reclaim space sequentially while preserving history and memories. All chats for the agent currently being maintained pause sending and resume automatically afterward. The page shows phases and elapsed time; you can use another agent that is not under maintenance. Closing the page does not stop the batch. Use /memory status for results after sending resumes.",
       "idle": "No maintenance record for this agent. Use /memory slim to start.",
       "summary": "Latest maintenance: {completed}/{total} agents completed.",
@@ -323,7 +324,17 @@
       "failure_hint": "See server logs for details; the batch will not retry automatically.",
       "trusted_chat": "Use /memory in the signed-in Octop dashboard or local CLI chat. IM senders do not yet have verified maintenance permissions.",
       "preview": "This optional maintenance reclaims disk space by deduplicating stored context, preserving chat history and memories. Savings depend on how much data is duplicated.\n\nA backup needs extra disk space. During maintenance, sending is paused in all chats for the affected agent and resumes automatically afterward. Large databases may take a long time; there is no reliable duration estimate. Run this when you can leave the agent idle.\n\nCurrently eligible targets: {count} (maintenance has not started):",
-      "confirm_hint": "To start now, send `{command}`. Without confirmation, you can keep chatting. Eligible targets are checked again when you confirm."
+      "confirm_hint": "To start now, send `{command}`. That does not delete the directories listed below. Without confirmation, you can keep chatting. Eligible targets are checked again when you confirm.",
+      "orphan_dirs": "These directories do not match any current agent. Maintenance leaves them in place. To delete them, send `{command}` as a second confirmation:",
+      "orphan_dirs_none": "No directories are left whose names do not match a current agent.",
+      "compact_preview": "This rewrites the memory database so space from deleted conversations can return to the operating system. SQLite and PostgreSQL both report the size before, the size after, and how much was saved. PostgreSQL runs VACUUM FULL on the shared checkpoint tables, which blocks reads and writes for every agent using that database.\n\nStop chatting with those agents first. This can take a while on a large database.",
+      "compact_done_saved": "Memory database: {before} -> {after}, saved {saved}.",
+      "compact_done_unchanged": "Memory database stayed {after}. The file did not shrink.",
+      "compact_done_tables": "VACUUM FULL finished on {count} tables.",
+      "compact_skipped": "Skipped (table not present): {tables}.",
+      "compact_busy": "This agent is in a conversation. Wait until it is idle, then run /memory compact --confirm.",
+      "compact_not_running": "This agent is not running, so its memory database cannot be compacted from chat.",
+      "compact_no_memory": "This agent has no memory store to compact."
     }
   },
   "connector": {
@@ -393,6 +404,7 @@
     "SETUP_TOKEN_INVALID": "Setup session is invalid or expired. Verify the setup password again.",
     "AGENT_NOT_FOUND": "Agent not found.",
     "AGENT_NOT_RUNNING": "This expert is not enabled.",
+    "CHECKPOINT_DELETE_FAILED": "Conversation data was not deleted. The thread is still here; try again.",
     "AGENT_FAILED": "Agent failed to start.",
     "AGENT_BUSY": "Agent is busy.",
     "AGENT_NAME_TAKEN": "This name is already in use. Please choose another.",
@@ -851,7 +863,11 @@
   "memory_slim": {
     "waiting": "Waiting for the current task to finish…",
     "backing_up": "Backing up memory…",
+    "sweeping": "Removing leftovers from deleted agents and conversations…",
     "deduplicating": "Deduplicating historical context…",
+    "swept": "Removed leftovers from deleted agents or conversations: {namespaces} memory namespaces, {threads} checkpoint threads, {directories} directories.",
+    "orphan_dirs": "These directories do not match any current agent:",
+    "orphan_dirs_confirm": "Delete the directories listed above?",
     "compacting": "Compacting the memory database…",
     "done": "Memory maintenance completed; conversations resumed.",
     "failed": "Memory maintenance failed; conversations unblocked.",

@@ -401,12 +401,6 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
   telegram: [
     { name: "bot_token", label: "Bot Token", type: "password", required: true },
     {
-      name: "allowed_user_ids",
-      label: "channels.telegramAllowedUsers",
-      type: "textarea",
-      helpKey: "channels.telegramAllowedUsersHelp",
-    },
-    {
       name: "http_proxy",
       label: "HTTP Proxy",
       placeholder: "http://127.0.0.1:18118",

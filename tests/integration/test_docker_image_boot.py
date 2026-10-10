@@ -24,22 +24,28 @@ READY_TIMEOUT_S = 180
 def _docker_available() -> bool:
     if shutil.which("docker") is None:
         return False
-    result = subprocess.run(
-        ["docker", "info"],
-        check=False,
-        capture_output=True,
-        timeout=20,
-    )
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            check=False,
+            capture_output=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
     return result.returncode == 0
 
 
 def _image_present() -> bool:
-    result = subprocess.run(
-        ["docker", "image", "inspect", IMAGE],
-        check=False,
-        capture_output=True,
-        timeout=20,
-    )
+    try:
+        result = subprocess.run(
+            ["docker", "image", "inspect", IMAGE],
+            check=False,
+            capture_output=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
     return result.returncode == 0
 
 

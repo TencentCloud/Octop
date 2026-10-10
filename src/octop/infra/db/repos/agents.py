@@ -307,4 +307,6 @@ class AgentRepo:
 
     def delete(self, agent_id: str) -> None:
         with self._db.transaction() as conn:
+            # No foreign key. Thread and usage rows cascade from ``agents``.
+            conn.execute("DELETE FROM care_push_records WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM agents WHERE agent_id = ?", (agent_id,))

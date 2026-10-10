@@ -264,6 +264,7 @@ export default function ChatInputActionsRow({
   const [reasoningModelRef, setReasoningModelRef] = useState<string | null>(
     null,
   );
+
   // Press-and-hold dictation: start on pointerdown, finish on release or when
   // the pointer slides off the button (also covers touch cancel).
   const handleVoicePressStart = () => {

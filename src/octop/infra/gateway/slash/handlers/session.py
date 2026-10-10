@@ -8,6 +8,7 @@ from octop_harness.slash import SlashCommand, SlashSink
 
 from octop.i18n.domains.slash import tr
 from octop.infra.db.repos.threads import clip_thread_title
+from octop.infra.errors import OctopError
 from octop.infra.gateway.slash.ctx import (
     SlashCtx,
     chat_type,
@@ -133,6 +134,14 @@ async def cmd_delete(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink:
         return
     if active and target.thread_id == active:
         await sink.text(tr("delete.active", lang))
+        return
+    if ctx.agent_manager is None:
+        await sink.text(tr("delete.failed", lang))
+        return
+    try:
+        await ctx.agent_manager.delete_thread_checkpoint(ctx.agent_id, target.thread_id)
+    except OctopError:
+        await sink.text(tr("delete.failed", lang))
         return
     ctx.thread_registry.delete_thread(target.thread_id)
     await sink.text(tr("delete.done", lang, short=target.thread_id[-6:]))

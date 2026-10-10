@@ -12,7 +12,6 @@ import {
   Drawer,
   Empty,
   Pagination,
-  Popconfirm,
   Space,
   Spin,
   Table,
@@ -37,7 +36,10 @@ import {
 } from "../../../utils/messageParser";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
-import { showConfirmModal } from "../../../utils/confirmModal";
+import {
+  confirmDeleteConversation,
+  deleteConversation,
+} from "../../Chat/utils/deleteConversation";
 import {
   formatMessageTime,
   formatServerDateTime,
@@ -296,43 +298,30 @@ export default function ConversationRecords({
     resetHistoryState();
   }, [resetHistoryState]);
 
-  const handleDelete = useCallback(
-    async (thread: OctopThread) => {
-      setDeletingId(thread.thread_id);
-      try {
-        await octopThreadsApi.delete(agentId, thread.thread_id);
-        message.success(t("memory.conversationDeleteSuccess"));
-        if (selectedThread?.thread_id === thread.thread_id) {
-          closeDrawer();
-        }
-        setThreads((prev) =>
-          prev.filter((row) => row.thread_id !== thread.thread_id),
-        );
-      } catch {
-        message.error(t("memory.conversationDeleteFailed"));
-      } finally {
-        setDeletingId(null);
-      }
-    },
-    [agentId, closeDrawer, selectedThread?.thread_id, t],
-  );
-
   const confirmDelete = useCallback(
     (thread: OctopThread) => {
-      showConfirmModal(
-        {
-          title: t("memory.conversationDeleteConfirm"),
-          okText: t("common.delete"),
-          cancelText: t("common.cancel"),
-          okButtonProps: { danger: true },
-          onOk: async () => {
-            await handleDelete(thread);
-          },
-        },
-        { isMobile },
-      );
+      confirmDeleteConversation(t, async (compact) => {
+        setDeletingId(thread.thread_id);
+        try {
+          const deleted = await deleteConversation(
+            agentId,
+            thread.thread_id,
+            compact,
+            t,
+          );
+          if (!deleted) return;
+          if (selectedThread?.thread_id === thread.thread_id) {
+            closeDrawer();
+          }
+          setThreads((prev) =>
+            prev.filter((row) => row.thread_id !== thread.thread_id),
+          );
+        } finally {
+          setDeletingId(null);
+        }
+      });
     },
-    [handleDelete, isMobile, t],
+    [agentId, closeDrawer, selectedThread?.thread_id, t],
   );
 
   const roleLabel = (role: string) => {
@@ -426,29 +415,22 @@ export default function ConversationRecords({
                 onClick={() => void openThread(row)}
               />
             </Tooltip>
-            <Popconfirm
-              title={t("memory.conversationDeleteConfirm")}
-              okText={t("common.delete")}
-              cancelText={t("common.cancel")}
-              okButtonProps={{ danger: true }}
-              onConfirm={() => void handleDelete(row)}
-            >
-              <Tooltip title={t("common.delete")}>
-                <Button
-                  type="text"
-                  size="small"
-                  danger
-                  icon={<Trash2 size={15} />}
-                  loading={deletingId === row.thread_id}
-                  aria-label={t("common.delete")}
-                />
-              </Tooltip>
-            </Popconfirm>
+            <Tooltip title={t("common.delete")}>
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<Trash2 size={15} />}
+                loading={deletingId === row.thread_id}
+                aria-label={t("common.delete")}
+                onClick={() => confirmDelete(row)}
+              />
+            </Tooltip>
           </Space>
         ),
       },
     ],
-    [deletingId, handleDelete, openThread, serverTimezone, t],
+    [confirmDelete, deletingId, openThread, serverTimezone, t],
   );
 
   const threadPaginationTotal = (total: number) =>

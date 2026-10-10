@@ -217,34 +217,6 @@ describe("<ChannelsPanel /> create-flow default", () => {
     });
   });
 
-  it("saves Telegram allowed user IDs as a deduplicated list", async () => {
-    await openTelegramCreateDrawer();
-
-    await userEvent.type(
-      await screen.findByLabelText(/Bot Token/i),
-      "123456:ABC-token",
-    );
-    await userEvent.type(
-      screen.getByLabelText("channels.telegramAllowedUsers"),
-      "123456789, 111222333\n123456789",
-    );
-    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
-
-    await waitFor(() => {
-      const post = api.mock.calls.find(
-        ([, init]) => (init as RequestInit | undefined)?.method === "POST",
-      );
-      expect(post).toBeDefined();
-      expect(JSON.parse(String(post![1]!.body))).toMatchObject({
-        kind: "telegram",
-        config: {
-          bot_token: "123456:ABC-token",
-          allowed_user_ids: ["123456789", "111222333"],
-        },
-      });
-    });
-  });
-
   it("still honors a deliberate opt-out: unchecking fires the alignment PATCH", async () => {
     await openTelegramCreateDrawer();
 

@@ -204,7 +204,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
             continue;
           }
           if (
-            (row.kind === "discord" || row.kind === "telegram") &&
+            row.kind === "discord" &&
             (k === "allowed_channel_ids" || k === "allowed_user_ids") &&
             Array.isArray(v)
           ) {

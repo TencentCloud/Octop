@@ -105,6 +105,24 @@ def test_update_config_can_clear_default_model(repo: AgentRepo, user_id: int):
     assert row.default_model is None
 
 
+def test_delete_removes_care_push_records(repo: AgentRepo, user_id: int, db: SqlitePool):
+    aid = new_ulid()
+    repo.create(agent_id=aid, user_id=user_id, name="bot")
+    with db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO care_push_records(id, agent_id, session_key, episode_id, pushed_at) "
+            "VALUES ('push-1', ?, 'sess', 'ep', 1)",
+            (aid,),
+        )
+    repo.delete(aid)
+    with db.connect() as conn:
+        left = conn.execute(
+            "SELECT COUNT(*) FROM care_push_records WHERE agent_id = ?",
+            (aid,),
+        ).fetchone()
+    assert left[0] == 0
+
+
 def test_cascade_delete_on_user(repo: AgentRepo, user_id: int, db: SqlitePool):
     aid = new_ulid()
     repo.create(agent_id=aid, user_id=user_id, name="bot")
