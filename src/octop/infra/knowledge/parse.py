@@ -252,8 +252,15 @@ def _sheet_text(title: str, rows: Iterable[Iterable[object]]) -> str:
 
 
 def _parse_delimited(path: Path, *, delimiter: str) -> str:
-    reader = csv.reader(_read_text(path).splitlines(), delimiter=delimiter)
-    return _sheet_text(path.stem, reader)
+    # Standard csv.field_size_limit default (128KB) can fail on large cells/exports;
+    # temporarily expand it while parsing and restore afterwards.
+    prev_limit = csv.field_size_limit()
+    try:
+        csv.field_size_limit(10 * 1024 * 1024)
+        reader = csv.reader(_read_text(path).splitlines(), delimiter=delimiter)
+        return _sheet_text(path.stem, reader)
+    finally:
+        csv.field_size_limit(prev_limit)
 
 
 def _parse_xlsx(path: Path) -> str:
