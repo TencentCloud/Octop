@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.agents.workspace.dir import (
@@ -383,20 +384,6 @@ def build_timestamped_inbound_name(filename: str, *, now: int | None = None) -> 
     return f"{ts}_{display}"
 
 
-async def _unique_inbound_path(workspace: BackendWorkspace, stored_name: str) -> str:
-    """Pick ``inbound/{name}``, or ``inbound/{stem}-{n}{suffix}`` on collision."""
-    candidate = f"{INBOUND_DIR}/{stored_name}"
-    if not await workspace.aexists(candidate):
-        return candidate
-    stem = Path(stored_name).stem
-    suffix = Path(stored_name).suffix
-    for index in range(2, 1000):
-        alt = f"{INBOUND_DIR}/{stem}-{index}{suffix}"
-        if not await workspace.aexists(alt):
-            return alt
-    raise OctopError(ErrorCode.INTERNAL_ERROR, f"cannot allocate unique path for {stored_name!r}")
-
-
 async def write_inbound(
     workspace: BackendWorkspace,
     data: bytes,
@@ -405,7 +392,7 @@ async def write_inbound(
     media_type: str,
     max_bytes: int | None = None,
 ) -> InboundFile:
-    """Persist bytes under ``inbound/{unix_ts}_{original}``."""
+    """Persist bytes under ``inbound/{uuid}/{unix_ts}_{original}``."""
     validate_inbound_size(data, max_bytes=max_bytes)
     normalized_type = validate_inbound_media_type(media_type, filename)
 
@@ -413,7 +400,7 @@ async def write_inbound(
     if not Path(display_name).suffix:
         display_name = f"{display_name}{inbound_extension(display_name, normalized_type)}"
     stored_name = build_timestamped_inbound_name(display_name)
-    path = await _unique_inbound_path(workspace, stored_name)
+    path = f"{INBOUND_DIR}/{uuid4().hex}/{stored_name}"
     await workspace.aupload_bytes(path, data)
     return InboundFile(
         path=path,

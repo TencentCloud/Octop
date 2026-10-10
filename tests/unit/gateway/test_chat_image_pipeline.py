@@ -79,7 +79,7 @@ async def test_file_in_workspace_with_workspace_path_reaches_llm() -> None:
             data=_PNG,
         )
         assert stored.data_path.startswith("inbound/")
-        assert re.search(r"inbound/\d{10,}_chart\.png$", stored.data_path)
+        assert re.search(r"inbound/[0-9a-f]{32}/\d{10,}_chart\.png$", stored.data_path)
         assert await workspace.adownload_bytes(stored.data_path) == _PNG
 
         preview = f"/api/agents/agent-1/media/preview?source={stored.data_path}"
