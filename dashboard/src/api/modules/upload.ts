@@ -1,4 +1,4 @@
-import { requestUpload } from "../request";
+import { request, requestUpload } from "../request";
 
 export interface UploadResponse {
   path: string;
@@ -7,6 +7,7 @@ export interface UploadResponse {
   media_type: string;
   url: string;
   access_url: string;
+  preview_url?: string;
 }
 
 /**
@@ -22,5 +23,24 @@ export async function uploadFile(
 }
 
 export const uploadImage = uploadFile;
+
+export type NativeCaptureMode = "scan" | "photo" | "album";
+
+export function nativeCaptureAvailability(agentId: string) {
+  return request<{ available: boolean }>(`/agents/${agentId}/native-capture`);
+}
+
+export function captureNativeAttachment(
+  agentId: string,
+  mode: NativeCaptureMode = "scan",
+) {
+  return request<{
+    status: "ok" | "cancelled" | "timeout" | "unavailable" | "error" | "busy";
+    attachments: UploadResponse[];
+  }>(`/agents/${agentId}/native-capture`, {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  });
+}
 
 export const uploadApi = { uploadFile, uploadImage };

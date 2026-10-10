@@ -3761,6 +3761,17 @@
     "quickPrompt12Text": "Please improve the following resume to make it more professional and impactful, and highlight the key strengths:\n\n"
   },
   "upload": {
+    "capture": {
+      "addContent": "Add content",
+      "import": "Import files",
+      "iphone": "Scan documents with iPhone",
+      "timeout": "Capture timed out. Please try again.",
+      "unavailable": "Native capture requires macOS and a built OctopCapture helper.",
+      "error": "Capture failed. Please try again.",
+      "busy": "A capture window is already open. Complete or close it first.",
+      "photo": "Take photo with iPhone",
+      "album": "Choose from iPhone photos (USB)"
+    },
     "fileTooltip": "Upload attachment",
     "unsupportedType": "Unsupported file type: {{type}}",
     "tooLarge": "File too large (max {{maxMb}}MB): {{name}}",

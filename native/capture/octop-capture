@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Standalone local capture CLI. No Octop or third-party Python dependencies."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import mimetypes
+import os
+import subprocess
+import sys
+from pathlib import Path
+from uuid import uuid4
+
+HELPER = Path(__file__).resolve().parent / "OctopCapture.app/Contents/MacOS/OctopCapture"
+MODES = ("scan", "photo", "album", "import")
+
+
+def capture(mode: str, output_dir: Path, timeout: float = 600, helper: Path = HELPER) -> dict:
+    """Run native UI in a unique session; keep originals and previews on disk."""
+    session = uuid4().hex
+    result = {
+        "schema_version": 1,
+        "session_id": session,
+        "mode": mode,
+        "status": "error",
+        "files": [],
+    }
+    if mode not in MODES:
+        return {**result, "reason": "Unknown capture mode"}
+    if sys.platform != "darwin":
+        return {**result, "status": "unavailable", "reason": "macOS 13+ required"}
+    if not helper.is_file():
+        return {
+            **result,
+            "status": "unavailable",
+            "reason": "Run native/capture/build.sh first",
+        }
+    try:
+        directory = output_dir.expanduser().resolve() / session
+        directory.mkdir(parents=True)
+        result["directory"] = str(directory)
+        try:
+            process = subprocess.run(
+                [str(helper), mode, str(directory)], timeout=timeout, stdout=subprocess.DEVNULL
+            )
+        except subprocess.TimeoutExpired:
+            result.update(status="timeout", reason="Capture timed out")
+        else:
+            native = json.loads((directory / "result.json").read_text(encoding="utf-8"))
+            if process.returncode != 0:
+                raise ValueError(f"Helper exited with code {process.returncode}")
+            status = native["status"]
+            if status not in ("ok", "cancelled", "error"):
+                raise ValueError("Invalid helper status")
+            result.update(status=status, reason=native.get("reason", ""))
+            if status == "ok":
+                files = []
+                for name in native["files"]:
+                    path = checked_file(directory, name)
+                    preview_name = native.get("previews", {}).get(name)
+                    files.append(
+                        {
+                            "path": str(path),
+                            "filename": path.name,
+                            "media_type": mimetypes.guess_type(path.name)[0]
+                            or "application/octet-stream",
+                            "size": path.stat().st_size,
+                            "preview_path": str(checked_file(directory, preview_name))
+                            if preview_name
+                            else None,
+                        }
+                    )
+                result["files"] = files
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        result.update(status="error", files=[], reason=str(error))
+    # Persist failures too, so a caller can inspect every created session.
+    if "directory" in result:
+        manifest = Path(result["directory"]) / "capture.json"
+        result["manifest_path"] = str(manifest)
+        try:
+            temporary = manifest.with_suffix(".json.tmp")
+            temporary.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+            os.replace(temporary, manifest)
+        except OSError as error:
+            result.update(status="error", files=[], reason=str(error))
+    return result
+
+
+def checked_file(directory: Path, name: str) -> Path:
+    if not isinstance(name, str) or Path(name).name != name:
+        raise ValueError("Invalid helper file reference")
+    path = directory / name
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("Invalid helper output file")
+    return path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Capture documents/photos using native macOS UI; return JSON on stdout."
+    )
+    parser.add_argument("mode", choices=MODES)
+    parser.add_argument(
+        "--output", required=True, type=Path, help="Root directory for persistent capture sessions"
+    )
+    parser.add_argument(
+        "--timeout", type=float, default=600, help="Seconds to wait for the user (default: 600)"
+    )
+    args = parser.parse_args()
+    if args.timeout <= 0:
+        parser.error("--timeout must be positive")
+    result = capture(args.mode, args.output, args.timeout)
+    print(json.dumps(result, ensure_ascii=False))
+    return 0 if result["status"] in ("ok", "cancelled") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

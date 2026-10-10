@@ -47,6 +47,7 @@ export interface HitlRequestData {
 }
 
 export interface ChatAttachment {
+  previewUrl?: string;
   url: string;
   filename?: string;
   mediaType?: string;

@@ -194,3 +194,21 @@ describe("ChatInputActionsRow plus menu", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("composer capture menu", () => {
+  it("lets the user choose files or iPhone capture", async () => {
+    const scan = vi.fn();
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} onNativeCapture={scan} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "upload.capture.addContent" }),
+    );
+    expect(await screen.findByText("upload.capture.photo")).toBeInTheDocument();
+    expect(await screen.findByText("upload.capture.album")).toBeInTheDocument();
+    fireEvent.click(await screen.findByText("upload.capture.iphone"));
+    expect(scan).toHaveBeenCalledWith("scan");
+  });
+});

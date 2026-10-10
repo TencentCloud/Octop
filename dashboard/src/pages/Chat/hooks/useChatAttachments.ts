@@ -1,22 +1,98 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { uploadFile } from "../../../api/modules/upload";
+import {
+  type NativeCaptureMode,
+  uploadFile,
+  nativeCaptureAvailability,
+  captureNativeAttachment,
+} from "../../../api/modules/upload";
 import { agentAttachmentAccessUrl } from "../../../utils/toolMediaBlocks";
 import type { ChatAttachment } from "./useChat";
 import { message as antMessage } from "@/utils/antdMessage";
 import { apiErrorMessage } from "../../../utils/apiError";
 
-import { inferAttachmentKind } from "../utils/chatAttachments";
+import {
+  inferAttachmentKind,
+  inferKindFromNameAndMime,
+} from "../utils/chatAttachments";
 import { useServerUploadLimit } from "../../../hooks/useServerUploadLimit";
 
-export function useChatAttachments(agentId: string | null | undefined) {
+export function useChatAttachments(
+  agentId: string | null | undefined,
+  threadId?: string | null,
+) {
   const { t } = useTranslation();
   const { maxUploadBytes, maxUploadMb } = useServerUploadLimit();
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [nativeCaptureAvailable, setNativeCaptureAvailable] = useState(false);
+  const [captureBusy, setCaptureBusy] = useState(false);
+  const capturePending = useRef(false);
+  const captureScope = useRef(0);
+
+  useEffect(() => {
+    // A capture started in another chat must not attach files to this draft.
+    captureScope.current += 1;
+    return () => {
+      captureScope.current += 1;
+    };
+  }, [agentId, threadId]);
+
+  useEffect(() => {
+    let active = true;
+    setNativeCaptureAvailable(false);
+    if (agentId && !agentId.startsWith("bridge:")) {
+      void nativeCaptureAvailability(agentId).then(
+        (result) => {
+          if (active) setNativeCaptureAvailable(result.available);
+        },
+        () => {},
+      );
+    }
+    return () => {
+      active = false;
+    };
+  }, [agentId]);
+
+  const handleNativeCapture = useCallback(
+    async (mode: NativeCaptureMode = "scan") => {
+      if (!agentId || capturePending.current) return;
+      capturePending.current = true;
+      setCaptureBusy(true);
+      const scope = captureScope.current;
+      try {
+        const result = await captureNativeAttachment(agentId, mode);
+        if (scope !== captureScope.current) return;
+        if (result.status === "ok") {
+          const next = result.attachments.map(
+            (file) =>
+              ({
+                ...(file.preview_url ? { previewUrl: file.preview_url } : {}),
+                url: file.access_url || file.url,
+                filename: file.filename,
+                mediaType: file.media_type,
+                workspacePath: file.workspace_path || file.path,
+                kind: inferKindFromNameAndMime(file.media_type, file.filename),
+              }) satisfies ChatAttachment,
+          );
+          setAttachments((prev) => [...prev, ...next]);
+        } else if (result.status !== "cancelled") {
+          antMessage.error(t(`upload.capture.${result.status}`));
+        }
+      } catch (err) {
+        if (scope === captureScope.current) {
+          antMessage.error(apiErrorMessage(err, t("upload.capture.error"), t));
+        }
+      } finally {
+        capturePending.current = false;
+        setCaptureBusy(false);
+      }
+    },
+    [agentId, t],
+  );
 
   const processFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -154,7 +230,10 @@ export function useChatAttachments(agentId: string | null | undefined) {
 
   return {
     attachments,
-    uploading,
+    uploading: uploading || captureBusy,
+    nativeCaptureAvailable,
+    capturing: captureBusy,
+    handleNativeCapture,
     dragOver,
     fileInputRef,
     processFiles,
