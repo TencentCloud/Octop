@@ -751,7 +751,16 @@ class AgentManager:
                     await self._abort_incomplete_create(agent_id)
                     raise
             elif spec.template_name:
-                await self._seed_expert_template(row, spec.template_name)
+                # Same contract as the team branch above: a seeding failure must
+                # not leave a half-created row behind. Without this rollback the
+                # agent keeps its name (so the user cannot retry it) and its
+                # workspace directory stays on disk, because the exception escapes
+                # ``create()`` after ``agent_repo.create`` already committed.
+                try:
+                    await self._seed_expert_template(row, spec.template_name)
+                except Exception:
+                    await self._abort_incomplete_create(agent_id)
+                    raise
             if workspace_initializer is not None:
                 try:
                     workspace = self._backend_workspace_for_row(row)
