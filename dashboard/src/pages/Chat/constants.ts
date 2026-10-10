@@ -12,6 +12,13 @@ export const FILE_TOOL_NAMES = [
 export const EMPTY_CHAT_SESSION_KEY = "__empty__";
 export const PENDING_THREAD_ID = "__pending__";
 
+export function isPendingThreadId(threadId: string): boolean {
+  return (
+    threadId === PENDING_THREAD_ID ||
+    threadId.startsWith(`${PENDING_THREAD_ID}-`)
+  );
+}
+
 function toolNameBase(name: string): string {
   const trimmed = name.trim();
   const slash = trimmed.lastIndexOf("/");
