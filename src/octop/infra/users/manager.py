@@ -236,6 +236,45 @@ class UserManager:
     def count(self) -> int:
         return self._services.user_repo.count()
 
+    def _active_admin_rows(self) -> builtins.list[Any]:
+        return [
+            u
+            for u in self._services.user_repo.list(include_disabled=True)
+            if str(u.role) == Role.ADMIN and not bool(u.disabled)
+        ]
+
+    def _assert_would_keep_admin(
+        self,
+        row: Any,
+        *,
+        new_role: str | None = None,
+        new_disabled: bool | None = None,
+        removing: bool = False,
+    ) -> None:
+        """Invariant: never leave zero enabled administrators.
+
+        Shared by ``remove`` / ``disable`` / ``set_role`` so the HTTP API
+        and the CLI keep the same guarantee. Only fires when the target is
+        currently an enabled admin and would cease to be one after the
+        operation; enabling or re-assigning to admin is always allowed.
+        """
+        if str(row.role) != Role.ADMIN or bool(row.disabled):
+            return
+        if removing:
+            stays = False
+        else:
+            role_after = str(new_role) if new_role is not None else str(row.role)
+            disabled_after = new_disabled if new_disabled is not None else bool(row.disabled)
+            stays = role_after == Role.ADMIN and not disabled_after
+        if stays:
+            return
+        others = [u for u in self._active_admin_rows() if int(u.id) != int(row.id)]
+        if not others:
+            raise OctopError(
+                ErrorCode.FORBIDDEN,
+                "cannot remove the last active administrator",
+            )
+
     # ----- auth -----
 
     async def resolve_or_create_sso_user(
@@ -632,6 +671,7 @@ class UserManager:
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "user not found")
         role_id = str(role)
+        self._assert_would_keep_admin(row, new_role=role_id)
         self._services.user_repo.set_role(row.id, role_id)
         async with self._lock:
             current = self._users.get(username)
@@ -732,6 +772,7 @@ class UserManager:
         row = self._services.user_repo.get_by_username(username)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        self._assert_would_keep_admin(row, new_disabled=True)
         async with self._lock:
             self._users.pop(username, None)
         self._services.user_repo.set_disabled(row.id, True)
@@ -776,6 +817,7 @@ class UserManager:
         row = self._services.user_repo.get_by_username(username)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        self._assert_would_keep_admin(row, removing=True)
         owned = self._services.agent_repo.list_by_user(row.id)
         owned_ids = {agent.agent_id for agent in owned}
         if agent_manager is not None:
