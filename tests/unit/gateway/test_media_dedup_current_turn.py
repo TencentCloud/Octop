@@ -8,9 +8,7 @@ from octop.infra.gateway.media.tool_media import dedup_tool_result_messages
 def _chunk(*ids: str) -> dict:
     return {
         "type": "tool_result",
-        "messages": [
-            {"tool_call_id": call_id, "content": f"file {call_id}"} for call_id in ids
-        ],
+        "messages": [{"tool_call_id": call_id, "content": f"file {call_id}"} for call_id in ids],
     }
 
 
@@ -42,4 +40,7 @@ def test_without_a_current_turn_whitelist_behaviour_is_unchanged():
 def test_already_emitted_ids_are_still_skipped():
     chunk = _chunk("current-call")
 
-    assert dedup_tool_result_messages(chunk, {"current-call"}, current_turn_ids={"current-call"}) is None
+    assert (
+        dedup_tool_result_messages(chunk, {"current-call"}, current_turn_ids={"current-call"})
+        is None
+    )
