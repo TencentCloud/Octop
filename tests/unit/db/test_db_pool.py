@@ -109,6 +109,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
     assert "user_policies" in table_names
     assert "agent_team_members" not in table_names
     assert "kind" in agent_cols
+    assert "archived" in thread_cols
     assert {"email", "sso_provider_id", "sso_subject"}.issubset(cols)
     assert {"kind", "extra"}.issubset(sso_cols)
     assert "idx_sso_providers_kind" in sso_indexes

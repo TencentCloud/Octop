@@ -1558,6 +1558,17 @@ def _ensure_thread_conversation_mode_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "hitl_policy", "TEXT")
 
 
+def _ensure_thread_archive_schema(db: DatabasePool) -> None:
+    if not _table_exists(db, "threads"):
+        return
+    _ensure_column(db, "threads", "archived", "INTEGER NOT NULL DEFAULT 0")
+    with db.connect() as conn:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_threads_agent_user_archived "
+            "ON threads(agent_id, user_id, archived, pinned, last_active, created_at)"
+        )
+
+
 def _ensure_skill_copy_policy_schema(db: DatabasePool) -> None:
     if not _table_exists(db, "skill_packages"):
         return
@@ -1699,6 +1710,7 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_thread_conversation_mode_schema(db)
             if max_version >= 18:
                 _ensure_user_role_schema(db)
+                _ensure_thread_archive_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -1743,6 +1755,7 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_thread_conversation_mode_schema(db)
     if max_version >= 18:
         _ensure_user_role_schema(db)
+        _ensure_thread_archive_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -1782,7 +1795,8 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     multi-identity ``user_sso_identities``.
     Version 16 adds ``agents.kind`` so team hosts can be listed.
     Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
-    Version 18 adds ``user_role`` templates and non-FK role id/name snapshots.
+    Version 18 adds ``user_role`` templates, non-FK role id/name snapshots,
+    and reversible thread archiving.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1914,10 +1928,11 @@ def run_migrations(db: DatabasePool) -> None:
     for version, path in _discover(db.dialect):
         if version <= _current_version(db):
             continue
-        # v18 touches optional ``user_invites``; use the idempotent helper for both
-        # dialects so restores from pre-invite physical schemas do not fail.
+        # v18 touches optional ``user_invites`` and ``threads``; use idempotent
+        # helpers for both dialects so partial legacy schemas do not fail.
         if version == 18:
             _ensure_user_role_schema(db)
+            _ensure_thread_archive_schema(db)
             with db.connect() as conn:
                 if db.dialect == "postgresql":
                     conn.execute("UPDATE _schema_version SET version = %s", (version,))
@@ -1959,4 +1974,5 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_agent_profile_columns(db)
     _ensure_sso_provider_kind_schema(db)
     _ensure_user_role_schema(db)
+    _ensure_thread_archive_schema(db)
     _ensure_bridge_connections_schema(db)

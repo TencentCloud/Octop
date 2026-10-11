@@ -52,6 +52,7 @@ export interface OctopThread {
   is_active?: boolean;
   has_messages?: boolean;
   pinned?: boolean;
+  archived?: boolean;
   unread_count?: number;
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
@@ -116,6 +117,7 @@ export interface ThreadDeleteResult {
 export interface OctopThreadPatch {
   title?: string;
   pinned?: boolean;
+  archived?: boolean;
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
@@ -158,9 +160,11 @@ export interface HistoryMigrationStatus {
 export const CHAT_HISTORY_PAGE_SIZE = 25;
 
 export const octopThreadsApi = {
-  list: (agentId: string, limit = 50) =>
+  list: (agentId: string, limit = 50, archived = false) =>
     request<OctopThread[]>(
-      `/agents/${encodeURIComponent(agentId)}/threads?limit=${limit}`,
+      `/agents/${encodeURIComponent(
+        agentId,
+      )}/threads?limit=${limit}&archived=${archived}`,
     ),
 
   create: (agentId: string) =>

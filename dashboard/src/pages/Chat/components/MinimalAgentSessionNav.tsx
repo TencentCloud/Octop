@@ -12,6 +12,8 @@ import {
   GitFork,
   ChevronRight,
   MessageSquarePlus,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { ExpertIcon } from "../../Experts/components/iconForName";
@@ -78,7 +80,9 @@ interface MinimalAgentSessionNavProps {
   ) => void | Promise<boolean | void>;
   onRenameActive: (id: string, name: string) => void;
   onPinActive: (id: string, pinned: boolean) => void;
+  onArchiveActive: (id: string, archived: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
+  showArchived: boolean;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
 }
@@ -104,6 +108,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   onDelete,
   onRename,
   onPin,
+  onArchive,
   onFork,
   forkDisabled,
   forkDisabledHint,
@@ -115,6 +120,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
+  onArchive: (id: string, archived: boolean) => void;
   onFork: (id: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
@@ -180,6 +186,21 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
         setIsEditing(true);
+      },
+    },
+    {
+      key: "archive",
+      label: session.archived
+        ? t("chat.restoreConversation")
+        : t("chat.archiveConversation"),
+      icon: session.archived ? (
+        <ArchiveRestore size={14} />
+      ) : (
+        <Archive size={14} />
+      ),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        onArchive(session.id, !session.archived);
       },
     },
     {
@@ -271,7 +292,9 @@ export default function MinimalAgentSessionNav({
   onDeleteActive,
   onRenameActive,
   onPinActive,
+  onArchiveActive,
   onFork,
+  showArchived,
   activeForkDisabled,
   activeForkDisabledHint,
 }: MinimalAgentSessionNavProps) {
@@ -333,22 +356,26 @@ export default function MinimalAgentSessionNav({
     [onAgentSelect],
   );
 
-  const refreshAgentPreview = useCallback(async (agentId: string) => {
-    if (!agentId) return;
-    try {
-      const rows = await octopThreadsApi.list(
-        agentId,
-        MINIMAL_AGENT_SESSION_PREVIEW,
-      );
-      const list = sortSessions(rows.map(toSession)).slice(
-        0,
-        MINIMAL_AGENT_SESSION_PREVIEW,
-      );
-      setByAgent((prev) => ({ ...prev, [agentId]: list }));
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const refreshAgentPreview = useCallback(
+    async (agentId: string) => {
+      if (!agentId) return;
+      try {
+        const rows = await octopThreadsApi.list(
+          agentId,
+          MINIMAL_AGENT_SESSION_PREVIEW,
+          showArchived,
+        );
+        const list = sortSessions(rows.map(toSession)).slice(
+          0,
+          MINIMAL_AGENT_SESSION_PREVIEW,
+        );
+        setByAgent((prev) => ({ ...prev, [agentId]: list }));
+      } catch {
+        /* ignore */
+      }
+    },
+    [showArchived],
+  );
 
   // Fetch preview threads for every expert (independent of classic session store).
   useEffect(() => {
@@ -366,6 +393,7 @@ export default function MinimalAgentSessionNav({
             const rows = await octopThreadsApi.list(
               id,
               MINIMAL_AGENT_SESSION_PREVIEW,
+              showArchived,
             );
             return [
               id,
@@ -387,7 +415,7 @@ export default function MinimalAgentSessionNav({
     return () => {
       cancelled = true;
     };
-  }, [agentKey]);
+  }, [agentKey, showArchived]);
 
   // Keep the active agent's preview aligned with live chat session store.
   // Skip empty lists — standalone host passes [] and must not wipe fetched previews
@@ -479,6 +507,22 @@ export default function MinimalAgentSessionNav({
       );
     },
     [activeAgentId, onPinActive, patchLocal],
+  );
+
+  const handleArchive = useCallback(
+    async (agentId: string, sessionId: string, archived: boolean) => {
+      if (agentId === activeAgentId) {
+        onArchiveActive(sessionId, archived);
+        return;
+      }
+      try {
+        await octopThreadsApi.patch(agentId, sessionId, { archived });
+      } catch {
+        return;
+      }
+      patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
+    },
+    [activeAgentId, onArchiveActive, patchLocal],
   );
 
   if (agents.length === 0) {
@@ -578,7 +622,9 @@ export default function MinimalAgentSessionNav({
                   </div>
                 ) : list.length === 0 ? (
                   <div className={styles.minimalAgentEmpty}>
-                    {t("chat.noSessionsYet", "直接发消息即可开始对话")}
+                    {showArchived
+                      ? t("chat.noArchivedConversations")
+                      : t("chat.noSessionsYet", "直接发消息即可开始对话")}
                   </div>
                 ) : (
                   list.map((session) => (
@@ -599,6 +645,9 @@ export default function MinimalAgentSessionNav({
                       }
                       onPin={(id, pinned) =>
                         handlePin(agent.agent_id, id, pinned)
+                      }
+                      onArchive={(id, archived) =>
+                        void handleArchive(agent.agent_id, id, archived)
                       }
                       onFork={(id) => onFork(id, agent.agent_id)}
                       forkDisabled={

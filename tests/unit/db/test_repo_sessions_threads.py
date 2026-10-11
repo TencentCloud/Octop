@@ -266,6 +266,43 @@ def test_threads_pinned_sort_first(repos):
     assert rows[0].pinned is True
 
 
+def test_threads_archive_filters_are_reversible(repos):
+    _sessions, threads = repos
+    sk = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    threads.insert(
+        thread_id="thr_keep",
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=sk,
+        title="keep",
+    )
+    threads.insert(
+        thread_id="thr_archive",
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=sk,
+        title="archive",
+    )
+
+    threads.set_archived("thr_archive", True)
+
+    assert [r.thread_id for r in threads.list_by_agent_user(agent_id="a1", user_id=1)] == [
+        "thr_keep"
+    ]
+    archived = threads.list_by_agent_user(agent_id="a1", user_id=1, archived=True)
+    assert [r.thread_id for r in archived] == ["thr_archive"]
+    assert archived[0].archived is True
+    assert threads.get("thr_archive") is not None
+
+    threads.set_archived("thr_archive", False)
+    assert {r.thread_id for r in threads.list_by_agent_user(agent_id="a1", user_id=1)} == {
+        "thr_keep",
+        "thr_archive",
+    }
+
+
 def test_threads_empty_new_sorts_above_older_active(repos):
     """Brand-new empty threads (last_active=0) must not sink below older chats."""
     _sessions, threads = repos

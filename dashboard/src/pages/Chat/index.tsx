@@ -281,6 +281,9 @@ function ChatPageInner() {
     deleteSession,
     renameSession,
     pinSession,
+    archiveSession,
+    showArchived,
+    setShowArchived,
     fetchSessions,
     loadMoreSessions,
     fetchAllSessions,
@@ -851,9 +854,31 @@ function ChatPageInner() {
   });
 
   const handleNewChat = useCallback(() => {
+    setShowArchived(false);
     clearQueued();
     startNewChat();
-  }, [clearQueued, startNewChat]);
+  }, [clearQueued, setShowArchived, startNewChat]);
+
+  const handleArchiveSession = useCallback(
+    async (sessionId: string, archived: boolean) => {
+      const ok = await archiveSession(sessionId, archived);
+      if (!ok) {
+        antMessage.error(t("chat.archiveConversationFailed"));
+        return;
+      }
+      antMessage.success(
+        archived
+          ? t("chat.archiveConversationSuccess")
+          : t("chat.restoreConversationSuccess"),
+      );
+      if (archived && sessionId === activeThreadId) {
+        handleNewChat();
+      } else if (!archived) {
+        setShowArchived(false);
+      }
+    },
+    [activeThreadId, archiveSession, handleNewChat, setShowArchived, t],
+  );
 
   useEffect(() => {
     return chatStore.onSlashAction((ev) => {
@@ -1242,13 +1267,19 @@ function ChatPageInner() {
       }}
       onAgentSelect={navigateToAgent}
       onNewChatWithAgent={(agentId) => {
+        setShowArchived(false);
         clearQueued();
         handleNewChatWithAgent(agentId);
       }}
       onDeleteSession={handleDeleteSession}
       onRenameSession={renameSession}
       onPinSession={pinSession}
+      onArchiveSession={(id, archived) =>
+        void handleArchiveSession(id, archived)
+      }
       onForkSession={handleForkSession}
+      showArchived={showArchived}
+      onShowArchivedChange={setShowArchived}
       forkDisabled={sessionForkDisabled}
       forkDisabledHint={sessionForkDisabledHint}
       onSidebarOpenChange={setSidebarOpen}
@@ -1377,6 +1408,9 @@ function ChatPageInner() {
                 title={activeSessionTitle}
                 onRename={renameSession}
                 onPin={pinSession}
+                onArchive={(id, archived) =>
+                  void handleArchiveSession(id, archived)
+                }
                 onFork={handleForkSession}
                 onDelete={handleDeleteSession}
                 forkDisabled={sessionForkDisabled}

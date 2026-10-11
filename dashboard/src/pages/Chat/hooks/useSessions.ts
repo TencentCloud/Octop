@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { deleteConversation } from "../utils/deleteConversation";
 import {
@@ -21,6 +21,7 @@ export interface Session {
   isActive?: boolean;
   hasActivity?: boolean;
   pinned?: boolean;
+  archived?: boolean;
   modelRef?: string | null;
   reasoningMode?: "auto" | "enabled" | "disabled" | null;
   reasoningEffort?: string | null;
@@ -44,6 +45,7 @@ export function toSession(row: {
   is_active?: boolean;
   has_messages?: boolean;
   pinned?: boolean;
+  archived?: boolean;
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
@@ -74,6 +76,7 @@ export function toSession(row: {
     isActive: row.is_active ?? false,
     hasActivity,
     pinned: Boolean(row.pinned),
+    archived: Boolean(row.archived),
     modelRef: row.model_ref ?? null,
     reasoningMode: row.reasoning_mode ?? null,
     reasoningEffort: row.reasoning_effort ?? null,
@@ -317,8 +320,9 @@ function visibleSessionsForAgent(
 async function fetchSessionsPage(
   agentId: string,
   limit: number,
+  archived = false,
 ): Promise<{ sessions: Session[]; hasMore: boolean }> {
-  const rows = await octopThreadsApi.list(agentId, limit + 1);
+  const rows = await octopThreadsApi.list(agentId, limit + 1, archived);
   const hasMore = rows.length > limit;
   const sessions = sortSessions(
     rows.slice(0, limit).map((row) => toSession({ ...row, agent_id: agentId })),
@@ -391,6 +395,7 @@ export function resetSessionStoreForTests() {
 export function useSessions(agentId: string | null) {
   const { t } = useTranslation();
   syncStoreToAgent(agentId);
+  const [showArchived, setShowArchived] = useState(false);
   const { sessions, loading, hasMore, loadingMore } = useSyncExternalStore(
     subscribeSessionStore,
     getSessionSnapshot,
@@ -408,6 +413,7 @@ export function useSessions(agentId: string | null) {
         const { sessions: valid, hasMore: more } = await fetchSessionsPage(
           agentId,
           limit,
+          showArchived,
         );
         if (_storeAgentId !== agentId) return _sessions;
         applySessionPage(valid, more, limit, agentId, activeThreadId);
@@ -420,7 +426,7 @@ export function useSessions(agentId: string | null) {
         }
       }
     },
-    [agentId],
+    [agentId, showArchived],
   );
 
   const loadMoreSessions = useCallback(
@@ -432,6 +438,7 @@ export function useSessions(agentId: string | null) {
         const { sessions: valid, hasMore: more } = await fetchSessionsPage(
           agentId,
           nextLimit,
+          showArchived,
         );
         if (_storeAgentId !== agentId) return;
         applySessionPage(valid, more, nextLimit, agentId, activeThreadId);
@@ -441,7 +448,7 @@ export function useSessions(agentId: string | null) {
         setModuleLoadingMore(false);
       }
     },
-    [agentId],
+    [agentId, showArchived],
   );
 
   const fetchAllSessions = useCallback(
@@ -451,6 +458,7 @@ export function useSessions(agentId: string | null) {
         const { sessions: valid, hasMore: more } = await fetchSessionsPage(
           agentId,
           50,
+          showArchived,
         );
         if (_storeAgentId !== agentId) return;
         applySessionPage(valid, more, valid.length, agentId, activeThreadId);
@@ -458,7 +466,7 @@ export function useSessions(agentId: string | null) {
         /* ignore */
       }
     },
-    [agentId],
+    [agentId, showArchived],
   );
 
   const ensureThreadInList = useCallback(
@@ -471,6 +479,7 @@ export function useSessions(agentId: string | null) {
         const { sessions: valid, hasMore: more } = await fetchSessionsPage(
           agentId,
           probeLimit,
+          showArchived,
         );
         // Agent switched while the probe was in flight — do not rewrite URL.
         if (_storeAgentId !== agentId) return "unknown";
@@ -489,7 +498,7 @@ export function useSessions(agentId: string | null) {
         return "unknown";
       }
     },
-    [agentId],
+    [agentId, showArchived],
   );
 
   // Fetch only: agent switches are synced in-render via syncStoreToAgent.
@@ -497,12 +506,14 @@ export function useSessions(agentId: string | null) {
     if (!agentId) return;
     resetSessionPagination(agentId);
     setModuleLoading(true);
+    setModuleSessions([]);
     void (async () => {
       const requestedAgent = agentId;
       try {
         const { sessions: valid, hasMore: more } = await fetchSessionsPage(
           requestedAgent,
           SESSION_PAGE_SIZE,
+          showArchived,
         );
         if (_storeAgentId !== requestedAgent) return;
         applySessionPage(valid, more, SESSION_PAGE_SIZE, requestedAgent);
@@ -514,7 +525,7 @@ export function useSessions(agentId: string | null) {
         }
       }
     })();
-  }, [agentId]);
+  }, [agentId, showArchived]);
 
   useEffect(() => {
     return onSessionEvent((event) => {
@@ -600,6 +611,20 @@ export function useSessions(agentId: string | null) {
     [agentId],
   );
 
+  const archiveSession = useCallback(
+    async (id: string, archived: boolean) => {
+      if (!agentId || !id) return false;
+      try {
+        await octopThreadsApi.patch(agentId, id, { archived });
+        setModuleSessions((prev) => prev.filter((s) => s.id !== id));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [agentId],
+  );
+
   const renameSession = useCallback(
     (id: string, name: string) => {
       const next = formatThreadTitle(name) || name.trim();
@@ -631,6 +656,9 @@ export function useSessions(agentId: string | null) {
     deleteSession,
     renameSession,
     pinSession,
+    archiveSession,
+    showArchived,
+    setShowArchived,
     fetchSessions,
     loadMoreSessions,
     fetchAllSessions,
