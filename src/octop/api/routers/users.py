@@ -137,6 +137,21 @@ def _require_admin_to_grant_admin(actor: Any, role_id: str) -> None:
         )
 
 
+def _assert_actor_can_target_admin(actor: Any, target: Any) -> None:
+    """A non-admin (even with the ``users`` permission) cannot modify an admin account.
+
+    Used for delete / disable / demote. Enabling an admin or editing
+    non-state fields is intentionally out of scope.
+    """
+    if str(getattr(target, "role", "")) == Role.ADMIN and not bool(
+        getattr(actor, "is_admin", False)
+    ):
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "only an administrator can modify an administrator account",
+        )
+
+
 def _resolve_role_template(
     server: Any, role_id: str
 ) -> tuple[str, str, list[str], list[tuple[str, str]]]:
@@ -346,6 +361,11 @@ async def _batch_apply_one(
             code=ErrorCode.NOT_FOUND.value,
             error="user not found",
         )
+    if action in ("disable", "delete"):
+        try:
+            _assert_actor_can_target_admin(actor, row)
+        except OctopError as exc:
+            return _batch_fail(user_id, code=exc.code.value, error=exc.message)
     try:
         if action == "enable":
             await server.user_manager.enable(row.username)
@@ -472,6 +492,8 @@ async def patch_user(
         if user_id == actor.id and role_id != Role.ADMIN:
             raise OctopError(ErrorCode.FORBIDDEN, "cannot demote yourself")
         _require_admin_to_grant_admin(actor, role_id)
+        if role_id != Role.ADMIN:
+            _assert_actor_can_target_admin(actor, row)
         await server.user_manager.set_role(row.username, role_id)
         if "role_name" not in body.model_fields_set:
             server.services.user_repo.set_role_name(user_id, template_name)
@@ -489,6 +511,7 @@ async def patch_user(
     if "email" in body.model_fields_set:
         await server.user_manager.set_email(row.username, body.email)
     if body.disabled is True:
+        _assert_actor_can_target_admin(actor, row)
         await server.user_manager.disable(row.username)
     elif body.disabled is False:
         await server.user_manager.enable(row.username)
@@ -550,6 +573,7 @@ async def delete_user(
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    _assert_actor_can_target_admin(actor, row)
     registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
     await server.user_manager.remove(row.username, agent_manager=registry)
 
