@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import stat
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -109,9 +112,44 @@ def format_env_file(values: dict[str, str]) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
+def _default_file_mode() -> int:
+    """The mode a plain ``write_text`` would produce (``0o666 & ~umask``).
+
+    POSIX has no get-only umask call, so read it by set-and-restore — the same
+    trick as ``json_file._default_file_mode`` (mirrored rather than imported to
+    keep this module's imports stdlib-only).
+    """
+    mask = os.umask(0o022)
+    os.umask(mask)
+    return 0o666 & ~mask
+
+
 def save_env_file(path: Path, values: dict[str, str]) -> None:
+    """Write ``values`` atomically: temp file in the same dir, then ``os.replace``.
+
+    ``write_text`` truncates the file on open, so a crash or full disk mid-save
+    used to leave a torn env file that boot then silently applied — dropping
+    saved DB and API keys. Mirrors ``json_file.write_json_atomic``; permissions
+    follow the file being replaced, or the process umask for a new file.
+    """
+    payload = format_env_file(values).encode("utf-8")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(format_env_file(values), encoding="utf-8")
+    existing_mode: int | None = None
+    if os.name == "posix" and path.exists():
+        existing_mode = stat.S_IMODE(path.stat().st_mode)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        try:
+            os.write(fd, payload)
+        finally:
+            os.close(fd)
+        if os.name == "posix":
+            os.chmod(tmp_name, _default_file_mode() if existing_mode is None else existing_mode)
+        os.replace(tmp_name, path)
+    except BaseException:  # also covers KeyboardInterrupt / SystemExit
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
 
 
 def apply_env_file(path: Path) -> dict[str, str]:
