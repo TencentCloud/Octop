@@ -64,6 +64,10 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
             "base_url": base_url,
             "api_key": row.api_key or "",
             "use_responses_api": True,
+            # The Codex backend rejects requests unless store is explicitly
+            # false ("Store must be set to false", issue #1821); langchain-openai
+            # drops the key entirely when it is unset/None.
+            "store": False,
         }
         if headers:
             kwargs["default_headers"] = dict(headers)

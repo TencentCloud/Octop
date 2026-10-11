@@ -34,6 +34,25 @@ def test_build_chat_model_includes_provider_id_and_model_name() -> None:
     assert provider.stream_usage is False
 
 
+def test_codex_probe_model_disables_response_storage() -> None:
+    """The Codex backend rejects requests without store=false (issue #1821)."""
+    row = SimpleNamespace(
+        name="ChatGPT",
+        kind="openai",
+        base_url="https://chatgpt.com/backend-api/codex",
+        api_key="sk-test",
+        extra_json=None,
+        get_models=lambda: [{"id": "gpt-6.1-sol", "name": "gpt-6.1-sol"}],
+    )
+
+    model = _build_chat_model(row, model_id="gpt-6.1-sol")
+
+    assert model.use_responses_api is True
+    assert model.store is False
+    # langchain-openai drops None from the payload; store=False must survive.
+    assert model._default_params["store"] is False
+
+
 def _embedding_row(**overrides: Any) -> SimpleNamespace:
     models = overrides.pop(
         "models",
