@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 内置 MCP 端点 GET/DELETE 漏了 `status == "active"` 判定，连接器实例停用后仍可经 SSE 长连接通道继续收发消息；与 POST 对齐，停用实例一律返回 CONNECTOR_NOT_FOUND
 
 ### 修复
 - 云端协同对端专家的模型、连接器、知识库和对话模式会显示在本端输入框上方
