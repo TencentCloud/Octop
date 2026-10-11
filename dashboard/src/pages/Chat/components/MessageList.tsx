@@ -100,6 +100,7 @@ interface MessageListProps {
   thinkingStartedAt?: number | null;
   sessionKey?: string;
   onRegenerate?: (messageId: string) => void;
+  onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
@@ -125,6 +126,7 @@ interface GroupRenderContext {
   lastAssistantGroupIndex: number;
   lastUserGroupIndex: number;
   onRegenerate?: (messageId: string) => void;
+  onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
@@ -173,6 +175,7 @@ function renderMessageGroup(
             isTurnInProgress={isTurnInProgress}
             liveSpeakers={ctx.liveSpeakers}
             onRegenerate={ctx.onRegenerate}
+            onDisableStreamUsage={ctx.onDisableStreamUsage}
             onEditUserMessage={ctx.onEditUserMessage}
             onForkAssistantMessage={ctx.onForkAssistantMessage}
             forkDisabled={ctx.forkDisabled}
@@ -202,6 +205,7 @@ function renderMessageGroup(
           agentId={ctx.agentId}
           composerLookups={ctx.composerLookups}
           onRegenerate={ctx.onRegenerate}
+          onDisableStreamUsage={ctx.onDisableStreamUsage}
           onEditUserMessage={ctx.onEditUserMessage}
         />
       </div>
@@ -226,6 +230,7 @@ function renderMessageGroup(
         isTurnInProgress={isTurnInProgress}
         liveSpeakers={ctx.liveSpeakers}
         onRegenerate={ctx.onRegenerate}
+        onDisableStreamUsage={ctx.onDisableStreamUsage}
         onEditUserMessage={ctx.onEditUserMessage}
         onForkAssistantMessage={ctx.onForkAssistantMessage}
         forkDisabled={ctx.forkDisabled}
@@ -259,6 +264,7 @@ export default function MessageList(props: MessageListProps) {
     thinkingStartedAt = null,
     sessionKey,
     onRegenerate,
+    onDisableStreamUsage,
     onEditUserMessage,
     onForkAssistantMessage,
     forkDisabled,
@@ -709,6 +715,7 @@ export default function MessageList(props: MessageListProps) {
       lastAssistantGroupIndex,
       lastUserGroupIndex,
       onRegenerate,
+      onDisableStreamUsage,
       onEditUserMessage,
       onForkAssistantMessage,
       forkDisabled,
@@ -732,6 +739,7 @@ export default function MessageList(props: MessageListProps) {
       lastAssistantGroupIndex,
       lastUserGroupIndex,
       onRegenerate,
+      onDisableStreamUsage,
       onEditUserMessage,
       onForkAssistantMessage,
       forkDisabled,

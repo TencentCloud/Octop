@@ -21,7 +21,6 @@ vi.mock("../../../api/modules/octopThreads", () => ({
     rename: vi.fn(),
     rebind: vi.fn(),
   },
-  normalizeThreadArtifacts: () => [],
 }));
 
 function threadRow(threadId: string, agentExtra?: Partial<{ title: string }>) {

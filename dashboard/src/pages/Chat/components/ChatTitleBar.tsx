@@ -12,7 +12,7 @@ import {
   Trash2,
   GitFork,
 } from "lucide-react";
-import { showConfirmModal } from "../../../utils/confirmModal";
+import { confirmDeleteConversation } from "../utils/deleteConversation";
 import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";
 import TeamChatBadge from "./TeamChatBadge";
@@ -27,7 +27,7 @@ interface ChatTitleBarProps {
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
   onArchive: (id: string, archived: boolean) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   isTeam?: boolean;
@@ -123,14 +123,8 @@ export default function ChatTitleBar({
         icon: <Trash2 size={14} />,
         danger: true,
         onClick: () => {
-          showConfirmModal({
-            title: t("chat.deleteSessionConfirm"),
-            okText: t("common.delete"),
-            cancelText: t("common.cancel"),
-            okButtonProps: { danger: true },
-            onOk: () => {
-              onDelete(session.id);
-            },
+          confirmDeleteConversation(t, (compact) => {
+            void onDelete(session.id, compact);
           });
         },
       },
