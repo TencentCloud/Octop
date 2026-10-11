@@ -6,7 +6,9 @@ are fully tunneled; tools / plugins / channels are limited writes (the
 Personalization UI still PATCHes tool-settings and may POST reload);
 skill packages, global ACP, connector admin, and knowledge-base admin stay
 peer-only in the UI even when a matching path would otherwise match.
-Management / auth / bridge control planes stay local-only.
+Deleting an agent itself (``DELETE /api/agents/{id}``) is peer-only too:
+the hub's experts list must not remove a peer's expert. Management / auth /
+bridge control planes stay local-only.
 """
 
 from __future__ import annotations
@@ -24,6 +26,12 @@ _AGENT_RESOURCE = re.compile(
     r"|channels|cron|config|state|status|welcome|members|subagents|reload|acp"
     r")(?:/.*)?)?$"
 )
+
+# The bare agent resource (``/api/agents/{id}``): a DELETE would remove the
+# peer's expert itself, so it stays peer-only — editing (PUT/PATCH) is a
+# product surface, deleting the expert is not. A tunneled request runs on the
+# peer as the connection owner, so the peer's owner check cannot stop it.
+_AGENT_RESOURCE_BARE = re.compile(r"^/api/agents/[^/]+$")
 
 # Composer read-only surfaces for remote chat (models + knowledge pickers).
 # Write / document / admin provider routes stay denied.
@@ -73,6 +81,8 @@ def is_tunnel_path_allowed(method: str, path: str) -> bool:
         return verb == "POST"
 
     if _AGENT_RESOURCE.fullmatch(raw):
+        if verb == "DELETE" and _AGENT_RESOURCE_BARE.fullmatch(raw):
+            return False
         return verb in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"}
 
     if _PLUGIN_AGENT.fullmatch(raw):

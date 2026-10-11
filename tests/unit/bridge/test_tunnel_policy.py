@@ -24,6 +24,22 @@ def test_allows_agent_resource_paths() -> None:
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/history/versions")
 
 
+def test_denies_deleting_the_agent_itself() -> None:
+    """#1849: the hub's experts list must not delete a peer's expert.
+
+    A tunneled request executes on the peer as the connection owner, so the
+    peer-side owner check cannot stop it — the policy must.
+    """
+    assert not is_tunnel_path_allowed("DELETE", "/api/agents/01ABC")
+    assert not is_tunnel_path_allowed("DELETE", "/api/agents/01ABC/")
+    assert not is_tunnel_path_allowed("DELETE", "/api/agents/bridge:cid:aid")
+    # Agent sub-surfaces stay deletable (threads, files, avatar, …).
+    assert is_tunnel_path_allowed("DELETE", "/api/agents/01ABC/threads/t1")
+    assert is_tunnel_path_allowed("DELETE", "/api/agents/01ABC/avatar")
+    # Editing a peer expert stays tunneled.
+    assert is_tunnel_path_allowed("PATCH", "/api/agents/01ABC")
+
+
 def test_allows_composer_readonly_paths() -> None:
     assert is_tunnel_path_allowed("GET", "/api/providers/resolved")
     assert is_tunnel_path_allowed("GET", "/api/providers/active-model")
