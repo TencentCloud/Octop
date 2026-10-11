@@ -14,6 +14,12 @@ from pathlib import Path
 import pytest
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="bash helpers")
+# 飞牛停服务按 Linux 进程树实现。macOS 也是 posix，但没有 /proc，
+# 读子进程和按树杀进程都会落空。
+linux_proc = pytest.mark.skipif(
+    not Path("/proc").is_dir(),
+    reason="FnOS native stop walks /proc",
+)
 
 REPO = Path(__file__).resolve().parents[2]
 COMMON_SH = REPO / "scripts" / "fnos" / "common.sh"
@@ -144,7 +150,7 @@ free_octop_ports {port}
             proc.wait(timeout=3)
 
 
-@posix_only
+@linux_proc
 def test_free_octop_ports_kills_orphan_child(tmp_path: Path) -> None:
     """Killing only the wrapper (old stop) leaves the listener; free_octop_ports must catch it."""
     port = _free_tcp_port()
@@ -175,7 +181,7 @@ free_octop_ports {port}
             wrapper.wait(timeout=3)
 
 
-@posix_only
+@linux_proc
 def test_octop_kill_pid_tree_stops_child_listener() -> None:
     port = _free_tcp_port()
     wrapper = _start_wrapper_listener(port)
@@ -200,7 +206,7 @@ fi
             wrapper.wait(timeout=3)
 
 
-@posix_only
+@linux_proc
 def test_native_main_stop_frees_port_after_wrapper_start(tmp_path: Path) -> None:
     if shutil.which("python3") is None:
         pytest.skip("python3 required")

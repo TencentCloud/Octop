@@ -82,6 +82,7 @@ from octop.infra.skills.workspace_catalog import (
     repair_workspace_skill_manifests,
 )
 from octop.infra.utils.locale import Locale
+from octop.infra.utils.turn_failure import turn_model_scope
 from octop.infra.utils.ulid import new_short_id
 
 if TYPE_CHECKING:
@@ -97,11 +98,39 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _model_retry_on_failure(exc: Exception) -> str:
+def _model_retry_on_failure(
+    exc: Exception,
+    *,
+    agent_id: str = "",
+    manager: AgentManager | None = None,
+) -> str:
     # Feed a specific, model-visible prompt instead of raising. Inbox jobs still
     # mark failed when the reply carries MODEL_RETRY_FAILURE_MARK.
-    from octop.i18n.domains.stream import model_retry_failure_prompt
+    from octop.i18n.domains.stream import exception_display_message, model_retry_failure_prompt
+    from octop.infra.agents.security.hitl_session import current_hitl_thread_id
+    from octop.infra.metrics import METRICS
+    from octop.infra.utils.turn_failure import current_turn_model, log_turn_failure
 
+    thread_id = current_hitl_thread_id() or ""
+    model = current_turn_model()
+    if not model and manager is not None and agent_id and thread_id:
+        with suppress(Exception):
+            model = manager.get_thread_model(agent_id, thread_id) or ""
+    if not model and manager is not None and agent_id:
+        with suppress(Exception):
+            row = manager.get_row(agent_id)
+            if row is not None:
+                model = (row.default_model or "").strip()
+    log_turn_failure(
+        "model_retry",
+        detail=exception_display_message(exc),
+        agent_id=agent_id,
+        thread_id=thread_id,
+        model=model,
+        exc=exc,
+        level=logging.ERROR,
+    )
+    METRICS.inc("stream_errors_total")
     return model_retry_failure_prompt(exc, "en")
 
 
@@ -214,6 +243,33 @@ def _memory_extract_settings(
             and val > 0
         ):
             out[dst] = float(val)
+
+    # Aux-call options (#1360): read timeouts per tier, a default completion
+    # budget, and vendor request extras for the aux LLM. Forward-compat: only
+    # forwarded when the installed octop-harness knows the field.
+    for src, dst in (
+        ("extract_light_timeout_s", "memory_aux_light_timeout_s"),
+        ("extract_heavy_timeout_s", "memory_aux_heavy_timeout_s"),
+    ):
+        val = mem.get(src)
+        if (
+            dst in supported_fields
+            and isinstance(val, int | float)
+            and not isinstance(val, bool)
+            and val > 0
+        ):
+            out[dst] = float(val)
+    max_tokens = mem.get("extract_max_tokens")
+    if (
+        "memory_aux_max_tokens" in supported_fields
+        and isinstance(max_tokens, int)
+        and not isinstance(max_tokens, bool)
+        and max_tokens > 0
+    ):
+        out["memory_aux_max_tokens"] = max_tokens
+    extra_body = mem.get("extract_extra_body")
+    if "memory_aux_extra_body" in supported_fields and isinstance(extra_body, dict) and extra_body:
+        out["memory_aux_extra_body"] = dict(extra_body)
 
     # octop-harness 0.9.5 predates the interval trigger fields. Keep
     # hot reload working against that release and approximate interval mode
@@ -407,6 +463,11 @@ class AgentManager:
         self._active_invocations: dict[str, int] = {}
         self._invocation_waiters: dict[str, int] = {}
         self._history_backfills: dict[str, asyncio.Event] = {}
+        # Agents whose SQLite file should be rebuilt once they are idle.
+        self._reclaim_pending: set[str] = set()
+        self._reclaim_holds: dict[str, asyncio.Event] = {}
+        self._reclaim_task: asyncio.Task[None] | None = None
+        self._reclaim_wake: asyncio.Event | None = None
         self._reload_dirty: set[str] = set()
         self._reload_worker_running: dict[str, bool] = {}
         self._bootstrap_graph_refresh_pending: set[str] = set()
@@ -539,6 +600,13 @@ class AgentManager:
                 )
 
     async def shutdown(self) -> None:
+        self._reclaim_pending.clear()
+        reclaim_task = self._reclaim_task
+        self._reclaim_task = None
+        if reclaim_task is not None and not reclaim_task.done():
+            reclaim_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await reclaim_task
         await self.memory_slim.close()
         async with self._lock:
             if self._harness_manager:
@@ -777,11 +845,35 @@ class AgentManager:
         except Exception:
             logger.exception("abort team create: harness remove failed for %s", agent_id)
         try:
+            row = self._repos.agent_repo.get(agent_id)
             workspace_dir = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
-            if await asyncio.to_thread(workspace_dir.exists):
+            if row is not None:
+                from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
+                    agent_config_from_row,
+                    delete_agent_memory_and_checkpoints,
+                )
+
+                cfg = agent_config_from_row(row)
+                await asyncio.to_thread(
+                    delete_agent_memory_and_checkpoints,
+                    agent_id=agent_id,
+                    thread_ids=self._repos.thread_repo.list_ids_for_agent(agent_id),
+                    cfg=cfg,
+                    octop_config=self._config,
+                    workspace_dir=workspace_dir,
+                    paths=self._paths,
+                )
+                from octop.infra.agents.workspace.dir import remove_agent_host_dirs  # noqa: PLC0415
+
+                await asyncio.to_thread(
+                    remove_agent_host_dirs, cfg, paths=self._paths, agent_id=agent_id
+                )
+            elif await asyncio.to_thread(workspace_dir.exists):
                 await asyncio.to_thread(shutil.rmtree, workspace_dir)
         except OSError:
             logger.exception("abort team create: rmtree failed for %s", agent_id)
+        except Exception:
+            logger.exception("abort team create: memory purge failed for %s", agent_id)
         try:
             self._repos.agent_repo.delete(agent_id)
         except Exception:
@@ -902,14 +994,24 @@ class AgentManager:
         return updated
 
     async def delete(self, agent_id: str) -> None:
-        """Remove agent from DB, harness runtime, and workspace directory."""
+        """Remove agent from DB, harness runtime, workspace, memory, and checkpoints.
+
+        Checkpoint rows and Postgres memory namespaces are not foreign keys
+        of ``agents``. They are deleted before the agent row. If that purge
+        fails, the row stays so the delete can be retried.
+        """
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         self._teams.assert_can_delete_agent(agent_id)
+        from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
+            agent_config_from_row,
+            delete_agent_memory_and_checkpoints,
+        )
         from octop.infra.agents.teams import is_team_agent
 
         affected_teams: list[str] = []
+        thread_ids = self._repos.thread_repo.list_ids_for_agent(agent_id)
         workspace_dir = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
         async with self._lock:
             if not is_team_agent(row):
@@ -920,9 +1022,22 @@ class AgentManager:
             await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
             await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
         self._plugin_tool_labels.pop(agent_id, None)
+        cfg = agent_config_from_row(row)
+        await asyncio.to_thread(
+            delete_agent_memory_and_checkpoints,
+            agent_id=agent_id,
+            thread_ids=thread_ids,
+            cfg=cfg,
+            octop_config=self._config,
+            workspace_dir=workspace_dir,
+            paths=self._paths,
+        )
         try:
-            if await asyncio.to_thread(workspace_dir.exists):
-                await asyncio.to_thread(shutil.rmtree, workspace_dir)
+            from octop.infra.agents.workspace.dir import remove_agent_host_dirs  # noqa: PLC0415
+
+            await asyncio.to_thread(
+                remove_agent_host_dirs, cfg, paths=self._paths, agent_id=agent_id
+            )
         except OSError:
             logger.exception("rmtree failed for %s; agent removed from DB anyway", workspace_dir)
         self._repos.agent_repo.delete(agent_id)
@@ -1206,36 +1321,252 @@ class AgentManager:
             return OctopError(ErrorCode.AGENT_FAILED, f"agent {agent_id!r} failed to start")
         return OctopError(ErrorCode.AGENT_NOT_RUNNING, f"agent {agent_id!r} not running")
 
-    async def delete_thread_checkpoint(self, agent_id: str, thread_id: str) -> bool:
-        """Best-effort delete of a thread's actual conversation data.
+    def assert_agents_deletable(self, agent_ids: Sequence[str]) -> None:
+        """Raise when any owned agent has an in-flight team job."""
+        for agent_id in agent_ids:
+            self._teams.assert_can_delete_agent(agent_id)
 
-        Octop's own ``thread_registry`` only tracks UI metadata (title,
-        pinned, last_active) — the real message content lives in the
-        agent's LangGraph checkpointer. Deleting only the registry row
-        makes "delete conversation" cosmetic: the content stays in the
-        checkpoint store forever. Callers should call this *before*
-        removing their own thread row, so a checkpoint-delete failure
-        leaves the thread visible/retryable instead of orphaning data
-        with no remaining handle to it.
+    async def delete_thread_checkpoint(self, agent_id: str, thread_id: str) -> None:
+        """Delete a thread's conversation data from the checkpoint store.
 
-        Returns ``True`` when checkpoint data was actually deleted,
-        ``False`` when there was nothing to delete (agent not currently
-        running, or no checkpointer configured for it) — both are normal,
-        expected states, not errors.
+        Uses the live harness checkpointer when the agent is loaded.
+        Otherwise opens the configured SQLite or Postgres memory store
+        directly, so a restart does not skip the delete. Raises
+        ``CHECKPOINT_DELETE_FAILED`` when persisted data could not be
+        removed. Returns normally when the store has nothing for this
+        thread. Callers should invoke this *before* removing their own
+        thread row, so a failure leaves the thread visible and retryable.
         """
+        row = self.get_row(agent_id)
+        harness = None
         try:
             harness = self.get_agent(agent_id)
+        except OctopError as exc:
+            if exc.code == ErrorCode.AGENT_NOT_FOUND or row is None:
+                raise
+            harness = None
+        live_error: Exception | None = None
+        if harness is not None:
+            adelete = getattr(harness, "adelete_thread", None)
+            if adelete is not None:
+                try:
+                    await adelete(thread_id)
+                except OctopError:
+                    raise
+                except Exception as exc:
+                    live_error = exc
+        if row is None:
+            if live_error is not None:
+                raise OctopError(
+                    ErrorCode.CHECKPOINT_DELETE_FAILED,
+                    f"could not delete conversation data for thread {thread_id!r}",
+                ) from live_error
+            return
+        try:
+            await asyncio.to_thread(self._delete_thread_from_store, agent_id, thread_id, row)
         except OctopError:
-            logger.warning(
-                "delete_thread_checkpoint: agent %r not running; skipping checkpoint cleanup for thread %r",
-                agent_id,
-                thread_id,
+            if live_error is not None:
+                raise OctopError(
+                    ErrorCode.CHECKPOINT_DELETE_FAILED,
+                    f"could not delete conversation data for thread {thread_id!r}",
+                ) from live_error
+            raise
+
+    def _delete_thread_from_store(self, agent_id: str, thread_id: str, row: Any) -> None:
+        from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
+            delete_thread_from_agent_stores,
+            workspace_for_agent_row,
+        )
+
+        cfg = self._agent_config_dict(row)
+        workspace = workspace_for_agent_row(row, paths=self._paths)
+        delete_thread_from_agent_stores(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            cfg=cfg,
+            octop_config=self._config,
+            workspace_dir=workspace,
+            paths=self._paths,
+        )
+
+    def _reclaim_thread_store(self, agent_id: str, thread_id: str, row: Any) -> None:
+        if row is None:
+            return
+        from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
+            reclaim_stored_thread,
+            workspace_for_agent_row,
+        )
+
+        reclaim_stored_thread(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            cfg=self._agent_config_dict(row),
+            octop_config=self._config,
+            workspace_dir=workspace_for_agent_row(row, paths=self._paths),
+        )
+
+    def schedule_store_reclaim(self, agent_id: str) -> None:
+        """Shrink this agent's database after it is idle.
+
+        Used when a conversation is deleted without compacting now. The
+        rebuild runs once no turn is in progress, and again after restart
+        if the file still holds a large freelist.
+        """
+        self._reclaim_pending.add(agent_id)
+        self._ensure_reclaim_task()
+
+    def schedule_idle_reclaim_sweep(self) -> None:
+        """Queue loaded stores whose freelist is already large enough to compact."""
+        try:
+            asyncio.get_running_loop().create_task(
+                self._sweep_bloated_stores(), name="store-reclaim-sweep"
             )
+        except RuntimeError:
+            return
+
+    async def compact_agent_database(self, agent_id: str, *, wait_s: float = 60) -> bool:
+        """Rebuild the database now. False means it was deferred until idle."""
+        deadline = time.monotonic() + wait_s
+        while True:
+            if self._try_acquire_reclaim(agent_id):
+                try:
+                    done = await asyncio.to_thread(self._compact_agent_database_sync, agent_id)
+                finally:
+                    self._release_reclaim(agent_id)
+                if done:
+                    self._reclaim_pending.discard(agent_id)
+                    return True
+                self.schedule_store_reclaim(agent_id)
+                return False
+            if time.monotonic() >= deadline:
+                self.schedule_store_reclaim(agent_id)
+                return False
+            await asyncio.sleep(0.25)
+
+    def _try_acquire_reclaim(self, agent_id: str) -> bool:
+        if (
+            self.is_agent_active(agent_id)
+            or self._invocation_waiters.get(agent_id, 0) > 0
+            or agent_id in self._reclaim_holds
+            or agent_id in self._history_backfills
+        ):
             return False
-        adelete = getattr(harness, "adelete_thread", None)
-        if adelete is None:
+        self._reclaim_holds[agent_id] = asyncio.Event()
+        if self.is_agent_active(agent_id) or self._invocation_waiters.get(agent_id, 0) > 0:
+            self._release_reclaim(agent_id)
             return False
-        return bool(await adelete(thread_id))
+        return True
+
+    def _release_reclaim(self, agent_id: str) -> None:
+        event = self._reclaim_holds.pop(agent_id, None)
+        if event is not None:
+            event.set()
+
+    def _ensure_reclaim_task(self) -> None:
+        if self._reclaim_wake is None:
+            self._reclaim_wake = asyncio.Event()
+        self._reclaim_wake.set()
+        task = self._reclaim_task
+        if task is not None and not task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._reclaim_task = loop.create_task(self._reclaim_pending_loop(), name="store-reclaim")
+
+    async def _sweep_bloated_stores(self) -> None:
+        queued = await asyncio.to_thread(self._queue_bloated_sqlite_stores)
+        if queued:
+            self._ensure_reclaim_task()
+
+    def _queue_bloated_sqlite_stores(self) -> int:
+        from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
+            RECLAIM_MIN_FREELIST_BYTES,
+            agent_config_from_row,
+            agent_sqlite_freelist_bytes,
+            workspace_for_agent_row,
+        )
+
+        queued = 0
+        for row in self._repos.agent_repo.list_all(include_disabled=True):
+            try:
+                nbytes = agent_sqlite_freelist_bytes(
+                    agent_id=row.agent_id,
+                    cfg=agent_config_from_row(row),
+                    octop_config=self._config,
+                    workspace_dir=workspace_for_agent_row(row, paths=self._paths),
+                    paths=self._paths,
+                )
+            except Exception:
+                logger.warning("freelist scan failed agent=%s", row.agent_id, exc_info=True)
+                continue
+            if nbytes < RECLAIM_MIN_FREELIST_BYTES:
+                continue
+            self._reclaim_pending.add(row.agent_id)
+            queued += 1
+        return queued
+
+    async def _reclaim_pending_loop(self) -> None:
+        try:
+            while self._reclaim_pending:
+                finished_one = False
+                for agent_id in list(self._reclaim_pending):
+                    if not self._try_acquire_reclaim(agent_id):
+                        continue
+                    try:
+                        done = await asyncio.to_thread(self._compact_agent_database_sync, agent_id)
+                    except Exception:
+                        logger.warning("idle compact failed agent=%s", agent_id, exc_info=True)
+                        done = False
+                    finally:
+                        self._release_reclaim(agent_id)
+                    if done:
+                        self._reclaim_pending.discard(agent_id)
+                        finished_one = True
+                if not self._reclaim_pending:
+                    break
+                if finished_one:
+                    continue
+                wake = self._reclaim_wake
+                if wake is None:
+                    await asyncio.sleep(30)
+                    continue
+                wake.clear()
+                try:
+                    await asyncio.wait_for(wake.wait(), timeout=30)
+                except TimeoutError:
+                    continue
+        finally:
+            current = asyncio.current_task()
+            if self._reclaim_task is current:
+                self._reclaim_task = None
+            if self._reclaim_pending and (self._reclaim_task is None or self._reclaim_task.done()):
+                self._ensure_reclaim_task()
+
+    def _compact_agent_database_sync(self, agent_id: str) -> bool:
+        from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
+            agent_config_from_row,
+            compact_agent_store_file,
+            compact_live_sqlite,
+            workspace_for_agent_row,
+        )
+
+        row = self.get_row(agent_id)
+        if row is None:
+            return True
+        harness = self._octop_harness_or_none(agent_id)
+        if harness is not None:
+            memory = getattr(getattr(harness, "_memory_runtime", None), "memory", None)
+            if memory is None:
+                return True
+            return compact_live_sqlite(memory)
+        return compact_agent_store_file(
+            agent_id=agent_id,
+            cfg=agent_config_from_row(row),
+            octop_config=self._config,
+            workspace_dir=workspace_for_agent_row(row, paths=self._paths),
+        )
 
     # ------------------------------------------------------------------
     # Chat / invoke — stream, call, HITL, thread model overrides
@@ -1265,7 +1596,10 @@ class AgentManager:
     async def _begin_invocation(self, agent_id: str) -> None:
         self._invocation_waiters[agent_id] = self._invocation_waiters.get(agent_id, 0) + 1
         try:
-            while event := self._history_backfills.get(agent_id):
+            while True:
+                event = self._history_backfills.get(agent_id) or self._reclaim_holds.get(agent_id)
+                if event is None:
+                    break
                 await event.wait()
         finally:
             waiting = self._invocation_waiters.get(agent_id, 1) - 1
@@ -1281,6 +1615,8 @@ class AgentManager:
             self._active_invocations[agent_id] = active
         else:
             self._active_invocations.pop(agent_id, None)
+            if agent_id in self._reclaim_pending:
+                self._ensure_reclaim_task()
 
     @asynccontextmanager
     async def _track_invocation(self, agent_id: str) -> AsyncIterator[None]:
@@ -1302,7 +1638,10 @@ class AgentManager:
         ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
-            with hitl_thread_scope(thread_id_from_request(req)):
+            with (
+                hitl_thread_scope(thread_id_from_request(req)),
+                turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
+            ):
                 async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
                     yield chunk
             self._apply_pending_bootstrap_graph_refresh(agent_id)
@@ -1314,7 +1653,11 @@ class AgentManager:
         async with self._track_invocation(agent_id):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
-            with hitl_thread_scope(thread_id_from_request(req)):
+            thread_id = str(req.get("thread_id") or thread_id_from_request(req) or "")
+            with (
+                hitl_thread_scope(thread_id_from_request(req)),
+                turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
+            ):
                 result = await self._harness_manager.call(agent_id, cast(Any, req))
             self._apply_pending_bootstrap_graph_refresh(agent_id)
         if not isinstance(result, dict):
@@ -1335,7 +1678,10 @@ class AgentManager:
             self._track_invocation(agent_id),
         ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
-            with hitl_thread_scope(thread_id):
+            with (
+                hitl_thread_scope(thread_id),
+                turn_model_scope(self._stream_model_label(agent_id, {}, thread_id)),
+            ):
                 async for chunk in self._harness_manager.resume_hitl(
                     agent_id, thread_id, decisions
                 ):
@@ -2336,7 +2682,7 @@ class AgentManager:
         except ExceptionGroup as exc:
             # Starlette/anyio may wrap a single UnicodeDecodeError in a group.
             if not any(
-                isinstance(inner, (OSError, PermissionError, UnicodeDecodeError, UnicodeError))
+                isinstance(inner, OSError | PermissionError | UnicodeDecodeError | UnicodeError)
                 for inner in exc.exceptions
             ):
                 raise
@@ -3030,7 +3376,7 @@ class AgentManager:
             extra["quick_prompts"] = prompts if isinstance(prompts, list) else []
             if not (row_description or "").strip():
                 desc = data.get("description")
-                if isinstance(desc, (str, dict)) and desc:
+                if isinstance(desc, str | dict) and desc:
                     extra["description"] = desc
             break
         return extra
@@ -3064,6 +3410,26 @@ class AgentManager:
             configurable["plugin_tool_configs"] = tool_configs
             req["configurable"] = configurable
         return apply_agent_runtime_to_stream_request(req, agent_cfg)
+
+    def _stream_model_label(self, agent_id: str, request: dict[str, Any], thread_id: str) -> str:
+        raw = request.get("model")
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+        cfg = request.get("configurable")
+        if isinstance(cfg, dict):
+            nested = cfg.get("model")
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
+        if thread_id:
+            with suppress(Exception):
+                override = self.get_thread_model(agent_id, thread_id)
+                if override:
+                    return override
+        with suppress(Exception):
+            row = self.get_row(agent_id)
+            if row is not None and (row.default_model or "").strip():
+                return str(row.default_model).strip()
+        return ""
 
     def _build_harness_config(self, row: AgentRow) -> HarnessAgentConfig:
         """Convert an AgentRow into a HarnessAgentConfig."""
@@ -3410,6 +3776,11 @@ class AgentManager:
         if applied.model_retry_enabled:
             from langchain.agents.middleware import ModelRetryMiddleware
 
+            bound_agent_id = row.agent_id
+
+            def _on_model_retry_failure(exc: Exception) -> str:
+                return _model_retry_on_failure(exc, agent_id=bound_agent_id, manager=self)
+
             applied = replace(
                 applied,
                 model_retry_enabled=False,
@@ -3418,7 +3789,7 @@ class AgentManager:
                         max_retries=applied.model_retry_max_retries,
                         initial_delay=applied.model_retry_initial_delay,
                         max_delay=applied.model_retry_max_delay,
-                        on_failure=_model_retry_on_failure,
+                        on_failure=_on_model_retry_failure,
                     ),
                     *(applied.middleware or []),
                 ],

@@ -95,6 +95,7 @@
       "usage": "Usage: /delete <thread_short_id>",
       "not_found": "No thread matches {short!r}.",
       "active": "Cannot delete the active thread. Use /new first.",
+      "failed": "Could not delete this thread. It is still in the list; try again.",
       "done": "Deleted thread {short}."
     },
     "pin": {
@@ -310,11 +311,11 @@
       },
       "memory": {
         "label": "Memory maintenance",
-        "description": "Back up and slim memory databases, or check maintenance progress."
+        "description": "Slim memory databases, reclaim freed disk with VACUUM FULL, or check maintenance progress."
       }
     },
     "memory": {
-      "usage": "Usage: /memory slim (explain the purpose and impact), /memory slim --all (list your eligible running agents), /memory status (progress). Viewing the explanation does not pause chat.",
+      "usage": "Usage: /memory slim (explain the purpose and impact), /memory slim --all (list your eligible running agents), /memory compact (explain VACUUM FULL), /memory status (progress). Viewing the explanation does not pause chat.",
       "accepted": "Confirmed maintenance for {count} agents. The host will back up, deduplicate, and reclaim space sequentially while preserving history and memories. All chats for the agent currently being maintained pause sending and resume automatically afterward. The page shows phases and elapsed time; you can use another agent that is not under maintenance. Closing the page does not stop the batch. Use /memory status for results after sending resumes.",
       "idle": "No maintenance record for this agent. Use /memory slim to start.",
       "summary": "Latest maintenance: {completed}/{total} agents completed.",
@@ -323,7 +324,17 @@
       "failure_hint": "See server logs for details; the batch will not retry automatically.",
       "trusted_chat": "Use /memory in the signed-in Octop dashboard or local CLI chat. IM senders do not yet have verified maintenance permissions.",
       "preview": "This optional maintenance reclaims disk space by deduplicating stored context, preserving chat history and memories. Savings depend on how much data is duplicated.\n\nA backup needs extra disk space. During maintenance, sending is paused in all chats for the affected agent and resumes automatically afterward. Large databases may take a long time; there is no reliable duration estimate. Run this when you can leave the agent idle.\n\nCurrently eligible targets: {count} (maintenance has not started):",
-      "confirm_hint": "To start now, send `{command}`. Without confirmation, you can keep chatting. Eligible targets are checked again when you confirm."
+      "confirm_hint": "To start now, send `{command}`. That does not delete the directories listed below. Without confirmation, you can keep chatting. Eligible targets are checked again when you confirm.",
+      "orphan_dirs": "These directories do not match any current agent. Maintenance leaves them in place. To delete them, send `{command}` as a second confirmation:",
+      "orphan_dirs_none": "No directories are left whose names do not match a current agent.",
+      "compact_preview": "This rewrites the memory database so space from deleted conversations can return to the operating system. SQLite and PostgreSQL both report the size before, the size after, and how much was saved. PostgreSQL runs VACUUM FULL on the shared checkpoint tables, which blocks reads and writes for every agent using that database.\n\nStop chatting with those agents first. This can take a while on a large database.",
+      "compact_done_saved": "Memory database: {before} -> {after}, saved {saved}.",
+      "compact_done_unchanged": "Memory database stayed {after}. The file did not shrink.",
+      "compact_done_tables": "VACUUM FULL finished on {count} tables.",
+      "compact_skipped": "Skipped (table not present): {tables}.",
+      "compact_busy": "This agent is in a conversation. Wait until it is idle, then run /memory compact --confirm.",
+      "compact_not_running": "This agent is not running, so its memory database cannot be compacted from chat.",
+      "compact_no_memory": "This agent has no memory store to compact."
     }
   },
   "connector": {
@@ -378,6 +389,7 @@
     "BACKUP_SCHEMA_INCOMPATIBLE": "This backup uses database schema version {archive_schema_version}, which cannot be restored by this Octop version (maximum supported: {runtime_schema_version}).",
     "BACKUP_IN_PROGRESS": "A backup or restore is already in progress. Try again shortly.",
     "FORBIDDEN": "Permission denied.",
+    "UPDATE_TARGET_NOT_NEWER": "Target version {target} must be newer than installed version {current}. Reinstalling or downgrading is not supported.",
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",
     "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {minutes} minutes.",
@@ -392,6 +404,7 @@
     "SETUP_TOKEN_INVALID": "Setup session is invalid or expired. Verify the setup password again.",
     "AGENT_NOT_FOUND": "Agent not found.",
     "AGENT_NOT_RUNNING": "This expert is not enabled.",
+    "CHECKPOINT_DELETE_FAILED": "Conversation data was not deleted. The thread is still here; try again.",
     "AGENT_FAILED": "Agent failed to start.",
     "AGENT_BUSY": "Agent is busy.",
     "AGENT_NAME_TAKEN": "This name is already in use. Please choose another.",
@@ -426,6 +439,9 @@
     "BRIDGE_TUNNEL_FAILED": "Cloud collab request failed. The link may have dropped — reconnect and try again.",
     "BRIDGE_REMOTE_UNSUPPORTED": "This action is not available on the peer expert. Manage it on the peer Octop.",
     "BRIDGE_DISPLAY_NAME_TAKEN": "Display name \"{{name}}\" is already in use. Choose another.",
+    "BRIDGE_PEER_ALREADY_LINKED": "This peer account is already linked as \"{name}\". Use the existing connection.",
+    "BRIDGE_CONNECTION_LIMIT": "At most {limit} cloud collab connections per user. Delete one to add another.",
+    "BRIDGE_SELF_CONNECT": "Cannot add this Octop instance as a peer of itself.",
     "BRIDGE_INBOUND_PASSIVE": "This link was opened by the peer. This side cannot change the address or dial out. After disconnect, the peer must reopen it.",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
     "SLASH_UNKNOWN": "Unknown slash command.",
@@ -436,6 +452,7 @@
     "VOICE_KIND_UNSUPPORTED": "Unsupported voice provider.",
     "VOICE_CAPABILITY_MISMATCH": "Voice capability does not match.",
     "VOICE_PROVIDER_DISABLED": "Voice provider is disabled.",
+    "VOICE_REALTIME_UNAVAILABLE": "Realtime speech recognition is unavailable. Check the Tencent Cloud voice settings.",
     "INTERNAL_ERROR": "Internal server error.",
     "TLS_NOT_ELIGIBLE": "TLS issuance is not available in the current server configuration.",
     "TLS_ISSUE_IN_PROGRESS": "A certificate issuance task is already running.",
@@ -495,6 +512,7 @@
     "TEAM_MEMBER_INVALID": "Those experts cannot join a team on this instance. Peer experts, other teams, and deleted experts are not allowed.",
     "TEAM_MEMBER_BUSY": "This expert has an in-flight team job. Wait until it finishes.",
     "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version.",
+    "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
     "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace."
   },
@@ -712,6 +730,7 @@
     "recursion_limit": "The agent hit its max iteration / recursion limit before finishing. Open Configuration and raise Max Iterations, then try again.",
     "timeout_network": "Connecting to the model timed out or the network failed. Check your network and retry. If you use a proxy or self-hosted endpoint, confirm it is reachable.",
     "provider_unavailable": "The model provider is temporarily unavailable. Retry later, or switch to another model.",
+    "invalid_request": "The model rejected this request as invalid. Strict OpenAI-compatible endpoints (for example Huawei MindIE) often reject extra fields such as stream_options. Custom providers now omit streamed usage by default; if it still fails, check whether the model supports tool calling. The full error is in the server log.",
     "model_call_failed": "The model call failed after several retries. Wait a moment and retry. If it keeps failing, check the model settings or switch models.",
     "model_call_failed_detail": "The model call failed: {detail}",
     "model_retry_prompt": "The model API request failed. Do not pretend the task succeeded.\n\nWhat happened: {guidance}\n\nExplain this to the user in their language and suggest the next step. Do not retry the same failing request unchanged.\n\nTechnical detail: {detail}",
@@ -813,6 +832,18 @@
       "http_status": "provider returned HTTP {status}",
       "network_error": "network error: {name}"
     },
+    "realtime": {
+      "error_4002": "Realtime speech recognition authentication failed. Check the SecretId and SecretKey.",
+      "error_4003": "Realtime speech recognition is not enabled for this Tencent Cloud account.",
+      "error_4004": "The Tencent Cloud realtime speech recognition resource pack is exhausted.",
+      "error_4005": "The Tencent Cloud account is in arrears. Top up and retry.",
+      "error_4006": "Realtime speech recognition concurrency limit reached. Retry in a moment.",
+      "error_4007": "Audio decoding failed. Check the microphone input.",
+      "error_4008": "Audio upload timed out. Check the network connection.",
+      "error_4009": "The realtime speech recognition connection was closed.",
+      "error_5000": "The Tencent Cloud service is temporarily unavailable. Retry shortly.",
+      "error_unknown": "Realtime speech recognition failed. Retry in a moment."
+    },
     "tencent": {
       "AuthFailure": {
         "SecretIdNotFound": "SecretId was not found. Check that the key is correct.",
@@ -832,7 +863,11 @@
   "memory_slim": {
     "waiting": "Waiting for the current task to finish…",
     "backing_up": "Backing up memory…",
+    "sweeping": "Removing leftovers from deleted agents and conversations…",
     "deduplicating": "Deduplicating historical context…",
+    "swept": "Removed leftovers from deleted agents or conversations: {namespaces} memory namespaces, {threads} checkpoint threads, {directories} directories.",
+    "orphan_dirs": "These directories do not match any current agent:",
+    "orphan_dirs_confirm": "Delete the directories listed above?",
     "compacting": "Compacting the memory database…",
     "done": "Memory maintenance completed; conversations resumed.",
     "failed": "Memory maintenance failed; conversations unblocked.",
@@ -877,6 +912,14 @@
   "conversation_mode": {
     "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",
     "execute": "Execute {path}"
+  },
+  "update": {
+    "completed": "Upgraded to {version}.",
+    "fpk_completed": "Upgraded to {version}. Restart the service in the app center to load the new version.",
+    "fpk_target_missing": "FPK site-packages directory does not exist: {path}",
+    "version_unavailable": "The installer finished, but the installed Octop version could not be verified.",
+    "version_mismatch": "The installer finished, but installed version {actual} does not match requested version {expected}.",
+    "version_not_newer": "The installer finished, but installed version {actual} is not newer than {previous}."
   },
   "ldap": {
     "test": {

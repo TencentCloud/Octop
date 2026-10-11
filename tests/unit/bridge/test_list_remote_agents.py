@@ -75,6 +75,41 @@ async def test_list_remote_agents_rewrites_team_member_ids() -> None:
     team = next(item for item in out if item["remote_agent_id"] == "host")
     doctor = next(item for item in out if item["remote_agent_id"] == "doctor")
     assert team["agent_id"] == "bridge:cid1:host"
+    assert team["is_owner"] is True
     assert team["member_ids"] == ["bridge:cid1:doctor", "bridge:cid1:nurse"]
     assert doctor["agent_id"] == "bridge:cid1:doctor"
     assert doctor["icon_url"] == "/api/agents/bridge:cid1:doctor/avatar"
+
+
+@pytest.mark.asyncio
+async def test_list_remote_agents_keeps_peer_ownership() -> None:
+    mgr = _mgr()
+    mgr.get_owned = MagicMock(return_value=_row())  # type: ignore[method-assign]
+
+    class Resp:
+        status_code = 200
+        text = ""
+
+        def json(self) -> list[dict[str, Any]]:
+            return [
+                {
+                    "agent_id": "mine",
+                    "name": "我的",
+                    "is_owner": True,
+                    "is_shared": False,
+                },
+                {
+                    "agent_id": "shared",
+                    "name": "别人共享",
+                    "is_owner": False,
+                    "is_shared": True,
+                },
+            ]
+
+    mgr.tunnel_http = AsyncMock(return_value=Resp())  # type: ignore[method-assign]
+    out = await mgr.list_remote_agents("cid1", owner_user_id=1)
+    by_remote = {item["remote_agent_id"]: item for item in out}
+    assert by_remote["mine"]["is_owner"] is True
+    assert by_remote["mine"]["is_shared"] is False
+    assert by_remote["shared"]["is_owner"] is False
+    assert by_remote["shared"]["is_shared"] is True

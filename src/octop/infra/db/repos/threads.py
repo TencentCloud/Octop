@@ -190,6 +190,24 @@ class ThreadRepo:
             r = conn.execute("SELECT * FROM threads WHERE thread_id = ?", (thread_id,)).fetchone()
         return ThreadRow.from_row(r) if r else None
 
+    def list_ids_for_agent(self, agent_id: str) -> set[str]:
+        """Every thread id stored for ``agent_id``, with no row cap."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT thread_id FROM threads WHERE agent_id = ?",
+                (agent_id,),
+            ).fetchall()
+        return {str(row["thread_id"]) for row in rows}
+
+    def list_for_user(self, user_id: int) -> list[tuple[str, str]]:
+        """``(agent_id, thread_id)`` pairs owned by ``user_id``."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT agent_id, thread_id FROM threads WHERE user_id = ?",
+                (user_id,),
+            ).fetchall()
+        return [(str(row["agent_id"]), str(row["thread_id"])) for row in rows]
+
     def list_by_agent(self, *, agent_id: str, limit: int = 50) -> list[ThreadRow]:
         # last_active=0 is "no turns yet" (has_messages sentinel). Fall back to
         # created_at so brand-new empty threads sort to the top of the sidebar

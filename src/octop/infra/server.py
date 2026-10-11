@@ -520,6 +520,7 @@ class OctopServer:
         registry.set_proactive_scheduler(proactive_scheduler)
 
         await registry.boot()
+        registry.schedule_idle_reclaim_sweep()
         await gateway.refresh_media_backends()
 
         user_mgr = UserManager(self.services)

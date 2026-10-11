@@ -7,7 +7,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import JSONResponse, Response
 
 from octop.api.common.agent import require_agent_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
@@ -613,19 +614,24 @@ async def delete_thread(
     agent_id: str,
     thread_id: str,
     as_user: int | None = None,
+    compact: bool | None = Query(default=None),
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
-) -> None:
-    """Remove a conversation thread, its actual checkpoint data, and its metadata.
+) -> Response:
+    """Remove a conversation thread, its checkpoint data, and its metadata.
 
-    Checkpoint deletion runs first: if it fails (as opposed to simply
-    finding nothing to delete — agent not running / no checkpointer),
-    the row is intentionally left in place so the thread stays visible
-    and the caller can retry, instead of orphaning undeleted data with
-    no remaining handle to it.
+    Checkpoint deletion runs first. ``CHECKPOINT_DELETE_FAILED`` leaves
+    the thread row in place so the caller can retry, instead of dropping
+    the only handle to data that is still on disk.
+
+    ``compact=true`` rebuilds the SQLite file before the response returns,
+    so the file can shrink immediately. The expert pauses while that runs.
+    ``compact=false`` only deletes the rows and compacts later, once the
+    expert is idle. Omitting ``compact`` keeps the previous empty 204.
     """
     _require_thread(server, agent_id, thread_id, user, as_user)
-    await server.app_runtime.agent_registry.delete_thread_checkpoint(agent_id, thread_id)
+    registry = server.app_runtime.agent_registry
+    await registry.delete_thread_checkpoint(agent_id, thread_id)
     server.app_runtime.gateway.thread_registry.delete_thread(thread_id)
     runtime = getattr(server, "app_runtime", None)
     trajectory = getattr(runtime, "trajectory_service", None) if runtime is not None else None
@@ -634,3 +640,18 @@ async def delete_thread(
             trajectory.delete_for_thread(thread_id)
         except Exception:
             logger.exception("trajectory cascade delete failed thread=%s", thread_id)
+    if compact is None:
+        return Response(status_code=204)
+    compacted = False
+    scheduled = False
+    if compact:
+        compact_now = getattr(registry, "compact_agent_database", None)
+        if callable(compact_now):
+            compacted = bool(await compact_now(agent_id))
+        scheduled = not compacted
+    else:
+        schedule = getattr(registry, "schedule_store_reclaim", None)
+        if callable(schedule):
+            schedule(agent_id)
+            scheduled = True
+    return JSONResponse({"compacted": compacted, "scheduled": scheduled})

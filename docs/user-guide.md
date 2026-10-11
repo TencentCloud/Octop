@@ -120,7 +120,7 @@ docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
-  -e OCTOP_DEFAULT_PASSWORD="<自定义强密码，留空则自动生成随机密码>" \
+  -e OCTOP_DEFAULT_PASSWORD="<自定义强密码，留空则进入设置向导>" \
   octop:latest
 ```
 
@@ -129,11 +129,11 @@ docker run -d \
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `OCTOP_PORT` | `8088` | HTTP 监听端口 |
-| `OCTOP_DEFAULT_PASSWORD` | _(空)_ | 首次运行管理员密码（Docker 引导；≥8 位且含字母+数字；留空则自动生成随机密码并写入 credential.txt） |
+| `OCTOP_DEFAULT_PASSWORD` | _(空)_ | 首次运行管理员密码（Docker 引导；≥8 位且含字母+数字；合格则建账号；留空或不合格则走设置向导） |
 | `OCTOP_ADMIN_USERNAME` | `admin` | 首次运行管理员用户名 |
 | `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载） |
 
-> 后续计划：Docker 首次启动可改为随机生成管理员密码，并仅写入 `credential.txt`。
+> 未设置或不合格的 `OCTOP_DEFAULT_PASSWORD` 不会静默换成随机管理员密码；打开页面走设置向导，向导口令在 `/data/.octop/octop-login.txt`。
 
 ---
 
@@ -301,7 +301,7 @@ octop provider --help     # 供应商增删改查帮助
 
 打开 **http://127.0.0.1:8088**，使用向导创建的账号登录。
 
-> ⚠️ **安全提醒**：Docker 首次初始化若未设置 `OCTOP_DEFAULT_PASSWORD`，会自动生成随机管理员密码（写入 `/data/.octop/credential.txt`，可用 `docker exec <容器> cat /data/.octop/credential.txt` 查看）。无论哪种方式，都请尽快在 **个人设置 → 修改密码** 中更换，避免服务暴露到公网时被未授权访问。
+> ⚠️ **安全提醒**：Docker 若未设置合格的 `OCTOP_DEFAULT_PASSWORD`，首次打开会进入设置向导（向导口令在 `/data/.octop/octop-login.txt`，可用 `docker exec <容器> cat /data/.octop/octop-login.txt` 查看）。无论哪种方式，都请尽快在 **个人设置 → 修改密码** 中更换，避免服务暴露到公网时被未授权访问。
 
 ![图 5.1 — 登录页面](assets/use-01-login.png)
 
