@@ -330,7 +330,7 @@ def test_hitl_store_resolve_pending_for_thread() -> None:
         thread_id="thr-b",
         agent_id="agent1",
         user_id=1,
-        session_key="sk2",
+        session_key="sk1",
         channel_type="dashboard",
         action_requests=[{"name": "write_file", "args": {"path": "x"}}],
         review_configs=None,
@@ -341,6 +341,31 @@ def test_hitl_store_resolve_pending_for_thread() -> None:
     assert store.resolve_pending_for_thread("thr-a", agent_id="agent1", user_id=2) is None
     assert store.pending_thread_ids(agent_id="agent1", user_id=1) == frozenset({"thr-a", "thr-b"})
     assert store.pending_thread_ids(agent_id="agent1", user_id=2) == frozenset()
+
+
+@pytest.mark.parametrize("channel_type", ["dashboard", "feishu"])
+def test_hitl_store_replaces_pending_in_channel_scope(channel_type: str) -> None:
+    store = HitlPendingStore()
+
+    def register(thread_id: str):
+        return store.register(
+            thread_id=thread_id,
+            agent_id="agent1",
+            user_id=1,
+            session_key="sk1",
+            channel_type=channel_type,
+            action_requests=[{"name": "execute", "args": {}}],
+            review_configs=None,
+        )
+
+    first = register("thr-a")
+    second = register("thr-b")
+    assert first.status == ("pending" if channel_type == "dashboard" else "expired")
+
+    replacement = register("thr-b")
+    assert second.status == "expired"
+    assert replacement.status == "pending"
+    assert first.status == ("pending" if channel_type == "dashboard" else "expired")
 
 
 def test_pending_hitl_payload() -> None:

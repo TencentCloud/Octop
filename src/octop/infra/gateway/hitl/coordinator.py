@@ -172,13 +172,19 @@ class HitlChannelCoordinator:
         *,
         agent_id: str,
         user_id: int,
+        thread_id: str | None = None,
     ) -> HitlPendingRecord | None:
         """Return the open ``ask_user_question`` pause this user may answer.
 
         Returns ``None`` for approval pauses (those keep using ``/approve``) and
         for questions addressed to a different user in the same group chat.
         """
-        record = self._store.resolve_for_session(session_key, agent_id=agent_id)
+        if thread_id is not None:
+            record = self._store.resolve_pending_for_thread(
+                thread_id, agent_id=agent_id, user_id=user_id
+            )
+        else:
+            record = self._store.resolve_for_session(session_key, agent_id=agent_id)
         if record is None or record.status != "pending":
             return None
         if record.user_id != user_id:
