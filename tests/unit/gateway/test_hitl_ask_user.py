@@ -227,15 +227,47 @@ class TestCoordinatorRouting:
         self._register(coordinator.store, APPROVAL)
         assert coordinator.resolve_ask_pending("sk1", agent_id="agent1", user_id=7) is None
 
-    def test_other_user_cannot_answer(self) -> None:
+    @pytest.mark.parametrize("thread_id", [None, "thr1"])
+    def test_other_user_cannot_answer(self, thread_id: str | None) -> None:
         coordinator = HitlChannelCoordinator(HitlPendingStore())
         self._register(coordinator.store, SINGLE_CHOICE)
-        assert coordinator.resolve_ask_pending("sk1", agent_id="agent1", user_id=99) is None
+        assert (
+            coordinator.resolve_ask_pending(
+                "sk1", agent_id="agent1", user_id=99, thread_id=thread_id
+            )
+            is None
+        )
 
-    def test_other_agent_not_routed(self) -> None:
+    @pytest.mark.parametrize("thread_id", [None, "thr1"])
+    def test_other_agent_not_routed(self, thread_id: str | None) -> None:
         coordinator = HitlChannelCoordinator(HitlPendingStore())
         self._register(coordinator.store, SINGLE_CHOICE)
-        assert coordinator.resolve_ask_pending("sk1", agent_id="other", user_id=7) is None
+        assert (
+            coordinator.resolve_ask_pending("sk1", agent_id="other", user_id=7, thread_id=thread_id)
+            is None
+        )
+
+    @pytest.mark.parametrize("thread_id", ["thr1", "thr2", "missing"])
+    def test_resolves_dashboard_question_by_thread(self, thread_id: str) -> None:
+        coordinator = HitlChannelCoordinator()
+        for tid in ("thr1", "thr2"):
+            coordinator.store.register(
+                thread_id=tid,
+                agent_id="agent1",
+                user_id=7,
+                session_key="sk1",
+                channel_type="dashboard",
+                action_requests=SINGLE_CHOICE,
+                review_configs=None,
+            )
+        record = coordinator.resolve_ask_pending(
+            "sk1", agent_id="agent1", user_id=7, thread_id=thread_id
+        )
+        if thread_id == "missing":
+            assert record is None
+        else:
+            assert record is not None
+            assert record.thread_id == thread_id
 
     def test_no_pending(self) -> None:
         coordinator = HitlChannelCoordinator(HitlPendingStore())

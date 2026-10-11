@@ -30,7 +30,7 @@ class HitlPendingRecord:
 
 @dataclass
 class HitlPendingStore:
-    """Session-scoped pending HITL records (process-local, TTL-gc)."""
+    """Pending HITL records scoped by dashboard thread or IM session (process-local, TTL-gc)."""
 
     ttl_seconds: float = _DEFAULT_TTL_SECONDS
     _records: dict[str, HitlPendingRecord] = field(default_factory=dict)
@@ -48,8 +48,19 @@ class HitlPendingStore:
     ) -> HitlPendingRecord:
         self._gc()
         for existing in list(self._records.values()):
-            if existing.session_key == session_key and existing.status == "pending":
-                existing.status = "expired"
+            if existing.status != "pending":
+                continue
+            if channel_type == "dashboard":
+                if (
+                    existing.channel_type != channel_type
+                    or existing.thread_id != thread_id
+                    or existing.agent_id != agent_id
+                    or existing.user_id != user_id
+                ):
+                    continue
+            elif existing.session_key != session_key:
+                continue
+            existing.status = "expired"
         pending_id = secrets.token_hex(2)
         while pending_id in self._records:
             pending_id = secrets.token_hex(2)

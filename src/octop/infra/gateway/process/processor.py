@@ -982,11 +982,24 @@ class GlobalProcessor:
             )
             return
 
+        thread_id = meta.get("thread_id")
         if cmd is None and bool(msg.text and msg.text.strip()):
+            if channel_type == "dashboard" and (
+                not isinstance(thread_id, str) or not thread_id.strip()
+            ):
+                thread_id = await self._thread_registry.get_or_create_by_key(
+                    session_key=session_key,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    channel_type=channel_type,
+                    channel_channel_id=msg.channel_id or None,
+                    channel_metadata=im_meta,
+                )
             ask_record = self._hitl.resolve_ask_pending(
                 session_key,
                 agent_id=agent_id,
                 user_id=user_id,
+                thread_id=thread_id if channel_type == "dashboard" else None,
             )
             if ask_record is not None:
                 usage_tracker = UsageTracker()
@@ -1079,7 +1092,6 @@ class GlobalProcessor:
             yield _maybe_stamp_team_host({"type": "done"}, agent_id, team_host)
             return
 
-        thread_id = meta.get("thread_id")
         if not isinstance(thread_id, str) or not thread_id.strip():
             thread_id = await self._thread_registry.get_or_create_by_key(
                 session_key=session_key,

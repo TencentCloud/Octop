@@ -585,6 +585,89 @@ async def test_global_processor_iter_turn_chunks_registers_hitl() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("incoming_thread", ["thread-a", "thread-b"])
+@pytest.mark.parametrize("explicit_thread", [True, False])
+async def test_dashboard_question_answer_stays_in_its_thread(
+    incoming_thread: str, explicit_thread: bool
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator
+    from octop.infra.gateway.process.processor import GlobalProcessor
+    from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+
+    streamed_threads: list[str] = []
+    resumed_threads: list[str] = []
+
+    async def _stream(_agent_id: str, request: dict[str, Any]):
+        streamed_threads.append(request["thread_id"])
+        yield {"type": "token", "content": "new turn"}
+
+    async def _resume(_agent_id: str, thread_id: str, _decisions: list[dict[str, Any]]):
+        resumed_threads.append(thread_id)
+        yield {"type": "token", "content": "resumed turn"}
+
+    agent_manager = MagicMock()
+    agent_manager.stream = _stream
+    agent_manager.resume_hitl = _resume
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    thread_registry = MagicMock()
+    thread_registry.get_or_create_by_key = AsyncMock(return_value=incoming_thread)
+
+    hitl = HitlChannelCoordinator()
+    pending = hitl.store.register(
+        thread_id="thread-a",
+        agent_id="agent-1",
+        user_id=1,
+        session_key="sk",
+        channel_type="dashboard",
+        action_requests=[
+            {
+                "name": "ask_user_question",
+                "args": {"questions": [{"question": "Which project?"}]},
+            }
+        ],
+        review_configs=None,
+    )
+    processor = GlobalProcessor(
+        agent_manager=agent_manager,
+        thread_registry=thread_registry,
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        gateway=None,
+        hitl=hitl,
+    )
+    metadata = {"session_key": "sk"}
+    if explicit_thread:
+        metadata["thread_id"] = incoming_thread
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="my project")],
+        metadata=metadata,
+    )
+
+    chunks = [chunk async for chunk in processor.iter_turn_chunks(msg)]
+
+    assert chunks[-1]["type"] == "done"
+    if incoming_thread == "thread-a":
+        assert resumed_threads == ["thread-a"]
+        assert streamed_threads == []
+        assert pending.status == "approved"
+    else:
+        assert resumed_threads == []
+        assert streamed_threads == ["thread-b"]
+        assert pending.status == "pending"
+        assert pending.ask_answers == []
+
+
+@pytest.mark.asyncio
 async def test_global_processor_iter_turn_chunks_expires_stale_hitl() -> None:
     from unittest.mock import AsyncMock, MagicMock
 
