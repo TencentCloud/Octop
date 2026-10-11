@@ -78,6 +78,12 @@ async def fetch_authorization_metadata(issuer: str) -> dict[str, Any]:
         raise ValueError("invalid oauth metadata")
     if not data.get("authorization_endpoint") or not data.get("token_endpoint"):
         raise ValueError("oauth metadata missing endpoints")
+    # RFC 8414 section 3.3: the document has to identify the issuer we asked about,
+    # otherwise we would adopt another tenant's endpoints. Compare on the same
+    # trailing-slash-stripped form the rest of the flow uses.
+    returned_issuer = str(data.get("issuer") or "").strip()
+    if returned_issuer.rstrip("/") != issuer.rstrip("/"):
+        raise ValueError("oauth metadata issuer does not match the requested issuer")
     return await _validate_metadata_endpoints(data, issuer=issuer)
 
 
