@@ -467,6 +467,7 @@
     "ACP_BACKEND_UNSUPPORTED": "This agent has a sandbox enabled, so external runners can’t be enabled or edited here. The outbound acp_runner tool toggle is unaffected; connecting via IDE / octop acp is also unaffected.",
     "PUBLISHED_EXPERT_SLUG_TAKEN": "Published expert slug {slug} already exists.",
     "PUBLISHED_EXPERT_ALREADY_EXISTS": "This agent is already published as “{name}”. Refresh the published template instead.",
+    "EXPERT_PUSH_UNSAFE": "This expert cannot be safely copied with its current backend or files.",
     "OIDC_BAD_REQUEST": "Invalid OIDC request: {detail}",
     "SSO_IDENTITY_TAKEN": "This login is already linked to another Octop account.",
     "SSO_UNBIND_REQUIRES_PASSWORD": "Set a password before unlinking single sign-on.",

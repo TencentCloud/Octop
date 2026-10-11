@@ -365,6 +365,7 @@ class AgentCreateSpec:
     system_prompt: str | None = None
     icon: str | None = None
     template_name: str | None = None
+    seed_template: bool = True
     is_shared: bool = False
     icon_name: str | None = None
     icon_url: str | None = None
@@ -789,7 +790,7 @@ class AgentManager:
                 except Exception:
                     await self._abort_incomplete_create(agent_id)
                     raise
-            elif spec.template_name:
+            elif spec.template_name and spec.seed_template:
                 await self._seed_expert_template(row, spec.template_name)
             if workspace_initializer is not None:
                 try:
@@ -825,7 +826,9 @@ class AgentManager:
                             member_ids=list(spec.member_ids or []),
                         )
                 elif agent is not None and spec.template_name:
-                    if self._spec_is_opensandbox(self._backend_spec_for_row(row)):
+                    if spec.seed_template and self._spec_is_opensandbox(
+                        self._backend_spec_for_row(row)
+                    ):
                         await self._seed_expert_template(row, spec.template_name)
                     reload = getattr(agent, "reload_subagents", None)
                     if callable(reload):

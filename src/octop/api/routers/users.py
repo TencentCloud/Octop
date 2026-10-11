@@ -39,6 +39,10 @@ class UserCreateBody(BaseModel):
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
     max_agents: int | None = Field(default=None, ge=0)
+    source_agent_ids: list[str] = Field(
+        default_factory=list,
+        description="Administrator-owned expert agent IDs to copy into the new user's account.",
+    )
 
 
 class UserPatchBody(BaseModel):
@@ -276,12 +280,13 @@ async def list_users(
     return [_row_to_dict(r, policy_map.get(r.id), server) for r in rows]
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, summary="Create user and optionally push experts")
 async def create_user(
     body: UserCreateBody,
     actor: Any = Depends(require_permission("users")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
+    """Create a user, optionally copying the administrator's experts and their settings."""
     role_id, template_name, template_perms, template_policies = _resolve_role_template(
         server, body.role
     )
@@ -305,16 +310,26 @@ async def create_user(
     role_name = (
         _clean_role_name(body.role_name) if "role_name" in body.model_fields_set else template_name
     )
-    user = await server.user_manager.create(
-        username=body.username,
-        password=body.password,
-        role=role_id,
-        display_name=body.display_name,
-        email=body.email,
-        permissions=permissions,
-        role_name=role_name,
+    from octop.infra.users.expert_provision import create_user_with_experts  # noqa: PLC0415
+
+    assert server.app_runtime is not None
+    user = await create_user_with_experts(
+        user_manager=server.user_manager,
+        registry=server.app_runtime.agent_registry,
+        services=server.services,
+        actor=actor,
+        source_agent_ids=body.source_agent_ids,
+        user_fields={
+            "username": body.username,
+            "password": body.password,
+            "role": role_id,
+            "display_name": body.display_name,
+            "email": body.email,
+            "permissions": permissions,
+            "role_name": role_name,
+        },
+        policy_kwargs=policy_kwargs,
     )
-    await server.user_manager.set_resource_policy(user.username, **policy_kwargs)
     row = server.user_manager.get_row(user.id)
     assert row is not None
     return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id), server)

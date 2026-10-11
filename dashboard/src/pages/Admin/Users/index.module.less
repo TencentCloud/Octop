@@ -78,6 +78,46 @@
   text-transform: uppercase;
 }
 
+.createExpertHint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.createExpertPicker {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+
+  :global(.ant-checkbox-wrapper) {
+    margin-inline-start: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--fn-border-primary);
+    border-radius: 8px;
+    align-items: flex-start;
+  }
+
+  :global(.ant-checkbox-wrapper-checked) {
+    border-color: var(--fn-color-brand);
+  }
+}
+
+.createExpertOption {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.createExpertName {
+  font-weight: 600;
+}
+
+.createExpertDescription {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
 .createUserRoleItem {
   margin-bottom: 12px !important;
 }

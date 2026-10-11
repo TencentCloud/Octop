@@ -467,6 +467,7 @@
     "ACP_BACKEND_UNSUPPORTED": "当前专家已启用沙箱环境，不可启用或编辑外部 Runner。启用向外委托（acp_runner）不受影响；通过 IDE / octop acp 接入也不受影响。",
     "PUBLISHED_EXPERT_SLUG_TAKEN": "已存在发布专家 slug：{slug}。",
     "PUBLISHED_EXPERT_ALREADY_EXISTS": "该专家已发布为「{name}」，请改为刷新已发布模板。",
+    "EXPERT_PUSH_UNSAFE": "该专家当前的后端配置或文件无法安全推送。",
     "OIDC_BAD_REQUEST": "OIDC 请求无效：{detail}",
     "SSO_IDENTITY_TAKEN": "该登录身份已绑定到其他 Octop 账号。",
     "SSO_UNBIND_REQUIRES_PASSWORD": "请先设置密码再解绑单点登录。",
