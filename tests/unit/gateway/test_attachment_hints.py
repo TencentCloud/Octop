@@ -438,3 +438,159 @@ def test_content_blocks_need_vision_detects_image_url() -> None:
     ]
     assert content_blocks_need_vision(content) is True
     assert content_blocks_need_vision("hello") is False
+
+
+@pytest.mark.asyncio
+async def test_materialize_inline_sniffs_octet_stream_to_real_type() -> None:
+    """QQ 渠道把图片报成 application/octet-stream（#1640）：嗅探兜底应还原真实类型。"""
+    import base64
+
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+    part = ImageContent(
+        data=base64.b64encode(png).decode(),
+        mime_type="application/octet-stream",
+    )
+    block = await materialize_image_part(part, media_backend=None, workspace=None)
+    assert block is not None
+    assert block["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+@pytest.mark.asyncio
+async def test_materialize_inline_sniffs_jpeg_magic_with_png_extension() -> None:
+    """文件名 .png 但实际内容是 JPEG（magic bytes ff d8 ff）：按内容嗅探。"""
+    import base64
+
+    jpeg = b"\xff\xd8\xff\xe1" + b"\x00" * 32
+    part = ImageContent(
+        data=base64.b64encode(jpeg).decode(),
+        mime_type="application/octet-stream",
+    )
+    block = await materialize_image_part(part, media_backend=None, workspace=None)
+    assert block is not None
+    assert block["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
+@pytest.mark.asyncio
+async def test_materialize_inline_keeps_octet_stream_when_sniff_fails() -> None:
+    """嗅探不出来的内容保持原样——不在无法判定时瞎猜。"""
+    import base64
+
+    part = ImageContent(
+        data=base64.b64encode(b"\x00\x01\x02\x03not-an-image").decode(),
+        mime_type="application/octet-stream",
+    )
+    block = await materialize_image_part(part, media_backend=None, workspace=None)
+    assert block is not None
+    assert block["image_url"]["url"].startswith("data:application/octet-stream;base64,")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mime", ["", None, "application/octet-stream", "image/png"])
+async def test_materialize_inline_handles_missing_and_explicit_mime(mime: str | None) -> None:
+    jpeg = b"\xff\xd8\xff\xe1" + b"\x00" * 32
+    part = ImageContent(data=base64.b64encode(jpeg).decode(), mime_type=mime)
+    block = await materialize_image_part(part, media_backend=None)
+    assert block is not None
+    expected = "image/png" if mime == "image/png" else "image/jpeg"
+    assert block["image_url"]["url"] == f"data:{expected};base64,{part.data}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mime", ["", "application/octet-stream", "image/png"])
+async def test_materialize_download_sniffs_generic_mime(mime: str) -> None:
+    jpeg = b"\xff\xd8\xff\xe1" + b"\x00" * 32
+    with patch(
+        "octop.infra.gateway.media.attachment_hints._download_image_url",
+        new=AsyncMock(return_value=(jpeg, mime)),
+    ):
+        block = await materialize_image_part(
+            ImageContent(url="https://example.com/mislabeled.png", mime_type=""),
+            media_backend=None,
+        )
+    assert block is not None
+    expected = "image/png" if mime == "image/png" else "image/jpeg"
+    assert block["image_url"]["url"] == f"data:{expected};base64,{base64.b64encode(jpeg).decode()}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_backend", [False, True])
+@pytest.mark.parametrize("mime", ["", None, "application/octet-stream", "image/png"])
+async def test_workspace_image_ref_sniffs_mime_when_expanded(
+    tmp_path: Path, with_backend: bool, mime: str | None
+) -> None:
+    from octop.infra.gateway.media.attachment_hints import (
+        expand_workspace_image_ref,
+        expand_workspace_image_ref_sync,
+    )
+
+    workspace = _workspace(str(tmp_path))
+    jpeg = b"\xff\xd8\xff\xe1" + b"\x00" * 32
+    stored = await write_inbound(workspace, jpeg, filename="mislabeled.png", media_type="image/png")
+    part = ImageContent(local_path=stored.path, mime_type=mime)
+    backend = AgentBackedMediaBackend(workspace) if with_backend else None
+    block = await materialize_image_part(part, media_backend=backend, workspace=workspace)
+    assert block is not None
+    assert block["image_url"]["url"].startswith("workspace://")
+    expected = "image/png" if mime == "image/png" else "image/jpeg"
+    expanded = await expand_workspace_image_ref(block, workspace=workspace)
+    assert (
+        expanded["image_url"]["url"] == f"data:{expected};base64,{base64.b64encode(jpeg).decode()}"
+    )
+    assert expand_workspace_image_ref_sync(block, workspace=workspace) == expanded
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mime", ["", "application/octet-stream", "image/png"])
+async def test_historical_workspace_ref_sniffs_mime_without_mutating_checkpoint(
+    tmp_path: Path, mime: str
+) -> None:
+    from octop.infra.gateway.media.attachment_hints import (
+        expand_workspace_image_ref,
+        expand_workspace_image_ref_sync,
+        make_workspace_image_ref,
+    )
+
+    workspace = _workspace(str(tmp_path))
+    jpeg = b"\xff\xd8\xff\xe1" + b"\x00" * 32
+    stored = await write_inbound(workspace, jpeg, filename="mislabeled.png", media_type="image/png")
+    block = make_workspace_image_ref(workspace_path=stored.path, mime_type=mime)
+    original = {**block, "image_url": dict(block["image_url"])}
+    expanded = await expand_workspace_image_ref(block, workspace=workspace)
+    expected = "image/png" if mime == "image/png" else "image/jpeg"
+    assert (
+        expanded["image_url"]["url"] == f"data:{expected};base64,{base64.b64encode(jpeg).decode()}"
+    )
+    assert expanded["workspace_path"] == stored.path
+    assert expand_workspace_image_ref_sync(block, workspace=workspace) == expanded
+    assert block == original
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["inline", "url", "workspace"])
+@pytest.mark.parametrize("mime", ["", "application/octet-stream"])
+async def test_generic_mime_keeps_legacy_fallback_when_bytes_are_unrecognized(
+    tmp_path: Path, source: str, mime: str
+) -> None:
+    from octop.infra.gateway.media.attachment_hints import expand_workspace_image_ref
+
+    data = b"not-an-image"
+    workspace = _workspace(str(tmp_path))
+    if source == "workspace":
+        stored = await write_inbound(
+            workspace, data, filename="unknown.png", media_type="image/png"
+        )
+        part = ImageContent(local_path=stored.path, mime_type=mime)
+    elif source == "url":
+        part = ImageContent(url="https://example.com/unknown.png", mime_type=mime)
+    else:
+        part = ImageContent(data=base64.b64encode(data).decode(), mime_type=mime)
+    with patch(
+        "octop.infra.gateway.media.attachment_hints._download_image_url",
+        new=AsyncMock(return_value=(data, mime)),
+    ):
+        block = await materialize_image_part(part, media_backend=None, workspace=workspace)
+    assert block is not None
+    if source == "workspace":
+        block = await expand_workspace_image_ref(block, workspace=workspace)
+    expected = mime or "image/png"
+    assert block["image_url"]["url"] == f"data:{expected};base64,{base64.b64encode(data).decode()}"
