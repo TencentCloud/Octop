@@ -66,10 +66,10 @@ async def test_catalog(env):
     assert weiyun["category"] == "office"
     assert weiyun.get("quick_auth_url") == "https://www.weiyun.com/act/openclaw"
     qcc = next(e for e in r.json() if e["kind"] == "qcc")
-    assert qcc["auth_kind"] == "api_key"
+    assert qcc["auth_kind"] == "oauth2"
     assert qcc["mcp_mode"] == "internal"
-    assert qcc["oauth_mode"] is None
-    assert qcc["oauth_ready"] is False
+    assert qcc["oauth_mode"] == "dynamic"
+    assert qcc["oauth_ready"] is True
     assert qcc["category"] == "professional"
     openalex = next(e for e in r.json() if e["kind"] == "openalex")
     assert openalex == {
@@ -404,7 +404,8 @@ async def test_auth_info(env):
     assert data["auth_hint"]
 
 
-async def test_oauth_start_public_http_notion_error_is_actionable(tmp_octop_home: Path):
+@pytest.mark.parametrize("kind", ["notion", "qcc"])
+async def test_oauth_start_public_http_notion_error_is_actionable(tmp_octop_home: Path, kind: str):
     write_octop_config(tmp_octop_home)
     async with octop_client(tmp_octop_home) as (c, _srv):
         await bootstrap_admin(c, tmp_octop_home)
@@ -412,14 +413,14 @@ async def test_oauth_start_public_http_notion_error_is_actionable(tmp_octop_home
         mocked_start = AsyncMock()
         with patch("octop.api.routers.connectors.start_oauth_for_target", mocked_start):
             r = await c.post(
-                "/api/connectors/oauth/notion/start",
+                f"/api/connectors/oauth/{kind}/start",
                 headers={**auth, "host": "58.87.70.170"},
                 json={"redirect_after": "/connectors"},
             )
     assert r.status_code == 400
     body = r.json()
     assert body["error"]["code"] == "CONNECTOR_OAUTH_HTTPS_REQUIRED"
-    assert "Notion" in body["error"]["message"]
+    assert "OAuth" in body["error"]["message"]
     assert "HTTPS" in body["error"]["message"]
     mocked_start.assert_not_awaited()
 
@@ -701,18 +702,31 @@ async def test_custom_mcp_oauth_start_unified(env):
     assert call_kwargs["mcp_url"] == "https://mcp.example.com/mcp"
 
 
-async def test_qcc_gateway_auth_five_resources_and_disconnect(env, monkeypatch):
+@pytest.mark.parametrize("oauth", [False, True])
+async def test_qcc_gateway_auth_five_resources_and_disconnect(env, monkeypatch, oauth):
     from octop.api.routers.internal_mcp import _service
     from octop.infra.connectors import qcc
 
     c, srv, auth, _ = env
+    revoke = AsyncMock()
+    monkeypatch.setattr(qcc, "revoke", revoke)
+    credentials = (
+        {
+            "access_token": "synthetic",
+            "refresh_token": "refresh",
+            "oauth_client_id": "client",
+            "expires_at": 9999999999,
+        }
+        if oauth
+        else {"api_key": "synthetic"}
+    )
     created = await c.post(
         "/api/connector-instances",
         headers=auth,
         json={
             "kind": "qcc",
             "display_name": "QCC",
-            "credentials": {"api_key": "synthetic"},
+            "credentials": credentials,
         },
     )
     assert created.status_code == 201
@@ -737,6 +751,7 @@ async def test_qcc_gateway_auth_five_resources_and_disconnect(env, monkeypatch):
     assert denied.status_code == 403
     deleted = await c.delete(f"/api/connector-instances/{instance_id}", headers=auth)
     assert deleted.status_code == 204
+    assert revoke.await_count == int(oauth)
     gone = await c.post(path, params={"token": token}, json={"id": 2, "method": "tools/list"})
     assert gone.status_code == 404
 

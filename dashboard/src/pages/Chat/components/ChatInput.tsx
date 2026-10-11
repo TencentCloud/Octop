@@ -11,6 +11,11 @@ import { useTranslation } from "react-i18next";
 import { App } from "antd";
 
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import {
+  isPwaDisplay,
+  needsComposerVisualViewportFix,
+} from "../../../hooks/viewport";
+import { useKeepInVisualViewport } from "../../../hooks/useKeepInVisualViewport";
 import { useSlashCommands } from "../../../hooks/useSlashCommands";
 import SlashCommandMenu from "./SlashCommandMenu";
 import { agentChatApi } from "../../../api/modules/agentChat";
@@ -25,7 +30,6 @@ import ChatInputPreviewBar from "./ChatInputPreviewBar";
 import ChatInputActionsRow from "./ChatInputActionsRow";
 import ChatQueuedMessages from "./ChatQueuedMessages";
 import { useVoiceInput } from "../../../hooks/useVoiceInput";
-import { useKeyboardOffset } from "../../../hooks/useKeyboardOffset";
 import { useChatAttachments } from "../hooks/useChatAttachments";
 import { useSlashMentionInput } from "../hooks/useSlashMentionInput";
 import { stripThinkingTags } from "../utils/chatAttachments";
@@ -187,7 +191,26 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const { commands: slashCommands, labelFor } = useSlashCommands("ui");
     const skillDisplayName = useSkillDisplayName();
     const isMobile = useIsMobile();
-    useKeyboardOffset();
+    const shellRef = useRef<HTMLDivElement>(null);
+    const [nativeDropActive, setNativeDropActive] = useState(false);
+    useEffect(() => {
+      const el = shellRef.current;
+      if (!el) return;
+      const sync = () => {
+        setNativeDropActive(el.classList.contains("file-drop-target-active"));
+      };
+      const observer = new MutationObserver(sync);
+      observer.observe(el, {
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+      return () => observer.disconnect();
+    }, []);
+    const keepComposerInView =
+      typeof window !== "undefined" &&
+      !isPwaDisplay() &&
+      (isMobile || needsComposerVisualViewportFix());
+    useKeepInVisualViewport(shellRef, keepComposerInView);
     const [text, setText] = useState(
       () => initialText || readInputDraft(agentId, threadId),
     );
@@ -205,9 +228,19 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       setText(value);
     }, []);
 
-    const handleVoiceText = useCallback(
+    const textRef = useRef(text);
+    useEffect(() => {
+      textRef.current = text;
+    }, [text]);
+    // Text that existed before the current voice session started; the session's
+    // (possibly still refining) transcript is appended to it on every update.
+    const voiceBaselineRef = useRef("");
+
+    const applyVoiceText = useCallback(
       (spoken: string) => {
-        setText((prev) => (prev.trim() ? `${prev.trim()} ${spoken}` : spoken));
+        const base = voiceBaselineRef.current.trim();
+        const next = spoken.trim();
+        setText(base ? (next ? `${base} ${next}` : base) : next);
         userHasEditedRef.current = true;
         onUserInput?.();
       },
@@ -216,15 +249,26 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const {
       recording,
       transcribing,
+      realtime: realtimeVoice,
+      start: startVoice,
+      stop: stopVoice,
       toggle: toggleVoice,
-    } = useVoiceInput(handleVoiceText);
+    } = useVoiceInput({
+      onStart: () => {
+        voiceBaselineRef.current = textRef.current;
+      },
+      onInterim: applyVoiceText,
+      onText: applyVoiceText,
+    });
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const {
       attachments,
       uploading,
       dragOver,
       fileInputRef,
+      folderInputRef,
       handleFileSelect,
+      handleFolderSelect,
       handleFileChange,
       removeAttachment,
       clearAttachments,
@@ -712,10 +756,15 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const canSend = Boolean(
       (text.trim() || attachments.length > 0) && !disabled,
     );
+    const showDrop = dragOver || nativeDropActive;
 
     return (
       <div
-        className={`${styles.chatInput} ${dragOver ? styles.dropActive : ""}`}
+        ref={shellRef}
+        id="octop-chat-file-drop"
+        data-file-drop-target=""
+        data-octop-chat-drop="1"
+        className={`${styles.chatInput} ${showDrop ? styles.dropActive : ""}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -729,6 +778,11 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           />
         )}
         <div className={styles.inputWrapper}>
+          {showDrop && (
+            <div className={styles.dropOverlay} data-testid="chat-drop-overlay">
+              {t("upload.dropHint", "Drop files or a folder to upload")}
+            </div>
+          )}
           <ChatInputPreviewBar
             attachments={attachments}
             uploading={uploading}
@@ -842,6 +896,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <ChatInputActionsRow
             isMobile={isMobile}
             isStreaming={isStreaming}
+            isTeam={isTeam}
             disabled={disabled}
             canSend={canSend}
             text={text}
@@ -849,6 +904,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             uploading={uploading}
             recording={recording}
             transcribing={transcribing}
+            voiceHoldToTalk={realtimeVoice}
+            onVoiceStart={() => void startVoice()}
+            onVoiceStop={() => void stopVoice()}
             browserRecording={browserRecording}
             browserReplayBusy={browserReplayBusy}
             browserLastRecordingId={browserLastRecordingId}
@@ -888,6 +946,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             slashMenuItems={slashMenuItems}
             onSlashShortcutSelect={handleSlashSelect}
             onFileSelect={handleFileSelect}
+            onFolderSelect={handleFolderSelect}
             onNewChat={onNewChat}
             onPolish={() => void handlePolish()}
             onToggleVoice={() => toggleVoice()}
@@ -897,6 +956,13 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
           <input
             ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+          />
+          <input
+            ref={folderInputRef}
             type="file"
             multiple
             style={{ display: "none" }}

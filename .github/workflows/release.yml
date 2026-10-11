@@ -2,7 +2,7 @@ name: Release
 
 # 版本标签 v* → 测包、发 PyPI、建 GitHub Release，再级联：
 #   - Sync Main Into Develop
-#   - Build Octop FPK（复用本 Release 的 wheel；等待 docker-publish 的 GHCR 镜像）
+#   - Build Octop FPK（复用本 Release 的 wheel；等待 docker-publish 的多架构 GHCR 镜像）
 #
 # 与 docker-publish.yml / octop-desktop.yml 并行（由 Auto Tag 同时 dispatch，
 # 或人工 push v* tag 同时触发）。桌面产物由 Desktop Package 挂到同一 GitHub Release。

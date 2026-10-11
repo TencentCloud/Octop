@@ -17,8 +17,9 @@ import { message as antMessage } from "@/utils/antdMessage";
 import { showConfirmModal } from "../../utils/confirmModal";
 import PlanReadyCard from "./components/PlanReadyCard";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useHitlEnabled } from "../../hooks/useHitlEnabled";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { userCan } from "../../utils/permissions";
+import { navAllowed, userCan } from "../../utils/permissions";
 import { useChat } from "./hooks/useChat";
 import { useSessions, fetchAndSyncSessionArtifacts } from "./hooks/useSessions";
 import * as chatStore from "./hooks/chatStore";
@@ -37,8 +38,15 @@ import { useChatSessionActions } from "./hooks/useChatSessionActions";
 
 import { useChatComposerResources } from "./hooks/useChatComposerResources";
 import type { HitlSessionPolicy } from "./utils/hitlSessionPolicy";
-import { mergeAllowTools } from "./utils/hitlSessionPolicy";
+import {
+  mergeAllowTools,
+  parseHitlSessionPolicy,
+} from "./utils/hitlSessionPolicy";
 import { useChatContextWindow } from "./hooks/useChatContextWindow";
+import {
+  disableProviderStreamUsage,
+  providerIdForTurn,
+} from "../../utils/disableProviderStreamUsage";
 import { useBrowserToolDetection } from "./hooks/useBrowserToolDetection";
 import { useSkillRecordingWorkflow } from "./hooks/useSkillRecordingWorkflow";
 import { listDockFilePathsForTree } from "./utils/dockFilePath";
@@ -55,6 +63,7 @@ import MessageList from "./components/MessageList";
 import ChatInput, { type ChatInputHandle } from "./components/ChatInput";
 import WelcomeScreen from "./components/WelcomeScreen";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
+import ModelConfigEmpty from "./components/ModelConfigEmpty";
 import AgentProfileDrawer from "../../components/AgentProfileDrawer";
 import TrajectoryDrawer from "./components/TrajectoryDrawer";
 import { useExpertChatWelcome } from "./hooks/useExpertQuickCards";
@@ -87,9 +96,10 @@ import TeamChatBadge from "./components/TeamChatBadge";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import AskQuestionCard from "./components/AskQuestionCard";
 import {
-  findPendingApproval,
+  findAutoResumableApproval,
   findPendingAsk,
   hasPendingHitl,
+  isResumableHitl,
 } from "./utils/pendingHitl";
 import { isAgentChatReady } from "../../utils/agentError";
 import { useMemoryMaintenance } from "./hooks/useMemoryMaintenance";
@@ -124,10 +134,12 @@ function ChatPageInner() {
     threadId: threadId ?? null,
   });
   const isMobile = useIsMobile();
+  const hitlEnabled = useHitlEnabled();
   const user = useCurrentUser();
   const { layoutMode } = useLayoutMode();
   const isMinimalLayout = layoutMode === "minimal";
   const canTerminal = userCan(user, "terminal");
+  const canConfigureModels = navAllowed(user, "models");
   const chatHistoryRail = useChatHistoryRail();
   const [browserRecording, setBrowserRecording] = useState(false);
   const [browserRecordingId, setBrowserRecordingId] = useState<string | null>(
@@ -196,7 +208,7 @@ function ChatPageInner() {
     () => agents.find((a) => a.agent_id === resolvedAgentId) ?? null,
     [agents, resolvedAgentId],
   );
-  const agentChatReady = isAgentChatReady(activeAgent?.state);
+  const agentChatReady = isAgentChatReady(activeAgent?.state, activeAgent);
   const trajectoryEnabled =
     activeAgent !== null && activeAgent.config?.enable_trajectory !== false;
   const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {});
@@ -345,6 +357,7 @@ function ChatPageInner() {
     historyHydrated,
     contextUsage,
     pendingPlanPath,
+    liveSpeakers,
     sendMessage,
     editAndResend,
     cancelStream,
@@ -361,6 +374,7 @@ function ChatPageInner() {
     [messages],
   );
   const pendingAsk = useMemo(() => findPendingAsk(messages), [messages]);
+  const autoResumedApprovalRef = useRef<string | null>(null);
 
   const refreshBrowserRef = useRef<() => void>(() => {});
 
@@ -376,7 +390,11 @@ function ChatPageInner() {
     controlOwner: browserControlOwner,
     environment: browserEnvironment,
     refresh: refreshBrowserSession,
-  } = useBrowserSessionState(threadId, hasBrowserTool);
+  } = useBrowserSessionState(
+    threadId,
+    hasBrowserTool,
+    activeAgent?.bridge ? activeAgent.bridge_connection_id : null,
+  );
 
   refreshBrowserRef.current = refreshBrowserSession;
 
@@ -406,6 +424,10 @@ function ChatPageInner() {
   } = useChatDockPanel(isMobile, resolvedAgentId);
 
   const chromeCheckInFlightRef = useRef(false);
+  const bridgeConnectionId =
+    activeAgent?.bridge && activeAgent.bridge_connection_id
+      ? activeAgent.bridge_connection_id
+      : null;
   const ensureChromeThen = useCallback(
     async (then: () => void) => {
       // A live session means Chrome is already running — skip the probe.
@@ -413,8 +435,21 @@ function ChatPageInner() {
         if (chromeCheckInFlightRef.current) return;
         chromeCheckInFlightRef.current = true;
         try {
-          const env = await browserApi.checkEnvStatus();
+          const env = await browserApi.checkEnvStatus(resolvedAgentId);
           if (shouldJumpToChromeInstall(env)) {
+            // Peer Chromium install is not tunneled — only nudge local install UX.
+            if (bridgeConnectionId) {
+              showConfirmModal(
+                {
+                  title: t("browserWorkspace.chromeMissingTitle"),
+                  content: t("chat.remoteExpert.manageToast"),
+                  okText: t("common.confirm"),
+                  cancelText: t("common.cancel"),
+                },
+                { isMobile },
+              );
+              return;
+            }
             showConfirmModal(
               {
                 title: t("browserWorkspace.chromeMissingTitle"),
@@ -437,7 +472,14 @@ function ChatPageInner() {
       }
       then();
     },
-    [browserSessionId, isMobile, navigate, t],
+    [
+      browserSessionId,
+      bridgeConnectionId,
+      isMobile,
+      navigate,
+      resolvedAgentId,
+      t,
+    ],
   );
 
   const handleToggleBrowserPanel = useCallback(() => {
@@ -496,13 +538,27 @@ function ChatPageInner() {
   const panelFilePaths = useMemo(() => {
     const fromTabs = openTabs
       .filter((tab) => tab.kind === "file")
-      .map((tab) => tab.path);
-    const fromThread = composerSession?.artifacts ?? [];
+      .map((tab) => ({
+        path: tab.path,
+        ...(tab.agentId ? { agentId: tab.agentId } : {}),
+      }));
+    const fromThread = (composerSession?.artifacts ?? []).map((item) => ({
+      path: item.path,
+      ...(item.agent_id ? { agentId: item.agent_id } : {}),
+    }));
     return listDockFilePathsForTree(
       [...fromThread, ...fromTabs],
       resolvedAgentId,
     );
   }, [openTabs, resolvedAgentId, composerSession?.artifacts]);
+
+  const dockAgentNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const a of agents) {
+      if (a.agent_id) map[a.agent_id] = a.name || a.agent_id;
+    }
+    return map;
+  }, [agents]);
 
   const {
     selectedModel,
@@ -512,6 +568,7 @@ function ChatPageInner() {
     chatConnectors,
     chatKnowledgeBases,
     availableModels,
+    modelsReady,
     activeModelRef,
     reasoningMode,
     reasoningEffort,
@@ -599,13 +656,22 @@ function ChatPageInner() {
   // Subset for the chat-side *pickers* (`@` button popover, `@` mention menu).
   // Only running experts — picking a stopped one would dispatch into an
   // unloaded harness and silently fail.
-  const chatAgentOptionsPickable = useMemo(
-    () =>
-      selectEnabledExperts(agents, null, { pinActive: false })
-        .filter((item) => !isTeamAgent(item))
-        .map(projectChatAgentOption),
-    [agents],
-  );
+  // Bridge sessions: only peers on the same connection (local ask_agent
+  // cannot reach them; peer ask_agent cannot reach local experts).
+  const chatAgentOptionsPickable = useMemo(() => {
+    let list = selectEnabledExperts(agents, null, { pinActive: false }).filter(
+      (item) => !isTeamAgent(item),
+    );
+    if (activeAgent?.bridge && activeAgent.bridge_connection_id) {
+      const cid = activeAgent.bridge_connection_id;
+      list = list.filter(
+        (item) => item.bridge && item.bridge_connection_id === cid,
+      );
+    } else {
+      list = list.filter((item) => !item.bridge);
+    }
+    return list.map(projectChatAgentOption);
+  }, [agents, activeAgent?.bridge, activeAgent?.bridge_connection_id]);
   const teamExpertOptions = useMemo(() => {
     if (!isTeamChat) return chatAgentOptionsPickable;
     const ids = new Set(activeAgent?.member_ids ?? []);
@@ -834,21 +900,27 @@ function ChatPageInner() {
           policy.mode === "allow_tools"
             ? mergeAllowTools(hitlPolicy, policy.tools ?? [])
             : policy;
+        const pending = findAutoResumableApproval(next, messages);
+        if (pending && activeThreadId) {
+          autoResumedApprovalRef.current = `${activeThreadId}:${pending.messageId}`;
+        }
         handleHitlPolicyChange(next, { persist: false });
         resumeHitl(decisions, activeThreadId ?? undefined, undefined, next);
         return;
       }
       resumeHitl(decisions, activeThreadId ?? undefined);
     },
-    [resumeHitl, activeThreadId, handleHitlPolicyChange, hitlPolicy],
+    [resumeHitl, activeThreadId, handleHitlPolicyChange, hitlPolicy, messages],
   );
 
   const handleComposerHitlPolicyChange = useCallback(
     (policy: HitlSessionPolicy) => {
-      const pending =
-        policy.mode === "allow_all" ? findPendingApproval(messages) : null;
+      const pending = findAutoResumableApproval(policy, messages);
       handleHitlPolicyChange(policy, { persist: !pending });
       if (!pending) return;
+      if (activeThreadId) {
+        autoResumedApprovalRef.current = `${activeThreadId}:${pending.messageId}`;
+      }
       resumeHitl(
         pending.actions.map(() => ({ type: "approve" })),
         activeThreadId ?? undefined,
@@ -858,6 +930,33 @@ function ChatPageInner() {
     },
     [handleHitlPolicyChange, messages, resumeHitl, activeThreadId],
   );
+
+  useEffect(() => {
+    if (isStreaming || !activeThreadId) return;
+    const sessionPolicy = parseHitlSessionPolicy(composerSession?.hitlPolicy);
+    const pending = findAutoResumableApproval(sessionPolicy, messages);
+    if (!pending) {
+      autoResumedApprovalRef.current = null;
+      return;
+    }
+    const card = messages.find((message) => message.id === pending.messageId);
+    if (!isResumableHitl(card?.hitlData)) return;
+    const resumeKey = `${activeThreadId}:${pending.messageId}`;
+    if (autoResumedApprovalRef.current === resumeKey) return;
+    autoResumedApprovalRef.current = resumeKey;
+    resumeHitl(
+      pending.actions.map(() => ({ type: "approve" })),
+      activeThreadId,
+      undefined,
+      sessionPolicy,
+    );
+  }, [
+    composerSession?.hitlPolicy,
+    messages,
+    activeThreadId,
+    resumeHitl,
+    isStreaming,
+  ]);
 
   /** Close an ask pause without answering: ``respond`` is the only decision
    *  the agent allows for ``ask_user_question``, so tell it to wrap up. */
@@ -915,6 +1014,41 @@ function ChatPageInner() {
     },
     [messages, wrappedHandleSend, hasPendingHitlPause, t],
   );
+
+  const handleDisableStreamUsage = useCallback(async () => {
+    let lastUserModel: string | null = null;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].role === "user") {
+        lastUserModel = messages[i].composerContext?.model ?? null;
+        break;
+      }
+    }
+    const providerId = providerIdForTurn(availableModels, [
+      lastUserModel,
+      selectedModel,
+      activeAgent?.default_model,
+      activeModelRef,
+    ]);
+    if (providerId == null) {
+      antMessage.error(t("chat.disableStreamUsageFailed"));
+      return false;
+    }
+    try {
+      await disableProviderStreamUsage(providerId);
+      antMessage.success(t("chat.disableStreamUsageSuccess"));
+      return true;
+    } catch {
+      antMessage.error(t("chat.disableStreamUsageFailed"));
+      return false;
+    }
+  }, [
+    availableModels,
+    selectedModel,
+    activeAgent?.default_model,
+    activeModelRef,
+    messages,
+    t,
+  ]);
 
   // Edit user message: truncate history from that message onwards, replace
   // its content, and re-send — mirrors Claude / ChatGPT "edit message" behaviour.
@@ -1293,13 +1427,15 @@ function ChatPageInner() {
                   noAgents={noAgents}
                   loading={agentsLoading}
                 />
+              ) : showWelcome && modelsReady && availableModels.length === 0 ? (
+                <ModelConfigEmpty canConfigure={canConfigureModels} />
               ) : showWelcome ? (
                 <WelcomeScreen
                   agentName={activeAgent?.name ?? null}
                   welcomeSuffix={welcomeSuffix}
                   quickCards={expertQuickCards}
                   onPromptClick={handlePromptClick}
-                  hideMascot={isStreaming}
+                  hideMascot={isStreaming || liveSpeakers.length > 0}
                   isTeam={isTeamChat}
                 />
               ) : (
@@ -1324,10 +1460,11 @@ function ChatPageInner() {
                     onLoadMoreHistory={loadMoreHistory}
                     onRefreshHistory={refreshHistory}
                     isStreaming={isStreaming}
+                    liveSpeakers={liveSpeakers}
                     thinkingStartedAt={thinkingStartedAt}
                     sessionKey={activeThreadId ?? undefined}
-                    onCancel={cancelStream}
                     onRegenerate={handleRegenerate}
+                    onDisableStreamUsage={handleDisableStreamUsage}
                     onEditUserMessage={handleEditUserMessage}
                     onForkAssistantMessage={handleForkAssistantMessage}
                     forkDisabled={forkDisabled}
@@ -1562,6 +1699,33 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
+            {!showWelcome && modelsReady && availableModels.length === 0 ? (
+              <div className={styles.modelConfigDock}>
+                <div className={styles.modelConfigDockInner}>
+                  <Alert
+                    type="info"
+                    showIcon
+                    message={t("modelConfig.promptTitle")}
+                    description={
+                      canConfigureModels
+                        ? t("modelConfig.promptMessage")
+                        : t("modelConfig.promptMessageNoPermission")
+                    }
+                    action={
+                      canConfigureModels ? (
+                        <Button
+                          type="primary"
+                          size="small"
+                          onClick={() => navigate("/admin/models")}
+                        >
+                          {t("modelConfig.configureButton")}
+                        </Button>
+                      ) : null
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
             <ChatInput
               ref={chatInputRef}
               onSend={wrappedHandleSend}
@@ -1587,7 +1751,9 @@ function ChatPageInner() {
               conversationMode={conversationMode}
               onConversationModeChange={handleConversationModeChange}
               hitlPolicy={hitlPolicy}
-              onHitlPolicyChange={handleComposerHitlPolicyChange}
+              onHitlPolicyChange={
+                hitlEnabled ? handleComposerHitlPolicyChange : undefined
+              }
               availableConnectors={isTeamChat ? undefined : chatConnectors}
               selectedConnectors={isTeamChat ? [] : selectedConnectors}
               onConnectorsChange={
@@ -1624,12 +1790,14 @@ function ChatPageInner() {
             panelSizes={dockPanelSizes}
             agentId={resolvedAgentId ?? ""}
             filePaths={sharedExpertViewer ? [] : panelFilePaths}
+            agentNameById={dockAgentNameById}
             openTabs={openTabs}
             activeTabId={activeTabId}
             onSelectTab={setDockActiveTab}
             onCloseTab={closeDockTab}
             onOpenFile={openFileAt}
             browserEnvironment={browserEnvironment}
+            bridgeConnectionId={bridgeConnectionId}
             threadId={activeThreadId}
             isStreamingTurn={isStreaming}
             onModeChange={handleDockModeChange}

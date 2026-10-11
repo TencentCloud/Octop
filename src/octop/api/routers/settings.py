@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
 from octop.config import OctopConfig
+from octop.infra.agents.security import tool_execution_may_pause
 from octop.infra.auth.captcha import current_env, load_view, save_settings
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
+from octop.infra.utils.user_downloads import (
+    is_local_dashboard_request,
+    reveal_download,
+    sanitize_download_filename,
+    save_user_download,
+)
 
 router = APIRouter()
 
@@ -22,6 +31,16 @@ class TimezoneSettingsResponse(BaseModel):
 class UploadSettingsResponse(BaseModel):
     max_upload_mb: int = Field(description="Max upload size in MiB from config ``max_upload_mb``.")
     max_upload_bytes: int = Field(description="Max upload size in bytes.")
+
+
+class HitlSettingsResponse(BaseModel):
+    enabled: bool = Field(description="Whether global tool human-approval (HITL) is enabled.")
+    tool_guard_require_approval: bool = Field(
+        description="Whether command guard pauses risky shell calls for approval."
+    )
+    show_approval_ui: bool = Field(
+        description="Whether composer, slash help, and CLI should show tool-approval surfaces."
+    )
 
 
 @router.get(
@@ -53,6 +72,57 @@ async def get_upload_settings(
         max_upload_mb=cfg.max_upload_mb,
         max_upload_bytes=cfg.max_upload_bytes,
     )
+
+
+@router.get(
+    "/settings/hitl",
+    summary="Tool human-approval switch",
+    response_model=HitlSettingsResponse,
+)
+async def get_hitl_settings(
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> HitlSettingsResponse:
+    """Return HITL and command-guard flags that drive approval UI."""
+    _ = user
+    assert server.app_runtime is not None
+    policy = server.app_runtime.agent_registry.security.load()
+    guard_require = bool(policy.tool_guard.enabled and policy.tool_guard.mode == "require_approval")
+    return HitlSettingsResponse(
+        enabled=bool(policy.hitl.enabled),
+        tool_guard_require_approval=guard_require,
+        show_approval_ui=tool_execution_may_pause(policy),
+    )
+
+
+class LocalDownloadResponse(BaseModel):
+    path: str = Field(description="Absolute path written under the host Downloads folder.")
+    filename: str = Field(description="Final filename, unique if the name already existed.")
+
+
+@router.post(
+    "/downloads/local",
+    summary="Save a file to the host Downloads folder",
+    response_model=LocalDownloadResponse,
+)
+async def save_local_download(
+    request: Request,
+    file: UploadFile = File(...),  # noqa: B008
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> LocalDownloadResponse:
+    """Write an already-fetched blob to ~/Downloads. Desktop WebViews cannot use <a download>."""
+    _ = user
+    if not is_local_dashboard_request(request):
+        raise OctopError(
+            ErrorCode.LOCAL_DOWNLOAD_UNAVAILABLE,
+            "local download is only available on this computer",
+        )
+    data = await file.read()
+    filename = sanitize_download_filename(file.filename)
+    path = await asyncio.to_thread(save_user_download, filename, data)
+    await asyncio.to_thread(reveal_download, path)
+    return LocalDownloadResponse(path=str(path), filename=path.name)
 
 
 class MobileCapabilitiesResponse(BaseModel):

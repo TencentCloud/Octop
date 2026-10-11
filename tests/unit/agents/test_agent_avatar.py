@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from octop_harness.backends.utils import BackendOperationNotSupportedError
 
-from octop.infra.agents.avatar import (
+from octop.infra.agents.experts.avatar import (
     MAX_AVATAR_BYTES,
     agent_avatar_api_path,
     delete_workspace_avatar,
@@ -94,6 +94,21 @@ def test_display_agent_icon_url_cache_busts_local_avatar() -> None:
     assert display_agent_icon_url(agent_id="agt1", stored="https://cdn/x.png", updated_at=42) == (
         "https://cdn/x.png"
     )
+
+
+def test_display_agent_icon_url_accepts_text_datetime() -> None:
+    local = "/api/agents/agt1/avatar"
+    url = display_agent_icon_url(
+        agent_id="agt1",
+        stored=local,
+        updated_at="2026-10-08 17:56:48",
+    )
+    assert url is not None
+    assert url.startswith(f"{local}?v=")
+    version = int(url.rsplit("v=", 1)[1])
+    assert version > 0
+    assert display_agent_icon_url(agent_id="agt1", stored=local, updated_at="not-a-date") == local
+    assert display_agent_icon_url(agent_id="agt1", stored=local, updated_at=None) == local
 
 
 def test_read_snapshot_avatar_and_display_url(tmp_path) -> None:

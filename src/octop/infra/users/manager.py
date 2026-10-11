@@ -10,6 +10,7 @@ import re
 import shutil
 import sqlite3
 import time
+from pathlib import Path
 from typing import Any
 
 try:
@@ -106,7 +107,7 @@ class UserManager:
                 user = User(
                     id=row.id,
                     username=row.username,
-                    role=Role(row.role),
+                    role=str(row.role),
                     display_name=row.display_name,
                     locale=normalize_locale(row.locale),
                     permissions=list(row.permissions),
@@ -124,11 +125,12 @@ class UserManager:
         *,
         username: str,
         password: str,
-        role: Role,
+        role: Role | str,
         display_name: str | None = None,
         locale: str | None = None,
         permissions: builtins.list[str] | None = None,
         email: str | None = None,
+        role_name: str | None = None,
     ) -> User:
         if not username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty")
@@ -139,6 +141,7 @@ class UserManager:
         except ValueError as exc:
             raise OctopError(ErrorCode.FORBIDDEN, str(exc), status=400) from exc
         normalized_email = parse_optional_email(email)
+        role_id = str(role)
         async with self._lock:
             if self._services.user_repo.get_by_username(username) is not None:
                 raise OctopError(
@@ -157,11 +160,12 @@ class UserManager:
                 uid = self._services.user_repo.create(
                     username=username,
                     password_hash=hash_password(password),
-                    role=role.value,
+                    role=role_id,
                     display_name=display_name,
                     locale=loc,
                     email=normalized_email,
                     permissions=keys,
+                    role_name=role_name,
                 )
             except Exception as exc:
                 if _is_unique_violation(exc) and normalized_email is not None:
@@ -173,7 +177,7 @@ class UserManager:
             user = User(
                 id=uid,
                 username=username,
-                role=role,
+                role=role_id,
                 display_name=display_name,
                 locale=loc,
                 permissions=keys,
@@ -247,6 +251,13 @@ class UserManager:
             display_name = _claim_display_name(claims)
 
             if row is None:
+                from octop.infra.db.repos.user_roles import seeded_user_role_assignment
+
+                assignment = seeded_user_role_assignment(self._services.db)
+                sso_role_id = assignment[0] if assignment else Role.USER
+                sso_role_name = assignment[1] if assignment else None
+                sso_permissions = list(assignment[2]) if assignment else []
+                sso_policies = list(assignment[3]) if assignment else []
                 for attempt in range(3):
                     if (
                         email is not None
@@ -258,12 +269,16 @@ class UserManager:
                         uid = self._services.user_repo.create(
                             username=username,
                             password_hash=None,
-                            role=Role.USER.value,
+                            role=sso_role_id,
                             display_name=display_name,
                             email=email,
                             sso_provider_id=provider_id,
                             sso_subject=subject,
+                            permissions=sso_permissions,
+                            role_name=sso_role_name,
                         )
+                        if sso_policies:
+                            self._services.user_policy_repo.merge(uid, dict(sso_policies))
                         self._services.user_repo.upsert_sso_identity(
                             uid, provider_id=provider_id, subject=subject
                         )
@@ -280,9 +295,9 @@ class UserManager:
                         user = User(
                             id=uid,
                             username=username,
-                            role=Role.USER,
+                            role=sso_role_id,
                             display_name=display_name,
-                            permissions=[],
+                            permissions=list(sso_permissions),
                         )
                         self._users[username] = user
                         self._services.audit_repo.write(
@@ -306,7 +321,7 @@ class UserManager:
                 user = User(
                     id=row.id,
                     username=row.username,
-                    role=Role(row.role),
+                    role=str(row.role),
                     display_name=row.display_name,
                     locale=normalize_locale(row.locale),
                     permissions=list(row.permissions),
@@ -363,7 +378,7 @@ class UserManager:
                 cached = User(
                     id=row.id,
                     username=row.username,
-                    role=Role(row.role),
+                    role=str(row.role),
                     display_name=row.display_name,
                     locale=normalize_locale(row.locale),
                     permissions=list(row.permissions),
@@ -405,7 +420,7 @@ class UserManager:
         user = User(
             id=row.id,
             username=row.username,
-            role=Role(row.role),
+            role=str(row.role),
             display_name=row.display_name,
             locale=normalize_locale(row.locale),
             permissions=list(row.permissions),
@@ -484,7 +499,7 @@ class UserManager:
             user = User(
                 id=row.id,
                 username=row.username,
-                role=Role(row.role),
+                role=str(row.role),
                 display_name=row.display_name,
                 locale=normalize_locale(row.locale),
                 permissions=list(row.permissions),
@@ -495,7 +510,16 @@ class UserManager:
 
     async def change_password(self, username: str, old: str, new: str) -> None:
         row = self._services.user_repo.get_by_username(username)
-        if row is None or not row.password_hash or not verify_password(old, row.password_hash):
+        if row is None:
+            raise OctopError(ErrorCode.AUTH_FAILED, "current password incorrect")
+        if not row.password_hash:
+            # Accounts provisioned from a directory (or SSO) never hold a local
+            # password, so "current password incorrect" would be misleading.
+            raise OctopError(
+                ErrorCode.PASSWORD_NOT_SET,
+                "this account has no local password to change",
+            )
+        if not verify_password(old, row.password_hash):
             raise OctopError(ErrorCode.AUTH_FAILED, "current password incorrect")
         validate_password_policy(new, old_password=old)
         self._services.user_repo.set_password_hash(row.id, hash_password(new))
@@ -603,20 +627,21 @@ class UserManager:
     async def set_max_agents(self, username: str, max_agents: int | None) -> None:
         await self.set_resource_policy(username, max_agents=max_agents)
 
-    async def set_role(self, username: str, role: Role) -> None:
+    async def set_role(self, username: str, role: Role | str) -> None:
         row = self._services.user_repo.get_by_username(username)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "user not found")
-        self._services.user_repo.set_role(row.id, role.value)
+        role_id = str(role)
+        self._services.user_repo.set_role(row.id, role_id)
         async with self._lock:
             current = self._users.get(username)
             if current is not None:
-                current.role = role
+                current.role = role_id
         self._services.audit_repo.write(
             actor=ACTOR_ADMIN,
             action="user.set_role",
             target=username,
-            payload=role.value,
+            payload=role_id,
         )
 
     async def set_display_name(self, username: str, display_name: str | None) -> None:
@@ -720,7 +745,7 @@ class UserManager:
         user = User(
             id=row.id,
             username=row.username,
-            role=Role(row.role),
+            role=str(row.role),
             display_name=row.display_name,
             locale=normalize_locale(row.locale),
             permissions=list(row.permissions),
@@ -738,17 +763,125 @@ class UserManager:
             actor=ACTOR_ADMIN, action="user.unlock_login", target=username
         )
 
-    async def remove(self, username: str) -> None:
+    async def remove(self, username: str, *, agent_manager: Any | None = None) -> None:
+        """Delete the user, their agents' workspaces, and checkpoint data.
+
+        Owned agent directories are removed before the user row, so a
+        filesystem failure leaves the account in place and retryable.
+        Threads this user opened on someone else's agent lose their
+        checkpoints first; the thread rows then follow the user delete.
+        ``agent_manager`` unloads a running harness before the workspace
+        is removed. Without it (CLI), only the on-disk store is cleaned.
+        """
         row = self._services.user_repo.get_by_username(username)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        owned = self._services.agent_repo.list_by_user(row.id)
+        owned_ids = {agent.agent_id for agent in owned}
+        if agent_manager is not None:
+            agent_manager.assert_agents_deletable([agent.agent_id for agent in owned])
+        await self._delete_foreign_checkpoints(row.id, owned_ids, agent_manager)
+        workspaces = self._owned_workspaces(owned)
+        if agent_manager is not None:
+            for agent in owned:
+                await agent_manager.delete(agent.agent_id)
+        else:
+            await asyncio.to_thread(self._purge_owned_stores, owned)
+            await asyncio.to_thread(self._remove_owned_dirs, owned)
+        await asyncio.to_thread(self._remove_paths, workspaces)
         async with self._lock:
             self._users.pop(username, None)
-        user_dir = self._services.paths.user_dir(row.username)
-        try:
-            if user_dir.exists():
-                shutil.rmtree(user_dir)
-        except OSError:
-            logger.exception("rmtree failed for %s; user removed from DB anyway", user_dir)
+        await asyncio.to_thread(self._remove_user_files, row.id, row.username)
         self._services.user_repo.delete(row.id)
         self._services.audit_repo.write(actor=ACTOR_ADMIN, action="user.delete", target=username)
+
+    def _purge_owned_stores(self, owned: builtins.list[Any]) -> None:
+        """CLI user delete has no harness. Still drop each agent's memory store."""
+        from octop.infra.agents.memory.thread_cleanup import (
+            agent_config_from_row,
+            delete_agent_memory_and_checkpoints,
+            workspace_for_agent_row,
+        )
+
+        for agent in owned:
+            delete_agent_memory_and_checkpoints(
+                agent_id=agent.agent_id,
+                thread_ids=self._services.thread_repo.list_ids_for_agent(agent.agent_id),
+                cfg=agent_config_from_row(agent),
+                octop_config=self._services.config,
+                workspace_dir=workspace_for_agent_row(agent, paths=self._services.paths),
+                paths=self._services.paths,
+            )
+
+    def _remove_owned_dirs(self, owned: builtins.list[Any]) -> None:
+        from octop.infra.agents.memory.thread_cleanup import agent_config_from_row
+        from octop.infra.agents.workspace.dir import remove_agent_host_dirs
+
+        for agent in owned:
+            remove_agent_host_dirs(
+                agent_config_from_row(agent),
+                paths=self._services.paths,
+                agent_id=agent.agent_id,
+            )
+
+    def _owned_workspaces(self, owned: builtins.list[Any]) -> builtins.list[Path]:
+        from octop.infra.agents.memory.thread_cleanup import workspace_for_agent_row
+
+        return [workspace_for_agent_row(agent, paths=self._services.paths) for agent in owned]
+
+    async def _delete_foreign_checkpoints(
+        self,
+        user_id: int,
+        owned_ids: set[str],
+        agent_manager: Any | None,
+    ) -> None:
+        foreign = [
+            pair
+            for pair in self._services.thread_repo.list_for_user(user_id)
+            if pair[0] not in owned_ids
+        ]
+        if not foreign:
+            return
+        if agent_manager is not None:
+            for agent_id, thread_id in foreign:
+                await agent_manager.delete_thread_checkpoint(agent_id, thread_id)
+            return
+        await asyncio.to_thread(self._delete_foreign_checkpoints_offline, foreign)
+
+    def _delete_foreign_checkpoints_offline(self, foreign: builtins.list[tuple[str, str]]) -> None:
+        from octop.infra.agents.memory.thread_cleanup import (
+            agent_config_from_row,
+            delete_stored_thread,
+            workspace_for_agent_row,
+        )
+
+        for agent_id, thread_id in foreign:
+            agent = self._services.agent_repo.get(agent_id)
+            if agent is None:
+                continue
+            delete_stored_thread(
+                agent_id=agent_id,
+                thread_id=thread_id,
+                cfg=agent_config_from_row(agent),
+                octop_config=self._services.config,
+                workspace_dir=workspace_for_agent_row(agent, paths=self._services.paths),
+            )
+
+    def _remove_paths(self, paths: builtins.list[Path]) -> None:
+        for path in paths:
+            if not path.exists():
+                continue
+            try:
+                shutil.rmtree(path)
+            except OSError as exc:
+                logger.exception("rmtree failed for %s", path)
+                raise OctopError(
+                    ErrorCode.CHECKPOINT_DELETE_FAILED,
+                    f"could not remove {path}",
+                ) from exc
+
+    def _remove_user_files(self, user_id: int, username: str) -> None:
+        from octop.infra.users.profile_avatar import delete_profile_avatar
+
+        self._remove_paths([self._services.paths.user_dir(username)])
+        delete_profile_avatar(self._services.paths.user_avatars_dir, str(user_id))

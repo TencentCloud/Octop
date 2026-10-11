@@ -15,7 +15,7 @@ export default function SidebarCollapsedIconNav({
   items: NavItem[];
   selectedKey: string;
   onNavigate: (path: string) => void;
-  role: "admin" | "user" | null;
+  role: string | null;
   hasUpdate: boolean;
   t: TFunction<"translation", undefined>;
 }) {
@@ -79,7 +79,7 @@ export default function SidebarCollapsedIconNav({
                 <span
                   className={`${styles.navUpdateBadge} ${styles.navUpdateBadgeCollapsed}`}
                 >
-                  新
+                  {t("nav.newVersionBadgeShort", "新")}
                 </span>
               ) : null}
               {item.badge && (

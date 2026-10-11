@@ -28,6 +28,8 @@ import {
   groupConsecutiveAssistantMessages,
   type MessageGroup,
 } from "../utils/messageGrouping";
+import { resolveLiveSpeakerNames } from "../utils/liveSpeakerLabel";
+import { useAgent } from "../../../context/AgentContext";
 import {
   nextCanLoadOlder,
   shouldAutoFillOlderHistory,
@@ -93,10 +95,12 @@ interface MessageListProps {
   onLoadMoreHistory?: () => boolean | void | Promise<boolean | void>;
   onRefreshHistory?: () => void;
   isStreaming?: boolean;
+  /** Speakers still generating (tool gaps after composer unlock). */
+  liveSpeakers?: ReadonlyArray<string>;
   thinkingStartedAt?: number | null;
   sessionKey?: string;
-  onCancel?: () => void;
   onRegenerate?: (messageId: string) => void;
+  onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
@@ -117,10 +121,12 @@ interface GroupRenderContext {
   agentId?: string | null;
   composerLookups?: ComposerTagLookups;
   isStreaming?: boolean;
+  liveSpeakers?: ReadonlyArray<string>;
   lastBrowserGroupIndex: number;
   lastAssistantGroupIndex: number;
   lastUserGroupIndex: number;
   onRegenerate?: (messageId: string) => void;
+  onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
@@ -167,7 +173,9 @@ function renderMessageGroup(
             messages={[msg]}
             agentId={ctx.agentId}
             isTurnInProgress={isTurnInProgress}
+            liveSpeakers={ctx.liveSpeakers}
             onRegenerate={ctx.onRegenerate}
+            onDisableStreamUsage={ctx.onDisableStreamUsage}
             onEditUserMessage={ctx.onEditUserMessage}
             onForkAssistantMessage={ctx.onForkAssistantMessage}
             forkDisabled={ctx.forkDisabled}
@@ -197,6 +205,7 @@ function renderMessageGroup(
           agentId={ctx.agentId}
           composerLookups={ctx.composerLookups}
           onRegenerate={ctx.onRegenerate}
+          onDisableStreamUsage={ctx.onDisableStreamUsage}
           onEditUserMessage={ctx.onEditUserMessage}
         />
       </div>
@@ -219,7 +228,9 @@ function renderMessageGroup(
         messages={group.messages}
         agentId={ctx.agentId}
         isTurnInProgress={isTurnInProgress}
+        liveSpeakers={ctx.liveSpeakers}
         onRegenerate={ctx.onRegenerate}
+        onDisableStreamUsage={ctx.onDisableStreamUsage}
         onEditUserMessage={ctx.onEditUserMessage}
         onForkAssistantMessage={ctx.onForkAssistantMessage}
         forkDisabled={ctx.forkDisabled}
@@ -249,10 +260,11 @@ export default function MessageList(props: MessageListProps) {
     onLoadMoreHistory,
     onRefreshHistory,
     isStreaming,
+    liveSpeakers = [],
     thinkingStartedAt = null,
     sessionKey,
-    onCancel,
     onRegenerate,
+    onDisableStreamUsage,
     onEditUserMessage,
     onForkAssistantMessage,
     forkDisabled,
@@ -269,6 +281,7 @@ export default function MessageList(props: MessageListProps) {
   } = props;
 
   const { t } = useTranslation();
+  const { agents, activeAgent } = useAgent();
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -297,12 +310,26 @@ export default function MessageList(props: MessageListProps) {
     useVirtualLocked || messageGroups.length >= VIRTUALIZE_THRESHOLD;
 
   const lastMsg = messages[messages.length - 1];
-  const { showFooter: showGenerating, showElapsed: isAwaitingAssistantReply } =
-    chatGeneratingPhase({
-      isStreaming: Boolean(isStreaming),
-      loading: Boolean(loading),
-      lastMessageRole: lastMsg?.role,
-    });
+  const hasLiveSpeakers = liveSpeakers.length > 0;
+  const {
+    showFooter: showGenerating,
+    showElapsed: isAwaitingAssistantReply,
+    membersOnly: generatingMembersOnly,
+  } = chatGeneratingPhase({
+    isStreaming: Boolean(isStreaming),
+    loading: Boolean(loading),
+    lastMessageRole: lastMsg?.role,
+    hasLiveSpeakers,
+  });
+  const liveSpeakerNames = useMemo(
+    () =>
+      resolveLiveSpeakerNames(liveSpeakers, agents, {
+        hostId: activeAgent?.agent_id,
+        hostName: activeAgent?.name,
+        limit: 2,
+      }),
+    [liveSpeakers, agents, activeAgent?.agent_id, activeAgent?.name],
+  );
 
   const stableSessionKey = sessionKey || "__default__";
 
@@ -683,10 +710,12 @@ export default function MessageList(props: MessageListProps) {
       agentId,
       composerLookups,
       isStreaming,
+      liveSpeakers,
       lastBrowserGroupIndex,
       lastAssistantGroupIndex,
       lastUserGroupIndex,
       onRegenerate,
+      onDisableStreamUsage,
       onEditUserMessage,
       onForkAssistantMessage,
       forkDisabled,
@@ -705,10 +734,12 @@ export default function MessageList(props: MessageListProps) {
       agentId,
       composerLookups,
       isStreaming,
+      liveSpeakers,
       lastBrowserGroupIndex,
       lastAssistantGroupIndex,
       lastUserGroupIndex,
       onRegenerate,
+      onDisableStreamUsage,
       onEditUserMessage,
       onForkAssistantMessage,
       forkDisabled,
@@ -733,7 +764,8 @@ export default function MessageList(props: MessageListProps) {
             <GeneratingIndicator
               startedAt={thinkingStartedAt}
               showElapsed={isAwaitingAssistantReply}
-              onCancel={onCancel}
+              membersOnly={generatingMembersOnly}
+              speakerNames={liveSpeakerNames}
             />
           </div>
         )}
@@ -744,7 +776,8 @@ export default function MessageList(props: MessageListProps) {
       showGenerating,
       thinkingStartedAt,
       isAwaitingAssistantReply,
-      onCancel,
+      generatingMembersOnly,
+      liveSpeakerNames,
       refreshFooter,
     ],
   );
@@ -845,6 +878,7 @@ export default function MessageList(props: MessageListProps) {
 
       <ScrollToBottomButton
         visible={showScrollBtn}
+        hasNewActivity={Boolean(isStreaming || hasLiveSpeakers)}
         onClick={() => scrollToBottom()}
       />
     </div>

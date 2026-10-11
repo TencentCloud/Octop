@@ -12,24 +12,12 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from octop.api.deps import current_user, get_server, require_permission
-from octop.infra.agents.providers.model_flags import is_local_runtime_provider
-from octop.infra.agents.providers.presets import load_provider_presets
-from octop.infra.agents.providers.probe import (
-    fetch_openai_compatible_models,
-    make_probe_provider_row,
-    probe_provider_row,
-    provider_headers,
-)
-from octop.infra.agents.providers.reasoning import reasoning_capability
-from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
-from octop.infra.agents.providers.store import clear_stale_pins_for_provider
-from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.providers.codex_apply import (
+from octop.infra.agents.providers.codex_apply import (
     CODEX_PROVIDER_NAME,
     apply_codex_credentials,
     sync_refreshed_codex_api_key,
 )
-from octop.infra.providers.codex_oauth import (
+from octop.infra.agents.providers.codex_oauth import (
     DEVICE_POLL_TIMEOUT_S,
     CodexOAuthDeviceCodeError,
     exchange_device_code,
@@ -37,6 +25,23 @@ from octop.infra.providers.codex_oauth import (
     poll_device_token,
     request_device_code,
 )
+from octop.infra.agents.providers.model_flags import is_local_runtime_provider
+from octop.infra.agents.providers.presets import load_provider_presets
+from octop.infra.agents.providers.probe import (
+    fetch_openai_compatible_models,
+    make_probe_provider_row,
+    parse_provider_extra,
+    probe_provider_row,
+    provider_headers,
+)
+from octop.infra.agents.providers.reasoning import reasoning_capability
+from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
+from octop.infra.agents.providers.store import (
+    clear_stale_pins_for_provider,
+    merge_stream_usage_extra,
+    resolve_provider_stream_usage,
+)
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
@@ -51,6 +56,7 @@ class ProviderCreateBody(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     extra_json: str | None = None
+    stream_usage: bool | None = None
     models: list[dict[str, Any]] | None = None
     note: str | None = None
 
@@ -60,6 +66,7 @@ class ProviderPatchBody(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     extra_json: str | None = None
+    stream_usage: bool | None = None
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
@@ -67,7 +74,7 @@ class ProviderPatchBody(BaseModel):
 
 # Fields that affect harness factory / agent runtime when patched.
 _PROVIDER_REHYDRATE_FIELDS = frozenset(
-    {"kind", "base_url", "api_key", "extra_json", "models", "enabled"}
+    {"kind", "base_url", "api_key", "extra_json", "stream_usage", "models", "enabled"}
 )
 
 
@@ -126,6 +133,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
             model["reasoning"] = True
             model["reasoning_config"] = capability
         models.append(model)
+    extra = parse_provider_extra(r)
     return {
         "id": r.id,
         "name": r.name,
@@ -135,6 +143,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "models": models,
         "note": r.note,
         "enabled": bool(r.enabled),
+        "stream_usage": resolve_provider_stream_usage(provider_name=r.name, extra=extra),
     }
 
 
@@ -222,7 +231,7 @@ async def admin_create_provider(
         kind=body.kind,
         base_url=body.base_url,
         api_key=body.api_key,
-        extra_json=body.extra_json,
+        extra_json=merge_stream_usage_extra(body.extra_json, body.stream_usage),
         models_json=models_json,
         note=body.note,
     )
@@ -244,12 +253,16 @@ async def admin_patch_provider(
     import json as _json
 
     models_json = _json.dumps(body.models) if body.models is not None else None
+    extra_json = body.extra_json
+    if "stream_usage" in body.model_fields_set:
+        base = body.extra_json if "extra_json" in body.model_fields_set else row.extra_json
+        extra_json = merge_stream_usage_extra(base, body.stream_usage)
     server.services.provider_repo.update(
         provider_id,
         kind=body.kind,
         base_url=body.base_url,
         api_key=body.api_key,
-        extra_json=body.extra_json,
+        extra_json=extra_json,
         models_json=models_json,
         note=body.note,
         enabled=body.enabled,
@@ -464,7 +477,7 @@ async def codex_oauth_logout(
     _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> None:
-    from octop.infra.providers.codex_oauth import delete_codex_token
+    from octop.infra.agents.providers.codex_oauth import delete_codex_token
 
     delete_codex_token(server.services.paths)
     row = server.services.provider_repo.get_by_name(CODEX_PROVIDER_NAME)

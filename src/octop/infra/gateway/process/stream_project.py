@@ -10,19 +10,23 @@ from octop_gateway.media import MediaBackend
 from octop_gateway.models import MessageEvent
 
 from octop.i18n import channel_tool_hint_end, channel_tool_hint_start, tool_display_name
-from octop.infra.gateway.hitl.format import format_hitl_card
+from octop.infra.gateway.hitl.format import format_hitl_card, normalize_hitl_request
+from octop.infra.gateway.hitl.stream_compat import install_harness_hitl_compat
 from octop.infra.gateway.media.tool_media import (
     dedup_tool_result_messages,
     media_events_from_tool_result,
 )
 from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agent
-from octop.infra.gateway.process.history_projection import TurnHistoryTracker
 from octop.infra.gateway.process.usage_record import UsageTracker
+from octop.infra.history.projection import TurnHistoryTracker
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, normalize_locale
+from octop.infra.utils.turn_failure import log_failed_tool_results
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
     from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator, HitlStreamContext
+
+install_harness_hitl_compat()
 
 
 @dataclass
@@ -49,6 +53,8 @@ class _ToolProjectionState:
     # results from older turns whose ids have never appeared in
     # ``emitted_media_ids``; only ids initiated by this turn may emit media.
     current_tool_call_ids: set[str] = field(default_factory=set)
+    emitted_tool_error_ids: set[str] = field(default_factory=set)
+
 
 def enrich_tool_stream_chunk(
     chunk: dict[str, Any],
@@ -101,6 +107,8 @@ async def _project_chunks(
         return MessageEvent.tool_start(
             label,
             tool_hint_text=channel_tool_hint_start(label, loc),
+            # Raw tool id for invoke-collapse / team channel UX (label is localized).
+            tool_key=raw,
         )
 
     def _tool_end(raw: str) -> MessageEvent:
@@ -159,6 +167,13 @@ async def _project_chunks(
                 yield _tool_start(tool_state.tool_name_buf[idx_key])
 
         elif ctype == "tool_result":
+            log_failed_tool_results(
+                chunk,
+                agent_id=agent_id,
+                thread_id=(hitl_ctx.thread_id if hitl_ctx is not None else ""),
+                seen=tool_state.emitted_tool_error_ids,
+                live=tool_state.saw_tool_call,
+            )
             final_name = (
                 tool_state.tool_name_buf.get(tool_state.active_tool_idx or "", "") or "tool"
             )
@@ -189,8 +204,10 @@ async def _project_chunks(
             request = chunk.get("request")
             if not isinstance(request, dict):
                 request = {}
+            request = normalize_hitl_request(request)
             if hitl_coordinator is not None and hitl_ctx is not None:
                 record = hitl_coordinator.register_from_request(request, ctx=hitl_ctx)
+                request["pending_id"] = record.pending_id
                 card = format_hitl_card(
                     record.action_requests,
                     pending_id=record.pending_id,

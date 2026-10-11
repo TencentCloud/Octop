@@ -1,6 +1,8 @@
 import { request } from "../../../api/request";
 
-export const BUILTIN_BACKENDS = ["local_shell", "filesystem", "state"] as const;
+export const BUILTIN_BACKENDS = ["local_shell", "filesystem"] as const;
+/** Kept so an expert already saved as ``state`` still shows in the editor. */
+export const LEGACY_STATE_BACKEND = "state";
 export const DEFAULT_BACKEND: BuiltinBackend = "local_shell";
 export type BuiltinBackend = (typeof BUILTIN_BACKENDS)[number];
 export type BackendChoice = BuiltinBackend | "composite" | `named:${string}`;
@@ -21,6 +23,18 @@ export interface BackendOption {
 export interface FilesystemDefaults {
   default_root_dir: string;
   tree_root: string;
+  /**
+   * Roots the picker may browse. Windows hosts list every ready drive, so the
+   * tree is not confined to whichever drive holds the server's home directory.
+   * Older servers omit this — fall back to `tree_root`.
+   */
+  browse_roots?: string[];
+  /**
+   * True only when a non-root `root_dir` really gets OS-level confinement
+   * (Linux + bubblewrap). Elsewhere it only bounds the agent's tool paths, so
+   * the UI must not promise a sandbox.
+   */
+  jail_enforced?: boolean;
   /** True when the Octop server process runs inside a container. */
   in_container?: boolean;
 }
@@ -40,8 +54,8 @@ export function backendRefToSpec(
   if (isNamedBackend(ref)) {
     return { type: "named", name: ref.slice("named:".length) };
   }
-  if (ref === "state") {
-    return { type: "state" };
+  if (ref === LEGACY_STATE_BACKEND) {
+    return { type: LEGACY_STATE_BACKEND };
   }
   if (ref === "local_shell" || ref === "filesystem") {
     return { type: ref, virtual_mode: true, root_dir: rootDir ?? "/" };
@@ -133,12 +147,12 @@ export function supportsHostSkillPackagesFromConfig(
 }
 
 /**
- * Whether outbound ``acp_runner`` should be blocked for this backend.
+ * Whether the ACP page should lock runner enable/edit for this backend.
  *
- * Scoped ``root_dir`` enables the Linux bwrap jail; host-spawned ACP runners
- * would bypass it. Host root ``/`` and the agent workspace root are allowed
- * (Windows defaults to the workspace). Non-local backends are blocked.
- * Inbound ``octop acp`` (IDE → this agent) is unaffected.
+ * Scoped ``root_dir`` enables the Linux bwrap jail. Host root ``/`` and the
+ * agent workspace root are not treated as a jail (Windows defaults to the
+ * workspace). Non-local backends count as locked for that UI. The per-agent
+ * ``acp_runner`` tool toggle and inbound ``octop acp`` are unaffected.
  */
 export function blocksAcpOutbound(options: {
   backendChoice: string;
@@ -160,16 +174,21 @@ export function blocksAcpOutbound(options: {
   return true;
 }
 
-/** Detect outbound-ACP block from an agent ``config`` blob. */
+/** Detect ACP runner-lock (sandbox) from an agent ``config`` blob. */
 export function blocksAcpOutboundFromConfig(
   config: Record<string, unknown> | null | undefined,
   workspaceDir?: string | null,
 ): boolean {
   const parsed = parseBackendSpec(config?.backend);
+  const workspaceRaw = config?.workspace_dir;
+  const fromConfig =
+    typeof workspaceRaw === "string" && workspaceRaw.trim()
+      ? workspaceRaw.trim()
+      : null;
   return blocksAcpOutbound({
     backendChoice: parsed.backendChoice,
     rootDir: parsed.rootDir,
-    workspaceDir,
+    workspaceDir: workspaceDir ?? fromConfig,
   });
 }
 
@@ -281,7 +300,10 @@ function specToBackendRef(spec: Record<string, unknown>): string {
     const name = spec.name;
     return typeof name === "string" ? `named:${name}` : DEFAULT_BACKEND;
   }
-  if (BUILTIN_BACKENDS.includes(type as BuiltinBackend)) {
+  if (
+    type === LEGACY_STATE_BACKEND ||
+    BUILTIN_BACKENDS.includes(type as BuiltinBackend)
+  ) {
     return type;
   }
   return DEFAULT_BACKEND;
@@ -343,10 +365,10 @@ export function parseBackendSpec(spec: unknown): {
 }
 
 export function builtinLabel(
-  mode: BuiltinBackend,
+  mode: BuiltinBackend | typeof LEGACY_STATE_BACKEND,
   t: (key: string) => string,
 ): string {
-  const keys: Record<BuiltinBackend, string> = {
+  const keys: Record<BuiltinBackend | typeof LEGACY_STATE_BACKEND, string> = {
     local_shell: "experts.backendModes.localShell",
     filesystem: "experts.backendModes.filesystem",
     state: "experts.backendModes.state",

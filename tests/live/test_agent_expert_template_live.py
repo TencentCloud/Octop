@@ -16,7 +16,7 @@ import pytest
 
 from octop.infra.agents.experts.catalog import Expert, ExpertCatalog, default_library_root
 from octop.infra.agents.manager import AgentCreateSpec
-from octop.infra.agents.workspace_dir import DEFAULT_SYSTEM_FILES_PATH
+from octop.infra.agents.workspace.dir import DEFAULT_SYSTEM_FILES_PATH
 
 pytestmark = pytest.mark.live
 

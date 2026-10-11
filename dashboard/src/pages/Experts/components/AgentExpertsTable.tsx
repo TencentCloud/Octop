@@ -45,6 +45,8 @@ import {
   isAgentModelConfigError,
 } from "../../../utils/agentError";
 import styles from "../index.module.less";
+import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
+import { expertDeleteConfirm } from "../../../utils/remoteExpert";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
@@ -169,6 +171,7 @@ export default function AgentExpertsTable({
 
   useEffect(() => {
     const transientIds = agents
+      .filter((a) => !a.bridge)
       .map((a) => a.agent_id)
       .filter((id) => TRANSIENT.has(localStates[id] ?? ""));
     if (transientIds.length === 0) {
@@ -317,6 +320,7 @@ export default function AgentExpertsTable({
                 : t("experts.share.badge")}
             </Tag>
           )}
+          <RemoteExpertHint agent={row} />
         </div>
       ),
     },
@@ -431,6 +435,7 @@ export default function AgentExpertsTable({
         const isTransient = TRANSIENT.has(state);
         const chatReady = isAgentChatReady(state);
         const isOwner = row.is_owner !== false;
+        const deleteConfirm = expertDeleteConfirm(row, t);
         return (
           <div className={styles.tableActions}>
             {isOwner && (
@@ -475,8 +480,8 @@ export default function AgentExpertsTable({
                   </button>
                 </Tooltip>
                 <Popconfirm
-                  title={t("experts.confirmDelete", { name: row.name })}
-                  description={t("experts.confirmDeleteHint")}
+                  title={deleteConfirm.title}
+                  description={deleteConfirm.description}
                   onConfirm={() => void handleDelete(row)}
                   okText={t("common.delete", "Delete")}
                   cancelText={t("common.cancel")}
