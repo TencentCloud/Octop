@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 短链接插件：is.gd 在自身入库失败/拒绝时会对 `format=json` 请求返回纯文本，卡片不再展示 `Expecting value: line 1 column 1 (char 0)` 这类 JSON 解析报错，改为展示上游返回的原因
 
 ### 修复
 - 云端协同对端专家的模型、连接器、知识库和对话模式会显示在本端输入框上方

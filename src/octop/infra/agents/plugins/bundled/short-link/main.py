@@ -30,7 +30,13 @@ async def make_short_link(url: str) -> str:
                 params={"format": "json", "url": raw},
             )
             resp.raise_for_status()
-            body = resp.json()
+            try:
+                body = resp.json()
+            except ValueError:
+                # is.gd answers a format=json request with a plain-text body when its own
+                # short-code insert fails, so the upstream line is the readable reason.
+                reason = resp.text.strip() or f"HTTP {resp.status_code}"
+                return _payload({"error": reason, "url": raw}, f"短链生成失败：{reason}")
     except Exception as exc:
         return _payload({"error": str(exc), "url": raw}, f"短链生成失败：{exc}")
     if body.get("errorcode"):
