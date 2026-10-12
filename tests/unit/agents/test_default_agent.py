@@ -96,11 +96,14 @@ def test_default_backend_uses_configured_octop_home(monkeypatch, tmp_path: Path)
     assert backend["root_dir"] == str(octop_home)
 
 
-async def test_bootstrap_respects_policy_root_dir(catalog: ExpertCatalog, tmp_path: Path) -> None:
+async def test_bootstrap_respects_policy_root_dir(
+    catalog: ExpertCatalog, monkeypatch, tmp_path: Path
+) -> None:
     registry = MagicMock()
     registry.get_row.return_value = None
     registry.list_agents.return_value = []
     registry.create = AsyncMock(return_value=object())
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "octop-home"))
     jail = (tmp_path / "jail").resolve().as_posix()
 
     await bootstrap_default_agent(
