@@ -61,11 +61,18 @@ describe("pathPermissionKeys", () => {
 
   it("does not gate common pages", () => {
     expect(pathPermissionKeys("/chat")).toBeNull();
-    expect(pathPermissionKeys("/experts")).toBeNull();
-    expect(pathPermissionKeys("/tasks")).toBeNull();
-    expect(pathPermissionKeys("/token-usage")).toBeNull();
     expect(pathPermissionKeys("/personalization/skills")).toBeNull();
     expect(pathPermissionKeys("/bridge")).toBeNull();
+  });
+
+  it("gates ungrouped pages except chat", () => {
+    expect(pathPermissionKeys("/experts")).toEqual([...PERM.experts]);
+    expect(pathPermissionKeys("/tasks")).toEqual([...PERM.tasks]);
+    expect(pathPermissionKeys("/token-usage")).toEqual([...PERM.tokenUsage]);
+    const user = { role: "user", permissions: ["experts"] };
+    expect(canAccessPath(user, "/experts")).toBe(true);
+    expect(canAccessPath(user, "/tasks")).toBe(false);
+    expect(canAccessPath(user, "/chat")).toBe(true);
   });
 
   it("gates settings modules", () => {

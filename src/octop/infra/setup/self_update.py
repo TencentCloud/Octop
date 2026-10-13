@@ -1115,8 +1115,12 @@ def _run_managed_upgrade(
             now = time.monotonic()
             if fallback_deadline is None:
                 # One window starts at the first cold install, never once per mirror.
+                # Use the constant itself: ``(now + budget) - now`` is not always
+                # exactly ``budget`` for large monotonic clock values.
                 fallback_deadline = now + _TARGET_INSTALL_TIMEOUT_S
-            timeout = fallback_deadline - now
+                timeout = float(_TARGET_INSTALL_TIMEOUT_S)
+            else:
+                timeout = fallback_deadline - now
             if timeout <= 0:
                 break
         rc, err_snippet = _run_install_cmd(cmd, label, verbose=verbose, timeout=timeout)

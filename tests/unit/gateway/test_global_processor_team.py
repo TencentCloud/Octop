@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -1046,6 +1047,249 @@ async def test_stream_team_peer_relays_reasoning_and_tools(processor_env: dict) 
     last = messages[-1]
     assert getattr(last, "additional_kwargs", {}).get("speaker_agent_id") == "child"
     assert getattr(last, "additional_kwargs", {}).get("reasoning_content") == "check labs"
+
+
+@pytest.mark.asyncio
+async def test_member_tokens_stay_off_the_room_until_the_host_is_idle(
+    processor_env: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
+
+    import octop.infra.agents.teams.team_manager as team_mod
+
+    monkeypatch.setattr(team_mod, "_HOST_IDLE_WAIT_SEC", 0)
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    room_frames: list[dict[str, object]] = []
+    member_frames: list[dict[str, object]] = []
+
+    async def capture_room(frame: dict[str, object]) -> None:
+        room_frames.append(frame)
+
+    async def capture_member(frame: dict[str, object]) -> None:
+        member_frames.append(frame)
+
+    gateway.ws_hub.register("conn-room", capture_room)
+    gateway.ws_hub.subscribe("thr_parent", "conn-room")
+    gateway.ws_hub.register("conn-member", capture_member)
+    gateway.ws_hub.subscribe("thr_parent~child", "conn-member")
+    gateway.ws_hub.mark_turn_active("thr_parent")
+    gate = asyncio.Event()
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {"type": "token", "content": "first"}
+        await gate.wait()
+        yield {"type": "token", "content": "second"}
+
+    processor._agent_manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[AIMessage(content="first second")])
+    processor._agent_manager.get_agent.return_value = harness
+
+    task = asyncio.create_task(
+        processor.teams.stream_peer_to_room(
+            ChatRequest(messages="task", thread_id="thr_parent~child", agent_id="child", user="1"),
+            room_thread_id="thr_parent",
+            speaker_id="child",
+        )
+    )
+    for _ in range(50):
+        if any(frame.get("content") == "first" for frame in member_frames):
+            break
+        await asyncio.sleep(0.01)
+    assert any(frame.get("content") == "first" for frame in member_frames)
+    assert not any(frame.get("type") == "token" for frame in room_frames)
+    gateway.ws_hub.mark_turn_idle("thr_parent")
+    gate.set()
+    result = await task
+    room_tokens = [frame.get("content") for frame in room_frames if frame.get("type") == "token"]
+    assert room_tokens == ["first", "second"]
+    assert all(
+        frame.get("agent_id") == "child" for frame in room_frames if frame.get("type") == "token"
+    )
+    assert result["team_live_streamed"] is True
+
+
+@pytest.mark.asyncio
+async def test_member_hitl_waits_for_each_approval_before_finishing(processor_env: dict) -> None:
+    from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    room_frames: list[dict[str, object]] = []
+
+    async def capture_room(frame: dict[str, object]) -> None:
+        room_frames.append(frame)
+
+    gateway.ws_hub.register("conn-room", capture_room)
+    gateway.ws_hub.subscribe("thr_parent", "conn-room")
+    resumes = {"n": 0}
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {"type": "token", "content": "checking "}
+        yield {
+            "type": "hitl_required",
+            "request": {
+                "action_requests": [{"name": "execute", "args": {"command": "df"}}],
+                "review_configs": [
+                    {"action_name": "execute", "allowed_decisions": ["approve", "reject"]}
+                ],
+            },
+        }
+
+    async def fake_resume(agent_id: str, thread_id: str, decisions: list[dict[str, str]]) -> object:
+        assert agent_id == "child"
+        assert thread_id == "thr_parent~child"
+        resumes["n"] += 1
+        if resumes["n"] == 1:
+            assert decisions == [{"type": "approve"}]
+            yield {
+                "type": "hitl_required",
+                "request": {
+                    "action_requests": [{"name": "write_file", "args": {"path": "note.txt"}}],
+                },
+            }
+            return
+        assert decisions == [{"type": "reject"}]
+        yield {"type": "token", "content": "8G free"}
+
+    processor._agent_manager.stream = fake_stream
+    processor._agent_manager.resume_hitl = fake_resume
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[AIMessage(content="checking 8G free")])
+    processor._agent_manager.get_agent.return_value = harness
+
+    task = asyncio.create_task(
+        processor.teams.stream_peer_to_room(
+            ChatRequest(messages="task", thread_id="thr_parent~child", agent_id="child", user="1"),
+            room_thread_id="thr_parent",
+            speaker_id="child",
+        )
+    )
+    answered: list[str] = []
+    for _ in range(50):
+        pending_id = next(
+            (
+                str(frame.get("pending_id"))
+                for frame in room_frames
+                if frame.get("type") == "hitl_required"
+                and str(frame.get("pending_id")) not in answered
+            ),
+            "",
+        )
+        if pending_id:
+            kind = "approve" if len(answered) == 0 else "reject"
+            assert processor.teams.deliver_member_hitl(pending_id, [{"type": kind}])
+            answered.append(pending_id)
+            if len(answered) == 2:
+                break
+            continue
+        assert not task.done()
+        await asyncio.sleep(0.01)
+    assert len(answered) == 2
+    result = await task
+    assert resumes["n"] == 2
+    assert "checking" in result["stream_text"]
+    assert "8G free" in result["stream_text"]
+    assert task.done()
+
+
+@pytest.mark.asyncio
+async def test_member_hitl_timeout_does_not_finish_the_job(
+    processor_env: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop_harness.request import ChatRequest
+
+    import octop.infra.agents.teams.team_manager as team_mod
+
+    monkeypatch.setattr(team_mod, "_MEMBER_HITL_WAIT_SEC", 0.05)
+    processor = processor_env["processor"]
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {
+            "type": "hitl_required",
+            "request": {"action_requests": [{"name": "execute", "args": {"command": "df"}}]},
+        }
+
+    processor._agent_manager.stream = fake_stream
+    processor._agent_manager.resume_hitl = AsyncMock()
+    with pytest.raises(TimeoutError):
+        await processor.teams.stream_peer_to_room(
+            ChatRequest(messages="task", thread_id="thr_parent~child", agent_id="child", user="1"),
+            room_thread_id="thr_parent",
+            speaker_id="child",
+        )
+    processor._agent_manager.resume_hitl.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_member_model_does_not_start_while_the_host_turn_is_active(
+    processor_env: dict,
+) -> None:
+    from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    gateway.ws_hub.mark_turn_active("thr_parent")
+    started = asyncio.Event()
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        started.set()
+        yield {"type": "token", "content": "after host"}
+
+    processor._agent_manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[AIMessage(content="after host")])
+    processor._agent_manager.get_agent.return_value = harness
+
+    task = asyncio.create_task(
+        processor.teams.stream_peer_to_room(
+            ChatRequest(messages="task", thread_id="thr_parent~child", agent_id="child", user="1"),
+            room_thread_id="thr_parent",
+            speaker_id="child",
+        )
+    )
+    await asyncio.sleep(0.15)
+    assert not started.is_set()
+    gateway.ws_hub.mark_turn_idle("thr_parent")
+    result = await task
+    assert started.is_set()
+    assert result["stream_text"] == "after host"
+
+
+@pytest.mark.asyncio
+async def test_replacing_the_room_turn_cancels_a_member_approval(processor_env: dict) -> None:
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {
+            "type": "hitl_required",
+            "request": {"action_requests": [{"name": "execute", "args": {"command": "df"}}]},
+        }
+
+    processor._agent_manager.stream = fake_stream
+    processor._agent_manager.resume_hitl = AsyncMock()
+    task = asyncio.create_task(
+        processor.teams.stream_peer_to_room(
+            ChatRequest(messages="task", thread_id="thr_parent~child", agent_id="child", user="1"),
+            room_thread_id="thr_parent",
+            speaker_id="child",
+        )
+    )
+    for _ in range(50):
+        if processor.teams._hitl_waiters:
+            break
+        await asyncio.sleep(0.01)
+    assert processor.teams._hitl_waiters
+    processor.teams.cancel_member_hitl("thr_parent")
+    with pytest.raises(TimeoutError):
+        await task
+    processor._agent_manager.resume_hitl.assert_not_called()
 
 
 @pytest.mark.asyncio

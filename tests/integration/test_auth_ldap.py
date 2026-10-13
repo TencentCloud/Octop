@@ -474,8 +474,11 @@ async def test_new_directory_user_gets_the_preset_role_template(
     assert sorted(row.permissions) == [
         "channels",
         "connectors",
+        "experts",
         "knowledge_bases",
         "skill_packages",
+        "tasks",
+        "token_usage",
     ]
     # The preset user template defines no policies; nothing extra may be applied.
     assert srv.services.user_policy_repo.list_for_user(row.id) == []

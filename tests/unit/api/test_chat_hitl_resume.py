@@ -91,6 +91,95 @@ async def test_dashboard_hitl_resume_registers_followup_hitl_required() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dashboard_hitl_resume_wakes_team_member_without_host_resume() -> None:
+    from types import SimpleNamespace
+
+    hitl = HitlChannelCoordinator()
+    pending = hitl.store.register(
+        thread_id="thr-room",
+        agent_id="host",
+        user_id=1,
+        session_key="host:dashboard:1:dm",
+        channel_type="dashboard",
+        action_requests=[{"name": "execute", "args": {"command": "df"}}],
+        review_configs=None,
+    )
+    pending.resume_agent_id = "member"
+    pending.resume_thread_id = "thr-room~member"
+    delivered: dict[str, object] = {}
+
+    def deliver(pending_id: str, decisions: list[dict[str, str]]) -> bool:
+        delivered["id"] = pending_id
+        delivered["decisions"] = decisions
+        return True
+
+    processor = SimpleNamespace(teams=SimpleNamespace(deliver_member_hitl=deliver))
+    frames: list[str] = []
+    async for frame in iter_dashboard_hitl_resume_sse(
+        processor=processor,
+        hitl_coordinator=hitl,
+        agent_id="host",
+        thread_id="thr-room",
+        user_id=1,
+        decisions=[{"type": "approve"}],
+        pending=pending,
+        session_key="host:dashboard:1:dm",
+        channel_type="dashboard",
+        locale="zh",
+        is_disconnected=AsyncMock(return_value=False),
+    ):
+        frames.append(frame)
+
+    chunks = _parse_sse_chunks("".join(frames))
+    assert chunks == [{"type": "done", "team_member_continuing": True}]
+    assert delivered == {"id": pending.pending_id, "decisions": [{"type": "approve"}]}
+    assert hitl.store.get(pending.pending_id) is not None
+    assert hitl.store.get(pending.pending_id).status == "approved"  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hitl_resume_expires_when_member_job_is_gone() -> None:
+    from types import SimpleNamespace
+
+    hitl = HitlChannelCoordinator()
+    pending = hitl.store.register(
+        thread_id="thr-room",
+        agent_id="host",
+        user_id=1,
+        session_key="host:dashboard:1:dm",
+        channel_type="dashboard",
+        action_requests=[{"name": "execute", "args": {}}],
+        review_configs=None,
+    )
+    pending.resume_agent_id = "member"
+    pending.resume_thread_id = "thr-room~member"
+    processor = SimpleNamespace(
+        teams=SimpleNamespace(deliver_member_hitl=lambda *_args, **_kwargs: False)
+    )
+    frames: list[str] = []
+    async for frame in iter_dashboard_hitl_resume_sse(
+        processor=processor,
+        hitl_coordinator=hitl,
+        agent_id="host",
+        thread_id="thr-room",
+        user_id=1,
+        decisions=[{"type": "reject"}],
+        pending=pending,
+        session_key="host:dashboard:1:dm",
+        channel_type="dashboard",
+        locale="en",
+        is_disconnected=AsyncMock(return_value=False),
+    ):
+        frames.append(frame)
+
+    chunks = _parse_sse_chunks("".join(frames))
+    assert chunks[0]["type"] == "error"
+    assert "expired" in chunks[0]["message"].lower()
+    assert hitl.store.get(pending.pending_id) is not None
+    assert hitl.store.get(pending.pending_id).status == "expired"  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
 async def test_dashboard_hitl_resume_registers_without_prior_pending() -> None:
     async def _resume(*_args: object, **_kwargs: object):
         yield {

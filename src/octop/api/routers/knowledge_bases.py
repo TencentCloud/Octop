@@ -721,7 +721,10 @@ async def create_text_document(
 async def upload_document(
     kb_id: str,
     request: Request,
-    upload: UploadFile = File(..., description="A supported text, PDF, DOCX, or PPTX document."),
+    upload: UploadFile = File(
+        ...,
+        description="A supported text, PDF, DOC/WPS, DOCX, or PPTX document.",
+    ),
     path: str | None = Form(
         default=None,
         description="Optional relative path including filename (for nested folders).",
