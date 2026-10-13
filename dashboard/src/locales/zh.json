@@ -3481,6 +3481,7 @@
       "peerUrl": "对端地址",
       "peerUrlPlaceholder": "https://octop.example.com",
       "peerUrlRequired": "请输入对端 Octop 地址",
+      "peerIp": "来源 IP",
       "username": "用户名",
       "usernameRequired": "请输入对端用户名",
       "password": "密码",
