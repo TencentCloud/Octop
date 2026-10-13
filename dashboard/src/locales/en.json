@@ -1386,6 +1386,11 @@
     "processThinkingLive": "Thinking",
     "send": "Send",
     "stop": "Stop",
+    "steer": {
+      "action": "Steer",
+      "hint": "Send a mid-turn correction without stopping the current reply",
+      "placeholder": "Keep typing to queue a mid-turn steer…"
+    },
     "queue": {
       "label": "Queued messages",
       "action": "Queue",

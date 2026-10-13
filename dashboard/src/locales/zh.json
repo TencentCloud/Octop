@@ -1386,6 +1386,11 @@
     "processThinkingLive": "深度思考中",
     "send": "发送",
     "stop": "停止",
+    "steer": {
+      "action": "Steer",
+      "hint": "在不打断当前回复的情况下投递纠正指令",
+      "placeholder": "继续输入以排队 mid-turn Steer…"
+    },
     "queue": {
       "label": "排队中的消息",
       "action": "排队",

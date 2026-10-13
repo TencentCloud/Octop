@@ -897,6 +897,15 @@ class GlobalProcessor:
                 await self._finish_history(history_tracker, completed=stream_ok and not hitl_paused)
         yield MessageEvent.completed()
 
+    def cancel_agent_stream(self, agent_id: str, thread_id: str) -> None:
+        """Signal the harness to stop the active stream (mid-turn steer preemption).
+
+        The stream iterator ends cleanly (no error chunk); state stays at the
+        last completed superstep checkpoint.
+        """
+        if self._agent_manager is not None:
+            self._agent_manager.cancel_stream(agent_id, thread_id)
+
     # -- Raw harness-chunk stream (Dashboard WS, etc.) -------------------------
     # IM channels (DingTalk, Feishu, …) stream via __call__ → MessageEvent instead.
 
