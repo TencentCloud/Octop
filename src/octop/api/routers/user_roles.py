@@ -7,6 +7,7 @@ Invites store only the role name and read the role when the account is created.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, UploadFile
@@ -50,6 +51,14 @@ class PolicyItem(BaseModel):
 
 class UserRoleBody(BaseModel):
     user_role_name: str = Field(min_length=1, max_length=64)
+    user_role_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Public role id. 1-64 letters or underscores; cannot start or end "
+            "with an underscore. Omit to let the server assign one."
+        ),
+    )
     description: str | None = Field(default=None, max_length=500)
     permissions: list[str] = Field(default_factory=list)
     policies: list[PolicyItem] = Field(default_factory=list)
@@ -78,6 +87,30 @@ def _public(server: Any, row: UserRoleRow) -> dict[str, Any]:
             f"/api/users/roles/{row.user_role_id}/avatar",
         ),
     )
+
+
+_ROLE_ID_RE = re.compile(r"^[A-Za-z_]+$")
+_ROLE_ID_MAX = 64
+
+
+def _clean_user_role_id(raw: str | None) -> str | None:
+    """Return a caller-supplied role id, or ``None`` when the server should assign one."""
+    if raw is None:
+        return None
+    role_id = raw.strip()
+    if not role_id:
+        return None
+    if (
+        len(role_id) > _ROLE_ID_MAX
+        or not _ROLE_ID_RE.fullmatch(role_id)
+        or role_id.startswith("_")
+        or role_id.endswith("_")
+    ):
+        raise OctopError(
+            ErrorCode.USER_ROLE_ID_INVALID,
+            "role id must be 1-64 letters or underscores, and cannot start or end with an underscore",
+        )
+    return role_id
 
 
 def _clean_name(raw: str) -> str:
@@ -175,6 +208,10 @@ def public_role(row: UserRoleRow, *, avatar_url: str | None = None) -> dict[str,
 
 
 def _name_taken(exc: ValueError) -> None:
+    if str(exc) == "id_taken":
+        raise OctopError(
+            ErrorCode.USER_ROLE_ID_TAKEN, "role id already exists", status=409
+        ) from exc
     if str(exc) != "name_taken":
         raise exc
     raise OctopError(ErrorCode.FORBIDDEN, "role name already exists", status=409) from exc
@@ -206,6 +243,7 @@ async def create_user_role(
             description=_clean_description(body.description),
             permissions=permissions,
             policies=policies,
+            user_role_id=_clean_user_role_id(body.user_role_id),
         )
     except ValueError as exc:
         _name_taken(exc)
