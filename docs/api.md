@@ -322,6 +322,9 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/workspace/grep` | owner | grep backend files |
 | `GET`    | `/agents/{aid}/workspace/...` | owner | see `api/routers/workspace.py` |
 | `GET`    | `/agents/{aid}/skills` | owner | list installed skills |
+| `GET`    | `/agents/{aid}/skills/{slug}/export` | owner | download one workspace skill as a ZIP (`{slug}/SKILL.md` plus siblings) |
+| `POST`   | `/agents/{aid}/skills/export` | owner | body `{slugs: string[]}`; one ZIP, each slug a top-level folder |
+| `GET`    | `/skill-packages/{id}/export` | user (`skill_packages`) | download every skill in the package as one ZIP |
 | `PUT`    | `/agents/{aid}/skills/{slug}` | owner | enable / disable a skill |
 | `GET`    | `/agents/{aid}/skills/hub/search` | user | Skill Hub search |
 | `GET`    | `/agents/{aid}/skills/hub/rankings` | user | Skill Hub rankings |

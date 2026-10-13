@@ -8,8 +8,10 @@ from dataclasses import asdict
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request, status
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import get_server, require_permission
 from octop.infra.agents.experts.skillhub_market import (
     SkillHubMarketError,
@@ -19,12 +21,14 @@ from octop.infra.db.repos.skill_packages import SkillPackageRow
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 from octop.infra.skills.install import valid_skillhub_icon_url
+from octop.infra.skills.skill_archive import build_skills_zip
 from octop.infra.skills.skill_package_from_skillhub import create_package_from_skillhub
 from octop.infra.skills.skill_package_store import (
     SkillPackageStore,
     is_skill_package_name_conflict,
     raise_skill_package_name_taken,
 )
+from octop.infra.skills.skill_packages import SkillPackageError, read_skill_directory
 from octop.infra.skills.skillhub_market import SkillHubMarketError as SkillHubDownloadError
 from octop.infra.users.identity import User
 from octop.infra.utils.frontmatter import parse_frontmatter
@@ -475,6 +479,52 @@ async def get_package_skill(
     raw = (store.package_skills_dir(package_id) / slug / "SKILL.md").read_text(encoding="utf-8")
     frontmatter, body = parse_frontmatter(raw)
     return {**skill, "frontmatter": frontmatter, "body": body, "raw": raw}
+
+
+def _read_package_skill_files(
+    store: SkillPackageStore, package_id: str
+) -> list[tuple[str, list[tuple[str, bytes]]]]:
+    packed: list[tuple[str, list[tuple[str, bytes]]]] = []
+    root = store.package_skills_dir(package_id)
+    for summary in store.list_skill_summaries(package_id):
+        if summary.get("corrupt"):
+            continue
+        slug = str(summary.get("slug") or "")
+        packed.append((slug, read_skill_directory(root / slug)))
+    if not packed:
+        raise SkillPackageError("skill package has no skills")
+    return packed
+
+
+@router.get(
+    "/{package_id}/export",
+    summary="Download a skill package as a ZIP",
+    description=(
+        "Pack every skill in the package into one ZIP. Each skill is a top-level "
+        "folder containing SKILL.md, matching the dashboard ZIP importer."
+    ),
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+async def export_skill_package(
+    package_id: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    _user: User = Depends(require_permission("skill_packages")),
+) -> Response:
+    store = _store(server)
+    row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
+    try:
+        packed = await asyncio.to_thread(_read_package_skill_files, store, package_id)
+        payload = await asyncio.to_thread(build_skills_zip, packed)
+    except SkillPackageError as exc:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
+    filename = f"{(row.name or package_id).strip() or package_id}.zip"
+    return Response(
+        content=payload,
+        media_type="application/zip",
+        headers={"Content-Disposition": content_disposition(filename)},
+    )
 
 
 @router.post("/{package_id}/skills", summary="Add a skill to a global skill package")

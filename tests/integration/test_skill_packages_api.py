@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import io
+import zipfile
 from typing import Any
 
 import pytest
@@ -112,6 +114,45 @@ async def test_package_skill_content_lifecycle(env: Any) -> None:
     )
     assert deleted.status_code == 204, deleted.text
     assert (await client.get(f"/api/skill-packages/{package_id}/skills", headers=auth)).json() == []
+
+
+async def test_export_skill_package_zip(env: Any) -> None:
+    client, _server, auth = env
+    package_id = (
+        await client.post(
+            "/api/skill-packages",
+            headers=auth,
+            json={"name": "Office", "description": ""},
+        )
+    ).json()["id"]
+    for name, content in (
+        ("pdf-reader", SAMPLE_SKILL),
+        ("notes", "---\nname: notes\n---\n\n# Notes\n"),
+    ):
+        created = await client.post(
+            f"/api/skill-packages/{package_id}/skills",
+            headers=auth,
+            json={"name": name, "content": content},
+        )
+        assert created.status_code == 200, created.text
+
+    exported = await client.get(f"/api/skill-packages/{package_id}/export", headers=auth)
+    assert exported.status_code == 200, exported.text
+    assert exported.headers["content-type"].startswith("application/zip")
+    assert "Office.zip" in exported.headers["content-disposition"]
+    with zipfile.ZipFile(io.BytesIO(exported.content)) as archive:
+        assert archive.read("pdf-reader/SKILL.md").decode("utf-8") == SAMPLE_SKILL
+        assert "notes/SKILL.md" in archive.namelist()
+
+    empty_id = (
+        await client.post(
+            "/api/skill-packages",
+            headers=auth,
+            json={"name": "Empty", "description": ""},
+        )
+    ).json()["id"]
+    empty = await client.get(f"/api/skill-packages/{empty_id}/export", headers=auth)
+    assert empty.status_code == 400
 
 
 async def test_other_user_cannot_mutate_skill_package(env_boundary: Any) -> None:

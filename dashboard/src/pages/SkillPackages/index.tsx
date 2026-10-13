@@ -26,6 +26,7 @@ import { message } from "@/utils/antdMessage";
 import {
   ChevronLeft,
   Download,
+  FileDown,
   LayoutGrid,
   List as ListIcon,
   MoreHorizontal,
@@ -76,6 +77,7 @@ import {
   iconForName,
 } from "../Experts/components/iconForName";
 import { showConfirmModal } from "../../utils/confirmModal";
+import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
 import { PackageSkillCard } from "./PackageSkillCard";
@@ -280,6 +282,16 @@ export default function SkillPackagesPage() {
   }, [isMobile]);
 
   const canMutate = Boolean(selected && canMutatePackage(selected, user));
+
+  const exportPackage = async () => {
+    if (!selected || selected.skills.length === 0) return;
+    try {
+      const blob = await skillPackagesApi.exportPackage(selected.id);
+      await saveBlobAsFile(blob, `${selected.name.trim() || selected.id}.zip`);
+    } catch (error) {
+      message.error(apiErrorMessage(error, t("skills.exportSkillFailed"), t));
+    }
+  };
 
   const selectPackage = (item: SkillPackage) => {
     if (item.id !== selectedId) {
@@ -893,6 +905,15 @@ export default function SkillPackagesPage() {
                             />
                           </button>
                         </Tooltip>
+                        <button
+                          type="button"
+                          className={skillStyles.toolbarBtn}
+                          disabled={!selected || selected.skills.length === 0}
+                          onClick={() => void exportPackage()}
+                        >
+                          <FileDown size={14} />
+                          {t("skills.exportSkill")}
+                        </button>
                         {canMutate ? (
                           <>
                             <button
