@@ -14,8 +14,8 @@ raw vs atom (aligned with ``MemoryService``):
 * ``memory_capture`` -> ``add_raw``: writes an **L0 raw event**, which goes
   through the extraction pipeline (extract -> candidate -> promote -> atom).
   Use it to record raw conversations / events. The record is visible
-  immediately via ``memory_raws``; ``memory_recall`` returns it only
-  after extraction promotes it to an atom.
+  immediately via ``memory_raws`` / ``memory_search(corpus="raw")``; the
+  regular search returns it only after extraction promotes it to an atom.
 * ``memory_save`` -> ``store``: persists a structured fact directly into the
   canonical atom/tree (durable, no extraction). Use it when you already know
   the exact fact to remember.
@@ -23,26 +23,24 @@ raw vs atom (aligned with ``MemoryService``):
 Read surface (three tools, same storage as the in-process ``memory_search`` /
 ``memory_get`` exposed to Octop's own agents):
 
-* ``memory_recall`` -> ``recall_for_prompt``: ranked, prompt-injectable text.
-  L2 atoms first; ``page`` headlines are folded into atom hits; L0 raw is only
-  a fallback (dropped as soon as any atom matches). Takes ``session_id`` /
-  ``thread_id`` so an auto-inject hook can exclude the current session's raw and
-  use the thread's active-entity stack for co-reference.
 * ``memory_search`` -> ``MemoryRuntime.memory_search`` (``corpus=raw`` uses
-  ``Memory.search_raw``): the same ranking, returned as hits that carry a
-  virtual ``path`` instead of rendered markdown.
+  ``Memory.search_raw``): ranked hits that carry a virtual ``path`` instead of
+  rendered markdown. L2 atoms first; ``page`` headlines are folded into atom
+  hits; L0 raw is only a fallback (dropped as soon as any atom matches).
+* ``memory_raws`` -> L0 inspection: the raw events themselves, newest first.
 * ``memory_get`` -> ``MemoryRuntime.memory_get``: resolve that path to the full
   markdown (``atom/<id>.md`` / ``page/<entity_id>.md`` / ``raw/<date>/<id>.md``).
 
 Recall echo guard: ``memory_capture`` drops content carrying a marker from
 ``_SKIP_CONTENT_MARKERS``, the same rule ``MemoryRuntime.capture`` applies via
 ``skip_memory_echo`` — the MCP write path calls ``Memory.add_raw`` directly and
-would otherwise capture a hook's own injected recall block as a new event.
+would otherwise capture a hook's own injected memory block as a new event.
 
 Content markers: everything this service puts back into a conversation is tagged
-``[octop memory <tool>]`` — today ``recall`` / ``search`` / ``get`` / ``capture``,
-emitted as the ``marker`` field of the tool response and as the first line of the
-blocks our hooks inject (the hook prefixes ``[octop memory search]``). Filtering is
+``[octop memory <tool>]`` — today ``search`` / ``get`` / ``capture`` (the retired
+``recall`` tool shares the prefix), emitted as the ``marker`` field of the tool
+response and as the first line of the blocks our hooks inject (the hook prefixes
+``[octop memory search]``). Filtering is
 therefore one rule: drop anything containing ``_OWN_CONTENT_PREFIX``. Older markers
 (``## Memory Recall`` / ``[memory] Earlier in this workspace`` / ``[octop-memory
 hook]``) stay in the list because transcripts already on disk carry them.
@@ -367,11 +365,11 @@ def _snippet(text: str) -> str:
 
 
 def _is_recall_echo(content: str) -> bool:
-    """True when ``content`` is our own recall block coming back as a new event.
+    """True when ``content`` is our own memory block coming back as a new event.
 
     Mirrors ``MemoryRuntime.capture``'s anti-feedback rule; without it a hook that
-    injects ``memory_recall`` output and then captures the turn via MCP would feed the
-    injected block back in, and each round would recall (and re-capture) more of it.
+    injects ``memory_search`` output and then captures the turn via MCP would feed the
+    injected block back in, and each round would surface (and re-capture) more of it.
     """
     return any(marker in content for marker in _SKIP_CONTENT_MARKERS)
 
@@ -555,84 +553,6 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
         return fn()
 
     @mcp.tool()
-    def memory_recall(
-        query: str,
-        limit: int = 5,
-        session_id: str | None = None,
-        thread_id: str | None = None,
-        user: str | None = None,
-        ctx: Context | None = None,  # type: ignore[type-arg]
-    ) -> dict[str, Any]:
-        """**召回专家记忆（读入口首选）**：把与 query 相关的记忆召回进上下文。
-
-        每次对话/任务开始前先调一次。运行完整召回管线（分词 → 路由 → FTS →
-        重排 → 去重 → token 预算），返回结构化片段 + 可直接注入 system prompt 的 markdown。
-        自动注入（hook）场景建议传 ``session_id``：管线会据此把**本会话**的 raw 排除，
-        避免"注入 → 被记录 → 下轮又召回"的回声。
-
-        三个读工具怎么选：
-        - 只想把相关背景拉进上下文 → 用本工具（一次调用，``rendered`` 直接可注入）。
-        - 要**定位某条具体记忆并读全文** → ``memory_search`` 拿 ``path``，
-          再 ``memory_get(path)`` 读完整 markdown（支持分页）。
-        - 要**原话/证据**，或 ``memory_capture`` 刚写入、还没晋升成原子的内容 →
-          ``memory_raws``（L0 全文检索，capture 后立即可见）。
-
-        覆盖范围（与内置 ``memory_search`` 同一套管线）：L2 原子优先，``page``
-        主题页标题会并入 atom 命中；L0 原始事件只做兜底——只要有原子命中，raw 就被
-        整层丢弃。L1 候选不在召回范围内，请用 ``memory_candidates``。
-
-        Args:
-            query: 自然语言问题/关键词，整句传入（内部对中文做 n-gram 分词）。
-            limit: 最多返回片段数，默认 5。
-            session_id: 可选，当前会话 id。用于把本会话的 raw 从召回里排除（防回声）；
-                与 ``memory_capture`` 传入的 ``session_id`` 一致才生效。
-            thread_id: 可选，会话线程 id。用于共指消解（"那个项目" 靠该线程的
-                active-entity stack）并把命中写回实体栈；不传则只做普通检索。
-            user: 可选调用者 id（覆盖 ``X-Octop-User-Id`` 头）。
-            ctx: MCP 注入的上下文（读取 ``X-Octop-User-Id`` 头）。
-        """
-        from octop_memory.pipeline.recall import recall_for_prompt  # noqa: PLC0415
-
-        caller = user or _caller_user(ctx)
-
-        def _run() -> dict[str, Any]:
-            memory = _memory()
-            result = recall_for_prompt(
-                memory,
-                query,
-                thread_id=thread_id,
-                session_id=session_id,
-                limit=limit,
-            )
-            return {
-                "marker": "[octop memory recall]",
-                "memories": [
-                    {
-                        "source_id": s.source_id,
-                        "timestamp": s.timestamp_iso,
-                        "layer": s.layer,
-                        "text": s.text,
-                    }
-                    for s in result.snippets
-                ],
-                "count": len(result.snippets),
-                "rendered": result.rendered,
-                "caller": caller or None,
-            }
-
-        return _observe_tool(
-            "recall",
-            session_id=session_id,
-            input_payload={
-                "query": query,
-                "limit": limit,
-                "thread_id": thread_id,
-            },
-            metadata={"caller": caller or None},
-            fn=_run,
-        )
-
-    @mcp.tool()
     def memory_search(
         query: str,
         max_results: int = 5,
@@ -640,12 +560,12 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
         user: str | None = None,
         ctx: Context | None = None,  # type: ignore[type-arg]
     ) -> dict[str, Any]:
-        """**检索记忆（返回可下钻的 path）**：全文检索记忆，返回带虚拟路径的命中列表。
+        """**检索记忆（读入口）**：全文检索记忆，返回带虚拟路径的命中列表。
 
-        与 ``memory_recall`` 走同一套召回/重排管线，区别是本工具不渲染 markdown，而是给
-        每条命中一个 ``path``，交给 ``memory_get`` 读全文。要"引用出处/读全文"用
-        search + get，只想"把背景拉进上下文"用 ``memory_recall``，要"原话/证据"用
-        ``memory_raws``。
+        每条命中带一个 ``path``，交给 ``memory_get`` 读全文；只想"把背景拉进上下文"
+        就直接用命中里的 ``snippet``，要"原话/证据"用 ``memory_raws``。自动注入（hook）
+        场景用的就是本工具：注入块以 ``[octop memory search]`` 开头，``memory_capture``
+        按该标记丢弃回声，所以不会被当成新事件采回来。
 
         **按调用者偏好排序**：调用者 id 有值（``X-Octop-User-Id`` 头或显式 ``user``）时，
         这个人的命中排在最前、其他人的紧随其后 —— 只调顺序，**不过滤**：记忆是团队共享的，
@@ -733,7 +653,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
         start: int | None = None,
         lines: int | None = None,
     ) -> dict[str, Any]:
-        """**读取记忆全文**：把 ``memory_search`` / ``memory_recall`` 命中的虚拟路径解析成 markdown。
+        """**读取记忆全文**：把 ``memory_search`` 命中的虚拟路径解析成 markdown。
 
         支持的路径形态：``atom/<atom_id>.md``（L2 原子）、``page/<entity_id>.md``
         （L3 主题页）、``raw/<YYYY-MM-DD>/<event_id>.md``（L0 原始事件）。长内容用
@@ -796,7 +716,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
         ``memory_capture`` 交给提取管线。
 
         旧事实过时了就用 ``supersedes`` 传旧原子 id：旧原子标记 deprecated，新事实
-        立即可被 ``memory_recall`` 召回并带上 ``supersedes`` 关联——"更正事实"就是
+        立即可被 ``memory_search`` 检索到并带上 ``supersedes`` 关联——"更正事实"就是
         保存新事实 + 声明它取代谁，不需要另一个工具。
 
         来源写入 ``metadata.source``，调用者写入 ``metadata.user``；调用者 id 还会自动
@@ -886,7 +806,8 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
           只记助手结论时 ``content`` 留空字符串。
 
         鉴权、专家路由与用户归属都由 MCP 接入层按连接配置自动带上，工具本身不感知。
-        记录后立即可用 ``memory_raws`` 查询，晋升后才可被 ``memory_recall`` 召回。
+        记录后立即可用 ``memory_raws`` / ``memory_search(corpus="raw")`` 查询，
+        晋升成原子后才回到常规检索结果里。
 
         调用者 id（``X-Octop-User-Id``）会自动拼成内容前缀 ``<user>说：…``：发送者由此进入
         原子正文，既能被 FTS 直接搜到，也能在召回时一眼看出是谁说的——**不要**自己再
@@ -896,15 +817,15 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
 
         回声保护（两层，都是为了断掉"注入 → 采集 → 再召回"的放大环）：
 
-        1. 带 ``memory_recall`` 注入标记（``[memory] Earlier in this workspace`` /
+        1. 带记忆注入标记（``[octop memory …]`` / ``[memory] Earlier in this workspace`` /
            ``## Memory Recall``）的事件**不写入**；一轮对话形态下两条都是回声才整体
            返回 ``skipped=recall_echo``，transcript 形态下逐条丢弃并计入
            ``skipped_echo``。transcript 形态还会一并丢弃**我们自己的 hook 指令文本**
            （``[octop-memory hook]``）——那是提示词管道，不是用户说过的话。
-        2. transcript 形态下还会丢弃**我们自己的记忆读工具**（``memory_recall`` /
-           ``memory_search`` / ``memory_get`` / ``memory_raws`` / ``memory_candidates``）
-           产生的 ``tool_result``——那些内容本来就来自库，且调用方 hook 自己拼注入块时
-           未必带标记。丢弃条数见返回体的 ``skipped_own_results``。
+        2. transcript 形态下还会丢弃**我们自己的记忆读工具**（``memory_search`` /
+           ``memory_get`` / ``memory_raws`` / ``memory_candidates``，以及已下线的
+           ``memory_recall``）产生的 ``tool_result``——那些内容本来就来自库，且调用方
+           hook 自己拼注入块时未必带标记。丢弃条数见返回体的 ``skipped_own_results``。
         3. transcript 形态下同样丢弃**终端自己注入的文本**：``<system-reminder>``、
            ``<local-command-caveat>``、``Base directory for this skill:``（自带技能文档）。
            斜杠命令包装（``<command-name>`` / ``<command-message>`` / ``<command-args>``）
@@ -970,11 +891,9 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                 （``memory_raws(host=…)`` 可筛）。
             assistant: 一轮对话时的**助手这一侧**回复（不加发送者前缀）；留空则该次只写人这一侧。
             session_id: 可选会话 id，用于提取分组；一轮对话缺省派生为 ``ext:{source}:{user}``，
-                transcript 缺省为 ``cc:<transcript 的 sessionId>``。传了之后，
-                ``memory_recall`` 用同一个 id 就能把本会话的 raw 排除（防回声）；
-                同一段工作请保持同一个 id，跨调用稳定。
-            thread_id: 可选线程 id，透传给 L0；``memory_recall(thread_id=…)`` 会用它做
-                线程级作用域与共指消解。
+                transcript 缺省为 ``cc:<transcript 的 sessionId>``。同一段工作请保持同一个
+                id，跨调用稳定。
+            thread_id: 可选线程 id，透传给 L0。
             dry_run: 只解析不写入，返回将要写入的条数 / 事件列表。
             extract: 写入后是否立即触发提取（默认 ``True``）。批量回灌传 ``False``，
                 先只落 L0，再用 ``memory_extract`` 受控提取。
@@ -1088,9 +1007,9 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                     "recorded": False,
                     "skipped": "recall_echo",
                     "reason": (
-                        "every event carries a recall injection marker "
+                        "every event carries a memory injection marker "
                         f"(e.g. {_OWN_CONTENT_PREFIX!r}); "
-                        "dropped so our own recall output is not captured as a new event"
+                        "dropped so our own injected block is not captured as a new event"
                     ),
                     "user": caller or None,
                 }
@@ -1177,7 +1096,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                 "extract_scheduled": extract_scheduled,
                 "note": (
                     "raw (L0) events recorded; visible now via memory_raws, "
-                    "recallable via memory_recall after the extraction pipeline "
+                    "searchable via memory_search after the extraction pipeline "
                     "promotes them to atom(s)"
                 ),
             }

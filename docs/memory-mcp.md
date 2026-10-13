@@ -4,7 +4,7 @@
 > 其他 AI 工具），能力与进程内 `MemoryService` 对齐：外部 agent 可以召回记忆、按路径下钻读全文、
 > 写入新的事件与事实，并能区分"这条记忆是谁说的"。
 >
-> 当前工具面：**10 个 `memory_*` 工具**（读取 4 个 / 写入 2 个 / 提取与审核 4 个）。
+> 当前工具面：**9 个 `memory_*` 工具**（读取 3 个 / 写入 2 个 / 提取与审核 4 个）。
 >
 > 本地终端（Claude Code / Kiro / DSH / Codex / Cursor）可以用服务端自带的**一键安装器**
 > 自动完成「MCP 条目 + hooks（+ DSH 共享记忆预设）」，见 §4.7。
@@ -48,19 +48,18 @@
 
 ---
 
-## 2. 工具清单（10 个）
+## 2. 工具清单（9 个）
 
-### 2.1 读取（4 个）
+### 2.1 读取（3 个）
 
 | 工具 | 参数 | 说明 |
 |---|---|---|
-| `memory_recall` | `query: str`, `limit: int = 5`, `session_id?: str`, `thread_id?: str`, `user?: str` | **读入口首选**。跑完整召回管线（分词 → 路由 → FTS → 重排 → 去重），返回结构化片段 + 可直接注入 system prompt 的 markdown（`rendered`）。L2 原子优先，主题页标题并入 atom 命中，L0 原始事件仅兜底。**自动注入（hook）场景建议传 `session_id`**：管线会据此把本会话的 raw 排除，避免"注入 → 被记录 → 下轮又召回"的回声；`thread_id` 则启用共指消解（"那个项目" 靠该线程的 active-entity stack） |
-| `memory_search` | `query: str`, `max_results: int = 5`, `corpus: str = "all"` | 同一套召回管线，但**不渲染 markdown**，而是给每条命中一个虚拟 `path`，交给 `memory_get` 下钻。`corpus`：`all`/`memory`（原子+原始事件同管线）、`atom`（只要 L2 原子）、`raw`（直接走 L0 全文检索，不受"有原子命中就丢 raw"的兜底影响） |
+| `memory_search` | `query: str`, `max_results: int = 5`, `corpus: str = "all"`, `user?: str` | **读入口**。跑完整召回/重排管线（分词 → 路由 → FTS → 重排 → 去重），给每条命中一个虚拟 `path`，交给 `memory_get` 下钻；只想"把背景拉进上下文"直接用命中里的 `snippet` 即可。自动注入（hook）场景用的就是它：注入块以 `[octop memory search]` 开头，`memory_capture` 按该标记丢弃回声，不会被当成新事件采回来。`corpus`：`all`/`memory`（原子+原始事件同管线）、`atom`（只要 L2 原子）、`raw`（直接走 L0 全文检索，不受"有原子命中就丢 raw"的兜底影响） |
 | `memory_get` | `path: str`, `start?: int`, `lines?: int` | 把命中路径解析成完整 markdown。支持 `atom/<atom_id>.md`、`page/<entity_id>.md`、`raw/<YYYY-MM-DD>/<event_id>.md`；长内容用 `start`/`lines` 分页（1-based）。路径非法或过期时返回 `{error, hint}` 而不是抛栈 |
 | `memory_raws` | `query?: str`, `session_id?: str`, `host?: str`, `user?: str`, `limit: int = 50` | **原始事件（证据源）**。`query` 走全文检索（写入后立即可见，提取前也能查），其余字段做结构化过滤，按时间倒序返回 |
 
 **按调用者偏好排序**：调用者 id 有值时（`X-Octop-User-Id` 头或显式 `user` 参数），
-`memory_recall` / `memory_search` 把该调用者的命中排在最前、其他人的紧随其后——只调顺序、
+`memory_search` 把该调用者的命中排在最前、其他人的紧随其后——只调顺序、
 **不过滤**（记忆是专家级共享的）。raw 命中按 raw 的 `user` 列判定，原子/主题页按正文里的
 `<调用者>说：` 前缀判定；命中带 `personal` 布尔，raw 命中还带 `user`，返回体带 `caller`
 与 `personal_hits`。
@@ -68,8 +67,6 @@
 返回形状：
 
 ```jsonc
-// memory_recall
-{ "memories": [{ "source_id", "timestamp", "layer", "text" }], "count", "rendered", "caller" }
 // memory_search
 { "hits": [{ "path", "layer", "snippet", "occurred_at", "source_id" }], "total", "corpus", "hint" }
 // memory_get
@@ -82,16 +79,16 @@
 
 | 工具 | 参数 | 说明 |
 |---|---|---|
-| `memory_capture` | `content: str`, `source: str`, `session_id?: str`, `assistant?: str`, `thread_id?: str`, `dry_run?: bool`, `extract?: bool`, `tool_events?: str`, `transcript_path?: str`, `user?: str` | **记录原始事件（L0）**：交给「提取 → 候选 → 晋升」流水线，适合记录对话/事件原文。写入后立即可用 `memory_raws` / `memory_search(corpus="raw")` 查；晋升成原子后才能被 `memory_recall` 召回。`source` 既是谁记录的，也决定内容形态：`claude-code` / `kiro` / `dsh` + JSONL（`H4sI` 开头自动按 gzip+base64 解码）走该终端的 transcript 解析，整份 session 文件解析成多条事件；其它 `source` 按「一轮对话」处理，`content` 是用户侧、`assistant` 是助手侧（角色由字段隐含，别把助手产出塞进 `content`）。`tool_events` 决定 transcript 形态落哪些事件：`none`（默认）只落 user/assistant，`calls` 带工具调用（丢输出），`all` 连工具输出一起落。`dry_run` 只解析不写；`extract=False` 先只落 L0，再用 `memory_extract` 受控提取。`transcript_path` 仅供终端 `mcp_tool` hook 直传本机文件（限 `~/.claude/projects` / `~/.kiro/sessions` / `~/.dsh/sessions`；远程部署读不到，请改用 hook 上报 `content`）。`session_id` 缺省派生：一轮对话为 `ext:{source}:{user}`，transcript 为 `cc:<sessionId>` |
+| `memory_capture` | `content: str`, `source: str`, `session_id?: str`, `assistant?: str`, `thread_id?: str`, `dry_run?: bool`, `extract?: bool`, `tool_events?: str`, `transcript_path?: str`, `user?: str` | **记录原始事件（L0）**：交给「提取 → 候选 → 晋升」流水线，适合记录对话/事件原文。写入后立即可用 `memory_raws` / `memory_search(corpus="raw")` 查；晋升成原子后才回到常规检索结果里。`source` 既是谁记录的，也决定内容形态：`claude-code` / `kiro` / `dsh` + JSONL（`H4sI` 开头自动按 gzip+base64 解码）走该终端的 transcript 解析，整份 session 文件解析成多条事件；其它 `source` 按「一轮对话」处理，`content` 是用户侧、`assistant` 是助手侧（角色由字段隐含，别把助手产出塞进 `content`）。`tool_events` 决定 transcript 形态落哪些事件：`none`（默认）只落 user/assistant，`calls` 带工具调用（丢输出），`all` 连工具输出一起落。`dry_run` 只解析不写；`extract=False` 先只落 L0，再用 `memory_extract` 受控提取。`transcript_path` 仅供终端 `mcp_tool` hook 直传本机文件（限 `~/.claude/projects` / `~/.kiro/sessions` / `~/.dsh/sessions`；远程部署读不到，请改用 hook 上报 `content`）。`session_id` 缺省派生：一轮对话为 `ext:{source}:{user}`，transcript 为 `cc:<sessionId>` |
 | `memory_save` | `content: str`, `source: str`, `topic?: str`, `supersedes?: str`, `user?: str` | **直接保存事实（L2）**：不经过提取，立即可召回。适合已知的明确事实/约定。`supersedes` 传**旧原子 id** 即完成「更正」：旧原子标记 deprecated，新事实带 `supersedes` 关联——更正事实 = 保存新事实 + 声明它取代谁，不需要单独的更新工具 |
 
 `memory_capture` 是**幂等**的：同一 `session_id` + 同一内容重复写入时不会产生重复 L0 事件，
 返回里带 `duplicate: true` 并复用已有 `event_id`（下游提取因此可以反复重跑）。
 
-它还有**回声保护**：内容里带 `memory_recall` 的注入标记（`[memory] Earlier in this workspace` /
+它还有**回声保护**：内容里带记忆注入标记（`[octop memory …]` / `[memory] Earlier in this workspace` /
 `## Memory Recall`）时**不写入**，直接返回 `{recorded: false, skipped: "recall_echo"}`。
 原因：MCP 写路径直接调 `Memory.add_raw`，绕过了 `MemoryRuntime.capture` 的 `skip_memory_echo`；
-不补这层，hook 注入的召回块会被当作新事件采集，形成"注入 → 采集 → 再召回"的放大环。
+不补这层，hook 注入的记忆块会被当作新事件采集，形成"注入 → 采集 → 再召回"的放大环。
 
 transcript 形态还有**原文归档**：上传的整份 session 会另存一份可读 markdown
 （`{workspace}/.octop/memory-sessions/<session_id>.md`，增量追加、重发去重），返回体的
@@ -116,15 +113,15 @@ transcript 形态还有**原文归档**：上传的整份 session 会另存一�
 |---|---|---|
 | L0 | 原始事件（原话、证据） | `memory_capture` 写入；`memory_raws` / `memory_search(corpus="raw")` 读取 |
 | L1 | 候选（提取产物，待审核） | `memory_extract` 产生；`memory_candidates` 查看；`memory_promote` / `memory_reject` 裁决 |
-| L2 | 原子（长期记忆，可被召回） | `memory_save` 直写（`supersedes` 做更正）；`memory_capture` 经流水线晋升；`memory_recall` / `memory_search` 召回 |
+| L2 | 原子（长期记忆，可被检索到） | `memory_save` 直写（`supersedes` 做更正）；`memory_capture` 经流水线晋升；`memory_search` 检索 |
 | L3 | 主题页（实体页） | 随晋升重新生成；可用 `memory_get(page/<entity_id>.md)` 读取 |
 
 按意图选工具：
 
-- 只想把相关背景拉进上下文 → `memory_recall`
+- 想把相关背景拉进上下文 → `memory_search`（命中里的 `snippet` 直接可用）
 - 要定位某条具体记忆并读全文 → `memory_search` 拿 `path`，再 `memory_get(path)`
 - 要原话/证据，或内容刚写入还没晋升 → `memory_raws`（或 `memory_search(corpus="raw")`）
-- 记录对话/事件 → `memory_capture`；记录明确事实/规则 → `memory_save`；纠正过时事实 → `memory_update`
+- 记录对话/事件 → `memory_capture`；记录明确事实/规则 → `memory_save`；纠正过时事实 → `memory_save(supersedes=<旧原子 id>)`
 - 处理审核队列 → `memory_candidates` → `memory_promote` / `memory_reject`
 
 ---
@@ -167,10 +164,7 @@ curl -s -X POST "$BASE/" \
 { "name": "memory_save",
   "arguments": { "content": "部署约定：记忆端点挂在 /mcp/memory", "source": "planning-agent", "topic": "octop-deploy" } }
 
-// 召回
-{ "name": "memory_recall", "arguments": { "query": "部署约定", "limit": 5 } }
-
-// 检索拿 path
+// 检索（拿 path 或直接读 snippet）
 { "name": "memory_search", "arguments": { "query": "部署约定", "corpus": "atom" } }
 
 // 读全文（path 来自上一步 hits[].path）
@@ -206,7 +200,7 @@ async def main():
                 "memory_capture",
                 {"content": "报告页横幅没有渲染出来", "source": "review-bot"},
             )
-            res = await session.call_tool("memory_recall", {"query": "报告页 横幅"})
+            res = await session.call_tool("memory_search", {"query": "报告页 横幅", "corpus": "atom"})
             print(res)
 
 
@@ -241,8 +235,8 @@ Kiro 原生支持远程 MCP（`url` + `headers`）。配置分两级，同名条
 Kiro 侧注意事项：
 
 - **远程 `url` 必须是 `https`**（只有本地回环允许 `http`）。
-- 工具名带**服务器名前缀**：服务器名 `octop-memory` → 工具 `mcp_octop_memory_memory_recall`；在 hooks 或提示词里必须写全名。
-- 工具默认不放行：在 `~/.kiro/settings/permissions.yaml` 里找到 `capability: mcp` 的 `match` 列表，按需加 `effect: allow`（只读先放 `memory_recall` / `memory_raws`，需要沉淀再放 `memory_capture` / `memory_save`）。
+- 工具名带**服务器名前缀**：服务器名 `octop-memory` → 工具 `mcp_octop_memory_memory_search`；在 hooks 或提示词里必须写全名。
+- 工具默认不放行：在 `~/.kiro/settings/permissions.yaml` 里找到 `capability: mcp` 的 `match` 列表，按需加 `effect: allow`（只读先放 `memory_search` / `memory_get` / `memory_raws`，需要沉淀再放 `memory_capture` / `memory_save`）。
 - 用 `${VAR}` 引用环境变量时，要先把变量加入 Kiro 的允许列表（设置项 `Mcp Approved Env Vars`），否则不会被展开。
 - 校验：会话里执行 `/mcp`，确认服务器已连接、工具已加载。
 
@@ -261,7 +255,7 @@ Kiro 侧注意事项：
       "trigger": "UserPromptSubmit",
       "action": {
         "type": "agent",
-        "prompt": "回答前，按需主动召回相关记忆来辅助本次工作。结合用户本次输入与当前项目上下文构造查询，调用 `mcp_octop_memory_memory_recall`。若本次输入与已召回记忆无关可跳过，不要重复召回同一查询。"
+        "prompt": "回答前，按需主动检索相关记忆来辅助本次工作。结合用户本次输入与当前项目上下文构造查询，调用 `mcp_octop_memory_memory_search`（corpus=atom）。若本次输入与已检索记忆无关可跳过，不要重复检索同一查询。"
       },
       "description": "收到消息时自动召回相关记忆，提供上下文连续性。",
       "enabled": true
@@ -324,7 +318,7 @@ claude mcp add --transport http octop-memory https://<octop-host>/mcp/memory/ \
 Claude Code 侧注意事项：
 
 - Streamable HTTP 写 `"type": "http"`（MCP 规范名 `streamable-http` 也接受）；**带 `url` 就必须带 `type`**，否则该条目会被当作 stdio 服务器跳过。
-- 工具名带前缀：`mcp__octop-memory__memory_recall`。
+- 工具名带前缀：`mcp__octop-memory__memory_search`。
 - 排查：`claude mcp list`、`claude mcp get octop-memory`，会话内 `/mcp`。
 
 #### 自动化：hooks（配好 MCP 之后必配）
@@ -354,10 +348,10 @@ Claude Code 侧注意事项：
 
 ```javascript
 #!/usr/bin/env node
-// UserPromptSubmit：把「先召回」指令注入本轮上下文；真正调用 MCP 工具的是模型。
+// UserPromptSubmit：把「先检索」指令注入本轮上下文；真正调用 MCP 工具的是模型。
 process.stdout.write(
-  "[octop-memory] 回答前先按需召回相关记忆：结合用户输入与当前项目上下文构造查询，" +
-    "调用 MCP 工具 mcp__octop-memory__memory_recall；与本轮无关可跳过，不要重复召回同一查询。\n",
+  "[octop-memory] 回答前先按需检索相关记忆：结合用户输入与当前项目上下文构造查询，" +
+    "调用 MCP 工具 mcp__octop-memory__memory_search（corpus=atom）；与本轮无关可跳过，不要重复检索同一查询。\n",
 );
 ```
 
@@ -419,7 +413,7 @@ DSH 在 **Settings → MCP** 里管理 MCP 服务器（定义持久化在 `~/.ds
 
 和 Kiro / Claude Code 要挂 hooks 一样，DSH 这边还要**新增一个「共享记忆」模式的 agent preset，并用它开会话**，自动化才会发生：
 
-- 会话首轮：先 `memory_recall`，把相关原子记忆拉进上下文；
+- 会话首轮：先 `memory_search`（`corpus=atom`），把相关原子记忆拉进上下文；
 - 每轮结束：若本轮产生了可沉淀的事实，调用一次 `memory_capture`（`source` 标记客户端来源、`session_id` 用工作目录派生）；寒暄或已记录内容不重复写。
 
 预设是一个目录（`~/.dsh/.agent-presets/<你的预设>/`），含 `preset.yml`（名称与描述）和 `agent.cordis.yml`（该预设的完整组合）：
@@ -434,9 +428,9 @@ DSH 在 **Settings → MCP** 里管理 MCP 服务器（定义持久化在 `~/.ds
 
 ```text
 ── 共享记忆 (shared memory) ─────────────────────────────
-This preset auto-reads and auto-writes the octop-memory expert store so durable facts carry across sessions and experts: memory_recall at conversation start, memory_capture at turn end.
+This preset auto-reads and auto-writes the octop-memory expert store so durable facts carry across sessions and experts: memory_search at conversation start, memory_capture at turn end.
 
-会话开始时(本会话首轮、尚无历史):若工具列表里没有 `memory_recall`,先按需注入 octop-memory 工具,再调用 `memory_recall(query=用户当前目标全文)`,把相关原子记忆纳入上下文。
+会话开始时(本会话首轮、尚无历史):若工具列表里没有 `memory_search`,先按需注入 octop-memory 工具,再调用 `memory_search(query=用户当前目标全文, corpus=atom)`,把相关原子记忆纳入上下文。
 
 每轮结束时(给出最终回复前):若本轮产生了可沉淀的事实(需求、决定、偏好、约定、结论、关键路径),调用一次 `memory_capture`:
   content: 1–3 句简洁事实摘要(不写机密、不做原始转储)
@@ -526,11 +520,12 @@ curl -fsSL "https://<octop-host>/mcp/memory/setup" | sh
 - **写入分两条通道**：`memory_capture` 走"提取 → 候选 → 晋升"（学习型记忆，质量由流水线把关）；
   `memory_save`（`supersedes` 更正）是权威直写（规则/明确事实，立即可召回）。
   晋升治理（提取触发、候选审核）保留在服务端，站内会话与外部写入走**同一套**记忆治理路径。
-- **capture 之后 recall 无结果属预期**：内容还在 L0，需要经提取晋升成原子才会被召回；
-  想立刻看到请用 `memory_raws` 或 `memory_search(corpus="raw")`。
+- **capture 之后常规检索没有结果属预期**：内容还在 L0，需要经提取晋升成原子才会进入
+  `memory_search` 的结果；想立刻看到请用 `memory_raws` 或 `memory_search(corpus="raw")`。
 - **capture 幂等**：同 `session_id` + 同内容不重复落库（见 §2.2）。
-- **召回回声有双向保护**：写入侧 `memory_capture` 丢弃带召回标记的内容（`skipped=recall_echo`）；
-  读取侧建议 hook 给 `memory_recall` 传与 capture 一致的 `session_id`，把本会话的 raw 排除。
+- **召回回声有写入侧保护**：`memory_capture` 丢弃带注入标记的内容（`skipped=recall_echo`）——
+  注入块以 `[octop memory search]` 开头，所以 hook 注入 → 采回 → 再检索的放大环被写侧断掉，
+  不需要读侧再传 `session_id` 配合。
   两侧都做，才不会出现"注入 → 采集 → 再召回"的放大环（§4.3 / §4.4 的自动召回就是这个场景）。
 - **召回是专家级共享**，不做按人隔离；按发送者定位依赖正文里的 `<user>说：` 前缀 + 全文检索。
 - **错误形态**：`memory_get` 的坏路径返回 `{error, hint}`；`memory_search` 的非法 `corpus`、

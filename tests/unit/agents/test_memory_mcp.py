@@ -109,10 +109,9 @@ def test_build_resolves_agent_per_request(monkeypatch):
     assert captured["agent_id"] == "EXPERT42"
 
 
-def test_build_registers_ten_tools(fake_memory):
+def test_build_registers_nine_tools(fake_memory):
     mcp = mm.build_memory_mcp(mock.MagicMock())
     assert set(_tools(mcp)) == {
-        "memory_recall",
         "memory_search",
         "memory_get",
         "memory_save",
@@ -123,78 +122,6 @@ def test_build_registers_ten_tools(fake_memory):
         "memory_promote",
         "memory_reject",
     }
-
-
-def test_memory_recall_uses_full_pipeline(fake_memory, monkeypatch, bind_agent):
-    """memory_recall runs the full recall pipeline (recall_for_prompt)."""
-    import octop_memory.pipeline.recall as _recall
-
-    class _Snippet:
-        source_id = "atom-1"
-        timestamp_iso = "2026-08-19T00:00:00+00:00"
-        layer = "atom"
-        text = "billing-migration is the local clone"
-
-    fake_result = mock.MagicMock()
-    fake_result.snippets = [_Snippet()]
-    fake_result.rendered = "markdown"
-    monkeypatch.setattr(_recall, "recall_for_prompt", lambda m, q, **kw: fake_result)
-
-    mcp = mm.build_memory_mcp(mock.MagicMock())
-    result = _tools(mcp)["memory_recall"].fn(query="billing-migration", limit=3)
-    assert result["count"] == 1
-    assert result["memories"][0]["text"] == "billing-migration is the local clone"
-    assert result["rendered"] == "markdown"
-    assert result["marker"] == "[octop memory recall]"
-
-
-def test_memory_recall_forwards_session_and_thread(fake_memory, monkeypatch, bind_agent):
-    """Hook callers can scope recall to a session/thread (echo guard + co-reference)."""
-    import octop_memory.pipeline.recall as _recall
-
-    captured = {}
-
-    def _fake(memory, query, **kwargs):
-        captured["memory"] = memory
-        captured["query"] = query
-        captured.update(kwargs)
-        result = mock.MagicMock()
-        result.snippets = []
-        result.rendered = ""
-        return result
-
-    monkeypatch.setattr(_recall, "recall_for_prompt", _fake)
-    mcp = mm.build_memory_mcp(mock.MagicMock())
-    _tools(mcp)["memory_recall"].fn(
-        query="那个项目",
-        limit=4,
-        session_id="sess-1",
-        thread_id="thr-1",
-    )
-    assert captured["memory"] is fake_memory
-    assert captured["query"] == "那个项目"
-    assert captured["session_id"] == "sess-1"
-    assert captured["thread_id"] == "thr-1"
-    assert captured["limit"] == 4
-
-
-def test_memory_recall_without_scope_passes_none(fake_memory, monkeypatch, bind_agent):
-    import octop_memory.pipeline.recall as _recall
-
-    captured = {}
-
-    def _fake(memory, query, **kwargs):
-        captured.update(kwargs)
-        result = mock.MagicMock()
-        result.snippets = []
-        result.rendered = ""
-        return result
-
-    monkeypatch.setattr(_recall, "recall_for_prompt", _fake)
-    mcp = mm.build_memory_mcp(mock.MagicMock())
-    _tools(mcp)["memory_recall"].fn(query="q")
-    assert captured["session_id"] is None
-    assert captured["thread_id"] is None
 
 
 def test_memory_save_goes_store(fake_memory, bind_agent):

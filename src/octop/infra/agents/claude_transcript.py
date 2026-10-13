@@ -108,6 +108,9 @@ Their tool results restate what is already stored, so importing them back into L
 would close the "inject → capture → recall again" loop. They are dropped at parse
 time — before the marker-based check — because a hook may format its own
 injection block and lose the marker.
+
+``memory_recall`` is no longer exposed by the MCP server; it stays listed so
+transcripts recorded by earlier installs still get filtered.
 """
 
 
