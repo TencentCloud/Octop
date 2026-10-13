@@ -75,3 +75,55 @@ async def test_security_policy_save_with_running_agent(
         json={"tool_guard": {"enabled": True, "mode": "warn"}},
     )
     assert put_resp.status_code == 200, put_resp.text
+
+
+@pytest.mark.asyncio
+async def test_settings_hitl_is_readable_by_regular_user(
+    env_admin_alice: tuple[httpx.AsyncClient, Any, dict[str, str], dict[str, str]],
+) -> None:
+    client, _srv, admin_auth, alice_auth = env_admin_alice
+
+    r = await client.get("/api/settings/hitl", headers=alice_auth)
+    assert r.status_code == 200, r.text
+    assert r.json() == {
+        "enabled": False,
+        "tool_guard_require_approval": False,
+        "show_approval_ui": False,
+    }
+
+    forbidden = await client.get("/api/admin/security", headers=alice_auth)
+    assert forbidden.status_code == 403
+
+    put = await client.put(
+        "/api/admin/security",
+        headers=admin_auth,
+        json={"hitl": {"enabled": True}},
+    )
+    assert put.status_code == 200, put.text
+    assert put.json()["hitl"]["enabled"] is True
+
+    r = await client.get("/api/settings/hitl", headers=alice_auth)
+    assert r.status_code == 200, r.text
+    assert r.json() == {
+        "enabled": True,
+        "tool_guard_require_approval": False,
+        "show_approval_ui": True,
+    }
+
+    put = await client.put(
+        "/api/admin/security",
+        headers=admin_auth,
+        json={
+            "hitl": {"enabled": False},
+            "tool_guard": {"enabled": True, "mode": "require_approval"},
+        },
+    )
+    assert put.status_code == 200, put.text
+
+    r = await client.get("/api/settings/hitl", headers=alice_auth)
+    assert r.status_code == 200, r.text
+    assert r.json() == {
+        "enabled": False,
+        "tool_guard_require_approval": True,
+        "show_approval_ui": True,
+    }

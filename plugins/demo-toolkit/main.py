@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from harness_agent.plugins import PluginContext, get_tool_config
+from octop_harness.plugins import PluginContext, get_tool_config
 
 
 async def get_current_time(tz: str = "UTC") -> str:

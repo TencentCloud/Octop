@@ -10,9 +10,12 @@ from pathlib import Path
 from sqlite3 import IntegrityError as SqliteIntegrityError
 from typing import Any, cast
 
-from psycopg import IntegrityError as PsycopgIntegrityError
+try:
+    from psycopg import IntegrityError as PsycopgIntegrityError
+except ImportError:  # pragma: no cover - optional PostgreSQL driver
+    PsycopgIntegrityError = None  # type: ignore[assignment,misc]
 
-from octop.infra.agents.avatar import (
+from octop.infra.agents.experts.avatar import (
     bind_workspace_avatar_icon_url,
     public_portrait_icon_url,
 )
@@ -38,6 +41,10 @@ from octop.infra.history.trajectory.settings import apply_enable_trajectory
 from octop.infra.users.identity import User
 from octop.infra.utils.ulid import new_ulid
 
+_DB_INTEGRITY_ERRORS: tuple[type[BaseException], ...] = (SqliteIntegrityError,)
+if PsycopgIntegrityError is not None:
+    _DB_INTEGRITY_ERRORS = (SqliteIntegrityError, PsycopgIntegrityError)
+
 
 @dataclass(frozen=True)
 class PublishedExpertInstallOptions:
@@ -55,6 +62,7 @@ class PublishedExpertInstallOptions:
     welcome_message: str | None = None
     runtime_config: dict[str, Any] | None = None
     enable_trajectory: bool = True
+    conversation_mode: str | None = None
     workspace_patch: Any = None
     composer_copies: tuple[tuple[str, Any], ...] = ()
     composer_report: Any = None
@@ -235,7 +243,7 @@ async def publish_agent_expert(
                 color=color,
             ),
         )
-    except (SqliteIntegrityError, PsycopgIntegrityError) as exc:
+    except _DB_INTEGRITY_ERRORS as exc:
         await asyncio.to_thread(shutil.rmtree, snapshot_dir, ignore_errors=True)
         raise OctopError.localized(
             ErrorCode.PUBLISHED_EXPERT_SLUG_TAKEN,
@@ -362,6 +370,8 @@ async def install_published_expert(
     if options.backend:
         config_extra["backend"] = options.backend
     apply_enable_trajectory(config_extra, options.enable_trajectory)
+    if options.conversation_mode:
+        config_extra["conversation_mode"] = options.conversation_mode
 
     async def seed_snapshot(created_row: Any, workspace: Any) -> None:
         await seed_expert_directory(expert_dir=snapshot_dir, workspace=workspace)

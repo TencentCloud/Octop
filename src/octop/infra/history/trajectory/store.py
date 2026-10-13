@@ -17,10 +17,19 @@ class TrajectoryStore:
         """Optional diagnostic hook for stores requiring archive completeness."""
 
     def append(self, event: TrajectoryEvent) -> bool:
-        return self._repo.append(clip_persisted_event(event))
+        return self._repo.append(self._bounded(event))
 
     def upsert(self, event: TrajectoryEvent) -> bool:
-        return self._repo.upsert(clip_persisted_event(event))
+        return self._repo.upsert(self._bounded(event))
+
+    @staticmethod
+    def _bounded(event: TrajectoryEvent) -> TrajectoryEvent:
+        """Bound the event before any backend persists it.
+
+        The caps bound SQLite row size, not one particular table, so a subclass
+        that writes through another store has to apply them as well.
+        """
+        return clip_persisted_event(event)
 
     def list_before(
         self,

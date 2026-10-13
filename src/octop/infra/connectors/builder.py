@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import secrets
 from typing import Any
@@ -59,6 +60,22 @@ def mcp_server_name(kind: str, instance_id: str) -> str:
     return f"{kind}__{instance_id}"
 
 
+def _internal_mcp_uses_https(config: OctopConfig) -> bool:
+    """True when the API listener is HTTPS (not the ACME/redirect companion)."""
+    return bool(config.tls.enabled and config.tls.cert_file and config.tls.key_file)
+
+
+def _internal_mcp_https_client_factory(
+    headers: dict[str, str] | None = None,
+    timeout: Any = None,
+    auth: Any = None,
+) -> Any:
+    """Loopback HTTPS often uses a public-name cert; skip hostname verification."""
+    import httpx
+
+    return httpx.AsyncClient(headers=headers, timeout=timeout, auth=auth, verify=False)
+
+
 def internal_mcp_url(
     *,
     config: OctopConfig,
@@ -68,9 +85,8 @@ def internal_mcp_url(
 ) -> str:
     host = config.bind_host if config.bind_host not in ("0.0.0.0", "::") else "127.0.0.1"
     token_q = quote(internal_token, safe="")
-    return (
-        f"http://{host}:{config.port}/api/internal/mcp/{gateway_kind}/{instance_id}?token={token_q}"
-    )
+    scheme = "https" if _internal_mcp_uses_https(config) else "http"
+    return f"{scheme}://{host}:{config.port}/api/internal/mcp/{gateway_kind}/{instance_id}?token={token_q}"
 
 
 def new_internal_token() -> str:
@@ -208,7 +224,33 @@ def _build_gateway_spec(
         instance_id=instance_id,
         internal_token=internal_token,
     )
-    return {"transport": "http", "url": url}
+    spec: dict[str, Any] = {"transport": "http", "url": url}
+    if url.startswith("https://"):
+        spec["httpx_client_factory"] = _internal_mcp_https_client_factory
+    return spec
+
+
+def _reject_obsidian_control_chars(field: str, value: str) -> None:
+    if any(char in value for char in "\n\r\x00"):
+        raise ValueError(f"{field} cannot contain newlines")
+
+
+def _obsidian_cli_credentials(credentials: dict[str, Any]) -> dict[str, Any]:
+    vault = str(credentials.get("vault") or "").strip()
+    _reject_obsidian_control_chars("vault", vault)
+    if not vault:
+        raise ValueError("vault is required for Obsidian CLI")
+    out: dict[str, Any] = {
+        "vault": vault,
+        "internal_token": new_internal_token(),
+    }
+    binary_path = str(credentials.get("binary_path") or "").strip()
+    if binary_path:
+        _reject_obsidian_control_chars("binary_path", binary_path)
+        if not os.path.isfile(binary_path):
+            raise ValueError("binary_path must be an existing file")
+        out["binary_path"] = binary_path
+    return out
 
 
 def validate_create_credentials(
@@ -229,6 +271,16 @@ def validate_create_credentials(
         if not token:
             raise ValueError("token is required")
         return {"token": token}
+
+    # QCC supports OAuth and API Key. Prefer an explicit api_key when no
+    # access_token is present (callers drop OAuth fields when switching modes).
+    if kind == "qcc":
+        api_key = str(credentials.get("api_key") or "").strip()
+        if api_key and not str(credentials.get("access_token") or "").strip():
+            return {
+                "api_key": api_key,
+                "internal_token": new_internal_token(),
+            }
 
     if entry.auth_kind == "oauth2":
         access_token = str(
@@ -396,6 +448,11 @@ def validate_create_credentials(
         }
 
     if entry.auth_kind == "custom_fields":
+        if entry.kind == "agently-cli":
+            # A caller must never select another instance's CLI credential directory.
+            return {"internal_token": new_internal_token(), "cli_config_key": new_ulid()}
+        if entry.kind == "obsidian-cli":
+            return _obsidian_cli_credentials(credentials)
         if entry.kind == "weknora":
             base_url = normalize_weknora_base_url(str(credentials.get("base_url") or ""))
             out = {
@@ -447,6 +504,9 @@ def _redact_mcp_configs_for_log(configs: dict[str, Any]) -> dict[str, Any]:
                 if key in redacted:
                     redacted[key] = "***"
             entry["headers"] = redacted
+        for key, value in list(entry.items()):
+            if callable(value):
+                entry[key] = f"<callable {getattr(value, '__name__', type(value).__name__)}>"
         out[name] = entry
     return out
 
@@ -573,7 +633,7 @@ def inject_missing_gateway_tools(
     """Register gateway tools in-process when HTTP MCP load did not produce them."""
     import logging
 
-    from harness_agent.mcp import mcp_tool_names
+    from octop_harness.mcp import mcp_tool_names
 
     from octop.infra.connectors.gateway import build_gateway_langchain_tools
 

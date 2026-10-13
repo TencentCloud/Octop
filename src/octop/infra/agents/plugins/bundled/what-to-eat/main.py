@@ -8,7 +8,7 @@ import random
 from datetime import date
 from typing import Any
 
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 _MEALS: dict[str, tuple[str, ...]] = {
     "breakfast": ("豆浆油条", "小笼包", "粥配咸菜", "三明治", "燕麦酸奶"),

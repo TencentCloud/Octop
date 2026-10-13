@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from html import escape
 from pathlib import Path
@@ -66,10 +67,10 @@ async def test_catalog(env):
     assert weiyun["category"] == "office"
     assert weiyun.get("quick_auth_url") == "https://www.weiyun.com/act/openclaw"
     qcc = next(e for e in r.json() if e["kind"] == "qcc")
-    assert qcc["auth_kind"] == "api_key"
+    assert qcc["auth_kind"] == "oauth2"
     assert qcc["mcp_mode"] == "internal"
-    assert qcc["oauth_mode"] is None
-    assert qcc["oauth_ready"] is False
+    assert qcc["oauth_mode"] == "dynamic"
+    assert qcc["oauth_ready"] is True
     assert qcc["category"] == "professional"
     openalex = next(e for e in r.json() if e["kind"] == "openalex")
     assert openalex == {
@@ -93,6 +94,22 @@ async def test_catalog(env):
         "credential_fields": [],
         "supports_quick_auth": True,
     }
+
+
+async def test_catalog_localizes_with_accept_language(env):
+    c, _, auth, _ = env
+    r = await c.get("/api/connectors/catalog", headers={**auth, "Accept-Language": "en"})
+    assert r.status_code == 200
+    openalex = next(e for e in r.json() if e["kind"] == "openalex")
+    assert openalex["name"] == "OpenAlex"
+    assert openalex["description"].startswith("Official MCP")
+    assert "system browser" in (openalex["auth_hint"] or "")
+
+    r = await c.get("/api/connectors/catalog", headers={**auth, "Accept-Language": "zh"})
+    assert r.status_code == 200
+    openalex = next(e for e in r.json() if e["kind"] == "openalex")
+    assert openalex["description"].startswith("官方 MCP")
+    assert "系统浏览器" in (openalex["auth_hint"] or "")
 
 
 async def test_create_tencent_instance(env):
@@ -404,7 +421,8 @@ async def test_auth_info(env):
     assert data["auth_hint"]
 
 
-async def test_oauth_start_public_http_notion_error_is_actionable(tmp_octop_home: Path):
+@pytest.mark.parametrize("kind", ["notion", "qcc"])
+async def test_oauth_start_public_http_notion_error_is_actionable(tmp_octop_home: Path, kind: str):
     write_octop_config(tmp_octop_home)
     async with octop_client(tmp_octop_home) as (c, _srv):
         await bootstrap_admin(c, tmp_octop_home)
@@ -412,14 +430,14 @@ async def test_oauth_start_public_http_notion_error_is_actionable(tmp_octop_home
         mocked_start = AsyncMock()
         with patch("octop.api.routers.connectors.start_oauth_for_target", mocked_start):
             r = await c.post(
-                "/api/connectors/oauth/notion/start",
+                f"/api/connectors/oauth/{kind}/start",
                 headers={**auth, "host": "58.87.70.170"},
                 json={"redirect_after": "/connectors"},
             )
     assert r.status_code == 400
     body = r.json()
     assert body["error"]["code"] == "CONNECTOR_OAUTH_HTTPS_REQUIRED"
-    assert "Notion" in body["error"]["message"]
+    assert "OAuth" in body["error"]["message"]
     assert "HTTPS" in body["error"]["message"]
     mocked_start.assert_not_awaited()
 
@@ -453,9 +471,63 @@ async def test_catalog_weknora_dify_last(env):
     assert "feishu-cli" in kinds
     assert "wecom-cli" in kinds
     assert kinds.index("feishu-cli") < kinds.index("weknora")
+    assert kinds.index("obsidian-cli") < kinds.index("weknora")
     assert kinds.index("wecom-cli") < kinds.index("dify")
     assert kinds.index("didi") < kinds.index("weknora")
     assert kinds[-2:] == ["weknora", "dify"]
+
+
+async def test_obsidian_cli_install_registers_binary(
+    env, monkeypatch: pytest.MonkeyPatch, tmp_path
+):
+    c, _, auth, _ = env
+    home = tmp_path / "home"
+    source = tmp_path / "Obsidian.app" / "Contents" / "MacOS" / "obsidian-cli"
+    source.parent.mkdir(parents=True)
+    source.write_text("obsidian", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("PATH", os.environ.get("PATH", ""))
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.cli_install.obsidian_bundle_candidates",
+        lambda: [str(source)],
+    )
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.cli_install._prefix_writable",
+        lambda _prefix: False,
+    )
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.cli_install._read_version",
+        lambda _path: "1.12.7",
+    )
+    dest_name = "obsidian.exe" if os.name == "nt" else "obsidian"
+    dest = home / ".local" / "bin" / dest_name
+
+    def _which(name: str) -> str | None:
+        if name == "obsidian" and dest.is_file():
+            return str(dest)
+        return None
+
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.cli_install.shutil.which",
+        _which,
+    )
+
+    status = await c.get("/api/connectors/obsidian-cli/cli-status", headers=auth)
+    assert status.status_code == 200
+    body = status.json()
+    assert body["installed"] is False
+    assert body["binary"] == "obsidian"
+    assert body["install_command"]
+    assert "npm" not in body["install_command"]
+
+    installed = await c.post("/api/connectors/obsidian-cli/install-cli", headers=auth)
+    assert installed.status_code == 200
+    payload = installed.json()
+    assert payload["ok"] is True
+    assert payload["already_installed"] is False
+    assert payload["installed"] is True
+    assert dest.is_file()
 
 
 async def test_install_cli_forbidden_for_non_admin(env):
@@ -701,18 +773,31 @@ async def test_custom_mcp_oauth_start_unified(env):
     assert call_kwargs["mcp_url"] == "https://mcp.example.com/mcp"
 
 
-async def test_qcc_gateway_auth_five_resources_and_disconnect(env, monkeypatch):
+@pytest.mark.parametrize("oauth", [False, True])
+async def test_qcc_gateway_auth_five_resources_and_disconnect(env, monkeypatch, oauth):
     from octop.api.routers.internal_mcp import _service
     from octop.infra.connectors import qcc
 
     c, srv, auth, _ = env
+    revoke = AsyncMock()
+    monkeypatch.setattr(qcc, "revoke", revoke)
+    credentials = (
+        {
+            "access_token": "synthetic",
+            "refresh_token": "refresh",
+            "oauth_client_id": "client",
+            "expires_at": 9999999999,
+        }
+        if oauth
+        else {"api_key": "synthetic"}
+    )
     created = await c.post(
         "/api/connector-instances",
         headers=auth,
         json={
             "kind": "qcc",
             "display_name": "QCC",
-            "credentials": {"api_key": "synthetic"},
+            "credentials": credentials,
         },
     )
     assert created.status_code == 201
@@ -737,6 +822,7 @@ async def test_qcc_gateway_auth_five_resources_and_disconnect(env, monkeypatch):
     assert denied.status_code == 403
     deleted = await c.delete(f"/api/connector-instances/{instance_id}", headers=auth)
     assert deleted.status_code == 204
+    assert revoke.await_count == int(oauth)
     gone = await c.post(path, params={"token": token}, json={"id": 2, "method": "tools/list"})
     assert gone.status_code == 404
 

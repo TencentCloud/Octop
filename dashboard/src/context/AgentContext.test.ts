@@ -107,6 +107,8 @@ describe("projectChatAgentOption", () => {
         is_shared: 1,
         is_owner: 0,
         owner_username: "alice",
+        bridge: true,
+        bridge_connection_name: "lab",
       }),
     );
     expect(projected).toEqual({
@@ -118,6 +120,12 @@ describe("projectChatAgentOption", () => {
       is_shared: true,
       is_owner: false,
       owner_username: "alice",
+      bridge: true,
+      bridge_connection_id: null,
+      bridge_connection_name: "lab",
+      bridge_connection_icon: null,
+      bridge_disconnected: false,
+      bridge_inbound: false,
     });
   });
 
@@ -126,5 +134,25 @@ describe("projectChatAgentOption", () => {
     expect(projected.owner_username).toBeNull();
     expect(projected.is_shared).toBe(false);
     expect(projected.is_owner).toBe(false);
+    expect(projected.bridge).toBe(false);
+    expect(projected.bridge_connection_id).toBeNull();
+    expect(projected.bridge_connection_name).toBeNull();
+    expect(projected.bridge_connection_icon).toBeNull();
+    expect(projected.bridge_disconnected).toBe(false);
+    expect(projected.bridge_inbound).toBe(false);
+  });
+
+  it("keeps a disconnected remote expert in the enabled list", () => {
+    const agents = [
+      agent("bridge:cid:aid", "stopped", {
+        bridge: true,
+        bridge_disconnected: true,
+      }),
+      agent("L1", "running"),
+    ];
+    expect(selectEnabledExperts(agents, null).map((a) => a.agent_id)).toEqual([
+      "bridge:cid:aid",
+      "L1",
+    ]);
   });
 });

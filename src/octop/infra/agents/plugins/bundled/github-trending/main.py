@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from typing import Any
 
 import httpx
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 _UA = "Octop-github-trending/0.1.0"
 

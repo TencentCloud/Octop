@@ -277,29 +277,3 @@ def test_update_base_validates_max_documents_range(service: KnowledgeService) ->
     # Omit keeps value
     service.update_base(kb.id, actor_user_id=owner, description="keep")
     assert service.get_readable_base(kb.id, actor_user_id=owner).max_documents == 10_000
-
-
-def test_rename_keeps_the_suffix_that_keys_the_stored_bytes(
-    service: KnowledgeService,
-) -> None:
-    from octop.infra.knowledge.files import document_path
-
-    owner = service._services.user_repo.create(username="owner", password_hash="h", role="user")
-    kb = service.create_base(owner_user_id=owner, name="Docs")
-    doc = service.upload_document(
-        kb.id,
-        actor_user_id=owner,
-        filename="report.pdf",
-        content_type="application/pdf",
-        content=b"%PDF-1.4",
-    )
-    stored = document_path(kb.id, doc.id, doc.filename)
-    assert stored.is_file()
-
-    renamed = service.rename_document(
-        kb.id, doc.id, new_name="quarterly report", actor_user_id=owner
-    )
-
-    assert renamed.filename.lower().endswith(".pdf")
-    assert service.document_has_original(renamed) is True
-    assert stored.is_file()

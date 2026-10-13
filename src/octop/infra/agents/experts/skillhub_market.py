@@ -31,6 +31,14 @@ from octop.infra.agents.experts.catalog import (
     snap_task_examples,
 )
 from octop.infra.skills.install import valid_skillhub_icon_url
+from octop.infra.skills.skillhub_common import (
+    DEFAULT_SKILLHUB_HOST,
+    HTTP_READ_CHUNK,
+    MAX_HTTP_BYTES,
+    MAX_ZIP_COMPRESSION_RATIO,
+    MAX_ZIP_ENTRIES,
+    MAX_ZIP_UNCOMPRESSED_BYTES,
+)
 from octop.infra.utils.ssl_errors import looks_like_ssl_error
 from octop.infra.utils.utf8_text import (
     InvalidSkillManifestEncodingError,
@@ -40,18 +48,17 @@ from octop.infra.utils.utf8_text import (
 logger = logging.getLogger(__name__)
 
 MARKET_EXPERT_PREFIX = "skillhub-skillset-"
-DEFAULT_SKILLHUB_HOST = "https://api.skillhub.cn"
 _HTTP_TIMEOUT = 30
 _SKILLSET_PAGE_SIZE = 100
 _MAX_SKILLSET_PAGES = 20
 _MAX_WORKFLOW_QUICK_PROMPTS = 6
 _MAX_TASK_EXAMPLES = 6
 _SKILLSET_LIST_CACHE_TTL_SECONDS = 300.0
-_MAX_HTTP_BYTES = 32 * 1024 * 1024
-_MAX_ZIP_ENTRIES = 2_000
-_MAX_ZIP_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
-_MAX_ZIP_COMPRESSION_RATIO = 100.0
-_HTTP_READ_CHUNK = 64 * 1024
+_MAX_HTTP_BYTES = MAX_HTTP_BYTES
+_MAX_ZIP_ENTRIES = MAX_ZIP_ENTRIES
+_MAX_ZIP_UNCOMPRESSED_BYTES = MAX_ZIP_UNCOMPRESSED_BYTES
+_MAX_ZIP_COMPRESSION_RATIO = MAX_ZIP_COMPRESSION_RATIO
+_HTTP_READ_CHUNK = HTTP_READ_CHUNK
 # Product nav order for expert market scene tabs (matches dashboard copy).
 _SCENE_ORDER = (
     "ecommerce",
@@ -587,11 +594,6 @@ def _download_skillset_package(slug: str) -> bytes:
     return _http_get(url, accept="application/zip,*/*")
 
 
-def _download_skill_package(slug: str) -> bytes:
-    url = _api_url("/api/v1/download", params={"slug": slug})
-    return _http_get(url, accept="application/zip,*/*")
-
-
 def _parse_skillset_package(
     zip_bytes: bytes,
     *,
@@ -694,17 +696,47 @@ def _write_expert_template(
 
 
 def _download_skill_into_template(*, skill_slug: str, expert_dir: Path) -> None:
+    """Fetch one skill package via the shared ``skills.skillhub_market`` client."""
     validate_skillset_slug(skill_slug)
-    zip_bytes = _download_skill_package(skill_slug)
+    from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
+        SkillHubMarketError as SkillDownloadError,
+    )
+    from octop.infra.skills.skillhub_market import (
+        SkillHubMarketTimeout,
+        SkillHubPackageError,
+        SkillHubPackageTooLarge,
+        download_skillhub_package_files,
+    )
+
     target_dir = expert_dir / "skills" / skill_slug
     target_dir.mkdir(parents=True, exist_ok=True)
     try:
-        _extract_zip(zip_bytes, target_dir)
-    except zipfile.BadZipFile as exc:
+        files = download_skillhub_package_files(skill_slug)
+    except SkillHubMarketTimeout as exc:
         raise SkillHubMarketError(
-            f"SkillHub skill package {skill_slug!r} is not a valid zip",
+            str(exc),
+            kind=SkillHubMarketErrorKind.UPSTREAM_TIMEOUT,
+        ) from exc
+    except SkillHubPackageTooLarge as exc:
+        raise SkillHubMarketError(
+            str(exc),
+            kind=SkillHubMarketErrorKind.PACKAGE_TOO_LARGE,
+        ) from exc
+    except SkillHubPackageError as exc:
+        raise SkillHubMarketError(
+            str(exc),
             kind=SkillHubMarketErrorKind.PACKAGE_INVALID,
         ) from exc
+    except SkillDownloadError as exc:
+        raise SkillHubMarketError(
+            str(exc),
+            kind=SkillHubMarketErrorKind.UPSTREAM_FAILED,
+        ) from exc
+
+    for rel, payload in files:
+        dest = target_dir / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(payload)
 
 
 def _extract_zip(zip_bytes: bytes, target_dir: Path) -> None:

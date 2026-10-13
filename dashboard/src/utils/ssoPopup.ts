@@ -6,6 +6,9 @@ export type SsoPopupMessage = {
   redirect?: string;
   bind?: boolean;
   error?: string;
+  /** Present on successful login popups so the opener can store session-only tokens. */
+  access_token?: string;
+  remember?: boolean;
 };
 
 export function isSsoPopup(): boolean {

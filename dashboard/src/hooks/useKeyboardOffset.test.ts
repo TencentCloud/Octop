@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
 import {
   KEYBOARD_GAP_THRESHOLD_PX,
   measureKeyboardOffset,
+  measureLayoutHeight,
   useKeyboardOffset,
 } from "./useKeyboardOffset";
 
@@ -28,6 +29,20 @@ describe("measureKeyboardOffset", () => {
   });
 });
 
+describe("measureLayoutHeight", () => {
+  it("prefers the larger of clientHeight and innerHeight", () => {
+    Object.defineProperty(document.documentElement, "clientHeight", {
+      configurable: true,
+      value: 900,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 800,
+    });
+    expect(measureLayoutHeight()).toBe(900);
+  });
+});
+
 describe("useKeyboardOffset", () => {
   const originalMatchMedia = window.matchMedia;
   const originalVisualViewport = window.visualViewport;
@@ -41,18 +56,54 @@ describe("useKeyboardOffset", () => {
     document.documentElement.style.removeProperty("--keyboard-offset");
   });
 
-  it("does not set --keyboard-offset outside PWA standalone", () => {
+  function stubViewport(height: number, offsetTop = 0) {
+    const vv = {
+      height,
+      offsetTop,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: vv,
+    });
+    return vv;
+  }
+
+  function stubMatchMedia(standalone: boolean) {
     window.matchMedia = ((query: string) => ({
-      matches: false,
+      matches: query.includes("standalone") ? standalone : false,
       media: query,
       addEventListener() {},
       removeEventListener() {},
     })) as typeof window.matchMedia;
+  }
+
+  it("does nothing in a mobile browser tab", () => {
+    stubMatchMedia(false);
+    stubViewport(500, 0);
+    renderHook(() => useKeyboardOffset());
+    expect(
+      document.documentElement.style.getPropertyValue("--keyboard-offset"),
+    ).toBe("");
+  });
+
+  it("sets --keyboard-offset in PWA when a soft keyboard is open", () => {
+    stubMatchMedia(true);
+    Object.defineProperty(document.documentElement, "clientHeight", {
+      configurable: true,
+      value: 844,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 844,
+    });
+    stubViewport(500, 0);
 
     renderHook(() => useKeyboardOffset());
 
     expect(
       document.documentElement.style.getPropertyValue("--keyboard-offset"),
-    ).toBe("");
+    ).toBe("344px");
   });
 });

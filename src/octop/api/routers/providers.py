@@ -12,24 +12,12 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from octop.api.deps import current_user, get_server, require_permission
-from octop.infra.agents.providers.model_flags import is_local_runtime_provider
-from octop.infra.agents.providers.presets import load_provider_presets
-from octop.infra.agents.providers.probe import (
-    fetch_openai_compatible_models,
-    make_probe_provider_row,
-    probe_provider_row,
-    provider_headers,
-)
-from octop.infra.agents.providers.reasoning import reasoning_capability
-from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
-from octop.infra.agents.providers.store import clear_stale_pins_for_provider
-from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.providers.codex_apply import (
+from octop.infra.agents.providers.codex_apply import (
     CODEX_PROVIDER_NAME,
     apply_codex_credentials,
     sync_refreshed_codex_api_key,
 )
-from octop.infra.providers.codex_oauth import (
+from octop.infra.agents.providers.codex_oauth import (
     DEVICE_POLL_TIMEOUT_S,
     CodexOAuthDeviceCodeError,
     exchange_device_code,
@@ -37,6 +25,23 @@ from octop.infra.providers.codex_oauth import (
     poll_device_token,
     request_device_code,
 )
+from octop.infra.agents.providers.model_flags import is_local_runtime_provider
+from octop.infra.agents.providers.presets import load_provider_presets
+from octop.infra.agents.providers.probe import (
+    fetch_openai_compatible_models,
+    make_probe_provider_row,
+    parse_provider_extra,
+    probe_provider_row,
+    provider_headers,
+)
+from octop.infra.agents.providers.reasoning import reasoning_capability
+from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
+from octop.infra.agents.providers.store import (
+    clear_stale_pins_for_provider,
+    merge_stream_usage_extra,
+    resolve_provider_stream_usage,
+)
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
@@ -51,6 +56,7 @@ class ProviderCreateBody(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     extra_json: str | None = None
+    stream_usage: bool | None = None
     models: list[dict[str, Any]] | None = None
     note: str | None = None
 
@@ -60,6 +66,7 @@ class ProviderPatchBody(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     extra_json: str | None = None
+    stream_usage: bool | None = None
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
@@ -67,13 +74,58 @@ class ProviderPatchBody(BaseModel):
 
 # Fields that affect harness factory / agent runtime when patched.
 _PROVIDER_REHYDRATE_FIELDS = frozenset(
-    {"kind", "base_url", "api_key", "extra_json", "models", "enabled"}
+    {"kind", "base_url", "api_key", "extra_json", "stream_usage", "models", "enabled"}
 )
 
 
 def _patch_requires_provider_rehydrate(body: ProviderPatchBody) -> bool:
     """True when the patch touches fields that require ``on_provider_changed``."""
     return bool(body.model_fields_set & _PROVIDER_REHYDRATE_FIELDS)
+
+
+def _blank_to_none(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _provider_patch_updates(
+    body: ProviderPatchBody,
+    *,
+    current_extra_json: str | None,
+) -> dict[str, Any]:
+    """Map an explicit JSON patch onto repo kwargs.
+
+    Omitted fields are left out so they stay unchanged. ``null`` (and a blank
+    API key) is forwarded as ``None``, which clears the stored value. Revoke
+    sends ``{"api_key": null}``; treating that the same as "field absent" left
+    the key in place and the provider still looked authorized.
+
+    ``stream_usage`` is stored inside ``extra_json``. A patch that only sets
+    that flag rewrites the current blob and must not clear the API key.
+    """
+    fields = body.model_fields_set
+    updates: dict[str, Any] = {}
+    if "kind" in fields:
+        updates["kind"] = body.kind
+    if "base_url" in fields:
+        updates["base_url"] = _blank_to_none(body.base_url)
+    if "api_key" in fields:
+        updates["api_key"] = _blank_to_none(body.api_key)
+    if "extra_json" in fields or "stream_usage" in fields:
+        if "stream_usage" in fields:
+            base = body.extra_json if "extra_json" in fields else current_extra_json
+            updates["extra_json"] = merge_stream_usage_extra(base, body.stream_usage)
+        else:
+            updates["extra_json"] = body.extra_json
+    if "models" in fields:
+        updates["models_json"] = json.dumps(body.models) if body.models is not None else None
+    if "note" in fields:
+        updates["note"] = _blank_to_none(body.note)
+    if "enabled" in fields:
+        updates["enabled"] = body.enabled
+    return updates
 
 
 class ProviderTestBody(BaseModel):
@@ -126,6 +178,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
             model["reasoning"] = True
             model["reasoning_config"] = capability
         models.append(model)
+    extra = parse_provider_extra(r)
     return {
         "id": r.id,
         "name": r.name,
@@ -135,6 +188,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "models": models,
         "note": r.note,
         "enabled": bool(r.enabled),
+        "stream_usage": resolve_provider_stream_usage(provider_name=r.name, extra=extra),
     }
 
 
@@ -142,7 +196,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
 async def list_provider_presets(
     _: Any = Depends(current_user),
 ) -> list[dict[str, Any]]:
-    """Return built-in provider presets from harness-agent."""
+    """Return built-in provider presets from octop-harness."""
     return load_provider_presets()
 
 
@@ -222,7 +276,7 @@ async def admin_create_provider(
         kind=body.kind,
         base_url=body.base_url,
         api_key=body.api_key,
-        extra_json=body.extra_json,
+        extra_json=merge_stream_usage_extra(body.extra_json, body.stream_usage),
         models_json=models_json,
         note=body.note,
     )
@@ -241,18 +295,9 @@ async def admin_patch_provider(
     row = server.services.provider_repo.get(provider_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
-    import json as _json
-
-    models_json = _json.dumps(body.models) if body.models is not None else None
     server.services.provider_repo.update(
         provider_id,
-        kind=body.kind,
-        base_url=body.base_url,
-        api_key=body.api_key,
-        extra_json=body.extra_json,
-        models_json=models_json,
-        note=body.note,
-        enabled=body.enabled,
+        **_provider_patch_updates(body, current_extra_json=row.extra_json),
     )
     if body.models is not None:
         clear_stale_pins_for_provider(
@@ -464,7 +509,7 @@ async def codex_oauth_logout(
     _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> None:
-    from octop.infra.providers.codex_oauth import delete_codex_token
+    from octop.infra.agents.providers.codex_oauth import delete_codex_token
 
     delete_codex_token(server.services.paths)
     row = server.services.provider_repo.get_by_name(CODEX_PROVIDER_NAME)

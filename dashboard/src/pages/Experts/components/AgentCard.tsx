@@ -36,6 +36,8 @@ import {
   isAgentModelConfigError,
 } from "../../../utils/agentError";
 import styles from "../index.module.less";
+import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
+import { expertDeleteConfirm } from "../../../utils/remoteExpert";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
@@ -112,9 +114,9 @@ export const AgentCard = memo(function AgentCard({
     setLocalError(agent.last_error);
   }, [agent.state, agent.last_error]);
 
-  // Poll during transient states
+  // Poll during transient states (local agents only — bridge shadows have no runtime status).
   useEffect(() => {
-    if (!TRANSIENT.has(localState)) {
+    if (agent.bridge || !TRANSIENT.has(localState)) {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
       return;
@@ -140,10 +142,17 @@ export const AgentCard = memo(function AgentCard({
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
     };
-  }, [localState, agent.agent_id, onStateChange, onPollSettled, refreshAgents]);
+  }, [
+    localState,
+    agent.agent_id,
+    agent.bridge,
+    onStateChange,
+    onPollSettled,
+    refreshAgents,
+  ]);
 
   useEffect(() => {
-    if (localState !== "running") {
+    if (agent.bridge || localState !== "running") {
       setMemorySlimming(false);
       if (maintPollRef.current) {
         clearInterval(maintPollRef.current);
@@ -185,7 +194,7 @@ export const AgentCard = memo(function AgentCard({
         maintPollRef.current = null;
       }
     };
-  }, [localState, agent.agent_id]);
+  }, [localState, agent.agent_id, agent.bridge]);
 
   const isTransient = TRANSIENT.has(localState);
   const switchChecked = localState === "running" || localState === "starting";
@@ -277,6 +286,7 @@ export const AgentCard = memo(function AgentCard({
   const chatReady = isAgentChatReady(localState);
   const sharedViewer = isSharedExpertViewer(agent);
   const isOwner = agent.is_owner !== false;
+  const deleteConfirm = expertDeleteConfirm(agent, t);
 
   return (
     <>
@@ -312,6 +322,7 @@ export const AgentCard = memo(function AgentCard({
                     : t("experts.share.badge")}
                 </Tag>
               )}
+              <RemoteExpertHint agent={agent} />
             </div>
             <div className={styles.agentCardIdRow}>
               <Tooltip title={t("experts.copyAgentId")}>
@@ -441,8 +452,8 @@ export const AgentCard = memo(function AgentCard({
               </Tooltip>
 
               <Popconfirm
-                title={t("experts.confirmDelete", { name: agent.name })}
-                description={t("experts.confirmDeleteHint")}
+                title={deleteConfirm.title}
+                description={deleteConfirm.description}
                 onConfirm={() => void handleDelete()}
                 okText={t("common.delete", "Delete")}
                 cancelText={t("common.cancel")}

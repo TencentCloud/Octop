@@ -6,14 +6,19 @@ import styles from "../index.module.less";
 interface ScrollToBottomButtonProps {
   visible: boolean;
   onClick: () => void;
+  /** Live generation below the fold — emphasize "new replies". */
+  hasNewActivity?: boolean;
 }
 
 export default function ScrollToBottomButton({
   visible,
   onClick,
+  hasNewActivity = false,
 }: ScrollToBottomButtonProps) {
   const { t } = useTranslation();
-  const label = t("chat.scrollToBottom");
+  const label = hasNewActivity
+    ? t("chat.newRepliesBelow", { defaultValue: "有新回复" })
+    : t("chat.scrollToBottom");
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [overlapsTool, setOverlapsTool] = useState(false);
 
@@ -65,7 +70,7 @@ export default function ScrollToBottomButton({
       window.removeEventListener("resize", updateOverlap);
       resizeObserver?.disconnect();
     };
-  }, [visible]);
+  }, [visible, hasNewActivity]);
 
   const actuallyVisible = visible && !overlapsTool;
   return (
@@ -75,6 +80,10 @@ export default function ScrollToBottomButton({
         actuallyVisible
           ? styles.scrollToBottomBtnVisible
           : styles.scrollToBottomBtnHidden
+      }${
+        hasNewActivity && actuallyVisible
+          ? ` ${styles.scrollToBottomBtnHasNew}`
+          : ""
       }`}
       onClick={onClick}
       type="button"

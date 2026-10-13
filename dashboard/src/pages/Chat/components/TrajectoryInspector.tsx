@@ -34,6 +34,14 @@ function payloadNumber(
   return typeof value === "number" ? value : null;
 }
 
+function payloadString(
+  payload: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = payload[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 /** Prefer the assistant row for a request; fall back to any matching event. */
 export function findSourceEventId(
   events: readonly TrajectoryEvent[],
@@ -125,6 +133,8 @@ function SummaryPane({
   onSelectEvent?: (eventId: string) => void;
 }) {
   const { t } = useTranslation();
+  const model =
+    event.kind === "assistant" ? payloadString(event.payload, "model") : null;
   const inputTokens = payloadNumber(event.payload, "input_tokens");
   const outputTokens = payloadNumber(event.payload, "output_tokens");
   const sourceId =
@@ -145,6 +155,12 @@ function SummaryPane({
           <dt>{t("chat.trajectoryInspectorKind", "Kind")}</dt>
           <dd>{kindLabelFor(event.kind)}</dd>
         </div>
+        {model != null ? (
+          <div className={styles.field}>
+            <dt>{t("chat.trajectoryInspectorModel", "Model")}</dt>
+            <dd>{model}</dd>
+          </div>
+        ) : null}
         {event.request_seq != null ? (
           <div className={styles.field}>
             <dt>{t("chat.trajectoryInspectorSource", "Source")}</dt>

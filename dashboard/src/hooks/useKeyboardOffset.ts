@@ -1,52 +1,48 @@
 import { useEffect } from "react";
-
-/** Home-indicator / browser chrome is ~34–50px; real keyboards are 200px+. */
-export const KEYBOARD_GAP_THRESHOLD_PX = 80;
-
-function isPwa(): boolean {
-  if (window.matchMedia("(display-mode: standalone)").matches) return true;
-  const nav = navigator as Navigator & { standalone?: boolean };
-  return nav.standalone === true;
-}
+import {
+  isPwaDisplay,
+  measureKeyboardOffset,
+  measureLayoutHeight,
+} from "./viewport";
 
 /**
- * VisualViewport leftover after subtracting offsetTop. Tiny gaps are the
- * iOS home indicator, not a keyboard — those must stay 0 or CSS that also
- * adds `env(safe-area-inset-bottom)` will paint two empty bands.
- */
-export function measureKeyboardOffset(
-  innerHeight: number,
-  viewport: Pick<VisualViewport, "height" | "offsetTop">,
-): number {
-  const raw = Math.max(0, innerHeight - viewport.height - viewport.offsetTop);
-  return raw > KEYBOARD_GAP_THRESHOLD_PX ? Math.round(raw) : 0;
-}
-
-/**
- * Tracks `--keyboard-offset` on the document root for PWA soft-keyboard layout.
+ * PWA only: keep `inset:0` shell, expose `--keyboard-offset` so the chat
+ * composer can clear the soft keyboard (and not the home-indicator twice).
+ *
+ * Mobile browser clipping is handled by `useKeepInVisualViewport` on the
+ * composer — do not also resize `#root` here (ineffective on Android Chrome).
  */
 export function useKeyboardOffset() {
   useEffect(() => {
-    if (!isPwa()) return;
+    if (!isPwaDisplay()) return;
     const vv = window.visualViewport;
     if (!vv) return;
 
+    const root = document.documentElement;
     const update = () => {
-      const keyboardHeight = measureKeyboardOffset(window.innerHeight, vv);
-      document.documentElement.style.setProperty(
-        "--keyboard-offset",
-        `${keyboardHeight}px`,
-      );
+      const keyboardHeight = measureKeyboardOffset(measureLayoutHeight(), vv);
+      root.style.setProperty("--keyboard-offset", `${keyboardHeight}px`);
     };
 
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
     update();
 
     return () => {
       vv.removeEventListener("resize", update);
       vv.removeEventListener("scroll", update);
-      document.documentElement.style.removeProperty("--keyboard-offset");
+      window.removeEventListener("resize", update);
+      root.style.removeProperty("--keyboard-offset");
     };
   }, []);
 }
+
+// Re-export helpers still imported by call sites / tests.
+export {
+  isPwaDisplay,
+  KEYBOARD_GAP_THRESHOLD_PX,
+  measureKeyboardOffset,
+  measureLayoutHeight,
+  needsComposerVisualViewportFix,
+} from "./viewport";

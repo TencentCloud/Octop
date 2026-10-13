@@ -96,10 +96,10 @@ async def test_shutdown_browser_forces_current_user_profile() -> None:
     result = SimpleNamespace(success=True, error=None)
     with (
         patch(
-            "harness_browser.tool_interface.browser_tool",
+            "octop_browser.tool_interface.browser_tool",
             new=AsyncMock(return_value=result),
         ) as tool,
-        patch("harness_browser.tool_interface._registry", {"work": object()}),
+        patch("octop_browser.tool_interface._registry", {"work": object()}),
     ):
         body = await harness_mod.shutdown_browser(
             user=SimpleNamespace(id=7),

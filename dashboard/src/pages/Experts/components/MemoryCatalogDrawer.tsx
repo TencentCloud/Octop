@@ -26,6 +26,7 @@ export default function MemoryCatalogDrawer({
       title={title ?? t("pageShell.memory.title")}
       open={open}
       onClose={onClose}
+      agentId={agentId}
     >
       <div
         style={{

@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 
 def _payload(data: dict[str, Any], text: str) -> str:

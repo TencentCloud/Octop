@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -145,6 +146,69 @@ async def test_boot_skips_disabled_agents(tmp_path: Path, monkeypatch) -> None:
 
     # only one agent should be started
     fake_hm.acreate_agent.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_boot_start_timeout_marks_failed_and_continues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hung start must not block boot(); later agents still come up."""
+    from octop.i18n.domains.agents import AGENT_START_TIMEOUT
+
+    services = _make_services(tmp_path)
+    _patch_harness(monkeypatch)
+    services.repos.agent_repo.create(agent_id="slow1", user_id=None, name="slow")
+    services.repos.agent_repo.create(agent_id="ok1", user_id=None, name="ok")
+    registry = AgentManager(repos=services.repos, paths=services.paths)
+    original = registry._start_agent
+
+    async def maybe_hang(row: Any) -> Any:
+        if row.agent_id == "slow1":
+            await asyncio.Event().wait()
+        return await original(row)
+
+    monkeypatch.setattr(registry, "_start_agent", maybe_hang)
+    monkeypatch.setattr("octop.infra.agents.manager._AGENT_BOOT_START_TIMEOUT", 0.05)
+
+    await asyncio.wait_for(registry.boot(), timeout=2)
+
+    slow = services.repos.agent_repo.get("slow1")
+    ok = services.repos.agent_repo.get("ok1")
+    assert slow is not None
+    assert slow.last_state == "failed"
+    assert slow.last_error == AGENT_START_TIMEOUT
+    assert ok is not None
+    assert ok.last_state == "running"
+
+
+@pytest.mark.asyncio
+async def test_boot_start_timeout_keeps_registered_agent_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If harness already registered the agent, a late timeout stays running."""
+    services = _make_services(tmp_path)
+    _patch_harness(monkeypatch)
+    services.repos.agent_repo.create(agent_id="late1", user_id=None, name="late")
+    registry = AgentManager(repos=services.repos, paths=services.paths)
+
+    async def hang_after_register(row: Any) -> Any:
+        hm = registry._harness_manager
+        assert hm is not None
+        hm.create_agent(
+            SimpleNamespace(workspace_dir=None, backend=None, skills_dir=None),
+            agent_id=row.agent_id,
+        )
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(registry, "_start_agent", hang_after_register)
+    monkeypatch.setattr("octop.infra.agents.manager._AGENT_BOOT_START_TIMEOUT", 0.05)
+
+    await asyncio.wait_for(registry.boot(), timeout=2)
+
+    row = services.repos.agent_repo.get("late1")
+    assert row is not None
+    assert row.last_state == "running"
+    assert not row.last_error
 
 
 # ---------------------------------------------------------------------------
@@ -1179,7 +1243,7 @@ async def test_create_with_unknown_template_does_not_crash(tmp_path: Path) -> No
 
 def _spy_resolve_backend(monkeypatch) -> list[Any]:
     """Record every ``resolve_backend`` call made while resolving a workspace."""
-    import harness_agent.backends as harness_backends  # noqa: PLC0415
+    import octop_harness.backends as harness_backends  # noqa: PLC0415
 
     calls: list[Any] = []
     original = harness_backends.resolve_backend

@@ -11,6 +11,7 @@ import type {
   CallEntry,
 } from "../../../api/types";
 import type { HitlSessionPolicy } from "../../../api/types/hitl";
+import type { ThreadArtifact } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
 import { shouldBlockHistoryRefresh } from "./wsResumeGate";
 import {
@@ -29,6 +30,9 @@ import {
   parseToolExecutionFeedback,
 } from "../../../utils/toolMediaBlocks";
 import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessage";
+import { mergeHistoryWithLocalTail } from "../utils/mergeHistoryTail";
+import { promoteAskUserToolMessage } from "../utils/pendingHitl";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import type {
   ChatAttachment,
   ChatMessage,
@@ -473,7 +477,14 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
         entry.speaker_agent_id.trim()
           ? entry.speaker_agent_id.trim()
           : undefined,
-      teamWrapup: Boolean((entry as { team_wrapup?: boolean }).team_wrapup),
+      teamWrapup: Boolean(entry.team_wrapup),
+      editedFiles: Array.isArray(entry.edited_files)
+        ? entry.edited_files
+            .filter(
+              (p): p is string => typeof p === "string" && p.trim().length > 0,
+            )
+            .map((p) => p.trim())
+        : undefined,
     };
   });
 
@@ -499,6 +510,9 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
             output: current.toolData?.output,
             errorCode: current.toolData?.errorCode,
             returnCode: current.toolData?.returnCode,
+            ...(current.toolData?.artifact != null
+              ? { artifact: current.toolData.artifact }
+              : {}),
           },
           status: current.status,
           errorInfo: current.errorInfo,
@@ -629,7 +643,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   }
   flushTurn();
 
-  return merged;
+  return merged.map(promoteAskUserToolMessage);
 }
 
 function toHistoryContentBlocks(content: unknown): unknown[] {
@@ -661,6 +675,7 @@ export function convertHistoryMessages(
     error_code?: string;
     agent_id?: string;
     team_wrapup?: boolean;
+    edited_files?: string[];
   }>,
   agentId?: string,
 ): ChatMessage[] {
@@ -688,12 +703,25 @@ export function convertHistoryMessages(
           ? message.agent_id.trim()
           : undefined,
       team_wrapup: message.team_wrapup === true,
+      edited_files: Array.isArray(message.edited_files)
+        ? message.edited_files.filter(
+            (p): p is string => typeof p === "string" && p.trim().length > 0,
+          )
+        : undefined,
     };
   });
   const converted = convertCallEntries(entries).filter(
     isDisplayableHistoryMessage,
   );
-  return agentId ? enrichAttachmentPreviewUrls(converted, agentId) : converted;
+  const rewritten = agentId
+    ? converted.map((message) => {
+        const speaker = rewritePeerSpeakerId(agentId, message.speakerAgentId);
+        return speaker && speaker !== message.speakerAgentId
+          ? { ...message, speakerAgentId: speaker }
+          : message;
+      })
+    : converted;
+  return agentId ? enrichAttachmentPreviewUrls(rewritten, agentId) : rewritten;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -708,13 +736,12 @@ async function loadThreadHistory(
   nextOffset: number;
   nextCursor: string | null;
   turnActive: boolean;
-  artifacts: string[];
+  artifacts: ThreadArtifact[];
   projectionLoading: boolean;
   retryAfterMs: number;
 }> {
-  const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE } = await import(
-    "../../../api/modules/octopThreads"
-  );
+  const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE, normalizeThreadArtifacts } =
+    await import("../../../api/modules/octopThreads");
   const {
     syncSessionArtifacts,
     syncSessionConversationMode,
@@ -727,12 +754,11 @@ async function loadThreadHistory(
     offset,
     cursor: params.cursor,
   });
-  const artifacts = Array.isArray(history.artifacts)
-    ? history.artifacts.filter(
-        (path): path is string =>
-          typeof path === "string" && path.trim().length > 0,
-      )
-    : [];
+  const artifacts = normalizeThreadArtifacts(
+    history.artifacts,
+    agentId,
+    history.artifact_refs,
+  );
   if (offset === 0) {
     syncSessionArtifacts(threadId, artifacts);
     syncSessionConversationMode(
@@ -825,6 +851,7 @@ export function useChat(
     historyLoadingMore,
     historyHydrated,
     pendingPlanPath,
+    liveSpeakers,
   } = useSyncExternalStore(subscribeStore, getStoreSnapshot);
 
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -953,11 +980,28 @@ export function useChat(
           });
         }
         if (loadGenRef.current !== gen) return;
-        chatStore.setHistoryPage(key, loaded.messages, {
-          hasMore: loaded.hasMore,
-          nextOffset: loaded.nextOffset,
-          nextCursor: loaded.nextCursor,
-        });
+        // Re-read after the await. A send during this fetch appends a local
+        // turn the server page does not have yet; replacing the list drops
+        // that bubble while the websocket turn keeps running.
+        const current = chatStore.getSnapshot(key);
+        const loadedIds = new Set(loaded.messages.map((message) => message.id));
+        const firstOverlap = current.messages.findIndex((message) =>
+          loadedIds.has(message.id),
+        );
+        const keptOlder = firstOverlap > 0;
+        chatStore.setHistoryPage(
+          key,
+          mergeHistoryWithLocalTail(loaded.messages, current.messages),
+          {
+            hasMore: keptOlder ? current.historyHasMore : loaded.hasMore,
+            nextOffset: keptOlder
+              ? current.historyNextOffset
+              : loaded.nextOffset,
+            nextCursor: keptOlder
+              ? current.historyNextCursor
+              : loaded.nextCursor,
+          },
+        );
         setHistoryError(false);
         attachAfterHistory(key, targetThreadId);
       } catch {
@@ -1092,21 +1136,23 @@ export function useChat(
 
         const { messages: latest, hasMore, nextOffset, nextCursor } = loaded;
 
-        // Keep older pages the user already scrolled in; replace the overlapping
-        // latest-page window with the server copy so truncated WS turns heal.
+        // Keep older pages and any local turn sent while this refresh was
+        // in flight. `snap` is from before the await and must not be the
+        // message source — a send during the fetch lives only on the store.
         const latestIds = new Set(latest.map((m) => m.id));
         const firstOverlap = current.messages.findIndex((m) =>
           latestIds.has(m.id),
         );
-        const olderPrefix =
-          firstOverlap > 0 ? current.messages.slice(0, firstOverlap) : [];
-        chatStore.setHistoryPage(key, [...olderPrefix, ...latest], {
-          hasMore: olderPrefix.length > 0 ? current.historyHasMore : hasMore,
-          nextOffset:
-            olderPrefix.length > 0 ? current.historyNextOffset : nextOffset,
-          nextCursor:
-            olderPrefix.length > 0 ? current.historyNextCursor : nextCursor,
-        });
+        const keptOlder = firstOverlap > 0;
+        chatStore.setHistoryPage(
+          key,
+          mergeHistoryWithLocalTail(latest, current.messages),
+          {
+            hasMore: keptOlder ? current.historyHasMore : hasMore,
+            nextOffset: keptOlder ? current.historyNextOffset : nextOffset,
+            nextCursor: keptOlder ? current.historyNextCursor : nextCursor,
+          },
+        );
         setHistoryError(false);
       } catch {
         if (loadGenRef.current === gen) {
@@ -1172,6 +1218,7 @@ export function useChat(
       storeKey?: string,
       dismissed?: boolean,
       hitlPolicy?: HitlSessionPolicy,
+      pendingId?: string,
     ) => {
       if (!agentId) return;
       const key = storeKey || stableSessionId;
@@ -1188,6 +1235,7 @@ export function useChat(
         },
         dismissed,
         hitlPolicy,
+        pendingId,
       );
     },
     [agentId, stableSessionId, refreshHistory],
@@ -1206,6 +1254,7 @@ export function useChat(
     historyRefreshing,
     historyHydrated,
     pendingPlanPath,
+    liveSpeakers,
     sendMessage,
     editAndResend,
     cancelStream,

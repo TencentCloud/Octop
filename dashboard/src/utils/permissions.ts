@@ -26,10 +26,16 @@ export const PERM = {
   plugins: ["plugins"],
   securityPage: ["security", "admin_console"],
   advancedPage: ["update", "envs", "tls", "observability", "backup", "captcha"],
+  experts: ["experts"],
+  tasks: ["tasks"],
+  tokenUsage: ["token_usage"],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Sidebar item key → permission keys. Shared with path guards. */
 export const NAV_PERMISSIONS = {
+  experts: PERM.experts,
+  tasks: PERM.tasks,
+  "token-usage": PERM.tokenUsage,
   channels: PERM.channels,
   connectors: PERM.connectors,
   "skill-packages": PERM.skillPackages,
@@ -50,10 +56,12 @@ export type NavPermissionKey = keyof typeof NAV_PERMISSIONS;
 
 export const USERS_TAB_PERMISSIONS = {
   local: "users",
+  roles: "users",
   feishu: "sso",
   wecom: "sso",
   dingtalk: "sso",
   oidc: "sso",
+  ldap: "sso",
 } as const;
 
 export const ADVANCED_TAB_PERMISSIONS = {
@@ -180,6 +188,9 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   ) {
     return PERM.knowledgeBasesPage;
   }
+  if (pathname === "/bridge" || pathname.startsWith("/bridge/")) {
+    return null;
+  }
   if (pathname === "/remote-desktop/desktop") {
     return PERM.desktop;
   }
@@ -210,6 +221,15 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   // ACP: no module key this round — admin role only.
   if (pathname === "/acp" || pathname.startsWith("/acp/")) {
     return "admin";
+  }
+  if (pathname === "/experts" || pathname.startsWith("/experts/")) {
+    return PERM.experts;
+  }
+  if (pathname === "/tasks" || pathname.startsWith("/tasks/")) {
+    return PERM.tasks;
+  }
+  if (pathname === "/token-usage" || pathname.startsWith("/token-usage/")) {
+    return PERM.tokenUsage;
   }
   return null;
 }

@@ -7,7 +7,14 @@ import React, {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Tooltip, Spin, Segmented } from "antd";
-import { X, PanelRight, PanelBottom, SquareTerminal, Send } from "lucide-react";
+import {
+  X,
+  PanelRight,
+  PanelBottom,
+  SquareTerminal,
+  Send,
+  Square,
+} from "lucide-react";
 import type { OctopAgent } from "../../../../context/AgentContext";
 import { terminalAiApi } from "../../../../api/modules/terminalAi";
 import type { TerminalContext } from "../../../../api/modules/terminalAi";
@@ -424,7 +431,6 @@ export default function AiPanel({
                 messages={messages}
                 isStreaming={isStreaming}
                 sessionKey={threadId ?? undefined}
-                onCancel={cancelStream}
                 onRunShellCommand={handleRunShellCommand}
                 shellCommandDisabled={shellDisabled}
                 shellCommandDisabledTitle={shellDisabledTitle}
@@ -472,11 +478,19 @@ export default function AiPanel({
                   <button
                     type="button"
                     className={styles.sendBtn}
-                    disabled={!inputValue.trim() || inputDisabled}
-                    onClick={handleSend}
-                    title={t("terminal.ai.send")}
+                    disabled={
+                      isStreaming
+                        ? inputDisabled
+                        : !inputValue.trim() || inputDisabled
+                    }
+                    onClick={isStreaming ? cancelStream : handleSend}
+                    title={
+                      isStreaming
+                        ? t("chat.stop", "停止")
+                        : t("terminal.ai.send")
+                    }
                   >
-                    <Send size={16} />
+                    {isStreaming ? <Square size={16} /> : <Send size={16} />}
                   </button>
                 ) : null}
               </div>

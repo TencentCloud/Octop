@@ -46,11 +46,13 @@ export function useMemoryMaintenance(
 ) {
   const [status, setStatus] = useState<MemoryMaintenanceStatus | null>(null);
   const [connectionLost, setConnectionLost] = useState(false);
+  const bridgeAgent = Boolean(agentId?.startsWith("bridge:"));
 
   useEffect(() => {
     setStatus(null);
     setConnectionLost(false);
-    if (!agentId || !enabled) {
+    // Bridge shadows have no local harness status / memory maintenance.
+    if (!agentId || !enabled || bridgeAgent) {
       return;
     }
     let stop = false;
@@ -78,7 +80,7 @@ export function useMemoryMaintenance(
       stop = true;
       if (timer != null) window.clearTimeout(timer);
     };
-  }, [agentId, enabled]);
+  }, [agentId, enabled, bridgeAgent]);
 
   const phase = status?.phase ?? "idle";
   return {

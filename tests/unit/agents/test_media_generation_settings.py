@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from octop.infra.agents.media_generation import (
+from octop.infra.agents.settings.media_generation import (
     DEFAULT_PROVIDER_ID,
     MediaGenerationSettingsStore,
     MediaProviderUpdate,

@@ -20,7 +20,7 @@ def default_agent_backend_spec(workspace_dir: Path) -> dict[str, Any]:
     the process current-drive root, which often differs from the drive hosting
     ``workspace_dir`` — scope the default to the agent workspace instead.
     """
-    from harness_agent.backends import DEFAULT_BACKEND_SPEC  # noqa: PLC0415
+    from octop_harness.backends import DEFAULT_BACKEND_SPEC  # noqa: PLC0415
 
     if os.name == "nt":
         return {
@@ -119,6 +119,10 @@ def resolve_agent_backend_spec(
     cleaned = dict(spec)
     if kind not in ("named", "composite") and "name" in cleaned:
         del cleaned["name"]
+    if kind == "postgres":
+        from octop.infra.backend.postgres_spec import normalize_postgres_spec
+
+        return normalize_postgres_spec(cleaned)
     return cleaned
 
 

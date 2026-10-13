@@ -2,9 +2,10 @@ import { useCallback, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { message as antMessage } from "@/utils/antdMessage";
 import { useTranslation } from "react-i18next";
+import { apiErrorMessage } from "../utils/apiError";
 import { useAgent, selectEnabledExperts } from "../context/AgentContext";
 import { octopThreadsApi } from "../api/modules/octopThreads";
-import { apiErrorMessage } from "../utils/apiError";
+import { deleteConversation } from "../pages/Chat/utils/deleteConversation";
 import MinimalAgentSessionNav from "../pages/Chat/components/MinimalAgentSessionNav";
 import { emitSessionEvent } from "../pages/Chat/hooks/chatStore";
 import { formatThreadTitle } from "../pages/Chat/utils/threadTitle";
@@ -70,17 +71,20 @@ export default function MinimalRecordsHost() {
   );
 
   const handleDeleteActive = useCallback(
-    async (sessionId: string) => {
-      if (!resolvedAgentId || !sessionId) return;
-      try {
-        await octopThreadsApi.delete(resolvedAgentId, sessionId);
-        emitSessionEvent({ kind: "sessionDeleted", sessionId });
-        if (pathThreadId === sessionId) {
-          navigate(`/chat/${resolvedAgentId}`, { replace: true });
-        }
-      } catch (error) {
-        antMessage.error(apiErrorMessage(error, t("common.deleteFailed"), t));
+    async (sessionId: string, compact: boolean) => {
+      if (!resolvedAgentId || !sessionId) return false;
+      const deleted = await deleteConversation(
+        resolvedAgentId,
+        sessionId,
+        compact,
+        t,
+      );
+      if (!deleted) return false;
+      emitSessionEvent({ kind: "sessionDeleted", sessionId });
+      if (pathThreadId === sessionId) {
+        navigate(`/chat/${resolvedAgentId}`, { replace: true });
       }
+      return true;
     },
     [navigate, pathThreadId, resolvedAgentId, t],
   );
@@ -133,7 +137,7 @@ export default function MinimalRecordsHost() {
       onSelect={handleSelect}
       onAgentSelect={handleAgentSelect}
       onNewChat={handleNewChat}
-      onDeleteActive={(id) => void handleDeleteActive(id)}
+      onDeleteActive={(id, compact) => void handleDeleteActive(id, compact)}
       onRenameActive={handleRenameActive}
       onPinActive={handlePinActive}
       onFork={(id, agentId) => void handleFork(id, agentId)}

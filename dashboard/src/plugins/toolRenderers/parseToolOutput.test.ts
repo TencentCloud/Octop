@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   mergePatchedToolOutput,
   parseOctopToolOutput,
+  resolvePluginUiData,
 } from "./parseToolOutput";
 import {
   clearToolRenderers,
@@ -49,6 +50,70 @@ describe("mergePatchedToolOutput", () => {
       data: { count: 3 },
       text: "x",
     });
+  });
+});
+
+describe("resolvePluginUiData", () => {
+  const artifact = { results: [{ season_id: 1 }] };
+
+  it("resolves data_ref envelopes from the artifact", () => {
+    const parsed = parseOctopToolOutput(
+      JSON.stringify({
+        octop_ui: { renderer: "bilibili_player", version: 1 },
+        data_ref: "artifact",
+        text: "找到 1 部番剧。",
+      }),
+    );
+    expect(parsed.data).toBeUndefined();
+    expect(resolvePluginUiData(parsed, artifact, undefined)).toBe(artifact);
+  });
+
+  it("explicit data wins over data_ref/artifact (patched state)", () => {
+    const patched = mergePatchedToolOutput(
+      JSON.stringify({
+        octop_ui: { renderer: "bilibili_player" },
+        data_ref: "artifact",
+      }),
+      { results: [], current_episode: 5 },
+    );
+    const parsed = parseOctopToolOutput(patched);
+    const data = resolvePluginUiData(parsed, artifact, undefined) as {
+      current_episode: number;
+    };
+    expect(data.current_episode).toBe(5);
+  });
+
+  it("falls back to legacy shapes without data_ref", () => {
+    const inline = parseOctopToolOutput(
+      JSON.stringify({
+        octop_ui: { renderer: "demo_card" },
+        data: { count: 2 },
+      }),
+    );
+    expect(resolvePluginUiData(inline, artifact, undefined)).toEqual({
+      count: 2,
+    });
+
+    const plainJson = parseOctopToolOutput(JSON.stringify({ foo: 1 }));
+    expect(resolvePluginUiData(plainJson, artifact, undefined)).toEqual({
+      foo: 1,
+    });
+
+    const text = parseOctopToolOutput("hello");
+    expect(resolvePluginUiData(text, artifact, "hello")).toBe("hello");
+  });
+
+  it("keeps the slim envelope when artifact is missing", () => {
+    const parsed = parseOctopToolOutput(
+      JSON.stringify({
+        octop_ui: { renderer: "bilibili_player" },
+        data_ref: "artifact",
+      }),
+    );
+    const resolved = resolvePluginUiData(parsed, undefined, undefined) as {
+      data_ref: string;
+    };
+    expect(resolved.data_ref).toBe("artifact");
   });
 });
 

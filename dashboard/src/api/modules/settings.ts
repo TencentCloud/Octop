@@ -9,6 +9,12 @@ export interface OctopUploadSettings {
   max_upload_bytes: number;
 }
 
+export interface OctopHitlSettings {
+  enabled: boolean;
+  tool_guard_require_approval: boolean;
+  show_approval_ui: boolean;
+}
+
 export interface OctopCapabilitiesSettings {
   mobile: { enabled: boolean; backend: string };
 }
@@ -43,6 +49,7 @@ export interface CaptchaSettingsPut {
 export const octopSettingsApi = {
   timezone: () => request<OctopTimezoneSettings>("/settings/timezone"),
   upload: () => request<OctopUploadSettings>("/settings/upload"),
+  hitl: () => request<OctopHitlSettings>("/settings/hitl"),
   capabilities: () =>
     request<OctopCapabilitiesSettings>("/settings/capabilities", {
       cache: "no-store",

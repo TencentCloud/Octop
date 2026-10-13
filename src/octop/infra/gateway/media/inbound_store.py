@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
-from octop.infra.agents.workspace_dir import (
+from octop.infra.agents.workspace.dir import (
     agent_facing_workspace_root,
     join_agent_facing,
 )
@@ -18,7 +18,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.constants import INBOUND_DIR
 
 if TYPE_CHECKING:
-    from harness_agent.backends.workspace import BackendWorkspace
+    from octop_harness.backends.workspace import BackendWorkspace
 
 MAX_INBOUND_BYTES = upload_mb_to_bytes(DEFAULT_MAX_UPLOAD_MB)
 
@@ -52,6 +52,8 @@ INBOUND_EXTENSION_MEDIA_TYPES = {
     ".csv": "text/csv",
     ".tsv": "text/tab-separated-values",
     ".doc": "application/msword",
+    # WPS Writer binary docs are OLE Compound files (same family as classic .doc).
+    ".wps": "application/msword",
     ".xls": "application/vnd.ms-excel",
     ".ppt": "application/vnd.ms-powerpoint",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -190,6 +192,12 @@ _INBOUND_MEDIA_TYPE_ALIASES = {
     "application/x-ipynb+json": "application/json",
     "text/rtf": "application/rtf",
     "application/x-rtf": "application/rtf",
+    # WPS Office / Kingsoft registry types (Windows browsers often send these).
+    "application/wps-office.wps": "application/msword",
+    "application/kswps": "application/msword",
+    "application/vnd.wps-office.wps": "application/msword",
+    "application/x-msword": "application/msword",
+    "application/vnd.ms-works": "application/msword",
     "application/x-gzip": "application/gzip",
     "application/x-gtar": "application/x-tar",
     "application/x-rar-compressed": "application/vnd.rar",

@@ -111,8 +111,7 @@ def write_nsis_defines(path: Path, version: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         # Included by project.nsi before wails_tools.nsh (!ifndef guards).
-        f'!define INFO_PRODUCTVERSION "{product}"\n'
-        f'!define INFO_FILEVERSION "{filever}"\n',
+        f'!define INFO_PRODUCTVERSION "{product}"\n!define INFO_FILEVERSION "{filever}"\n',
         encoding="utf-8",
     )
 

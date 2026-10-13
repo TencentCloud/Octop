@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from harness_agent.backends.workspace import DEFAULT_MEMORY_FILES
+from octop_harness.backends.workspace import DEFAULT_MEMORY_FILES
 
 from octop.infra.history.trajectory.turn_context import (
     build_turn_start_chunks,

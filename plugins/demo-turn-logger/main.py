@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from harness_agent.plugins import AgentMiddleware, PluginContext
+from octop_harness.plugins import AgentMiddleware, PluginContext
 
 logger = logging.getLogger("octop.plugins.demo_turn_logger")
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import pytest
-from harness_gateway.models import (
+from octop_gateway.models import (
     FileContent,
     InboundMessage,
     MessageEvent,
@@ -102,6 +102,43 @@ async def test_invoke_forwards_error_without_partial_text() -> None:
     result = [event async for event in collapse_to_invoke_response(source)]
 
     assert result == [error, MessageEvent.completed()]
+
+
+@pytest.mark.asyncio
+async def test_invoke_keeps_ask_agent_dispatch_narration() -> None:
+    """Team hosts often narrate before ask_agent — keep that line on invoke IM."""
+    source = _events(
+        MessageEvent.delta("我先请临床助手看一下。"),
+        MessageEvent.tool_start("咨询专家", tool_key="ask_agent"),
+        MessageEvent.tool_end("咨询专家"),
+        MessageEvent.completed(),
+    )
+
+    result = [event async for event in collapse_to_invoke_response(source)]
+
+    assert [event.type for event in result] == [
+        MessageEventType.MESSAGE,
+        MessageEventType.COMPLETED,
+    ]
+    text = result[0].content[0]
+    assert isinstance(text, TextContent)
+    assert text.text == "我先请临床助手看一下。"
+
+
+@pytest.mark.asyncio
+async def test_invoke_still_discards_progress_before_other_tools() -> None:
+    source = _events(
+        MessageEvent.delta("我先查一下。"),
+        MessageEvent.tool_start("web_fetch", tool_key="web_fetch"),
+        MessageEvent.tool_end("web_fetch"),
+        MessageEvent.delta("最终答案。"),
+        MessageEvent.completed(),
+    )
+
+    result = [event async for event in collapse_to_invoke_response(source)]
+    text = result[0].content[0]
+    assert isinstance(text, TextContent)
+    assert text.text == "最终答案。"
 
 
 def test_response_mode_defaults_to_invoke_and_accepts_stream() -> None:

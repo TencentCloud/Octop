@@ -3,7 +3,9 @@
 A team host is a wrapped expert. Members stay regular experts and are
 reached with ``ask_agent``. This class owns the room side of that call:
 
-- live tokens go to the team page and the member page over WebSocket
+- member tokens stay off the room wall while the host turn is still streaming
+- a member tool approval pauses that job until the user answers; it is not
+  a finished member turn
 - history for the team page is a ``thread_messages`` row (not the host checkpoint)
 - the member page uses the member's own thread / checkpoint
 """
@@ -14,29 +16,50 @@ import asyncio
 import inspect
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import fields
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
-from harness_agent.messages import extract_call_response
-from harness_agent.teams.inbox import InboxMessage
-from harness_agent.teams.processor import ReplyEvent
-from harness_agent.teams.util import (
+from langchain_core.messages import AIMessage, HumanMessage
+from octop_harness.messages import extract_call_response
+from octop_harness.teams.inbox import InboxMessage
+from octop_harness.teams.processor import ReplyEvent
+from octop_harness.teams.util import (
     PeerCall,
     PeerSession,
     build_one_shot_request,
     derive_peer_thread_id,
 )
-from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n import tr
-from octop.infra.agents.teams.service import is_team_agent
-from octop.infra.gateway.process.history_projection import (
+from octop.infra.agents.teams.service import _user_may_use_member, is_team_agent
+from octop.infra.agents.threads.artifact import artifact_path_allowed, extract_artifact_paths
+from octop.infra.db.repos.agents import AgentRow
+from octop.infra.gateway.media.tool_media import tool_name_base
+from octop.infra.history.projection import (
     live_message_inputs,
     message_inputs,
 )
 from octop.infra.utils.locale import DEFAULT_LOCALE, resolve_user_locale
+from octop.infra.utils.turn_failure import log_failed_tool_results
 from octop.infra.utils.ulid import new_ulid
+
+# Matches dashboard FILE_TOOL_NAMES — drives the "edited N files" history card.
+_EDIT_CARD_TOOL_BASES = frozenset(
+    {
+        "write_file",
+        "edit_file",
+        "send_file",
+        "send_file_to_user",
+    }
+)
+
+# Cap tool-result bodies on room/member projections so fan-in history stays lean.
+_HISTORY_TOOL_RESULT_MAX_CHARS = 4000
+_HISTORY_TOOL_RESULT_SUFFIX = "…"
+# Member answer excerpt injected into the host wrap-up wake-up prompt.
+_FOLLOWUP_RESULT_MAX_CHARS = 6000
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
@@ -49,6 +72,7 @@ logger = logging.getLogger(__name__)
 _ROOM_HISTORY_LIMIT = 40
 _HOST_IDLE_POLL_SEC = 0.05
 _HOST_IDLE_WAIT_SEC = 45.0
+_MEMBER_HITL_WAIT_SEC = 30 * 60
 _RELAY_CHUNK_TYPES = frozenset(
     {"token", "reasoning", "tool_call_chunk", "tool_result", "error", "attachment"}
 )
@@ -61,6 +85,7 @@ _STREAM_SPEAKER_TYPES = frozenset(
         "error",
         "attachment",
         "slash_action",
+        "hitl_required",
         "done",
     }
 )
@@ -90,12 +115,15 @@ class TeamManager:
         user_repo: UserRepo,
         thread_message_repo: Any | None = None,
         gateway: Any | None = None,
+        hitl_coordinator: Any | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._thread_registry = thread_registry
         self._user_repo = user_repo
         self._thread_message_repo = thread_message_repo
         self._gateway = gateway
+        self._hitl = hitl_coordinator
+        self._hitl_waiters: dict[str, asyncio.Future[list[dict[str, Any]]]] = {}
         self._peer_prompts: dict[tuple[str, str], tuple[str, str]] = {}
         self._live_host_replies: set[str] = set()
 
@@ -142,6 +170,12 @@ class TeamManager:
                     call.source_session_key, call.to_agent_id
                 )
         self._track_job(call, begin=True)
+        if group and call.source_thread_id:
+            await self._notify_channel_dispatched(
+                str(call.source_thread_id),
+                call.to_agent_id,
+                uid,
+            )
         if thread_id and session_key and uid is not None:
             parts = session_key.split(":", 3)
             channel_type = parts[1] if len(parts) >= 2 else "dashboard"
@@ -180,8 +214,11 @@ class TeamManager:
             if self._thread_message_repo is None:
                 return
             messages = result.get("messages")
-            visible = _peer_turn_messages(messages) if isinstance(messages, list) else []
+            msg_list = messages if isinstance(messages, list) else []
+            edited = _edited_files_from_messages(msg_list)
+            visible = _peer_turn_messages(msg_list)
             visible = [msg for msg in visible if _message_role(msg) not in {"human", "user"}]
+            visible, _ = _apply_edited_files_stamp(visible, edited)
             prompt = await self._assignment_text(call)
             if prompt:
                 visible = [
@@ -197,7 +234,10 @@ class TeamManager:
             try:
                 self._thread_message_repo.append_if_ready(
                     thread_id,
-                    message_inputs(visible, dedupe_missing_ids=True),
+                    message_inputs(
+                        _history_projection_messages(visible),
+                        dedupe_missing_ids=True,
+                    ),
                 )
             except Exception:
                 logger.warning(
@@ -220,7 +260,6 @@ class TeamManager:
         result_text: str | None,
         error_text: str | None,
     ) -> str:
-        _ = result_text
         child_name = self._display_name(msg.target_agent_id)
         locale = self._locale_for(_octop_user_id(msg.user_id))
         if error_text:
@@ -231,11 +270,20 @@ class TeamManager:
                 task=msg.message,
                 error=error_text,
             )
+        # Member answers live on the room wall / peer checkpoint, not the host
+        # graph — inject a truncated excerpt so wrap-up can follow their advice.
+        result = _truncate_tool_result_text(
+            (result_text or "").strip(),
+            max_chars=_FOLLOWUP_RESULT_MAX_CHARS,
+        )
+        if not result:
+            result = "(empty)"
         return tr(
             "teams.followup_done",
             locale,
             name=child_name,
             task=msg.message,
+            result=result,
         )
 
     async def on_reply(self, event: ReplyEvent) -> None:
@@ -248,7 +296,7 @@ class TeamManager:
             else (event.reply_text or "(empty)")
         )
         if room:
-            await self._push_room_to_channels(room, speaker, text, prefix_speaker=False)
+            await self._push_room_to_channels(room, speaker, text, wrapup=True)
         live_ws = self._take_live_host_reply(room) and event.status == "done"
         if live_ws:
             if room:
@@ -286,40 +334,147 @@ class TeamManager:
         speaker_id: str,
         extra_stamp: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Run the member turn and fan tokens to both chat pages."""
+        """Run one peer turn and fan tokens to the member page and, once the host is idle, the room.
+
+        The host draft is a single token accumulator. Starting the member model
+        while that turn is still streaming splices the two speakers together, so
+        a member waits until the host turn is idle. If the wait expires, member
+        frames still reach the member thread immediately and stay off the room
+        wall until the host goes idle.
+
+        A ``hitl_required`` pause does not finish the job. The room shows the
+        approval card and this call blocks until the user answers, then resumes
+        the member graph. Inbox fan-in and the host wrap-up run only after the
+        member turn actually ends.
+        """
         payload = _chat_request_payload(request, speaker_id)
         member_tid = str(payload.get("thread_id") or "").strip()
         text_parts: list[str] = []
         reasoning_parts: list[str] = []
         relayed_visible = False
-        try:
-            async for chunk in self._agent_manager.stream(speaker_id, payload):
-                if not isinstance(chunk, dict):
-                    continue
-                kind = str(chunk.get("type") or "")
-                if kind == "token":
-                    piece = str(chunk.get("content") or "")
-                    if piece:
-                        text_parts.append(piece)
-                elif kind == "reasoning":
-                    piece = str(chunk.get("content") or "")
-                    if piece:
-                        reasoning_parts.append(piece)
-                if kind in _RELAY_CHUNK_TYPES:
-                    if kind in {"token", "reasoning", "attachment"} and self._thread_is_watched(
-                        room_thread_id
-                    ):
-                        relayed_visible = True
-                    relay = chunk
-                    if extra_stamp and kind in {"token", "reasoning"}:
-                        relay = {**chunk, **extra_stamp}
-                    await self._relay_chunk(
-                        relay,
-                        room_thread_id=room_thread_id,
-                        member_thread_id=member_tid,
-                        speaker_id=speaker_id,
+        saw_tool_call = False
+        emitted_tool_error_ids: set[str] = set()
+        hold_room = self._defer_member_wall(speaker_id, member_tid, room_thread_id)
+        host_id = self._room_agent_id(room_thread_id) if hold_room else ""
+        room_open = True
+        if hold_room and self._host_turn_busy(host_id, room_thread_id):
+            room_open = await self._wait_host_dispatch_idle(host_id, room_thread_id)
+        buffered: list[dict[str, Any]] = []
+        resume_pending: str | None = None
+
+        def note_visible(chunk: dict[str, Any]) -> None:
+            nonlocal relayed_visible
+            kind = str(chunk.get("type") or "")
+            if kind in {"token", "reasoning", "attachment"} and self._thread_is_watched(
+                room_thread_id
+            ):
+                relayed_visible = True
+
+        async def release_held_room() -> None:
+            nonlocal room_open
+            if hold_room and not room_open and self._host_turn_busy(host_id, room_thread_id):
+                opened = await self._wait_host_dispatch_idle(host_id, room_thread_id)
+                if not opened and self._host_turn_busy(host_id, room_thread_id):
+                    logger.warning(
+                        "member wall released while host still streaming host=%s room=%s",
+                        host_id,
+                        room_thread_id,
                     )
+            if buffered:
+                frames = list(buffered)
+                buffered.clear()
+                for frame in frames:
+                    await self._push_room_frame(frame, room_thread_id, speaker_id)
+                    note_visible(frame)
+                    if str(frame.get("type") or "") == "hitl_required":
+                        await self._announce_member_hitl(frame, room_thread_id, speaker_id)
+            room_open = True
+
+        async def emit(chunk: dict[str, Any]) -> None:
+            if hold_room and not room_open and self._host_turn_busy(host_id, room_thread_id):
+                await self._relay_chunk(
+                    chunk,
+                    room_thread_id=room_thread_id,
+                    member_thread_id=member_tid,
+                    speaker_id=speaker_id,
+                    include_room=False,
+                )
+                buffered.append(chunk)
+                return
+            await release_held_room()
+            await self._relay_chunk(
+                chunk,
+                room_thread_id=room_thread_id,
+                member_thread_id=member_tid,
+                speaker_id=speaker_id,
+            )
+            note_visible(chunk)
+            if str(chunk.get("type") or "") == "hitl_required":
+                await self._announce_member_hitl(chunk, room_thread_id, speaker_id)
+
+        try:
+            agen = self._agent_manager.stream(speaker_id, payload)
+            while True:
+                pause: dict[str, Any] | None = None
+                async for chunk in agen:
+                    if not isinstance(chunk, dict):
+                        continue
+                    kind = str(chunk.get("type") or "")
+                    if kind == "tool_call_chunk":
+                        saw_tool_call = True
+                    elif kind == "tool_result":
+                        log_failed_tool_results(
+                            chunk,
+                            agent_id=speaker_id,
+                            thread_id=member_tid or room_thread_id,
+                            seen=emitted_tool_error_ids,
+                            live=saw_tool_call,
+                        )
+                    if kind == "token":
+                        piece = str(chunk.get("content") or "")
+                        if piece:
+                            text_parts.append(piece)
+                    elif kind == "reasoning":
+                        piece = str(chunk.get("content") or "")
+                        if piece:
+                            reasoning_parts.append(piece)
+                    if kind == "hitl_required":
+                        pause = chunk
+                        resume_pending = None
+                        break
+                    if kind in _RELAY_CHUNK_TYPES:
+                        relay = chunk
+                        if extra_stamp and kind in {"token", "reasoning"}:
+                            relay = {**chunk, **extra_stamp}
+                        await emit(relay)
+                if pause is None:
+                    resume_pending = None
+                    break
+                relay, pending_id = await self._open_member_hitl(
+                    pause,
+                    speaker_id=speaker_id,
+                    member_thread_id=member_tid,
+                    room_thread_id=room_thread_id,
+                    payload=payload,
+                )
+                decisions: list[dict[str, Any]] = []
+                answered = False
+                try:
+                    await emit(relay)
+                    await release_held_room()
+                    decisions = await self._wait_member_hitl(pending_id)
+                    answered = True
+                finally:
+                    if not answered:
+                        fut = self._hitl_waiters.pop(pending_id, None)
+                        if fut is not None and not fut.done():
+                            fut.cancel()
+                        self._expire_hitl(pending_id)
+                resume_pending = pending_id
+                agen = self._agent_manager.resume_hitl(speaker_id, member_tid, decisions)
         except Exception:
+            if resume_pending:
+                self._expire_hitl(resume_pending)
             logger.warning(
                 "team peer stream failed speaker=%s room=%s",
                 speaker_id,
@@ -328,6 +483,7 @@ class TeamManager:
             )
             raise
         finally:
+            await release_held_room()
             done: dict[str, Any] = {"type": "done"}
             if extra_stamp:
                 done = {**done, **extra_stamp}
@@ -349,29 +505,46 @@ class TeamManager:
             "stream_text": stream_text,
         }
 
-    async def _wait_host_dispatch_idle(self, host_id: str, room_thread_id: str) -> None:
-        """Do not start wrap-up while the first host turn is still streaming.
+    def _defer_member_wall(self, speaker_id: str, member_tid: str, room_thread_id: str) -> bool:
+        """Member speech waits for the host. The host wrap-up is already the room voice."""
+        if not room_thread_id or not speaker_id:
+            return False
+        if member_tid and member_tid == room_thread_id:
+            return False
+        return not is_team_agent(self._agent_manager.get_row(speaker_id))
 
-        Member answers can finish while the host is still saying「稍候」.
-        Two host token streams on the same room socket then interleave.
-        """
+    def _room_agent_id(self, room_thread_id: str) -> str:
+        getter = getattr(self._thread_registry, "get_thread", None)
+        if not callable(getter) or not room_thread_id:
+            return ""
+        row = getter(room_thread_id)
+        return str(getattr(row, "agent_id", "") or "")
+
+    def _host_turn_busy(self, host_id: str, room_thread_id: str) -> bool:
         hub = getattr(self._gateway, "ws_hub", None) if self._gateway is not None else None
         check_turn = getattr(hub, "is_turn_active", None)
         check_host = getattr(self._agent_manager, "is_agent_active", None)
+        turn_active = check_turn(room_thread_id) is True if callable(check_turn) else False
+        host_busy = bool(host_id) and check_host(host_id) is True if callable(check_host) else False
+        return turn_active or host_busy
+
+    async def _wait_host_dispatch_idle(self, host_id: str, room_thread_id: str) -> bool:
+        """Wait until the host turn is idle.
+
+        Returns False when the wait expires and the host is still streaming.
+        """
         deadline = asyncio.get_running_loop().time() + _HOST_IDLE_WAIT_SEC
         while True:
-            turn_active = check_turn(room_thread_id) is True if callable(check_turn) else False
-            host_busy = check_host(host_id) is True if callable(check_host) else False
-            if not turn_active and not host_busy:
-                return
+            if not self._host_turn_busy(host_id, room_thread_id):
+                return True
             if asyncio.get_running_loop().time() >= deadline:
                 logger.warning(
-                    "team wrap-up waited %.0fs for host idle host=%s room=%s",
+                    "team room waited %.0fs for host idle host=%s room=%s",
                     _HOST_IDLE_WAIT_SEC,
                     host_id,
                     room_thread_id,
                 )
-                return
+                return False
             await asyncio.sleep(_HOST_IDLE_POLL_SEC)
 
     async def stream_host_followup_to_room(
@@ -421,19 +594,23 @@ class TeamManager:
         *,
         live_streamed: bool = False,
     ) -> None:
-        """Persist the member's final bubble on the caller's room thread."""
+        """Persist the member's tool trail + final bubble on the caller's room thread."""
         if not self._is_group_dispatch(call):
             return
         speaker = call.to_agent_id
         stamped = [_with_speaker(msg, speaker) for msg in _room_peer_messages(visible)]
-        final = _final_room_assistant(stamped)
-        if final is None:
+        if not stamped:
             return
+        edited = _edited_files_from_messages(stamped)
+        stamped, final = _apply_edited_files_stamp(stamped, edited)
         if self._thread_message_repo is not None:
             try:
                 self._thread_message_repo.append_if_ready(
                     call.source_thread_id,
-                    live_message_inputs([final], dedupe_missing_ids=True),
+                    live_message_inputs(
+                        _history_projection_messages(stamped),
+                        dedupe_missing_ids=True,
+                    ),
                 )
             except Exception:
                 logger.warning(
@@ -443,8 +620,8 @@ class TeamManager:
                     exc_info=True,
                 )
         room = str(call.source_thread_id or "").strip()
-        text = _assistant_text(final)
-        if not room:
+        text = _assistant_text(final) if final is not None else ""
+        if not room or not text:
             return
         await self._push_room_to_channels(room, speaker, text)
         if not live_streamed:
@@ -785,13 +962,14 @@ class TeamManager:
         room_thread_id: str,
         member_thread_id: str,
         speaker_id: str,
+        include_room: bool = True,
     ) -> None:
         hub = getattr(self._gateway, "ws_hub", None) if self._gateway is not None else None
         if hub is None:
             return
         stamped = stamp_stream_speaker(chunk, speaker_id, include_done=True)
         try:
-            if room_thread_id:
+            if include_room and room_thread_id:
                 await hub.push_to_thread(room_thread_id, stamped)
             if member_thread_id and member_thread_id != room_thread_id:
                 await hub.push_to_thread(member_thread_id, chunk)
@@ -802,6 +980,165 @@ class TeamManager:
                 room_thread_id,
                 exc_info=True,
             )
+
+    async def _push_room_frame(
+        self,
+        chunk: dict[str, Any],
+        room_thread_id: str,
+        speaker_id: str,
+    ) -> None:
+        """Push one already-delivered member frame onto the room wall."""
+        hub = getattr(self._gateway, "ws_hub", None) if self._gateway is not None else None
+        if hub is None or not room_thread_id:
+            return
+        stamped = stamp_stream_speaker(chunk, speaker_id, include_done=True)
+        try:
+            await hub.push_to_thread(room_thread_id, stamped)
+        except Exception:
+            logger.warning(
+                "failed to flush team room frame speaker=%s room=%s",
+                speaker_id,
+                room_thread_id,
+                exc_info=True,
+            )
+
+    def deliver_member_hitl(self, pending_id: str, decisions: list[dict[str, Any]]) -> bool:
+        """Hand an approval to the member job that is paused on this card.
+
+        The waiting job resumes the member graph. Callers must not also resume
+        the host room thread.
+        """
+        fut = self._hitl_waiters.get(str(pending_id))
+        if fut is None or fut.done():
+            return False
+        fut.set_result([dict(item) for item in decisions if isinstance(item, dict)])
+        return True
+
+    def cancel_member_hitl(self, thread_id: str) -> None:
+        """Fail member pauses bound to a thread when that turn is replaced."""
+        room = thread_id.strip()
+        if not room:
+            return
+        store = getattr(self._hitl, "store", None)
+        records = getattr(store, "_records", None)
+        if not isinstance(records, dict):
+            return
+        for record in list(records.values()):
+            bound = str(getattr(record, "thread_id", "") or "")
+            resume_thread = str(getattr(record, "resume_thread_id", "") or "")
+            if bound != room and resume_thread != room:
+                continue
+            pending_id = str(getattr(record, "pending_id", "") or "")
+            fut = self._hitl_waiters.get(pending_id)
+            if fut is None or fut.done():
+                continue
+            fut.set_exception(TimeoutError("team member approval was cancelled"))
+
+    def _expire_hitl(self, pending_id: str) -> None:
+        store = getattr(self._hitl, "store", None)
+        mark = getattr(store, "mark_resolved", None)
+        if callable(mark):
+            mark(pending_id, "expired")
+
+    def _room_hitl_view(
+        self, room_thread_id: str, payload: dict[str, Any]
+    ) -> tuple[str, int, str, str]:
+        getter = getattr(self._thread_registry, "get_thread", None)
+        row = getter(room_thread_id) if callable(getter) and room_thread_id else None
+        host_id = str(getattr(row, "agent_id", "") or "")
+        user_id = int(getattr(row, "user_id", 0) or 0)
+        session_key = str(getattr(row, "session_key", "") or "")
+        channel = str(getattr(row, "channel_type", "") or "") or "dashboard"
+        if user_id <= 0:
+            raw_user = payload.get("user")
+            if isinstance(raw_user, (int, str)):
+                user_id = _octop_user_id(raw_user) or 0
+        if not session_key and host_id and user_id > 0:
+            session_key = f"{host_id}:{channel}:{user_id}:dm"
+        return host_id, user_id, session_key, channel
+
+    async def _open_member_hitl(
+        self,
+        chunk: dict[str, Any],
+        *,
+        speaker_id: str,
+        member_thread_id: str,
+        room_thread_id: str,
+        payload: dict[str, Any],
+    ) -> tuple[dict[str, Any], str]:
+        """Register the room card and arm the waiter before the card is shown."""
+        from octop.infra.gateway.hitl.coordinator import HitlStreamContext  # noqa: PLC0415
+        from octop.infra.gateway.hitl.format import normalize_hitl_request  # noqa: PLC0415
+
+        coordinator = self._hitl
+        if coordinator is None or not hasattr(coordinator, "register_from_request"):
+            raise RuntimeError("team member approval has no HITL coordinator")
+        host_id, user_id, session_key, channel = self._room_hitl_view(room_thread_id, payload)
+        if not host_id or user_id <= 0 or not room_thread_id:
+            raise RuntimeError("team member approval is missing its room")
+        request = normalize_hitl_request(chunk.get("request"))
+        record = coordinator.register_from_request(
+            request,
+            ctx=HitlStreamContext(
+                thread_id=room_thread_id,
+                agent_id=host_id,
+                user_id=user_id,
+                session_key=session_key,
+                channel_type=channel,
+            ),
+            resume_agent_id=speaker_id,
+        )
+        if not record.action_requests:
+            self._expire_hitl(record.pending_id)
+            raise RuntimeError("team member paused without an approval request")
+        record.resume_agent_id = speaker_id
+        record.resume_thread_id = member_thread_id
+        loop = asyncio.get_running_loop()
+        self._hitl_waiters[record.pending_id] = loop.create_future()
+        request = dict(request)
+        request["pending_id"] = record.pending_id
+        return (
+            {**chunk, "request": request, "pending_id": record.pending_id},
+            record.pending_id,
+        )
+
+    async def _wait_member_hitl(self, pending_id: str) -> list[dict[str, Any]]:
+        fut = self._hitl_waiters.get(pending_id)
+        if fut is None:
+            raise TimeoutError("team member approval is not waiting")
+        try:
+            return await asyncio.wait_for(fut, _MEMBER_HITL_WAIT_SEC)
+        except TimeoutError:
+            logger.warning("team member approval timed out pending=%s", pending_id)
+            self._expire_hitl(pending_id)
+            raise
+        finally:
+            current = self._hitl_waiters.get(pending_id)
+            if current is fut:
+                self._hitl_waiters.pop(pending_id, None)
+
+    async def _announce_member_hitl(
+        self,
+        chunk: dict[str, Any],
+        room_thread_id: str,
+        speaker_id: str,
+    ) -> None:
+        request = chunk.get("request")
+        if not isinstance(request, dict):
+            return
+        pending_id = str(chunk.get("pending_id") or request.get("pending_id") or "")
+        actions = request.get("action_requests")
+        if not pending_id or not isinstance(actions, list) or not actions:
+            return
+        from octop.infra.gateway.hitl.format import format_hitl_card  # noqa: PLC0415
+
+        _host_id, user_id, _session_key, _channel = self._room_hitl_view(room_thread_id, {})
+        card = format_hitl_card(
+            actions,
+            pending_id=pending_id,
+            locale=self._locale_for(user_id or None),
+        )
+        await self._push_room_to_channels(room_thread_id, speaker_id, card)
 
     async def _peer_result_messages(
         self,
@@ -893,6 +1230,7 @@ class TeamManager:
         text: str,
         *,
         prefix_speaker: bool = True,
+        wrapup: bool = False,
     ) -> None:
         """Push a finished room bubble to IM sessions bound to this thread.
 
@@ -904,15 +1242,17 @@ class TeamManager:
         if not thread_id or not body or self._gateway is None:
             return
         for session in self._thread_registry.im_sessions_for_thread(thread_id):
-            outbound = (
-                self._channel_line(
-                    self._locale_for(int(session.user_id)),
+            locale = self._locale_for(int(session.user_id))
+            if wrapup:
+                outbound = tr("teams.channel_wrapup", locale, text=body)
+            elif prefix_speaker:
+                outbound = self._channel_line(
+                    locale,
                     self._display_name(speaker_id),
                     body,
                 )
-                if prefix_speaker
-                else body
-            )
+            else:
+                outbound = body
             try:
                 await self._push_session_channel(session, outbound)
             except Exception:
@@ -920,6 +1260,30 @@ class TeamManager:
                     "failed to push team speech to channel thread=%s speaker=%s",
                     thread_id,
                     speaker_id,
+                    exc_info=True,
+                )
+
+    async def _notify_channel_dispatched(
+        self,
+        thread_id: str,
+        member_id: str,
+        user_id: int | None,
+    ) -> None:
+        """Tell IM users a member was assigned — fills the silence before results."""
+        body_thread = (thread_id or "").strip()
+        if not body_thread or self._gateway is None:
+            return
+        name = self._display_name(member_id)
+        for session in self._thread_registry.im_sessions_for_thread(body_thread):
+            locale = self._locale_for(int(session.user_id))
+            text = tr("teams.channel_dispatched", locale, name=name)
+            try:
+                await self._push_session_channel(session, text)
+            except Exception:
+                logger.warning(
+                    "failed to push team dispatch notice thread=%s member=%s",
+                    body_thread,
+                    member_id,
                     exc_info=True,
                 )
 
@@ -1192,19 +1556,137 @@ def _final_room_assistant(messages: list[Any]) -> Any | None:
     return None
 
 
-def _with_speaker(msg: Any, agent_id: str) -> Any:
+def _apply_edited_files_stamp(
+    messages: list[Any],
+    edited: list[str],
+) -> tuple[list[Any], Any | None]:
+    """Stamp ``edited_files`` on the final text bubble, or last AI if tools-only."""
+    final = _final_room_assistant(messages)
+    if not edited:
+        return messages, final
+    target = final
+    if target is None:
+        for msg in reversed(messages):
+            if _message_is_assistant(msg):
+                target = msg
+                break
+    if target is None:
+        return messages, final
+    stamped_target = _with_edited_files(target, edited)
+    out = [stamped_target if msg is target else msg for msg in messages]
+    if final is None:
+        return out, None
+    return out, stamped_target if final is target else final
+
+
+def _truncate_tool_result_text(
+    text: str,
+    *,
+    max_chars: int = _HISTORY_TOOL_RESULT_MAX_CHARS,
+) -> str:
+    if len(text) <= max_chars:
+        return text
+    keep = max(max_chars - len(_HISTORY_TOOL_RESULT_SUFFIX), 0)
+    return text[:keep] + _HISTORY_TOOL_RESULT_SUFFIX
+
+
+def _truncate_tool_content(content: Any) -> Any:
+    if isinstance(content, str):
+        return _truncate_tool_result_text(content)
+    if isinstance(content, list):
+        out: list[Any] = []
+        changed = False
+        for block in content:
+            if isinstance(block, str):
+                new_block = _truncate_tool_result_text(block)
+                out.append(new_block)
+                changed = changed or new_block != block
+            elif isinstance(block, dict) and isinstance(block.get("text"), str):
+                text = str(block["text"])
+                new_text = _truncate_tool_result_text(text)
+                if new_text != text:
+                    out.append({**block, "text": new_text})
+                    changed = True
+                else:
+                    out.append(block)
+            else:
+                out.append(block)
+        return out if changed else content
+    return content
+
+
+def _replace_message_content(msg: Any, content: Any) -> Any:
+    if isinstance(msg, dict):
+        out = dict(msg)
+        out["content"] = content
+        return out
+    copy = getattr(msg, "model_copy", None)
+    if callable(copy):
+        try:
+            return copy(update={"content": content})
+        except Exception:
+            pass
+    try:
+        object.__setattr__(msg, "content", content)
+    except Exception:
+        msg.content = content
+    return msg
+
+
+def _history_projection_messages(messages: list[Any]) -> list[Any]:
+    """Truncate bulky ToolMessage bodies before writing team projections."""
+    out: list[Any] = []
+    for msg in messages:
+        if _message_role(msg) != "tool":
+            out.append(msg)
+            continue
+        content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+        truncated = _truncate_tool_content(content)
+        if truncated is content:
+            out.append(msg)
+            continue
+        out.append(_replace_message_content(msg, truncated))
+    return out
+
+
+def _edited_files_from_messages(messages: list[Any]) -> list[str]:
+    """Workspace paths from write/edit/send tool_calls in a peer turn."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for msg in messages:
+        tool_calls = _message_tool_calls(msg)
+        if not isinstance(tool_calls, list):
+            continue
+        for call in tool_calls:
+            if isinstance(call, dict):
+                name = str(call.get("name") or "")
+                args = call.get("args")
+            else:
+                name = str(getattr(call, "name", "") or "")
+                args = getattr(call, "args", None)
+            base = tool_name_base(name).lower()
+            if base not in _EDIT_CARD_TOOL_BASES:
+                continue
+            for path in extract_artifact_paths(tool_name=name, args=args):
+                key = path.replace("\\", "/").strip()
+                if not key or not artifact_path_allowed(key) or key in seen:
+                    continue
+                seen.add(key)
+                out.append(key)
+    return out
+
+
+def _patch_additional_kwargs(msg: Any, updates: dict[str, Any]) -> Any:
+    if not updates:
+        return msg
     if isinstance(msg, dict):
         kwargs = dict(msg.get("additional_kwargs") or {})
-        if kwargs.get("speaker_agent_id") == agent_id:
-            return msg
-        kwargs["speaker_agent_id"] = agent_id
+        kwargs.update(updates)
         out = dict(msg)
         out["additional_kwargs"] = kwargs
         return out
     kwargs = dict(getattr(msg, "additional_kwargs", None) or {})
-    if kwargs.get("speaker_agent_id") == agent_id:
-        return msg
-    kwargs["speaker_agent_id"] = agent_id
+    kwargs.update(updates)
     copy = getattr(msg, "model_copy", None)
     if callable(copy):
         try:
@@ -1216,6 +1698,24 @@ def _with_speaker(msg: Any, agent_id: str) -> Any:
     except Exception:
         msg.additional_kwargs = kwargs
     return msg
+
+
+def _with_speaker(msg: Any, agent_id: str) -> Any:
+    if isinstance(msg, dict):
+        kwargs = dict(msg.get("additional_kwargs") or {})
+        if kwargs.get("speaker_agent_id") == agent_id:
+            return msg
+    else:
+        kwargs = dict(getattr(msg, "additional_kwargs", None) or {})
+        if kwargs.get("speaker_agent_id") == agent_id:
+            return msg
+    return _patch_additional_kwargs(msg, {"speaker_agent_id": agent_id})
+
+
+def _with_edited_files(msg: Any, paths: list[str]) -> Any:
+    if not paths:
+        return msg
+    return _patch_additional_kwargs(msg, {"edited_files": list(paths)})
 
 
 def _ensure_reasoning(msg: Any, reasoning: str) -> None:
@@ -1263,25 +1763,27 @@ def _assistant_text(msg: Any) -> str:
 
 
 def _peer_turn_messages(messages: list[Any]) -> list[Any]:
-    trigger: Any | None = None
-    final_ai: Any | None = None
-    for msg in messages:
-        role = ""
-        if isinstance(msg, dict):
-            role = str(msg.get("role") or msg.get("type") or "").lower()
-            tool_calls = msg.get("tool_calls")
-        else:
-            role = str(getattr(msg, "type", None) or getattr(msg, "role", "") or "").lower()
-            tool_calls = getattr(msg, "tool_calls", None)
-        if role in ("human", "user"):
-            trigger = msg
-        if role in ("ai", "assistant") and not tool_calls:
-            final_ai = msg
+    """Last user turn for the member page: trigger + full assistant/tool trail.
+
+    Historically this kept only the final AI text, which dropped tool_calls
+    from both the member projection and (via fan-in) the room wall.
+    """
+    last_user = -1
+    for index, msg in enumerate(messages):
+        if _message_role(msg) in {"human", "user"}:
+            last_user = index
+    if last_user >= 0:
+        trigger = messages[last_user]
+        tail = messages[last_user + 1 :]
+    else:
+        trigger = None
+        tail = list(messages)
+    skip = {"system", "human", "user"}
+    trail = [msg for msg in tail if _message_role(msg) not in skip]
     out: list[Any] = []
     if trigger is not None:
         out.append(trigger)
-    if final_ai is not None:
-        out.append(final_ai)
+    out.extend(trail)
     return out
 
 
@@ -1365,6 +1867,176 @@ def _patch_inbox_wrapup(
         return ""
 
     inbox._synthesize_reply = synthesize
+
+
+def _clean_peer_names(raw: Sequence[str] | None) -> tuple[str, ...] | None:
+    if raw is None:
+        return None
+    return tuple(str(item).strip().lstrip("@") for item in raw if str(item).strip())
+
+
+def _request_peer_allowlist() -> tuple[str, ...] | None:
+    from octop_harness.teams.team_manager import _request_team_peers  # noqa: PLC0415
+
+    return _clean_peer_names(_request_team_peers())
+
+
+def _shared_member_allowlist(
+    harness_team: Any,
+    *,
+    exclude_agent_id: str | None,
+    team_peers: Sequence[str] | None,
+) -> tuple[str, ...] | None:
+    """Ids a caller may pull in from outside their own account.
+
+    ``None`` means there is no allowlist (ordinary expert). An empty tuple
+    means the allowlist is present and names nobody.
+    """
+    config_allow = _clean_peer_names(harness_team._peer_allowlist(exclude_agent_id))
+    override = _clean_peer_names(team_peers)
+    if override is None:
+        override = _request_peer_allowlist()
+    if config_allow is None and override is None:
+        return None
+    if config_allow is None:
+        return override
+    if override is None:
+        return config_allow
+    allowed = set(config_allow)
+    return tuple(name for name in override if name in allowed)
+
+
+def _peer_viewer(user_id: str | int, load_user: Callable[[int], Any]) -> Any:
+    if isinstance(user_id, int):
+        uid: int | None = user_id
+    elif str(user_id).isdigit():
+        uid = int(user_id)
+    else:
+        uid = None
+    row = load_user(uid) if uid is not None else None
+    is_admin = (
+        bool(getattr(row, "is_admin", False)) or str(getattr(row, "role", "") or "") == "admin"
+    )
+    viewer_id = getattr(row, "id", None) if row is not None else uid
+    return SimpleNamespace(id=viewer_id, is_admin=is_admin)
+
+
+def _usable_shared_entry(
+    harness_team: Any,
+    agent_id: str,
+    *,
+    exclude_agent_id: str | None,
+    viewer: Any,
+    load_agent: Callable[[str], AgentRow | None],
+) -> Any | None:
+    if not agent_id or agent_id == exclude_agent_id:
+        return None
+    try:
+        entry = harness_team._registry.get(agent_id)
+    except KeyError:
+        return None
+    if entry.agent_id == exclude_agent_id:
+        return None
+    row = load_agent(entry.agent_id)
+    if row is None or is_team_agent(row) or not _user_may_use_member(row, viewer):
+        return None
+    return entry
+
+
+def wire_shared_member_peers(
+    harness_team: Any,
+    *,
+    load_agent: Callable[[str], AgentRow | None],
+    load_user: Callable[[int], Any],
+) -> None:
+    """Let a team allowlist see shared experts owned by other accounts.
+
+    Harness ``list_peers`` and ``_resolve_peer_entry`` keep same-user peers
+    only, so a host whose members were shared by someone else gets an empty
+    ``agent_list`` and ``ask_agent`` rejects the dispatch. Ids on the host
+    ``team_peers`` config, or on a member's request-scoped allowlist, are
+    added back when ``_user_may_use_member`` accepts them for the chatting user.
+    """
+    if harness_team is None or getattr(harness_team, "_octop_shared_member_peers", False):
+        return
+    original_list = getattr(harness_team, "list_peers", None)
+    original_resolve = getattr(harness_team, "_resolve_peer_entry", None)
+    if original_list is None or original_resolve is None:
+        return
+
+    def list_peers(
+        user_id: str | int,
+        *,
+        exclude_agent_id: str | None = None,
+        team_peers: Sequence[str] | None = None,
+        **kwargs: Any,
+    ) -> list[Any]:
+        peers = list(
+            original_list(
+                user_id,
+                exclude_agent_id=exclude_agent_id,
+                team_peers=team_peers,
+                **kwargs,
+            )
+        )
+        allow = _shared_member_allowlist(
+            harness_team,
+            exclude_agent_id=exclude_agent_id,
+            team_peers=team_peers,
+        )
+        if not allow:
+            return peers
+        seen = {str(getattr(entry, "agent_id", "")) for entry in peers}
+        viewer = _peer_viewer(user_id, load_user)
+        added: list[Any] = []
+        for member_id in allow:
+            if member_id in seen:
+                continue
+            entry = _usable_shared_entry(
+                harness_team,
+                member_id,
+                exclude_agent_id=exclude_agent_id,
+                viewer=viewer,
+                load_agent=load_agent,
+            )
+            if entry is None or entry.agent_id in seen:
+                continue
+            added.append(entry)
+            seen.add(entry.agent_id)
+        if added:
+            enrich = getattr(harness_team, "_apply_peer_enrich", None)
+            if callable(enrich):
+                enrich(added)
+        peers.extend(added)
+        return peers
+
+    def resolve_peer_entry(from_agent_id: str, to_agent_id: str, user_id: str | int) -> Any:
+        try:
+            return original_resolve(from_agent_id, to_agent_id, user_id)
+        except ValueError as exc:
+            if "not owned by user" not in str(exc):
+                raise
+        allow = _shared_member_allowlist(
+            harness_team,
+            exclude_agent_id=from_agent_id,
+            team_peers=None,
+        )
+        if not allow or to_agent_id not in allow:
+            raise ValueError(f"agent {to_agent_id!r} not owned by user")
+        entry = _usable_shared_entry(
+            harness_team,
+            to_agent_id,
+            exclude_agent_id=from_agent_id,
+            viewer=_peer_viewer(user_id, load_user),
+            load_agent=load_agent,
+        )
+        if entry is None:
+            raise ValueError(f"agent {to_agent_id!r} not owned by user")
+        return entry
+
+    harness_team.list_peers = list_peers
+    harness_team._resolve_peer_entry = resolve_peer_entry
+    harness_team._octop_shared_member_peers = True
 
 
 def wire_host_dispatch(
@@ -1540,4 +2212,5 @@ __all__ = [
     "stamp_stream_speaker",
     "stamp_team_host_chunk",
     "wire_host_dispatch",
+    "wire_shared_member_peers",
 ]

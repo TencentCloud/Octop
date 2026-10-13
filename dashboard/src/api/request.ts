@@ -3,6 +3,8 @@ import i18n from "../i18n";
 import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
 
 const AUTH_TOKEN_KEY = "auth_token";
+/** sessionStorage handoff for SSO redirects / popups (default = remember). */
+const AUTH_REMEMBER_PREF_KEY = "auth_remember_pref";
 
 /**
  * Fired when the session is no longer valid. Cancelable: a listener inside the
@@ -42,20 +44,58 @@ export function isSetupRequiredKnown(): boolean {
   return _setupRequiredKnown;
 }
 
-/** Save JWT token to localStorage */
-export function setAuthToken(token: string) {
-  localStorage.setItem(AUTH_TOKEN_KEY, token);
+/** Stash the login-page "remember me" choice for SSO redirects / popups. */
+export function setRememberLoginPreference(remember: boolean): void {
+  sessionStorage.setItem(AUTH_REMEMBER_PREF_KEY, remember ? "1" : "0");
+}
+
+/** Read the stashed remember preference (defaults to true). */
+export function getRememberLoginPreference(): boolean {
+  return sessionStorage.getItem(AUTH_REMEMBER_PREF_KEY) !== "0";
+}
+
+/**
+ * Whether the current token is session-only (not "remember me").
+ * Session-only tokens live in ``sessionStorage`` so a new tab does not
+ * share — or erase — another tab's login.
+ */
+export function isSessionOnlyAuth(): boolean {
+  return (
+    sessionStorage.getItem(AUTH_TOKEN_KEY) != null &&
+    localStorage.getItem(AUTH_TOKEN_KEY) == null
+  );
+}
+
+/**
+ * Save JWT token. When ``remember`` is false the token is kept in
+ * ``sessionStorage`` (cleared when the tab/window closes). SSO popups must
+ * post the token back to the opener — ``sessionStorage`` is not shared.
+ */
+export function setAuthToken(token: string, remember: boolean = true) {
+  if (remember) {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  } else {
+    sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  }
   clearSetupRequired();
 }
 
-/** Get JWT token from localStorage */
+/** Get JWT token from localStorage or (session-only) sessionStorage. */
 export function getAuthToken(): string {
-  return localStorage.getItem(AUTH_TOKEN_KEY) || "";
+  return (
+    localStorage.getItem(AUTH_TOKEN_KEY) ||
+    sessionStorage.getItem(AUTH_TOKEN_KEY) ||
+    ""
+  );
 }
 
-/** Remove JWT token from localStorage */
+/** Remove JWT token from both storages. */
 export function clearAuthToken() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
+  sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  sessionStorage.removeItem(AUTH_REMEMBER_PREF_KEY);
   localStorage.removeItem("octop:active-agent");
   setActiveAgentId(null);
 }
@@ -64,7 +104,7 @@ export function clearAuthToken() {
 export function applyRenewedAccessToken(response: Response): void {
   const renewed = response.headers.get(ACCESS_TOKEN_RESPONSE_HEADER);
   if (renewed) {
-    setAuthToken(renewed);
+    setAuthToken(renewed, !isSessionOnlyAuth());
   }
 }
 
@@ -166,10 +206,26 @@ export function getActiveAgentId(): string | null {
 }
 
 /**
+ * Optional ``X-Octop-Agent-Id`` for caller-opted header tunnels (composer
+ * GETs, connector lists). Do not auto-attach these on settings pages.
+ */
+export function bridgeAgentHeaders(
+  agentId?: string | null,
+): Record<string, string> | undefined {
+  const id = (agentId ?? "").trim();
+  if (!id) return undefined;
+  return { "X-Octop-Agent-Id": id };
+}
+
+/**
  * Decide whether a request path is "agent-scoped" — i.e. talking to a
  * concrete agent's resource — and therefore should carry the
  * ``X-Octop-Agent-Id`` header. Health, admin, auth, setup, providers, and
  * personas don't need it.
+ *
+ * Composer / knowledge / browser host GETs are NOT auto-scoped: those
+ * settings pages must keep talking to this instance. Callers that need a
+ * remote hop pass ``bridgeAgentHeaders(agentId)`` explicitly.
  */
 function isAgentScopedPath(path: string): boolean {
   // Match `/agents/<id>/...` (one trailing segment after the id).
@@ -177,6 +233,10 @@ function isAgentScopedPath(path: string): boolean {
   if (/^\/agents\/[^/]+(\/|$)/.test(path)) return true;
   // MBTI endpoints that read/write the active agent's persona config.
   if (/^\/mbti\//.test(path)) return true;
+  if (path === "/cron/settings") return true;
+  if (path === "/subagent-catalog" || path.startsWith("/subagent-catalog/")) {
+    return true;
+  }
   return false;
 }
 

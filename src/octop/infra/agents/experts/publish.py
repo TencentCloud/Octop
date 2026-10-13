@@ -11,10 +11,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from uuid import uuid4
 
-from harness_agent.backends.workspace import BackendWorkspace
+from octop_harness.backends.workspace import BackendWorkspace
 
-from octop.infra.agents.avatar import copy_workspace_avatar_to_dir
 from octop.infra.agents.builtin_skills import OCTOP_BUILTIN_SKILLS_ROOT
+from octop.infra.agents.experts.avatar import copy_workspace_avatar_to_dir
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
     read_workspace_manifest_bytes,

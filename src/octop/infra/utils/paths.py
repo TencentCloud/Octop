@@ -121,6 +121,16 @@ class PathLayout:
         return self.backups_dir / Path(filename).name
 
     @property
+    def user_avatars_dir(self) -> Path:
+        """Uploaded user portraits: ``~/.octop/avatars/users/``."""
+        return self.root / "avatars" / "users"
+
+    @property
+    def role_avatars_dir(self) -> Path:
+        """Uploaded role portraits: ``~/.octop/avatars/roles/``."""
+        return self.root / "avatars" / "roles"
+
+    @property
     def ssl_dir(self) -> Path:
         """TLS certificates and ACME account keys: ``~/.octop/ssl/``."""
         return self.root / "ssl"

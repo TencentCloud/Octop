@@ -1,5 +1,14 @@
 import { useState, useEffect } from "react";
-import { Button, Card, Empty, Form, Segmented, Spin, Tooltip } from "antd";
+import {
+  Button,
+  Card,
+  Empty,
+  Form,
+  Segmented,
+  Spin,
+  Tooltip,
+  Alert,
+} from "antd";
 import { LayoutGrid, List, RefreshCw } from "lucide-react";
 import type { CronJobSpecOutput } from "../../../api/types";
 import { useTranslation } from "react-i18next";
@@ -265,6 +274,15 @@ function CronJobsPage() {
       subtitle={t("pageShell.tasks.subtitle")}
       agentScoped
     >
+      {activeAgent?.bridge ? (
+        <Alert
+          type="info"
+          showIcon
+          message={t("chat.remoteExpert.editBanner")}
+          description={t("chat.remoteExpert.editTasks")}
+          style={{ marginBottom: 12 }}
+        />
+      ) : null}
       {showToolbar ? (
         <div className={styles.gridToolbar}>
           <span className={styles.gridCount}>

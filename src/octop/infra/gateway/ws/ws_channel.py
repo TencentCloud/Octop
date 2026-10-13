@@ -6,9 +6,9 @@ import base64
 import logging
 from typing import Any
 
-from harness_gateway.channel import BaseChannel, MessageProcessor
-from harness_gateway.constraints import ChannelConstraints
-from harness_gateway.models import (
+from octop_gateway.channel import BaseChannel, MessageProcessor
+from octop_gateway.constraints import ChannelConstraints
+from octop_gateway.models import (
     AudioContent,
     ChannelSubject,
     ContentPart,

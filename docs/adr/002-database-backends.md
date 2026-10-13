@@ -9,7 +9,7 @@
 
 ## Context
 
-Operators need an optional PostgreSQL control plane for compliance / externalized state, while keeping zero-friction SQLite as the default. Agent memory (harness-memory) already supports a postgres backend; Octop must be able to pass it through without forking harness-*.
+Operators need an optional PostgreSQL control plane for compliance / externalized state, while keeping zero-friction SQLite as the default. Agent memory (octop-memory) already supports a postgres backend; Octop must be able to pass it through without forking octop-*.
 
 ## Decision
 
@@ -24,9 +24,9 @@ Layer 1 — Octop control plane
 
 Layer 2 — Harness checkpoints
   default: {workspace}/checkpoints.sqlite
-  when memory is postgres: reuse Memory / PostgresSaver (harness-agent)
+  when memory is postgres: reuse Memory / PostgresSaver (octop-harness)
 
-Layer 3 — Agent memory (harness-memory)
+Layer 3 — Agent memory (octop-memory)
   default on SQLite control plane: {workspace}/memory.sqlite
   default on PostgreSQL control plane: same DSN, schema agent_<id>
   override: config_json.memory.backend = { type: "sqlite" }
@@ -54,9 +54,9 @@ Workspace content files (SOUL, skills, inbound, JSONL) remain files via `Backend
 | Control-plane tables / indexes | Octop migrate | `migrations/NNN_*.sql` and `NNN_*.pg.sql` |
 | Connection / session settings | Pool connect | SQLite: `PRAGMA` in `SqlitePool`; PG: defaults (FK on) — **not** in migrations |
 | Instance extensions (`vector`, …) | Ops / docker | `docker/postgres/init-vector.sql` via `initdb.d`, or DBA on managed PG |
-| Agent memory DDL | harness-memory | Runtime `_init_schema` per `agent_*` schema |
+| Agent memory DDL | octop-memory | Runtime `_init_schema` per `agent_*` schema |
 
-**Hard rule:** Octop control-plane `*.pg.sql` must **not** run `CREATE EXTENSION`. Many managed Postgres roles cannot create extensions; the control plane also does not need `vector` (plain types only). harness-memory today uses built-in `tsvector`, not pgvector. Keep `CREATE EXTENSION vector` in docker/ops for optional future embedding use.
+**Hard rule:** Octop control-plane `*.pg.sql` must **not** run `CREATE EXTENSION`. Many managed Postgres roles cannot create extensions; the control plane also does not need `vector` (plain types only). octop-memory today uses built-in `tsvector`, not pgvector. Keep `CREATE EXTENSION vector` in docker/ops for optional future embedding use.
 
 ### Memory wiring
 

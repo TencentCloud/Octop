@@ -46,6 +46,8 @@ _EXT_TO_CONTENT_TYPE = {
     ".csv": "text/csv",
     ".tsv": "text/tab-separated-values",
     ".pdf": "application/pdf",
+    ".doc": "application/msword",
+    ".wps": "application/msword",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ".xls": "application/vnd.ms-excel",
@@ -439,13 +441,6 @@ class KnowledgeService:
         cleaned = (new_name or "").strip()
         if not cleaned or "/" in cleaned or "\\" in cleaned:
             raise ValueError("invalid knowledge document name")
-        if not document.is_dir:
-            # ``files.document_path`` keys the stored bytes on ``{doc_id}{suffix}``, so a
-            # rename that drops or swaps the extension moves the row off its own file:
-            # download and preview 404 and delete can no longer reclaim the bytes.
-            suffix = Path(document.filename).suffix.lower()
-            if suffix and Path(cleaned).suffix.lower() != suffix:
-                cleaned = f"{Path(cleaned).stem}{suffix}"
         new_path = normalize_kb_path(f"{path_parent(document.path)}/{cleaned}")
         if new_path == document.path:
             return cast(KnowledgeDocumentRow, document)

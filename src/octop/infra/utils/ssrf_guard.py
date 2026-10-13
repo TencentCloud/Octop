@@ -214,11 +214,8 @@ async def safe_request(
     pin_ip = await _resolve_validated_ip(url)
     # Rebuild the request URL from validated components so the outbound call
     # does not reuse the original user-controlled string (CWE-918 / CodeQL).
-    # ``hostname`` already strips the brackets an IPv6 literal needs in a URL,
-    # and the path parameter lives in its own component, so both are restored.
-    host_part = f"[{host}]" if ":" in host else host
-    netloc = f"{host_part}:{port}" if port is not None else host_part
-    request_url = urlunparse(("https", netloc, parsed.path or "/", parsed.params, parsed.query, ""))
+    netloc = f"{host}:{port}" if port is not None else host
+    request_url = urlunparse(("https", netloc, parsed.path or "/", "", parsed.query, ""))
     transport = PinnedIPTransport(host, pin_ip)
     async with httpx.AsyncClient(transport=transport, timeout=timeout) as client:
         return await client.request(method, request_url, json=json, data=data, headers=headers)

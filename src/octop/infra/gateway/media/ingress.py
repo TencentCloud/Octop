@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from harness_agent.backends.workspace import BackendWorkspace
-from harness_gateway.media import MediaBackend
+from octop_gateway.media import MediaBackend
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.infra.gateway.media.constants import OUTBOUND_DIR
 from octop.infra.gateway.media.inbound_store import inbound_rel_path, validate_inbound_size
 
 
 class AgentBackedMediaBackend(MediaBackend):
-    """harness-gateway ``MediaBackend`` adapter backed by ``agent.workspace``."""
+    """octop-gateway ``MediaBackend`` adapter backed by ``agent.workspace``."""
 
     def __init__(self, workspace: BackendWorkspace, *, max_bytes: int | None = None) -> None:
         self._workspace = workspace

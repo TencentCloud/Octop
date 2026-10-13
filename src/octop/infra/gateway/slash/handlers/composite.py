@@ -7,8 +7,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from harness_agent.compaction import display_offload_path
-from harness_agent.slash import SlashCommand, SlashSink, thread_message_count
+from octop_harness.compaction import display_offload_path
+from octop_harness.slash import SlashCommand, SlashSink, thread_message_count
 
 from octop.i18n.domains.agents import agent_error_message
 from octop.i18n.domains.slash import localized_rows, tr

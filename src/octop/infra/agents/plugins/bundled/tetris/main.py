@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 
 async def start_tetris() -> str:

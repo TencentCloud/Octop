@@ -122,3 +122,39 @@ async def test_patch_me_requires_auth(client) -> None:
     await bootstrap_admin(c, home)
     r = await c.patch("/api/auth/me", json={"display_name": "Alice"})
     assert r.status_code == 401
+
+
+_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+    b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+async def test_me_can_choose_icon_and_upload(client) -> None:
+    c, _srv, home = client
+    await bootstrap_admin(c, home)
+    tok = (
+        await c.post("/api/auth/login", json={"username": "admin", "password": "TestPass12"})
+    ).json()["access_token"]
+    auth = {"Authorization": f"Bearer {tok}"}
+    me = (await c.get("/api/auth/me", headers=auth)).json()
+
+    chosen = await c.patch("/api/auth/me", headers=auth, json={"avatar_icon": "smile"})
+    assert chosen.status_code == 200, chosen.text
+    assert chosen.json()["avatar_icon"] == "smile"
+
+    uploaded = await c.post(
+        "/api/auth/me/avatar",
+        headers=auth,
+        files={"file": ("avatar.png", _PNG, "image/png")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    fetched = await c.get(f"/api/users/{me['id']}/avatar", headers=auth)
+    assert fetched.status_code == 200
+    assert fetched.content == _PNG
+
+    cleared = await c.patch("/api/auth/me", headers=auth, json={"avatar_icon": None})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["avatar_icon"] is None
+    assert cleared.json()["avatar_url"] is None

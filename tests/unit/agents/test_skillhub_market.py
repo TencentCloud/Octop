@@ -653,7 +653,7 @@ def test_map_skillhub_not_found() -> None:
 
 class _Response:
     def __init__(self, payload: dict[str, Any]) -> None:
-        self._payload = payload
+        self._stream = io.BytesIO(json.dumps(payload).encode())
 
     def __enter__(self) -> _Response:
         return self
@@ -661,8 +661,8 @@ class _Response:
     def __exit__(self, *_args: object) -> None:
         return None
 
-    def read(self) -> bytes:
-        return json.dumps(self._payload).encode()
+    def read(self, size: int = -1) -> bytes:
+        return self._stream.read(size)
 
 
 def test_fetch_ranking_json_uses_showcase_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:

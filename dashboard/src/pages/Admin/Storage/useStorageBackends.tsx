@@ -371,7 +371,7 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     kind: "custom",
     nameKey: "storage.kindCustom",
     descKey: "storage.descCustom",
-    color: "#8c8c8c",
+    color: "#7aa116",
     icon: storageBrandIcon("custom"),
     fields: [
       {

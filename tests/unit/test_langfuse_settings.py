@@ -9,7 +9,7 @@ from unittest import mock
 
 import pytest
 
-from octop.infra.agents.langfuse import LangfuseSettingsStore, verify_langfuse_credentials
+from octop.infra.agents.settings.langfuse import LangfuseSettingsStore, verify_langfuse_credentials
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.secrets import SecretRepo
@@ -48,7 +48,7 @@ def test_langfuse_requires_secret_when_enabling(store: LangfuseSettingsStore) ->
 
 
 def test_langfuse_harness_config(store: LangfuseSettingsStore) -> None:
-    from harness_agent.observability.langfuse import LangfuseConfig
+    from octop_harness.observability.langfuse import LangfuseConfig
 
     assert store.harness_config() == LangfuseConfig(enabled=False)
     store.save(

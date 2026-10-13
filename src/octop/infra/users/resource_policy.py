@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -16,6 +17,7 @@ from octop.infra.utils.host_dirs import (
 
 POLICY_WORKSPACE_ROOT_DIR = "workspace_root_dir"
 POLICY_TOKEN_QUOTA = "token_quota"
+POLICY_MAX_AGENTS = "max_agents"
 
 
 def active_policy_value(row: Any) -> str | None:
@@ -73,6 +75,20 @@ def token_quota_of(raw: Any) -> int | None:
         return None
 
 
+def max_agents_of(raw: Any) -> int | None:
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, Mapping) and "value" not in raw:
+        raw = raw.get(POLICY_MAX_AGENTS)
+    text = active_policy_value(raw)
+    if text is None:
+        return None
+    try:
+        return int(text)
+    except (TypeError, ValueError):
+        return None
+
+
 def public_policy_fields(rows: Sequence[Any] | Mapping[str, str] | None) -> dict[str, Any]:
     """HTTP-facing subset of known policies (disabled / missing = unlimited)."""
     by_name: dict[str, str] = {}
@@ -84,10 +100,10 @@ def public_policy_fields(rows: Sequence[Any] | Mapping[str, str] | None) -> dict
             value = active_policy_value(row)
             if isinstance(name, str) and value is not None:
                 by_name[name] = value
-    quota = token_quota_of(by_name.get(POLICY_TOKEN_QUOTA))
     return {
         "workspace_root_dir": workspace_root_dir_of(by_name),
-        "token_quota": quota,
+        "token_quota": token_quota_of(by_name.get(POLICY_TOKEN_QUOTA)),
+        "max_agents": max_agents_of(by_name.get(POLICY_MAX_AGENTS)),
     }
 
 
@@ -105,12 +121,22 @@ def normalize_workspace_root_dir(raw: str | None) -> str | None:
             "workspace root policy is unavailable in container deployments",
         )
     path = assert_safe_host_path(str(raw).strip(), restrict_to_home=False)
-    if not path.is_dir():
-        raise OctopError(
-            ErrorCode.WORKSPACE_ROOT_RESTRICTED,
-            "workspace root must be a directory",
-        )
-    return host_path_text(path)
+    resolved = os.path.realpath(os.fspath(path))
+    drive, _tail = os.path.splitdrive(resolved)
+    # Own drive root on Windows, ``/`` on POSIX. ``startswith`` after
+    # ``realpath`` is the containment barrier CodeQL requires before isdir.
+    base = f"{drive}{os.sep}" if drive else os.sep
+    if resolved.startswith(base):
+        if not os.path.isdir(resolved):
+            raise OctopError(
+                ErrorCode.WORKSPACE_ROOT_RESTRICTED,
+                "workspace root must be a directory",
+            )
+        return host_path_text(path)
+    raise OctopError(
+        ErrorCode.WORKSPACE_ROOT_RESTRICTED,
+        "path not allowed",
+    )
 
 
 def normalize_token_quota(raw: int | None) -> int | None:
@@ -120,6 +146,15 @@ def normalize_token_quota(raw: int | None) -> int | None:
     if quota < 0:
         raise OctopError(ErrorCode.FORBIDDEN, "token quota must be >= 0", status=400)
     return quota
+
+
+def normalize_max_agents(raw: int | None) -> int | None:
+    if raw is None:
+        return None
+    limit = int(raw)
+    if limit < 0:
+        raise OctopError(ErrorCode.FORBIDDEN, "max agents must be >= 0", status=400)
+    return limit
 
 
 def assert_backend_within_user_root(backend: Any, allowed_root: str | None) -> None:
@@ -155,4 +190,18 @@ def assert_token_quota_available(policy_repo: Any, usage_repo: Any, user_id: int
             ErrorCode.TOKEN_QUOTA_EXCEEDED,
             "token quota exceeded",
             details={"used": used, "quota": quota},
+        )
+
+
+def assert_agent_quota_available(policy_repo: Any, agent_repo: Any, user_id: int) -> None:
+    """Raise when the user already owns ``max_agents`` expert agents."""
+    limit = max_agents_of(policy_repo.get(user_id, POLICY_MAX_AGENTS))
+    if limit is None:
+        return
+    owned = int(agent_repo.count_by_user(user_id, kind="expert"))
+    if owned >= limit:
+        raise OctopError(
+            ErrorCode.AGENT_QUOTA_EXCEEDED,
+            "agent quota exceeded",
+            details={"used": owned, "quota": limit},
         )

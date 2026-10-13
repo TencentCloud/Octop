@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from harness_agent.slash import BufferSink, SlashCommand, SlashSink
+from octop_harness.slash import BufferSink, SlashCommand, SlashSink
 
 from octop.infra.gateway.slash.ctx import SlashCtx
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher

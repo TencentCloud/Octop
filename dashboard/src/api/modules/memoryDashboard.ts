@@ -1,9 +1,9 @@
 /**
- * memoryDashboard — talks to the per-agent harness-memory dashboard
+ * memoryDashboard — talks to the per-agent octop-memory dashboard
  * surface mounted at ``/api/agents/{aid}/memory/*`` (octop router).
  *
  * Each function maps one-to-one to a backend endpoint. Type defs
- * mirror the wire shape the harness-memory bridge handlers emit
+ * mirror the wire shape the octop-memory bridge handlers emit
  * (see ``harness_memory.application.dashboard_data``); we deliberately
  * keep the shapes loose / partial and rely on the BE to never break
  * field names, so this client doesn't need to round-trip every CI run.
@@ -101,6 +101,26 @@ export interface ExtractConfig {
    * (follow the chat model); send "" to reset back to AUTO.
    */
   aux_model?: string | null;
+  /**
+   * Read timeout (seconds) for light memory calls (extraction). null/absent =
+   * harness default (120s); send 0 to reset back to the default.
+   */
+  extract_light_timeout_s?: number | null;
+  /**
+   * Read timeout (seconds) for heavy memory calls (promotion / page regen).
+   * null/absent = harness default (300s); send 0 to reset.
+   */
+  extract_heavy_timeout_s?: number | null;
+  /**
+   * Completion budget for memory calls that don't pass their own. null/absent
+   * = automatic; send 0 to reset.
+   */
+  extract_max_tokens?: number | null;
+  /**
+   * Vendor-specific request extras for OpenAI-compatible endpoints (thinking
+   * controls). null/absent = unset; send {} to reset.
+   */
+  extract_extra_body?: Record<string, unknown> | null;
 }
 
 export interface EntityItem {

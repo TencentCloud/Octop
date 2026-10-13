@@ -72,9 +72,9 @@ def test_slice_message_page_long_thread_no_gaps_or_overlaps() -> None:
 
 
 def test_isolated_sqlite_history_supports_pypi_memory_0_9_7(tmp_path: Path) -> None:
-    from harness_memory import Memory
     from langchain_core.messages import AIMessage
     from langgraph.checkpoint.base import empty_checkpoint
+    from octop_memory import Memory
 
     db_path = tmp_path / "checkpoint.db"
     memory = Memory(
@@ -94,7 +94,7 @@ def test_isolated_sqlite_history_supports_pypi_memory_0_9_7(tmp_path: Path) -> N
         {"messages": 1},
     )
     # Prove the migration opens its own read-only connection rather than using
-    # harness-memory 0.9.7's live synchronous saver connection.
+    # octop-memory 0.9.7's live synchronous saver connection.
     memory._checkpointer.conn.close()
     try:
         harness = SimpleNamespace(_checkpointer_instance=memory)
@@ -110,7 +110,7 @@ def test_isolated_sqlite_history_supports_pypi_memory_0_9_7(tmp_path: Path) -> N
 def test_isolated_history_reads_compact_checkpoint_with_closed_live_connection(
     tmp_path: Path, warm_cache: bool
 ) -> None:
-    compact = pytest.importorskip("harness_memory.storage.backends.sqlite_checkpoint")
+    compact = pytest.importorskip("octop_memory.storage.backends.sqlite_checkpoint")
     from langgraph.checkpoint.base import empty_checkpoint
 
     path = tmp_path / "compact.sqlite"
@@ -215,6 +215,10 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
         "list_threads must not touch harness"
     )
     server.app_runtime.gateway.thread_registry = thread_registry
+    server.app_runtime.gateway.ws_hub.is_turn_active.side_effect = lambda tid: tid == "thr_used"
+    server.app_runtime.gateway.processor.hitl_coordinator.store.pending_thread_ids.return_value = (
+        frozenset({"thr_empty"})
+    )
 
     user = MagicMock(id=1, is_admin=False)
 
@@ -222,7 +226,11 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
 
     assert len(out) == 2
     assert out[0]["has_messages"] is False
+    assert out[0]["turn_active"] is False
+    assert out[0]["awaiting_user"] is True
     assert out[1]["has_messages"] is True
+    assert out[1]["turn_active"] is True
+    assert out[1]["awaiting_user"] is False
 
 
 @pytest.mark.asyncio

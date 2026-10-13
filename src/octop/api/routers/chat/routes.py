@@ -22,7 +22,7 @@ from octop.infra.agents.experts.catalog import (
     welcome_payload_from_manifest_data,
     welcome_payload_has_content,
 )
-from octop.infra.agents.profile import welcome_from_row
+from octop.infra.agents.settings.profile import welcome_from_row
 from octop.infra.agents.teams import is_team_agent
 from octop.infra.agents.teams.welcome import team_host_welcome_payload
 from octop.infra.errors import ErrorCode, OctopError
@@ -31,6 +31,7 @@ from octop.infra.gateway.hitl.coordinator import (
     HitlStreamContext,
     decision_rejection_reason,
 )
+from octop.infra.gateway.hitl.format import normalize_hitl_request
 from octop.infra.gateway.hitl.store import HitlPendingRecord
 from octop.infra.utils.llm_text import ainvoke_text
 from octop.infra.utils.locale import resolve_request_locale
@@ -123,6 +124,32 @@ async def iter_dashboard_hitl_resume_sse(
     reload / refresh can reinject the approval card (same as the initial turn).
     """
     rejected = any(isinstance(d, dict) and d.get("type") == "reject" for d in decisions)
+    if pending is not None and pending.resume_agent_id:
+        from octop.i18n.domains.slash import tr as slash_tr  # noqa: PLC0415
+        from octop.infra.utils.locale import normalize_locale  # noqa: PLC0415
+
+        teams = getattr(processor, "teams", None)
+        deliver = getattr(teams, "deliver_member_hitl", None) if teams is not None else None
+        handed = hitl_coordinator.hand_member_pause(
+            pending,
+            decisions,
+            deliver=deliver if callable(deliver) else None,
+            rejected=rejected,
+        )
+        if handed:
+            # The member job keeps streaming on the room socket. A normal
+            # ``done`` makes the dashboard reload history immediately, which
+            # drops the live member answer before fan-in has saved it.
+            yield format_sse(
+                "chunk",
+                {"type": "done", "team_member_continuing": True},
+            )
+            return
+        yield format_sse(
+            "chunk",
+            {"type": "error", "message": slash_tr("hitl.expired", normalize_locale(locale))},
+        )
+        return
     hitl_ctx = HitlStreamContext(
         thread_id=thread_id,
         agent_id=agent_id,
@@ -150,7 +177,10 @@ async def iter_dashboard_hitl_resume_sse(
             if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
                 request_payload = chunk.get("request")
                 if isinstance(request_payload, dict):
-                    hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
+                    request_payload = normalize_hitl_request(request_payload)
+                    record = hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
+                    request_payload["pending_id"] = record.pending_id
+                    chunk["request"] = request_payload
             if not disconnected:
                 yield format_sse("chunk", chunk)
         if not disconnected:
@@ -194,11 +224,26 @@ async def resume_hitl(
     assert_agent_access(server, agent_id, user)
     processor = server.app_runtime.gateway.processor
     hitl_coordinator = processor.hitl_coordinator
+    requested_id = (body.pending_id or "").strip()
     pending = hitl_coordinator.store.resolve_pending_for_thread(
         body.thread_id,
         agent_id=agent_id,
         user_id=user.id,
+        pending_id=requested_id or None,
     )
+    if requested_id and pending is None:
+        from octop.i18n.domains.slash import tr as slash_tr  # noqa: PLC0415
+        from octop.infra.utils.locale import normalize_locale  # noqa: PLC0415
+
+        locale = normalize_locale(resolve_request_locale(request))
+
+        async def missing() -> AsyncIterator[str]:
+            yield format_sse(
+                "chunk",
+                {"type": "error", "message": slash_tr("hitl.expired", locale)},
+            )
+
+        return StreamingResponse(missing(), media_type="text/event-stream")
     session_key, channel_type = _dashboard_hitl_stream_context(
         server,
         agent_id=agent_id,

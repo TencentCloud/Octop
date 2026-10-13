@@ -43,16 +43,23 @@ export default function SkillsTabs({ agentId }: SkillsTabsProps) {
   const currentUser = useCurrentUser();
   // Hide the skill-packages tab for users without the `skill_packages` permission.
   const canSkillPackages = userCanAny(currentUser, PERM.skillPackages);
+  const remoteAgent = Boolean(agentId?.startsWith("bridge:"));
   const [activeTab, setActiveTab] = useState<SkillsTab>("custom");
   const tabs = useMemo(
     () =>
-      SKILL_TABS.filter((tab) => tab.key !== "packages" || canSkillPackages),
-    [canSkillPackages],
+      SKILL_TABS.filter(
+        (tab) => tab.key !== "packages" || (canSkillPackages && !remoteAgent),
+      ),
+    [canSkillPackages, remoteAgent],
   );
+  const resolvedTab =
+    activeTab === "packages" && (!canSkillPackages || remoteAgent)
+      ? "custom"
+      : activeTab;
   const onInstalledTab =
-    activeTab === "custom" ||
-    activeTab === "builtin" ||
-    activeTab === "packages";
+    resolvedTab === "custom" ||
+    resolvedTab === "builtin" ||
+    resolvedTab === "packages";
   const installedSkills = useSkills(agentId, { enabled: onInstalledTab });
 
   const noAgent = (
@@ -64,23 +71,23 @@ export default function SkillsTabs({ agentId }: SkillsTabsProps) {
 
   return (
     <div className={styles.skillsTabs}>
-      <TabBar tabs={tabs} activeKey={activeTab} onChange={setActiveTab} />
+      <TabBar tabs={tabs} activeKey={resolvedTab} onChange={setActiveTab} />
 
       <div className={styles.skillsTabsContent}>
-        {activeTab === "custom" || activeTab === "builtin" ? (
+        {resolvedTab === "custom" || resolvedTab === "builtin" ? (
           agentId ? (
             <InstalledSkillsTab
               key={agentId}
               agentId={agentId}
-              kind={activeTab === "builtin" ? "builtin" : "custom"}
+              kind={resolvedTab === "builtin" ? "builtin" : "custom"}
               {...installedSkills}
             />
           ) : (
             noAgent
           )
-        ) : activeTab === "skillhub" && agentId ? (
+        ) : resolvedTab === "skillhub" && agentId ? (
           <SkillHubTab key={agentId} target={{ type: "agent", agentId }} />
-        ) : activeTab === "packages" && agentId && canSkillPackages ? (
+        ) : resolvedTab === "packages" && agentId && canSkillPackages ? (
           <SkillPackagesTab
             key={agentId}
             agentId={agentId}

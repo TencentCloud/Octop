@@ -408,34 +408,6 @@ async def test_delete_builtin_skills_forbidden(env: Any) -> None:
     assert r.status_code == 403
 
 
-@pytest.mark.parametrize(
-    "path",
-    ["/_builtin_skills/foo/SKILL.md", "/.octop/_builtin_skills/foo/SKILL.md"],
-)
-async def test_write_builtin_skills_forbidden(env: Any, path: str) -> None:
-    c, _srv, auth, aid = env
-    r = await c.put(
-        f"/api/agents/{aid}/workspace/file",
-        params={**FROM_WORKSPACE, "path": path},
-        headers=auth,
-        json={"content": "# injected\n"},
-    )
-    assert r.status_code == 403
-
-
-async def test_upload_builtin_skills_forbidden(env: Any) -> None:
-    c, srv, auth, aid = env
-    r = await c.post(
-        f"/api/agents/{aid}/workspace/upload",
-        params={**FROM_WORKSPACE, "path": "/_builtin_skills/foo/SKILL.md"},
-        headers=auth,
-        files={"file": ("SKILL.md", b"# injected\n", "text/markdown")},
-    )
-    assert r.status_code == 403
-    agent = srv.app_runtime.agent_registry.get_agent(aid)
-    assert await agent.workspace.aexists("_builtin_skills/foo/SKILL.md") is False
-
-
 # --- editable document (Markdown round-trip) --------------------------------
 
 

@@ -26,6 +26,7 @@ export default function MbtiCatalogDrawer({
       title={t("personalization.mbti.catalogTitle")}
       open={open}
       onClose={onClose}
+      agentId={agentId}
     >
       {agentId ? (
         <MBTISelector

@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from octop.infra.agents.runtime_limits import AGENT_RUNTIME_CONFIG_KEYS
+from octop.infra.agents.settings.runtime_limits import AGENT_RUNTIME_CONFIG_KEYS
 
 
 class AgentRuntimeFields(BaseModel):

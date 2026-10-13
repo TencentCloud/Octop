@@ -7,6 +7,7 @@ import email
 import imaplib
 import json
 import smtplib
+from email import policy
 from email.mime.text import MIMEText
 from typing import Any
 
@@ -80,6 +81,25 @@ def call_tool(creds: dict[str, Any], name: str, args: dict[str, Any]) -> str:
     raise ValueError(f"unknown tool: {name}")
 
 
+def _parse_message(raw: bytes) -> email.message.Message:
+    """Parse raw RFC822 bytes with ``email.policy.default``.
+
+    The default compat32 policy returns ``email.header.Header`` objects for
+    header fields carrying raw (non MIME-encoded) non-ASCII bytes; those are
+    not JSON serializable and crash ``search_emails``/``read_email`` with
+    ``TypeError: Object of type Header is not JSON serializable``. The modern
+    policy always yields ``str`` subclasses and additionally decodes
+    MIME-encoded words (so subjects render as readable text instead of
+    ``=?utf-8?q?...?=``).
+    """
+    return email.message_from_bytes(raw, policy=policy.default)
+
+
+def _safe_header(msg: email.message.Message, field: str) -> str:
+    """Return *field* as a plain ``str``, safe for JSON under any policy."""
+    return str(msg.get(field, "") or "")
+
+
 def _email_search(creds: dict[str, Any], args: dict[str, Any]) -> str:
     query = str(args.get("query") or "ALL")
     limit = int(args.get("limit") or 10)
@@ -97,13 +117,13 @@ def _email_search(creds: dict[str, Any], args: dict[str, Any]) -> str:
             )
             if not msg_data or not msg_data[0]:
                 continue
-            hdr = email.message_from_bytes(msg_data[0][1])
+            hdr = _parse_message(msg_data[0][1])
             out.append(
                 {
                     "uid": uid.decode(),
-                    "from": hdr.get("From", ""),
-                    "subject": hdr.get("Subject", ""),
-                    "date": hdr.get("Date", ""),
+                    "from": _safe_header(hdr, "From"),
+                    "subject": _safe_header(hdr, "Subject"),
+                    "date": _safe_header(hdr, "Date"),
                 }
             )
         return json.dumps(out, ensure_ascii=False, indent=2)
@@ -122,14 +142,14 @@ def _email_read(creds: dict[str, Any], args: dict[str, Any]) -> str:
         _typ, msg_data = imap.uid("fetch", uid, "(RFC822)")
         if not msg_data or not msg_data[0]:
             raise ValueError(f"email uid {uid} not found")
-        msg = email.message_from_bytes(msg_data[0][1])
+        msg = _parse_message(msg_data[0][1])
         body = _extract_body(msg)
         return json.dumps(
             {
                 "uid": uid,
-                "from": msg.get("From", ""),
-                "subject": msg.get("Subject", ""),
-                "date": msg.get("Date", ""),
+                "from": _safe_header(msg, "From"),
+                "subject": _safe_header(msg, "Subject"),
+                "date": _safe_header(msg, "Date"),
                 "body": body,
             },
             ensure_ascii=False,
@@ -197,15 +217,26 @@ def probe_credentials(creds: dict[str, Any]) -> None:
             imap.logout()
 
 
+def _decode_payload(part: email.message.Message, payload: bytes) -> str:
+    charset = part.get_content_charset() or "utf-8"
+    try:
+        return payload.decode(charset, errors="replace")
+    except LookupError:
+        # Declared charset has no installed codec (e.g. "unknown-8bit", or a
+        # bogus name from a broken client): fall back to UTF-8 instead of
+        # crashing the whole read_email call.
+        return payload.decode("utf-8", errors="replace")
+
+
 def _extract_body(msg: email.message.Message) -> str:
     if msg.is_multipart():
         for part in msg.walk():
             if part.get_content_type() == "text/plain":
                 payload = part.get_payload(decode=True)
                 if isinstance(payload, bytes):
-                    return payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+                    return _decode_payload(part, payload)
         return ""
     payload = msg.get_payload(decode=True)
     if isinstance(payload, bytes):
-        return payload.decode(msg.get_content_charset() or "utf-8", errors="replace")
+        return _decode_payload(msg, payload)
     return str(payload or "")

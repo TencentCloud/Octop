@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from harness_memory.types import Episode
+    from octop_memory.types import Episode
 
 logger = logging.getLogger(__name__)
 

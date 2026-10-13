@@ -32,9 +32,43 @@ const MODE_OPTIONS: readonly {
   },
 ];
 
+export function conversationModeIcon(mode: ConversationMode): LucideIcon {
+  return MODE_OPTIONS.find((item) => item.mode === mode)?.Icon ?? Hammer;
+}
+
 function ModeGlyph({ mode }: { mode: ConversationMode }) {
-  const Icon = MODE_OPTIONS.find((item) => item.mode === mode)?.Icon ?? Hammer;
+  const Icon = conversationModeIcon(mode);
   return <Icon size={16} />;
+}
+
+export function ConversationModeMenu({
+  conversationMode,
+  onChange,
+}: {
+  conversationMode: ConversationMode;
+  onChange: (mode: ConversationMode) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className={styles.modeMenu}>
+      {MODE_OPTIONS.map(({ mode, Icon, hintKey }) => (
+        <button
+          key={mode}
+          type="button"
+          className={`${styles.modeMenuItem} ${
+            conversationMode === mode ? styles.modeMenuItemActive : ""
+          }`}
+          onClick={() => onChange(mode)}
+        >
+          <span className={styles.modeMenuTitle}>
+            <Icon size={16} />
+            {t(`chat.conversationMode.${mode}`)}
+          </span>
+          <span className={styles.modeMenuHint}>{t(hintKey)}</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 interface ConversationModePickerProps {
@@ -58,27 +92,13 @@ export default function ConversationModePicker({
       onOpenChange={setOpen}
       overlayClassName={styles.modelPopover}
       content={
-        <div className={styles.modeMenu}>
-          {MODE_OPTIONS.map(({ mode, Icon, hintKey }) => (
-            <button
-              key={mode}
-              type="button"
-              className={`${styles.modeMenuItem} ${
-                conversationMode === mode ? styles.modeMenuItemActive : ""
-              }`}
-              onClick={() => {
-                onChange(mode);
-                setOpen(false);
-              }}
-            >
-              <span className={styles.modeMenuTitle}>
-                <Icon size={16} />
-                {t(`chat.conversationMode.${mode}`)}
-              </span>
-              <span className={styles.modeMenuHint}>{t(hintKey)}</span>
-            </button>
-          ))}
-        </div>
+        <ConversationModeMenu
+          conversationMode={conversationMode}
+          onChange={(mode) => {
+            onChange(mode);
+            setOpen(false);
+          }}
+        />
       }
     >
       <Tooltip title={modeLabel} mouseEnterDelay={0.4}>

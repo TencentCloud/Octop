@@ -65,6 +65,9 @@ export default function AdvancedSettingsPage() {
   if (moved === "voice" || moved === "search") {
     return <Navigate to={`/admin/models?tab=${moved}`} replace />;
   }
+  if (moved === "bridge") {
+    return <Navigate to="/bridge" replace />;
+  }
 
   if (forbidden) return <ForbiddenPage />;
 
@@ -93,7 +96,7 @@ export default function AdvancedSettingsPage() {
         <TabBar tabs={allowedTabs} activeKey={activeTab} onChange={selectTab} />
       }
     >
-      <div className={tabStyles.panel}>{renderTab()}</div>
+      <div className={tabStyles.tabContent}>{renderTab()}</div>
     </PageShell.Tabbed>
   );
 }

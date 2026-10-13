@@ -64,7 +64,7 @@ def test_market_install_copies_from_catalog(tmp_path: Path) -> None:
 
 
 def test_offline_bundled_plugins_load() -> None:
-    from harness_agent.plugins import PluginRegistry, load_plugin_dir
+    from octop_harness.plugins import PluginRegistry, load_plugin_dir
 
     PluginRegistry.reset()
     root = default_bundled_plugins_root()
