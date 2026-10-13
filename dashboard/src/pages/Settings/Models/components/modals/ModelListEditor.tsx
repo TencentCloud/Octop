@@ -61,7 +61,15 @@ interface ModelListEditorProps {
   onTestModel?: (
     modelId: string,
     modelName: string,
-  ) => Promise<{ ok: boolean; latency_ms?: number; error?: string }>;
+    apiMode?: ProviderModel["api_mode"],
+    apiFallback?: ProviderModel["api_fallback"],
+  ) => Promise<{
+    ok: boolean;
+    latency_ms?: number;
+    error?: string;
+    fallback_used?: boolean;
+    api_mode_used?: ProviderModel["api_mode"];
+  }>;
 }
 
 const INPUT_TYPE_OPTIONS = [
@@ -106,6 +114,7 @@ export function ModelListEditor({
   const formAnchorRef = useRef<HTMLDivElement>(null);
   const isOnnx = isOnnxProviderRow(provider);
   const purposeValue = Form.useWatch("purpose", form);
+  const apiModeValue = Form.useWatch("api_mode", form);
   const embeddingOn = isOnnx || purposeValue === "embedding";
 
   const handleToggleEnabled = (
@@ -149,9 +158,17 @@ export function ModelListEditor({
     modelId: string,
     modelName: string,
     embedding?: boolean,
-  ): Promise<{ ok: boolean; latency_ms?: number; error?: string }> => {
+    apiMode?: ProviderModel["api_mode"],
+    apiFallback?: ProviderModel["api_fallback"],
+  ): Promise<{
+    ok: boolean;
+    latency_ms?: number;
+    error?: string;
+    fallback_used?: boolean;
+    api_mode_used?: ProviderModel["api_mode"];
+  }> => {
     if (onTestModel) {
-      return onTestModel(modelId, modelName);
+      return onTestModel(modelId, modelName, apiMode, apiFallback);
     }
     const isEmbedding =
       embedding ??
@@ -160,23 +177,40 @@ export function ModelListEditor({
       ok: boolean;
       latency_ms?: number;
       error?: string;
+      fallback_used?: boolean;
+      api_mode_used?: ProviderModel["api_mode"];
     }>(`${apiPrefix}/${provider.id}/test`, {
       method: "POST",
-      body: JSON.stringify({ model_id: modelId, embedding: isEmbedding }),
+      body: JSON.stringify({
+        model_id: modelId,
+        api_mode: apiMode,
+        api_fallback: apiFallback,
+        embedding: isEmbedding,
+      }),
     });
   };
 
   const handleTestModel = async (modelId: string, modelName: string) => {
     setTestingIds((prev) => new Set(prev).add(modelId));
     try {
-      const result = await runTest(modelId, modelName);
+      const result = await runTest(
+        modelId,
+        modelName,
+        undefined,
+        models.find((m) => m.id === modelId)?.api_mode,
+        models.find((m) => m.id === modelId)?.api_fallback,
+      );
       if (result.ok) {
-        message.success(
-          t("models.testSuccess", {
-            name: modelName,
-            time: result.latency_ms ?? 0,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          message.success(
+            t("models.testSuccess", {
+              name: modelName,
+              time: result.latency_ms ?? 0,
+            }),
+          );
+        }
         setTestResults((prev) => new Map(prev).set(modelId, "success"));
       } else {
         message.error(
@@ -216,16 +250,35 @@ export function ModelListEditor({
     }
     setTestingForm(true);
     try {
-      const result = await runTest(modelId, modelId, embeddingOn);
+      const apiMode = form.getFieldValue("api_mode") as
+        | ProviderModel["api_mode"]
+        | undefined;
+      const apiFallback =
+        apiMode === "responses"
+          ? (form.getFieldValue("api_fallback") as
+              | ProviderModel["api_fallback"]
+              | undefined)
+          : "none";
+      const result = await runTest(
+        modelId,
+        modelId,
+        embeddingOn,
+        apiMode,
+        apiFallback,
+      );
       const modelName =
         (form.getFieldValue("name") as string | undefined)?.trim() || modelId;
       if (result.ok) {
-        message.success(
-          t("models.testSuccess", {
-            name: modelName,
-            time: result.latency_ms ?? 0,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          message.success(
+            t("models.testSuccess", {
+              name: modelName,
+              time: result.latency_ms ?? 0,
+            }),
+          );
+        }
       } else {
         message.error(
           t("models.testFailed", { error: result.error ?? "unknown" }),
@@ -262,6 +315,14 @@ export function ModelListEditor({
       entry.context_window = values.context_window as number;
     if (values.max_tokens != null)
       entry.max_tokens = values.max_tokens as number;
+    entry.api_mode =
+      (values.api_mode as ProviderModel["api_mode"] | undefined) ||
+      "chat_completions";
+    entry.api_fallback =
+      entry.api_mode === "responses"
+        ? (values.api_fallback as ProviderModel["api_fallback"] | undefined) ??
+          "none"
+        : "none";
     if (values.reasoning != null) entry.reasoning = values.reasoning as boolean;
     if (values.reasoning === true) {
       const efforts = (values.reasoning_efforts as string[] | undefined) || [];
@@ -336,6 +397,8 @@ export function ModelListEditor({
       context_window:
         (model as Record<string, unknown>).context_window ?? undefined,
       max_tokens: (model as Record<string, unknown>).max_tokens ?? undefined,
+      api_mode: model.api_mode ?? "chat_completions",
+      api_fallback: model.api_fallback ?? "none",
       reasoning: (model as Record<string, unknown>).reasoning ?? undefined,
       reasoning_toggle: model.reasoning_config?.toggle ?? true,
       reasoning_efforts: model.reasoning_config?.efforts ?? [],
@@ -345,9 +408,8 @@ export function ModelListEditor({
       reasoning_effort_type: model.reasoning_config?.effort_type ?? "enum",
       reasoning_adapter: model.reasoning_config?.adapter ?? "thinking",
       input: model.input ?? ["text"],
-      purpose: Boolean(model.embedding || model.task === "embedding")
-        ? "embedding"
-        : "chat",
+      purpose:
+        model.embedding || model.task === "embedding" ? "embedding" : "chat",
     });
     const hasAdvanced = (model as Record<string, unknown>).reasoning != null;
     setShowAdvanced(hasAdvanced);
@@ -595,6 +657,53 @@ export function ModelListEditor({
 
             {embeddingOn ? null : (
               <>
+                {provider.kind !== "anthropic" &&
+                  provider.kind !== "bedrock" && (
+                    <Form.Item
+                      name="api_mode"
+                      label={t("models.apiMode")}
+                      extra={t("models.apiModeHint")}
+                      initialValue="chat_completions"
+                      style={{ marginBottom: 12 }}
+                    >
+                      <Select
+                        options={[
+                          {
+                            value: "chat_completions",
+                            label: t("models.apiModeChatCompletions"),
+                          },
+                          {
+                            value: "responses",
+                            label: t("models.apiModeResponses"),
+                          },
+                        ]}
+                      />
+                    </Form.Item>
+                  )}
+                {provider.kind !== "anthropic" &&
+                  provider.kind !== "bedrock" &&
+                  apiModeValue === "responses" && (
+                    <Form.Item
+                      name="api_fallback"
+                      label={t("models.apiFallback")}
+                      extra={t("models.apiFallbackHint")}
+                      initialValue="none"
+                      style={{ marginBottom: 12 }}
+                    >
+                      <Select
+                        options={[
+                          {
+                            value: "none",
+                            label: t("models.apiFallbackNone"),
+                          },
+                          {
+                            value: "chat_completions",
+                            label: t("models.apiFallbackChatCompletions"),
+                          },
+                        ]}
+                      />
+                    </Form.Item>
+                  )}
                 <Form.Item
                   name="input"
                   label={t("models.inputTypes")}

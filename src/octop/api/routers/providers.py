@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
@@ -130,6 +130,8 @@ def _provider_patch_updates(
 
 class ProviderTestBody(BaseModel):
     model_id: str | None = None
+    api_mode: Literal["chat_completions", "responses"] | None = None
+    api_fallback: Literal["none", "chat_completions"] | None = None
     embedding: bool = False
 
 
@@ -139,6 +141,8 @@ class ProviderTestDraftBody(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     model_id: str
+    api_mode: Literal["chat_completions", "responses"] = "chat_completions"
+    api_fallback: Literal["none", "chat_completions"] = "none"
     extra_json: str | None = None
     embedding: bool = False
 
@@ -361,12 +365,16 @@ async def admin_test_provider_draft(
         api_key=api_key,
         base_url=(body.base_url or "").strip() or None,
         model_id=model_id,
+        api_mode=body.api_mode,
+        api_fallback=body.api_fallback,
         extra_json=body.extra_json,
         embedding=body.embedding,
     )
     return await probe_provider_row(
         row,
         model_id=model_id,
+        api_mode=body.api_mode,
+        api_fallback=body.api_fallback,
         embedding=body.embedding,
         locale=resolve_request_locale(request),
     )
@@ -535,10 +543,14 @@ async def admin_test_provider(
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
     row = await _maybe_refresh_codex_row(server, row)
     model_id = body.model_id if body else None
+    api_mode = body.api_mode if body else None
+    api_fallback = body.api_fallback if body else None
     embedding = body.embedding if body else None
     return await probe_provider_row(
         row,
         model_id=model_id,
+        api_mode=api_mode,
+        api_fallback=api_fallback,
         embedding=embedding,
         locale=resolve_request_locale(request),
     )
