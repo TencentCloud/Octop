@@ -308,6 +308,36 @@ async def test_ws_subscribe_rejects_another_users_thread(env: Any) -> None:
     assert frame == {"type": "error", "message": f"thread {tid!r} not found"}
 
 
+async def test_ws_rejects_another_users_session_key(env: Any) -> None:
+    """A guessable dashboard session key must not hand over the victim's thread."""
+    c, _srv, _fake, alice_auth, bob_auth, aid = env
+    response = await c.patch(
+        f"/api/agents/{aid}",
+        headers=alice_auth,
+        json={"is_shared": True},
+    )
+    assert response.status_code == 200, response.text
+
+    create = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    assert create.status_code == 201, create.text
+    alice_tid = create.json()["thread_id"]
+    alice_session_key = create.json()["session_key"]
+
+    async with _chat_ws(c, aid, bob_auth) as ws:
+        await ws.send_json(
+            {"type": "user_turn", "text": "intruder", "session_key": alice_session_key},
+        )
+        frames = await ws.drain_turn()
+    await asyncio.sleep(0.05)
+
+    assert frames[0]["type"] == "error"
+    assert "token" not in [f.get("type") for f in frames]
+
+    r = await c.get(f"/api/agents/{aid}/threads", headers=alice_auth)
+    hijacked = [t for t in r.json() if t.get("thread_id") == alice_tid]
+    assert hijacked and not hijacked[0].get("has_messages")
+
+
 async def test_ws_cancel_frame_cancels_active_turn(env: Any) -> None:
     c, srv, _fake, alice_auth, _bob_auth, aid = env
     agent = srv.app_runtime.agent_registry.get_agent(aid)
